@@ -8,7 +8,7 @@ When developing VM0 locally, E2B sandboxes run in the cloud and cannot reach `lo
 
 ## Solution
 
-We use **Cloudflare Tunnel** to expose your local dev server through a temporary public HTTPS URL that E2B sandboxes can reach.
+The web app dev server **automatically starts a Cloudflare Tunnel** to expose your local dev server through a temporary public HTTPS URL that E2B sandboxes can reach.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -28,20 +28,22 @@ We use **Cloudflare Tunnel** to expose your local dev server through a temporary
 
 ## Quick Start
 
-### 1. Start Dev Server with Tunnel
+### 1. Start Dev Server
 
 ```bash
 cd turbo
-pnpm dev:tunnel
+pnpm dev
 ```
 
-This single command will:
+The web app will automatically:
 
-1. ✅ Start Cloudflare Tunnel
-2. ✅ Get a public HTTPS URL (e.g., `https://random.trycloudflare.com`)
-3. ✅ Set `VM0_API_URL` to the tunnel URL
-4. ✅ Start Next.js dev server
-5. ✅ Display webhook endpoint URL
+1. Start Cloudflare Tunnel
+2. Get a public HTTPS URL (e.g., `https://random.trycloudflare.com`)
+3. Set `VM0_API_URL` to the tunnel URL
+4. Start Next.js dev server
+5. Display webhook endpoint URL
+
+**Note**: The web app takes ~15 seconds longer to start than other packages due to tunnel setup. Other packages (docs, platform, cli, etc.) start immediately in parallel.
 
 ### 2. Test with E2B Agent
 
@@ -51,15 +53,15 @@ In another terminal:
 vm0 run my-agent "Analyze this codebase"
 ```
 
-You'll see webhook events streaming in real-time! 🎉
+You'll see webhook events streaming in real-time!
 
 ```
-✅ container_start
-✅ init
-✅ text: "I'll analyze the codebase..."
-✅ tool_use: bash
-✅ tool_result: ...
-✅ result: ...
+container_start
+init
+text: "I'll analyze the codebase..."
+tool_use: bash
+tool_result: ...
+result: ...
 ```
 
 ## What Happens Under the Hood
@@ -77,55 +79,27 @@ You'll see webhook events streaming in real-time! 🎉
 
 ## Output
 
-When you run `pnpm dev:tunnel`, you'll see:
+When you run `pnpm dev`, you'll see tunnel info in the web app output:
 
 ```
-[dev:tunnel] Starting Cloudflare Tunnel...
-[dev:tunnel] Waiting for tunnel URL (this may take 10-15 seconds)...
-[dev:tunnel] ✅ Tunnel URL: https://example-name-random.trycloudflare.com
+[tunnel] Starting Cloudflare Tunnel...
+[tunnel] Waiting for tunnel URL (this may take 10-15 seconds)...
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🌐 Webhook Tunnel Active
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  Local:   http://localhost:3000
-  Tunnel:  https://example-name-random.trycloudflare.com
-
-E2B webhooks will be sent to:
-  https://example-name-random.trycloudflare.com/api/webhooks/agent/events
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-[dev:tunnel] Starting Next.js dev server with tunnel URL...
-[dev:tunnel] Waiting for Next.js to be ready...
-[dev:tunnel] ✅ Next.js dev server is ready!
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🚀 Development Server Ready!
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  VM0_API_URL is set to: https://example-name-random.trycloudflare.com
-
-You can now test E2B webhooks locally:
-  vm0 run <agent-name> "<prompt>"
-
-Logs:
-  Tunnel:  tail -f /tmp/cloudflared-dev.log
-  Next.js: tail -f /tmp/nextjs-dev.log
-
-Press Ctrl+C to stop both servers
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[tunnel] Tunnel URL: https://example-name-random.trycloudflare.com
+[tunnel] Webhooks: https://example-name-random.trycloudflare.com/api/webhooks/agent-events
 ```
+
+Then the Next.js dev server starts normally.
 
 ## Stopping the Servers
 
-Press `Ctrl+C` to stop both the tunnel and dev server. The script will clean up gracefully.
+Press `Ctrl+C` to stop all servers. The cleanup handler will automatically stop the cloudflared tunnel process.
 
 ## Troubleshooting
 
 ### Port 3000 Already in Use
 
-**Error**: `Port 3000 is already in use!`
+**Error**: Port 3000 is already in use
 
 **Solution**: Stop any running dev servers:
 
@@ -154,7 +128,7 @@ lsof -ti:3000 | xargs kill -9
 1. Open VS Code Command Palette (`Cmd/Ctrl+Shift+P`)
 2. Select "Dev Containers: Rebuild Container"
 3. Wait for rebuild to complete
-4. Try `pnpm dev:tunnel` again
+4. Try `pnpm dev` again
 
 ### Webhook Events Not Appearing
 
@@ -191,7 +165,7 @@ lsof -ti:3000 | xargs kill -9
 
 ### Tunnel URL Changes
 
-- **Behavior**: Each time you run `pnpm dev:tunnel`, a **new** tunnel URL is generated
+- **Behavior**: Each time you run `pnpm dev`, a **new** tunnel URL is generated
 - **Example**: `https://different-random-name.trycloudflare.com`
 - **Why**: TryCloudflare creates temporary tunnels without requiring an account
 - **Impact**: This is fine! The script automatically sets the new URL each time
@@ -200,8 +174,8 @@ lsof -ti:3000 | xargs kill -9
 
 The script uses `--protocol http2` flag for cloudflared because:
 
-- ✅ HTTP/2 works reliably in devcontainer environments
-- ❌ QUIC (default) fails with connection timeouts
+- HTTP/2 works reliably in devcontainer environments
+- QUIC (default) fails with connection timeouts
 - This was discovered during POC testing
 
 ### Security
@@ -221,12 +195,6 @@ The script uses `--protocol http2` flag for cloudflared because:
 tail -f /tmp/cloudflared-dev.log
 ```
 
-**Next.js logs**:
-
-```bash
-tail -f /tmp/nextjs-dev.log
-```
-
 ### Manual Tunnel (Advanced)
 
 If you need more control, you can run the tunnel manually:
@@ -241,48 +209,19 @@ export VM0_API_URL=https://your-tunnel-url.trycloudflare.com
 
 # Start dev server in another terminal
 cd turbo/apps/web
-pnpm dev
-```
-
-## Comparison: Before vs After
-
-### Before (Without Tunnel)
-
-```bash
-# Terminal 1
-cd turbo
-pnpm dev
-
-# Terminal 2
-vm0 run test-agent "Hello"
-# ❌ Webhooks fail: E2B can't reach localhost
-# ❌ Must deploy to staging to test
-# ❌ 5-10 minute feedback loop
-```
-
-### After (With Tunnel)
-
-```bash
-# Terminal 1
-cd turbo
-pnpm dev:tunnel
-
-# Terminal 2
-vm0 run test-agent "Hello"
-# ✅ Webhooks work instantly!
-# ✅ No deployment needed
-# ✅ Seconds feedback loop
+VM0_API_URL=$VM0_API_URL npx next dev --turbopack --port 3000
 ```
 
 ## Benefits
 
-- ⚡ **Fast feedback**: Test webhooks in seconds, not minutes
-- 🐛 **Easy debugging**: Set breakpoints and debug webhook handlers locally
-- 💰 **Cost savings**: No unnecessary staging deployments
-- 🔄 **Complete workflow**: Test end-to-end E2B flows locally
-- 🎯 **Productivity**: Iterate quickly on webhook-dependent features
+- **Fast feedback**: Test webhooks in seconds, not minutes
+- **Easy debugging**: Set breakpoints and debug webhook handlers locally
+- **Cost savings**: No unnecessary staging deployments
+- **Complete workflow**: Test end-to-end E2B flows locally
+- **Productivity**: Iterate quickly on webhook-dependent features
 
 ## Related
 
 - Issue: [#102 - Enable E2B Webhook Callbacks in Local Development](https://github.com/vm0-ai/vm0/issues/102)
+- Issue: [#1726 - Integrate Cloudflare tunnel into pnpm dev automatically](https://github.com/vm0-ai/vm0/issues/1726)
 - Cloudflare Tunnel Docs: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/

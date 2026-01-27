@@ -10,19 +10,23 @@ You are a development server specialist for the vm0 project. Your role is to man
 
 Parse the `args` parameter to determine which operation to perform:
 
-- **start**: Start the development server in background mode
+- **start**: Start the development server in background mode (tunnel is automatic for web app)
 - **stop**: Stop the background development server
 - **logs [pattern]**: View development server logs with optional filtering
 - **auth**: Authenticate with local development server and get CLI token
-- **tunnel**: Start dev server with Cloudflare tunnel and authenticate CLI
+- **tunnel**: Full setup with tunnel and CLI authentication (for E2B testing)
 
 When invoked, check the args to determine the operation and execute accordingly.
+
+**Note**: As of issue #1726, the web app automatically starts a Cloudflare tunnel when running `pnpm dev`. The tunnel URL is displayed during startup and `VM0_API_URL` is set automatically.
 
 ---
 
 # Operation: start
 
 Start the Turbo development server in background with stream UI mode.
+
+**Note**: The web app now automatically starts a Cloudflare tunnel during dev startup. This means `VM0_API_URL` is set automatically and E2B webhooks will work out of the box. The web app takes ~15 seconds longer to start than other packages due to tunnel setup.
 
 ## Workflow
 
@@ -409,15 +413,16 @@ If authentication fails:
 
 # Operation: tunnel
 
-Start dev server with Cloudflare tunnel and authenticate CLI. Useful for webhook testing with E2B.
+Full development environment setup with Cloudflare tunnel and CLI authentication. Useful for E2B webhook testing.
+
+**Note**: Since issue #1726, the web app automatically starts a Cloudflare tunnel when running `pnpm dev`. This operation is useful when you need the **complete setup** including CLI authentication.
 
 ## What It Does
 
 - Installs dependencies and builds project
-- Starts dev server with Cloudflare tunnel
-- Exposes localhost:3000 to internet via `*.trycloudflare.com`
-- Exports `VM0_API_URL` environment variable
-- Installs and authenticates CLI
+- Starts dev server (tunnel is now automatic for web app)
+- Installs E2E dependencies and Playwright
+- Installs and authenticates CLI globally
 
 ## Workflow
 
@@ -435,16 +440,16 @@ PROJECT_ROOT=$(git rev-parse --show-toplevel)
 cd "$PROJECT_ROOT/turbo" && pnpm build
 ```
 
-### Step 3: Start Dev Server with Tunnel
+### Step 3: Start Dev Server
 
 Use Bash tool with `run_in_background: true`:
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
-cd "$PROJECT_ROOT/turbo" && pnpm dev:tunnel
+cd "$PROJECT_ROOT/turbo" && pnpm dev --ui=stream
 ```
 
-This will return a shell_id for monitoring.
+This will return a shell_id for monitoring. The web app will automatically start a Cloudflare tunnel.
 
 ### Step 4: Persist Shell ID
 
@@ -457,8 +462,8 @@ echo "<shell_id>" > /tmp/dev-server-shell-id
 ### Step 5: Wait for Tunnel URL
 
 Monitor background shell output using TaskOutput until you see:
-- "Tunnel URL:" followed by the URL
-- "Next.js dev server is ready!"
+- `[tunnel] Tunnel URL:` followed by the URL
+- `Ready in` (Next.js ready message)
 
 ```javascript
 TaskOutput({
@@ -539,10 +544,10 @@ Use `/dev-stop` to stop the server.
 
 ## Technical Details
 
-The `pnpm dev:tunnel` script:
+The web app's dev script (`turbo/apps/web/scripts/dev.sh`):
 - Starts a Cloudflare tunnel using `cloudflared`
 - Exposes localhost:3000 to the internet
-- Sets `VM0_API_URL` environment variable for the dev server
+- Sets `VM0_API_URL` environment variable
 - Starts Next.js dev server with Turbopack
 
 ## Error Handling
@@ -552,7 +557,7 @@ If tunnel fails to start:
 - Check tunnel logs: `tail -f /tmp/cloudflared-dev.log`
 
 If authentication fails:
-- Check dev server logs: `tail -f /tmp/nextjs-dev.log`
+- Check dev server logs with `/dev-logs`
 - Verify Clerk credentials in `turbo/apps/web/.env.local`
 - Ensure Playwright browser is installed
 

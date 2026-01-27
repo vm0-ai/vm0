@@ -1,6 +1,6 @@
 ---
 command: dev-tunnel
-description: Start dev server with Cloudflare tunnel and authenticate CLI
+description: Full dev setup with tunnel (automatic) and CLI authentication
 ---
 
 ```typescript
