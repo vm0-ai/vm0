@@ -815,6 +815,29 @@ jobs:
       - name: Build Core Package
         run: cd turbo && pnpm turbo run build --filter=@vm0/core
 
+      # Cross-compile Rust vsock-agent for ARM64 (metal runners are ARM64)
+      # TODO: Move Rust toolchain to vm0-toolchain Docker image
+      - name: Install Rust toolchain for ARM64 cross-compilation
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-musl
+
+      - name: Install ARM64 cross-linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools gcc-aarch64-linux-gnu
+
+      - name: Build vsock-agent for ARM64
+        run: |
+          cd crates
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc \
+            cargo build --release --target aarch64-unknown-linux-musl -p vsock-agent
+          # Copy binary to deploy directory for ansible to pick up
+          cp target/aarch64-unknown-linux-musl/release/vsock-agent \
+            ../turbo/apps/runner/scripts/deploy/vsock-agent
+          echo "Built vsock-agent for ARM64:"
+          file ../turbo/apps/runner/scripts/deploy/vsock-agent
+
       - name: Build runner bundle
         run: |
           cd turbo && pnpm --filter @vm0/runner build

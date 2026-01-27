@@ -233,6 +233,15 @@
         - "{{ playbook_dir }}/../../turbo/packages/core/src/sandbox/scripts/dist/*.mjs"
       tags: [prepare]
 
+    - name: Copy vsock-agent binary (Rust ARM64)
+      copy:
+        src: "{{ playbook_dir }}/../../turbo/apps/runner/scripts/deploy/vsock-agent"
+        dest: "{{ runner_base_dir }}/deploy-runner/vsock-agent"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+      tags: [prepare]
+
     # ========================================
     # Phase 4: Install Dependencies (if needed)
     # ========================================
@@ -276,11 +285,11 @@
       tags: [prepare]
 
     # Calculate hash of all files that affect rootfs content
-    # Must match files copied above: Dockerfile, *.sh, vsock-agent.*, *.mjs
+    # Must match files copied above: Dockerfile, *.sh, vsock-agent (binary), vsock-agent.*, *.mjs
     - name: Calculate rootfs build inputs hash
       shell: |
         find "{{ runner_base_dir }}/deploy-runner/" \
-          \( -name "Dockerfile" -o -name "*.sh" -o -name "vsock-agent.*" -o -name "*.mjs" \) \
+          \( -name "Dockerfile" -o -name "*.sh" -o -name "vsock-agent" -o -name "vsock-agent.*" -o -name "*.mjs" \) \
           -type f -print0 | sort -z | xargs -0 cat | sha256sum | cut -d' ' -f1
       args:
         executable: /bin/bash

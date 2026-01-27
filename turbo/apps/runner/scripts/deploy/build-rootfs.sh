@@ -124,9 +124,9 @@ create_squashfs_image() {
     sudo cp "$SCRIPT_DIR/vm-init.sh" "$EXTRACT_DIR/sbin/vm-init"
     sudo chmod 755 "$EXTRACT_DIR/sbin/vm-init"
 
-    # Install agent files (vsock-agent and ESM scripts)
+    # Install agent files (vsock-agent binary and ESM scripts)
     echo "[INSTALL] Installing agent files..."
-    sudo cp "$SCRIPT_DIR/vsock-agent.py" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
+    sudo cp "$SCRIPT_DIR/vsock-agent" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
     sudo cp "$SCRIPT_DIR/run-agent.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
     sudo cp "$SCRIPT_DIR/download.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
     sudo cp "$SCRIPT_DIR/mock-claude.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
@@ -174,11 +174,11 @@ verify_rootfs() {
         echo "  Python: ${PYTHON_VERSION}"
     fi
 
-    if [ ! -f "$MOUNT_POINT/usr/local/bin/vm0-agent/vsock-agent.py" ]; then
-        echo "ERROR: vsock-agent not found in rootfs"
+    if [ ! -f "$MOUNT_POINT/usr/local/bin/vm0-agent/vsock-agent" ]; then
+        echo "ERROR: vsock-agent binary not found in rootfs"
         ERRORS=$((ERRORS + 1))
     else
-        echo "  vsock-agent: installed"
+        echo "  vsock-agent: installed (Rust binary)"
     fi
 
     if [ ! -f "$MOUNT_POINT/usr/bin/tini" ]; then
