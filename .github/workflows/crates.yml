@@ -1,0 +1,31 @@
+name: Crates
+
+on:
+  pull_request:
+    paths:
+      - 'crates/**'
+      - '.github/workflows/crates.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'crates/**'
+      - '.github/workflows/crates.yml'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check formatting
+        run: |
+          cd crates
+          cargo fmt --all -- --check
+
+      - name: Run clippy
+        run: |
+          cd crates
+          cargo clippy --all-targets --all-features -- -D warnings
