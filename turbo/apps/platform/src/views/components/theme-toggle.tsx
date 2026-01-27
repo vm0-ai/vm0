@@ -1,6 +1,6 @@
 import { IconSun, IconMoon } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
-import { theme$, toggleTheme$ } from "../signals/theme.ts";
+import { theme$, toggleTheme$ } from "../../signals/theme.ts";
 
 export function ThemeToggle() {
   const theme = useGet(theme$);
