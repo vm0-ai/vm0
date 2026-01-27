@@ -268,6 +268,7 @@ export default function SignUpPage() {
         </div>
 
         <Waitlist
+          signInUrl="/sign-in"
           appearance={{
             layout: {
               logoImageUrl:
