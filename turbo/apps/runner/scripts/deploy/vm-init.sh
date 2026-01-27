@@ -61,28 +61,8 @@ mount -t sysfs sys /sys
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Start vsock-agent with tini for proper signal handling and zombie reaping
-# Node.js cannot connect to vsock directly, so we use socat to bridge vsock to Unix socket
+# Bun cannot connect to vsock directly, so we use socat to bridge vsock to Unix socket
 echo "[vm-init] starting vsock-agent"
 VSOCK_BRIDGE=/tmp/vsock-bridge.sock
-
-# Debug: check if binaries exist
-ls -la /usr/local/bin/bun /usr/bin/socat /usr/local/bin/vm0-agent/vsock-agent.mjs 2>&1 || true
-ls -la /root/.bun/bin/bun 2>&1 || true
-
-# Test bun - write to file first in case it crashes
-echo "[vm-init] testing bun..."
-/usr/local/bin/bun --version > /tmp/bun-test.log 2>&1 &
-BUN_TEST_PID=$!
-sleep 0.5
-if kill -0 $BUN_TEST_PID 2>/dev/null; then
-    wait $BUN_TEST_PID
-fi
-echo "[vm-init] bun test result:"
-cat /tmp/bun-test.log 2>&1 || echo "(no output)"
-
-# Check dmesg for any crash info
-dmesg 2>&1 | tail -5 || true
-
 socat VSOCK-CONNECT:2:1000 UNIX-LISTEN:$VSOCK_BRIDGE,fork &
-echo "[vm-init] socat started, launching bun"
 exec /usr/bin/tini -- /usr/local/bin/bun /usr/local/bin/vm0-agent/vsock-agent.mjs --unix-socket $VSOCK_BRIDGE

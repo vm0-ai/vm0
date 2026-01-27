@@ -52,7 +52,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean
 
 # Install Bun for fast script execution
-RUN curl -fsSL https://bun.sh/install | bash \
+# Pin to 1.3.6 - later versions have illegal instruction issues on ARMv8.0 (Cortex-A72)
+RUN curl -fsSL https://bun.sh/install | bash -s 'bun-v1.3.6' \
     && ln -s /root/.bun/bin/bun /usr/local/bin/bun
 
 # Install Claude Code CLI globally (matching e2b template)
