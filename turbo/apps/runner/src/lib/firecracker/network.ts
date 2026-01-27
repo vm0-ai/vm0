@@ -276,13 +276,22 @@ export async function createTapDevice(
   await clearStaleIptablesRulesForIP(guestIp);
   log(`[VM ${vmId}] Stale iptables cleared`);
 
-  // Delete existing TAP device if it exists (ignore errors if not found)
-  await execAsync(`sudo ip link delete ${tapDevice} 2>/dev/null || true`);
+  // Delete existing TAP device if it exists (from previous runs or failed cleanup)
+  if (await tapDeviceExists(tapDevice)) {
+    log(`[VM ${vmId}] TAP device ${tapDevice} already exists, deleting...`);
+    await deleteTapDevice(tapDevice);
+  }
 
-  // Create TAP device, add to bridge, and bring up in one command
-  await execCommand(
-    `ip tuntap add ${tapDevice} mode tap && ip link set ${tapDevice} master ${BRIDGE_NAME} && ip link set ${tapDevice} up`,
-  );
+  // Create TAP device
+  await execCommand(`ip tuntap add ${tapDevice} mode tap`);
+  log(`[VM ${vmId}] TAP device created`);
+
+  // Add TAP to bridge
+  await execCommand(`ip link set ${tapDevice} master ${BRIDGE_NAME}`);
+  log(`[VM ${vmId}] TAP added to bridge`);
+
+  // Bring TAP up
+  await execCommand(`ip link set ${tapDevice} up`);
   log(`[VM ${vmId}] TAP created: ${tapDevice}, MAC ${guestMac}, IP ${guestIp}`);
 
   return {
