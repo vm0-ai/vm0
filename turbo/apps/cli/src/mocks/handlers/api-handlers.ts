@@ -41,4 +41,19 @@ export const apiHandlers = [
   http.get("http://localhost:3000/api/agent/composes/versions", () => {
     return HttpResponse.json({ versionId: "default" }, { status: 200 });
   }),
+
+  // GET /api/scope - getScope
+  http.get("http://localhost:3000/api/scope", () => {
+    return HttpResponse.json(
+      {
+        id: "scope-default",
+        slug: "user-default",
+        type: "personal",
+        displayName: null,
+        createdAt: "2025-01-01T00:00:00Z",
+        updatedAt: "2025-01-01T00:00:00Z",
+      },
+      { status: 200 },
+    );
+  }),
 ];
