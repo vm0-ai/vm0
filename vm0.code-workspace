@@ -5,6 +5,10 @@
       "path": "turbo"
     },
     {
+      "name": "crates",
+      "path": "crates"
+    },
+    {
       "name": "e2e",
       "path": "e2e"
     },
