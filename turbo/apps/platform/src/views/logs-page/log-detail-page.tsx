@@ -2,17 +2,22 @@ import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
   IconSearch,
   IconFolder,
-  IconCopy,
-  IconCheck,
   IconList,
   IconRobot,
 } from "@tabler/icons-react";
 import { AppShell } from "../layout/app-shell.tsx";
-import { Card, CardHeader, CardTitle, CardContent, Input } from "@vm0/ui";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  CopyButton,
+  Input,
+} from "@vm0/ui";
 import {
   currentLogId$,
   logDetailSearchTerm$,
-} from "../../signals/logs-page/log-detail-page.ts";
+} from "../../signals/logs-page/log-detail-state.ts";
 import {
   getOrCreateLogDetail$,
   getOrCreateAgentEvents$,
@@ -20,54 +25,8 @@ import {
   artifactDownloadPromise$,
 } from "../../signals/logs-page/logs-signals.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import type { LogStatus, AgentEvent } from "../../signals/logs-page/types.ts";
-
-function StatusBadge({ status }: { status: LogStatus }) {
-  const statusConfig: Record<
-    LogStatus,
-    { label: string; className: string; icon?: boolean }
-  > = {
-    pending: { label: "Pending", className: "bg-yellow-100 text-yellow-800" },
-    running: { label: "Running", className: "bg-blue-100 text-blue-800" },
-    completed: {
-      label: "Done",
-      className: "border border-green-200 text-green-700",
-      icon: true,
-    },
-    failed: { label: "Failed", className: "bg-red-100 text-red-800" },
-    timeout: { label: "Timeout", className: "bg-orange-100 text-orange-800" },
-    cancelled: { label: "Cancelled", className: "bg-gray-100 text-gray-800" },
-  };
-
-  const config = statusConfig[status];
-
-  return (
-    <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${config.className}`}
-    >
-      {config.icon && <IconCheck className="h-3 w-3" />}
-      {config.label}
-    </span>
-  );
-}
-
-function CopyButton({ text }: { text: string }) {
-  const handleCopy = () => {
-    navigator.clipboard.writeText(text).catch(() => {
-      // Silently ignore clipboard errors
-    });
-  };
-
-  return (
-    <button
-      onClick={handleCopy}
-      className="p-1 hover:bg-muted rounded transition-colors"
-      aria-label="Copy to clipboard"
-    >
-      <IconCopy className="h-3.5 w-3.5 text-muted-foreground" />
-    </button>
-  );
-}
+import type { AgentEvent } from "../../signals/logs-page/types.ts";
+import { StatusBadge } from "./status-badge.tsx";
 
 function InfoRow({
   label,
@@ -137,20 +96,32 @@ function ArtifactDownloadButton({ name }: { name: string }) {
   const downloadStatus = useLoadable(artifactDownloadPromise$);
 
   const isLoading = downloadStatus.state === "loading";
+  const hasError = downloadStatus.state === "hasError";
+  const errorMessage =
+    hasError && downloadStatus.error instanceof Error
+      ? downloadStatus.error.message
+      : hasError
+        ? "Download failed"
+        : null;
 
   const handleDownload = () => {
     detach(download({ name }), Reason.DomCallback);
   };
 
   return (
-    <button
-      onClick={handleDownload}
-      disabled={isLoading}
-      className="inline-flex items-center gap-1.5 text-sm text-foreground hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed"
-    >
-      <IconFolder className="h-4 w-4 text-muted-foreground" />
-      {name}
-    </button>
+    <div className="flex items-center gap-2">
+      <button
+        onClick={handleDownload}
+        disabled={isLoading}
+        className="inline-flex items-center gap-1.5 text-sm text-foreground hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <IconFolder className="h-4 w-4 text-muted-foreground" />
+        {name}
+      </button>
+      {errorMessage && (
+        <span className="text-xs text-destructive">{errorMessage}</span>
+      )}
+    </div>
   );
 }
 

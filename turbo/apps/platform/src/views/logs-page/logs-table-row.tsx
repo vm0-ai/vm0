@@ -2,30 +2,11 @@ import { useSet, useLoadable } from "ccstate-react";
 import { IconChevronRight } from "@tabler/icons-react";
 import { getOrCreateLogDetail$ } from "../../signals/logs-page/logs-signals.ts";
 import { navigateInReact$ } from "../../signals/route.ts";
-import type { LogStatus } from "../../signals/logs-page/types.ts";
 import { TableRow, TableCell } from "@vm0/ui";
+import { StatusBadge } from "./status-badge.tsx";
 
 interface LogsTableRowProps {
   logId: string;
-}
-
-function StatusBadge({ status }: { status: LogStatus }) {
-  const statusStyles: Record<LogStatus, string> = {
-    pending: "bg-yellow-100 text-yellow-800",
-    running: "bg-blue-100 text-blue-800",
-    completed: "bg-green-100 text-green-800",
-    failed: "bg-red-100 text-red-800",
-    timeout: "bg-orange-100 text-orange-800",
-    cancelled: "bg-gray-100 text-gray-800",
-  };
-
-  return (
-    <span
-      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${statusStyles[status]}`}
-    >
-      {status}
-    </span>
-  );
 }
 
 export function LogsTableRow({ logId }: LogsTableRowProps) {
@@ -77,7 +58,7 @@ export function LogsTableRow({ logId }: LogsTableRowProps) {
       <TableCell>{detail.agentName}</TableCell>
       <TableCell>{detail.provider}</TableCell>
       <TableCell>
-        <StatusBadge status={detail.status} />
+        <StatusBadge status={detail.status} variant="compact" />
       </TableCell>
       <TableCell>{new Date(detail.createdAt).toLocaleString()}</TableCell>
       <TableCell className="w-8">
