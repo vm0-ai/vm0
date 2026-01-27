@@ -41,7 +41,14 @@ interface ComposeContent {
 const DEFAULT_PROVIDER = "claude-code";
 
 /**
- * Extract provider from compose content
+ * Extract provider from compose content.
+ *
+ * Note: This function uses a fallback to DEFAULT_PROVIDER intentionally.
+ * This is acceptable here because:
+ * 1. This is a read-only logs endpoint - failing would prevent users from viewing their history
+ * 2. The provider field is for display purposes only, not for critical business logic
+ * 3. Historical runs may have compose content without an explicit provider field
+ * 4. The default "claude-code" is a reasonable assumption for this platform
  */
 function extractProvider(content: ComposeContent | null): string {
   if (!content) {

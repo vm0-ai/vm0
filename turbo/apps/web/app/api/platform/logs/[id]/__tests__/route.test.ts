@@ -1,4 +1,12 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  beforeEach,
+  afterAll,
+  vi,
+} from "vitest";
 import { NextRequest } from "next/server";
 import { GET } from "../route";
 import { initServices } from "../../../../../../src/lib/init-services";
@@ -28,11 +36,15 @@ function generateContentHash(content: object): string {
   return createHash("sha256").update(JSON.stringify(content)).digest("hex");
 }
 
-// Mock the auth module
-let mockUserId: string | null = "test-user-platform-log-detail";
-vi.mock("../../../../../../src/lib/auth/get-user-id", () => ({
-  getUserId: async () => mockUserId,
+// Mock Clerk auth (external SaaS)
+vi.mock("@clerk/nextjs/server", () => ({
+  auth: vi.fn(),
 }));
+
+import {
+  mockClerk,
+  clearClerkMock,
+} from "../../../../../../src/__tests__/clerk-mock";
 
 describe("GET /api/platform/logs/[id]", () => {
   const testUserId = "test-user-platform-log-detail";
@@ -117,7 +129,15 @@ describe("GET /api/platform/logs/[id]", () => {
     });
   });
 
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Mock Clerk auth to return test user by default
+    mockClerk({ userId: testUserId });
+  });
+
   afterAll(async () => {
+    clearClerkMock();
+
     // Cleanup in reverse order of creation
     await globalThis.services.db
       .delete(agentRuns)
@@ -137,7 +157,7 @@ describe("GET /api/platform/logs/[id]", () => {
   });
 
   it("should return 401 when not authenticated", async () => {
-    mockUserId = null;
+    mockClerk({ userId: null });
 
     const request = createTestRequest(
       `http://localhost:3000/api/platform/logs/${runId}`,
@@ -147,8 +167,6 @@ describe("GET /api/platform/logs/[id]", () => {
 
     expect(response.status).toBe(401);
     expect(data.error.message).toBe("Not authenticated");
-
-    mockUserId = testUserId;
   });
 
   it("should return 400 for invalid UUID format", async () => {
