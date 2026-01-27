@@ -7,6 +7,7 @@
     "lint": "turbo run lint --concurrency=2",
     "format": "prettier --write --ignore-unknown .",
     "check-types": "turbo run check-types",
+    "pretest": "cargo build --manifest-path ../crates/Cargo.toml -p vsock-agent",
     "test": "vitest --run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
