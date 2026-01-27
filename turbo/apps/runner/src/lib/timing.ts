@@ -9,14 +9,14 @@ export class Timer {
   }
 
   /**
-   * Get elapsed time formatted as [MM:SS.ss]
+   * Get elapsed time formatted as [MM:SS.mmm]
    */
   elapsed(): string {
     const ms = Date.now() - this.startTime;
-    const totalSeconds = ms / 1000;
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = (totalSeconds % 60).toFixed(2);
-    return `[${String(minutes).padStart(2, "0")}:${seconds.padStart(5, "0")}]`;
+    const minutes = Math.floor(ms / 60000);
+    const seconds = Math.floor((ms % 60000) / 1000);
+    const millis = ms % 1000;
+    return `[${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(millis).padStart(3, "0")}]`;
   }
 
   /**
