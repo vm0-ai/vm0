@@ -126,7 +126,7 @@ create_squashfs_image() {
 
     # Install agent files (vsock-agent and ESM scripts)
     echo "[INSTALL] Installing agent files..."
-    sudo cp "$SCRIPT_DIR/vsock-agent.py" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
+    sudo cp "$SCRIPT_DIR/vsock-agent.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
     sudo cp "$SCRIPT_DIR/run-agent.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
     sudo cp "$SCRIPT_DIR/download.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
     sudo cp "$SCRIPT_DIR/mock-claude.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
@@ -166,16 +166,15 @@ verify_rootfs() {
 
     ERRORS=0
 
-    if [ ! -f "$MOUNT_POINT/usr/bin/python3" ]; then
-        echo "ERROR: Python3 not found in rootfs"
+    if ! command -v socat &> /dev/null && [ ! -f "$MOUNT_POINT/usr/bin/socat" ]; then
+        echo "ERROR: socat not found in rootfs"
         ERRORS=$((ERRORS + 1))
     else
-        PYTHON_VERSION=$(sudo chroot "$MOUNT_POINT" /usr/bin/python3 --version 2>/dev/null || echo "unknown")
-        echo "  Python: ${PYTHON_VERSION}"
+        echo "  socat: installed"
     fi
 
-    if [ ! -f "$MOUNT_POINT/usr/local/bin/vm0-agent/vsock-agent.py" ]; then
-        echo "ERROR: vsock-agent not found in rootfs"
+    if [ ! -f "$MOUNT_POINT/usr/local/bin/vm0-agent/vsock-agent.mjs" ]; then
+        echo "ERROR: vsock-agent.mjs not found in rootfs"
         ERRORS=$((ERRORS + 1))
     else
         echo "  vsock-agent: installed"

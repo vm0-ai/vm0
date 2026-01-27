@@ -61,5 +61,8 @@ mount -t sysfs sys /sys
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Start vsock-agent with tini for proper signal handling and zombie reaping
+# Node.js cannot connect to vsock directly, so we use socat to bridge vsock to Unix socket
 echo "[vm-init] starting vsock-agent"
-exec /usr/bin/tini -- /usr/bin/python3 /usr/local/bin/vm0-agent/vsock-agent.py
+VSOCK_BRIDGE=/tmp/vsock-bridge.sock
+socat VSOCK-CONNECT:2:1000 UNIX-LISTEN:$VSOCK_BRIDGE,fork &
+exec /usr/bin/tini -- /usr/bin/node /usr/local/bin/vm0-agent/vsock-agent.mjs --unix-socket $VSOCK_BRIDGE

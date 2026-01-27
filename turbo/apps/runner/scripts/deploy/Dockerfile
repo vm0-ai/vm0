@@ -1,5 +1,5 @@
 # Firecracker VM rootfs image (Universal)
-# Based on Node.js 24 with Python 3.11+, vsock-agent, and agent CLIs
+# Based on Node.js 24 with socat for vsock bridging and agent CLIs
 #
 # This is a universal image that supports all frameworks and apps:
 # - Claude Code CLI (@anthropic-ai/claude-code) for framework: claude-code
@@ -19,7 +19,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Install required packages
 # Core:
-# - python3: Python 3.11+ for agent scripts and vsock-agent
+# - socat: Bridge vsock to Unix socket for Node.js vsock-agent
+# - python3: Python 3.11+ for agent scripts
 # - tini: Lightweight init system for signal handling and zombie reaping
 # - procps: Process utilities (pgrep, free) needed by metrics and executor
 # Development tools (matching e2b template):
@@ -33,6 +34,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # - ca-certificates: SSL certificates for HTTPS
 # - sudo: For privileged operations
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    socat \
     python3 \
     python3-pip \
     tini \
