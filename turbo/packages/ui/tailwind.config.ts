@@ -44,6 +44,10 @@ const config: Config = {
           900: "hsl(var(--gray-900))",
           950: "hsl(var(--gray-950))",
         },
+        sky: {
+          600: "hsl(199 89% 48%)", // Sky blue 600: #0284c7
+          700: "hsl(200 98% 39%)", // Sky blue 700: #0369a1
+        },
         divider: "hsl(var(--divider))",
         secondary: {
           DEFAULT: "hsl(var(--secondary))",

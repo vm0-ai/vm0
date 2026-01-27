@@ -1,5 +1,5 @@
-/* Import Noto Sans from Google Fonts - must be first */
-@import url("https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap");
+/* Import Noto Sans and JetBrains Mono from Google Fonts - must be first */
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
 
 @import "tailwindcss";
 @import "@vm0/ui/styles/globals.css";
@@ -13,15 +13,15 @@
     "Noto Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, sans-serif;
   --font-family-mono:
-    "Fira Code", ui-monospace, "SF Mono", Monaco, Consolas, monospace;
+    "JetBrains Mono", ui-monospace, "SF Mono", Monaco, Consolas, monospace;
 
-  /* Sidebar colors */
-  --color-sidebar: #f9f4ef;
-  --color-sidebar-foreground: #231f1b;
-  --color-sidebar-border: #eed5cb;
-  --color-sidebar-active: #fde7df;
-  --color-sidebar-primary: #de3f00;
-  --color-sidebar-accent: #f5ebe4;
+  /* Sidebar colors - using tokens for dark mode support */
+  --color-sidebar: hsl(var(--gray-50));
+  --color-sidebar-foreground: hsl(var(--gray-950));
+  --color-sidebar-border: hsl(var(--divider));
+  --color-sidebar-active: hsl(var(--primary-100));
+  --color-sidebar-primary: hsl(var(--primary-800));
+  --color-sidebar-accent: hsl(var(--gray-100));
 }
 
 @layer base {
@@ -44,7 +44,7 @@
 
   /* Clerk subscription drawer header styling */
   .cl-drawerHeader {
-    background-color: #f9f4ef !important; /* sidebar color (gray-50) */
-    border-bottom: 1px solid #e8e2dd !important; /* border token (gray-200) */
+    background-color: hsl(var(--gray-50)) !important; /* sidebar color (gray-50) */
+    border-bottom: 1px solid hsl(var(--gray-200)) !important; /* border token (gray-200) */
   }
 }

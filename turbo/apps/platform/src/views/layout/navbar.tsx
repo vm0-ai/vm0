@@ -1,4 +1,5 @@
 import { IconLayoutSidebar } from "@tabler/icons-react";
+import { ThemeToggle } from "../../components/theme-toggle.tsx";
 
 interface NavbarProps {
   breadcrumb: string[];
@@ -12,10 +13,10 @@ export function Navbar({ breadcrumb }: NavbarProps) {
         <div className="flex items-center gap-2">
           {/* Sidebar toggle button - 28px container with 8px horizontal padding */}
           <button
-            className="flex items-center justify-center size-7 px-2 hover:bg-accent rounded transition-colors"
+            className="flex items-center justify-center size-7 px-2 hover:bg-muted rounded transition-colors"
             aria-label="Toggle sidebar"
           >
-            <IconLayoutSidebar size={16} className="shrink-0 text-foreground" />
+            <IconLayoutSidebar size={16} stroke={1.5} className="shrink-0 text-foreground" />
           </button>
 
           {/* Vertical divider - matching Figma's logo placeholder */}
@@ -37,27 +38,9 @@ export function Navbar({ breadcrumb }: NavbarProps) {
         </nav>
       </div>
 
-      {/* Right section: Join Discord button - pr-6 (24px) to match Figma */}
-      <div className="pr-6">
-        <a
-          className="inline-flex items-center gap-2 h-9 px-2.5 rounded-lg hover:bg-accent/50 transition-colors"
-          href="https://discord.com/invite/WMpAmHFfp6"
-          target="_blank"
-          rel="noreferrer"
-        >
-          <span className="flex items-center shrink-0 size-[18px]">
-            <img
-              src="/discord-icon.svg"
-              alt="Discord"
-              width={18}
-              height={18}
-              className="block"
-            />
-          </span>
-          <span className="flex items-center text-sm font-medium leading-5 text-foreground whitespace-nowrap">
-            Join Discord
-          </span>
-        </a>
+      {/* Right section: Theme toggle */}
+      <div className="flex items-center gap-2 pr-6">
+        <ThemeToggle />
       </div>
     </header>
   );

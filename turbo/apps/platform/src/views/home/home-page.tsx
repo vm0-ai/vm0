@@ -1,15 +1,17 @@
 import { Card } from "@vm0/ui/components/ui/card";
 import { CopyButton } from "@vm0/ui/components/ui/copy-button";
+import { Button } from "@vm0/ui/components/ui/button";
 import {
-  IconBrandGithub,
-  IconBrandDiscord,
   IconFileText,
   IconChevronRight,
 } from "@tabler/icons-react";
 import { AppShell } from "../layout/app-shell.tsx";
 import { OnboardingModal } from "./onboarding-modal.tsx";
+import { useGet } from "ccstate-react";
+import { theme$ } from "../../signals/theme.ts";
 
 export function HomePage() {
+  const theme = useGet(theme$);
   return (
     <>
       <AppShell
@@ -22,7 +24,7 @@ export function HomePage() {
           <>
             <Step1InstallSkill />
             <Step2SampleAgents />
-            <UsefulReferences />
+            <UsefulReferences theme={theme} />
           </>
         </div>
       </AppShell>
@@ -34,7 +36,7 @@ export function HomePage() {
 function StepHeader({ step, title }: { step: number; title: string }) {
   return (
     <div className="flex items-center gap-2 mb-4">
-      <div className="w-1 h-6 bg-primary rounded-full" />
+      <div className="w-0.5 h-5 bg-primary" />
       <h2 className="text-base font-medium text-foreground">
         Step {step}: {title}
       </h2>
@@ -52,10 +54,10 @@ function Step1InstallSkill() {
         title="Install the VM0 builder skill and build with natural language"
       />
       <Card className="flex items-center justify-between p-4 font-mono">
-        <code className="text-sm overflow-x-auto">
-          <span className="text-primary">npx</span>{" "}
-          <span className="text-primary">@vm0/cli</span>{" "}
-          <span className="text-primary">setup-claude</span>{" "}
+        <code className="text-sm overflow-x-auto text-muted-foreground">
+          <span>npx</span>{" "}
+          <span>@vm0/cli</span>{" "}
+          <span>setup-claude</span>
         </code>
         <CopyButton text={`${command}`} />
       </Card>
@@ -91,8 +93,8 @@ function SampleAgentCard({
           <p className="text-xs text-muted-foreground">{description}</p>
         </div>
       </div>
-      <div className="flex items-start justify-between bg-muted/50 rounded-md p-3 font-mono">
-        <code className="text-xs text-primary leading-relaxed whitespace-pre-wrap">
+      <div className="flex items-start justify-between bg-sidebar rounded-md p-3 font-mono">
+        <code className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">
           {commands.map((cmd) => (
             <div key={cmd}>{cmd}</div>
           ))}
@@ -111,8 +113,8 @@ function Step2SampleAgents() {
         <SampleAgentCard
           name="Hacker News Research"
           description="Get the latest insights from Hacker News"
-          icon={<span className="text-lg font-bold text-white">Y</span>}
-          iconBg="bg-orange-500"
+          icon={<img src="/hackernews-platform.svg" alt="Hacker News" className="h-10 w-10" />}
+          iconBg=""
           commands={[
             "git clone https://github.com/vm0-ai/vm0-cookbooks",
             "cd vm0-cookbooks/201-hackernews",
@@ -122,10 +124,8 @@ function Step2SampleAgents() {
         <SampleAgentCard
           name="TikTok Influencer Finder"
           description="Search, filter, and surface TikTok creators for you"
-          icon={
-            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-pink-500 via-red-500 to-yellow-500" />
-          }
-          iconBg="bg-black"
+          icon={<img src="/tiktok-platform.svg" alt="TikTok" className="h-10 w-10" />}
+          iconBg=""
           commands={[
             "git clone https://github.com/vm0-ai/vm0-cookbooks",
             "cd vm0-cookbooks/206-tiktok-influencer",
@@ -133,15 +133,16 @@ function Step2SampleAgents() {
           ]}
         />
       </div>
-      <a
-        href="https://github.com/vm0-ai/vm0-cookbooks/tree/main/examples"
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex items-center gap-1 mt-4 text-sm text-primary hover:underline"
-      >
-        Show more sample agents
-        <IconChevronRight className="h-4 w-4" />
-      </a>
+      <Button variant="ghost" size="sm" className="mt-1" asChild>
+        <a
+          href="https://github.com/vm0-ai/vm0-cookbooks/tree/main/examples"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Show more sample agents
+          <IconChevronRight className="h-4 w-4" />
+        </a>
+      </Button>
     </section>
   );
 }
@@ -163,7 +164,7 @@ function ReferenceCard({
     <a href={href} target="_blank" rel="noopener noreferrer">
       <Card className="flex items-center gap-3 p-4 hover:bg-muted/50 transition-colors cursor-pointer">
         <div
-          className={`flex h-10 w-10 items-center justify-center rounded-lg ${iconBg}`}
+          className={`flex h-8 w-8 items-center justify-center rounded-lg ${iconBg}`}
         >
           {icon}
         </div>
@@ -176,7 +177,7 @@ function ReferenceCard({
   );
 }
 
-function UsefulReferences() {
+function UsefulReferences({ theme }: { theme: string }) {
   return (
     <section>
       <h2 className="text-base font-medium text-foreground mb-4">
@@ -186,22 +187,22 @@ function UsefulReferences() {
         <ReferenceCard
           title="Explore our community"
           description="Join us on Discord"
-          icon={<IconBrandDiscord className="h-5 w-5 text-white" />}
-          iconBg="bg-indigo-500"
+          icon={<img src="/discord-platform.svg" alt="Discord" className="h-8 w-8" />}
+          iconBg=""
           href="https://discord.com/invite/WMpAmHFfp6"
         />
         <ReferenceCard
           title="Visit our GitHub"
           description="Explore our open-source code"
-          icon={<IconBrandGithub className="h-5 w-5 text-white" />}
-          iconBg="bg-gray-900"
+          icon={<img src={theme === "dark" ? "/github-platform-dark.svg" : "/github-platform.svg"} alt="GitHub" className="h-8 w-8" />}
+          iconBg=""
           href="https://github.com/vm0-ai/vm0"
         />
         <ReferenceCard
           title="VM0 Professional Doc"
           description="Professional docs and guides"
-          icon={<IconFileText className="h-5 w-5 text-primary" />}
-          iconBg="bg-primary/10"
+          icon={<IconFileText className="h-8 w-8 text-primary" stroke={1.5} />}
+          iconBg=""
           href="https://docs.vm0.ai"
         />
       </div>

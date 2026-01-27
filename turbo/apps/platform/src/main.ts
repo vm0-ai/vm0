@@ -2,12 +2,16 @@ import "./polyfill.ts";
 import { createStore, type Store } from "ccstate";
 import { createRoot } from "react-dom/client";
 import { bootstrap$ } from "./signals/bootstrap.ts";
+import { initTheme$ } from "./signals/theme.ts";
 import { detach, Reason } from "./signals/utils.ts";
 import { setupRouter } from "./views/main.tsx";
 
 // pass store here is allowed because main is an entrance point
 // eslint-disable-next-line ccstate/no-store-in-params
 async function main(rootEl: HTMLDivElement, store: Store, signal: AbortSignal) {
+  // Initialize theme before bootstrap
+  await store.get(initTheme$, signal);
+  
   await store.set(
     bootstrap$,
     () => {

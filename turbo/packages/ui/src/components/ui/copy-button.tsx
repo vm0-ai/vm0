@@ -3,6 +3,12 @@
 import * as React from "react";
 import { IconCopy, IconCheck } from "@tabler/icons-react";
 import { cn } from "../../lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "./tooltip";
 
 export interface CopyButtonProps
   extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "children"> {
@@ -34,22 +40,31 @@ const CopyButton = React.forwardRef<HTMLButtonElement, CopyButtonProps>(
     };
 
     return (
-      <button
-        ref={ref}
-        onClick={handleCopy}
-        className={cn(
-          "p-2 hover:bg-muted rounded-md transition-colors shrink-0",
-          className,
-        )}
-        aria-label={copied ? "Copied" : "Copy to clipboard"}
-        {...props}
-      >
-        {copied ? (
-          <IconCheck className="h-4 w-4 text-green-500" />
-        ) : (
-          <IconCopy className="h-4 w-4 text-muted-foreground" />
-        )}
-      </button>
+      <TooltipProvider>
+        <Tooltip open={copied}>
+          <TooltipTrigger asChild>
+            <button
+              ref={ref}
+              onClick={handleCopy}
+              className={cn(
+                "p-2 hover:bg-muted rounded-md transition-colors shrink-0",
+                className,
+              )}
+              aria-label={copied ? "Copied" : "Copy to clipboard"}
+              {...props}
+            >
+              {copied ? (
+                <IconCheck className="h-4 w-4 text-green-500" />
+              ) : (
+                <IconCopy className="h-4 w-4 text-muted-foreground" />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Copied!</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     );
   },
 );
