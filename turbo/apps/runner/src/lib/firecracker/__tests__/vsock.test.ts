@@ -185,6 +185,20 @@ describe("VsockClient Integration Tests", () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout.trim()).toBe("hello");
     });
+
+    it("should respect custom timeout parameter", async () => {
+      // Command that completes quickly with short timeout
+      const result = await client!.exec("echo fast", 5000);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe("fast");
+    });
+
+    it("should return exit code 124 on timeout", async () => {
+      // Command that sleeps longer than timeout (100ms timeout, 2s sleep)
+      const result = await client!.exec("sleep 2", 100);
+      expect(result.exitCode).toBe(124);
+      expect(result.stderr).toContain("Timeout");
+    });
   });
 
   describe("execOrThrow", () => {
@@ -252,6 +266,28 @@ describe("VsockClient Integration Tests", () => {
       await expect(
         client!.readFile("/non/existent/file.txt"),
       ).rejects.toThrow();
+    });
+
+    it("should write file with sudo (or fail gracefully without passwordless sudo)", async () => {
+      // Check if passwordless sudo is available
+      const sudoCheck = await client!.exec("sudo -n true 2>/dev/null");
+      const hasSudo = sudoCheck.exitCode === 0;
+
+      const testPath = "/tmp/vsock-test-sudo.txt";
+      const content = "sudo test content";
+
+      if (hasSudo) {
+        // Passwordless sudo available - test the full flow
+        await client!.writeFileWithSudo(testPath, content);
+        const readContent = await client!.readFile(testPath);
+        expect(readContent).toBe(content);
+        await client!.exec(`rm -f ${testPath}`);
+      } else {
+        // No passwordless sudo - verify it fails with expected error
+        await expect(
+          client!.writeFileWithSudo(testPath, content),
+        ).rejects.toThrow(/sudo|password/i);
+      }
     });
   });
 
