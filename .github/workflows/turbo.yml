@@ -16,7 +16,7 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
     outputs:
       job-ref: ${{ steps.set-job-ref.outputs.job-ref }}
       web-changed: ${{ steps.detect.outputs.web-changed }}
@@ -125,7 +125,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
@@ -155,7 +155,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
     services:
       postgres:
         image: postgres:17-alpine
@@ -170,10 +170,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
-
-      # TODO: Move Rust to vm0-toolchain Docker image
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
 
       - name: Build Core Package
         working-directory: turbo
@@ -205,7 +201,7 @@ jobs:
   deploy-web:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
     needs: [prepare]
     # Deploy if job-ref is set (PR or main) and web, CLI, runner, site, or platform changed
     if: |
@@ -271,7 +267,7 @@ jobs:
   deploy-docs:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
     needs: [prepare]
     # Deploy if job-ref is set (PR or main) and docs changed
     if: needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.docs-changed == 'true'
@@ -299,7 +295,7 @@ jobs:
   deploy-site:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
     needs: [prepare, deploy-web]
     # Deploy if job-ref is set (PR or main) and site changed
     if: needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.site-changed == 'true'
@@ -331,7 +327,7 @@ jobs:
   deploy-platform:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
     needs: [prepare, deploy-web]
     # Deploy if job-ref is set (PR or main) and platform changed
     if: needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.platform-changed == 'true'
@@ -362,7 +358,7 @@ jobs:
   e2e-auth:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
     needs: [prepare, deploy-web]
     if: |
       needs.prepare.outputs.job-ref != '' && (
@@ -417,7 +413,7 @@ jobs:
   api-e2e-test:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
     needs: [prepare, e2e-auth, deploy-web]
     if: needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.web-changed == 'true'
     timeout-minutes: 5
@@ -445,7 +441,7 @@ jobs:
   cli-e2e-01-serial:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
     needs: [prepare, e2e-auth, deploy-web, lint, test]
     if: |
       needs.prepare.outputs.job-ref != '' && (
@@ -514,7 +510,7 @@ jobs:
   cli-e2e-02-parallel:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
     needs: [prepare, cli-e2e-01-serial, deploy-web]
     if: |
       needs.prepare.outputs.job-ref != '' && (
@@ -588,7 +584,7 @@ jobs:
   cli-e2e-03-runner:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
     needs: [prepare, cli-e2e-01-serial, deploy-web, deploy-runner-start]
     if: |
       contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
@@ -665,7 +661,7 @@ jobs:
   deploy-runner-prepare:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
     needs: [prepare]
     if: |
       contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
@@ -816,17 +812,6 @@ jobs:
         run: cd turbo && pnpm turbo run build --filter=@vm0/core
 
       # Cross-compile Rust vsock-agent for ARM64 (metal runners are ARM64)
-      # TODO: Move Rust toolchain to vm0-toolchain Docker image
-      - name: Install Rust toolchain for ARM64 cross-compilation
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-unknown-linux-musl
-
-      - name: Install ARM64 cross-linker
-        run: |
-          apt-get update
-          apt-get install -y musl-tools gcc-aarch64-linux-gnu
-
       - name: Build vsock-agent for ARM64
         run: |
           cd crates
@@ -895,7 +880,7 @@ jobs:
   deploy-runner-benchmark:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
     needs: [prepare, deploy-runner-prepare]
     if: |
       contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
@@ -943,7 +928,7 @@ jobs:
   deploy-runner-start:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260116
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
     needs: [prepare, deploy-web, deploy-runner-prepare]
     if: |
       contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
