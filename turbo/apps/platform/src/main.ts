@@ -10,8 +10,8 @@ import { setupRouter } from "./views/main.tsx";
 // eslint-disable-next-line ccstate/no-store-in-params
 async function main(rootEl: HTMLDivElement, store: Store, signal: AbortSignal) {
   // Initialize theme before bootstrap
-  await store.get(initTheme$, signal);
-  
+  detach(store.set(initTheme$), Reason.Entrance);
+
   await store.set(
     bootstrap$,
     () => {
