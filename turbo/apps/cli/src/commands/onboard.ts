@@ -1,45 +1,17 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import prompts from "prompts";
-import { mkdir, writeFile } from "fs/promises";
+import { mkdir } from "fs/promises";
 import { existsSync } from "fs";
-import path from "path";
 import { getToken } from "../lib/api/config";
 import { authenticate } from "../lib/api/auth";
 import { listModelProviders } from "../lib/api";
 import { isInteractive } from "../lib/utils/prompt-utils";
 import { setupClaudeCommand } from "./setup-claude";
+import { initCommand } from "./init";
 
 const DEMO_AGENT_DIR = "vm0-demo-agent";
 const DEMO_AGENT_NAME = "vm0-demo-agent";
-
-function generateVm0Yaml(agentName: string): string {
-  return `version: "1.0"
-
-agents:
-  ${agentName}:
-    framework: claude-code
-    # Build agentic workflow using natural language
-    instructions: AGENTS.md
-    # Agent skills - see https://github.com/vm0-ai/vm0-skills for available skills
-    # skills:
-    #   - https://github.com/vm0-ai/vm0-skills/tree/main/github
-`;
-}
-
-function generateAgentsMd(): string {
-  return `# Agent Instructions
-
-You are a HackerNews AI content curator.
-
-## Workflow
-
-1. Go to HackerNews and read the top 10 articles
-2. Find and extract AI-related content from these articles
-3. Summarize the findings into a X (Twitter) post format
-4. Write the summary to content.md
-`;
-}
 
 export const onboardCommand = new Command()
   .name("onboard")
@@ -108,18 +80,21 @@ export const onboardCommand = new Command()
       process.exit(1);
     }
 
-    // Create directory
+    // Create directory and run init inside it
     await mkdir(DEMO_AGENT_DIR, { recursive: true });
 
-    // Create files in the new directory
-    const vm0YamlPath = path.join(DEMO_AGENT_DIR, "vm0.yaml");
-    const agentsMdPath = path.join(DEMO_AGENT_DIR, "AGENTS.md");
+    const originalDir = process.cwd();
+    process.chdir(DEMO_AGENT_DIR);
 
-    await writeFile(vm0YamlPath, generateVm0Yaml(DEMO_AGENT_NAME));
-    await writeFile(agentsMdPath, generateAgentsMd());
+    try {
+      // Use vm0 init to create the project files
+      await initCommand.parseAsync(["--name", DEMO_AGENT_NAME], {
+        from: "user",
+      });
+    } finally {
+      process.chdir(originalDir);
+    }
 
-    console.log(chalk.green(`Done Created ${vm0YamlPath}`));
-    console.log(chalk.green(`Done Created ${agentsMdPath}`));
     console.log();
 
     // Step 4: Choose method
@@ -148,7 +123,6 @@ export const onboardCommand = new Command()
 
     if (method === "claude") {
       // Change to the demo agent directory and run setup-claude
-      const originalDir = process.cwd();
       process.chdir(DEMO_AGENT_DIR);
 
       try {
