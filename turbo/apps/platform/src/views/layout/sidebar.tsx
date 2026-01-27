@@ -1,5 +1,5 @@
-import { useGet, useLastResolved, useLoadable } from "ccstate-react";
-import { IconDotsVertical } from "@tabler/icons-react";
+import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
+import { IconDotsVertical, IconUser, IconLogout } from "@tabler/icons-react";
 import {
   NAVIGATION_CONFIG,
   FOOTER_NAV_ITEMS,
@@ -12,6 +12,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { VM0SubscriptionDetailsButton } from "../clerk/subscription-detail.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { theme$ } from "../../signals/theme.ts";
+import { userMenuOpen$, toggleUserMenu$, closeUserMenu$ } from "../../signals/user-menu.ts";
 
 export function Sidebar() {
   const activeItem = useGet(activeNavItem$);
@@ -118,6 +119,9 @@ export function Sidebar() {
 function UserProfile() {
   const clerkLoadable = useLoadable(clerk$);
   const userLoadable = useLoadable(user$);
+  const isMenuOpen = useGet(userMenuOpen$);
+  const toggleMenu = useSet(toggleUserMenu$);
+  const closeMenu = useSet(closeUserMenu$);
 
   if (userLoadable.state !== "hasData" || !userLoadable.data) {
     return null;
@@ -126,37 +130,109 @@ function UserProfile() {
   const user = userLoadable.data;
   const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
 
-  const handleClick = () => {
+  const handleManageAccount = () => {
+    closeMenu();
     detach(clerk?.openUserProfile(), Reason.DomCallback);
   };
 
+  const handleSignOut = () => {
+    closeMenu();
+    detach(clerk?.signOut(), Reason.DomCallback);
+  };
+
   return (
-    <div className="p-2">
-      <button
-        onClick={handleClick}
-        className="flex w-full items-center gap-2 p-2 h-12 rounded-lg hover:bg-sidebar-accent transition-colors"
-      >
-        <div className="h-8 w-8 rounded-lg bg-sidebar-accent overflow-hidden shrink-0">
-          <img
-            src={user.imageUrl}
-            alt={user.fullName ?? ""}
-            className="h-full w-full object-cover"
-          />
-        </div>
-        <div className="flex-1 min-w-0 text-left">
-          <div className="text-sm leading-5 text-sidebar-foreground truncate">
-            {user.fullName}
-          </div>
-          <div className="text-xs leading-4 text-sidebar-foreground/70 truncate">
-            {user.primaryEmailAddress?.emailAddress}
-          </div>
-        </div>
-        <IconDotsVertical
-          size={16}
-          stroke={1.5}
-          className="text-sidebar-foreground shrink-0"
+    <>
+      {/* Backdrop overlay to close menu when clicking outside */}
+      {isMenuOpen && (
+        <div
+          className="fixed inset-0 z-10"
+          onClick={closeMenu}
         />
-      </button>
-    </div>
+      )}
+
+      <div className="p-2 relative z-20">
+        <button
+          onClick={toggleMenu}
+          className="flex w-full items-center gap-2 p-2 h-12 rounded-lg hover:bg-sidebar-accent transition-colors"
+        >
+          <div className="h-8 w-8 rounded-lg bg-sidebar-accent overflow-hidden shrink-0">
+            <img
+              src={user.imageUrl}
+              alt={user.fullName ?? ""}
+              className="h-full w-full object-cover"
+            />
+          </div>
+          <div className="flex-1 min-w-0 text-left">
+            <div className="text-sm leading-5 text-sidebar-foreground truncate">
+              {user.fullName}
+            </div>
+            <div className="text-xs leading-4 text-sidebar-foreground/70 truncate">
+              {user.primaryEmailAddress?.emailAddress}
+            </div>
+          </div>
+          <IconDotsVertical
+            size={16}
+            stroke={1.5}
+            className="text-sidebar-foreground shrink-0"
+          />
+        </button>
+
+        {/* Popup Menu */}
+        {isMenuOpen && (
+          <div
+            className="absolute bottom-full left-2 right-2 mb-2 bg-card rounded-xl overflow-hidden"
+            style={{
+              boxShadow:
+                "0px 0px 4px rgba(0, 0, 0, 0.12), 0px 4px 12px rgba(25, 28, 33, 0.12), 0px 0px 0px 1px rgba(25, 28, 33, 0.04)",
+            }}
+          >
+            {/* User Info Section */}
+            <div className="px-5 py-4 border-b border-border">
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-full border border-border overflow-hidden shrink-0">
+                  <img
+                    src={user.imageUrl}
+                    alt={user.fullName ?? ""}
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm leading-5 font-medium text-foreground truncate">
+                    {user.fullName}
+                  </div>
+                  <div className="text-xs leading-4 text-muted-foreground truncate">
+                    {user.primaryEmailAddress?.emailAddress}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Manage Account */}
+            <button
+              onClick={handleManageAccount}
+              className="w-full flex items-center gap-3 px-5 py-4 border-b border-border hover:bg-muted transition-colors text-left"
+            >
+              <div className="w-9 h-[18px] flex items-center justify-center shrink-0">
+                <IconUser size={20} stroke={1.5} className="text-foreground" />
+              </div>
+              <span className="text-sm leading-5 text-foreground">
+                Manage account
+              </span>
+            </button>
+
+            {/* Sign Out */}
+            <button
+              onClick={handleSignOut}
+              className="w-full flex items-center gap-3 px-5 py-4 hover:bg-muted transition-colors text-left"
+            >
+              <div className="w-9 h-[18px] flex items-center justify-center shrink-0">
+                <IconLogout size={20} stroke={1.5} className="text-foreground" />
+              </div>
+              <span className="text-sm leading-5 text-foreground">Sign out</span>
+            </button>
+          </div>
+        )}
+      </div>
+    </>
   );
 }
