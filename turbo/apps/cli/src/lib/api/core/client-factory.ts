@@ -2,6 +2,19 @@ import { getApiUrl, getToken } from "../config";
 import type { ApiErrorResponse } from "@vm0/core";
 
 /**
+ * Custom API request error with code
+ */
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    public code: string,
+  ) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
+
+/**
  * Get authentication headers for API requests
  */
 export async function getHeaders(): Promise<Record<string, string>> {
@@ -58,5 +71,6 @@ export function handleError(
 ): never {
   const errorBody = result.body as ApiErrorResponse;
   const message = errorBody.error?.message || defaultMessage;
-  throw new Error(message);
+  const code = errorBody.error?.code || "UNKNOWN";
+  throw new ApiRequestError(message, code);
 }
