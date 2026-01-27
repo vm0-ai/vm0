@@ -1,9 +1,9 @@
 import chalk from "chalk";
 import {
-  isInteractive,
-  promptText,
-  promptConfirm,
-  promptPassword,
+  isInteractive as defaultIsInteractive,
+  promptText as defaultPromptText,
+  promptConfirm as defaultPromptConfirm,
+  promptPassword as defaultPromptPassword,
 } from "../../lib/utils/prompt-utils";
 import type { RequiredConfiguration } from "../../lib/domain/schedule-utils";
 
@@ -38,6 +38,33 @@ interface GatherConfigurationParams {
 }
 
 /**
+ * Prompt dependencies for dependency injection (enables testing without mocking internal code)
+ */
+interface PromptDeps {
+  isInteractive: () => boolean;
+  promptConfirm: (
+    message: string,
+    defaultValue?: boolean,
+  ) => Promise<boolean | undefined>;
+  promptPassword: (message: string) => Promise<string | undefined>;
+  promptText: (
+    message: string,
+    defaultValue?: string,
+    validate?: (value: string) => boolean | string,
+  ) => Promise<string | undefined>;
+}
+
+/**
+ * Default prompt dependencies using real prompt-utils
+ */
+const defaultPromptDeps: PromptDeps = {
+  isInteractive: defaultIsInteractive,
+  promptConfirm: defaultPromptConfirm,
+  promptPassword: defaultPromptPassword,
+  promptText: defaultPromptText,
+};
+
+/**
  * Parse key=value pairs into object
  */
 function parseKeyValuePairs(pairs: string[]): Record<string, string> {
@@ -60,6 +87,7 @@ function parseKeyValuePairs(pairs: string[]): Record<string, string> {
 async function handleSecrets(
   optionSecrets: string[],
   existingSecretNames: string[],
+  deps: PromptDeps,
 ): Promise<{
   secrets: Record<string, string>;
   preserveExistingSecrets: boolean;
@@ -73,8 +101,8 @@ async function handleSecrets(
   }
 
   // Case 2: Updating schedule with existing secrets - ask user
-  if (existingSecretNames.length > 0 && isInteractive()) {
-    const keepSecrets = await promptConfirm(
+  if (existingSecretNames.length > 0 && deps.isInteractive()) {
+    const keepSecrets = await deps.promptConfirm(
       `Keep existing secrets? (${existingSecretNames.join(", ")})`,
       true,
     );
@@ -97,6 +125,7 @@ async function handleSecrets(
 async function handleVars(
   optionVars: string[],
   existingVars: Record<string, string> | null,
+  deps: PromptDeps,
 ): Promise<Record<string, string>> {
   // Explicit --var flags provided
   if (optionVars.length > 0) {
@@ -104,8 +133,8 @@ async function handleVars(
   }
 
   // Updating schedule with existing vars - ask user
-  if (existingVars && isInteractive()) {
-    const keepVars = await promptConfirm(
+  if (existingVars && deps.isInteractive()) {
+    const keepVars = await deps.promptConfirm(
       `Keep existing variables? (${Object.keys(existingVars).join(", ")})`,
       true,
     );
@@ -150,9 +179,10 @@ function displayMissingRequirements(
 async function promptForMissingSecrets(
   missingSecrets: string[],
   secrets: Record<string, string>,
+  deps: PromptDeps,
 ): Promise<void> {
   for (const name of missingSecrets) {
-    const value = await promptPassword(
+    const value = await deps.promptPassword(
       `Enter value for secret ${chalk.cyan(name)}`,
     );
     if (value) {
@@ -167,9 +197,10 @@ async function promptForMissingSecrets(
 async function promptForMissingVars(
   missingVars: string[],
   vars: Record<string, string>,
+  deps: PromptDeps,
 ): Promise<void> {
   for (const name of missingVars) {
-    const value = await promptText(
+    const value = await deps.promptText(
       `Enter value for var ${chalk.cyan(name)}`,
       "",
     );
@@ -193,9 +224,13 @@ async function promptForMissingVars(
  *
  * For new schedules (no existing secrets), even if no --secret flag is provided,
  * we should gather secrets interactively and send them to the server.
+ *
+ * @param params - Configuration parameters
+ * @param deps - Prompt dependencies (optional, for testing)
  */
 export async function gatherConfiguration(
   params: GatherConfigurationParams,
+  deps: PromptDeps = defaultPromptDeps,
 ): Promise<GatherConfigurationResult> {
   const { required, optionSecrets, optionVars, existingSchedule } = params;
 
@@ -206,8 +241,9 @@ export async function gatherConfiguration(
   const { secrets, preserveExistingSecrets } = await handleSecrets(
     optionSecrets,
     existingSecretNames,
+    deps,
   );
-  const vars = await handleVars(optionVars, existingVars);
+  const vars = await handleVars(optionVars, existingVars, deps);
 
   // Determine which secrets/vars are missing
   const effectiveExistingSecrets = preserveExistingSecrets
@@ -226,14 +262,14 @@ export async function gatherConfiguration(
   if (missingSecrets.length === 0 && missingVars.length === 0) {
     return { secrets, vars, preserveExistingSecrets };
   }
-  if (!isInteractive()) {
+  if (!deps.isInteractive()) {
     return { secrets, vars, preserveExistingSecrets };
   }
 
   // Interactive mode: show requirements and prompt for missing values
   displayMissingRequirements(missingSecrets, missingVars);
-  await promptForMissingSecrets(missingSecrets, secrets);
-  await promptForMissingVars(missingVars, vars);
+  await promptForMissingSecrets(missingSecrets, secrets, deps);
+  await promptForMissingVars(missingVars, vars, deps);
 
   return { secrets, vars, preserveExistingSecrets };
 }
