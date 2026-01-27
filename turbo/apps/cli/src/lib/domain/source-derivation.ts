@@ -2,6 +2,10 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
 import {
+  extractVariableReferences as extractVariableReferencesCore,
+  groupVariablesBySource,
+} from "@vm0/core";
+import {
   parseGitHubTreeUrl,
   downloadGitHubSkill,
   readSkillFrontmatter,
@@ -53,49 +57,7 @@ interface VariableSource {
 export interface AgentVariableSources {
   secrets: VariableSource[];
   vars: VariableSource[];
-}
-
-/**
- * Extract variable references from environment strings
- * Matches ${VAR_NAME} or $VAR_NAME patterns
- * @internal Exported for testing
- */
-export function extractVariableReferences(
-  environment: Record<string, string>,
-): {
-  secrets: string[];
-  vars: string[];
-} {
-  const secrets: string[] = [];
-  const vars: string[] = [];
-
-  for (const value of Object.values(environment)) {
-    // Match ${VAR_NAME} or $VAR_NAME
-    const matches = value.matchAll(/\$\{?([A-Z_][A-Z0-9_]*)\}?/g);
-    for (const match of matches) {
-      const varName = match[1];
-      if (!varName) continue;
-      // Heuristic: uppercase names ending with KEY, SECRET, TOKEN, PASSWORD are secrets
-      if (
-        varName.endsWith("_KEY") ||
-        varName.endsWith("_SECRET") ||
-        varName.endsWith("_TOKEN") ||
-        varName.endsWith("_PASSWORD") ||
-        varName.includes("API_KEY") ||
-        varName.includes("SECRET")
-      ) {
-        if (!secrets.includes(varName)) {
-          secrets.push(varName);
-        }
-      } else {
-        if (!vars.includes(varName)) {
-          vars.push(varName);
-        }
-      }
-    }
-  }
-
-  return { secrets: secrets.sort(), vars: vars.sort() };
+  credentials: VariableSource[];
 }
 
 /**
@@ -132,20 +94,31 @@ export async function deriveAgentVariableSources(
   agent: AgentDefinition,
   options?: { skipNetwork?: boolean },
 ): Promise<AgentVariableSources> {
-  // Extract all variable references from environment
-  const { secrets: secretNames, vars: varNames } = agent.environment
-    ? extractVariableReferences(agent.environment)
-    : { secrets: [], vars: [] };
+  // Extract all variable references from environment using @vm0/core
+  const refs = agent.environment
+    ? extractVariableReferencesCore(agent.environment)
+    : [];
+  const grouped = groupVariablesBySource(refs);
 
   // Initialize all sources as "agent environment"
   const secretSources = new Map<string, VariableSource>();
   const varSources = new Map<string, VariableSource>();
+  const credentialSources = new Map<string, VariableSource>();
 
-  for (const name of secretNames) {
-    secretSources.set(name, { name, source: "agent environment" });
+  for (const ref of grouped.secrets) {
+    secretSources.set(ref.name, {
+      name: ref.name,
+      source: "agent environment",
+    });
   }
-  for (const name of varNames) {
-    varSources.set(name, { name, source: "agent environment" });
+  for (const ref of grouped.vars) {
+    varSources.set(ref.name, { name: ref.name, source: "agent environment" });
+  }
+  for (const ref of grouped.credentials) {
+    credentialSources.set(ref.name, {
+      name: ref.name,
+      source: "agent environment",
+    });
   }
 
   // If no skills or skipping network, return early
@@ -153,6 +126,7 @@ export async function deriveAgentVariableSources(
     return {
       secrets: Array.from(secretSources.values()),
       vars: Array.from(varSources.values()),
+      credentials: Array.from(credentialSources.values()),
     };
   }
 
@@ -207,6 +181,7 @@ export async function deriveAgentVariableSources(
   return {
     secrets: Array.from(secretSources.values()),
     vars: Array.from(varSources.values()),
+    credentials: Array.from(credentialSources.values()),
   };
 }
 

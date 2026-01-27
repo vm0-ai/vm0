@@ -1,4 +1,4 @@
-import { computed } from "ccstate";
+import { command, computed, state } from "ccstate";
 import { logger } from "../log";
 import { FeatureSwitchKey, isFeatureEnabled } from "@vm0/core";
 import { localStorageSignals } from "./local-storage";
@@ -7,8 +7,11 @@ import { throwIfAbort } from "../utils";
 const L = logger("FeatureSwitch");
 const { get$, set$ } = localStorageSignals("featureSwitch");
 
+const internalReload$ = state(0);
+
 export const featureSwitch$ = computed(async (get) => {
-  // force this computed be async because we may do async operations later
+  get(internalReload$);
+
   await Promise.resolve();
 
   const result: Partial<Record<FeatureSwitchKey, boolean>> = {};
@@ -37,5 +40,23 @@ export const featureSwitch$ = computed(async (get) => {
 
   return result;
 });
+
+export const overrideFeatureSwitch$ = command(
+  ({ get, set }, overrides: Partial<Record<FeatureSwitchKey, boolean>>) => {
+    const current = get(get$);
+    let parsed: Partial<Record<FeatureSwitchKey, boolean>> = {};
+    if (current) {
+      try {
+        parsed = JSON.parse(current);
+      } catch (error) {
+        throwIfAbort(error);
+      }
+    }
+    parsed = { ...parsed, ...overrides };
+    set(set$, JSON.stringify(parsed));
+    set(internalReload$, (v) => v + 1);
+  },
+);
+L.debugGroup("Overriding feature switches:");
 
 export const setFeatureSwitchLocalStorage$ = set$;

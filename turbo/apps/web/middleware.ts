@@ -29,12 +29,13 @@ const intlMiddleware = createIntlMiddleware({
 });
 
 export default clerkMiddleware(async (auth, request: NextRequest) => {
-  // Skip i18n for API routes (including /v1), static files, CLI auth, sign-up, and Next.js internals
+  // Skip i18n for API routes (including /v1), static files, CLI auth, sign-in, sign-up, and Next.js internals
   if (
     request.nextUrl.pathname.startsWith("/api/") ||
     request.nextUrl.pathname.startsWith("/v1/") ||
     request.nextUrl.pathname.startsWith("/_next/") ||
     request.nextUrl.pathname.startsWith("/cli-auth") ||
+    request.nextUrl.pathname.startsWith("/sign-in") ||
     request.nextUrl.pathname.startsWith("/sign-up") ||
     request.nextUrl.pathname.includes("/assets/") ||
     /\.(ico|png|jpg|jpeg|svg|gif|webp|woff|woff2|ttf|eot)$/i.test(
@@ -63,7 +64,8 @@ export default clerkMiddleware(async (auth, request: NextRequest) => {
       await auth.protect();
     }
 
-    return;
+    // Return undefined to continue with default Next.js handling
+    return undefined;
   }
 
   // Apply i18n middleware for non-API routes
@@ -79,7 +81,14 @@ export default clerkMiddleware(async (auth, request: NextRequest) => {
 
 export const config = {
   matcher: [
-    "/((?!_next|_vercel|assets|.*\\..*|api|v1).*)",
+    // Match all routes except:
+    // - _next (Next.js internals)
+    // - _vercel (Vercel internals)
+    // - assets (static assets)
+    // - files with extensions (images, fonts, etc.)
+    // - sign-in and sign-up (Clerk auth pages, no i18n)
+    "/((?!_next|_vercel|assets|sign-in|sign-up|.*\\..*).*)",
+    // Match API routes for CORS handling
     "/(api|v1|trpc)(.*)",
   ],
 };

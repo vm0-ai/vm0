@@ -34,15 +34,6 @@ describe("getUserId", () => {
     expect(mockAuth).toHaveBeenCalledOnce();
   });
 
-  it("should return null for unknown Bearer token formats", async () => {
-    // Unknown token format (not vm0_live_ and not sandbox token)
-    const result = await getUserId("Bearer unknown_format_token");
-
-    expect(result).toBeNull();
-    // Clerk auth should not be called when Bearer token is provided
-    expect(mockAuth).not.toHaveBeenCalled();
-  });
-
   it("should fall back to Clerk auth when Authorization header is not Bearer", async () => {
     const testUserId = "clerk_user_789";
     mockAuth.mockResolvedValue({

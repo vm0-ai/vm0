@@ -237,7 +237,11 @@ export default function RootLayout({
   }
 
   return (
-    <ClerkProvider publishableKey={getClerkPublishableKey()}>
+    <ClerkProvider
+      publishableKey={getClerkPublishableKey()}
+      signInUrl="/sign-in"
+      signUpUrl="/sign-up"
+    >
       {content}
     </ClerkProvider>
   );

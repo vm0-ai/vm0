@@ -25,6 +25,7 @@
   /* ===================================
    * Primary Color Scale
    * =================================== */
+  --color-primary-0: hsl(var(--primary-0));
   --color-primary-50: hsl(var(--primary-50));
   --color-primary-100: hsl(var(--primary-100));
   --color-primary-200: hsl(var(--primary-200));
@@ -57,6 +58,12 @@
    * Divider
    * =================================== */
   --color-divider: hsl(var(--divider));
+
+  /* ===================================
+   * Theme-aware Colors
+   * =================================== */
+  --color-white: hsl(var(--white));
+  --color-black: hsl(var(--black));
 
   /* ===================================
    * Semantic Colors
@@ -113,17 +120,18 @@
      * =================================== */
 
     /* Primary Color Scale (Orange) */
-    --primary-50: 16 100% 98%; /* #FFFBF7 */
-    --primary-100: 15 100% 96%; /* #FCF3F0 */
-    --primary-200: 14 100% 93%; /* #FDE7DF */
-    --primary-300: 14 100% 84%; /* #FFD5C5 */
-    --primary-400: 14 100% 80%; /* #FFC5B0 */
-    --primary-500: 14 100% 76%; /* #FFB69E */
-    --primary-600: 14 92% 72%; /* #F4A288 */
-    --primary-700: 15 82% 66%; /* #EB8868 */
-    --primary-800: 16 97% 46%; /* #ED4E01 */
-    --primary-900: 16 100% 44%; /* #DE3F00 */
-    --primary-950: 16 100% 41%; /* #D03200 */
+    --primary-0: 16 100% 98%; /* #FFFBF7 */
+    --primary-50: 15 100% 96%; /* #FCF3F0 */
+    --primary-100: 14 100% 93%; /* #FDE7DF */
+    --primary-200: 14 100% 89%; /* #FFD5C5 */
+    --primary-300: 14 100% 85%; /* #FFC5B0 */
+    --primary-400: 14 100% 81%; /* #FFB69E */
+    --primary-500: 14 92% 74%; /* #F4A288 */
+    --primary-600: 15 80% 66%; /* #EB8868 */
+    --primary-700: 20 99% 47%; /* #ED4E01 */
+    --primary-800: 17 100% 44%; /* #DE3F00 */
+    --primary-900: 16 100% 41%; /* #D03200 */
+    --primary-950: 16 38% 23%; /* #5C2918 */
 
     /* Background/Gray Color Scale (Neutral) */
     --gray-0: 30 100% 99%; /* #FFFCF9 */
@@ -142,16 +150,20 @@
     /* Divider Color */
     --divider: 14 31% 86%; /* #EED5CB */
 
+    /* Theme-aware Colors */
+    --white: 0 0% 100%; /* #FFFFFF */
+    --black: 240 3% 10%; /* #19191B */
+
     /* ===================================
      * Semantic Colors (Light Theme)
      * =================================== */
     --background: var(--gray-0); /* background-0 */
     --foreground: var(--gray-950); /* background-950 */
 
-    --card: 0 0% 100%; /* white */
+    --card: var(--white); /* white */
     --card-foreground: var(--gray-950); /* background-950 */
 
-    --popover: 0 0% 100%; /* white */
+    --popover: var(--white); /* white */
     --popover-foreground: var(--gray-950); /* background-950 */
 
     --primary: var(--primary-700); /* primary-700 */
@@ -169,7 +181,7 @@
     --destructive: 0 84% 60%; /* red/600 */
     --destructive-foreground: 0 0% 100%;
 
-    --border: var(--gray-200); /* background-200 */
+    --border: var(--gray-300); /* background-300 */
     --input: var(--gray-50); /* background-50 */
     --ring: var(--primary-600); /* primary-600 */
 
@@ -191,17 +203,18 @@
      * =================================== */
 
     /* Primary Color Scale (Orange - Dark) */
-    --primary-50: 16 40% 6%; /* #160F0D */
-    --primary-100: 16 46% 10%; /* #1F1512 */
-    --primary-200: 16 73% 14%; /* #38180D */
-    --primary-300: 16 85% 16%; /* #4F1603 */
-    --primary-400: 16 88% 20%; /* #5E1E06 */
-    --primary-500: 16 70% 25%; /* #6E2A13 */
-    --primary-600: 16 62% 33%; /* #873B22 */
-    --primary-700: 16 63% 43%; /* #AE4D2C */
-    --primary-800: 16 97% 46%; /* #ED4E01 */
-    --primary-900: 16 100% 44%; /* #DE3F00 */
-    --primary-950: 16 100% 72%; /* #FF946E */
+    --primary-0: 16 40% 6%; /* #160F0D */
+    --primary-50: 16 46% 10%; /* #1F1512 */
+    --primary-100: 16 73% 14%; /* #38180D */
+    --primary-200: 16 85% 16%; /* #4F1603 */
+    --primary-300: 16 88% 19%; /* #5E1E06 */
+    --primary-400: 16 80% 25%; /* #6E2A13 */
+    --primary-500: 16 69% 32%; /* #873B22 */
+    --primary-600: 16 62% 41%; /* #AE4D2C */
+    --primary-700: 20 99% 47%; /* #ED4E01 */
+    --primary-800: 17 100% 44%; /* #DE3F00 */
+    --primary-900: 16 100% 70%; /* #FF946E */
+    --primary-950: 16 100% 90%; /* #FED5C7 */
 
     /* Background/Gray Color Scale (Neutral - Dark) */
     --gray-0: 240 3% 7%; /* #111113 */
@@ -219,6 +232,10 @@
 
     /* Divider Color (Dark) */
     --divider: 20 11% 29%; /* #4A413E */
+
+    /* Theme-aware Colors (Dark - inverted) */
+    --white: 240 3% 10%; /* #19191B */
+    --black: 0 0% 100%; /* #FFFFFF */
 
     /* ===================================
      * Semantic Colors (Dark Theme)
@@ -247,7 +264,7 @@
     --destructive: 0 84% 60%; /* red/600 */
     --destructive-foreground: 0 0% 100%;
 
-    --border: var(--gray-200); /* background-200 */
+    --border: var(--gray-300); /* background-300 */
     --input: var(--gray-50); /* background-50 */
     --ring: var(--primary-600); /* primary-600 */
 

@@ -86,7 +86,6 @@ export async function createScope(
   slug: string,
   type: ScopeType,
   ownerId?: string,
-  displayName?: string,
 ) {
   validateScopeSlug(slug);
 
@@ -104,7 +103,6 @@ export async function createScope(
       slug,
       type,
       ownerId,
-      displayName,
     })
     .returning();
 
@@ -117,11 +115,7 @@ export async function createScope(
  * Create a personal scope for a user and link it to their user record
  * This is the main entry point for setting up a user's scope
  */
-export async function createUserScope(
-  clerkUserId: string,
-  slug: string,
-  displayName?: string,
-) {
+export async function createUserScope(clerkUserId: string, slug: string) {
   // First check if user already has a scope via ownerId
   const existingScope = await globalThis.services.db
     .select()
@@ -136,7 +130,7 @@ export async function createUserScope(
   }
 
   // Create the scope
-  const scope = await createScope(slug, "personal", clerkUserId, displayName);
+  const scope = await createScope(slug, "personal", clerkUserId);
 
   log.debug("user scope created", { clerkUserId, scopeId: scope.id, slug });
 

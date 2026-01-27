@@ -156,7 +156,7 @@ describe("ScheduleService", () => {
       expect(result.schedule.name).toBe(`${TEST_PREFIX}cron-job`);
       expect(result.schedule.cronExpression).toBe("0 9 * * *");
       expect(result.schedule.timezone).toBe("UTC");
-      expect(result.schedule.enabled).toBe(true);
+      expect(result.schedule.enabled).toBe(false);
       expect(result.schedule.nextRunAt).not.toBeNull();
     });
 
@@ -294,6 +294,232 @@ describe("ScheduleService", () => {
       });
 
       expect(result.schedule.timezone).toBe("America/New_York");
+    });
+  });
+
+  describe("deploy validation", () => {
+    const COMPOSE_WITH_SECRETS_ID = "00000000-0000-0000-0000-000000000090";
+    const VERSION_WITH_SECRETS_ID = "test-version-with-secrets-requirement";
+
+    beforeAll(async () => {
+      // Create a compose that requires secrets
+      await globalThis.services.db
+        .insert(agentComposes)
+        .values({
+          id: COMPOSE_WITH_SECRETS_ID,
+          userId: TEST_USER_ID,
+          scopeId: TEST_SCOPE_ID,
+          name: "agent-with-secrets",
+          headVersionId: VERSION_WITH_SECRETS_ID,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .onConflictDoNothing();
+
+      // Create compose version with secrets/vars requirements
+      await globalThis.services.db
+        .insert(agentComposeVersions)
+        .values({
+          id: VERSION_WITH_SECRETS_ID,
+          composeId: COMPOSE_WITH_SECRETS_ID,
+          content: {
+            agents: {
+              "agent-with-secrets": {
+                framework: "test",
+                environment: {
+                  API_KEY: "${{ secrets.API_KEY }}",
+                  DB_PASSWORD: "${{ secrets.DB_PASSWORD }}",
+                  API_URL: "${{ vars.API_URL }}",
+                },
+              },
+            },
+          },
+          createdBy: TEST_USER_ID,
+          createdAt: new Date(),
+        })
+        .onConflictDoNothing();
+    });
+
+    beforeEach(async () => {
+      // Clean up schedules for this compose
+      await globalThis.services.db
+        .delete(agentSchedules)
+        .where(eq(agentSchedules.composeId, COMPOSE_WITH_SECRETS_ID));
+    });
+
+    afterAll(async () => {
+      // Clean up
+      await globalThis.services.db
+        .delete(agentSchedules)
+        .where(eq(agentSchedules.composeId, COMPOSE_WITH_SECRETS_ID));
+
+      await globalThis.services.db
+        .delete(agentComposeVersions)
+        .where(eq(agentComposeVersions.id, VERSION_WITH_SECRETS_ID));
+
+      await globalThis.services.db
+        .delete(agentComposes)
+        .where(eq(agentComposes.id, COMPOSE_WITH_SECRETS_ID));
+    });
+
+    it("should reject deploy when required secrets are missing", async () => {
+      await expect(
+        scheduleService.deploy(TEST_USER_ID, {
+          name: `${TEST_PREFIX}missing-secrets`,
+          composeId: COMPOSE_WITH_SECRETS_ID,
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Should fail",
+        }),
+      ).rejects.toThrow("Missing required configuration");
+    });
+
+    it("should reject deploy when only some required secrets are provided", async () => {
+      await expect(
+        scheduleService.deploy(TEST_USER_ID, {
+          name: `${TEST_PREFIX}partial-secrets`,
+          composeId: COMPOSE_WITH_SECRETS_ID,
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Should fail",
+          secrets: {
+            API_KEY: "value1",
+            // Missing DB_PASSWORD
+          },
+          vars: {
+            API_URL: "https://example.com",
+          },
+        }),
+      ).rejects.toThrow("Secrets: DB_PASSWORD");
+    });
+
+    it("should reject deploy when required vars are missing", async () => {
+      await expect(
+        scheduleService.deploy(TEST_USER_ID, {
+          name: `${TEST_PREFIX}missing-vars`,
+          composeId: COMPOSE_WITH_SECRETS_ID,
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Should fail",
+          secrets: {
+            API_KEY: "value1",
+            DB_PASSWORD: "value2",
+          },
+          // Missing vars.API_URL
+        }),
+      ).rejects.toThrow("Vars: API_URL");
+    });
+
+    it("should accept deploy when all required config is provided", async () => {
+      const result = await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}all-config`,
+        composeId: COMPOSE_WITH_SECRETS_ID,
+        cronExpression: "0 9 * * *",
+        timezone: "UTC",
+        prompt: "Should succeed",
+        secrets: {
+          API_KEY: "value1",
+          DB_PASSWORD: "value2",
+        },
+        vars: {
+          API_URL: "https://example.com",
+        },
+      });
+
+      expect(result.created).toBe(true);
+      expect(result.schedule.secretNames).toContain("API_KEY");
+      expect(result.schedule.secretNames).toContain("DB_PASSWORD");
+      expect(result.schedule.vars).toEqual({ API_URL: "https://example.com" });
+    });
+
+    it("should include multiple missing items in error message", async () => {
+      await expect(
+        scheduleService.deploy(TEST_USER_ID, {
+          name: `${TEST_PREFIX}missing-all`,
+          composeId: COMPOSE_WITH_SECRETS_ID,
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Should fail with detailed error",
+        }),
+      ).rejects.toThrow(/Secrets:.*API_KEY.*DB_PASSWORD|DB_PASSWORD.*API_KEY/);
+    });
+
+    it("should accept update when keeping existing secrets (secrets undefined)", async () => {
+      // First create a schedule with secrets
+      const createResult = await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}keep-secrets`,
+        composeId: COMPOSE_WITH_SECRETS_ID,
+        cronExpression: "0 9 * * *",
+        timezone: "UTC",
+        prompt: "Initial prompt",
+        secrets: {
+          API_KEY: "value1",
+          DB_PASSWORD: "value2",
+        },
+        vars: {
+          API_URL: "https://example.com",
+        },
+      });
+      expect(createResult.created).toBe(true);
+
+      // Update the schedule without providing secrets (undefined = keep existing)
+      const updateResult = await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}keep-secrets`,
+        composeId: COMPOSE_WITH_SECRETS_ID,
+        cronExpression: "0 10 * * *", // Changed time
+        timezone: "UTC",
+        prompt: "Updated prompt",
+        // secrets: undefined - intentionally not provided
+        vars: {
+          API_URL: "https://example.com",
+        },
+      });
+
+      expect(updateResult.created).toBe(false); // Update, not create
+      expect(updateResult.schedule.secretNames).toContain("API_KEY");
+      expect(updateResult.schedule.secretNames).toContain("DB_PASSWORD");
+    });
+
+    it("should replace secrets when new secrets are provided on update", async () => {
+      // First create a schedule
+      await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}replace-secrets`,
+        composeId: COMPOSE_WITH_SECRETS_ID,
+        cronExpression: "0 9 * * *",
+        timezone: "UTC",
+        prompt: "Initial",
+        secrets: { API_KEY: "old1", DB_PASSWORD: "old2" },
+        vars: { API_URL: "https://example.com" },
+      });
+
+      // Update with new secrets
+      const updateResult = await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}replace-secrets`,
+        composeId: COMPOSE_WITH_SECRETS_ID,
+        cronExpression: "0 9 * * *",
+        timezone: "UTC",
+        prompt: "Updated",
+        secrets: { API_KEY: "new1", DB_PASSWORD: "new2" },
+        vars: { API_URL: "https://example.com" },
+      });
+
+      expect(updateResult.schedule.secretNames).toContain("API_KEY");
+      expect(updateResult.schedule.secretNames).toContain("DB_PASSWORD");
+      // Note: We can't verify actual values since they're encrypted
+    });
+
+    it("should reject new schedule without secrets even if name exists for different compose", async () => {
+      // This verifies that "keep existing" only works when updating the SAME schedule
+      await expect(
+        scheduleService.deploy(TEST_USER_ID, {
+          name: `${TEST_PREFIX}new-schedule-no-secrets`,
+          composeId: COMPOSE_WITH_SECRETS_ID,
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Should fail",
+          // No secrets provided for NEW schedule
+        }),
+      ).rejects.toThrow("Missing required configuration");
     });
   });
 
@@ -471,6 +697,55 @@ describe("ScheduleService", () => {
       const nextRun = new Date(result.nextRunAt!);
       expect(nextRun.getTime()).toBeGreaterThan(Date.now());
     });
+
+    it("should throw SchedulePastError when enabling one-time schedule with past atTime", async () => {
+      // Create a one-time schedule with a future time
+      const futureTime = new Date(Date.now() + 1000).toISOString();
+      await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}past-onetime`,
+        composeId: TEST_COMPOSE_ID,
+        atTime: futureTime,
+        timezone: "UTC",
+        prompt: "Past one-time test",
+      });
+
+      // Manually set atTime to past (simulating time passing)
+      await globalThis.services.db
+        .update(agentSchedules)
+        .set({ atTime: new Date(Date.now() - 60000) })
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}past-onetime`));
+
+      // Attempt to enable should throw SchedulePastError
+      await expect(
+        scheduleService.enable(
+          TEST_USER_ID,
+          TEST_COMPOSE_ID,
+          `${TEST_PREFIX}past-onetime`,
+        ),
+      ).rejects.toThrow("has already passed");
+    });
+
+    it("should allow enabling one-time schedule with future atTime", async () => {
+      // Create a one-time schedule with a future time
+      const futureTime = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour from now
+      await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}future-onetime`,
+        composeId: TEST_COMPOSE_ID,
+        atTime: futureTime,
+        timezone: "UTC",
+        prompt: "Future one-time test",
+      });
+
+      // Enable should succeed
+      const result = await scheduleService.enable(
+        TEST_USER_ID,
+        TEST_COMPOSE_ID,
+        `${TEST_PREFIX}future-onetime`,
+      );
+
+      expect(result.enabled).toBe(true);
+      expect(result.nextRunAt).not.toBeNull();
+    });
   });
 
   describe("toResponse", () => {
@@ -537,10 +812,10 @@ describe("ScheduleService", () => {
         prompt: "Due schedule",
       });
 
-      // Set nextRunAt to past so it becomes due
+      // Set nextRunAt to past and enable so it becomes due
       await globalThis.services.db
         .update(agentSchedules)
-        .set({ nextRunAt: new Date(Date.now() - 60000) })
+        .set({ nextRunAt: new Date(Date.now() - 60000), enabled: true })
         .where(eq(agentSchedules.name, `${TEST_PREFIX}due-schedule`));
 
       const result = await scheduleService.executeDueSchedules();
@@ -581,11 +856,12 @@ describe("ScheduleService", () => {
         })
         .returning();
 
-      // Update schedule to have past nextRunAt and link to pending run
+      // Update schedule to have past nextRunAt, enable it, and link to pending run
       await globalThis.services.db
         .update(agentSchedules)
         .set({
           nextRunAt: new Date(Date.now() - 60000),
+          enabled: true,
           lastRunId: pendingRun!.id,
         })
         .where(eq(agentSchedules.name, `${TEST_PREFIX}pending-run`));
@@ -618,11 +894,12 @@ describe("ScheduleService", () => {
         })
         .returning();
 
-      // Update schedule to have past nextRunAt and link to running run
+      // Update schedule to have past nextRunAt, enable it, and link to running run
       await globalThis.services.db
         .update(agentSchedules)
         .set({
           nextRunAt: new Date(Date.now() - 60000),
+          enabled: true,
           lastRunId: runningRun!.id,
         })
         .where(eq(agentSchedules.name, `${TEST_PREFIX}running-run`));
@@ -655,11 +932,12 @@ describe("ScheduleService", () => {
         })
         .returning();
 
-      // Update schedule to have past nextRunAt and link to completed run
+      // Update schedule to have past nextRunAt, enable it, and link to completed run
       await globalThis.services.db
         .update(agentSchedules)
         .set({
           nextRunAt: new Date(Date.now() - 60000),
+          enabled: true,
           lastRunId: completedRun!.id,
         })
         .where(eq(agentSchedules.name, `${TEST_PREFIX}completed-run`));
@@ -681,10 +959,10 @@ describe("ScheduleService", () => {
         prompt: "One-time schedule",
       });
 
-      // Set nextRunAt to past so it becomes due
+      // Set nextRunAt to past and enable so it becomes due
       await globalThis.services.db
         .update(agentSchedules)
-        .set({ nextRunAt: new Date(Date.now() - 60000) })
+        .set({ nextRunAt: new Date(Date.now() - 60000), enabled: true })
         .where(eq(agentSchedules.name, `${TEST_PREFIX}one-time`));
 
       const result = await scheduleService.executeDueSchedules();
@@ -711,10 +989,10 @@ describe("ScheduleService", () => {
         prompt: "Recurring schedule",
       });
 
-      // Set nextRunAt to past so it becomes due
+      // Set nextRunAt to past and enable so it becomes due
       await globalThis.services.db
         .update(agentSchedules)
-        .set({ nextRunAt: new Date(Date.now() - 60000) })
+        .set({ nextRunAt: new Date(Date.now() - 60000), enabled: true })
         .where(eq(agentSchedules.name, `${TEST_PREFIX}recurring`));
 
       await scheduleService.executeDueSchedules();
@@ -758,6 +1036,206 @@ describe("ScheduleService", () => {
 
       expect(result.executed).toBe(0);
       expect(result.skipped).toBe(0);
+    });
+
+    it("should mark run as failed when buildExecutionContext throws", async () => {
+      const { runService } = await import("../../run/run-service");
+
+      // Make buildExecutionContext throw an error
+      vi.mocked(runService.buildExecutionContext).mockRejectedValueOnce(
+        new Error("Missing required secrets: API_KEY"),
+      );
+
+      // Create a schedule
+      await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}failing-context`,
+        composeId: TEST_COMPOSE_ID,
+        cronExpression: "0 9 * * *",
+        timezone: "UTC",
+        prompt: "Schedule that fails context building",
+      });
+
+      // Set nextRunAt to past and enable so it becomes due
+      await globalThis.services.db
+        .update(agentSchedules)
+        .set({ nextRunAt: new Date(Date.now() - 60000), enabled: true })
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}failing-context`));
+
+      const result = await scheduleService.executeDueSchedules();
+
+      // Should be counted as skipped (error thrown but caught)
+      expect(result.executed).toBe(0);
+      expect(result.skipped).toBe(1);
+
+      // Verify run was created and marked as failed
+      const runs = await globalThis.services.db
+        .select()
+        .from(agentRuns)
+        .where(eq(agentRuns.agentComposeVersionId, TEST_VERSION_ID));
+
+      expect(runs.length).toBe(1);
+      expect(runs[0]!.status).toBe("failed");
+      expect(runs[0]!.error).toBe("Missing required secrets: API_KEY");
+      expect(runs[0]!.completedAt).not.toBeNull();
+    });
+
+    it("should mark run as failed when prepareAndDispatch throws", async () => {
+      const { runService } = await import("../../run/run-service");
+
+      // Make prepareAndDispatch throw an error
+      vi.mocked(runService.buildExecutionContext).mockResolvedValueOnce(
+        {} as Awaited<ReturnType<typeof runService.buildExecutionContext>>,
+      );
+      vi.mocked(runService.prepareAndDispatch).mockRejectedValueOnce(
+        new Error("Runner group scope mismatch"),
+      );
+
+      // Create a schedule
+      await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}failing-dispatch`,
+        composeId: TEST_COMPOSE_ID,
+        cronExpression: "0 9 * * *",
+        timezone: "UTC",
+        prompt: "Schedule that fails dispatch",
+      });
+
+      // Set nextRunAt to past and enable so it becomes due
+      await globalThis.services.db
+        .update(agentSchedules)
+        .set({ nextRunAt: new Date(Date.now() - 60000), enabled: true })
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}failing-dispatch`));
+
+      const result = await scheduleService.executeDueSchedules();
+
+      expect(result.skipped).toBe(1);
+
+      // Verify run was marked as failed
+      const runs = await globalThis.services.db
+        .select()
+        .from(agentRuns)
+        .where(eq(agentRuns.agentComposeVersionId, TEST_VERSION_ID));
+
+      expect(runs.length).toBe(1);
+      expect(runs[0]!.status).toBe("failed");
+      expect(runs[0]!.error).toBe("Runner group scope mismatch");
+    });
+
+    it("should disable one-time schedule on failure", async () => {
+      const { runService } = await import("../../run/run-service");
+
+      // Make buildExecutionContext throw an error
+      vi.mocked(runService.buildExecutionContext).mockRejectedValueOnce(
+        new Error("Configuration error"),
+      );
+
+      // Create a one-time schedule
+      const futureTime = new Date(Date.now() + 1000).toISOString();
+      await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}failing-onetime`,
+        composeId: TEST_COMPOSE_ID,
+        atTime: futureTime,
+        timezone: "UTC",
+        prompt: "One-time schedule that fails",
+      });
+
+      // Set nextRunAt to past and enable so it becomes due
+      await globalThis.services.db
+        .update(agentSchedules)
+        .set({ nextRunAt: new Date(Date.now() - 60000), enabled: true })
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}failing-onetime`));
+
+      await scheduleService.executeDueSchedules();
+
+      // Verify schedule was disabled
+      const [schedule] = await globalThis.services.db
+        .select()
+        .from(agentSchedules)
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}failing-onetime`));
+
+      expect(schedule!.enabled).toBe(false);
+      expect(schedule!.nextRunAt).toBeNull();
+      expect(schedule!.lastRunAt).not.toBeNull();
+    });
+
+    it("should advance nextRunAt for cron schedule on failure", async () => {
+      const { runService } = await import("../../run/run-service");
+
+      // Make buildExecutionContext throw an error
+      vi.mocked(runService.buildExecutionContext).mockRejectedValueOnce(
+        new Error("Configuration error"),
+      );
+
+      // Create a cron schedule
+      await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}failing-cron`,
+        composeId: TEST_COMPOSE_ID,
+        cronExpression: "0 9 * * *",
+        timezone: "UTC",
+        prompt: "Cron schedule that fails",
+      });
+
+      // Set nextRunAt to past and enable so it becomes due
+      await globalThis.services.db
+        .update(agentSchedules)
+        .set({ nextRunAt: new Date(Date.now() - 60000), enabled: true })
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}failing-cron`));
+
+      await scheduleService.executeDueSchedules();
+
+      // Verify schedule still enabled with advanced nextRunAt
+      const [schedule] = await globalThis.services.db
+        .select()
+        .from(agentSchedules)
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}failing-cron`));
+
+      expect(schedule!.enabled).toBe(true);
+      expect(schedule!.nextRunAt).not.toBeNull();
+      expect(schedule!.nextRunAt!.getTime()).toBeGreaterThan(Date.now());
+      expect(schedule!.lastRunAt).not.toBeNull();
+      expect(schedule!.lastRunId).not.toBeNull();
+    });
+
+    it("should set lastRunId immediately to prevent duplicate runs", async () => {
+      const { runService } = await import("../../run/run-service");
+
+      // Make buildExecutionContext throw an error
+      vi.mocked(runService.buildExecutionContext).mockRejectedValueOnce(
+        new Error("Error during context building"),
+      );
+
+      // Create a schedule
+      await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}lastrunid-test`,
+        composeId: TEST_COMPOSE_ID,
+        cronExpression: "0 9 * * *",
+        timezone: "UTC",
+        prompt: "Test lastRunId is set immediately",
+      });
+
+      // Set nextRunAt to past and enable so it becomes due
+      await globalThis.services.db
+        .update(agentSchedules)
+        .set({ nextRunAt: new Date(Date.now() - 60000), enabled: true })
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}lastrunid-test`));
+
+      await scheduleService.executeDueSchedules();
+
+      // Verify lastRunId was set even though execution failed
+      const [schedule] = await globalThis.services.db
+        .select()
+        .from(agentSchedules)
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}lastrunid-test`));
+
+      expect(schedule!.lastRunId).not.toBeNull();
+
+      // Verify the run exists and is linked
+      const runs = await globalThis.services.db
+        .select()
+        .from(agentRuns)
+        .where(eq(agentRuns.id, schedule!.lastRunId!));
+
+      expect(runs.length).toBe(1);
+      expect(runs[0]!.status).toBe("failed");
     });
   });
 });

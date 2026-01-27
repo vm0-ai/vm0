@@ -15,12 +15,11 @@ import {
   tokenValue$,
   setTokenValue$,
   saveOnboardingConfig$,
-  copyStatus$,
-  copyToClipboard$,
   canSaveOnboarding$,
 } from "../../signals/onboarding.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { ClaudeCodeSetupPrompt } from "../settings-page/setup-prompt.tsx";
 
 export function OnboardingModal() {
   const isOpen = useGet(showOnboardingModal$);
@@ -28,8 +27,6 @@ export function OnboardingModal() {
   const tokenValue = useGet(tokenValue$);
   const setTokenValue = useSet(setTokenValue$);
   const saveConfig = useSet(saveOnboardingConfig$);
-  const copyStatus = useGet(copyStatus$);
-  const copyToClipboard = useSet(copyToClipboard$);
   const canSave = useGet(canSaveOnboarding$);
   const pageSignal = useGet(pageSignal$);
 
@@ -90,22 +87,7 @@ export function OnboardingModal() {
                 required
               />
             </div>
-            <p className="text-xs text-muted-foreground">
-              You can find it by enter{" "}
-              <code
-                className="cursor-pointer rounded bg-muted px-1 py-0.5 font-mono hover:bg-muted/80 active:bg-muted/60"
-                onClick={() => {
-                  detach(
-                    copyToClipboard("claude setup-token"),
-                    Reason.DomCallback,
-                  );
-                }}
-                title="Click to copy"
-              >
-                {copyStatus === "copied" ? "copied!" : "claude setup-token"}
-              </code>{" "}
-              in your terminal
-            </p>
+            <ClaudeCodeSetupPrompt />
           </div>
         </div>
 

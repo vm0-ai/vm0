@@ -109,14 +109,13 @@ const appStringSchema = z.string().superRefine((val, ctx) => {
 
 /**
  * Agent definition schema
+ *
+ * Note: `image` and `working_dir` are deprecated fields.
+ * The server resolves these values based on the framework.
+ * User-provided values are ignored - server always overwrites them.
  */
 const agentDefinitionSchema = z.object({
   description: z.string().optional(),
-  /**
-   * @deprecated Use `apps` field instead for pre-installed tools.
-   * This field will be removed in a future version.
-   */
-  image: z.string().optional(),
   framework: z.string().min(1, "Framework is required"),
   /**
    * Array of pre-installed apps/tools for the agent environment.
@@ -126,7 +125,6 @@ const agentDefinitionSchema = z.object({
    */
   apps: z.array(appStringSchema).optional(),
   volumes: z.array(z.string()).optional(),
-  working_dir: z.string().optional(), // Optional when provider supports auto-config
   environment: z.record(z.string(), z.string()).optional(),
   /**
    * Path to instructions file (e.g., AGENTS.md).
@@ -161,6 +159,16 @@ const agentDefinitionSchema = z.object({
    * When enabled, filters outbound traffic by domain/IP rules.
    */
   experimental_firewall: experimentalFirewallSchema.optional(),
+  /**
+   * @deprecated Server-resolved field. User input is ignored.
+   * @internal
+   */
+  image: z.string().optional(),
+  /**
+   * @deprecated Server-resolved field. User input is ignored.
+   * @internal
+   */
+  working_dir: z.string().optional(),
 });
 
 /**

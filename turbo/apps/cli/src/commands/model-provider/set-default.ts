@@ -10,7 +10,7 @@ export const setDefaultCommand = new Command()
   .action(async (type: string) => {
     try {
       if (!Object.keys(MODEL_PROVIDER_TYPES).includes(type)) {
-        console.error(chalk.red(`x Invalid type "${type}"`));
+        console.error(chalk.red(`✗ Invalid type "${type}"`));
         console.log();
         console.log("Valid types:");
         for (const [t, config] of Object.entries(MODEL_PROVIDER_TYPES)) {
@@ -22,20 +22,20 @@ export const setDefaultCommand = new Command()
       const provider = await setModelProviderDefault(type as ModelProviderType);
       console.log(
         chalk.green(
-          `Done Default for ${provider.framework} set to "${provider.type}"`,
+          `✓ Default for ${provider.framework} set to "${provider.type}"`,
         ),
       );
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes("not found")) {
-          console.error(chalk.red(`x Model provider "${type}" not found`));
+          console.error(chalk.red(`✗ Model provider "${type}" not found`));
         } else if (error.message.includes("Not authenticated")) {
-          console.error(chalk.red("x Not authenticated. Run: vm0 auth login"));
+          console.error(chalk.red("✗ Not authenticated. Run: vm0 auth login"));
         } else {
-          console.error(chalk.red(`x ${error.message}`));
+          console.error(chalk.red(`✗ ${error.message}`));
         }
       } else {
-        console.error(chalk.red("x An unexpected error occurred"));
+        console.error(chalk.red("✗ An unexpected error occurred"));
       }
       process.exit(1);
     }

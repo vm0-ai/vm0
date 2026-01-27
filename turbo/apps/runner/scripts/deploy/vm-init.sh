@@ -1,13 +1,14 @@
 #!/bin/sh
 #
-# overlay-init: Set up overlayfs before starting real init
+# vm-init: VM initialization script
 #
 # This script runs as PID 1 when the VM boots. It:
 # 1. Mounts the squashfs base filesystem (read-only) from /dev/vda
 # 2. Mounts the ext4 overlay filesystem (read-write) from /dev/vdb
 # 3. Creates an overlayfs combining both
 # 4. Switches root to the overlay
-# 5. Executes the real init (systemd)
+# 5. Mounts virtual filesystems (/proc, /sys)
+# 6. Starts vsock-agent with tini for signal handling
 #
 # Device mapping:
 #   /dev/vda - squashfs base (read-only, shared across VMs)
@@ -15,19 +16,21 @@
 #
 set -e
 
+echo "[vm-init] start"
+
 # Mount read-only base filesystem (squashfs on /dev/vda)
-mkdir -p /rom
+# Note: /rom directory is pre-created in the squashfs image during build
 mount -t squashfs -o ro /dev/vda /rom
 
 # Mount read-write overlay filesystem (ext4 on /dev/vdb)
-mkdir -p /rw
+# Note: /rw directory is pre-created in the squashfs image during build
 mount -t ext4 /dev/vdb /rw
 
 # Create overlay directories
 mkdir -p /rw/upper /rw/work
 
 # Create merged root with overlayfs
-mkdir -p /mnt/root
+# Note: /mnt/root directory is pre-created in the squashfs image during build
 mount -t overlay overlay -o lowerdir=/rom,upperdir=/rw/upper,workdir=/rw/work /mnt/root
 
 # Prepare new root for pivot
@@ -46,20 +49,17 @@ mount --move /oldroot/rw /rw
 # This is critical for /dev/vsock and other device nodes created by the kernel
 mount --move /oldroot/dev /dev
 
-# Load virtio-vsock kernel module for host-guest communication
-# This must be done before systemd starts the vsock-agent service
-# Note: Load before umount oldroot in case module deps are needed
-modprobe virtio-vsock 2>/dev/null || true
-
-# Verify /dev/vsock exists (for debugging)
-if [ -e /dev/vsock ]; then
-    echo "[overlay-init] /dev/vsock exists"
-else
-    echo "[overlay-init] WARNING: /dev/vsock does not exist after modprobe"
-fi
-
-# Clean up old root reference (after modprobe to ensure module deps are available)
+# Clean up old root reference
+# Note: May fail with "No such file or directory" if kernel already released /oldroot after pivot_root
 umount -l /oldroot 2>/dev/null || true
 
-# Start the real init (systemd)
-exec /lib/systemd/systemd "$@"
+# Mount virtual filesystems needed by tini and processes
+mount -t proc proc /proc
+mount -t sysfs sys /sys
+
+# Set PATH to include /usr/local/bin for node and other executables
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Start vsock-agent with tini for proper signal handling and zombie reaping
+echo "[vm-init] starting vsock-agent"
+exec /usr/bin/tini -- /usr/bin/python3 /usr/local/bin/vm0-agent/vsock-agent.py

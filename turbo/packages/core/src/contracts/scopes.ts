@@ -37,7 +37,6 @@ export const scopeResponseSchema = z.object({
   id: z.string().uuid(),
   slug: z.string(),
   type: scopeTypeSchema,
-  displayName: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -49,7 +48,6 @@ export type ScopeResponse = z.infer<typeof scopeResponseSchema>;
  */
 export const createScopeRequestSchema = z.object({
   slug: scopeSlugSchema,
-  displayName: z.string().max(128).optional(),
 });
 
 export type CreateScopeRequest = z.infer<typeof createScopeRequestSchema>;

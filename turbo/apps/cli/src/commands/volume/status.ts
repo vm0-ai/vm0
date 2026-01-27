@@ -2,17 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { readStorageConfig } from "../../lib/storage/storage-utils";
 import { getStorageDownload } from "../../lib/api";
-
-/**
- * Format bytes to human-readable format
- */
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
-}
+import { formatBytes } from "../../lib/utils/file-utils";
 
 export const statusCommand = new Command()
   .name("status")

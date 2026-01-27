@@ -61,3 +61,22 @@ export const createModelProvider$ = command(
     return result;
   },
 );
+
+/**
+ * Delete a model provider by type.
+ */
+export const deleteModelProvider$ = command(
+  async ({ get, set }, type: string) => {
+    const fetchFn = get(fetch$);
+    const response = await fetchFn(`/api/model-providers/${type}`, {
+      method: "DELETE",
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to delete model provider: ${response.status}`);
+    }
+
+    // Trigger reload after successful deletion
+    set(internalReloadModelProviders$, (x) => x + 1);
+  },
+);

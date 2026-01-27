@@ -1,26 +1,21 @@
 ---
 title: Environment Variables
-description: Configure secrets and variables for VM0 agents
+description: Configure secrets, variables, and credentials for VM0 agents
 ---
 
 This guide explains how to use template variables in your `vm0.yaml` configuration and pass values when running agents.
 
 ## Template Variables
 
-VM0 supports two types of template variables in your configuration:
+VM0 supports three types of template variables in your configuration:
 
-| Type        | Syntax                | Purpose                                         |
-| ----------- | --------------------- | ----------------------------------------------- |
-| **Secrets** | `${{ secrets.NAME }}` | Sensitive data like API keys, tokens, passwords |
-| **Vars**    | `${{ vars.NAME }}`    | Non-sensitive configuration values              |
+| Type            | Syntax                      | Storage             | Purpose                              |
+| --------------- | --------------------------- | ------------------- | ------------------------------------ |
+| **Vars**        | `${{ vars.NAME }}`          | CLI (ephemeral)     | Non-sensitive configuration values   |
+| **Secrets**     | `${{ secrets.NAME }}`       | CLI (ephemeral)     | Sensitive data passed at runtime     |
+| **Credentials** | `${{ credentials.NAME }}`   | Platform (persistent) | Sensitive data stored on VM0       |
 
-### Secrets vs Vars
-
-**Secrets** are for sensitive information:
-
-- API keys and tokens
-- Passwords and credentials
-- Private keys
+### When to Use Each Type
 
 **Vars** are for general configuration:
 
@@ -28,7 +23,19 @@ VM0 supports two types of template variables in your configuration:
 - Environment names
 - Non-sensitive settings
 
-Both work identically in terms of syntax and value resolution. The distinction helps you organize sensitive vs non-sensitive data.
+**Secrets** are for sensitive data passed at runtime:
+
+- API keys from CI/CD systems
+- One-off sensitive values
+- Values that change per-run
+
+**Credentials** are for sensitive data stored on the platform:
+
+- API keys you use repeatedly
+- Tokens shared across multiple runs
+- Secrets managed via CLI
+
+The key difference between secrets and credentials is **persistence**: secrets are passed each time you run, while credentials are stored once and automatically loaded.
 
 ## Using Variables in vm0.yaml
 
@@ -41,20 +48,21 @@ agents:
   my-agent:
     framework: claude-code
     environment: # [!code highlight]
-      # Secrets for sensitive data
+      # Secrets for runtime sensitive data
       ANTHROPIC_AUTH_TOKEN: "${{ secrets.API_KEY }}" # [!code highlight]
       DATABASE_PASSWORD: "${{ secrets.DB_PASSWORD }}" # [!code highlight]
 
       # Vars for configuration
       ENVIRONMENT: "${{ vars.ENV_NAME }}" # [!code highlight]
       DEBUG_MODE: "${{ vars.DEBUG }}" # [!code highlight]
+
+      # Credentials for platform-stored secrets
+      GITHUB_TOKEN: "${{ credentials.GITHUB_TOKEN }}" # [!code highlight]
 ```
 
 ## Passing Values
 
-There are two ways to pass variable values when running an agent:
-
-### Method 1: Command Line Arguments
+### CLI Flags
 
 Pass values directly using `--secrets` and `--vars` flags:
 
@@ -71,21 +79,15 @@ vm0 run my-agent "your prompt" \
   --vars ENV_NAME=production
 ```
 
-### Method 2: Environment Variables
+### Environment File
 
-Set values as environment variables before running:
+Load values from a file using `--env-file`:
 
 ```bash
-# Export variables
-export API_KEY=sk-xxx
-export DB_PASSWORD=mypassword
-export ENV_NAME=production
-
-# Run the agent (values are automatically loaded)
-vm0 run my-agent "your prompt"
+vm0 run my-agent "your prompt" --env-file .env
 ```
 
-You can also use a `.env` file in your project root:
+Create a `.env` file with your values:
 
 ```bash title=".env"
 API_KEY=sk-xxx
@@ -93,30 +95,115 @@ DB_PASSWORD=mypassword
 ENV_NAME=production
 ```
 
+<Callout type="info">
+Environment files are **not** automatically loaded. You must explicitly specify the file path with `--env-file`.
+</Callout>
+
+### Shell Environment
+
+Values can also be read from shell environment variables:
+
+```bash
+# Export variables
+export API_KEY=sk-xxx
+export ENV_NAME=production
+
+# Run the agent
+vm0 run my-agent "your prompt"
+```
+
 ## Value Resolution Priority
 
 When the same variable is defined in multiple places, VM0 uses this priority order:
 
-1. **CLI arguments** (highest priority)
-2. **Environment variables**
-3. **`.env` file** (lowest priority)
+1. **CLI flags** (`--vars`, `--secrets`) - highest priority
+2. **`--env-file`** values - medium priority
+3. **Shell environment** (`process.env`) - lowest priority
 
 Example:
 
 ```bash
 # .env file contains: API_KEY=from-env-file
-export API_KEY=from-environment
+# Shell has: export API_KEY=from-shell
 
 # CLI value wins
-vm0 run my-agent "prompt" --secrets API_KEY=from-cli
+vm0 run my-agent "prompt" --secrets API_KEY=from-cli --env-file .env
 # Result: API_KEY = "from-cli"
 
-# Without CLI flag, environment variable wins
+# Without CLI flag, --env-file wins over shell
+vm0 run my-agent "prompt" --env-file .env
+# Result: API_KEY = "from-env-file"
+
+# Without --env-file, shell environment is used
 vm0 run my-agent "prompt"
-# Result: API_KEY = "from-environment"
+# Result: API_KEY = "from-shell"
 ```
 
+## Managing Credentials
+
+Credentials are stored securely on the VM0 platform and automatically loaded when your agent runs. Use the CLI to manage your credentials.
+
+### Setting a Credential
+
+```bash
+vm0 credential set MY_API_KEY sk-xxx
+```
+
+You can add an optional description:
+
+```bash
+vm0 credential set MY_API_KEY sk-xxx -d "OpenAI API key for production"
+```
+
+### Listing Credentials
+
+```bash
+vm0 credential list
+```
+
+This shows credential names and metadata. Values are never displayed for security.
+
+### Deleting a Credential
+
+```bash
+vm0 credential delete MY_API_KEY
+```
+
+### Naming Rules
+
+Credential names must use uppercase letters, numbers, and underscores only:
+
+- `MY_API_KEY`
+- `GITHUB_TOKEN`
+- `AWS_ACCESS_KEY_ID`
+
+Names like `my-api-key` or `myApiKey` are not allowed.
+
 ## Best Practices
+
+### Use Credentials for Reusable Secrets
+
+For API keys you use repeatedly across multiple runs, store them as credentials:
+
+```bash
+# Set once
+vm0 credential set ANTHROPIC_API_KEY sk-xxx
+```
+
+Then use in any agent:
+
+```yaml title="vm0.yaml"
+environment:
+  ANTHROPIC_AUTH_TOKEN: "${{ credentials.ANTHROPIC_API_KEY }}"
+```
+
+### Use Secrets for CI/CD
+
+For values that change per-run or come from CI/CD systems, use secrets:
+
+```bash
+vm0 run my-agent "prompt" --secrets API_KEY=$CI_API_KEY
+```
 
 ### Keep Secrets Out of Version Control
 
@@ -149,7 +236,7 @@ Organize your configuration logically:
 environment:
   # Model Provider Configuration
   ANTHROPIC_BASE_URL: "${{ vars.MODEL_PROVIDER_BASE_URL }}"
-  ANTHROPIC_AUTH_TOKEN: "${{ secrets.MODEL_PROVIDER_API_KEY }}"
+  ANTHROPIC_AUTH_TOKEN: "${{ credentials.MODEL_PROVIDER_API_KEY }}"
 
   # Database Configuration
   DATABASE_URL: "${{ secrets.DATABASE_URL }}"

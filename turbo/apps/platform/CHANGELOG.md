@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.23.0](https://github.com/vm0-ai/vm0/compare/platform-v0.22.1...platform-v0.23.0) (2026-01-27)
+
+
+### Features
+
+* **docs:** trigger release for documentation updates ([#1697](https://github.com/vm0-ai/vm0/issues/1697)) ([c078287](https://github.com/vm0-ai/vm0/commit/c078287de06336abd3157fcaa056bdedcb47838d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 6.2.0
+
+## [0.22.1](https://github.com/vm0-ai/vm0/compare/platform-v0.22.0...platform-v0.22.1) (2026-01-27)
+
+
+### Bug Fixes
+
+* **platform:** improve test stability with act() and suppress console noise ([#1678](https://github.com/vm0-ai/vm0/issues/1678)) ([01f9181](https://github.com/vm0-ai/vm0/commit/01f9181a1212fbe2871a9b16fd266b6c871bbda0))
+
+## [0.22.0](https://github.com/vm0-ai/vm0/compare/platform-v0.21.2...platform-v0.22.0) (2026-01-26)
+
+
+### Features
+
+* **platform:** add settings page with model provider management ([#1652](https://github.com/vm0-ai/vm0/issues/1652)) ([6eab110](https://github.com/vm0-ai/vm0/commit/6eab1104ea3680966da77f9cc25a444f65ff375a))
+* **platform:** redesign homepage and add settings page ([#1639](https://github.com/vm0-ai/vm0/issues/1639)) ([b0515d5](https://github.com/vm0-ai/vm0/commit/b0515d5e75149dd92a11f14f6b80c6661f76afa5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 6.1.0
+
+## [0.21.2](https://github.com/vm0-ai/vm0/compare/platform-v0.21.1...platform-v0.21.2) (2026-01-26)
+
+
+### Bug Fixes
+
+* **platform:** wait for async operations in home page test ([#1624](https://github.com/vm0-ai/vm0/issues/1624)) ([a5d89aa](https://github.com/vm0-ai/vm0/commit/a5d89aa569a85b5a08761454ad623feb605cd6d7))
+
 ## [0.21.1](https://github.com/vm0-ai/vm0/compare/platform-v0.21.0...platform-v0.21.1) (2026-01-24)
 
 

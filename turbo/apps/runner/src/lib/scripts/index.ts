@@ -1,15 +1,12 @@
 /**
- * Agent execution scripts (TypeScript bundled to ESM .mjs)
- * Re-exports all script constants for use by executor
- * Script content is shared with E2B service via @vm0/core
+ * Agent execution scripts configuration
+ *
+ * Note: Script content is no longer exported here - scripts are pre-bundled
+ * in the rootfs image during build. See: apps/runner/scripts/deploy/build-rootfs.sh
+ *
+ * Only paths are exported for runtime usage (e.g., running download script).
  */
-export {
-  RUN_AGENT_SCRIPT,
-  DOWNLOAD_SCRIPT,
-  MOCK_CLAUDE_SCRIPT,
-  ENV_LOADER_SCRIPT,
-  SCRIPT_PATHS,
-} from "@vm0/core";
+export { SCRIPT_PATHS } from "@vm0/core";
 
 /**
  * Environment loader script path

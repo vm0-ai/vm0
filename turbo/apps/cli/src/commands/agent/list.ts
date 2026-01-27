@@ -20,15 +20,9 @@ export const listCommand = new Command()
   .name("list")
   .alias("ls")
   .description("List all agent composes")
-  .option("-s, --scope <scope>", "Scope to list composes from")
-  .action(async (options: { scope?: string }) => {
+  .action(async () => {
     try {
-      // Build URL with optional scope parameter
-      const url = options.scope
-        ? `/api/agent/composes/list?scope=${encodeURIComponent(options.scope)}`
-        : "/api/agent/composes/list";
-
-      const response = await httpGet(url);
+      const response = await httpGet("/api/agent/composes/list");
 
       if (!response.ok) {
         const error = (await response.json()) as ApiError;

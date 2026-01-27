@@ -4,18 +4,14 @@ import * as path from "path";
 import * as os from "os";
 import {
   loadAgentName,
-  loadScheduleName,
   formatRelativeTime,
 } from "../../../lib/domain/schedule-utils";
 
 /**
  * Unit tests for schedule command validation logic.
  *
- * These tests cover validation scenarios that were previously tested in E2E tests
- * but are better suited for unit tests since they test pure logic without
- * requiring real API calls or server interaction.
- *
- * Related E2E tests in t20-vm0-schedule.bats focus on integration workflows.
+ * These tests cover validation scenarios for the agent-centric schedule commands.
+ * All schedule commands now use agent name as the primary identifier.
  */
 describe("schedule command validation", () => {
   let tempDir: string;
@@ -97,58 +93,7 @@ agents: {}
     });
   });
 
-  describe("loadScheduleName", () => {
-    it("should return null when schedule.yaml does not exist", () => {
-      const result = loadScheduleName();
-      expect(result.scheduleName).toBeNull();
-      expect(result.error).toBeUndefined();
-    });
-
-    it("should return schedule name from valid schedule.yaml", () => {
-      writeFileSync(
-        path.join(tempDir, "schedule.yaml"),
-        `version: "1.0"
-schedules:
-  my-schedule:
-    on:
-      cron: "0 9 * * *"
-    run:
-      agent: my-agent
-      prompt: "Run task"
-`,
-      );
-
-      const result = loadScheduleName();
-      expect(result.scheduleName).toBe("my-schedule");
-      expect(result.error).toBeUndefined();
-    });
-
-    it("should return error when schedules section is missing", () => {
-      writeFileSync(
-        path.join(tempDir, "schedule.yaml"),
-        `version: "1.0"
-other_key: value
-`,
-      );
-
-      const result = loadScheduleName();
-      expect(result.scheduleName).toBeNull();
-      expect(result.error).toBe("No schedules defined in schedule.yaml");
-    });
-
-    it("should return error for invalid YAML syntax", () => {
-      writeFileSync(
-        path.join(tempDir, "schedule.yaml"),
-        "invalid: yaml: : : content",
-      );
-
-      const result = loadScheduleName();
-      expect(result.scheduleName).toBeNull();
-      expect(result.error).toBeDefined();
-    });
-  });
-
-  describe("schedule init validation", () => {
+  describe("schedule setup validation", () => {
     it("should detect when vm0.yaml exists", () => {
       // No vm0.yaml exists
       expect(existsSync(path.join(tempDir, "vm0.yaml"))).toBe(false);
@@ -164,27 +109,6 @@ agents:
       );
 
       expect(existsSync(path.join(tempDir, "vm0.yaml"))).toBe(true);
-    });
-
-    it("should detect when schedule.yaml already exists (file collision)", () => {
-      // No schedule.yaml exists
-      expect(existsSync(path.join(tempDir, "schedule.yaml"))).toBe(false);
-
-      // Create schedule.yaml
-      writeFileSync(
-        path.join(tempDir, "schedule.yaml"),
-        `version: "1.0"
-schedules:
-  existing:
-    on:
-      cron: "0 9 * * *"
-    run:
-      agent: agent
-      prompt: "test"
-`,
-      );
-
-      expect(existsSync(path.join(tempDir, "schedule.yaml"))).toBe(true);
     });
   });
 
@@ -224,10 +148,10 @@ schedules:
     });
   });
 
-  describe("day parsing for schedule init", () => {
+  describe("day parsing for schedule setup", () => {
     /**
-     * Test the day parsing logic used in schedule init command.
-     * This replaces E2E tests for frequency-to-cron conversion.
+     * Test the day parsing logic used in schedule setup command.
+     * This tests frequency-to-cron conversion logic.
      */
     const parseDayOption = (
       day: string,

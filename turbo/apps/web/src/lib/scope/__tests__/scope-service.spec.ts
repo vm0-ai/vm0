@@ -88,18 +88,12 @@ describe("Scope Service", () => {
 
     describe("createScope", () => {
       it("should create a scope successfully", async () => {
-        const scope = await createScope(
-          testSlug,
-          "personal",
-          testUserId,
-          "Test Scope",
-        );
+        const scope = await createScope(testSlug, "personal", testUserId);
 
         expect(scope).toBeDefined();
         expect(scope.slug).toBe(testSlug);
         expect(scope.type).toBe("personal");
         expect(scope.ownerId).toBe(testUserId);
-        expect(scope.displayName).toBe("Test Scope");
         expect(scope.id).toBeDefined();
       });
 
@@ -171,13 +165,12 @@ describe("Scope Service", () => {
         const userId = `test-create-user-${Date.now()}`;
         const slug = `user-create-${Date.now()}`;
 
-        const scope = await createUserScope(userId, slug, "My Personal Scope");
+        const scope = await createUserScope(userId, slug);
 
         expect(scope).toBeDefined();
         expect(scope.slug).toBe(slug);
         expect(scope.type).toBe("personal");
         expect(scope.ownerId).toBe(userId);
-        expect(scope.displayName).toBe("My Personal Scope");
       });
 
       it("should reject if user already has a scope", async () => {

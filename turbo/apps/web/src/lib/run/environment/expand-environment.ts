@@ -88,7 +88,7 @@ export function expandEnvironmentFromCompose(
     );
     if (missingSecrets.length > 0) {
       throw new BadRequestError(
-        `Missing required secrets: ${missingSecrets.join(", ")}. Use '--secrets ${missingSecrets[0]}=<value>' to provide them.`,
+        `Missing required secrets: ${missingSecrets.join(", ")}. Use '--secrets ${missingSecrets[0]}=<value>' or '--env-file <path>' to provide them.`,
       );
     }
 
@@ -190,7 +190,7 @@ export function expandEnvironmentFromCompose(
     .map((v) => v.name);
   if (missingVarNames.length > 0) {
     throw new BadRequestError(
-      `Missing required variables for environment: ${missingVarNames.join(", ")}`,
+      `Missing required variables: ${missingVarNames.join(", ")}. Use '--vars ${missingVarNames[0]}=<value>' or '--env-file <path>' to provide them.`,
     );
   }
 

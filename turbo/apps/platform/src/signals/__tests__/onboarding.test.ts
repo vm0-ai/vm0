@@ -12,6 +12,7 @@ import {
   closeOnboardingModal$,
   startOnboarding$,
 } from "../onboarding.ts";
+import { act } from "@testing-library/react";
 
 const context = testContext();
 
@@ -106,10 +107,15 @@ describe("saveOnboardingConfig$", () => {
 
     await setupPage({ context, path: "/" });
 
-    // Set token value and save
-    context.store.set(startOnboarding$);
-    context.store.set(setTokenValue$, "test-oauth-token");
-    await context.store.set(saveOnboardingConfig$, context.signal);
+    await act(() => {
+      // Set token value and save
+      context.store.set(startOnboarding$);
+      context.store.set(setTokenValue$, "test-oauth-token");
+    });
+
+    await act(async () => {
+      await context.store.set(saveOnboardingConfig$, context.signal);
+    });
 
     expect(scopeCreated).toBeTruthy();
     expect(providerCreated).toBeTruthy();
@@ -128,9 +134,11 @@ describe("saveOnboardingConfig$", () => {
 
     await setupPage({ context, path: "/" });
 
-    // Try to save without setting token
-    context.store.set(startOnboarding$);
-    await context.store.set(saveOnboardingConfig$, context.signal);
+    await act(async () => {
+      // Try to save without setting token
+      context.store.set(startOnboarding$);
+      await context.store.set(saveOnboardingConfig$, context.signal);
+    });
 
     expect(providerCreated).toBeFalsy();
   });
@@ -157,8 +165,10 @@ describe("closeOnboardingModal$", () => {
 
     await setupPage({ context, path: "/" });
 
-    context.store.set(startOnboarding$);
-    await context.store.set(closeOnboardingModal$, context.signal);
+    await act(async () => {
+      context.store.set(startOnboarding$);
+      await context.store.set(closeOnboardingModal$, context.signal);
+    });
 
     expect(scopeCreated).toBeTruthy();
     expect(providerCreated).toBeFalsy();
@@ -178,8 +188,10 @@ describe("closeOnboardingModal$", () => {
     // Default mock has scope
     await setupPage({ context, path: "/" });
 
-    context.store.set(startOnboarding$);
-    await context.store.set(closeOnboardingModal$, context.signal);
+    await act(async () => {
+      context.store.set(startOnboarding$);
+      await context.store.set(closeOnboardingModal$, context.signal);
+    });
 
     expect(scopeCreated).toBeFalsy();
     expect(context.store.get(showOnboardingModal$)).toBeFalsy();

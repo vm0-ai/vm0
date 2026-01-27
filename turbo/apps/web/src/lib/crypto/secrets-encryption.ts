@@ -1,7 +1,4 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
-import { logger } from "../logger";
-
-const log = logger("crypto:secrets");
 
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12; // 96 bits for GCM
@@ -20,14 +17,7 @@ export function encryptSecrets(
   }
 
   if (!encryptionKey) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("SECRETS_ENCRYPTION_KEY must be set in production");
-    }
-    // Only allow unencrypted storage in development/test
-    log.debug(
-      "SECRETS_ENCRYPTION_KEY not configured, using unencrypted storage (dev mode)",
-    );
-    return JSON.stringify({ unencrypted: true, data: secrets });
+    throw new Error("SECRETS_ENCRYPTION_KEY is required");
   }
 
   const key = Buffer.from(encryptionKey, "hex");
@@ -69,20 +59,8 @@ export function decryptSecrets(
     return null;
   }
 
-  // Check for unencrypted data (fallback when key not configured)
-  try {
-    const parsed = JSON.parse(encryptedData);
-    if (parsed.unencrypted === true) {
-      return parsed.data as string[];
-    }
-  } catch {
-    // Not JSON, continue with decryption
-  }
-
   if (!encryptionKey) {
-    throw new Error(
-      "SECRETS_ENCRYPTION_KEY not configured but encrypted data found",
-    );
+    throw new Error("SECRETS_ENCRYPTION_KEY is required");
   }
 
   const key = Buffer.from(encryptionKey, "hex");
@@ -127,13 +105,7 @@ export function encryptSecretsMap(
   }
 
   if (!encryptionKey) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("SECRETS_ENCRYPTION_KEY must be set in production");
-    }
-    log.debug(
-      "SECRETS_ENCRYPTION_KEY not configured, using unencrypted storage (dev mode)",
-    );
-    return JSON.stringify({ unencrypted: true, data: secrets });
+    throw new Error("SECRETS_ENCRYPTION_KEY is required");
   }
 
   const key = Buffer.from(encryptionKey, "hex");
@@ -175,20 +147,8 @@ export function decryptSecretsMap(
     return null;
   }
 
-  // Check for unencrypted data (fallback when key not configured)
-  try {
-    const parsed = JSON.parse(encryptedData);
-    if (parsed.unencrypted === true) {
-      return parsed.data as Record<string, string>;
-    }
-  } catch {
-    // Not JSON, continue with decryption
-  }
-
   if (!encryptionKey) {
-    throw new Error(
-      "SECRETS_ENCRYPTION_KEY not configured but encrypted data found",
-    );
+    throw new Error("SECRETS_ENCRYPTION_KEY is required");
   }
 
   const key = Buffer.from(encryptionKey, "hex");
@@ -228,13 +188,7 @@ export function encryptCredentialValue(
   encryptionKey: string | undefined,
 ): string {
   if (!encryptionKey) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("SECRETS_ENCRYPTION_KEY must be set in production");
-    }
-    log.debug(
-      "SECRETS_ENCRYPTION_KEY not configured, using unencrypted storage (dev mode)",
-    );
-    return JSON.stringify({ unencrypted: true, data: value });
+    throw new Error("SECRETS_ENCRYPTION_KEY is required");
   }
 
   const key = Buffer.from(encryptionKey, "hex");
@@ -268,20 +222,8 @@ export function decryptCredentialValue(
   encryptedData: string,
   encryptionKey: string | undefined,
 ): string {
-  // Check for unencrypted data (fallback when key not configured)
-  try {
-    const parsed = JSON.parse(encryptedData);
-    if (parsed.unencrypted === true) {
-      return parsed.data as string;
-    }
-  } catch {
-    // Not JSON, continue with decryption
-  }
-
   if (!encryptionKey) {
-    throw new Error(
-      "SECRETS_ENCRYPTION_KEY not configured but encrypted data found",
-    );
+    throw new Error("SECRETS_ENCRYPTION_KEY is required");
   }
 
   const key = Buffer.from(encryptionKey, "hex");

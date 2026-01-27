@@ -13,7 +13,8 @@ type NavIconName =
   | "File"
   | "Files"
   | "SquareKey"
-  | "Sparkles";
+  | "Sparkles"
+  | "Settings";
 
 export interface NavItem {
   id: string;

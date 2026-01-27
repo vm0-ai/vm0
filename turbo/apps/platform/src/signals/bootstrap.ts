@@ -9,6 +9,7 @@ import {
 } from "./route.ts";
 import { setupHomePage$ } from "./home/home-page.ts";
 import { setupLogsPage$ } from "./logs-page/logs-page.ts";
+import { setupSettingsPage$ } from "./settings-page/settings-page.ts";
 import { hasScope$ } from "./scope.ts";
 import { logger } from "./log.ts";
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
@@ -27,6 +28,10 @@ const ROUTE_CONFIG = [
     setup: setupScopeRequiredPageWrapper(setupLogsPage$),
   },
   {
+    path: "/settings",
+    setup: setupScopeRequiredPageWrapper(setupSettingsPage$),
+  },
+  {
     path: "/_playground",
     setup: setupPageWrapper(setupPlaygroundPage$),
   },
@@ -41,7 +46,9 @@ export const bootstrap$ = command(
     set(setRootSignal$, signal);
 
     set(setupLoggers$);
-    set(setupGlobalMethod$, signal);
+    set(setupGlobalMethod$, signal).catch(() => {
+      // Global method setup runs in background, errors are non-fatal
+    });
 
     render();
 

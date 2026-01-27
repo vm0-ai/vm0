@@ -1,11 +1,15 @@
 import { eq, and, lte, inArray, desc } from "drizzle-orm";
 import { Cron } from "croner";
+import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
 import { agentSchedules } from "../../db/schema/agent-schedule";
-import { agentComposes } from "../../db/schema/agent-compose";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "../../db/schema/agent-compose";
 import { agentRuns } from "../../db/schema/agent-run";
 import { scopes } from "../../db/schema/scope";
 import { encryptSecretsMap, decryptSecretsMap } from "../crypto";
-import { NotFoundError, BadRequestError } from "../errors";
+import { NotFoundError, BadRequestError, SchedulePastError } from "../errors";
 import { logger } from "../logger";
 import { runService } from "../run/run-service";
 import { generateSandboxToken } from "../auth/sandbox-token";
@@ -74,6 +78,54 @@ function isValidTimezone(timezone: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Extract required configuration from compose content
+ */
+function extractRequiredConfiguration(composeContent: unknown): {
+  secrets: string[];
+  vars: string[];
+  credentials: string[];
+} {
+  const result = {
+    secrets: [] as string[],
+    vars: [] as string[],
+    credentials: [] as string[],
+  };
+  if (!composeContent) return result;
+
+  const refs = extractVariableReferences(composeContent);
+  const grouped = groupVariablesBySource(refs);
+
+  result.secrets = grouped.secrets.map((r) => r.name);
+  result.vars = grouped.vars.map((r) => r.name);
+  result.credentials = grouped.credentials.map((r) => r.name);
+
+  return result;
+}
+
+/**
+ * Build error message for missing configuration
+ */
+function buildMissingConfigError(missing: {
+  secrets: string[];
+  vars: string[];
+  credentials: string[];
+}): string {
+  const parts: string[] = [];
+
+  if (missing.secrets.length > 0) {
+    parts.push(`Secrets: ${missing.secrets.join(", ")}`);
+  }
+  if (missing.vars.length > 0) {
+    parts.push(`Vars: ${missing.vars.join(", ")}`);
+  }
+  if (missing.credentials.length > 0) {
+    parts.push(`Credentials: ${missing.credentials.join(", ")}`);
+  }
+
+  return `Missing required configuration:\n  ${parts.join("\n  ")}`;
 }
 
 /**
@@ -194,7 +246,7 @@ export class ScheduleService {
       throw new BadRequestError(`Invalid timezone: ${request.timezone}`);
     }
 
-    // Check for existing schedule with same name on this compose
+    // Check for existing schedule with same name on this compose (needed for validation)
     const [existing] = await globalThis.services.db
       .select()
       .from(agentSchedules)
@@ -221,11 +273,72 @@ export class ScheduleService {
       }
     }
 
-    // Encrypt secrets if provided
-    const encryptedSecrets = encryptSecretsMap(
-      request.secrets ?? null,
-      globalThis.services.env.SECRETS_ENCRYPTION_KEY,
-    );
+    // Validate required secrets/vars/credentials against compose content
+    if (compose.headVersionId) {
+      const [version] = await globalThis.services.db
+        .select()
+        .from(agentComposeVersions)
+        .where(eq(agentComposeVersions.id, compose.headVersionId))
+        .limit(1);
+
+      if (version) {
+        const required = extractRequiredConfiguration(version.content);
+
+        // Determine effective secrets for validation:
+        // - If request.secrets is provided, use those
+        // - If request.secrets is undefined AND updating, use existing schedule's secrets
+        const providedSecrets = request.secrets
+          ? Object.keys(request.secrets)
+          : [];
+
+        // Extract existing secret names from encrypted secrets
+        let existingSecretNames: string[] = [];
+        if (existing?.encryptedSecrets) {
+          const decrypted = decryptSecretsMap(
+            existing.encryptedSecrets,
+            globalThis.services.env.SECRETS_ENCRYPTION_KEY,
+          );
+          if (decrypted) {
+            existingSecretNames = Object.keys(decrypted);
+          }
+        }
+
+        const effectiveSecretNames =
+          request.secrets === undefined && existing
+            ? existingSecretNames
+            : providedSecrets;
+
+        const missingSecrets = required.secrets.filter(
+          (name) => !effectiveSecretNames.includes(name),
+        );
+
+        const providedVars = request.vars ? Object.keys(request.vars) : [];
+        const missingVars = required.vars.filter(
+          (name) => !providedVars.includes(name),
+        );
+        // Credentials are not provided via schedule setup (they come from platform)
+        // so we don't validate them here
+
+        if (missingSecrets.length > 0 || missingVars.length > 0) {
+          throw new BadRequestError(
+            buildMissingConfigError({
+              secrets: missingSecrets,
+              vars: missingVars,
+              credentials: [],
+            }),
+          );
+        }
+      }
+    }
+
+    // Encrypt secrets if provided, or preserve existing secrets if updating without new secrets
+    const encryptedSecrets =
+      request.secrets !== undefined
+        ? encryptSecretsMap(
+            request.secrets,
+            globalThis.services.env.SECRETS_ENCRYPTION_KEY,
+          )
+        : (existing?.encryptedSecrets ?? null);
 
     // Calculate next run time
     let nextRunAt: Date | null = null;
@@ -286,7 +399,7 @@ export class ScheduleService {
           artifactName: request.artifactName ?? null,
           artifactVersion: request.artifactVersion ?? null,
           volumeVersions: request.volumeVersions ?? null,
-          enabled: true,
+          enabled: false,
           nextRunAt,
           createdAt: now,
           updatedAt: now,
@@ -508,6 +621,11 @@ export class ScheduleService {
       // For one-time schedules, check if atTime is in the future
       if (schedule.atTime > new Date()) {
         nextRunAt = schedule.atTime;
+      } else {
+        // Refuse to enable past one-time schedules
+        throw new SchedulePastError(
+          `Cannot enable schedule: scheduled time ${schedule.atTime.toISOString()} has already passed`,
+        );
       }
     }
 
@@ -683,27 +801,74 @@ export class ScheduleService {
       return;
     }
 
-    // Generate sandbox token with the run ID
-    const sandboxToken = await generateSandboxToken(compose.userId, run.id);
+    // Update lastRunId immediately to prevent duplicate runs
+    // This ensures skip-if-active check works even if subsequent steps fail
+    await globalThis.services.db
+      .update(agentSchedules)
+      .set({ lastRunId: run.id })
+      .where(eq(agentSchedules.id, schedule.id));
 
-    // Build execution context and dispatch
-    const context = await runService.buildExecutionContext({
-      runId: run.id,
-      agentComposeVersionId: compose.headVersionId,
-      prompt: schedule.prompt,
-      sandboxToken,
-      userId: compose.userId,
-      vars: schedule.vars ?? undefined,
-      secrets: secrets ?? undefined,
-      artifactName: schedule.artifactName ?? undefined,
-      artifactVersion: schedule.artifactVersion ?? undefined,
-      volumeVersions: schedule.volumeVersions ?? undefined,
-      agentName: compose.name,
-    });
+    try {
+      // Generate sandbox token with the run ID
+      const sandboxToken = await generateSandboxToken(compose.userId, run.id);
 
-    await runService.prepareAndDispatch(context);
+      // Build execution context and dispatch
+      const context = await runService.buildExecutionContext({
+        runId: run.id,
+        agentComposeVersionId: compose.headVersionId,
+        prompt: schedule.prompt,
+        sandboxToken,
+        userId: compose.userId,
+        vars: schedule.vars ?? undefined,
+        secrets: secrets ?? undefined,
+        artifactName: schedule.artifactName ?? undefined,
+        artifactVersion: schedule.artifactVersion ?? undefined,
+        volumeVersions: schedule.volumeVersions ?? undefined,
+        agentName: compose.name,
+      });
 
-    // Calculate next run time
+      await runService.prepareAndDispatch(context);
+    } catch (error) {
+      // Mark run as failed with error message
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      log.error(`Run ${run.id} failed during preparation: ${errorMessage}`);
+
+      await globalThis.services.db
+        .update(agentRuns)
+        .set({
+          status: "failed",
+          completedAt: new Date(),
+          error: errorMessage,
+        })
+        .where(eq(agentRuns.id, run.id));
+
+      // Update schedule state (disable one-time, advance cron)
+      if (schedule.cronExpression) {
+        const nextRunAt = this.calculateNextRun(
+          schedule.cronExpression,
+          schedule.timezone,
+        );
+        await globalThis.services.db
+          .update(agentSchedules)
+          .set({ lastRunAt: new Date(), nextRunAt })
+          .where(eq(agentSchedules.id, schedule.id));
+        log.debug(
+          `Cron schedule ${schedule.name} failed, next run at ${nextRunAt?.toISOString()}`,
+        );
+      } else {
+        // One-time schedule: disable after failed execution
+        await globalThis.services.db
+          .update(agentSchedules)
+          .set({ enabled: false, lastRunAt: new Date(), nextRunAt: null })
+          .where(eq(agentSchedules.id, schedule.id));
+        log.debug(`One-time schedule ${schedule.name} failed and disabled`);
+      }
+
+      throw error; // Re-throw so executeDueSchedules counts it as skipped
+    }
+
+    // Calculate next run time for success path
     let nextRunAt: Date | null = null;
     if (schedule.cronExpression) {
       nextRunAt = this.calculateNextRun(
@@ -711,13 +876,12 @@ export class ScheduleService {
         schedule.timezone,
       );
     } else {
-      // One-time schedule: disable after execution
+      // One-time schedule: disable after successful execution
       await globalThis.services.db
         .update(agentSchedules)
         .set({
           enabled: false,
           lastRunAt: new Date(),
-          lastRunId: run.id,
           nextRunAt: null,
         })
         .where(eq(agentSchedules.id, schedule.id));
@@ -725,12 +889,11 @@ export class ScheduleService {
       return;
     }
 
-    // Update schedule with next run time
+    // Update schedule with next run time (lastRunId already set above)
     await globalThis.services.db
       .update(agentSchedules)
       .set({
         lastRunAt: new Date(),
-        lastRunId: run.id,
         nextRunAt,
       })
       .where(eq(agentSchedules.id, schedule.id));

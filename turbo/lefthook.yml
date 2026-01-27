@@ -24,3 +24,13 @@ pre-commit:
         - rebase
       fail_text: "Knip found unused code. Run 'cd turbo && pnpm knip' to see details."
       timeout: 60
+    check-file-size:
+      run: ./scripts/check-file-size.sh {staged_files}
+      glob: "**/*"
+      exclude:
+        - "turbo/apps/*/public/og-image.png"
+        - "turbo/apps/*/public/assets/cta-ellipse.png"
+        - "turbo/apps/*/public/assets/code_illustration.svg"
+      fail_text: |
+        File size check failed. Some staged files exceed the 1MB limit.
+        Run 'git diff --cached --name-only' to see staged files.

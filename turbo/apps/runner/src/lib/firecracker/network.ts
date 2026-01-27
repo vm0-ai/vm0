@@ -257,41 +257,42 @@ async function clearStaleIptablesRulesForIP(ip: string): Promise<void> {
  * Create and configure a TAP device for a VM
  * Uses the IP pool manager for race-safe IP allocation
  */
-export async function createTapDevice(vmId: string): Promise<VMNetworkConfig> {
+export async function createTapDevice(
+  vmId: string,
+  logger?: (msg: string) => void,
+): Promise<VMNetworkConfig> {
+  const log = logger ?? console.log;
+
   // TAP device name limited to 15 chars, use "tap" + first 8 chars of vmId
   const tapDevice = `tap${vmId.substring(0, 8)}`;
   const guestMac = generateMacAddress(vmId);
 
   // Allocate IP from pool (race-safe with file locking)
   const guestIp = await allocateIP(vmId);
+  log(`[VM ${vmId}] IP allocated: ${guestIp}`);
 
   // Clear any stale iptables rules for this IP from previous VMs
   // This prevents leftover REDIRECT rules from interfering with network
   await clearStaleIptablesRulesForIP(guestIp);
-
-  console.log(`Creating TAP device ${tapDevice} for VM ${vmId}...`);
-
-  // Ensure bridge exists
-  await setupBridge();
+  log(`[VM ${vmId}] Stale iptables cleared`);
 
   // Delete existing TAP device if it exists (from previous runs or failed cleanup)
   if (await tapDeviceExists(tapDevice)) {
-    console.log(`TAP device ${tapDevice} already exists, deleting it first...`);
+    log(`[VM ${vmId}] TAP device ${tapDevice} already exists, deleting...`);
     await deleteTapDevice(tapDevice);
   }
 
   // Create TAP device
   await execCommand(`ip tuntap add ${tapDevice} mode tap`);
+  log(`[VM ${vmId}] TAP device created`);
 
   // Add TAP to bridge
   await execCommand(`ip link set ${tapDevice} master ${BRIDGE_NAME}`);
+  log(`[VM ${vmId}] TAP added to bridge`);
 
   // Bring TAP up
   await execCommand(`ip link set ${tapDevice} up`);
-
-  console.log(
-    `TAP ${tapDevice} created: guest MAC ${guestMac}, guest IP ${guestIp}`,
-  );
+  log(`[VM ${vmId}] TAP created: ${tapDevice}, MAC ${guestMac}, IP ${guestIp}`);
 
   return {
     tapDevice,

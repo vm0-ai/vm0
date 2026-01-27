@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.1.0](https://github.com/vm0-ai/vm0/compare/docs-v1.0.0...docs-v1.1.0) (2026-01-27)
+
+
+### Features
+
+* **docs:** trigger release for documentation updates ([#1697](https://github.com/vm0-ai/vm0/issues/1697)) ([c078287](https://github.com/vm0-ai/vm0/commit/c078287de06336abd3157fcaa056bdedcb47838d))
+
+## [1.0.0](https://github.com/vm0-ai/vm0/compare/docs-v0.21.0...docs-v1.0.0) (2026-01-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* The vm0 setup-github command has been removed. Users who need GitHub Actions workflows should set them up manually.
+
+### Features
+
+* remove setup-github command ([#1628](https://github.com/vm0-ai/vm0/issues/1628)) ([d82410e](https://github.com/vm0-ai/vm0/commit/d82410edd74e97a3218e30e6b185cd04a853fb91)), closes [#1625](https://github.com/vm0-ai/vm0/issues/1625)
+
 ## [0.21.0](https://github.com/vm0-ai/vm0/compare/docs-v0.20.1...docs-v0.21.0) (2026-01-24)
 
 

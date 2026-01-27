@@ -305,36 +305,22 @@ describe("validateAgentCompose", () => {
       expect(result.error).toContain("Invalid agent name format");
     });
 
-    it("should reject config with missing working_dir when framework not supported", () => {
+    it("should accept config with custom framework (server validates supported frameworks)", () => {
+      // Custom/unsupported frameworks are now validated server-side
+      // The CLI just passes through - server will return 400 if unsupported
       const config = {
         version: "1.0",
         agents: {
           "test-agent": {
             image: "custom-image",
             framework: "custom-framework",
+            working_dir: "/workspace",
           },
         },
       };
 
       const result = validateAgentCompose(config);
-      expect(result.valid).toBe(false);
-      expect(result.error).toContain("agent.working_dir");
-    });
-
-    it("should reject config with missing image when framework not supported", () => {
-      const config = {
-        version: "1.0",
-        agents: {
-          "test-agent": {
-            framework: "custom-framework",
-            working_dir: "/home/user/workspace",
-          },
-        },
-      };
-
-      const result = validateAgentCompose(config);
-      expect(result.valid).toBe(false);
-      expect(result.error).toContain("agent.image");
+      expect(result.valid).toBe(true);
     });
 
     it("should reject config with missing framework", () => {

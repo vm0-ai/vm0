@@ -1,5 +1,64 @@
 # Changelog
 
+## [10.11.0](https://github.com/vm0-ai/vm0/compare/web-v10.10.0...web-v10.11.0) (2026-01-27)
+
+
+### Features
+
+* **docs:** trigger release for documentation updates ([#1697](https://github.com/vm0-ai/vm0/issues/1697)) ([c078287](https://github.com/vm0-ai/vm0/commit/c078287de06336abd3157fcaa056bdedcb47838d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 6.2.0
+
+## [10.10.0](https://github.com/vm0-ai/vm0/compare/web-v10.9.1...web-v10.10.0) (2026-01-27)
+
+
+### Features
+
+* improve google sign-in button styling with hover effects ([#1692](https://github.com/vm0-ai/vm0/issues/1692)) ([03ad4ba](https://github.com/vm0-ai/vm0/commit/03ad4ba8e1d9c516f1967e7d444d008f548d244c))
+
+## [10.9.1](https://github.com/vm0-ai/vm0/compare/web-v10.9.0...web-v10.9.1) (2026-01-27)
+
+
+### Bug Fixes
+
+* preserve existing secrets when updating schedule ([#1682](https://github.com/vm0-ai/vm0/issues/1682)) ([4a6150a](https://github.com/vm0-ai/vm0/commit/4a6150a6b0b126e0bb2a58899e4eab8c68fa7007)), closes [#1679](https://github.com/vm0-ai/vm0/issues/1679)
+* prevent sign-in/sign-up routes from i18n locale redirects ([#1680](https://github.com/vm0-ai/vm0/issues/1680)) ([29a6a08](https://github.com/vm0-ai/vm0/commit/29a6a0850984a4305fc2efb3ee229fb7b26b68e5))
+
+## [10.9.0](https://github.com/vm0-ai/vm0/compare/web-v10.8.0...web-v10.9.0) (2026-01-27)
+
+
+### Features
+
+* enhance auth pages with brand gradient background and improved styling ([#1676](https://github.com/vm0-ai/vm0/issues/1676)) ([ab5fc44](https://github.com/vm0-ai/vm0/commit/ab5fc4400f4065d0548116b3a1bff0c807f425db))
+* improve cli auth success page ui ([#1663](https://github.com/vm0-ai/vm0/issues/1663)) ([af71dfe](https://github.com/vm0-ai/vm0/commit/af71dfe438b5d13854996880fa5d62c8cafb3d7f))
+
+## [10.8.0](https://github.com/vm0-ai/vm0/compare/web-v10.7.2...web-v10.8.0) (2026-01-26)
+
+
+### Features
+
+* improve cli auth page ui and design system ([#1656](https://github.com/vm0-ai/vm0/issues/1656)) ([eb1ef40](https://github.com/vm0-ai/vm0/commit/eb1ef40c74a5fea169ef6c36af5425dbcece1f25))
+* **platform:** redesign homepage and add settings page ([#1639](https://github.com/vm0-ai/vm0/issues/1639)) ([b0515d5](https://github.com/vm0-ai/vm0/commit/b0515d5e75149dd92a11f14f6b80c6661f76afa5))
+
+
+### Bug Fixes
+
+* **cli:** improve missing secrets/vars error messages to mention --env-file option ([#1654](https://github.com/vm0-ai/vm0/issues/1654)) ([14dbaef](https://github.com/vm0-ai/vm0/commit/14dbaef49248e2397a1c01dedc2afaa9a1409590))
+* mark scheduled runs as failed when execution preparation fails ([#1657](https://github.com/vm0-ai/vm0/issues/1657)) ([8fda8c0](https://github.com/vm0-ai/vm0/commit/8fda8c0f7384cc0e536255d90e1aea934bd311e6)), closes [#1653](https://github.com/vm0-ai/vm0/issues/1653)
+* **schedule:** validate required secrets/vars before schedule creation ([#1659](https://github.com/vm0-ai/vm0/issues/1659)) ([0c7908e](https://github.com/vm0-ai/vm0/commit/0c7908e0c673b741e7d4497326d9ed81151a9f14)), closes [#1650](https://github.com/vm0-ai/vm0/issues/1650)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 6.1.0
+
 ## [10.7.2](https://github.com/vm0-ai/vm0/compare/web-v10.7.1...web-v10.7.2) (2026-01-24)
 
 

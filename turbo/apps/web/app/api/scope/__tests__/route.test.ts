@@ -96,7 +96,7 @@ describe("/api/scope", () => {
       const request = new NextRequest("http://localhost:3000/api/scope", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug, displayName: "Test Scope" }),
+        body: JSON.stringify({ slug }),
       });
 
       const response = await POST(request);
@@ -104,7 +104,6 @@ describe("/api/scope", () => {
 
       expect(response.status).toBe(201);
       expect(data.slug).toBe(slug);
-      expect(data.displayName).toBe("Test Scope");
       expect(data.type).toBe("personal");
       expect(data.id).toBeDefined();
     });

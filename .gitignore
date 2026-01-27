@@ -4,6 +4,8 @@
 ### Node ###
 # Logs
 logs
+# Exception for platform logs API folder
+!**/app/api/platform/logs/
 *.log
 npm-debug.log*
 yarn-debug.log*

@@ -21,7 +21,7 @@ import {
 } from "./firecracker/network.js";
 import type { ExecutionContext } from "./api.js";
 import type { RunnerConfig } from "./config.js";
-import { SCRIPT_PATHS, ENV_LOADER_PATH } from "./scripts/index.js";
+import { ENV_LOADER_PATH } from "./scripts/index.js";
 import { getVMRegistry } from "./proxy/index.js";
 import { withSandboxTiming, recordRunnerOperation } from "./metrics/index.js";
 
@@ -34,11 +34,9 @@ import type {
 import { buildEnvironmentVariables, ENV_JSON_PATH } from "./executor-env.js";
 import { uploadNetworkLogs } from "./network-logs/index.js";
 import {
-  uploadScripts,
   downloadStorages,
   restoreSessionHistory,
   installProxyCA,
-  configureDNS,
 } from "./vm-setup/index.js";
 
 /**
@@ -199,6 +197,7 @@ export async function executeJob(
       rootfsPath: config.firecracker.rootfs,
       firecrackerBinary: config.firecracker.binary,
       workDir: path.join(workspacesDir, `vm0-${vmId}`),
+      logger: log,
     };
 
     // Create and start VM
@@ -259,15 +258,6 @@ export async function executeJob(
         await installProxyCA(guest, caCertPath);
       }
     }
-
-    // Configure DNS - systemd may have overwritten resolv.conf at boot
-    log(`[Executor] Configuring DNS...`);
-    await configureDNS(guest);
-
-    // Upload all Python scripts
-    log(`[Executor] Uploading scripts...`);
-    await withSandboxTiming("script_upload", () => uploadScripts(guest));
-    log(`[Executor] Scripts uploaded to ${SCRIPT_PATHS.baseDir}`);
 
     // Download storages if manifest provided
     if (context.storageManifest) {

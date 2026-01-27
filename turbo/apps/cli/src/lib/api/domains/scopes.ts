@@ -24,7 +24,6 @@ export async function getScope(): Promise<ScopeResponse> {
  */
 export async function createScope(body: {
   slug: string;
-  displayName?: string;
 }): Promise<ScopeResponse> {
   const config = await getClientConfig();
   const client = initClient(scopeContract, config);

@@ -1,6 +1,6 @@
 import { setupPage } from "../../../__tests__/helper";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
 import { pathname$ } from "../../../signals/route.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
@@ -18,7 +18,9 @@ describe("home page", () => {
       path: "/",
     });
 
-    expect(screen.getByText("Welcome. You're in.")).toBeDefined();
+    expect(
+      screen.getByText("Welcome. Let's build your agent fast."),
+    ).toBeDefined();
     expect(context.store.get(pathname$)).toBe("/");
   });
 
@@ -47,7 +49,9 @@ describe("home page", () => {
       path: "/",
     });
 
-    expect(screen.getByText(/First, tell us how your LLM works/)).toBeDefined();
+    expect(
+      screen.getByText(/First, tell us how your LLM works/),
+    ).toBeInTheDocument();
 
     // Save button should be disabled when token is empty
     const saveButton = screen.getByRole("button", { name: "Save" });
@@ -63,7 +67,7 @@ describe("home page", () => {
     // Click "Add it later" to close the modal
     await user.click(screen.getByText("Add it later"));
 
-    expect(screen.queryByText(/First, tell us how your LLM works/)).toBeNull();
+    expect(saveButton).not.toBeInTheDocument();
   });
 
   it("should show onboarding modal when no claude-code-oauth-token exists", async () => {
@@ -140,7 +144,9 @@ describe("home page", () => {
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     // Wait for async operations
-    expect(providerCreated).toBeTruthy();
+    await vi.waitFor(() => {
+      expect(providerCreated).toBeTruthy();
+    });
     expect(createdType).toBe("claude-code-oauth-token");
     expect(screen.queryByText(/First, tell us how your LLM works/)).toBeNull();
   });

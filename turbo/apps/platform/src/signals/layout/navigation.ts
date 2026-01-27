@@ -38,6 +38,12 @@ export const NAVIGATION_CONFIG = [
 
 export const FOOTER_NAV_ITEMS = [
   {
+    id: "settings",
+    label: "Settings",
+    icon: "Settings",
+    path: "/settings",
+  },
+  {
     id: "docs",
     label: "Documentation",
     icon: "HelpCircle",

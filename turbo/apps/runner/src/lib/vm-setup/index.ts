@@ -5,9 +5,7 @@
  */
 
 export {
-  uploadScripts,
   downloadStorages,
   restoreSessionHistory,
   installProxyCA,
-  configureDNS,
 } from "./vm-setup.js";

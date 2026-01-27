@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
-  extractVariableReferences,
   deriveAgentVariableSources,
   deriveComposeVariableSources,
 } from "../source-derivation";
@@ -39,148 +38,6 @@ describe("source-derivation", () => {
     vi.restoreAllMocks();
   });
 
-  describe("extractVariableReferences", () => {
-    it("should extract variables with ${VAR} syntax", () => {
-      const env = {
-        FOO: "${MY_VAR}",
-        BAR: "${ANOTHER_VAR}",
-      };
-      const result = extractVariableReferences(env);
-
-      expect(result.vars).toContain("MY_VAR");
-      expect(result.vars).toContain("ANOTHER_VAR");
-      expect(result.secrets).toHaveLength(0);
-    });
-
-    it("should extract variables with $VAR syntax", () => {
-      const env = {
-        FOO: "$MY_VAR",
-        BAR: "$ANOTHER_VAR",
-      };
-      const result = extractVariableReferences(env);
-
-      expect(result.vars).toContain("MY_VAR");
-      expect(result.vars).toContain("ANOTHER_VAR");
-    });
-
-    it("should classify _KEY suffix as secret", () => {
-      const env = {
-        API: "${MY_API_KEY}",
-      };
-      const result = extractVariableReferences(env);
-
-      expect(result.secrets).toContain("MY_API_KEY");
-      expect(result.vars).not.toContain("MY_API_KEY");
-    });
-
-    it("should classify _SECRET suffix as secret", () => {
-      const env = {
-        AUTH: "${AUTH_SECRET}",
-      };
-      const result = extractVariableReferences(env);
-
-      expect(result.secrets).toContain("AUTH_SECRET");
-    });
-
-    it("should classify _TOKEN suffix as secret", () => {
-      const env = {
-        AUTH: "${ACCESS_TOKEN}",
-      };
-      const result = extractVariableReferences(env);
-
-      expect(result.secrets).toContain("ACCESS_TOKEN");
-    });
-
-    it("should classify _PASSWORD suffix as secret", () => {
-      const env = {
-        DB: "${DB_PASSWORD}",
-      };
-      const result = extractVariableReferences(env);
-
-      expect(result.secrets).toContain("DB_PASSWORD");
-    });
-
-    it("should classify API_KEY containing names as secret", () => {
-      const env = {
-        OPENAI: "${OPENAI_API_KEY}",
-      };
-      const result = extractVariableReferences(env);
-
-      expect(result.secrets).toContain("OPENAI_API_KEY");
-    });
-
-    it("should classify SECRET containing names as secret", () => {
-      const env = {
-        AWS: "${AWS_SECRET_ACCESS_KEY}",
-      };
-      const result = extractVariableReferences(env);
-
-      expect(result.secrets).toContain("AWS_SECRET_ACCESS_KEY");
-    });
-
-    it("should handle multiple variables in one value", () => {
-      const env = {
-        CONNECTION: "${HOST}:${PORT}/${DATABASE}",
-      };
-      const result = extractVariableReferences(env);
-
-      expect(result.vars).toEqual(["DATABASE", "HOST", "PORT"]);
-    });
-
-    it("should deduplicate variables", () => {
-      const env = {
-        FOO: "${MY_VAR}",
-        BAR: "${MY_VAR}",
-        BAZ: "${MY_VAR}",
-      };
-      const result = extractVariableReferences(env);
-
-      expect(result.vars).toEqual(["MY_VAR"]);
-    });
-
-    it("should return sorted results", () => {
-      const env = {
-        A: "${ZEBRA}",
-        B: "${APPLE}",
-        C: "${MANGO}",
-      };
-      const result = extractVariableReferences(env);
-
-      expect(result.vars).toEqual(["APPLE", "MANGO", "ZEBRA"]);
-    });
-
-    it("should return empty arrays for empty environment", () => {
-      const result = extractVariableReferences({});
-
-      expect(result.secrets).toEqual([]);
-      expect(result.vars).toEqual([]);
-    });
-
-    it("should ignore values without variable references", () => {
-      const env = {
-        STATIC: "just-a-string",
-        NUMBER: "12345",
-      };
-      const result = extractVariableReferences(env);
-
-      expect(result.secrets).toEqual([]);
-      expect(result.vars).toEqual([]);
-    });
-
-    it("should handle mixed secrets and vars", () => {
-      const env = {
-        API: "${API_KEY}",
-        HOST: "${SERVER_HOST}",
-        TOKEN: "${AUTH_TOKEN}",
-        PORT: "${SERVER_PORT}",
-      };
-      const result = extractVariableReferences(env);
-
-      expect(result.secrets).toEqual(["API_KEY", "AUTH_TOKEN"]);
-      expect(result.vars).toEqual(["SERVER_HOST", "SERVER_PORT"]);
-    });
-  });
-
   describe("deriveAgentVariableSources", () => {
     it("should return empty sources for agent without environment", async () => {
       const agent = {
@@ -191,14 +48,89 @@ describe("source-derivation", () => {
 
       expect(result.secrets).toEqual([]);
       expect(result.vars).toEqual([]);
+      expect(result.credentials).toEqual([]);
     });
 
-    it("should return agent environment as source when no skills", async () => {
+    it("should extract secrets with ${{ secrets.X }} syntax", async () => {
       const agent = {
         framework: "claude-code",
         environment: {
-          API: "${API_KEY}",
-          HOST: "${SERVER_HOST}",
+          API_KEY: "${{ secrets.MY_API_KEY }}",
+          AUTH_TOKEN: "${{ secrets.AUTH_TOKEN }}",
+        },
+      };
+
+      const result = await deriveAgentVariableSources(agent);
+
+      expect(result.secrets).toHaveLength(2);
+      expect(result.secrets).toContainEqual({
+        name: "MY_API_KEY",
+        source: "agent environment",
+      });
+      expect(result.secrets).toContainEqual({
+        name: "AUTH_TOKEN",
+        source: "agent environment",
+      });
+      expect(result.vars).toEqual([]);
+      expect(result.credentials).toEqual([]);
+    });
+
+    it("should extract vars with ${{ vars.X }} syntax", async () => {
+      const agent = {
+        framework: "claude-code",
+        environment: {
+          DEBUG_MODE: "${{ vars.DEBUG }}",
+          LOG_LEVEL: "${{ vars.LOG_LEVEL }}",
+        },
+      };
+
+      const result = await deriveAgentVariableSources(agent);
+
+      expect(result.vars).toHaveLength(2);
+      expect(result.vars).toContainEqual({
+        name: "DEBUG",
+        source: "agent environment",
+      });
+      expect(result.vars).toContainEqual({
+        name: "LOG_LEVEL",
+        source: "agent environment",
+      });
+      expect(result.secrets).toEqual([]);
+      expect(result.credentials).toEqual([]);
+    });
+
+    it("should extract credentials with ${{ credentials.X }} syntax", async () => {
+      const agent = {
+        framework: "claude-code",
+        environment: {
+          DATABASE_URL: "${{ credentials.DB_URL }}",
+          REDIS_URL: "${{ credentials.REDIS_URL }}",
+        },
+      };
+
+      const result = await deriveAgentVariableSources(agent);
+
+      expect(result.credentials).toHaveLength(2);
+      expect(result.credentials).toContainEqual({
+        name: "DB_URL",
+        source: "agent environment",
+      });
+      expect(result.credentials).toContainEqual({
+        name: "REDIS_URL",
+        source: "agent environment",
+      });
+      expect(result.secrets).toEqual([]);
+      expect(result.vars).toEqual([]);
+    });
+
+    it("should handle mixed secrets, vars, and credentials", async () => {
+      const agent = {
+        framework: "claude-code",
+        environment: {
+          API_KEY: "${{ secrets.API_KEY }}",
+          DEBUG: "${{ vars.DEBUG }}",
+          DB_URL: "${{ credentials.DB_URL }}",
+          STATIC_VALUE: "hardcoded",
         },
       };
 
@@ -208,15 +140,35 @@ describe("source-derivation", () => {
         { name: "API_KEY", source: "agent environment" },
       ]);
       expect(result.vars).toEqual([
-        { name: "SERVER_HOST", source: "agent environment" },
+        { name: "DEBUG", source: "agent environment" },
       ]);
+      expect(result.credentials).toEqual([
+        { name: "DB_URL", source: "agent environment" },
+      ]);
+    });
+
+    it("should ignore static values without variable references", async () => {
+      const agent = {
+        framework: "claude-code",
+        environment: {
+          STATIC: "just-a-string",
+          NUMBER: "12345",
+          URL: "https://example.com",
+        },
+      };
+
+      const result = await deriveAgentVariableSources(agent);
+
+      expect(result.secrets).toEqual([]);
+      expect(result.vars).toEqual([]);
+      expect(result.credentials).toEqual([]);
     });
 
     it("should return agent environment as source when skipNetwork is true", async () => {
       const agent = {
         framework: "claude-code",
         environment: {
-          API: "${API_KEY}",
+          API: "${{ secrets.API_KEY }}",
         },
         skills: ["https://github.com/test/skills/tree/main/my-skill"],
       };
@@ -236,8 +188,8 @@ describe("source-derivation", () => {
       const agent = {
         framework: "claude-code",
         environment: {
-          API: "${OPENAI_API_KEY}",
-          HOST: "${SERVER_HOST}",
+          API: "${{ secrets.OPENAI_API_KEY }}",
+          HOST: "${{ vars.SERVER_HOST }}",
         },
         skills: ["https://github.com/test/skills/tree/main/openai-skill"],
       };
@@ -266,8 +218,8 @@ describe("source-derivation", () => {
       const agent = {
         framework: "claude-code",
         environment: {
-          MODEL: "${OPENAI_MODEL}",
-          HOST: "${SERVER_HOST}",
+          MODEL: "${{ vars.OPENAI_MODEL }}",
+          HOST: "${{ vars.SERVER_HOST }}",
         },
         skills: ["https://github.com/test/skills/tree/main/openai-skill"],
       };
@@ -295,7 +247,7 @@ describe("source-derivation", () => {
       const agent = {
         framework: "claude-code",
         environment: {
-          API: "${API_KEY}",
+          API: "${{ secrets.API_KEY }}",
         },
         skills: ["https://github.com/test/skills/tree/main/broken-skill"],
       };
@@ -314,9 +266,9 @@ describe("source-derivation", () => {
       const agent = {
         framework: "claude-code",
         environment: {
-          API: "${OPENAI_API_KEY}",
-          GH: "${GITHUB_TOKEN}",
-          HOST: "${SERVER_HOST}",
+          API: "${{ secrets.OPENAI_API_KEY }}",
+          GH: "${{ secrets.GITHUB_TOKEN }}",
+          HOST: "${{ vars.SERVER_HOST }}",
         },
         skills: [
           "https://github.com/test/skills/tree/main/openai-skill",
@@ -354,6 +306,24 @@ describe("source-derivation", () => {
         { name: "SERVER_HOST", source: "agent environment" },
       ]);
     });
+
+    it("should deduplicate variables referenced multiple times", async () => {
+      const agent = {
+        framework: "claude-code",
+        environment: {
+          API_KEY1: "${{ secrets.API_KEY }}",
+          API_KEY2: "${{ secrets.API_KEY }}",
+          API_KEY3: "${{ secrets.API_KEY }}",
+        },
+      };
+
+      const result = await deriveAgentVariableSources(agent);
+
+      expect(result.secrets).toHaveLength(1);
+      expect(result.secrets).toEqual([
+        { name: "API_KEY", source: "agent environment" },
+      ]);
+    });
   });
 
   describe("deriveComposeVariableSources", () => {
@@ -364,13 +334,13 @@ describe("source-derivation", () => {
           "main-agent": {
             framework: "claude-code",
             environment: {
-              API: "${API_KEY}",
+              API: "${{ secrets.API_KEY }}",
             },
           },
           "worker-agent": {
             framework: "claude-code",
             environment: {
-              HOST: "${SERVER_HOST}",
+              HOST: "${{ vars.SERVER_HOST }}",
             },
           },
         },
@@ -400,7 +370,7 @@ describe("source-derivation", () => {
           solo: {
             framework: "claude-code",
             environment: {
-              TOKEN: "${AUTH_TOKEN}",
+              TOKEN: "${{ secrets.AUTH_TOKEN }}",
             },
           },
         },
@@ -434,6 +404,35 @@ describe("source-derivation", () => {
       const sources = result.get("simple");
       expect(sources?.secrets).toEqual([]);
       expect(sources?.vars).toEqual([]);
+      expect(sources?.credentials).toEqual([]);
+    });
+
+    it("should handle compose with credentials", async () => {
+      const content = {
+        version: "1.0",
+        agents: {
+          "db-agent": {
+            framework: "claude-code",
+            environment: {
+              DATABASE_URL: "${{ credentials.DB_URL }}",
+              API_KEY: "${{ secrets.API_KEY }}",
+            },
+          },
+        },
+      };
+
+      const result = await deriveComposeVariableSources(content, {
+        skipNetwork: true,
+      });
+
+      expect(result.size).toBe(1);
+      const sources = result.get("db-agent");
+      expect(sources?.secrets).toEqual([
+        { name: "API_KEY", source: "agent environment" },
+      ]);
+      expect(sources?.credentials).toEqual([
+        { name: "DB_URL", source: "agent environment" },
+      ]);
     });
   });
 });

@@ -11,7 +11,7 @@ export const listCommand = new Command()
       const result = await listModelProviders();
 
       if (result.modelProviders.length === 0) {
-        console.log(chalk.dim("No model providers configured."));
+        console.log(chalk.dim("No model providers configured"));
         console.log();
         console.log("To add a model provider:");
         console.log(chalk.cyan("  vm0 model-provider setup"));
@@ -56,12 +56,12 @@ export const listCommand = new Command()
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes("Not authenticated")) {
-          console.error(chalk.red("x Not authenticated. Run: vm0 auth login"));
+          console.error(chalk.red("✗ Not authenticated. Run: vm0 auth login"));
         } else {
-          console.error(chalk.red(`x ${error.message}`));
+          console.error(chalk.red(`✗ ${error.message}`));
         }
       } else {
-        console.error(chalk.red("x An unexpected error occurred"));
+        console.error(chalk.red("✗ An unexpected error occurred"));
       }
       process.exit(1);
     }

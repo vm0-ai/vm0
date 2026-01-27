@@ -220,7 +220,7 @@
         - "{{ playbook_dir }}/../../turbo/apps/runner/scripts/deploy/*.sh"
       tags: [prepare]
 
-    - name: Copy vsock-agent files for rootfs build
+    - name: Copy rootfs build files
       copy:
         src: "{{ item }}"
         dest: "{{ runner_base_dir }}/deploy-runner/"
@@ -228,16 +228,9 @@
         group: "{{ ansible_user }}"
         mode: '0644'
       with_fileglob:
+        - "{{ playbook_dir }}/../../turbo/apps/runner/scripts/deploy/Dockerfile"
         - "{{ playbook_dir }}/../../turbo/apps/runner/scripts/deploy/vsock-agent.*"
-      tags: [prepare]
-
-    - name: Copy Dockerfile for rootfs build
-      copy:
-        src: "{{ playbook_dir }}/../../turbo/apps/runner/scripts/deploy/Dockerfile"
-        dest: "{{ runner_base_dir }}/deploy-runner/Dockerfile"
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: '0644'
+        - "{{ playbook_dir }}/../../turbo/packages/core/src/sandbox/scripts/dist/*.mjs"
       tags: [prepare]
 
     # ========================================
@@ -283,12 +276,14 @@
       tags: [prepare]
 
     # Calculate hash of all files that affect rootfs content
+    # Must match files copied above: Dockerfile, *.sh, vsock-agent.*, *.mjs
     - name: Calculate rootfs build inputs hash
       shell: |
-        cat "{{ runner_base_dir }}/deploy-runner/Dockerfile" \
-            "{{ runner_base_dir }}/deploy-runner/overlay-init.sh" \
-            "{{ runner_base_dir }}/deploy-runner/build-rootfs.sh" \
-        | sha256sum | cut -d' ' -f1
+        find "{{ runner_base_dir }}/deploy-runner/" \
+          \( -name "Dockerfile" -o -name "*.sh" -o -name "vsock-agent.*" -o -name "*.mjs" \) \
+          -type f -print0 | sort -z | xargs -0 cat | sha256sum | cut -d' ' -f1
+      args:
+        executable: /bin/bash
       register: rootfs_inputs_hash
       changed_when: false
       tags: [prepare]

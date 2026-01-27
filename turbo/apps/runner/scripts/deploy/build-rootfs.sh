@@ -113,17 +113,25 @@ create_squashfs_image() {
     echo "[EXTRACT] Extracting filesystem..."
     sudo tar -xf "$tar_path" -C "$EXTRACT_DIR"
 
-    # Ensure resolv.conf is a regular file (not a symlink)
-    # This is important because systemd-resolved creates a symlink
+    # Configure DNS by creating a static resolv.conf
     sudo rm -f "$EXTRACT_DIR/etc/resolv.conf"
     echo "nameserver 8.8.8.8" | sudo tee "$EXTRACT_DIR/etc/resolv.conf" > /dev/null
     echo "nameserver 8.8.4.4" | sudo tee -a "$EXTRACT_DIR/etc/resolv.conf" > /dev/null
     echo "nameserver 1.1.1.1" | sudo tee -a "$EXTRACT_DIR/etc/resolv.conf" > /dev/null
 
-    # Inject overlay-init script for OverlayFS boot
-    echo "[INJECT] Adding overlay-init script..."
-    sudo cp "$SCRIPT_DIR/overlay-init.sh" "$EXTRACT_DIR/sbin/overlay-init"
-    sudo chmod 755 "$EXTRACT_DIR/sbin/overlay-init"
+    # Install vm-init script (PID 1)
+    echo "[INSTALL] Installing vm-init..."
+    sudo cp "$SCRIPT_DIR/vm-init.sh" "$EXTRACT_DIR/sbin/vm-init"
+    sudo chmod 755 "$EXTRACT_DIR/sbin/vm-init"
+
+    # Install agent files (vsock-agent and ESM scripts)
+    echo "[INSTALL] Installing agent files..."
+    sudo cp "$SCRIPT_DIR/vsock-agent.py" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
+    sudo cp "$SCRIPT_DIR/run-agent.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
+    sudo cp "$SCRIPT_DIR/download.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
+    sudo cp "$SCRIPT_DIR/mock-claude.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
+    sudo cp "$SCRIPT_DIR/env-loader.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
+    sudo chmod +x "$EXTRACT_DIR/usr/local/bin/vm0-agent/"*
 
     # Create squashfs with xz compression (best compression ratio)
     echo "[SQUASH] Creating squashfs (this may take a moment)..."
@@ -173,18 +181,26 @@ verify_rootfs() {
         echo "  vsock-agent: installed"
     fi
 
-    if [ ! -f "$MOUNT_POINT/lib/systemd/systemd" ]; then
-        echo "ERROR: systemd not found in rootfs"
+    if [ ! -f "$MOUNT_POINT/usr/bin/tini" ]; then
+        echo "ERROR: tini not found in rootfs"
         ERRORS=$((ERRORS + 1))
     else
-        echo "  systemd: installed"
+        echo "  tini: installed"
     fi
 
-    if [ ! -f "$MOUNT_POINT/sbin/overlay-init" ]; then
-        echo "ERROR: overlay-init not found in rootfs"
+    if [ ! -f "$MOUNT_POINT/sbin/vm-init" ]; then
+        echo "ERROR: vm-init not found in rootfs"
         ERRORS=$((ERRORS + 1))
     else
-        echo "  overlay-init: installed"
+        echo "  vm-init: installed"
+    fi
+
+    # Check for agent scripts
+    if [ ! -f "$MOUNT_POINT/usr/local/bin/vm0-agent/run-agent.mjs" ]; then
+        echo "ERROR: run-agent.mjs not found in rootfs"
+        ERRORS=$((ERRORS + 1))
+    else
+        echo "  agent scripts: installed"
     fi
 
     # Check for Codex CLI (for framework: codex)

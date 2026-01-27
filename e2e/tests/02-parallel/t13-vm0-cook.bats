@@ -91,7 +91,7 @@ EOF
     fi
 }
 
-@test "cook command succeeds when variables are set in .env file" {
+@test "cook command succeeds when variables are set via --env-file" {
     # Skip if not authenticated (requires VM0_TOKEN or logged in)
     if $CLI_COMMAND auth status 2>&1 | grep -q "Not authenticated"; then
         skip "Not authenticated - run 'vm0 auth login' first"
@@ -118,8 +118,8 @@ EOF
 E2E_TEST_VAR=test-value-123
 EOF
 
-    echo "# Step 3: Run cook (should succeed)..."
-    run $CLI_COMMAND cook --no-auto-update
+    echo "# Step 3: Run cook with --env-file (should succeed)..."
+    run $CLI_COMMAND cook --no-auto-update --env-file .env
     assert_success
 
     echo "# Step 4: Verify normal cook output..."

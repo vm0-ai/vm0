@@ -2,17 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { readStorageConfig } from "../../lib/storage/storage-utils";
 import { directUpload } from "../../lib/storage/direct-upload";
-
-/**
- * Format bytes to human-readable format
- */
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
-}
+import { formatBytes } from "../../lib/utils/file-utils";
 
 export const pushCommand = new Command()
   .name("push")
@@ -57,7 +47,7 @@ export const pushCommand = new Command()
       const shortVersion = result.versionId.slice(0, 8);
 
       if (result.empty) {
-        console.log(chalk.yellow("No files found (empty artifact)"));
+        console.log(chalk.dim("No files found (empty artifact)"));
       } else if (result.deduplicated) {
         console.log(chalk.green("✓ Content unchanged (deduplicated)"));
       } else {

@@ -16,6 +16,7 @@ import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { scopes } from "../../../../../src/db/schema/scope";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { SUPPORTED_FRAMEWORKS } from "@vm0/core";
 
 /**
  * Helper to create a NextRequest for testing.
@@ -97,9 +98,7 @@ describe("Agent Compose Upsert Behavior", () => {
         version: "1.0",
         agents: {
           "test-agent-create": {
-            image: "vm0/claude-code:dev",
             framework: "claude-code",
-            working_dir: "/home/user/workspace",
           },
         },
       };
@@ -124,15 +123,150 @@ describe("Agent Compose Upsert Behavior", () => {
       expect(data.updatedAt).toBeDefined();
     });
 
+    it("should resolve image and working_dir server-side", async () => {
+      const config = {
+        version: "1.0",
+        agents: {
+          "test-server-resolve": {
+            framework: "claude-code",
+          },
+        },
+      };
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/composes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: config }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(201);
+
+      // Get the created compose to verify resolved values
+      const getRequest = createTestRequest(
+        `http://localhost:3000/api/agent/composes/${data.composeId}`,
+        { method: "GET" },
+      );
+
+      const getResponse = await GET(getRequest);
+      const composeData = await getResponse.json();
+
+      // Verify server resolved image and working_dir
+      const agent = composeData.content.agents["test-server-resolve"];
+      expect(agent.image).toMatch(/^vm0\/claude-code:/);
+      expect(agent.working_dir).toBe("/home/user/workspace");
+
+      // Cleanup
+      await globalThis.services.db
+        .delete(agentComposes)
+        .where(eq(agentComposes.id, data.composeId));
+    });
+
+    it("should resolve github app-specific image", async () => {
+      const config = {
+        version: "1.0",
+        agents: {
+          "test-github-app": {
+            framework: "claude-code",
+            apps: ["github"],
+          },
+        },
+      };
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/composes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: config }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(201);
+
+      // Get the created compose to verify resolved values
+      const getRequest = createTestRequest(
+        `http://localhost:3000/api/agent/composes/${data.composeId}`,
+        { method: "GET" },
+      );
+
+      const getResponse = await GET(getRequest);
+      const composeData = await getResponse.json();
+
+      // Verify server resolved github-specific image
+      const agent = composeData.content.agents["test-github-app"];
+      expect(agent.image).toMatch(/^vm0\/claude-code-github:/);
+
+      // Cleanup
+      await globalThis.services.db
+        .delete(agentComposes)
+        .where(eq(agentComposes.id, data.composeId));
+    });
+
+    it("should ignore deprecated image and working_dir fields from input", async () => {
+      const config = {
+        version: "1.0",
+        agents: {
+          "test-ignore-deprecated": {
+            framework: "claude-code",
+            // These deprecated fields should be ignored
+            image: "custom/image:v1",
+            working_dir: "/custom/path",
+          },
+        },
+      };
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/composes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: config }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(201);
+
+      // Get the created compose to verify server-resolved values (not user-provided)
+      const getRequest = createTestRequest(
+        `http://localhost:3000/api/agent/composes/${data.composeId}`,
+        { method: "GET" },
+      );
+
+      const getResponse = await GET(getRequest);
+      const composeData = await getResponse.json();
+
+      // Verify server resolved values, not user-provided deprecated values
+      const agent = composeData.content.agents["test-ignore-deprecated"];
+      expect(agent.image).toMatch(/^vm0\/claude-code:/);
+      expect(agent.image).not.toBe("custom/image:v1");
+      expect(agent.working_dir).toBe("/home/user/workspace");
+      expect(agent.working_dir).not.toBe("/custom/path");
+
+      // Cleanup
+      await globalThis.services.db
+        .delete(agentComposes)
+        .where(eq(agentComposes.id, data.composeId));
+    });
+
     it("should update existing compose when name matches", async () => {
       const config = {
         version: "1.0",
         agents: {
           "test-agent-update": {
             description: "Initial description",
-            image: "vm0/claude-code:dev",
             framework: "claude-code",
-            working_dir: "/home/user/workspace",
           },
         },
       };
@@ -222,9 +356,7 @@ describe("Agent Compose Upsert Behavior", () => {
         version: "1.0",
         agents: {
           "test-unique-constraint": {
-            image: "vm0/claude-code:dev",
             framework: "claude-code",
-            working_dir: "/home/user/workspace",
           },
         },
       };
@@ -286,14 +418,10 @@ describe("Agent Compose Upsert Behavior", () => {
         version: "1.0",
         agents: {
           "agent-one": {
-            image: "vm0/claude-code:dev",
             framework: "claude-code",
-            working_dir: "/home/user/workspace",
           },
           "agent-two": {
-            image: "vm0/claude-code:dev",
             framework: "claude-code",
-            working_dir: "/home/user/workspace",
           },
         },
       };
@@ -322,9 +450,7 @@ describe("Agent Compose Upsert Behavior", () => {
         agents: {
           ab: {
             // Too short name
-            image: "vm0/claude-code:dev",
             framework: "claude-code",
-            working_dir: "/home/user/workspace",
           },
         },
       };
@@ -350,9 +476,7 @@ describe("Agent Compose Upsert Behavior", () => {
         version: "1.0",
         agents: {
           "my-test-agent-123": {
-            image: "vm0/claude-code:dev",
             framework: "claude-code",
-            working_dir: "/home/user/workspace",
           },
         },
       };
@@ -378,6 +502,105 @@ describe("Agent Compose Upsert Behavior", () => {
     });
   });
 
+  describe("framework validation", () => {
+    it("should reject unsupported framework", async () => {
+      const config = {
+        version: "1.0",
+        agents: {
+          "test-unsupported-framework": {
+            framework: "unsupported-framework",
+          },
+        },
+      };
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/composes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: config }),
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("Unsupported framework");
+      expect(data.error.message).toContain(SUPPORTED_FRAMEWORKS.join(", "));
+    });
+
+    it("should accept claude-code framework", async () => {
+      const config = {
+        version: "1.0",
+        agents: {
+          "test-claude-code": {
+            framework: "claude-code",
+          },
+        },
+      };
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/composes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: config }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(201);
+
+      // Cleanup
+      const data = await response.json();
+      await globalThis.services.db
+        .delete(agentComposes)
+        .where(eq(agentComposes.id, data.composeId));
+    });
+
+    it("should accept codex framework", async () => {
+      const config = {
+        version: "1.0",
+        agents: {
+          "test-codex-framework": {
+            framework: "codex",
+          },
+        },
+      };
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/composes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: config }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(201);
+
+      // Get the created compose to verify codex image
+      const data = await response.json();
+      const getRequest = createTestRequest(
+        `http://localhost:3000/api/agent/composes/${data.composeId}`,
+        { method: "GET" },
+      );
+
+      const getResponse = await GET(getRequest);
+      const composeData = await getResponse.json();
+
+      const agent = composeData.content.agents["test-codex-framework"];
+      expect(agent.image).toMatch(/^vm0\/codex:/);
+
+      // Cleanup
+      await globalThis.services.db
+        .delete(agentComposes)
+        .where(eq(agentComposes.id, data.composeId));
+    });
+  });
+
   describe("GET /api/agent/composes/:id", () => {
     it("should return compose with name field", async () => {
       const config = {
@@ -385,9 +608,7 @@ describe("Agent Compose Upsert Behavior", () => {
         agents: {
           "test-get-compose": {
             description: "Test",
-            image: "vm0/claude-code:dev",
             framework: "claude-code",
-            working_dir: "/home/user/workspace",
           },
         },
       };

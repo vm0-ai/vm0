@@ -35,15 +35,6 @@ if [ ! -L "$HOME/.claude" ]; then
   echo "✓ Linked ~/.claude to ~/.config/claude"
 fi
 
-# Add local development domains to /etc/hosts
-echo "📝 Adding local domains to /etc/hosts..."
-if ! grep -q "vm7.ai" /etc/hosts; then
-  echo "127.0.0.1 vm7.ai www.vm7.ai docs.vm7.ai platform.vm7.ai storybook.vm7.ai" | sudo tee -a /etc/hosts > /dev/null
-  echo "✓ Added vm7.ai domains to /etc/hosts"
-else
-  echo "✓ vm7.ai domains already in /etc/hosts"
-fi
-
 # Create NSS database in project directory (uses host filesystem, not BTRFS volume)
 # This avoids BTRFS + nodatacow compatibility issues with SQLite
 NSS_DIR="$WORKSPACE_DIR/.mozilla/firefox/mkcert.default"

@@ -19,32 +19,32 @@ This scenario has many parallels with a VM0 Agent:
 
     subgraph agent["VM0 Agent"]
         direction TB
-        image["Container Image<br/><small>Runtime environment</small>"]
+        sandbox["Sandbox<br/><small>Runtime environment</small>"]
         skills["Skills<br/><small>Domain capabilities</small>"]
         instruction["Instruction<br/><small>Tasks in AGENTS.md</small>"]
     end
 
-    computer -.-> image
+    computer -.-> sandbox
     expertise -.-> skills
     plan -.-> instruction
 
 `} />
 
-The **Agent Provider** (Claude Code or Codex) is a capable worker, and **Skills** give the agent specialized expertise in specific domains, just like the finance expertise Joseph has. The **Container Image** is like Joseph's computer with pre-installed software. And **Instruction** is the work plan that tells the agent what to do.
+The **Agent Provider** (Claude Code or Codex) is a capable worker, and **Skills** give the agent specialized expertise in specific domains, just like the finance expertise Joseph has. The **Sandbox** is like Joseph's computer with pre-installed software. And **Instruction** is the work plan that tells the agent what to do.
 
-## Container Image
+## Sandbox
 
-The Container Image is similar to a [Docker Image](https://docs.docker.com/get-started/docker-concepts/the-basics/what-is-an-image/). It provides the runtime environment for your agent. It includes:
+The Sandbox provides the runtime environment for your agent. It includes:
 
 - The Agent Provider (Claude Code or Codex)
 - System tools and dependencies
 - Base configuration
 
-VM0 automatically selects the appropriate container image based on your provider and `apps` configuration. Use the `apps` field to include pre-installed tools like GitHub CLI (e.g., `apps: [github]`).
+VM0 prepares your sandbox with the appropriate runtime environment for your provider. Use the `apps` field to add pre-installed tools like GitHub CLI (e.g., `apps: [github]`).
 
 ## Skills & Instructions
 
-When you run an agent, VM0 packages your skills and instructions and mounts them into the container at the appropriate location for the agent provider (`~/.claude` for Claude Code, `~/.codex` for Codex).
+When you run an agent, VM0 packages your skills and instructions and mounts them into the sandbox at the appropriate location for the agent provider (`~/.claude` for Claude Code, `~/.codex` for Codex).
 
 - **[Instruction](/docs/core-concept/instructions)** - Defines what the agent should do (via `AGENTS.md` or `CLAUDE.md`)
 - **[Skills](/docs/core-concept/skills)** - Reusable packages that add domain-specific capabilities, like [Firecrawl](/docs/integration/firecrawl), [Notion](/docs/integration/notion), or [Create Slides](https://github.com/anthropics/skills/tree/main/skills/pptx)

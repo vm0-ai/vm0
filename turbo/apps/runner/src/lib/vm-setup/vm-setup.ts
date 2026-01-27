@@ -9,30 +9,7 @@
 import fs from "fs";
 import type { GuestClient } from "../firecracker/guest.js";
 import type { StorageManifest, ResumeSession } from "../api.js";
-import { getAllScripts } from "../scripts/utils.js";
 import { SCRIPT_PATHS } from "../scripts/index.js";
-
-/**
- * Upload all scripts to VM individually via guest client
- * Scripts are installed to /usr/local/bin which requires sudo
- */
-export async function uploadScripts(guest: GuestClient): Promise<void> {
-  const scripts = getAllScripts();
-
-  // Create directory (requires sudo for /usr/local/bin)
-  // No lib directory needed - scripts are self-contained ESM bundles
-  await guest.execOrThrow(`sudo mkdir -p ${SCRIPT_PATHS.baseDir}`);
-
-  // Write each script file individually using sudo tee
-  for (const script of scripts) {
-    await guest.writeFileWithSudo(script.path, script.content);
-  }
-
-  // Set executable permissions (requires sudo)
-  await guest.execOrThrow(
-    `sudo chmod +x ${SCRIPT_PATHS.baseDir}/*.mjs 2>/dev/null || true`,
-  );
-}
 
 /**
  * Download storages to VM using storage manifest
@@ -139,22 +116,4 @@ export async function installProxyCA(
   // Update CA certificates (requires sudo)
   await guest.execOrThrow("sudo update-ca-certificates");
   console.log(`[Executor] Proxy CA certificate installed successfully`);
-}
-
-/**
- * Configure DNS in the VM
- * Systemd-resolved may overwrite /etc/resolv.conf at boot,
- * so we need to ensure DNS servers are configured after the VM is ready.
- * Requires sudo since we're connected as 'user', not root.
- */
-export async function configureDNS(guest: GuestClient): Promise<void> {
-  // Remove any symlink and write static DNS configuration
-  // Use sudo since /etc/resolv.conf requires root access
-  const dnsConfig = `nameserver 8.8.8.8
-nameserver 8.8.4.4
-nameserver 1.1.1.1`;
-
-  await guest.execOrThrow(
-    `sudo sh -c 'rm -f /etc/resolv.conf && echo "${dnsConfig}" > /etc/resolv.conf'`,
-  );
 }

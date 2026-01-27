@@ -79,4 +79,22 @@ export const nextJsConfig = [
       ],
     },
   },
+  {
+    // Prevent importing next/headers - use authHeader parameter instead
+    // See: https://github.com/vm0-ai/vm0/issues/1591
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "next/headers",
+              message:
+                "Use authHeader parameter instead of headers() from next/headers. See issue #1591.",
+            },
+          ],
+        },
+      ],
+    },
+  },
 ];

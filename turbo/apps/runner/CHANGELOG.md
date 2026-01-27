@@ -1,5 +1,42 @@
 # Changelog
 
+## [3.1.0](https://github.com/vm0-ai/vm0/compare/runner-v3.0.6...runner-v3.1.0) (2026-01-27)
+
+
+### Features
+
+* **docs:** trigger release for documentation updates ([#1697](https://github.com/vm0-ai/vm0/issues/1697)) ([c078287](https://github.com/vm0-ai/vm0/commit/c078287de06336abd3157fcaa056bdedcb47838d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 6.2.0
+
+## [3.0.6](https://github.com/vm0-ai/vm0/compare/runner-v3.0.5...runner-v3.0.6) (2026-01-26)
+
+
+### Performance Improvements
+
+* **runner:** add timing logs to vm-init for boot analysis ([#1666](https://github.com/vm0-ai/vm0/issues/1666)) ([4715fba](https://github.com/vm0-ai/vm0/commit/4715fba4e836560bdd2e9ec6a011d45b60471f8a))
+* **runner:** implement native binary vsock protocol for file transfer ([#1660](https://github.com/vm0-ai/vm0/issues/1660)) ([064aff5](https://github.com/vm0-ai/vm0/commit/064aff57c75f1fb7937dd05edf0f3d2533d295d8))
+* **runner:** pre-bundle agent scripts in rootfs image ([#1670](https://github.com/vm0-ai/vm0/issues/1670)) ([e93a43d](https://github.com/vm0-ai/vm0/commit/e93a43d128c6e6e4719a7a3ccb5cb8e0af779080))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 6.1.0
+
+## [3.0.5](https://github.com/vm0-ai/vm0/compare/runner-v3.0.4...runner-v3.0.5) (2026-01-26)
+
+
+### Performance Improvements
+
+* **runner:** replace systemd with tini for faster vm boot ([#1623](https://github.com/vm0-ai/vm0/issues/1623)) ([6c09811](https://github.com/vm0-ai/vm0/commit/6c09811df156f9ce8cba2847b7d83c30ec90af20))
+
 ## [3.0.4](https://github.com/vm0-ai/vm0/compare/runner-v3.0.3...runner-v3.0.4) (2026-01-24)
 
 

@@ -87,6 +87,41 @@ jobs:
             echo "Job ref set to: staging"
           fi
 
+  file-size-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check file sizes
+        run: |
+          # Get changed files in PR
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA=${{ github.event.pull_request.base.sha }}
+          else
+            BASE_SHA="HEAD^"
+          fi
+
+          # Get list of added/modified files (exclude deleted)
+          CHANGED_FILES=$(git diff --name-only --diff-filter=AM "$BASE_SHA" HEAD)
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No files changed"
+            exit 0
+          fi
+
+          # Filter out whitelisted files
+          FILTERED_FILES=$(echo "$CHANGED_FILES" | grep -v -E '^turbo/apps/(web|site)/public/(og-image\.png|assets/(cta-ellipse\.png|code_illustration\.svg))$' || true)
+
+          if [ -z "$FILTERED_FILES" ]; then
+            echo "All changed files are whitelisted"
+            exit 0
+          fi
+
+          # Check file sizes
+          ./scripts/check-file-size.sh $FILTERED_FILES
+
   lint:
     runs-on: ubuntu-latest
     container:
@@ -802,7 +837,7 @@ jobs:
         run: |
           RUNNER_DIR="/opt/vm0-runner/${JOB_REF}"
           # Use numeric hash of job-ref for proxy port to ensure consistency
-          PROXY_PORT=$((8080 + $(echo -n "${JOB_REF}" | md5sum | cut -c1-8 | sed 's/[a-f]//g' | cut -c1-3)))
+          PROXY_PORT=$(echo -n "${JOB_REF}" | md5sum | cut -c1-8 | sed 's/[a-f]//g' | cut -c1-3 | awk '{print 8080 + int($1)}')
 
           mkdir -p "$HOME/.ssh"
           echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
@@ -913,7 +948,7 @@ jobs:
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
         run: |
-          PROXY_PORT=$((8080 + $(echo -n "${JOB_REF}" | md5sum | cut -c1-8 | sed 's/[a-f]//g' | cut -c1-3)))
+          PROXY_PORT=$(echo -n "${JOB_REF}" | md5sum | cut -c1-8 | sed 's/[a-f]//g' | cut -c1-3 | awk '{print 8080 + int($1)}')
 
           mkdir -p "$HOME/.ssh"
           echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"

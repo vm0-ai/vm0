@@ -18,7 +18,7 @@ function initEnv() {
       R2_ACCESS_KEY_ID: z.string().min(1),
       R2_SECRET_ACCESS_KEY: z.string().min(1),
       R2_USER_STORAGES_BUCKET_NAME: z.string().min(1),
-      SECRETS_ENCRYPTION_KEY: z.string().length(64).optional(), // 32-byte hex key for AES-256
+      SECRETS_ENCRYPTION_KEY: z.string().length(64), // 32-byte hex key for AES-256
       OFFICIAL_RUNNER_SECRET: z.string().length(64).optional(), // 32-byte hex key for official runner auth
       AXIOM_TOKEN: z.string().min(1).optional(),
       AXIOM_DATASET_SUFFIX: z.enum(["dev", "prod"]).optional(), // Explicit control for Axiom dataset suffix
