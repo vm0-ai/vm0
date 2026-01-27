@@ -5,12 +5,15 @@ import Image from "next/image";
 import { Link } from "../../navigation";
 import { useTranslations } from "next-intl";
 import { useTheme } from "./ThemeProvider";
+import { useUser, useClerk } from "@clerk/nextjs";
 import ThemeToggle from "./ThemeToggle";
 import LanguageSwitcher from "./LanguageSwitcher";
 
 export default function Navbar() {
   const { theme } = useTheme();
   const t = useTranslations("nav");
+  const { isSignedIn } = useUser();
+  const { signOut } = useClerk();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Close mobile menu on resize to desktop
@@ -35,6 +38,12 @@ export default function Navbar() {
       document.body.style.overflow = "";
     };
   }, [mobileMenuOpen]);
+
+  const handleSignOut = () => {
+    signOut().catch((error: Error) => {
+      console.error("Sign out error:", error);
+    });
+  };
 
   return (
     <nav className="navbar">
@@ -94,18 +103,30 @@ export default function Navbar() {
 
           <div className="nav-right">
             {/* Desktop buttons */}
-            <a
-              href="https://calendar.app.google/csdygPrHHyNgxpTPA"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-try-demo nav-desktop"
-            >
-              {t("contact")}
-            </a>
-            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-            <a href="/sign-up" className="btn-get-access">
-              {t("joinWaitlist")}
-            </a>
+            {!isSignedIn && (
+              <>
+                <a
+                  href="https://calendar.app.google/csdygPrHHyNgxpTPA"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-try-demo nav-desktop"
+                >
+                  {t("contact")}
+                </a>
+                {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+                <a href="/sign-up" className="btn-get-access">
+                  {t("joinWaitlist")}
+                </a>
+              </>
+            )}
+            {isSignedIn && (
+              <button
+                onClick={handleSignOut}
+                className="btn-try-demo nav-desktop"
+              >
+                Sign out
+              </button>
+            )}
 
             {/* Hamburger Menu Button */}
             <button
@@ -182,6 +203,18 @@ export default function Navbar() {
             >
               {t("contact")}
             </a>
+            {isSignedIn && (
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  handleSignOut();
+                }}
+                className="mobile-menu-link"
+                style={{ textAlign: "left", width: "100%" }}
+              >
+                Sign out
+              </button>
+            )}
           </div>
           <div className="mobile-menu-controls">
             <ThemeToggle />
