@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { authHeadersSchema, initContract } from "./base";
+import { initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -35,9 +35,6 @@ const unifiedRunRequestSchema = z.object({
 
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude: z.boolean().optional(),
-
-  // Model provider for automatic credential injection
-  modelProvider: z.string().optional(),
 
   // Required
   prompt: z.string().min(1, "Missing prompt"),
@@ -116,7 +113,40 @@ const eventsResponseSchema = z.object({
   hasMore: z.boolean(),
   nextSequence: z.number(),
   run: runStateSchema,
-  framework: z.string(),
+  provider: z.string(),
+});
+
+/**
+ * List runs query schema
+ */
+const listRunsQuerySchema = z.object({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().min(1).max(100).default(20),
+  status: runStatusSchema.optional(),
+});
+
+/**
+ * Run list item schema
+ */
+const runListItemSchema = z.object({
+  id: z.string(),
+  agentName: z.string(),
+  status: runStatusSchema,
+  prompt: z.string(),
+  createdAt: z.string(),
+  startedAt: z.string().nullable(),
+  completedAt: z.string().nullable(),
+});
+
+/**
+ * List runs response schema
+ */
+const listRunsResponseSchema = z.object({
+  data: z.array(runListItemSchema),
+  pagination: z.object({
+    hasMore: z.boolean(),
+    nextCursor: z.string().nullable(),
+  }),
 });
 
 /**
@@ -131,7 +161,6 @@ export const runsMainContract = c.router({
   create: {
     method: "POST",
     path: "/api/agent/runs",
-    headers: authHeadersSchema,
     body: unifiedRunRequestSchema,
     responses: {
       201: createRunResponseSchema,
@@ -140,6 +169,28 @@ export const runsMainContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Create and execute agent run",
+  },
+});
+
+/**
+ * Runs list route contract (/api/agent/runs)
+ * Handles GET list
+ */
+export const runsListContract = c.router({
+  /**
+   * GET /api/agent/runs
+   * List agent runs for authenticated user
+   */
+  list: {
+    method: "GET",
+    path: "/api/agent/runs",
+    query: listRunsQuerySchema,
+    responses: {
+      200: listRunsResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+    },
+    summary: "List agent runs",
   },
 });
 
@@ -154,7 +205,6 @@ export const runsByIdContract = c.router({
   getById: {
     method: "GET",
     path: "/api/agent/runs/:id",
-    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Run ID is required"),
     }),
@@ -179,12 +229,11 @@ export const runEventsContract = c.router({
   getEvents: {
     method: "GET",
     path: "/api/agent/runs/:id/events",
-    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Run ID is required"),
     }),
     query: z.object({
-      since: z.coerce.number().default(-1),
+      since: z.coerce.number().default(0),
       limit: z.coerce.number().default(100),
     }),
     responses: {
@@ -230,7 +279,7 @@ const metricsResponseSchema = z.object({
 const agentEventsResponseSchema = z.object({
   events: z.array(runEventSchema),
   hasMore: z.boolean(),
-  framework: z.string(),
+  provider: z.string(),
 });
 
 /**
@@ -285,7 +334,6 @@ export const runTelemetryContract = c.router({
   getTelemetry: {
     method: "GET",
     path: "/api/agent/runs/:id/telemetry",
-    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Run ID is required"),
     }),
@@ -309,7 +357,6 @@ export const runSystemLogContract = c.router({
   getSystemLog: {
     method: "GET",
     path: "/api/agent/runs/:id/telemetry/system-log",
-    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Run ID is required"),
     }),
@@ -338,7 +385,6 @@ export const runMetricsContract = c.router({
   getMetrics: {
     method: "GET",
     path: "/api/agent/runs/:id/telemetry/metrics",
-    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Run ID is required"),
     }),
@@ -367,7 +413,6 @@ export const runAgentEventsContract = c.router({
   getAgentEvents: {
     method: "GET",
     path: "/api/agent/runs/:id/telemetry/agent",
-    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Run ID is required"),
     }),
@@ -396,7 +441,6 @@ export const runNetworkLogsContract = c.router({
   getNetworkLogs: {
     method: "GET",
     path: "/api/agent/runs/:id/telemetry/network",
-    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().min(1, "Run ID is required"),
     }),
@@ -415,6 +459,7 @@ export const runNetworkLogsContract = c.router({
 });
 
 export type RunsMainContract = typeof runsMainContract;
+export type RunsListContract = typeof runsListContract;
 export type RunsByIdContract = typeof runsByIdContract;
 export type RunEventsContract = typeof runEventsContract;
 export type RunTelemetryContract = typeof runTelemetryContract;
@@ -440,6 +485,9 @@ export {
   agentEventsResponseSchema,
   networkLogEntrySchema,
   networkLogsResponseSchema,
+  listRunsQuerySchema,
+  runListItemSchema,
+  listRunsResponseSchema,
 };
 
 // Export inferred types for consumers
@@ -457,3 +505,6 @@ export type MetricsResponse = z.infer<typeof metricsResponseSchema>;
 export type AgentEventsResponse = z.infer<typeof agentEventsResponseSchema>;
 export type NetworkLogEntry = z.infer<typeof networkLogEntrySchema>;
 export type NetworkLogsResponse = z.infer<typeof networkLogsResponseSchema>;
+export type ListRunsQuery = z.infer<typeof listRunsQuerySchema>;
+export type RunListItem = z.infer<typeof runListItemSchema>;
+export type ListRunsResponse = z.infer<typeof listRunsResponseSchema>;

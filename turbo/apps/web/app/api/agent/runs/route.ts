@@ -3,14 +3,14 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../src/lib/ts-rest-handler";
-import { runsMainContract } from "@vm0/core";
+import { runsMainContract, runsListContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
-import { eq } from "drizzle-orm";
+import { eq, and, desc, lt } from "drizzle-orm";
 import { runService } from "../../../../src/lib/run";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { generateSandboxToken } from "../../../../src/lib/auth/sandbox-token";
@@ -22,11 +22,10 @@ import { logger } from "../../../../src/lib/logger";
 const log = logger("api:runs");
 
 const router = tsr.router(runsMainContract, {
-  // eslint-disable-next-line complexity -- TODO: refactor complex function
-  create: async ({ body, headers }) => {
+  create: async ({ body }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
+    const userId = await getUserId();
     if (!userId) {
       return {
         status: 401 as const,
@@ -375,7 +374,6 @@ const router = tsr.router(runsMainContract, {
         resumedFromCheckpointId: body.checkpointId,
         continuedFromSessionId: body.sessionId,
         debugNoMockClaude: body.debugNoMockClaude,
-        modelProvider: body.modelProvider,
       });
 
       // Prepare and dispatch to executor (unified path for E2B and runner)
@@ -473,4 +471,100 @@ const handler = createHandler(runsMainContract, router, {
   errorHandler,
 });
 
-export { handler as POST };
+/**
+ * List runs router
+ */
+const listRouter = tsr.router(runsListContract, {
+  list: async ({ query }) => {
+    initServices();
+
+    const userId = await getUserId();
+    if (!userId) {
+      return {
+        status: 401 as const,
+        body: {
+          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        },
+      };
+    }
+
+    const { cursor, limit, status } = query;
+
+    // Build query conditions
+    const conditions = [eq(agentRuns.userId, userId)];
+
+    // Handle cursor-based pagination (cursor is the last run ID from previous page)
+    if (cursor) {
+      // Get the createdAt of the cursor run to paginate correctly
+      const [cursorRun] = await globalThis.services.db
+        .select({ createdAt: agentRuns.createdAt })
+        .from(agentRuns)
+        .where(eq(agentRuns.id, cursor))
+        .limit(1);
+
+      if (cursorRun) {
+        conditions.push(lt(agentRuns.createdAt, cursorRun.createdAt));
+      }
+    }
+
+    // Filter by status if provided
+    if (status) {
+      conditions.push(eq(agentRuns.status, status));
+    }
+
+    // Fetch runs with agent info
+    const runs = await globalThis.services.db
+      .select({
+        run: agentRuns,
+        compose: agentComposes,
+      })
+      .from(agentRuns)
+      .leftJoin(
+        agentComposeVersions,
+        eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
+      )
+      .leftJoin(
+        agentComposes,
+        eq(agentComposeVersions.composeId, agentComposes.id),
+      )
+      .where(and(...conditions))
+      .orderBy(desc(agentRuns.createdAt))
+      .limit(limit + 1);
+
+    // Determine pagination info
+    const hasMore = runs.length > limit;
+    const data = hasMore ? runs.slice(0, limit) : runs;
+    const nextCursor =
+      hasMore && data.length > 0 ? data[data.length - 1]!.run.id : null;
+
+    return {
+      status: 200 as const,
+      body: {
+        data: data.map(({ run, compose }) => ({
+          id: run.id,
+          agentName: compose?.name ?? "unknown",
+          status: run.status as
+            | "pending"
+            | "running"
+            | "completed"
+            | "failed"
+            | "timeout",
+          prompt: run.prompt,
+          createdAt: run.createdAt.toISOString(),
+          startedAt: run.startedAt?.toISOString() ?? null,
+          completedAt: run.completedAt?.toISOString() ?? null,
+        })),
+        pagination: {
+          hasMore,
+          nextCursor,
+        },
+      },
+    };
+  },
+});
+
+const listHandler = createHandler(runsListContract, listRouter, {
+  errorHandler,
+});
+
+export { handler as POST, listHandler as GET };

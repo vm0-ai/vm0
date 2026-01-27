@@ -44,6 +44,7 @@ export {
 } from "./composes";
 export {
   runsMainContract,
+  runsListContract,
   runsByIdContract,
   runEventsContract,
   runTelemetryContract,
@@ -66,7 +67,11 @@ export {
   agentEventsResponseSchema,
   networkLogEntrySchema,
   networkLogsResponseSchema,
+  listRunsQuerySchema,
+  runListItemSchema,
+  listRunsResponseSchema,
   type RunsMainContract,
+  type RunsListContract,
   type RunsByIdContract,
   type RunEventsContract,
   type RunTelemetryContract,
@@ -89,6 +94,9 @@ export {
   type AgentEventsResponse,
   type NetworkLogEntry,
   type NetworkLogsResponse,
+  type ListRunsQuery,
+  type RunListItem,
+  type ListRunsResponse,
 } from "./runs";
 export {
   storagesContract,
@@ -163,50 +171,6 @@ export {
   type UpdateScopeRequest,
 } from "./scopes";
 export {
-  credentialsMainContract,
-  credentialsByNameContract,
-  credentialNameSchema,
-  credentialTypeSchema,
-  credentialResponseSchema,
-  credentialListResponseSchema,
-  setCredentialRequestSchema,
-  type CredentialsMainContract,
-  type CredentialsByNameContract,
-  type CredentialResponse,
-  type CredentialListResponse,
-  type SetCredentialRequest,
-  type CredentialType,
-} from "./credentials";
-export {
-  modelProvidersMainContract,
-  modelProvidersCheckContract,
-  modelProvidersByTypeContract,
-  modelProvidersConvertContract,
-  modelProvidersSetDefaultContract,
-  modelProviderTypeSchema,
-  modelProviderFrameworkSchema,
-  modelProviderResponseSchema,
-  modelProviderListResponseSchema,
-  upsertModelProviderRequestSchema,
-  upsertModelProviderResponseSchema,
-  checkCredentialResponseSchema,
-  MODEL_PROVIDER_TYPES,
-  getFrameworkForType,
-  getCredentialNameForType,
-  type ModelProvidersMainContract,
-  type ModelProvidersCheckContract,
-  type ModelProvidersByTypeContract,
-  type ModelProvidersConvertContract,
-  type ModelProvidersSetDefaultContract,
-  type ModelProviderType,
-  type ModelProviderFramework,
-  type ModelProviderResponse,
-  type ModelProviderListResponse,
-  type UpsertModelProviderRequest,
-  type UpsertModelProviderResponse,
-  type CheckCredentialResponse,
-} from "./model-providers";
-export {
   sessionsByIdContract,
   checkpointsByIdContract,
   sessionResponseSchema,
@@ -279,12 +243,6 @@ export {
   type RunSummary,
   type ScheduleRunsResponse,
 } from "./schedules";
-
-export {
-  realtimeTokenContract,
-  type RealtimeTokenContract,
-  type AblyTokenRequest,
-} from "./realtime";
 
 // Public API v1 contracts (developer-friendly external API)
 export * from "./public";
