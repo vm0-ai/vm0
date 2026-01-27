@@ -188,7 +188,10 @@ fn handle_exec(payload: &[u8]) -> (i32, Vec<u8>, Vec<u8>) {
     } else {
         command.to_string()
     };
-    log("INFO", &format!("exec: {} (timeout={}ms)", preview, timeout_ms));
+    log(
+        "INFO",
+        &format!("exec: {} (timeout={}ms)", preview, timeout_ms),
+    );
 
     let child = Command::new("sh")
         .arg("-c")
@@ -199,7 +202,11 @@ fn handle_exec(payload: &[u8]) -> (i32, Vec<u8>, Vec<u8>) {
 
     match child {
         Ok(child) => wait_with_timeout(child, timeout_ms),
-        Err(e) => (1, Vec::new(), format!("Failed to execute: {}", e).into_bytes()),
+        Err(e) => (
+            1,
+            Vec::new(),
+            format!("Failed to execute: {}", e).into_bytes(),
+        ),
     }
 }
 
@@ -228,7 +235,10 @@ fn handle_write_file(payload: &[u8]) -> (bool, String) {
     ]) as usize;
 
     if payload.len() < 7 + path_len + content_len {
-        return (false, "Invalid write_file payload: content truncated".to_string());
+        return (
+            false,
+            "Invalid write_file payload: content truncated".to_string(),
+        );
     }
 
     let content = &payload[7 + path_len..7 + path_len + content_len];
@@ -236,7 +246,12 @@ fn handle_write_file(payload: &[u8]) -> (bool, String) {
 
     log(
         "INFO",
-        &format!("write_file: path={} size={} sudo={}", path, content.len(), use_sudo),
+        &format!(
+            "write_file: path={} size={} sudo={}",
+            path,
+            content.len(),
+            use_sudo
+        ),
     );
 
     if use_sudo {
@@ -293,7 +308,10 @@ fn handle_write_file(payload: &[u8]) -> (bool, String) {
 
 /// Handle incoming message and return response
 fn handle_message(msg_type: u8, seq: u32, payload: &[u8]) -> Option<Vec<u8>> {
-    log("INFO", &format!("Received: type=0x{:02X} seq={}", msg_type, seq));
+    log(
+        "INFO",
+        &format!("Received: type=0x{:02X} seq={}", msg_type, seq),
+    );
 
     match msg_type {
         MSG_PING => Some(encode(MSG_PONG, seq, &[])),
@@ -305,7 +323,10 @@ fn handle_message(msg_type: u8, seq: u32, payload: &[u8]) -> Option<Vec<u8>> {
             let (success, error) = handle_write_file(payload);
             Some(encode_write_file_result(seq, success, &error))
         }
-        _ => Some(encode_error(seq, &format!("Unknown message type: 0x{:02X}", msg_type))),
+        _ => Some(encode_error(
+            seq,
+            &format!("Unknown message type: 0x{:02X}", msg_type),
+        )),
     }
 }
 
@@ -324,7 +345,8 @@ impl Decoder {
         let mut messages = Vec::new();
 
         while self.buf.len() >= HEADER_SIZE {
-            let length = u32::from_be_bytes([self.buf[0], self.buf[1], self.buf[2], self.buf[3]]) as usize;
+            let length =
+                u32::from_be_bytes([self.buf[0], self.buf[1], self.buf[2], self.buf[3]]) as usize;
 
             if length > MAX_MESSAGE_SIZE {
                 log("ERROR", &format!("Message too large: {}", length));
@@ -434,7 +456,10 @@ fn main() {
     log("INFO", "Starting vsock agent...");
 
     let args: Vec<String> = env::args().collect();
-    let unix_socket = args.iter().position(|a| a == "--unix-socket").map(|i| args.get(i + 1)).flatten();
+    let unix_socket = args
+        .iter()
+        .position(|a| a == "--unix-socket")
+        .and_then(|i| args.get(i + 1));
 
     let result = if let Some(path) = unix_socket {
         log("INFO", &format!("Connecting to Unix socket: {}...", path));

@@ -1,5 +1,6 @@
 extends:
   - ./turbo/lefthook.yml
+  - ./crates/lefthook.yml
 
 commit-msg:
   commands:
