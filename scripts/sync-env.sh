@@ -21,38 +21,15 @@ eval $(op signin)
 
 echo "Syncing all environment templates..."
 
-# Sync e2e environment (e2e/.env.local.tpl → e2e/.env.local)
-if [ -f "$PROJECT_ROOT/e2e/.env.local.tpl" ]; then
+# Find all .env.local.tpl files and process each one
+find "$PROJECT_ROOT" -name ".env.local.tpl" -type f | while read -r tpl_file; do
+  output_file="${tpl_file%.tpl}"
   echo ""
-  echo "Syncing: $PROJECT_ROOT/e2e/.env.local.tpl"
-  echo "Output:  $PROJECT_ROOT/e2e/.env.local"
-  op inject --force -i "$PROJECT_ROOT/e2e/.env.local.tpl" -o "$PROJECT_ROOT/e2e/.env.local"
+  echo "Syncing: $tpl_file"
+  echo "Output:  $output_file"
+  op inject --force -i "$tpl_file" -o "$output_file"
   echo "✓ Synced successfully"
-else
-  echo "⚠ Skipping: $PROJECT_ROOT/e2e/.env.local.tpl (not found)"
-fi
-
-# Sync web app environment (.env.local.tpl → turbo/apps/web/.env.local)
-if [ -f "$PROJECT_ROOT/.env.local.tpl" ]; then
-  echo ""
-  echo "Syncing: $PROJECT_ROOT/.env.local.tpl"
-  echo "Output:  $PROJECT_ROOT/turbo/apps/web/.env.local"
-  op inject --force -i "$PROJECT_ROOT/.env.local.tpl" -o "$PROJECT_ROOT/turbo/apps/web/.env.local"
-  echo "✓ Synced successfully"
-else
-  echo "⚠ Skipping: $PROJECT_ROOT/.env.local.tpl (not found)"
-fi
-
-# Sync platform app environment (turbo/apps/platform/.env.local.tpl → turbo/apps/platform/.env.local)
-if [ -f "$PROJECT_ROOT/turbo/apps/platform/.env.local.tpl" ]; then
-  echo ""
-  echo "Syncing: $PROJECT_ROOT/turbo/apps/platform/.env.local.tpl"
-  echo "Output:  $PROJECT_ROOT/turbo/apps/platform/.env.local"
-  op inject --force -i "$PROJECT_ROOT/turbo/apps/platform/.env.local.tpl" -o "$PROJECT_ROOT/turbo/apps/platform/.env.local"
-  echo "✓ Synced successfully"
-else
-  echo "⚠ Skipping: $PROJECT_ROOT/turbo/apps/platform/.env.local.tpl (not found)"
-fi
+done
 
 echo ""
 echo "✓ All environment variables synced successfully"

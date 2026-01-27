@@ -15,3 +15,5 @@ R2_USER_STORAGES_BUCKET_NAME=op://Development/vm0-env-local/r2_user_storages_buc
 # Optional: Observability (Axiom)
 AXIOM_TOKEN=op://Development/vm0-env-local/axiom_token
 AXIOM_DATASET_SUFFIX=dev
+
+SECRETS_ENCRYPTION_KEY=op://Development/vm0-env-local/SECRETS_ENCRYPTION_KEY

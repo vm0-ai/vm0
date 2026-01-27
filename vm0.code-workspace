@@ -23,6 +23,10 @@
     {
       "name": ".devcontainer",
       "path": ".devcontainer"
+    },
+    {
+      "name": "scripts",
+      "path": "scripts"
     }
   ],
   "extensions": {
