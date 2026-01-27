@@ -14,7 +14,7 @@ import * as os from "node:os";
 import { VsockClient } from "../vsock.js";
 
 /**
- * Integration tests for VsockClient and vsock-agent.py
+ * Integration tests for VsockClient and vsock-agent (TypeScript)
  *
  * These tests use Guest-initiated connection mode (same as production):
  * - Host (VsockClient) listens on "{socketPath}_1000"
@@ -23,7 +23,7 @@ import { VsockClient } from "../vsock.js";
 
 const AGENT_SCRIPT = path.resolve(
   __dirname,
-  "../../../../scripts/deploy/vsock-agent.py",
+  "../../../../../../packages/core/src/sandbox/scripts/dist/vsock-agent.mjs",
 );
 
 const VSOCK_PORT = 1000;
@@ -33,15 +33,11 @@ function createSocketPath(): string {
   return path.join(os.tmpdir(), `vsock-test-${process.pid}-${Date.now()}.sock`);
 }
 
-// Helper to start the Python agent (connects to host)
+// Helper to start the TypeScript agent (connects to host)
 function startAgent(listenerPath: string): ChildProcess {
-  const agent = spawn(
-    "python3",
-    [AGENT_SCRIPT, "--unix-socket", listenerPath],
-    {
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
+  const agent = spawn("node", [AGENT_SCRIPT, "--unix-socket", listenerPath], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
   return agent;
 }
 
@@ -84,9 +80,12 @@ describe("VsockClient Integration Tests", () => {
   let client: VsockClient | null = null;
 
   beforeAll(() => {
-    // Verify agent script exists
+    // Verify agent script exists (run `pnpm build` in packages/core first)
     if (!fs.existsSync(AGENT_SCRIPT)) {
-      throw new Error(`Agent script not found: ${AGENT_SCRIPT}`);
+      throw new Error(
+        `Agent script not found: ${AGENT_SCRIPT}\n` +
+          `Run 'pnpm build' in packages/core first.`,
+      );
     }
   });
 
