@@ -393,7 +393,7 @@ describe("GET /api/platform/logs/[id]", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data.provider).toBe("claude-code"); // default
+    expect(data.provider).toBeNull(); // no provider specified, returns null
 
     // Cleanup
     await globalThis.services.db
