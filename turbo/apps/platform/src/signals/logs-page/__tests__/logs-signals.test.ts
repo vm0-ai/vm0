@@ -94,7 +94,7 @@ describe("logs-signals", () => {
 
       // Mock API to return specific cursor
       server.use(
-        http.get("/v1/runs", ({ request }) => {
+        http.get("*/api/platform/logs", ({ request }) => {
           const url = new URL(request.url);
           const cursor = url.searchParams.get("cursor");
 
@@ -149,7 +149,7 @@ describe("logs-signals", () => {
 
       // Mock API response with cursor
       server.use(
-        http.get("/v1/runs", () =>
+        http.get("*/api/platform/logs", () =>
           HttpResponse.json({
             data: [],
             pagination: { has_more: true, next_cursor: "cursor456" },
@@ -171,7 +171,7 @@ describe("logs-signals", () => {
 
       // Mock API response without cursor
       server.use(
-        http.get("/v1/runs", () =>
+        http.get("*/api/platform/logs", () =>
           HttpResponse.json({
             data: [],
             pagination: { has_more: false, next_cursor: null },

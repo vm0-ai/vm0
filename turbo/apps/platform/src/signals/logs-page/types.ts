@@ -1,25 +1,42 @@
-// API response types (matching v1 API contract)
-export interface LogResponse {
-  data: Run[];
+// API response types (matching platform API contracts)
+
+// List response - only contains IDs for efficiency
+interface LogEntry {
+  id: string;
+}
+
+export interface LogsListResponse {
+  data: LogEntry[];
   pagination: {
     has_more: boolean;
     next_cursor: string | null;
   };
 }
 
-export interface Run {
+// Detail response - full log information
+export type LogStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "timeout"
+  | "cancelled";
+
+interface Artifact {
+  name: string | null;
+  version: string | null;
+}
+
+export interface LogDetail {
   id: string;
-  agent_id: string;
-  agent_name: string;
-  status:
-    | "pending"
-    | "running"
-    | "completed"
-    | "failed"
-    | "timeout"
-    | "cancelled";
+  sessionId: string | null;
+  agentName: string;
+  provider: string;
+  status: LogStatus;
   prompt: string;
-  created_at: string; // ISO timestamp
-  started_at: string | null;
-  completed_at: string | null;
+  error: string | null;
+  createdAt: string; // ISO timestamp
+  startedAt: string | null;
+  completedAt: string | null;
+  artifact: Artifact;
 }

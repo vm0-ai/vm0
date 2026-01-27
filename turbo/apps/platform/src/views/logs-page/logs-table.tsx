@@ -3,11 +3,11 @@ import type { Computed } from "ccstate";
 import { logs$ } from "../../signals/logs-page/logs-signals.ts";
 import { LogsTableRow } from "./logs-table-row.tsx";
 import { LogsEmptyState } from "./logs-empty-state.tsx";
-import type { LogResponse } from "../../signals/logs-page/types.ts";
+import type { LogsListResponse } from "../../signals/logs-page/types.ts";
 import { Table, TableHeader, TableBody, TableHead, TableRow } from "@vm0/ui";
 
 interface LogBatchProps {
-  logComputed: Computed<Promise<LogResponse>>;
+  logComputed: Computed<Promise<LogsListResponse>>;
   index: number;
 }
 
@@ -17,7 +17,7 @@ function LogBatch({ logComputed, index }: LogBatchProps) {
   if (loadable.state === "loading") {
     return (
       <TableRow key={`loading-${index}`}>
-        <td colSpan={3} className="p-4 text-center">
+        <td colSpan={6} className="p-4 text-center">
           Loading...
         </td>
       </TableRow>
@@ -28,10 +28,10 @@ function LogBatch({ logComputed, index }: LogBatchProps) {
     const errorMessage =
       loadable.error instanceof Error
         ? loadable.error.message
-        : "Failed to load runs";
+        : "Failed to load logs";
     return (
       <TableRow key={`error-${index}`}>
-        <td colSpan={3} className="p-4 text-center text-destructive">
+        <td colSpan={6} className="p-4 text-center text-destructive">
           Error: {errorMessage}
         </td>
       </TableRow>
@@ -40,8 +40,8 @@ function LogBatch({ logComputed, index }: LogBatchProps) {
 
   return (
     <>
-      {loadable.data.data.map((run) => (
-        <LogsTableRow key={run.id} run={run} />
+      {loadable.data.data.map((entry) => (
+        <LogsTableRow key={entry.id} logId={entry.id} />
       ))}
     </>
   );
@@ -59,7 +59,10 @@ export function LogsTable() {
       <TableHeader>
         <TableRow>
           <TableHead>Run ID</TableHead>
+          <TableHead>Session ID</TableHead>
           <TableHead>Agent</TableHead>
+          <TableHead>Model</TableHead>
+          <TableHead>Status</TableHead>
           <TableHead>Generate time</TableHead>
         </TableRow>
       </TableHeader>
