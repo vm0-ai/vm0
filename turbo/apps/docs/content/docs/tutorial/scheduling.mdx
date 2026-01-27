@@ -56,21 +56,6 @@ Your agent is now scheduled to run daily at 9:00 AM!
 If you decline to enable the schedule, you can enable it later with `vm0 schedule enable my-researcher`.
 </Callout>
 
-## Quick Setup with --enable Flag
-
-For non-interactive setups (like CI/CD pipelines), you can use the `--enable` flag to create and enable a schedule in one command:
-
-```bash
-vm0 schedule setup my-researcher \
-  --frequency daily \
-  --time 09:00 \
-  --timezone America/Los_Angeles \
-  --prompt "research the latest AI news" \
-  --enable
-```
-
-This creates the schedule and enables it immediately without any prompts.
-
 ## What Just Happened?
 
 You configured VM0's built-in scheduler to run your agent automatically. The scheduler:
