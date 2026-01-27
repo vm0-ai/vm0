@@ -39,7 +39,8 @@
         "dbaeumer.vscode-eslint",
         "vitest.explorer",
         "mtxr.sqltools-driver-pg",
-        "foxundermoon.shell-format"
+        "foxundermoon.shell-format",
+        "rust-lang.rust-analyzer"
       ],
       "settings": {
         "sqltools.connections": [

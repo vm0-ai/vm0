@@ -35,6 +35,20 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && pip3 install ansible
 
+# Install Rust toolchain with ARM64 cross-compilation support
+# Used for building vsock-agent for Firecracker VMs (ARM64 metal runners)
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH
+RUN apt-get update && apt-get install -y \
+    musl-tools \
+    gcc-aarch64-linux-gnu \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable \
+    && rustup target add aarch64-unknown-linux-musl \
+    && rustup component add rustfmt clippy \
+    && rustc --version && cargo --version
+
 # Install Playwright system dependencies for Chromium
 # This is needed for e2e tests in CI
 RUN npx playwright install-deps chromium
