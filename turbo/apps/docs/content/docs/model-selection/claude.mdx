@@ -5,9 +5,47 @@ description: Use Claude models with full control over Opus, Sonnet, and Haiku se
 
 Use Claude models with Claude Code. This gives you full control over model selection for different tasks and provides access to the latest Claude models.
 
-## Configuration
+## Quick Setup
 
-Configure your agent to use specific Claude models by setting environment variables:
+Configure Claude authentication with a single command:
+
+```bash
+# Using OAuth token (requires Claude Pro/Max subscription)
+vm0 model-provider setup --type claude-code-oauth-token
+
+# Using API key (pay-per-token)
+vm0 model-provider setup --type anthropic-api-key
+```
+
+Once configured, you can run agents without any environment configuration in `vm0.yaml`.
+
+## Authentication Options
+
+VM0 supports two authentication methods for Claude Code. We recommend using `vm0 model-provider setup` to configure these.
+
+| Method | Command | Pricing |
+|--------|---------|---------|
+| OAuth Token | `vm0 model-provider setup --type claude-code-oauth-token` | Fixed monthly (Pro/Max) |
+| API Key | `vm0 model-provider setup --type anthropic-api-key` | Pay-per-token |
+
+**OAuth Token (Subscription):** Get your OAuth token by running `claude setup-token` in your terminal. This uses your Claude Pro or Max subscription with unlimited usage.
+
+**API Key (Pay-per-use):** Get your API key from the [Anthropic Console](https://console.anthropic.com/settings/keys). You'll be charged based on token usage.
+
+<Callout type="warning">
+Do not set both `CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_API_KEY` at the same time. This will cause authentication conflicts.
+</Callout>
+
+## Advanced Configuration
+
+For most users, the model provider setup above is sufficient. Use manual configuration when you need:
+- Custom model tier selection (Opus, Sonnet, Haiku)
+- Alternative base URLs
+- Per-agent authentication overrides
+
+### Manual Environment Variables
+
+Configure authentication directly in your `vm0.yaml`:
 
 ```yaml title="vm0.yaml"
 version: "1.0"
@@ -16,48 +54,43 @@ agents:
   my-agent:
     framework: claude-code
     environment:
-      # Required: One of the following authentication methods
-      CLAUDE_CODE_OAUTH_TOKEN: "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" # [!code highlight]
+      # Option 1: OAuth token
+      CLAUDE_CODE_OAUTH_TOKEN: "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}"
 
-      # Optional: Configure specific models for each tier
-      ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-opus-4-5-20251101" # [!code highlight]
-      ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-sonnet-4-5-20250929" # [!code highlight]
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: "claude-haiku-4-5-20251001" # [!code highlight]
-      CLAUDE_CODE_SUBAGENT_MODEL: "claude-sonnet-4-5-20250929" # [!code highlight]
+      # Option 2: API key
+      # ANTHROPIC_API_KEY: "${{ secrets.ANTHROPIC_API_KEY }}"
 ```
 
-## Environment Variables
-
-### Authentication
-
-You must configure **one** of the following authentication methods:
-
-| Name                      | Description                                                                 | Pricing         |
-| ------------------------- | --------------------------------------------------------------------------- | --------------- |
-| `CLAUDE_CODE_OAUTH_TOKEN` | OAuth token from `claude setup-token` (requires Pro/Max subscription)       | Fixed monthly   |
-| `ANTHROPIC_API_KEY`       | API key from [Anthropic Console](https://console.anthropic.com/settings/keys) | Pay-per-token   |
-
-**OAuth Token (Subscription):** Get your OAuth token by running `claude setup-token` in your terminal. This uses your Claude Pro or Max subscription with unlimited usage.
-
-**API Key (Pay-per-use):** Get your API key from the [Anthropic Console](https://console.anthropic.com/settings/keys). You'll be charged based on token usage.
-
 <Callout type="warning">
-  Do not set both `CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_API_KEY` at the same time. This will cause authentication conflicts.
+When you set authentication environment variables in `vm0.yaml`, they take precedence over model providers.
 </Callout>
 
-### Optional Model Configuration
+### Model Tier Configuration
 
-These environment variables allow you to specify which Claude model to use for different tasks:
+Customize which Claude models to use for different tasks:
 
-| Variable                          | Description                                           | Default                      |
-| --------------------------------- | ----------------------------------------------------- | ---------------------------- |
-| `ANTHROPIC_DEFAULT_OPUS_MODEL`    | Model for `opus`, or `opusplan` when Plan Mode is active | Latest Opus model            |
-| `ANTHROPIC_DEFAULT_SONNET_MODEL`  | Model for `sonnet`, or `opusplan` when Plan Mode is inactive | Latest Sonnet model       |
-| `ANTHROPIC_DEFAULT_HAIKU_MODEL`   | Model for `haiku`, or background functionality        | Latest Haiku model           |
-| `CLAUDE_CODE_SUBAGENT_MODEL`      | Model for subagents                                   | Latest Sonnet model          |
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    framework: claude-code
+    environment:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-opus-4-5-20251101"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-sonnet-4-5-20250929"
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "claude-haiku-4-5-20251001"
+      CLAUDE_CODE_SUBAGENT_MODEL: "claude-sonnet-4-5-20250929"
+```
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` | Model for `opus` tier or Plan Mode | Latest Opus |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL` | Model for `sonnet` tier | Latest Sonnet |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Model for `haiku` tier or background tasks | Latest Haiku |
+| `CLAUDE_CODE_SUBAGENT_MODEL` | Model for subagents | Latest Sonnet |
 
 <Callout type="info">
-  If you don't specify these variables, Claude Code will automatically use the latest available models for each tier.
+If you don't specify these variables, Claude Code will automatically use the latest available models for each tier.
 </Callout>
 
 ## Available Models
@@ -65,14 +98,14 @@ These environment variables allow you to specify which Claude model to use for d
 See the complete list of available Claude models and their specifications in the [Anthropic documentation](https://docs.anthropic.com/en/docs/about-claude/models).
 
 <Callout type="warning">
-  You must use the **full model name** (e.g., `claude-sonnet-4-5-20250929`) in the environment variables, not aliases like `opus`, `sonnet`, or `haiku`.
+You must use the **full model name** (e.g., `claude-sonnet-4-5-20250929`) in the environment variables, not aliases like `opus`, `sonnet`, or `haiku`.
 </Callout>
 
 ## Usage Examples
 
 ### Use Latest Models (Default)
 
-If you don't specify model environment variables, Claude Code automatically uses the latest models:
+With model provider configured, no environment variables needed:
 
 ```yaml title="vm0.yaml"
 version: "1.0"
@@ -80,22 +113,6 @@ version: "1.0"
 agents:
   my-agent:
     framework: claude-code
-    environment:
-      CLAUDE_CODE_OAUTH_TOKEN: "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}"
-```
-
-### Use API Key Instead of OAuth Token
-
-If you prefer pay-per-token pricing or don't have a Claude subscription:
-
-```yaml title="vm0.yaml"
-version: "1.0"
-
-agents:
-  my-agent:
-    framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "${{ secrets.ANTHROPIC_API_KEY }}" # [!code highlight]
 ```
 
 ### Use All Opus Models
@@ -109,7 +126,6 @@ agents:
   my-agent:
     framework: claude-code
     environment:
-      CLAUDE_CODE_OAUTH_TOKEN: "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}"
       ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-opus-4-5-20251101" # [!code highlight]
       ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-opus-4-5-20251101" # [!code highlight]
       ANTHROPIC_DEFAULT_HAIKU_MODEL: "claude-opus-4-5-20251101" # [!code highlight]
@@ -127,7 +143,6 @@ agents:
   my-agent:
     framework: claude-code
     environment:
-      CLAUDE_CODE_OAUTH_TOKEN: "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}"
       ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-sonnet-4-5-20250929" # [!code highlight]
       ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-sonnet-4-5-20250929" # [!code highlight]
       ANTHROPIC_DEFAULT_HAIKU_MODEL: "claude-sonnet-4-5-20250929" # [!code highlight]
@@ -145,7 +160,6 @@ agents:
   my-agent:
     framework: claude-code
     environment:
-      CLAUDE_CODE_OAUTH_TOKEN: "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}"
       ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-haiku-4-5-20251001" # [!code highlight]
       ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-haiku-4-5-20251001" # [!code highlight]
       ANTHROPIC_DEFAULT_HAIKU_MODEL: "claude-haiku-4-5-20251001" # [!code highlight]

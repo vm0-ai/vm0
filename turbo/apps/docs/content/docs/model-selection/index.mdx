@@ -3,13 +3,66 @@ title: Overview
 description: Configure different model providers for your agents
 ---
 
-VM0 supports two agent providers: **Claude Code** and **Codex**. You can also use alternative model providers with Claude Code.
+VM0 supports two agent frameworks: **Claude Code** and **Codex**. You can also use alternative model providers with Claude Code.
 
-## Provider Selection
+## Quick Start with Model Provider
+
+The fastest way to configure model authentication is using the model provider system:
+
+```bash
+vm0 model-provider setup
+```
+
+This interactive command will:
+1. Prompt you to select a provider type
+2. Ask for your credential (OAuth token or API key)
+3. Store it securely on the VM0 platform
+
+Once configured, your credential is automatically injected when running agents.
+
+### Available Provider Types
+
+| Type | Framework | How to Get |
+|------|-----------|------------|
+| `claude-code-oauth-token` | Claude Code | Run `claude setup-token` |
+| `anthropic-api-key` | Claude Code | [Anthropic Console](https://console.anthropic.com/settings/keys) |
+| `openai-api-key` | Codex | [OpenAI Platform](https://platform.openai.com/api-keys) |
+
+### Managing Model Providers
+
+```bash
+# List all configured providers
+vm0 model-provider list
+
+# Set a different default
+vm0 model-provider set-default anthropic-api-key
+
+# Delete a provider
+vm0 model-provider delete claude-code-oauth-token
+```
+
+### Non-Interactive Setup
+
+For CI/CD or scripting, use flags instead of prompts:
+
+```bash
+vm0 model-provider setup --type anthropic-api-key --credential "sk-xxx"
+```
+
+<Callout type="info" title="How Model Selection Works">
+When you run an agent:
+1. If your `vm0.yaml` has explicit auth environment variables → those are used
+2. Otherwise → your default model provider credential is injected automatically
+3. Override with: `vm0 run agent "prompt" --model-provider <type>`
+</Callout>
+
+## Framework Selection
+
+VM0 supports two agent frameworks. If you've configured a model provider above, authentication is handled automatically.
 
 ### Claude Code (Default)
 
-Claude Code is the default provider, using Anthropic's Claude model:
+Claude Code is the default framework, using Anthropic's Claude model:
 
 ```yaml title="vm0.yaml"
 version: "1.0"
@@ -18,12 +71,6 @@ agents:
   my-agent:
     framework: claude-code # [!code highlight]
 ```
-
-Required environment variable:
-
-| Name                      | Description                           |
-| ------------------------- | ------------------------------------- |
-| `CLAUDE_CODE_OAUTH_TOKEN` | OAuth token from `claude setup-token` |
 
 ### Codex
 
@@ -37,19 +84,17 @@ agents:
     framework: codex # [!code highlight]
 ```
 
-Required environment variable:
-
-| Name             | Description         |
-| ---------------- | ------------------- |
-| `OPENAI_API_KEY` | API key from OpenAI |
+<Callout type="info">
+No environment configuration needed in `vm0.yaml` if you've set up a model provider. The credential is injected automatically.
+</Callout>
 
 ## Alternative Model Providers (Claude Code only)
 
 <Callout type="warning">
-  Alternative model providers are only supported with Claude Code, not Codex.
+Alternative model providers require manual configuration and are only supported with Claude Code.
 </Callout>
 
-You can use various model providers that implement the Anthropic API by setting environment variables:
+If you need to use providers other than Anthropic directly (like OpenRouter or DeepSeek), configure them manually in your `vm0.yaml`:
 
 ```yaml title="vm0.yaml"
 version: "1.0"
