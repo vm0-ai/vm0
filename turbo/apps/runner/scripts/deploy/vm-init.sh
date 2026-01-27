@@ -65,4 +65,4 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 echo "[vm-init] starting vsock-agent"
 VSOCK_BRIDGE=/tmp/vsock-bridge.sock
 socat VSOCK-CONNECT:2:1000 UNIX-LISTEN:$VSOCK_BRIDGE,fork &
-exec /usr/bin/tini -- /usr/bin/node /usr/local/bin/vm0-agent/vsock-agent.mjs --unix-socket $VSOCK_BRIDGE
+exec /usr/bin/tini -- /usr/local/bin/node /usr/local/bin/vm0-agent/vsock-agent.mjs --unix-socket $VSOCK_BRIDGE
