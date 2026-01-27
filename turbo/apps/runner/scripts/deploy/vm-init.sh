@@ -69,26 +69,20 @@ VSOCK_BRIDGE=/tmp/vsock-bridge.sock
 ls -la /usr/local/bin/bun /usr/bin/socat /usr/local/bin/vm0-agent/vsock-agent.mjs 2>&1 || true
 ls -la /root/.bun/bin/bun 2>&1 || true
 
-# Test bun and capture any errors
+# Test bun - write to file first in case it crashes
 echo "[vm-init] testing bun..."
-/usr/local/bin/bun --version 2>&1 || echo "[vm-init] bun --version failed with code $?"
+/usr/local/bin/bun --version > /tmp/bun-test.log 2>&1 &
+BUN_TEST_PID=$!
+sleep 0.5
+if kill -0 $BUN_TEST_PID 2>/dev/null; then
+    wait $BUN_TEST_PID
+fi
+echo "[vm-init] bun test result:"
+cat /tmp/bun-test.log 2>&1 || echo "(no output)"
 
-# Enable core dumps
-ulimit -c unlimited 2>/dev/null || true
+# Check dmesg for any crash info
+dmesg 2>&1 | tail -5 || true
 
 socat VSOCK-CONNECT:2:1000 UNIX-LISTEN:$VSOCK_BRIDGE,fork &
 echo "[vm-init] socat started, launching bun"
-
-# Run bun without exec first to capture errors
-/usr/local/bin/bun /usr/local/bin/vm0-agent/vsock-agent.mjs --unix-socket $VSOCK_BRIDGE 2>&1 &
-BUN_PID=$!
-sleep 1
-if ! kill -0 $BUN_PID 2>/dev/null; then
-    echo "[vm-init] bun crashed immediately"
-    # Check for core dump
-    ls -la /core* 2>&1 || true
-    # Fallback to node
-    echo "[vm-init] falling back to node"
-    exec /usr/bin/tini -- /usr/local/bin/node /usr/local/bin/vm0-agent/vsock-agent.mjs --unix-socket $VSOCK_BRIDGE
-fi
-wait $BUN_PID
+exec /usr/bin/tini -- /usr/local/bin/bun /usr/local/bin/vm0-agent/vsock-agent.mjs --unix-socket $VSOCK_BRIDGE
