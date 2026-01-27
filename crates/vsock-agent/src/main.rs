@@ -44,55 +44,22 @@ const MSG_WRITE_FILE: u8 = 0x05;
 const MSG_WRITE_FILE_RESULT: u8 = 0x06;
 const MSG_ERROR: u8 = 0xFF;
 
+use std::sync::OnceLock;
+use std::time::Instant;
+
+static START_TIME: OnceLock<Instant> = OnceLock::new();
+
 fn log(level: &str, msg: &str) {
-    // Format: YYYY-MM-DDTHH:MM:SS (ISO 8601, UTC)
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = now.as_secs();
-    // Calculate date/time components (UTC)
-    let days = secs / 86400;
-    let time = secs % 86400;
-    let hours = time / 3600;
-    let minutes = (time % 3600) / 60;
-    let seconds = time % 60;
-    // Days since 1970-01-01 to year/month/day
-    let (year, month, day) = days_to_ymd(days);
+    let start = START_TIME.get_or_init(Instant::now);
+    let elapsed = start.elapsed();
+    let total_ms = elapsed.as_millis() as u64;
+    let minutes = total_ms / 60000;
+    let seconds = (total_ms % 60000) / 1000;
+    let millis = total_ms % 1000;
     eprintln!(
-        "[{:04}-{:02}-{:02}T{:02}:{:02}:{:02}] [vsock-agent] [{}] {}",
-        year, month, day, hours, minutes, seconds, level, msg
+        "[{:02}:{:02}.{:03}] [vsock-agent] [{}] {}",
+        minutes, seconds, millis, level, msg
     );
-}
-
-/// Convert days since Unix epoch to (year, month, day)
-fn days_to_ymd(days: u64) -> (u64, u64, u64) {
-    // Simplified algorithm for dates after 1970
-    let mut y = 1970;
-    let mut remaining = days;
-    loop {
-        let days_in_year = if is_leap_year(y) { 366 } else { 365 };
-        if remaining < days_in_year {
-            break;
-        }
-        remaining -= days_in_year;
-        y += 1;
-    }
-    let leap = is_leap_year(y);
-    let month_days: [u64; 12] = if leap {
-        [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    } else {
-        [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    };
-    let mut m = 0;
-    while m < 12 && remaining >= month_days[m] {
-        remaining -= month_days[m];
-        m += 1;
-    }
-    (y, m as u64 + 1, remaining + 1)
-}
-
-fn is_leap_year(y: u64) -> bool {
-    (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0)
 }
 
 /// Encode a message with binary protocol
