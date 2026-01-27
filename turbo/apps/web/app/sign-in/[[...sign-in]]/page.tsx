@@ -175,6 +175,92 @@ export default function SignInPage() {
         [class*="footerActionLink"]:hover {
           color: hsl(var(--primary) / 0.9) !important;
         }
+
+        /* Social buttons (Google login) - add border and set text color */
+        button[class*="socialButtonsBlockButton"],
+        button[class*="cl-socialButtons"],
+        .cl-socialButtonsBlockButton,
+        div[class*="socialButtons"] button {
+          height: 36px !important;
+          background-color: transparent !important;
+          background-image: none !important;
+          border-width: 1px !important;
+          border-style: solid !important;
+          border-color: var(--color-border) !important;
+          border-radius: 0.5rem !important;
+          color: var(--color-foreground) !important;
+          box-shadow: none !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          gap: 0.5rem !important;
+          transition: background-color 0.2s !important;
+        }
+
+        /* Social buttons hover state */
+        button[class*="socialButtonsBlockButton"]:hover,
+        .cl-socialButtonsBlockButton:hover {
+          background-color: var(--color-muted) !important;
+        }
+
+        /* Force remove all backgrounds from inner elements at all times */
+        button[class*="socialButtonsBlockButton"] *,
+        .cl-socialButtonsBlockButton *,
+        button[class*="socialButtonsBlockButton"] > *,
+        button[class*="socialButtonsBlockButton"] span,
+        button[class*="socialButtonsBlockButton"] div,
+        .cl-socialButtonsBlockButton > *,
+        .cl-socialButtonsBlockButton span,
+        .cl-socialButtonsBlockButton div,
+        [class*="socialButtonsBlockButton"] [class*="internal"],
+        [class*="socialButtonsBlockButton"] [class*="text"],
+        [class*="socialButtonsBlockButton"] [class*="icon"],
+        [class*="socialButtonsBlockButton"] [class*="cl-internal"],
+        button[class*="socialButtonsBlockButton"] [class*="cl-internal"],
+        .cl-internal-2iusy0 {
+          background: none !important;
+          background-color: transparent !important;
+          background-image: none !important;
+          border: none !important;
+        }
+
+        /* Force remove all backgrounds from inner elements on hover */
+        button[class*="socialButtonsBlockButton"]:hover *,
+        .cl-socialButtonsBlockButton:hover *,
+        button[class*="socialButtonsBlockButton"] *:hover,
+        .cl-socialButtonsBlockButton *:hover,
+        button[class*="socialButtonsBlockButton"]:hover > *,
+        button[class*="socialButtonsBlockButton"]:hover span,
+        button[class*="socialButtonsBlockButton"]:hover div,
+        button[class*="socialButtonsBlockButton"] span:hover,
+        button[class*="socialButtonsBlockButton"] div:hover,
+        [class*="socialButtonsBlockButton"]:hover [class*="internal"],
+        [class*="socialButtonsBlockButton"]:hover [class*="text"],
+        [class*="socialButtonsBlockButton"]:hover [class*="icon"],
+        [class*="socialButtonsBlockButton"] [class*="internal"]:hover,
+        [class*="socialButtonsBlockButton"] [class*="text"]:hover,
+        [class*="socialButtonsBlockButton"] [class*="icon"]:hover,
+        [class*="socialButtonsBlockButton"]:hover [class*="cl-internal"],
+        [class*="socialButtonsBlockButton"] [class*="cl-internal"]:hover,
+        button[class*="socialButtonsBlockButton"]:hover [class*="cl-internal"],
+        button[class*="socialButtonsBlockButton"] [class*="cl-internal"]:hover,
+        .cl-internal-2iusy0:hover,
+        button:hover .cl-internal-2iusy0 {
+          background: none !important;
+          background-color: transparent !important;
+          background-image: none !important;
+        }
+
+        /* Social button text color */
+        button[class*="socialButtonsBlockButton"] *,
+        .cl-socialButtonsBlockButton *,
+        .cl-socialButtonsBlockButton span,
+        button[class*="socialButtons"] span {
+          color: var(--color-foreground) !important;
+          background: none !important;
+          background-color: transparent !important;
+          background-image: none !important;
+        }
       `}</style>
       <div className="relative flex min-h-screen items-center justify-center bg-background p-6 overflow-hidden">
         {/* Background grid pattern - medium grid with subtle visibility */}
@@ -284,8 +370,8 @@ export default function SignInPage() {
               headerTitle: "text-foreground font-medium",
               headerSubtitle: "text-muted-foreground",
               socialButtonsBlockButton:
-                "h-9 hover:bg-transparent border border-border",
-              socialButtonsBlockButtonText: "text-muted-foreground",
+                "h-9 bg-transparent border border-border rounded-lg text-foreground flex items-center justify-center gap-2",
+              socialButtonsBlockButtonText: "text-foreground",
               formButtonPrimary:
                 "bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-xs font-medium h-9 rounded-md",
               formFieldInput: "text-foreground rounded-lg transition-colors",
