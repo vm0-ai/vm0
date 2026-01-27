@@ -1,8 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { testContext } from "./test-helpers";
 import { setupPage } from "../../__tests__/helper";
 
 const context = testContext();
+beforeAll(() => {
+  // suppress console logs because these cases are not intented to test logging functionality
+  vi.spyOn(console, "log").mockImplementation(() => {});
+  vi.spyOn(console, "info").mockImplementation(() => {});
+});
+
 describe("global debug loggers", () => {
   it("should has vm0 method after init", async () => {
     await setupPage({ context, path: "/" });

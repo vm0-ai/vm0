@@ -1,10 +1,16 @@
 import { testContext } from "../signals/__tests__/test-helpers";
 import { setupPage } from "./helper";
-import { expect, it, describe } from "vitest";
+import { expect, it, describe, beforeAll, vi } from "vitest";
 import { Level, logger } from "../signals/log";
 import { localStorageSignals } from "../signals/external/local-storage";
 
 const context = testContext();
+
+beforeAll(() => {
+  // suppress console logs because these cases are not intented to test logging functionality
+  vi.spyOn(console, "log").mockImplementation(() => {});
+  vi.spyOn(console, "info").mockImplementation(() => {});
+});
 
 describe("setupPage", () => {
   it("should set debug loggers correctly", async () => {
