@@ -51,6 +51,7 @@ jobs:
 
       - name: Notify Slack - Starting
         id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           method: chat.postMessage
@@ -77,7 +78,7 @@ jobs:
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
 
       - name: Notify Slack - Success
-        if: success()
+        if: ${{ success() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           method: chat.postMessage
@@ -88,7 +89,7 @@ jobs:
             text: ":white_check_mark: Migration completed"
 
       - name: Notify Slack - Failure
-        if: failure() && steps.slack-start.outputs.ts
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           method: chat.postMessage
@@ -115,6 +116,7 @@ jobs:
 
       - name: Notify Slack - Starting
         id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           method: chat.postMessage
@@ -159,7 +161,7 @@ jobs:
             ABLY_API_KEY=${{ secrets.ABLY_API_KEY }}
 
       - name: Notify Slack - Success
-        if: success()
+        if: ${{ success() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           method: chat.postMessage
@@ -170,7 +172,7 @@ jobs:
             text: ":white_check_mark: Deployed successfully"
 
       - name: Notify Slack - Failure
-        if: failure() && steps.slack-start.outputs.ts
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           method: chat.postMessage
@@ -197,6 +199,7 @@ jobs:
 
       - name: Notify Slack - Starting
         id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           method: chat.postMessage
@@ -216,7 +219,7 @@ jobs:
           deployment-env: docs
 
       - name: Notify Slack - Success
-        if: success()
+        if: ${{ success() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           method: chat.postMessage
@@ -227,7 +230,7 @@ jobs:
             text: ":white_check_mark: Deployed successfully"
 
       - name: Notify Slack - Failure
-        if: failure() && steps.slack-start.outputs.ts
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           method: chat.postMessage
@@ -254,6 +257,7 @@ jobs:
 
       - name: Notify Slack - Starting
         id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           method: chat.postMessage
@@ -277,7 +281,7 @@ jobs:
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
 
       - name: Notify Slack - Success
-        if: success()
+        if: ${{ success() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           method: chat.postMessage
@@ -288,7 +292,7 @@ jobs:
             text: ":white_check_mark: Deployed successfully"
 
       - name: Notify Slack - Failure
-        if: failure() && steps.slack-start.outputs.ts
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           method: chat.postMessage
@@ -315,6 +319,7 @@ jobs:
 
       - name: Notify Slack - Starting
         id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           method: chat.postMessage
@@ -337,7 +342,7 @@ jobs:
             VITE_API_URL=https://www.vm0.ai
 
       - name: Notify Slack - Success
-        if: success()
+        if: ${{ success() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           method: chat.postMessage
@@ -348,7 +353,7 @@ jobs:
             text: ":white_check_mark: Deployed successfully"
 
       - name: Notify Slack - Failure
-        if: failure() && steps.slack-start.outputs.ts
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           method: chat.postMessage
@@ -371,6 +376,7 @@ jobs:
 
       - name: Notify Slack - Starting
         id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           method: chat.postMessage
@@ -403,7 +409,7 @@ jobs:
         run: cd turbo/apps/cli/dist && npm publish --access public
 
       - name: Notify Slack - Success
-        if: success()
+        if: ${{ success() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           method: chat.postMessage
@@ -414,7 +420,7 @@ jobs:
             text: ":white_check_mark: Deployed successfully"
 
       - name: Notify Slack - Failure
-        if: failure() && steps.slack-start.outputs.ts
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           method: chat.postMessage
@@ -437,6 +443,7 @@ jobs:
 
       - name: Notify Slack - Starting
         id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           method: chat.postMessage
@@ -469,7 +476,7 @@ jobs:
         run: cd turbo/apps/runner/dist && npm publish --access public
 
       - name: Notify Slack - Success
-        if: success()
+        if: ${{ success() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           method: chat.postMessage
@@ -480,7 +487,7 @@ jobs:
             text: ":white_check_mark: Deployed successfully"
 
       - name: Notify Slack - Failure
-        if: failure() && steps.slack-start.outputs.ts
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           method: chat.postMessage
@@ -506,6 +513,7 @@ jobs:
 
       - name: Notify Slack - Starting
         id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           method: chat.postMessage
@@ -564,7 +572,7 @@ jobs:
             -v
 
       - name: Notify Slack - Success
-        if: success()
+        if: ${{ success() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           method: chat.postMessage
@@ -575,7 +583,7 @@ jobs:
             text: ":white_check_mark: Deployed successfully"
 
       - name: Notify Slack - Failure
-        if: failure() && steps.slack-start.outputs.ts
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           method: chat.postMessage
