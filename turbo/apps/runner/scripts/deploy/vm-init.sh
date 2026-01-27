@@ -67,6 +67,8 @@ VSOCK_BRIDGE=/tmp/vsock-bridge.sock
 
 # Debug: check if binaries exist
 ls -la /usr/local/bin/bun /usr/bin/socat /usr/local/bin/vm0-agent/vsock-agent.mjs 2>&1 || true
+ls -la /root/.bun/bin/bun 2>&1 || true
+/usr/local/bin/bun --version 2>&1 || echo "[vm-init] bun --version failed"
 
 socat VSOCK-CONNECT:2:1000 UNIX-LISTEN:$VSOCK_BRIDGE,fork &
 echo "[vm-init] socat started, launching bun"
