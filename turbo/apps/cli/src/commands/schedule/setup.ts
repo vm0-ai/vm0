@@ -3,9 +3,7 @@ import chalk from "chalk";
 import {
   isInteractive,
   promptText,
-  promptConfirm,
   promptSelect,
-  promptPassword,
 } from "../../lib/utils/prompt-utils";
 import {
   generateCronExpression,
@@ -17,9 +15,9 @@ import {
   toISODateTime,
   extractRequiredConfiguration,
   type ScheduleFrequency,
-  type RequiredConfiguration,
 } from "../../lib/domain/schedule-utils";
 import { getComposeByName, deploySchedule, listSchedules } from "../../lib/api";
+import { gatherConfiguration } from "./gather-configuration";
 
 const FREQUENCY_CHOICES = [
   { title: "Daily", value: "daily" as const, description: "Run every day" },
@@ -155,22 +153,6 @@ function parseFrequencyFromCron(
  */
 function collect(value: string, previous: string[]): string[] {
   return previous.concat([value]);
-}
-
-/**
- * Parse key=value pairs into object
- */
-function parseKeyValuePairs(pairs: string[]): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const pair of pairs) {
-    const eqIndex = pair.indexOf("=");
-    if (eqIndex > 0) {
-      const key = pair.slice(0, eqIndex);
-      const value = pair.slice(eqIndex + 1);
-      result[key] = value;
-    }
-  }
-  return result;
 }
 
 interface SetupOptions {
@@ -432,158 +414,6 @@ async function gatherPromptText(
 }
 
 /**
- * Gather vars from options or existing schedule
- */
-async function gatherVars(
-  optionVars: string[],
-  existingVars: Record<string, string> | undefined | null,
-): Promise<Record<string, string> | undefined> {
-  if (optionVars.length > 0) {
-    return parseKeyValuePairs(optionVars);
-  }
-
-  if (isInteractive() && existingVars) {
-    const keepVars = await promptConfirm(
-      `Keep existing variables? (${Object.keys(existingVars).join(", ")})`,
-      true,
-    );
-    if (keepVars) {
-      return existingVars;
-    }
-  }
-
-  return undefined;
-}
-
-/**
- * Gather secrets from options or existing schedule
- *
- * Returns:
- * - Record<string, string>: New secrets from --secret flag
- * - undefined: Keep existing secrets (user said "yes" or no existing secrets)
- * - {}: User wants to provide new secrets (will trigger prompts in gatherMissingConfiguration)
- */
-async function gatherSecrets(
-  optionSecrets: string[],
-  existingSecretNames: string[] | undefined | null,
-): Promise<Record<string, string> | undefined> {
-  // If explicit secrets provided via --secret flag, use those
-  if (optionSecrets.length > 0) {
-    return parseKeyValuePairs(optionSecrets);
-  }
-
-  // If there are existing secrets and we're in interactive mode
-  if (
-    isInteractive() &&
-    existingSecretNames &&
-    existingSecretNames.length > 0
-  ) {
-    const keepSecrets = await promptConfirm(
-      `Keep existing secrets? (${existingSecretNames.join(", ")})`,
-      true,
-    );
-
-    if (keepSecrets) {
-      // Return undefined to signal "keep existing" to server
-      return undefined;
-    }
-
-    // User wants new secrets - return empty object so gatherMissingConfiguration prompts
-    console.log(chalk.dim("  Note: You'll need to provide new secret values"));
-    return {};
-  }
-
-  // No existing secrets - return undefined
-  return undefined;
-}
-
-/**
- * Gather missing configuration (secrets and vars) from compose requirements
- * In interactive mode, prompts for missing values
- * In non-interactive mode, returns what was provided (server will validate)
- */
-async function gatherMissingConfiguration(
-  required: RequiredConfiguration,
-  providedSecrets: Record<string, string>,
-  providedVars: Record<string, string>,
-  existingSecretNames: string[] | undefined | null,
-): Promise<{
-  secrets: Record<string, string>;
-  vars: Record<string, string>;
-}> {
-  const secrets = { ...providedSecrets };
-  const vars = { ...providedVars };
-
-  // Determine which secrets are missing
-  const providedSecretNames = Object.keys(providedSecrets);
-  const existingNames = existingSecretNames ?? [];
-  const missingSecrets = required.secrets.filter(
-    (name) =>
-      !providedSecretNames.includes(name) && !existingNames.includes(name),
-  );
-
-  // Determine which vars are missing
-  const providedVarNames = Object.keys(providedVars);
-  const missingVars = required.vars.filter(
-    (name) => !providedVarNames.includes(name),
-  );
-
-  // No missing configuration
-  if (missingSecrets.length === 0 && missingVars.length === 0) {
-    return { secrets, vars };
-  }
-
-  // Non-interactive mode: return what we have (server will validate)
-  if (!isInteractive()) {
-    return { secrets, vars };
-  }
-
-  // Interactive mode: show requirements and prompt for missing values
-  if (missingSecrets.length > 0 || missingVars.length > 0) {
-    console.log(chalk.yellow("\nAgent requires the following configuration:"));
-
-    if (missingSecrets.length > 0) {
-      console.log(chalk.dim("  Secrets:"));
-      for (const name of missingSecrets) {
-        console.log(chalk.dim(`    ${name}`));
-      }
-    }
-
-    if (missingVars.length > 0) {
-      console.log(chalk.dim("  Vars:"));
-      for (const name of missingVars) {
-        console.log(chalk.dim(`    ${name}`));
-      }
-    }
-
-    console.log("");
-  }
-
-  // Prompt for missing secrets
-  for (const name of missingSecrets) {
-    const value = await promptPassword(
-      `Enter value for secret ${chalk.cyan(name)}`,
-    );
-    if (value) {
-      secrets[name] = value;
-    }
-  }
-
-  // Prompt for missing vars
-  for (const name of missingVars) {
-    const value = await promptText(
-      `Enter value for var ${chalk.cyan(name)}`,
-      "",
-    );
-    if (value) {
-      vars[name] = value;
-    }
-  }
-
-  return { secrets, vars };
-}
-
-/**
  * Resolve agent and get composeId with content
  */
 async function resolveAgent(agentName: string): Promise<{
@@ -839,30 +669,16 @@ export const setupCommand = new Command()
         return;
       }
 
-      // 7. Handle vars (from options or existing)
-      const initialVars = await gatherVars(
-        options.var || [],
-        existingSchedule?.vars,
-      );
+      // 7. Gather all configuration (secrets and vars)
+      const config = await gatherConfiguration({
+        required: requiredConfig,
+        optionSecrets: options.secret || [],
+        optionVars: options.var || [],
+        existingSchedule,
+      });
 
-      // 8. Handle secrets (from options or existing)
-      // undefined = keep existing secrets, {} = provide new secrets
-      const initialSecrets = await gatherSecrets(
-        options.secret || [],
-        existingSchedule?.secretNames,
-      );
-      const keepExistingSecrets = initialSecrets === undefined;
-
-      // 9. Gather missing configuration (prompt in interactive mode)
-      const { secrets, vars } = await gatherMissingConfiguration(
-        requiredConfig,
-        initialSecrets ?? {},
-        initialVars ?? {},
-        existingSchedule?.secretNames,
-      );
-
-      // 10. Build trigger and deploy
-      // If keepExistingSecrets is true, send undefined to signal server to preserve existing secrets
+      // 8. Build trigger and deploy
+      // If preserveExistingSecrets is true, send undefined to signal server to preserve existing secrets
       // Otherwise send the gathered secrets (which may be empty if user skipped prompts)
       await buildAndDeploy({
         scheduleName,
@@ -874,11 +690,11 @@ export const setupCommand = new Command()
         atTime,
         timezone,
         prompt: promptText_,
-        vars: Object.keys(vars).length > 0 ? vars : undefined,
-        secrets: keepExistingSecrets
+        vars: Object.keys(config.vars).length > 0 ? config.vars : undefined,
+        secrets: config.preserveExistingSecrets
           ? undefined
-          : Object.keys(secrets).length > 0
-            ? secrets
+          : Object.keys(config.secrets).length > 0
+            ? config.secrets
             : undefined,
         artifactName: options.artifactName,
       });
