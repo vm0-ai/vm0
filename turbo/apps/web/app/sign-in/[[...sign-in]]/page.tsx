@@ -283,7 +283,8 @@ export default function SignInPage() {
               },
               headerTitle: "text-foreground font-medium",
               headerSubtitle: "text-muted-foreground",
-              socialButtonsBlockButton: "h-9 hover:bg-transparent",
+              socialButtonsBlockButton:
+                "h-9 hover:bg-transparent border border-border",
               socialButtonsBlockButtonText: "text-muted-foreground",
               formButtonPrimary:
                 "bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-xs font-medium h-9 rounded-md",
