@@ -1,5 +1,13 @@
 # Changelog
 
+## [10.9.1](https://github.com/vm0-ai/vm0/compare/web-v10.9.0...web-v10.9.1) (2026-01-27)
+
+
+### Bug Fixes
+
+* preserve existing secrets when updating schedule ([#1682](https://github.com/vm0-ai/vm0/issues/1682)) ([4a6150a](https://github.com/vm0-ai/vm0/commit/4a6150a6b0b126e0bb2a58899e4eab8c68fa7007)), closes [#1679](https://github.com/vm0-ai/vm0/issues/1679)
+* prevent sign-in/sign-up routes from i18n locale redirects ([#1680](https://github.com/vm0-ai/vm0/issues/1680)) ([29a6a08](https://github.com/vm0-ai/vm0/commit/29a6a0850984a4305fc2efb3ee229fb7b26b68e5))
+
 ## [10.9.0](https://github.com/vm0-ai/vm0/compare/web-v10.8.0...web-v10.9.0) (2026-01-27)
 
 
