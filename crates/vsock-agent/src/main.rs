@@ -107,10 +107,16 @@ const EXIT_CODE_TIMEOUT: i32 = 124;
 /// Run a child process with timeout. Returns (exit_code, stdout, stderr).
 /// Returns exit code 124 on timeout (same as bash timeout command).
 fn wait_with_timeout(child: Child, timeout_ms: u32) -> (i32, Vec<u8>, Vec<u8>) {
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::mpsc;
+    use std::sync::Arc;
 
     let timeout = Duration::from_millis(timeout_ms as u64);
     let child_id = child.id();
+
+    // Track if WE sent the kill (to distinguish from external SIGKILL)
+    let killed_by_timeout = Arc::new(AtomicBool::new(false));
+    let killed_by_timeout_clone = Arc::clone(&killed_by_timeout);
 
     // Channel to signal when process completes
     let (tx, rx) = mpsc::channel::<()>();
@@ -119,7 +125,8 @@ fn wait_with_timeout(child: Child, timeout_ms: u32) -> (i32, Vec<u8>, Vec<u8>) {
     thread::spawn(move || {
         // Wait for either timeout or signal that process completed
         if rx.recv_timeout(timeout).is_err() {
-            // Timeout reached, kill the process
+            // Timeout reached, mark and kill the process
+            killed_by_timeout_clone.store(true, Ordering::SeqCst);
             unsafe {
                 libc::kill(child_id as i32, libc::SIGKILL);
             }
@@ -134,13 +141,9 @@ fn wait_with_timeout(child: Child, timeout_ms: u32) -> (i32, Vec<u8>, Vec<u8>) {
 
     match output {
         Ok(output) => {
-            // Check if process was killed by our timeout
-            #[cfg(unix)]
-            {
-                use std::os::unix::process::ExitStatusExt;
-                if output.status.signal() == Some(libc::SIGKILL) {
-                    return (EXIT_CODE_TIMEOUT, output.stdout, b"Timeout".to_vec());
-                }
+            // Check if process was killed by OUR timeout (not external SIGKILL)
+            if killed_by_timeout.load(Ordering::SeqCst) {
+                return (EXIT_CODE_TIMEOUT, output.stdout, b"Timeout".to_vec());
             }
             let exit_code = output.status.code().unwrap_or(1);
             (exit_code, output.stdout, output.stderr)
