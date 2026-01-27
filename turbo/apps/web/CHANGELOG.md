@@ -1,5 +1,12 @@
 # Changelog
 
+## [10.10.0](https://github.com/vm0-ai/vm0/compare/web-v10.9.1...web-v10.10.0) (2026-01-27)
+
+
+### Features
+
+* improve google sign-in button styling with hover effects ([#1692](https://github.com/vm0-ai/vm0/issues/1692)) ([03ad4ba](https://github.com/vm0-ai/vm0/commit/03ad4ba8e1d9c516f1967e7d444d008f548d244c))
+
 ## [10.9.1](https://github.com/vm0-ai/vm0/compare/web-v10.9.0...web-v10.9.1) (2026-01-27)
 
 
