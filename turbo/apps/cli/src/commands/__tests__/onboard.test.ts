@@ -4,19 +4,15 @@ import * as fs from "fs/promises";
 import { existsSync, mkdtempSync, rmSync } from "fs";
 import * as path from "path";
 import * as os from "os";
+import { http, HttpResponse } from "msw";
+import { server } from "../../mocks/server";
 
-// Mock dependencies
-vi.mock("../../lib/api/config");
-vi.mock("../../lib/api/auth");
-vi.mock("../../lib/api");
-vi.mock("../../lib/utils/prompt-utils");
-vi.mock("../setup-claude");
+// Only mock authenticate - it opens a browser which is impossible to test
+vi.mock("../../lib/api/auth", () => ({
+  authenticate: vi.fn().mockResolvedValue(undefined),
+}));
 
-import * as configModule from "../../lib/api/config";
-import * as authModule from "../../lib/api/auth";
-import * as apiModule from "../../lib/api";
-import * as promptUtils from "../../lib/utils/prompt-utils";
-import { setupClaudeCommand } from "../setup-claude";
+import { authenticate } from "../../lib/api/auth";
 
 describe("onboard command", () => {
   let tempDir: string;
@@ -33,25 +29,27 @@ describe("onboard command", () => {
     originalCwd = process.cwd();
     process.chdir(tempDir);
 
-    // Default mocks
-    vi.mocked(configModule.getToken).mockResolvedValue("test-token");
-    vi.mocked(authModule.authenticate).mockResolvedValue();
-    vi.mocked(apiModule.listModelProviders).mockResolvedValue({
-      modelProviders: [
-        {
-          id: "test-provider-id",
-          type: "anthropic-api-key",
-          framework: "claude-code",
-          credentialName: "ANTHROPIC_API_KEY",
-          isDefault: true,
-          createdAt: "2024-01-01T00:00:00Z",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ],
-    });
-    vi.mocked(promptUtils.isInteractive).mockReturnValue(false);
-    vi.mocked(setupClaudeCommand.parseAsync).mockResolvedValue(
-      setupClaudeCommand,
+    // Use env vars for auth and API URL (follows project patterns)
+    vi.stubEnv("VM0_TOKEN", "test-token");
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+
+    // Default MSW handler for model providers
+    server.use(
+      http.get("http://localhost:3000/api/model-providers", () => {
+        return HttpResponse.json({
+          modelProviders: [
+            {
+              id: "test-provider-id",
+              type: "anthropic-api-key",
+              framework: "claude-code",
+              credentialName: "ANTHROPIC_API_KEY",
+              isDefault: true,
+              createdAt: "2024-01-01T00:00:00Z",
+              updatedAt: "2024-01-01T00:00:00Z",
+            },
+          ],
+        });
+      }),
     );
   });
 
@@ -60,12 +58,11 @@ describe("onboard command", () => {
     rmSync(tempDir, { recursive: true, force: true });
     mockExit.mockClear();
     mockConsoleLog.mockClear();
+    vi.unstubAllEnvs();
   });
 
   describe("authentication check", () => {
     it("should show authenticated status when token exists", async () => {
-      vi.mocked(configModule.getToken).mockResolvedValue("existing-token");
-
       await onboardCommand.parseAsync([
         "node",
         "cli",
@@ -77,11 +74,11 @@ describe("onboard command", () => {
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Authenticated"),
       );
-      expect(authModule.authenticate).not.toHaveBeenCalled();
+      expect(authenticate).not.toHaveBeenCalled();
     });
 
     it("should trigger authentication when no token exists", async () => {
-      vi.mocked(configModule.getToken).mockResolvedValue(undefined);
+      vi.stubEnv("VM0_TOKEN", "");
 
       await onboardCommand.parseAsync([
         "node",
@@ -91,26 +88,12 @@ describe("onboard command", () => {
         "manual",
       ]);
 
-      expect(authModule.authenticate).toHaveBeenCalled();
+      expect(authenticate).toHaveBeenCalled();
     });
   });
 
   describe("model provider check", () => {
     it("should show configured status when model providers exist", async () => {
-      vi.mocked(apiModule.listModelProviders).mockResolvedValue({
-        modelProviders: [
-          {
-            id: "provider-1",
-            type: "anthropic-api-key",
-            framework: "claude-code",
-            credentialName: "ANTHROPIC_API_KEY",
-            isDefault: true,
-            createdAt: "2024-01-01T00:00:00Z",
-            updatedAt: "2024-01-01T00:00:00Z",
-          },
-        ],
-      });
-
       await onboardCommand.parseAsync([
         "node",
         "cli",
@@ -125,9 +108,11 @@ describe("onboard command", () => {
     });
 
     it("should show warning when no model providers configured", async () => {
-      vi.mocked(apiModule.listModelProviders).mockResolvedValue({
-        modelProviders: [],
-      });
+      server.use(
+        http.get("http://localhost:3000/api/model-providers", () => {
+          return HttpResponse.json({ modelProviders: [] });
+        }),
+      );
 
       await onboardCommand.parseAsync([
         "node",
@@ -146,8 +131,10 @@ describe("onboard command", () => {
     });
 
     it("should continue even if model provider check fails", async () => {
-      vi.mocked(apiModule.listModelProviders).mockRejectedValue(
-        new Error("API error"),
+      server.use(
+        http.get("http://localhost:3000/api/model-providers", () => {
+          return HttpResponse.json({ error: "Server error" }, { status: 500 });
+        }),
       );
 
       await onboardCommand.parseAsync([
@@ -243,8 +230,12 @@ describe("onboard command", () => {
         "claude",
       ]);
 
-      // Should call setup-claude command
-      expect(setupClaudeCommand.parseAsync).toHaveBeenCalled();
+      // setup-claude downloads skill to .claude/skills/vm0-agent-builder
+      expect(
+        existsSync(
+          path.join(tempDir, "vm0-demo-agent/.claude/skills/vm0-agent-builder"),
+        ),
+      ).toBe(true);
     });
 
     it("should support --method manual flag", async () => {

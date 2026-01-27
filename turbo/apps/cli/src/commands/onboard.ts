@@ -45,9 +45,13 @@ export const onboardCommand = new Command()
         console.log(chalk.cyan("  vm0 model-provider setup"));
         console.log();
       }
-    } catch {
-      // Not authenticated or error - show warning but continue
-      console.log(chalk.yellow("! Could not check model provider status"));
+    } catch (error) {
+      // Model provider check is non-blocking - user can set up later
+      // But log the error for debugging
+      const message = error instanceof Error ? error.message : String(error);
+      console.log(
+        chalk.yellow(`! Could not check model provider status: ${message}`),
+      );
       console.log();
     }
 
