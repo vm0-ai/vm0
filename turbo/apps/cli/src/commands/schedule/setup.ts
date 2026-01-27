@@ -762,7 +762,7 @@ function displayDeployResult(
   if (deployResult.created) {
     console.log();
     console.log(
-      chalk.yellow(`  Run 'vm0 schedule enable ${agentName}' to activate`),
+      `  To activate: ${chalk.cyan(`vm0 schedule enable ${agentName}`)}`,
     );
   }
 }
