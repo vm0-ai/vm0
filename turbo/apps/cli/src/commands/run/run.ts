@@ -284,9 +284,7 @@ export const mainRunCommand = new Command()
             );
           } else if (error.message.startsWith("Version not found:")) {
             console.error(chalk.red(`✗ ${error.message}`));
-            console.error(
-              chalk.dim("  Make sure the version hash is correct."),
-            );
+            console.error(chalk.dim("  Make sure the version hash is correct"));
           } else if (error.message.startsWith("Environment file not found:")) {
             console.error(chalk.red(`✗ ${error.message}`));
           } else if (error.message.includes("not found")) {

@@ -4,7 +4,6 @@ import { readFile } from "fs/promises";
 import { existsSync } from "fs";
 import { dirname } from "path";
 import { parse as parseYaml } from "yaml";
-import prompts from "prompts";
 import {
   getLegacySystemTemplateWarning,
   extractVariableReferences,
@@ -17,6 +16,7 @@ import {
   uploadSkill,
   type SkillUploadResult,
 } from "../lib/storage/system-storage";
+import { isInteractive, promptConfirm } from "../lib/utils/prompt-utils";
 
 /**
  * Extract secret names from compose content using variable references.
@@ -204,7 +204,7 @@ export const composeCommand = new Command()
         // Only require confirmation if there are TRULY NEW secrets
         if (trulyNewSecrets.length > 0) {
           if (!options.yes) {
-            if (!process.stdin.isTTY) {
+            if (!isInteractive()) {
               console.error(
                 chalk.red(
                   `✗ New secrets detected: ${trulyNewSecrets.join(", ")}`,
@@ -218,14 +218,12 @@ export const composeCommand = new Command()
               process.exit(1);
             }
 
-            const response = await prompts({
-              type: "confirm",
-              name: "value",
-              message: `Approve ${trulyNewSecrets.length} new secret(s)?`,
-              initial: true,
-            });
-            if (!response.value) {
-              console.log(chalk.yellow("Compose cancelled."));
+            const confirmed = await promptConfirm(
+              `Approve ${trulyNewSecrets.length} new secret(s)?`,
+              true,
+            );
+            if (!confirmed) {
+              console.log(chalk.yellow("Compose cancelled"));
               process.exit(0);
             }
           }

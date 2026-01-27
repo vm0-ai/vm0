@@ -1,25 +1,8 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import * as readline from "readline";
 import { deleteSchedule } from "../../lib/api";
 import { resolveScheduleByAgent } from "../../lib/domain/schedule-utils";
-
-/**
- * Prompt for confirmation
- */
-async function confirm(message: string): Promise<boolean> {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  return new Promise((resolve) => {
-    rl.question(`${message} (y/N) `, (answer) => {
-      rl.close();
-      resolve(answer.toLowerCase() === "y" || answer.toLowerCase() === "yes");
-    });
-  });
-}
+import { isInteractive, promptConfirm } from "../../lib/utils/prompt-utils";
 
 export const deleteCommand = new Command()
   .name("delete")
@@ -34,8 +17,15 @@ export const deleteCommand = new Command()
 
       // Confirm deletion
       if (!options.force) {
-        const confirmed = await confirm(
+        if (!isInteractive()) {
+          console.error(
+            chalk.red("✗ --force required in non-interactive mode"),
+          );
+          process.exit(1);
+        }
+        const confirmed = await promptConfirm(
           `Delete schedule for agent ${chalk.cyan(agentName)}?`,
+          false,
         );
         if (!confirmed) {
           console.log(chalk.dim("Cancelled"));

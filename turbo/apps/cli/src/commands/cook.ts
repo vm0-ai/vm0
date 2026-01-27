@@ -372,7 +372,7 @@ cookCmd
             console.log();
             console.error(chalk.red("✗ Missing required variables:"));
             for (const varName of missingVars) {
-              console.error(chalk.red(`    ${varName}`));
+              console.error(chalk.red(`  ${varName}`));
             }
             console.error(
               chalk.dim(
@@ -399,9 +399,10 @@ cookCmd
 
           if (!existsSync(volumeDir)) {
             console.error(
-              chalk.red(
-                `✗ Directory not found: ${volumeConfig.name}. Create the directory and add files first.`,
-              ),
+              chalk.red(`✗ Directory not found: ${volumeConfig.name}`),
+            );
+            console.error(
+              chalk.dim("  Create the directory and add files first"),
             );
             process.exit(1);
           }

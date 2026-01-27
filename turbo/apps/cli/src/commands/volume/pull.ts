@@ -6,19 +6,12 @@ import * as os from "os";
 import * as tar from "tar";
 import { readStorageConfig } from "../../lib/storage/storage-utils";
 import { getStorageDownload } from "../../lib/api";
-import { listTarFiles, removeExtraFiles } from "../../lib/utils/file-utils";
+import {
+  formatBytes,
+  listTarFiles,
+  removeExtraFiles,
+} from "../../lib/utils/file-utils";
 import { handleEmptyStorageResponse } from "../../lib/storage/pull-utils";
-
-/**
- * Format bytes to human-readable format
- */
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
-}
 
 export const pullCommand = new Command()
   .name("pull")

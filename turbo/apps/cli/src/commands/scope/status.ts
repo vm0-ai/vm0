@@ -20,7 +20,7 @@ export const statusCommand = new Command()
         if (error.message.includes("Not authenticated")) {
           console.error(chalk.red("✗ Not authenticated. Run: vm0 auth login"));
         } else if (error.message.includes("No scope configured")) {
-          console.log(chalk.yellow("No scope configured."));
+          console.log(chalk.yellow("No scope configured"));
           console.log();
           console.log("Set your scope with:");
           console.log(chalk.cyan("  vm0 scope set <slug>"));

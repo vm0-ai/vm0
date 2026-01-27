@@ -105,7 +105,7 @@ export const initCommand = new Command()
       console.log(chalk.green(`✓ Initialized artifact: ${artifactName}`));
       console.log(
         chalk.dim(
-          `✓ Config saved to ${path.join(cwd, ".vm0", "storage.yaml")}`,
+          `  Config saved to ${path.join(cwd, ".vm0", "storage.yaml")}`,
         ),
       );
     } catch (error) {

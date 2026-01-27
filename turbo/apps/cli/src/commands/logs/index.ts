@@ -7,6 +7,7 @@ import {
   NetworkLogEntry,
 } from "../../lib/api/api-client";
 import { parseTime } from "../../lib/utils/time-parser";
+import { formatBytes } from "../../lib/utils/file-utils";
 import { ClaudeEventParser } from "../../lib/events/claude-event-parser";
 import { EventRenderer } from "../../lib/events/event-renderer";
 import { CodexEventRenderer } from "../../lib/events/codex-event-renderer";
@@ -15,17 +16,6 @@ import { CodexEventRenderer } from "../../lib/events/codex-event-renderer";
  * Log type for mutually exclusive options
  */
 type LogType = "agent" | "system" | "metrics" | "network";
-
-/**
- * Format bytes to human-readable string
- */
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-}
 
 /**
  * Format a single metric line
@@ -220,7 +210,7 @@ async function showAgentEvents(
   const response = await apiClient.getAgentEvents(runId, options);
 
   if (response.events.length === 0) {
-    console.log(chalk.yellow("No agent events found for this run."));
+    console.log(chalk.yellow("No agent events found for this run"));
     return;
   }
 
@@ -252,7 +242,7 @@ async function showSystemLog(
   const response = await apiClient.getSystemLog(runId, options);
 
   if (!response.systemLog) {
-    console.log(chalk.yellow("No system log found for this run."));
+    console.log(chalk.yellow("No system log found for this run"));
     return;
   }
 
@@ -276,7 +266,7 @@ async function showMetrics(
   const response = await apiClient.getMetrics(runId, options);
 
   if (response.metrics.length === 0) {
-    console.log(chalk.yellow("No metrics found for this run."));
+    console.log(chalk.yellow("No metrics found for this run"));
     return;
   }
 
@@ -312,7 +302,7 @@ async function showNetworkLogs(
   if (response.networkLogs.length === 0) {
     console.log(
       chalk.yellow(
-        "No network logs found for this run. Network logs are only captured when experimental_firewall is enabled on an experimental_runner.",
+        "No network logs found for this run. Network logs are only captured when experimental_firewall is enabled on an experimental_runner",
       ),
     );
     return;

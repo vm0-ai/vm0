@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { getCredential, deleteCredential } from "../../lib/api";
+import { isInteractive, promptConfirm } from "../../lib/utils/prompt-utils";
 
 export const deleteCommand = new Command()
   .name("delete")
@@ -19,26 +20,20 @@ export const deleteCommand = new Command()
 
       // Confirm deletion unless --yes is passed
       if (!options.yes) {
-        const readline = await import("readline");
-        const rl = readline.createInterface({
-          input: process.stdin,
-          output: process.stdout,
-        });
-
-        const confirmed = await new Promise<boolean>((resolve) => {
-          rl.question(
-            chalk.yellow(
-              `Are you sure you want to delete credential "${name}"? (y/N) `,
-            ),
-            (answer) => {
-              rl.close();
-              resolve(answer.toLowerCase() === "y");
-            },
+        if (!isInteractive()) {
+          console.error(
+            chalk.red("✗ --yes flag is required in non-interactive mode"),
           );
-        });
+          process.exit(1);
+        }
+
+        const confirmed = await promptConfirm(
+          `Are you sure you want to delete credential "${name}"?`,
+          false,
+        );
 
         if (!confirmed) {
-          console.log(chalk.dim("Cancelled."));
+          console.log(chalk.dim("Cancelled"));
           return;
         }
       }

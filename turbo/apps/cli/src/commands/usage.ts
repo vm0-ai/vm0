@@ -113,7 +113,7 @@ export const usageCommand = new Command()
         } catch {
           console.error(
             chalk.red(
-              "Error: Invalid --until format. Use ISO (2026-01-01) or relative (7d, 30d)",
+              "✗ Invalid --until format. Use ISO (2026-01-01) or relative (7d, 30d)",
             ),
           );
           process.exit(1);
@@ -129,7 +129,7 @@ export const usageCommand = new Command()
         } catch {
           console.error(
             chalk.red(
-              "Error: Invalid --since format. Use ISO (2026-01-01) or relative (7d, 30d)",
+              "✗ Invalid --since format. Use ISO (2026-01-01) or relative (7d, 30d)",
             ),
           );
           process.exit(1);
@@ -140,7 +140,7 @@ export const usageCommand = new Command()
 
       // Validate date range
       if (startDate >= endDate) {
-        console.error(chalk.red("Error: --since must be before --until"));
+        console.error(chalk.red("✗ --since must be before --until"));
         process.exit(1);
       }
 
@@ -148,7 +148,7 @@ export const usageCommand = new Command()
       if (rangeMs > MAX_RANGE_MS) {
         console.error(
           chalk.red(
-            "Error: Time range exceeds maximum of 30 days. Use --until to specify an end date.",
+            "✗ Time range exceeds maximum of 30 days. Use --until to specify an end date",
           ),
         );
         process.exit(1);
@@ -199,14 +199,13 @@ export const usageCommand = new Command()
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes("Not authenticated")) {
-          console.error(
-            chalk.red("Error: Not authenticated. Run: vm0 auth login"),
-          );
+          console.error(chalk.red("✗ Not authenticated"));
+          console.error(chalk.dim("  Run: vm0 auth login"));
         } else {
-          console.error(chalk.red(`Error: ${error.message}`));
+          console.error(chalk.red(`✗ ${error.message}`));
         }
       } else {
-        console.error(chalk.red("Error: An unexpected error occurred"));
+        console.error(chalk.red("✗ An unexpected error occurred"));
       }
       process.exit(1);
     }

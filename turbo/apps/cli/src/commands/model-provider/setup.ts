@@ -39,7 +39,7 @@ export const setupCommand = new Command()
         // Non-interactive mode
         if (options.type && options.credential) {
           if (!Object.keys(MODEL_PROVIDER_TYPES).includes(options.type)) {
-            console.error(chalk.red(`x Invalid type "${options.type}"`));
+            console.error(chalk.red(`✗ Invalid type "${options.type}"`));
             console.log();
             console.log("Valid types:");
             for (const [t, config] of Object.entries(MODEL_PROVIDER_TYPES)) {
@@ -51,13 +51,13 @@ export const setupCommand = new Command()
           credential = options.credential;
         } else if (options.type || options.credential) {
           console.error(
-            chalk.red("x Both --type and --credential are required"),
+            chalk.red("✗ Both --type and --credential are required"),
           );
           process.exit(1);
         } else {
           // Interactive mode
           if (!isInteractive()) {
-            console.error(chalk.red("x Interactive mode requires a TTY"));
+            console.error(chalk.red("✗ Interactive mode requires a TTY"));
             console.log();
             console.log("Use non-interactive mode:");
             console.log(
@@ -103,12 +103,12 @@ export const setupCommand = new Command()
                 : "";
               console.log(
                 chalk.green(
-                  `Done Converted "${checkResult.credentialName}" to model provider${defaultNote}`,
+                  `✓ Converted "${checkResult.credentialName}" to model provider${defaultNote}`,
                 ),
               );
               return;
             } else {
-              console.log(chalk.dim("Aborted."));
+              console.log(chalk.dim("Aborted"));
               process.exit(0);
             }
           }
@@ -146,24 +146,24 @@ export const setupCommand = new Command()
           ? ` (default for ${provider.framework})`
           : "";
         console.log(
-          chalk.green(`Done Model provider "${type}" ${action}${defaultNote}`),
+          chalk.green(`✓ Model provider "${type}" ${action}${defaultNote}`),
         );
       } catch (error) {
         if (error instanceof Error) {
           if (error.message.includes("already exists")) {
-            console.error(chalk.red(`x ${error.message}`));
+            console.error(chalk.red(`✗ ${error.message}`));
             console.log();
             console.log("To convert the existing credential, run:");
             console.log(chalk.cyan("  vm0 model-provider setup --convert"));
           } else if (error.message.includes("Not authenticated")) {
             console.error(
-              chalk.red("x Not authenticated. Run: vm0 auth login"),
+              chalk.red("✗ Not authenticated. Run: vm0 auth login"),
             );
           } else {
-            console.error(chalk.red(`x ${error.message}`));
+            console.error(chalk.red(`✗ ${error.message}`));
           }
         } else {
-          console.error(chalk.red("x An unexpected error occurred"));
+          console.error(chalk.red("✗ An unexpected error occurred"));
         }
         process.exit(1);
       }

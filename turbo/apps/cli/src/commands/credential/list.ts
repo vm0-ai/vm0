@@ -11,7 +11,7 @@ export const listCommand = new Command()
       const result = await listCredentials();
 
       if (result.credentials.length === 0) {
-        console.log(chalk.dim("No credentials found."));
+        console.log(chalk.dim("No credentials found"));
         console.log();
         console.log("To add a credential:");
         console.log(chalk.cyan("  vm0 credential set MY_API_KEY <value>"));

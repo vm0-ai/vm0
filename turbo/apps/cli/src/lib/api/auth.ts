@@ -164,7 +164,7 @@ export async function authenticate(apiUrl?: string): Promise<void> {
 
 export async function logout(): Promise<void> {
   await clearConfig();
-  console.log(chalk.green("Successfully logged out"));
+  console.log(chalk.green("✓ Successfully logged out"));
   console.log("Your credentials have been cleared.");
 }
 
@@ -172,10 +172,10 @@ export async function checkAuthStatus(): Promise<void> {
   const config = await loadConfig();
 
   if (config.token) {
-    console.log(chalk.green("Authenticated"));
+    console.log(chalk.green("✓ Authenticated"));
     console.log("You are logged in to VM0.");
   } else {
-    console.log(chalk.yellow("Not authenticated"));
+    console.log(chalk.red("✗ Not authenticated"));
     console.log("Run 'vm0 auth login' to authenticate.");
   }
 
@@ -189,7 +189,7 @@ export async function setupToken(): Promise<void> {
   const token = await getToken();
 
   if (!token) {
-    console.error(chalk.red("Error: Not authenticated."));
+    console.error(chalk.red("✗ Not authenticated"));
     console.error("");
     console.error("To get a token for CI/CD:");
     console.error("  1. Run 'vm0 auth login' to authenticate");
