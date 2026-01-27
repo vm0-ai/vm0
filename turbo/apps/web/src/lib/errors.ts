@@ -42,3 +42,9 @@ export class ConflictError extends ApiError {
     super(409, message, "CONFLICT");
   }
 }
+
+export class SchedulePastError extends ApiError {
+  constructor(message = "Schedule time has already passed") {
+    super(400, message, "SCHEDULE_PAST");
+  }
+}

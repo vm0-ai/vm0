@@ -34,6 +34,12 @@ export const enableCommand = new Command()
             chalk.dim(`  No schedule found for agent "${agentName}"`),
           );
           console.error(chalk.dim("  Run: vm0 schedule list"));
+        } else if (
+          error.message.includes("already passed") ||
+          error.message.includes("SCHEDULE_PAST")
+        ) {
+          console.error(chalk.dim("  Scheduled time has already passed"));
+          console.error(chalk.dim(`  Run: vm0 schedule setup ${agentName}`));
         } else {
           console.error(chalk.dim(`  ${error.message}`));
         }

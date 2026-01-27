@@ -156,7 +156,7 @@ describe("ScheduleService", () => {
       expect(result.schedule.name).toBe(`${TEST_PREFIX}cron-job`);
       expect(result.schedule.cronExpression).toBe("0 9 * * *");
       expect(result.schedule.timezone).toBe("UTC");
-      expect(result.schedule.enabled).toBe(true);
+      expect(result.schedule.enabled).toBe(false);
       expect(result.schedule.nextRunAt).not.toBeNull();
     });
 
@@ -697,6 +697,55 @@ describe("ScheduleService", () => {
       const nextRun = new Date(result.nextRunAt!);
       expect(nextRun.getTime()).toBeGreaterThan(Date.now());
     });
+
+    it("should throw SchedulePastError when enabling one-time schedule with past atTime", async () => {
+      // Create a one-time schedule with a future time
+      const futureTime = new Date(Date.now() + 1000).toISOString();
+      await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}past-onetime`,
+        composeId: TEST_COMPOSE_ID,
+        atTime: futureTime,
+        timezone: "UTC",
+        prompt: "Past one-time test",
+      });
+
+      // Manually set atTime to past (simulating time passing)
+      await globalThis.services.db
+        .update(agentSchedules)
+        .set({ atTime: new Date(Date.now() - 60000) })
+        .where(eq(agentSchedules.name, `${TEST_PREFIX}past-onetime`));
+
+      // Attempt to enable should throw SchedulePastError
+      await expect(
+        scheduleService.enable(
+          TEST_USER_ID,
+          TEST_COMPOSE_ID,
+          `${TEST_PREFIX}past-onetime`,
+        ),
+      ).rejects.toThrow("has already passed");
+    });
+
+    it("should allow enabling one-time schedule with future atTime", async () => {
+      // Create a one-time schedule with a future time
+      const futureTime = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour from now
+      await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}future-onetime`,
+        composeId: TEST_COMPOSE_ID,
+        atTime: futureTime,
+        timezone: "UTC",
+        prompt: "Future one-time test",
+      });
+
+      // Enable should succeed
+      const result = await scheduleService.enable(
+        TEST_USER_ID,
+        TEST_COMPOSE_ID,
+        `${TEST_PREFIX}future-onetime`,
+      );
+
+      expect(result.enabled).toBe(true);
+      expect(result.nextRunAt).not.toBeNull();
+    });
   });
 
   describe("toResponse", () => {
@@ -763,10 +812,10 @@ describe("ScheduleService", () => {
         prompt: "Due schedule",
       });
 
-      // Set nextRunAt to past so it becomes due
+      // Set nextRunAt to past and enable so it becomes due
       await globalThis.services.db
         .update(agentSchedules)
-        .set({ nextRunAt: new Date(Date.now() - 60000) })
+        .set({ nextRunAt: new Date(Date.now() - 60000), enabled: true })
         .where(eq(agentSchedules.name, `${TEST_PREFIX}due-schedule`));
 
       const result = await scheduleService.executeDueSchedules();
@@ -807,11 +856,12 @@ describe("ScheduleService", () => {
         })
         .returning();
 
-      // Update schedule to have past nextRunAt and link to pending run
+      // Update schedule to have past nextRunAt, enable it, and link to pending run
       await globalThis.services.db
         .update(agentSchedules)
         .set({
           nextRunAt: new Date(Date.now() - 60000),
+          enabled: true,
           lastRunId: pendingRun!.id,
         })
         .where(eq(agentSchedules.name, `${TEST_PREFIX}pending-run`));
@@ -844,11 +894,12 @@ describe("ScheduleService", () => {
         })
         .returning();
 
-      // Update schedule to have past nextRunAt and link to running run
+      // Update schedule to have past nextRunAt, enable it, and link to running run
       await globalThis.services.db
         .update(agentSchedules)
         .set({
           nextRunAt: new Date(Date.now() - 60000),
+          enabled: true,
           lastRunId: runningRun!.id,
         })
         .where(eq(agentSchedules.name, `${TEST_PREFIX}running-run`));
@@ -881,11 +932,12 @@ describe("ScheduleService", () => {
         })
         .returning();
 
-      // Update schedule to have past nextRunAt and link to completed run
+      // Update schedule to have past nextRunAt, enable it, and link to completed run
       await globalThis.services.db
         .update(agentSchedules)
         .set({
           nextRunAt: new Date(Date.now() - 60000),
+          enabled: true,
           lastRunId: completedRun!.id,
         })
         .where(eq(agentSchedules.name, `${TEST_PREFIX}completed-run`));
@@ -907,10 +959,10 @@ describe("ScheduleService", () => {
         prompt: "One-time schedule",
       });
 
-      // Set nextRunAt to past so it becomes due
+      // Set nextRunAt to past and enable so it becomes due
       await globalThis.services.db
         .update(agentSchedules)
-        .set({ nextRunAt: new Date(Date.now() - 60000) })
+        .set({ nextRunAt: new Date(Date.now() - 60000), enabled: true })
         .where(eq(agentSchedules.name, `${TEST_PREFIX}one-time`));
 
       const result = await scheduleService.executeDueSchedules();
@@ -937,10 +989,10 @@ describe("ScheduleService", () => {
         prompt: "Recurring schedule",
       });
 
-      // Set nextRunAt to past so it becomes due
+      // Set nextRunAt to past and enable so it becomes due
       await globalThis.services.db
         .update(agentSchedules)
-        .set({ nextRunAt: new Date(Date.now() - 60000) })
+        .set({ nextRunAt: new Date(Date.now() - 60000), enabled: true })
         .where(eq(agentSchedules.name, `${TEST_PREFIX}recurring`));
 
       await scheduleService.executeDueSchedules();
@@ -1003,10 +1055,10 @@ describe("ScheduleService", () => {
         prompt: "Schedule that fails context building",
       });
 
-      // Set nextRunAt to past so it becomes due
+      // Set nextRunAt to past and enable so it becomes due
       await globalThis.services.db
         .update(agentSchedules)
-        .set({ nextRunAt: new Date(Date.now() - 60000) })
+        .set({ nextRunAt: new Date(Date.now() - 60000), enabled: true })
         .where(eq(agentSchedules.name, `${TEST_PREFIX}failing-context`));
 
       const result = await scheduleService.executeDueSchedules();
@@ -1047,10 +1099,10 @@ describe("ScheduleService", () => {
         prompt: "Schedule that fails dispatch",
       });
 
-      // Set nextRunAt to past so it becomes due
+      // Set nextRunAt to past and enable so it becomes due
       await globalThis.services.db
         .update(agentSchedules)
-        .set({ nextRunAt: new Date(Date.now() - 60000) })
+        .set({ nextRunAt: new Date(Date.now() - 60000), enabled: true })
         .where(eq(agentSchedules.name, `${TEST_PREFIX}failing-dispatch`));
 
       const result = await scheduleService.executeDueSchedules();
@@ -1086,10 +1138,10 @@ describe("ScheduleService", () => {
         prompt: "One-time schedule that fails",
       });
 
-      // Set nextRunAt to past so it becomes due
+      // Set nextRunAt to past and enable so it becomes due
       await globalThis.services.db
         .update(agentSchedules)
-        .set({ nextRunAt: new Date(Date.now() - 60000) })
+        .set({ nextRunAt: new Date(Date.now() - 60000), enabled: true })
         .where(eq(agentSchedules.name, `${TEST_PREFIX}failing-onetime`));
 
       await scheduleService.executeDueSchedules();
@@ -1122,10 +1174,10 @@ describe("ScheduleService", () => {
         prompt: "Cron schedule that fails",
       });
 
-      // Set nextRunAt to past so it becomes due
+      // Set nextRunAt to past and enable so it becomes due
       await globalThis.services.db
         .update(agentSchedules)
-        .set({ nextRunAt: new Date(Date.now() - 60000) })
+        .set({ nextRunAt: new Date(Date.now() - 60000), enabled: true })
         .where(eq(agentSchedules.name, `${TEST_PREFIX}failing-cron`));
 
       await scheduleService.executeDueSchedules();
@@ -1160,10 +1212,10 @@ describe("ScheduleService", () => {
         prompt: "Test lastRunId is set immediately",
       });
 
-      // Set nextRunAt to past so it becomes due
+      // Set nextRunAt to past and enable so it becomes due
       await globalThis.services.db
         .update(agentSchedules)
-        .set({ nextRunAt: new Date(Date.now() - 60000) })
+        .set({ nextRunAt: new Date(Date.now() - 60000), enabled: true })
         .where(eq(agentSchedules.name, `${TEST_PREFIX}lastrunid-test`));
 
       await scheduleService.executeDueSchedules();

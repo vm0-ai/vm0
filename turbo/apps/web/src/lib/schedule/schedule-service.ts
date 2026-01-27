@@ -9,7 +9,7 @@ import {
 import { agentRuns } from "../../db/schema/agent-run";
 import { scopes } from "../../db/schema/scope";
 import { encryptSecretsMap, decryptSecretsMap } from "../crypto";
-import { NotFoundError, BadRequestError } from "../errors";
+import { NotFoundError, BadRequestError, SchedulePastError } from "../errors";
 import { logger } from "../logger";
 import { runService } from "../run/run-service";
 import { generateSandboxToken } from "../auth/sandbox-token";
@@ -399,7 +399,7 @@ export class ScheduleService {
           artifactName: request.artifactName ?? null,
           artifactVersion: request.artifactVersion ?? null,
           volumeVersions: request.volumeVersions ?? null,
-          enabled: true,
+          enabled: false,
           nextRunAt,
           createdAt: now,
           updatedAt: now,
@@ -621,6 +621,11 @@ export class ScheduleService {
       // For one-time schedules, check if atTime is in the future
       if (schedule.atTime > new Date()) {
         nextRunAt = schedule.atTime;
+      } else {
+        // Refuse to enable past one-time schedules
+        throw new SchedulePastError(
+          `Cannot enable schedule: scheduled time ${schedule.atTime.toISOString()} has already passed`,
+        );
       }
     }
 
