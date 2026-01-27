@@ -1,5 +1,24 @@
 # Changelog
 
+## [8.1.0](https://github.com/vm0-ai/vm0/compare/cli-v8.0.2...cli-v8.1.0) (2026-01-27)
+
+
+### Features
+
+* **docs:** trigger release for documentation updates ([#1697](https://github.com/vm0-ai/vm0/issues/1697)) ([c078287](https://github.com/vm0-ai/vm0/commit/c078287de06336abd3157fcaa056bdedcb47838d))
+
+
+### Bug Fixes
+
+* **schedule:** reject enabling past one-time schedules and default to disabled ([#1690](https://github.com/vm0-ai/vm0/issues/1690)) ([601fb06](https://github.com/vm0-ai/vm0/commit/601fb0653f71e1a1aae105a627110dd7979baa19))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 6.2.0
+
 ## [8.0.2](https://github.com/vm0-ai/vm0/compare/cli-v8.0.1...cli-v8.0.2) (2026-01-27)
 
 

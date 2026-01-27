@@ -1,5 +1,19 @@
 # Changelog
 
+## [10.11.0](https://github.com/vm0-ai/vm0/compare/web-v10.10.0...web-v10.11.0) (2026-01-27)
+
+
+### Features
+
+* **docs:** trigger release for documentation updates ([#1697](https://github.com/vm0-ai/vm0/issues/1697)) ([c078287](https://github.com/vm0-ai/vm0/commit/c078287de06336abd3157fcaa056bdedcb47838d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 6.2.0
+
 ## [10.10.0](https://github.com/vm0-ai/vm0/compare/web-v10.9.1...web-v10.10.0) (2026-01-27)
 
 

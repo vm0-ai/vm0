@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.0](https://github.com/vm0-ai/vm0/compare/docs-v1.0.0...docs-v1.1.0) (2026-01-27)
+
+
+### Features
+
+* **docs:** trigger release for documentation updates ([#1697](https://github.com/vm0-ai/vm0/issues/1697)) ([c078287](https://github.com/vm0-ai/vm0/commit/c078287de06336abd3157fcaa056bdedcb47838d))
+
+
+### Bug Fixes
+
+* **tutorial:** add enable step after schedule setup ([#1699](https://github.com/vm0-ai/vm0/issues/1699)) ([911f4e1](https://github.com/vm0-ai/vm0/commit/911f4e15027a77a6e736aaa6ecbcd39f8e65242d))
+
 ## [1.0.0](https://github.com/vm0-ai/vm0/compare/docs-v0.21.0...docs-v1.0.0) (2026-01-26)
 
 
