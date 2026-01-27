@@ -49,11 +49,11 @@ teardown_file() {
 }
 
 # ============================================
-# scope/name Image Reference Tests
+# Image Field Deprecation Tests
 # ============================================
 
-@test "vm0 compose with scope/name validates format" {
-    # Create a test config with scope/name format
+@test "vm0 compose with deprecated image field shows warning but succeeds" {
+    # Create a test config with deprecated image field
     TEST_DIR="$(mktemp -d)"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -61,19 +61,20 @@ version: "1.0"
 agents:
   test-agent:
     framework: claude-code
-    image: "invalid/missing-image"
+    image: "some-image"
 EOF
 
-    # Should fail because the scope or image doesn't exist, not because of format
+    # Should succeed with deprecation warning
+    # Server now resolves image based on framework, ignoring the image field
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_failure
-    # Should show scope/image not found error, not a format error
-    assert_output --partial "not found"
+    assert_success
+    # Should show deprecation warning
+    assert_output --partial "deprecated"
 
     rm -rf "$TEST_DIR"
 }
 
-@test "vm0 compose with plain image name that does not exist fails" {
+@test "vm0 compose without image field succeeds" {
     TEST_DIR="$(mktemp -d)"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -81,12 +82,11 @@ version: "1.0"
 agents:
   test-agent:
     framework: claude-code
-    image: "no-slash-here"
 EOF
 
+    # Should succeed - image is resolved server-side based on framework
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_failure
-    # Should fail due to image not found (plain name without slash is a user image lookup)
+    assert_success
 
     rm -rf "$TEST_DIR"
 }
