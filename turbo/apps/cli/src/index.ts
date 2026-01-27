@@ -21,6 +21,8 @@ import { scheduleCommand } from "./commands/schedule";
 import { usageCommand } from "./commands/usage";
 import { credentialCommand } from "./commands/credential";
 import { modelProviderCommand } from "./commands/model-provider";
+import { onboardCommand } from "./commands/onboard";
+import { setupClaudeCommand } from "./commands/setup-claude";
 
 const program = new Command();
 
@@ -87,6 +89,8 @@ program.addCommand(scheduleCommand);
 program.addCommand(usageCommand);
 program.addCommand(credentialCommand);
 program.addCommand(modelProviderCommand);
+program.addCommand(onboardCommand);
+program.addCommand(setupClaudeCommand);
 
 export { program };
 
