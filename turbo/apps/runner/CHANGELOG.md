@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.2.1](https://github.com/vm0-ai/vm0/compare/runner-v3.2.0...runner-v3.2.1) (2026-01-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.0.0
+
 ## [3.2.0](https://github.com/vm0-ai/vm0/compare/runner-v3.1.0...runner-v3.2.0) (2026-01-27)
 
 

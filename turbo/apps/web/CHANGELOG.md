@@ -1,5 +1,28 @@
 # Changelog
 
+## [11.0.0](https://github.com/vm0-ai/vm0/compare/web-v10.12.0...web-v11.0.0) (2026-01-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **api:** All Public API v1 endpoints now use camelCase field names instead of snake_case. This affects request bodies, response bodies, and query parameters.
+
+### Features
+
+* integrate cloudflare tunnel into pnpm dev automatically ([#1728](https://github.com/vm0-ai/vm0/issues/1728)) ([18f2ddc](https://github.com/vm0-ai/vm0/commit/18f2ddc13df953402198738b5b10937e01a5e65c)), closes [#1726](https://github.com/vm0-ai/vm0/issues/1726)
+
+
+### Code Refactoring
+
+* **api:** migrate public API v1 from snake_case to camelCase ([#1730](https://github.com/vm0-ai/vm0/issues/1730)) ([5dfcc28](https://github.com/vm0-ai/vm0/commit/5dfcc28597991f408a33bbd565b6619f47d6b92c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.0.0
+
 ## [10.12.0](https://github.com/vm0-ai/vm0/compare/web-v10.11.0...web-v10.12.0) (2026-01-27)
 
 

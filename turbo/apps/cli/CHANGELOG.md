@@ -1,5 +1,23 @@
 # Changelog
 
+## [9.0.0](https://github.com/vm0-ai/vm0/compare/cli-v8.1.1...cli-v9.0.0) (2026-01-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **api:** All Public API v1 endpoints now use camelCase field names instead of snake_case. This affects request bodies, response bodies, and query parameters.
+
+### Code Refactoring
+
+* **api:** migrate public API v1 from snake_case to camelCase ([#1730](https://github.com/vm0-ai/vm0/issues/1730)) ([5dfcc28](https://github.com/vm0-ai/vm0/commit/5dfcc28597991f408a33bbd565b6619f47d6b92c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.0.0
+
 ## [8.1.1](https://github.com/vm0-ai/vm0/compare/cli-v8.1.0...cli-v8.1.1) (2026-01-27)
 
 

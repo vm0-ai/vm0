@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.0.0](https://github.com/vm0-ai/vm0/compare/docs-v1.1.2...docs-v2.0.0) (2026-01-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **api:** All Public API v1 endpoints now use camelCase field names instead of snake_case. This affects request bodies, response bodies, and query parameters.
+
+### Bug Fixes
+
+* **docs:** update model-selection documentation for model-provider system ([#1734](https://github.com/vm0-ai/vm0/issues/1734)) ([a49f792](https://github.com/vm0-ai/vm0/commit/a49f792c1a00c89314b5b09e2d5872ddcceebd83)), closes [#1732](https://github.com/vm0-ai/vm0/issues/1732)
+
+
+### Code Refactoring
+
+* **api:** migrate public API v1 from snake_case to camelCase ([#1730](https://github.com/vm0-ai/vm0/issues/1730)) ([5dfcc28](https://github.com/vm0-ai/vm0/commit/5dfcc28597991f408a33bbd565b6619f47d6b92c))
+
 ## [1.1.2](https://github.com/vm0-ai/vm0/compare/docs-v1.1.1...docs-v1.1.2) (2026-01-27)
 
 

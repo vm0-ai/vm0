@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.24.0](https://github.com/vm0-ai/vm0/compare/platform-v0.23.1...platform-v0.24.0) (2026-01-27)
+
+
+### Features
+
+* **platform:** add logs page ui with table display ([#1735](https://github.com/vm0-ai/vm0/issues/1735)) ([4805755](https://github.com/vm0-ai/vm0/commit/4805755e8cc7f82d56f90317a6e7587c3a205e31))
+* **platform:** improve UI styling and dark mode support ([#1725](https://github.com/vm0-ai/vm0/issues/1725)) ([5657fcf](https://github.com/vm0-ai/vm0/commit/5657fcf0c6ad5246c2eb7057241be988a9287b25))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.0.0
+
 ## [0.23.1](https://github.com/vm0-ai/vm0/compare/platform-v0.23.0...platform-v0.23.1) (2026-01-27)
 
 
