@@ -49,6 +49,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
 
+      - name: Notify Slack - Starting
+        id: slack-start
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: ":database: *Database Migration* starting..."
+
       - name: Get Production Database URL
         id: get-db-url
         run: |
@@ -66,6 +76,28 @@ jobs:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
 
+      - name: Notify Slack - Success
+        if: success()
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            thread_ts: "${{ steps.slack-start.outputs.ts }}"
+            text: ":white_check_mark: Migration completed"
+
+      - name: Notify Slack - Failure
+        if: failure() && steps.slack-start.outputs.ts
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            thread_ts: "${{ steps.slack-start.outputs.ts }}"
+            text: ":x: Migration failed"
+
   # Deploy web app to production
   deploy-web-production:
     needs: [release-please, migrate-production]
@@ -80,6 +112,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
+
+      - name: Notify Slack - Starting
+        id: slack-start
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: ":rocket: *Web App* deploying to production..."
 
       - name: Get Production Database URL
         id: get-db-url
@@ -116,6 +158,28 @@ jobs:
             OFFICIAL_RUNNER_SECRET=${{ secrets.OFFICIAL_RUNNER_SECRET }}
             ABLY_API_KEY=${{ secrets.ABLY_API_KEY }}
 
+      - name: Notify Slack - Success
+        if: success()
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            thread_ts: "${{ steps.slack-start.outputs.ts }}"
+            text: ":white_check_mark: Deployed successfully"
+
+      - name: Notify Slack - Failure
+        if: failure() && steps.slack-start.outputs.ts
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            thread_ts: "${{ steps.slack-start.outputs.ts }}"
+            text: ":x: Deploy failed"
+
   # Deploy docs app to production
   deploy-docs-production:
     needs: release-please
@@ -131,6 +195,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
 
+      - name: Notify Slack - Starting
+        id: slack-start
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: ":books: *Docs* deploying to production..."
+
       - name: Deploy Docs to Vercel Production
         id: deploy
         uses: ./.github/actions/vercel-deploy
@@ -140,6 +214,28 @@ jobs:
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_DOCS }}
           environment: production
           deployment-env: docs
+
+      - name: Notify Slack - Success
+        if: success()
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            thread_ts: "${{ steps.slack-start.outputs.ts }}"
+            text: ":white_check_mark: Deployed successfully"
+
+      - name: Notify Slack - Failure
+        if: failure() && steps.slack-start.outputs.ts
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            thread_ts: "${{ steps.slack-start.outputs.ts }}"
+            text: ":x: Deploy failed"
 
   # Deploy site app to production
   deploy-site-production:
@@ -156,6 +252,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
 
+      - name: Notify Slack - Starting
+        id: slack-start
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: ":globe_with_meridians: *Site* deploying to production..."
+
       - name: Deploy Site to Vercel Production
         id: deploy
         uses: ./.github/actions/vercel-deploy
@@ -169,6 +275,28 @@ jobs:
             WEB_APP_URL=https://www.vm0.ai
             NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
+
+      - name: Notify Slack - Success
+        if: success()
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            thread_ts: "${{ steps.slack-start.outputs.ts }}"
+            text: ":white_check_mark: Deployed successfully"
+
+      - name: Notify Slack - Failure
+        if: failure() && steps.slack-start.outputs.ts
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            thread_ts: "${{ steps.slack-start.outputs.ts }}"
+            text: ":x: Deploy failed"
 
   # Deploy platform (Vite SPA) to production
   deploy-platform-production:
@@ -185,6 +313,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
 
+      - name: Notify Slack - Starting
+        id: slack-start
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: ":desktop_computer: *Platform* deploying to production..."
+
       - name: Deploy Platform to Vercel Production
         id: deploy
         uses: ./.github/actions/vercel-deploy
@@ -198,6 +336,28 @@ jobs:
             VITE_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
             VITE_API_URL=https://www.vm0.ai
 
+      - name: Notify Slack - Success
+        if: success()
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            thread_ts: "${{ steps.slack-start.outputs.ts }}"
+            text: ":white_check_mark: Deployed successfully"
+
+      - name: Notify Slack - Failure
+        if: failure() && steps.slack-start.outputs.ts
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            thread_ts: "${{ steps.slack-start.outputs.ts }}"
+            text: ":x: Deploy failed"
+
   publish-npm:
     needs: release-please
     if: ${{ needs.release-please.outputs.cli_release_created == 'true' }}
@@ -208,6 +368,17 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Notify Slack - Starting
+        id: slack-start
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: ":package: *CLI* publishing to npm..."
+
       - uses: actions/setup-node@v4
         with:
           node-version: lts/*
@@ -231,6 +402,28 @@ jobs:
       - name: Publish to npm with OIDC
         run: cd turbo/apps/cli/dist && npm publish --access public
 
+      - name: Notify Slack - Success
+        if: success()
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            thread_ts: "${{ steps.slack-start.outputs.ts }}"
+            text: ":white_check_mark: Deployed successfully"
+
+      - name: Notify Slack - Failure
+        if: failure() && steps.slack-start.outputs.ts
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            thread_ts: "${{ steps.slack-start.outputs.ts }}"
+            text: ":x: Deploy failed"
+
   publish-runner-npm:
     needs: release-please
     if: ${{ needs.release-please.outputs.runner_release_created == 'true' }}
@@ -241,6 +434,17 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Notify Slack - Starting
+        id: slack-start
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: ":package: *Runner* publishing to npm..."
+
       - uses: actions/setup-node@v4
         with:
           node-version: lts/*
@@ -264,6 +468,28 @@ jobs:
       - name: Publish to npm with OIDC
         run: cd turbo/apps/runner/dist && npm publish --access public
 
+      - name: Notify Slack - Success
+        if: success()
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            thread_ts: "${{ steps.slack-start.outputs.ts }}"
+            text: ":white_check_mark: Deployed successfully"
+
+      - name: Notify Slack - Failure
+        if: failure() && steps.slack-start.outputs.ts
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            thread_ts: "${{ steps.slack-start.outputs.ts }}"
+            text: ":x: Deploy failed"
+
   # Deploy runner to production metal instances
   deploy-runner-production:
     needs: [release-please, publish-runner-npm]
@@ -277,6 +503,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
+
+      - name: Notify Slack - Starting
+        id: slack-start
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: ":server: *Runner* deploying to production servers..."
 
       - name: Build Core Package
         run: cd turbo && pnpm turbo run build --filter=@vm0/core
@@ -326,3 +562,25 @@ jobs:
             -e "runner_bundle_path=/tmp/vm0-runner-bundle.tar.gz" \
             -e '{"extra_env": {"AXIOM_TOKEN": "'"${AXIOM_TOKEN}"'", "AXIOM_DATASET_SUFFIX": "prod"}}' \
             -v
+
+      - name: Notify Slack - Success
+        if: success()
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            thread_ts: "${{ steps.slack-start.outputs.ts }}"
+            text: ":white_check_mark: Deployed successfully"
+
+      - name: Notify Slack - Failure
+        if: failure() && steps.slack-start.outputs.ts
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            thread_ts: "${{ steps.slack-start.outputs.ts }}"
+            text: ":x: Deploy failed"
