@@ -46,7 +46,6 @@ const router = tsr.router(scopeContract, {
         id: scope.id,
         slug: scope.slug,
         type: scope.type,
-        displayName: scope.displayName,
         createdAt: scope.createdAt.toISOString(),
         updatedAt: scope.updatedAt.toISOString(),
       },
@@ -64,12 +63,12 @@ const router = tsr.router(scopeContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const { slug, displayName } = body;
+    const { slug } = body;
 
     log.debug("creating user scope", { userId, slug });
 
     try {
-      const scope = await createUserScope(userId, slug, displayName);
+      const scope = await createUserScope(userId, slug);
 
       return {
         status: 201 as const,
@@ -77,7 +76,6 @@ const router = tsr.router(scopeContract, {
           id: scope.id,
           slug: scope.slug,
           type: scope.type,
-          displayName: scope.displayName,
           createdAt: scope.createdAt.toISOString(),
           updatedAt: scope.updatedAt.toISOString(),
         },
@@ -137,7 +135,6 @@ const router = tsr.router(scopeContract, {
           id: scope.id,
           slug: scope.slug,
           type: scope.type,
-          displayName: scope.displayName,
           createdAt: scope.createdAt.toISOString(),
           updatedAt: scope.updatedAt.toISOString(),
         },

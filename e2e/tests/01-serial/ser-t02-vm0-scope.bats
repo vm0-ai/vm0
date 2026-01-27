@@ -171,11 +171,3 @@ EOF
     assert_output --partial "$NEW_SLUG"
 }
 
-@test "vm0 scope set with --display-name sets custom name" {
-    # Update scope with display name
-    NEW_SLUG="e2e-display-$(date +%s%3N)-$RANDOM"
-    run $CLI_COMMAND scope set "$NEW_SLUG" --display-name "My Test Scope" --force
-    assert_success
-    assert_output --partial "$NEW_SLUG"
-}
-

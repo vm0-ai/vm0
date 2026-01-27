@@ -33,7 +33,6 @@ export const scopes = pgTable(
     slug: varchar("slug", { length: 64 }).notNull().unique(),
     type: scopeTypeEnum("type").notNull().default("personal"),
     ownerId: text("owner_id"), // Clerk user ID, null for system scopes
-    displayName: varchar("display_name", { length: 128 }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

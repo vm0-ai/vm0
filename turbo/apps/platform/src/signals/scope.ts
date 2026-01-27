@@ -18,7 +18,6 @@ export interface Scope {
   id: string;
   slug: string;
   type: "personal" | "organization" | "system";
-  displayName: string | null;
   createdAt: string;
   updatedAt: string;
 }

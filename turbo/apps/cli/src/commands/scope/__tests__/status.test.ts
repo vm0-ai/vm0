@@ -79,7 +79,6 @@ describe("scope status command", () => {
             id: "test-id",
             slug: "testuser",
             type: "personal",
-            displayName: "Test User",
             createdAt: "2024-01-01T00:00:00Z",
             updatedAt: "2024-01-01T00:00:00Z",
           });
@@ -96,30 +95,6 @@ describe("scope status command", () => {
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("personal"),
-      );
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Test User"),
-      );
-    });
-
-    it("should handle scope without display name", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json({
-            id: "test-id",
-            slug: "testuser",
-            type: "personal",
-            displayName: null,
-            createdAt: "2024-01-01T00:00:00Z",
-            updatedAt: "2024-01-01T00:00:00Z",
-          });
-        }),
-      );
-
-      await statusCommand.parseAsync(["node", "cli"]);
-
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("testuser"),
       );
     });
   });

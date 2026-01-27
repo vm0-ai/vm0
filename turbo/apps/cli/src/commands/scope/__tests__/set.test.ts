@@ -61,7 +61,6 @@ describe("scope set command", () => {
               id: "test-id",
               slug: "testslug",
               type: "personal",
-              displayName: null,
               createdAt: "2024-01-01T00:00:00Z",
               updatedAt: "2024-01-01T00:00:00Z",
             },
@@ -79,45 +78,6 @@ describe("scope set command", () => {
         expect.stringContaining("testslug/<agent-name>"),
       );
     });
-
-    it("should create scope with display name", async () => {
-      let capturedBody: unknown;
-      server.use(
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(
-            { error: { message: "No scope configured", code: "NOT_FOUND" } },
-            { status: 404 },
-          );
-        }),
-        http.post("http://localhost:3000/api/scope", async ({ request }) => {
-          capturedBody = await request.json();
-          return HttpResponse.json(
-            {
-              id: "test-id",
-              slug: "testslug",
-              type: "personal",
-              displayName: "Test Display",
-              createdAt: "2024-01-01T00:00:00Z",
-              updatedAt: "2024-01-01T00:00:00Z",
-            },
-            { status: 201 },
-          );
-        }),
-      );
-
-      await setCommand.parseAsync([
-        "node",
-        "cli",
-        "testslug",
-        "--display-name",
-        "Test Display",
-      ]);
-
-      expect(capturedBody).toEqual({
-        slug: "testslug",
-        displayName: "Test Display",
-      });
-    });
   });
 
   describe("update existing scope", () => {
@@ -128,7 +88,6 @@ describe("scope set command", () => {
             id: "test-id",
             slug: "oldslug",
             type: "personal",
-            displayName: null,
             createdAt: "2024-01-01T00:00:00Z",
             updatedAt: "2024-01-01T00:00:00Z",
           });
@@ -155,7 +114,6 @@ describe("scope set command", () => {
             id: "test-id",
             slug: "oldslug",
             type: "personal",
-            displayName: null,
             createdAt: "2024-01-01T00:00:00Z",
             updatedAt: "2024-01-01T00:00:00Z",
           });
@@ -165,7 +123,6 @@ describe("scope set command", () => {
             id: "test-id",
             slug: "newslug",
             type: "personal",
-            displayName: null,
             createdAt: "2024-01-01T00:00:00Z",
             updatedAt: "2024-01-01T00:00:00Z",
           });
