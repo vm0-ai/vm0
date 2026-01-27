@@ -17,7 +17,7 @@ function LogBatch({ logComputed, index }: LogBatchProps) {
   if (loadable.state === "loading") {
     return (
       <TableRow key={`loading-${index}`}>
-        <td colSpan={6} className="p-4 text-center">
+        <td colSpan={7} className="p-4 text-center">
           Loading...
         </td>
       </TableRow>
@@ -31,7 +31,7 @@ function LogBatch({ logComputed, index }: LogBatchProps) {
         : "Failed to load logs";
     return (
       <TableRow key={`error-${index}`}>
-        <td colSpan={6} className="p-4 text-center text-destructive">
+        <td colSpan={7} className="p-4 text-center text-destructive">
           Error: {errorMessage}
         </td>
       </TableRow>
@@ -64,6 +64,7 @@ export function LogsTable() {
           <TableHead>Model</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Generate time</TableHead>
+          <TableHead className="w-8" />
         </TableRow>
       </TableHeader>
       <TableBody>

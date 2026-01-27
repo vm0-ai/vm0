@@ -1,11 +1,21 @@
 import { IconLayoutSidebar } from "@tabler/icons-react";
+import { useSet } from "ccstate-react";
 import { ThemeToggle } from "../components/theme-toggle.tsx";
+import { navigateInReact$ } from "../../signals/route.ts";
+import type { RoutePath } from "../../types/route.ts";
+
+export interface BreadcrumbItem {
+  label: string;
+  path?: RoutePath;
+}
 
 interface NavbarProps {
-  breadcrumb: string[];
+  breadcrumb: BreadcrumbItem[];
 }
 
 export function Navbar({ breadcrumb }: NavbarProps) {
+  const navigate = useSet(navigateInReact$);
+
   return (
     <header className="h-[49px] flex items-center border-b border-divider bg-background">
       {/* Left section: Sidebar toggle + Divider + Breadcrumb */}
@@ -31,14 +41,33 @@ export function Navbar({ breadcrumb }: NavbarProps) {
 
         {/* Breadcrumb */}
         <nav className="flex items-center gap-1.5">
-          {breadcrumb.map((item, index) => (
-            <div key={item} className="flex items-center gap-1.5">
-              {index > 0 && <span className="text-muted-foreground/50">/</span>}
-              <span className="text-sm font-medium text-secondary-foreground">
-                {item}
-              </span>
-            </div>
-          ))}
+          {breadcrumb.map((item, index) => {
+            const isLast = index === breadcrumb.length - 1;
+            return (
+              <div
+                key={`${item.label}-${index}`}
+                className="flex items-center gap-1.5"
+              >
+                {index > 0 && (
+                  <span className="text-muted-foreground/50">/</span>
+                )}
+                {item.path ? (
+                  <button
+                    onClick={() => navigate(item.path!)}
+                    className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {item.label}
+                  </button>
+                ) : (
+                  <span
+                    className={`text-sm font-medium ${isLast ? "text-foreground" : "text-muted-foreground"}`}
+                  >
+                    {item.label}
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </nav>
       </div>
 

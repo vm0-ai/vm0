@@ -31,7 +31,7 @@ export interface LogDetail {
   id: string;
   sessionId: string | null;
   agentName: string;
-  provider: string;
+  provider: string | null;
   status: LogStatus;
   prompt: string;
   error: string | null;
@@ -39,4 +39,25 @@ export interface LogDetail {
   startedAt: string | null;
   completedAt: string | null;
   artifact: Artifact;
+}
+
+// Agent event from telemetry API
+export interface AgentEvent {
+  sequenceNumber: number;
+  eventType: string;
+  eventData: unknown;
+  createdAt: string;
+}
+
+// Agent events response from /api/agent/runs/[id]/telemetry/agent
+export interface AgentEventsResponse {
+  events: AgentEvent[];
+  hasMore: boolean;
+  framework: string;
+}
+
+// Artifact download URL response
+export interface ArtifactDownloadResponse {
+  url: string;
+  expiresAt: string;
 }

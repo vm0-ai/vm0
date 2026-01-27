@@ -1,1 +1,6 @@
-export type RoutePath = "/" | "/logs" | "/settings" | `/projects/${string}`;
+export type RoutePath =
+  | "/"
+  | "/logs"
+  | "/logs/:id"
+  | "/settings"
+  | `/projects/${string}`;

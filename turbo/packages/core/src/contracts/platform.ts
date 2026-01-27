@@ -49,7 +49,7 @@ const platformLogDetailSchema = z.object({
   id: z.string().uuid(),
   sessionId: z.string().nullable(),
   agentName: z.string(),
-  provider: z.string(),
+  provider: z.string().nullable(),
   status: platformLogStatusSchema,
   prompt: z.string(),
   error: z.string().nullable(),
@@ -98,9 +98,41 @@ export const platformLogsByIdContract = c.router({
   },
 });
 
+/**
+ * Artifact download URL response schema
+ */
+const artifactDownloadResponseSchema = z.object({
+  url: z.string().url(),
+  expiresAt: z.string(),
+});
+
+/**
+ * Platform artifact download contract
+ * GET /api/platform/artifacts/download
+ * Returns a presigned URL for downloading the artifact
+ */
+export const platformArtifactDownloadContract = c.router({
+  getDownloadUrl: {
+    method: "GET",
+    path: "/api/platform/artifacts/download",
+    query: z.object({
+      name: z.string().min(1, "Artifact name is required"),
+      version: z.string().optional(),
+    }),
+    responses: {
+      200: artifactDownloadResponseSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get presigned URL for artifact download",
+  },
+});
+
 // Contract type exports
 export type PlatformLogsListContract = typeof platformLogsListContract;
 export type PlatformLogsByIdContract = typeof platformLogsByIdContract;
+export type PlatformArtifactDownloadContract =
+  typeof platformArtifactDownloadContract;
 
 // Schema exports for reuse
 export {
@@ -109,6 +141,7 @@ export {
   platformLogsListResponseSchema,
   artifactSchema,
   platformLogDetailSchema,
+  artifactDownloadResponseSchema,
 };
 
 // Re-export pagination schema from common
@@ -122,6 +155,9 @@ export type PlatformLogsListResponse = z.infer<
 >;
 export type Artifact = z.infer<typeof artifactSchema>;
 export type PlatformLogDetail = z.infer<typeof platformLogDetailSchema>;
+export type ArtifactDownloadResponse = z.infer<
+  typeof artifactDownloadResponseSchema
+>;
 
 // Re-export Pagination type from common
 export type { Pagination } from "./public/common";

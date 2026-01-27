@@ -1,5 +1,7 @@
 import { useSet, useLoadable } from "ccstate-react";
+import { IconChevronRight } from "@tabler/icons-react";
 import { getOrCreateLogDetail$ } from "../../signals/logs-page/logs-signals.ts";
+import { navigateInReact$ } from "../../signals/route.ts";
 import type { LogStatus } from "../../signals/logs-page/types.ts";
 import { TableRow, TableCell } from "@vm0/ui";
 
@@ -29,13 +31,18 @@ function StatusBadge({ status }: { status: LogStatus }) {
 export function LogsTableRow({ logId }: LogsTableRowProps) {
   // Get or create the log detail computed (command is idempotent due to caching)
   const getOrCreateLogDetail = useSet(getOrCreateLogDetail$);
+  const navigate = useSet(navigateInReact$);
   const detail$ = getOrCreateLogDetail(logId);
   const loadable = useLoadable(detail$);
+
+  const handleRowClick = () => {
+    navigate("/logs/:id", { pathParams: { id: logId } });
+  };
 
   if (loadable.state === "loading") {
     return (
       <TableRow>
-        <td colSpan={6} className="p-4 text-center text-muted-foreground">
+        <td colSpan={7} className="p-4 text-center text-muted-foreground">
           Loading...
         </td>
       </TableRow>
@@ -49,7 +56,7 @@ export function LogsTableRow({ logId }: LogsTableRowProps) {
         : "Failed to load details";
     return (
       <TableRow>
-        <td colSpan={6} className="p-4 text-center text-destructive">
+        <td colSpan={7} className="p-4 text-center text-destructive">
           Error: {errorMessage}
         </td>
       </TableRow>
@@ -59,7 +66,10 @@ export function LogsTableRow({ logId }: LogsTableRowProps) {
   const detail = loadable.data;
 
   return (
-    <TableRow>
+    <TableRow
+      className="cursor-pointer hover:bg-muted/50"
+      onClick={handleRowClick}
+    >
       <TableCell className="font-mono text-sm">{detail.id}</TableCell>
       <TableCell className="font-mono text-sm">
         {detail.sessionId ?? "-"}
@@ -70,6 +80,9 @@ export function LogsTableRow({ logId }: LogsTableRowProps) {
         <StatusBadge status={detail.status} />
       </TableCell>
       <TableCell>{new Date(detail.createdAt).toLocaleString()}</TableCell>
+      <TableCell className="w-8">
+        <IconChevronRight className="h-4 w-4 text-muted-foreground" />
+      </TableCell>
     </TableRow>
   );
 }

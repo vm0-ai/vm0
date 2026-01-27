@@ -289,14 +289,17 @@ export {
 export {
   platformLogsListContract,
   platformLogsByIdContract,
+  platformArtifactDownloadContract,
   platformLogStatusSchema,
   platformLogEntrySchema,
   paginationSchema,
   platformLogsListResponseSchema,
   artifactSchema,
   platformLogDetailSchema,
+  artifactDownloadResponseSchema,
   type PlatformLogsListContract,
   type PlatformLogsByIdContract,
+  type PlatformArtifactDownloadContract,
   // Inferred types
   type PlatformLogStatus,
   type PlatformLogEntry,
@@ -304,6 +307,7 @@ export {
   type PlatformLogsListResponse,
   type Artifact,
   type PlatformLogDetail,
+  type ArtifactDownloadResponse,
 } from "./platform";
 
 // Public API v1 contracts (developer-friendly external API)
