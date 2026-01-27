@@ -817,10 +817,7 @@ jobs:
           cd crates
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc \
             cargo build --release --target aarch64-unknown-linux-musl -p vsock-agent
-          # Copy binary to deploy directory for ansible to pick up
-          cp target/aarch64-unknown-linux-musl/release/vsock-agent \
-            ../turbo/apps/runner/scripts/deploy/vsock-agent
-          ls -la ../turbo/apps/runner/scripts/deploy/vsock-agent
+          ls -la target/aarch64-unknown-linux-musl/release/vsock-agent
 
       - name: Build runner bundle
         run: |
