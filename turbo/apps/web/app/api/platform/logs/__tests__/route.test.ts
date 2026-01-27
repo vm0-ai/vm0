@@ -136,8 +136,8 @@ describe("GET /api/platform/logs", () => {
 
     expect(response.status).toBe(200);
     expect(data.data).toEqual([]);
-    expect(data.pagination.has_more).toBe(false);
-    expect(data.pagination.next_cursor).toBeNull();
+    expect(data.pagination.hasMore).toBe(false);
+    expect(data.pagination.nextCursor).toBeNull();
   });
 
   it("should return list of run IDs ordered by createdAt DESC", async () => {
@@ -217,20 +217,20 @@ describe("GET /api/platform/logs", () => {
 
     expect(response1.status).toBe(200);
     expect(data1.data).toHaveLength(2);
-    expect(data1.pagination.has_more).toBe(true);
-    expect(data1.pagination.next_cursor).not.toBeNull();
+    expect(data1.pagination.hasMore).toBe(true);
+    expect(data1.pagination.nextCursor).not.toBeNull();
 
     // Request second page using cursor
     const request2 = createTestRequest(
-      `http://localhost:3000/api/platform/logs?limit=2&cursor=${encodeURIComponent(data1.pagination.next_cursor)}`,
+      `http://localhost:3000/api/platform/logs?limit=2&cursor=${encodeURIComponent(data1.pagination.nextCursor)}`,
     );
     const response2 = await GET(request2);
     const data2 = await response2.json();
 
     expect(response2.status).toBe(200);
     expect(data2.data).toHaveLength(1);
-    expect(data2.pagination.has_more).toBe(false);
-    expect(data2.pagination.next_cursor).toBeNull();
+    expect(data2.pagination.hasMore).toBe(false);
+    expect(data2.pagination.nextCursor).toBeNull();
 
     // Ensure no duplicate IDs between pages
     const allIds = [
@@ -305,7 +305,7 @@ describe("GET /api/platform/logs", () => {
 
     expect(response.status).toBe(200);
     expect(data.data).toEqual([]);
-    expect(data.pagination.has_more).toBe(false);
+    expect(data.pagination.hasMore).toBe(false);
   });
 
   it("should be case-insensitive for search", async () => {
