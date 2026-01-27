@@ -213,14 +213,37 @@ agents:
   });
 
   describe("Unsupported Framework Handling", () => {
-    it("should require image for unsupported framework", async () => {
+    it("should pass unsupported framework to server (server-side validation)", async () => {
+      // Unsupported frameworks are now validated server-side
+      // CLI passes through, server returns 400
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
         `version: "1.0"
 agents:
   test-agent:
-    description: "Test agent without image"
+    description: "Test agent with unsupported framework"
     framework: unsupported-framework`,
+      );
+
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message:
+                  'Unsupported framework: "unsupported-framework". Supported frameworks: claude-code, codex',
+                code: "BAD_REQUEST",
+              },
+            },
+            { status: 400 },
+          );
+        }),
       );
 
       await expect(async () => {
@@ -228,30 +251,36 @@ agents:
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("agent.image"),
+        expect.stringContaining("Unsupported framework"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should accept unsupported framework with explicit image and working_dir", async () => {
+    it("should accept supported framework without image/working_dir (server resolves)", async () => {
+      // Supported frameworks get image/working_dir resolved server-side
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
         `version: "1.0"
 agents:
   test-agent:
-    description: "Test agent with custom framework"
-    framework: custom-framework
-    image: my-custom-image:latest
-    working_dir: /app`,
+    description: "Test agent with supported framework"
+    framework: claude-code`,
       );
 
       server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
         http.post("http://localhost:3000/api/agent/composes", () => {
           return HttpResponse.json({
             composeId: "cmp-123",
             name: "test-agent",
             versionId: "a1b2c3d4e5f6g7h8",
             action: "created",
+            updatedAt: "2025-01-01T00:00:00Z",
           });
         }),
         http.get("http://localhost:3000/api/scope", () => {

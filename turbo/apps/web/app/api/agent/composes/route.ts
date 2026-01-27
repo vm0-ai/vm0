@@ -3,7 +3,15 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../src/lib/ts-rest-handler";
-import { composesMainContract } from "@vm0/core";
+import {
+  composesMainContract,
+  SUPPORTED_FRAMEWORKS,
+  isSupportedFramework,
+} from "@vm0/core";
+import {
+  resolveFrameworkImage,
+  resolveFrameworkWorkingDir,
+} from "../../../../src/lib/framework/framework-config";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   agentComposes,
@@ -12,7 +20,6 @@ import {
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { eq, and } from "drizzle-orm";
 import { computeComposeVersionId } from "../../../../src/lib/agent-compose/content-hash";
-import { assertImageAccess } from "../../../../src/lib/image/image-service";
 import {
   getUserScopeByClerkId,
   getScopeBySlug,
@@ -205,27 +212,41 @@ const router = tsr.router(composesMainContract, {
     // Normalize agent name to lowercase for consistent storage
     const normalizedAgentName = agentName.toLowerCase();
 
-    // Validate image access
+    // Get agent configuration
     const agent = content.agents[agentName];
-    if (agent?.image) {
-      try {
-        await assertImageAccess(userId, agent.image);
-      } catch (error) {
-        return {
-          status: 400 as const,
-          body: {
-            error: {
-              message:
-                error instanceof Error ? error.message : "Image access denied",
-              code: "BAD_REQUEST",
-            },
+
+    // Validate framework is supported
+    const framework = agent?.framework;
+    if (!framework || !isSupportedFramework(framework)) {
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message: `Unsupported framework: "${framework}". Supported frameworks: ${SUPPORTED_FRAMEWORKS.join(", ")}`,
+            code: "BAD_REQUEST",
           },
-        };
-      }
+        },
+      };
     }
 
-    // Compute content-addressable version ID
-    const versionId = computeComposeVersionId(content);
+    // Resolve image and working_dir server-side based on framework
+    const resolvedImage = resolveFrameworkImage(framework, agent?.apps);
+    const resolvedWorkingDir = resolveFrameworkWorkingDir(framework);
+
+    // Build resolved content with server-determined image and working_dir
+    const resolvedContent = {
+      ...content,
+      agents: {
+        [normalizedAgentName]: {
+          ...agent,
+          image: resolvedImage,
+          working_dir: resolvedWorkingDir,
+        },
+      },
+    };
+
+    // Compute content-addressable version ID from resolved content
+    const versionId = computeComposeVersionId(resolvedContent);
 
     // Get user's scope (required for compose creation)
     const userScope = await getUserScopeByClerkId(userId);
@@ -290,11 +311,11 @@ const router = tsr.router(composesMainContract, {
     if (existingVersion.length > 0) {
       action = "existing";
     } else {
-      // Create new version
+      // Create new version with resolved content
       await globalThis.services.db.insert(agentComposeVersions).values({
         id: versionId,
         composeId,
-        content,
+        content: resolvedContent,
         createdBy: userId,
       });
 

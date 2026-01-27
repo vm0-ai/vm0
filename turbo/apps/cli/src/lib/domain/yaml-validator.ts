@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { agentDefinitionSchema, volumeConfigSchema } from "@vm0/core";
-import { isFrameworkSupported } from "./framework-config";
 
 /**
  * CLI-specific agent name schema that allows 3-character names.
@@ -26,32 +25,13 @@ export function validateGitHubTreeUrl(url: string): boolean {
 }
 
 /**
- * CLI-extended agent definition schema with framework auto-config and skills URL validation
+ * CLI-extended agent definition schema with skills URL validation
+ *
+ * Note: Framework validation (image, working_dir) is now handled server-side.
+ * The server rejects unsupported frameworks and resolves image/working_dir automatically.
  */
 const cliAgentDefinitionSchema = agentDefinitionSchema.superRefine(
   (agent, ctx) => {
-    const frameworkSupported = isFrameworkSupported(agent.framework);
-
-    // Framework auto-config: image required when framework not supported
-    if (!agent.image && !frameworkSupported) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message:
-          "Missing agent.image (required when framework is not auto-configured)",
-        path: ["image"],
-      });
-    }
-
-    // Framework auto-config: working_dir required when framework not supported
-    if (!agent.working_dir && !frameworkSupported) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message:
-          "Missing agent.working_dir (required when framework is not auto-configured)",
-        path: ["working_dir"],
-      });
-    }
-
     // GitHub tree URL validation for skills
     if (agent.skills) {
       for (let i = 0; i < agent.skills.length; i++) {

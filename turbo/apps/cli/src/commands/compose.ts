@@ -13,10 +13,6 @@ import {
 import { getComposeByName, createOrUpdateCompose, getScope } from "../lib/api";
 import { validateAgentCompose } from "../lib/domain/yaml-validator";
 import {
-  getFrameworkDefaults,
-  getDefaultImageWithApps,
-} from "../lib/domain/framework-config";
-import {
   uploadInstructions,
   uploadSkill,
   type SkillUploadResult,
@@ -95,27 +91,6 @@ export const composeCommand = new Command()
       const agentName = Object.keys(agents)[0]!;
       const agent = agents[agentName]!;
       const basePath = dirname(configFile);
-
-      // Apply framework auto-configuration for image and working_dir if not explicitly set
-      if (agent.framework) {
-        const defaults = getFrameworkDefaults(agent.framework as string);
-        if (defaults) {
-          if (!agent.image) {
-            // Use apps-aware image selection
-            const apps = agent.apps as string[] | undefined;
-            const defaultImage = getDefaultImageWithApps(
-              agent.framework as string,
-              apps,
-            );
-            if (defaultImage) {
-              agent.image = defaultImage;
-            }
-          }
-          if (!agent.working_dir) {
-            agent.working_dir = defaults.workingDir;
-          }
-        }
-      }
 
       // Upload instructions if specified
       if (agent.instructions) {
