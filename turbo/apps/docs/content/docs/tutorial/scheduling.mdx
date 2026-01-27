@@ -45,7 +45,22 @@ Deploying schedule for agent my-researcher...
 ✓ Created schedule for agent my-researcher
   Timezone: America/Los_Angeles
   Cron: 0 9 * * *
-  Next run: 2025-01-27 09:00
+
+  To activate: vm0 schedule enable my-researcher
+```
+
+## Step 3: Enable the Schedule
+
+Schedules are created in a disabled state by default. To activate your schedule, run:
+
+```bash
+vm0 schedule enable my-researcher
+```
+
+You'll see:
+
+```
+✓ Enabled schedule for agent my-researcher
 ```
 
 Your agent is now scheduled to run daily at 9:00 AM!
@@ -55,9 +70,10 @@ Your agent is now scheduled to run daily at 9:00 AM!
 You configured VM0's built-in scheduler to run your agent automatically. The scheduler:
 
 1. Stores your schedule configuration on VM0's servers
-2. Triggers agent runs at the specified times
-3. Uses your configured secrets and variables
-4. Saves output to the artifact directory
+2. Waits for you to enable it (schedules start disabled for safety)
+3. Triggers agent runs at the specified times
+4. Uses your configured secrets and variables
+5. Saves output to the artifact directory
 
 No external infrastructure like GitHub Actions or cron servers is needed - VM0 handles everything.
 
