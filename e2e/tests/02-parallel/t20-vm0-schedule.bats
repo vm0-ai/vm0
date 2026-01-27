@@ -664,3 +664,101 @@ EOF
     $CLI_COMMAND schedule delete "$VAR_AGENT_NAME" --force 2>/dev/null || true
     rm -rf "$VAR_TEST_DIR"
 }
+
+@test "vm0 schedule setup preserves secrets when updating schedule" {
+    local KEEP_SECRETS_AGENT="keep-secrets-agent-${UNIQUE_ID}"
+    local KEEP_SECRETS_DIR="$(mktemp -d)"
+
+    # Create agent with secrets requirement
+    cat > "$KEEP_SECRETS_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  ${KEEP_SECRETS_AGENT}:
+    description: "Test agent for keep secrets"
+    framework: claude-code
+    image: "vm0/claude-code:dev"
+    working_dir: /home/user/workspace
+    environment:
+      API_KEY: "\${{ secrets.API_KEY }}"
+EOF
+
+    cd "$KEEP_SECRETS_DIR"
+    run $CLI_COMMAND compose vm0.yaml
+    assert_success
+
+    # Create schedule with secret
+    run $CLI_COMMAND schedule setup "$KEEP_SECRETS_AGENT" \
+        --frequency daily \
+        --time "09:00" \
+        --timezone "UTC" \
+        --prompt "Initial prompt" \
+        --secret "API_KEY=test-secret-value"
+    assert_success
+    assert_output --partial "Created schedule"
+
+    # Update schedule without providing secrets (should preserve existing)
+    run $CLI_COMMAND schedule setup "$KEEP_SECRETS_AGENT" \
+        --frequency daily \
+        --time "10:00" \
+        --timezone "UTC" \
+        --prompt "Updated prompt"
+    assert_success
+    assert_output --partial "Updated schedule"
+
+    # Verify secret is still there
+    run $CLI_COMMAND schedule status "$KEEP_SECRETS_AGENT"
+    assert_success
+    assert_output --partial "Secrets:"
+    assert_output --partial "API_KEY"
+
+    # Clean up
+    $CLI_COMMAND schedule delete "$KEEP_SECRETS_AGENT" --force 2>/dev/null || true
+    rm -rf "$KEEP_SECRETS_DIR"
+}
+
+@test "vm0 schedule setup replaces secrets when new secrets provided" {
+    local REPLACE_SECRETS_AGENT="replace-secrets-agent-${UNIQUE_ID}"
+    local REPLACE_SECRETS_DIR="$(mktemp -d)"
+
+    # Create agent with secrets requirement
+    cat > "$REPLACE_SECRETS_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  ${REPLACE_SECRETS_AGENT}:
+    description: "Test agent for replace secrets"
+    framework: claude-code
+    image: "vm0/claude-code:dev"
+    working_dir: /home/user/workspace
+    environment:
+      API_KEY: "\${{ secrets.API_KEY }}"
+EOF
+
+    cd "$REPLACE_SECRETS_DIR"
+    run $CLI_COMMAND compose vm0.yaml
+    assert_success
+
+    # Create schedule with secret
+    run $CLI_COMMAND schedule setup "$REPLACE_SECRETS_AGENT" \
+        --frequency daily \
+        --time "09:00" \
+        --timezone "UTC" \
+        --prompt "Initial" \
+        --secret "API_KEY=old-value"
+    assert_success
+
+    # Update with new secret value
+    run $CLI_COMMAND schedule setup "$REPLACE_SECRETS_AGENT" \
+        --frequency daily \
+        --time "09:00" \
+        --timezone "UTC" \
+        --prompt "Updated" \
+        --secret "API_KEY=new-value"
+    assert_success
+    assert_output --partial "Updated schedule"
+
+    # Clean up
+    $CLI_COMMAND schedule delete "$REPLACE_SECRETS_AGENT" --force 2>/dev/null || true
+    rm -rf "$REPLACE_SECRETS_DIR"
+}

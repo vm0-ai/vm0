@@ -246,43 +246,7 @@ export class ScheduleService {
       throw new BadRequestError(`Invalid timezone: ${request.timezone}`);
     }
 
-    // Validate required secrets/vars/credentials against compose content
-    if (compose.headVersionId) {
-      const [version] = await globalThis.services.db
-        .select()
-        .from(agentComposeVersions)
-        .where(eq(agentComposeVersions.id, compose.headVersionId))
-        .limit(1);
-
-      if (version) {
-        const required = extractRequiredConfiguration(version.content);
-        const providedSecrets = request.secrets
-          ? Object.keys(request.secrets)
-          : [];
-        const providedVars = request.vars ? Object.keys(request.vars) : [];
-
-        const missingSecrets = required.secrets.filter(
-          (name) => !providedSecrets.includes(name),
-        );
-        const missingVars = required.vars.filter(
-          (name) => !providedVars.includes(name),
-        );
-        // Credentials are not provided via schedule setup (they come from platform)
-        // so we don't validate them here
-
-        if (missingSecrets.length > 0 || missingVars.length > 0) {
-          throw new BadRequestError(
-            buildMissingConfigError({
-              secrets: missingSecrets,
-              vars: missingVars,
-              credentials: [],
-            }),
-          );
-        }
-      }
-    }
-
-    // Check for existing schedule with same name on this compose
+    // Check for existing schedule with same name on this compose (needed for validation)
     const [existing] = await globalThis.services.db
       .select()
       .from(agentSchedules)
@@ -309,11 +273,72 @@ export class ScheduleService {
       }
     }
 
-    // Encrypt secrets if provided
-    const encryptedSecrets = encryptSecretsMap(
-      request.secrets ?? null,
-      globalThis.services.env.SECRETS_ENCRYPTION_KEY,
-    );
+    // Validate required secrets/vars/credentials against compose content
+    if (compose.headVersionId) {
+      const [version] = await globalThis.services.db
+        .select()
+        .from(agentComposeVersions)
+        .where(eq(agentComposeVersions.id, compose.headVersionId))
+        .limit(1);
+
+      if (version) {
+        const required = extractRequiredConfiguration(version.content);
+
+        // Determine effective secrets for validation:
+        // - If request.secrets is provided, use those
+        // - If request.secrets is undefined AND updating, use existing schedule's secrets
+        const providedSecrets = request.secrets
+          ? Object.keys(request.secrets)
+          : [];
+
+        // Extract existing secret names from encrypted secrets
+        let existingSecretNames: string[] = [];
+        if (existing?.encryptedSecrets) {
+          const decrypted = decryptSecretsMap(
+            existing.encryptedSecrets,
+            globalThis.services.env.SECRETS_ENCRYPTION_KEY,
+          );
+          if (decrypted) {
+            existingSecretNames = Object.keys(decrypted);
+          }
+        }
+
+        const effectiveSecretNames =
+          request.secrets === undefined && existing
+            ? existingSecretNames
+            : providedSecrets;
+
+        const missingSecrets = required.secrets.filter(
+          (name) => !effectiveSecretNames.includes(name),
+        );
+
+        const providedVars = request.vars ? Object.keys(request.vars) : [];
+        const missingVars = required.vars.filter(
+          (name) => !providedVars.includes(name),
+        );
+        // Credentials are not provided via schedule setup (they come from platform)
+        // so we don't validate them here
+
+        if (missingSecrets.length > 0 || missingVars.length > 0) {
+          throw new BadRequestError(
+            buildMissingConfigError({
+              secrets: missingSecrets,
+              vars: missingVars,
+              credentials: [],
+            }),
+          );
+        }
+      }
+    }
+
+    // Encrypt secrets if provided, or preserve existing secrets if updating without new secrets
+    const encryptedSecrets =
+      request.secrets !== undefined
+        ? encryptSecretsMap(
+            request.secrets,
+            globalThis.services.env.SECRETS_ENCRYPTION_KEY,
+          )
+        : (existing?.encryptedSecrets ?? null);
 
     // Calculate next run time
     let nextRunAt: Date | null = null;

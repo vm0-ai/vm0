@@ -443,6 +443,84 @@ describe("ScheduleService", () => {
         }),
       ).rejects.toThrow(/Secrets:.*API_KEY.*DB_PASSWORD|DB_PASSWORD.*API_KEY/);
     });
+
+    it("should accept update when keeping existing secrets (secrets undefined)", async () => {
+      // First create a schedule with secrets
+      const createResult = await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}keep-secrets`,
+        composeId: COMPOSE_WITH_SECRETS_ID,
+        cronExpression: "0 9 * * *",
+        timezone: "UTC",
+        prompt: "Initial prompt",
+        secrets: {
+          API_KEY: "value1",
+          DB_PASSWORD: "value2",
+        },
+        vars: {
+          API_URL: "https://example.com",
+        },
+      });
+      expect(createResult.created).toBe(true);
+
+      // Update the schedule without providing secrets (undefined = keep existing)
+      const updateResult = await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}keep-secrets`,
+        composeId: COMPOSE_WITH_SECRETS_ID,
+        cronExpression: "0 10 * * *", // Changed time
+        timezone: "UTC",
+        prompt: "Updated prompt",
+        // secrets: undefined - intentionally not provided
+        vars: {
+          API_URL: "https://example.com",
+        },
+      });
+
+      expect(updateResult.created).toBe(false); // Update, not create
+      expect(updateResult.schedule.secretNames).toContain("API_KEY");
+      expect(updateResult.schedule.secretNames).toContain("DB_PASSWORD");
+    });
+
+    it("should replace secrets when new secrets are provided on update", async () => {
+      // First create a schedule
+      await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}replace-secrets`,
+        composeId: COMPOSE_WITH_SECRETS_ID,
+        cronExpression: "0 9 * * *",
+        timezone: "UTC",
+        prompt: "Initial",
+        secrets: { API_KEY: "old1", DB_PASSWORD: "old2" },
+        vars: { API_URL: "https://example.com" },
+      });
+
+      // Update with new secrets
+      const updateResult = await scheduleService.deploy(TEST_USER_ID, {
+        name: `${TEST_PREFIX}replace-secrets`,
+        composeId: COMPOSE_WITH_SECRETS_ID,
+        cronExpression: "0 9 * * *",
+        timezone: "UTC",
+        prompt: "Updated",
+        secrets: { API_KEY: "new1", DB_PASSWORD: "new2" },
+        vars: { API_URL: "https://example.com" },
+      });
+
+      expect(updateResult.schedule.secretNames).toContain("API_KEY");
+      expect(updateResult.schedule.secretNames).toContain("DB_PASSWORD");
+      // Note: We can't verify actual values since they're encrypted
+    });
+
+    it("should reject new schedule without secrets even if name exists for different compose", async () => {
+      // This verifies that "keep existing" only works when updating the SAME schedule
+      await expect(
+        scheduleService.deploy(TEST_USER_ID, {
+          name: `${TEST_PREFIX}new-schedule-no-secrets`,
+          composeId: COMPOSE_WITH_SECRETS_ID,
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Should fail",
+          // No secrets provided for NEW schedule
+        }),
+      ).rejects.toThrow("Missing required configuration");
+    });
   });
 
   describe("getByName", () => {

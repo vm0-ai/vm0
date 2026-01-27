@@ -457,15 +457,22 @@ async function gatherVars(
 
 /**
  * Gather secrets from options or existing schedule
+ *
+ * Returns:
+ * - Record<string, string>: New secrets from --secret flag
+ * - undefined: Keep existing secrets (user said "yes" or no existing secrets)
+ * - {}: User wants to provide new secrets (will trigger prompts in gatherMissingConfiguration)
  */
 async function gatherSecrets(
   optionSecrets: string[],
   existingSecretNames: string[] | undefined | null,
 ): Promise<Record<string, string> | undefined> {
+  // If explicit secrets provided via --secret flag, use those
   if (optionSecrets.length > 0) {
     return parseKeyValuePairs(optionSecrets);
   }
 
+  // If there are existing secrets and we're in interactive mode
   if (
     isInteractive() &&
     existingSecretNames &&
@@ -475,13 +482,18 @@ async function gatherSecrets(
       `Keep existing secrets? (${existingSecretNames.join(", ")})`,
       true,
     );
-    if (!keepSecrets) {
-      console.log(
-        chalk.dim("  Note: You'll need to provide new secret values"),
-      );
+
+    if (keepSecrets) {
+      // Return undefined to signal "keep existing" to server
+      return undefined;
     }
+
+    // User wants new secrets - return empty object so gatherMissingConfiguration prompts
+    console.log(chalk.dim("  Note: You'll need to provide new secret values"));
+    return {};
   }
 
+  // No existing secrets - return undefined
   return undefined;
 }
 
@@ -827,10 +839,12 @@ export const setupCommand = new Command()
       );
 
       // 8. Handle secrets (from options or existing)
+      // undefined = keep existing secrets, {} = provide new secrets
       const initialSecrets = await gatherSecrets(
         options.secret || [],
         existingSchedule?.secretNames,
       );
+      const keepExistingSecrets = initialSecrets === undefined;
 
       // 9. Gather missing configuration (prompt in interactive mode)
       const { secrets, vars } = await gatherMissingConfiguration(
@@ -841,6 +855,8 @@ export const setupCommand = new Command()
       );
 
       // 10. Build trigger and deploy
+      // If keepExistingSecrets is true, send undefined to signal server to preserve existing secrets
+      // Otherwise send the gathered secrets (which may be empty if user skipped prompts)
       await buildAndDeploy({
         scheduleName,
         composeId,
@@ -852,7 +868,11 @@ export const setupCommand = new Command()
         timezone,
         prompt: promptText_,
         vars: Object.keys(vars).length > 0 ? vars : undefined,
-        secrets: Object.keys(secrets).length > 0 ? secrets : undefined,
+        secrets: keepExistingSecrets
+          ? undefined
+          : Object.keys(secrets).length > 0
+            ? secrets
+            : undefined,
         artifactName: options.artifactName,
       });
     } catch (error) {
