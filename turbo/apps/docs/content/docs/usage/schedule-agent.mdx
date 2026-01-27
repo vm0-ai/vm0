@@ -1,0 +1,193 @@
+---
+title: Schedule Agent
+description: Automate agent runs with VM0's built-in scheduling
+---
+
+Use `vm0 schedule` to run your agents automatically on a schedule. VM0 handles all scheduling infrastructure - no external cron servers or GitHub Actions needed.
+
+## Quick Start
+
+```bash
+# Set up a daily schedule
+vm0 schedule setup my-agent
+
+# Enable the schedule
+vm0 schedule enable my-agent
+```
+
+## Commands
+
+| Command | Description |
+| ------- | ----------- |
+| `vm0 schedule setup <agent>` | Create or edit a schedule |
+| `vm0 schedule list` | List all schedules |
+| `vm0 schedule status <agent>` | Show schedule details and recent runs |
+| `vm0 schedule enable <agent>` | Activate a schedule |
+| `vm0 schedule disable <agent>` | Pause a schedule |
+| `vm0 schedule delete <agent>` | Remove a schedule |
+
+## Setting Up a Schedule
+
+### Interactive Mode
+
+Run `vm0 schedule setup` without options for guided setup:
+
+```bash
+vm0 schedule setup my-agent
+```
+
+The CLI will prompt for:
+- **Frequency**: daily, weekly, monthly, or one-time
+- **Time**: When to run (HH:MM format)
+- **Day**: Day of week or month (for weekly/monthly)
+- **Timezone**: Your local timezone (auto-detected)
+- **Prompt**: The prompt to send to the agent
+
+### Non-Interactive Mode
+
+Use flags for CI/CD or scripting:
+
+```bash
+vm0 schedule setup my-agent \
+  --frequency daily \
+  --time 09:00 \
+  --timezone America/Los_Angeles \
+  --prompt "run daily report"
+```
+
+### Setup Options
+
+| Option | Description |
+| ------ | ----------- |
+| `-f, --frequency <type>` | Schedule frequency: `daily`, `weekly`, `monthly`, `once` |
+| `-t, --time <HH:MM>` | Time to run (24-hour format) |
+| `-d, --day <day>` | Day of week (`mon`-`sun`) or month (`1`-`31`) |
+| `-z, --timezone <tz>` | IANA timezone (e.g., `America/New_York`) |
+| `-p, --prompt <text>` | Prompt to run |
+| `--var <KEY=value>` | Pass variable (repeatable) |
+| `--secret <KEY=value>` | Pass secret (repeatable) |
+| `--artifact-name <name>` | Artifact name (default: `artifact`) |
+
+## Schedule Frequencies
+
+### Daily
+```bash
+vm0 schedule setup my-agent --frequency daily --time 09:00
+```
+
+### Weekly
+```bash
+vm0 schedule setup my-agent --frequency weekly --day mon --time 09:00
+```
+
+### Monthly
+```bash
+vm0 schedule setup my-agent --frequency monthly --day 1 --time 09:00
+```
+
+### One-Time
+```bash
+vm0 schedule setup my-agent --frequency once --day 2024-12-25 --time 09:00
+```
+
+## Managing Schedules
+
+### List All Schedules
+
+```bash
+vm0 schedule list
+```
+
+Output:
+```
+AGENT        TRIGGER          STATUS    NEXT RUN
+my-agent     0 9 * * * (PST)  enabled   in 2 hours
+reporter     0 18 * * 1 (PST) disabled  -
+```
+
+### Check Schedule Status
+
+```bash
+vm0 schedule status my-agent
+```
+
+Shows detailed information including recent runs and next scheduled time.
+
+### Enable/Disable
+
+```bash
+# Pause a schedule
+vm0 schedule disable my-agent
+
+# Resume a schedule
+vm0 schedule enable my-agent
+```
+
+### Delete a Schedule
+
+```bash
+vm0 schedule delete my-agent
+```
+
+## Passing Variables and Secrets
+
+Schedules can include variables and secrets that are passed to each run:
+
+```bash
+vm0 schedule setup my-agent \
+  --frequency daily \
+  --time 09:00 \
+  --prompt "deploy to production" \
+  --var ENV=production \
+  --secret API_KEY=sk-xxx
+```
+
+The agent can access these via `${{ vars.ENV }}` and `${{ secrets.API_KEY }}`.
+
+See [Environment Variables](/docs/core-concept/environment-variable) for more details.
+
+## Frequently Asked Questions
+
+<Accordions className="faq-accordions">
+
+<Accordion title="When are schedules created vs enabled?">
+
+Schedules are created in a **disabled** state by default. This is a safety measure to let you review the configuration before activating. After setup, run:
+
+```bash
+vm0 schedule enable my-agent
+```
+
+</Accordion>
+
+<Accordion title="What timezone is used?">
+
+By default, VM0 detects your local timezone. You can override this with `--timezone`:
+
+```bash
+vm0 schedule setup my-agent --timezone UTC
+```
+
+All schedule times are displayed in your specified timezone.
+
+</Accordion>
+
+<Accordion title="How do I update an existing schedule?">
+
+Run `vm0 schedule setup` again with the same agent name. The CLI will show current values as defaults and let you modify them.
+
+</Accordion>
+
+<Accordion title="What happens if a scheduled run fails?">
+
+Failed runs are logged and you can view them with:
+
+```bash
+vm0 schedule status my-agent
+```
+
+The schedule continues to run at the next scheduled time. Use `vm0 logs <run-id>` to debug specific failures.
+
+</Accordion>
+
+</Accordions>

@@ -60,29 +60,6 @@ vm0 run continue <session-id> "add user authentication"
 - Uses latest artifact version
 - Best for ongoing iterative work
 
-## Scheduled Run
-
-For automated scheduled runs, use GitHub Actions with `vm0-ai/run-action`:
-
-```yaml title=".github/workflows/scheduled-run.yml"
-name: Scheduled Run
-
-on:
-  schedule:
-    - cron: "0 18 * * *"
-
-jobs:
-  run:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Run Agent
-        uses: vm0-ai/run-action@v1
-        with:
-          agent: my-agent
-          prompt: "do the daily task"
-          vm0-token: ${{ secrets.VM0_TOKEN }}
-```
-
 ## Frequently Asked Questions
 
 <Accordions className="faq-accordions">

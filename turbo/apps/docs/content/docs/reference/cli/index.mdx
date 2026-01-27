@@ -62,6 +62,56 @@ vm0 cook
 vm0 cook "build a new feature"
 ```
 
+## Schedule Management
+
+| Command | Description | Options |
+| ------- | ----------- | ------- |
+| `vm0 schedule setup <agent>` | Create or edit a schedule | `-f`, `-t`, `-d`, `-z`, `-p`, `--var`, `--secret` |
+| `vm0 schedule list` | List all schedules | Alias: `ls` |
+| `vm0 schedule status <agent>` | Show schedule details | `-l, --limit` |
+| `vm0 schedule enable <agent>` | Activate a schedule | - |
+| `vm0 schedule disable <agent>` | Pause a schedule | - |
+| `vm0 schedule delete <agent>` | Remove a schedule | Alias: `rm`, `-f, --force` |
+
+### `vm0 schedule setup` Options
+
+| Option | Description |
+| ------ | ----------- |
+| `-f, --frequency <type>` | Schedule frequency: `daily`, `weekly`, `monthly`, `once` |
+| `-t, --time <HH:MM>` | Time to run (24-hour format) |
+| `-d, --day <day>` | Day of week (`mon`-`sun`) or month (`1`-`31`) |
+| `-z, --timezone <tz>` | IANA timezone |
+| `-p, --prompt <text>` | Prompt to run |
+| `--var <KEY=value>` | Pass variable (repeatable) |
+| `--secret <KEY=value>` | Pass secret (repeatable) |
+| `--artifact-name <name>` | Artifact name (default: `artifact`) |
+
+### `vm0 schedule` Examples
+
+```bash
+# Interactive setup
+vm0 schedule setup my-agent
+
+# Non-interactive daily schedule
+vm0 schedule setup my-agent \
+  --frequency daily \
+  --time 09:00 \
+  --prompt "run daily tasks"
+
+# List all schedules
+vm0 schedule list
+
+# Check status with recent runs
+vm0 schedule status my-agent
+
+# Enable/disable
+vm0 schedule enable my-agent
+vm0 schedule disable my-agent
+
+# Delete with confirmation skip
+vm0 schedule delete my-agent --force
+```
+
 ## Volume Management
 
 Volumes provide persistent file storage that can be shared across agent runs.
