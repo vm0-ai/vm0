@@ -54,15 +54,13 @@ Ensure the following are set in `turbo/apps/web/.env.local`:
 | `CLERK_SECRET_KEY` | Clerk authentication | Yes |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk authentication | Yes |
 
-To sync environment variables from 1Password:
+**If environment variables are missing**, ask the user to run the sync script:
+
 ```bash
 scripts/sync-env.sh
 ```
 
-Or generate a local encryption key for development:
-```bash
-echo "SECRETS_ENCRYPTION_KEY=$(openssl rand -base64 32)" >> turbo/apps/web/.env.local
-```
+> **Note**: `sync-env.sh` requires 1Password authentication and can only be executed by the user directly. If you encounter missing environment variable errors, request the user to run this script.
 
 ### 2. Add Mock Claude Configuration
 
@@ -70,18 +68,6 @@ echo "SECRETS_ENCRYPTION_KEY=$(openssl rand -base64 32)" >> turbo/apps/web/.env.
 # Add to turbo/apps/web/.env.local
 echo "USE_MOCK_CLAUDE=true" >> turbo/apps/web/.env.local
 echo "CONCURRENT_RUN_LIMIT=0" >> turbo/apps/web/.env.local
-```
-
-### 3. Generate SSL Certificates
-
-```bash
-scripts/generate-certs.sh
-```
-
-### 4. Install GNU Parallel (for parallel E2E tests)
-
-```bash
-sudo apt-get install -y parallel
 ```
 
 ---
@@ -307,22 +293,33 @@ echo "CONCURRENT_RUN_LIMIT=0" >> turbo/apps/web/.env.local
 - Check server logs for errors: `/dev-logs error`
 - Verify E2B sandbox is starting: `/dev-logs sandbox`
 
-### Problem: "SECRETS_ENCRYPTION_KEY" Missing
+### Problem: "SECRETS_ENCRYPTION_KEY" Missing or Other Environment Variables Missing
 
-**Solution**:
+**Cause**: Environment variables not synced from 1Password
+
+**Solution**: Ask the user to run the sync script (requires 1Password authentication):
 ```bash
-# Option 1: Sync from 1Password
 scripts/sync-env.sh
-
-# Option 2: Generate local key
-echo "SECRETS_ENCRYPTION_KEY=$(openssl rand -base64 32)" >> turbo/apps/web/.env.local
 ```
 
-### Problem: SSL Certificate Errors
+> **Note**: This script can only be executed by the user directly as it requires interactive 1Password authentication.
+
+### Problem: SSL Certificate Errors (e.g., "platform.vm7.ai.pem - MISSING")
+
+**Cause**: SSL certificates not generated for local development
 
 **Solution**:
 ```bash
 scripts/generate-certs.sh
+```
+
+### Problem: "parallel: command not found" When Running Parallel E2E Tests
+
+**Cause**: GNU Parallel not installed
+
+**Solution**:
+```bash
+sudo apt-get install -y parallel
 ```
 
 ### Problem: Port Already in Use
