@@ -20,7 +20,7 @@ import {
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { scopes } from "../../../../src/db/schema/scope";
-import { eq } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { createHash } from "crypto";
 import { generateTestId } from "../../../../src/__tests__/api-test-helpers";
@@ -134,13 +134,13 @@ describe("Public API v1 - Runs Endpoints", () => {
       .set({ headVersionId: testVersionId })
       .where(eq(agentComposes.id, testAgentId));
 
-    // Create a test run
+    // Create a test run with "completed" status to not block concurrent run limit
     const [run] = await globalThis.services.db
       .insert(agentRuns)
       .values({
         userId: testUserId,
         agentComposeVersionId: testVersionId,
-        status: "running",
+        status: "completed",
         prompt: "Test prompt for runs API",
       })
       .returning();
@@ -148,8 +148,19 @@ describe("Public API v1 - Runs Endpoints", () => {
     testRunId = run!.id;
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+
+    // Clean up any active runs from previous tests to avoid concurrent run limit
+    await globalThis.services.db
+      .update(agentRuns)
+      .set({ status: "completed", completedAt: new Date() })
+      .where(
+        and(
+          eq(agentRuns.userId, testUserId),
+          inArray(agentRuns.status, ["pending", "running"]),
+        ),
+      );
 
     // Mock Clerk auth to return test user by default
     mockClerk({ userId: testUserId });

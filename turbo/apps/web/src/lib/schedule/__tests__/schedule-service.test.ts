@@ -23,6 +23,7 @@ vi.mock("../../run/run-service", () => ({
   runService: {
     buildExecutionContext: vi.fn(),
     prepareAndDispatch: vi.fn(),
+    checkConcurrencyLimit: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
