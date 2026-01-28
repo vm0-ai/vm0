@@ -1,16 +1,19 @@
 import { defineConfig } from "tsup";
 import { readFileSync } from "fs";
+import { execSync } from "child_process";
 
 const pkg = JSON.parse(readFileSync("./package.json", "utf-8")) as {
   version: string;
 };
+
+const isWatchMode = process.argv.includes("--watch");
 
 export default defineConfig({
   entry: ["src/index.ts"],
   format: ["esm"],
   // Skip DTS generation in watch mode to avoid memory issues
   // DTS files are still generated during production builds
-  dts: !process.argv.includes("--watch"),
+  dts: !isWatchMode,
   sourcemap: true,
   clean: true,
   shims: true,
@@ -23,4 +26,11 @@ export default defineConfig({
   define: {
     __CLI_VERSION__: JSON.stringify(pkg.version),
   },
+  onSuccess: isWatchMode
+    ? async () => {
+        console.log("Installing vm0 CLI globally...");
+        execSync("sudo npm link --global", { cwd: "dist", stdio: "inherit" });
+        console.log("vm0 CLI installed globally");
+      }
+    : undefined,
 });
