@@ -28,6 +28,7 @@ const nextConfig = {
   experimental: {
     optimizePackageImports: ["next-intl"],
   },
+  serverExternalPackages: ["ably"],
 };
 
 export default withNextIntl(nextConfig);
