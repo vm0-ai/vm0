@@ -17,6 +17,8 @@
     "HISTFILE": "/home/vscode/.cache/.zsh_history",
     "DATABASE_URL": "postgresql://postgres:postgres@localhost:5432/postgres",
     "NODE_EXTRA_CA_CERTS": "${containerWorkspaceFolder}/.certs/rootCA.pem",
+    "CARGO_HOME": "/home/vscode/.cache/cargo",
+    "PATH": "/home/vscode/.cache/cargo/bin:${containerEnv:PATH}",
     "VM0_API_URL": "https://www.vm7.ai:8443"
   },
   "mounts": [
