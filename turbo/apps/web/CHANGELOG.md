@@ -1,5 +1,19 @@
 # Changelog
 
+## [11.4.0](https://github.com/vm0-ai/vm0/compare/web-v11.3.1...web-v11.4.0) (2026-01-28)
+
+
+### Features
+
+* **runner:** add Ably realtime job notifications with polling fallback ([#1783](https://github.com/vm0-ai/vm0/issues/1783)) ([eef9cfc](https://github.com/vm0-ai/vm0/commit/eef9cfc1ce959d708043b5355a42160c306c8de4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.3.0
+
 ## [11.3.1](https://github.com/vm0-ai/vm0/compare/web-v11.3.0...web-v11.3.1) (2026-01-28)
 
 
