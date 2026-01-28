@@ -28,7 +28,7 @@ export const cliAuthDeviceContract = c.router({
       200: z.object({
         device_code: z.string(),
         user_code: z.string(),
-        verification_url: z.string(),
+        verification_path: z.string(),
         expires_in: z.number(),
         interval: z.number(),
       }),

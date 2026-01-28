@@ -37,23 +37,12 @@ const router = tsr.router(cliAuthDeviceContract, {
       updatedAt: new Date(),
     });
 
-    // Priority: NEXT_PUBLIC_APP_URL > VERCEL_URL (for preview deployments)
-    const vercelUrl = process.env.VERCEL_URL;
-    const baseUrl =
-      process.env.NEXT_PUBLIC_APP_URL ||
-      (vercelUrl ? `https://${vercelUrl}` : null);
-    if (!baseUrl) {
-      throw new Error(
-        "NEXT_PUBLIC_APP_URL environment variable is not configured",
-      );
-    }
-
     return {
       status: 200 as const,
       body: {
         device_code: deviceCode,
         user_code: deviceCode,
-        verification_url: `${baseUrl}/cli-auth`,
+        verification_path: "/cli-auth",
         expires_in: 900, // 15 minutes in seconds
         interval: 5, // Poll every 5 seconds
       },

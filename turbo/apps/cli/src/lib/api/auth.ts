@@ -28,7 +28,7 @@ function buildHeaders(): Record<string, string> {
 async function requestDeviceCode(apiUrl: string): Promise<{
   device_code: string;
   user_code: string;
-  verification_url: string;
+  verification_path: string;
   expires_in: number;
   interval: number;
 }> {
@@ -45,7 +45,7 @@ async function requestDeviceCode(apiUrl: string): Promise<{
   return response.json() as Promise<{
     device_code: string;
     user_code: string;
-    verification_url: string;
+    verification_path: string;
     expires_in: number;
     interval: number;
   }>;
@@ -92,8 +92,8 @@ export async function authenticate(apiUrl?: string): Promise<void> {
 
   console.log(chalk.green("\nDevice code generated"));
 
-  // Construct verification URL from API URL
-  const verificationUrl = `${targetApiUrl}/cli-auth`;
+  // Construct verification URL from API URL and server-provided path
+  const verificationUrl = `${targetApiUrl}${deviceAuth.verification_path}`;
   console.log(chalk.cyan(`\nTo authenticate, visit: ${verificationUrl}`));
   console.log(`And enter this code: ${chalk.bold(deviceAuth.user_code)}`);
   console.log(
