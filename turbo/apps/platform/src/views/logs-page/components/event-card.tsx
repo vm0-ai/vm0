@@ -1,11 +1,92 @@
 import { getEventStyle } from "../constants/event-styles.ts";
 import { CollapsibleJson } from "./collapsible-json.tsx";
 import type { AgentEvent } from "../../../signals/logs-page/types.ts";
-import { IconFile, IconCode, IconTerminal } from "@tabler/icons-react";
+import {
+  IconFile,
+  IconTerminal,
+  IconWorld,
+  IconSearch,
+  IconClock,
+  IconCurrencyDollar,
+  IconAlertCircle,
+  IconArrowRight,
+} from "@tabler/icons-react";
 
 interface EventCardProps {
   event: AgentEvent;
   searchTerm?: string;
+}
+
+// Type definitions for message content
+interface TextContent {
+  type: "text";
+  text: string;
+}
+
+interface ToolUseContent {
+  type: "tool_use";
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+}
+
+interface ToolResultContent {
+  type: "tool_result";
+  tool_use_id: string;
+  content: string;
+  is_error?: boolean;
+}
+
+type MessageContent = TextContent | ToolUseContent | ToolResultContent;
+
+interface MessageData {
+  content: MessageContent[] | null;
+  id: string | null;
+  model: string | null;
+  role: string | null;
+  stop_reason: string | null;
+  usage?: {
+    input_tokens: number | null;
+    output_tokens: number | null;
+    cache_read_input_tokens: number | null;
+  };
+}
+
+interface ToolResultMeta {
+  bytes?: number | null;
+  code?: number | null;
+  codeText?: string | null;
+  durationMs?: number | null;
+  url?: string | null;
+  filePath?: string | null;
+  query?: string | null;
+  result?: string | null;
+}
+
+interface EventData {
+  type?: string;
+  subtype?: string;
+  message?: MessageData;
+  tool_use_result?: ToolResultMeta;
+  model?: string;
+  session_id?: string;
+  tools?: string[];
+  agents?: string[];
+  slash_commands?: string[];
+  total_cost_usd?: number | null;
+  duration_ms?: number | null;
+  duration_api_ms?: number | null;
+  num_turns?: number | null;
+  modelUsage?: Record<
+    string,
+    {
+      costUSD?: number | null;
+      inputTokens?: number | null;
+      outputTokens?: number | null;
+    }
+  >;
+  is_error?: boolean;
+  result?: string | null;
 }
 
 function formatEventTime(isoString: string): string {
@@ -59,61 +140,293 @@ function highlightText(
   );
 }
 
-function EventHeader({
-  event,
-  style,
-}: {
-  event: AgentEvent;
-  style: ReturnType<typeof getEventStyle>;
-}) {
-  const Icon = style.icon;
-  const eventData = event.eventData as Record<string, unknown>;
+function formatDuration(ms: number): string {
+  if (ms < 1000) {
+    return `${ms}ms`;
+  }
+  const seconds = ms / 1000;
+  if (seconds < 60) {
+    return `${seconds.toFixed(1)}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}m ${remainingSeconds.toFixed(0)}s`;
+}
 
-  // Get tool name for tool_use events
-  const toolName =
-    event.eventType === "tool_use"
-      ? String(eventData.name ?? eventData.tool ?? "")
-      : "";
+function formatCost(usd: number): string {
+  if (usd < 0.01) {
+    return `$${usd.toFixed(4)}`;
+  }
+  return `$${usd.toFixed(2)}`;
+}
+
+// ============ SYSTEM EVENT (Init) ============
+
+function SystemInitContent({ eventData }: { eventData: EventData }) {
+  const tools = eventData.tools ?? [];
+  const agents = eventData.agents ?? [];
+  const slashCommands = eventData.slash_commands ?? [];
 
   return (
-    <div className="flex items-center gap-2 text-sm">
-      <Icon className={`h-4 w-4 ${style.textColor}`} />
-      <span
-        className={`px-2 py-0.5 rounded-full text-xs font-medium ${style.badgeColor}`}
-      >
-        {style.label}
-      </span>
-      {toolName && (
-        <span className="font-medium text-foreground">{toolName}</span>
+    <div className="mt-3 space-y-3">
+      {/* Model & Session */}
+      <div className="grid grid-cols-2 gap-4 text-sm">
+        {eventData.model && (
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground text-xs uppercase tracking-wide">
+              Model
+            </span>
+            <span className="font-medium text-foreground">
+              {eventData.model}
+            </span>
+          </div>
+        )}
+        {eventData.session_id && (
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground text-xs uppercase tracking-wide">
+              Session
+            </span>
+            <code className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded truncate max-w-[200px]">
+              {eventData.session_id}
+            </code>
+          </div>
+        )}
+      </div>
+
+      {/* Tools */}
+      {tools.length > 0 && (
+        <details className="group">
+          <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground uppercase tracking-wide">
+            {tools.length} Tools Available
+          </summary>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {tools.map((tool) => (
+              <span
+                key={tool}
+                className="text-xs bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-full"
+              >
+                {tool}
+              </span>
+            ))}
+          </div>
+        </details>
       )}
-      <span className="text-muted-foreground ml-auto">
-        {formatEventTime(event.createdAt)}
-      </span>
+
+      {/* Agents */}
+      {agents.length > 0 && (
+        <details className="group">
+          <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground uppercase tracking-wide">
+            {agents.length} Agents
+          </summary>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {agents.map((agent) => (
+              <span
+                key={agent}
+                className="text-xs bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-full"
+              >
+                {agent}
+              </span>
+            ))}
+          </div>
+        </details>
+      )}
+
+      {/* Slash Commands */}
+      {slashCommands.length > 0 && (
+        <details className="group">
+          <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground uppercase tracking-wide">
+            {slashCommands.length} Slash Commands
+          </summary>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {slashCommands.map((cmd) => (
+              <span
+                key={cmd}
+                className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-2 py-0.5 rounded-full font-mono"
+              >
+                /{cmd}
+              </span>
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }
 
-function TextEventContent({
-  event,
+// ============ TEXT CONTENT ============
+
+function TextContentView({
+  content,
   searchTerm,
 }: {
-  event: AgentEvent;
+  content: TextContent;
   searchTerm?: string;
 }) {
-  const eventData = event.eventData as Record<string, unknown>;
-  const content = String(eventData.content ?? "");
+  const text = content.text;
+  if (!text) {
+    return null;
+  }
 
   return (
-    <div className="mt-2 text-sm text-foreground whitespace-pre-wrap">
-      {searchTerm ? highlightText(content, searchTerm) : content}
+    <div className="text-sm text-foreground whitespace-pre-wrap">
+      {searchTerm ? highlightText(text, searchTerm) : text}
     </div>
   );
 }
 
-/** Render a single parameter value in a user-friendly way */
-function ParameterValue({ value }: { value: unknown }) {
+// ============ TOOL USE CONTENT ============
+
+function getToolIcon(toolName: string) {
+  const name = toolName.toLowerCase();
+  if (name === "bash") {
+    return IconTerminal;
+  }
+  if (name === "webfetch") {
+    return IconWorld;
+  }
+  if (name === "websearch") {
+    return IconSearch;
+  }
+  if (
+    name.includes("read") ||
+    name.includes("write") ||
+    name.includes("edit") ||
+    name.includes("glob") ||
+    name.includes("grep")
+  ) {
+    return IconFile;
+  }
+  return null;
+}
+
+function ToolUseContentView({ content }: { content: ToolUseContent }) {
+  const toolName = content.name;
+  const input = content.input;
+  const ToolIcon = getToolIcon(toolName);
+
+  return (
+    <div className="space-y-2">
+      {/* Tool header */}
+      <div className="flex items-center gap-2">
+        {ToolIcon && (
+          <ToolIcon className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+        )}
+        <span className="font-medium text-amber-700 dark:text-amber-300">
+          {toolName}
+        </span>
+      </div>
+
+      {/* Tool parameters */}
+      <ToolInputParams input={input} toolName={toolName} />
+    </div>
+  );
+}
+
+function ToolInputParams({
+  input,
+  toolName,
+}: {
+  input: Record<string, unknown>;
+  toolName: string;
+}) {
+  if (!input || Object.keys(input).length === 0) {
+    return null;
+  }
+
+  // Special rendering for common tools
+  const lowerName = toolName.toLowerCase();
+
+  // WebFetch / WebSearch - show URL and prompt prominently
+  if (lowerName === "webfetch" || lowerName === "websearch") {
+    const url = input.url as string | undefined;
+    const prompt = input.prompt as string | undefined;
+    const query = input.query as string | undefined;
+
+    return (
+      <div className="space-y-2 text-sm">
+        {url && (
+          <div className="flex items-center gap-2">
+            <IconWorld className="h-4 w-4 text-muted-foreground shrink-0" />
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-xs text-blue-600 dark:text-blue-400 hover:underline break-all"
+            >
+              {url}
+            </a>
+          </div>
+        )}
+        {query && (
+          <div className="flex items-start gap-2">
+            <IconSearch className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+            <span className="text-foreground">{query}</span>
+          </div>
+        )}
+        {prompt && (
+          <div className="text-muted-foreground text-xs mt-1 pl-6">
+            {prompt}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Bash - show command
+  if (lowerName === "bash") {
+    const command = input.command as string | undefined;
+    return (
+      <div className="flex items-start gap-2 text-sm">
+        <IconTerminal className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+        <code className="font-mono text-xs bg-gray-900 text-gray-100 dark:bg-gray-950 px-2 py-1 rounded block w-full overflow-x-auto whitespace-pre-wrap">
+          {command}
+        </code>
+      </div>
+    );
+  }
+
+  // File operations - show file path
+  if (
+    lowerName === "read" ||
+    lowerName === "write" ||
+    lowerName === "edit" ||
+    lowerName === "glob" ||
+    lowerName === "grep"
+  ) {
+    const filePath = (input.file_path ?? input.path ?? input.pattern) as
+      | string
+      | undefined;
+    return (
+      <div className="flex items-center gap-2 text-sm">
+        <IconFile className="h-4 w-4 text-muted-foreground shrink-0" />
+        <code className="font-mono text-xs bg-muted px-2 py-1 rounded">
+          {filePath}
+        </code>
+      </div>
+    );
+  }
+
+  // Generic: show all parameters as key-value pairs
+  const entries = Object.entries(input);
+  return (
+    <div className="space-y-1.5 text-sm">
+      {entries.map(([key, val]) => (
+        <div key={key} className="flex items-start gap-2">
+          <span className="text-muted-foreground shrink-0 min-w-[80px] text-xs">
+            {key}:
+          </span>
+          <div className="min-w-0 flex-1">
+            <ParamValue value={val} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ParamValue({ value }: { value: unknown }) {
   if (value === null || value === undefined) {
-    return <span className="text-muted-foreground italic">null</span>;
+    return <span className="text-muted-foreground italic text-xs">null</span>;
   }
 
   if (typeof value === "boolean") {
@@ -121,8 +434,8 @@ function ParameterValue({ value }: { value: unknown }) {
       <span
         className={
           value
-            ? "text-green-600 dark:text-green-400"
-            : "text-red-600 dark:text-red-400"
+            ? "text-green-600 dark:text-green-400 text-xs"
+            : "text-red-600 dark:text-red-400 text-xs"
         }
       >
         {value ? "true" : "false"}
@@ -131,223 +444,153 @@ function ParameterValue({ value }: { value: unknown }) {
   }
 
   if (typeof value === "number") {
-    return <span className="text-blue-600 dark:text-blue-400">{value}</span>;
+    return (
+      <span className="text-blue-600 dark:text-blue-400 text-xs">{value}</span>
+    );
   }
 
   if (typeof value === "string") {
-    // Check if it looks like a file path
-    if (value.startsWith("/") || value.includes("/")) {
-      return (
-        <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded inline-flex items-center gap-1">
-          <IconFile className="h-3 w-3 text-muted-foreground" />
-          {value}
-        </span>
-      );
-    }
-
-    // Check if it's a multi-line string (likely code or content)
-    if (value.includes("\n")) {
-      const lines = value.split("\n");
-      if (lines.length > 5) {
-        return (
-          <details className="group">
-            <summary className="cursor-pointer text-muted-foreground hover:text-foreground text-xs">
-              {lines.length} lines
-            </summary>
-            <pre className="mt-1 text-xs bg-muted/50 p-2 rounded overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap">
-              {value}
-            </pre>
-          </details>
-        );
-      }
-      return (
-        <pre className="text-xs bg-muted/50 p-2 rounded overflow-x-auto whitespace-pre-wrap">
-          {value}
-        </pre>
-      );
-    }
-
-    // Regular string
     if (value.length > 100) {
       return (
         <details className="group inline">
-          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+          <summary className="cursor-pointer text-muted-foreground hover:text-foreground text-xs">
             &quot;{value.slice(0, 50)}...&quot;
           </summary>
-          <div className="mt-1 text-xs bg-muted/50 p-2 rounded">{value}</div>
+          <div className="mt-1 text-xs bg-muted/50 p-2 rounded whitespace-pre-wrap">
+            {value}
+          </div>
         </details>
       );
     }
-
     return (
-      <span className="text-green-700 dark:text-green-400">
+      <span className="text-green-700 dark:text-green-400 text-xs">
         &quot;{value}&quot;
       </span>
     );
   }
 
-  if (Array.isArray(value)) {
-    if (value.length === 0) {
-      return <span className="text-muted-foreground">[]</span>;
-    }
+  if (Array.isArray(value) || typeof value === "object") {
     return <CollapsibleJson data={value} />;
   }
 
-  if (typeof value === "object") {
-    return <CollapsibleJson data={value} />;
-  }
-
-  return <span>{String(value)}</span>;
+  return <span className="text-xs">{String(value)}</span>;
 }
 
-/** Render tool input parameters as labeled key-value pairs */
-function ToolParameters({ input }: { input: unknown }) {
-  if (input === null || input === undefined) {
-    return null;
-  }
+// ============ TOOL RESULT CONTENT ============
 
-  // If input is not an object, show it directly
-  if (typeof input !== "object" || Array.isArray(input)) {
+function ToolResultContentView({
+  content,
+  toolMeta,
+  searchTerm,
+}: {
+  content: ToolResultContent;
+  toolMeta?: ToolResultMeta;
+  searchTerm?: string;
+}) {
+  const isError = content.is_error === true;
+  const resultText = content.content;
+
+  // Error display
+  if (isError) {
     return (
-      <div className="mt-2">
-        <CollapsibleJson data={input} label="Input" />
-      </div>
-    );
-  }
-
-  const params = input as Record<string, unknown>;
-  const entries = Object.entries(params);
-
-  if (entries.length === 0) {
-    return null;
-  }
-
-  // Special case: if there's only a file_path or path, show it prominently
-  if (entries.length === 1 && (params.file_path || params.path)) {
-    const path = String(params.file_path ?? params.path);
-    return (
-      <div className="mt-2 flex items-center gap-2 text-sm">
-        <IconFile className="h-4 w-4 text-muted-foreground shrink-0" />
-        <code className="font-mono text-xs bg-muted px-2 py-1 rounded">
-          {path}
-        </code>
-      </div>
-    );
-  }
-
-  // Special case: if there's a command, show it like a terminal
-  if (params.command) {
-    return (
-      <div className="mt-2 space-y-2">
-        <div className="flex items-start gap-2 text-sm">
-          <IconTerminal className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-          <code className="font-mono text-xs bg-muted px-2 py-1 rounded block w-full overflow-x-auto">
-            {String(params.command)}
-          </code>
+      <div className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded text-sm">
+        <div className="flex items-center gap-2 text-red-700 dark:text-red-300 font-medium mb-2">
+          <IconAlertCircle className="h-4 w-4" />
+          Error
         </div>
-        {entries.length > 1 && (
-          <details className="text-xs">
-            <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-              Other parameters ({entries.length - 1})
-            </summary>
-            <div className="mt-1 space-y-1 pl-6">
-              {entries
-                .filter(([key]) => key !== "command")
-                .map(([key, val]) => (
-                  <div key={key} className="flex items-start gap-2">
-                    <span className="text-muted-foreground shrink-0">
-                      {key}:
-                    </span>
-                    <ParameterValue value={val} />
-                  </div>
-                ))}
-            </div>
-          </details>
-        )}
+        <pre className="whitespace-pre-wrap overflow-x-auto text-xs text-red-600 dark:text-red-400">
+          {searchTerm ? highlightText(resultText, searchTerm) : resultText}
+        </pre>
       </div>
     );
   }
 
-  // General case: show all parameters
+  // Tool metadata (bytes, duration, etc.)
+  const metaItems: { label: string; value: string }[] = [];
+  if (toolMeta?.url) {
+    metaItems.push({ label: "URL", value: toolMeta.url });
+  }
+  if (toolMeta?.code !== null && toolMeta?.code !== undefined) {
+    metaItems.push({
+      label: "Status",
+      value: `${toolMeta.code} ${toolMeta.codeText ?? ""}`,
+    });
+  }
+  if (toolMeta?.durationMs !== null && toolMeta?.durationMs !== undefined) {
+    metaItems.push({
+      label: "Duration",
+      value: formatDuration(toolMeta.durationMs),
+    });
+  }
+  if (toolMeta?.bytes !== null && toolMeta?.bytes !== undefined) {
+    metaItems.push({
+      label: "Size",
+      value: `${(toolMeta.bytes / 1024).toFixed(1)} KB`,
+    });
+  }
+
   return (
-    <div className="mt-2 space-y-1.5 text-sm">
-      {entries.map(([key, val]) => (
-        <div key={key} className="flex items-start gap-2">
-          <span className="text-muted-foreground shrink-0 min-w-[80px]">
-            {key}:
-          </span>
-          <div className="min-w-0 flex-1">
-            <ParameterValue value={val} />
-          </div>
+    <div className="space-y-2">
+      {/* Metadata badges */}
+      {metaItems.length > 0 && (
+        <div className="flex flex-wrap gap-2 text-xs">
+          {metaItems.map((item) => (
+            <span
+              key={item.label}
+              className="bg-muted px-2 py-0.5 rounded text-muted-foreground"
+            >
+              {item.label}:{" "}
+              <span className="text-foreground">{item.value}</span>
+            </span>
+          ))}
         </div>
-      ))}
+      )}
+
+      {/* Result content */}
+      <ResultContent text={resultText} searchTerm={searchTerm} />
     </div>
   );
 }
 
-function ToolUseEventContent({ event }: { event: AgentEvent }) {
-  const eventData = event.eventData as Record<string, unknown>;
+function ResultContent({
+  text,
+  searchTerm,
+}: {
+  text: string;
+  searchTerm?: string;
+}) {
+  if (!text || text.trim() === "") {
+    return (
+      <div className="text-sm text-muted-foreground italic">(empty output)</div>
+    );
+  }
 
-  return <ToolParameters input={eventData.input} />;
-}
+  const lines = text.split("\n");
+  const isLong = lines.length > 10 || text.length > 500;
 
-/** Check if text looks like code */
-function looksLikeCode(text: string): boolean {
-  return (
+  // Check if it looks like code
+  const looksLikeCode =
     text.includes("function ") ||
     text.includes("const ") ||
     text.includes("import ") ||
     text.includes("class ") ||
-    /^\s{2,}/m.test(text)
-  );
-}
+    text.includes("```") ||
+    /^\s{2,}/m.test(text);
 
-/** Render error content for tool results */
-function ToolResultError({
-  content,
-  searchTerm,
-}: {
-  content: unknown;
-  searchTerm?: string;
-}) {
-  const errorText =
-    typeof content === "string" ? content : JSON.stringify(content, null, 2);
-  return (
-    <div className="mt-2 p-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded text-sm text-red-700 dark:text-red-300">
-      <div className="font-medium mb-1">Error</div>
-      <pre className="whitespace-pre-wrap overflow-x-auto text-xs">
-        {searchTerm ? highlightText(errorText, searchTerm) : errorText}
-      </pre>
-    </div>
-  );
-}
-
-/** Render string content for tool results */
-function ToolResultString({
-  content,
-  searchTerm,
-}: {
-  content: string;
-  searchTerm?: string;
-}) {
-  const lines = content.split("\n");
-  const isLong = lines.length > 8 || content.length > 400;
-  const isCode = looksLikeCode(content);
-  const codeStyle = isCode
+  const preClass = looksLikeCode
     ? "bg-gray-900 text-gray-100 dark:bg-gray-950"
-    : "bg-muted/30";
+    : "bg-muted/30 text-foreground";
 
   if (isLong) {
     return (
-      <details className="mt-2 group" open={lines.length <= 15}>
-        <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground flex items-center gap-2">
-          <IconCode className="h-3 w-3" />
-          <span>Output ({lines.length} lines)</span>
+      <details className="group" open={lines.length <= 15}>
+        <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground">
+          Output ({lines.length} lines)
         </summary>
         <pre
-          className={`mt-2 text-xs whitespace-pre-wrap overflow-x-auto p-3 rounded max-h-80 overflow-y-auto ${codeStyle}`}
+          className={`mt-2 text-xs whitespace-pre-wrap overflow-x-auto p-3 rounded max-h-80 overflow-y-auto ${preClass}`}
         >
-          {searchTerm ? highlightText(content, searchTerm) : content}
+          {searchTerm ? highlightText(text, searchTerm) : text}
         </pre>
       </details>
     );
@@ -355,200 +598,264 @@ function ToolResultString({
 
   return (
     <pre
-      className={`mt-2 text-xs whitespace-pre-wrap overflow-x-auto p-2 rounded ${codeStyle}`}
+      className={`text-xs whitespace-pre-wrap overflow-x-auto p-2 rounded ${preClass}`}
     >
-      {searchTerm ? highlightText(content, searchTerm) : content}
+      {searchTerm ? highlightText(text, searchTerm) : text}
     </pre>
   );
 }
 
-/** Render array content blocks for tool results */
-function ToolResultArray({
-  content,
-  searchTerm,
-}: {
-  content: unknown[];
-  searchTerm?: string;
-}) {
+// ============ RESULT EVENT (Final stats) ============
+
+function ResultEventContent({ eventData }: { eventData: EventData }) {
+  const isError = eventData.is_error === true;
+  const totalCost = eventData.total_cost_usd;
+  const durationMs = eventData.duration_ms;
+  const numTurns = eventData.num_turns;
+  const modelUsage = eventData.modelUsage;
+  const result = eventData.result;
+
   return (
-    <div className="mt-2 space-y-2">
-      {content.map((item) => {
-        if (typeof item === "object" && item !== null) {
-          const obj = item as Record<string, unknown>;
-          if (obj.type === "text" && typeof obj.text === "string") {
-            const textKey = `text-${String(obj.text).slice(0, 50)}`;
-            return (
-              <div key={textKey} className="text-sm whitespace-pre-wrap">
-                {searchTerm ? highlightText(obj.text, searchTerm) : obj.text}
-              </div>
-            );
-          }
-        }
-        const itemKey = `item-${JSON.stringify(item).slice(0, 50)}`;
-        return (
-          <div key={itemKey}>
-            <CollapsibleJson data={item} />
+    <div className="mt-3 space-y-3">
+      {/* Summary stats */}
+      <div className="flex flex-wrap gap-4 text-sm">
+        {durationMs !== null && durationMs !== undefined && (
+          <div className="flex items-center gap-1.5">
+            <IconClock className="h-4 w-4 text-muted-foreground" />
+            <span className="text-foreground">
+              {formatDuration(durationMs)}
+            </span>
           </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function ToolResultEventContent({
-  event,
-  searchTerm,
-}: {
-  event: AgentEvent;
-  searchTerm?: string;
-}) {
-  const eventData = event.eventData as Record<string, unknown>;
-  const content = eventData.content;
-  const isError = eventData.is_error === true || eventData.isError === true;
-
-  if (isError) {
-    return <ToolResultError content={content} searchTerm={searchTerm} />;
-  }
-
-  if (typeof content === "string") {
-    if (content.trim() === "") {
-      return (
-        <div className="mt-2 text-sm text-muted-foreground italic">
-          (empty output)
-        </div>
-      );
-    }
-    return <ToolResultString content={content} searchTerm={searchTerm} />;
-  }
-
-  if (Array.isArray(content)) {
-    return <ToolResultArray content={content} searchTerm={searchTerm} />;
-  }
-
-  if (content !== null && content !== undefined) {
-    return (
-      <div className="mt-2">
-        <CollapsibleJson data={content} label="Output" />
+        )}
+        {totalCost !== null && totalCost !== undefined && (
+          <div className="flex items-center gap-1.5">
+            <IconCurrencyDollar className="h-4 w-4 text-muted-foreground" />
+            <span className="text-foreground">{formatCost(totalCost)}</span>
+          </div>
+        )}
+        {numTurns !== null && numTurns !== undefined && (
+          <div className="flex items-center gap-1.5">
+            <IconArrowRight className="h-4 w-4 text-muted-foreground" />
+            <span className="text-foreground">{numTurns} turns</span>
+          </div>
+        )}
       </div>
-    );
-  }
 
-  return (
-    <div className="mt-2 text-sm text-muted-foreground italic">(no output)</div>
-  );
-}
-
-function ThinkingEventContent({
-  event,
-  searchTerm,
-}: {
-  event: AgentEvent;
-  searchTerm?: string;
-}) {
-  const eventData = event.eventData as Record<string, unknown>;
-  const content = String(eventData.content ?? "");
-
-  return (
-    <details className="mt-2 group">
-      <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground italic">
-        Thinking...
-      </summary>
-      <div className="mt-2 text-sm text-muted-foreground italic whitespace-pre-wrap">
-        {searchTerm ? highlightText(content, searchTerm) : content}
-      </div>
-    </details>
-  );
-}
-
-function InitEventContent({ event }: { event: AgentEvent }) {
-  const eventData = event.eventData as Record<string, unknown>;
-  const tools = Array.isArray(eventData.tools) ? eventData.tools : [];
-
-  return (
-    <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-      {eventData.model !== null && eventData.model !== undefined && (
-        <div className="flex items-center gap-2">
-          <span className="text-muted-foreground text-xs uppercase tracking-wide">
-            Model
-          </span>
-          <span className="font-medium text-foreground">
-            {String(eventData.model)}
-          </span>
-        </div>
-      )}
-      {eventData.session !== null && eventData.session !== undefined && (
-        <div className="flex items-center gap-2">
-          <span className="text-muted-foreground text-xs uppercase tracking-wide">
-            Session
-          </span>
-          <code className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded truncate max-w-[200px]">
-            {String(eventData.session)}
-          </code>
-        </div>
-      )}
-      {tools.length > 0 && (
-        <div className="col-span-2 mt-1">
-          <details className="group">
-            <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground uppercase tracking-wide">
-              {tools.length} Tools Available
-            </summary>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {(tools as unknown[]).map((tool) => (
-                <span
-                  key={String(tool)}
-                  className="text-xs bg-muted/70 text-muted-foreground px-2 py-0.5 rounded-full"
+      {/* Model usage breakdown */}
+      {modelUsage && Object.keys(modelUsage).length > 0 && (
+        <details className="group">
+          <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground uppercase tracking-wide">
+            Model Usage
+          </summary>
+          <div className="mt-2 space-y-2">
+            {Object.entries(modelUsage).map(([model, usage]) => {
+              if (!usage.inputTokens && !usage.outputTokens) {
+                return null;
+              }
+              return (
+                <div
+                  key={model}
+                  className="flex items-center justify-between text-xs bg-muted/50 p-2 rounded"
                 >
-                  {String(tool)}
-                </span>
-              ))}
-            </div>
-          </details>
+                  <span className="font-mono text-muted-foreground">
+                    {model}
+                  </span>
+                  <div className="flex gap-3">
+                    {usage.inputTokens !== null &&
+                      usage.inputTokens !== undefined && (
+                        <span>In: {usage.inputTokens.toLocaleString()}</span>
+                      )}
+                    {usage.outputTokens !== null &&
+                      usage.outputTokens !== undefined && (
+                        <span>Out: {usage.outputTokens.toLocaleString()}</span>
+                      )}
+                    {usage.costUSD !== null && usage.costUSD !== undefined && (
+                      <span className="text-green-600 dark:text-green-400">
+                        {formatCost(usage.costUSD)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </details>
+      )}
+
+      {/* Result text */}
+      {result && (
+        <div
+          className={`p-3 rounded text-sm ${isError ? "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300" : "bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300"}`}
+        >
+          <div className="font-medium mb-1">
+            {isError ? "Error" : "Success"}
+          </div>
+          <div className="whitespace-pre-wrap">{result}</div>
         </div>
       )}
     </div>
   );
 }
 
-function GenericEventContent({ event }: { event: AgentEvent }) {
+// ============ MAIN EVENT CARD ============
+
+function EventHeader({
+  event,
+  label,
+  sublabel,
+}: {
+  event: AgentEvent;
+  label: string;
+  sublabel?: string;
+}) {
+  const style = getEventStyle(event.eventType);
+  const Icon = style.icon;
+
   return (
-    <div className="mt-2">
-      <CollapsibleJson data={event.eventData} />
+    <div className="flex items-center gap-2 text-sm">
+      <Icon className={`h-4 w-4 ${style.textColor}`} />
+      <span
+        className={`px-2 py-0.5 rounded-full text-xs font-medium ${style.badgeColor}`}
+      >
+        {label}
+      </span>
+      {sublabel && (
+        <span className="font-medium text-foreground">{sublabel}</span>
+      )}
+      <span className="text-muted-foreground ml-auto">
+        {formatEventTime(event.createdAt)}
+      </span>
     </div>
   );
 }
 
 export function EventCard({ event, searchTerm }: EventCardProps) {
+  const eventData = event.eventData as EventData;
   const style = getEventStyle(event.eventType);
 
-  const renderContent = () => {
-    switch (event.eventType) {
-      case "text": {
-        return <TextEventContent event={event} searchTerm={searchTerm} />;
-      }
-      case "tool_use": {
-        return <ToolUseEventContent event={event} />;
-      }
-      case "tool_result": {
-        return <ToolResultEventContent event={event} searchTerm={searchTerm} />;
-      }
-      case "thinking": {
-        return <ThinkingEventContent event={event} searchTerm={searchTerm} />;
-      }
-      case "init": {
-        return <InitEventContent event={event} />;
-      }
-      default: {
-        return <GenericEventContent event={event} />;
-      }
-    }
-  };
+  // System event (init)
+  if (event.eventType === "system") {
+    const subtype = eventData.subtype;
+    return (
+      <div
+        className={`rounded-lg border-l-4 ${style.borderColor} ${style.bgColor} p-3`}
+      >
+        <EventHeader
+          event={event}
+          label="System"
+          sublabel={subtype === "init" ? "Initialize" : subtype}
+        />
+        {subtype === "init" && <SystemInitContent eventData={eventData} />}
+        {subtype !== "init" && eventData.message?.content === null && (
+          <div className="mt-2">
+            <CollapsibleJson data={eventData} label="Event Data" />
+          </div>
+        )}
+      </div>
+    );
+  }
 
+  // Result event (final stats)
+  if (event.eventType === "result") {
+    const subtype = eventData.subtype;
+    const isError = eventData.is_error === true || subtype === "error";
+    const resultStyle = isError ? getEventStyle("tool_result_error") : style;
+    return (
+      <div
+        className={`rounded-lg border-l-4 ${resultStyle.borderColor} ${resultStyle.bgColor} p-3`}
+      >
+        <EventHeader event={event} label={isError ? "Failed" : "Completed"} />
+        <ResultEventContent eventData={eventData} />
+      </div>
+    );
+  }
+
+  // Assistant or User event - render message.content array
+  const message = eventData.message;
+  const contents = message?.content;
+
+  if (!contents || !Array.isArray(contents) || contents.length === 0) {
+    // Fallback: show raw data
+    return (
+      <div
+        className={`rounded-lg border-l-4 ${style.borderColor} ${style.bgColor} p-3`}
+      >
+        <EventHeader event={event} label={event.eventType} />
+        <div className="mt-2">
+          <CollapsibleJson data={eventData} label="Event Data" />
+        </div>
+      </div>
+    );
+  }
+
+  // Render each content block
   return (
     <div
-      className={`rounded-lg border-l-4 ${style.borderColor} ${style.bgColor} p-3`}
+      className={`rounded-lg border-l-4 ${style.borderColor} ${style.bgColor} p-3 space-y-3`}
     >
-      <EventHeader event={event} style={style} />
-      {renderContent()}
+      <EventHeader
+        event={event}
+        label={event.eventType === "assistant" ? "Assistant" : "User"}
+      />
+
+      {contents.map((content) => {
+        const contentKey = `${event.sequenceNumber}-${content.type}-${(content as ToolUseContent).id ?? (content as ToolResultContent).tool_use_id ?? Math.random()}`;
+
+        if (content.type === "text") {
+          return (
+            <div key={contentKey}>
+              <TextContentView
+                content={content as TextContent}
+                searchTerm={searchTerm}
+              />
+            </div>
+          );
+        }
+
+        if (content.type === "tool_use") {
+          const toolContent = content as ToolUseContent;
+          const toolStyle = getEventStyle("tool_use");
+          return (
+            <div
+              key={contentKey}
+              className={`rounded border-l-2 ${toolStyle.borderColor} ${toolStyle.bgColor} p-2`}
+            >
+              <ToolUseContentView content={toolContent} />
+            </div>
+          );
+        }
+
+        if (content.type === "tool_result") {
+          const resultContent = content as ToolResultContent;
+          const isError = resultContent.is_error === true;
+          const resultStyle = getEventStyle(
+            isError ? "tool_result_error" : "tool_result",
+          );
+          return (
+            <div
+              key={contentKey}
+              className={`rounded border-l-2 ${resultStyle.borderColor} ${resultStyle.bgColor} p-2`}
+            >
+              <ToolResultContentView
+                content={resultContent}
+                toolMeta={eventData.tool_use_result ?? undefined}
+                searchTerm={searchTerm}
+              />
+            </div>
+          );
+        }
+
+        // Unknown content type - show as JSON
+        const unknownContent = content as Record<string, unknown>;
+        return (
+          <div key={contentKey} className="mt-2">
+            <CollapsibleJson
+              data={unknownContent}
+              label={`Unknown: ${String(unknownContent.type ?? "content")}`}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }
