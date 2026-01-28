@@ -272,5 +272,18 @@
         "definition": "Ein Befehlszeilenwerkzeug für Agentenentwicklung und -bereitstellung. Codex bietet Entwicklern Dienstprogramme zum Erstellen, Testen und Verwalten von Agenten über das Terminal. Es bietet Funktionen wie Code-Generierung, Scaffolding und Integration mit KI-Modellen, um den Agenten-Entwicklungsworkflow zu optimieren."
       }
     }
+  },
+  "blog": {
+    "title": "Blog",
+    "description": "Einblicke, Tutorials und Updates zur agentenzentrierten Entwicklung und der Zukunft der KI-Infrastruktur.",
+    "allPosts": "Alle Beiträge",
+    "readMore": "Mehr lesen",
+    "backToAllPosts": "Zurück zu allen Beiträgen",
+    "relatedArticles": "Verwandte Artikel",
+    "stayInLoop": "Bleiben Sie auf dem Laufenden",
+    "stayInLoopDesc": "// Erhalten Sie die neuesten Einblicke zur agentenzentrierten Entwicklung.",
+    "subscribe": "Abonnieren",
+    "joinDiscord": "Discord beitreten",
+    "shareArticle": "Artikel teilen"
   }
 }

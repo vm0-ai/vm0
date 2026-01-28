@@ -15,10 +15,14 @@
   "dependencies": {
     "@clerk/nextjs": "^6.35.1",
     "@vm0/ui": "workspace:*",
+    "highlight.js": "^11.11.1",
     "next": "^15.5.7",
     "next-intl": "^4.6.1",
     "react": "^19.1.2",
-    "react-dom": "^19.1.2"
+    "react-dom": "^19.1.2",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.7.0",

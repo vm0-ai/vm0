@@ -271,5 +271,18 @@
         "definition": "Agent開発および展開のためのコマンドラインツール。Codexは開発者にターミナルを通じてAgent構築、テスト、管理用のユーティリティを提供します。コード生成、Scaffolding、AIモデルとの統合などの機能を提供し、agent開発ワークフローを簡素化します。"
       }
     }
+  },
+  "blog": {
+    "title": "ブログ",
+    "description": "エージェントネイティブ開発とAIインフラの未来に関する洞察、チュートリアル、最新情報。",
+    "allPosts": "すべての記事",
+    "readMore": "続きを読む",
+    "backToAllPosts": "すべての記事に戻る",
+    "relatedArticles": "関連記事",
+    "stayInLoop": "最新情報をキャッチ",
+    "stayInLoopDesc": "// エージェントネイティブ開発の最新インサイトを入手。",
+    "subscribe": "購読する",
+    "joinDiscord": "Discordに参加",
+    "shareArticle": "この記事を共有"
   }
 }
