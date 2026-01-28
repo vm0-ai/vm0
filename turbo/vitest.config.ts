@@ -5,6 +5,9 @@ export default defineConfig({
   test: {
     globals: true,
     passWithNoTests: true,
+    // Suppress console output from passing tests to reduce noise
+    // Logs from failing tests are still displayed for debugging
+    silent: "passed-only",
 
     coverage: {
       provider: "v8",
