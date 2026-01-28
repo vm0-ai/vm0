@@ -29,7 +29,7 @@ export default defineConfig({
   onSuccess: isWatchMode
     ? async () => {
         console.log("Installing vm0 CLI globally...");
-        execSync("sudo npm link --global", { cwd: "dist", stdio: "inherit" });
+        execSync("sudo npm link --local", { cwd: "dist", stdio: "inherit" });
         console.log("vm0 CLI installed globally");
       }
     : undefined,
