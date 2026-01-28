@@ -1,6 +1,7 @@
 // VM0 Runner - Self-hosted runner that polls the VM0 API server and executes agent jobs in isolated Firecracker microVMs
 // Deployment: Added buildkit cache retry mechanism (issue #1328)
 // CI: Refactored E2E tests with setup_file() - parallel tests use 45s timeout (issue #1555)
+// Perf: Replaced Python vsock-agent with Rust for faster VM startup (issue #1668)
 import { program } from "commander";
 import { startCommand } from "./commands/start.js";
 import { doctorCommand } from "./commands/doctor.js";
