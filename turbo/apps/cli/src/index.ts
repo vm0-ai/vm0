@@ -1,12 +1,8 @@
 // CI trigger: issue #1522 - simplify model-provider e2e tests
 import { Command } from "commander";
 import chalk from "chalk";
-import {
-  authenticate,
-  logout,
-  checkAuthStatus,
-  setupToken,
-} from "./lib/api/auth";
+import { logout, checkAuthStatus, setupToken } from "./lib/api/auth";
+import { loginCommand } from "./commands/auth";
 import { getApiUrl } from "./lib/api/config";
 import { composeCommand } from "./commands/compose";
 import { runCommand } from "./commands/run";
@@ -47,12 +43,7 @@ program
 
 const authCommand = program.command("auth").description("Authenticate vm0");
 
-authCommand
-  .command("login")
-  .description("Log in to VM0 (use VM0_API_URL env var to set API URL)")
-  .action(async () => {
-    await authenticate();
-  });
+authCommand.addCommand(loginCommand);
 
 authCommand
   .command("logout")

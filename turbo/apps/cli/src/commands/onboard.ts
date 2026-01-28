@@ -4,9 +4,10 @@ import prompts from "prompts";
 import { mkdir } from "fs/promises";
 import { existsSync } from "fs";
 import { getToken } from "../lib/api/config";
-import { authenticate } from "../lib/api/auth";
 import { listModelProviders } from "../lib/api";
 import { isInteractive } from "../lib/utils/prompt-utils";
+import { loginCommand } from "./auth";
+import { setupCommand as modelProviderSetupCommand } from "./model-provider/setup";
 import { setupClaudeCommand } from "./setup-claude";
 import { initCommand } from "./init";
 
@@ -30,29 +31,25 @@ export const onboardCommand = new Command()
     } else {
       console.log(chalk.dim("Authentication required..."));
       console.log();
-      await authenticate();
+      await loginCommand.parseAsync([], { from: "user" });
     }
 
-    // Step 2: Check model-provider
+    // Step 2: Check/setup model-provider
     try {
       const result = await listModelProviders();
       if (result.modelProviders.length > 0) {
         console.log(chalk.green("Done Model provider configured"));
       } else {
-        console.log(chalk.yellow("! No model provider configured"));
+        console.log(chalk.dim("Model provider setup required..."));
         console.log();
-        console.log("Run the following to set up:");
-        console.log(chalk.cyan("  vm0 model-provider setup"));
-        console.log();
+        await modelProviderSetupCommand.parseAsync([], { from: "user" });
       }
-    } catch (error) {
-      // Model provider check is non-blocking - user can set up later
-      // But log the error for debugging
-      const message = error instanceof Error ? error.message : String(error);
-      console.log(
-        chalk.yellow(`! Could not check model provider status: ${message}`),
-      );
+    } catch {
+      // If we can't check, try to run setup anyway
+      // setupCommand will handle its own errors
+      console.log(chalk.dim("Setting up model provider..."));
       console.log();
+      await modelProviderSetupCommand.parseAsync([], { from: "user" });
     }
 
     // Step 3: Create demo agent

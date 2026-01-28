@@ -7,12 +7,22 @@ import * as os from "os";
 import { http, HttpResponse } from "msw";
 import { server } from "../../mocks/server";
 
-// Only mock authenticate - it opens a browser which is impossible to test
-vi.mock("../../lib/api/auth", () => ({
-  authenticate: vi.fn().mockResolvedValue(undefined),
+// Mock loginCommand - it opens a browser which is impossible to test
+vi.mock("../auth", () => ({
+  loginCommand: {
+    parseAsync: vi.fn().mockResolvedValue(undefined),
+  },
 }));
 
-import { authenticate } from "../../lib/api/auth";
+// Mock model-provider setupCommand for tests where we need to control its behavior
+vi.mock("../model-provider/setup", () => ({
+  setupCommand: {
+    parseAsync: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
+import { loginCommand } from "../auth";
+import { setupCommand as modelProviderSetupCommand } from "../model-provider/setup";
 
 describe("onboard command", () => {
   let tempDir: string;
@@ -74,7 +84,7 @@ describe("onboard command", () => {
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Authenticated"),
       );
-      expect(authenticate).not.toHaveBeenCalled();
+      expect(loginCommand.parseAsync).not.toHaveBeenCalled();
     });
 
     it("should trigger authentication when no token exists", async () => {
@@ -88,7 +98,9 @@ describe("onboard command", () => {
         "manual",
       ]);
 
-      expect(authenticate).toHaveBeenCalled();
+      expect(loginCommand.parseAsync).toHaveBeenCalledWith([], {
+        from: "user",
+      });
     });
   });
 
@@ -105,9 +117,10 @@ describe("onboard command", () => {
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Model provider configured"),
       );
+      expect(modelProviderSetupCommand.parseAsync).not.toHaveBeenCalled();
     });
 
-    it("should show warning when no model providers configured", async () => {
+    it("should trigger model provider setup when no providers configured", async () => {
       server.use(
         http.get("http://localhost:3000/api/model-providers", () => {
           return HttpResponse.json({ modelProviders: [] });
@@ -123,14 +136,14 @@ describe("onboard command", () => {
       ]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("No model provider configured"),
+        expect.stringContaining("Model provider setup required"),
       );
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 model-provider setup"),
-      );
+      expect(modelProviderSetupCommand.parseAsync).toHaveBeenCalledWith([], {
+        from: "user",
+      });
     });
 
-    it("should continue even if model provider check fails", async () => {
+    it("should attempt setup if model provider check fails", async () => {
       server.use(
         http.get("http://localhost:3000/api/model-providers", () => {
           return HttpResponse.json({ error: "Server error" }, { status: 500 });
@@ -146,8 +159,11 @@ describe("onboard command", () => {
       ]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Could not check model provider status"),
+        expect.stringContaining("Setting up model provider"),
       );
+      expect(modelProviderSetupCommand.parseAsync).toHaveBeenCalledWith([], {
+        from: "user",
+      });
     });
   });
 
