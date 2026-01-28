@@ -14,8 +14,8 @@ export const metadata: Metadata = {
   },
 };
 
-// Revalidate every hour
-export const revalidate = 3600;
+// Static generation at build time - skills data fetched once during build
+export const dynamic = "force-static";
 
 export default async function SkillsPage() {
   const skills = await getSkills();
