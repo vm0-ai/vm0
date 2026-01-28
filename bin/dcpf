@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+
+set -eu
+
+if [ $# -eq 0 ]; then
+    echo "Usage: dcpf <vm_name>"
+    echo "Example: dcpf vm01"
+    exit 1
+fi
+
+vm_name="$1"
+
+# Find the container and extract its port
+port=$(docker ps | grep "vsc-${vm_name}" | ggrep -oP '0\.0\.0\.0:\K[0-9]+(?=->8443)' | head -n1)
+
+if [ -z "$port" ]; then
+    echo "Error: Container for '${vm_name}' not found or no port mapping"
+    echo "Available containers:"
+    docker ps --format "table {{.Names}}\t{{.Ports}}" | grep vsc- || echo "No devcontainers running"
+    exit 1
+fi
+
+echo "Forwarding localhost:8443 -> localhost:${port} (container: ${vm_name})"
+echo "Press Ctrl+C to stop"
+
+# Use socat to forward port 8443 to the container's port
+socat TCP-LISTEN:8443,fork,reuseaddr TCP:localhost:${port}

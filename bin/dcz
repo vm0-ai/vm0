@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+set -eu
+
+FOLDER="$HOME/workspace/$1"
+
+# Check if ~/.devcontainer.env file exists and use it
+npx @devcontainers/cli exec --workspace-folder "$FOLDER" zsh

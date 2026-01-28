@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+set -eu
+
+# Argument provided, use it as workspace name
+workspace="$1"
+FOLDER="$HOME/workspace/$workspace"
+(cd "$FOLDER" && git pull)
+npx @devcontainers/cli up --workspace-folder "$FOLDER" \
+    --dotfiles-repository $VM0_DOTFILES \
+    --remove-existing-container

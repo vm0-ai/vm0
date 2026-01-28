@@ -26,6 +26,9 @@
     },
     {
       "path": "scripts"
+    },
+    {
+      "path": "bin"
     }
   ],
   "extensions": {
