@@ -1,79 +1,115 @@
-import { useGet, useLoadable } from "ccstate-react";
+import { useLoadable } from "ccstate-react";
 import type { Computed } from "ccstate";
-import { logs$ } from "../../signals/logs-page/logs-signals.ts";
+import { currentPageLogs$ } from "../../signals/logs-page/logs-signals.ts";
 import { LogsTableRow } from "./logs-table-row.tsx";
 import { LogsEmptyState } from "./logs-empty-state.tsx";
-import type { LogsListResponse } from "../../signals/logs-page/types.ts";
 import { Table, TableHeader, TableBody, TableHead, TableRow } from "@vm0/ui";
+import type { LogsListResponse } from "../../signals/logs-page/types.ts";
 
-interface LogBatchProps {
-  logComputed: Computed<Promise<LogsListResponse>>;
-  index: number;
+function LogsTableHeader() {
+  return (
+    <TableHeader>
+      <TableRow>
+        <TableHead>Run ID</TableHead>
+        <TableHead>Session ID</TableHead>
+        <TableHead>Agent</TableHead>
+        <TableHead>Framework</TableHead>
+        <TableHead>Status</TableHead>
+        <TableHead>Generate time</TableHead>
+        <TableHead className="w-8" />
+      </TableRow>
+    </TableHeader>
+  );
 }
 
-function LogBatch({ logComputed, index }: LogBatchProps) {
-  const loadable = useLoadable(logComputed);
-
-  if (loadable.state === "loading") {
-    return (
-      <TableRow key={`loading-${index}`}>
-        <td colSpan={7} className="p-4 text-center">
-          Loading...
-        </td>
-      </TableRow>
-    );
-  }
-
-  if (loadable.state === "hasError") {
-    const errorMessage =
-      loadable.error instanceof Error
-        ? loadable.error.message
-        : "Failed to load logs";
-    return (
-      <TableRow key={`error-${index}`}>
-        <td colSpan={7} className="p-4 text-center text-destructive">
-          Error: {errorMessage}
-        </td>
-      </TableRow>
-    );
-  }
-
+function LoadingTable() {
   return (
-    <>
-      {loadable.data.data.map((entry) => (
-        <LogsTableRow key={entry.id} logId={entry.id} />
-      ))}
-    </>
+    <Table>
+      <LogsTableHeader />
+      <TableBody>
+        <TableRow>
+          <td colSpan={7} className="p-4 text-center">
+            Loading...
+          </td>
+        </TableRow>
+      </TableBody>
+    </Table>
   );
 }
 
 export function LogsTable() {
-  const logs = useGet(logs$);
+  const currentPage = useLoadable(currentPageLogs$);
 
-  if (logs.length === 0) {
+  if (currentPage.state === "loading") {
+    return <LoadingTable />;
+  }
+
+  if (currentPage.state === "hasError") {
+    const errorMessage =
+      currentPage.error instanceof Error
+        ? currentPage.error.message
+        : "Failed to load logs";
+    return (
+      <Table>
+        <LogsTableHeader />
+        <TableBody>
+          <TableRow>
+            <td colSpan={7} className="p-4 text-center text-destructive">
+              Error: {errorMessage}
+            </td>
+          </TableRow>
+        </TableBody>
+      </Table>
+    );
+  }
+
+  if (currentPage.data === null) {
+    return <LoadingTable />;
+  }
+
+  return <LogsTableData pageComputed={currentPage.data} />;
+}
+
+interface LogsTableDataProps {
+  pageComputed: Computed<Promise<LogsListResponse>>;
+}
+
+function LogsTableData({ pageComputed }: LogsTableDataProps) {
+  const dataLoadable = useLoadable(pageComputed);
+
+  if (dataLoadable.state === "loading") {
+    return <LoadingTable />;
+  }
+
+  if (dataLoadable.state === "hasError") {
+    const errorMessage =
+      dataLoadable.error instanceof Error
+        ? dataLoadable.error.message
+        : "Failed to load logs";
+    return (
+      <Table>
+        <LogsTableHeader />
+        <TableBody>
+          <TableRow>
+            <td colSpan={7} className="p-4 text-center text-destructive">
+              Error: {errorMessage}
+            </td>
+          </TableRow>
+        </TableBody>
+      </Table>
+    );
+  }
+
+  if (dataLoadable.data.data.length === 0) {
     return <LogsEmptyState />;
   }
 
   return (
     <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Run ID</TableHead>
-          <TableHead>Session ID</TableHead>
-          <TableHead>Agent</TableHead>
-          <TableHead>Framework</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead>Generate time</TableHead>
-          <TableHead className="w-8" />
-        </TableRow>
-      </TableHeader>
+      <LogsTableHeader />
       <TableBody>
-        {logs.map((logComputed, index) => (
-          <LogBatch
-            key={`batch-${index}`}
-            logComputed={logComputed}
-            index={index}
-          />
+        {dataLoadable.data.data.map((entry) => (
+          <LogsTableRow key={entry.id} logId={entry.id} />
         ))}
       </TableBody>
     </Table>

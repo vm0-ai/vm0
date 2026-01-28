@@ -267,7 +267,7 @@ describe("log detail page", () => {
       http.get("*/api/platform/logs", () => {
         return HttpResponse.json({
           data: [],
-          pagination: { has_more: false, next_cursor: null },
+          pagination: { hasMore: false, nextCursor: null },
         });
       }),
       http.get("*/api/platform/logs/:id", () => {

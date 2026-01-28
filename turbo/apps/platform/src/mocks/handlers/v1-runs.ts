@@ -64,8 +64,8 @@ export const platformLogsHandlers = [
     const response: LogsListResponse = {
       data: data.map((log) => ({ id: log.id })),
       pagination: {
-        has_more: hasMore,
-        next_cursor: nextCursor,
+        hasMore,
+        nextCursor,
       },
     };
 

@@ -1,14 +1,12 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/helper.ts";
 import { pathname$ } from "../../../signals/route.ts";
 import { screen, waitFor, within } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { http, HttpResponse } from "msw";
-import { userEvent } from "@testing-library/user-event";
 
 const context = testContext();
-const user = userEvent.setup();
 
 describe("logs page", () => {
   it("should render the logs page", async () => {
@@ -61,12 +59,12 @@ describe("logs page", () => {
     expect(completedBadges.length).toBeGreaterThan(0);
   });
 
-  it("should show empty table when no logs exist", async () => {
+  it("should show empty state when no logs exist", async () => {
     server.use(
       http.get("*/api/platform/logs", () => {
         return HttpResponse.json({
           data: [],
-          pagination: { has_more: false, next_cursor: null },
+          pagination: { hasMore: false, nextCursor: null },
         });
       }),
     );
@@ -76,20 +74,13 @@ describe("logs page", () => {
       path: "/logs",
     });
 
-    // Wait for table to render
+    // Wait for empty state to render
     await waitFor(() => {
-      expect(screen.getByRole("table")).toBeInTheDocument();
+      expect(screen.getByText("No runs found")).toBeInTheDocument();
     });
-
-    // Table should have headers but no data rows
-    const table = screen.getByRole("table");
-    const tbody = within(table).getAllByRole("rowgroup")[1]; // tbody is second rowgroup
-    expect(tbody).toBeDefined();
-    // tbody should be empty (no rows)
-    expect(within(tbody!).queryAllByRole("row")).toHaveLength(0);
   });
 
-  it("should show Load More button when has more data", async () => {
+  it("should show pagination controls", async () => {
     server.use(
       http.get("*/api/platform/logs", ({ request }) => {
         const url = new URL(request.url);
@@ -98,12 +89,12 @@ describe("logs page", () => {
         if (!cursor) {
           return HttpResponse.json({
             data: [{ id: "run_1" }],
-            pagination: { has_more: true, next_cursor: "run_1" },
+            pagination: { hasMore: true, nextCursor: "run_1" },
           });
         }
         return HttpResponse.json({
           data: [{ id: "run_2" }],
-          pagination: { has_more: false, next_cursor: null },
+          pagination: { hasMore: false, nextCursor: null },
         });
       }),
       http.get("*/api/platform/logs/:id", ({ params }) => {
@@ -129,32 +120,19 @@ describe("logs page", () => {
       path: "/logs",
     });
 
-    // Wait for Load More button to appear
+    // Wait for pagination controls to appear
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Load More" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Rows per page")).toBeInTheDocument();
     });
+    expect(screen.getByText("Page 1")).toBeInTheDocument();
   });
 
-  it("should load more data when Load More button is clicked", async () => {
-    let loadMoreCalled = false;
-
+  it("should enable next button when hasMore is true", async () => {
     server.use(
-      http.get("*/api/platform/logs", ({ request }) => {
-        const url = new URL(request.url);
-        const cursor = url.searchParams.get("cursor");
-
-        if (!cursor) {
-          return HttpResponse.json({
-            data: [{ id: "run_first" }],
-            pagination: { has_more: true, next_cursor: "run_first" },
-          });
-        }
-        loadMoreCalled = true;
+      http.get("*/api/platform/logs", () => {
         return HttpResponse.json({
-          data: [{ id: "run_second" }],
-          pagination: { has_more: false, next_cursor: null },
+          data: [{ id: "run_first" }],
+          pagination: { hasMore: true, nextCursor: "run_first" },
         });
       }),
       http.get("*/api/platform/logs/:id", ({ params }) => {
@@ -180,19 +158,21 @@ describe("logs page", () => {
       path: "/logs",
     });
 
-    // Wait for first batch
+    // Wait for data to load
     await waitFor(() => {
       expect(screen.getByText("Agent run_first")).toBeInTheDocument();
     });
 
-    // Click Load More
-    const loadMoreButton = screen.getByRole("button", { name: "Load More" });
-    await user.click(loadMoreButton);
+    // Find navigation buttons (buttons with SVG icons)
+    const buttons = screen.getAllByRole("button");
+    const iconButtons = buttons.filter((btn) => btn.querySelector("svg"));
 
-    // Verify second batch is loaded
-    await vi.waitFor(() => {
-      expect(loadMoreCalled).toBeTruthy();
-    });
+    // Should have at least 2 navigation buttons (prev and next)
+    expect(iconButtons.length).toBeGreaterThanOrEqual(2);
+
+    // The last icon button (next) should be enabled when hasMore is true
+    const nextButton = iconButtons[iconButtons.length - 1];
+    expect(nextButton).not.toHaveAttribute("disabled");
   });
 
   it("should display different status badges with correct styles", async () => {
@@ -204,7 +184,7 @@ describe("logs page", () => {
             { id: "run_running" },
             { id: "run_failed" },
           ],
-          pagination: { has_more: false, next_cursor: null },
+          pagination: { hasMore: false, nextCursor: null },
         });
       }),
       http.get("*/api/platform/logs/:id", ({ params }) => {
@@ -248,7 +228,7 @@ describe("logs page", () => {
       http.get("*/api/platform/logs", () => {
         return HttpResponse.json({
           data: [{ id: "run_no_session" }],
-          pagination: { has_more: false, next_cursor: null },
+          pagination: { hasMore: false, nextCursor: null },
         });
       }),
       http.get("*/api/platform/logs/:id", () => {

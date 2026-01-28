@@ -7,11 +7,27 @@ import type {
 } from "./types.ts";
 import { fetch$ } from "../fetch.ts";
 
-// Internal state: Array of computed promises, each representing a batch of log IDs
-const internalLogs$ = state<Computed<Promise<LogsListResponse>>[]>([]);
+// Pagination state
+const rowsPerPage$ = state<number>(10);
+const cursorHistory$ = state<(string | null)[]>([null]); // Track cursors for each page
+const currentPageIndex$ = state<number>(0); // 0-based index
 
-// Exported computed: Read-only access to logs
-export const logs$ = computed((get) => get(internalLogs$));
+// Search state
+const searchQuery$ = state<string>("");
+
+// Exported computed for rows per page
+export const rowsPerPageValue$ = computed((get) => get(rowsPerPage$));
+
+// Exported computed for search query
+export const searchQueryValue$ = computed((get) => get(searchQuery$));
+
+// Internal state: Current page data
+const internalCurrentPage$ = state<Computed<Promise<LogsListResponse>> | null>(
+  null,
+);
+
+// Exported computed: Read-only access to current page logs
+export const currentPageLogs$ = computed((get) => get(internalCurrentPage$));
 
 // State for log detail cache (id -> computed detail)
 const logDetailCache$ = state<Map<string, Computed<Promise<LogDetail>>>>(
@@ -103,79 +119,34 @@ export const getOrCreateAgentEvents$ = command(
   },
 );
 
-// Computed: Get next_cursor from last log response
-export const currentCursor$ = computed(async (get) => {
-  const logs = get(internalLogs$);
+// Note: hasNextPage is determined from currentPageLogs$ data in the component
 
-  if (logs.length === 0) {
-    return null;
-  }
-
-  const lastLogComputed = logs[logs.length - 1];
-  if (!lastLogComputed) {
-    return null;
-  }
-
-  const response = await get(lastLogComputed);
-  return response.pagination.next_cursor;
+// Computed: Check if has previous page
+export const hasPrevPage$ = computed((get) => {
+  const pageIndex = get(currentPageIndex$);
+  return pageIndex > 0;
 });
 
-// Computed: Check if more data available
-export const hasMore$ = computed(async (get) => {
-  const logs = get(internalLogs$);
+// Computed: Current page number (1-based for display)
+export const currentPageNumber$ = computed((get) => get(currentPageIndex$) + 1);
 
-  if (logs.length === 0) {
-    return false;
-  }
-
-  const lastLogComputed = logs[logs.length - 1];
-  if (!lastLogComputed) {
-    return false;
-  }
-
-  const response = await get(lastLogComputed);
-  return response.pagination.has_more;
-});
-
-// Command: Initialize logs with first batch (clears and loads)
-export const initLogs$ = command(({ set }, signal: AbortSignal) => {
-  signal.throwIfAborted();
-
-  // Clear internal logs and detail cache
-  set(internalLogs$, []);
-  set(logDetailCache$, new Map());
-  set(agentEventsCache$, new Map());
-
-  // Load first batch (no cursor for first batch)
-  const firstBatch$ = computed(async (get) => {
+/**
+ * Helper to create a page computed
+ */
+function createPageComputed(
+  cursor: string | null,
+  limit: number,
+  search: string,
+): Computed<Promise<LogsListResponse>> {
+  return computed(async (get) => {
     const fetchFn = get(fetch$);
-    const params = new URLSearchParams({ limit: "20" });
-
-    const response = await fetchFn(`/api/platform/logs?${params.toString()}`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch logs: ${response.statusText}`);
-    }
-
-    return (await response.json()) as LogsListResponse;
-  });
-
-  set(internalLogs$, [firstBatch$]);
-});
-
-// Command: Load next batch of data
-export const loadMore$ = command(async ({ get, set }, signal: AbortSignal) => {
-  signal.throwIfAborted();
-
-  const cursor = await get(currentCursor$);
-  signal.throwIfAborted();
-
-  // Load next batch with cursor
-  const nextBatch$ = computed(async (get) => {
-    const fetchFn = get(fetch$);
-    const params = new URLSearchParams({ limit: "20" });
+    const params = new URLSearchParams({ limit: String(limit) });
     if (cursor) {
       params.set("cursor", cursor);
     }
+    if (search) {
+      params.set("search", search);
+    }
 
     const response = await fetchFn(`/api/platform/logs?${params.toString()}`);
     if (!response.ok) {
@@ -184,9 +155,219 @@ export const loadMore$ = command(async ({ get, set }, signal: AbortSignal) => {
 
     return (await response.json()) as LogsListResponse;
   });
+}
 
-  set(internalLogs$, (prev) => [...prev, nextBatch$]);
+// Command: Initialize logs with first page
+export const initLogs$ = command(({ get, set }, signal: AbortSignal) => {
+  signal.throwIfAborted();
+
+  // Clear caches
+  set(logDetailCache$, new Map());
+  set(agentEventsCache$, new Map());
+
+  // Reset pagination state
+  set(cursorHistory$, [null]);
+  set(currentPageIndex$, 0);
+
+  // Load first page
+  const limit = get(rowsPerPage$);
+  const search = get(searchQuery$);
+  const firstPage$ = createPageComputed(null, limit, search);
+  set(internalCurrentPage$, firstPage$);
 });
+
+// Command: Go to next page
+export const goToNextPage$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    signal.throwIfAborted();
+
+    const currentPage = get(internalCurrentPage$);
+    if (!currentPage) {
+      return;
+    }
+
+    const response = await get(currentPage);
+    signal.throwIfAborted();
+
+    if (!response.pagination.hasMore) {
+      return;
+    }
+
+    const nextCursor = response.pagination.nextCursor;
+    const currentIndex = get(currentPageIndex$);
+    const limit = get(rowsPerPage$);
+    const search = get(searchQuery$);
+
+    // Store the next cursor in history
+    set(cursorHistory$, (prev) => {
+      const newHistory = [...prev];
+      // Ensure we have space for the next page's cursor
+      if (newHistory.length <= currentIndex + 1) {
+        newHistory.push(nextCursor);
+      } else {
+        newHistory[currentIndex + 1] = nextCursor;
+      }
+      return newHistory;
+    });
+
+    // Move to next page
+    set(currentPageIndex$, currentIndex + 1);
+
+    // Load next page
+    const nextPage$ = createPageComputed(nextCursor, limit, search);
+    set(internalCurrentPage$, nextPage$);
+  },
+);
+
+// Command: Go to previous page
+export const goToPrevPage$ = command(({ get, set }, signal: AbortSignal) => {
+  signal.throwIfAborted();
+
+  const currentIndex = get(currentPageIndex$);
+  if (currentIndex <= 0) {
+    return;
+  }
+
+  const prevIndex = currentIndex - 1;
+  const history = get(cursorHistory$);
+  const prevCursor = history[prevIndex] ?? null;
+  const limit = get(rowsPerPage$);
+  const search = get(searchQuery$);
+
+  // Move to previous page
+  set(currentPageIndex$, prevIndex);
+
+  // Load previous page
+  const prevPage$ = createPageComputed(prevCursor, limit, search);
+  set(internalCurrentPage$, prevPage$);
+});
+
+// Command: Go forward two pages
+export const goForwardTwoPages$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    signal.throwIfAborted();
+
+    const limit = get(rowsPerPage$);
+    const search = get(searchQuery$);
+
+    // First page forward
+    const currentPage = get(internalCurrentPage$);
+    if (!currentPage) {
+      return;
+    }
+
+    let response = await get(currentPage);
+    signal.throwIfAborted();
+
+    if (!response.pagination.hasMore) {
+      return;
+    }
+
+    let nextCursor = response.pagination.nextCursor;
+    let currentIndex = get(currentPageIndex$);
+
+    // Store cursor and move to next page
+    set(cursorHistory$, (prev) => {
+      const newHistory = [...prev];
+      if (newHistory.length <= currentIndex + 1) {
+        newHistory.push(nextCursor);
+      } else {
+        newHistory[currentIndex + 1] = nextCursor;
+      }
+      return newHistory;
+    });
+    set(currentPageIndex$, currentIndex + 1);
+
+    // Load the intermediate page to get its cursor
+    const intermediatePage$ = createPageComputed(nextCursor, limit, search);
+    response = await get(intermediatePage$);
+    signal.throwIfAborted();
+
+    if (!response.pagination.hasMore) {
+      // Only one more page available, stay on it
+      set(internalCurrentPage$, intermediatePage$);
+      return;
+    }
+
+    // Second page forward
+    nextCursor = response.pagination.nextCursor;
+    currentIndex = get(currentPageIndex$);
+
+    set(cursorHistory$, (prev) => {
+      const newHistory = [...prev];
+      if (newHistory.length <= currentIndex + 1) {
+        newHistory.push(nextCursor);
+      } else {
+        newHistory[currentIndex + 1] = nextCursor;
+      }
+      return newHistory;
+    });
+    set(currentPageIndex$, currentIndex + 1);
+
+    const finalPage$ = createPageComputed(nextCursor, limit, search);
+    set(internalCurrentPage$, finalPage$);
+  },
+);
+
+// Command: Go back two pages
+export const goBackTwoPages$ = command(({ get, set }, signal: AbortSignal) => {
+  signal.throwIfAborted();
+
+  const currentIndex = get(currentPageIndex$);
+  if (currentIndex <= 0) {
+    return;
+  }
+
+  // Go back 2 pages, but not below 0
+  const targetIndex = Math.max(0, currentIndex - 2);
+  const history = get(cursorHistory$);
+  const targetCursor = history[targetIndex] ?? null;
+  const limit = get(rowsPerPage$);
+  const search = get(searchQuery$);
+
+  set(currentPageIndex$, targetIndex);
+
+  const targetPage$ = createPageComputed(targetCursor, limit, search);
+  set(internalCurrentPage$, targetPage$);
+});
+
+// Command: Set rows per page and reload
+export const setRowsPerPage$ = command(
+  ({ get, set }, params: { limit: number; signal: AbortSignal }) => {
+    const { limit, signal } = params;
+    signal.throwIfAborted();
+
+    set(rowsPerPage$, limit);
+
+    // Reset to first page
+    set(cursorHistory$, [null]);
+    set(currentPageIndex$, 0);
+
+    // Reload with new limit
+    const search = get(searchQuery$);
+    const firstPage$ = createPageComputed(null, limit, search);
+    set(internalCurrentPage$, firstPage$);
+  },
+);
+
+// Command: Set search query and reload
+export const setSearch$ = command(
+  ({ get, set }, params: { search: string; signal: AbortSignal }) => {
+    const { search, signal } = params;
+    signal.throwIfAborted();
+
+    set(searchQuery$, search);
+
+    // Reset to first page
+    set(cursorHistory$, [null]);
+    set(currentPageIndex$, 0);
+
+    // Reload with new search
+    const limit = get(rowsPerPage$);
+    const firstPage$ = createPageComputed(null, limit, search);
+    set(internalCurrentPage$, firstPage$);
+  },
+);
 
 // State for tracking current artifact download promise
 const internalArtifactDownloadPromise$ = state<Promise<void> | null>(null);

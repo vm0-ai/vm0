@@ -2,11 +2,18 @@ import { describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import {
-  logs$,
+  currentPageLogs$,
   initLogs$,
-  currentCursor$,
-  hasMore$,
-  loadMore$,
+  hasPrevPage$,
+  goToNextPage$,
+  goToPrevPage$,
+  goForwardTwoPages$,
+  goBackTwoPages$,
+  setRowsPerPage$,
+  setSearch$,
+  rowsPerPageValue$,
+  searchQueryValue$,
+  currentPageNumber$,
 } from "../logs-signals.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 
@@ -33,38 +40,23 @@ vi.mock("@clerk/clerk-js", () => ({
 const context = testContext();
 
 describe("logs-signals", () => {
-  describe("logs$", () => {
-    it("should initialize as empty array", () => {
-      const { store } = context;
-      const logs = store.get(logs$);
-      expect(logs).toStrictEqual([]);
-    });
-  });
-
   describe("initLogs$", () => {
-    it("should load first batch", () => {
+    it("should load first page", () => {
       const { store, signal } = context;
 
       store.set(initLogs$, signal);
 
-      const logs = store.get(logs$);
-      expect(logs).toHaveLength(1);
+      const currentPage = store.get(currentPageLogs$);
+      expect(currentPage).not.toBeNull();
     });
 
-    it("should clear existing logs before loading", async () => {
+    it("should reset to page 1", () => {
       const { store, signal } = context;
 
-      // Load first batch
       store.set(initLogs$, signal);
-      expect(store.get(logs$)).toHaveLength(1);
 
-      // Load more to have 2 batches
-      await store.set(loadMore$, signal);
-      expect(store.get(logs$)).toHaveLength(2);
-
-      // Initialize again should clear and start fresh
-      store.set(initLogs$, signal);
-      expect(store.get(logs$)).toHaveLength(1);
+      expect(store.get(currentPageNumber$)).toBe(1);
+      expect(store.get(hasPrevPage$)).toBeFalsy();
     });
 
     it("should respect abort signal", () => {
@@ -76,116 +68,334 @@ describe("logs-signals", () => {
     });
   });
 
-  describe("loadMore$", () => {
-    it("should append new batch to existing logs", async () => {
+  describe("pagination navigation", () => {
+    it("should navigate to next page when hasMore is true", async () => {
       const { store, signal } = context;
 
-      // Initialize with first batch
-      store.set(initLogs$, signal);
-      expect(store.get(logs$)).toHaveLength(1);
-
-      // Load more should append
-      await store.set(loadMore$, signal);
-      expect(store.get(logs$)).toHaveLength(2);
-    });
-
-    it("should use cursor from previous batch", async () => {
-      const { store, signal } = context;
-
-      // Mock API to return specific cursor
+      // Mock API to return hasMore = true
       server.use(
         http.get("*/api/platform/logs", ({ request }) => {
           const url = new URL(request.url);
           const cursor = url.searchParams.get("cursor");
 
           if (!cursor) {
-            // First batch
             return HttpResponse.json({
-              data: [],
-              pagination: { has_more: true, next_cursor: "cursor123" },
+              data: [{ id: "log-1" }],
+              pagination: { hasMore: true, nextCursor: "cursor123" },
             });
           }
 
-          if (cursor === "cursor123") {
-            // Second batch
-            return HttpResponse.json({
-              data: [],
-              pagination: { has_more: false, next_cursor: null },
-            });
-          }
-
-          return HttpResponse.json(null, { status: 404 });
+          return HttpResponse.json({
+            data: [{ id: "log-2" }],
+            pagination: { hasMore: false, nextCursor: null },
+          });
         }),
       );
 
       store.set(initLogs$, signal);
-      await store.set(loadMore$, signal);
+      expect(store.get(currentPageNumber$)).toBe(1);
 
-      expect(store.get(logs$)).toHaveLength(2);
+      await store.set(goToNextPage$, signal);
+      expect(store.get(currentPageNumber$)).toBe(2);
     });
 
-    it("should respect abort signal", async () => {
-      const { store } = context;
-      const controller = new AbortController();
-      controller.abort();
+    it("should navigate back to previous page", async () => {
+      const { store, signal } = context;
 
-      await expect(store.set(loadMore$, controller.signal)).rejects.toThrow();
+      server.use(
+        http.get("*/api/platform/logs", ({ request }) => {
+          const url = new URL(request.url);
+          const cursor = url.searchParams.get("cursor");
+
+          if (!cursor) {
+            return HttpResponse.json({
+              data: [{ id: "log-1" }],
+              pagination: { hasMore: true, nextCursor: "cursor123" },
+            });
+          }
+
+          return HttpResponse.json({
+            data: [{ id: "log-2" }],
+            pagination: { hasMore: false, nextCursor: null },
+          });
+        }),
+      );
+
+      store.set(initLogs$, signal);
+      await store.set(goToNextPage$, signal);
+      expect(store.get(currentPageNumber$)).toBe(2);
+      expect(store.get(hasPrevPage$)).toBeTruthy();
+
+      store.set(goToPrevPage$, signal);
+      expect(store.get(currentPageNumber$)).toBe(1);
+      expect(store.get(hasPrevPage$)).toBeFalsy();
+    });
+
+    it("should not navigate to previous page when on first page", () => {
+      const { store, signal } = context;
+
+      store.set(initLogs$, signal);
+      store.set(goToPrevPage$, signal);
+
+      expect(store.get(currentPageNumber$)).toBe(1);
     });
   });
 
-  describe("currentCursor$ and hasMore$", () => {
-    it("should return null cursor and false hasMore when no logs", async () => {
-      const { store } = context;
-
-      const cursor = await store.get(currentCursor$);
-      const hasMore = await store.get(hasMore$);
-
-      expect(cursor).toBeNull();
-      expect(hasMore).toBeFalsy();
-    });
-
-    it("should return cursor and hasMore from last batch", async () => {
+  describe("goForwardTwoPages$", () => {
+    it("should navigate forward two pages", async () => {
       const { store, signal } = context;
 
-      // Mock API response with cursor
+      let requestCount = 0;
       server.use(
-        http.get("*/api/platform/logs", () =>
-          HttpResponse.json({
-            data: [],
-            pagination: { has_more: true, next_cursor: "cursor456" },
-          }),
-        ),
+        http.get("*/api/platform/logs", () => {
+          requestCount++;
+          // Pages 1, 2, 3 all have more
+          if (requestCount <= 2) {
+            return HttpResponse.json({
+              data: [{ id: `log-${requestCount}` }],
+              pagination: {
+                hasMore: true,
+                nextCursor: `cursor${requestCount}`,
+              },
+            });
+          }
+          return HttpResponse.json({
+            data: [{ id: "log-3" }],
+            pagination: { hasMore: false, nextCursor: null },
+          });
+        }),
       );
 
       store.set(initLogs$, signal);
+      expect(store.get(currentPageNumber$)).toBe(1);
 
-      const cursor = await store.get(currentCursor$);
-      const hasMore = await store.get(hasMore$);
-
-      expect(cursor).toBe("cursor456");
-      expect(hasMore).toBeTruthy();
+      await store.set(goForwardTwoPages$, signal);
+      expect(store.get(currentPageNumber$)).toBe(3);
     });
 
-    it("should return null cursor when has_more is false", async () => {
+    it("should stop at last available page if less than two pages ahead", async () => {
       const { store, signal } = context;
 
-      // Mock API response without cursor
+      let requestCount = 0;
       server.use(
-        http.get("*/api/platform/logs", () =>
-          HttpResponse.json({
-            data: [],
-            pagination: { has_more: false, next_cursor: null },
-          }),
-        ),
+        http.get("*/api/platform/logs", () => {
+          requestCount++;
+          if (requestCount === 1) {
+            return HttpResponse.json({
+              data: [{ id: "log-1" }],
+              pagination: { hasMore: true, nextCursor: "cursor1" },
+            });
+          }
+          // Second page has no more
+          return HttpResponse.json({
+            data: [{ id: "log-2" }],
+            pagination: { hasMore: false, nextCursor: null },
+          });
+        }),
       );
 
       store.set(initLogs$, signal);
+      await store.set(goForwardTwoPages$, signal);
 
-      const cursor = await store.get(currentCursor$);
-      const hasMore = await store.get(hasMore$);
+      // Should stop at page 2 since there's no page 3
+      expect(store.get(currentPageNumber$)).toBe(2);
+    });
+  });
 
-      expect(cursor).toBeNull();
-      expect(hasMore).toBeFalsy();
+  describe("goBackTwoPages$", () => {
+    it("should navigate back two pages", async () => {
+      const { store, signal } = context;
+
+      server.use(
+        http.get("*/api/platform/logs", ({ request }) => {
+          const url = new URL(request.url);
+          const cursor = url.searchParams.get("cursor");
+
+          if (!cursor) {
+            return HttpResponse.json({
+              data: [{ id: "log-1" }],
+              pagination: { hasMore: true, nextCursor: "cursor1" },
+            });
+          }
+          if (cursor === "cursor1") {
+            return HttpResponse.json({
+              data: [{ id: "log-2" }],
+              pagination: { hasMore: true, nextCursor: "cursor2" },
+            });
+          }
+          return HttpResponse.json({
+            data: [{ id: "log-3" }],
+            pagination: { hasMore: false, nextCursor: null },
+          });
+        }),
+      );
+
+      store.set(initLogs$, signal);
+      await store.set(goToNextPage$, signal);
+      await store.set(goToNextPage$, signal);
+      expect(store.get(currentPageNumber$)).toBe(3);
+
+      store.set(goBackTwoPages$, signal);
+      expect(store.get(currentPageNumber$)).toBe(1);
+    });
+
+    it("should go to first page if less than two pages back", async () => {
+      const { store, signal } = context;
+
+      server.use(
+        http.get("*/api/platform/logs", ({ request }) => {
+          const url = new URL(request.url);
+          const cursor = url.searchParams.get("cursor");
+
+          if (!cursor) {
+            return HttpResponse.json({
+              data: [{ id: "log-1" }],
+              pagination: { hasMore: true, nextCursor: "cursor1" },
+            });
+          }
+          return HttpResponse.json({
+            data: [{ id: "log-2" }],
+            pagination: { hasMore: false, nextCursor: null },
+          });
+        }),
+      );
+
+      store.set(initLogs$, signal);
+      await store.set(goToNextPage$, signal);
+      expect(store.get(currentPageNumber$)).toBe(2);
+
+      store.set(goBackTwoPages$, signal);
+      expect(store.get(currentPageNumber$)).toBe(1);
+    });
+
+    it("should not navigate when on first page", () => {
+      const { store, signal } = context;
+
+      store.set(initLogs$, signal);
+      store.set(goBackTwoPages$, signal);
+
+      expect(store.get(currentPageNumber$)).toBe(1);
+    });
+  });
+
+  describe("setRowsPerPage$", () => {
+    it("should update rows per page value", () => {
+      const { store, signal } = context;
+
+      store.set(initLogs$, signal);
+      expect(store.get(rowsPerPageValue$)).toBe(10);
+
+      store.set(setRowsPerPage$, { limit: 50, signal });
+      expect(store.get(rowsPerPageValue$)).toBe(50);
+    });
+
+    it("should reset to first page when changing rows per page", async () => {
+      const { store, signal } = context;
+
+      server.use(
+        http.get("*/api/platform/logs", ({ request }) => {
+          const url = new URL(request.url);
+          const cursor = url.searchParams.get("cursor");
+
+          if (!cursor) {
+            return HttpResponse.json({
+              data: [{ id: "log-1" }],
+              pagination: { hasMore: true, nextCursor: "cursor123" },
+            });
+          }
+
+          return HttpResponse.json({
+            data: [{ id: "log-2" }],
+            pagination: { hasMore: false, nextCursor: null },
+          });
+        }),
+      );
+
+      store.set(initLogs$, signal);
+      await store.set(goToNextPage$, signal);
+      expect(store.get(currentPageNumber$)).toBe(2);
+
+      store.set(setRowsPerPage$, { limit: 20, signal });
+      expect(store.get(currentPageNumber$)).toBe(1);
+    });
+  });
+
+  describe("setSearch$", () => {
+    it("should update search query value", () => {
+      const { store, signal } = context;
+
+      store.set(initLogs$, signal);
+      expect(store.get(searchQueryValue$)).toBe("");
+
+      store.set(setSearch$, { search: "test-agent", signal });
+      expect(store.get(searchQueryValue$)).toBe("test-agent");
+    });
+
+    it("should reset to first page when searching", async () => {
+      const { store, signal } = context;
+
+      server.use(
+        http.get("*/api/platform/logs", ({ request }) => {
+          const url = new URL(request.url);
+          const cursor = url.searchParams.get("cursor");
+
+          if (!cursor) {
+            return HttpResponse.json({
+              data: [{ id: "log-1" }],
+              pagination: { hasMore: true, nextCursor: "cursor123" },
+            });
+          }
+
+          return HttpResponse.json({
+            data: [{ id: "log-2" }],
+            pagination: { hasMore: false, nextCursor: null },
+          });
+        }),
+      );
+
+      store.set(initLogs$, signal);
+      await store.set(goToNextPage$, signal);
+      expect(store.get(currentPageNumber$)).toBe(2);
+
+      store.set(setSearch$, { search: "my-agent", signal });
+      expect(store.get(currentPageNumber$)).toBe(1);
+    });
+
+    it("should pass search parameter to API", async () => {
+      const { store, signal } = context;
+
+      let capturedSearch: string | null = null;
+      server.use(
+        http.get("*/api/platform/logs", ({ request }) => {
+          const url = new URL(request.url);
+          capturedSearch = url.searchParams.get("search");
+          return HttpResponse.json({
+            data: [],
+            pagination: { hasMore: false, nextCursor: null },
+          });
+        }),
+      );
+
+      store.set(initLogs$, signal);
+      store.set(setSearch$, { search: "my-search-term", signal });
+
+      // Trigger the fetch by awaiting the computed
+      const page = store.get(currentPageLogs$);
+      expect(page).not.toBeNull();
+      await store.get(page!);
+
+      // The search param should be set
+      expect(capturedSearch).toBe("my-search-term");
+    });
+  });
+
+  describe("hasPrevPage$", () => {
+    it("should return false for hasPrevPage on first page", () => {
+      const { store, signal } = context;
+
+      store.set(initLogs$, signal);
+
+      expect(store.get(hasPrevPage$)).toBeFalsy();
     });
   });
 });

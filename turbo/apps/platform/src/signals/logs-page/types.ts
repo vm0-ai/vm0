@@ -8,8 +8,8 @@ interface LogEntry {
 export interface LogsListResponse {
   data: LogEntry[];
   pagination: {
-    has_more: boolean;
-    next_cursor: string | null;
+    hasMore: boolean;
+    nextCursor: string | null;
   };
 }
 
