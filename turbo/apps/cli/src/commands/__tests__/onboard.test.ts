@@ -12,22 +12,13 @@ vi.mock("prompts", () => ({
   default: vi.fn(),
 }));
 
-// Mock config file operations at system boundary (filesystem)
-// getToken checks env var first, then config file - we mock both
-vi.mock("../../lib/api/config", async (importOriginal) => {
-  const original =
-    await importOriginal<typeof import("../../lib/api/config")>();
+// Mock os.homedir at system boundary (Node.js built-in)
+// This allows us to use real config files in a temp directory
+vi.mock("os", async (importOriginal) => {
+  const original = await importOriginal<typeof import("os")>();
   return {
     ...original,
-    // Mock getToken to respect VM0_TOKEN env var, fallback to undefined
-    getToken: vi.fn().mockImplementation(async () => {
-      const envToken = process.env.VM0_TOKEN;
-      if (envToken) return envToken;
-      return undefined;
-    }),
-    getApiUrl: vi.fn().mockResolvedValue("http://localhost:3000"),
-    loadConfig: vi.fn().mockResolvedValue({}),
-    saveConfig: vi.fn().mockResolvedValue(undefined),
+    homedir: vi.fn(),
   };
 });
 
@@ -46,11 +37,14 @@ describe("onboard command", () => {
     .spyOn(console, "error")
     .mockImplementation(() => {});
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     tempDir = mkdtempSync(path.join(os.tmpdir(), "test-onboard-"));
     originalCwd = process.cwd();
     process.chdir(tempDir);
+
+    // Mock homedir to return temp directory for config isolation
+    vi.mocked(os.homedir).mockReturnValue(tempDir);
 
     // Save and mock TTY state for interactive mode
     originalIsTTY = process.stdout.isTTY;

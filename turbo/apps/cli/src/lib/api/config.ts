@@ -8,27 +8,37 @@ interface CliConfig {
   apiUrl?: string;
 }
 
-const CONFIG_DIR = join(homedir(), ".vm0");
-const CONFIG_FILE = join(CONFIG_DIR, "config.json");
+// Use functions for lazy evaluation (enables testing with mocked homedir)
+function getConfigDir(): string {
+  return join(homedir(), ".vm0");
+}
+
+function getConfigFile(): string {
+  return join(getConfigDir(), "config.json");
+}
 
 export async function loadConfig(): Promise<CliConfig> {
-  if (!existsSync(CONFIG_FILE)) {
+  const configFile = getConfigFile();
+  if (!existsSync(configFile)) {
     return {};
   }
-  const content = await readFile(CONFIG_FILE, "utf8");
+  const content = await readFile(configFile, "utf8");
   return JSON.parse(content) as CliConfig;
 }
 
 export async function saveConfig(config: CliConfig): Promise<void> {
+  const configDir = getConfigDir();
+  const configFile = getConfigFile();
+
   // Ensure config directory exists
-  await mkdir(CONFIG_DIR, { recursive: true });
+  await mkdir(configDir, { recursive: true });
 
   // Merge with existing config
   const existing = await loadConfig();
   const merged = { ...existing, ...config };
 
   // Write config file
-  await writeFile(CONFIG_FILE, JSON.stringify(merged, null, 2), "utf8");
+  await writeFile(configFile, JSON.stringify(merged, null, 2), "utf8");
 }
 
 export async function getToken(): Promise<string | undefined> {
@@ -53,7 +63,8 @@ export async function getApiUrl(): Promise<string> {
 }
 
 export async function clearConfig(): Promise<void> {
-  if (existsSync(CONFIG_FILE)) {
-    await unlink(CONFIG_FILE);
+  const configFile = getConfigFile();
+  if (existsSync(configFile)) {
+    await unlink(configFile);
   }
 }
