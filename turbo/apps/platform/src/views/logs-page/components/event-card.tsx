@@ -10,6 +10,10 @@ import {
   IconCurrencyDollar,
   IconAlertCircle,
   IconArrowRight,
+  IconCircleCheck,
+  IconLoader2,
+  IconCircle,
+  IconListCheck,
 } from "@tabler/icons-react";
 
 interface EventCardProps {
@@ -287,6 +291,9 @@ function getToolIcon(toolName: string) {
   if (name === "websearch") {
     return IconSearch;
   }
+  if (name === "todowrite") {
+    return IconListCheck;
+  }
   if (
     name.includes("read") ||
     name.includes("write") ||
@@ -400,6 +407,52 @@ function ToolInputParams({
         </code>
       </div>
     );
+  }
+
+  // TodoWrite - show as a checklist
+  if (lowerName === "todowrite") {
+    const todos = input.todos;
+    if (Array.isArray(todos)) {
+      return (
+        <div className="space-y-1.5 text-sm">
+          {todos.map((todo) => {
+            const item = todo as {
+              content?: string;
+              status?: string;
+              activeForm?: string;
+            };
+            const content = item.content ?? String(todo);
+            const status = item.status ?? "pending";
+            const StatusIcon =
+              status === "completed"
+                ? IconCircleCheck
+                : status === "in_progress"
+                  ? IconLoader2
+                  : IconCircle;
+            const statusColor =
+              status === "completed"
+                ? "text-emerald-600 dark:text-emerald-400"
+                : status === "in_progress"
+                  ? "text-blue-600 dark:text-blue-400"
+                  : "text-muted-foreground";
+            return (
+              <div key={`${status}-${content}`} className="flex items-start gap-2">
+                <StatusIcon className={`h-4 w-4 shrink-0 mt-0.5 ${statusColor}`} />
+                <span
+                  className={
+                    status === "completed"
+                      ? "text-muted-foreground line-through"
+                      : "text-foreground"
+                  }
+                >
+                  {content}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
   }
 
   // Generic: show all parameters as key-value pairs
