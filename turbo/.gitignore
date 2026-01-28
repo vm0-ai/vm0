@@ -46,6 +46,3 @@ yarn-error.log*
 # Misc
 .DS_Store
 *.pem
-
-# Generated binaries
-apps/runner/scripts/deploy/vsock-agent
