@@ -4,7 +4,8 @@ set -eu
 
 # Argument provided, use it as workspace name
 workspace="$1"
-FOLDER="$HOME/workspace/$workspace"
+VM0_WORKSPACES="${VM0_WORKSPACES:-$HOME/workspaces}"
+FOLDER="$VM0_WORKSPACES/$workspace"
 (cd "$FOLDER" && git pull)
 npx @devcontainers/cli up --workspace-folder "$FOLDER" \
     --dotfiles-repository $VM0_DOTFILES \
