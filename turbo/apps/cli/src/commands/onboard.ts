@@ -127,8 +127,10 @@ export const onboardCommand = new Command()
       process.chdir(DEMO_AGENT_DIR);
 
       try {
-        // Run setup-claude action directly
-        await setupClaudeCommand.parseAsync([], { from: "user" });
+        // Run setup-claude action directly, passing agent-dir for the "Next step" message
+        await setupClaudeCommand.parseAsync(["--agent-dir", DEMO_AGENT_DIR], {
+          from: "user",
+        });
       } finally {
         process.chdir(originalDir);
       }

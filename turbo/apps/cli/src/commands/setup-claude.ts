@@ -217,7 +217,11 @@ Write results to the artifact directory.
 export const setupClaudeCommand = new Command()
   .name("setup-claude")
   .description("Add/update Claude skill for agent building")
-  .action(async () => {
+  .option(
+    "--agent-dir <dir>",
+    "Agent directory (shown in next step instructions)",
+  )
+  .action(async (options: { agentDir?: string }) => {
     console.log(chalk.dim("Installing vm0-agent-builder skill..."));
 
     // Create directory
@@ -231,9 +235,10 @@ export const setupClaudeCommand = new Command()
     );
     console.log();
     console.log("Next step:");
+    const cdPrefix = options.agentDir ? `cd ${options.agentDir} && ` : "";
     console.log(
       chalk.cyan(
-        '  claude /vm0-agent-builder "I want to build an agent that..."',
+        `  ${cdPrefix}claude "/vm0-agent-builder I want to build an agent that..."`,
       ),
     );
   });
