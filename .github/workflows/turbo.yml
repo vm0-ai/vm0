@@ -259,6 +259,7 @@ jobs:
             USE_MOCK_CLAUDE=true
             CRON_SECRET=${{ secrets.CRON_SECRET }}
             ABLY_API_KEY=${{ secrets.CI_ABLY_API_KEY }}
+            CONCURRENT_RUN_LIMIT=0
             DEBUG=*
           meta-branch: ${{ github.head_ref || github.ref_name }}
           meta-pr: ${{ needs.prepare.outputs.job-ref }}

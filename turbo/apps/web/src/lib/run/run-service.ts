@@ -244,13 +244,24 @@ export class RunService {
    * Check if user has reached concurrent run limit
    *
    * @param userId User ID to check
-   * @param limit Maximum allowed concurrent runs (default: 1)
+   * @param limit Maximum allowed concurrent runs (default: 1, or CONCURRENT_RUN_LIMIT env var, 0 = no limit)
    * @throws ConcurrentRunLimitError if limit exceeded
    */
   async checkConcurrencyLimit(
     userId: string,
-    limit: number = 1,
+    limit?: number,
   ): Promise<void> {
+    // Use provided limit, or env var, or default to 1
+    // Note: 0 means no limit (for testing), so we need explicit undefined check
+    const envLimit = process.env.CONCURRENT_RUN_LIMIT;
+    const effectiveLimit =
+      limit ?? (envLimit !== undefined ? Number(envLimit) : 1);
+
+    // Skip check if limit is 0 (no limit)
+    if (effectiveLimit === 0) {
+      return;
+    }
+
     const [result] = await globalThis.services.db
       .select({ count: count() })
       .from(agentRuns)
@@ -263,9 +274,9 @@ export class RunService {
 
     const activeRunCount = Number(result?.count ?? 0);
 
-    if (activeRunCount >= limit) {
+    if (activeRunCount >= effectiveLimit) {
       log.debug(
-        `User ${userId} has ${activeRunCount} active runs, limit is ${limit}`,
+        `User ${userId} has ${activeRunCount} active runs, limit is ${effectiveLimit}`,
       );
       throw new ConcurrentRunLimitError();
     }
