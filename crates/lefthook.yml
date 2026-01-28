@@ -8,9 +8,9 @@ pre-commit:
       stage_fixed: true
     cargo-clippy:
       root: crates/
-      run: cargo clippy --all-targets --all-features -- -D warnings
+      run: cargo clippy --all-targets --all-features
       glob: "crates/**/*.{rs,toml}"
     cargo-check:
       root: crates/
-      run: RUSTFLAGS="-D warnings" cargo check --all-targets
+      run: cargo check --all-targets
       glob: "crates/**/*.{rs,toml}"

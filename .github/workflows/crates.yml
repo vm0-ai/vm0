@@ -28,11 +28,9 @@ jobs:
       - name: Run clippy
         run: |
           cd crates
-          cargo clippy --all-targets --all-features -- -D warnings
+          cargo clippy --all-targets --all-features
 
       - name: Build
-        env:
-          RUSTFLAGS: "-D warnings"
         run: |
           cd crates
           cargo build --all-targets

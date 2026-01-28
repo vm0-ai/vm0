@@ -9,3 +9,9 @@ strip = true
 [profile.release.package.vsock-agent]
 opt-level = "z"
 codegen-units = 1
+
+[workspace.lints.rust]
+warnings = "deny"
+
+[workspace.lints.clippy]
+all = "deny"
