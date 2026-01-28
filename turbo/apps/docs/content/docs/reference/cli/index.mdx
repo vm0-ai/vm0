@@ -83,8 +83,8 @@ Scopes are namespaces for organizing agents.
 | ------- | ----------- | ------- |
 | `vm0 compose <agent-yaml>` | Create or update agent compose | `-y, --yes` |
 | `vm0 run <agent-name> <prompt>` | Run an agent | See options table below |
-| `vm0 run continue <session-id> <prompt>` | Continue from session (uses latest artifact) | `--env-file`, `--vars`, `--secrets`, `--volume-version`, `--experimental-realtime`, `--model-provider` |
-| `vm0 run resume <checkpoint-id> <prompt>` | Resume from checkpoint (uses snapshot data) | `--env-file`, `--vars`, `--secrets`, `--volume-version`, `--experimental-realtime`, `--model-provider` |
+| `vm0 run continue <session-id> <prompt>` | Continue from session (uses latest artifact) | `--env-file`, `--vars`, `--secrets`, `--volume-version`, `--model-provider` |
+| `vm0 run resume <checkpoint-id> <prompt>` | Resume from checkpoint (uses snapshot data) | `--env-file`, `--vars`, `--secrets`, `--volume-version`, `--model-provider` |
 | `vm0 cook [prompt]` | Prepare and execute agent from `vm0.yaml` | `--env-file <path>`, `-y, --yes` |
 | `vm0 cook logs` | View logs from the last cook run | Same as `vm0 logs` options |
 | `vm0 cook continue <prompt>` | Continue from last session | `--env-file <path>` |
@@ -103,7 +103,6 @@ Scopes are namespaces for organizing agents.
 | `--artifact-version <hash>` | Artifact version hash (defaults to latest) |
 | `--volume-version <name=version>` | Volume version override (repeatable) |
 | `--conversation <id>` | Resume from conversation ID |
-| `--experimental-realtime` | Use realtime event streaming instead of polling |
 | `--model-provider <type>` | Override model provider |
 
 ### `vm0 run` Examples
