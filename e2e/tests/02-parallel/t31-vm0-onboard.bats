@@ -5,10 +5,6 @@ load '../../helpers/setup'
 # vm0 onboard and vm0 setup-claude command tests
 # E2E tests focus on: help, happy path file creation
 # Unit tests cover: auth checks, model provider checks, interactive prompts
-#
-# Note: Tests that require downloading from GitHub are skipped until the
-# docs/vm0-agent-builder directory exists on main branch. Once merged,
-# these tests can be enabled by removing the skip statements.
 
 setup() {
     # Create a temporary directory for each test
@@ -72,10 +68,7 @@ teardown() {
     assert_output --partial "Add/update Claude skill for agent building"
 }
 
-# Skip until docs/vm0-agent-builder exists on main branch
-@test "vm0 setup-claude downloads skill from GitHub" {
-    skip "Requires docs/vm0-agent-builder to exist on main branch"
-
+@test "vm0 setup-claude installs skill from embedded content" {
     run $CLI_COMMAND setup-claude
     assert_success
     assert_output --partial "Installed vm0-agent-builder skill"
@@ -85,12 +78,14 @@ teardown() {
     # Verify skill directory was created
     [ -d ".claude/skills/vm0-agent-builder" ]
     [ -f ".claude/skills/vm0-agent-builder/SKILL.md" ]
+
+    # Verify skill content
+    run cat .claude/skills/vm0-agent-builder/SKILL.md
+    assert_output --partial "name: vm0-agent-builder"
+    assert_output --partial "# VM0 Agent Builder"
 }
 
-# Skip until docs/vm0-agent-builder exists on main branch
 @test "vm0 setup-claude is idempotent (can run multiple times)" {
-    skip "Requires docs/vm0-agent-builder to exist on main branch"
-
     # Run first time
     run $CLI_COMMAND setup-claude
     assert_success
@@ -105,10 +100,7 @@ teardown() {
 # vm0 onboard --method claude tests
 # =============================================================================
 
-# Skip until docs/vm0-agent-builder exists on main branch
 @test "vm0 onboard -y --method claude creates demo agent with skill" {
-    skip "Requires docs/vm0-agent-builder to exist on main branch"
-
     run $CLI_COMMAND onboard -y --method claude
     assert_success
 
