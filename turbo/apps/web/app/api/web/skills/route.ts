@@ -677,7 +677,7 @@ const SKILLS_WITH_DOCS = new Set([
 function getDocsUrl(skillName: string): string {
   const cleanName = skillName.replace(/^\./, ""); // Remove leading dot
   if (SKILLS_WITH_DOCS.has(cleanName)) {
-    return `https://docs.vm0.ai/docs/integration/${cleanName}`;
+    return `https://docs.vm0.ai/docs/agent-skills/${cleanName}`;
   }
   return `https://github.com/vm0-ai/vm0-skills/tree/main/${skillName}`;
 }

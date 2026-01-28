@@ -33,21 +33,21 @@ const mockSkills = [
     description: "Send messages to Slack",
     category: "Communication",
     logo: "/skills/slack.svg",
-    docsUrl: "https://docs.vm0.ai/docs/integration/slack",
+    docsUrl: "https://docs.vm0.ai/docs/agent-skills/slack",
   },
   {
     name: "GitHub",
     description: "Automate GitHub operations",
     category: "Development",
     logo: "/skills/github.svg",
-    docsUrl: "https://docs.vm0.ai/docs/integration/github",
+    docsUrl: "https://docs.vm0.ai/docs/agent-skills/github",
   },
   {
     name: "Notion",
     description: "Manage Notion workspace",
     category: "Productivity",
     logo: "/skills/notion.svg",
-    docsUrl: "https://docs.vm0.ai/docs/integration/notion",
+    docsUrl: "https://docs.vm0.ai/docs/agent-skills/notion",
   },
 ];
 

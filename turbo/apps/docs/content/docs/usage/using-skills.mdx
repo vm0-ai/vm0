@@ -1,0 +1,159 @@
+---
+title: Using Skills
+description: How to effectively use skills in your agent workflows
+---
+
+Skills extend your agent's capabilities by providing pre-built integrations with external services. This guide explains how to use skills effectively in your agent workflows.
+
+## How Skills Work
+
+When you run an agent with skills configured:
+
+1. **Download**: VM0 downloads the skill from its GitHub URL
+2. **Mount**: The skill is mounted at `~/.claude/skills/{skillName}/`
+3. **Available**: The agent can use the skill's capabilities during execution
+
+The agent automatically discovers available skills and uses them based on your instructions and prompts.
+
+## Writing Instructions That Use Skills
+
+Your agent instructions (`AGENTS.md`) should describe workflows that leverage your configured skills. The agent understands what each skill can do and will use them appropriately.
+
+### Basic Pattern
+
+```markdown title="AGENTS.md"
+# Research Assistant
+
+You are a research assistant that finds and summarizes information.
+
+## Capabilities
+
+- Use Firecrawl to scrape web pages
+- Use Notion to save research notes
+- Use Slack to share summaries with the team
+
+## Workflow
+
+1. Search for relevant sources on the topic
+2. Scrape and analyze the content
+3. Create a summary in Notion
+4. Post highlights to #research channel in Slack
+```
+
+### Be Specific About Actions
+
+Tell the agent what actions to take with each skill:
+
+```markdown title="AGENTS.md"
+# Daily News Digest
+
+## Morning Routine
+
+1. Fetch top stories from Hacker News
+2. Scrape the top 5 articles using Firecrawl
+3. Summarize key points from each article
+4. Create a digest page in Notion under "Daily Digests"
+5. Send the digest link to #news channel in Slack
+```
+
+## Combining Multiple Skills
+
+Skills work together naturally. Configure all the skills you need and describe the workflow:
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  research-bot:
+    framework: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/firecrawl
+      - https://github.com/vm0-ai/vm0-skills/tree/main/notion
+      - https://github.com/vm0-ai/vm0-skills/tree/main/slack
+```
+
+```bash
+vm0 run research-bot "research AI agent frameworks and create a comparison" \
+  --secrets FIRECRAWL_API_KEY=fc-xxx \
+  --secrets NOTION_API_KEY=secret_xxx \
+  --secrets SLACK_BOT_TOKEN=xoxb-xxx
+```
+
+## Runtime Prompts
+
+When running your agent, your prompt guides what the agent does with its skills:
+
+```bash
+# Simple task
+vm0 run my-agent "post today's metrics to #team-updates"
+
+# Multi-step task
+vm0 run my-agent "scrape the blog post at https://example.com/post, summarize it, and save to Notion"
+
+# Conditional workflow
+vm0 run my-agent "check Linear for bugs marked critical, if any exist, alert #engineering on Slack"
+```
+
+## Best Practices
+
+### Match Skills to Instructions
+
+Only configure skills your agent actually needs. If your instructions mention Slack, configure the Slack skill:
+
+```yaml title="vm0.yaml"
+skills:
+  - https://github.com/vm0-ai/vm0-skills/tree/main/slack
+```
+
+### Provide Context in Instructions
+
+Help the agent understand where and how to use each skill:
+
+```markdown title="AGENTS.md"
+## Output Destinations
+
+- **Quick updates**: Post to Slack #updates channel
+- **Detailed reports**: Create a new page in Notion under "Reports"
+- **Data exports**: Save to Google Sheets "Weekly Data" spreadsheet
+```
+
+### Handle Credentials
+
+Pass required credentials when running your agent:
+
+```bash
+vm0 run my-agent "sync data to sheets" \
+  --secrets GOOGLE_SHEETS_CLIENT_ID=xxx \
+  --secrets GOOGLE_SHEETS_CLIENT_SECRET=xxx \
+  --secrets GOOGLE_SHEETS_REFRESH_TOKEN=xxx
+```
+
+See [Environment Variables](/docs/core-concept/environment-variable) for managing secrets.
+
+## Troubleshooting
+
+### Skill Not Found
+
+If the agent reports it cannot find a skill:
+- Verify the skill URL in `vm0.yaml` is correct
+- Check the skill exists at [vm0-ai/vm0-skills](https://github.com/vm0-ai/vm0-skills)
+
+### Authentication Errors
+
+If the agent fails to authenticate with a service:
+- Verify all required secrets are passed via `--secrets`
+- Check the credential values are correct
+- Review the skill's documentation for required environment variables
+
+### Skill Not Used
+
+If the agent doesn't use a configured skill:
+- Make your instructions more explicit about when to use the skill
+- Mention the skill by name in your prompt
+- Verify the skill is listed in your `vm0.yaml`
+
+## Next Steps
+
+- Browse available skills in [Agent Skills](/docs/agent-skills)
+- Learn about [Instructions](/docs/core-concept/instructions) for detailed workflow design
+- See [Environment Variables](/docs/core-concept/environment-variable) for credential management

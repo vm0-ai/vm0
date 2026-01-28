@@ -1,0 +1,157 @@
+---
+title: Overview
+description: Pre-built integrations to extend your agent's capabilities
+---
+
+Agent Skills are pre-built integrations that give your agent access to external services and APIs. Browse the available skills below and add them to your `vm0.yaml` configuration.
+
+## Adding Skills
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    framework: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/slack
+      - https://github.com/vm0-ai/vm0-skills/tree/main/notion
+```
+
+See [Skills Configuration](/docs/core-concept/skills) for URL format details and [Using Skills](/docs/usage/using-skills) for usage patterns.
+
+## Available Skills
+
+### Communication
+
+| Skill | Description |
+|-------|-------------|
+| [Slack](/docs/agent-skills/slack) | Send messages and interact with Slack workspaces |
+| [Slack Webhook](/docs/agent-skills/slack-webhook) | Post messages via incoming webhooks |
+| [Discord](/docs/agent-skills/discord) | Manage Discord servers and send messages |
+| [Discord Webhook](/docs/agent-skills/discord-webhook) | Send messages via Discord webhooks |
+| [Gmail](/docs/agent-skills/gmail) | Send and manage emails |
+| [Lark](/docs/agent-skills/lark) | Integrate with Lark (Feishu) for messaging |
+| [Resend](/docs/agent-skills/resend) | Transactional email API |
+| [ZeptoMail](/docs/agent-skills/zeptomail) | Transactional email service |
+| [Pushinator](/docs/agent-skills/pushinator) | Push notifications |
+| [Intercom](/docs/agent-skills/intercom) | Customer messaging platform |
+| [Chatwoot](/docs/agent-skills/chatwoot) | Open-source customer engagement |
+| [Zendesk](/docs/agent-skills/zendesk) | Customer support platform |
+
+### Search & Research
+
+| Skill | Description |
+|-------|-------------|
+| [Tavily](/docs/agent-skills/tavily) | AI-optimized search API |
+| [Brave Search](/docs/agent-skills/brave-search) | Privacy-focused web search |
+| [Perplexity](/docs/agent-skills/perplexity) | AI answer engine |
+| [SerpAPI](/docs/agent-skills/serpapi) | Search engine results API |
+| [RSS Fetch](/docs/agent-skills/rss-fetch) | Fetch and parse RSS feeds |
+| [Hacker News](/docs/agent-skills/hackernews) | Tech news and discussions |
+
+### Web Scraping
+
+| Skill | Description |
+|-------|-------------|
+| [Firecrawl](/docs/agent-skills/firecrawl) | Turn websites into LLM-ready markdown |
+| [Browserless](/docs/agent-skills/browserless) | Headless browser automation |
+| [Browserbase](/docs/agent-skills/browserbase) | Serverless browser infrastructure |
+| [Apify](/docs/agent-skills/apify) | Web scraping and automation platform |
+| [Bright Data](/docs/agent-skills/bright-data) | Enterprise web data platform |
+| [ScrapeNinja](/docs/agent-skills/scrapeninja) | Proxy-powered web scraping |
+| [Mercury](/docs/agent-skills/mercury) | Web page parsing API |
+
+### Development
+
+| Skill | Description |
+|-------|-------------|
+| [GitHub](/docs/agent-skills/github) | Repositories, issues, and pull requests |
+| [GitLab](/docs/agent-skills/gitlab) | GitLab projects and CI/CD |
+| [GitHub Copilot](/docs/agent-skills/github-copilot) | AI pair programming |
+| [DeepSeek](/docs/agent-skills/deepseek) | AI coding assistant |
+| [Dev.to](/docs/agent-skills/devto) | Developer community platform |
+
+### Productivity
+
+| Skill | Description |
+|-------|-------------|
+| [Notion](/docs/agent-skills/notion) | Workspace and knowledge management |
+| [Linear](/docs/agent-skills/linear) | Issue tracking and project management |
+| [Jira](/docs/agent-skills/jira) | Project management and issue tracking |
+| [Monday](/docs/agent-skills/monday) | Work management platform |
+| [Google Sheets](/docs/agent-skills/google-sheets) | Spreadsheet automation |
+| [Figma](/docs/agent-skills/figma) | Design collaboration |
+| [Instantly](/docs/agent-skills/instantly) | Email outreach automation |
+
+### CRM & Sales
+
+| Skill | Description |
+|-------|-------------|
+| [Supabase](/docs/agent-skills/supabase) | PostgreSQL database with REST API |
+| [Streak](/docs/agent-skills/streak) | CRM integrated with Gmail |
+| [Kommo](/docs/agent-skills/kommo) | Messenger-based CRM |
+| [Bitrix](/docs/agent-skills/bitrix) | Business collaboration and CRM |
+| [Twenty](/docs/agent-skills/twenty) | Modern CRM platform |
+
+### AI & Media
+
+| Skill | Description |
+|-------|-------------|
+| [OpenAI](/docs/agent-skills/openai) | GPT models, DALL-E, Whisper |
+| [ElevenLabs](/docs/agent-skills/elevenlabs) | AI voice synthesis |
+| [Runway](/docs/agent-skills/runway) | AI video generation |
+| [FAL AI](/docs/agent-skills/fal-ai) | Serverless AI infrastructure |
+| [HTML/CSS to Image](/docs/agent-skills/htmlcsstoimage) | Convert HTML to images |
+| [MiniMax](/docs/agent-skills/minimax) | Multimodal AI models |
+
+### Cloud Storage
+
+| Skill | Description |
+|-------|-------------|
+| [MinIO](/docs/agent-skills/minio) | S3-compatible object storage |
+| [Cloudinary](/docs/agent-skills/cloudinary) | Media management platform |
+| [Qdrant](/docs/agent-skills/qdrant) | Vector database |
+| [Supadata](/docs/agent-skills/supadata) | Data infrastructure platform |
+
+### Documents
+
+| Skill | Description |
+|-------|-------------|
+| [PDF.co](/docs/agent-skills/pdfco) | PDF processing API |
+| [PDF4me](/docs/agent-skills/pdf4me) | PDF automation platform |
+| [PDForge](/docs/agent-skills/pdforge) | PDF generation from templates |
+| [ZapSign](/docs/agent-skills/zapsign) | Electronic signatures |
+
+### Analytics & Monitoring
+
+| Skill | Description |
+|-------|-------------|
+| [Axiom](/docs/agent-skills/axiom) | Log and event analytics |
+| [Sentry](/docs/agent-skills/sentry) | Error tracking and monitoring |
+| [Plausible](/docs/agent-skills/plausible) | Privacy-friendly analytics |
+| [Cronlytic](/docs/agent-skills/cronlytic) | Cron job monitoring |
+| [Reportei](/docs/agent-skills/reportei) | Marketing analytics |
+
+### Content & Social
+
+| Skill | Description |
+|-------|-------------|
+| [YouTube](/docs/agent-skills/youtube) | Video platform API |
+| [Instagram](/docs/agent-skills/instagram) | Social media automation |
+| [Imgur](/docs/agent-skills/imgur) | Image hosting |
+| [Qiita](/docs/agent-skills/qiita) | Technical knowledge sharing |
+| [Podchaser](/docs/agent-skills/podchaser) | Podcast database |
+
+### Utilities
+
+| Skill | Description |
+|-------|-------------|
+| [Short.io](/docs/agent-skills/shortio) | URL shortening |
+| [Google Cloud Console](/docs/agent-skills/google-cloud-console) | OAuth credentials setup |
+
+## Browse All Skills
+
+All skills are open source and available at [vm0-ai/vm0-skills](https://github.com/vm0-ai/vm0-skills).
+
+Want to contribute a skill? See the [agentskills.io](https://agentskills.io) format specification.

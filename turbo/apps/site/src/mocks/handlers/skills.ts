@@ -15,7 +15,7 @@ const mockSkills: SkillMetadata[] = [
       "Send messages, create channels, and manage your Slack workspace programmatically",
     category: "Communication",
     logo: "/skills/slack.svg",
-    docsUrl: "https://docs.vm0.ai/docs/integration/slack",
+    docsUrl: "https://docs.vm0.ai/docs/agent-skills/slack",
   },
   {
     name: "GitHub",
@@ -23,7 +23,7 @@ const mockSkills: SkillMetadata[] = [
       "Automate GitHub operations using gh CLI - manage repositories, issues, pull requests, releases, and workflows",
     category: "Development",
     logo: "/skills/github.svg",
-    docsUrl: "https://docs.vm0.ai/docs/integration/github",
+    docsUrl: "https://docs.vm0.ai/docs/agent-skills/github",
   },
   {
     name: "Notion",
@@ -31,7 +31,7 @@ const mockSkills: SkillMetadata[] = [
       "Create, read, and update pages in your Notion workspace for knowledge management",
     category: "Productivity",
     logo: "/skills/notion.svg",
-    docsUrl: "https://docs.vm0.ai/docs/integration/notion",
+    docsUrl: "https://docs.vm0.ai/docs/agent-skills/notion",
   },
 ];
 

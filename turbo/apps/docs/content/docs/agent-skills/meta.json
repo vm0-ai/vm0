@@ -1,6 +1,7 @@
 {
-  "title": "Integration",
+  "title": "Agent Skills",
   "pages": [
+    "index",
     "apify",
     "axiom",
     "bitrix",
