@@ -117,9 +117,9 @@ export async function GET(
     );
   }
 
-  // Get last_event_id from query for reconnection support
+  // Get lastEventId from query for reconnection support
   const url = new URL(request.url);
-  const lastEventId = url.searchParams.get("last_event_id");
+  const lastEventId = url.searchParams.get("lastEventId");
   let lastSequence = lastEventId ? parseInt(lastEventId, 10) : 0;
 
   // Create SSE stream
