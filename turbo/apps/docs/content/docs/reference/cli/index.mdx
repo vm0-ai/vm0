@@ -8,28 +8,104 @@ description: Complete reference for all VM0 CLI commands
 | Command | Description | Options |
 | ------- | ----------- | ------- |
 | `vm0 info` | Display environment information | - |
-| `vm0 init` | Initialize a new VM0 project with `vm0.yaml` | `-f, --force` |
+| `vm0 init` | Initialize a new VM0 project with `vm0.yaml` | `-f, --force`, `-n, --name <name>` |
+| `vm0 onboard` | Guided setup for new VM0 users | `-y, --yes`, `--method <claude\|manual>` |
+| `vm0 setup-claude` | Install vm0-agent-builder skill for Claude | - |
 
 ## Authentication
 
 | Command | Description | Notes |
 | ------- | ----------- | ----- |
 | `vm0 auth login` | Log in to VM0 (opens browser) | Use `VM0_API_URL` env var for custom API |
-| `vm0 auth logout` | Log out and remove credentials | - |
+| `vm0 auth logout` | Log out of VM0 | - |
 | `vm0 auth status` | Show authentication status | - |
-| `vm0 auth setup-token` | Output token for CI/CD | - |
+| `vm0 auth setup-token` | Output auth token for CI/CD environments | - |
+
+## Model Provider Management
+
+Configure model providers for agent runs.
+
+| Command | Description | Options |
+| ------- | ----------- | ------- |
+| `vm0 model-provider list` | List configured model providers | - |
+| `vm0 model-provider setup` | Configure a model provider | `-t, --type <type>`, `-c, --credential <value>`, `--convert` |
+| `vm0 model-provider delete <type>` | Delete a model provider | - |
+| `vm0 model-provider set-default <type>` | Set a model provider as default for its framework | - |
+
+### `vm0 model-provider setup` Examples
+
+```bash
+# Interactive setup
+vm0 model-provider setup
+
+# Non-interactive setup
+vm0 model-provider setup --type anthropic-api-key --credential "sk-ant-xxx"
+
+# Convert existing credential to model provider
+vm0 model-provider setup --convert
+```
+
+## Credential Management
+
+Store and manage credentials for use in agent runs.
+
+| Command | Description | Options |
+| ------- | ----------- | ------- |
+| `vm0 credential list` | List all stored credentials | Alias: `ls` |
+| `vm0 credential set <name> <value>` | Store a credential | - |
+| `vm0 credential delete <name>` | Delete a credential | `-y, --yes` |
+
+### Examples
+
+```bash
+# Store a credential
+vm0 credential set MY_API_KEY sk-xxx
+
+# List all credentials
+vm0 credential list
+
+# Delete a credential
+vm0 credential delete MY_API_KEY --yes
+```
+
+## Scope Management
+
+Scopes are namespaces for organizing agents.
+
+| Command | Description | Options |
+| ------- | ----------- | ------- |
+| `vm0 scope status` | Show current scope | - |
+| `vm0 scope set <slug>` | Set the active scope | - |
 
 ## Agent Management
 
 | Command | Description | Options |
 | ------- | ----------- | ------- |
-| `vm0 compose <config-file>` | Create or update agent compose | `--push` |
-| `vm0 run <agent> <prompt>` | Run a task with specified agent | `--vars`, `--secrets`, `--artifact-name` |
-| `vm0 run continue <session-id> <prompt>` | Continue from session | Same as `run` |
-| `vm0 run resume <checkpoint-id> <prompt>` | Resume from checkpoint | Same as `run` |
-| `vm0 cook [prompt]` | Prepare and execute agent from `vm0.yaml` | `-y, --yes` |
+| `vm0 compose <agent-yaml>` | Create or update agent compose | `-y, --yes` |
+| `vm0 run <agent-name> <prompt>` | Run an agent | See options table below |
+| `vm0 run continue <session-id> <prompt>` | Continue from session (uses latest artifact) | `--env-file`, `--vars`, `--secrets`, `--volume-version`, `-v`, `--experimental-realtime`, `--model-provider` |
+| `vm0 run resume <checkpoint-id> <prompt>` | Resume from checkpoint (uses snapshot data) | `--env-file`, `--vars`, `--secrets`, `--volume-version`, `-v`, `--experimental-realtime`, `--model-provider` |
+| `vm0 cook [prompt]` | Prepare and execute agent from `vm0.yaml` | `--env-file <path>`, `-y, --yes` |
+| `vm0 cook logs` | View logs from the last cook run | Same as `vm0 logs` options |
+| `vm0 cook continue <prompt>` | Continue from last session | `--env-file <path>` |
+| `vm0 cook resume <prompt>` | Resume from last checkpoint | `--env-file <path>` |
 | `vm0 agent list` | List all agent composes | `--json` |
 | `vm0 agent status <name[:version]>` | Show agent compose status | `--json` |
+
+### `vm0 run` Options
+
+| Option | Description |
+| ------ | ----------- |
+| `--env-file <path>` | Load environment variables from file |
+| `--vars <KEY=value>` | Variables for `${{ vars.xxx }}` (repeatable) |
+| `--secrets <KEY=value>` | Secrets for `${{ secrets.xxx }}` (repeatable) |
+| `--artifact-name <name>` | Artifact storage name |
+| `--artifact-version <hash>` | Artifact version hash (defaults to latest) |
+| `--volume-version <name=version>` | Volume version override (repeatable) |
+| `--conversation <id>` | Resume from conversation ID |
+| `-v, --verbose` | Show verbose output with timing information |
+| `--experimental-realtime` | Use realtime event streaming instead of polling |
+| `--model-provider <type>` | Override model provider |
 
 ### `vm0 run` Examples
 
@@ -45,6 +121,12 @@ vm0 run my-agent "deploy" \
   --vars ENV=production \
   --secrets API_KEY=sk-xxx
 
+# Load variables from file
+vm0 run my-agent "deploy" --env-file .env.production
+
+# With verbose output
+vm0 run my-agent "build a feature" --verbose
+
 # Continue a session
 vm0 run continue 9907d243-c38a-442b-84ee-efefd4eaff44 "add authentication"
 
@@ -55,23 +137,35 @@ vm0 run resume 61cddb1f-b83a-4b89-8785-97df099fe61f "try different approach"
 ### `vm0 cook` Examples
 
 ```bash
-# Prepare artifact, compose and run agent based on vm0.yaml and agent.md
+# Prepare artifact, compose and run agent based on vm0.yaml and AGENTS.md
 vm0 cook
 
 # Same as above with custom prompt
 vm0 cook "build a new feature"
+
+# Load environment variables from file
+vm0 cook "deploy" --env-file .env.production
+
+# View logs from the last run
+vm0 cook logs
+
+# Continue working from where you left off
+vm0 cook continue "add more features"
+
+# Resume from the last checkpoint
+vm0 cook resume "try a different approach"
 ```
 
 ## Schedule Management
 
 | Command | Description | Options |
 | ------- | ----------- | ------- |
-| `vm0 schedule setup <agent>` | Create or edit a schedule | `-f`, `-t`, `-d`, `-z`, `-p`, `--var`, `--secret` |
+| `vm0 schedule setup <agent>` | Create or edit a schedule | `-f`, `-t`, `-d`, `-z`, `-p`, `--var`, `--secret`, `--artifact-name`, `-e, --enable` |
 | `vm0 schedule list` | List all schedules | Alias: `ls` |
-| `vm0 schedule status <agent>` | Show schedule details | `-l, --limit` |
+| `vm0 schedule status <agent>` | Show schedule details | - |
 | `vm0 schedule enable <agent>` | Activate a schedule | - |
 | `vm0 schedule disable <agent>` | Pause a schedule | - |
-| `vm0 schedule delete <agent>` | Remove a schedule | Alias: `rm`, `-f, --force` |
+| `vm0 schedule delete <agent>` | Remove a schedule | `-f, --force` |
 
 ### `vm0 schedule setup` Options
 
@@ -85,6 +179,7 @@ vm0 cook "build a new feature"
 | `--var <KEY=value>` | Pass variable (repeatable) |
 | `--secret <KEY=value>` | Pass secret (repeatable) |
 | `--artifact-name <name>` | Artifact name (default: `artifact`) |
+| `-e, --enable` | Enable schedule immediately after creation |
 
 ### `vm0 schedule` Examples
 
@@ -98,10 +193,17 @@ vm0 schedule setup my-agent \
   --time 09:00 \
   --prompt "run daily tasks"
 
+# Create and enable in one command
+vm0 schedule setup my-agent \
+  --frequency daily \
+  --time 09:00 \
+  --prompt "run daily tasks" \
+  --enable
+
 # List all schedules
 vm0 schedule list
 
-# Check status with recent runs
+# Check status
 vm0 schedule status my-agent
 
 # Enable/disable
@@ -114,7 +216,7 @@ vm0 schedule delete my-agent --force
 
 ## Volume Management
 
-Volumes provide persistent file storage that can be shared across agent runs.
+Volumes provide persistent file storage defined in your compose configuration. Volume contents are not versioned after agent runs.
 
 | Command | Description | Options |
 | ------- | ----------- | ------- |
@@ -127,7 +229,7 @@ Volumes provide persistent file storage that can be shared across agent runs.
 
 ## Artifact Management
 
-Artifacts are work products generated by agents during execution.
+Artifacts are work products generated by agents during execution. Unlike volumes, artifacts are versioned after each run.
 
 | Command | Description | Options |
 | ------- | ----------- | ------- |
@@ -159,11 +261,28 @@ vm0 logs 11007483-20b2-42b1-8f2a-b42a10186810 --tail 20
 vm0 logs 11007483-20b2-42b1-8f2a-b42a10186810 --since 5m
 ```
 
+## Usage Statistics
+
+| Command | Description | Options |
+| ------- | ----------- | ------- |
+| `vm0 usage` | View usage statistics | `--since <date>`, `--until <date>` |
+
+**Examples:**
+```bash
+# View last 7 days (default)
+vm0 usage
+
+# View last 30 days
+vm0 usage --since 30d
+
+# View specific date range
+vm0 usage --since 2026-01-01 --until 2026-01-15
+```
+
 ## Environment Variables
 
 - `VM0_TOKEN` - Authentication token for API access
-- `VM0_API_URL` - Custom API URL (defaults to https://api.vm0.ai)
-- `VM0_LOG_LEVEL` - Log level (debug, info, warn, error)
+- `VM0_API_URL` - Custom API URL (defaults to https://www.vm0.ai)
 
 ## Frequently Asked Questions
 
@@ -173,7 +292,7 @@ vm0 logs 11007483-20b2-42b1-8f2a-b42a10186810 --since 5m
 
 **`vm0 cook`** is a complete workflow that:
 1. Prepares artifacts from your local files
-2. Composes the agent using `vm0.yaml` and `agent.md`
+2. Composes the agent using `vm0.yaml` and `AGENTS.md`
 3. Executes the agent
 
 Use `-y` flag to skip confirmation prompts.
@@ -206,6 +325,12 @@ vm0 run my-agent "deploy" \
   --vars REGION=us-west \
   --secrets API_KEY=sk-xxx \
   --secrets DB_PASSWORD=pwd123
+```
+
+Or load from a file:
+
+```bash
+vm0 run my-agent "deploy" --env-file .env.production
 ```
 
 In your agent configuration, reference them as:
@@ -244,6 +369,20 @@ Each run gets a unique Run ID and executes independently.
 - Goes back to that exact point in time
 - Useful for trying different approaches from the same starting point
 - Like a "save point" in a game
+
+</Accordion>
+
+<Accordion title="What's the difference between volumes and artifacts?">
+
+**Volumes** are persistent file storage defined in your compose configuration:
+- Shared across agent runs
+- Not versioned after runs
+- Use for input data that the agent reads
+
+**Artifacts** are work products generated by agents:
+- Specified at run time with `--artifact-name`
+- Versioned after each run (you can pull specific versions)
+- Use for output files that the agent creates
 
 </Accordion>
 
