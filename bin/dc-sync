@@ -28,8 +28,8 @@ sync_env_files() {
         dest_dir=$(dirname "$dest_file")
 
         if [[ -d "$dest_dir" ]]; then
-            ln -sf "$env_file" "$dest_file"
-            echo "  Linked: $rel_path"
+            cp "$env_file" "$dest_file"
+            echo "  Synced: $rel_path"
         fi
     done < <(find "$SOURCE" -name ".env.local" -type f -print0)
 }
@@ -52,8 +52,8 @@ for dir in "$VM0_WORKSPACES"/vm*/; do
         # Sync .certs directory
         if [[ -d "$SOURCE/.certs" ]]; then
             rm -rf "$dir/.certs"
-            ln -sf "$SOURCE/.certs" "$dir/.certs"
-            echo "  Linked: .certs"
+            cp -a "$SOURCE/.certs" "$dir/.certs"
+            echo "  Synced: .certs"
         fi
     fi
 done
