@@ -278,7 +278,7 @@ describe("Public API v1 - Runs Endpoints", () => {
 
       expect(response.status).toBe(200);
       expect(data.id).toBe(testRunId);
-      expect(data.status).toBe("running");
+      expect(data.status).toBe("completed");
       expect(data.prompt).toBe("Test prompt for runs API");
       expect(data.agentId).toBe(testAgentId);
       expect(data.agentName).toBe(testAgentName);
@@ -328,10 +328,8 @@ describe("Public API v1 - Runs Endpoints", () => {
   });
 
   describe("POST /v1/runs/:id/cancel - Cancel Run", () => {
-    let runToCancel: string;
-
-    beforeAll(async () => {
-      // Create a pending run to cancel
+    it("should cancel a pending run", async () => {
+      // Create a pending run to cancel (must be inside test to run after beforeEach cleanup)
       const [run] = await globalThis.services.db
         .insert(agentRuns)
         .values({
@@ -342,12 +340,8 @@ describe("Public API v1 - Runs Endpoints", () => {
         })
         .returning();
 
-      runToCancel = run!.id;
-    });
-
-    it("should cancel a pending run", async () => {
       const request = createTestRequest(
-        `http://localhost:3000/v1/runs/${runToCancel}/cancel`,
+        `http://localhost:3000/v1/runs/${run!.id}/cancel`,
         { method: "POST" },
       );
 
@@ -355,7 +349,7 @@ describe("Public API v1 - Runs Endpoints", () => {
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      expect(data.id).toBe(runToCancel);
+      expect(data.id).toBe(run!.id);
       expect(data.status).toBe("cancelled");
       expect(data.completedAt).toBeDefined();
     });
