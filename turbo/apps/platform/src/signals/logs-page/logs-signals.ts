@@ -6,14 +6,53 @@ import type {
   ArtifactDownloadResponse,
 } from "./types.ts";
 import { fetch$ } from "../fetch.ts";
+import { searchParams$, updateSearchParams$ } from "../route.ts";
+
+const DEFAULT_LIMIT = 10;
+const VALID_LIMITS = [10, 20, 50, 100] as const;
 
 // Pagination state
-const rowsPerPage$ = state<number>(10);
+const rowsPerPage$ = state<number>(DEFAULT_LIMIT);
 const cursorHistory$ = state<(string | null)[]>([null]); // Track cursors for each page
 const currentPageIndex$ = state<number>(0); // 0-based index
 
 // Search state
 const searchQuery$ = state<string>("");
+
+/**
+ * Helper to sync current pagination state to URL searchParams
+ */
+const syncToSearchParams$ = command(({ get, set }) => {
+  const params = new URLSearchParams(get(searchParams$));
+  const limit = get(rowsPerPage$);
+  const history = get(cursorHistory$);
+  const pageIndex = get(currentPageIndex$);
+  const search = get(searchQuery$);
+  const cursor = history[pageIndex] ?? null;
+
+  // Update limit (only if not default)
+  if (limit !== DEFAULT_LIMIT) {
+    params.set("limit", String(limit));
+  } else {
+    params.delete("limit");
+  }
+
+  // Update cursor (only if not on first page)
+  if (cursor) {
+    params.set("cursor", cursor);
+  } else {
+    params.delete("cursor");
+  }
+
+  // Update search (only if not empty)
+  if (search) {
+    params.set("search", search);
+  } else {
+    params.delete("search");
+  }
+
+  set(updateSearchParams$, params);
+});
 
 // Exported computed for rows per page
 export const rowsPerPageValue$ = computed((get) => get(rowsPerPage$));
@@ -165,15 +204,40 @@ export const initLogs$ = command(({ get, set }, signal: AbortSignal) => {
   set(logDetailCache$, new Map());
   set(agentEventsCache$, new Map());
 
-  // Reset pagination state
-  set(cursorHistory$, [null]);
-  set(currentPageIndex$, 0);
+  // Read initial values from URL searchParams
+  const params = get(searchParams$);
+  const limitParam = params.get("limit");
+  const cursorParam = params.get("cursor");
+  const searchParam = params.get("search");
 
-  // Load first page
-  const limit = get(rowsPerPage$);
-  const search = get(searchQuery$);
-  const firstPage$ = createPageComputed(null, limit, search);
-  set(internalCurrentPage$, firstPage$);
+  // Parse and validate limit
+  let limit = DEFAULT_LIMIT;
+  if (limitParam) {
+    const parsed = Number.parseInt(limitParam, 10);
+    if (VALID_LIMITS.includes(parsed as (typeof VALID_LIMITS)[number])) {
+      limit = parsed;
+    }
+  }
+
+  // Set initial state from URL params
+  set(rowsPerPage$, limit);
+  set(searchQuery$, searchParam ?? "");
+
+  // Initialize cursor history with the cursor from URL (if any)
+  // If cursor is provided, we're on page 2+ but we don't know page 1's cursor
+  // So we start fresh - cursor history will be rebuilt on navigation
+  if (cursorParam) {
+    set(cursorHistory$, [null, cursorParam]);
+    set(currentPageIndex$, 1);
+  } else {
+    set(cursorHistory$, [null]);
+    set(currentPageIndex$, 0);
+  }
+
+  // Load page with cursor from URL
+  const search = searchParam ?? "";
+  const page$ = createPageComputed(cursorParam, limit, search);
+  set(internalCurrentPage$, page$);
 });
 
 // Command: Go to next page
@@ -216,6 +280,9 @@ export const goToNextPage$ = command(
     // Load next page
     const nextPage$ = createPageComputed(nextCursor, limit, search);
     set(internalCurrentPage$, nextPage$);
+
+    // Sync to URL
+    set(syncToSearchParams$);
   },
 );
 
@@ -240,6 +307,9 @@ export const goToPrevPage$ = command(({ get, set }, signal: AbortSignal) => {
   // Load previous page
   const prevPage$ = createPageComputed(prevCursor, limit, search);
   set(internalCurrentPage$, prevPage$);
+
+  // Sync to URL
+  set(syncToSearchParams$);
 });
 
 // Command: Go forward two pages
@@ -286,6 +356,8 @@ export const goForwardTwoPages$ = command(
     if (!response.pagination.hasMore) {
       // Only one more page available, stay on it
       set(internalCurrentPage$, intermediatePage$);
+      // Sync to URL
+      set(syncToSearchParams$);
       return;
     }
 
@@ -306,6 +378,9 @@ export const goForwardTwoPages$ = command(
 
     const finalPage$ = createPageComputed(nextCursor, limit, search);
     set(internalCurrentPage$, finalPage$);
+
+    // Sync to URL
+    set(syncToSearchParams$);
   },
 );
 
@@ -329,6 +404,9 @@ export const goBackTwoPages$ = command(({ get, set }, signal: AbortSignal) => {
 
   const targetPage$ = createPageComputed(targetCursor, limit, search);
   set(internalCurrentPage$, targetPage$);
+
+  // Sync to URL
+  set(syncToSearchParams$);
 });
 
 // Command: Set rows per page and reload
@@ -347,6 +425,9 @@ export const setRowsPerPage$ = command(
     const search = get(searchQuery$);
     const firstPage$ = createPageComputed(null, limit, search);
     set(internalCurrentPage$, firstPage$);
+
+    // Sync to URL
+    set(syncToSearchParams$);
   },
 );
 
@@ -366,6 +447,9 @@ export const setSearch$ = command(
     const limit = get(rowsPerPage$);
     const firstPage$ = createPageComputed(null, limit, search);
     set(internalCurrentPage$, firstPage$);
+
+    // Sync to URL
+    set(syncToSearchParams$);
   },
 );
 

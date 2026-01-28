@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import {
@@ -16,6 +16,7 @@ import {
   currentPageNumber$,
 } from "../logs-signals.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
+import { mockLocation, mockPushState } from "../../location.ts";
 
 // Mock Clerk BEFORE any module evaluation using vi.hoisted
 vi.hoisted(() => {
@@ -40,6 +41,13 @@ vi.mock("@clerk/clerk-js", () => ({
 const context = testContext();
 
 describe("logs-signals", () => {
+  // Mock location for each test to ensure clean URL state
+  beforeEach(() => {
+    const { signal } = context;
+    mockLocation({ pathname: "/logs", search: "" }, signal);
+    mockPushState(() => {}, signal);
+  });
+
   describe("initLogs$", () => {
     it("should load first page", () => {
       const { store, signal } = context;
@@ -145,20 +153,26 @@ describe("logs-signals", () => {
     it("should navigate forward two pages", async () => {
       const { store, signal } = context;
 
-      let requestCount = 0;
       server.use(
-        http.get("*/api/platform/logs", () => {
-          requestCount++;
-          // Pages 1, 2, 3 all have more
-          if (requestCount <= 2) {
+        http.get("*/api/platform/logs", ({ request }) => {
+          const url = new URL(request.url);
+          const cursor = url.searchParams.get("cursor");
+
+          if (!cursor) {
+            // Page 1 - has more
             return HttpResponse.json({
-              data: [{ id: `log-${requestCount}` }],
-              pagination: {
-                hasMore: true,
-                nextCursor: `cursor${requestCount}`,
-              },
+              data: [{ id: "log-1" }],
+              pagination: { hasMore: true, nextCursor: "cursor1" },
             });
           }
+          if (cursor === "cursor1") {
+            // Page 2 - has more
+            return HttpResponse.json({
+              data: [{ id: "log-2" }],
+              pagination: { hasMore: true, nextCursor: "cursor2" },
+            });
+          }
+          // Page 3 - no more
           return HttpResponse.json({
             data: [{ id: "log-3" }],
             pagination: { hasMore: false, nextCursor: null },
@@ -176,17 +190,19 @@ describe("logs-signals", () => {
     it("should stop at last available page if less than two pages ahead", async () => {
       const { store, signal } = context;
 
-      let requestCount = 0;
       server.use(
-        http.get("*/api/platform/logs", () => {
-          requestCount++;
-          if (requestCount === 1) {
+        http.get("*/api/platform/logs", ({ request }) => {
+          const url = new URL(request.url);
+          const cursor = url.searchParams.get("cursor");
+
+          if (!cursor) {
+            // First page - has more
             return HttpResponse.json({
               data: [{ id: "log-1" }],
               pagination: { hasMore: true, nextCursor: "cursor1" },
             });
           }
-          // Second page has no more
+          // Second page - no more
           return HttpResponse.json({
             data: [{ id: "log-2" }],
             pagination: { hasMore: false, nextCursor: null },
