@@ -16,6 +16,7 @@ export const publicApiErrorTypeSchema = z.enum([
   "authentication_error", // Auth failure (401)
   "not_found_error", // Resource missing (404)
   "conflict_error", // Resource conflict (409)
+  "rate_limit_error", // Rate limit exceeded (429)
 ]);
 
 export type PublicApiErrorType = z.infer<typeof publicApiErrorTypeSchema>;
@@ -66,6 +67,9 @@ export const PublicApiErrorCode = {
 
   // Server errors
   INTERNAL_ERROR: "internal_error",
+
+  // Rate limit errors
+  CONCURRENT_RUN_LIMIT_EXCEEDED: "concurrent_run_limit_exceeded",
 } as const;
 
 export type PublicApiErrorCodeType =
@@ -100,6 +104,7 @@ export const errorTypeToStatus: Record<PublicApiErrorType, number> = {
   authentication_error: 401,
   not_found_error: 404,
   conflict_error: 409,
+  rate_limit_error: 429,
 };
 
 /**

@@ -9,7 +9,12 @@ import {
 import { agentRuns } from "../../db/schema/agent-run";
 import { scopes } from "../../db/schema/scope";
 import { encryptSecretsMap, decryptSecretsMap } from "../crypto";
-import { NotFoundError, BadRequestError, SchedulePastError } from "../errors";
+import {
+  NotFoundError,
+  BadRequestError,
+  SchedulePastError,
+  ConcurrentRunLimitError,
+} from "../errors";
 import { logger } from "../logger";
 import { runService } from "../run/run-service";
 import { generateSandboxToken } from "../auth/sandbox-token";
@@ -773,6 +778,42 @@ export class ScheduleService {
     if (!compose.headVersionId) {
       log.error(`Compose ${compose.name} has no versions`);
       return;
+    }
+
+    // Check concurrent run limit before creating run
+    try {
+      await runService.checkConcurrencyLimit(compose.userId);
+    } catch (error) {
+      if (error instanceof ConcurrentRunLimitError) {
+        log.debug(`Schedule ${schedule.name} blocked by concurrent run limit`);
+
+        // Create failed run record
+        const [failedRun] = await globalThis.services.db
+          .insert(agentRuns)
+          .values({
+            userId: compose.userId,
+            agentComposeVersionId: compose.headVersionId,
+            scheduleId: schedule.id,
+            status: "failed",
+            prompt: schedule.prompt,
+            vars: schedule.vars,
+            error: error.message,
+            completedAt: new Date(),
+            createdAt: new Date(),
+          })
+          .returning();
+
+        // Update schedule's lastRunId
+        if (failedRun) {
+          await globalThis.services.db
+            .update(agentSchedules)
+            .set({ lastRunId: failedRun.id })
+            .where(eq(agentSchedules.id, schedule.id));
+        }
+
+        throw error; // Re-throw to count as skipped
+      }
+      throw error;
     }
 
     // Decrypt secrets

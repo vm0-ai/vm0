@@ -23,6 +23,7 @@ import {
 import { eq, and, desc, gt } from "drizzle-orm";
 import { runService } from "../../../src/lib/run";
 import { generateSandboxToken } from "../../../src/lib/auth/sandbox-token";
+import { ConcurrentRunLimitError } from "../../../src/lib/errors";
 
 const router = tsr.router(publicRunsListContract, {
   list: async ({ query, headers }) => {
@@ -157,6 +158,25 @@ const router = tsr.router(publicRunsListContract, {
           },
         },
       };
+    }
+
+    // Check concurrent run limit
+    try {
+      await runService.checkConcurrencyLimit(auth.userId);
+    } catch (error) {
+      if (error instanceof ConcurrentRunLimitError) {
+        return {
+          status: 429 as const,
+          body: {
+            error: {
+              type: "rate_limit_error" as const,
+              code: "concurrent_run_limit_exceeded",
+              message: error.message,
+            },
+          },
+        };
+      }
+      throw error;
     }
 
     // Determine the agent to run

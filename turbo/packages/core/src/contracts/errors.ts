@@ -10,6 +10,7 @@ export const ApiError = {
   FORBIDDEN: { status: 403 as const, code: "FORBIDDEN" },
   NOT_FOUND: { status: 404 as const, code: "NOT_FOUND" },
   CONFLICT: { status: 409 as const, code: "CONFLICT" },
+  TOO_MANY_REQUESTS: { status: 429 as const, code: "TOO_MANY_REQUESTS" },
   INTERNAL_SERVER_ERROR: {
     status: 500 as const,
     code: "INTERNAL_SERVER_ERROR",

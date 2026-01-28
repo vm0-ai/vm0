@@ -3,7 +3,7 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../src/lib/ts-rest-handler";
-import { runsMainContract } from "@vm0/core";
+import { runsMainContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   agentComposes,
@@ -18,6 +18,7 @@ import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 import { extractTemplateVars } from "../../../../src/lib/config-validator";
 import { assertImageAccess } from "../../../../src/lib/image/image-service";
 import { logger } from "../../../../src/lib/logger";
+import { ConcurrentRunLimitError } from "../../../../src/lib/errors";
 
 const log = logger("api:runs");
 
@@ -34,6 +35,16 @@ const router = tsr.router(runsMainContract, {
           error: { message: "Not authenticated", code: "UNAUTHORIZED" },
         },
       };
+    }
+
+    // Check concurrent run limit
+    try {
+      await runService.checkConcurrencyLimit(userId);
+    } catch (error) {
+      if (error instanceof ConcurrentRunLimitError) {
+        return createErrorResponse("TOO_MANY_REQUESTS", error.message);
+      }
+      throw error;
     }
 
     // Validate mutually exclusive shortcuts

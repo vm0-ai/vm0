@@ -1,7 +1,12 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, count, inArray } from "drizzle-orm";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { agentRuns } from "../../db/schema/agent-run";
-import { NotFoundError, UnauthorizedError, BadRequestError } from "../errors";
+import {
+  NotFoundError,
+  UnauthorizedError,
+  BadRequestError,
+  ConcurrentRunLimitError,
+} from "../errors";
 import { logger } from "../logger";
 import type { ExecutionContext } from "./types";
 import type { AgentComposeSnapshot } from "../checkpoint/types";
@@ -233,6 +238,37 @@ export class RunService {
 
     // Layer 2: Dispatch to appropriate executor
     return await this.dispatch(preparedContext);
+  }
+
+  /**
+   * Check if user has reached concurrent run limit
+   *
+   * @param userId User ID to check
+   * @param limit Maximum allowed concurrent runs (default: 1)
+   * @throws ConcurrentRunLimitError if limit exceeded
+   */
+  async checkConcurrencyLimit(
+    userId: string,
+    limit: number = 1,
+  ): Promise<void> {
+    const [result] = await globalThis.services.db
+      .select({ count: count() })
+      .from(agentRuns)
+      .where(
+        and(
+          eq(agentRuns.userId, userId),
+          inArray(agentRuns.status, ["pending", "running"]),
+        ),
+      );
+
+    const activeRunCount = Number(result?.count ?? 0);
+
+    if (activeRunCount >= limit) {
+      log.debug(
+        `User ${userId} has ${activeRunCount} active runs, limit is ${limit}`,
+      );
+      throw new ConcurrentRunLimitError();
+    }
   }
 
   /**

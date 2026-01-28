@@ -131,6 +131,7 @@ export const publicRunsListContract = c.router({
       400: publicApiErrorSchema,
       401: publicApiErrorSchema,
       404: publicApiErrorSchema,
+      429: publicApiErrorSchema,
       500: publicApiErrorSchema,
     },
     summary: "Create run",

@@ -48,3 +48,11 @@ export class SchedulePastError extends ApiError {
     super(400, message, "SCHEDULE_PAST");
   }
 }
+
+export class ConcurrentRunLimitError extends ApiError {
+  constructor(
+    message = "You have reached the concurrent agent run limit. Please wait for your current run to complete before starting a new one.",
+  ) {
+    super(429, message, "TOO_MANY_REQUESTS");
+  }
+}
