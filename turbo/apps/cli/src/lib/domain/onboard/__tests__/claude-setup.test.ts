@@ -49,7 +49,7 @@ describe("claude-setup", () => {
 
       expect(content).toContain("## Workflow");
       expect(content).toContain("Step 1");
-      expect(content).toContain("Write AGENTS.md");
+      expect(content).toContain("Create AGENTS.md");
     });
 
     it("should include available skills", () => {
@@ -63,8 +63,8 @@ describe("claude-setup", () => {
     it("should include example agents", () => {
       const content = getSkillContent();
 
-      expect(content).toContain("## Example Agents");
-      expect(content).toContain("Content Curator Agent");
+      expect(content).toContain("## Examples");
+      expect(content).toContain("HackerNews Curator");
     });
   });
 

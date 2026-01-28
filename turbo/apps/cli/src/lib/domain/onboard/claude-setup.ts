@@ -10,210 +10,263 @@ export const SKILL_FILE = "SKILL.md";
 export function getSkillContent(): string {
   return `---
 name: vm0-agent-builder
-description: Guide for building VM0 agents with Claude's help. Use this skill when users want to create or improve their agent's AGENTS.md and vm0.yaml configuration.
+description: Build VM0 agents by creating AGENTS.md and vm0.yaml. Use when users describe what agent they want to build.
 ---
 
 # VM0 Agent Builder
 
-Help users create effective AI agents using the VM0 platform. This skill guides the process of designing agent workflows, writing AGENTS.md instructions, and configuring vm0.yaml.
-
-## When to Use
-
-- User wants to create a new VM0 agent from scratch
-- User wants to improve an existing agent's instructions
-- User needs help configuring vm0.yaml with skills
-- User is unsure how to structure their agent's workflow
+Build AI agents that run in VM0's secure sandbox environment. This skill helps you create the two essential files: \`AGENTS.md\` (agent instructions) and \`vm0.yaml\` (configuration).
 
 ## Workflow
 
 ### Step 1: Understand the Goal
 
-Ask the user what they want their agent to accomplish:
-- What is the main task or problem to solve?
-- What inputs will the agent receive?
-- What outputs should the agent produce?
-- Are there any constraints or requirements?
+First, clarify what the user wants their agent to do:
+- What task should the agent accomplish?
+- What inputs does it need? (files, APIs, websites)
+- What outputs should it produce? (reports, files, notifications)
+- Should it run once or on a schedule?
 
-### Step 2: Design the Workflow
+### Step 2: Create AGENTS.md
 
-Break down the task into clear, sequential steps:
-1. Each step should be a single, focused action
-2. Steps should build on each other logically
-3. Include error handling and edge cases
-4. Consider what tools/skills the agent will need
+Write clear, step-by-step instructions. The agent will follow these exactly.
 
-### Step 3: Write AGENTS.md
-
-Create the agent instructions file with:
+**Template:**
 
 \`\`\`markdown
-# Agent Instructions
+# [Agent Name]
 
 You are a [role description].
 
-## Goal
-
-[Clear statement of what the agent should accomplish]
-
 ## Workflow
 
-1. [First step with specific instructions]
-2. [Second step with specific instructions]
-3. [Continue with remaining steps...]
+1. [First action - be specific]
+2. [Second action - include details]
+3. [Continue with clear steps...]
 
 ## Output
 
-[Describe the expected output format and location]
-
-## Constraints
-
-[Any limitations or rules the agent should follow]
+Write results to \`[filename]\` in the current directory.
 \`\`\`
 
-### Step 4: Configure vm0.yaml
+**Writing Tips:**
+- Be specific: "Read the top 10 stories" not "Read some stories"
+- One action per step: Keep steps focused and atomic
+- Specify output: Exact filenames and formats
+- Use active voice: "Create a file" not "A file should be created"
 
-Update the vm0.yaml to include necessary skills:
+### Step 3: Create vm0.yaml
+
+Configure the agent with required skills and environment variables.
 
 \`\`\`yaml
 version: "1.0"
 
 agents:
-  agent-name:
+  [agent-name]:
     framework: claude-code
     instructions: AGENTS.md
     skills:
-      - https://github.com/vm0-ai/vm0-skills/tree/main/skill-name
+      # Add skills the agent needs (optional)
+      - https://github.com/vm0-ai/vm0-skills/tree/main/[skill-name]
     environment:
-      # Add any required environment variables
+      # Add environment variables (optional)
       API_KEY: "\${{ secrets.API_KEY }}"
 \`\`\`
 
-### Step 5: Test the Agent
+### Step 4: Test the Agent
 
-Guide the user to test their agent:
+After creating both files, the user runs:
 
 \`\`\`bash
-# Deploy the agent configuration
-vm0 compose vm0.yaml
-
-# Run the agent with a test prompt
-vm0 cook "start working on the task"
-
-# Check the logs if needed
-vm0 logs <run-id>
+vm0 cook "start working"
 \`\`\`
+
+This command:
+1. Uploads the configuration to VM0
+2. Runs the agent in a secure sandbox
+3. Downloads results to the \`artifact/\` directory
 
 ## Available Skills
 
-Common skills from vm0-skills repository:
+Skills give agents access to external services. Add them to vm0.yaml when needed.
 
-| Skill | Purpose |
-|-------|---------|
-| \`github\` | GitHub API operations (issues, PRs, repos) |
-| \`slack\` | Send messages to Slack channels |
-| \`notion\` | Read/write Notion pages and databases |
-| \`firecrawl\` | Web scraping and content extraction |
-| \`browserbase\` | Browser automation |
-| \`openai\` | OpenAI API for embeddings, completions |
-| \`supabase\` | Database operations with Supabase |
+**Popular Skills:**
 
-Browse all skills: https://github.com/vm0-ai/vm0-skills
+| Skill | Use Case |
+|-------|----------|
+| \`github\` | Read/write issues, PRs, files |
+| \`slack\` | Send messages to channels |
+| \`notion\` | Access Notion pages/databases |
+| \`firecrawl\` | Scrape and extract web content |
+| \`supabase\` | Database operations |
+| \`google-sheets\` | Read/write spreadsheets |
+| \`linear\` | Project management |
+| \`discord\` | Send Discord messages |
+| \`gmail\` | Send emails |
+| \`openai\` | Embeddings, additional AI calls |
 
-## Example Agents
+**All 79 skills:** https://github.com/vm0-ai/vm0-skills
 
-### Content Curator Agent
+**Skill URL format:**
+\`\`\`
+https://github.com/vm0-ai/vm0-skills/tree/main/[skill-name]
+\`\`\`
 
+## Examples
+
+### HackerNews Curator
+
+**AGENTS.md:**
 \`\`\`markdown
-# Agent Instructions
+# HackerNews AI Curator
 
-You are a content curator that monitors HackerNews for AI-related articles.
+You are a content curator that finds AI-related articles on HackerNews.
 
 ## Workflow
 
-1. Go to HackerNews and read the top 30 stories
-2. Filter for AI, ML, and LLM related content
-3. For each relevant article, extract:
+1. Go to https://news.ycombinator.com
+2. Read the top 30 stories
+3. Filter for AI, ML, and LLM related content
+4. For each relevant article, extract:
    - Title and URL
-   - Key points (2-3 sentences)
-   - Why it's interesting
-4. Write a summary to \`daily-digest.md\`
+   - 2-3 sentence summary
+   - Why it matters
+5. Write findings to \`daily-digest.md\`
 
 ## Output
 
 Create \`daily-digest.md\` with today's date as the header.
+Format as a bulleted list with links.
 \`\`\`
 
-### GitHub Issue Tracker Agent
+**vm0.yaml:**
+\`\`\`yaml
+version: "1.0"
 
+agents:
+  hn-curator:
+    framework: claude-code
+    instructions: AGENTS.md
+\`\`\`
+
+### GitHub Issue Reporter
+
+**AGENTS.md:**
 \`\`\`markdown
-# Agent Instructions
+# GitHub Issue Reporter
 
-You are a GitHub issue tracker that summarizes open issues.
+You are a GitHub analyst that creates issue summary reports.
 
 ## Workflow
 
 1. List all open issues in the repository
-2. Group issues by labels (bug, feature, docs)
-3. For each group, summarize:
-   - Number of issues
-   - Oldest issue age
-   - Most discussed issues
-4. Create a report in \`issue-report.md\`
-
-## Skills Required
-
-- github (for API access)
-\`\`\`
-
-### Data Pipeline Agent
-
-\`\`\`markdown
-# Agent Instructions
-
-You are a data pipeline agent that processes CSV files.
-
-## Workflow
-
-1. Read all CSV files from the input volume
-2. For each file:
-   - Validate the schema
-   - Clean missing values
-   - Transform dates to ISO format
-3. Merge all files into \`combined.csv\`
-4. Generate a summary report
-
-## Input
-
-Files are provided via volume mount.
+2. Group by labels: bug, feature, documentation, other
+3. For each group, report:
+   - Total count
+   - Oldest issue (with age in days)
+   - Most commented issue
+4. Write report to \`issue-report.md\`
 
 ## Output
 
-Write results to the artifact directory.
+Create \`issue-report.md\` with sections for each label group.
+Include links to referenced issues.
 \`\`\`
 
-## Best Practices
+**vm0.yaml:**
+\`\`\`yaml
+version: "1.0"
 
-1. **Be Specific**: Vague instructions lead to unpredictable results
-2. **One Task Per Step**: Keep workflow steps focused and atomic
-3. **Define Output Clearly**: Specify exact file names and formats
-4. **Handle Errors**: Include what to do when things go wrong
-5. **Test Incrementally**: Start with simple workflows, add complexity
-6. **Use Skills Wisely**: Only include skills the agent actually needs
+agents:
+  issue-reporter:
+    framework: claude-code
+    instructions: AGENTS.md
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/github
+    environment:
+      GITHUB_REPO: "\${{ vars.GITHUB_REPO }}"
+\`\`\`
+
+### Slack Daily Digest
+
+**AGENTS.md:**
+\`\`\`markdown
+# Slack Daily Digest
+
+You are an assistant that posts daily summaries to Slack.
+
+## Workflow
+
+1. Read the contents of \`updates.md\` from the input volume
+2. Summarize the key points (max 5 bullets)
+3. Format as a Slack message with emoji headers
+4. Post to the #daily-updates channel
+
+## Output
+
+Post the summary to Slack. Write a copy to \`sent-message.md\`.
+\`\`\`
+
+**vm0.yaml:**
+\`\`\`yaml
+version: "1.0"
+
+agents:
+  slack-digest:
+    framework: claude-code
+    instructions: AGENTS.md
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/slack
+    environment:
+      SLACK_CHANNEL: "\${{ vars.SLACK_CHANNEL }}"
+\`\`\`
+
+## Environment Variables
+
+Use environment variables for sensitive data and configuration:
+
+\`\`\`yaml
+environment:
+  # Secrets (encrypted, for API keys)
+  API_KEY: "\${{ secrets.API_KEY }}"
+
+  # Variables (plain text, for config)
+  REPO_NAME: "\${{ vars.REPO_NAME }}"
+\`\`\`
+
+Set them with:
+\`\`\`bash
+vm0 credential set API_KEY "your-api-key"
+\`\`\`
 
 ## Troubleshooting
 
-### Agent doesn't follow instructions
-- Make instructions more specific and explicit
-- Add examples of expected behavior
+**Agent doesn't follow instructions:**
+- Make steps more specific and explicit
+- Add "Do not..." constraints for unwanted behavior
 - Break complex steps into smaller sub-steps
 
-### Agent uses wrong tools
-- Specify which tools/skills to use for each step
-- Add constraints about what NOT to do
+**Agent can't access a service:**
+- Add the required skill to vm0.yaml
+- Set up credentials with \`vm0 credential set\`
 
-### Output format is wrong
-- Provide exact templates for output files
-- Include example output in the instructions
+**Output is in wrong format:**
+- Provide an exact template in the instructions
+- Include a small example of expected output
+
+## Next Steps After Creating Files
+
+\`\`\`bash
+# Run your agent
+vm0 cook "start working"
+
+# View logs if needed
+vm0 logs [run-id]
+
+# Results are in artifact/ directory
+ls artifact/
+\`\`\`
 `;
 }
 

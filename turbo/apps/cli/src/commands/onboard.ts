@@ -214,10 +214,10 @@ async function handleSkillInstallation(
 
 function printNextSteps(agentName: string): void {
   console.log();
-  console.log(chalk.bold("Next steps:"));
-  console.log(`  ${chalk.cyan(`cd ${agentName}`)}`);
+  console.log(chalk.bold("Next step:"));
+  console.log();
   console.log(
-    `  ${chalk.cyan('claude "/vm0-agent-builder I want to build an agent that..."')}`,
+    `  ${chalk.cyan(`cd ${agentName} && claude "/vm0-agent-builder I want to build an agent that..."`)}`,
   );
   console.log();
 }

@@ -344,7 +344,7 @@ describe("onboard command", () => {
       await onboardCommand.parseAsync(["node", "cli", "-y"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Next steps:");
+      expect(logCalls).toContain("Next step:");
       expect(logCalls).toContain("cd my-vm0-agent");
       expect(logCalls).toContain("claude");
       expect(logCalls).toContain("/vm0-agent-builder");
