@@ -96,6 +96,7 @@ export class Runner {
       this.config.server,
       this.config.group,
       (notification) => {
+        console.log(`Ably notification: ${notification.runId}`);
         this.processJob(notification.runId).catch(console.error);
       },
       (connectionState, reason) => {
@@ -195,8 +196,6 @@ export class Runner {
       }
       return;
     }
-
-    console.log(`Received job notification: ${runId}`);
 
     try {
       const context = await withRunnerTiming("claim", () =>
