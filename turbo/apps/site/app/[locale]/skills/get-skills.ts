@@ -1,4 +1,4 @@
-const WEB_APP_BASE_URL = "https://www.vm0.ai";
+import { SKILLS_API_URL } from "./constants";
 
 interface SkillMetadata {
   name: string;
@@ -10,7 +10,7 @@ interface SkillMetadata {
 
 export async function getSkills(): Promise<SkillMetadata[]> {
   // Fetch skills from web app API
-  const response = await fetch(`${WEB_APP_BASE_URL}/api/web/skills`);
+  const response = await fetch(SKILLS_API_URL);
 
   if (!response.ok) {
     throw new Error(`Failed to fetch skills: ${response.statusText}`);

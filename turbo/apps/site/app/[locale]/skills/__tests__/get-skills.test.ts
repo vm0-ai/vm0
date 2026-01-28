@@ -2,8 +2,7 @@ import { describe, it, expect } from "vitest";
 import { server } from "../../../../src/mocks/server";
 import { http, HttpResponse } from "msw";
 import { getSkills } from "../get-skills";
-
-const SKILLS_API_URL = "https://www.vm0.ai/api/web/skills";
+import { SKILLS_API_URL } from "../constants";
 
 describe("getSkills", () => {
   it("should fetch skills from web app API successfully", async () => {
