@@ -153,7 +153,8 @@ RUN groupadd -f --gid 1000 vscode \
     && echo "vscode ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/vscode \
     && chmod 0440 /etc/sudoers.d/vscode \
     && mkdir -p /home/vscode/.local/share /home/vscode/.cache /home/vscode/.config \
-    && chown -R vscode:vscode /home/vscode
+    && chown -R vscode:vscode /home/vscode \
+    && chown -R vscode:vscode /usr/local/cargo /usr/local/rustup
 
 # Default command
 CMD ["/usr/bin/zsh"]
