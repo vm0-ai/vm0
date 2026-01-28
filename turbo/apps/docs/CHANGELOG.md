@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.1.0](https://github.com/vm0-ai/vm0/compare/docs-v2.0.0...docs-v2.1.0) (2026-01-28)
+
+
+### Features
+
+* **cli:** add enable prompt and --enable flag to schedule setup ([#1736](https://github.com/vm0-ai/vm0/issues/1736)) ([43f35b8](https://github.com/vm0-ai/vm0/commit/43f35b8489b8e55b4198616923572c552e85a04a))
+* **docs:** fix volume version field requirement in vm0.yaml reference ([#1760](https://github.com/vm0-ai/vm0/issues/1760)) ([6663961](https://github.com/vm0-ai/vm0/commit/6663961abfa9698398695c418ef3eb6fabc73bc8))
+* **docs:** rename integration to agent skills and add skills documentation ([#1750](https://github.com/vm0-ai/vm0/issues/1750)) ([6305911](https://github.com/vm0-ai/vm0/commit/63059115b21a1bf3b36579dac9646271c7354d19)), closes [#1748](https://github.com/vm0-ai/vm0/issues/1748)
+* **docs:** update cli reference documentation to match current implementation ([#1757](https://github.com/vm0-ai/vm0/issues/1757)) ([4a3146f](https://github.com/vm0-ai/vm0/commit/4a3146fb0d4c66b52cfc786286ba96cdcfcb95f9))
+* **platform:** add pagination and search to logs page ([#1751](https://github.com/vm0-ai/vm0/issues/1751)) ([e6b4b1b](https://github.com/vm0-ai/vm0/commit/e6b4b1bdc1f9c10ddab6d67fbc77bef7b294f4c7))
+
 ## [2.0.0](https://github.com/vm0-ai/vm0/compare/docs-v1.1.2...docs-v2.0.0) (2026-01-27)
 
 

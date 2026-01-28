@@ -1,5 +1,27 @@
 # Changelog
 
+## [11.1.0](https://github.com/vm0-ai/vm0/compare/web-v11.0.0...web-v11.1.0) (2026-01-28)
+
+
+### Features
+
+* **docs:** rename integration to agent skills and add skills documentation ([#1750](https://github.com/vm0-ai/vm0/issues/1750)) ([6305911](https://github.com/vm0-ai/vm0/commit/63059115b21a1bf3b36579dac9646271c7354d19)), closes [#1748](https://github.com/vm0-ai/vm0/issues/1748)
+* **platform:** add log detail page with agent events and artifact download ([#1738](https://github.com/vm0-ai/vm0/issues/1738)) ([ef8b01d](https://github.com/vm0-ai/vm0/commit/ef8b01d3ef809ed8c6c3e2ce2061b4f65c0fc69e))
+* **platform:** improve logs page ui styling and layout ([#1759](https://github.com/vm0-ai/vm0/issues/1759)) ([e0f7568](https://github.com/vm0-ai/vm0/commit/e0f7568fa001e44c41d7191b370ddea4f3aceb0b))
+
+
+### Bug Fixes
+
+* **platform:** correct artifact extraction and rename provider to framework ([#1745](https://github.com/vm0-ai/vm0/issues/1745)) ([f53f75a](https://github.com/vm0-ai/vm0/commit/f53f75a81a920fcf4eca12c84e098b7432287161))
+* **web:** add ably to server external packages ([#1742](https://github.com/vm0-ai/vm0/issues/1742)) ([08f4887](https://github.com/vm0-ai/vm0/commit/08f4887f7d5882f4b994d5d2ef7fc0f0cedfe4c1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.1.0
+
 ## [11.0.0](https://github.com/vm0-ai/vm0/compare/web-v10.12.0...web-v11.0.0) (2026-01-27)
 
 

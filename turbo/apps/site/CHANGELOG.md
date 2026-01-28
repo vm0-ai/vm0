@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/vm0-ai/vm0/compare/site-v1.6.0...site-v1.7.0) (2026-01-28)
+
+
+### Features
+
+* **docs:** rename integration to agent skills and add skills documentation ([#1750](https://github.com/vm0-ai/vm0/issues/1750)) ([6305911](https://github.com/vm0-ai/vm0/commit/63059115b21a1bf3b36579dac9646271c7354d19)), closes [#1748](https://github.com/vm0-ai/vm0/issues/1748)
+
 ## [1.6.0](https://github.com/vm0-ai/vm0/compare/site-v1.5.0...site-v1.6.0) (2026-01-27)
 
 

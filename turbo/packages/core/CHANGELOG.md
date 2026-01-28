@@ -1,5 +1,18 @@
 # Changelog
 
+## [7.1.0](https://github.com/vm0-ai/vm0/compare/core-v7.0.0...core-v7.1.0) (2026-01-28)
+
+
+### Features
+
+* **platform:** add log detail page with agent events and artifact download ([#1738](https://github.com/vm0-ai/vm0/issues/1738)) ([ef8b01d](https://github.com/vm0-ai/vm0/commit/ef8b01d3ef809ed8c6c3e2ce2061b4f65c0fc69e))
+* **platform:** improve logs page ui styling and layout ([#1759](https://github.com/vm0-ai/vm0/issues/1759)) ([e0f7568](https://github.com/vm0-ai/vm0/commit/e0f7568fa001e44c41d7191b370ddea4f3aceb0b))
+
+
+### Bug Fixes
+
+* **platform:** correct artifact extraction and rename provider to framework ([#1745](https://github.com/vm0-ai/vm0/issues/1745)) ([f53f75a](https://github.com/vm0-ai/vm0/commit/f53f75a81a920fcf4eca12c84e098b7432287161))
+
 ## [7.0.0](https://github.com/vm0-ai/vm0/compare/core-v6.3.0...core-v7.0.0) (2026-01-27)
 
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.1.0](https://github.com/vm0-ai/vm0/compare/cli-v9.0.0...cli-v9.1.0) (2026-01-28)
+
+
+### Features
+
+* **cli:** add enable prompt and --enable flag to schedule setup ([#1736](https://github.com/vm0-ai/vm0/issues/1736)) ([43f35b8](https://github.com/vm0-ai/vm0/commit/43f35b8489b8e55b4198616923572c552e85a04a))
+* **cli:** add vm0 onboard and setup-claude commands ([#1733](https://github.com/vm0-ai/vm0/issues/1733)) ([ee1c63f](https://github.com/vm0-ai/vm0/commit/ee1c63f2b238cc45835a19d2c9e982236187b1f1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.1.0
+
 ## [9.0.0](https://github.com/vm0-ai/vm0/compare/cli-v8.1.1...cli-v9.0.0) (2026-01-27)
 
 

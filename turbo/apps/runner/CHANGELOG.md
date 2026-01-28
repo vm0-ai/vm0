@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.3.0](https://github.com/vm0-ai/vm0/compare/runner-v3.2.1...runner-v3.3.0) (2026-01-28)
+
+
+### Features
+
+* **runner:** replace Python vsock-agent with Rust implementation ([#1691](https://github.com/vm0-ai/vm0/issues/1691)) ([958e4f4](https://github.com/vm0-ai/vm0/commit/958e4f4f0db699f1034e563ef59b0cc674448165))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.1.0
+
 ## [3.2.1](https://github.com/vm0-ai/vm0/compare/runner-v3.2.0...runner-v3.2.1) (2026-01-27)
 
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.25.0](https://github.com/vm0-ai/vm0/compare/platform-v0.24.0...platform-v0.25.0) (2026-01-28)
+
+
+### Features
+
+* **platform:** add log detail page with agent events and artifact download ([#1738](https://github.com/vm0-ai/vm0/issues/1738)) ([ef8b01d](https://github.com/vm0-ai/vm0/commit/ef8b01d3ef809ed8c6c3e2ce2061b4f65c0fc69e))
+* **platform:** add pagination and search to logs page ([#1751](https://github.com/vm0-ai/vm0/issues/1751)) ([e6b4b1b](https://github.com/vm0-ai/vm0/commit/e6b4b1bdc1f9c10ddab6d67fbc77bef7b294f4c7))
+* **platform:** improve logs page ui styling and layout ([#1759](https://github.com/vm0-ai/vm0/issues/1759)) ([e0f7568](https://github.com/vm0-ai/vm0/commit/e0f7568fa001e44c41d7191b370ddea4f3aceb0b))
+* **platform:** persist logs pagination state in url ([#1752](https://github.com/vm0-ai/vm0/issues/1752)) ([a1cfc6f](https://github.com/vm0-ai/vm0/commit/a1cfc6f1df59feab754f92de78e86977e68dc4ac))
+
+
+### Bug Fixes
+
+* **platform:** correct artifact extraction and rename provider to framework ([#1745](https://github.com/vm0-ai/vm0/issues/1745)) ([f53f75a](https://github.com/vm0-ai/vm0/commit/f53f75a81a920fcf4eca12c84e098b7432287161))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.1.0
+
 ## [0.24.0](https://github.com/vm0-ai/vm0/compare/platform-v0.23.1...platform-v0.24.0) (2026-01-27)
 
 
