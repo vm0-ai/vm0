@@ -47,6 +47,7 @@ let RunService: typeof import("../run-service").RunService;
 let NotFoundError: typeof import("../../errors").NotFoundError;
 let UnauthorizedError: typeof import("../../errors").UnauthorizedError;
 let BadRequestError: typeof import("../../errors").BadRequestError;
+let ConcurrentRunLimitError: typeof import("../../errors").ConcurrentRunLimitError;
 let agentSessionService: typeof import("../../agent-session").agentSessionService;
 
 // Test user ID and scope for isolation
@@ -64,6 +65,7 @@ describe("run-service", () => {
     NotFoundError = errorsModule.NotFoundError;
     UnauthorizedError = errorsModule.UnauthorizedError;
     BadRequestError = errorsModule.BadRequestError;
+    ConcurrentRunLimitError = errorsModule.ConcurrentRunLimitError;
 
     const agentSessionModule = await import("../../agent-session");
     agentSessionService = agentSessionModule.agentSessionService;
@@ -254,6 +256,47 @@ describe("run-service", () => {
 
         expect(context.vars).toBeUndefined();
         expect(context.secrets).toBeUndefined();
+      });
+    });
+
+    describe("checkConcurrencyLimit", () => {
+      // Test the core logic of checkConcurrencyLimit
+      // Database integration is tested via route tests and E2E tests
+
+      test("passes when no active runs exist for user", async () => {
+        // Use a unique user ID that definitely has no runs in DB
+        const testUser = `no-runs-user-${Date.now()}-${Math.random()}`;
+        await expect(
+          runService.checkConcurrencyLimit(testUser, 1),
+        ).resolves.toBeUndefined();
+      });
+
+      test("skips check entirely when limit is 0 (no limit)", async () => {
+        // With limit 0, the check should return immediately without querying DB
+        // This works regardless of how many runs exist because the check is skipped
+        await expect(
+          runService.checkConcurrencyLimit("any-user-doesnt-matter", 0),
+        ).resolves.toBeUndefined();
+      });
+
+      test("respects higher limit values", async () => {
+        // Use a unique user ID that has no runs
+        const testUser = `high-limit-user-${Date.now()}-${Math.random()}`;
+        // With a high limit, should pass for user with no runs
+        await expect(
+          runService.checkConcurrencyLimit(testUser, 100),
+        ).resolves.toBeUndefined();
+      });
+
+      test("ConcurrentRunLimitError has descriptive message", () => {
+        const error = new ConcurrentRunLimitError();
+        expect(error.message).toMatch(/concurrent/i);
+        expect(error.message).toMatch(/limit/i);
+      });
+
+      test("ConcurrentRunLimitError returns 429 status code", () => {
+        const error = new ConcurrentRunLimitError();
+        expect(error.statusCode).toBe(429);
       });
     });
 
