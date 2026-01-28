@@ -15,7 +15,6 @@
   "dependencies": {
     "@clerk/nextjs": "^6.35.1",
     "@vm0/ui": "workspace:*",
-    "highlight.js": "^11.11.1",
     "next": "^15.5.7",
     "next-intl": "^4.6.1",
     "react": "^19.1.2",

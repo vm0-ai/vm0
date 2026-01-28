@@ -345,9 +345,6 @@ importers:
       '@vm0/ui':
         specifier: workspace:*
         version: link:../../packages/ui
-      highlight.js:
-        specifier: ^11.11.1
-        version: 11.11.1
       next:
         specifier: ^15.5.7
         version: 15.5.7(@opentelemetry/api@1.9.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
