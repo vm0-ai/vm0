@@ -23,7 +23,7 @@ export function LogsTableRow({ logId }: LogsTableRowProps) {
   if (loadable.state === "loading") {
     return (
       <TableRow>
-        <td colSpan={7} className="p-4 text-center text-muted-foreground">
+        <td colSpan={7} className="p-2 text-center text-muted-foreground">
           Loading...
         </td>
       </TableRow>
@@ -37,7 +37,7 @@ export function LogsTableRow({ logId }: LogsTableRowProps) {
         : "Failed to load details";
     return (
       <TableRow>
-        <td colSpan={7} className="p-4 text-center text-destructive">
+        <td colSpan={7} className="p-2 text-center text-destructive">
           Error: {errorMessage}
         </td>
       </TableRow>
@@ -48,21 +48,40 @@ export function LogsTableRow({ logId }: LogsTableRowProps) {
 
   return (
     <TableRow
-      className="cursor-pointer hover:bg-muted/50"
+      className="h-[53px] cursor-pointer hover:bg-muted/50"
       onClick={handleRowClick}
     >
-      <TableCell className="font-mono text-sm">{detail.id}</TableCell>
-      <TableCell className="font-mono text-sm">
-        {detail.sessionId ?? "-"}
+      <TableCell className="max-w-[180px] px-3 py-2 text-sm font-medium">
+        <span className="block truncate">{detail.id}</span>
       </TableCell>
-      <TableCell>{detail.agentName}</TableCell>
-      <TableCell>{detail.framework}</TableCell>
-      <TableCell>
-        <StatusBadge status={detail.status} variant="compact" />
+      <TableCell className="max-w-[180px] px-3 py-2 text-sm font-medium">
+        <span className="block truncate">{detail.sessionId ?? "-"}</span>
       </TableCell>
-      <TableCell>{new Date(detail.createdAt).toLocaleString()}</TableCell>
-      <TableCell className="w-8">
-        <IconChevronRight className="h-4 w-4 text-muted-foreground" />
+      <TableCell className="w-[120px] truncate px-3 py-2 text-sm font-medium">
+        {detail.agentName}
+      </TableCell>
+      <TableCell className="w-[180px] truncate px-3 py-2 text-sm font-medium">
+        {detail.framework}
+      </TableCell>
+      <TableCell className="w-[100px] px-3 py-2">
+        <StatusBadge status={detail.status} />
+      </TableCell>
+      <TableCell className="px-3 py-2 text-sm font-medium">
+        {new Date(detail.createdAt)
+          .toLocaleString("sv-SE", {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          })
+          .replace(" ", " ")}
+      </TableCell>
+      <TableCell className="w-[50px] px-2 py-2">
+        <div className="flex size-8 items-center justify-center">
+          <IconChevronRight className="size-6 text-muted-foreground" />
+        </div>
       </TableCell>
     </TableRow>
   );

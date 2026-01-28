@@ -6,14 +6,7 @@ import {
   IconRobot,
 } from "@tabler/icons-react";
 import { AppShell } from "../layout/app-shell.tsx";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
-  CopyButton,
-  Input,
-} from "@vm0/ui";
+import { Card, CardContent, CopyButton, Input } from "@vm0/ui";
 import {
   currentLogId$,
   logDetailSearchTerm$,
@@ -36,11 +29,35 @@ function InfoRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-4 py-2">
+    <div className="flex items-center gap-4 py-3">
       <span className="text-sm text-muted-foreground w-24 shrink-0">
         {label}
       </span>
       <div className="flex items-center gap-2 min-w-0">{children}</div>
+    </div>
+  );
+}
+
+function formatTime(dateStr: string): string {
+  const date = new Date(dateStr);
+  const options: Intl.DateTimeFormatOptions = {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZoneName: "shortOffset",
+  };
+  return date.toLocaleString("en-US", options);
+}
+
+function CopyField({ text }: { text: string }) {
+  return (
+    <div className="flex h-9 w-60 items-center gap-2 rounded-md bg-muted px-3">
+      <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-sm text-foreground">
+        {text}
+      </span>
+      <CopyButton text={text} className="h-4 w-4 shrink-0 p-0" />
     </div>
   );
 }
@@ -213,11 +230,16 @@ function AgentEventsCard({
 
   if (eventsLoadable.state === "loading") {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Raw Data</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <Card className="overflow-hidden">
+        <div className="flex items-center justify-between rounded-t-lg border-b border-border bg-muted px-4 py-2">
+          <div className="flex items-center gap-2">
+            <IconList className="h-5 w-5 text-muted-foreground" />
+            <span className="text-sm font-medium text-card-foreground">
+              Log raw data
+            </span>
+          </div>
+        </div>
+        <CardContent className="p-4">
           <div className="p-8 text-center text-muted-foreground">
             Loading events...
           </div>
@@ -228,11 +250,16 @@ function AgentEventsCard({
 
   if (eventsLoadable.state === "hasError") {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Raw Data</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <Card className="overflow-hidden">
+        <div className="flex items-center justify-between rounded-t-lg border-b border-border bg-muted px-4 py-2">
+          <div className="flex items-center gap-2">
+            <IconList className="h-5 w-5 text-muted-foreground" />
+            <span className="text-sm font-medium text-card-foreground">
+              Log raw data
+            </span>
+          </div>
+        </div>
+        <CardContent className="p-4">
           <div className="p-8 text-center text-muted-foreground">
             Failed to load events
           </div>
@@ -247,27 +274,27 @@ function AgentEventsCard({
   const logText = formatEventsAsLogText(events);
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <IconList className="h-4 w-4 text-muted-foreground" />
-            <CardTitle className="text-base font-medium">
-              Log raw data
-            </CardTitle>
-          </div>
-          <div className="relative w-48">
-            <Input
-              placeholder="Search logs"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="h-8 pr-8 text-sm"
-            />
-            <IconSearch className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+    <Card className="overflow-hidden">
+      <div className="flex items-center justify-between rounded-t-lg border-b border-border bg-muted px-4 py-2">
+        <div className="flex items-center gap-2">
+          <IconList className="h-5 w-5 text-muted-foreground" />
+          <span className="text-sm font-medium text-card-foreground">
+            Log raw data
+          </span>
+        </div>
+        <div className="flex h-9 items-center rounded-md border border-border bg-background">
+          <Input
+            placeholder="Search logs"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="h-full w-48 border-0 text-sm focus-visible:ring-0"
+          />
+          <div className="flex h-9 w-9 items-center justify-center border-l border-border">
+            <IconSearch className="h-5 w-5 text-muted-foreground" />
           </div>
         </div>
-      </CardHeader>
-      <CardContent>
+      </div>
+      <CardContent className="p-4">
         {events.length === 0 ? (
           <div className="p-8 text-center text-muted-foreground">
             No events available
@@ -314,22 +341,16 @@ function LogDetailContentInner({ logId }: { logId: string }) {
     <div className="space-y-6">
       {/* Run Details Card */}
       <Card>
-        <CardContent className="pt-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12">
+        <CardContent className="py-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-16">
             {/* Left column */}
-            <div className="divide-y divide-border">
+            <div>
               <InfoRow label="Run ID">
-                <span className="font-mono text-sm truncate">{detail.id}</span>
-                <CopyButton text={detail.id} />
+                <CopyField text={detail.id} />
               </InfoRow>
               <InfoRow label="Session ID">
                 {detail.sessionId ? (
-                  <>
-                    <span className="font-mono text-sm truncate">
-                      {detail.sessionId}
-                    </span>
-                    <CopyButton text={detail.sessionId} />
-                  </>
+                  <CopyField text={detail.sessionId} />
                 ) : (
                   <span className="text-sm text-muted-foreground">-</span>
                 )}
@@ -338,27 +359,29 @@ function LogDetailContentInner({ logId }: { logId: string }) {
                 <StatusBadge status={detail.status} />
               </InfoRow>
               <InfoRow label="Duration">
-                <span className="text-sm">
+                <span className="text-sm text-foreground">
                   {formatDuration(detail.startedAt, detail.completedAt)}
                 </span>
               </InfoRow>
             </div>
             {/* Right column */}
-            <div className="divide-y divide-border">
+            <div>
               <InfoRow label="Agent">
                 <IconRobot className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm">{detail.agentName}</span>
+                <span className="text-sm text-foreground">
+                  {detail.agentName}
+                </span>
               </InfoRow>
               <InfoRow label="Framework">
-                <span className="text-sm">
+                <span className="text-sm text-foreground">
                   {detail.framework ?? (
                     <span className="text-muted-foreground">-</span>
                   )}
                 </span>
               </InfoRow>
               <InfoRow label="Time">
-                <span className="text-sm">
-                  {new Date(detail.createdAt).toLocaleString()}
+                <span className="text-sm text-muted-foreground">
+                  {formatTime(detail.createdAt)}
                 </span>
               </InfoRow>
               <InfoRow label="Artifact">
@@ -404,7 +427,7 @@ export function LogDetailPage() {
 
   return (
     <AppShell breadcrumb={breadcrumb}>
-      <div className="px-8 py-6">
+      <div className="px-6 py-4">
         {logId ? (
           <LogDetailContentInner logId={logId} />
         ) : (

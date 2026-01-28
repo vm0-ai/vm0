@@ -1,10 +1,10 @@
-import { IconCheck } from "@tabler/icons-react";
+import { IconCircleCheck } from "@tabler/icons-react";
 import type { LogStatus } from "../../signals/logs-page/types.ts";
 
 interface StatusBadgeConfig {
   label: string;
   className: string;
-  icon?: boolean;
+  iconClassName?: string;
 }
 
 interface StatusBadgeProps {
@@ -19,8 +19,8 @@ function getStatusConfig(): Record<LogStatus, StatusBadgeConfig> {
     running: { label: "Running", className: "bg-blue-100 text-blue-800" },
     completed: {
       label: "Done",
-      className: "border border-green-200 text-green-700",
-      icon: true,
+      className: "border border-border bg-background text-muted-foreground",
+      iconClassName: "text-green-600",
     },
     failed: { label: "Failed", className: "bg-red-100 text-red-800" },
     timeout: { label: "Timeout", className: "bg-orange-100 text-orange-800" },
@@ -31,14 +31,16 @@ function getStatusConfig(): Record<LogStatus, StatusBadgeConfig> {
 export function StatusBadge({ status, variant = "default" }: StatusBadgeProps) {
   const statusConfig = getStatusConfig();
   const config = statusConfig[status];
-  const showIcon = variant === "default" && config.icon;
+  const showIcon = variant === "default" && config.iconClassName;
   const label = variant === "compact" ? status : config.label;
 
   return (
     <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${config.className}`}
+      className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium ${config.className}`}
     >
-      {showIcon && <IconCheck className="h-3 w-3" />}
+      {showIcon && (
+        <IconCircleCheck className={`h-3 w-3 ${config.iconClassName}`} />
+      )}
       {label}
     </span>
   );

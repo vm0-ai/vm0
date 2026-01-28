@@ -112,10 +112,15 @@ function LogsPaginationWithData({
   const hasNext =
     dataLoadable.state === "hasData" && dataLoadable.data.pagination.hasMore;
   const isLoading = dataLoadable.state === "loading";
+  const totalPages =
+    dataLoadable.state === "hasData"
+      ? dataLoadable.data.pagination.totalPages
+      : undefined;
 
   return (
     <Pagination
       currentPage={currentPage}
+      totalPages={totalPages}
       rowsPerPage={rowsPerPage}
       hasNext={hasNext}
       hasPrev={hasPrev}

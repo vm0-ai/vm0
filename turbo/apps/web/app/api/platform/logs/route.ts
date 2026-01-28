@@ -16,7 +16,7 @@ import {
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
-import { eq, and, desc, lt, or, ilike } from "drizzle-orm";
+import { eq, and, desc, lt, or, ilike, count } from "drizzle-orm";
 
 const router = tsr.router(platformLogsListContract, {
   list: async ({ query }) => {
@@ -104,6 +104,36 @@ const router = tsr.router(platformLogsListContract, {
 
     const runs = await queryBuilder;
 
+    // Get total count for pagination
+    let countQuery = globalThis.services.db
+      .select({ count: count() })
+      .from(agentRuns)
+      .where(eq(agentRuns.userId, userId));
+
+    if (query.search) {
+      countQuery = globalThis.services.db
+        .select({ count: count() })
+        .from(agentRuns)
+        .leftJoin(
+          agentComposeVersions,
+          eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
+        )
+        .leftJoin(
+          agentComposes,
+          eq(agentComposeVersions.composeId, agentComposes.id),
+        )
+        .where(
+          and(
+            eq(agentRuns.userId, userId),
+            ilike(agentComposes.name, `%${query.search}%`),
+          ),
+        );
+    }
+
+    const [countResult] = await countQuery;
+    const totalCount = countResult?.count ?? 0;
+    const totalPages = Math.max(1, Math.ceil(totalCount / limit));
+
     // Determine pagination info
     const hasMore = runs.length > limit;
     const data = hasMore ? runs.slice(0, limit) : runs;
@@ -124,6 +154,7 @@ const router = tsr.router(platformLogsListContract, {
         pagination: {
           hasMore: hasMore,
           nextCursor: nextCursor,
+          totalPages: totalPages,
         },
       },
     };

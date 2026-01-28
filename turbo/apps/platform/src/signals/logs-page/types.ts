@@ -10,6 +10,7 @@ export interface LogsListResponse {
   pagination: {
     hasMore: boolean;
     nextCursor: string | null;
+    totalPages: number;
   };
 }
 

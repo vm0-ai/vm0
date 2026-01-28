@@ -33,7 +33,6 @@ describe("logs page", () => {
     expect(screen.getByText("Session ID")).toBeInTheDocument();
     expect(screen.getByText("Agent")).toBeInTheDocument();
     expect(screen.getByText("Framework")).toBeInTheDocument();
-    expect(screen.getByText("Status")).toBeInTheDocument();
     expect(screen.getByText("Generate time")).toBeInTheDocument();
   });
 
@@ -53,10 +52,6 @@ describe("logs page", () => {
     // Multiple rows can have claude-code
     const frameworkCells = screen.getAllByText("claude-code");
     expect(frameworkCells.length).toBeGreaterThan(0);
-
-    // Verify status badge is rendered
-    const completedBadges = screen.getAllByText("completed");
-    expect(completedBadges.length).toBeGreaterThan(0);
   });
 
   it("should show empty state when no logs exist", async () => {
@@ -173,54 +168,6 @@ describe("logs page", () => {
     // The last icon button (next) should be enabled when hasMore is true
     const nextButton = iconButtons[iconButtons.length - 1];
     expect(nextButton).not.toHaveAttribute("disabled");
-  });
-
-  it("should display different status badges with correct styles", async () => {
-    server.use(
-      http.get("*/api/platform/logs", () => {
-        return HttpResponse.json({
-          data: [
-            { id: "run_pending" },
-            { id: "run_running" },
-            { id: "run_failed" },
-          ],
-          pagination: { hasMore: false, nextCursor: null },
-        });
-      }),
-      http.get("*/api/platform/logs/:id", ({ params }) => {
-        const { id } = params;
-        const statusMap: Record<string, string> = {
-          run_pending: "pending",
-          run_running: "running",
-          run_failed: "failed",
-        };
-        return HttpResponse.json({
-          id,
-          sessionId: null,
-          agentName: `Agent ${id}`,
-          framework: "claude-code",
-          status: statusMap[id as string] ?? "completed",
-          prompt: "Test",
-          error: id === "run_failed" ? "Something went wrong" : null,
-          createdAt: "2024-01-01T00:00:00Z",
-          startedAt: null,
-          completedAt: null,
-          artifact: { name: null, version: null },
-        });
-      }),
-    );
-
-    await setupPage({
-      context,
-      path: "/logs",
-    });
-
-    // Wait for data to load and verify status badges
-    await waitFor(() => {
-      expect(screen.getByText("pending")).toBeInTheDocument();
-    });
-    expect(screen.getByText("running")).toBeInTheDocument();
-    expect(screen.getByText("failed")).toBeInTheDocument();
   });
 
   it("should display dash when sessionId is null", async () => {

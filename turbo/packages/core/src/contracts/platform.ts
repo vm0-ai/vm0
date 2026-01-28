@@ -1,12 +1,18 @@
 import { z } from "zod";
 import { initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import {
-  createPaginatedResponseSchema,
-  listQuerySchema,
-} from "./public/common";
+import { listQuerySchema } from "./public/common";
 
 const c = initContract();
+
+/**
+ * Platform-specific pagination schema with total pages
+ */
+const platformPaginationSchema = z.object({
+  hasMore: z.boolean(),
+  nextCursor: z.string().nullable(),
+  totalPages: z.number(),
+});
 
 /**
  * Run status enum for platform logs
@@ -28,11 +34,12 @@ const platformLogEntrySchema = z.object({
 });
 
 /**
- * Logs list response schema using standard pagination
+ * Logs list response schema with platform-specific pagination
  */
-const platformLogsListResponseSchema = createPaginatedResponseSchema(
-  platformLogEntrySchema,
-);
+const platformLogsListResponseSchema = z.object({
+  data: z.array(platformLogEntrySchema),
+  pagination: platformPaginationSchema,
+});
 
 /**
  * Artifact information schema

@@ -60,12 +60,14 @@ export const platformLogsHandlers = [
     const data = mockLogDetails.slice(cursorIndex, cursorIndex + limit);
     const hasMore = cursorIndex + limit < mockLogDetails.length;
     const nextCursor = hasMore ? data[data.length - 1]?.id || null : null;
+    const totalPages = Math.max(1, Math.ceil(mockLogDetails.length / limit));
 
     const response: LogsListResponse = {
       data: data.map((log) => ({ id: log.id })),
       pagination: {
         hasMore,
         nextCursor,
+        totalPages,
       },
     };
 

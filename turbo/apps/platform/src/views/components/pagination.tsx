@@ -4,12 +4,20 @@ import {
   IconChevronsLeft,
   IconChevronsRight,
 } from "@tabler/icons-react";
-import { Button } from "@vm0/ui";
+import {
+  Button,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@vm0/ui";
 
 const ROWS_PER_PAGE_OPTIONS = [10, 20, 50, 100] as const;
 
 interface PaginationProps {
   currentPage: number;
+  totalPages?: number;
   rowsPerPage: number;
   hasNext: boolean;
   hasPrev: boolean;
@@ -23,6 +31,7 @@ interface PaginationProps {
 
 export function Pagination({
   currentPage,
+  totalPages,
   rowsPerPage,
   hasNext,
   hasPrev,
@@ -35,73 +44,82 @@ export function Pagination({
 }: PaginationProps) {
   const canGoBackTwo = currentPage > 1;
 
-  const handleRowsPerPageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const limit = Number.parseInt(e.target.value, 10);
+  const handleRowsPerPageChange = (value: string) => {
+    const limit = Number.parseInt(value, 10);
     onRowsPerPageChange(limit);
   };
 
   return (
-    <div className="flex items-center justify-end gap-6 py-4">
+    <div className="flex items-center justify-end gap-8">
       {/* Rows per page selector */}
       <div className="flex items-center gap-2">
-        <span className="text-sm text-muted-foreground">Rows per page</span>
-        <select
-          value={rowsPerPage}
-          onChange={handleRowsPerPageChange}
-          className="h-8 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        <span className="pr-2 text-sm font-medium text-foreground">
+          Rows per page
+        </span>
+        <Select
+          value={String(rowsPerPage)}
+          onValueChange={handleRowsPerPageChange}
         >
-          {ROWS_PER_PAGE_OPTIONS.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger className="w-20">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {ROWS_PER_PAGE_OPTIONS.map((option) => (
+              <SelectItem key={option} value={String(option)}>
+                {option}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Page indicator */}
-      <span className="text-sm text-muted-foreground">Page {currentPage}</span>
+      <span className="pr-2 text-sm font-medium text-foreground">
+        Page {currentPage}
+        {totalPages !== undefined ? ` of ${totalPages}` : ""}
+      </span>
 
       {/* Navigation buttons */}
-      <div className="flex items-center gap-1">
-        {/* Back two pages */}
-        <Button
-          variant="outline"
-          size="icon"
-          className="h-8 w-8"
-          onClick={onBackTwoPages}
-          disabled={!canGoBackTwo}
-        >
-          <IconChevronsLeft className="h-4 w-4" />
-        </Button>
+      <div className="flex items-center gap-2">
         {/* Previous page */}
         <Button
           variant="outline"
           size="icon"
-          className="h-8 w-8"
+          className="size-8"
           onClick={onPrevPage}
           disabled={!hasPrev}
         >
-          <IconChevronLeft className="h-4 w-4" />
+          <IconChevronLeft className="size-6" />
         </Button>
-        {/* Next page */}
+        {/* Back two pages */}
         <Button
           variant="outline"
           size="icon"
-          className="h-8 w-8"
-          onClick={onNextPage}
-          disabled={!hasNext || isLoading}
+          className="size-8"
+          onClick={onBackTwoPages}
+          disabled={!canGoBackTwo}
         >
-          <IconChevronRight className="h-4 w-4" />
+          <IconChevronsLeft className="size-6" />
         </Button>
         {/* Forward two pages */}
         <Button
           variant="outline"
           size="icon"
-          className="h-8 w-8"
+          className="size-8"
           onClick={onForwardTwoPages}
           disabled={!hasNext || isLoading}
         >
-          <IconChevronsRight className="h-4 w-4" />
+          <IconChevronsRight className="size-6" />
+        </Button>
+        {/* Next page */}
+        <Button
+          variant="outline"
+          size="icon"
+          className="size-8"
+          onClick={onNextPage}
+          disabled={!hasNext || isLoading}
+        >
+          <IconChevronRight className="size-6" />
         </Button>
       </div>
     </div>

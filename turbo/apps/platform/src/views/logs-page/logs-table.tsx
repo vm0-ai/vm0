@@ -8,15 +8,27 @@ import type { LogsListResponse } from "../../signals/logs-page/types.ts";
 
 function LogsTableHeader() {
   return (
-    <TableHeader>
-      <TableRow>
-        <TableHead>Run ID</TableHead>
-        <TableHead>Session ID</TableHead>
-        <TableHead>Agent</TableHead>
-        <TableHead>Framework</TableHead>
-        <TableHead>Status</TableHead>
-        <TableHead>Generate time</TableHead>
-        <TableHead className="w-8" />
+    <TableHeader className="bg-muted">
+      <TableRow className="hover:bg-transparent">
+        <TableHead className="h-10 w-[180px] px-3 text-sm font-medium text-foreground">
+          Run ID
+        </TableHead>
+        <TableHead className="h-10 w-[180px] px-3 text-sm font-medium text-foreground">
+          Session ID
+        </TableHead>
+        <TableHead className="h-10 w-[120px] px-3 text-sm font-medium text-foreground">
+          Agent
+        </TableHead>
+        <TableHead className="h-10 w-[180px] px-3 text-sm font-medium text-foreground">
+          Framework
+        </TableHead>
+        <TableHead className="h-10 w-[100px] px-3 text-sm font-medium text-foreground">
+          Status
+        </TableHead>
+        <TableHead className="h-10 px-3 text-sm font-medium text-foreground">
+          Generate time
+        </TableHead>
+        <TableHead className="h-10 w-[50px] px-2" />
       </TableRow>
     </TableHeader>
   );
@@ -24,16 +36,18 @@ function LogsTableHeader() {
 
 function LoadingTable() {
   return (
-    <Table>
-      <LogsTableHeader />
-      <TableBody>
-        <TableRow>
-          <td colSpan={7} className="p-4 text-center">
-            Loading...
-          </td>
-        </TableRow>
-      </TableBody>
-    </Table>
+    <div className="overflow-hidden rounded-md border border-border bg-card">
+      <Table>
+        <LogsTableHeader />
+        <TableBody>
+          <TableRow>
+            <td colSpan={7} className="p-4 text-center">
+              Loading...
+            </td>
+          </TableRow>
+        </TableBody>
+      </Table>
+    </div>
   );
 }
 
@@ -50,16 +64,18 @@ export function LogsTable() {
         ? currentPage.error.message
         : "Failed to load logs";
     return (
-      <Table>
-        <LogsTableHeader />
-        <TableBody>
-          <TableRow>
-            <td colSpan={7} className="p-4 text-center text-destructive">
-              Error: {errorMessage}
-            </td>
-          </TableRow>
-        </TableBody>
-      </Table>
+      <div className="overflow-hidden rounded-md border border-border bg-card">
+        <Table>
+          <LogsTableHeader />
+          <TableBody>
+            <TableRow>
+              <td colSpan={7} className="p-4 text-center text-destructive">
+                Error: {errorMessage}
+              </td>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </div>
     );
   }
 
@@ -87,16 +103,18 @@ function LogsTableData({ pageComputed }: LogsTableDataProps) {
         ? dataLoadable.error.message
         : "Failed to load logs";
     return (
-      <Table>
-        <LogsTableHeader />
-        <TableBody>
-          <TableRow>
-            <td colSpan={7} className="p-4 text-center text-destructive">
-              Error: {errorMessage}
-            </td>
-          </TableRow>
-        </TableBody>
-      </Table>
+      <div className="overflow-hidden rounded-md border border-border bg-card">
+        <Table>
+          <LogsTableHeader />
+          <TableBody>
+            <TableRow>
+              <td colSpan={7} className="p-4 text-center text-destructive">
+                Error: {errorMessage}
+              </td>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </div>
     );
   }
 
@@ -105,13 +123,15 @@ function LogsTableData({ pageComputed }: LogsTableDataProps) {
   }
 
   return (
-    <Table>
-      <LogsTableHeader />
-      <TableBody>
-        {dataLoadable.data.data.map((entry) => (
-          <LogsTableRow key={entry.id} logId={entry.id} />
-        ))}
-      </TableBody>
-    </Table>
+    <div className="overflow-hidden rounded-md border border-border bg-card">
+      <Table>
+        <LogsTableHeader />
+        <TableBody>
+          {dataLoadable.data.data.map((entry) => (
+            <LogsTableRow key={entry.id} logId={entry.id} />
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }

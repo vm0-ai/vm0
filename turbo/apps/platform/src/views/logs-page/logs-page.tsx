@@ -10,16 +10,12 @@ export function LogsPage() {
       title="Logs"
       subtitle="View all agent runs and execution history."
     >
-      <div className="px-8">
+      <div className="flex flex-col gap-6 px-6 mb-8">
         {/* Search */}
-        <div className="mt-4">
-          <LogsSearch />
-        </div>
+        <LogsSearch />
 
         {/* Logs Table */}
-        <div className="mt-4">
-          <LogsTable />
-        </div>
+        <LogsTable />
 
         {/* Pagination Controls */}
         <LogsPagination />
