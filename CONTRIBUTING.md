@@ -1,5 +1,7 @@
 # Contributing to vm0
 
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/vm0-ai/vm0?quickstart=1)
+
 ## Development Setup
 
 This project uses [Dev Containers](https://containers.dev/) for development. The dev container includes all required dependencies and tools.
