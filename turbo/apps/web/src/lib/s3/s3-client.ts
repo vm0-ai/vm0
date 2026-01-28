@@ -172,18 +172,23 @@ export async function deleteS3Objects(
  * @param bucket - S3 bucket name
  * @param key - S3 object key
  * @param expiresIn - URL expiration time in seconds (default: 86400 = 24 hours)
+ * @param filename - Optional filename for the download (sets Content-Disposition header)
  * @returns Presigned URL string
  */
 export async function generatePresignedUrl(
   bucket: string,
   key: string,
   expiresIn: number = 86400,
+  filename?: string,
 ): Promise<string> {
   const client = getS3Client();
 
   const command = new GetObjectCommand({
     Bucket: bucket,
     Key: key,
+    ...(filename && {
+      ResponseContentDisposition: `attachment; filename="${filename}"`,
+    }),
   });
 
   return getSignedUrl(client, command, { expiresIn });

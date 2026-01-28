@@ -124,12 +124,14 @@ const router = tsr.router(platformArtifactDownloadContract, {
       return notFoundResponse(`Artifact '${name}' version has no files`);
     }
 
-    // Generate presigned URL for archive download
+    // Generate presigned URL for archive download with custom filename
     const archiveKey = `${version.s3Key}/archive.tar.gz`;
+    const downloadFilename = `${name}-${version.id}.tar.gz`;
     const archiveUrl = await generatePresignedUrl(
       bucketName,
       archiveKey,
       DOWNLOAD_EXPIRY_SECONDS,
+      downloadFilename,
     );
 
     // Calculate expiration time
