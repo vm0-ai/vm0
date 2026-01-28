@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.2.1](https://github.com/vm0-ai/vm0/compare/cli-v9.2.0...cli-v9.2.1) (2026-01-28)
+
+
+### Bug Fixes
+
+* **cli:** include cd instruction in onboard next step message ([#1791](https://github.com/vm0-ai/vm0/issues/1791)) ([126e8b7](https://github.com/vm0-ai/vm0/commit/126e8b7f2b2fce23427a6480ccd7d9255377fd95))
+
 ## [9.2.0](https://github.com/vm0-ai/vm0/compare/cli-v9.1.0...cli-v9.2.0) (2026-01-28)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.0](https://github.com/vm0-ai/vm0/compare/platform-v0.25.1...platform-v0.26.0) (2026-01-28)
+
+
+### Features
+
+* **platform:** enhance log viewer with formatted cards and semantic colors ([#1790](https://github.com/vm0-ai/vm0/issues/1790)) ([0df2be9](https://github.com/vm0-ai/vm0/commit/0df2be99400f3074e637d083f6beff926fe3725c))
+
 ## [0.25.1](https://github.com/vm0-ai/vm0/compare/platform-v0.25.0...platform-v0.25.1) (2026-01-28)
 
 
