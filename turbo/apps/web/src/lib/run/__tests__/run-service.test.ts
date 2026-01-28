@@ -260,8 +260,10 @@ describe("run-service", () => {
     });
 
     describe("checkConcurrencyLimit", () => {
-      // Test the core logic of checkConcurrencyLimit
-      // Database integration is tested via route tests and E2E tests
+      // NOTE: These tests use vi.spyOn to mock db.select() because the test database
+      // is missing required schema migrations (scope_id column on agent_composes).
+      // This is a pre-existing infrastructure issue tracked separately.
+      // Full integration testing is covered by v1/runs route tests and E2E tests.
 
       test("passes when no active runs exist for user", async () => {
         // Use a unique user ID that definitely has no runs in DB
@@ -289,14 +291,15 @@ describe("run-service", () => {
       });
 
       test("throws ConcurrentRunLimitError when active runs >= limit", async () => {
-        // Mock the DB query to return a count at the limit
+        // Mock db.select to simulate user having active runs at the limit
         const mockFrom = vi.fn().mockReturnValue({
           where: vi.fn().mockResolvedValue([{ count: 1 }]),
         });
-        const mockSelect = vi.fn().mockReturnValue({ from: mockFrom });
         const selectSpy = vi
           .spyOn(globalThis.services.db, "select")
-          .mockImplementation(mockSelect);
+          .mockReturnValue({ from: mockFrom } as ReturnType<
+            typeof globalThis.services.db.select
+          >);
 
         try {
           // Limit is 1, mock returns count of 1 - should throw
@@ -309,14 +312,15 @@ describe("run-service", () => {
       });
 
       test("throws ConcurrentRunLimitError when active runs exceed limit", async () => {
-        // Mock the DB query to return a count exceeding the limit
+        // Mock db.select to simulate user having more runs than the limit
         const mockFrom = vi.fn().mockReturnValue({
           where: vi.fn().mockResolvedValue([{ count: 5 }]),
         });
-        const mockSelect = vi.fn().mockReturnValue({ from: mockFrom });
         const selectSpy = vi
           .spyOn(globalThis.services.db, "select")
-          .mockImplementation(mockSelect);
+          .mockReturnValue({ from: mockFrom } as ReturnType<
+            typeof globalThis.services.db.select
+          >);
 
         try {
           // Limit is 2, mock returns count of 5 - should throw
@@ -329,14 +333,15 @@ describe("run-service", () => {
       });
 
       test("passes when active runs below limit", async () => {
-        // Mock the DB query to return a count below the limit
+        // Mock db.select to simulate user having fewer runs than the limit
         const mockFrom = vi.fn().mockReturnValue({
           where: vi.fn().mockResolvedValue([{ count: 1 }]),
         });
-        const mockSelect = vi.fn().mockReturnValue({ from: mockFrom });
         const selectSpy = vi
           .spyOn(globalThis.services.db, "select")
-          .mockImplementation(mockSelect);
+          .mockReturnValue({ from: mockFrom } as ReturnType<
+            typeof globalThis.services.db.select
+          >);
 
         try {
           // Limit is 3, mock returns count of 1 - should pass
@@ -360,13 +365,10 @@ describe("run-service", () => {
       });
 
       test("falls back to default when CONCURRENT_RUN_LIMIT is invalid", async () => {
-        // Save original env value
-        const originalEnv = process.env.CONCURRENT_RUN_LIMIT;
+        // Use vi.stubEnv for proper environment variable testing
+        vi.stubEnv("CONCURRENT_RUN_LIMIT", "invalid");
 
         try {
-          // Set invalid value
-          process.env.CONCURRENT_RUN_LIMIT = "invalid";
-
           // Use a unique user ID that has no runs
           const testUser = `invalid-env-user-${Date.now()}-${Math.random()}`;
 
@@ -375,12 +377,7 @@ describe("run-service", () => {
             runService.checkConcurrencyLimit(testUser),
           ).resolves.toBeUndefined();
         } finally {
-          // Restore original value
-          if (originalEnv === undefined) {
-            delete process.env.CONCURRENT_RUN_LIMIT;
-          } else {
-            process.env.CONCURRENT_RUN_LIMIT = originalEnv;
-          }
+          vi.unstubAllEnvs();
         }
       });
     });
