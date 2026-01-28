@@ -11,6 +11,7 @@ import type {
   ExecutionContext,
   StorageManifest,
   ResumeSession,
+  AblyTokenRequest,
 } from "@vm0/core";
 
 // Re-export types for consumers
@@ -157,4 +158,30 @@ export async function completeJob(
   }
 
   return response.json() as Promise<CompleteJobResult>;
+}
+
+/**
+ * Get Ably token for runner group subscription
+ * Used to authenticate with Ably for job notifications
+ */
+export async function getRealtimeToken(
+  server: ServerConfig,
+  group: string,
+): Promise<AblyTokenRequest> {
+  const headers = getAuthHeaders(server.token);
+
+  const response = await fetch(`${server.url}/api/runners/realtime/token`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ group }),
+  });
+
+  if (!response.ok) {
+    const errorData = (await response.json()) as ApiErrorResponse;
+    throw new Error(
+      `Failed to get realtime token: ${errorData.error?.message || response.statusText}`,
+    );
+  }
+
+  return response.json() as Promise<AblyTokenRequest>;
 }

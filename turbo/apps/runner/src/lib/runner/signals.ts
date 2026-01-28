@@ -2,6 +2,7 @@ import type { RunnerState } from "./types.js";
 
 interface SignalHandlers {
   onShutdown: () => void;
+  onDrain: () => void;
   updateStatus: () => void;
 }
 
@@ -37,6 +38,7 @@ export function setupSignalHandlers(
       );
       state.mode = "draining";
       handlers.updateStatus();
+      handlers.onDrain();
     }
   });
 }
