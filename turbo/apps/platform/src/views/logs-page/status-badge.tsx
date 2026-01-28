@@ -9,8 +9,6 @@ interface StatusBadgeConfig {
 
 interface StatusBadgeProps {
   status: LogStatus;
-  /** Use compact variant for table rows (shows status text as-is) */
-  variant?: "default" | "compact";
 }
 
 function getStatusConfig(): Record<LogStatus, StatusBadgeConfig> {
@@ -28,11 +26,10 @@ function getStatusConfig(): Record<LogStatus, StatusBadgeConfig> {
   };
 }
 
-export function StatusBadge({ status, variant = "default" }: StatusBadgeProps) {
+export function StatusBadge({ status }: StatusBadgeProps) {
   const statusConfig = getStatusConfig();
   const config = statusConfig[status];
-  const showIcon = variant === "default" && config.iconClassName;
-  const label = variant === "compact" ? status : config.label;
+  const showIcon = config.iconClassName;
 
   return (
     <span
@@ -41,7 +38,7 @@ export function StatusBadge({ status, variant = "default" }: StatusBadgeProps) {
       {showIcon && (
         <IconCircleCheck className={`h-3 w-3 ${config.iconClassName}`} />
       )}
-      {label}
+      {config.label}
     </span>
   );
 }

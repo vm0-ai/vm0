@@ -5,6 +5,19 @@ import { navigateInReact$ } from "../../signals/route.ts";
 import { TableRow, TableCell } from "@vm0/ui";
 import { StatusBadge } from "./status-badge.tsx";
 
+function formatTime(dateStr: string): string {
+  const date = new Date(dateStr);
+  const options: Intl.DateTimeFormatOptions = {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZoneName: "shortOffset",
+  };
+  return date.toLocaleString("en-US", options);
+}
+
 interface LogsTableRowProps {
   logId: string;
 }
@@ -67,16 +80,7 @@ export function LogsTableRow({ logId }: LogsTableRowProps) {
         <StatusBadge status={detail.status} />
       </TableCell>
       <TableCell className="px-3 py-2 text-sm font-medium">
-        {new Date(detail.createdAt)
-          .toLocaleString("sv-SE", {
-            year: "numeric",
-            month: "2-digit",
-            day: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-          })
-          .replace(" ", " ")}
+        {formatTime(detail.createdAt)}
       </TableCell>
       <TableCell className="w-[50px] px-2 py-2">
         <div className="flex size-8 items-center justify-center">

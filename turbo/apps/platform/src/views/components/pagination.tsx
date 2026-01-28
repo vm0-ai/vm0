@@ -81,16 +81,6 @@ export function Pagination({
 
       {/* Navigation buttons */}
       <div className="flex items-center gap-2">
-        {/* Previous page */}
-        <Button
-          variant="outline"
-          size="icon"
-          className="size-8"
-          onClick={onPrevPage}
-          disabled={!hasPrev}
-        >
-          <IconChevronLeft className="size-6" />
-        </Button>
         {/* Back two pages */}
         <Button
           variant="outline"
@@ -101,15 +91,15 @@ export function Pagination({
         >
           <IconChevronsLeft className="size-6" />
         </Button>
-        {/* Forward two pages */}
+        {/* Previous page */}
         <Button
           variant="outline"
           size="icon"
           className="size-8"
-          onClick={onForwardTwoPages}
-          disabled={!hasNext || isLoading}
+          onClick={onPrevPage}
+          disabled={!hasPrev}
         >
-          <IconChevronsRight className="size-6" />
+          <IconChevronLeft className="size-6" />
         </Button>
         {/* Next page */}
         <Button
@@ -120,6 +110,16 @@ export function Pagination({
           disabled={!hasNext || isLoading}
         >
           <IconChevronRight className="size-6" />
+        </Button>
+        {/* Forward two pages */}
+        <Button
+          variant="outline"
+          size="icon"
+          className="size-8"
+          onClick={onForwardTwoPages}
+          disabled={!hasNext || isLoading}
+        >
+          <IconChevronsRight className="size-6" />
         </Button>
       </div>
     </div>
