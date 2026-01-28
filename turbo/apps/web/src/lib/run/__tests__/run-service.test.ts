@@ -288,6 +288,66 @@ describe("run-service", () => {
         ).resolves.toBeUndefined();
       });
 
+      test("throws ConcurrentRunLimitError when active runs >= limit", async () => {
+        // Mock the DB query to return a count at the limit
+        const mockFrom = vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{ count: 1 }]),
+        });
+        const mockSelect = vi.fn().mockReturnValue({ from: mockFrom });
+        const selectSpy = vi
+          .spyOn(globalThis.services.db, "select")
+          .mockImplementation(mockSelect);
+
+        try {
+          // Limit is 1, mock returns count of 1 - should throw
+          await expect(
+            runService.checkConcurrencyLimit("test-user", 1),
+          ).rejects.toThrow(ConcurrentRunLimitError);
+        } finally {
+          selectSpy.mockRestore();
+        }
+      });
+
+      test("throws ConcurrentRunLimitError when active runs exceed limit", async () => {
+        // Mock the DB query to return a count exceeding the limit
+        const mockFrom = vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{ count: 5 }]),
+        });
+        const mockSelect = vi.fn().mockReturnValue({ from: mockFrom });
+        const selectSpy = vi
+          .spyOn(globalThis.services.db, "select")
+          .mockImplementation(mockSelect);
+
+        try {
+          // Limit is 2, mock returns count of 5 - should throw
+          await expect(
+            runService.checkConcurrencyLimit("test-user", 2),
+          ).rejects.toThrow(ConcurrentRunLimitError);
+        } finally {
+          selectSpy.mockRestore();
+        }
+      });
+
+      test("passes when active runs below limit", async () => {
+        // Mock the DB query to return a count below the limit
+        const mockFrom = vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{ count: 1 }]),
+        });
+        const mockSelect = vi.fn().mockReturnValue({ from: mockFrom });
+        const selectSpy = vi
+          .spyOn(globalThis.services.db, "select")
+          .mockImplementation(mockSelect);
+
+        try {
+          // Limit is 3, mock returns count of 1 - should pass
+          await expect(
+            runService.checkConcurrencyLimit("test-user", 3),
+          ).resolves.toBeUndefined();
+        } finally {
+          selectSpy.mockRestore();
+        }
+      });
+
       test("ConcurrentRunLimitError has descriptive message", () => {
         const error = new ConcurrentRunLimitError();
         expect(error.message).toMatch(/concurrent/i);
@@ -297,6 +357,31 @@ describe("run-service", () => {
       test("ConcurrentRunLimitError returns 429 status code", () => {
         const error = new ConcurrentRunLimitError();
         expect(error.statusCode).toBe(429);
+      });
+
+      test("falls back to default when CONCURRENT_RUN_LIMIT is invalid", async () => {
+        // Save original env value
+        const originalEnv = process.env.CONCURRENT_RUN_LIMIT;
+
+        try {
+          // Set invalid value
+          process.env.CONCURRENT_RUN_LIMIT = "invalid";
+
+          // Use a unique user ID that has no runs
+          const testUser = `invalid-env-user-${Date.now()}-${Math.random()}`;
+
+          // Should use default of 1 and pass (user has no runs)
+          await expect(
+            runService.checkConcurrencyLimit(testUser),
+          ).resolves.toBeUndefined();
+        } finally {
+          // Restore original value
+          if (originalEnv === undefined) {
+            delete process.env.CONCURRENT_RUN_LIMIT;
+          } else {
+            process.env.CONCURRENT_RUN_LIMIT = originalEnv;
+          }
+        }
       });
     });
 

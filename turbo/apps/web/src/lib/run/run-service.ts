@@ -251,8 +251,21 @@ export class RunService {
     // Use provided limit, or env var, or default to 1
     // Note: 0 means no limit (for testing), so we need explicit undefined check
     const envLimit = process.env.CONCURRENT_RUN_LIMIT;
-    const effectiveLimit =
-      limit ?? (envLimit !== undefined ? Number(envLimit) : 1);
+    let effectiveLimit = 1; // Default
+
+    if (limit !== undefined) {
+      effectiveLimit = limit;
+    } else if (envLimit !== undefined) {
+      const parsed = Number(envLimit);
+      // Only use env var if it's a valid non-negative number
+      if (!Number.isNaN(parsed) && parsed >= 0) {
+        effectiveLimit = parsed;
+      } else {
+        log.warn(
+          `Invalid CONCURRENT_RUN_LIMIT value "${envLimit}", using default of 1`,
+        );
+      }
+    }
 
     // Skip check if limit is 0 (no limit)
     if (effectiveLimit === 0) {
