@@ -113,6 +113,29 @@ describe("realtime/subscription", () => {
       expect(onJob).not.toHaveBeenCalled();
     });
 
+    it("should log error for invalid job notification data", async () => {
+      const onJob = vi.fn();
+      const consoleErrorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+
+      await subscribeToJobs(mockServer, "vm0/production", onJob);
+
+      // Simulate receiving a job message with invalid data (missing runId)
+      messageHandler!({
+        name: "job",
+        data: { invalid: "data" },
+      } as InboundMessage);
+
+      expect(onJob).not.toHaveBeenCalled();
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "Invalid job notification:",
+        expect.any(Array),
+      );
+
+      consoleErrorSpy.mockRestore();
+    });
+
     it("should call onConnectionChange when connection state changes", async () => {
       const onJob = vi.fn();
       const onConnectionChange = vi.fn();
