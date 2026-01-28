@@ -118,10 +118,14 @@ Extracts to mount paths
 
 The orchestration layer coordinates job execution between web API and runners.
 
+**Job Notification**:
+- **Push**: Ably realtime notifications for instant job pickup (~100-200ms)
+- **Fallback**: Polling every 30s catches missed notifications
+
 **Runner Behavior**:
-1. Poll `/api/runners/poll` every 5 seconds (configurable)
-2. Receive pending job: `{ runId, prompt, agentComposeVersionId }`
-3. Claim job atomically via `/api/runners/claim` (sets `claimed_at`)
+1. Subscribe to Ably channel `runner-group:{scope}/{name}`
+2. Receive job notification: `{ runId }`
+3. Claim job atomically via `/api/runners/jobs/{id}/claim` (sets `claimed_at`)
 4. Execute in Firecracker VM
 5. Report completion via webhook
 6. Job deleted from queue
@@ -235,9 +239,9 @@ sandbox:
 
 #### Execution Flow
 
-1. Runner polls for jobs (5s interval)
+1. Runner receives job via Ably push (or 30s polling fallback)
 2. Creates Firecracker VM (3-5s boot)
-3. SSH to VM (using runner's key)
+3. Vsock connection to guest agent
 4. Upload scripts, configure DNS, install proxy CA
 5. Preflight check (curl to heartbeat endpoint)
 6. Download storages from R2
