@@ -11,9 +11,21 @@ describe("getSkills", () => {
         return HttpResponse.json({
           success: true,
           skills: [
-            { name: "Slack", category: "Communication", description: "Slack integration" },
-            { name: "GitHub", category: "Development", description: "GitHub integration" },
-            { name: "Notion", category: "Productivity", description: "Notion integration" },
+            {
+              name: "Slack",
+              category: "Communication",
+              description: "Slack integration",
+            },
+            {
+              name: "GitHub",
+              category: "Development",
+              description: "GitHub integration",
+            },
+            {
+              name: "Notion",
+              category: "Productivity",
+              description: "Notion integration",
+            },
           ],
         });
       }),
