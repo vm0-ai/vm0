@@ -4,12 +4,17 @@ import {
   IconFolder,
   IconList,
   IconRobot,
+  IconCode,
+  IconLayoutList,
 } from "@tabler/icons-react";
 import { AppShell } from "../layout/app-shell.tsx";
 import { Card, CardContent, CopyButton, Input } from "@vm0/ui";
 import {
   currentLogId$,
   logDetailSearchTerm$,
+  viewMode$,
+  hiddenEventTypes$,
+  type ViewMode,
 } from "../../signals/logs-page/log-detail-state.ts";
 import {
   getOrCreateLogDetail$,
@@ -20,6 +25,8 @@ import {
 import { detach, Reason } from "../../signals/utils.ts";
 import type { AgentEvent } from "../../signals/logs-page/types.ts";
 import { StatusBadge } from "./status-badge.tsx";
+import { EventCard } from "./components/event-card.tsx";
+import { getEventStyle, KNOWN_EVENT_TYPES } from "./constants/event-styles.ts";
 
 function InfoRow({
   label,
@@ -83,31 +90,6 @@ function formatDuration(startedAt: string | null, completedAt: string | null) {
   return `${minutes}m ${seconds}s`;
 }
 
-function escapeRegExp(str: string) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-}
-
-function highlightText(text: string, term: string) {
-  if (!term.trim()) {
-    return text;
-  }
-
-  const parts = text.split(new RegExp(`(${escapeRegExp(term)})`, "gi"));
-
-  return parts.map((part, idx) =>
-    part.toLowerCase() === term.toLowerCase() ? (
-      <mark
-        key={`highlight-${part}-${idx}`}
-        className="bg-yellow-200 text-yellow-900"
-      >
-        {part}
-      </mark>
-    ) : (
-      part
-    ),
-  );
-}
-
 function ArtifactDownloadButton({
   name,
   version,
@@ -148,71 +130,169 @@ function ArtifactDownloadButton({
   );
 }
 
-/**
- * Format events as log text similar to CLI output
- */
-function formatEventsAsLogText(events: AgentEvent[]): string {
-  const lines: string[] = [];
-
+/** Compute event type counts from events array */
+function getEventTypeCounts(events: AgentEvent[]): Map<string, number> {
+  const counts = new Map<string, number>();
   for (const event of events) {
-    const timestamp = new Date(event.createdAt).toISOString();
-    const eventData = event.eventData as Record<string, unknown>;
+    const type = event.eventType;
+    counts.set(type, (counts.get(type) ?? 0) + 1);
+  }
+  return counts;
+}
 
-    if (event.eventType === "text") {
-      const content = String(eventData.content ?? "");
-      lines.push(`  [${timestamp}] [text] ${content}`);
-    } else if (event.eventType === "tool_use") {
-      const toolName = String(eventData.name ?? eventData.tool ?? "unknown");
-      lines.push(`  [${timestamp}] [tool_use] ${toolName}`);
-      // Format tool input if present
-      if (eventData.input) {
-        const inputStr = JSON.stringify(eventData.input, null, 2);
-        const indentedInput = inputStr
-          .split("\n")
-          .map((line) => `      ${line}`)
-          .join("\n");
-        lines.push(indentedInput);
-      }
-    } else if (event.eventType === "tool_result") {
-      lines.push(`  [${timestamp}] [tool_result]`);
-      if (eventData.content) {
-        const content = String(eventData.content);
-        const indentedContent = content
-          .split("\n")
-          .map((line) => `      ${line}`)
-          .join("\n");
-        lines.push(indentedContent);
-      }
-    } else if (event.eventType === "thinking") {
-      const content = String(eventData.content ?? "");
-      lines.push(`  [${timestamp}] [thinking] ${content}`);
-    } else if (event.eventType === "init") {
-      lines.push(`  [${timestamp}] [init] Starting Claude Code agent`);
-      if (eventData.session) {
-        lines.push(`\n      Session: ${eventData.session}`);
-      }
-      if (eventData.model) {
-        lines.push(`      Model: ${eventData.model}`);
-      }
-      if (eventData.tools && Array.isArray(eventData.tools)) {
-        const toolsList = (eventData.tools as string[]).join(", ");
-        lines.push(`      Tools: ${toolsList}`);
-      }
+/** View mode toggle button */
+function ViewModeToggle({
+  mode,
+  setMode,
+}: {
+  mode: ViewMode;
+  setMode: (mode: ViewMode) => void;
+}) {
+  return (
+    <div className="flex items-center rounded-md border border-border bg-background">
+      <button
+        onClick={() => setMode("formatted")}
+        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-l-md transition-colors ${
+          mode === "formatted"
+            ? "bg-primary text-primary-foreground"
+            : "text-muted-foreground hover:text-foreground"
+        }`}
+      >
+        <IconLayoutList className="h-4 w-4" />
+        Formatted
+      </button>
+      <button
+        onClick={() => setMode("raw")}
+        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-r-md transition-colors ${
+          mode === "raw"
+            ? "bg-primary text-primary-foreground"
+            : "text-muted-foreground hover:text-foreground"
+        }`}
+      >
+        <IconCode className="h-4 w-4" />
+        Raw JSON
+      </button>
+    </div>
+  );
+}
+
+/** Event type filter buttons */
+function EventTypeFilters({
+  counts,
+  hiddenTypes,
+  setHiddenTypes,
+}: {
+  counts: Map<string, number>;
+  hiddenTypes: Set<string>;
+  setHiddenTypes: (types: Set<string>) => void;
+}) {
+  const toggleType = (type: string) => {
+    const newHidden = new Set(hiddenTypes);
+    if (newHidden.has(type)) {
+      newHidden.delete(type);
     } else {
-      // Generic format for other event types
-      lines.push(`  [${timestamp}] [${event.eventType}]`);
-      const dataStr = JSON.stringify(eventData, null, 2);
-      const indentedData = dataStr
-        .split("\n")
-        .map((line) => `      ${line}`)
-        .join("\n");
-      lines.push(indentedData);
+      newHidden.add(type);
     }
+    setHiddenTypes(newHidden);
+  };
 
-    lines.push(""); // Empty line between events
+  // Get all types that exist in events
+  const existingTypes = KNOWN_EVENT_TYPES.filter(
+    (type) => (counts.get(type) ?? 0) > 0,
+  );
+
+  // Also include any unknown types
+  const unknownTypes = Array.from(counts.keys()).filter(
+    (type) =>
+      !KNOWN_EVENT_TYPES.includes(type as (typeof KNOWN_EVENT_TYPES)[number]),
+  );
+
+  const allTypes = [...existingTypes, ...unknownTypes];
+
+  if (allTypes.length === 0) {
+    return null;
   }
 
-  return lines.join("\n");
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {allTypes.map((type) => {
+        const style = getEventStyle(type);
+        const Icon = style.icon;
+        const count = counts.get(type) ?? 0;
+        const isHidden = hiddenTypes.has(type);
+
+        return (
+          <button
+            key={type}
+            onClick={() => toggleType(type)}
+            className={`flex items-center gap-1.5 px-2 py-1 text-xs rounded-full border transition-colors ${
+              isHidden
+                ? "border-border text-muted-foreground opacity-50"
+                : `${style.badgeColor} border-transparent`
+            }`}
+          >
+            <Icon className="h-3 w-3" />
+            <span>{style.label}</span>
+            <span className="opacity-70">({count})</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Raw JSON view with syntax highlighting */
+function RawJsonView({ events }: { events: AgentEvent[] }) {
+  const jsonString = JSON.stringify(events, null, 2);
+
+  return (
+    <div className="relative">
+      <CopyButton
+        text={jsonString}
+        className="absolute top-2 right-2 h-8 w-8 bg-background/80 hover:bg-background"
+      />
+      <pre className="font-mono text-sm whitespace-pre-wrap overflow-auto max-h-[600px] p-4 bg-muted/30 rounded-lg">
+        {jsonString}
+      </pre>
+    </div>
+  );
+}
+
+/** Formatted event cards view */
+function FormattedEventsView({
+  events,
+  searchTerm,
+  hiddenTypes,
+}: {
+  events: AgentEvent[];
+  searchTerm: string;
+  hiddenTypes: Set<string>;
+}) {
+  const visibleEvents = events.filter(
+    (event) => !hiddenTypes.has(event.eventType),
+  );
+
+  if (visibleEvents.length === 0) {
+    return (
+      <div className="p-8 text-center text-muted-foreground">
+        {events.length === 0
+          ? "No events available"
+          : "All events are filtered out"}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
+      {visibleEvents.map((event) => (
+        <EventCard
+          key={`${event.sequenceNumber}-${event.createdAt}`}
+          event={event}
+          searchTerm={searchTerm}
+        />
+      ))}
+    </div>
+  );
 }
 
 function AgentEventsCard({
@@ -228,17 +308,45 @@ function AgentEventsCard({
   const events$ = getOrCreateAgentEvents(logId);
   const eventsLoadable = useLoadable(events$);
 
+  const viewMode = useGet(viewMode$);
+  const setViewMode = useSet(viewMode$);
+  const hiddenTypes = useGet(hiddenEventTypes$);
+  const setHiddenTypes = useSet(hiddenEventTypes$);
+
+  // Common header for loading/error states
+  const renderHeader = (showControls = false) => (
+    <div className="flex flex-col gap-3 rounded-t-lg border-b border-border bg-muted px-4 py-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <IconList className="h-5 w-5 text-muted-foreground" />
+          <span className="text-sm font-medium text-card-foreground">
+            Agent Events
+          </span>
+        </div>
+        {showControls && (
+          <div className="flex items-center gap-3">
+            <ViewModeToggle mode={viewMode} setMode={setViewMode} />
+            <div className="flex h-9 items-center rounded-md border border-border bg-background">
+              <Input
+                placeholder="Search logs"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="h-full w-48 border-0 text-sm focus-visible:ring-0"
+              />
+              <div className="flex h-9 w-9 items-center justify-center border-l border-border">
+                <IconSearch className="h-5 w-5 text-muted-foreground" />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   if (eventsLoadable.state === "loading") {
     return (
       <Card className="overflow-hidden">
-        <div className="flex items-center justify-between rounded-t-lg border-b border-border bg-muted px-4 py-2">
-          <div className="flex items-center gap-2">
-            <IconList className="h-5 w-5 text-muted-foreground" />
-            <span className="text-sm font-medium text-card-foreground">
-              Log raw data
-            </span>
-          </div>
-        </div>
+        {renderHeader()}
         <CardContent className="p-4">
           <div className="p-8 text-center text-muted-foreground">
             Loading events...
@@ -251,14 +359,7 @@ function AgentEventsCard({
   if (eventsLoadable.state === "hasError") {
     return (
       <Card className="overflow-hidden">
-        <div className="flex items-center justify-between rounded-t-lg border-b border-border bg-muted px-4 py-2">
-          <div className="flex items-center gap-2">
-            <IconList className="h-5 w-5 text-muted-foreground" />
-            <span className="text-sm font-medium text-card-foreground">
-              Log raw data
-            </span>
-          </div>
-        </div>
+        {renderHeader()}
         <CardContent className="p-4">
           <div className="p-8 text-center text-muted-foreground">
             Failed to load events
@@ -269,40 +370,53 @@ function AgentEventsCard({
   }
 
   const { events } = eventsLoadable.data;
-
-  // Format events as log text
-  const logText = formatEventsAsLogText(events);
+  const eventTypeCounts = getEventTypeCounts(events);
 
   return (
     <Card className="overflow-hidden">
-      <div className="flex items-center justify-between rounded-t-lg border-b border-border bg-muted px-4 py-2">
-        <div className="flex items-center gap-2">
-          <IconList className="h-5 w-5 text-muted-foreground" />
-          <span className="text-sm font-medium text-card-foreground">
-            Log raw data
-          </span>
-        </div>
-        <div className="flex h-9 items-center rounded-md border border-border bg-background">
-          <Input
-            placeholder="Search logs"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="h-full w-48 border-0 text-sm focus-visible:ring-0"
-          />
-          <div className="flex h-9 w-9 items-center justify-center border-l border-border">
-            <IconSearch className="h-5 w-5 text-muted-foreground" />
+      <div className="flex flex-col gap-3 rounded-t-lg border-b border-border bg-muted px-4 py-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <IconList className="h-5 w-5 text-muted-foreground" />
+            <span className="text-sm font-medium text-card-foreground">
+              Agent Events
+            </span>
+            <span className="text-xs text-muted-foreground">
+              ({events.length} total)
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <ViewModeToggle mode={viewMode} setMode={setViewMode} />
+            <div className="flex h-9 items-center rounded-md border border-border bg-background">
+              <Input
+                placeholder="Search logs"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="h-full w-48 border-0 text-sm focus-visible:ring-0"
+              />
+              <div className="flex h-9 w-9 items-center justify-center border-l border-border">
+                <IconSearch className="h-5 w-5 text-muted-foreground" />
+              </div>
+            </div>
           </div>
         </div>
+        {viewMode === "formatted" && events.length > 0 && (
+          <EventTypeFilters
+            counts={eventTypeCounts}
+            hiddenTypes={hiddenTypes}
+            setHiddenTypes={setHiddenTypes}
+          />
+        )}
       </div>
       <CardContent className="p-4">
-        {events.length === 0 ? (
-          <div className="p-8 text-center text-muted-foreground">
-            No events available
-          </div>
+        {viewMode === "formatted" ? (
+          <FormattedEventsView
+            events={events}
+            searchTerm={searchTerm}
+            hiddenTypes={hiddenTypes}
+          />
         ) : (
-          <pre className="font-mono text-sm whitespace-pre-wrap overflow-auto max-h-[600px] leading-relaxed">
-            {searchTerm ? highlightText(logText, searchTerm) : logText}
-          </pre>
+          <RawJsonView events={events} />
         )}
       </CardContent>
     </Card>

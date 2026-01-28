@@ -250,16 +250,13 @@ describe("log detail page", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Log raw data")).toBeInTheDocument();
+      expect(screen.getByText("Agent Events")).toBeInTheDocument();
     });
 
-    // Verify log content is displayed (formatted as log text)
+    // Verify the events are rendered (in formatted view)
     await waitFor(() => {
       expect(screen.getByText(/Starting task/)).toBeInTheDocument();
     });
-
-    // Verify tool_use event is displayed in log format
-    expect(screen.getByText(/\[tool_use\]/)).toBeInTheDocument();
   });
 
   it("should navigate to logs list via breadcrumb", async () => {
