@@ -54,13 +54,11 @@ export const apiModelProvidersHandlers = [
     const provider: ModelProviderResponse = {
       id: existing?.id ?? crypto.randomUUID(),
       type: body.type,
-      framework: body.type === "openai-api-key" ? "codex" : "claude-code",
+      framework: "claude-code",
       credentialName:
         body.type === "claude-code-oauth-token"
           ? "CLAUDE_CODE_OAUTH_TOKEN"
-          : body.type === "anthropic-api-key"
-            ? "ANTHROPIC_API_KEY"
-            : "OPENAI_API_KEY",
+          : "ANTHROPIC_API_KEY",
       isDefault:
         mockModelProviders.length === 0 || existing?.isDefault || false,
       createdAt: existing?.createdAt ?? now,
@@ -90,9 +88,7 @@ export const apiModelProvidersHandlers = [
     const credentialName =
       type === "claude-code-oauth-token"
         ? "CLAUDE_CODE_OAUTH_TOKEN"
-        : type === "anthropic-api-key"
-          ? "ANTHROPIC_API_KEY"
-          : "OPENAI_API_KEY";
+        : "ANTHROPIC_API_KEY";
 
     return HttpResponse.json({
       exists: !!existing,

@@ -112,10 +112,5 @@ describe("model-provider setup command", () => {
       const config = MODEL_PROVIDER_TYPES["anthropic-api-key"];
       expect(config.helpText).toContain("console.anthropic.com");
     });
-
-    it("should have correct helpText for openai-api-key", () => {
-      const config = MODEL_PROVIDER_TYPES["openai-api-key"];
-      expect(config.helpText).toContain("platform.openai.com");
-    });
   });
 });
