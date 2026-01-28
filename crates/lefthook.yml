@@ -4,9 +4,13 @@ pre-commit:
     cargo-fmt:
       root: crates/
       run: cargo fmt --all
-      glob: "crates/**/*.rs"
+      glob: "crates/**/*.{rs,toml}"
       stage_fixed: true
     cargo-clippy:
       root: crates/
       run: cargo clippy --all-targets --all-features -- -D warnings
-      glob: "crates/**/*.rs"
+      glob: "crates/**/*.{rs,toml}"
+    cargo-check:
+      root: crates/
+      run: RUSTFLAGS="-D warnings" cargo check --all-targets
+      glob: "crates/**/*.{rs,toml}"

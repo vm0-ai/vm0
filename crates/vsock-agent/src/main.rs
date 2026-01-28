@@ -113,9 +113,9 @@ const EXIT_CODE_TIMEOUT: i32 = 124;
 /// Run a child process with timeout. Returns (exit_code, stdout, stderr).
 /// Returns exit code 124 on timeout (same as bash timeout command).
 fn wait_with_timeout(child: Child, timeout_ms: u32) -> (i32, Vec<u8>, Vec<u8>) {
+    use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::mpsc;
-    use std::sync::Arc;
 
     let timeout = Duration::from_millis(timeout_ms as u64);
     let child_id = child.id();
@@ -271,13 +271,13 @@ fn handle_write_file(payload: &[u8]) -> (bool, String) {
         };
 
         // Write content to stdin and close it
-        if let Some(mut stdin) = child.stdin.take() {
-            if let Err(e) = stdin.write_all(content) {
-                let _ = child.kill();
-                return (false, format!("Failed to write to stdin: {}", e));
-            }
-            // stdin is dropped here, closing the pipe
+        if let Some(mut stdin) = child.stdin.take()
+            && let Err(e) = stdin.write_all(content)
+        {
+            let _ = child.kill();
+            return (false, format!("Failed to write to stdin: {}", e));
         }
+        // stdin is dropped here, closing the pipe
 
         // Wait with timeout
         let (exit_code, _, stderr) = wait_with_timeout(child, SUDO_TEE_TIMEOUT_MS);
@@ -291,12 +291,11 @@ fn handle_write_file(payload: &[u8]) -> (bool, String) {
         (true, String::new())
     } else {
         // Direct write
-        if let Some(parent) = std::path::Path::new(path).parent() {
-            if !parent.as_os_str().is_empty() {
-                if let Err(e) = fs::create_dir_all(parent) {
-                    return (false, format!("Failed to create directory: {}", e));
-                }
-            }
+        if let Some(parent) = std::path::Path::new(path).parent()
+            && !parent.as_os_str().is_empty()
+            && let Err(e) = fs::create_dir_all(parent)
+        {
+            return (false, format!("Failed to create directory: {}", e));
         }
 
         match fs::write(path, content) {
