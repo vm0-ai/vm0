@@ -525,6 +525,14 @@ jobs:
       - name: Build Core Package
         run: cd turbo && pnpm turbo run build --filter=@vm0/core
 
+      # Cross-compile Rust vsock-agent for ARM64 (metal runners are ARM64)
+      - name: Build vsock-agent for ARM64
+        run: |
+          cd crates
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc \
+            cargo build --release --target aarch64-unknown-linux-musl -p vsock-agent
+          ls -la target/aarch64-unknown-linux-musl/release/vsock-agent
+
       - name: Build runner bundle
         run: |
           # Build runner (use subshell to preserve working directory)
