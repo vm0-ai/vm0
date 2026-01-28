@@ -35,7 +35,7 @@ teardown() {
     assert_success
     assert_output --partial "Created my-vm0-agent/"
     assert_output --partial "Installed vm0-agent-builder skill"
-    assert_output --partial "Next steps:"
+    assert_output --partial "Next step:"
     assert_output --partial "cd my-vm0-agent"
 
     # Verify directory and skill were created
