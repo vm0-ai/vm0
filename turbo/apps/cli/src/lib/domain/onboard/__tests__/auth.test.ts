@@ -1,35 +1,39 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, rmSync, existsSync } from "fs";
+import { readFile } from "fs/promises";
+import * as path from "path";
+import * as os from "os";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../../mocks/server.js";
+import { isAuthenticated, runAuthFlow } from "../auth.js";
 
-const mockGetToken = vi.fn();
-const mockSaveConfig = vi.fn();
-const mockGetApiUrl = vi.fn();
-
-vi.mock("../../../api/config.js", () => ({
-  getToken: () => mockGetToken(),
-  saveConfig: (config: unknown) => mockSaveConfig(config),
-  getApiUrl: () => mockGetApiUrl(),
-}));
+// Mock os.homedir at system boundary for config file isolation
+vi.mock("os", async (importOriginal) => {
+  const original = await importOriginal<typeof import("os")>();
+  return {
+    ...original,
+    homedir: vi.fn(),
+  };
+});
 
 describe("auth", () => {
-  let isAuthenticated: typeof import("../auth.js").isAuthenticated;
-  let runAuthFlow: typeof import("../auth.js").runAuthFlow;
+  let tempDir: string;
 
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.clearAllMocks();
-    mockGetApiUrl.mockResolvedValue("https://api.vm0.ai");
-
-    const authModule = await import("../auth.js");
-    isAuthenticated = authModule.isAuthenticated;
-    runAuthFlow = authModule.runAuthFlow;
+    tempDir = mkdtempSync(path.join(os.tmpdir(), "test-auth-"));
+    vi.mocked(os.homedir).mockReturnValue(tempDir);
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    rmSync(tempDir, { recursive: true, force: true });
+    vi.unstubAllEnvs();
   });
 
   describe("isAuthenticated", () => {
-    it("should return true when token exists", async () => {
-      mockGetToken.mockResolvedValue("test-token");
+    it("should return true when VM0_TOKEN env var exists", async () => {
+      vi.stubEnv("VM0_TOKEN", "test-token");
 
       const result = await isAuthenticated();
 
@@ -37,7 +41,7 @@ describe("auth", () => {
     });
 
     it("should return false when no token", async () => {
-      mockGetToken.mockResolvedValue(undefined);
+      // No VM0_TOKEN env var, no config file
 
       const result = await isAuthenticated();
 
@@ -46,69 +50,70 @@ describe("auth", () => {
   });
 
   describe("runAuthFlow", () => {
-    const mockDeviceCodeResponse = {
-      device_code: "device-code-123",
-      user_code: "USER-CODE",
-      verification_path: "/cli-auth",
-      expires_in: 900,
-      interval: 5,
-    };
+    it("should complete auth flow and save config on success", async () => {
+      server.use(
+        http.post("http://localhost:3000/api/cli/auth/device", () => {
+          return HttpResponse.json({
+            device_code: "device-code-123",
+            user_code: "USER-CODE",
+            verification_path: "/cli-auth",
+            expires_in: 900,
+            interval: 1,
+          });
+        }),
+        http.post("http://localhost:3000/api/cli/auth/token", () => {
+          return HttpResponse.json({
+            access_token: "access-token-123",
+          });
+        }),
+      );
 
-    const mockTokenResponse = {
-      access_token: "access-token-123",
-    };
-
-    it("should call callbacks in correct order on success", async () => {
       const callbacks = {
         onInitiating: vi.fn(),
         onDeviceCodeReady: vi.fn(),
-        onPolling: vi.fn(),
         onSuccess: vi.fn(),
         onError: vi.fn(),
       };
 
-      global.fetch = vi
-        .fn()
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve(mockDeviceCodeResponse),
-        } as Response)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve(mockTokenResponse),
-        } as Response);
-
       await runAuthFlow(callbacks);
 
+      // Verify callbacks were called
       expect(callbacks.onInitiating).toHaveBeenCalled();
       expect(callbacks.onDeviceCodeReady).toHaveBeenCalledWith(
-        "https://api.vm0.ai/cli-auth",
+        "http://localhost:3000/cli-auth",
         "USER-CODE",
         15,
       );
       expect(callbacks.onSuccess).toHaveBeenCalled();
       expect(callbacks.onError).not.toHaveBeenCalled();
-      expect(mockSaveConfig).toHaveBeenCalledWith({
-        token: "access-token-123",
-        apiUrl: "https://api.vm0.ai",
-      });
+
+      // Verify config was saved to filesystem
+      const configPath = path.join(tempDir, ".vm0", "config.json");
+      expect(existsSync(configPath)).toBe(true);
+
+      const configContent = await readFile(configPath, "utf-8");
+      const config = JSON.parse(configContent);
+      expect(config.token).toBe("access-token-123");
+      expect(config.apiUrl).toBe("http://localhost:3000");
     });
 
-    it("should call onError on expired token", async () => {
-      const callbacks = {
-        onError: vi.fn(),
-      };
+    it("should throw on expired token", async () => {
+      server.use(
+        http.post("http://localhost:3000/api/cli/auth/device", () => {
+          return HttpResponse.json({
+            device_code: "device-code-123",
+            user_code: "USER-CODE",
+            verification_path: "/cli-auth",
+            expires_in: 900,
+            interval: 1,
+          });
+        }),
+        http.post("http://localhost:3000/api/cli/auth/token", () => {
+          return HttpResponse.json({ error: "expired_token" });
+        }),
+      );
 
-      global.fetch = vi
-        .fn()
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve(mockDeviceCodeResponse),
-        } as Response)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ error: "expired_token" }),
-        } as Response);
+      const callbacks = { onError: vi.fn() };
 
       await expect(runAuthFlow(callbacks)).rejects.toThrow(
         "The device code has expired",
@@ -117,31 +122,38 @@ describe("auth", () => {
     });
 
     it("should throw on failed device code request", async () => {
-      global.fetch = vi.fn().mockResolvedValueOnce({
-        ok: false,
-        statusText: "Internal Server Error",
-      } as Response);
+      server.use(
+        http.post("http://localhost:3000/api/cli/auth/device", () => {
+          return new HttpResponse(null, {
+            status: 500,
+            statusText: "Internal Server Error",
+          });
+        }),
+      );
 
       await expect(runAuthFlow()).rejects.toThrow(
         "Failed to request device code",
       );
     });
 
-    it("should handle auth errors with description", async () => {
-      global.fetch = vi
-        .fn()
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve(mockDeviceCodeResponse),
-        } as Response)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              error: "access_denied",
-              error_description: "User denied access",
-            }),
-        } as Response);
+    it("should throw with error description on auth failure", async () => {
+      server.use(
+        http.post("http://localhost:3000/api/cli/auth/device", () => {
+          return HttpResponse.json({
+            device_code: "device-code-123",
+            user_code: "USER-CODE",
+            verification_path: "/cli-auth",
+            expires_in: 900,
+            interval: 1,
+          });
+        }),
+        http.post("http://localhost:3000/api/cli/auth/token", () => {
+          return HttpResponse.json({
+            error: "access_denied",
+            error_description: "User denied access",
+          });
+        }),
+      );
 
       await expect(runAuthFlow()).rejects.toThrow(
         "Authentication failed: User denied access",
