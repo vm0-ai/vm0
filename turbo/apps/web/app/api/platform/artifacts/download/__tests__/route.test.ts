@@ -8,7 +8,6 @@ import {
   vi,
 } from "vitest";
 import { NextRequest } from "next/server";
-import { GET } from "../route";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
   storages,
@@ -17,6 +16,7 @@ import {
 import { scopes } from "../../../../../../src/db/schema/scope";
 import { eq, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import * as s3Client from "../../../../../../src/lib/s3/s3-client";
 
 /**
  * Helper to create a NextRequest for testing.
@@ -32,13 +32,11 @@ vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
 
-// Mock the S3 client to capture presigned URL generation
-const mockGeneratePresignedUrl = vi.fn();
-vi.mock("../../../../../../src/lib/s3/s3-client", () => ({
-  generatePresignedUrl: (...args: unknown[]) =>
-    mockGeneratePresignedUrl(...args),
-}));
+// Mock AWS SDK (external) for S3 operations
+vi.mock("@aws-sdk/client-s3");
+vi.mock("@aws-sdk/s3-request-presigner");
 
+import { GET } from "../route";
 import {
   mockClerk,
   clearClerkMock,
@@ -117,7 +115,7 @@ describe("GET /api/platform/artifacts/download", () => {
     // Mock Clerk auth to return test user by default
     mockClerk({ userId: testUserId });
     // Mock presigned URL generation
-    mockGeneratePresignedUrl.mockResolvedValue(
+    vi.spyOn(s3Client, "generatePresignedUrl").mockResolvedValue(
       "https://example.com/presigned-url",
     );
   });
@@ -184,8 +182,9 @@ describe("GET /api/platform/artifacts/download", () => {
     expect(data.expiresAt).toBeDefined();
 
     // Verify generatePresignedUrl was called with correct filename
-    expect(mockGeneratePresignedUrl).toHaveBeenCalledTimes(1);
-    const callArgs = mockGeneratePresignedUrl.mock.calls[0]!;
+    expect(s3Client.generatePresignedUrl).toHaveBeenCalledTimes(1);
+    const mockFn = vi.mocked(s3Client.generatePresignedUrl);
+    const callArgs = mockFn.mock.calls[0]!;
     expect(callArgs[3]).toBe(`${testArtifactName}-${testVersionId}.tar.gz`);
   });
 
@@ -201,8 +200,9 @@ describe("GET /api/platform/artifacts/download", () => {
     expect(data.url).toBe("https://example.com/presigned-url");
 
     // Verify generatePresignedUrl was called with correct filename
-    expect(mockGeneratePresignedUrl).toHaveBeenCalledTimes(1);
-    const callArgs = mockGeneratePresignedUrl.mock.calls[0]!;
+    expect(s3Client.generatePresignedUrl).toHaveBeenCalledTimes(1);
+    const mockFn = vi.mocked(s3Client.generatePresignedUrl);
+    const callArgs = mockFn.mock.calls[0]!;
     expect(callArgs[3]).toBe(`${testArtifactName}-${testVersionId}.tar.gz`);
   });
 
