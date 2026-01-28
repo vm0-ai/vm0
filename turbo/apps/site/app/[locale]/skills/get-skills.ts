@@ -1,3 +1,5 @@
+const WEB_APP_BASE_URL = "https://www.vm0.ai";
+
 interface SkillMetadata {
   name: string;
   description: string;
@@ -8,7 +10,7 @@ interface SkillMetadata {
 
 export async function getSkills(): Promise<SkillMetadata[]> {
   // Fetch skills from web app API
-  const response = await fetch("https://www.vm0.ai/api/web/skills");
+  const response = await fetch(`${WEB_APP_BASE_URL}/api/web/skills`);
 
   if (!response.ok) {
     throw new Error(`Failed to fetch skills: ${response.statusText}`);

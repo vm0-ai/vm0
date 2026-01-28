@@ -1,5 +1,7 @@
 import { http, HttpResponse } from "msw";
 
+const WEB_APP_BASE_URL = "https://www.vm0.ai";
+
 interface SkillMetadata {
   name: string;
   description: string;
@@ -37,7 +39,7 @@ const mockSkills: SkillMetadata[] = [
 
 export const skillsHandlers = [
   // GET /api/web/skills - Return mock skills list
-  http.get("https://www.vm0.ai/api/web/skills", () => {
+  http.get(`${WEB_APP_BASE_URL}/api/web/skills`, () => {
     const skillsByCategory = mockSkills.reduce(
       (acc, skill) => {
         if (!acc[skill.category]) {
@@ -59,7 +61,7 @@ export const skillsHandlers = [
   }),
 
   // Error scenario handler (can be used by calling server.use())
-  http.get("https://www.vm0.ai/api/web/skills/error", () => {
+  http.get(`${WEB_APP_BASE_URL}/api/web/skills/error`, () => {
     return HttpResponse.json(
       { error: "Internal Server Error" },
       { status: 500 },
