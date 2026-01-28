@@ -77,6 +77,8 @@ export async function subscribeToJobs(
       const result = JobNotificationSchema.safeParse(message.data);
       if (result.success) {
         onJob(result.data);
+      } else {
+        console.error(`Invalid job notification:`, result.error.issues);
       }
     }
   }
