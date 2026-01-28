@@ -24,13 +24,10 @@ sync_env_files() {
     while IFS= read -r -d '' env_file; do
         local rel_path="${env_file#"$SOURCE/"}"
         local dest_file="$dest/$rel_path"
-        local dest_dir
-        dest_dir=$(dirname "$dest_file")
+        rm -rf "$dest_file"
+        cp -a "$env_file" "$dest_file"
+        echo "  Synced: $rel_path"
 
-        if [[ -d "$dest_dir" ]]; then
-            cp "$env_file" "$dest_file"
-            echo "  Synced: $rel_path"
-        fi
     done < <(find "$SOURCE" -name ".env.local" -type f -print0)
 }
 
