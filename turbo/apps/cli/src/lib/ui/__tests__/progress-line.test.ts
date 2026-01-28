@@ -78,9 +78,9 @@ describe("progress-line", () => {
 
       expect(progress.steps.length).toBe(4);
       expect(progress.steps[0]?.label).toBe("Authentication");
-      expect(progress.steps[1]?.label).toBe("Model Provider");
+      expect(progress.steps[1]?.label).toBe("Model Provider Setup");
       expect(progress.steps[2]?.label).toBe("Create Agent");
-      expect(progress.steps[3]?.label).toBe("Setup Complete");
+      expect(progress.steps[3]?.label).toBe("Complete");
     });
 
     it("should initialize all steps as pending", () => {

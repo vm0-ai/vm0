@@ -58,9 +58,9 @@ export function createOnboardProgress(): {
 } {
   const steps: Step[] = [
     { label: "Authentication", status: "pending" },
-    { label: "Model Provider", status: "pending" },
+    { label: "Model Provider Setup", status: "pending" },
     { label: "Create Agent", status: "pending" },
-    { label: "Setup Complete", status: "pending" },
+    { label: "Complete", status: "pending" },
   ];
 
   return {

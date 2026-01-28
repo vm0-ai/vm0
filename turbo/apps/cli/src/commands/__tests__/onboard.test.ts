@@ -178,7 +178,7 @@ describe("onboard command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Authentication");
-      expect(logCalls).toContain("Model Provider");
+      expect(logCalls).toContain("Model Provider Setup");
       expect(logCalls).toContain("Create Agent");
     });
   });

@@ -66,11 +66,17 @@ agents:
   [agent-name]:
     framework: claude-code
     instructions: AGENTS.md
+    # Pre-install GitHub CLI (optional)
+    apps:
+      - github
+    # Add skills the agent needs (optional)
     skills:
-      # Add skills the agent needs (optional)
       - https://github.com/vm0-ai/vm0-skills/tree/main/[skill-name]
+    # Mount volumes for input files (optional)
+    volumes:
+      - my-volume:/home/user/input
+    # Environment variables (optional)
     environment:
-      # Add environment variables (optional)
       API_KEY: "\${{ secrets.API_KEY }}"
 \`\`\`
 
@@ -233,9 +239,12 @@ environment:
 
   # Variables (plain text, for config)
   REPO_NAME: "\${{ vars.REPO_NAME }}"
+
+  # Credentials (from vm0 credential storage)
+  MY_TOKEN: "\${{ credentials.MY_TOKEN }}"
 \`\`\`
 
-Set them with:
+Set credentials with (names must be UPPERCASE):
 \`\`\`bash
 vm0 credential set API_KEY "your-api-key"
 \`\`\`
@@ -266,6 +275,12 @@ vm0 logs [run-id]
 
 # Results are in artifact/ directory
 ls artifact/
+
+# Continue from where agent left off
+vm0 cook continue "keep going"
+
+# Resume from a checkpoint
+vm0 cook resume "try again"
 \`\`\`
 `;
 }
