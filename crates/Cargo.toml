@@ -3,8 +3,9 @@ resolver = "2"
 members = ["vsock-agent"]
 
 [profile.release]
-opt-level = "z"
 lto = true
 strip = true
-panic = "abort"
+
+[profile.release.package.vsock-agent]
+opt-level = "z"
 codegen-units = 1
