@@ -203,7 +203,7 @@ function SystemInitContent({ eventData }: { eventData: EventData }) {
             {tools.map((tool) => (
               <span
                 key={tool}
-                className="text-xs bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-full"
+                className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full"
               >
                 {tool}
               </span>
@@ -222,7 +222,7 @@ function SystemInitContent({ eventData }: { eventData: EventData }) {
             {agents.map((agent) => (
               <span
                 key={agent}
-                className="text-xs bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-full"
+                className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full"
               >
                 {agent}
               </span>
@@ -241,7 +241,7 @@ function SystemInitContent({ eventData }: { eventData: EventData }) {
             {slashCommands.map((cmd) => (
               <span
                 key={cmd}
-                className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-2 py-0.5 rounded-full font-mono"
+                className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full font-mono"
               >
                 /{cmd}
               </span>
@@ -308,12 +308,8 @@ function ToolUseContentView({ content }: { content: ToolUseContent }) {
     <div className="space-y-2">
       {/* Tool header */}
       <div className="flex items-center gap-2">
-        {ToolIcon && (
-          <ToolIcon className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-        )}
-        <span className="font-medium text-amber-700 dark:text-amber-300">
-          {toolName}
-        </span>
+        {ToolIcon && <ToolIcon className="h-4 w-4 text-muted-foreground" />}
+        <span className="font-medium text-foreground">{toolName}</span>
       </div>
 
       {/* Tool parameters */}
@@ -378,7 +374,7 @@ function ToolInputParams({
     return (
       <div className="flex items-start gap-2 text-sm">
         <IconTerminal className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-        <code className="font-mono text-xs bg-gray-900 text-gray-100 dark:bg-gray-950 px-2 py-1 rounded block w-full overflow-x-auto whitespace-pre-wrap">
+        <code className="font-mono text-xs bg-foreground/90 text-background px-2 py-1 rounded block w-full overflow-x-auto whitespace-pre-wrap">
           {command}
         </code>
       </div>
@@ -434,8 +430,8 @@ function ParamValue({ value }: { value: unknown }) {
       <span
         className={
           value
-            ? "text-green-600 dark:text-green-400 text-xs"
-            : "text-red-600 dark:text-red-400 text-xs"
+            ? "text-emerald-600 dark:text-emerald-400 text-xs font-medium"
+            : "text-muted-foreground text-xs"
         }
       >
         {value ? "true" : "false"}
@@ -445,7 +441,9 @@ function ParamValue({ value }: { value: unknown }) {
 
   if (typeof value === "number") {
     return (
-      <span className="text-blue-600 dark:text-blue-400 text-xs">{value}</span>
+      <span className="text-violet-600 dark:text-violet-400 text-xs font-medium">
+        {value}
+      </span>
     );
   }
 
@@ -462,11 +460,7 @@ function ParamValue({ value }: { value: unknown }) {
         </details>
       );
     }
-    return (
-      <span className="text-green-700 dark:text-green-400 text-xs">
-        &quot;{value}&quot;
-      </span>
-    );
+    return <span className="text-foreground text-xs">&quot;{value}&quot;</span>;
   }
 
   if (Array.isArray(value) || typeof value === "object") {
@@ -493,12 +487,12 @@ function ToolResultContentView({
   // Error display
   if (isError) {
     return (
-      <div className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded text-sm">
-        <div className="flex items-center gap-2 text-red-700 dark:text-red-300 font-medium mb-2">
+      <div className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded text-sm">
+        <div className="flex items-center gap-2 text-red-700 dark:text-red-400 font-medium mb-2">
           <IconAlertCircle className="h-4 w-4" />
           Error
         </div>
-        <pre className="whitespace-pre-wrap overflow-x-auto text-xs text-red-600 dark:text-red-400">
+        <pre className="whitespace-pre-wrap overflow-x-auto text-xs text-red-700 dark:text-red-400">
           {searchTerm ? highlightText(resultText, searchTerm) : resultText}
         </pre>
       </div>
@@ -578,7 +572,7 @@ function ResultContent({
     /^\s{2,}/m.test(text);
 
   const preClass = looksLikeCode
-    ? "bg-gray-900 text-gray-100 dark:bg-gray-950"
+    ? "bg-foreground/90 text-background"
     : "bg-muted/30 text-foreground";
 
   if (isLong) {
@@ -670,7 +664,7 @@ function ResultEventContent({ eventData }: { eventData: EventData }) {
                         <span>Out: {usage.outputTokens.toLocaleString()}</span>
                       )}
                     {usage.costUSD !== null && usage.costUSD !== undefined && (
-                      <span className="text-green-600 dark:text-green-400">
+                      <span className="text-emerald-600 dark:text-emerald-400 font-medium">
                         {formatCost(usage.costUSD)}
                       </span>
                     )}
@@ -685,7 +679,7 @@ function ResultEventContent({ eventData }: { eventData: EventData }) {
       {/* Result text */}
       {result && (
         <div
-          className={`p-3 rounded text-sm ${isError ? "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300" : "bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300"}`}
+          className={`p-3 rounded text-sm ${isError ? "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400" : "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400"}`}
         >
           <div className="font-medium mb-1">
             {isError ? "Error" : "Success"}
