@@ -1,35 +1,30 @@
 {
   "folders": [
     {
-      "name": "turbo",
       "path": "turbo"
     },
     {
-      "name": "crates",
       "path": "crates"
     },
     {
-      "name": "e2e",
       "path": "e2e"
     },
     {
-      "name": "spec",
       "path": "spec"
     },
     {
-      "name": ".github",
       "path": ".github"
     },
     {
-      "name": ".claude",
       "path": ".claude"
     },
     {
-      "name": ".devcontainer",
       "path": ".devcontainer"
     },
     {
-      "name": "scripts",
+      "path": ".docker"
+    },
+    {
       "path": "scripts"
     }
   ],
