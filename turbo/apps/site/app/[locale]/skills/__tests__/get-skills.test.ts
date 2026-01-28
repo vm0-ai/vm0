@@ -1,9 +1,19 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { server } from "../../../../src/mocks/server";
 import { http, HttpResponse } from "msw";
 import { getSkills } from "../get-skills";
 
 describe("getSkills", () => {
+  const originalEnv = process.env.WEB_APP_URL;
+
+  beforeEach(() => {
+    process.env.WEB_APP_URL = "http://localhost:3000";
+  });
+
+  afterEach(() => {
+    process.env.WEB_APP_URL = originalEnv;
+  });
+
   it("should fetch skills from web app API successfully", async () => {
     const skills = await getSkills();
 
@@ -47,7 +57,6 @@ describe("getSkills", () => {
   });
 
   it("should use WEB_APP_URL environment variable", async () => {
-    const originalEnv = process.env.WEB_APP_URL;
     process.env.WEB_APP_URL = "https://test-api.vm0.ai";
 
     server.use(
@@ -59,8 +68,13 @@ describe("getSkills", () => {
     const skills = await getSkills();
 
     expect(skills).toEqual([]);
+  });
 
-    // Restore
-    process.env.WEB_APP_URL = originalEnv;
+  it("should throw error when WEB_APP_URL is not set", async () => {
+    delete process.env.WEB_APP_URL;
+
+    await expect(getSkills()).rejects.toThrow(
+      "WEB_APP_URL environment variable is required",
+    );
   });
 });
