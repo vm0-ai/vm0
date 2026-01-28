@@ -9,7 +9,6 @@ import {
   loadValues,
   pollEvents,
   streamRealtimeEvents,
-  logVerbosePreFlight,
   showNextSteps,
 } from "./shared";
 
@@ -40,7 +39,6 @@ export const resumeCommand = new Command()
     collectVolumeVersions,
     {},
   )
-  .option("-v, --verbose", "Show verbose output with timing information")
   .option(
     "--experimental-realtime",
     "Use realtime event streaming instead of polling (experimental)",
@@ -51,7 +49,6 @@ export const resumeCommand = new Command()
   )
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .action(
-    // eslint-disable-next-line complexity -- TODO: refactor complex function
     async (
       checkpointId: string,
       prompt: string,
@@ -59,15 +56,12 @@ export const resumeCommand = new Command()
         envFile?: string;
         vars: Record<string, string>;
         secrets: Record<string, string>;
-        verbose?: boolean;
         experimentalRealtime?: boolean;
         modelProvider?: string;
         debugNoMockClaude?: boolean;
       },
       command: { optsWithGlobals: () => Record<string, unknown> },
     ) => {
-      const startTimestamp = new Date(); // Capture command start time for elapsed calculation
-
       // Commander.js quirk: when parent command has same option name,
       // the option value goes to parent. Use optsWithGlobals() to get all options.
       const allOpts = command.optsWithGlobals() as {
@@ -75,13 +69,10 @@ export const resumeCommand = new Command()
         vars: Record<string, string>;
         secrets: Record<string, string>;
         volumeVersion: Record<string, string>;
-        verbose?: boolean;
         experimentalRealtime?: boolean;
         modelProvider?: string;
         debugNoMockClaude?: boolean;
       };
-
-      const verbose = options.verbose || allOpts.verbose;
 
       // Merge vars and secrets from command options
       const vars = { ...allOpts.vars, ...options.vars };
@@ -108,34 +99,7 @@ export const resumeCommand = new Command()
         const envFile = options.envFile || allOpts.envFile;
         const loadedSecrets = loadValues(secrets, requiredSecretNames, envFile);
 
-        // 4. Display starting message (verbose only)
-        if (verbose) {
-          logVerbosePreFlight("Resuming agent run from checkpoint", [
-            { label: "Checkpoint ID", value: checkpointId },
-            { label: "Prompt", value: prompt },
-            {
-              label: "Variables",
-              value:
-                Object.keys(vars).length > 0 ? JSON.stringify(vars) : undefined,
-            },
-            {
-              label: "Secrets",
-              value:
-                loadedSecrets && Object.keys(loadedSecrets).length > 0
-                  ? `${Object.keys(loadedSecrets).length} loaded`
-                  : undefined,
-            },
-            {
-              label: "Volume overrides",
-              value:
-                Object.keys(allOpts.volumeVersion).length > 0
-                  ? JSON.stringify(allOpts.volumeVersion)
-                  : undefined,
-            },
-          ]);
-        }
-
-        // 5. Call unified API with checkpointId
+        // 4. Call unified API with checkpointId
         const response = await createRun({
           checkpointId,
           prompt,
@@ -169,14 +133,8 @@ export const resumeCommand = new Command()
         const experimentalRealtime =
           options.experimentalRealtime || allOpts.experimentalRealtime;
         const result = experimentalRealtime
-          ? await streamRealtimeEvents(response.runId, {
-              verbose,
-              startTimestamp,
-            })
-          : await pollEvents(response.runId, {
-              verbose,
-              startTimestamp,
-            });
+          ? await streamRealtimeEvents(response.runId)
+          : await pollEvents(response.runId);
         if (!result.succeeded) {
           process.exit(1);
         }

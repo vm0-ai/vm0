@@ -24,13 +24,7 @@ interface RunStartedInfo {
 /**
  * Options for rendering events
  */
-export interface RenderOptions {
-  /** Whether to show verbose output including elapsed time */
-  verbose?: boolean;
-  /** Timestamp of previous event for elapsed time calculation */
-  previousTimestamp?: Date;
-  /** Start timestamp for total time calculation */
-  startTimestamp?: Date;
+interface RenderOptions {
   /** Whether to show timestamp prefix (useful for historical log viewing) */
   showTimestamp?: boolean;
 }
@@ -51,27 +45,6 @@ export class EventRenderer {
   }
 
   /**
-   * Format elapsed time between two timestamps
-   * Returns [+Nms] for < 1000ms, [+N.Ns] for >= 1000ms
-   */
-  static formatElapsed(previous: Date, current: Date): string {
-    const elapsedMs = current.getTime() - previous.getTime();
-    if (elapsedMs < 1000) {
-      return `[+${elapsedMs}ms]`;
-    }
-    return `[+${(elapsedMs / 1000).toFixed(1)}s]`;
-  }
-
-  /**
-   * Format total elapsed time
-   * Returns N.Ns format
-   */
-  static formatTotalTime(start: Date, end: Date): string {
-    const elapsedMs = end.getTime() - start.getTime();
-    return `${(elapsedMs / 1000).toFixed(1)}s`;
-  }
-
-  /**
    * Format timestamp for display (without milliseconds, matching metrics format)
    */
   static formatTimestamp(timestamp: Date): string {
@@ -85,28 +58,21 @@ export class EventRenderer {
     const timestampPrefix = options?.showTimestamp
       ? `[${this.formatTimestamp(event.timestamp)}] `
       : "";
-    const elapsedSuffix =
-      options?.verbose && options?.previousTimestamp
-        ? " " +
-          chalk.dim(
-            this.formatElapsed(options.previousTimestamp, event.timestamp),
-          )
-        : "";
     switch (event.type) {
       case "init":
-        this.renderInit(event, timestampPrefix, elapsedSuffix);
+        this.renderInit(event, timestampPrefix);
         break;
       case "text":
-        this.renderText(event, timestampPrefix, elapsedSuffix);
+        this.renderText(event, timestampPrefix);
         break;
       case "tool_use":
-        this.renderToolUse(event, timestampPrefix, elapsedSuffix);
+        this.renderToolUse(event, timestampPrefix);
         break;
       case "tool_result":
-        this.renderToolResult(event, timestampPrefix, elapsedSuffix);
+        this.renderToolResult(event, timestampPrefix);
         break;
       case "result":
-        this.renderResult(event, timestampPrefix, elapsedSuffix);
+        this.renderResult(event, timestampPrefix);
         break;
     }
   }
@@ -115,12 +81,7 @@ export class EventRenderer {
    * Render run completed state
    * Note: This is run lifecycle status, not an event
    */
-  static renderRunCompleted(
-    result: RunResult | undefined,
-    options?: RenderOptions,
-  ): void {
-    const now = new Date();
-
+  static renderRunCompleted(result: RunResult | undefined): void {
     // Visual separator to distinguish from event stream
     console.log("");
     console.log(chalk.green("✓ Run completed successfully"));
@@ -145,12 +106,6 @@ export class EventRenderer {
         }
       }
     }
-
-    // Show total time in verbose mode
-    if (options?.verbose && options?.startTimestamp) {
-      const totalTime = this.formatTotalTime(options.startTimestamp, now);
-      console.log(`  Total time:    ${chalk.dim(totalTime)}`);
-    }
   }
 
   /**
@@ -167,16 +122,12 @@ export class EventRenderer {
     );
   }
 
-  private static renderInit(
-    event: ParsedEvent,
-    prefix: string,
-    suffix: string,
-  ): void {
+  private static renderInit(event: ParsedEvent, prefix: string): void {
     const frameworkStr = String(event.data.framework || "claude-code");
     const displayName = isSupportedFramework(frameworkStr)
       ? getFrameworkDisplayName(frameworkStr)
       : frameworkStr;
-    console.log(prefix + "[init]" + suffix + ` Starting ${displayName} agent`);
+    console.log(prefix + `[init] Starting ${displayName} agent`);
     console.log(`  Session: ${chalk.dim(String(event.data.sessionId || ""))}`);
     if (event.data.model) {
       console.log(`  Model: ${chalk.dim(String(event.data.model))}`);
@@ -190,22 +141,14 @@ export class EventRenderer {
     );
   }
 
-  private static renderText(
-    event: ParsedEvent,
-    prefix: string,
-    suffix: string,
-  ): void {
+  private static renderText(event: ParsedEvent, prefix: string): void {
     const text = String(event.data.text || "");
-    console.log(prefix + "[text]" + suffix + " " + text);
+    console.log(prefix + "[text] " + text);
   }
 
-  private static renderToolUse(
-    event: ParsedEvent,
-    prefix: string,
-    suffix: string,
-  ): void {
+  private static renderToolUse(event: ParsedEvent, prefix: string): void {
     const tool = String(event.data.tool || "");
-    console.log(prefix + "[tool_use]" + suffix + " " + tool);
+    console.log(prefix + "[tool_use] " + tool);
 
     // Show full input without truncation
     const input = event.data.input as Record<string, unknown>;
@@ -222,30 +165,22 @@ export class EventRenderer {
     }
   }
 
-  private static renderToolResult(
-    event: ParsedEvent,
-    prefix: string,
-    suffix: string,
-  ): void {
+  private static renderToolResult(event: ParsedEvent, prefix: string): void {
     const isError = Boolean(event.data.isError);
     const status = isError ? "Error" : "Completed";
 
-    console.log(prefix + "[tool_result]" + suffix + " " + status);
+    console.log(prefix + "[tool_result] " + status);
 
     // Show full result without truncation
     const result = String(event.data.result || "");
     console.log(`  ${chalk.dim(result)}`);
   }
 
-  private static renderResult(
-    event: ParsedEvent,
-    prefix: string,
-    suffix: string,
-  ): void {
+  private static renderResult(event: ParsedEvent, prefix: string): void {
     const success = Boolean(event.data.success);
     const status = success ? "✓ completed successfully" : "✗ failed";
 
-    console.log(prefix + "[result]" + suffix + " " + status);
+    console.log(prefix + "[result] " + status);
 
     const durationMs = Number(event.data.durationMs || 0);
     const durationSec = (durationMs / 1000).toFixed(1);

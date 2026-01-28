@@ -85,14 +85,12 @@ describe("streamEvents", () => {
     onRunFailedMock: ReturnType<typeof vi.fn>;
     onTimeoutMock: ReturnType<typeof vi.fn>;
   } {
-    const onEventMock = vi.fn().mockReturnValue(new Date());
+    const onEventMock = vi.fn();
     const onRunCompletedMock = vi.fn();
     const onRunFailedMock = vi.fn();
     const onTimeoutMock = vi.fn();
 
     return {
-      verbose: false,
-      startTimestamp: new Date(),
       onEvent: onEventMock,
       onRunCompleted: onRunCompletedMock,
       onRunFailed: onRunFailedMock,
@@ -146,16 +144,8 @@ describe("streamEvents", () => {
     });
 
     expect(options.onEventMock).toHaveBeenCalledTimes(2);
-    expect(options.onEventMock).toHaveBeenNthCalledWith(
-      1,
-      events[0],
-      expect.objectContaining({ verbose: false }),
-    );
-    expect(options.onEventMock).toHaveBeenNthCalledWith(
-      2,
-      events[1],
-      expect.objectContaining({ verbose: false }),
-    );
+    expect(options.onEventMock).toHaveBeenNthCalledWith(1, events[0]);
+    expect(options.onEventMock).toHaveBeenNthCalledWith(2, events[1]);
 
     // Complete the stream
     capturedMessageHandler?.({
@@ -186,10 +176,7 @@ describe("streamEvents", () => {
 
     const streamResult = await streamPromise;
 
-    expect(options.onRunCompletedMock).toHaveBeenCalledWith(
-      result,
-      expect.any(Object),
-    );
+    expect(options.onRunCompletedMock).toHaveBeenCalledWith(result);
     expect(streamResult.succeeded).toBe(true);
     expect(streamResult.runId).toBe("run-123");
     expect(streamResult.checkpointId).toBe("cp-123");
@@ -291,36 +278,5 @@ describe("streamEvents", () => {
 
     await streamPromise;
     consoleSpy.mockRestore();
-  });
-
-  it("should pass verbose option to callbacks", async () => {
-    const options = createMockOptions();
-    options.verbose = true;
-
-    const streamPromise = streamEvents("run-123", options);
-
-    await vi.waitFor(() => {
-      expect(capturedMessageHandler).not.toBeNull();
-    });
-
-    capturedMessageHandler?.({
-      name: "events",
-      data: {
-        events: [{ type: "text", sequenceNumber: 0 }],
-        nextSequence: 1,
-      },
-    });
-
-    expect(options.onEventMock).toHaveBeenCalledWith(
-      expect.any(Object),
-      expect.objectContaining({ verbose: true }),
-    );
-
-    capturedMessageHandler?.({
-      name: "status",
-      data: { status: "completed" },
-    });
-
-    await streamPromise;
   });
 });

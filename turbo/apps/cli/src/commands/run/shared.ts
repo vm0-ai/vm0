@@ -177,11 +177,6 @@ export function parseIdentifier(identifier: string): {
   return { scope, name: rest };
 }
 
-interface PollOptions {
-  verbose?: boolean;
-  startTimestamp: Date;
-}
-
 interface PollResult {
   succeeded: boolean;
   runId: string;
@@ -191,23 +186,13 @@ interface PollResult {
 
 /**
  * Render a single event (used by streamEvents callback)
- * Returns the event timestamp for elapsed time calculation
  */
-function renderEvent(
-  event: unknown,
-  options: { verbose?: boolean; previousTimestamp: Date; startTimestamp: Date },
-): Date {
+function renderEvent(event: unknown): void {
   const eventData = event as Record<string, unknown>;
   const parsed = parseEvent(eventData);
   if (parsed) {
-    EventRenderer.render(parsed, {
-      verbose: options.verbose,
-      previousTimestamp: options.previousTimestamp,
-      startTimestamp: options.startTimestamp,
-    });
-    return parsed.timestamp;
+    EventRenderer.render(parsed);
   }
-  return options.previousTimestamp;
 }
 
 /**
@@ -216,17 +201,11 @@ function renderEvent(
  */
 export async function streamRealtimeEvents(
   runId: string,
-  options: PollOptions,
 ): Promise<StreamResult> {
-  const startTimestamp = options.startTimestamp;
-  const verbose = options.verbose;
-
   return streamEvents(runId, {
-    verbose,
-    startTimestamp,
     onEvent: renderEvent,
-    onRunCompleted: (result, opts) => {
-      EventRenderer.renderRunCompleted(result as RunResult | undefined, opts);
+    onRunCompleted: (result) => {
+      EventRenderer.renderRunCompleted(result as RunResult | undefined);
     },
     onRunFailed: (error, rid) => {
       EventRenderer.renderRunFailed(error, rid);
@@ -244,17 +223,11 @@ export async function streamRealtimeEvents(
  * Poll for events until run completes (via run.status field)
  * @returns Poll result with success status and optional session/checkpoint IDs
  */
-export async function pollEvents(
-  runId: string,
-  options: PollOptions,
-): Promise<PollResult> {
+export async function pollEvents(runId: string): Promise<PollResult> {
   let nextSequence = -1;
   let complete = false;
   let result: PollResult = { succeeded: true, runId };
   const pollIntervalMs = 1000;
-  const startTimestamp = options.startTimestamp;
-  let previousTimestamp = startTimestamp;
-  const verbose = options.verbose;
 
   while (!complete) {
     const response = await getEvents(runId, {
@@ -272,12 +245,7 @@ export async function pollEvents(
         // Use Claude Code renderer (default)
         const parsed = parseEvent(eventData);
         if (parsed) {
-          EventRenderer.render(parsed, {
-            verbose,
-            previousTimestamp,
-            startTimestamp,
-          });
-          previousTimestamp = parsed.timestamp;
+          EventRenderer.render(parsed);
         }
       }
     }
@@ -290,11 +258,7 @@ export async function pollEvents(
     if (runStatus === "completed") {
       complete = true;
       // Render completion info
-      EventRenderer.renderRunCompleted(response.run.result, {
-        verbose,
-        previousTimestamp,
-        startTimestamp,
-      });
+      EventRenderer.renderRunCompleted(response.run.result);
       result = {
         succeeded: true,
         runId,
@@ -322,24 +286,6 @@ export async function pollEvents(
   }
 
   return result;
-}
-
-/**
- * Log verbose pre-flight messages
- */
-export function logVerbosePreFlight(
-  action: string,
-  details: Array<{ label: string; value: string | undefined }>,
-): void {
-  console.log(`\n${action}...`);
-  for (const { label, value } of details) {
-    if (value !== undefined) {
-      console.log(chalk.dim(`  ${label}: ${value}`));
-    }
-  }
-  console.log();
-  console.log("Executing in sandbox...");
-  console.log();
 }
 
 /**

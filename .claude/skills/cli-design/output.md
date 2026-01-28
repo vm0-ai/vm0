@@ -168,16 +168,6 @@ console.log(chalk.cyan("  environment:"));
 console.log(chalk.cyan(`    KEY: \${{ secrets.KEY }}`));
 ```
 
-## Verbose Output
-
-For `--verbose` flag, show additional timing information:
-
-```typescript
-if (verbose) {
-  console.log(`[text] ${text} ${chalk.dim("[+250ms]")}`);
-}
-```
-
 ## Anti-Patterns
 
 ### Inconsistent Indentation

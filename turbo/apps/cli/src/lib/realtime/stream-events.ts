@@ -33,24 +33,8 @@ export interface StreamResult {
  * Options for streamEvents
  */
 export interface StreamOptions {
-  verbose?: boolean;
-  startTimestamp: Date;
-  onEvent: (
-    event: unknown,
-    options: {
-      verbose?: boolean;
-      previousTimestamp: Date;
-      startTimestamp: Date;
-    },
-  ) => Date;
-  onRunCompleted: (
-    result: Record<string, unknown> | undefined,
-    options: {
-      verbose?: boolean;
-      previousTimestamp: Date;
-      startTimestamp: Date;
-    },
-  ) => void;
+  onEvent: (event: unknown) => void;
+  onRunCompleted: (result: Record<string, unknown> | undefined) => void;
   onRunFailed: (error: string | undefined, runId: string) => void;
   onTimeout: (runId: string) => void;
 }
@@ -68,15 +52,7 @@ export async function streamEvents(
   runId: string,
   options: StreamOptions,
 ): Promise<StreamResult> {
-  const {
-    verbose,
-    startTimestamp,
-    onEvent,
-    onRunCompleted,
-    onRunFailed,
-    onTimeout,
-  } = options;
-  let previousTimestamp = startTimestamp;
+  const { onEvent, onRunCompleted, onRunFailed, onTimeout } = options;
 
   // Create Ably client with token-based auth
   const ablyClient = createRealtimeClient(async () => {
@@ -133,21 +109,13 @@ export async function streamEvents(
           }
 
           // Render the event
-          previousTimestamp = onEvent(event, {
-            verbose,
-            previousTimestamp,
-            startTimestamp,
-          });
+          onEvent(event);
         }
       } else if (message.name === "status") {
         const data = message.data as StatusData;
         // Run completed/failed/timeout
         if (data.status === "completed") {
-          onRunCompleted(data.result, {
-            verbose,
-            previousTimestamp,
-            startTimestamp,
-          });
+          onRunCompleted(data.result);
           result = {
             succeeded: true,
             runId,
