@@ -1,5 +1,25 @@
 # Changelog
 
+## [9.2.0](https://github.com/vm0-ai/vm0/compare/cli-v9.1.0...cli-v9.2.0) (2026-01-28)
+
+
+### Features
+
+* **cli:** auto-install cli globally in watch mode ([#1776](https://github.com/vm0-ai/vm0/issues/1776)) ([afc06fc](https://github.com/vm0-ai/vm0/commit/afc06fc21d616e2f924204076bb01bc294bf20ec))
+* **cli:** improve onboard flow to call model-provider setup directly ([#1774](https://github.com/vm0-ai/vm0/issues/1774)) ([5097b45](https://github.com/vm0-ai/vm0/commit/5097b45b865a0b59c68b23a88f5a974b29693012))
+
+
+### Bug Fixes
+
+* **cli:** change npm link command from global to local installation ([#1779](https://github.com/vm0-ai/vm0/issues/1779)) ([83f0e38](https://github.com/vm0-ai/vm0/commit/83f0e38d40ca81ebc044b49b6876ef163ba41372))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.2.0
+
 ## [9.1.0](https://github.com/vm0-ai/vm0/compare/cli-v9.0.0...cli-v9.1.0) (2026-01-28)
 
 

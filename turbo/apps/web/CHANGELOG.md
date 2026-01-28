@@ -1,5 +1,19 @@
 # Changelog
 
+## [11.3.0](https://github.com/vm0-ai/vm0/compare/web-v11.2.0...web-v11.3.0) (2026-01-28)
+
+
+### Features
+
+* **web:** add per-user concurrent run limit ([#1749](https://github.com/vm0-ai/vm0/issues/1749)) ([a0277ff](https://github.com/vm0-ai/vm0/commit/a0277ffda3efe2aed0e1e32a7313f14d8b89dcd0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.2.0
+
 ## [11.2.0](https://github.com/vm0-ai/vm0/compare/web-v11.1.0...web-v11.2.0) (2026-01-28)
 
 

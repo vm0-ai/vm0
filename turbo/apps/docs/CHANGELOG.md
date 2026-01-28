@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.1](https://github.com/vm0-ai/vm0/compare/docs-v2.1.0...docs-v2.1.1) (2026-01-28)
+
+
+### Bug Fixes
+
+* **api:** remove unimplemented filters and fix docs gaps ([#1775](https://github.com/vm0-ai/vm0/issues/1775)) ([ca4a728](https://github.com/vm0-ai/vm0/commit/ca4a72839895235e0b873374909fc4a8de80607a))
+
 ## [2.1.0](https://github.com/vm0-ai/vm0/compare/docs-v2.0.0...docs-v2.1.0) (2026-01-28)
 
 

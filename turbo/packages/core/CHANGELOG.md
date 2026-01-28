@@ -1,5 +1,17 @@
 # Changelog
 
+## [7.2.0](https://github.com/vm0-ai/vm0/compare/core-v7.1.0...core-v7.2.0) (2026-01-28)
+
+
+### Features
+
+* **web:** add per-user concurrent run limit ([#1749](https://github.com/vm0-ai/vm0/issues/1749)) ([a0277ff](https://github.com/vm0-ai/vm0/commit/a0277ffda3efe2aed0e1e32a7313f14d8b89dcd0))
+
+
+### Bug Fixes
+
+* **api:** remove unimplemented filters and fix docs gaps ([#1775](https://github.com/vm0-ai/vm0/issues/1775)) ([ca4a728](https://github.com/vm0-ai/vm0/commit/ca4a72839895235e0b873374909fc4a8de80607a))
+
 ## [7.1.0](https://github.com/vm0-ai/vm0/compare/core-v7.0.0...core-v7.1.0) (2026-01-28)
 
 
