@@ -103,8 +103,7 @@ The API uses standard HTTP status codes and returns structured error responses.
   "error": {
     "type": "invalid_request_error",
     "code": "resource_not_found",
-    "message": "No such agent: 'my-agent'",
-    "param": "agent_id"
+    "message": "No such agent: 'my-agent'"
   }
 }
 ```
@@ -114,7 +113,6 @@ The API uses standard HTTP status codes and returns structured error responses.
 | `type` | string | Category of the error |
 | `code` | string | Specific error code |
 | `message` | string | Human-readable error description |
-| `param` | string | Parameter that caused the error (when applicable) |
 
 ### Error Types
 
@@ -132,10 +130,7 @@ The API uses standard HTTP status codes and returns structured error responses.
 
 | Code | Description |
 |------|-------------|
-| `missing_api_key` | No Authorization header provided |
-| `invalid_api_key` | Token is malformed or doesn't exist |
-| `expired_api_key` | Token has expired |
-| `revoked_api_key` | Token was revoked |
+| `invalid_api_key` | API key is missing, malformed, expired, or revoked |
 
 #### Request Errors (400)
 
@@ -143,6 +138,7 @@ The API uses standard HTTP status codes and returns structured error responses.
 |------|-------------|
 | `invalid_parameter` | A parameter value is invalid |
 | `missing_parameter` | A required parameter is missing |
+| `invalid_state` | Resource is in an invalid state for the requested operation |
 
 #### Resource Errors (404, 409)
 
@@ -195,7 +191,7 @@ curl "https://api.vm0.ai/v1/agents?limit=10" \
   -H "Authorization: Bearer vm0_live_xxx"
 ```
 
-Use the `next_cursor` from the previous response for subsequent pages:
+Use the `nextCursor` from the previous response for subsequent pages:
 
 ```bash
 curl "https://api.vm0.ai/v1/agents?limit=10&cursor=eyJpZCI6ImFnX2RlZiJ9" \

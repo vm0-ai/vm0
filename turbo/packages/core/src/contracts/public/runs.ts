@@ -97,9 +97,7 @@ export type CreateRunRequest = z.infer<typeof createRunRequestSchema>;
  * Run list query parameters
  */
 export const runListQuerySchema = listQuerySchema.extend({
-  agentId: z.string().optional(),
   status: publicRunStatusSchema.optional(),
-  since: timestampSchema.optional(),
 });
 
 export type RunListQuery = z.infer<typeof runListQuerySchema>;
