@@ -1,3 +1,28 @@
+/* ===== BLOG CSS VARIABLES ===== */
+/* Dark Theme (Default) */
+:root {
+  --primary-light: rgba(237, 78, 1, 0.1);
+  --card-bg: #222222;
+  --border-light: rgba(255, 255, 255, 0.1);
+  --text-secondary: rgba(255, 255, 255, 0.8);
+  --text-primary: #ffffff;
+  --text-muted: #d5d5d5;
+  --accent-color: #ed4e01;
+  --bg-primary: #0a0a0a;
+}
+
+/* Light Theme */
+[data-theme="light"] {
+  --primary-light: rgba(237, 78, 1, 0.1);
+  --card-bg: #ffffff;
+  --border-light: rgba(200, 150, 100, 0.2);
+  --text-secondary: rgba(0, 0, 0, 0.7);
+  --text-primary: #1a1a1a;
+  --text-muted: #4a4a4a;
+  --accent-color: #ed4e01;
+  --bg-primary: #fffbf7;
+}
+
 /* ===== BLOG SPECIFIC STYLES ===== */
 
 /* Blog Grid - 2 cards per row */
