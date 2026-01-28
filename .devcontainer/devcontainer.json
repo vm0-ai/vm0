@@ -6,8 +6,7 @@
       "version": "17"
     },
     "ghcr.io/devcontainers-extra/features/caddy:1": {},
-    "ghcr.io/joedmck/devcontainer-features/cloudflared:1": {},
-    "ghcr.io/devcontainers/features/aws-cli:1": {}
+    "ghcr.io/joedmck/devcontainer-features/cloudflared:1": {}
   },
   "remoteUser": "vscode",
   "forwardPorts": [8443],
