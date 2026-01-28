@@ -1,27 +1,33 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { getApiUrl, saveConfig, getToken, clearConfig } from "../config";
 import { existsSync } from "fs";
-import { readFile, unlink, mkdir } from "fs/promises";
-import { homedir } from "os";
+import { readFile, rm, mkdir } from "fs/promises";
+import { tmpdir } from "os";
 import { join } from "path";
+import { getApiUrl, saveConfig, getToken, clearConfig } from "../config";
 
-const CONFIG_DIR = join(homedir(), ".vm0");
+// Create unique temp directory for this test file
+const TEST_HOME = join(tmpdir(), `vm0-config-test-${process.pid}`);
+const CONFIG_DIR = join(TEST_HOME, ".vm0");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
+
+// Mock homedir before importing config module
+vi.mock("os", async (importOriginal) => {
+  const original = await importOriginal<typeof import("os")>();
+  return {
+    ...original,
+    homedir: () => TEST_HOME,
+  };
+});
 
 describe("config", () => {
   beforeEach(async () => {
-    // Clean up any existing test config
-    if (existsSync(CONFIG_FILE)) {
-      await unlink(CONFIG_FILE);
-    }
+    // Ensure clean state
+    await rm(CONFIG_DIR, { recursive: true, force: true });
   });
 
   afterEach(async () => {
     vi.unstubAllEnvs();
-    // Clean up test config
-    if (existsSync(CONFIG_FILE)) {
-      await unlink(CONFIG_FILE);
-    }
+    await rm(CONFIG_DIR, { recursive: true, force: true });
   });
 
   describe("getApiUrl", () => {
@@ -103,9 +109,6 @@ describe("config", () => {
 
   describe("saveConfig", () => {
     it("should create config directory if it does not exist", async () => {
-      if (existsSync(CONFIG_DIR)) {
-        await unlink(CONFIG_FILE).catch(() => {});
-      }
       await saveConfig({ token: "test-token" });
       expect(existsSync(CONFIG_DIR)).toBe(true);
       expect(existsSync(CONFIG_FILE)).toBe(true);

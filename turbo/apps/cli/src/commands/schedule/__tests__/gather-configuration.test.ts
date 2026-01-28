@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { gatherConfiguration } from "../gather-configuration";
 
 /**
@@ -52,6 +52,14 @@ function createMockDeps(
 }
 
 describe("gatherConfiguration", () => {
+  beforeEach(() => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   describe("new schedule scenarios", () => {
     it("should use --secret flag values for new schedule", async () => {
       const deps = createMockDeps({ isInteractive: true });

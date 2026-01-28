@@ -1,25 +1,33 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { rm, mkdir } from "fs/promises";
+import { tmpdir } from "os";
+import { join } from "path";
 import { setupToken } from "../auth";
 import * as config from "../config";
-import { existsSync } from "fs";
-import { unlink, mkdir } from "fs/promises";
-import { homedir } from "os";
-import { join } from "path";
 
-const CONFIG_DIR = join(homedir(), ".vm0");
-const CONFIG_FILE = join(CONFIG_DIR, "config.json");
+const TEST_HOME = join(tmpdir(), `vm0-auth-test-${process.pid}`);
+const CONFIG_DIR = join(TEST_HOME, ".vm0");
+
+vi.mock("os", async (importOriginal) => {
+  const original = await importOriginal<typeof import("os")>();
+  return {
+    ...original,
+    homedir: () => TEST_HOME,
+  };
+});
 
 describe("auth", () => {
   const originalExit = process.exit;
   const mockExit = vi.fn() as unknown as typeof process.exit;
 
   beforeEach(async () => {
-    // Clean up any existing test config
-    if (existsSync(CONFIG_FILE)) {
-      await unlink(CONFIG_FILE);
-    }
+    // Ensure clean state
+    await rm(CONFIG_DIR, { recursive: true, force: true });
     // Mock process.exit
     process.exit = mockExit;
+    // Silence console output
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(async () => {
@@ -27,21 +35,17 @@ describe("auth", () => {
     // Restore process.exit
     process.exit = originalExit;
     vi.restoreAllMocks();
-    // Clean up test config
-    if (existsSync(CONFIG_FILE)) {
-      await unlink(CONFIG_FILE);
-    }
+    await rm(CONFIG_DIR, { recursive: true, force: true });
   });
 
   describe("setupToken", () => {
     it("should output token with human-readable format when authenticated via config file", async () => {
       await mkdir(CONFIG_DIR, { recursive: true });
       await config.saveConfig({ token: "vm0_live_test123" });
-      const consoleSpy = vi.spyOn(console, "log");
 
       await setupToken();
 
-      const logCalls = consoleSpy.mock.calls.flat().join(" ");
+      const logCalls = vi.mocked(console.log).mock.calls.flat().join(" ");
       expect(logCalls).toContain("Authentication token exported successfully");
       expect(logCalls).toContain("Your token:");
       expect(logCalls).toContain("vm0_live_test123");
@@ -50,24 +54,21 @@ describe("auth", () => {
 
     it("should output token with human-readable format when authenticated via VM0_TOKEN env var", async () => {
       vi.stubEnv("VM0_TOKEN", "vm0_live_envtoken456");
-      const consoleSpy = vi.spyOn(console, "log");
 
       await setupToken();
 
-      const logCalls = consoleSpy.mock.calls.flat().join(" ");
+      const logCalls = vi.mocked(console.log).mock.calls.flat().join(" ");
       expect(logCalls).toContain("Authentication token exported successfully");
       expect(logCalls).toContain("vm0_live_envtoken456");
       expect(logCalls).toContain("export VM0_TOKEN=<token>");
     });
 
     it("should exit with error and show instructions when not authenticated", async () => {
-      const consoleErrorSpy = vi.spyOn(console, "error");
-
       await setupToken();
 
-      expect(consoleErrorSpy).toHaveBeenCalled();
+      expect(console.error).toHaveBeenCalled();
       // Check that helpful instructions are shown
-      const errorCalls = consoleErrorSpy.mock.calls.flat().join(" ");
+      const errorCalls = vi.mocked(console.error).mock.calls.flat().join(" ");
       expect(errorCalls).toContain("Not authenticated");
       expect(errorCalls).toContain("vm0 auth login");
       expect(errorCalls).toContain("CI/CD");
