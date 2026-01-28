@@ -76,7 +76,7 @@ class RunnerExecutor implements Executor {
       log.debug(`Job notification published for run ${context.runId}`);
     }
 
-    // Return pending status - run will be picked up by polling runner
+    // Return pending status - run will be picked up by runner via realtime notification or polling
     return {
       runId: context.runId,
       status: "pending",

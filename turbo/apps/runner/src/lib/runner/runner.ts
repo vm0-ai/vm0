@@ -26,7 +26,8 @@ export class Runner {
   // Ably subscription
   private subscription: JobSubscription | null = null;
 
-  // Queue for jobs received while at capacity
+  // Queue for jobs received while at capacity (max 100 to prevent unbounded growth)
+  private static readonly MAX_PENDING_QUEUE_SIZE = 100;
   private pendingJobs: string[] = [];
 
   // Polling fallback interval
@@ -189,10 +190,17 @@ export class Runner {
 
     // Check concurrency limit
     if (this.state.activeRuns.size >= this.config.sandbox.max_concurrent) {
-      // Avoid duplicate entries in queue
-      if (!this.pendingJobs.includes(runId)) {
+      // Avoid duplicate entries and respect max queue size
+      if (
+        !this.pendingJobs.includes(runId) &&
+        this.pendingJobs.length < Runner.MAX_PENDING_QUEUE_SIZE
+      ) {
         console.log(`At capacity, queueing job ${runId}`);
         this.pendingJobs.push(runId);
+      } else if (this.pendingJobs.length >= Runner.MAX_PENDING_QUEUE_SIZE) {
+        console.log(
+          `Pending queue full (${Runner.MAX_PENDING_QUEUE_SIZE}), dropping job ${runId}`,
+        );
       }
       return;
     }
