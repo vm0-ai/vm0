@@ -21,8 +21,6 @@ sudo update-locale LANG=en_US.UTF-8 2>/dev/null || true
 echo "✓ Locale configured"
 
 # Setup directories - fix ownership for all mounted volumes
-# Note: NSS database is created in $WORKSPACE_DIR/.mozilla (not ~/.pki)
-# to avoid BTRFS + nodatacow compatibility issues
 sudo mkdir -p /home/vscode/.local/bin /home/vscode/.pki
 sudo chown -R vscode:vscode /home/vscode/.config /home/vscode/.cache /home/vscode/.local /home/vscode/.pki
 
@@ -33,41 +31,6 @@ if [ ! -L "$HOME/.claude" ]; then
   mkdir -p "$HOME/.config/claude"
   ln -s "$HOME/.config/claude" "$HOME/.claude"
   echo "✓ Linked ~/.claude to ~/.config/claude"
-fi
-
-# Create NSS database in project directory (uses host filesystem, not BTRFS volume)
-# This avoids BTRFS + nodatacow compatibility issues with SQLite
-NSS_DIR="$WORKSPACE_DIR/.mozilla/firefox/mkcert.default"
-if [ ! -d "$NSS_DIR" ] || [ ! -f "$NSS_DIR/cert9.db" ]; then
-  echo "🔧 Creating NSS database for browser certificate trust..."
-  mkdir -p "$NSS_DIR"
-
-  # Create NSS database with empty password
-  PWFILE=$(mktemp)
-  echo "" > "$PWFILE"
-  certutil -N -d sql:"$NSS_DIR" -f "$PWFILE"
-  rm -f "$PWFILE"
-
-  # Create Firefox profiles.ini
-  cat > "$WORKSPACE_DIR/.mozilla/firefox/profiles.ini" << 'EOF'
-[General]
-StartWithLastProfile=1
-
-[Profile0]
-Name=mkcert
-IsRelative=1
-Path=mkcert.default
-Default=1
-EOF
-
-  echo "✓ NSS database created"
-fi
-
-# Create symlink from ~/.mozilla to project directory for easy access
-if [ ! -L "$HOME/.mozilla" ]; then
-  rm -rf "$HOME/.mozilla"
-  ln -s "$WORKSPACE_DIR/.mozilla" "$HOME/.mozilla"
-  echo "✓ Linked ~/.mozilla to project directory"
 fi
 
 # Install host mkcert CA if certificates exist
@@ -86,12 +49,6 @@ if [ -f "$WORKSPACE_DIR/.certs/rootCA.pem" ]; then
   if [ -d "$CHROMIUM_NSS" ]; then
     certutil -d sql:"$CHROMIUM_NSS" -A -t "C,," -n "mkcert-host" -i "$HOST_CA" 2>/dev/null || true
     echo "✓ Host CA installed to Chromium NSS database"
-  fi
-
-  # Install to Firefox NSS database
-  if [ -f "$NSS_DIR/cert9.db" ]; then
-    certutil -d sql:"$NSS_DIR" -A -t "C,," -n "mkcert-host" -i "$HOST_CA" 2>/dev/null || true
-    echo "✓ Host CA installed to Firefox NSS database"
   fi
 elif [ -d "$WORKSPACE_DIR/.certs" ] && [ "$(ls -A $WORKSPACE_DIR/.certs 2>/dev/null)" ]; then
   echo "⚠️  Certificates found but no rootCA.pem. Run 'scripts/generate-certs.sh' on host to include CA."
