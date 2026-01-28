@@ -1,15 +1,18 @@
 import type Ably from "ably";
 import type { ConnectionStateChange, InboundMessage } from "ably";
+import { z } from "zod";
 import { createRealtimeClient, getRunnerGroupChannelName } from "./client.js";
 import { getRealtimeToken } from "../api.js";
 
 /**
- * Job notification payload - only contains runId
+ * Job notification schema - only contains runId
  * Runner will claim the job to get full execution context
  */
-interface JobNotification {
-  runId: string;
-}
+const JobNotificationSchema = z.object({
+  runId: z.string(),
+});
+
+type JobNotification = z.infer<typeof JobNotificationSchema>;
 
 /**
  * Server configuration for API calls
@@ -71,8 +74,10 @@ export async function subscribeToJobs(
   // Message handler
   function handleMessage(message: InboundMessage): void {
     if (message.name === "job") {
-      const notification = message.data as JobNotification;
-      onJob(notification);
+      const result = JobNotificationSchema.safeParse(message.data);
+      if (result.success) {
+        onJob(result.data);
+      }
     }
   }
 

@@ -54,12 +54,6 @@ vi.mock("../../api.js", () => ({
   }),
 }));
 
-// Mock client module to use the mocked Ably
-vi.mock("../client.js", async () => {
-  const actual = await vi.importActual("../client.js");
-  return actual;
-});
-
 import { subscribeToJobs } from "../subscription.js";
 
 describe("realtime/subscription", () => {
