@@ -247,10 +247,7 @@ export class RunService {
    * @param limit Maximum allowed concurrent runs (default: 1, or CONCURRENT_RUN_LIMIT env var, 0 = no limit)
    * @throws ConcurrentRunLimitError if limit exceeded
    */
-  async checkConcurrencyLimit(
-    userId: string,
-    limit?: number,
-  ): Promise<void> {
+  async checkConcurrencyLimit(userId: string, limit?: number): Promise<void> {
     // Use provided limit, or env var, or default to 1
     // Note: 0 means no limit (for testing), so we need explicit undefined check
     const envLimit = process.env.CONCURRENT_RUN_LIMIT;
