@@ -5,5 +5,4 @@ set -eu
 VM0_WORKSPACES="${VM0_WORKSPACES:-$HOME/workspaces}"
 FOLDER="$VM0_WORKSPACES/$1"
 
-# Check if ~/.devcontainer.env file exists and use it
 npx @devcontainers/cli exec --workspace-folder "$FOLDER" zsh

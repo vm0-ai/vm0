@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+
+set -e
+set -u
+
+VM0_WORKSPACES="${VM0_WORKSPACES:-$HOME/workspaces}"
+SOURCE="$VM0_WORKSPACES/vm0"
+
+if [[ ! -d "$SOURCE" ]]; then
+    echo "Error: Source directory $SOURCE does not exist"
+    exit 1
+fi
+
+# Check if a directory is a vm0-ai/vm0 project
+is_vm0_project() {
+    local dir="$1"
+    [[ -d "$dir/.git" ]] && git -C "$dir" remote -v 2>/dev/null | grep -qE "vm0-ai/vm0(\.git|[[:space:]])"
+}
+
+# Find all .env.local files in source and symlink them to destination
+sync_env_files() {
+    local dest="$1"
+
+    while IFS= read -r -d '' env_file; do
+        local rel_path="${env_file#"$SOURCE/"}"
+        local dest_file="$dest/$rel_path"
+        local dest_dir
+        dest_dir=$(dirname "$dest_file")
+
+        if [[ -d "$dest_dir" ]]; then
+            ln -sf "$env_file" "$dest_file"
+            echo "  Linked: $rel_path"
+        fi
+    done < <(find "$SOURCE" -name ".env.local" -type f -print0)
+}
+
+# Iterate through all vm* directories in VM0_WORKSPACES
+for dir in "$VM0_WORKSPACES"/vm*/; do
+    [[ ! -d "$dir" ]] && continue
+
+    # Skip the source directory itself
+    [[ "$(realpath "$dir")" == "$(realpath "$SOURCE")" ]] && continue
+
+    dir_name=$(basename "$dir")
+
+    if is_vm0_project "$dir"; then
+        echo "Syncing to $dir_name..."
+
+        # Sync .env.local files
+        sync_env_files "$dir"
+
+        # Sync .certs directory
+        if [[ -d "$SOURCE/.certs" ]]; then
+            rm -rf "$dir/.certs"
+            ln -sf "$SOURCE/.certs" "$dir/.certs"
+            echo "  Linked: .certs"
+        fi
+    fi
+done
