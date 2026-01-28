@@ -56,7 +56,7 @@ export function LogsTableRow({ logId }: LogsTableRowProps) {
         {detail.sessionId ?? "-"}
       </TableCell>
       <TableCell>{detail.agentName}</TableCell>
-      <TableCell>{detail.provider}</TableCell>
+      <TableCell>{detail.framework}</TableCell>
       <TableCell>
         <StatusBadge status={detail.status} variant="compact" />
       </TableCell>

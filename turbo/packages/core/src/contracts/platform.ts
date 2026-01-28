@@ -49,7 +49,7 @@ const platformLogDetailSchema = z.object({
   id: z.string().uuid(),
   sessionId: z.string().nullable(),
   agentName: z.string(),
-  provider: z.string().nullable(),
+  framework: z.string().nullable(),
   status: platformLogStatusSchema,
   prompt: z.string(),
   error: z.string().nullable(),

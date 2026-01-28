@@ -34,7 +34,7 @@ describe("log detail page", () => {
           id: "test-run-123",
           sessionId: "session-456",
           agentName: "Test Agent",
-          provider: "claude-code",
+          framework: "claude-code",
           status: "completed",
           prompt: "Test prompt",
           error: null,
@@ -68,7 +68,7 @@ describe("log detail page", () => {
           id: "run-abc-123",
           sessionId: "session-xyz-789",
           agentName: "My Test Agent",
-          provider: "openai",
+          framework: "openai",
           status: "completed",
           prompt: "Do something",
           error: null,
@@ -98,7 +98,7 @@ describe("log detail page", () => {
     expect(screen.getByText("My Test Agent")).toBeInTheDocument();
     expect(screen.getByText("openai")).toBeInTheDocument();
     expect(screen.getByText("Done")).toBeInTheDocument(); // Status shows "Done" for completed
-    expect(screen.getByText("my-artifact")).toBeInTheDocument();
+    expect(screen.getByText("My artifact folders")).toBeInTheDocument(); // Artifact download button
   });
 
   it("should display duration correctly", async () => {
@@ -108,7 +108,7 @@ describe("log detail page", () => {
           id: "run-duration-test",
           sessionId: null,
           agentName: "Duration Agent",
-          provider: "claude-code",
+          framework: "claude-code",
           status: "completed",
           prompt: "Test",
           error: null,
@@ -140,7 +140,7 @@ describe("log detail page", () => {
           id: "run-no-session",
           sessionId: null,
           agentName: "No Session Agent",
-          provider: "claude-code",
+          framework: "claude-code",
           status: "pending",
           prompt: "Test",
           error: null,
@@ -177,7 +177,7 @@ describe("log detail page", () => {
           id: "run-failed",
           sessionId: null,
           agentName: "Failed Agent",
-          provider: "claude-code",
+          framework: "claude-code",
           status: "failed",
           prompt: "Test",
           error: "Connection timeout after 30 seconds",
@@ -212,7 +212,7 @@ describe("log detail page", () => {
           id: "run-raw-data",
           sessionId: "session-raw",
           agentName: "Raw Data Agent",
-          provider: "claude-code",
+          framework: "claude-code",
           status: "completed",
           prompt: "Generate something",
           error: null,
@@ -275,7 +275,7 @@ describe("log detail page", () => {
           id: "run-back-test",
           sessionId: null,
           agentName: "Back Test Agent",
-          provider: "claude-code",
+          framework: "claude-code",
           status: "completed",
           prompt: "Test",
           error: null,
@@ -339,7 +339,7 @@ describe("log detail page", () => {
           id: "run-no-events",
           sessionId: null,
           agentName: "No Events Agent",
-          provider: "claude-code",
+          framework: "claude-code",
           status: "pending",
           prompt: "Test",
           error: null,

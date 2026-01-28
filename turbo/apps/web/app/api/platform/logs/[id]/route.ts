@@ -21,44 +21,61 @@ import { eq } from "drizzle-orm";
 interface RunResult {
   checkpointId?: string;
   agentSessionId?: string;
-  artifactName?: string;
-  artifactVersion?: string;
+  conversationId?: string;
+  artifact?: Record<string, string>; // { artifactName: version }
   volumes?: Record<string, string>;
 }
 
 interface ComposeContent {
   agent?: {
-    provider?: string;
+    framework?: string;
   };
   agents?: Record<
     string,
     {
-      provider?: string;
+      framework?: string;
     }
   >;
 }
 
 /**
- * Extract provider from compose content.
- * Returns null if no provider is found.
+ * Extract framework from compose content.
+ * Returns null if no framework is found.
  */
-function extractProvider(content: ComposeContent | null): string | null {
+function extractFramework(content: ComposeContent | null): string | null {
   if (!content) {
     return null;
   }
 
-  if (content.agent?.provider) {
-    return content.agent.provider;
+  if (content.agent?.framework) {
+    return content.agent.framework;
   }
 
   if (content.agents) {
     const firstAgentKey = Object.keys(content.agents)[0];
     if (firstAgentKey) {
-      return content.agents[firstAgentKey]?.provider ?? null;
+      return content.agents[firstAgentKey]?.framework ?? null;
     }
   }
 
   return null;
+}
+
+/**
+ * Extract artifact name and version from run result.
+ * The artifact map has structure { artifactName: version }
+ */
+function extractArtifact(runResult: RunResult | null): {
+  name: string | null;
+  version: string | null;
+} {
+  if (!runResult?.artifact) {
+    return { name: null, version: null };
+  }
+
+  const name = Object.keys(runResult.artifact)[0] ?? null;
+  const version = name ? (runResult.artifact[name] ?? null) : null;
+  return { name, version };
 }
 
 /**
@@ -121,16 +138,15 @@ const router = tsr.router(platformLogsByIdContract, {
 
     // Extract data from result
     const runResult = run.result as RunResult | null;
-    const sessionId = runResult?.agentSessionId ?? null;
     const composeContent = composeVersion?.content as ComposeContent | null;
 
     return {
       status: 200 as const,
       body: {
         id: run.id,
-        sessionId,
+        sessionId: runResult?.agentSessionId ?? null,
         agentName: compose?.name ?? "unknown",
-        provider: extractProvider(composeContent),
+        framework: extractFramework(composeContent),
         status: run.status as
           | "pending"
           | "running"
@@ -143,10 +159,7 @@ const router = tsr.router(platformLogsByIdContract, {
         createdAt: run.createdAt.toISOString(),
         startedAt: run.startedAt?.toISOString() ?? null,
         completedAt: run.completedAt?.toISOString() ?? null,
-        artifact: {
-          name: runResult?.artifactName ?? null,
-          version: runResult?.artifactVersion ?? null,
-        },
+        artifact: extractArtifact(runResult),
       },
     };
   },

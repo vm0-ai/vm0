@@ -87,7 +87,7 @@ describe("GET /api/platform/logs/[id]", () => {
       agents: {
         "test-detail-agent": {
           description: "Test agent for detail",
-          provider: "claude-code",
+          framework: "claude-code",
           working_dir: "/home/user/workspace",
         },
       },
@@ -123,8 +123,9 @@ describe("GET /api/platform/logs/[id]", () => {
       completedAt: new Date(now.getTime() + 5000),
       result: {
         agentSessionId: "test-session-123",
-        artifactName: "test-artifact",
-        artifactVersion: "1.0.0",
+        artifact: {
+          "test-artifact": "1.0.0",
+        },
       },
     });
   });
@@ -210,7 +211,7 @@ describe("GET /api/platform/logs/[id]", () => {
       agents: {
         "other-detail-agent": {
           description: "Other user agent",
-          provider: "claude-code",
+          framework: "claude-code",
           working_dir: "/home/user/workspace",
         },
       },
@@ -277,7 +278,7 @@ describe("GET /api/platform/logs/[id]", () => {
     expect(data.id).toBe(runId);
     expect(data.sessionId).toBe("test-session-123");
     expect(data.agentName).toBe("test-detail-agent");
-    expect(data.provider).toBe("claude-code");
+    expect(data.framework).toBe("claude-code");
     expect(data.status).toBe("completed");
     expect(data.prompt).toBe("Test prompt for detail");
     expect(data.error).toBeNull();
@@ -290,14 +291,14 @@ describe("GET /api/platform/logs/[id]", () => {
     });
   });
 
-  it("should handle run with single agent.provider format", async () => {
+  it("should handle run with single agent.framework format", async () => {
     // Create compose with single agent format
     const singleComposeId = randomUUID();
     const singleContent = {
       version: "1.0",
       agent: {
         description: "Single agent format",
-        provider: "openai",
+        framework: "openai",
         working_dir: "/home/user/workspace",
       },
     };
@@ -334,7 +335,7 @@ describe("GET /api/platform/logs/[id]", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data.provider).toBe("openai");
+    expect(data.framework).toBe("openai");
 
     // Cleanup
     await globalThis.services.db
@@ -348,14 +349,14 @@ describe("GET /api/platform/logs/[id]", () => {
       .where(eq(agentComposes.id, singleComposeId));
   });
 
-  it("should use default provider when not specified in compose", async () => {
-    // Create compose without provider
+  it("should use default framework when not specified in compose", async () => {
+    // Create compose without framework
     const noProviderComposeId = randomUUID();
     const noProviderContent = {
       version: "1.0",
       agents: {
         "no-provider-agent": {
-          description: "Agent without provider",
+          description: "Agent without framework",
           working_dir: "/home/user/workspace",
         },
       },
@@ -393,7 +394,7 @@ describe("GET /api/platform/logs/[id]", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data.provider).toBeNull(); // no provider specified, returns null
+    expect(data.framework).toBeNull(); // no framework specified, returns null
 
     // Cleanup
     await globalThis.services.db

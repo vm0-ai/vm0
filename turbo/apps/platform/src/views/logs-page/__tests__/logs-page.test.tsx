@@ -34,7 +34,7 @@ describe("logs page", () => {
     });
     expect(screen.getByText("Session ID")).toBeInTheDocument();
     expect(screen.getByText("Agent")).toBeInTheDocument();
-    expect(screen.getByText("Model")).toBeInTheDocument();
+    expect(screen.getByText("Framework")).toBeInTheDocument();
     expect(screen.getByText("Status")).toBeInTheDocument();
     expect(screen.getByText("Generate time")).toBeInTheDocument();
   });
@@ -53,8 +53,8 @@ describe("logs page", () => {
     // Verify mock data is displayed
     expect(screen.getByText("session_1")).toBeInTheDocument();
     // Multiple rows can have claude-code
-    const providerCells = screen.getAllByText("claude-code");
-    expect(providerCells.length).toBeGreaterThan(0);
+    const frameworkCells = screen.getAllByText("claude-code");
+    expect(frameworkCells.length).toBeGreaterThan(0);
 
     // Verify status badge is rendered
     const completedBadges = screen.getAllByText("completed");
@@ -112,7 +112,7 @@ describe("logs page", () => {
           id,
           sessionId: `session_${id}`,
           agentName: `Agent ${id}`,
-          provider: "claude-code",
+          framework: "claude-code",
           status: "completed",
           prompt: "Test",
           error: null,
@@ -163,7 +163,7 @@ describe("logs page", () => {
           id,
           sessionId: `session_${id}`,
           agentName: `Agent ${id}`,
-          provider: "claude-code",
+          framework: "claude-code",
           status: "completed",
           prompt: "Test",
           error: null,
@@ -218,7 +218,7 @@ describe("logs page", () => {
           id,
           sessionId: null,
           agentName: `Agent ${id}`,
-          provider: "claude-code",
+          framework: "claude-code",
           status: statusMap[id as string] ?? "completed",
           prompt: "Test",
           error: id === "run_failed" ? "Something went wrong" : null,
@@ -256,7 +256,7 @@ describe("logs page", () => {
           id: "run_no_session",
           sessionId: null,
           agentName: "Test Agent",
-          provider: "claude-code",
+          framework: "claude-code",
           status: "pending",
           prompt: "Test",
           error: null,

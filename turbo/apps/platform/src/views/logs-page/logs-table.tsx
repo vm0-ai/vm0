@@ -61,7 +61,7 @@ export function LogsTable() {
           <TableHead>Run ID</TableHead>
           <TableHead>Session ID</TableHead>
           <TableHead>Agent</TableHead>
-          <TableHead>Model</TableHead>
+          <TableHead>Framework</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Generate time</TableHead>
           <TableHead className="w-8" />

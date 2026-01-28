@@ -91,7 +91,13 @@ function highlightText(text: string, term: string) {
   );
 }
 
-function ArtifactDownloadButton({ name }: { name: string }) {
+function ArtifactDownloadButton({
+  name,
+  version,
+}: {
+  name: string;
+  version: string;
+}) {
   const download = useSet(downloadArtifact$);
   const downloadStatus = useLoadable(artifactDownloadPromise$);
 
@@ -105,7 +111,7 @@ function ArtifactDownloadButton({ name }: { name: string }) {
         : null;
 
   const handleDownload = () => {
-    detach(download({ name }), Reason.DomCallback);
+    detach(download({ name, version: version }), Reason.DomCallback);
   };
 
   return (
@@ -116,7 +122,7 @@ function ArtifactDownloadButton({ name }: { name: string }) {
         className="inline-flex items-center gap-1.5 text-sm text-foreground hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <IconFolder className="h-4 w-4 text-muted-foreground" />
-        {name}
+        My artifact folders
       </button>
       {errorMessage && (
         <span className="text-xs text-destructive">{errorMessage}</span>
@@ -343,9 +349,9 @@ function LogDetailContentInner({ logId }: { logId: string }) {
                 <IconRobot className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm">{detail.agentName}</span>
               </InfoRow>
-              <InfoRow label="Model">
+              <InfoRow label="Framework">
                 <span className="text-sm">
-                  {detail.provider ?? (
+                  {detail.framework ?? (
                     <span className="text-muted-foreground">-</span>
                   )}
                 </span>
@@ -356,8 +362,11 @@ function LogDetailContentInner({ logId }: { logId: string }) {
                 </span>
               </InfoRow>
               <InfoRow label="Artifact">
-                {detail.artifact.name ? (
-                  <ArtifactDownloadButton name={detail.artifact.name} />
+                {detail.artifact.name && detail.artifact.version ? (
+                  <ArtifactDownloadButton
+                    name={detail.artifact.name}
+                    version={detail.artifact.version}
+                  />
                 ) : (
                   <span className="text-sm text-muted-foreground">-</span>
                 )}

@@ -31,7 +31,7 @@ export interface LogDetail {
   id: string;
   sessionId: string | null;
   agentName: string;
-  provider: string | null;
+  framework: string | null;
   status: LogStatus;
   prompt: string;
   error: string | null;
