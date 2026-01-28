@@ -258,6 +258,21 @@ function RawJsonView({ events }: { events: AgentEvent[] }) {
   );
 }
 
+/** Check if event contains the search term */
+function eventMatchesSearch(event: AgentEvent, searchTerm: string): boolean {
+  if (!searchTerm.trim()) {
+    return true;
+  }
+  const lowerSearch = searchTerm.toLowerCase();
+  // Search in eventType
+  if (event.eventType.toLowerCase().includes(lowerSearch)) {
+    return true;
+  }
+  // Search in eventData (serialized to JSON)
+  const dataStr = JSON.stringify(event.eventData).toLowerCase();
+  return dataStr.includes(lowerSearch);
+}
+
 /** Formatted event cards view */
 function FormattedEventsView({
   events,
@@ -269,7 +284,9 @@ function FormattedEventsView({
   hiddenTypes: Set<string>;
 }) {
   const visibleEvents = events.filter(
-    (event) => !hiddenTypes.has(event.eventType),
+    (event) =>
+      !hiddenTypes.has(event.eventType) &&
+      eventMatchesSearch(event, searchTerm),
   );
 
   if (visibleEvents.length === 0) {
@@ -277,7 +294,9 @@ function FormattedEventsView({
       <div className="p-8 text-center text-muted-foreground">
         {events.length === 0
           ? "No events available"
-          : "All events are filtered out"}
+          : searchTerm.trim()
+            ? `No events matching "${searchTerm}"`
+            : "All events are filtered out"}
       </div>
     );
   }
@@ -372,6 +391,11 @@ function AgentEventsCard({
   const { events } = eventsLoadable.data;
   const eventTypeCounts = getEventTypeCounts(events);
 
+  // Count matching events for search
+  const matchingCount = searchTerm.trim()
+    ? events.filter((e) => eventMatchesSearch(e, searchTerm)).length
+    : events.length;
+
   return (
     <Card className="overflow-hidden">
       <div className="flex flex-col gap-3 rounded-t-lg border-b border-border bg-muted px-4 py-3">
@@ -382,7 +406,9 @@ function AgentEventsCard({
               Agent Events
             </span>
             <span className="text-xs text-muted-foreground">
-              ({events.length} total)
+              {searchTerm.trim()
+                ? `(${matchingCount}/${events.length} matched)`
+                : `(${events.length} total)`}
             </span>
           </div>
           <div className="flex items-center gap-3">
