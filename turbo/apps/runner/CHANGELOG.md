@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.3.1](https://github.com/vm0-ai/vm0/compare/runner-v3.3.0...runner-v3.3.1) (2026-01-28)
+
+
+### Bug Fixes
+
+* **runner:** update vsock-agent performance comment ([#1770](https://github.com/vm0-ai/vm0/issues/1770)) ([ba2e379](https://github.com/vm0-ai/vm0/commit/ba2e379d1e7807f78715f5b5de424b1c3108d390))
+
 ## [3.3.0](https://github.com/vm0-ai/vm0/compare/runner-v3.2.1...runner-v3.3.0) (2026-01-28)
 
 

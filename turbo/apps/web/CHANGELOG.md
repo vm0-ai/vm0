@@ -1,5 +1,17 @@
 # Changelog
 
+## [11.2.0](https://github.com/vm0-ai/vm0/compare/web-v11.1.0...web-v11.2.0) (2026-01-28)
+
+
+### Features
+
+* **web:** add custom filename for artifact download ([#1767](https://github.com/vm0-ai/vm0/issues/1767)) ([2530e27](https://github.com/vm0-ai/vm0/commit/2530e27ec7fd846479c6c7d50c5d3e42ccf7db34))
+
+
+### Bug Fixes
+
+* **api:** use camelcase for sse lasteventid query parameter ([#1769](https://github.com/vm0-ai/vm0/issues/1769)) ([0efbfa6](https://github.com/vm0-ai/vm0/commit/0efbfa6dc10c2817ae7bdc862558b09aa2658d1c)), closes [#1764](https://github.com/vm0-ai/vm0/issues/1764)
+
 ## [11.1.0](https://github.com/vm0-ai/vm0/compare/web-v11.0.0...web-v11.1.0) (2026-01-28)
 
 
