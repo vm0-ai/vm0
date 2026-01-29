@@ -1,152 +1,33 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeAll,
-  beforeEach,
-  afterEach,
-  afterAll,
-  vi,
-} from "vitest";
-import { NextRequest } from "next/server";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET as listAgents } from "../route";
 import { GET as getAgent } from "../[id]/route";
 import { GET as listVersions } from "../[id]/versions/route";
-import { initServices } from "../../../../src/lib/init-services";
 import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../../../src/db/schema/agent-compose";
-import { scopes } from "../../../../src/db/schema/scope";
-import { eq } from "drizzle-orm";
+  createTestRequest,
+  createTestCompose,
+} from "../../../../src/__tests__/api-test-helpers";
+import { testContext } from "../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
-import { computeComposeVersionId } from "../../../../src/lib/agent-compose/content-hash";
-import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 
-/**
- * Helper to create a NextRequest for testing.
- */
-function createTestRequest(
-  url: string,
-  options?: {
-    method?: string;
-    body?: string;
-    headers?: Record<string, string>;
-  },
-): NextRequest {
-  return new NextRequest(url, {
-    method: options?.method ?? "GET",
-    headers: options?.headers ?? {},
-    body: options?.body,
-  });
-}
+vi.mock("@clerk/nextjs/server");
+vi.mock("@e2b/code-interpreter");
+vi.mock("@aws-sdk/client-s3");
+vi.mock("@aws-sdk/s3-request-presigner");
 
-/**
- * Helper to create an agent directly in the database for testing.
- */
-async function createTestAgent(
-  userId: string,
-  scopeId: string,
-  name: string,
-  config: AgentComposeYaml,
-): Promise<{ id: string; versionId: string }> {
-  const versionId = computeComposeVersionId(config);
-
-  const [created] = await globalThis.services.db
-    .insert(agentComposes)
-    .values({
-      userId,
-      scopeId,
-      name,
-    })
-    .returning();
-
-  await globalThis.services.db.insert(agentComposeVersions).values({
-    id: versionId,
-    composeId: created!.id,
-    content: config,
-    createdBy: userId,
-  });
-
-  await globalThis.services.db
-    .update(agentComposes)
-    .set({ headVersionId: versionId })
-    .where(eq(agentComposes.id, created!.id));
-
-  return { id: created!.id, versionId };
-}
-
-// Mock Clerk auth (external SaaS)
-vi.mock("@clerk/nextjs/server", () => ({
-  auth: vi.fn(),
-}));
-
-import {
-  mockClerk,
-  clearClerkMock,
-} from "../../../../src/__tests__/clerk-mock";
+const context = testContext();
 
 describe("Public API v1 - Agents Endpoints", () => {
-  const testUserId = "test-user-public-api";
-  const testScopeId = randomUUID();
   let testAgentId: string;
+  const testAgentName = `test-agent-v1-${Date.now()}`;
 
-  beforeAll(async () => {
-    initServices();
+  beforeEach(async () => {
+    context.setupMocks();
+    await context.setupUser();
 
-    // Clean up any existing test data
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(scopes)
-      .where(eq(scopes.id, testScopeId));
-
-    // Create test scope for the user
-    await globalThis.services.db.insert(scopes).values({
-      id: testScopeId,
-      slug: `test-${testScopeId.slice(0, 8)}`,
-      type: "personal",
-      ownerId: testUserId,
-    });
-
-    // Create a test agent for use in subsequent tests
-    const { id } = await createTestAgent(
-      testUserId,
-      testScopeId,
-      "test-agent-v1",
-      {
-        version: "1.0",
-        agents: {
-          "test-agent-v1": {
-            image: "vm0/claude-code:dev",
-            framework: "claude-code",
-          },
-        },
-      },
-    );
-    testAgentId = id;
-  });
-
-  beforeEach(() => {
-    // Mock Clerk auth to return test user by default
-    mockClerk({ userId: testUserId });
-  });
-
-  afterEach(() => {
-    clearClerkMock();
-  });
-
-  afterAll(async () => {
-    // Cleanup: Delete test data
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(scopes)
-      .where(eq(scopes.id, testScopeId));
+    // Create a test agent using API helper
+    const { composeId } = await createTestCompose(testAgentName);
+    testAgentId = composeId;
   });
 
   describe("GET /v1/agents - List Agents", () => {
@@ -176,7 +57,7 @@ describe("Public API v1 - Agents Endpoints", () => {
 
     it("should filter by name when name parameter provided", async () => {
       const request = createTestRequest(
-        "http://localhost:3000/v1/agents?name=test-agent-v1",
+        `http://localhost:3000/v1/agents?name=${testAgentName}`,
       );
 
       const response = await listAgents(request);
@@ -185,7 +66,7 @@ describe("Public API v1 - Agents Endpoints", () => {
       expect(response.status).toBe(200);
       expect(data.data).toBeInstanceOf(Array);
       expect(data.data.length).toBe(1);
-      expect(data.data[0].name).toBe("test-agent-v1");
+      expect(data.data[0].name).toBe(testAgentName);
       expect(data.pagination.hasMore).toBe(false);
     });
 
@@ -206,7 +87,7 @@ describe("Public API v1 - Agents Endpoints", () => {
 
     it("should filter by name case-insensitively", async () => {
       const request = createTestRequest(
-        "http://localhost:3000/v1/agents?name=TEST-AGENT-V1",
+        `http://localhost:3000/v1/agents?name=${testAgentName.toUpperCase()}`,
       );
 
       const response = await listAgents(request);
@@ -215,12 +96,12 @@ describe("Public API v1 - Agents Endpoints", () => {
       expect(response.status).toBe(200);
       expect(data.data).toBeInstanceOf(Array);
       expect(data.data.length).toBe(1);
-      expect(data.data[0].name).toBe("test-agent-v1");
+      expect(data.data[0].name).toBe(testAgentName);
     });
 
     it("should filter by name combined with limit", async () => {
       const request = createTestRequest(
-        "http://localhost:3000/v1/agents?name=test-agent-v1&limit=10",
+        `http://localhost:3000/v1/agents?name=${testAgentName}&limit=10`,
       );
 
       const response = await listAgents(request);
@@ -229,7 +110,19 @@ describe("Public API v1 - Agents Endpoints", () => {
       expect(response.status).toBe(200);
       expect(data.data).toBeInstanceOf(Array);
       expect(data.data.length).toBe(1);
-      expect(data.data[0].name).toBe("test-agent-v1");
+      expect(data.data[0].name).toBe(testAgentName);
+    });
+
+    it("should return 401 for unauthenticated request", async () => {
+      mockClerk({ userId: null });
+
+      const request = createTestRequest("http://localhost:3000/v1/agents");
+
+      const response = await listAgents(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(data.error.type).toBe("authentication_error");
     });
   });
 
@@ -244,7 +137,7 @@ describe("Public API v1 - Agents Endpoints", () => {
 
       expect(response.status).toBe(200);
       expect(data.id).toBe(testAgentId);
-      expect(data.name).toBe("test-agent-v1");
+      expect(data.name).toBe(testAgentName);
     });
 
     it("should return 404 for non-existent agent", async () => {
@@ -264,8 +157,12 @@ describe("Public API v1 - Agents Endpoints", () => {
 
   describe("GET /v1/agents/:id/versions - List Agent Versions", () => {
     it("should list agent versions", async () => {
+      // Create a fresh compose for this test to ensure version exists
+      const versionsAgentName = `versions-agent-${Date.now()}`;
+      const { composeId } = await createTestCompose(versionsAgentName);
+
       const request = createTestRequest(
-        `http://localhost:3000/v1/agents/${testAgentId}/versions`,
+        `http://localhost:3000/v1/agents/${composeId}/versions`,
       );
 
       const response = await listVersions(request);
@@ -279,7 +176,7 @@ describe("Public API v1 - Agents Endpoints", () => {
       // Each version should have required fields
       const version = data.data[0];
       expect(version.id).toBeDefined();
-      expect(version.agentId).toBe(testAgentId);
+      expect(version.agentId).toBe(composeId);
       expect(version.versionNumber).toBeDefined();
       expect(version.createdAt).toBeDefined();
     });

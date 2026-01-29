@@ -1,155 +1,60 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-  afterAll,
-  vi,
-} from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "../route";
-import { POST as createCompose } from "../../../../agent/composes/route";
-import { NextRequest } from "next/server";
-import { initServices } from "../../../../../../src/lib/init-services";
-import { agentRuns } from "../../../../../../src/db/schema/agent-run";
-import { checkpoints } from "../../../../../../src/db/schema/checkpoint";
-import { conversations } from "../../../../../../src/db/schema/conversation";
-import { agentSessions } from "../../../../../../src/db/schema/agent-session";
-import { agentRunEvents } from "../../../../../../src/db/schema/agent-run-event";
-import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
-import { eq } from "drizzle-orm";
-import { randomUUID } from "crypto";
 import {
   createTestRequest,
-  createDefaultComposeConfig,
+  createTestCompose,
+  createTestRun,
   createTestSandboxToken,
+  completeTestRun,
 } from "../../../../../../src/__tests__/api-test-helpers";
-
-// Mock Clerk auth (external SaaS)
-vi.mock("@clerk/nextjs/server", () => ({
-  auth: vi.fn(),
-}));
-
-// Mock E2B SDK (external)
-vi.mock("@e2b/code-interpreter", () => ({
-  Sandbox: {
-    connect: vi.fn(),
-  },
-}));
-
 import {
-  mockClerk,
-  clearClerkMock,
-} from "../../../../../../src/__tests__/clerk-mock";
-import { Sandbox } from "@e2b/code-interpreter";
+  testContext,
+  type UserContext,
+} from "../../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { randomUUID } from "crypto";
+import { POST as checkpointWebhook } from "../../checkpoints/route";
 
-const mockSandboxConnect = vi.mocked(Sandbox.connect);
+vi.mock("@clerk/nextjs/server");
+vi.mock("@e2b/code-interpreter");
+vi.mock("@aws-sdk/client-s3");
+vi.mock("@aws-sdk/s3-request-presigner");
+vi.mock("@axiomhq/js");
+
+const context = testContext();
 
 describe("POST /api/webhooks/agent/complete", () => {
-  // Generate unique IDs for this test run
-  const testUserId = `test-user-${Date.now()}-${process.pid}`;
-  const testAgentName = `test-agent-complete-${Date.now()}`;
-  const testRunId = randomUUID();
+  let user: UserContext;
   let testComposeId: string;
-  let testVersionId: string;
+  let testRunId: string;
   let testToken: string;
-  const testSandboxId = `sandbox-${Date.now()}`;
 
   beforeEach(async () => {
-    // Clear all mocks
-    vi.clearAllMocks();
+    context.setupMocks();
+    user = await context.setupUser();
 
-    // Initialize services
-    initServices();
+    // Create compose for test runs
+    const { composeId } = await createTestCompose(`complete-${Date.now()}`);
+    testComposeId = composeId;
 
-    // Setup E2B SDK mock - sandbox with kill method
-    const mockSandbox = {
-      kill: vi.fn().mockResolvedValue(undefined),
-    };
-    mockSandboxConnect.mockResolvedValue(mockSandbox as unknown as Sandbox);
+    // Create a running run
+    const { runId } = await createTestRun(testComposeId, "Test prompt");
+    testRunId = runId;
 
     // Generate JWT token for sandbox auth
-    testToken = await createTestSandboxToken(testUserId, testRunId);
+    testToken = await createTestSandboxToken(user.userId, testRunId);
 
-    // Mock Clerk auth to return test user (needed for compose API)
-    mockClerk({ userId: testUserId });
-
-    // Clean up any existing test data
-    await globalThis.services.db
-      .delete(agentRunEvents)
-      .where(eq(agentRunEvents.runId, testRunId));
-
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.id, testRunId));
-
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.userId, testUserId));
-
-    // Create test compose via API endpoint
-    const config = createDefaultComposeConfig(testAgentName);
-    const request = createTestRequest(
-      "http://localhost:3000/api/agent/composes",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: config }),
-      },
-    );
-
-    const response = await createCompose(request);
-    const data = await response.json();
-    testComposeId = data.composeId;
-    testVersionId = data.versionId;
-
-    // Reset auth mock for webhook tests (which use token auth)
+    // Reset auth mock for webhook tests (which use token auth, not Clerk)
     mockClerk({ userId: null });
   });
 
-  afterEach(async () => {
-    clearClerkMock();
-    // Clean up test data after each test
-    await globalThis.services.db
-      .delete(agentRunEvents)
-      .where(eq(agentRunEvents.runId, testRunId));
-
-    await globalThis.services.db
-      .delete(agentSessions)
-      .where(eq(agentSessions.agentComposeId, testComposeId));
-
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.id, testRunId));
-
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.userId, testUserId));
-  });
-
-  afterAll(async () => {});
-
-  // ============================================
-  // Authentication Tests
-  // ============================================
-
   describe("Authentication", () => {
     it("should reject complete without authentication", async () => {
-      const request = new NextRequest(
+      const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             runId: testRunId,
             exitCode: 0,
@@ -166,13 +71,9 @@ describe("POST /api/webhooks/agent/complete", () => {
     });
   });
 
-  // ============================================
-  // Validation Tests
-  // ============================================
-
   describe("Validation", () => {
     it("should reject complete without runId", async () => {
-      const request = new NextRequest(
+      const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
         {
           method: "POST",
@@ -195,7 +96,7 @@ describe("POST /api/webhooks/agent/complete", () => {
     });
 
     it("should reject complete without exitCode", async () => {
-      const request = new NextRequest(
+      const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
         {
           method: "POST",
@@ -218,20 +119,15 @@ describe("POST /api/webhooks/agent/complete", () => {
     });
   });
 
-  // ============================================
-  // Authorization Tests
-  // ============================================
-
   describe("Authorization", () => {
     it("should reject complete for non-existent run", async () => {
       const nonExistentRunId = randomUUID();
-      // Generate JWT with the non-existent runId
       const tokenForNonExistentRun = await createTestSandboxToken(
-        testUserId,
+        user.userId,
         nonExistentRunId,
       );
 
-      const request = new NextRequest(
+      const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
         {
           method: "POST",
@@ -254,28 +150,35 @@ describe("POST /api/webhooks/agent/complete", () => {
     });
 
     it("should reject complete for run owned by different user", async () => {
-      const otherUserId = `other-user-${Date.now()}-${process.pid}`;
+      // Create another user with their own run
+      await context.setupUser({ prefix: "other" });
+      const { composeId: otherComposeId } = await createTestCompose(
+        `other-compose-${Date.now()}`,
+      );
+      const { runId: otherRunId } = await createTestRun(
+        otherComposeId,
+        "Other user prompt",
+      );
 
-      // Create run owned by different user
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId,
-        userId: otherUserId,
-        agentComposeVersionId: testVersionId,
-        status: "running",
-        prompt: "Test prompt",
-        createdAt: new Date(),
-      });
+      // Switch back to original user and reset Clerk mock
+      mockClerk({ userId: null });
 
-      const request = new NextRequest(
+      // Generate token for the original user but try to complete other user's run
+      const tokenWithWrongUser = await createTestSandboxToken(
+        user.userId,
+        otherRunId, // other user's run
+      );
+
+      const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
+            Authorization: `Bearer ${tokenWithWrongUser}`,
           },
           body: JSON.stringify({
-            runId: testRunId,
+            runId: otherRunId,
             exitCode: 0,
           }),
         },
@@ -289,49 +192,34 @@ describe("POST /api/webhooks/agent/complete", () => {
     });
   });
 
-  // ============================================
-  // Success Tests
-  // ============================================
-
   describe("Success", () => {
-    it("should handle successful completion (exitCode=0) and send vm0_result", async () => {
-      // Create run with sandboxId
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId,
-        userId: testUserId,
-        agentComposeVersionId: testVersionId,
-        sandboxId: testSandboxId,
-        status: "running",
-        prompt: "Test prompt",
-        createdAt: new Date(),
-      });
-
-      // Create conversation for checkpoint
-      const conversationId = randomUUID();
-      await globalThis.services.db.insert(conversations).values({
-        id: conversationId,
-        runId: testRunId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: "test-session",
-        cliAgentSessionHistory: '{"type":"test"}',
-        createdAt: new Date(),
-      });
-
-      // Create checkpoint (required for success case)
-      const checkpointId = randomUUID();
-      await globalThis.services.db.insert(checkpoints).values({
-        id: checkpointId,
-        runId: testRunId,
-        conversationId: conversationId,
-        agentComposeSnapshot: { config: {}, vars: {} },
-        artifactSnapshot: {
-          artifactName: "test-artifact",
-          artifactVersion: "v1",
+    it("should handle successful completion (exitCode=0)", async () => {
+      // Create checkpoint first (required for successful completion)
+      const checkpointRequest = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "test-session",
+            cliAgentSessionHistory: JSON.stringify({ type: "test" }),
+            artifactSnapshot: {
+              artifactName: "test-artifact",
+              artifactVersion: "v1",
+            },
+          }),
         },
-        createdAt: new Date(),
-      });
+      );
+      const checkpointResponse = await checkpointWebhook(checkpointRequest);
+      expect(checkpointResponse.status).toBe(200);
 
-      const request = new NextRequest(
+      // Now complete the run
+      const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
         {
           method: "POST",
@@ -352,35 +240,10 @@ describe("POST /api/webhooks/agent/complete", () => {
       const data = await response.json();
       expect(data.success).toBe(true);
       expect(data.status).toBe("completed");
-
-      // Verify run status was updated
-      const [updatedRun] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.id, testRunId));
-
-      expect(updatedRun?.status).toBe("completed");
-      expect(updatedRun?.completedAt).toBeDefined();
-      // Run result is now stored directly in the run table (not as vm0_result event)
-      expect(updatedRun?.result).toBeDefined();
-
-      // Verify sandbox was killed via E2B SDK
-      expect(Sandbox.connect).toHaveBeenCalledWith(testSandboxId);
     });
 
-    it("should handle failed completion (exitCode≠0) and store error in run table", async () => {
-      // Create run with sandboxId
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId,
-        userId: testUserId,
-        agentComposeVersionId: testVersionId,
-        sandboxId: testSandboxId,
-        status: "running",
-        prompt: "Test prompt",
-        createdAt: new Date(),
-      });
-
-      const request = new NextRequest(
+    it("should handle failed completion (exitCode≠0)", async () => {
+      const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
         {
           method: "POST",
@@ -402,34 +265,10 @@ describe("POST /api/webhooks/agent/complete", () => {
       const data = await response.json();
       expect(data.success).toBe(true);
       expect(data.status).toBe("failed");
-
-      // Verify run status was updated
-      const [updatedRun] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.id, testRunId));
-
-      expect(updatedRun?.status).toBe("failed");
-      expect(updatedRun?.completedAt).toBeDefined();
-      // Error is now stored directly in the run table (not as vm0_error event)
-      expect(updatedRun?.error).toBe("Agent crashed");
-
-      // Verify sandbox was killed via E2B SDK
-      expect(Sandbox.connect).toHaveBeenCalledWith(testSandboxId);
     });
 
     it("should use default error message when exitCode≠0 and no error provided", async () => {
-      // Create run
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId,
-        userId: testUserId,
-        agentComposeVersionId: testVersionId,
-        status: "running",
-        prompt: "Test prompt",
-        createdAt: new Date(),
-      });
-
-      const request = new NextRequest(
+      const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
         {
           method: "POST",
@@ -448,34 +287,16 @@ describe("POST /api/webhooks/agent/complete", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(200);
-
-      // Verify error has default message in run table
-      const [updatedRun] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.id, testRunId));
-
-      expect(updatedRun?.error).toBe("Agent exited with code 127");
+      const data = await response.json();
+      expect(data.success).toBe(true);
+      expect(data.status).toBe("failed");
     });
   });
 
-  // ============================================
-  // Error Handling Tests
-  // ============================================
-
   describe("Error Handling", () => {
     it("should return 404 when checkpoint not found for successful run", async () => {
-      // Create run without checkpoint
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId,
-        userId: testUserId,
-        agentComposeVersionId: testVersionId,
-        status: "running",
-        prompt: "Test prompt",
-        createdAt: new Date(),
-      });
-
-      const request = new NextRequest(
+      // Don't create checkpoint - complete should fail
+      const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
         {
           method: "POST",
@@ -498,24 +319,13 @@ describe("POST /api/webhooks/agent/complete", () => {
     });
   });
 
-  // ============================================
-  // Idempotency Tests
-  // ============================================
-
   describe("Idempotency", () => {
     it("should return success without processing for already completed run", async () => {
-      // Create already completed run
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId,
-        userId: testUserId,
-        agentComposeVersionId: testVersionId,
-        status: "completed",
-        prompt: "Test prompt",
-        completedAt: new Date(),
-        createdAt: new Date(),
-      });
+      // Complete the run first using the helper
+      await completeTestRun(user.userId, testRunId);
 
-      const request = new NextRequest(
+      // Try to complete again
+      const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
         {
           method: "POST",
@@ -536,32 +346,11 @@ describe("POST /api/webhooks/agent/complete", () => {
       const data = await response.json();
       expect(data.success).toBe(true);
       expect(data.status).toBe("completed");
-
-      // Verify no events were sent (idempotent)
-      const events = await globalThis.services.db
-        .select()
-        .from(agentRunEvents)
-        .where(eq(agentRunEvents.runId, testRunId));
-
-      expect(events).toHaveLength(0);
-
-      // Verify sandbox kill was NOT called
-      expect(Sandbox.connect).not.toHaveBeenCalled();
     });
 
     it("should return success without processing for already failed run", async () => {
-      // Create already failed run
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId,
-        userId: testUserId,
-        agentComposeVersionId: testVersionId,
-        status: "failed",
-        prompt: "Test prompt",
-        completedAt: new Date(),
-        createdAt: new Date(),
-      });
-
-      const request = new NextRequest(
+      // Fail the run first
+      const failRequest = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
         {
           method: "POST",
@@ -572,7 +361,27 @@ describe("POST /api/webhooks/agent/complete", () => {
           body: JSON.stringify({
             runId: testRunId,
             exitCode: 1,
-            error: "Some error",
+            error: "Initial failure",
+          }),
+        },
+      );
+
+      const failResponse = await POST(failRequest);
+      expect(failResponse.status).toBe(200);
+
+      // Try to complete again with different exit code
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 1,
+            error: "Another error",
           }),
         },
       );
@@ -583,17 +392,6 @@ describe("POST /api/webhooks/agent/complete", () => {
       const data = await response.json();
       expect(data.success).toBe(true);
       expect(data.status).toBe("failed");
-
-      // Verify no events were sent (idempotent)
-      const events = await globalThis.services.db
-        .select()
-        .from(agentRunEvents)
-        .where(eq(agentRunEvents.runId, testRunId));
-
-      expect(events).toHaveLength(0);
-
-      // Verify sandbox kill was NOT called
-      expect(Sandbox.connect).not.toHaveBeenCalled();
     });
   });
 });

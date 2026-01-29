@@ -15,10 +15,6 @@ import path from "path";
 import { FirecrackerVM, type VMConfig } from "./firecracker/vm.js";
 import type { GuestClient } from "./firecracker/guest.js";
 import { VsockClient } from "./firecracker/vsock.js";
-import {
-  setupVMProxyRules,
-  removeVMProxyRules,
-} from "./firecracker/network.js";
 import type { ExecutionContext } from "./api.js";
 import type { RunnerConfig } from "./config.js";
 import { ENV_LOADER_PATH } from "./scripts/index.js";
@@ -259,11 +255,9 @@ export async function executeJob(
       );
 
       await withSandboxTiming("network_setup", async () => {
-        // Set up per-VM iptables rules to redirect this VM's traffic to mitmproxy
-        // This must be done before the VM makes any network requests
-        await setupVMProxyRules(guestIp!, config.proxy.port, config.name);
-
         // Register VM in the proxy registry with firewall rules
+        // Note: CIDR-based iptables rules are set up at runner startup (setup.ts)
+        // so we don't need per-VM iptables rules here
         getVMRegistry().register(
           guestIp!,
           context.runId,
@@ -497,16 +491,9 @@ export async function executeJob(
     if (context.experimentalFirewall?.enabled && guestIp) {
       log(`[Executor] Cleaning up network security for VM ${guestIp}`);
 
-      // Remove per-VM iptables rules first
-      try {
-        await removeVMProxyRules(guestIp, config.proxy.port, config.name);
-      } catch (err) {
-        console.error(
-          `[Executor] Failed to remove VM proxy rules: ${err instanceof Error ? err.message : "Unknown error"}`,
-        );
-      }
-
       // Unregister from proxy registry
+      // Note: CIDR-based iptables rules are global (set at runner startup)
+      // so we don't need to remove per-VM rules here
       getVMRegistry().unregister(guestIp);
 
       // Upload network logs to telemetry endpoint (skip in devMode)

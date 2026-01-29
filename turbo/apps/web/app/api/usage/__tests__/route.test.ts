@@ -1,330 +1,214 @@
-import {
-  describe,
-  it,
-  expect,
-  vi,
-  beforeAll,
-  beforeEach,
-  afterEach,
-} from "vitest";
-import { NextRequest } from "next/server";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "../route";
-import { initServices } from "../../../../src/lib/init-services";
-import { agentRuns } from "../../../../src/db/schema/agent-run";
 import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../../../src/db/schema/agent-compose";
-import { scopes } from "../../../../src/db/schema/scope";
-import { eq } from "drizzle-orm";
-import { randomUUID } from "crypto";
-
-// Mock Clerk auth (external SaaS)
-vi.mock("@clerk/nextjs/server", () => ({
-  auth: vi.fn(),
-}));
-
+  createTestRequest,
+  createTestCompose,
+  createTestRun,
+  completeTestRun,
+} from "../../../../src/__tests__/api-test-helpers";
 import {
-  mockClerk,
-  clearClerkMock,
-} from "../../../../src/__tests__/clerk-mock";
+  testContext,
+  type UserContext,
+} from "../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../src/__tests__/clerk-mock";
 
-describe("/api/usage", () => {
-  const testUserId = `test-user-usage-${Date.now()}-${process.pid}`;
-  const testScopeId = randomUUID();
+vi.mock("@clerk/nextjs/server");
+vi.mock("@e2b/code-interpreter");
+vi.mock("@aws-sdk/client-s3");
+vi.mock("@aws-sdk/s3-request-presigner");
+vi.mock("@axiomhq/js");
+
+const context = testContext();
+
+describe("GET /api/usage", () => {
+  let user: UserContext;
   let testComposeId: string;
-  let testVersionId: string;
 
-  beforeAll(async () => {
-    // Initialize real services
-    initServices();
+  beforeEach(async () => {
+    context.setupMocks();
+    user = await context.setupUser();
 
-    // Clean up any existing test data
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(scopes)
-      .where(eq(scopes.id, testScopeId));
-
-    // Create test scope
-    await globalThis.services.db.insert(scopes).values({
-      id: testScopeId,
-      slug: `test-scope-${testScopeId.slice(0, 8)}`,
-      type: "personal",
-      ownerId: testUserId,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-
-    // Create test compose
-    const composes = await globalThis.services.db
-      .insert(agentComposes)
-      .values({
-        userId: testUserId,
-        scopeId: testScopeId,
-        name: "test-compose",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .returning();
-    testComposeId = composes[0]!.id;
-
-    // Create test version (with content-addressed hash ID)
-    // Use randomUUID to generate unique hash per test run
-    const versionHash =
-      randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
-    await globalThis.services.db.insert(agentComposeVersions).values({
-      id: versionHash,
-      composeId: testComposeId,
-      content: { version: "1.0", agents: {} },
-      createdBy: testUserId,
-      createdAt: new Date(),
-    });
-    testVersionId = versionHash;
+    const { composeId } = await createTestCompose(`usage-${Date.now()}`);
+    testComposeId = composeId;
   });
 
-  beforeEach(() => {
-    vi.clearAllMocks();
+  it("should require authentication", async () => {
+    mockClerk({ userId: null });
 
-    // Mock Clerk auth to return test user by default
-    mockClerk({ userId: testUserId });
+    const request = createTestRequest("http://localhost:3000/api/usage");
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error.message).toContain("Not authenticated");
   });
 
-  afterEach(async () => {
-    clearClerkMock();
-    // Clean up runs created during tests
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.userId, testUserId));
+  it("should return usage data with default 7 day range", async () => {
+    // Create and complete two runs
+    const { runId: runId1 } = await createTestRun(
+      testComposeId,
+      "Test prompt 1",
+    );
+    await completeTestRun(user.userId, runId1);
+
+    const { runId: runId2 } = await createTestRun(
+      testComposeId,
+      "Test prompt 2",
+    );
+    await completeTestRun(user.userId, runId2);
+
+    const request = createTestRequest("http://localhost:3000/api/usage");
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.period).toBeDefined();
+    expect(data.period.start).toBeDefined();
+    expect(data.period.end).toBeDefined();
+    expect(data.summary).toBeDefined();
+    expect(data.summary.total_runs).toBe(2);
+    expect(data.daily).toBeDefined();
+    expect(Array.isArray(data.daily)).toBe(true);
+    expect(data.daily.length).toBeGreaterThan(0);
   });
 
-  describe("GET /api/usage", () => {
-    it("should require authentication", async () => {
-      // Mock Clerk auth to return no user
-      mockClerk({ userId: null });
+  it("should accept custom date range", async () => {
+    const now = new Date();
+    const threeDaysAgo = new Date(now);
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
 
-      const request = new NextRequest("http://localhost:3000/api/usage", {
-        method: "GET",
-      });
+    const request = createTestRequest(
+      `http://localhost:3000/api/usage?start_date=${threeDaysAgo.toISOString()}&end_date=${now.toISOString()}`,
+    );
 
-      const response = await GET(request);
-      const data = await response.json();
+    const response = await GET(request);
+    const data = await response.json();
 
-      expect(response.status).toBe(401);
-      expect(data.error.message).toContain("Not authenticated");
-    });
+    expect(response.status).toBe(200);
+    expect(data.period.start).toBeDefined();
+    expect(data.period.end).toBeDefined();
+  });
 
-    it("should return usage data with default 7 day range", async () => {
-      // Mock Clerk auth to return test user
-      mockClerk({ userId: testUserId });
+  it("should reject invalid start_date format", async () => {
+    const request = createTestRequest(
+      "http://localhost:3000/api/usage?start_date=invalid",
+    );
 
-      // Create test runs with completed data
-      const now = new Date();
-      const twoDaysAgo = new Date(now);
-      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+    const response = await GET(request);
+    const data = await response.json();
 
-      const threeDaysAgo = new Date(now);
-      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+    expect(response.status).toBe(400);
+    expect(data.error.message).toContain("Invalid start_date format");
+  });
 
-      // Create 2 completed runs
-      await globalThis.services.db.insert(agentRuns).values([
-        {
-          userId: testUserId,
-          agentComposeVersionId: testVersionId,
-          status: "completed",
-          prompt: "Test prompt 1",
-          createdAt: twoDaysAgo,
-          startedAt: twoDaysAgo,
-          completedAt: new Date(twoDaysAgo.getTime() + 60000), // 1 minute
-        },
-        {
-          userId: testUserId,
-          agentComposeVersionId: testVersionId,
-          status: "completed",
-          prompt: "Test prompt 2",
-          createdAt: threeDaysAgo,
-          startedAt: threeDaysAgo,
-          completedAt: new Date(threeDaysAgo.getTime() + 120000), // 2 minutes
-        },
-      ]);
+  it("should reject invalid end_date format", async () => {
+    const request = createTestRequest(
+      "http://localhost:3000/api/usage?end_date=invalid",
+    );
 
-      const request = new NextRequest("http://localhost:3000/api/usage", {
-        method: "GET",
-      });
+    const response = await GET(request);
+    const data = await response.json();
 
-      const response = await GET(request);
-      const data = await response.json();
+    expect(response.status).toBe(400);
+    expect(data.error.message).toContain("Invalid end_date format");
+  });
 
-      expect(response.status).toBe(200);
-      expect(data.period).toBeDefined();
-      expect(data.period.start).toBeDefined();
-      expect(data.period.end).toBeDefined();
-      expect(data.summary).toBeDefined();
-      expect(data.summary.total_runs).toBe(2);
-      expect(data.summary.total_run_time_ms).toBe(180000); // 60000 + 120000
-      expect(data.daily).toBeDefined();
-      expect(Array.isArray(data.daily)).toBe(true);
-      expect(data.daily.length).toBeGreaterThan(0);
-    });
+  it("should reject start_date after end_date", async () => {
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
 
-    it("should accept custom date range", async () => {
-      mockClerk({ userId: testUserId });
+    const request = createTestRequest(
+      `http://localhost:3000/api/usage?start_date=${now.toISOString()}&end_date=${yesterday.toISOString()}`,
+    );
 
-      const now = new Date();
-      const threeDaysAgo = new Date(now);
-      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+    const response = await GET(request);
+    const data = await response.json();
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/usage?start_date=${threeDaysAgo.toISOString()}&end_date=${now.toISOString()}`,
-        {
-          method: "GET",
-        },
-      );
+    expect(response.status).toBe(400);
+    expect(data.error.message).toContain("start_date must be before end_date");
+  });
 
-      const response = await GET(request);
-      const data = await response.json();
+  it("should reject range exceeding 30 days", async () => {
+    const now = new Date();
+    const fortyDaysAgo = new Date(now);
+    fortyDaysAgo.setDate(fortyDaysAgo.getDate() - 40);
 
-      expect(response.status).toBe(200);
-      expect(data.period.start).toBeDefined();
-      expect(data.period.end).toBeDefined();
-    });
+    const request = createTestRequest(
+      `http://localhost:3000/api/usage?start_date=${fortyDaysAgo.toISOString()}&end_date=${now.toISOString()}`,
+    );
 
-    it("should reject invalid start_date format", async () => {
-      mockClerk({ userId: testUserId });
+    const response = await GET(request);
+    const data = await response.json();
 
-      const request = new NextRequest(
-        "http://localhost:3000/api/usage?start_date=invalid",
-        {
-          method: "GET",
-        },
-      );
+    expect(response.status).toBe(400);
+    expect(data.error.message).toContain("exceeds maximum of 30 days");
+  });
 
-      const response = await GET(request);
-      const data = await response.json();
+  it("should return daily breakdown with run counts and run times", async () => {
+    // Create and complete multiple runs to verify daily aggregation
+    const { runId: runId1 } = await createTestRun(testComposeId, "Prompt 1");
+    await completeTestRun(user.userId, runId1);
 
-      expect(response.status).toBe(400);
-      expect(data.error.message).toContain("Invalid start_date format");
-    });
+    const { runId: runId2 } = await createTestRun(testComposeId, "Prompt 2");
+    await completeTestRun(user.userId, runId2);
 
-    it("should reject invalid end_date format", async () => {
-      mockClerk({ userId: testUserId });
+    const request = createTestRequest("http://localhost:3000/api/usage");
+    const response = await GET(request);
+    const data = await response.json();
 
-      const request = new NextRequest(
-        "http://localhost:3000/api/usage?end_date=invalid",
-        {
-          method: "GET",
-        },
-      );
+    expect(response.status).toBe(200);
+    expect(data.daily.length).toBeGreaterThan(0);
 
-      const response = await GET(request);
-      const data = await response.json();
+    // Check that daily data has expected structure
+    for (const day of data.daily) {
+      expect(day.date).toBeDefined();
+      expect(typeof day.run_count).toBe("number");
+      expect(typeof day.run_time_ms).toBe("number");
+    }
 
-      expect(response.status).toBe(400);
-      expect(data.error.message).toContain("Invalid end_date format");
-    });
+    // Verify summary totals
+    expect(data.summary.total_runs).toBe(2);
+    expect(typeof data.summary.total_run_time_ms).toBe("number");
+  });
 
-    it("should reject start_date after end_date", async () => {
-      mockClerk({ userId: testUserId });
+  it("should calculate run times correctly with mocked dates", async () => {
+    // Note: createdAt is set by PostgreSQL defaultNow() and cannot be mocked.
+    // We mock startedAt/completedAt to test run_time_ms calculation.
+    // startedAt is set during createTestRun, completedAt during completeTestRun.
 
-      const now = new Date();
-      const yesterday = new Date(now);
-      yesterday.setDate(yesterday.getDate() - 1);
+    // Run 1: mock time before creating run (startedAt), then advance for completion
+    const startTime1 = new Date("2024-06-13T12:00:00.000Z");
+    context.mocks.date.setSystemTime(startTime1);
+    const { runId: runId1 } = await createTestRun(testComposeId, "Prompt 1");
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/usage?start_date=${now.toISOString()}&end_date=${yesterday.toISOString()}`,
-        {
-          method: "GET",
-        },
-      );
+    // Advance time by 1 minute before completing
+    context.mocks.date.setSystemTime(
+      new Date(startTime1.getTime() + 60 * 1000),
+    );
+    await completeTestRun(user.userId, runId1);
 
-      const response = await GET(request);
-      const data = await response.json();
+    // Run 2: same pattern - mock time, create, advance, complete
+    const startTime2 = new Date("2024-06-12T12:00:00.000Z");
+    context.mocks.date.setSystemTime(startTime2);
+    const { runId: runId2 } = await createTestRun(testComposeId, "Prompt 2");
 
-      expect(response.status).toBe(400);
-      expect(data.error.message).toContain(
-        "start_date must be before end_date",
-      );
-    });
+    // Advance time by 2 minutes before completing
+    context.mocks.date.setSystemTime(
+      new Date(startTime2.getTime() + 2 * 60 * 1000),
+    );
+    await completeTestRun(user.userId, runId2);
 
-    it("should reject range exceeding 30 days", async () => {
-      mockClerk({ userId: testUserId });
+    // Restore real time and query with default range (uses real createdAt)
+    context.mocks.date.useRealTime();
 
-      const now = new Date();
-      const fortyDaysAgo = new Date(now);
-      fortyDaysAgo.setDate(fortyDaysAgo.getDate() - 40);
+    const request = createTestRequest("http://localhost:3000/api/usage");
+    const response = await GET(request);
+    const data = await response.json();
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/usage?start_date=${fortyDaysAgo.toISOString()}&end_date=${now.toISOString()}`,
-        {
-          method: "GET",
-        },
-      );
-
-      const response = await GET(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data.error.message).toContain("exceeds maximum of 30 days");
-    });
-
-    it("should return daily breakdown with run counts and run times", async () => {
-      mockClerk({ userId: testUserId });
-
-      // Create test runs on different days
-      const now = new Date();
-      const oneDayAgo = new Date(now);
-      oneDayAgo.setDate(oneDayAgo.getDate() - 1);
-
-      const twoDaysAgo = new Date(now);
-      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-
-      await globalThis.services.db.insert(agentRuns).values([
-        {
-          userId: testUserId,
-          agentComposeVersionId: testVersionId,
-          status: "completed",
-          prompt: "Test prompt 3",
-          createdAt: oneDayAgo,
-          startedAt: oneDayAgo,
-          completedAt: new Date(oneDayAgo.getTime() + 30000), // 30 seconds
-        },
-        {
-          userId: testUserId,
-          agentComposeVersionId: testVersionId,
-          status: "completed",
-          prompt: "Test prompt 4",
-          createdAt: twoDaysAgo,
-          startedAt: twoDaysAgo,
-          completedAt: new Date(twoDaysAgo.getTime() + 45000), // 45 seconds
-        },
-      ]);
-
-      const request = new NextRequest("http://localhost:3000/api/usage", {
-        method: "GET",
-      });
-
-      const response = await GET(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-
-      // Check that daily data has expected structure
-      expect(data.daily.length).toBeGreaterThan(0);
-      for (const day of data.daily) {
-        expect(day.date).toBeDefined();
-        expect(typeof day.run_count).toBe("number");
-        expect(typeof day.run_time_ms).toBe("number");
-      }
-
-      // Verify summary totals
-      expect(data.summary.total_runs).toBe(2);
-      expect(data.summary.total_run_time_ms).toBe(75000); // 30000 + 45000
-    });
+    expect(response.status).toBe(200);
+    expect(data.summary.total_runs).toBe(2);
+    // Run 1: 60000ms (1 min) + Run 2: 120000ms (2 min) = 180000ms
+    expect(data.summary.total_run_time_ms).toBe(180000);
   });
 });

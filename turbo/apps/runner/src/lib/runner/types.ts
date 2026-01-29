@@ -30,4 +30,5 @@ export interface RunnerStatus {
  */
 export interface RunnerResources {
   proxyEnabled: boolean;
+  proxyPort: number;
 }

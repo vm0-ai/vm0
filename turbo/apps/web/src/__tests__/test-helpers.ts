@@ -81,6 +81,18 @@ interface AxiomMocks {
   flush: Mock;
   /** Spy for queryAxiom function - use mockResolvedValue to set return value */
   queryAxiom: MockInstance<typeof axiomClient.queryAxiom>;
+  /** Spy for ingestToAxiom function - use mockResolvedValue to set return value */
+  ingestToAxiom: MockInstance<typeof axiomClient.ingestToAxiom>;
+}
+
+/**
+ * Date mock structure for controlling time in tests
+ */
+interface DateMocks {
+  /** Set a fixed system time for new Date() and Date.now() */
+  setSystemTime(date: Date): void;
+  /** Restore real time behavior */
+  useRealTime(): void;
 }
 
 /**
@@ -90,7 +102,10 @@ export interface MockHelpers {
   e2b: E2bMocks;
   s3: S3Mocks;
   axiom: AxiomMocks;
+  /** @deprecated Use context.mocks.date.setSystemTime() instead */
   dateNow: MockInstance<() => number>;
+  /** Date mock for controlling new Date() and Date.now() */
+  date: DateMocks;
 }
 
 interface SetupUserOptions {
@@ -196,6 +211,11 @@ export function testContext(): TestContext {
       queryAxiom: vi
         .spyOn(axiomClient, "queryAxiom")
         .mockResolvedValue([]) as MockInstance<typeof axiomClient.queryAxiom>,
+      ingestToAxiom: vi
+        .spyOn(axiomClient, "ingestToAxiom")
+        .mockResolvedValue(true) as MockInstance<
+        typeof axiomClient.ingestToAxiom
+      >,
     };
     // Use try/catch since Axiom may not be mocked in all test files
     try {
@@ -214,11 +234,44 @@ export function testContext(): TestContext {
       .spyOn(Date, "now")
       .mockImplementation(() => originalDateNow());
 
+    // Date constructor mock for controlling new Date()
+    const RealDate = globalThis.Date;
+
+    const dateMocks: DateMocks = {
+      setSystemTime(date: Date) {
+        // Also update dateNow mock for consistency
+        dateNowMock.mockReturnValue(date.getTime());
+        // Replace Date constructor with vi.stubGlobal (auto-restored by vitest)
+        vi.stubGlobal(
+          "Date",
+          class extends RealDate {
+            constructor(...args: unknown[]) {
+              if (args.length === 0) {
+                super(date.getTime());
+              } else {
+                // @ts-expect-error - calling super with variable args
+                super(...args);
+              }
+            }
+
+            static now() {
+              return date.getTime();
+            }
+          },
+        );
+      },
+      useRealTime() {
+        dateNowMock.mockImplementation(() => originalDateNow());
+        vi.unstubAllGlobals();
+      },
+    };
+
     const helpers: MockHelpers = {
       e2b: { sandbox: mockSandbox },
       s3: s3Mocks,
       axiom: axiomMocks,
       dateNow: dateNowMock,
+      date: dateMocks,
     };
     mockHelpers = helpers;
     return helpers;

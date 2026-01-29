@@ -386,91 +386,74 @@ export function checkNetworkPrerequisites(): { ok: boolean; errors: string[] } {
 }
 
 /**
- * Set up iptables DNAT rules to redirect a specific VM's traffic to the proxy
- * Only VMs with network security enabled should have their traffic intercepted.
+ * Set up CIDR-based proxy redirect rules for all VMs
+ * Called once at runner startup instead of per-VM
  *
- * Rules are tagged with a comment for easy identification and cleanup.
- * This follows the industry standard pattern used by Docker, Kubernetes, and firewalld.
+ * This redirects all traffic from the VM subnet (172.16.0.0/24) to the proxy.
+ * The proxy handles unregistered VMs by passing traffic through.
  *
- * @param vmIp The VM's IP address (e.g., "172.16.0.42")
- * @param proxyPort The port mitmproxy is listening on (e.g., 8080)
- * @param runnerName The runner name for comment tagging (used for cleanup)
+ * @param proxyPort The port mitmproxy is listening on
  */
-export async function setupVMProxyRules(
-  vmIp: string,
-  proxyPort: number,
-  runnerName: string,
-): Promise<void> {
-  const comment = `vm0:runner:${runnerName}`;
+export async function setupCIDRProxyRules(proxyPort: number): Promise<void> {
+  const comment = "vm0:cidr-proxy";
   console.log(
-    `Setting up proxy rules for VM ${vmIp} -> localhost:${proxyPort} (comment: ${comment})`,
+    `Setting up CIDR proxy rules for ${BRIDGE_CIDR} -> port ${proxyPort}`,
   );
 
-  // Redirect HTTP (port 80) from this specific VM to proxy
+  // HTTP redirect
   try {
     await execCommand(
-      `iptables -t nat -C PREROUTING -s ${vmIp} -p tcp --dport 80 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
+      `iptables -t nat -C PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 80 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
     );
-    console.log(`Proxy rule for ${vmIp}:80 already exists`);
+    console.log("CIDR proxy rule for port 80 already exists");
   } catch {
     await execCommand(
-      `iptables -t nat -A PREROUTING -s ${vmIp} -p tcp --dport 80 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
+      `iptables -t nat -A PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 80 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
     );
-    console.log(`Proxy rule for ${vmIp}:80 added`);
+    console.log("CIDR proxy rule for port 80 added");
   }
 
-  // Redirect HTTPS (port 443) from this specific VM to proxy
+  // HTTPS redirect
   try {
     await execCommand(
-      `iptables -t nat -C PREROUTING -s ${vmIp} -p tcp --dport 443 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
+      `iptables -t nat -C PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 443 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
     );
-    console.log(`Proxy rule for ${vmIp}:443 already exists`);
+    console.log("CIDR proxy rule for port 443 already exists");
   } catch {
     await execCommand(
-      `iptables -t nat -A PREROUTING -s ${vmIp} -p tcp --dport 443 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
+      `iptables -t nat -A PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 443 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
     );
-    console.log(`Proxy rule for ${vmIp}:443 added`);
+    console.log("CIDR proxy rule for port 443 added");
   }
-
-  console.log(`Proxy rules configured for VM ${vmIp}`);
 }
 
 /**
- * Remove iptables DNAT rules for a specific VM
+ * Clean up CIDR proxy rules
+ * Called at runner shutdown or during cleanup
  *
- * @param vmIp The VM's IP address
- * @param proxyPort The port mitmproxy is listening on (e.g., 8080)
- * @param runnerName The runner name for comment matching
+ * @param proxyPort The port mitmproxy is listening on
  */
-export async function removeVMProxyRules(
-  vmIp: string,
-  proxyPort: number,
-  runnerName: string,
-): Promise<void> {
-  const comment = `vm0:runner:${runnerName}`;
-  console.log(`Removing proxy rules for VM ${vmIp}...`);
+export async function cleanupCIDRProxyRules(proxyPort: number): Promise<void> {
+  const comment = "vm0:cidr-proxy";
+  console.log("Cleaning up CIDR proxy rules...");
 
-  // Remove HTTP rule
   try {
     await execCommand(
-      `iptables -t nat -D PREROUTING -s ${vmIp} -p tcp --dport 80 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
+      `iptables -t nat -D PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 80 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
     );
-    console.log(`Proxy rule for ${vmIp}:80 removed`);
+    console.log("CIDR proxy rule for port 80 removed");
   } catch {
     // Rule doesn't exist, that's fine
   }
 
-  // Remove HTTPS rule
   try {
     await execCommand(
-      `iptables -t nat -D PREROUTING -s ${vmIp} -p tcp --dport 443 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
+      `iptables -t nat -D PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 443 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
     );
-    console.log(`Proxy rule for ${vmIp}:443 removed`);
+    console.log("CIDR proxy rule for port 443 removed");
   } catch {
     // Rule doesn't exist, that's fine
   }
-
-  console.log(`Proxy rules cleanup complete for VM ${vmIp}`);
 }
 
 /**
