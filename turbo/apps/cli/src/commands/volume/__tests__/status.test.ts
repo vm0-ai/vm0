@@ -1,13 +1,23 @@
+/**
+ * Tests for volume status command
+ *
+ * Covers:
+ * - Config validation (no config, wrong type)
+ * - Remote status check (found, not found, empty)
+ * - Error handling (API errors, network errors)
+ */
+
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
-import { server } from "../../mocks/server";
-import { statusCommand } from "../volume/status";
+import { server } from "../../../mocks/server";
+import { statusCommand } from "../status";
 import { mkdtempSync, rmSync } from "fs";
 import * as fs from "fs/promises";
 import * as path from "path";
 import * as os from "os";
+import chalk from "chalk";
 
-describe("volume status command", () => {
+describe("volume status", () => {
   let tempDir: string;
   let originalCwd: string;
 
@@ -21,6 +31,7 @@ describe("volume status command", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
 
@@ -39,10 +50,8 @@ describe("volume status command", () => {
     vi.unstubAllEnvs();
   });
 
-  describe("local config validation", () => {
-    it("should exit with error if no config exists", async () => {
-      // No .vm0/storage.yaml file - just use empty temp directory
-
+  describe("config validation", () => {
+    it("should fail if no config exists", async () => {
       await expect(async () => {
         await statusCommand.parseAsync(["node", "cli"]);
       }).rejects.toThrow("process.exit called");
@@ -56,8 +65,7 @@ describe("volume status command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should exit with error if config type is artifact", async () => {
-      // Create .vm0/storage.yaml with type: artifact
+    it("should fail if config type is artifact", async () => {
       await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
       await fs.writeFile(
         path.join(tempDir, ".vm0", "storage.yaml"),
@@ -80,7 +88,6 @@ describe("volume status command", () => {
 
   describe("remote status check", () => {
     beforeEach(async () => {
-      // Create .vm0/storage.yaml with type: volume
       await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
       await fs.writeFile(
         path.join(tempDir, ".vm0", "storage.yaml"),
@@ -88,7 +95,7 @@ describe("volume status command", () => {
       );
     });
 
-    it("should show start message", async () => {
+    it("should show checking message", async () => {
       server.use(
         http.get("http://localhost:3000/api/storages/download", () => {
           return HttpResponse.json({
@@ -108,35 +115,7 @@ describe("volume status command", () => {
       );
     });
 
-    it("should exit with error if remote returns 404", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/storages/download", () => {
-          return HttpResponse.json(
-            {
-              error: {
-                message: 'Storage "test-volume" not found',
-                code: "NOT_FOUND",
-              },
-            },
-            { status: 404 },
-          );
-        }),
-      );
-
-      await expect(async () => {
-        await statusCommand.parseAsync(["node", "cli"]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Not found on remote"),
-      );
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 volume push"),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-
-    it("should display version info when remote exists", async () => {
+    it("should display version info when found", async () => {
       server.use(
         http.get("http://localhost:3000/api/storages/download", () => {
           return HttpResponse.json({
@@ -165,7 +144,7 @@ describe("volume status command", () => {
       );
     });
 
-    it("should display empty indicator for empty storage", async () => {
+    it("should display empty indicator for empty volume", async () => {
       server.use(
         http.get("http://localhost:3000/api/storages/download", () => {
           return HttpResponse.json({
@@ -187,11 +166,38 @@ describe("volume status command", () => {
         expect.stringContaining("Version: a1b2c3d4"),
       );
     });
+
+    it("should show not found error with push suggestion", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/storages/download", () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message: 'Storage "test-volume" not found',
+                code: "NOT_FOUND",
+              },
+            },
+            { status: 404 },
+          );
+        }),
+      );
+
+      await expect(async () => {
+        await statusCommand.parseAsync(["node", "cli"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Not found on remote"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("vm0 volume push"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
   });
 
   describe("error handling", () => {
     beforeEach(async () => {
-      // Create .vm0/storage.yaml with type: volume
       await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
       await fs.writeFile(
         path.join(tempDir, ".vm0", "storage.yaml"),
