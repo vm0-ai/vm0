@@ -1,78 +1,112 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdir, rm } from "fs/promises";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { mkdir, rm, readFile } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
 import {
   SKILL_DIR,
   SKILL_FILE,
-  getSkillContent,
+  SKILL_NAME,
+  SKILL_URL,
+  fetchSkillContent,
   installClaudeSkill,
 } from "../claude-setup.js";
+
+const MOCK_SKILL_CONTENT = `---
+name: vm0-cli
+description: VM0 CLI for building and running AI agents in secure sandboxes.
+vm0_secrets:
+  - VM0_TOKEN
+---
+
+# VM0 CLI
+
+Build and run AI agents in secure sandboxed environments.
+
+## When to Use
+
+Use this skill when you need to:
+- Install and set up the VM0 CLI
+- Run agents with prompts and inputs
+`;
 
 describe("claude-setup", () => {
   const testDir = "/tmp/test-claude-setup";
 
   beforeEach(async () => {
+    vi.clearAllMocks();
     await mkdir(testDir, { recursive: true });
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await rm(testDir, { recursive: true, force: true });
   });
 
   describe("constants", () => {
     it("should have correct SKILL_DIR", () => {
-      expect(SKILL_DIR).toBe(".claude/skills/vm0-agent-builder");
+      expect(SKILL_DIR).toBe(".claude/skills/vm0-cli");
     });
 
     it("should have correct SKILL_FILE", () => {
       expect(SKILL_FILE).toBe("SKILL.md");
     });
+
+    it("should have correct SKILL_NAME", () => {
+      expect(SKILL_NAME).toBe("vm0-cli");
+    });
+
+    it("should have correct SKILL_URL", () => {
+      expect(SKILL_URL).toBe(
+        "https://raw.githubusercontent.com/vm0-ai/vm0-skills/main/vm0-cli/SKILL.md",
+      );
+    });
   });
 
-  describe("getSkillContent", () => {
-    it("should return non-empty content", () => {
-      const content = getSkillContent();
+  describe("fetchSkillContent", () => {
+    it("should fetch content from GitHub", async () => {
+      const mockFetch = vi.spyOn(global, "fetch").mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(MOCK_SKILL_CONTENT),
+      } as Response);
 
-      expect(content.length).toBeGreaterThan(0);
+      const content = await fetchSkillContent();
+
+      expect(content).toBe(MOCK_SKILL_CONTENT);
+      expect(mockFetch).toHaveBeenCalledWith(SKILL_URL);
     });
 
-    it("should include frontmatter", () => {
-      const content = getSkillContent();
+    it("should throw error on fetch failure", async () => {
+      vi.spyOn(global, "fetch").mockResolvedValue({
+        ok: false,
+        status: 404,
+        statusText: "Not Found",
+      } as Response);
 
-      expect(content).toContain("---");
-      expect(content).toContain("name: vm0-agent-builder");
+      await expect(fetchSkillContent()).rejects.toThrow(
+        `Failed to fetch skill from ${SKILL_URL}: 404 Not Found`,
+      );
     });
 
-    it("should include workflow sections", () => {
-      const content = getSkillContent();
+    it("should throw error on network failure", async () => {
+      vi.spyOn(global, "fetch").mockRejectedValue(new Error("Network error"));
 
-      expect(content).toContain("## Workflow");
-      expect(content).toContain("Step 1");
-      expect(content).toContain("Create AGENTS.md");
-    });
-
-    it("should include available skills", () => {
-      const content = getSkillContent();
-
-      expect(content).toContain("## Available Skills");
-      expect(content).toContain("github");
-      expect(content).toContain("slack");
-    });
-
-    it("should include example agents", () => {
-      const content = getSkillContent();
-
-      expect(content).toContain("## Examples");
-      expect(content).toContain("HackerNews Curator");
+      await expect(fetchSkillContent()).rejects.toThrow("Network error");
     });
   });
 
   describe("installClaudeSkill", () => {
+    beforeEach(() => {
+      vi.spyOn(global, "fetch").mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(MOCK_SKILL_CONTENT),
+      } as Response);
+    });
+
     it("should create skill directory", async () => {
       const result = await installClaudeSkill(testDir);
 
       expect(existsSync(result.skillDir)).toBe(true);
+      expect(result.skillDir).toBe(path.join(testDir, SKILL_DIR));
     });
 
     it("should create skill file", async () => {
@@ -88,16 +122,15 @@ describe("claude-setup", () => {
       expect(result.skillFile).toBe(path.join(testDir, SKILL_DIR, SKILL_FILE));
     });
 
-    it("should write correct content to file", async () => {
+    it("should write fetched content to file", async () => {
       await installClaudeSkill(testDir);
 
-      const { readFile } = await import("fs/promises");
       const content = await readFile(
         path.join(testDir, SKILL_DIR, SKILL_FILE),
         "utf-8",
       );
 
-      expect(content).toBe(getSkillContent());
+      expect(content).toBe(MOCK_SKILL_CONTENT);
     });
 
     it("should use current directory when no targetDir specified", async () => {
@@ -111,6 +144,18 @@ describe("claude-setup", () => {
       } finally {
         process.chdir(originalCwd);
       }
+    });
+
+    it("should propagate fetch errors", async () => {
+      vi.spyOn(global, "fetch").mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+      } as Response);
+
+      await expect(installClaudeSkill(testDir)).rejects.toThrow(
+        "Failed to fetch skill",
+      );
     });
   });
 });

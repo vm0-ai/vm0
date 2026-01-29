@@ -21,6 +21,8 @@ import {
   getProviderChoices,
   setupModelProvider,
   installClaudeSkill,
+  SKILL_NAME,
+  SKILL_URL,
 } from "../lib/domain/onboard/index.js";
 import type { ModelProviderType } from "@vm0/core";
 
@@ -193,12 +195,19 @@ async function handleSkillInstallation(
 ): Promise<void> {
   ctx.updateProgress(3, "in-progress");
 
-  const skillResult = await installClaudeSkill(agentName);
-  console.log(
-    chalk.green(
-      `✓ Installed vm0-agent-builder skill to ${skillResult.skillDir}`,
-    ),
-  );
+  try {
+    const skillResult = await installClaudeSkill(agentName);
+    console.log(
+      chalk.green(`✓ Installed ${SKILL_NAME} skill to ${skillResult.skillDir}`),
+    );
+  } catch (error) {
+    console.error(chalk.red(`Failed to fetch skill from GitHub: ${SKILL_URL}`));
+    if (error instanceof Error) {
+      console.error(chalk.red(error.message));
+    }
+    console.error(chalk.dim("Please check your network connection."));
+    process.exit(1);
+  }
 
   ctx.updateProgress(3, "completed");
 }
@@ -208,7 +217,7 @@ function printNextSteps(agentName: string): void {
   console.log(chalk.bold("Next step:"));
   console.log();
   console.log(
-    `  ${chalk.cyan(`cd ${agentName} && claude "/vm0-agent-builder I want to build an agent that..."`)}`,
+    `  ${chalk.cyan(`cd ${agentName} && claude "/${SKILL_NAME} I want to build an agent that..."`)}`,
   );
   console.log();
 }

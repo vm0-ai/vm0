@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { onboardCommand } from "../onboard.js";
 import { existsSync, mkdtempSync, rmSync } from "fs";
 import { readFile } from "fs/promises";
 import * as path from "path";
@@ -22,7 +21,32 @@ vi.mock("os", async (importOriginal) => {
   };
 });
 
+// Mock fetchSkillContent to avoid real network calls
+vi.mock("../../lib/domain/onboard/index.js", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("../../lib/domain/onboard/index.js")>();
+  return {
+    ...original,
+    fetchSkillContent: vi.fn().mockResolvedValue(`---
+name: vm0-cli
+description: VM0 CLI for building and running AI agents in secure sandboxes.
+vm0_secrets:
+  - VM0_TOKEN
+---
+
+# VM0 CLI
+
+Build and run AI agents in secure sandboxed environments.
+
+## When to Use
+
+Use this skill when you need to install and set up the VM0 CLI.
+`),
+  };
+});
+
 import prompts from "prompts";
+import { onboardCommand } from "../onboard.js";
 
 describe("onboard command", () => {
   let tempDir: string;
@@ -299,12 +323,12 @@ describe("onboard command", () => {
   });
 
   describe("skill installation", () => {
-    it("should install vm0-agent-builder skill in agent directory", async () => {
+    it("should install vm0-cli skill in agent directory", async () => {
       await onboardCommand.parseAsync(["node", "cli", "-y"]);
 
       const skillPath = path.join(
         tempDir,
-        "my-vm0-agent/.claude/skills/vm0-agent-builder/SKILL.md",
+        "my-vm0-agent/.claude/skills/vm0-cli/SKILL.md",
       );
       expect(existsSync(skillPath)).toBe(true);
     });
@@ -314,12 +338,12 @@ describe("onboard command", () => {
 
       const skillPath = path.join(
         tempDir,
-        "my-vm0-agent/.claude/skills/vm0-agent-builder/SKILL.md",
+        "my-vm0-agent/.claude/skills/vm0-cli/SKILL.md",
       );
       const content = await readFile(skillPath, "utf-8");
 
-      expect(content).toContain("name: vm0-agent-builder");
-      expect(content).toContain("## Workflow");
+      expect(content).toContain("name: vm0-cli");
+      expect(content).toContain("## When to Use");
     });
   });
 
@@ -347,7 +371,7 @@ describe("onboard command", () => {
       expect(logCalls).toContain("Next step:");
       expect(logCalls).toContain("cd my-vm0-agent");
       expect(logCalls).toContain("claude");
-      expect(logCalls).toContain("/vm0-agent-builder");
+      expect(logCalls).toContain("/vm0-cli");
     });
 
     it("should show custom agent name in next steps", async () => {
@@ -384,7 +408,7 @@ describe("onboard command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Created my-vm0-agent/");
-      expect(logCalls).toContain("Installed vm0-agent-builder skill");
+      expect(logCalls).toContain("Installed vm0-cli skill");
     });
   });
 });
