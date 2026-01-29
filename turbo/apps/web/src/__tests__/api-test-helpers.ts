@@ -17,7 +17,6 @@ import { POST as createComposeRoute } from "../../app/api/agent/composes/route";
 import { POST as createScopeRoute } from "../../app/api/scope/route";
 import { PUT as setCredentialRoute } from "../../app/api/credentials/route";
 import { PUT as upsertModelProviderRoute } from "../../app/api/model-providers/route";
-import { POST as setModelProviderDefaultRoute } from "../../app/api/model-providers/[type]/set-default/route";
 
 /**
  * Helper to create a NextRequest for testing.
@@ -151,7 +150,6 @@ export interface TestDataContext {
     type: string,
     credentialValue: string,
   ) => Promise<{ id: string; type: string }>;
-  setModelProviderDefault: (type: string) => Promise<void>;
 }
 
 /**
@@ -238,24 +236,6 @@ export function getTestDataContext(): TestDataContext {
       }
       const data = await response.json();
       return data.provider;
-    },
-
-    async setModelProviderDefault(type) {
-      const request = createTestRequest(
-        `http://localhost:3000/api/model-providers/${type}/set-default`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-      // ts-rest parses path params from the URL automatically
-      const response = await setModelProviderDefaultRoute(request);
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(
-          `Failed to set model provider default: ${error.error?.message || response.status}`,
-        );
-      }
     },
   };
 }
