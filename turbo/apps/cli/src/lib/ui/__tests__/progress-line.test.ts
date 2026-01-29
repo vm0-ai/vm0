@@ -73,14 +73,15 @@ describe("progress-line", () => {
   });
 
   describe("createOnboardProgress", () => {
-    it("should create progress with 4 steps", () => {
+    it("should create progress with 5 steps", () => {
       const progress = createOnboardProgress();
 
-      expect(progress.steps.length).toBe(4);
+      expect(progress.steps.length).toBe(5);
       expect(progress.steps[0]?.label).toBe("Authentication");
       expect(progress.steps[1]?.label).toBe("Model Provider Setup");
       expect(progress.steps[2]?.label).toBe("Create Agent");
-      expect(progress.steps[3]?.label).toBe("Complete");
+      expect(progress.steps[3]?.label).toBe("Claude Plugin Install");
+      expect(progress.steps[4]?.label).toBe("Complete");
     });
 
     it("should initialize all steps as pending", () => {
