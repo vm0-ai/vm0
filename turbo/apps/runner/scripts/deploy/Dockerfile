@@ -1,5 +1,5 @@
 # Firecracker VM rootfs image (Universal)
-# Based on Node.js 24 with Python 3.11+, vsock-agent, and agent CLIs
+# Based on Node.js 24 with Python 3.11+, vm-init, and agent CLIs
 #
 # This is a universal image that supports all frameworks and apps:
 # - Claude Code CLI (@anthropic-ai/claude-code) for framework: claude-code

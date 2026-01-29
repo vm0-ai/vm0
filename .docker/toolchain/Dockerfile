@@ -36,7 +36,7 @@ RUN apt-get update && apt-get install -y \
     && pip3 install ansible
 
 # Install Rust toolchain with ARM64 cross-compilation support
-# Used for building vsock-agent for Firecracker VMs (ARM64 metal runners)
+# Used for building vm-init for Firecracker VMs (ARM64 metal runners)
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH
