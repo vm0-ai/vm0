@@ -38,26 +38,55 @@ export function createTestRequest(
   });
 }
 
+interface ComposeConfigOptions {
+  /** Override agent properties (merged with defaults) */
+  overrides?: Partial<AgentComposeYaml["agents"][string]>;
+  /** Skip adding default ANTHROPIC_API_KEY (creates empty environment: {}) */
+  skipDefaultApiKey?: boolean;
+  /** Skip adding environment block entirely (for testing auto-injection) */
+  noEnvironmentBlock?: boolean;
+}
+
 /**
- * Default compose configuration for testing
- * Includes ANTHROPIC_API_KEY in environment to satisfy model provider validation
+ * Default compose configuration for testing.
+ * By default includes ANTHROPIC_API_KEY in environment.
+ *
+ * Options:
+ * - skipDefaultApiKey: true  → environment: {} (empty object)
+ * - noEnvironmentBlock: true → no environment key at all
  */
 export function createDefaultComposeConfig(
   agentName: string,
-  overrides?: Partial<AgentComposeYaml["agents"][string]>,
+  options?: ComposeConfigOptions | Partial<AgentComposeYaml["agents"][string]>,
 ): AgentComposeYaml {
+  // Support both old signature (overrides only) and new signature (options object)
+  const opts: ComposeConfigOptions =
+    options &&
+    ("skipDefaultApiKey" in options || "noEnvironmentBlock" in options)
+      ? options
+      : { overrides: options as Partial<AgentComposeYaml["agents"][string]> };
+
+  // Build base agent config without environment
+  const baseAgent: Record<string, unknown> = {
+    image: "vm0/claude-code:dev",
+    framework: "claude-code",
+    working_dir: "/home/user/workspace",
+  };
+
+  // Add environment unless noEnvironmentBlock is set
+  if (!opts.noEnvironmentBlock) {
+    baseAgent.environment = opts.skipDefaultApiKey
+      ? {}
+      : { ANTHROPIC_API_KEY: "test-api-key" };
+  }
+
   return {
     version: "1.0",
     agents: {
       [agentName]: {
-        image: "vm0/claude-code:dev",
-        framework: "claude-code",
-        working_dir: "/home/user/workspace",
-        environment: {
-          ANTHROPIC_API_KEY: "test-api-key",
-        },
-        ...overrides,
-      },
+        ...baseAgent,
+        ...opts.overrides,
+      } as AgentComposeYaml["agents"][string],
     },
   };
 }
@@ -158,14 +187,14 @@ export async function createTestScope(
  * Create a test compose via API route handler.
  *
  * @param agentName - The agent name
- * @param overrides - Optional overrides for the agent config
+ * @param options - Optional config options or overrides for the agent config
  * @returns The created compose with composeId and versionId
  */
 export async function createTestCompose(
   agentName: string,
-  overrides?: Partial<AgentComposeYaml["agents"][string]>,
+  options?: ComposeConfigOptions | Partial<AgentComposeYaml["agents"][string]>,
 ): Promise<{ composeId: string; versionId: string }> {
-  const config = createDefaultComposeConfig(agentName, overrides);
+  const config = createDefaultComposeConfig(agentName, options);
   const request = createTestRequest(
     "http://localhost:3000/api/agent/composes",
     {

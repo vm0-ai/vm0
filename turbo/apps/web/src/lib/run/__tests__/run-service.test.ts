@@ -1,6 +1,4 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { eq } from "drizzle-orm";
-import { agentComposeVersions } from "../../../db/schema/agent-compose";
 import { randomUUID } from "crypto";
 import { calculateSessionHistoryPath, RunService } from "../run-service";
 import {
@@ -615,25 +613,10 @@ describe("run-service", () => {
           const { versionId } = await createTestCompose(
             "test-compose-default-mp",
             {
-              framework: "claude-code",
+              skipDefaultApiKey: true,
+              overrides: { framework: "claude-code" },
             },
           );
-
-          // Remove auto-created ANTHROPIC_API_KEY to trigger default lookup
-          await globalThis.services.db
-            .update(agentComposeVersions)
-            .set({
-              content: {
-                agents: {
-                  "test-compose-default-mp": {
-                    framework: "claude-code",
-                    working_dir: "/home/user/workspace",
-                    environment: {},
-                  },
-                },
-              },
-            })
-            .where(eq(agentComposeVersions.id, versionId));
 
           const execContext = await runService.buildExecutionContext({
             agentComposeVersionId: versionId,
@@ -651,24 +634,9 @@ describe("run-service", () => {
         test("throws BadRequestError when no model provider configured", async () => {
           const user = await setupUser();
           const { versionId } = await createTestCompose("test-compose-no-mp", {
-            framework: "claude-code",
+            skipDefaultApiKey: true,
+            overrides: { framework: "claude-code" },
           });
-
-          // Remove auto-created ANTHROPIC_API_KEY
-          await globalThis.services.db
-            .update(agentComposeVersions)
-            .set({
-              content: {
-                agents: {
-                  "test-compose-no-mp": {
-                    framework: "claude-code",
-                    working_dir: "/home/user/workspace",
-                    environment: {},
-                  },
-                },
-              },
-            })
-            .where(eq(agentComposeVersions.id, versionId));
 
           await expect(
             runService.buildExecutionContext({
@@ -696,25 +664,10 @@ describe("run-service", () => {
           const { versionId } = await createTestCompose(
             "test-compose-invalid-mp",
             {
-              framework: "claude-code",
+              skipDefaultApiKey: true,
+              overrides: { framework: "claude-code" },
             },
           );
-
-          // Remove auto-created ANTHROPIC_API_KEY
-          await globalThis.services.db
-            .update(agentComposeVersions)
-            .set({
-              content: {
-                agents: {
-                  "test-compose-invalid-mp": {
-                    framework: "claude-code",
-                    working_dir: "/home/user/workspace",
-                    environment: {},
-                  },
-                },
-              },
-            })
-            .where(eq(agentComposeVersions.id, versionId));
 
           await expect(
             runService.buildExecutionContext({
@@ -748,24 +701,10 @@ describe("run-service", () => {
           const { versionId } = await createTestCompose(
             "test-compose-no-env-block",
             {
-              framework: "claude-code",
+              noEnvironmentBlock: true,
+              overrides: { framework: "claude-code" },
             },
           );
-
-          // Remove environment block completely
-          await globalThis.services.db
-            .update(agentComposeVersions)
-            .set({
-              content: {
-                agents: {
-                  "test-compose-no-env-block": {
-                    framework: "claude-code",
-                    working_dir: "/home/user/workspace",
-                  },
-                },
-              },
-            })
-            .where(eq(agentComposeVersions.id, versionId));
 
           const execContext = await runService.buildExecutionContext({
             agentComposeVersionId: versionId,
