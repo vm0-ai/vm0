@@ -2,12 +2,14 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { mkdir } from "fs/promises";
 import { existsSync } from "fs";
+import path from "path";
 import { validateAgentName } from "../lib/domain/yaml-validator.js";
 import {
   isInteractive,
   promptText,
   promptSelect,
   promptPassword,
+  promptConfirm,
 } from "../lib/utils/prompt-utils.js";
 import { renderOnboardWelcome } from "../lib/ui/welcome-box.js";
 import {
@@ -20,10 +22,10 @@ import {
   checkModelProviderStatus,
   getProviderChoices,
   setupModelProvider,
-  installAllClaudeSkills,
-  handleFetchError,
-  SKILLS,
+  installVm0Plugin,
+  handlePluginError,
   PRIMARY_SKILL_NAME,
+  type PluginScope,
 } from "../lib/domain/onboard/index.js";
 import type { ModelProviderType } from "@vm0/core";
 
@@ -190,24 +192,41 @@ async function handleAgentCreation(ctx: OnboardContext): Promise<string> {
   return agentName;
 }
 
-async function handleSkillInstallation(
+async function handlePluginInstallation(
   ctx: OnboardContext,
   agentName: string,
 ): Promise<void> {
   ctx.updateProgress(3, "in-progress");
 
+  // Ask if user wants to install the plugin
+  let shouldInstall = true;
+  if (!ctx.options.yes && ctx.interactive) {
+    const confirmed = await promptConfirm(
+      "Install VM0 Claude Plugin?",
+      true, // default: Yes
+    );
+    shouldInstall = confirmed ?? true;
+  }
+
+  if (!shouldInstall) {
+    console.log(chalk.dim("Skipped plugin installation"));
+    ctx.updateProgress(3, "completed");
+    return;
+  }
+
+  // Always use project scope since we're creating a new project
+  const scope: PluginScope = "project";
+
   try {
-    const result = await installAllClaudeSkills(agentName);
-    result.skills.forEach((skillResult, i) => {
-      const skillName = SKILLS[i]?.name ?? "unknown";
-      console.log(
-        chalk.green(
-          `✓ Installed ${skillName} skill to ${skillResult.skillDir}`,
-        ),
-      );
-    });
+    // Get absolute path for the agent directory
+    const agentDir = path.resolve(process.cwd(), agentName);
+
+    const result = await installVm0Plugin(scope, agentDir);
+    console.log(
+      chalk.green(`✓ Installed ${result.pluginId} (scope: ${result.scope})`),
+    );
   } catch (error) {
-    handleFetchError(error);
+    handlePluginError(error);
   }
 
   ctx.updateProgress(3, "completed");
@@ -260,7 +279,10 @@ export const onboardCommand = new Command()
     await handleAuthentication(ctx);
     await handleModelProvider(ctx);
     const agentName = await handleAgentCreation(ctx);
-    await handleSkillInstallation(ctx, agentName);
+    await handlePluginInstallation(ctx, agentName);
+
+    // Mark complete
+    ctx.updateProgress(4, "completed");
 
     printNextSteps(agentName);
   });

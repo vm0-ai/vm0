@@ -7,8 +7,8 @@ export {
 } from "./model-provider.js";
 
 export {
-  installAllClaudeSkills,
-  handleFetchError,
-  SKILLS,
+  installVm0Plugin,
+  handlePluginError,
   PRIMARY_SKILL_NAME,
+  type PluginScope,
 } from "./claude-setup.js";

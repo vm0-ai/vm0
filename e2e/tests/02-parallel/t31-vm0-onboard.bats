@@ -3,8 +3,9 @@
 load '../../helpers/setup'
 
 # vm0 onboard and vm0 setup-claude command tests
-# E2E tests focus on: help, happy path file creation
+# E2E tests focus on: help output and command behavior
 # Unit tests cover: auth checks, model provider checks, interactive prompts
+# NOTE: Plugin installation requires Claude CLI to be available
 
 setup() {
     # Create a temporary directory for each test
@@ -16,6 +17,11 @@ teardown() {
     # Clean up the temporary directory
     cd /
     rm -rf "$TEST_DIR"
+}
+
+# Check if Claude CLI is available
+claude_available() {
+    command -v claude &> /dev/null
 }
 
 # =============================================================================
@@ -30,36 +36,36 @@ teardown() {
     assert_output --partial "--name"
 }
 
-@test "vm0 onboard -y creates agent directory with skills" {
+@test "vm0 onboard -y creates agent directory and installs plugin" {
+    if ! claude_available; then
+        skip "Claude CLI not available"
+    fi
+
     run $CLI_COMMAND onboard -y
     assert_success
     assert_output --partial "Created my-vm0-agent/"
-    assert_output --partial "Installed vm0-cli skill"
-    assert_output --partial "Installed vm0-agent skill"
+    assert_output --partial "Installed vm0@vm0-skills"
     assert_output --partial "Next step:"
     assert_output --partial "cd my-vm0-agent"
     assert_output --partial "/vm0-agent"
 
-    # Verify directory and skills were created
+    # Verify directory was created
     [ -d "my-vm0-agent" ]
-    [ -d "my-vm0-agent/.claude/skills/vm0-cli" ]
-    [ -f "my-vm0-agent/.claude/skills/vm0-cli/SKILL.md" ]
-    [ -d "my-vm0-agent/.claude/skills/vm0-agent" ]
-    [ -f "my-vm0-agent/.claude/skills/vm0-agent/SKILL.md" ]
 }
 
 @test "vm0 onboard -y --name creates custom named agent" {
+    if ! claude_available; then
+        skip "Claude CLI not available"
+    fi
+
     run $CLI_COMMAND onboard -y --name custom-agent
     assert_success
     assert_output --partial "Created custom-agent/"
-    assert_output --partial "Installed vm0-cli skill"
-    assert_output --partial "Installed vm0-agent skill"
+    assert_output --partial "Installed vm0@vm0-skills"
     assert_output --partial "cd custom-agent"
 
-    # Verify directory and skills were created with custom name
+    # Verify directory was created with custom name
     [ -d "custom-agent" ]
-    [ -d "custom-agent/.claude/skills/vm0-cli" ]
-    [ -d "custom-agent/.claude/skills/vm0-agent" ]
 }
 
 @test "vm0 onboard fails if agent directory exists" {
@@ -78,37 +84,28 @@ teardown() {
 @test "vm0 setup-claude --help shows command description" {
     run $CLI_COMMAND setup-claude --help
     assert_success
-    assert_output --partial "Add/update Claude skills for VM0 usage"
+    assert_output --partial "Install VM0 Claude Plugin"
+    assert_output --partial "--scope"
 }
 
-@test "vm0 setup-claude installs skills from GitHub" {
+@test "vm0 setup-claude installs VM0 plugin" {
+    if ! claude_available; then
+        skip "Claude CLI not available"
+    fi
+
     run $CLI_COMMAND setup-claude
     assert_success
-    assert_output --partial "Installed vm0-cli skill"
-    assert_output --partial "Installed vm0-agent skill"
+    assert_output --partial "Installed vm0@vm0-skills"
     assert_output --partial "Next step:"
     assert_output --partial "/vm0-agent"
-
-    # Verify skill directories were created
-    [ -d ".claude/skills/vm0-cli" ]
-    [ -f ".claude/skills/vm0-cli/SKILL.md" ]
-    [ -d ".claude/skills/vm0-agent" ]
-    [ -f ".claude/skills/vm0-agent/SKILL.md" ]
-
-    # Verify skill content
-    run cat .claude/skills/vm0-cli/SKILL.md
-    assert_output --partial "name: vm0-cli"
-    assert_output --partial "# VM0 CLI"
 }
 
-@test "vm0 setup-claude is idempotent (can run multiple times)" {
-    # Run first time
-    run $CLI_COMMAND setup-claude
-    assert_success
+@test "vm0 setup-claude with --scope user" {
+    if ! claude_available; then
+        skip "Claude CLI not available"
+    fi
 
-    # Run second time - should succeed and overwrite
-    run $CLI_COMMAND setup-claude
+    run $CLI_COMMAND setup-claude --scope user
     assert_success
-    assert_output --partial "Installed vm0-cli skill"
-    assert_output --partial "Installed vm0-agent skill"
+    assert_output --partial "Installed vm0@vm0-skills"
 }

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { existsSync, mkdtempSync, rmSync } from "fs";
-import { readFile } from "fs/promises";
 import * as path from "path";
 import * as os from "os";
+import { EventEmitter } from "events";
 import { http, HttpResponse } from "msw";
 import { server } from "../../mocks/server.js";
 
@@ -21,34 +21,36 @@ vi.mock("os", async (importOriginal) => {
   };
 });
 
+// Mock child_process for Claude CLI commands
+vi.mock("child_process", () => ({
+  spawn: vi.fn(),
+}));
+
 import prompts from "prompts";
+import { spawn } from "child_process";
 import { onboardCommand } from "../onboard.js";
 
-const MOCK_CLI_SKILL_CONTENT = `---
-name: vm0-cli
-description: VM0 CLI for building and running AI agents in secure sandboxes.
-vm0_secrets:
-  - VM0_TOKEN
----
+// Helper to create a mock child process
+function createMockChildProcess(exitCode: number, stdout = "", stderr = "") {
+  const mockProcess = new EventEmitter() as EventEmitter & {
+    stdout: EventEmitter;
+    stderr: EventEmitter;
+  };
+  mockProcess.stdout = new EventEmitter();
+  mockProcess.stderr = new EventEmitter();
 
-# VM0 CLI
+  setImmediate(() => {
+    if (stdout) {
+      mockProcess.stdout.emit("data", Buffer.from(stdout));
+    }
+    if (stderr) {
+      mockProcess.stderr.emit("data", Buffer.from(stderr));
+    }
+    mockProcess.emit("close", exitCode);
+  });
 
-Build and run AI agents in secure sandboxed environments.
-
-## When to Use
-
-Use this skill when you need to install and set up the VM0 CLI.
-`;
-
-const MOCK_AGENT_SKILL_CONTENT = `---
-name: vm0-agent
-description: VM0 Agent skill for building workflows.
----
-
-# VM0 Agent
-
-Build AI agent workflows.
-`;
+  return mockProcess;
+}
 
 describe("onboard command", () => {
   let tempDir: string;
@@ -75,25 +77,16 @@ describe("onboard command", () => {
     originalCwd = process.cwd();
     process.chdir(tempDir);
 
-    // Mock fetch for GitHub skill content only, let MSW handle API calls
-    const originalFetch = global.fetch;
-    vi.spyOn(global, "fetch").mockImplementation(async (input, init) => {
-      const url = typeof input === "string" ? input : input.toString();
-      if (url.includes("raw.githubusercontent.com")) {
-        if (url.includes("vm0-cli")) {
-          return {
-            ok: true,
-            text: () => Promise.resolve(MOCK_CLI_SKILL_CONTENT),
-          } as Response;
-        }
-        if (url.includes("vm0-agent")) {
-          return {
-            ok: true,
-            text: () => Promise.resolve(MOCK_AGENT_SKILL_CONTENT),
-          } as Response;
-        }
+    // Mock spawn for Claude CLI commands - marketplace already installed
+    vi.mocked(spawn).mockImplementation((cmd, args) => {
+      const argsArray = args as string[];
+      if (argsArray.includes("list")) {
+        const output = JSON.stringify([
+          { name: "vm0-skills", source: "github", repo: "vm0-ai/vm0-skills" },
+        ]);
+        return createMockChildProcess(0, output) as ReturnType<typeof spawn>;
       }
-      return originalFetch(input, init);
+      return createMockChildProcess(0, "Success") as ReturnType<typeof spawn>;
     });
 
     // Mock homedir to return temp directory for config isolation
@@ -224,6 +217,7 @@ describe("onboard command", () => {
       expect(logCalls).toContain("Authentication");
       expect(logCalls).toContain("Model Provider Setup");
       expect(logCalls).toContain("Create Agent");
+      expect(logCalls).toContain("Claude Plugin Install");
     });
   });
 
@@ -346,39 +340,23 @@ describe("onboard command", () => {
     });
   });
 
-  describe("skill installation", () => {
-    it("should install both skills in agent directory", async () => {
+  describe("plugin installation", () => {
+    it("should install VM0 plugin with project scope", async () => {
       await onboardCommand.parseAsync(["node", "cli", "-y"]);
 
-      const cliSkillPath = path.join(
-        tempDir,
-        "my-vm0-agent/.claude/skills/vm0-cli/SKILL.md",
+      // Verify plugin install was called with project scope
+      expect(spawn).toHaveBeenCalledWith(
+        "claude",
+        ["plugin", "install", "vm0@vm0-skills", "--scope", "project"],
+        expect.any(Object),
       );
-      const agentSkillPath = path.join(
-        tempDir,
-        "my-vm0-agent/.claude/skills/vm0-agent/SKILL.md",
-      );
-      expect(existsSync(cliSkillPath)).toBe(true);
-      expect(existsSync(agentSkillPath)).toBe(true);
     });
 
-    it("should write correct skill content for both skills", async () => {
+    it("should show success message for plugin installation", async () => {
       await onboardCommand.parseAsync(["node", "cli", "-y"]);
 
-      const cliSkillPath = path.join(
-        tempDir,
-        "my-vm0-agent/.claude/skills/vm0-cli/SKILL.md",
-      );
-      const agentSkillPath = path.join(
-        tempDir,
-        "my-vm0-agent/.claude/skills/vm0-agent/SKILL.md",
-      );
-
-      const cliContent = await readFile(cliSkillPath, "utf-8");
-      expect(cliContent).toContain("name: vm0-cli");
-
-      const agentContent = await readFile(agentSkillPath, "utf-8");
-      expect(agentContent).toContain("name: vm0-agent");
+      const logCalls = vi.mocked(console.log).mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Installed vm0@vm0-skills");
     });
   });
 
@@ -444,8 +422,7 @@ describe("onboard command", () => {
 
       const logCalls = vi.mocked(console.log).mock.calls.flat().join("\n");
       expect(logCalls).toContain("Created my-vm0-agent/");
-      expect(logCalls).toContain("Installed vm0-cli skill");
-      expect(logCalls).toContain("Installed vm0-agent skill");
+      expect(logCalls).toContain("Installed vm0@vm0-skills");
     });
   });
 });

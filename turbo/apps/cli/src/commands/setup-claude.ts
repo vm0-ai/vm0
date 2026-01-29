@@ -1,34 +1,31 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import {
-  installAllClaudeSkills,
-  handleFetchError,
-  SKILLS,
+  installVm0Plugin,
+  handlePluginError,
   PRIMARY_SKILL_NAME,
+  type PluginScope,
 } from "../lib/domain/onboard/index.js";
 
 export const setupClaudeCommand = new Command()
   .name("setup-claude")
-  .description("Add/update Claude skills for VM0 usage")
-  .option(
-    "--agent-dir <dir>",
-    "Agent directory (shown in next step instructions)",
-  )
-  .action(async (options: { agentDir?: string }) => {
-    console.log(chalk.dim("Installing Claude skills..."));
+  .description("Install VM0 Claude Plugin")
+  .option("--agent-dir <dir>", "Agent directory to run install in")
+  .option("--scope <scope>", "Installation scope (user or project)", "project")
+  .action(async (options: { agentDir?: string; scope?: string }) => {
+    console.log(chalk.dim("Installing VM0 Claude Plugin..."));
+
+    const scope = (
+      options.scope === "user" ? "user" : "project"
+    ) as PluginScope;
 
     try {
-      const result = await installAllClaudeSkills();
-      result.skills.forEach((skillResult, i) => {
-        const skillName = SKILLS[i]?.name ?? "unknown";
-        console.log(
-          chalk.green(
-            `✓ Installed ${skillName} skill to ${skillResult.skillDir}`,
-          ),
-        );
-      });
+      const result = await installVm0Plugin(scope, options.agentDir);
+      console.log(
+        chalk.green(`✓ Installed ${result.pluginId} (scope: ${result.scope})`),
+      );
     } catch (error) {
-      handleFetchError(error);
+      handlePluginError(error);
     }
 
     console.log();

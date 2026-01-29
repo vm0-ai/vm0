@@ -60,6 +60,7 @@ export function createOnboardProgress(): {
     { label: "Authentication", status: "pending" },
     { label: "Model Provider Setup", status: "pending" },
     { label: "Create Agent", status: "pending" },
+    { label: "Claude Plugin Install", status: "pending" },
     { label: "Complete", status: "pending" },
   ];
 

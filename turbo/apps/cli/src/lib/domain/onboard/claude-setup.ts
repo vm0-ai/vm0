@@ -1,128 +1,175 @@
-import { mkdir, writeFile } from "fs/promises";
-import path from "path";
+import { spawn } from "child_process";
 import chalk from "chalk";
 
-// Skill definitions
-interface SkillDefinition {
-  name: string;
-  dir: string;
-  url: string;
-}
-
-// Define skills as a tuple to ensure type safety
-const VM0_CLI_SKILL: SkillDefinition = {
-  name: "vm0-cli",
-  dir: ".claude/skills/vm0-cli",
-  url: "https://raw.githubusercontent.com/vm0-ai/vm0-skills/main/vm0-cli/SKILL.md",
-};
-
-const VM0_AGENT_SKILL: SkillDefinition = {
-  name: "vm0-agent",
-  dir: ".claude/skills/vm0-agent",
-  url: "https://raw.githubusercontent.com/vm0-ai/vm0-skills/main/vm0-agent/SKILL.md",
-};
-
-export const SKILLS: readonly [SkillDefinition, SkillDefinition] = [
-  VM0_CLI_SKILL,
-  VM0_AGENT_SKILL,
-];
+// Marketplace and plugin identifiers
+const MARKETPLACE_NAME = "vm0-skills";
+const MARKETPLACE_REPO = "vm0-ai/vm0-skills";
+const PLUGIN_ID = "vm0@vm0-skills";
 
 // Primary skill for user prompt (vm0-agent)
 export const PRIMARY_SKILL_NAME = "vm0-agent";
 
 // Legacy exports for backward compatibility
-export const SKILL_DIR = VM0_CLI_SKILL.dir;
+export const SKILL_DIR = ".claude/skills/vm0-cli";
 export const SKILL_FILE = "SKILL.md";
-export const SKILL_NAME = VM0_CLI_SKILL.name;
+export const SKILL_NAME = "vm0-cli";
 
-// Default URL for legacy fetchSkillContent
-const DEFAULT_SKILL_URL = VM0_CLI_SKILL.url;
+export type PluginScope = "user" | "project";
+
+interface ClaudeCommandResult {
+  success: boolean;
+  output: string;
+  error?: string;
+}
+
+interface MarketplaceInfo {
+  name: string;
+  source: string;
+  repo: string;
+  installLocation: string;
+}
 
 /**
- * Handle fetch error with user-friendly message and exit
+ * Run a Claude CLI command and capture output
  */
-export function handleFetchError(error: unknown, url?: string): never {
-  const displayUrl = url ?? "GitHub";
-  console.error(chalk.red(`Failed to fetch skill from ${displayUrl}`));
+async function runClaudeCommand(
+  args: string[],
+  cwd?: string,
+): Promise<ClaudeCommandResult> {
+  return new Promise((resolve) => {
+    const child = spawn("claude", args, {
+      shell: true,
+      stdio: ["inherit", "pipe", "pipe"],
+      cwd,
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout?.on("data", (data: Buffer) => {
+      stdout += data.toString();
+    });
+
+    child.stderr?.on("data", (data: Buffer) => {
+      stderr += data.toString();
+    });
+
+    child.on("error", (err) => {
+      resolve({
+        success: false,
+        output: stdout,
+        error: err.message,
+      });
+    });
+
+    child.on("close", (code) => {
+      resolve({
+        success: code === 0,
+        output: stdout,
+        error: stderr || undefined,
+      });
+    });
+  });
+}
+
+/**
+ * Handle installation error with user-friendly message and exit
+ */
+export function handlePluginError(error: unknown, context?: string): never {
+  const displayContext = context ?? "Claude plugin";
+  console.error(chalk.red(`Failed to install ${displayContext}`));
   if (error instanceof Error) {
     console.error(chalk.red(error.message));
   }
-  console.error(chalk.dim("Please check your network connection."));
+  console.error(
+    chalk.dim("Please ensure Claude CLI is installed and accessible."),
+  );
   process.exit(1);
 }
 
 /**
- * Fetch skill content from a URL
- * @throws Error if fetch fails
+ * Check if the VM0 skills marketplace is already added
  */
-export async function fetchSkillContent(url?: string): Promise<string> {
-  const fetchUrl = url ?? DEFAULT_SKILL_URL;
-  const response = await fetch(fetchUrl);
+async function isMarketplaceInstalled(): Promise<boolean> {
+  const result = await runClaudeCommand([
+    "plugin",
+    "marketplace",
+    "list",
+    "--json",
+  ]);
 
-  if (!response.ok) {
+  if (!result.success) {
+    return false;
+  }
+
+  try {
+    const marketplaces = JSON.parse(result.output) as MarketplaceInfo[];
+    return marketplaces.some((m) => m.name === MARKETPLACE_NAME);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Add the VM0 skills marketplace to Claude
+ * @throws Error if command fails
+ */
+async function addMarketplace(): Promise<void> {
+  const result = await runClaudeCommand([
+    "plugin",
+    "marketplace",
+    "add",
+    MARKETPLACE_REPO,
+  ]);
+
+  if (!result.success) {
     throw new Error(
-      `Failed to fetch skill from ${fetchUrl}: ${response.status} ${response.statusText}`,
+      `Failed to add marketplace ${MARKETPLACE_REPO}: ${result.error ?? "unknown error"}`,
+    );
+  }
+}
+
+/**
+ * Ensure the VM0 skills marketplace is available
+ * Adds it if not already installed
+ */
+async function ensureMarketplace(): Promise<void> {
+  const installed = await isMarketplaceInstalled();
+  if (!installed) {
+    await addMarketplace();
+  }
+}
+
+interface InstallPluginResult {
+  pluginId: string;
+  scope: PluginScope;
+}
+
+/**
+ * Install the VM0 plugin using Claude plugin system
+ * @param scope - Installation scope (user or project)
+ * @param cwd - Directory to run the command in (for project scope)
+ * @throws Error if installation fails
+ */
+export async function installVm0Plugin(
+  scope: PluginScope = "user",
+  cwd?: string,
+): Promise<InstallPluginResult> {
+  // Ensure marketplace is available first
+  await ensureMarketplace();
+
+  // Install the plugin with specified scope
+  const args = ["plugin", "install", PLUGIN_ID, "--scope", scope];
+  const result = await runClaudeCommand(args, cwd);
+
+  if (!result.success) {
+    throw new Error(
+      `Failed to install plugin ${PLUGIN_ID}: ${result.error ?? "unknown error"}`,
     );
   }
 
-  return response.text();
-}
-
-interface InstallSkillResult {
-  skillDir: string;
-  skillFile: string;
-}
-
-interface InstallAllSkillsResult {
-  skills: InstallSkillResult[];
-}
-
-/**
- * Install a single skill in the specified directory
- */
-async function installSingleSkill(
-  skill: SkillDefinition,
-  targetDir: string,
-): Promise<InstallSkillResult> {
-  const skillDirPath = path.join(targetDir, skill.dir);
-  const skillFilePath = path.join(skillDirPath, SKILL_FILE);
-
-  const content = await fetchSkillContent(skill.url);
-
-  await mkdir(skillDirPath, { recursive: true });
-  await writeFile(skillFilePath, content);
-
   return {
-    skillDir: skillDirPath,
-    skillFile: skillFilePath,
+    pluginId: PLUGIN_ID,
+    scope,
   };
-}
-
-/**
- * Install the vm0-cli skill in the specified directory (legacy function)
- * @param targetDir - Base directory to install the skill in (defaults to current directory)
- * @throws Error if fetch fails or file operations fail
- */
-export async function installClaudeSkill(
-  targetDir: string = process.cwd(),
-): Promise<InstallSkillResult> {
-  return installSingleSkill(VM0_CLI_SKILL, targetDir);
-}
-
-/**
- * Install all Claude skills in the specified directory
- * @param targetDir - Base directory to install skills in (defaults to current directory)
- * @throws Error if fetch fails or file operations fail
- */
-export async function installAllClaudeSkills(
-  targetDir: string = process.cwd(),
-): Promise<InstallAllSkillsResult> {
-  const results: InstallSkillResult[] = [];
-
-  for (const skill of SKILLS) {
-    const result = await installSingleSkill(skill, targetDir);
-    results.push(result);
-  }
-
-  return { skills: results };
 }

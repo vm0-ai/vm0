@@ -1,35 +1,38 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import * as fs from "fs/promises";
-import { existsSync, mkdtempSync, rmSync } from "fs";
+import { mkdtempSync, rmSync } from "fs";
 import * as path from "path";
 import * as os from "os";
+import { EventEmitter } from "events";
 import { setupClaudeCommand } from "../setup-claude";
 
-const MOCK_CLI_SKILL_CONTENT = `---
-name: vm0-cli
-description: VM0 CLI for building and running AI agents in secure sandboxes.
-vm0_secrets:
-  - VM0_TOKEN
----
+// Mock child_process for Claude CLI commands
+vi.mock("child_process", () => ({
+  spawn: vi.fn(),
+}));
 
-# VM0 CLI
+import { spawn } from "child_process";
 
-Build and run AI agents in secure sandboxed environments.
+// Helper to create a mock child process
+function createMockChildProcess(exitCode: number, stdout = "", stderr = "") {
+  const mockProcess = new EventEmitter() as EventEmitter & {
+    stdout: EventEmitter;
+    stderr: EventEmitter;
+  };
+  mockProcess.stdout = new EventEmitter();
+  mockProcess.stderr = new EventEmitter();
 
-## When to Use
+  setImmediate(() => {
+    if (stdout) {
+      mockProcess.stdout.emit("data", Buffer.from(stdout));
+    }
+    if (stderr) {
+      mockProcess.stderr.emit("data", Buffer.from(stderr));
+    }
+    mockProcess.emit("close", exitCode);
+  });
 
-Use this skill when you need to install and set up the VM0 CLI.
-`;
-
-const MOCK_AGENT_SKILL_CONTENT = `---
-name: vm0-agent
-description: VM0 Agent skill for building workflows.
----
-
-# VM0 Agent
-
-Build AI agent workflows.
-`;
+  return mockProcess;
+}
 
 describe("setup-claude command", () => {
   let tempDir: string;
@@ -53,26 +56,16 @@ describe("setup-claude command", () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
 
-    // Mock fetch at system boundary - handle both skill URLs
-    vi.spyOn(global, "fetch").mockImplementation(async (url) => {
-      const urlStr = url.toString();
-      if (urlStr.includes("vm0-cli")) {
-        return {
-          ok: true,
-          text: () => Promise.resolve(MOCK_CLI_SKILL_CONTENT),
-        } as Response;
+    // Default: all commands succeed, marketplace already installed
+    vi.mocked(spawn).mockImplementation((cmd, args) => {
+      const argsArray = args as string[];
+      if (argsArray.includes("list")) {
+        const output = JSON.stringify([
+          { name: "vm0-skills", source: "github", repo: "vm0-ai/vm0-skills" },
+        ]);
+        return createMockChildProcess(0, output) as ReturnType<typeof spawn>;
       }
-      if (urlStr.includes("vm0-agent")) {
-        return {
-          ok: true,
-          text: () => Promise.resolve(MOCK_AGENT_SKILL_CONTENT),
-        } as Response;
-      }
-      return {
-        ok: false,
-        status: 404,
-        statusText: "Not Found",
-      } as Response;
+      return createMockChildProcess(0, "Success") as ReturnType<typeof spawn>;
     });
   });
 
@@ -83,68 +76,47 @@ describe("setup-claude command", () => {
     vi.restoreAllMocks();
   });
 
-  describe("skill installation", () => {
-    it("should create skill directories for both skills", async () => {
+  describe("plugin installation", () => {
+    it("should install VM0 plugin with default project scope", async () => {
       await setupClaudeCommand.parseAsync(["node", "cli"]);
 
-      expect(existsSync(path.join(tempDir, ".claude/skills/vm0-cli"))).toBe(
-        true,
-      );
-      expect(existsSync(path.join(tempDir, ".claude/skills/vm0-agent"))).toBe(
-        true,
+      expect(spawn).toHaveBeenCalledWith(
+        "claude",
+        ["plugin", "install", "vm0@vm0-skills", "--scope", "project"],
+        expect.any(Object),
       );
     });
 
-    it("should create SKILL.md with fetched content for both skills", async () => {
-      await setupClaudeCommand.parseAsync(["node", "cli"]);
+    it("should install with user scope when specified", async () => {
+      await setupClaudeCommand.parseAsync(["node", "cli", "--scope", "user"]);
 
-      const cliSkillPath = path.join(
-        tempDir,
-        ".claude/skills/vm0-cli/SKILL.md",
+      expect(spawn).toHaveBeenCalledWith(
+        "claude",
+        ["plugin", "install", "vm0@vm0-skills", "--scope", "user"],
+        expect.any(Object),
       );
-      const agentSkillPath = path.join(
-        tempDir,
-        ".claude/skills/vm0-agent/SKILL.md",
-      );
-
-      expect(existsSync(cliSkillPath)).toBe(true);
-      expect(existsSync(agentSkillPath)).toBe(true);
-
-      const cliContent = await fs.readFile(cliSkillPath, "utf8");
-      expect(cliContent).toContain("name: vm0-cli");
-
-      const agentContent = await fs.readFile(agentSkillPath, "utf8");
-      expect(agentContent).toContain("name: vm0-agent");
     });
 
-    it("should overwrite existing files (idempotent)", async () => {
-      // Create existing skill directory with old content
-      await fs.mkdir(path.join(tempDir, ".claude/skills/vm0-cli"), {
-        recursive: true,
-      });
-      await fs.writeFile(
-        path.join(tempDir, ".claude/skills/vm0-cli/SKILL.md"),
-        "old content",
-      );
+    it("should run in specified agent directory", async () => {
+      await setupClaudeCommand.parseAsync([
+        "node",
+        "cli",
+        "--agent-dir",
+        "/some/agent/dir",
+      ]);
 
-      await setupClaudeCommand.parseAsync(["node", "cli"]);
-
-      const content = await fs.readFile(
-        path.join(tempDir, ".claude/skills/vm0-cli/SKILL.md"),
-        "utf8",
+      expect(spawn).toHaveBeenCalledWith(
+        "claude",
+        ["plugin", "install", "vm0@vm0-skills", "--scope", "project"],
+        expect.objectContaining({ cwd: "/some/agent/dir" }),
       );
-      expect(content).toContain("# VM0 CLI");
-      expect(content).not.toContain("old content");
     });
 
     it("should display success message and next steps", async () => {
       await setupClaudeCommand.parseAsync(["node", "cli"]);
 
       expect(console.log).toHaveBeenCalledWith(
-        expect.stringContaining("Installed vm0-cli skill"),
-      );
-      expect(console.log).toHaveBeenCalledWith(
-        expect.stringContaining("Installed vm0-agent skill"),
+        expect.stringContaining("Installed vm0@vm0-skills"),
       );
       expect(console.log).toHaveBeenCalledWith("Next step:");
       expect(console.log).toHaveBeenCalledWith(
@@ -152,23 +124,37 @@ describe("setup-claude command", () => {
       );
     });
 
-    it("should fetch skill content from GitHub for both skills", async () => {
-      await setupClaudeCommand.parseAsync(["node", "cli"]);
+    it("should include agent-dir in next steps when provided", async () => {
+      await setupClaudeCommand.parseAsync([
+        "node",
+        "cli",
+        "--agent-dir",
+        "my-agent",
+      ]);
 
-      expect(global.fetch).toHaveBeenCalledWith(
-        "https://raw.githubusercontent.com/vm0-ai/vm0-skills/main/vm0-cli/SKILL.md",
-      );
-      expect(global.fetch).toHaveBeenCalledWith(
-        "https://raw.githubusercontent.com/vm0-ai/vm0-skills/main/vm0-agent/SKILL.md",
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining("cd my-agent"),
       );
     });
   });
 
   describe("error handling", () => {
-    it("should exit with error when fetch fails", async () => {
-      vi.spyOn(global, "fetch").mockRejectedValueOnce(
-        new Error("Network error"),
-      );
+    it("should exit with error when plugin install fails", async () => {
+      vi.mocked(spawn).mockImplementation((cmd, args) => {
+        const argsArray = args as string[];
+        if (argsArray.includes("list")) {
+          const output = JSON.stringify([
+            { name: "vm0-skills", source: "github", repo: "vm0-ai/vm0-skills" },
+          ]);
+          return createMockChildProcess(0, output) as ReturnType<typeof spawn>;
+        }
+        if (argsArray.includes("install")) {
+          return createMockChildProcess(1, "", "Install failed") as ReturnType<
+            typeof spawn
+          >;
+        }
+        return createMockChildProcess(0, "Success") as ReturnType<typeof spawn>;
+      });
 
       await expect(
         setupClaudeCommand.parseAsync(["node", "cli"]),
@@ -176,10 +162,33 @@ describe("setup-claude command", () => {
 
       expect(mockExit).toHaveBeenCalledWith(1);
       expect(console.error).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to fetch skill from GitHub"),
+        expect.stringContaining("Failed to install"),
       );
+    });
+
+    it("should show Claude CLI hint when command fails", async () => {
+      // Mock all spawn calls to emit error (Claude CLI not available)
+      vi.mocked(spawn).mockImplementation(() => {
+        const mockProcess = new EventEmitter() as EventEmitter & {
+          stdout: EventEmitter;
+          stderr: EventEmitter;
+        };
+        mockProcess.stdout = new EventEmitter();
+        mockProcess.stderr = new EventEmitter();
+
+        setImmediate(() => {
+          mockProcess.emit("error", new Error("spawn ENOENT"));
+        });
+
+        return mockProcess as ReturnType<typeof spawn>;
+      });
+
+      await expect(
+        setupClaudeCommand.parseAsync(["node", "cli"]),
+      ).rejects.toThrow("process.exit called");
+
       expect(console.error).toHaveBeenCalledWith(
-        expect.stringContaining("Network error"),
+        expect.stringContaining("Claude CLI"),
       );
     });
   });
