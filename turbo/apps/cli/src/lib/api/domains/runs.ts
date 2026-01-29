@@ -121,7 +121,6 @@ export async function cancelRun(runId: string): Promise<CancelRunResponse> {
 
   const result = await client.cancel({
     params: { id: runId },
-    body: undefined,
   });
 
   if (result.status === 200) {
