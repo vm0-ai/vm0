@@ -5,6 +5,7 @@ import {
   cleanupOrphanedProxyRules,
   flushBridgeArpCache,
   setupCIDRProxyRules,
+  cleanupCIDRProxyRules,
 } from "../firecracker/network.js";
 import { cleanupOrphanedAllocations } from "../firecracker/ip-pool.js";
 import {
@@ -86,15 +87,21 @@ export async function setupEnvironment(
     );
   }
 
-  return { proxyEnabled };
+  return { proxyEnabled, proxyPort: config.proxy.port };
 }
 
 /**
- * Clean up runner resources: proxy
+ * Clean up runner resources: proxy and CIDR rules
  */
 export async function cleanupEnvironment(
   resources: RunnerResources,
 ): Promise<void> {
+  // Cleanup CIDR proxy rules first
+  if (resources.proxyEnabled) {
+    console.log("Cleaning up CIDR proxy rules...");
+    await cleanupCIDRProxyRules(resources.proxyPort);
+  }
+
   // Cleanup proxy
   if (resources.proxyEnabled) {
     console.log("Stopping network proxy...");
