@@ -6,16 +6,18 @@ import {
   agentComposeVersions,
   agentComposes,
 } from "../../../../src/db/schema/agent-compose";
-import { eq, and, lt, isNotNull } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { e2bService } from "../../../../src/lib/e2b/e2b-service";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("cron:cleanup-sandboxes");
 
-// Heartbeat timeout: 2 minutes (2x the 60s heartbeat interval)
+// Heartbeat timeout: 2 minutes (2x the 60s heartbeat interval) for running status
 const HEARTBEAT_TIMEOUT_MS = 2 * 60 * 1000;
 // Debug mode timeout: 1 hour (for debugging sandbox issues)
 const DEBUG_HEARTBEAT_TIMEOUT_MS = 60 * 60 * 1000;
+// Pending timeout: 5 minutes (for runs stuck in pending state)
+const PENDING_TIMEOUT_MS = 5 * 60 * 1000;
 // Compose names starting with this prefix use debug timeout
 const DEBUG_COMPOSE_PREFIX = "debug-";
 
@@ -24,6 +26,7 @@ interface CleanupResult {
   sandboxId: string | null;
   status: "cleaned" | "error";
   error?: string;
+  reason?: string;
 }
 
 const router = tsr.router(cronCleanupSandboxesContract, {
@@ -39,21 +42,23 @@ const router = tsr.router(cronCleanupSandboxesContract, {
     }
 
     const now = Date.now();
-    const normalCutoffTime = new Date(now - HEARTBEAT_TIMEOUT_MS);
+    const runningCutoffTime = new Date(now - HEARTBEAT_TIMEOUT_MS);
     const debugCutoffTime = new Date(now - DEBUG_HEARTBEAT_TIMEOUT_MS);
+    const pendingCutoffTime = new Date(now - PENDING_TIMEOUT_MS);
 
     log.debug(
-      `Checking for expired sandboxes (normal: before ${normalCutoffTime.toISOString()}, debug: before ${debugCutoffTime.toISOString()})...`,
+      `Checking for expired runs (running: before ${runningCutoffTime.toISOString()}, pending: before ${pendingCutoffTime.toISOString()}, debug: before ${debugCutoffTime.toISOString()})...`,
     );
 
-    // Find all running runs with their compose names
-    // Use the normal (shorter) cutoff to get all potentially expired runs
-    // Then filter by appropriate timeout based on compose name
-    const runningRuns = await globalThis.services.db
+    // Find all pending and running runs with their compose names
+    // We'll filter by appropriate timeout based on status and compose name
+    const staleRuns = await globalThis.services.db
       .select({
         id: agentRuns.id,
+        status: agentRuns.status,
         sandboxId: agentRuns.sandboxId,
         lastHeartbeatAt: agentRuns.lastHeartbeatAt,
+        createdAt: agentRuns.createdAt,
         composeName: agentComposes.name,
       })
       .from(agentRuns)
@@ -65,21 +70,27 @@ const router = tsr.router(cronCleanupSandboxesContract, {
         agentComposes,
         eq(agentComposeVersions.composeId, agentComposes.id),
       )
-      .where(
-        and(
-          eq(agentRuns.status, "running"),
-          isNotNull(agentRuns.lastHeartbeatAt),
-          lt(agentRuns.lastHeartbeatAt, normalCutoffTime),
-        ),
-      );
+      .where(inArray(agentRuns.status, ["pending", "running"]));
 
-    // Filter runs based on their timeout (debug vs normal)
-    // If compose name is not available (orphaned run), use normal timeout
-    const expiredRuns = runningRuns.filter((run) => {
+    // Filter runs based on their status and timeout
+    // Use lastHeartbeatAt if available, otherwise fall back to createdAt
+    const expiredRuns = staleRuns.filter((run) => {
       const isDebug =
         run.composeName?.startsWith(DEBUG_COMPOSE_PREFIX) ?? false;
-      const cutoffTime = isDebug ? debugCutoffTime : normalCutoffTime;
-      return run.lastHeartbeatAt && run.lastHeartbeatAt < cutoffTime;
+
+      // Use lastHeartbeatAt if available, otherwise fall back to createdAt
+      const referenceTime = run.lastHeartbeatAt ?? run.createdAt;
+
+      // Determine timeout based on status
+      let cutoffTime: Date;
+      if (run.status === "pending") {
+        cutoffTime = pendingCutoffTime; // 5 minutes for pending
+      } else {
+        // running status
+        cutoffTime = isDebug ? debugCutoffTime : runningCutoffTime;
+      }
+
+      return referenceTime < cutoffTime;
     });
 
     if (expiredRuns.length === 0) {
@@ -100,10 +111,16 @@ const router = tsr.router(cronCleanupSandboxesContract, {
 
     for (const run of expiredRuns) {
       try {
-        // Kill the E2B sandbox if it exists
+        // Kill the E2B sandbox only if it exists (pending runs may not have one)
         if (run.sandboxId) {
           await e2bService.killSandbox(run.sandboxId);
         }
+
+        // Determine error message based on status
+        const timeoutReason =
+          run.status === "pending"
+            ? "Run timed out while pending (never started)"
+            : "Run timed out (no heartbeat)";
 
         // Update run status to timeout
         await globalThis.services.db
@@ -111,19 +128,22 @@ const router = tsr.router(cronCleanupSandboxesContract, {
           .set({
             status: "timeout",
             completedAt: new Date(),
+            error: timeoutReason,
           })
           .where(eq(agentRuns.id, run.id));
 
         const isDebug =
           run.composeName?.startsWith(DEBUG_COMPOSE_PREFIX) ?? false;
+        const referenceTime = run.lastHeartbeatAt ?? run.createdAt;
         log.debug(
-          `Cleaned up expired run ${run.id} (sandbox: ${run.sandboxId}, compose: ${run.composeName ?? "unknown"}, debug: ${isDebug}, last heartbeat: ${run.lastHeartbeatAt?.toISOString()})`,
+          `Cleaned up expired run ${run.id} (status: ${run.status}, sandbox: ${run.sandboxId}, compose: ${run.composeName ?? "unknown"}, debug: ${isDebug}, reference time: ${referenceTime.toISOString()})`,
         );
 
         results.push({
           runId: run.id,
           sandboxId: run.sandboxId,
           status: "cleaned",
+          reason: timeoutReason,
         });
       } catch (error) {
         const errorMessage =

@@ -391,5 +391,177 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
 
       expect(updatedRun?.status).toBe("timeout");
     });
+
+    it("should cleanup stale pending runs after 5 minutes", async () => {
+      // Create a run with status "pending" and createdAt > 5 minutes ago
+      const expiredTime = new Date(Date.now() - 6 * 60 * 1000); // 6 minutes ago
+      await globalThis.services.db.insert(agentRuns).values({
+        id: testRunId1,
+        userId: testUserId,
+        agentComposeVersionId: testVersionId,
+        status: "pending",
+        prompt: "Test prompt",
+        sandboxId: null,
+        createdAt: expiredTime,
+        lastHeartbeatAt: expiredTime,
+      });
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/cron/cleanup-sandboxes",
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${cronSecret}`,
+          },
+        },
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.cleaned).toBe(1);
+      expect(data.results[0].reason).toBe(
+        "Run timed out while pending (never started)",
+      );
+
+      // Verify run status was updated to timeout
+      const [updatedRun] = await globalThis.services.db
+        .select()
+        .from(agentRuns)
+        .where(eq(agentRuns.id, testRunId1));
+
+      expect(updatedRun?.status).toBe("timeout");
+      expect(updatedRun?.error).toBe(
+        "Run timed out while pending (never started)",
+      );
+    });
+
+    it("should NOT cleanup pending runs within 5 minutes", async () => {
+      // Create a run with status "pending" and createdAt < 5 minutes ago
+      const recentTime = new Date(Date.now() - 3 * 60 * 1000); // 3 minutes ago
+      await globalThis.services.db.insert(agentRuns).values({
+        id: testRunId1,
+        userId: testUserId,
+        agentComposeVersionId: testVersionId,
+        status: "pending",
+        prompt: "Test prompt",
+        sandboxId: null,
+        createdAt: recentTime,
+        lastHeartbeatAt: recentTime,
+      });
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/cron/cleanup-sandboxes",
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${cronSecret}`,
+          },
+        },
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.cleaned).toBe(0);
+      expect(data.results).toEqual([]);
+
+      // Verify run status unchanged
+      const [unchangedRun] = await globalThis.services.db
+        .select()
+        .from(agentRuns)
+        .where(eq(agentRuns.id, testRunId1));
+
+      expect(unchangedRun?.status).toBe("pending");
+    });
+
+    it("should cleanup running runs with NULL lastHeartbeatAt using createdAt fallback", async () => {
+      // Create a run with status "running", lastHeartbeatAt NULL, createdAt > 2 minutes ago
+      const expiredTime = new Date(Date.now() - 3 * 60 * 1000); // 3 minutes ago
+      await globalThis.services.db.insert(agentRuns).values({
+        id: testRunId1,
+        userId: testUserId,
+        agentComposeVersionId: testVersionId,
+        status: "running",
+        prompt: "Test prompt",
+        sandboxId: "test-sandbox-123",
+        createdAt: expiredTime,
+        lastHeartbeatAt: null, // NULL heartbeat - legacy scenario
+      });
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/cron/cleanup-sandboxes",
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${cronSecret}`,
+          },
+        },
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.cleaned).toBe(1);
+      expect(data.results[0].reason).toBe("Run timed out (no heartbeat)");
+
+      // Verify sandbox was killed
+      expect(Sandbox.connect).toHaveBeenCalledWith("test-sandbox-123");
+
+      // Verify run status was updated to timeout
+      const [updatedRun] = await globalThis.services.db
+        .select()
+        .from(agentRuns)
+        .where(eq(agentRuns.id, testRunId1));
+
+      expect(updatedRun?.status).toBe("timeout");
+      expect(updatedRun?.error).toBe("Run timed out (no heartbeat)");
+    });
+
+    it("should NOT cleanup running runs with NULL lastHeartbeatAt within 2 minutes", async () => {
+      // Create a run with status "running", lastHeartbeatAt NULL, createdAt < 2 minutes ago
+      const recentTime = new Date(Date.now() - 1 * 60 * 1000); // 1 minute ago
+      await globalThis.services.db.insert(agentRuns).values({
+        id: testRunId1,
+        userId: testUserId,
+        agentComposeVersionId: testVersionId,
+        status: "running",
+        prompt: "Test prompt",
+        sandboxId: "test-sandbox-123",
+        createdAt: recentTime,
+        lastHeartbeatAt: null, // NULL heartbeat - legacy scenario
+      });
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/cron/cleanup-sandboxes",
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${cronSecret}`,
+          },
+        },
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.cleaned).toBe(0);
+      expect(data.results).toEqual([]);
+
+      // Verify sandbox was NOT killed
+      expect(Sandbox.connect).not.toHaveBeenCalled();
+
+      // Verify run status unchanged
+      const [unchangedRun] = await globalThis.services.db
+        .select()
+        .from(agentRuns)
+        .where(eq(agentRuns.id, testRunId1));
+
+      expect(unchangedRun?.status).toBe("running");
+    });
   });
 });
