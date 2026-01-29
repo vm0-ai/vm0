@@ -18,15 +18,7 @@ import { afterEach } from "vitest";
 import { randomUUID } from "crypto";
 import { mockClerk, clearClerkMock } from "./clerk-mock";
 import { initServices } from "../lib/init-services";
-import {
-  createTestDataContext,
-  type TestDataContext,
-} from "./api-test-helpers";
-import { POST as createCompose } from "../../app/api/agent/composes/route";
-import { POST as createScope } from "../../app/api/scope/route";
-import { PUT as setCredential } from "../../app/api/credentials/route";
-import { PUT as upsertModelProvider } from "../../app/api/model-providers/route";
-import { POST as setModelProviderDefault } from "../../app/api/model-providers/[type]/set-default/route";
+import { getTestDataContext, type TestDataContext } from "./api-test-helpers";
 
 interface TestContext {
   readonly signal: AbortSignal;
@@ -37,6 +29,12 @@ export interface UserContext {
   readonly userId: string;
   readonly scopeId: string;
   readonly ctx: TestDataContext;
+}
+
+interface SetupUserOptions {
+  context: TestContext;
+  /** Optional prefix for the user ID (default: "test-user") */
+  prefix?: string;
 }
 
 /**
@@ -59,14 +57,8 @@ export interface UserContext {
 export function testContext(): TestContext {
   let controller = new AbortController();
 
-  // Create test data context for API-based test data creation
-  const ctx = createTestDataContext({
-    scopeRoute: createScope,
-    composeRoute: createCompose,
-    credentialRoute: setCredential,
-    modelProviderRoute: upsertModelProvider,
-    setDefaultRoute: setModelProviderDefault,
-  });
+  // Get test data context (routes are imported internally)
+  const ctx = getTestDataContext();
 
   afterEach(() => {
     // Clear Clerk mock
@@ -87,12 +79,6 @@ export function testContext(): TestContext {
     },
     ctx,
   };
-}
-
-interface SetupUserOptions {
-  context: TestContext;
-  /** Optional prefix for the user ID (default: "test-user") */
-  prefix?: string;
 }
 
 /**

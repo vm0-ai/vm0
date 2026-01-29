@@ -4,17 +4,6 @@
  * These utilities provide functions to create test data through API endpoints
  * instead of direct database operations. This ensures tests validate the
  * complete API flow, catching issues that direct DB operations might miss.
- *
- * Usage:
- *   import { createTestRequest, createDefaultComposeConfig, createTestSandboxToken } from "@/test/api-test-helpers";
- *
- *   const config = createDefaultComposeConfig("my-agent");
- *   const token = await createTestSandboxToken(userId, runId);
- *   const request = createTestRequest("http://localhost:3000/api/agent/composes", {
- *     method: "POST",
- *     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
- *     body: JSON.stringify({ content: config }),
- *   });
  */
 import { NextRequest } from "next/server";
 import type { AgentComposeYaml } from "../types/agent-compose";
@@ -22,6 +11,13 @@ import { generateSandboxToken } from "../lib/auth/sandbox-token";
 import { initServices } from "../lib/init-services";
 import { cliTokens } from "../db/schema/cli-tokens";
 import { eq } from "drizzle-orm";
+
+// Route handlers - imported here so callers don't need to pass them
+import { POST as createComposeRoute } from "../../app/api/agent/composes/route";
+import { POST as createScopeRoute } from "../../app/api/scope/route";
+import { PUT as setCredentialRoute } from "../../app/api/credentials/route";
+import { PUT as upsertModelProviderRoute } from "../../app/api/model-providers/route";
+import { POST as setModelProviderDefaultRoute } from "../../app/api/model-providers/[type]/set-default/route";
 
 /**
  * Helper to create a NextRequest for testing.
@@ -139,7 +135,6 @@ export function generateTestId(): string {
 /**
  * API-based test data creation context.
  * Provides methods to create test data through API endpoints.
- * Must be initialized with route handlers after vi.mock() calls.
  */
 export interface TestDataContext {
   createScope: (slug: string) => Promise<{ id: string; slug: string }>;
@@ -160,38 +155,15 @@ export interface TestDataContext {
 }
 
 /**
- * Create a test data context with API route handlers.
- * This allows creating test data through actual API endpoints.
- *
- * @param routes - Object containing API route handlers
- * @returns TestDataContext with methods to create test data
+ * Get a test data context that uses API route handlers.
+ * Routes are imported internally, so no parameters needed.
  *
  * Usage:
- *   import { POST as createScope } from "@/app/api/scope/route";
- *   import { POST as createCompose } from "@/app/api/agent/composes/route";
- *   import { PUT as setCredential } from "@/app/api/credentials/route";
- *   import { PUT as upsertModelProvider } from "@/app/api/model-providers/route";
- *
- *   const ctx = createTestDataContext({
- *     scopeRoute: createScope,
- *     composeRoute: createCompose,
- *     credentialRoute: setCredential,
- *     modelProviderRoute: upsertModelProvider,
- *   });
- *
+ *   const ctx = getTestDataContext();
  *   const scope = await ctx.createScope("my-scope");
  *   const compose = await ctx.createCompose("my-agent");
  */
-export function createTestDataContext(routes: {
-  scopeRoute: (req: NextRequest) => Promise<Response>;
-  composeRoute: (req: NextRequest) => Promise<Response>;
-  credentialRoute: (req: NextRequest) => Promise<Response>;
-  modelProviderRoute: (req: NextRequest) => Promise<Response>;
-  setDefaultRoute?: (
-    req: NextRequest,
-    context: { params: Promise<{ type: string }> },
-  ) => Promise<Response>;
-}): TestDataContext {
+export function getTestDataContext(): TestDataContext {
   return {
     async createScope(slug: string) {
       const request = createTestRequest("http://localhost:3000/api/scope", {
@@ -199,7 +171,7 @@ export function createTestDataContext(routes: {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slug }),
       });
-      const response = await routes.scopeRoute(request);
+      const response = await createScopeRoute(request);
       if (!response.ok) {
         const error = await response.json();
         throw new Error(
@@ -219,7 +191,7 @@ export function createTestDataContext(routes: {
           body: JSON.stringify({ content: config }),
         },
       );
-      const response = await routes.composeRoute(request);
+      const response = await createComposeRoute(request);
       if (!response.ok) {
         const error = await response.json();
         throw new Error(
@@ -238,7 +210,7 @@ export function createTestDataContext(routes: {
           body: JSON.stringify({ name, value, description }),
         },
       );
-      const response = await routes.credentialRoute(request);
+      const response = await setCredentialRoute(request);
       if (!response.ok) {
         const error = await response.json();
         throw new Error(
@@ -249,8 +221,6 @@ export function createTestDataContext(routes: {
     },
 
     async createModelProvider(type, credentialValue) {
-      // The model provider API takes the actual credential value (e.g., API key)
-      // and automatically creates/updates the associated credential
       const request = createTestRequest(
         "http://localhost:3000/api/model-providers",
         {
@@ -259,7 +229,7 @@ export function createTestDataContext(routes: {
           body: JSON.stringify({ type, credential: credentialValue }),
         },
       );
-      const response = await routes.modelProviderRoute(request);
+      const response = await upsertModelProviderRoute(request);
       if (!response.ok) {
         const error = await response.json();
         throw new Error(
@@ -271,11 +241,6 @@ export function createTestDataContext(routes: {
     },
 
     async setModelProviderDefault(type) {
-      if (!routes.setDefaultRoute) {
-        throw new Error(
-          "setDefaultRoute not provided to createTestDataContext",
-        );
-      }
       const request = createTestRequest(
         `http://localhost:3000/api/model-providers/${type}/set-default`,
         {
@@ -283,9 +248,8 @@ export function createTestDataContext(routes: {
           headers: { "Content-Type": "application/json" },
         },
       );
-      const response = await routes.setDefaultRoute(request, {
-        params: Promise.resolve({ type }),
-      });
+      // ts-rest parses path params from the URL automatically
+      const response = await setModelProviderDefaultRoute(request);
       if (!response.ok) {
         const error = await response.json();
         throw new Error(
