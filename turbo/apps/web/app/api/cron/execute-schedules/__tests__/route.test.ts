@@ -9,7 +9,7 @@ import {
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
-  type TestMocks,
+  type MockHelpers,
 } from "../../../../../src/__tests__/test-helpers";
 
 vi.mock("@clerk/nextjs/server");
@@ -32,7 +32,7 @@ const context = testContext();
 
 describe("GET /api/cron/execute-schedules", () => {
   let testComposeId: string;
-  let mocks: TestMocks;
+  let mocks: MockHelpers;
 
   beforeEach(async () => {
     mocks = context.setupMocks();

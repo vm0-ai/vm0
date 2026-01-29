@@ -133,6 +133,7 @@
     "apps/web/src/lib/schedule/schedule-service.ts",
     "apps/web/src/lib/model-provider/model-provider-service.ts",
     "apps/cli/src/lib/api/api-client.ts",
+    "apps/cli/src/commands/cook/cook.ts",
     "packages/core/src/contracts/public/agents.ts"
   ],
   "ignoreDependencies": ["@commitlint/cli"],

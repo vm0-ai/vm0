@@ -41,6 +41,7 @@ export interface ScheduleResponse {
   volumeVersions: Record<string, string> | null;
   enabled: boolean;
   nextRunAt: string | null;
+  lastRunAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -187,6 +188,7 @@ export class ScheduleService {
       volumeVersions: schedule.volumeVersions,
       enabled: schedule.enabled,
       nextRunAt: schedule.nextRunAt?.toISOString() ?? null,
+      lastRunAt: schedule.lastRunAt?.toISOString() ?? null,
       createdAt: schedule.createdAt.toISOString(),
       updatedAt: schedule.updatedAt.toISOString(),
     };

@@ -86,7 +86,7 @@ interface AxiomMocks {
 /**
  * Combined mock helpers for E2B, S3, Axiom, and Date
  */
-interface MockHelpers {
+export interface MockHelpers {
   e2b: E2bMocks;
   s3: S3Mocks;
   axiom: AxiomMocks;
