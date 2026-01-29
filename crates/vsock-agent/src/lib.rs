@@ -158,6 +158,17 @@ fn wait_with_timeout(child: Child, timeout_ms: u32) -> (i32, Vec<u8>, Vec<u8>) {
             if killed_by_timeout.load(Ordering::SeqCst) {
                 return (EXIT_CODE_TIMEOUT, output.stdout, b"Timeout".to_vec());
             }
+            // Map exit status like tini does: normal exit returns code,
+            // signal termination returns 128 + signal number
+            #[cfg(unix)]
+            let exit_code = {
+                use std::os::unix::process::ExitStatusExt;
+                output
+                    .status
+                    .code()
+                    .unwrap_or_else(|| output.status.signal().map(|sig| 128 + sig).unwrap_or(1))
+            };
+            #[cfg(not(unix))]
             let exit_code = output.status.code().unwrap_or(1);
             (exit_code, output.stdout, output.stderr)
         }
