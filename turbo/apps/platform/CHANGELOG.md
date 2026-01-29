@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.27.0](https://github.com/vm0-ai/vm0/compare/platform-v0.26.1...platform-v0.27.0) (2026-01-29)
+
+
+### Features
+
+* **platform:** display TodoWrite todos as checklist in log detail ([#1803](https://github.com/vm0-ai/vm0/issues/1803)) ([e98d22a](https://github.com/vm0-ai/vm0/commit/e98d22a3f5360e2d162c5c33a98131e39c4d5280))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.4.0
+
 ## [0.26.1](https://github.com/vm0-ai/vm0/compare/platform-v0.26.0...platform-v0.26.1) (2026-01-28)
 
 

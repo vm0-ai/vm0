@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.0](https://github.com/vm0-ai/vm0/compare/docs-v2.1.1...docs-v2.2.0) (2026-01-29)
+
+
+### Features
+
+* **cli:** replace embedded vm0-agent-builder with dynamic vm0-cli skill ([#1829](https://github.com/vm0-ai/vm0/issues/1829)) ([9fee458](https://github.com/vm0-ai/vm0/commit/9fee458e618964a31c9653d9fe18548a24a7b210))
+
 ## [2.1.1](https://github.com/vm0-ai/vm0/compare/docs-v2.1.0...docs-v2.1.1) (2026-01-28)
 
 

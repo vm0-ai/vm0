@@ -1,5 +1,22 @@
 # Changelog
 
+## [9.4.0](https://github.com/vm0-ai/vm0/compare/cli-v9.3.1...cli-v9.4.0) (2026-01-29)
+
+
+### Features
+
+* **cli:** add `vm0 run list` and `vm0 run kill` commands ([#1826](https://github.com/vm0-ai/vm0/issues/1826)) ([7b42a47](https://github.com/vm0-ai/vm0/commit/7b42a47bba2da1bfe5ac59c9ce01b242e9c8524f))
+* **cli:** replace embedded vm0-agent-builder with dynamic vm0-cli skill ([#1829](https://github.com/vm0-ai/vm0/issues/1829)) ([9fee458](https://github.com/vm0-ai/vm0/commit/9fee458e618964a31c9653d9fe18548a24a7b210))
+* **cli:** show helpful hints when concurrent run limit exceeded ([#1839](https://github.com/vm0-ai/vm0/issues/1839)) ([99bce67](https://github.com/vm0-ai/vm0/commit/99bce67632334228ea51cabf3e857a8bbd2cc1b0))
+* **cli:** use claude plugin marketplace for skill installation ([#1834](https://github.com/vm0-ai/vm0/issues/1834)) ([043a213](https://github.com/vm0-ai/vm0/commit/043a213d6f297b08f7c85a7f765b5e5dd5d6748f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.4.0
+
 ## [9.3.1](https://github.com/vm0-ai/vm0/compare/cli-v9.3.0...cli-v9.3.1) (2026-01-29)
 
 

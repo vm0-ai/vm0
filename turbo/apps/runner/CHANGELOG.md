@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.5.0](https://github.com/vm0-ai/vm0/compare/runner-v3.4.0...runner-v3.5.0) (2026-01-29)
+
+
+### Features
+
+* add E2E timing metrics from API to agent start ([#1830](https://github.com/vm0-ai/vm0/issues/1830)) ([4884e14](https://github.com/vm0-ai/vm0/commit/4884e143b81334f06d3863ad70ba7885c2ba8a5f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.4.0
+
 ## [3.4.0](https://github.com/vm0-ai/vm0/compare/runner-v3.3.2...runner-v3.4.0) (2026-01-28)
 
 

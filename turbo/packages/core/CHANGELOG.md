@@ -1,5 +1,13 @@
 # Changelog
 
+## [7.4.0](https://github.com/vm0-ai/vm0/compare/core-v7.3.0...core-v7.4.0) (2026-01-29)
+
+
+### Features
+
+* add E2E timing metrics from API to agent start ([#1830](https://github.com/vm0-ai/vm0/issues/1830)) ([4884e14](https://github.com/vm0-ai/vm0/commit/4884e143b81334f06d3863ad70ba7885c2ba8a5f))
+* **cli:** add `vm0 run list` and `vm0 run kill` commands ([#1826](https://github.com/vm0-ai/vm0/issues/1826)) ([7b42a47](https://github.com/vm0-ai/vm0/commit/7b42a47bba2da1bfe5ac59c9ce01b242e9c8524f))
+
 ## [7.3.0](https://github.com/vm0-ai/vm0/compare/core-v7.2.0...core-v7.3.0) (2026-01-28)
 
 
