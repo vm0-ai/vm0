@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.3.0](https://github.com/vm0-ai/vm0/compare/core-v7.2.0...core-v7.3.0) (2026-01-28)
+
+
+### Features
+
+* **runner:** add Ably realtime job notifications with polling fallback ([#1783](https://github.com/vm0-ai/vm0/issues/1783)) ([eef9cfc](https://github.com/vm0-ai/vm0/commit/eef9cfc1ce959d708043b5355a42160c306c8de4))
+
 ## [7.2.0](https://github.com/vm0-ai/vm0/compare/core-v7.1.0...core-v7.2.0) (2026-01-28)
 
 

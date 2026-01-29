@@ -25,13 +25,6 @@ export const MODEL_PROVIDER_TYPES = {
     helpText:
       "Get your API key at: https://console.anthropic.com/settings/keys",
   },
-  "openai-api-key": {
-    framework: "codex" as const,
-    credentialName: "OPENAI_API_KEY",
-    label: "OpenAI API Key",
-    credentialLabel: "API key",
-    helpText: "Get your API key at: https://platform.openai.com/api-keys",
-  },
 } as const;
 
 export type ModelProviderType = keyof typeof MODEL_PROVIDER_TYPES;
@@ -40,7 +33,6 @@ export type ModelProviderFramework = "claude-code" | "codex";
 export const modelProviderTypeSchema = z.enum([
   "claude-code-oauth-token",
   "anthropic-api-key",
-  "openai-api-key",
 ]);
 
 export const modelProviderFrameworkSchema = z.enum(["claude-code", "codex"]);

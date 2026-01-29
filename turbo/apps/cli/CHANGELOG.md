@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.3.0](https://github.com/vm0-ai/vm0/compare/cli-v9.2.1...cli-v9.3.0) (2026-01-28)
+
+
+### Features
+
+* **cli:** redesign onboard command with interactive flow ([#1799](https://github.com/vm0-ai/vm0/issues/1799)) ([29ecbc0](https://github.com/vm0-ai/vm0/commit/29ecbc016e8de3cf0fa9e32ee9e36c3c71ba4b3a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.3.0
+
 ## [9.2.1](https://github.com/vm0-ai/vm0/compare/cli-v9.2.0...cli-v9.2.1) (2026-01-28)
 
 

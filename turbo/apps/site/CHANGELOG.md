@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.8.0](https://github.com/vm0-ai/vm0/compare/site-v1.7.0...site-v1.8.0) (2026-01-28)
+
+
+### Features
+
+* **site:** integrate blog into site app for SPA routing ([#1792](https://github.com/vm0-ai/vm0/issues/1792)) ([df36da3](https://github.com/vm0-ai/vm0/commit/df36da37133b9cb6f9c4e8f554ffeed357cef1d2))
+
+
+### Performance Improvements
+
+* **skills:** convert skills page from ISR to static generation ([#1789](https://github.com/vm0-ai/vm0/issues/1789)) ([182ab9f](https://github.com/vm0-ai/vm0/commit/182ab9f78ffa6aff6ddf2bd8148f5c5e8c153d50))
+
 ## [1.7.0](https://github.com/vm0-ai/vm0/compare/site-v1.6.0...site-v1.7.0) (2026-01-28)
 
 

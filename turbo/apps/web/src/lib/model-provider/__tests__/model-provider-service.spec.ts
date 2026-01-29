@@ -201,20 +201,6 @@ describe("Model Provider Service", () => {
 
       expect(second.isDefault).toBe(false);
     });
-
-    it("should set first provider for different framework as default", async () => {
-      // Create provider for claude-code framework
-      await upsertModelProvider(testUserId, "anthropic-api-key", "test-key-1");
-
-      // Create provider for codex framework (should be default for codex)
-      const { provider: codexProvider } = await upsertModelProvider(
-        testUserId,
-        "openai-api-key",
-        "test-key-2",
-      );
-
-      expect(codexProvider.isDefault).toBe(true);
-    });
   });
 
   describe("convertCredentialToModelProvider", () => {
@@ -366,33 +352,6 @@ describe("Model Provider Service", () => {
       );
 
       expect(provider.isDefault).toBe(true);
-    });
-
-    it("should only affect providers of the same framework", async () => {
-      // Create providers for different frameworks
-      await upsertModelProvider(testUserId, "anthropic-api-key", "test-key-1");
-      await upsertModelProvider(testUserId, "openai-api-key", "test-key-2");
-
-      // Verify both are defaults for their respective frameworks
-      const providers = await listModelProviders(testUserId);
-      expect(providers.every((p) => p.isDefault)).toBe(true);
-
-      // Create another claude-code provider
-      await upsertModelProvider(
-        testUserId,
-        "claude-code-oauth-token",
-        "test-token",
-      );
-
-      // Set it as default
-      await setModelProviderDefault(testUserId, "claude-code-oauth-token");
-
-      // Verify openai is still default
-      const updatedProviders = await listModelProviders(testUserId);
-      const openaiProvider = updatedProviders.find(
-        (p) => p.type === "openai-api-key",
-      );
-      expect(openaiProvider!.isDefault).toBe(true);
     });
   });
 });

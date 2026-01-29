@@ -1,5 +1,26 @@
 # Changelog
 
+## [11.4.0](https://github.com/vm0-ai/vm0/compare/web-v11.3.1...web-v11.4.0) (2026-01-28)
+
+
+### Features
+
+* **runner:** add Ably realtime job notifications with polling fallback ([#1783](https://github.com/vm0-ai/vm0/issues/1783)) ([eef9cfc](https://github.com/vm0-ai/vm0/commit/eef9cfc1ce959d708043b5355a42160c306c8de4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.3.0
+
+## [11.3.1](https://github.com/vm0-ai/vm0/compare/web-v11.3.0...web-v11.3.1) (2026-01-28)
+
+
+### Performance Improvements
+
+* **skills:** convert skills page from ISR to static generation ([#1789](https://github.com/vm0-ai/vm0/issues/1789)) ([182ab9f](https://github.com/vm0-ai/vm0/commit/182ab9f78ffa6aff6ddf2bd8148f5c5e8c153d50))
+
 ## [11.3.0](https://github.com/vm0-ai/vm0/compare/web-v11.2.0...web-v11.3.0) (2026-01-28)
 
 

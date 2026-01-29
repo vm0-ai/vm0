@@ -159,6 +159,7 @@ jobs:
             CRON_SECRET=${{ secrets.CRON_SECRET }}
             OFFICIAL_RUNNER_SECRET=${{ secrets.OFFICIAL_RUNNER_SECRET }}
             ABLY_API_KEY=${{ secrets.ABLY_API_KEY }}
+            CONCURRENT_RUN_LIMIT=0
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}

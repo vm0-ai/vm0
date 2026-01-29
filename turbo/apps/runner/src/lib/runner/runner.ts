@@ -5,6 +5,10 @@ import {
   completeJob,
   type ExecutionContext,
 } from "../api.js";
+import {
+  subscribeToJobs,
+  type JobSubscription,
+} from "../realtime/subscription.js";
 import { executeJob as executeJobInVM } from "../executor.js";
 import { withRunnerTiming } from "../metrics/index.js";
 import type { RunnerState, RunnerResources } from "./types.js";
@@ -17,8 +21,20 @@ export class Runner {
   private statusFilePath: string;
   private state: RunnerState;
   private resources: RunnerResources | null = null;
-  private running = true;
   private updateStatus: () => void;
+
+  // Ably subscription
+  private subscription: JobSubscription | null = null;
+
+  // Queue for jobs received while at capacity (max 100 to prevent unbounded growth)
+  private static readonly MAX_PENDING_QUEUE_SIZE = 100;
+  private pendingJobs: string[] = [];
+
+  // Polling fallback interval
+  private pollInterval: ReturnType<typeof setInterval> | null = null;
+
+  // Shutdown coordination
+  private resolveShutdown: (() => void) | null = null;
 
   constructor(config: RunnerConfig, statusFilePath: string) {
     this.config = config;
@@ -36,15 +52,30 @@ export class Runner {
     // 1. Setup environment
     this.resources = await setupEnvironment({ config: this.config });
 
-    // 2. Setup signal handlers
+    // 2. Create shutdown promise
+    const shutdownPromise = new Promise<void>((resolve) => {
+      this.resolveShutdown = resolve;
+    });
+
+    // 3. Setup signal handlers
     setupSignalHandlers(this.state, {
       onShutdown: () => {
-        this.running = false;
+        this.resolveShutdown?.();
+      },
+      onDrain: () => {
+        // Clear pending jobs queue - don't process new jobs
+        this.pendingJobs.length = 0;
+
+        // If no active jobs, shutdown immediately
+        if (this.state.activeRuns.size === 0) {
+          console.log("[Maintenance] No active jobs, exiting immediately");
+          this.resolveShutdown?.();
+        }
       },
       updateStatus: this.updateStatus,
     });
 
-    // 3. Start message
+    // 4. Start message
     console.log(
       `Starting runner '${this.config.name}' for group '${this.config.group}'...`,
     );
@@ -56,10 +87,49 @@ export class Runner {
     // Write initial status
     this.updateStatus();
 
-    // 4. Run main loop
-    await this.runMainLoop();
+    // 5. Poll on startup to clear any backlog
+    console.log("Checking for pending jobs...");
+    await this.pollFallback();
 
-    // 5. Wait for active jobs to complete
+    // 6. Subscribe to Ably job notifications
+    console.log("Connecting to realtime job notifications...");
+    this.subscription = await subscribeToJobs(
+      this.config.server,
+      this.config.group,
+      (notification) => {
+        console.log(`Ably notification: ${notification.runId}`);
+        this.processJob(notification.runId).catch(console.error);
+      },
+      (connectionState, reason) => {
+        console.log(
+          `Ably connection: ${connectionState}${reason ? ` (${reason})` : ""}`,
+        );
+      },
+    );
+    console.log("Connected to realtime job notifications");
+
+    // 7. Start polling fallback interval
+    this.pollInterval = setInterval(() => {
+      this.pollFallback().catch(console.error);
+    }, this.config.sandbox.poll_interval_ms);
+    console.log(
+      `Polling fallback enabled (every ${this.config.sandbox.poll_interval_ms / 1000}s)`,
+    );
+
+    // 8. Wait for shutdown signal
+    await shutdownPromise;
+
+    // 9. Cleanup polling interval
+    if (this.pollInterval) {
+      clearInterval(this.pollInterval);
+    }
+
+    // 10. Cleanup Ably subscription
+    if (this.subscription) {
+      this.subscription.cleanup();
+    }
+
+    // 11. Wait for active jobs to complete
     if (this.state.jobPromises.size > 0) {
       console.log(
         `Waiting for ${this.state.jobPromises.size} active job(s) to complete...`,
@@ -67,7 +137,7 @@ export class Runner {
       await Promise.all(this.state.jobPromises);
     }
 
-    // 6. Cleanup
+    // 12. Cleanup environment
     await cleanupEnvironment(this.resources);
 
     // Final status update
@@ -78,63 +148,63 @@ export class Runner {
     process.exit(0);
   }
 
-  private async runMainLoop(): Promise<void> {
-    while (this.running) {
-      // In drain mode, don't poll for new jobs - just wait for active jobs to complete
-      if (this.state.mode === "draining") {
-        if (this.state.activeRuns.size === 0) {
-          console.log("[Maintenance] All jobs completed, exiting drain mode");
-          this.running = false;
-          break;
-        }
-        // Wait for any job to complete
-        if (this.state.jobPromises.size > 0) {
-          await Promise.race(this.state.jobPromises);
-          this.updateStatus();
-        }
-        continue;
-      }
+  /**
+   * Poll for jobs as fallback mechanism.
+   * Catches jobs that may have been missed by push notifications.
+   */
+  private async pollFallback(): Promise<void> {
+    if (this.state.mode !== "running") return;
+    if (this.state.activeRuns.size >= this.config.sandbox.max_concurrent)
+      return;
 
-      // Check concurrency limit - skip poll if at capacity
-      if (this.state.activeRuns.size >= this.config.sandbox.max_concurrent) {
-        // Wait for any job to complete before polling again
-        if (this.state.jobPromises.size > 0) {
-          await Promise.race(this.state.jobPromises);
-          this.updateStatus();
-        }
-        continue;
-      }
-
-      try {
-        // Poll for pending jobs
-        const job = await withRunnerTiming("poll", () =>
-          pollForJob(this.config.server, this.config.group),
-        );
-
-        if (!job) {
-          // No job found, wait before polling again
-          await new Promise((resolve) =>
-            setTimeout(resolve, this.config.sandbox.poll_interval_ms),
-          );
-          continue;
-        }
-
-        console.log(`Found job: ${job.runId}`);
-
-        // Claim the job
+    try {
+      const job = await withRunnerTiming("poll", () =>
+        pollForJob(this.config.server, this.config.group),
+      );
+      if (job) {
+        console.log(`Poll fallback found job: ${job.runId}`);
         await this.processJob(job.runId);
-      } catch (error) {
-        console.error(
-          "Polling error:",
-          error instanceof Error ? error.message : "Unknown error",
-        );
-        // Wait before retrying after error
-        await new Promise((resolve) => setTimeout(resolve, 2000));
       }
+    } catch (error) {
+      console.error(
+        `Poll fallback error:`,
+        error instanceof Error ? error.message : "Unknown error",
+      );
     }
   }
 
+  /**
+   * Process a job notification - claim and execute.
+   */
   private async processJob(runId: string): Promise<void> {
+    // Skip if not in running mode (draining or stopped)
+    if (this.state.mode !== "running") {
+      console.log(`Not running (${this.state.mode}), ignoring job ${runId}`);
+      return;
+    }
+
+    // Skip if job is already being executed (duplicate notification)
+    if (this.state.activeRuns.has(runId)) {
+      return;
+    }
+
+    // Check concurrency limit
+    if (this.state.activeRuns.size >= this.config.sandbox.max_concurrent) {
+      // Avoid duplicate entries and respect max queue size
+      if (
+        !this.pendingJobs.includes(runId) &&
+        this.pendingJobs.length < Runner.MAX_PENDING_QUEUE_SIZE
+      ) {
+        console.log(`At capacity, queueing job ${runId}`);
+        this.pendingJobs.push(runId);
+      } else if (this.pendingJobs.length >= Runner.MAX_PENDING_QUEUE_SIZE) {
+        console.log(
+          `Pending queue full (${Runner.MAX_PENDING_QUEUE_SIZE}), dropping job ${runId}`,
+        );
+      }
+      return;
+    }
+
     try {
       const context = await withRunnerTiming("claim", () =>
         claimJob(this.config.server, runId),
@@ -156,10 +226,28 @@ export class Runner {
           this.state.activeRuns.delete(context.runId);
           this.state.jobPromises.delete(jobPromise);
           this.updateStatus();
+
+          // In drain mode, shutdown when last job completes
+          if (
+            this.state.mode === "draining" &&
+            this.state.activeRuns.size === 0
+          ) {
+            console.log("[Maintenance] All jobs completed, exiting");
+            this.resolveShutdown?.();
+            return;
+          }
+
+          // Process next queued job if any
+          if (this.pendingJobs.length > 0 && this.state.mode === "running") {
+            const nextJob = this.pendingJobs.shift();
+            if (nextJob) {
+              this.processJob(nextJob).catch(console.error);
+            }
+          }
         });
       this.state.jobPromises.add(jobPromise);
     } catch (error) {
-      // Job was claimed by another runner, continue polling
+      // Job was claimed by another runner
       console.log(
         `Could not claim job ${runId}:`,
         error instanceof Error ? error.message : "Unknown error",

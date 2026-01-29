@@ -26,7 +26,6 @@ Once configured, your credential is automatically injected when running agents.
 |------|-----------|------------|
 | `claude-code-oauth-token` | Claude Code | Run `claude setup-token` |
 | `anthropic-api-key` | Claude Code | [Anthropic Console](https://console.anthropic.com/settings/keys) |
-| `openai-api-key` | Codex | [OpenAI Platform](https://platform.openai.com/api-keys) |
 
 ### Managing Model Providers
 
@@ -82,11 +81,15 @@ version: "1.0"
 agents:
   my-agent:
     framework: codex # [!code highlight]
+    environment:
+      OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}" # [!code highlight]
 ```
 
-<Callout type="info">
-No environment configuration needed in `vm0.yaml` if you've set up a model provider. The credential is injected automatically.
-</Callout>
+Run with your API key:
+
+```bash
+vm0 run my-agent "your prompt" --secrets OPENAI_API_KEY=sk-xxx
+```
 
 ## Alternative Model Providers (Claude Code only)
 

@@ -1,8 +1,7 @@
-import { MetadataRoute } from "next";
+import type { MetadataRoute } from "next";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = "https://vm0.ai";
-  const blogUrl = "https://blog.vm0.ai";
   const docsUrl = "https://docs.vm0.ai";
   const locales = ["en", "de", "es", "ja"];
 
@@ -16,6 +15,16 @@ export default function sitemap(): MetadataRoute.Sitemap {
       path: "/skills",
       priority: 0.9,
       changeFrequency: "weekly" as const,
+    },
+    {
+      path: "/blog",
+      priority: 0.8,
+      changeFrequency: "weekly" as const,
+    },
+    {
+      path: "/glossary",
+      priority: 0.7,
+      changeFrequency: "monthly" as const,
     },
     {
       path: "/sign-up",
@@ -50,16 +59,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
         changeFrequency: route.changeFrequency,
         priority: route.priority,
       });
-    });
-  });
-
-  // Add blog URLs with locales
-  locales.forEach((locale) => {
-    urls.push({
-      url: `${blogUrl}/${locale}`,
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.8,
     });
   });
 

@@ -27,35 +27,42 @@ teardown() {
     assert_success
     assert_output --partial "Guided setup for new VM0 users"
     assert_output --partial "--yes"
-    assert_output --partial "--method"
+    assert_output --partial "--name"
 }
 
-@test "vm0 onboard -y --method manual creates demo agent directory" {
-    run $CLI_COMMAND onboard -y --method manual
+@test "vm0 onboard -y creates agent directory with skill" {
+    run $CLI_COMMAND onboard -y
     assert_success
-    assert_output --partial "Created vm0.yaml"
-    assert_output --partial "Created AGENTS.md"
-    assert_output --partial "Next steps:"
-    assert_output --partial "cd vm0-demo-agent"
+    assert_output --partial "Created my-vm0-agent/"
+    assert_output --partial "Installed vm0-agent-builder skill"
+    assert_output --partial "Next step:"
+    assert_output --partial "cd my-vm0-agent"
 
-    # Verify directory and files were created
-    [ -d "vm0-demo-agent" ]
-    [ -f "vm0-demo-agent/vm0.yaml" ]
-    [ -f "vm0-demo-agent/AGENTS.md" ]
-
-    # Verify basic content
-    run cat vm0-demo-agent/vm0.yaml
-    assert_output --partial "vm0-demo-agent:"
-    assert_output --partial "framework: claude-code"
+    # Verify directory and skill were created
+    [ -d "my-vm0-agent" ]
+    [ -d "my-vm0-agent/.claude/skills/vm0-agent-builder" ]
+    [ -f "my-vm0-agent/.claude/skills/vm0-agent-builder/SKILL.md" ]
 }
 
-@test "vm0 onboard fails if vm0-demo-agent directory exists" {
-    # Create existing directory
-    mkdir vm0-demo-agent
+@test "vm0 onboard -y --name creates custom named agent" {
+    run $CLI_COMMAND onboard -y --name custom-agent
+    assert_success
+    assert_output --partial "Created custom-agent/"
+    assert_output --partial "Installed vm0-agent-builder skill"
+    assert_output --partial "cd custom-agent"
 
-    run $CLI_COMMAND onboard -y --method manual
+    # Verify directory and skill were created with custom name
+    [ -d "custom-agent" ]
+    [ -d "custom-agent/.claude/skills/vm0-agent-builder" ]
+}
+
+@test "vm0 onboard fails if agent directory exists" {
+    # Create existing directory
+    mkdir my-vm0-agent
+
+    run $CLI_COMMAND onboard -y
     assert_failure
-    assert_output --partial "vm0-demo-agent/ already exists"
+    assert_output --partial "my-vm0-agent/ already exists"
 }
 
 # =============================================================================
@@ -94,22 +101,4 @@ teardown() {
     run $CLI_COMMAND setup-claude
     assert_success
     assert_output --partial "Installed vm0-agent-builder skill"
-}
-
-# =============================================================================
-# vm0 onboard --method claude tests
-# =============================================================================
-
-@test "vm0 onboard -y --method claude creates demo agent with skill" {
-    run $CLI_COMMAND onboard -y --method claude
-    assert_success
-
-    # Verify directory structure
-    [ -d "vm0-demo-agent" ]
-    [ -f "vm0-demo-agent/vm0.yaml" ]
-    [ -f "vm0-demo-agent/AGENTS.md" ]
-
-    # Verify skill was installed inside the demo agent
-    [ -d "vm0-demo-agent/.claude/skills/vm0-agent-builder" ]
-    [ -f "vm0-demo-agent/.claude/skills/vm0-agent-builder/SKILL.md" ]
 }

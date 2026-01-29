@@ -272,5 +272,18 @@
         "definition": "A command-line tool for agent development and deployment. Codex provides developers with utilities for building, testing, and managing agents through the terminal. It offers features like code generation, scaffolding, and integration with AI models to streamline the agent development workflow."
       }
     }
+  },
+  "blog": {
+    "title": "Blog",
+    "description": "Insights, tutorials, and updates on agent-native development and the future of AI infrastructure.",
+    "allPosts": "All Posts",
+    "readMore": "Read more",
+    "backToAllPosts": "Back to all posts",
+    "relatedArticles": "Related Articles",
+    "stayInLoop": "Stay in the loop",
+    "stayInLoopDesc": "// Get the latest insights on agent-native development.",
+    "subscribe": "Subscribe",
+    "joinDiscord": "Join Discord",
+    "shareArticle": "Share this article"
   }
 }

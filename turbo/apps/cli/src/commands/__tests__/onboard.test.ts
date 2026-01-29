@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { onboardCommand } from "../onboard";
-import * as fs from "fs/promises";
+import { onboardCommand } from "../onboard.js";
 import { existsSync, mkdtempSync, rmSync } from "fs";
+import { readFile } from "fs/promises";
 import * as path from "path";
 import * as os from "os";
 import { http, HttpResponse } from "msw";
-import { server } from "../../mocks/server";
+import { server } from "../../mocks/server.js";
 
 // Mock prompts at system boundary (third-party library for user input)
 vi.mock("prompts", () => ({
@@ -33,9 +33,15 @@ describe("onboard command", () => {
     throw new Error("process.exit called");
   }) as never);
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+  const mockConsoleClear = vi
+    .spyOn(console, "clear")
+    .mockImplementation(() => {});
   const mockConsoleError = vi
     .spyOn(console, "error")
     .mockImplementation(() => {});
+  const mockStdoutWrite = vi
+    .spyOn(process.stdout, "write")
+    .mockImplementation(() => true);
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -123,11 +129,17 @@ describe("onboard command", () => {
       if (q.name === "type") {
         return { type: "anthropic-api-key" };
       }
-      if (q.name === "credential") {
-        return { credential: "sk-test-key" };
+      if (q.name === "credential" || q.name === "value") {
+        return { [q.name]: "sk-test-key" };
       }
       if (q.name === "convert") {
         return { convert: false };
+      }
+      if (q.name === "value" && q.type === "text") {
+        return { value: "my-vm0-agent" };
+      }
+      if (q.name === "value" && q.type === "confirm") {
+        return { value: true };
       }
       return {};
     });
@@ -138,7 +150,9 @@ describe("onboard command", () => {
     rmSync(tempDir, { recursive: true, force: true });
     mockExit.mockClear();
     mockConsoleLog.mockClear();
+    mockConsoleClear.mockClear();
     mockConsoleError.mockClear();
+    mockStdoutWrite.mockClear();
     vi.unstubAllEnvs();
 
     // Restore TTY state
@@ -149,286 +163,228 @@ describe("onboard command", () => {
     });
   });
 
-  describe("authentication check", () => {
-    it("should show authenticated status when token exists", async () => {
-      await onboardCommand.parseAsync([
-        "node",
-        "cli",
-        "-y",
-        "--method",
-        "manual",
-      ]);
+  describe("welcome screen", () => {
+    it("should display welcome box in interactive mode", async () => {
+      await onboardCommand.parseAsync(["node", "cli", "-y"]);
 
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Authenticated"),
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Welcome to VM0!");
+    });
+  });
+
+  describe("progress indicator", () => {
+    it("should display progress line with steps", async () => {
+      await onboardCommand.parseAsync(["node", "cli", "-y"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Authentication");
+      expect(logCalls).toContain("Model Provider Setup");
+      expect(logCalls).toContain("Create Agent");
+    });
+  });
+
+  describe("authentication check", () => {
+    it("should proceed when token exists", async () => {
+      await onboardCommand.parseAsync(["node", "cli", "-y"]);
+
+      // Should not show auth required message
+      expect(mockConsoleLog).not.toHaveBeenCalledWith(
+        expect.stringContaining("Authentication required"),
       );
     });
 
-    it("should show auth required message when no token exists", async () => {
-      // Remove token completely (not just empty string)
+    it("should show error in non-interactive mode when no token", async () => {
       vi.unstubAllEnvs();
       vi.stubEnv("VM0_API_URL", "http://localhost:3000");
       delete process.env.VM0_TOKEN;
 
-      // Ensure model providers exist so auth is the only blocking step
-      server.use(
-        http.get("http://localhost:3000/api/model-providers", () => {
-          return HttpResponse.json({
-            modelProviders: [
-              {
-                id: "test-provider-id",
-                type: "anthropic-api-key",
-                framework: "claude-code",
-                credentialName: "ANTHROPIC_API_KEY",
-                isDefault: true,
-                createdAt: "2024-01-01T00:00:00Z",
-                updatedAt: "2024-01-01T00:00:00Z",
-              },
-            ],
-          });
-        }),
-      );
+      // Set non-interactive mode
+      Object.defineProperty(process.stdout, "isTTY", {
+        value: false,
+        writable: true,
+        configurable: true,
+      });
 
-      // Auth flow will run via loginCommand.parseAsync
-      // The full flow involves device code polling which may exit on completion
-      try {
-        await onboardCommand.parseAsync([
-          "node",
-          "cli",
-          "-y",
-          "--method",
-          "manual",
-        ]);
-      } catch {
-        // May throw due to process.exit mock
-      }
+      await expect(async () => {
+        await onboardCommand.parseAsync(["node", "cli", "-y"]);
+      }).rejects.toThrow("process.exit called");
 
-      // Verify auth flow started by checking for auth required message
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Authentication required"),
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Not authenticated"),
       );
     });
   });
 
   describe("model provider check", () => {
-    it("should show configured status when model providers exist", async () => {
-      await onboardCommand.parseAsync([
-        "node",
-        "cli",
-        "-y",
-        "--method",
-        "manual",
-      ]);
+    it("should proceed when model providers exist", async () => {
+      await onboardCommand.parseAsync(["node", "cli", "-y"]);
 
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Model provider configured"),
+      // Should not show model provider setup required message
+      expect(mockConsoleLog).not.toHaveBeenCalledWith(
+        expect.stringContaining("Model provider setup required"),
       );
     });
 
-    it("should trigger model provider setup when no providers configured", async () => {
+    it("should show error in non-interactive mode when no providers", async () => {
       server.use(
         http.get("http://localhost:3000/api/model-providers", () => {
           return HttpResponse.json({ modelProviders: [] });
         }),
       );
 
-      await onboardCommand.parseAsync([
-        "node",
-        "cli",
-        "-y",
-        "--method",
-        "manual",
-      ]);
+      // Set non-interactive mode
+      Object.defineProperty(process.stdout, "isTTY", {
+        value: false,
+        writable: true,
+        configurable: true,
+      });
 
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Model provider setup required"),
-      );
-      // Verify setup completed by checking for success message
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Model provider"),
-      );
-    });
+      await expect(async () => {
+        await onboardCommand.parseAsync(["node", "cli", "-y"]);
+      }).rejects.toThrow("process.exit called");
 
-    it("should attempt setup if model provider check fails", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/model-providers", () => {
-          return HttpResponse.json({ error: "Server error" }, { status: 500 });
-        }),
-      );
-
-      await onboardCommand.parseAsync([
-        "node",
-        "cli",
-        "-y",
-        "--method",
-        "manual",
-      ]);
-
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Setting up model provider"),
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("No model provider configured"),
       );
     });
   });
 
-  describe("demo agent creation", () => {
-    it("should create vm0-demo-agent directory with --yes flag", async () => {
+  describe("agent directory creation", () => {
+    it("should create agent directory with default name", async () => {
+      await onboardCommand.parseAsync(["node", "cli", "-y"]);
+
+      expect(existsSync(path.join(tempDir, "my-vm0-agent"))).toBe(true);
+    });
+
+    it("should create agent directory with custom name via --name flag", async () => {
       await onboardCommand.parseAsync([
         "node",
         "cli",
         "-y",
-        "--method",
-        "manual",
+        "--name",
+        "custom-agent",
       ]);
 
-      expect(existsSync(path.join(tempDir, "vm0-demo-agent"))).toBe(true);
+      expect(existsSync(path.join(tempDir, "custom-agent"))).toBe(true);
     });
 
-    it("should create vm0.yaml in the demo agent directory", async () => {
-      await onboardCommand.parseAsync([
-        "node",
-        "cli",
-        "-y",
-        "--method",
-        "manual",
-      ]);
+    it("should exit with error if directory already exists", async () => {
+      const { mkdir } = await import("fs/promises");
+      await mkdir(path.join(tempDir, "my-vm0-agent"));
 
-      const yamlPath = path.join(tempDir, "vm0-demo-agent/vm0.yaml");
-      expect(existsSync(yamlPath)).toBe(true);
+      await expect(async () => {
+        await onboardCommand.parseAsync(["node", "cli", "-y"]);
+      }).rejects.toThrow("process.exit called");
 
-      const content = await fs.readFile(yamlPath, "utf8");
-      expect(content).toContain('version: "1.0"');
-      expect(content).toContain("vm0-demo-agent:");
-      expect(content).toContain("framework: claude-code");
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("my-vm0-agent/ already exists"),
+      );
     });
 
-    it("should create AGENTS.md in the demo agent directory", async () => {
-      await onboardCommand.parseAsync([
-        "node",
-        "cli",
-        "-y",
-        "--method",
-        "manual",
-      ]);
-
-      const mdPath = path.join(tempDir, "vm0-demo-agent/AGENTS.md");
-      expect(existsSync(mdPath)).toBe(true);
-
-      const content = await fs.readFile(mdPath, "utf8");
-      expect(content).toContain("Agent Instructions");
-      expect(content).toContain("HackerNews");
-    });
-
-    it("should exit with error if vm0-demo-agent already exists", async () => {
-      // Create existing directory
-      await fs.mkdir(path.join(tempDir, "vm0-demo-agent"));
-
+    it("should exit with error for invalid agent name", async () => {
       await expect(async () => {
         await onboardCommand.parseAsync([
           "node",
           "cli",
           "-y",
-          "--method",
-          "manual",
+          "--name",
+          "ab", // Too short
         ]);
       }).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("vm0-demo-agent/ already exists"),
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid agent name"),
       );
-      expect(mockExit).toHaveBeenCalledWith(1);
     });
   });
 
-  describe("method selection", () => {
-    it("should support --method claude flag", async () => {
-      await onboardCommand.parseAsync([
-        "node",
-        "cli",
-        "-y",
-        "--method",
-        "claude",
-      ]);
+  describe("skill installation", () => {
+    it("should install vm0-agent-builder skill in agent directory", async () => {
+      await onboardCommand.parseAsync(["node", "cli", "-y"]);
 
-      // setup-claude downloads skill to .claude/skills/vm0-agent-builder
-      expect(
-        existsSync(
-          path.join(tempDir, "vm0-demo-agent/.claude/skills/vm0-agent-builder"),
-        ),
-      ).toBe(true);
+      const skillPath = path.join(
+        tempDir,
+        "my-vm0-agent/.claude/skills/vm0-agent-builder/SKILL.md",
+      );
+      expect(existsSync(skillPath)).toBe(true);
     });
 
-    it("should support --method manual flag", async () => {
-      await onboardCommand.parseAsync([
-        "node",
-        "cli",
-        "-y",
-        "--method",
-        "manual",
-      ]);
+    it("should write correct skill content", async () => {
+      await onboardCommand.parseAsync(["node", "cli", "-y"]);
 
-      expect(mockConsoleLog).toHaveBeenCalledWith("Next steps:");
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("AGENTS.md"),
+      const skillPath = path.join(
+        tempDir,
+        "my-vm0-agent/.claude/skills/vm0-agent-builder/SKILL.md",
       );
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 cook"),
-      );
+      const content = await readFile(skillPath, "utf-8");
+
+      expect(content).toContain("name: vm0-agent-builder");
+      expect(content).toContain("## Workflow");
+    });
+  });
+
+  describe("does NOT create vm0.yaml or AGENTS.md", () => {
+    it("should not create vm0.yaml in agent directory", async () => {
+      await onboardCommand.parseAsync(["node", "cli", "-y"]);
+
+      const yamlPath = path.join(tempDir, "my-vm0-agent/vm0.yaml");
+      expect(existsSync(yamlPath)).toBe(false);
     });
 
-    it("should display correct next steps for manual method", async () => {
+    it("should not create AGENTS.md in agent directory", async () => {
+      await onboardCommand.parseAsync(["node", "cli", "-y"]);
+
+      const mdPath = path.join(tempDir, "my-vm0-agent/AGENTS.md");
+      expect(existsSync(mdPath)).toBe(false);
+    });
+  });
+
+  describe("next steps output", () => {
+    it("should display next steps after completion", async () => {
+      await onboardCommand.parseAsync(["node", "cli", "-y"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Next step:");
+      expect(logCalls).toContain("cd my-vm0-agent");
+      expect(logCalls).toContain("claude");
+      expect(logCalls).toContain("/vm0-agent-builder");
+    });
+
+    it("should show custom agent name in next steps", async () => {
       await onboardCommand.parseAsync([
         "node",
         "cli",
         "-y",
-        "--method",
-        "manual",
+        "--name",
+        "custom-agent",
       ]);
 
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("cd vm0-demo-agent"),
-      );
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Edit"),
-      );
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("vm0.yaml"),
-      );
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("cd custom-agent");
     });
   });
 
   describe("--yes flag", () => {
-    it("should work with -y short option", async () => {
-      await onboardCommand.parseAsync([
-        "node",
-        "cli",
-        "-y",
-        "--method",
-        "manual",
-      ]);
+    it("should skip prompts with -y short option", async () => {
+      await onboardCommand.parseAsync(["node", "cli", "-y"]);
 
-      expect(existsSync(path.join(tempDir, "vm0-demo-agent"))).toBe(true);
+      expect(existsSync(path.join(tempDir, "my-vm0-agent"))).toBe(true);
+    });
+
+    it("should skip prompts with --yes long option", async () => {
+      await onboardCommand.parseAsync(["node", "cli", "--yes"]);
+
+      expect(existsSync(path.join(tempDir, "my-vm0-agent"))).toBe(true);
     });
   });
 
   describe("output messages", () => {
-    it("should display creation success messages", async () => {
-      await onboardCommand.parseAsync([
-        "node",
-        "cli",
-        "-y",
-        "--method",
-        "manual",
-      ]);
+    it("should display success messages for creation", async () => {
+      await onboardCommand.parseAsync(["node", "cli", "-y"]);
 
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Created"),
-      );
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("vm0.yaml"),
-      );
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("AGENTS.md"),
-      );
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Created my-vm0-agent/");
+      expect(logCalls).toContain("Installed vm0-agent-builder skill");
     });
   });
 });

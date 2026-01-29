@@ -764,58 +764,6 @@ describe("run-service", () => {
           ).rejects.toThrow(/Unknown model provider type/);
         });
 
-        test("throws BadRequestError when model provider incompatible with framework", async () => {
-          const user = await setupUser({ context });
-          await user.ctx.createModelProvider(
-            "openai-api-key",
-            "test-openai-key",
-          );
-          const { versionId } = await user.ctx.createCompose(
-            "test-compose-mismatch",
-            {
-              framework: "claude-code",
-            },
-          );
-
-          // Remove auto-created ANTHROPIC_API_KEY
-          await globalThis.services.db
-            .update(agentComposeVersions)
-            .set({
-              content: {
-                agents: {
-                  "test-compose-mismatch": {
-                    framework: "claude-code",
-                    working_dir: "/home/user/workspace",
-                    environment: {},
-                  },
-                },
-              },
-            })
-            .where(eq(agentComposeVersions.id, versionId));
-
-          await expect(
-            runService.buildExecutionContext({
-              agentComposeVersionId: versionId,
-              prompt: "test prompt",
-              runId: `run-${Date.now()}`,
-              sandboxToken: "token",
-              userId: user.userId,
-              modelProvider: "openai-api-key",
-            }),
-          ).rejects.toThrow(BadRequestError);
-
-          await expect(
-            runService.buildExecutionContext({
-              agentComposeVersionId: versionId,
-              prompt: "test prompt",
-              runId: `run-${Date.now()}-2`,
-              sandboxToken: "token",
-              userId: user.userId,
-              modelProvider: "openai-api-key",
-            }),
-          ).rejects.toThrow(/not compatible with framework/);
-        });
-
         test("auto-injects model provider credential into environment when no environment block exists", async () => {
           const user = await setupUser({ context });
           await user.ctx.createModelProvider(

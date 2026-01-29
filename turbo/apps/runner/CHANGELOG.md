@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.4.0](https://github.com/vm0-ai/vm0/compare/runner-v3.3.2...runner-v3.4.0) (2026-01-28)
+
+
+### Features
+
+* **runner:** add Ably realtime job notifications with polling fallback ([#1783](https://github.com/vm0-ai/vm0/issues/1783)) ([eef9cfc](https://github.com/vm0-ai/vm0/commit/eef9cfc1ce959d708043b5355a42160c306c8de4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.3.0
+
 ## [3.3.2](https://github.com/vm0-ai/vm0/compare/runner-v3.3.1...runner-v3.3.2) (2026-01-28)
 
 

@@ -12,7 +12,7 @@ sandbox:
   max_concurrent: {{ max_concurrent | default(8) }}
   vcpu: {{ vcpu | default(2) }}
   memory_mb: {{ memory_mb | default(1024) }}
-  poll_interval_ms: {{ poll_interval_ms | default(5000) }}
+  poll_interval_ms: {{ poll_interval_ms | default(30000) }}
 
 firecracker:
   binary: /usr/local/bin/firecracker

@@ -11,7 +11,7 @@ const SANDBOX_DEFAULTS = {
   max_concurrent: 1,
   vcpu: 2,
   memory_mb: 2048,
-  poll_interval_ms: 5000,
+  poll_interval_ms: 30000, // 30s fallback polling (push is primary)
 } as const;
 
 const PROXY_DEFAULTS = {

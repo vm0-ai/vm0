@@ -2,6 +2,7 @@ import type { StoredExecutionContext } from "@vm0/core";
 import { runnerJobQueue } from "../../../db/schema/runner-job-queue";
 import { encryptSecrets } from "../../crypto/secrets-encryption";
 import { validateRunnerGroupScope } from "../../scope/scope-service";
+import { publishJobNotification } from "../../realtime/client";
 import { logger } from "../../logger";
 import type { PreparedContext, ExecutorResult, Executor } from "./types";
 
@@ -67,7 +68,15 @@ class RunnerExecutor implements Executor {
 
     log.debug(`Run ${context.runId} queued for runner group: ${runnerGroup}`);
 
-    // Return pending status - run will be picked up by polling runner
+    // Publish job notification to Ably for instant runner pickup
+    // Only sends runId - runner will claim job to get full context
+    // This is fire-and-forget - failure doesn't affect the queue insertion
+    const published = await publishJobNotification(runnerGroup, context.runId);
+    if (published) {
+      log.debug(`Job notification published for run ${context.runId}`);
+    }
+
+    // Return pending status - run will be picked up by runner via realtime notification or polling
     return {
       runId: context.runId,
       status: "pending",
