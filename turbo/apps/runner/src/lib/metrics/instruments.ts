@@ -138,35 +138,3 @@ export function recordOperation(attrs: {
     success: attrs.success,
   });
 }
-
-/**
- * Record a runner operation metric
- * Uses telemetry API via sandbox context
- */
-export function recordRunnerOperation(attrs: {
-  actionType: string;
-  durationMs: number;
-  success: boolean;
-}): void {
-  recordOperation({
-    actionType: `runner:${attrs.actionType}`,
-    durationMs: attrs.durationMs,
-    success: attrs.success,
-  });
-}
-
-/**
- * Record a sandbox operation metric
- * Uses telemetry API via sandbox context
- */
-export function recordSandboxOperation(attrs: {
-  actionType: string;
-  durationMs: number;
-  success: boolean;
-}): void {
-  recordOperation({
-    actionType: `sandbox:${attrs.actionType}`,
-    durationMs: attrs.durationMs,
-    success: attrs.success,
-  });
-}

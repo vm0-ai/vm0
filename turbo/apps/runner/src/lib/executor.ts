@@ -25,7 +25,6 @@ import { ENV_LOADER_PATH } from "./scripts/index.js";
 import { getVMRegistry } from "./proxy/index.js";
 import {
   withSandboxTiming,
-  recordRunnerOperation,
   recordOperation,
   setSandboxContext,
   clearSandboxContext,
@@ -315,9 +314,7 @@ export async function executeJob(
     log(
       `[Executor] Writing env JSON (${envJson.length} bytes) to ${ENV_JSON_PATH}`,
     );
-    await withSandboxTiming("env_write", () =>
-      guest.writeFile(ENV_JSON_PATH, envJson),
-    );
+    await guest.writeFile(ENV_JSON_PATH, envJson);
 
     // Run preflight connectivity check before starting agent
     // This verifies VM can reach VM0 API - if not, we report failure immediately
@@ -433,7 +430,7 @@ export async function executeJob(
 
           // Record metric and return failure
           const durationMs = Date.now() - startTime;
-          recordRunnerOperation({
+          recordOperation({
             actionType: "agent_execute",
             durationMs,
             success: false,
@@ -453,7 +450,7 @@ export async function executeJob(
     if (!completed) {
       log(`[Executor] Agent timed out after ${duration}s`);
       // Record agent_execute metric for timeout
-      recordRunnerOperation({
+      recordOperation({
         actionType: "agent_execute",
         durationMs,
         success: false,
@@ -465,7 +462,7 @@ export async function executeJob(
     }
 
     // Record agent_execute metric
-    recordRunnerOperation({
+    recordOperation({
       actionType: "agent_execute",
       durationMs,
       success: exitCode === 0,
