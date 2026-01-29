@@ -123,7 +123,7 @@ class E2BExecutor implements Executor {
       );
 
       // Create sandbox
-      sandbox = await withSandboxMetrics("create", () =>
+      sandbox = await withSandboxMetrics("vm_create", () =>
         this.createSandbox(sandboxEnvVars, agentComposeYaml, context.userId),
       );
       log.debug(`Sandbox created: ${sandbox.sandboxId}`);
@@ -168,6 +168,14 @@ class E2BExecutor implements Executor {
       }
 
       // Start agent execution (fire-and-forget)
+      if (context.apiStartTime) {
+        recordSandboxOperation({
+          sandboxType: "e2b",
+          actionType: "api_to_sandbox_ready",
+          durationMs: Date.now() - context.apiStartTime,
+          success: true,
+        });
+      }
       log.debug(`[${context.runId}] Starting agent execution...`);
       await withSandboxMetrics("agent_start", () =>
         this.startAgentExecution(sandbox!, context.runId),
