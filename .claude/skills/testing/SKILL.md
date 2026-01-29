@@ -1631,6 +1631,19 @@ Key topics:
 - State transitions via webhook helpers
 - No manual cleanup needed
 
+### CLI Testing (`/testing cli`)
+
+For CLI app testing patterns specific to `turbo/apps/cli`, see:
+- [CLI Testing Patterns](./reference/cli-testing.md)
+
+Key topics:
+- Command-level testing only via `command.parseAsync()`
+- MSW for Web API mocking (external boundary)
+- `vi.stubEnv()` for config (not mocking config module)
+- Real filesystem with temp directories
+- Console output and exit codes as valid assertions
+- Non-interactive mode testing only
+
 ---
 
 ## Quick Anti-Pattern Checklist
