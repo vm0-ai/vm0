@@ -50,6 +50,14 @@ interface S3Mocks {
       filename?: string,
     ) => Promise<string>
   >;
+  generatePresignedPutUrl: MockInstance<
+    (
+      bucket: string,
+      key: string,
+      contentType?: string,
+      expiresIn?: number,
+    ) => Promise<string>
+  >;
   listS3Objects: MockInstance<
     (bucket: string, prefix: string) => Promise<{ key: string; size: number }[]>
   >;
@@ -165,6 +173,9 @@ export function testContext(): TestContext {
       generatePresignedUrl: vi
         .spyOn(s3Client, "generatePresignedUrl")
         .mockResolvedValue("https://mock-presigned-url"),
+      generatePresignedPutUrl: vi
+        .spyOn(s3Client, "generatePresignedPutUrl")
+        .mockResolvedValue("https://mock-presigned-put-url"),
       listS3Objects: vi.spyOn(s3Client, "listS3Objects").mockResolvedValue([]),
       uploadS3Buffer: vi
         .spyOn(s3Client, "uploadS3Buffer")
