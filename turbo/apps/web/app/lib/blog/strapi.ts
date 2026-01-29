@@ -100,21 +100,16 @@ export async function getPostsFromStrapi(
 ): Promise<BlogPost[]> {
   const url = `${STRAPI_URL}/api/articles?locale=${locale}&populate=*&sort=publishedAt:desc`;
 
-  try {
-    const res = await fetch(url, {
-      next: { revalidate: 60 },
-    });
+  const res = await fetch(url, {
+    next: { revalidate: 60 },
+  });
 
-    if (!res.ok) {
-      return [];
-    }
-
-    const data: StrapiResponse<StrapiArticle[]> = await res.json();
-    return data.data.map(transformArticle);
-  } catch {
-    // Return empty array when Strapi is unavailable (e.g., during CI build)
-    return [];
+  if (!res.ok) {
+    throw new Error(`Failed to fetch posts: ${res.status} ${res.statusText}`);
   }
+
+  const data: StrapiResponse<StrapiArticle[]> = await res.json();
+  return data.data.map(transformArticle);
 }
 
 export async function getPostBySlugFromStrapi(
@@ -123,26 +118,23 @@ export async function getPostBySlugFromStrapi(
 ): Promise<BlogPost | null> {
   const url = `${STRAPI_URL}/api/articles?locale=${locale}&filters[slug][$eq]=${slug}&populate=*`;
 
-  try {
-    const res = await fetch(url, {
-      next: { revalidate: 60 },
-    });
+  const res = await fetch(url, {
+    next: { revalidate: 60 },
+  });
 
-    if (!res.ok) {
-      return null;
-    }
+  if (!res.ok) {
+    throw new Error(
+      `Failed to fetch post by slug: ${res.status} ${res.statusText}`,
+    );
+  }
 
-    const data: StrapiResponse<StrapiArticle[]> = await res.json();
+  const data: StrapiResponse<StrapiArticle[]> = await res.json();
 
-    if (data.data.length === 0) {
-      return null;
-    }
-
-    return transformArticle(data.data[0]!);
-  } catch {
-    // Return null when Strapi is unavailable (e.g., during CI build)
+  if (data.data.length === 0) {
     return null;
   }
+
+  return transformArticle(data.data[0]!);
 }
 
 export async function getFeaturedPostFromStrapi(
@@ -150,52 +142,46 @@ export async function getFeaturedPostFromStrapi(
 ): Promise<BlogPost | null> {
   const url = `${STRAPI_URL}/api/articles?locale=${locale}&populate=*&sort=publishedAt:desc&pagination[limit]=1`;
 
-  try {
-    const res = await fetch(url, {
-      next: { revalidate: 60 },
-    });
+  const res = await fetch(url, {
+    next: { revalidate: 60 },
+  });
 
-    if (!res.ok) {
-      return null;
-    }
+  if (!res.ok) {
+    throw new Error(
+      `Failed to fetch featured post: ${res.status} ${res.statusText}`,
+    );
+  }
 
-    const data: StrapiResponse<StrapiArticle[]> = await res.json();
+  const data: StrapiResponse<StrapiArticle[]> = await res.json();
 
-    if (data.data.length === 0) {
-      return null;
-    }
-
-    const post = transformArticle(data.data[0]!);
-    post.featured = true;
-    return post;
-  } catch {
-    // Return null when Strapi is unavailable (e.g., during CI build)
+  if (data.data.length === 0) {
     return null;
   }
+
+  const post = transformArticle(data.data[0]!);
+  post.featured = true;
+  return post;
 }
 
 export async function getAllCategoriesFromStrapi(
   locale: string = "en",
 ): Promise<string[]> {
-  try {
-    const res = await fetch(`${STRAPI_URL}/api/categories?locale=${locale}`, {
-      next: { revalidate: 60 },
-    });
+  const res = await fetch(`${STRAPI_URL}/api/categories?locale=${locale}`, {
+    next: { revalidate: 60 },
+  });
 
-    if (!res.ok) {
-      return [];
-    }
-
-    interface StrapiCategory {
-      id: number;
-      name: string;
-      slug: string;
-    }
-
-    const data: StrapiResponse<StrapiCategory[]> = await res.json();
-    return data.data.map((cat) => cat.name);
-  } catch {
-    // Return empty array when Strapi is unavailable (e.g., during CI build)
-    return [];
+  if (!res.ok) {
+    throw new Error(
+      `Failed to fetch categories: ${res.status} ${res.statusText}`,
+    );
   }
+
+  interface StrapiCategory {
+    id: number;
+    name: string;
+    slug: string;
+  }
+
+  const data: StrapiResponse<StrapiCategory[]> = await res.json();
+  return data.data.map((cat) => cat.name);
 }

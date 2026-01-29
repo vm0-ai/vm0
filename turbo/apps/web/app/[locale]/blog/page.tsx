@@ -1,7 +1,12 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
-import { getPosts, getFeatured, getCategories } from "../../lib/blog";
+import {
+  getPosts,
+  getFeatured,
+  getCategories,
+  BLOG_BASE_URL,
+} from "../../lib/blog";
 import { BlogContent } from "../../components/blog";
 import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
@@ -24,7 +29,7 @@ export async function generateMetadata({
     openGraph: {
       title: `VM0 ${t("title")}`,
       description: t("description"),
-      url: `https://vm0.ai/${locale}/blog`,
+      url: `${BLOG_BASE_URL}/${locale}/blog`,
     },
   };
 }
