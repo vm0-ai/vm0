@@ -1,5 +1,12 @@
 # Changelog
 
+## [11.4.1](https://github.com/vm0-ai/vm0/compare/web-v11.4.0...web-v11.4.1) (2026-01-29)
+
+
+### Bug Fixes
+
+* **web:** add todo for pending run cleanup bug ([#1824](https://github.com/vm0-ai/vm0/issues/1824)) ([07840a7](https://github.com/vm0-ai/vm0/commit/07840a7554c4f4a83550de82be7ed453ec2e42c4))
+
 ## [11.4.0](https://github.com/vm0-ai/vm0/compare/web-v11.3.1...web-v11.4.0) (2026-01-28)
 
 

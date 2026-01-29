@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.3.1](https://github.com/vm0-ai/vm0/compare/cli-v9.3.0...cli-v9.3.1) (2026-01-29)
+
+
+### Bug Fixes
+
+* **cli:** remove unnecessary confirmation prompt in onboard command ([#1820](https://github.com/vm0-ai/vm0/issues/1820)) ([71b8c7a](https://github.com/vm0-ai/vm0/commit/71b8c7afccb5e9a837d3c70d0f9719b1400f6967))
+
 ## [9.3.0](https://github.com/vm0-ai/vm0/compare/cli-v9.2.1...cli-v9.3.0) (2026-01-28)
 
 
