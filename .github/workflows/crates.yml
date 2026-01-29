@@ -16,7 +16,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     steps:
       - uses: actions/checkout@v4
 

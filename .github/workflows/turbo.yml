@@ -16,7 +16,7 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     outputs:
       job-ref: ${{ steps.set-job-ref.outputs.job-ref }}
       web-changed: ${{ steps.detect.outputs.web-changed }}
@@ -125,7 +125,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
@@ -155,7 +155,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     services:
       postgres:
         image: postgres:17-alpine
@@ -201,7 +201,7 @@ jobs:
   deploy-web:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare]
     # Deploy if job-ref is set (PR or main) and web, CLI, runner, site, or platform changed
     if: |
@@ -269,7 +269,7 @@ jobs:
   deploy-docs:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare]
     # Deploy if job-ref is set (PR or main) and docs changed
     if: needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.docs-changed == 'true'
@@ -297,7 +297,7 @@ jobs:
   deploy-site:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare, deploy-web]
     # Deploy if job-ref is set (PR or main) and site changed
     if: needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.site-changed == 'true'
@@ -329,7 +329,7 @@ jobs:
   deploy-platform:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare, deploy-web]
     # Deploy if job-ref is set (PR or main) and platform changed
     if: needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.platform-changed == 'true'
@@ -360,7 +360,7 @@ jobs:
   e2e-auth:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare, deploy-web]
     if: |
       needs.prepare.outputs.job-ref != '' && (
@@ -415,7 +415,7 @@ jobs:
   api-e2e-test:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare, e2e-auth, deploy-web]
     if: needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.web-changed == 'true'
     timeout-minutes: 5
@@ -443,7 +443,7 @@ jobs:
   cli-e2e-01-serial:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare, e2e-auth, deploy-web, lint, test]
     if: |
       needs.prepare.outputs.job-ref != '' && (
@@ -512,7 +512,7 @@ jobs:
   cli-e2e-02-parallel:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare, cli-e2e-01-serial, deploy-web]
     if: |
       needs.prepare.outputs.job-ref != '' && (
@@ -586,7 +586,7 @@ jobs:
   cli-e2e-03-runner:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare, cli-e2e-01-serial, deploy-web, deploy-runner-start]
     if: |
       contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
@@ -663,7 +663,7 @@ jobs:
   deploy-runner-prepare:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare]
     if: |
       contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
@@ -879,7 +879,7 @@ jobs:
   deploy-runner-benchmark:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare, deploy-runner-prepare]
     if: |
       contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
@@ -927,7 +927,7 @@ jobs:
   deploy-runner-start:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260127
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare, deploy-web, deploy-runner-prepare]
     if: |
       contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
