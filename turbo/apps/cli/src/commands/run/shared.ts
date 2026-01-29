@@ -2,6 +2,7 @@ import chalk from "chalk";
 import * as fs from "node:fs";
 import { config as dotenvConfig } from "dotenv";
 import { getEvents, type RunResult } from "../../lib/api";
+import { ApiRequestError } from "../../lib/api/core/client-factory";
 import { parseEvent } from "../../lib/events/event-parser-factory";
 import { EventRenderer } from "../../lib/events/event-renderer";
 import { CodexEventRenderer } from "../../lib/events/codex-event-renderer";
@@ -313,5 +314,30 @@ export function showNextSteps(result: PollResult): void {
     console.log(
       chalk.cyan(`    vm0 run resume ${checkpointId} "your next prompt"`),
     );
+  }
+}
+
+/**
+ * Handle generic run errors with special case for concurrent run limit
+ * This replaces the final `else` clause to avoid adding complexity
+ */
+export function handleGenericRunError(
+  error: Error,
+  commandLabel: string,
+): void {
+  if (
+    error instanceof ApiRequestError &&
+    error.code === "concurrent_run_limit_exceeded"
+  ) {
+    console.error(chalk.red(`✗ ${commandLabel} failed`));
+    console.error(chalk.dim(`  ${error.message}`));
+    console.log();
+    console.log("  To view active runs:");
+    console.log(chalk.cyan("    vm0 run list"));
+    console.log("  To cancel a run:");
+    console.log(chalk.cyan("    vm0 run kill <run-id>"));
+  } else {
+    console.error(chalk.red(`✗ ${commandLabel} failed`));
+    console.error(chalk.dim(`  ${error.message}`));
   }
 }

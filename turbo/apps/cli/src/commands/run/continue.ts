@@ -10,6 +10,7 @@ import {
   pollEvents,
   streamRealtimeEvents,
   showNextSteps,
+  handleGenericRunError,
 } from "./shared";
 
 export const continueCommand = new Command()
@@ -159,8 +160,7 @@ export const continueCommand = new Command()
               chalk.red(`✗ Agent session not found: ${agentSessionId}`),
             );
           } else {
-            console.error(chalk.red("✗ Continue failed"));
-            console.error(chalk.dim(`  ${error.message}`));
+            handleGenericRunError(error, "Continue");
           }
         } else {
           console.error(chalk.red("✗ An unexpected error occurred"));

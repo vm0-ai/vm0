@@ -10,6 +10,7 @@ import {
   pollEvents,
   streamRealtimeEvents,
   showNextSteps,
+  handleGenericRunError,
 } from "./shared";
 
 export const resumeCommand = new Command()
@@ -156,8 +157,7 @@ export const resumeCommand = new Command()
           } else if (error.message.includes("not found")) {
             console.error(chalk.red(`✗ Checkpoint not found: ${checkpointId}`));
           } else {
-            console.error(chalk.red("✗ Resume failed"));
-            console.error(chalk.dim(`  ${error.message}`));
+            handleGenericRunError(error, "Resume");
           }
         } else {
           console.error(chalk.red("✗ An unexpected error occurred"));

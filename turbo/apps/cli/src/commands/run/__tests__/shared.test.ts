@@ -3,7 +3,8 @@ import * as fs from "fs/promises";
 import { mkdtempSync, rmSync } from "fs";
 import * as path from "path";
 import * as os from "os";
-import { loadValues } from "../shared";
+import { loadValues, handleGenericRunError } from "../shared";
+import { ApiRequestError } from "../../../lib/api/core/client-factory";
 
 // Test variable names (using unique prefixes to avoid env collisions)
 const TEST_VAR_1 = "SHARED_TEST_VAR_1";
@@ -162,5 +163,78 @@ describe("loadValues", () => {
       expect(result?.[TEST_VAR_2]).toBe("value2");
       expect(result?.[TEST_VAR_3]).toBeUndefined();
     });
+  });
+});
+
+describe("handleGenericRunError", () => {
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  let consoleLogSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+    consoleLogSpy.mockRestore();
+  });
+
+  it("shows run list/kill hints for concurrent run limit error", () => {
+    const error = new ApiRequestError(
+      "You have reached the concurrent agent run limit.",
+      "concurrent_run_limit_exceeded",
+    );
+
+    handleGenericRunError(error, "Run");
+
+    // Check that the error message is shown
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Run failed"),
+    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("concurrent agent run limit"),
+    );
+
+    // Check that the hints are shown
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect.stringContaining("vm0 run list"),
+    );
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect.stringContaining("vm0 run kill"),
+    );
+  });
+
+  it("shows generic error for non-concurrent-limit errors", () => {
+    const error = new Error("Some other error");
+
+    handleGenericRunError(error, "Resume");
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Resume failed"),
+    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Some other error"),
+    );
+
+    // Should NOT show run list/kill hints
+    expect(consoleLogSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("vm0 run list"),
+    );
+  });
+
+  it("shows generic error for ApiRequestError with different code", () => {
+    const error = new ApiRequestError("Resource not found", "NOT_FOUND");
+
+    handleGenericRunError(error, "Continue");
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Continue failed"),
+    );
+
+    // Should NOT show run list/kill hints
+    expect(consoleLogSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("vm0 run list"),
+    );
   });
 });

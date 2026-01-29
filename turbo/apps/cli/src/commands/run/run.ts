@@ -18,6 +18,7 @@ import {
   pollEvents,
   streamRealtimeEvents,
   showNextSteps,
+  handleGenericRunError,
 } from "./shared";
 
 export const mainRunCommand = new Command()
@@ -209,8 +210,7 @@ export const mainRunCommand = new Command()
               ),
             );
           } else {
-            console.error(chalk.red("✗ Run failed"));
-            console.error(chalk.dim(`  ${error.message}`));
+            handleGenericRunError(error, "Run");
           }
         } else {
           console.error(chalk.red("✗ An unexpected error occurred"));
