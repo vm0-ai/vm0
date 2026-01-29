@@ -138,10 +138,12 @@ fn wait_with_timeout(child: Child, timeout_ms: u32) -> (i32, Vec<u8>, Vec<u8>) {
     thread::spawn(move || {
         // Wait for either timeout or signal that process completed
         if rx.recv_timeout(timeout).is_err() {
-            // Timeout reached, mark and kill the process
+            // Timeout reached, mark and kill the entire process group
+            // Using negative pid kills all processes in the group (like tini does)
             killed_by_timeout_clone.store(true, Ordering::SeqCst);
             unsafe {
-                libc::kill(child_id as i32, libc::SIGKILL);
+                // Kill process group (negative pid) to clean up any child processes
+                libc::kill(-(child_id as i32), libc::SIGKILL);
             }
         }
     });
@@ -211,6 +213,19 @@ fn handle_exec(payload: &[u8]) -> (i32, Vec<u8>, Vec<u8>) {
         &format!("exec: {} (timeout={}ms)", preview, timeout_ms),
     );
 
+    // Create new process group so we can kill the entire tree on timeout
+    #[cfg(unix)]
+    let child = {
+        use std::os::unix::process::CommandExt;
+        Command::new("sh")
+            .arg("-c")
+            .arg(command)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .process_group(0) // Create new process group (like tini's setpgid(0,0))
+            .spawn()
+    };
+    #[cfg(not(unix))]
     let child = Command::new("sh")
         .arg("-c")
         .arg(command)
