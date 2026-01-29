@@ -2,6 +2,30 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { listRuns } from "../../lib/api";
 import { formatRelativeTime } from "../../lib/utils/file-utils";
+import type { RunStatus } from "@vm0/core";
+
+/** Standard UUID string length (with hyphens) */
+const UUID_LENGTH = 36;
+
+/**
+ * Format run status with color and optional padding
+ */
+function formatRunStatus(status: RunStatus, width?: number): string {
+  const paddedStatus = width ? status.padEnd(width) : status;
+  switch (status) {
+    case "running":
+      return chalk.green(paddedStatus);
+    case "pending":
+      return chalk.yellow(paddedStatus);
+    case "completed":
+      return chalk.blue(paddedStatus);
+    case "failed":
+    case "timeout":
+      return chalk.red(paddedStatus);
+    default:
+      return paddedStatus;
+  }
+}
 
 export const listCommand = new Command()
   .name("list")
@@ -21,16 +45,15 @@ export const listCommand = new Command()
       }
 
       // Calculate column widths
-      const idWidth = 36; // UUID length
       const agentWidth = Math.max(
         5,
         ...activeRuns.map((r) => r.agentName.length),
       );
-      const statusWidth = 7; // "running" is longest
+      const statusWidth = 7; // "running" is longest active status
 
       // Print header
       const header = [
-        "ID".padEnd(idWidth),
+        "ID".padEnd(UUID_LENGTH),
         "AGENT".padEnd(agentWidth),
         "STATUS".padEnd(statusWidth),
         "CREATED",
@@ -39,12 +62,10 @@ export const listCommand = new Command()
 
       // Print rows
       for (const run of activeRuns) {
-        const statusColor =
-          run.status === "running" ? chalk.green : chalk.yellow;
         const row = [
-          run.id.padEnd(idWidth),
+          run.id.padEnd(UUID_LENGTH),
           run.agentName.padEnd(agentWidth),
-          statusColor(run.status.padEnd(statusWidth)),
+          formatRunStatus(run.status, statusWidth),
           formatRelativeTime(run.createdAt),
         ].join("  ");
         console.log(row);

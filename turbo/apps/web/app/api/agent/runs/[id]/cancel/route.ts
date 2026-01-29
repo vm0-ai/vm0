@@ -1,7 +1,7 @@
 import {
   createHandler,
   tsr,
-  TsRestResponse,
+  validationErrorHandler,
 } from "../../../../../../src/lib/ts-rest-handler";
 import { runsCancelContract } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
@@ -79,51 +79,8 @@ const router = tsr.router(runsCancelContract, {
   },
 });
 
-/**
- * Custom error handler to convert Zod validation errors to API error format
- */
-function errorHandler(err: unknown): TsRestResponse | void {
-  if (
-    err &&
-    typeof err === "object" &&
-    "bodyError" in err &&
-    "queryError" in err
-  ) {
-    const validationError = err as {
-      bodyError: { issues: Array<{ path: string[]; message: string }> } | null;
-      queryError: { issues: Array<{ path: string[]; message: string }> } | null;
-    };
-
-    if (validationError.bodyError) {
-      const issue = validationError.bodyError.issues[0];
-      if (issue) {
-        const path = issue.path.join(".");
-        const message = path ? `${path}: ${issue.message}` : issue.message;
-        return TsRestResponse.fromJson(
-          { error: { message, code: "BAD_REQUEST" } },
-          { status: 400 },
-        );
-      }
-    }
-
-    if (validationError.queryError) {
-      const issue = validationError.queryError.issues[0];
-      if (issue) {
-        const path = issue.path.join(".");
-        const message = path ? `${path}: ${issue.message}` : issue.message;
-        return TsRestResponse.fromJson(
-          { error: { message, code: "BAD_REQUEST" } },
-          { status: 400 },
-        );
-      }
-    }
-  }
-
-  return undefined;
-}
-
 const handler = createHandler(runsCancelContract, router, {
-  errorHandler,
+  errorHandler: validationErrorHandler,
 });
 
 export { handler as POST };
