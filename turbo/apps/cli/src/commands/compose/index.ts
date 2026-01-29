@@ -9,14 +9,18 @@ import {
   extractVariableReferences,
   groupVariablesBySource,
 } from "@vm0/core";
-import { getComposeByName, createOrUpdateCompose, getScope } from "../lib/api";
-import { validateAgentCompose } from "../lib/domain/yaml-validator";
+import {
+  getComposeByName,
+  createOrUpdateCompose,
+  getScope,
+} from "../../lib/api";
+import { validateAgentCompose } from "../../lib/domain/yaml-validator";
 import {
   uploadInstructions,
   uploadSkill,
   type SkillUploadResult,
-} from "../lib/storage/system-storage";
-import { isInteractive, promptConfirm } from "../lib/utils/prompt-utils";
+} from "../../lib/storage/system-storage";
+import { isInteractive, promptConfirm } from "../../lib/utils/prompt-utils";
 
 /**
  * Extract secret names from compose content using variable references.

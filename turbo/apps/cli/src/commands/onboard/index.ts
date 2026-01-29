@@ -3,19 +3,19 @@ import chalk from "chalk";
 import { mkdir } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
-import { validateAgentName } from "../lib/domain/yaml-validator.js";
+import { validateAgentName } from "../../lib/domain/yaml-validator.js";
 import {
   isInteractive,
   promptText,
   promptSelect,
   promptPassword,
   promptConfirm,
-} from "../lib/utils/prompt-utils.js";
-import { renderOnboardWelcome } from "../lib/ui/welcome-box.js";
+} from "../../lib/utils/prompt-utils.js";
+import { renderOnboardWelcome } from "../../lib/ui/welcome-box.js";
 import {
   createOnboardProgress,
   type StepStatus,
-} from "../lib/ui/progress-line.js";
+} from "../../lib/ui/progress-line.js";
 import {
   isAuthenticated,
   runAuthFlow,
@@ -26,7 +26,7 @@ import {
   handlePluginError,
   PRIMARY_SKILL_NAME,
   type PluginScope,
-} from "../lib/domain/onboard/index.js";
+} from "../../lib/domain/onboard/index.js";
 import type { ModelProviderType } from "@vm0/core";
 
 const DEFAULT_AGENT_NAME = "my-vm0-agent";

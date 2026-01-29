@@ -1,9 +1,6 @@
-// CI trigger: issue #1522 - simplify model-provider e2e tests
 import { Command } from "commander";
-import chalk from "chalk";
-import { logout, checkAuthStatus, setupToken } from "./lib/api/auth";
-import { loginCommand } from "./commands/auth";
-import { getApiUrl } from "./lib/api/config";
+import { authCommand } from "./commands/auth";
+import { infoCommand } from "./commands/info";
 import { composeCommand } from "./commands/compose";
 import { runCommand } from "./commands/run";
 import { volumeCommand } from "./commands/volume";
@@ -29,44 +26,9 @@ program
   .description("VM0 CLI - Build and run agents with natural language")
   .version(__CLI_VERSION__);
 
-program
-  .command("info")
-  .description("Display environment information")
-  .action(async () => {
-    console.log(chalk.bold("System Information:"));
-    console.log(`Node Version: ${process.version}`);
-    console.log(`Platform: ${process.platform}`);
-    console.log(`Architecture: ${process.arch}`);
-    const apiUrl = await getApiUrl();
-    console.log(`API Host: ${apiUrl}`);
-  });
-
-const authCommand = program.command("auth").description("Authenticate vm0");
-
-authCommand.addCommand(loginCommand);
-
-authCommand
-  .command("logout")
-  .description("Log out of VM0")
-  .action(async () => {
-    await logout();
-  });
-
-authCommand
-  .command("status")
-  .description("Show current authentication status")
-  .action(async () => {
-    await checkAuthStatus();
-  });
-
-authCommand
-  .command("setup-token")
-  .description("Output auth token for CI/CD environments")
-  .action(async () => {
-    await setupToken();
-  });
-
-// Register all subcommands
+// Register all commands
+program.addCommand(authCommand);
+program.addCommand(infoCommand);
 program.addCommand(composeCommand);
 program.addCommand(runCommand);
 program.addCommand(volumeCommand);

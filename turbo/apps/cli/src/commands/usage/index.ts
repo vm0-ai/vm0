@@ -1,8 +1,8 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { getUsage } from "../lib/api";
-import { parseTime } from "../lib/utils/time-parser";
-import { formatDuration } from "../lib/utils/duration-formatter";
+import { getUsage } from "../../lib/api";
+import { parseTime } from "../../lib/utils/time-parser";
+import { formatDuration } from "../../lib/utils/duration-formatter";
 
 /**
  * Maximum time range allowed (30 days in milliseconds)
