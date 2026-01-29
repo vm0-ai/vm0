@@ -356,7 +356,7 @@ export class ScheduleService {
       nextRunAt = new Date(request.atTime);
     }
 
-    const now = new Date();
+    const now = new Date(Date.now());
 
     if (existing) {
       // Update existing schedule
@@ -624,7 +624,7 @@ export class ScheduleService {
       );
     } else if (schedule.atTime) {
       // For one-time schedules, check if atTime is in the future
-      if (schedule.atTime > new Date()) {
+      if (schedule.atTime > new Date(Date.now())) {
         nextRunAt = schedule.atTime;
       } else {
         // Refuse to enable past one-time schedules
@@ -639,7 +639,7 @@ export class ScheduleService {
       .set({
         enabled: true,
         nextRunAt,
-        updatedAt: new Date(),
+        updatedAt: new Date(Date.now()),
       })
       .where(eq(agentSchedules.id, schedule.id))
       .returning();
@@ -672,7 +672,7 @@ export class ScheduleService {
       .update(agentSchedules)
       .set({
         enabled: false,
-        updatedAt: new Date(),
+        updatedAt: new Date(Date.now()),
       })
       .where(
         and(
@@ -696,7 +696,7 @@ export class ScheduleService {
    * Called by cron job every minute
    */
   async executeDueSchedules(): Promise<{ executed: number; skipped: number }> {
-    const now = new Date();
+    const now = new Date(Date.now());
     log.debug(`Checking for due schedules at ${now.toISOString()}`);
 
     // Find enabled schedules where nextRunAt <= now
@@ -798,8 +798,8 @@ export class ScheduleService {
             prompt: schedule.prompt,
             vars: schedule.vars,
             error: error.message,
-            completedAt: new Date(),
-            createdAt: new Date(),
+            completedAt: new Date(Date.now()),
+            createdAt: new Date(Date.now()),
           })
           .returning();
 
@@ -833,7 +833,7 @@ export class ScheduleService {
         prompt: schedule.prompt,
         vars: schedule.vars,
         secretNames: secrets ? Object.keys(secrets) : null,
-        createdAt: new Date(),
+        createdAt: new Date(Date.now()),
       })
       .returning();
 
@@ -879,7 +879,7 @@ export class ScheduleService {
         .update(agentRuns)
         .set({
           status: "failed",
-          completedAt: new Date(),
+          completedAt: new Date(Date.now()),
           error: errorMessage,
         })
         .where(eq(agentRuns.id, run.id));
@@ -892,7 +892,7 @@ export class ScheduleService {
         );
         await globalThis.services.db
           .update(agentSchedules)
-          .set({ lastRunAt: new Date(), nextRunAt })
+          .set({ lastRunAt: new Date(Date.now()), nextRunAt })
           .where(eq(agentSchedules.id, schedule.id));
         log.debug(
           `Cron schedule ${schedule.name} failed, next run at ${nextRunAt?.toISOString()}`,
@@ -901,7 +901,11 @@ export class ScheduleService {
         // One-time schedule: disable after failed execution
         await globalThis.services.db
           .update(agentSchedules)
-          .set({ enabled: false, lastRunAt: new Date(), nextRunAt: null })
+          .set({
+            enabled: false,
+            lastRunAt: new Date(Date.now()),
+            nextRunAt: null,
+          })
           .where(eq(agentSchedules.id, schedule.id));
         log.debug(`One-time schedule ${schedule.name} failed and disabled`);
       }
@@ -922,7 +926,7 @@ export class ScheduleService {
         .update(agentSchedules)
         .set({
           enabled: false,
-          lastRunAt: new Date(),
+          lastRunAt: new Date(Date.now()),
           nextRunAt: null,
         })
         .where(eq(agentSchedules.id, schedule.id));
@@ -934,7 +938,7 @@ export class ScheduleService {
     await globalThis.services.db
       .update(agentSchedules)
       .set({
-        lastRunAt: new Date(),
+        lastRunAt: new Date(Date.now()),
         nextRunAt,
       })
       .where(eq(agentSchedules.id, schedule.id));

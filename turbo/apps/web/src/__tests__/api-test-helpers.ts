@@ -20,6 +20,18 @@ import { GET as getRunRoute } from "../../app/v1/runs/[id]/route";
 import { PUT as upsertModelProviderRoute } from "../../app/api/model-providers/route";
 import { POST as checkpointWebhook } from "../../app/api/webhooks/agent/checkpoints/route";
 import { POST as completeWebhook } from "../../app/api/webhooks/agent/complete/route";
+import {
+  POST as deployScheduleRoute,
+  GET as listSchedulesRoute,
+} from "../../app/api/agent/schedules/route";
+import {
+  GET as getScheduleRoute,
+  DELETE as deleteScheduleRoute,
+} from "../../app/api/agent/schedules/[name]/route";
+import { POST as enableScheduleRoute } from "../../app/api/agent/schedules/[name]/enable/route";
+import { POST as disableScheduleRoute } from "../../app/api/agent/schedules/[name]/disable/route";
+import { GET as getScheduleRunsRoute } from "../../app/api/agent/schedules/[name]/runs/route";
+import type { ScheduleResponse } from "../lib/schedule/schedule-service";
 
 /**
  * Helper to create a NextRequest for testing.
@@ -395,4 +407,230 @@ export async function completeTestRun(
   }
 
   return checkpoint;
+}
+
+// ============================================================================
+// Schedule Test Helpers
+// ============================================================================
+
+/**
+ * Create a test schedule via API route handler.
+ *
+ * @param composeId - The compose ID to attach the schedule to
+ * @param name - The schedule name
+ * @param options - Optional schedule parameters
+ * @returns The created schedule response
+ */
+export async function createTestSchedule(
+  composeId: string,
+  name: string,
+  options?: {
+    cronExpression?: string;
+    atTime?: string;
+    timezone?: string;
+    prompt?: string;
+    vars?: Record<string, string>;
+    secrets?: Record<string, string>;
+  },
+): Promise<ScheduleResponse> {
+  // Default to cron if neither trigger specified
+  const trigger =
+    options?.cronExpression || options?.atTime
+      ? {}
+      : { cronExpression: "0 0 * * *" };
+
+  const request = createTestRequest(
+    "http://localhost:3000/api/agent/schedules",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        composeId,
+        name,
+        timezone: options?.timezone ?? "UTC",
+        prompt: options?.prompt ?? "Test schedule prompt",
+        cronExpression: options?.cronExpression,
+        atTime: options?.atTime,
+        vars: options?.vars,
+        secrets: options?.secrets,
+        ...trigger,
+      }),
+    },
+  );
+  const response = await deployScheduleRoute(request);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `Failed to create schedule: ${error.error?.message || response.status}`,
+    );
+  }
+  const data = await response.json();
+  return data.schedule;
+}
+
+/**
+ * Get a test schedule by name via API route handler.
+ *
+ * @param composeId - The compose ID
+ * @param name - The schedule name
+ * @returns The schedule response
+ */
+export async function getTestSchedule(
+  composeId: string,
+  name: string,
+): Promise<ScheduleResponse> {
+  const request = createTestRequest(
+    `http://localhost:3000/api/agent/schedules/${encodeURIComponent(name)}?composeId=${composeId}`,
+  );
+  const response = await getScheduleRoute(request);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `Failed to get schedule: ${error.error?.message || response.status}`,
+    );
+  }
+  return response.json();
+}
+
+/**
+ * List all schedules for the current user via API route handler.
+ *
+ * @returns Array of schedule responses
+ */
+export async function listTestSchedules(): Promise<ScheduleResponse[]> {
+  const request = createTestRequest(
+    "http://localhost:3000/api/agent/schedules",
+  );
+  const response = await listSchedulesRoute(request);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `Failed to list schedules: ${error.error?.message || response.status}`,
+    );
+  }
+  const data = await response.json();
+  return data.schedules;
+}
+
+/**
+ * Enable a test schedule via API route handler.
+ *
+ * @param composeId - The compose ID
+ * @param name - The schedule name
+ * @returns The updated schedule response
+ */
+export async function enableTestSchedule(
+  composeId: string,
+  name: string,
+): Promise<ScheduleResponse> {
+  const request = createTestRequest(
+    `http://localhost:3000/api/agent/schedules/${encodeURIComponent(name)}/enable`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ composeId }),
+    },
+  );
+  const response = await enableScheduleRoute(request, {
+    params: Promise.resolve({ name }),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `Failed to enable schedule: ${error.error?.message || response.status}`,
+    );
+  }
+  return response.json();
+}
+
+/**
+ * Disable a test schedule via API route handler.
+ *
+ * @param composeId - The compose ID
+ * @param name - The schedule name
+ * @returns The updated schedule response
+ */
+export async function disableTestSchedule(
+  composeId: string,
+  name: string,
+): Promise<ScheduleResponse> {
+  const request = createTestRequest(
+    `http://localhost:3000/api/agent/schedules/${encodeURIComponent(name)}/disable`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ composeId }),
+    },
+  );
+  const response = await disableScheduleRoute(request, {
+    params: Promise.resolve({ name }),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `Failed to disable schedule: ${error.error?.message || response.status}`,
+    );
+  }
+  return response.json();
+}
+
+/**
+ * Delete a test schedule via API route handler.
+ *
+ * @param composeId - The compose ID
+ * @param name - The schedule name
+ */
+export async function deleteTestSchedule(
+  composeId: string,
+  name: string,
+): Promise<void> {
+  const request = createTestRequest(
+    `http://localhost:3000/api/agent/schedules/${encodeURIComponent(name)}?composeId=${composeId}`,
+    { method: "DELETE" },
+  );
+  const response = await deleteScheduleRoute(request);
+  if (!response.ok && response.status !== 204) {
+    const error = await response.json();
+    throw new Error(
+      `Failed to delete schedule: ${error.error?.message || response.status}`,
+    );
+  }
+}
+
+/**
+ * Get runs for a test schedule via API route handler.
+ *
+ * @param composeId - The compose ID
+ * @param name - The schedule name
+ * @param limit - Optional limit (default 5, max 100)
+ * @returns Object with runs array
+ */
+export async function getTestScheduleRuns(
+  composeId: string,
+  name: string,
+  limit?: number,
+): Promise<{
+  runs: Array<{
+    id: string;
+    status: string;
+    createdAt: string;
+    completedAt: string | null;
+    error: string | null;
+  }>;
+}> {
+  const params = new URLSearchParams({ composeId });
+  if (limit !== undefined) {
+    params.set("limit", String(limit));
+  }
+  const request = createTestRequest(
+    `http://localhost:3000/api/agent/schedules/${encodeURIComponent(name)}/runs?${params}`,
+  );
+  const response = await getScheduleRunsRoute(request);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `Failed to get schedule runs: ${error.error?.message || response.status}`,
+    );
+  }
+  return response.json();
 }
