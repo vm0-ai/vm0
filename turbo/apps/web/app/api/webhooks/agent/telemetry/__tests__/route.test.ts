@@ -36,21 +36,6 @@ vi.mock("@e2b/code-interpreter");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 
-// Mock runner group validation
-vi.mock(
-  "../../../../../../src/lib/scope/scope-service",
-  async (importOriginal) => {
-    const original =
-      await importOriginal<
-        typeof import("../../../../../../src/lib/scope/scope-service")
-      >();
-    return {
-      ...original,
-      validateRunnerGroupScope: vi.fn().mockResolvedValue(undefined),
-    };
-  },
-);
-
 import {
   mockClerk,
   clearClerkMock,
@@ -58,14 +43,15 @@ import {
 import { Axiom } from "@axiomhq/js";
 import * as axiomModule from "../../../../../../src/lib/axiom";
 import * as metricsModule from "../../../../../../src/lib/metrics";
+import type { MockInstance } from "vitest";
 
 // Spy for ingestToAxiom - will be set up in beforeEach
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let ingestToAxiomSpy: any;
+let ingestToAxiomSpy: MockInstance<typeof axiomModule.ingestToAxiom>;
 
 // Spy for recordSandboxInternalOperation - will be set up in beforeEach
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let recordSandboxInternalOperationSpy: any;
+let recordSandboxInternalOperationSpy: MockInstance<
+  typeof metricsModule.recordSandboxInternalOperation
+>;
 
 describe("POST /api/webhooks/agent/telemetry", () => {
   const testUserId = `test-user-${Date.now()}-${process.pid}`;
