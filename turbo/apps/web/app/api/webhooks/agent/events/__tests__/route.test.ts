@@ -3,129 +3,63 @@ import {
   it,
   expect,
   beforeEach,
-  afterEach,
-  afterAll,
   vi,
+  type MockInstance,
 } from "vitest";
 import { POST } from "../route";
-import { POST as createCompose } from "../../../../agent/composes/route";
-import { NextRequest } from "next/server";
-import { initServices } from "../../../../../../src/lib/init-services";
-import { agentRuns } from "../../../../../../src/db/schema/agent-run";
-import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
-import { eq } from "drizzle-orm";
-import { randomUUID } from "crypto";
 import {
   createTestRequest,
-  createDefaultComposeConfig,
+  createTestCompose,
+  createTestRun,
   createTestSandboxToken,
 } from "../../../../../../src/__tests__/api-test-helpers";
-
-// Mock Clerk auth
-vi.mock("@clerk/nextjs/server", () => ({
-  auth: vi.fn(),
-}));
-
-// Mock Axiom SDK (external)
-vi.mock("@axiomhq/js");
-
 import {
-  mockClerk,
-  clearClerkMock,
-} from "../../../../../../src/__tests__/clerk-mock";
-import { Axiom } from "@axiomhq/js";
+  testContext,
+  type UserContext,
+} from "../../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { randomUUID } from "crypto";
 import * as axiomModule from "../../../../../../src/lib/axiom";
 
-// Spy for ingestToAxiom - will be set up in beforeEach
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let ingestToAxiomSpy: any;
+// Only mock external services
+vi.mock("@clerk/nextjs/server");
+vi.mock("@e2b/code-interpreter");
+vi.mock("@aws-sdk/client-s3");
+vi.mock("@aws-sdk/s3-request-presigner");
+vi.mock("@axiomhq/js");
+
+const context = testContext();
 
 describe("POST /api/webhooks/agent/events", () => {
-  // Generate unique IDs for this test run to avoid conflicts
-  const testUserId = `test-user-${Date.now()}-${process.pid}`;
-  const testAgentName = `test-agent-events-${Date.now()}`;
-  const testRunId = randomUUID(); // UUID for agent run
-  let testVersionId: string;
+  let user: UserContext;
+  let testComposeId: string;
+  let testRunId: string;
   let testToken: string;
+  let ingestToAxiomSpy: MockInstance<typeof axiomModule.ingestToAxiom>;
 
   beforeEach(async () => {
-    // Clear all mocks
     vi.clearAllMocks();
+    context.setupMocks();
+    user = await context.setupUser();
 
-    // Initialize services
-    initServices();
+    // Create test compose via API
+    const { composeId } = await createTestCompose(`agent-events-${Date.now()}`);
+    testComposeId = composeId;
+
+    // Create test run via API (status automatically set to running)
+    const { runId } = await createTestRun(testComposeId, "Test prompt");
+    testRunId = runId;
 
     // Generate JWT token for sandbox auth
-    testToken = await createTestSandboxToken(testUserId, testRunId);
-
-    // Mock Clerk auth to return test user (needed for compose API)
-    mockClerk({ userId: testUserId });
-
-    // Setup Axiom SDK mock
-    const mockAxiomClient = {
-      query: vi.fn().mockResolvedValue({ matches: [] }),
-      ingest: vi.fn(),
-      flush: vi.fn().mockResolvedValue(undefined),
-    };
-    vi.mocked(Axiom).mockImplementation(
-      () => mockAxiomClient as unknown as Axiom,
-    );
+    testToken = await createTestSandboxToken(user.userId, testRunId);
 
     // Setup spy on ingestToAxiom - returns true by default
     ingestToAxiomSpy = vi
       .spyOn(axiomModule, "ingestToAxiom")
       .mockResolvedValue(true);
 
-    // Clean up any existing test data
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.id, testRunId));
-
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.userId, testUserId));
-
-    // Create test compose via API endpoint
-    const config = createDefaultComposeConfig(testAgentName);
-    const request = createTestRequest(
-      "http://localhost:3000/api/agent/composes",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: config }),
-      },
-    );
-
-    const response = await createCompose(request);
-    const data = await response.json();
-    testVersionId = data.versionId;
-
     // Reset auth mock for webhook tests (which use token auth)
     mockClerk({ userId: null });
-  });
-
-  afterEach(async () => {
-    clearClerkMock();
-    // Clean up test data after each test
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.id, testRunId));
-
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.userId, testUserId));
-  });
-
-  afterAll(async () => {
-    // Clean up database connections
   });
 
   // ============================================
@@ -134,13 +68,11 @@ describe("POST /api/webhooks/agent/events", () => {
 
   describe("Authentication", () => {
     it("should reject webhook without authentication", async () => {
-      const request = new NextRequest(
+      const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/events",
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             runId: testRunId,
             events: [
@@ -164,10 +96,9 @@ describe("POST /api/webhooks/agent/events", () => {
     });
 
     it("should reject webhook with invalid token", async () => {
-      // Use an invalid token format
       const invalidToken = "invalid-token-not-jwt";
 
-      const request = new NextRequest(
+      const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/events",
         {
           method: "POST",
@@ -201,7 +132,7 @@ describe("POST /api/webhooks/agent/events", () => {
 
   describe("Validation", () => {
     it("should reject webhook without runId", async () => {
-      const request = new NextRequest(
+      const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/events",
         {
           method: "POST",
@@ -231,7 +162,7 @@ describe("POST /api/webhooks/agent/events", () => {
     });
 
     it("should reject webhook without events array", async () => {
-      const request = new NextRequest(
+      const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/events",
         {
           method: "POST",
@@ -254,7 +185,7 @@ describe("POST /api/webhooks/agent/events", () => {
     });
 
     it("should reject webhook with empty events array", async () => {
-      const request = new NextRequest(
+      const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/events",
         {
           method: "POST",
@@ -283,14 +214,14 @@ describe("POST /api/webhooks/agent/events", () => {
 
   describe("Authorization", () => {
     it("should reject webhook for non-existent run", async () => {
-      const nonExistentRunId = randomUUID(); // Use a valid UUID that doesn't exist
+      const nonExistentRunId = randomUUID();
       // Generate JWT with the non-existent runId
       const tokenForNonExistentRun = await createTestSandboxToken(
-        testUserId,
+        user.userId,
         nonExistentRunId,
       );
 
-      const request = new NextRequest(
+      const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/events",
         {
           method: "POST",
@@ -320,28 +251,32 @@ describe("POST /api/webhooks/agent/events", () => {
     });
 
     it("should reject webhook for run owned by different user", async () => {
-      const otherUserId = `other-user-${Date.now()}-${process.pid}`;
+      // Create another user and their compose/run
+      await context.setupUser({ prefix: "other" });
+      const { composeId: otherComposeId } = await createTestCompose(
+        `other-agent-events-${Date.now()}`,
+      );
+      const { runId: otherRunId } = await createTestRun(
+        otherComposeId,
+        "Other user prompt",
+      );
 
-      // Create run owned by different user
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId,
-        userId: otherUserId, // different user
-        agentComposeVersionId: testVersionId,
-        status: "running",
-        prompt: "Test prompt",
-        createdAt: new Date(),
-      });
+      // Generate token for original user but try to access other user's run
+      const tokenForOtherRun = await createTestSandboxToken(
+        user.userId,
+        otherRunId,
+      );
 
-      const request = new NextRequest(
+      const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/events",
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
+            Authorization: `Bearer ${tokenForOtherRun}`,
           },
           body: JSON.stringify({
-            runId: testRunId,
+            runId: otherRunId,
             events: [
               {
                 type: "test",
@@ -368,17 +303,7 @@ describe("POST /api/webhooks/agent/events", () => {
 
   describe("Success", () => {
     it("should accept valid webhook and ingest to Axiom", async () => {
-      // Create agent run owned by user
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId,
-        userId: testUserId,
-        agentComposeVersionId: testVersionId,
-        status: "running",
-        prompt: "Test prompt",
-        createdAt: new Date(),
-      });
-
-      const request = new NextRequest(
+      const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/events",
         {
           method: "POST",
@@ -422,13 +347,13 @@ describe("POST /api/webhooks/agent/events", () => {
         expect.arrayContaining([
           expect.objectContaining({
             runId: testRunId,
-            userId: testUserId,
+            userId: user.userId,
             sequenceNumber: 0,
             eventType: "tool_use",
           }),
           expect.objectContaining({
             runId: testRunId,
-            userId: testUserId,
+            userId: user.userId,
             sequenceNumber: 1,
             eventType: "tool_result",
           }),
@@ -443,16 +368,6 @@ describe("POST /api/webhooks/agent/events", () => {
 
   describe("Data Integrity", () => {
     it("should store event data correctly in Axiom", async () => {
-      // Setup
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId,
-        userId: testUserId,
-        agentComposeVersionId: testVersionId,
-        status: "running",
-        prompt: "Test prompt",
-        createdAt: new Date(),
-      });
-
       const testEvents = [
         {
           type: "thinking",
@@ -482,7 +397,7 @@ describe("POST /api/webhooks/agent/events", () => {
         },
       ];
 
-      const request = new NextRequest(
+      const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/events",
         {
           method: "POST",
@@ -527,16 +442,6 @@ describe("POST /api/webhooks/agent/events", () => {
 
   describe("Batch Processing", () => {
     it("should handle multiple events in single request", async () => {
-      // Setup
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId,
-        userId: testUserId,
-        agentComposeVersionId: testVersionId,
-        status: "running",
-        prompt: "Test prompt",
-        createdAt: new Date(),
-      });
-
       // Create 15 events with client-provided sequence numbers (0-based)
       const events = Array.from({ length: 15 }, (_, i) => ({
         type: `event_${i}`,
@@ -545,7 +450,7 @@ describe("POST /api/webhooks/agent/events", () => {
         data: { index: i, message: `Event number ${i}` },
       }));
 
-      const request = new NextRequest(
+      const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/events",
         {
           method: "POST",

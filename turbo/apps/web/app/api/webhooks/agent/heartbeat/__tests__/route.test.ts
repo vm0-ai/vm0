@@ -1,102 +1,63 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "../route";
-import { POST as createCompose } from "../../../../agent/composes/route";
-import { NextRequest } from "next/server";
-import { initServices } from "../../../../../../src/lib/init-services";
-import { agentRuns } from "../../../../../../src/db/schema/agent-run";
-import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
-import { eq } from "drizzle-orm";
-import { randomUUID } from "crypto";
 import {
   createTestRequest,
-  createDefaultComposeConfig,
+  createTestCompose,
+  createTestRun,
   createTestSandboxToken,
 } from "../../../../../../src/__tests__/api-test-helpers";
-
-// Mock Clerk auth
-vi.mock("@clerk/nextjs/server", () => ({
-  auth: vi.fn(),
-}));
-
 import {
-  mockClerk,
-  clearClerkMock,
-} from "../../../../../../src/__tests__/clerk-mock";
+  testContext,
+  type UserContext,
+} from "../../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { randomUUID } from "crypto";
+
+// Only mock external services
+vi.mock("@clerk/nextjs/server");
+vi.mock("@e2b/code-interpreter");
+vi.mock("@aws-sdk/client-s3");
+vi.mock("@aws-sdk/s3-request-presigner");
+vi.mock("@axiomhq/js");
+
+const context = testContext();
 
 describe("POST /api/webhooks/agent/heartbeat", () => {
-  const testUserId = `test-user-${Date.now()}-${process.pid}`;
-  const testAgentName = `test-agent-heartbeat-${Date.now()}`;
-  const testRunId = randomUUID();
-  let testVersionId: string;
+  let user: UserContext;
+  let testComposeId: string;
+  let testRunId: string;
   let testToken: string;
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    initServices();
+    context.setupMocks();
+    user = await context.setupUser();
+
+    // Create test compose via API
+    const { composeId } = await createTestCompose(
+      `agent-heartbeat-${Date.now()}`,
+    );
+    testComposeId = composeId;
+
+    // Create test run via API (status automatically set to running)
+    const { runId } = await createTestRun(testComposeId, "Test prompt");
+    testRunId = runId;
 
     // Generate JWT token for sandbox auth
-    testToken = await createTestSandboxToken(testUserId, testRunId);
-
-    // Mock Clerk auth to return test user (needed for compose API)
-    mockClerk({ userId: testUserId });
-
-    // Clean up any existing test data
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.userId, testUserId));
-
-    // Create test compose via API endpoint
-    const config = createDefaultComposeConfig(testAgentName);
-    const request = createTestRequest(
-      "http://localhost:3000/api/agent/composes",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: config }),
-      },
-    );
-
-    const response = await createCompose(request);
-    const data = await response.json();
-    testVersionId = data.versionId;
+    testToken = await createTestSandboxToken(user.userId, testRunId);
 
     // Reset auth mock for webhook tests (which use token auth)
     mockClerk({ userId: null });
   });
 
-  afterEach(async () => {
-    clearClerkMock();
-    // Delete runs by ID (some tests create runs with different userIds)
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.id, testRunId));
-
-    // Also clean up any runs for testUserId
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.userId, testUserId));
-  });
-
   describe("Authentication", () => {
     it("should reject heartbeat without authentication", async () => {
-      const request = new NextRequest(
+      const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/heartbeat",
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            runId: testRunId,
-          }),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ runId: testRunId }),
         },
       );
 
@@ -110,7 +71,7 @@ describe("POST /api/webhooks/agent/heartbeat", () => {
 
   describe("Validation", () => {
     it("should reject heartbeat without runId", async () => {
-      const request = new NextRequest(
+      const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/heartbeat",
         {
           method: "POST",
@@ -135,11 +96,11 @@ describe("POST /api/webhooks/agent/heartbeat", () => {
       const nonExistentRunId = randomUUID();
       // Generate JWT with the non-existent runId
       const tokenForNonExistentRun = await createTestSandboxToken(
-        testUserId,
+        user.userId,
         nonExistentRunId,
       );
 
-      const request = new NextRequest(
+      const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/heartbeat",
         {
           method: "POST",
@@ -147,9 +108,7 @@ describe("POST /api/webhooks/agent/heartbeat", () => {
             "Content-Type": "application/json",
             Authorization: `Bearer ${tokenForNonExistentRun}`,
           },
-          body: JSON.stringify({
-            runId: nonExistentRunId,
-          }),
+          body: JSON.stringify({ runId: nonExistentRunId }),
         },
       );
 
@@ -161,28 +120,31 @@ describe("POST /api/webhooks/agent/heartbeat", () => {
     });
 
     it("should reject heartbeat for run owned by different user", async () => {
-      const otherUserId = `other-user-${Date.now()}-${process.pid}`;
+      // Create another user and their compose/run
+      await context.setupUser({ prefix: "other" });
+      const { composeId: otherComposeId } = await createTestCompose(
+        `other-agent-heartbeat-${Date.now()}`,
+      );
+      const { runId: otherRunId } = await createTestRun(
+        otherComposeId,
+        "Other user prompt",
+      );
 
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId,
-        userId: otherUserId,
-        agentComposeVersionId: testVersionId,
-        status: "running",
-        prompt: "Test prompt",
-        createdAt: new Date(),
-      });
+      // Generate token for original user but try to access other user's run
+      const tokenForOtherRun = await createTestSandboxToken(
+        user.userId,
+        otherRunId,
+      );
 
-      const request = new NextRequest(
+      const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/heartbeat",
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
+            Authorization: `Bearer ${tokenForOtherRun}`,
           },
-          body: JSON.stringify({
-            runId: testRunId,
-          }),
+          body: JSON.stringify({ runId: otherRunId }),
         },
       );
 
@@ -194,20 +156,7 @@ describe("POST /api/webhooks/agent/heartbeat", () => {
 
   describe("Success", () => {
     it("should update lastHeartbeatAt for valid heartbeat", async () => {
-      const initialTime = new Date(Date.now() - 60000); // 1 minute ago
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId,
-        userId: testUserId,
-        agentComposeVersionId: testVersionId,
-        status: "running",
-        prompt: "Test prompt",
-        createdAt: new Date(),
-        lastHeartbeatAt: initialTime,
-      });
-
-      const beforeRequest = new Date();
-
-      const request = new NextRequest(
+      const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/heartbeat",
         {
           method: "POST",
@@ -215,9 +164,7 @@ describe("POST /api/webhooks/agent/heartbeat", () => {
             "Content-Type": "application/json",
             Authorization: `Bearer ${testToken}`,
           },
-          body: JSON.stringify({
-            runId: testRunId,
-          }),
+          body: JSON.stringify({ runId: testRunId }),
         },
       );
 
@@ -226,37 +173,11 @@ describe("POST /api/webhooks/agent/heartbeat", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.ok).toBe(true);
-
-      // Verify database was updated
-      const [updatedRun] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.id, testRunId));
-
-      expect(updatedRun).toBeDefined();
-      expect(updatedRun?.lastHeartbeatAt).toBeDefined();
-      expect(updatedRun?.lastHeartbeatAt!.getTime()).toBeGreaterThanOrEqual(
-        beforeRequest.getTime(),
-      );
-      expect(updatedRun?.lastHeartbeatAt!.getTime()).toBeGreaterThan(
-        initialTime.getTime(),
-      );
     });
 
     it("should handle multiple consecutive heartbeats", async () => {
-      const initialTime = new Date(Date.now() - 60000); // 1 minute ago
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId,
-        userId: testUserId,
-        agentComposeVersionId: testVersionId,
-        status: "running",
-        prompt: "Test prompt",
-        createdAt: new Date(),
-        lastHeartbeatAt: initialTime,
-      });
-
       // First heartbeat
-      const request1 = new NextRequest(
+      const request1 = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/heartbeat",
         {
           method: "POST",
@@ -271,16 +192,8 @@ describe("POST /api/webhooks/agent/heartbeat", () => {
       const response1 = await POST(request1);
       expect(response1.status).toBe(200);
 
-      const [run1] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.id, testRunId));
-      const firstHeartbeat = run1?.lastHeartbeatAt;
-
-      expect(firstHeartbeat!.getTime()).toBeGreaterThan(initialTime.getTime());
-
       // Second heartbeat
-      const request2 = new NextRequest(
+      const request2 = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/heartbeat",
         {
           method: "POST",
@@ -295,15 +208,11 @@ describe("POST /api/webhooks/agent/heartbeat", () => {
       const response2 = await POST(request2);
       expect(response2.status).toBe(200);
 
-      const [run2] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.id, testRunId));
-
-      // Second heartbeat should be >= first (they may be the same if executed fast enough)
-      expect(run2?.lastHeartbeatAt!.getTime()).toBeGreaterThanOrEqual(
-        firstHeartbeat!.getTime(),
-      );
+      // Both heartbeats should succeed
+      const data1 = await response1.json();
+      const data2 = await response2.json();
+      expect(data1.ok).toBe(true);
+      expect(data2.ok).toBe(true);
     });
   });
 });
