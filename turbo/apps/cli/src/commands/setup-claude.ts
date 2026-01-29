@@ -4,9 +4,9 @@ import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import {
   fetchSkillContent,
+  handleFetchError,
   SKILL_DIR,
   SKILL_NAME,
-  SKILL_URL,
 } from "../lib/domain/onboard/index.js";
 
 export const setupClaudeCommand = new Command()
@@ -23,14 +23,7 @@ export const setupClaudeCommand = new Command()
     try {
       content = await fetchSkillContent();
     } catch (error) {
-      console.error(
-        chalk.red(`Failed to fetch skill from GitHub: ${SKILL_URL}`),
-      );
-      if (error instanceof Error) {
-        console.error(chalk.red(error.message));
-      }
-      console.error(chalk.dim("Please check your network connection."));
-      process.exit(1);
+      handleFetchError(error);
     }
 
     // Create directory

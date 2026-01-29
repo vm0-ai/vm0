@@ -1,11 +1,24 @@
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
+import chalk from "chalk";
 
 export const SKILL_DIR = ".claude/skills/vm0-cli";
 export const SKILL_FILE = "SKILL.md";
 export const SKILL_NAME = "vm0-cli";
 export const SKILL_URL =
   "https://raw.githubusercontent.com/vm0-ai/vm0-skills/main/vm0-cli/SKILL.md";
+
+/**
+ * Handle fetch error with user-friendly message and exit
+ */
+export function handleFetchError(error: unknown): never {
+  console.error(chalk.red(`Failed to fetch skill from GitHub: ${SKILL_URL}`));
+  if (error instanceof Error) {
+    console.error(chalk.red(error.message));
+  }
+  console.error(chalk.dim("Please check your network connection."));
+  process.exit(1);
+}
 
 /**
  * Fetch the vm0-cli skill content from GitHub

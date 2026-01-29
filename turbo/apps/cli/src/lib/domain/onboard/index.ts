@@ -9,7 +9,7 @@ export {
 export {
   installClaudeSkill,
   fetchSkillContent,
+  handleFetchError,
   SKILL_DIR,
   SKILL_NAME,
-  SKILL_URL,
 } from "./claude-setup.js";

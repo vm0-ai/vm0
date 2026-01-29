@@ -9,6 +9,7 @@ import {
   SKILL_URL,
   fetchSkillContent,
   installClaudeSkill,
+  handleFetchError,
 } from "../claude-setup.js";
 
 const MOCK_SKILL_CONTENT = `---
@@ -91,6 +92,55 @@ describe("claude-setup", () => {
       vi.spyOn(global, "fetch").mockRejectedValue(new Error("Network error"));
 
       await expect(fetchSkillContent()).rejects.toThrow("Network error");
+    });
+  });
+
+  describe("handleFetchError", () => {
+    const originalExit = process.exit;
+    let mockExit: ReturnType<typeof vi.fn>;
+    let mockConsoleError: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      mockExit = vi.fn();
+      process.exit = mockExit as unknown as typeof process.exit;
+      mockConsoleError = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      process.exit = originalExit;
+    });
+
+    it("should log error message with URL", () => {
+      handleFetchError(new Error("test"));
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(SKILL_URL),
+      );
+    });
+
+    it("should log error message when error is Error instance", () => {
+      handleFetchError(new Error("Network failed"));
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Network failed"),
+      );
+    });
+
+    it("should log network connection hint", () => {
+      handleFetchError(new Error("test"));
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("network connection"),
+      );
+    });
+
+    it("should exit with code 1", () => {
+      handleFetchError(new Error("test"));
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should handle non-Error objects", () => {
+      handleFetchError("string error");
+      expect(mockExit).toHaveBeenCalledWith(1);
     });
   });
 

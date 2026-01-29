@@ -21,8 +21,8 @@ import {
   getProviderChoices,
   setupModelProvider,
   installClaudeSkill,
+  handleFetchError,
   SKILL_NAME,
-  SKILL_URL,
 } from "../lib/domain/onboard/index.js";
 import type { ModelProviderType } from "@vm0/core";
 
@@ -201,12 +201,7 @@ async function handleSkillInstallation(
       chalk.green(`✓ Installed ${SKILL_NAME} skill to ${skillResult.skillDir}`),
     );
   } catch (error) {
-    console.error(chalk.red(`Failed to fetch skill from GitHub: ${SKILL_URL}`));
-    if (error instanceof Error) {
-      console.error(chalk.red(error.message));
-    }
-    console.error(chalk.dim("Please check your network connection."));
-    process.exit(1);
+    handleFetchError(error);
   }
 
   ctx.updateProgress(3, "completed");

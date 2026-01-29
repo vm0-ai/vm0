@@ -21,13 +21,10 @@ vi.mock("os", async (importOriginal) => {
   };
 });
 
-// Mock fetchSkillContent to avoid real network calls
-vi.mock("../../lib/domain/onboard/index.js", async (importOriginal) => {
-  const original =
-    await importOriginal<typeof import("../../lib/domain/onboard/index.js")>();
-  return {
-    ...original,
-    fetchSkillContent: vi.fn().mockResolvedValue(`---
+import prompts from "prompts";
+import { onboardCommand } from "../onboard.js";
+
+const MOCK_SKILL_CONTENT = `---
 name: vm0-cli
 description: VM0 CLI for building and running AI agents in secure sandboxes.
 vm0_secrets:
@@ -41,37 +38,45 @@ Build and run AI agents in secure sandboxed environments.
 ## When to Use
 
 Use this skill when you need to install and set up the VM0 CLI.
-`),
-  };
-});
-
-import prompts from "prompts";
-import { onboardCommand } from "../onboard.js";
+`;
 
 describe("onboard command", () => {
   let tempDir: string;
   let originalCwd: string;
   let originalIsTTY: boolean | undefined;
-
-  const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
-    throw new Error("process.exit called");
-  }) as never);
-  const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
-  const mockConsoleClear = vi
-    .spyOn(console, "clear")
-    .mockImplementation(() => {});
-  const mockConsoleError = vi
-    .spyOn(console, "error")
-    .mockImplementation(() => {});
-  const mockStdoutWrite = vi
-    .spyOn(process.stdout, "write")
-    .mockImplementation(() => true);
+  const originalExit = process.exit;
+  let mockExit: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
+
+    // Mock process.exit to throw (simulates process termination)
+    mockExit = vi.fn().mockImplementation(() => {
+      throw new Error("process.exit called");
+    });
+    process.exit = mockExit as unknown as typeof process.exit;
+
+    // Mock console
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "clear").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     tempDir = mkdtempSync(path.join(os.tmpdir(), "test-onboard-"));
     originalCwd = process.cwd();
     process.chdir(tempDir);
+
+    // Mock fetch for GitHub skill content only, let MSW handle API calls
+    const originalFetch = global.fetch;
+    vi.spyOn(global, "fetch").mockImplementation(async (input, init) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("raw.githubusercontent.com")) {
+        return {
+          ok: true,
+          text: () => Promise.resolve(MOCK_SKILL_CONTENT),
+        } as Response;
+      }
+      return originalFetch(input, init);
+    });
 
     // Mock homedir to return temp directory for config isolation
     vi.mocked(os.homedir).mockReturnValue(tempDir);
@@ -172,12 +177,9 @@ describe("onboard command", () => {
   afterEach(() => {
     process.chdir(originalCwd);
     rmSync(tempDir, { recursive: true, force: true });
-    mockExit.mockClear();
-    mockConsoleLog.mockClear();
-    mockConsoleClear.mockClear();
-    mockConsoleError.mockClear();
-    mockStdoutWrite.mockClear();
+    process.exit = originalExit;
     vi.unstubAllEnvs();
+    vi.restoreAllMocks();
 
     // Restore TTY state
     Object.defineProperty(process.stdout, "isTTY", {
@@ -191,7 +193,7 @@ describe("onboard command", () => {
     it("should display welcome box in interactive mode", async () => {
       await onboardCommand.parseAsync(["node", "cli", "-y"]);
 
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      const logCalls = vi.mocked(console.log).mock.calls.flat().join("\n");
       expect(logCalls).toContain("Welcome to VM0!");
     });
   });
@@ -200,7 +202,7 @@ describe("onboard command", () => {
     it("should display progress line with steps", async () => {
       await onboardCommand.parseAsync(["node", "cli", "-y"]);
 
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      const logCalls = vi.mocked(console.log).mock.calls.flat().join("\n");
       expect(logCalls).toContain("Authentication");
       expect(logCalls).toContain("Model Provider Setup");
       expect(logCalls).toContain("Create Agent");
@@ -212,7 +214,7 @@ describe("onboard command", () => {
       await onboardCommand.parseAsync(["node", "cli", "-y"]);
 
       // Should not show auth required message
-      expect(mockConsoleLog).not.toHaveBeenCalledWith(
+      expect(console.log).not.toHaveBeenCalledWith(
         expect.stringContaining("Authentication required"),
       );
     });
@@ -229,11 +231,12 @@ describe("onboard command", () => {
         configurable: true,
       });
 
-      await expect(async () => {
-        await onboardCommand.parseAsync(["node", "cli", "-y"]);
-      }).rejects.toThrow("process.exit called");
+      await expect(
+        onboardCommand.parseAsync(["node", "cli", "-y"]),
+      ).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleError).toHaveBeenCalledWith(
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(console.error).toHaveBeenCalledWith(
         expect.stringContaining("Not authenticated"),
       );
     });
@@ -244,7 +247,7 @@ describe("onboard command", () => {
       await onboardCommand.parseAsync(["node", "cli", "-y"]);
 
       // Should not show model provider setup required message
-      expect(mockConsoleLog).not.toHaveBeenCalledWith(
+      expect(console.log).not.toHaveBeenCalledWith(
         expect.stringContaining("Model provider setup required"),
       );
     });
@@ -263,11 +266,12 @@ describe("onboard command", () => {
         configurable: true,
       });
 
-      await expect(async () => {
-        await onboardCommand.parseAsync(["node", "cli", "-y"]);
-      }).rejects.toThrow("process.exit called");
+      await expect(
+        onboardCommand.parseAsync(["node", "cli", "-y"]),
+      ).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleError).toHaveBeenCalledWith(
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(console.error).toHaveBeenCalledWith(
         expect.stringContaining("No model provider configured"),
       );
     });
@@ -296,27 +300,29 @@ describe("onboard command", () => {
       const { mkdir } = await import("fs/promises");
       await mkdir(path.join(tempDir, "my-vm0-agent"));
 
-      await expect(async () => {
-        await onboardCommand.parseAsync(["node", "cli", "-y"]);
-      }).rejects.toThrow("process.exit called");
+      await expect(
+        onboardCommand.parseAsync(["node", "cli", "-y"]),
+      ).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleError).toHaveBeenCalledWith(
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(console.error).toHaveBeenCalledWith(
         expect.stringContaining("my-vm0-agent/ already exists"),
       );
     });
 
     it("should exit with error for invalid agent name", async () => {
-      await expect(async () => {
-        await onboardCommand.parseAsync([
+      await expect(
+        onboardCommand.parseAsync([
           "node",
           "cli",
           "-y",
           "--name",
           "ab", // Too short
-        ]);
-      }).rejects.toThrow("process.exit called");
+        ]),
+      ).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleError).toHaveBeenCalledWith(
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(console.error).toHaveBeenCalledWith(
         expect.stringContaining("Invalid agent name"),
       );
     });
@@ -367,7 +373,7 @@ describe("onboard command", () => {
     it("should display next steps after completion", async () => {
       await onboardCommand.parseAsync(["node", "cli", "-y"]);
 
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      const logCalls = vi.mocked(console.log).mock.calls.flat().join("\n");
       expect(logCalls).toContain("Next step:");
       expect(logCalls).toContain("cd my-vm0-agent");
       expect(logCalls).toContain("claude");
@@ -383,7 +389,7 @@ describe("onboard command", () => {
         "custom-agent",
       ]);
 
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      const logCalls = vi.mocked(console.log).mock.calls.flat().join("\n");
       expect(logCalls).toContain("cd custom-agent");
     });
   });
@@ -406,7 +412,7 @@ describe("onboard command", () => {
     it("should display success messages for creation", async () => {
       await onboardCommand.parseAsync(["node", "cli", "-y"]);
 
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      const logCalls = vi.mocked(console.log).mock.calls.flat().join("\n");
       expect(logCalls).toContain("Created my-vm0-agent/");
       expect(logCalls).toContain("Installed vm0-cli skill");
     });

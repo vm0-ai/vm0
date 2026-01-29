@@ -3,14 +3,9 @@ import * as fs from "fs/promises";
 import { existsSync, mkdtempSync, rmSync } from "fs";
 import * as path from "path";
 import * as os from "os";
+import { setupClaudeCommand } from "../setup-claude";
 
-// Mock fetchSkillContent before importing the command
-vi.mock("../../lib/domain/onboard/index.js", async (importOriginal) => {
-  const original =
-    await importOriginal<typeof import("../../lib/domain/onboard/index.js")>();
-  return {
-    ...original,
-    fetchSkillContent: vi.fn().mockResolvedValue(`---
+const MOCK_SKILL_CONTENT = `---
 name: vm0-cli
 description: VM0 CLI for building and running AI agents in secure sandboxes.
 vm0_secrets:
@@ -24,38 +19,42 @@ Build and run AI agents in secure sandboxed environments.
 ## When to Use
 
 Use this skill when you need to install and set up the VM0 CLI.
-`),
-  };
-});
-
-import { setupClaudeCommand } from "../setup-claude";
-import { fetchSkillContent } from "../../lib/domain/onboard/index.js";
+`;
 
 describe("setup-claude command", () => {
   let tempDir: string;
   let originalCwd: string;
-
-  const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
-  const mockConsoleError = vi
-    .spyOn(console, "error")
-    .mockImplementation(() => {});
-  const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
-    throw new Error("process.exit called");
-  }) as never);
+  const originalExit = process.exit;
+  let mockExit: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
     tempDir = mkdtempSync(path.join(os.tmpdir(), "test-setup-claude-"));
     originalCwd = process.cwd();
     process.chdir(tempDir);
+
+    // Mock process.exit to throw (simulates process termination)
+    mockExit = vi.fn().mockImplementation(() => {
+      throw new Error("process.exit called");
+    });
+    process.exit = mockExit as unknown as typeof process.exit;
+
+    // Mock console
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    // Mock fetch at system boundary
+    vi.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve(MOCK_SKILL_CONTENT),
+    } as Response);
   });
 
   afterEach(() => {
     process.chdir(originalCwd);
     rmSync(tempDir, { recursive: true, force: true });
-    mockConsoleLog.mockClear();
-    mockConsoleError.mockClear();
-    mockExit.mockClear();
+    process.exit = originalExit;
+    vi.restoreAllMocks();
   });
 
   describe("skill installation", () => {
@@ -102,11 +101,11 @@ describe("setup-claude command", () => {
     it("should display success message and next steps", async () => {
       await setupClaudeCommand.parseAsync(["node", "cli"]);
 
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(console.log).toHaveBeenCalledWith(
         expect.stringContaining("Installed vm0-cli skill"),
       );
-      expect(mockConsoleLog).toHaveBeenCalledWith("Next step:");
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(console.log).toHaveBeenCalledWith("Next step:");
+      expect(console.log).toHaveBeenCalledWith(
         expect.stringContaining("/vm0-cli"),
       );
     });
@@ -114,13 +113,15 @@ describe("setup-claude command", () => {
     it("should fetch skill content from GitHub", async () => {
       await setupClaudeCommand.parseAsync(["node", "cli"]);
 
-      expect(fetchSkillContent).toHaveBeenCalled();
+      expect(global.fetch).toHaveBeenCalledWith(
+        "https://raw.githubusercontent.com/vm0-ai/vm0-skills/main/vm0-cli/SKILL.md",
+      );
     });
   });
 
   describe("error handling", () => {
     it("should exit with error when fetch fails", async () => {
-      vi.mocked(fetchSkillContent).mockRejectedValueOnce(
+      vi.spyOn(global, "fetch").mockRejectedValueOnce(
         new Error("Network error"),
       );
 
@@ -128,10 +129,11 @@ describe("setup-claude command", () => {
         setupClaudeCommand.parseAsync(["node", "cli"]),
       ).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleError).toHaveBeenCalledWith(
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(console.error).toHaveBeenCalledWith(
         expect.stringContaining("Failed to fetch skill from GitHub"),
       );
-      expect(mockConsoleError).toHaveBeenCalledWith(
+      expect(console.error).toHaveBeenCalledWith(
         expect.stringContaining("Network error"),
       );
     });
