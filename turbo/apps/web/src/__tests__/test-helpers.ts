@@ -18,6 +18,7 @@
 import { vi, afterEach, type Mock, type MockInstance } from "vitest";
 import { randomUUID } from "crypto";
 import { Sandbox } from "@e2b/code-interpreter";
+import { Axiom } from "@axiomhq/js";
 import { mockClerk, clearClerkMock } from "./clerk-mock";
 import { initServices } from "../lib/init-services";
 import { createTestScope } from "./api-test-helpers";
@@ -57,11 +58,21 @@ interface S3Mocks {
 }
 
 /**
- * Combined mock helpers for E2B and S3
+ * Axiom client mock structure
+ */
+interface AxiomMocks {
+  query: Mock;
+  ingest: Mock;
+  flush: Mock;
+}
+
+/**
+ * Combined mock helpers for E2B, S3, and Axiom
  */
 interface MockHelpers {
   e2b: E2bMocks;
   s3: S3Mocks;
+  axiom: AxiomMocks;
 }
 
 interface TestContext {
@@ -146,9 +157,18 @@ export function testContext(): TestContext {
         .mockResolvedValue(undefined),
     };
 
+    // Axiom mocks
+    const axiomMocks: AxiomMocks = {
+      query: vi.fn().mockResolvedValue({ matches: [] }),
+      ingest: vi.fn(),
+      flush: vi.fn().mockResolvedValue(undefined),
+    };
+    vi.mocked(Axiom).mockImplementation(() => axiomMocks as unknown as Axiom);
+
     const helpers: MockHelpers = {
       e2b: { sandbox: mockSandbox },
       s3: s3Mocks,
+      axiom: axiomMocks,
     };
     mockHelpers = helpers;
     return helpers;

@@ -1,216 +1,78 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeAll,
-  beforeEach,
-  afterEach,
-  vi,
-} from "vitest";
-import { NextRequest } from "next/server";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET as listRuns, POST as createRun } from "../route";
 import { GET as getRun } from "../[id]/route";
 import { POST as cancelRun } from "../[id]/cancel/route";
 import { GET as getRunLogs } from "../[id]/logs/route";
 import { GET as getRunMetrics } from "../[id]/metrics/route";
-import { initServices } from "../../../../src/lib/init-services";
-import { agentRuns } from "../../../../src/db/schema/agent-run";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../../../src/db/schema/agent-compose";
-import { scopes } from "../../../../src/db/schema/scope";
-import { eq, and, inArray } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { createHash } from "crypto";
-import { generateTestId } from "../../../../src/__tests__/api-test-helpers";
-import { Sandbox } from "@e2b/code-interpreter";
-import * as s3Client from "../../../../src/lib/s3/s3-client";
-import { Axiom } from "@axiomhq/js";
+import {
+  createTestRequest,
+  createTestCompose,
+  completeTestRun,
+  createTestModelProvider,
+} from "../../../../src/__tests__/api-test-helpers";
+import {
+  testContext,
+  setupUser,
+  type UserContext,
+} from "../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../src/__tests__/clerk-mock";
 
-/**
- * Helper to create a NextRequest for testing.
- */
-function createTestRequest(
-  url: string,
-  options?: {
-    method?: string;
-    body?: string;
-    headers?: Record<string, string>;
-  },
-): NextRequest {
-  return new NextRequest(url, {
-    method: options?.method ?? "GET",
-    headers: options?.headers ?? {},
-    body: options?.body,
-  });
-}
-
-// Mock Clerk auth (external SaaS)
-vi.mock("@clerk/nextjs/server", () => ({
-  auth: vi.fn(),
-}));
-
-// Mock E2B SDK (external)
+vi.mock("@clerk/nextjs/server");
 vi.mock("@e2b/code-interpreter");
-
-// Mock AWS SDK (external) for S3 operations
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
-
-// Mock Axiom SDK (external)
 vi.mock("@axiomhq/js");
 
-import {
-  mockClerk,
-  clearClerkMock,
-} from "../../../../src/__tests__/clerk-mock";
+const context = testContext();
+
+/**
+ * Helper to create a run via v1 API and return the run ID.
+ */
+async function createV1Run(
+  agentId: string,
+  prompt: string,
+): Promise<{ id: string; status: string }> {
+  const request = createTestRequest("http://localhost:3000/v1/runs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ agentId, prompt }),
+  });
+  const response = await createRun(request);
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(
+      `Failed to create run: ${data.error?.message || response.status}`,
+    );
+  }
+  return data;
+}
 
 describe("Public API v1 - Runs Endpoints", () => {
-  // Use unique test ID for isolation (no cleanup needed)
-  let testUserId: string;
-  let testScopeId: string;
+  let user: UserContext;
   let testAgentId: string;
   let testAgentName: string;
-  let testVersionId: string;
   let testRunId: string;
 
-  beforeAll(async () => {
-    // Generate unique prefix for this test run
-    testUserId = generateTestId();
-    testScopeId = randomUUID();
-
-    initServices();
-
-    // Create test scope for the user
-    await globalThis.services.db.insert(scopes).values({
-      id: testScopeId,
-      slug: `test-${testScopeId.slice(0, 8)}`,
-      type: "personal",
-      ownerId: testUserId,
-    });
-
-    // Create test agent with unique name based on testUserId
-    testAgentId = randomUUID();
-    testAgentName = `${testUserId}-agent`;
-    const testConfig = {
-      version: "1.0",
-      agents: {
-        [testAgentName]: {
-          image: "vm0/claude-code:dev",
-          framework: "claude-code",
-          working_dir: "/home/user/workspace",
-          environment: {
-            ANTHROPIC_API_KEY: "test-api-key",
-          },
-        },
-      },
-    };
-
-    await globalThis.services.db.insert(agentComposes).values({
-      id: testAgentId,
-      name: testAgentName,
-      userId: testUserId,
-      scopeId: testScopeId,
-    });
-
-    // Create test version - include testAgentId in hash for uniqueness
-    const configJson = JSON.stringify({
-      ...testConfig,
-      _testAgentId: testAgentId,
-    });
-    testVersionId = createHash("sha256").update(configJson).digest("hex");
-
-    await globalThis.services.db.insert(agentComposeVersions).values({
-      id: testVersionId,
-      composeId: testAgentId,
-      createdBy: testUserId,
-      content: testConfig,
-    });
-
-    // Update agent with head version
-    await globalThis.services.db
-      .update(agentComposes)
-      .set({ headVersionId: testVersionId })
-      .where(eq(agentComposes.id, testAgentId));
-
-    // Create a test run with "completed" status to not block concurrent run limit
-    const [run] = await globalThis.services.db
-      .insert(agentRuns)
-      .values({
-        userId: testUserId,
-        agentComposeVersionId: testVersionId,
-        status: "completed",
-        prompt: "Test prompt for runs API",
-      })
-      .returning();
-
-    testRunId = run!.id;
-  });
-
   beforeEach(async () => {
-    vi.clearAllMocks();
+    // Setup mocks (E2B, S3, Axiom)
+    context.setupMocks();
 
-    // Clean up any active runs from previous tests to avoid concurrent run limit
-    await globalThis.services.db
-      .update(agentRuns)
-      .set({ status: "completed", completedAt: new Date() })
-      .where(
-        and(
-          eq(agentRuns.userId, testUserId),
-          inArray(agentRuns.status, ["pending", "running"]),
-        ),
-      );
+    // Create unique user for this test
+    user = await setupUser();
 
-    // Mock Clerk auth to return test user by default
-    mockClerk({ userId: testUserId });
+    // Create test agent with compose
+    testAgentName = `agent-${Date.now()}`;
+    const { composeId } = await createTestCompose(testAgentName);
+    testAgentId = composeId;
 
-    // Setup E2B SDK mock - create sandbox
-    const mockSandbox = {
-      sandboxId: "test-sandbox-123",
-      getHostname: () => "test-sandbox.e2b.dev",
-      files: {
-        write: vi.fn().mockResolvedValue(undefined),
-      },
-      commands: {
-        run: vi.fn().mockResolvedValue({
-          stdout: "Mock output",
-          stderr: "",
-          exitCode: 0,
-        }),
-      },
-      kill: vi.fn().mockResolvedValue(undefined),
-    };
-    vi.mocked(Sandbox.create).mockResolvedValue(
-      mockSandbox as unknown as Sandbox,
-    );
+    // Create a completed test run for read operations
+    const run = await createV1Run(testAgentId, "Test prompt for runs API");
+    testRunId = run.id;
 
-    // Setup S3 mocks
-    vi.spyOn(s3Client, "generatePresignedUrl").mockResolvedValue(
-      "https://mock-presigned-url",
-    );
-    vi.spyOn(s3Client, "listS3Objects").mockResolvedValue([]);
-    vi.spyOn(s3Client, "uploadS3Buffer").mockResolvedValue(undefined);
-
-    // Mock Axiom SDK
-    const mockAxiomClient = {
-      query: vi.fn().mockResolvedValue({ matches: [] }),
-      ingest: vi.fn(),
-      flush: vi.fn().mockResolvedValue(undefined),
-    };
-    vi.mocked(Axiom).mockImplementation(
-      () => mockAxiomClient as unknown as Axiom,
-    );
-
-    // Mock Clerk auth to return test user by default
-    mockClerk({ userId: testUserId });
+    // Complete the run so it doesn't block concurrent limit
+    await completeTestRun(user.userId, testRunId);
   });
-
-  afterEach(() => {
-    clearClerkMock();
-  });
-
-  // No afterAll cleanup needed - unique testUserId ensures isolation
 
   describe("GET /v1/runs - List Runs", () => {
     it("should list runs with pagination", async () => {
@@ -299,19 +161,21 @@ describe("Public API v1 - Runs Endpoints", () => {
     });
 
     it("should return 404 for run belonging to another user", async () => {
-      // Create run with different user
-      const [otherRun] = await globalThis.services.db
-        .insert(agentRuns)
-        .values({
-          userId: "other-user",
-          agentComposeVersionId: testVersionId,
-          status: "pending",
-          prompt: "Other user prompt",
-        })
-        .returning();
+      // Create another user and their run
+      const otherUser = await setupUser({ prefix: "other-user" });
+      const { composeId: otherComposeId } = await createTestCompose(
+        `other-agent-${Date.now()}`,
+      );
 
+      // Create run as other user
+      mockClerk({ userId: otherUser.userId });
+      const otherRun = await createV1Run(otherComposeId, "Other user prompt");
+      await completeTestRun(otherUser.userId, otherRun.id);
+
+      // Switch back to original user and try to access other user's run
+      mockClerk({ userId: user.userId });
       const request = createTestRequest(
-        `http://localhost:3000/v1/runs/${otherRun!.id}`,
+        `http://localhost:3000/v1/runs/${otherRun.id}`,
       );
 
       const response = await getRun(request);
@@ -319,29 +183,16 @@ describe("Public API v1 - Runs Endpoints", () => {
 
       expect(response.status).toBe(404);
       expect(data.error.type).toBe("not_found_error");
-
-      // Cleanup
-      await globalThis.services.db
-        .delete(agentRuns)
-        .where(eq(agentRuns.id, otherRun!.id));
     });
   });
 
   describe("POST /v1/runs/:id/cancel - Cancel Run", () => {
     it("should cancel a pending run", async () => {
-      // Create a pending run to cancel (must be inside test to run after beforeEach cleanup)
-      const [run] = await globalThis.services.db
-        .insert(agentRuns)
-        .values({
-          userId: testUserId,
-          agentComposeVersionId: testVersionId,
-          status: "pending",
-          prompt: "Run to cancel",
-        })
-        .returning();
+      // Create a new run (starts as running)
+      const run = await createV1Run(testAgentId, "Run to cancel");
 
       const request = createTestRequest(
-        `http://localhost:3000/v1/runs/${run!.id}/cancel`,
+        `http://localhost:3000/v1/runs/${run.id}/cancel`,
         { method: "POST" },
       );
 
@@ -349,26 +200,15 @@ describe("Public API v1 - Runs Endpoints", () => {
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      expect(data.id).toBe(run!.id);
+      expect(data.id).toBe(run.id);
       expect(data.status).toBe("cancelled");
       expect(data.completedAt).toBeDefined();
     });
 
     it("should return 400 when cancelling already completed run", async () => {
-      // Create a completed run
-      const [completedRun] = await globalThis.services.db
-        .insert(agentRuns)
-        .values({
-          userId: testUserId,
-          agentComposeVersionId: testVersionId,
-          status: "completed",
-          prompt: "Completed run",
-          completedAt: new Date(),
-        })
-        .returning();
-
+      // testRunId is already completed in beforeEach
       const request = createTestRequest(
-        `http://localhost:3000/v1/runs/${completedRun!.id}/cancel`,
+        `http://localhost:3000/v1/runs/${testRunId}/cancel`,
         { method: "POST" },
       );
 
@@ -378,11 +218,6 @@ describe("Public API v1 - Runs Endpoints", () => {
       expect(response.status).toBe(400);
       expect(data.error.type).toBe("invalid_request_error");
       expect(data.error.code).toBe("invalid_state");
-
-      // Cleanup
-      await globalThis.services.db
-        .delete(agentRuns)
-        .where(eq(agentRuns.id, completedRun!.id));
     });
 
     it("should return 404 for non-existent run", async () => {
@@ -558,6 +393,85 @@ describe("Public API v1 - Runs Endpoints", () => {
       expect(data.error.type).toBe("not_found_error");
       expect(data.error.code).toBe("resource_not_found");
       expect(data.error.message).toContain(fakeId);
+    });
+  });
+
+  describe("Concurrent Run Limit", () => {
+    it("should return 429 when concurrent run limit is reached", async () => {
+      // Set limit to 1
+      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+
+      try {
+        // First run should succeed (creates running run)
+        const run1 = await createV1Run(testAgentId, "First concurrent run");
+        expect(run1.status).toBe("running");
+
+        // Second run should fail with 429
+        const request = createTestRequest("http://localhost:3000/v1/runs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId: testAgentId,
+            prompt: "Second concurrent run",
+          }),
+        });
+
+        const response = await createRun(request);
+        const data = await response.json();
+
+        expect(response.status).toBe(429);
+        expect(data.error.type).toBe("rate_limit_error");
+        expect(data.error.message).toMatch(/concurrent/i);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it("should allow unlimited runs when limit is 0", async () => {
+      // Set limit to 0 (no limit)
+      vi.stubEnv("CONCURRENT_RUN_LIMIT", "0");
+
+      try {
+        // Create multiple runs - all should succeed
+        const run1 = await createV1Run(testAgentId, "Run 1 with no limit");
+        const run2 = await createV1Run(testAgentId, "Run 2 with no limit");
+        const run3 = await createV1Run(testAgentId, "Run 3 with no limit");
+
+        expect(run1.status).toBe("running");
+        expect(run2.status).toBe("running");
+        expect(run3.status).toBe("running");
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+  });
+
+  describe("Model Provider", () => {
+    it("should succeed when model provider is configured", async () => {
+      // Create model provider
+      await createTestModelProvider("anthropic-api-key", "test-api-key-value");
+
+      // Create compose without explicit API key
+      const { composeId } = await createTestCompose(`mp-agent-${Date.now()}`, {
+        skipDefaultApiKey: true,
+        overrides: { framework: "claude-code" },
+      });
+
+      const request = createTestRequest("http://localhost:3000/v1/runs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: composeId,
+          prompt: "Run with model provider",
+        }),
+      });
+
+      const response = await createRun(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(202);
+      expect(data.id).toBeDefined();
+      expect(data.status).toBeDefined();
     });
   });
 });

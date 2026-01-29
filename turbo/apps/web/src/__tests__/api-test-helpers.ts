@@ -14,7 +14,6 @@ import { eq } from "drizzle-orm";
 // Route handlers - imported here so callers don't need to pass them
 import { POST as createComposeRoute } from "../../app/api/agent/composes/route";
 import { POST as createScopeRoute } from "../../app/api/scope/route";
-import { PUT as setCredentialRoute } from "../../app/api/credentials/route";
 import { PUT as upsertModelProviderRoute } from "../../app/api/model-providers/route";
 import { POST as checkpointWebhook } from "../../app/api/webhooks/agent/checkpoints/route";
 import { POST as completeWebhook } from "../../app/api/webhooks/agent/complete/route";
@@ -142,24 +141,6 @@ export async function deleteTestCliToken(token: string): Promise<void> {
 }
 
 /**
- * Generate a unique test ID for test isolation.
- * Each test gets a unique prefix to avoid data collision without cleanup.
- *
- * Format: "t" + timestamp (base36) + random (4 hex chars)
- * Example: "t1abc2def3gh4i5j6k7l"
- *
- * This approach eliminates the need for beforeEach/afterEach cleanup
- * as each test operates on completely isolated data.
- *
- * @returns A unique test ID string
- */
-export function generateTestId(): string {
-  const timestamp = Date.now().toString(36);
-  const random = Math.random().toString(16).substring(2, 6);
-  return `t${timestamp}${random}`;
-}
-
-/**
  * Create a test scope via API route handler.
  *
  * @param slug - The scope slug
@@ -208,34 +189,6 @@ export async function createTestCompose(
     const error = await response.json();
     throw new Error(
       `Failed to create compose: ${error.error?.message || response.status}`,
-    );
-  }
-  return response.json();
-}
-
-/**
- * Create a test credential via API route handler.
- *
- * @param name - The credential name
- * @param value - The credential value
- * @param description - Optional description
- * @returns The created credential with id and name
- */
-export async function createTestCredential(
-  name: string,
-  value: string,
-  description?: string,
-): Promise<{ id: string; name: string }> {
-  const request = createTestRequest("http://localhost:3000/api/credentials", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, value, description }),
-  });
-  const response = await setCredentialRoute(request);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to create credential: ${error.error?.message || response.status}`,
     );
   }
   return response.json();
@@ -311,44 +264,6 @@ async function createTestCheckpoint(
     );
   }
   return response.json();
-}
-
-/**
- * Fail a test run via complete webhook.
- * Sets the run status to "failed".
- *
- * @param userId - The user ID
- * @param runId - The run ID
- * @param error - Optional error message
- */
-export async function failTestRun(
-  userId: string,
-  runId: string,
-  error?: string,
-): Promise<void> {
-  const sandboxToken = await generateSandboxToken(userId, runId);
-  const request = createTestRequest(
-    "http://localhost:3000/api/webhooks/agent/complete",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${sandboxToken}`,
-      },
-      body: JSON.stringify({
-        runId,
-        exitCode: 1,
-        error: error ?? "Test failure",
-      }),
-    },
-  );
-  const response = await completeWebhook(request);
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(
-      `Failed to fail run: ${errorData.error?.message || response.status}`,
-    );
-  }
 }
 
 /**

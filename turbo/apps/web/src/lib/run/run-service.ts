@@ -29,7 +29,7 @@ export { calculateSessionHistoryPath } from "./utils/session-history-path";
  * Run Service
  * Thin wrapper that delegates to functional modules for building and dispatching agent runs
  */
-export class RunService {
+class RunService {
   /**
    * Create execution context for a new run
    * Legacy method - prefer buildExecutionContext for full functionality
