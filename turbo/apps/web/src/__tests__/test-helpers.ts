@@ -218,35 +218,33 @@ export function testContext(): TestContext {
 
     // Date constructor mock for controlling new Date()
     const RealDate = globalThis.Date;
-    let isMocked = false;
 
     const dateMocks: DateMocks = {
       setSystemTime(date: Date) {
         // Also update dateNow mock for consistency
         dateNowMock.mockReturnValue(date.getTime());
-        // Replace Date constructor with mock
-        globalThis.Date = class extends RealDate {
-          constructor(...args: unknown[]) {
-            if (args.length === 0) {
-              super(date.getTime());
-            } else {
-              // @ts-expect-error - calling super with variable args
-              super(...args);
+        // Replace Date constructor with vi.stubGlobal (auto-restored by vitest)
+        vi.stubGlobal(
+          "Date",
+          class extends RealDate {
+            constructor(...args: unknown[]) {
+              if (args.length === 0) {
+                super(date.getTime());
+              } else {
+                // @ts-expect-error - calling super with variable args
+                super(...args);
+              }
             }
-          }
 
-          static now() {
-            return date.getTime();
-          }
-        } as DateConstructor;
-        isMocked = true;
+            static now() {
+              return date.getTime();
+            }
+          },
+        );
       },
       useRealTime() {
         dateNowMock.mockImplementation(() => originalDateNow());
-        if (isMocked) {
-          globalThis.Date = RealDate;
-          isMocked = false;
-        }
+        vi.unstubAllGlobals();
       },
     };
 
