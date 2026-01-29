@@ -306,17 +306,21 @@
           }}
       tags: [prepare]
 
-    - name: Build rootfs with retry on cache failure
+    - name: Build rootfs with cleanup on failure
       when: rootfs_needs_rebuild
       tags: [prepare]
       block:
         - name: Build rootfs
           command: "{{ runner_base_dir }}/deploy-runner/build-rootfs.sh {{ rootfs_path }}"
       rescue:
-        - name: Clear Docker buildkit cache after failure
-          command: docker builder prune -f
+        - name: Remove old rootfs containers
+          shell: docker rm -f $(docker ps -aq --filter "name=vm0-rootfs") 2>/dev/null || true
+          changed_when: false
 
-        - name: Retry rootfs build after cache cleanup
+        - name: Clean up unused Docker resources
+          command: docker system prune -af --volumes
+
+        - name: Retry rootfs build after cleanup
           command: "{{ runner_base_dir }}/deploy-runner/build-rootfs.sh {{ rootfs_path }}"
 
     - name: Store rootfs hash
