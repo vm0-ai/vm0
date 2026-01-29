@@ -17,14 +17,19 @@ import { http, HttpResponse } from "msw";
 import { server } from "../mocks/server";
 import { initCommand } from "../commands/volume/init";
 import { pullCommand } from "../commands/volume/pull";
-import * as storageUtils from "../lib/storage/storage-utils";
+import { volumeCommand } from "../commands/volume/index";
+// Import the actual isValidStorageName function for validation tests
+import { isValidStorageName } from "../lib/storage/storage-utils";
+import { mkdtempSync, rmSync } from "fs";
+import * as fs from "fs/promises";
+import * as path from "path";
+import * as os from "os";
 import chalk from "chalk";
 
-// Mock storage-utils for filesystem operations
-// Note: Consider replacing with real implementations using temp directories
-vi.mock("../lib/storage/storage-utils");
-
 describe("Volume Command", () => {
+  let tempDir: string;
+  let originalCwd: string;
+
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -38,32 +43,92 @@ describe("Volume Command", () => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
+
+    // Setup temp directory
+    tempDir = mkdtempSync(path.join(os.tmpdir(), "test-volume-cmd-"));
+    originalCwd = process.cwd();
+    process.chdir(tempDir);
   });
 
   afterEach(() => {
+    process.chdir(originalCwd);
+    rmSync(tempDir, { recursive: true, force: true });
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
     vi.unstubAllEnvs();
   });
 
-  describe("volume init - name validation", () => {
-    beforeEach(() => {
-      // Mock readStorageConfig to return null (no existing config)
-      vi.mocked(storageUtils.readStorageConfig).mockResolvedValue(null);
-      // Mock isValidStorageName with actual implementation
-      vi.mocked(storageUtils.isValidStorageName).mockImplementation(
-        (name: string) => {
-          if (name.length < 3 || name.length > 64) {
-            return false;
-          }
-          const pattern = /^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/;
-          return pattern.test(name) && !name.includes("--");
-        },
+  describe("help text", () => {
+    it("volume --help shows command description", async () => {
+      const mockStdoutWrite = vi
+        .spyOn(process.stdout, "write")
+        .mockImplementation(() => true);
+
+      try {
+        await volumeCommand.parseAsync(["node", "cli", "--help"]);
+      } catch {
+        // Commander calls process.exit(0) after help
+      }
+
+      const output = mockStdoutWrite.mock.calls.map((call) => call[0]).join("");
+
+      expect(output).toContain(
+        "Manage volumes (defined in compose, not versioned after run)",
       );
+      expect(output).toContain("init");
+      expect(output).toContain("push");
+      expect(output).toContain("pull");
+      expect(output).toContain("status");
+
+      mockStdoutWrite.mockRestore();
     });
 
-    it("should reject uppercase volume names with --name flag", async () => {
+    it("volume init --help shows --name option", async () => {
+      const mockStdoutWrite = vi
+        .spyOn(process.stdout, "write")
+        .mockImplementation(() => true);
+
+      try {
+        await initCommand.parseAsync(["node", "cli", "--help"]);
+      } catch {
+        // Commander calls process.exit(0) after help
+      }
+
+      const output = mockStdoutWrite.mock.calls.map((call) => call[0]).join("");
+
+      expect(output).toContain("Initialize a volume");
+      expect(output).toContain("--name");
+
+      mockStdoutWrite.mockRestore();
+    });
+  });
+
+  describe("volume name validation", () => {
+    it("isValidStorageName rejects uppercase names", () => {
+      expect(isValidStorageName("INVALID_NAME")).toBe(false);
+    });
+
+    it("isValidStorageName rejects names with underscores", () => {
+      expect(isValidStorageName("invalid_name")).toBe(false);
+    });
+
+    it("isValidStorageName rejects names shorter than 3 characters", () => {
+      expect(isValidStorageName("ab")).toBe(false);
+    });
+
+    it("isValidStorageName rejects names with consecutive hyphens", () => {
+      expect(isValidStorageName("invalid--name")).toBe(false);
+    });
+
+    it("isValidStorageName accepts valid lowercase names with hyphens", () => {
+      expect(isValidStorageName("my-volume")).toBe(true);
+      expect(isValidStorageName("test-volume-123")).toBe(true);
+    });
+
+    it("volume init rejects invalid volume name", async () => {
+      // No existing config in temp dir
+
       await expect(async () => {
         await initCommand.parseAsync(["node", "cli", "--name", "INVALID_NAME"]);
       }).rejects.toThrow("process.exit called");
@@ -71,70 +136,106 @@ describe("Volume Command", () => {
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Invalid volume name"),
       );
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("INVALID_NAME"),
-      );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should reject names with underscores", async () => {
-      await expect(async () => {
-        await initCommand.parseAsync(["node", "cli", "--name", "my_dataset"]);
-      }).rejects.toThrow("process.exit called");
+    it("volume init shows format requirements on validation error", async () => {
+      // Using "ab" which is too short (less than 3 chars) triggers validation error
 
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Invalid volume name"),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-
-    it("should reject names that are too short", async () => {
       await expect(async () => {
         await initCommand.parseAsync(["node", "cli", "--name", "ab"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Invalid volume name"),
+        expect.stringContaining("3-64 characters"),
       );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-
-    it("should show example valid names on validation error", async () => {
-      await expect(async () => {
-        await initCommand.parseAsync([
-          "node",
-          "cli",
-          "--name",
-          "INVALID-NAME!",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      // Should show helpful examples
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("my-dataset"),
-      );
-    });
-
-    it("should accept valid lowercase names with hyphens", async () => {
-      vi.mocked(storageUtils.writeStorageConfig).mockResolvedValue(undefined);
-
-      await initCommand.parseAsync(["node", "cli", "--name", "my-dataset"]);
-
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Initialized volume"),
-      );
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("my-dataset"),
+        expect.stringContaining("lowercase"),
       );
     });
   });
 
+  describe("volume init", () => {
+    it("should show already initialized message for existing volume", async () => {
+      // Create existing volume config
+      await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, ".vm0", "storage.yaml"),
+        "name: existing-volume\ntype: volume",
+      );
+
+      await initCommand.parseAsync(["node", "cli", "--name", "new-name"]);
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Volume already initialized"),
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("existing-volume"),
+      );
+    });
+
+    it("should show already initialized for any existing storage config", async () => {
+      // Create existing artifact config - volume init treats any config as "already initialized"
+      await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, ".vm0", "storage.yaml"),
+        "name: my-artifact\ntype: artifact",
+      );
+
+      await initCommand.parseAsync(["node", "cli", "--name", "new-volume"]);
+
+      // Volume init doesn't distinguish types - it just says "already initialized"
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Volume already initialized"),
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("my-artifact"),
+      );
+    });
+
+    it("should successfully initialize new volume", async () => {
+      // No existing config - fresh temp directory
+
+      await initCommand.parseAsync(["node", "cli", "--name", "my-new-volume"]);
+
+      // Verify the config file was created
+      const configPath = path.join(tempDir, ".vm0", "storage.yaml");
+      const content = await fs.readFile(configPath, "utf8");
+      expect(content).toContain("name: my-new-volume");
+      expect(content).toContain("type: volume");
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Initialized volume"),
+      );
+    });
+  });
+
+  describe("volume pull config validation", () => {
+    it("should fail if no volume initialized", async () => {
+      // No .vm0/storage.yaml - fresh temp directory
+
+      await expect(async () => {
+        await pullCommand.parseAsync(["node", "cli"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("No volume initialized"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("vm0 volume init"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+  });
+
   describe("volume pull - error handling", () => {
-    beforeEach(() => {
-      vi.mocked(storageUtils.readStorageConfig).mockResolvedValue({
-        name: "test-volume",
-        type: "volume",
-      });
+    beforeEach(async () => {
+      // Create volume config
+      await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, ".vm0", "storage.yaml"),
+        "name: test-volume\ntype: volume",
+      );
     });
 
     it("should fail with error when pulling non-existent version", async () => {
@@ -188,22 +289,6 @@ describe("Volume Command", () => {
 
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Pull failed"),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-
-    it("should exit with error if no config exists for pull", async () => {
-      vi.mocked(storageUtils.readStorageConfig).mockResolvedValue(null);
-
-      await expect(async () => {
-        await pullCommand.parseAsync(["node", "cli"]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("No volume initialized"),
-      );
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 volume init"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

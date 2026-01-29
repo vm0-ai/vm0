@@ -7,24 +7,6 @@ import { mkdtempSync, rmSync } from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as yaml from "yaml";
-import * as config from "../../lib/api/config";
-import * as yamlValidator from "../../lib/domain/yaml-validator";
-
-// Mock dependencies
-vi.mock("../../lib/domain/yaml-validator");
-vi.mock("../../lib/domain/framework-config", () => ({
-  getFrameworkDefaults: vi.fn().mockReturnValue(undefined),
-  getDefaultImage: vi.fn().mockReturnValue(undefined),
-  getDefaultImageWithApps: vi.fn().mockReturnValue(undefined),
-}));
-vi.mock("../../lib/system-storage", () => ({
-  uploadInstructions: vi.fn(),
-  uploadSkill: vi.fn(),
-}));
-vi.mock("../../lib/api/config", () => ({
-  getApiUrl: vi.fn(),
-  getToken: vi.fn(),
-}));
 
 describe("compose command", () => {
   let tempDir: string;
@@ -43,8 +25,8 @@ describe("compose command", () => {
     tempDir = mkdtempSync(path.join(os.tmpdir(), "test-compose-"));
     originalCwd = process.cwd();
     process.chdir(tempDir);
-    vi.mocked(config.getApiUrl).mockResolvedValue("http://localhost:3000");
-    vi.mocked(config.getToken).mockResolvedValue("test-token");
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
   });
 
   afterEach(() => {
@@ -53,6 +35,7 @@ describe("compose command", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
+    vi.unstubAllEnvs();
   });
 
   describe("file validation", () => {
@@ -70,11 +53,8 @@ describe("compose command", () => {
     it("should read file when it exists", async () => {
       await fs.writeFile(
         path.join(tempDir, "config.yaml"),
-        `version: "1.0"\nagents:\n  test:\n    framework: test\n    working_dir: /`,
+        `version: "1.0"\nagents:\n  test:\n    framework: claude-code\n    working_dir: /`,
       );
-      vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
-        valid: true,
-      });
       server.use(
         http.post("http://localhost:3000/api/agent/composes", () => {
           return HttpResponse.json({
@@ -127,11 +107,8 @@ describe("compose command", () => {
     it("should parse valid YAML", async () => {
       await fs.writeFile(
         path.join(tempDir, "config.yaml"),
-        `version: "1.0"\nagents:\n  test:\n    working_dir: /`,
+        `version: "1.0"\nagents:\n  test:\n    framework: claude-code\n    working_dir: /`,
       );
-      vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
-        valid: true,
-      });
       server.use(
         http.post("http://localhost:3000/api/agent/composes", () => {
           return HttpResponse.json({
@@ -162,39 +139,50 @@ describe("compose command", () => {
       );
       const parsed = yaml.parse(content);
       expect(parsed.version).toBe("1.0");
-      expect(yamlValidator.validateAgentCompose).toHaveBeenCalled();
     });
   });
 
   describe("compose validation", () => {
-    beforeEach(async () => {
+    it("should exit with error on invalid compose (missing agents)", async () => {
+      // Create YAML without agents section to trigger real validation error
       await fs.writeFile(
         path.join(tempDir, "config.yaml"),
-        `version: "1.0"\nagents:\n  test:\n    framework: test\n    working_dir: /`,
+        `version: "1.0"\n# no agents defined`,
       );
-    });
-
-    it("should exit with error on invalid compose", async () => {
-      vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
-        valid: false,
-        error: "Missing agent.name",
-      });
 
       await expect(async () => {
         await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Missing agent.name"),
+        expect.stringContaining("Missing agents"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should exit with error on invalid agent name", async () => {
+      // Create YAML with invalid agent name (too short)
+      await fs.writeFile(
+        path.join(tempDir, "config.yaml"),
+        `version: "1.0"\nagents:\n  ab:\n    working_dir: /`,
+      );
+
+      await expect(async () => {
+        await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid agent name"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
     it("should proceed with valid compose", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "config.yaml"),
+        `version: "1.0"\nagents:\n  test:\n    framework: claude-code\n    working_dir: /`,
+      );
       let composeApiCalled = false;
-      vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
-        valid: true,
-      });
       server.use(
         http.post("http://localhost:3000/api/agent/composes", () => {
           composeApiCalled = true;
@@ -228,11 +216,8 @@ describe("compose command", () => {
     beforeEach(async () => {
       await fs.writeFile(
         path.join(tempDir, "config.yaml"),
-        `version: "1.0"\nagents:\n  test:\n    working_dir: /`,
+        `version: "1.0"\nagents:\n  test:\n    framework: claude-code\n    working_dir: /`,
       );
-      vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
-        valid: true,
-      });
       server.use(
         http.get("http://localhost:3000/api/scope", () => {
           return HttpResponse.json({
@@ -337,15 +322,14 @@ describe("compose command", () => {
     beforeEach(async () => {
       await fs.writeFile(
         path.join(tempDir, "config.yaml"),
-        `version: "1.0"\nagents:\n  test:\n    framework: test\n    working_dir: /`,
+        `version: "1.0"\nagents:\n  test:\n    framework: claude-code\n    working_dir: /`,
       );
-      vi.mocked(yamlValidator.validateAgentCompose).mockReturnValue({
-        valid: true,
-      });
     });
 
     it("should handle authentication errors", async () => {
-      vi.mocked(config.getToken).mockResolvedValue(undefined);
+      // Remove token to simulate unauthenticated state
+      vi.unstubAllEnvs();
+      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
 
       await expect(async () => {
         await composeCommand.parseAsync(["node", "cli", "config.yaml"]);

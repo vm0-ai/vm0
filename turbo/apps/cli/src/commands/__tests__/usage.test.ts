@@ -2,13 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../mocks/server";
 import { usageCommand } from "../usage";
-import * as config from "../../lib/api/config";
-
-// Mock the config module for auth
-vi.mock("../../lib/api/config", () => ({
-  getApiUrl: vi.fn(),
-  getToken: vi.fn(),
-}));
 
 describe("usage command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -21,14 +14,15 @@ describe("usage command", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(config.getApiUrl).mockResolvedValue("http://localhost:3000");
-    vi.mocked(config.getToken).mockResolvedValue("test-token");
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
   });
 
   afterEach(() => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
+    vi.unstubAllEnvs();
   });
 
   describe("default behavior", () => {
@@ -219,7 +213,9 @@ describe("usage command", () => {
 
   describe("error handling", () => {
     it("should handle authentication errors", async () => {
-      vi.mocked(config.getToken).mockResolvedValue(undefined);
+      // Remove token to simulate unauthenticated state
+      vi.unstubAllEnvs();
+      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
 
       await expect(async () => {
         await usageCommand.parseAsync(["node", "cli"]);

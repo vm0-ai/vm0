@@ -2,17 +2,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../mocks/server";
 import { statusCommand } from "../volume/status";
-import * as storageUtils from "../../lib/storage/storage-utils";
-import * as config from "../../lib/api/config";
-
-// Mock dependencies
-vi.mock("../../lib/storage/storage-utils");
-vi.mock("../../lib/api/config", () => ({
-  getApiUrl: vi.fn(),
-  getToken: vi.fn(),
-}));
+import { mkdtempSync, rmSync } from "fs";
+import * as fs from "fs/promises";
+import * as path from "path";
+import * as os from "os";
 
 describe("volume status command", () => {
+  let tempDir: string;
+  let originalCwd: string;
+
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -23,19 +21,27 @@ describe("volume status command", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(config.getApiUrl).mockResolvedValue("http://localhost:3000");
-    vi.mocked(config.getToken).mockResolvedValue("test-token");
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
+
+    // Setup temp directory
+    tempDir = mkdtempSync(path.join(os.tmpdir(), "test-volume-status-"));
+    originalCwd = process.cwd();
+    process.chdir(tempDir);
   });
 
   afterEach(() => {
+    process.chdir(originalCwd);
+    rmSync(tempDir, { recursive: true, force: true });
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
+    vi.unstubAllEnvs();
   });
 
   describe("local config validation", () => {
     it("should exit with error if no config exists", async () => {
-      vi.mocked(storageUtils.readStorageConfig).mockResolvedValue(null);
+      // No .vm0/storage.yaml file - just use empty temp directory
 
       await expect(async () => {
         await statusCommand.parseAsync(["node", "cli"]);
@@ -51,10 +57,12 @@ describe("volume status command", () => {
     });
 
     it("should exit with error if config type is artifact", async () => {
-      vi.mocked(storageUtils.readStorageConfig).mockResolvedValue({
-        name: "test-artifact",
-        type: "artifact",
-      });
+      // Create .vm0/storage.yaml with type: artifact
+      await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, ".vm0", "storage.yaml"),
+        "name: test-artifact\ntype: artifact",
+      );
 
       await expect(async () => {
         await statusCommand.parseAsync(["node", "cli"]);
@@ -71,11 +79,13 @@ describe("volume status command", () => {
   });
 
   describe("remote status check", () => {
-    beforeEach(() => {
-      vi.mocked(storageUtils.readStorageConfig).mockResolvedValue({
-        name: "test-volume",
-        type: "volume",
-      });
+    beforeEach(async () => {
+      // Create .vm0/storage.yaml with type: volume
+      await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, ".vm0", "storage.yaml"),
+        "name: test-volume\ntype: volume",
+      );
     });
 
     it("should show start message", async () => {
@@ -180,11 +190,13 @@ describe("volume status command", () => {
   });
 
   describe("error handling", () => {
-    beforeEach(() => {
-      vi.mocked(storageUtils.readStorageConfig).mockResolvedValue({
-        name: "test-volume",
-        type: "volume",
-      });
+    beforeEach(async () => {
+      // Create .vm0/storage.yaml with type: volume
+      await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, ".vm0", "storage.yaml"),
+        "name: test-volume\ntype: volume",
+      );
     });
 
     it("should handle API errors", async () => {

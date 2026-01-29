@@ -19,28 +19,16 @@ import { pullCommand } from "../commands/artifact/pull";
 import { artifactCommand } from "../commands/artifact/index";
 // Import the actual isValidStorageName function for validation tests
 import { isValidStorageName } from "../lib/storage/storage-utils";
-import * as storageUtils from "../lib/storage/storage-utils";
+import { mkdtempSync, rmSync } from "fs";
+import * as fs from "fs/promises";
+import * as path from "path";
+import * as os from "os";
 import chalk from "chalk";
 
-// Mock storage utils but keep the real isValidStorageName implementation available
-// Note: Consider replacing with real implementations using temp directories
-vi.mock("../lib/storage/storage-utils", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../lib/storage/storage-utils")>();
-  return {
-    ...actual,
-    readStorageConfig: vi.fn(),
-    writeStorageConfig: vi.fn(),
-  };
-});
-vi.mock("../lib/storage/direct-upload", () => ({
-  directUpload: vi.fn(),
-}));
-vi.mock("../lib/api", () => ({
-  getStorageDownload: vi.fn(),
-}));
-
 describe("Artifact Command", () => {
+  let tempDir: string;
+  let originalCwd: string;
+
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -48,21 +36,25 @@ describe("Artifact Command", () => {
   const mockConsoleError = vi
     .spyOn(console, "error")
     .mockImplementation(() => {});
-  const originalCwd = process.cwd;
 
   beforeEach(() => {
     vi.clearAllMocks();
     chalk.level = 0;
-    process.cwd = () => "/test/dir";
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
+
+    // Setup temp directory
+    tempDir = mkdtempSync(path.join(os.tmpdir(), "test-artifact-cmd-"));
+    originalCwd = process.cwd();
+    process.chdir(tempDir);
   });
 
   afterEach(() => {
+    process.chdir(originalCwd);
+    rmSync(tempDir, { recursive: true, force: true });
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
-    process.cwd = originalCwd;
     vi.unstubAllEnvs();
   });
 
@@ -134,8 +126,7 @@ describe("Artifact Command", () => {
     });
 
     it("artifact init rejects invalid artifact name", async () => {
-      vi.mocked(storageUtils.readStorageConfig).mockResolvedValue(null);
-      // The real isValidStorageName will be used here since we don't mock it
+      // No existing config in temp dir
 
       await expect(async () => {
         await initCommand.parseAsync(["node", "cli", "--name", "INVALID_NAME"]);
@@ -148,7 +139,6 @@ describe("Artifact Command", () => {
     });
 
     it("artifact init shows format requirements on validation error", async () => {
-      vi.mocked(storageUtils.readStorageConfig).mockResolvedValue(null);
       // Using "ab" which is too short (less than 3 chars) triggers validation error
 
       await expect(async () => {
@@ -166,10 +156,12 @@ describe("Artifact Command", () => {
 
   describe("artifact init", () => {
     it("should show already initialized message for existing artifact", async () => {
-      vi.mocked(storageUtils.readStorageConfig).mockResolvedValue({
-        name: "existing-artifact",
-        type: "artifact",
-      });
+      // Create existing artifact config
+      await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, ".vm0", "storage.yaml"),
+        "name: existing-artifact\ntype: artifact",
+      );
 
       await initCommand.parseAsync(["node", "cli", "--name", "new-name"]);
 
@@ -182,10 +174,12 @@ describe("Artifact Command", () => {
     });
 
     it("should warn if directory is initialized as volume", async () => {
-      vi.mocked(storageUtils.readStorageConfig).mockResolvedValue({
-        name: "my-volume",
-        type: "volume",
-      });
+      // Create existing volume config
+      await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, ".vm0", "storage.yaml"),
+        "name: my-volume\ntype: volume",
+      );
 
       await initCommand.parseAsync(["node", "cli", "--name", "new-artifact"]);
 
@@ -198,9 +192,7 @@ describe("Artifact Command", () => {
     });
 
     it("should successfully initialize new artifact", async () => {
-      vi.mocked(storageUtils.readStorageConfig).mockResolvedValue(null);
-      // isValidStorageName is not mocked, so we use a valid name
-      vi.mocked(storageUtils.writeStorageConfig).mockResolvedValue();
+      // No existing config - fresh temp directory
 
       await initCommand.parseAsync([
         "node",
@@ -209,11 +201,12 @@ describe("Artifact Command", () => {
         "my-new-artifact",
       ]);
 
-      expect(storageUtils.writeStorageConfig).toHaveBeenCalledWith(
-        "my-new-artifact",
-        "/test/dir",
-        "artifact",
-      );
+      // Verify the config file was created
+      const configPath = path.join(tempDir, ".vm0", "storage.yaml");
+      const content = await fs.readFile(configPath, "utf8");
+      expect(content).toContain("name: my-new-artifact");
+      expect(content).toContain("type: artifact");
+
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Initialized artifact"),
       );
@@ -222,7 +215,7 @@ describe("Artifact Command", () => {
 
   describe("artifact push config validation", () => {
     it("should fail if no artifact initialized", async () => {
-      vi.mocked(storageUtils.readStorageConfig).mockResolvedValue(null);
+      // No .vm0/storage.yaml - fresh temp directory
 
       await expect(async () => {
         await pushCommand.parseAsync(["node", "cli"]);
@@ -238,10 +231,12 @@ describe("Artifact Command", () => {
     });
 
     it("should fail if initialized as volume", async () => {
-      vi.mocked(storageUtils.readStorageConfig).mockResolvedValue({
-        name: "my-volume",
-        type: "volume",
-      });
+      // Create volume config
+      await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, ".vm0", "storage.yaml"),
+        "name: my-volume\ntype: volume",
+      );
 
       await expect(async () => {
         await pushCommand.parseAsync(["node", "cli"]);
@@ -259,7 +254,7 @@ describe("Artifact Command", () => {
 
   describe("artifact pull config validation", () => {
     it("should fail if no artifact initialized", async () => {
-      vi.mocked(storageUtils.readStorageConfig).mockResolvedValue(null);
+      // No .vm0/storage.yaml - fresh temp directory
 
       await expect(async () => {
         await pullCommand.parseAsync(["node", "cli"]);
@@ -275,10 +270,12 @@ describe("Artifact Command", () => {
     });
 
     it("should fail if initialized as volume", async () => {
-      vi.mocked(storageUtils.readStorageConfig).mockResolvedValue({
-        name: "my-volume",
-        type: "volume",
-      });
+      // Create volume config
+      await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, ".vm0", "storage.yaml"),
+        "name: my-volume\ntype: volume",
+      );
 
       await expect(async () => {
         await pullCommand.parseAsync(["node", "cli"]);

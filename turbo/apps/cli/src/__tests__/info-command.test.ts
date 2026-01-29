@@ -13,12 +13,6 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import chalk from "chalk";
-
-// Mock getApiUrl before importing program
-vi.mock("../lib/api/config", () => ({
-  getApiUrl: vi.fn().mockResolvedValue("https://www.vm0.ai"),
-}));
-
 import { program } from "../index";
 
 describe("Info Command", () => {
@@ -27,10 +21,12 @@ describe("Info Command", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     chalk.level = 0;
+    vi.stubEnv("VM0_API_URL", "https://www.vm0.ai");
   });
 
   afterEach(() => {
     mockConsoleLog.mockClear();
+    vi.unstubAllEnvs();
   });
 
   it("should display system information header", async () => {
