@@ -90,6 +90,259 @@ export function checkMissingVariables(
   return missing;
 }
 
+interface LoadedConfig {
+  config: AgentComposeConfig;
+  agentName: string;
+  volumeCount: number;
+}
+
+/**
+ * Load and validate the compose config file.
+ * Returns parsed config or exits on error.
+ */
+async function loadAndValidateConfig(): Promise<LoadedConfig> {
+  console.log(chalk.bold(`Reading config: ${CONFIG_FILE}`));
+
+  if (!existsSync(CONFIG_FILE)) {
+    console.error(chalk.red(`✗ Config file not found: ${CONFIG_FILE}`));
+    process.exit(1);
+  }
+
+  let config: AgentComposeConfig;
+  try {
+    const content = await readFile(CONFIG_FILE, "utf8");
+    config = parseYaml(content) as AgentComposeConfig;
+  } catch (error) {
+    console.error(chalk.red("✗ Invalid YAML format"));
+    if (error instanceof Error) {
+      console.error(chalk.dim(`  ${error.message}`));
+    }
+    process.exit(1);
+  }
+
+  const validation = validateAgentCompose(config);
+  if (!validation.valid) {
+    console.error(chalk.red(`✗ ${validation.error}`));
+    process.exit(1);
+  }
+
+  const agentNames = Object.keys(config.agents);
+  const agentName = agentNames[0]!;
+  const volumeCount = config.volumes ? Object.keys(config.volumes).length : 0;
+
+  console.log(
+    chalk.green(`✓ Config validated: 1 agent, ${volumeCount} volume(s)`),
+  );
+
+  return { config, agentName, volumeCount };
+}
+
+/**
+ * Validate environment variables and exit if any are missing.
+ */
+function validateEnvVariables(
+  config: AgentComposeConfig,
+  envFile?: string,
+): void {
+  const requiredVarNames = extractRequiredVarNames(config);
+  if (requiredVarNames.length === 0) {
+    return;
+  }
+
+  try {
+    const missingVars = checkMissingVariables(requiredVarNames, envFile);
+
+    if (missingVars.length > 0) {
+      console.log();
+      console.error(chalk.red("✗ Missing required variables:"));
+      for (const varName of missingVars) {
+        console.error(chalk.red(`  ${varName}`));
+      }
+      console.error(
+        chalk.dim(
+          "\n  Provide via --env-file, or set as environment variables",
+        ),
+      );
+      process.exit(1);
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(chalk.red(`✗ ${error.message}`));
+    }
+    process.exit(1);
+  }
+}
+
+/**
+ * Process and push all volumes defined in config.
+ */
+async function processVolumes(
+  config: AgentComposeConfig,
+  cwd: string,
+): Promise<void> {
+  if (!config.volumes || Object.keys(config.volumes).length === 0) {
+    return;
+  }
+
+  console.log();
+  console.log(chalk.bold("Processing volumes:"));
+
+  for (const volumeConfig of Object.values(config.volumes)) {
+    const volumeDir = path.join(cwd, volumeConfig.name);
+
+    if (!existsSync(volumeDir)) {
+      console.error(chalk.red(`✗ Directory not found: ${volumeConfig.name}`));
+      console.error(chalk.dim("  Create the directory and add files first"));
+      process.exit(1);
+    }
+
+    try {
+      printCommand(`cd ${volumeConfig.name}`);
+
+      // Check if already initialized
+      const existingConfig = await readStorageConfig(volumeDir);
+      if (!existingConfig) {
+        printCommand(`vm0 volume init --name ${volumeConfig.name}`);
+        await execVm0Command(["volume", "init", "--name", volumeConfig.name], {
+          cwd: volumeDir,
+          silent: true,
+        });
+      }
+
+      // Push volume
+      printCommand("vm0 volume push");
+      await execVm0Command(["volume", "push"], {
+        cwd: volumeDir,
+        silent: true,
+      });
+
+      printCommand("cd ..");
+    } catch (error) {
+      console.error(chalk.red(`✗ Failed`));
+      if (error instanceof Error) {
+        console.error(chalk.dim(`  ${error.message}`));
+      }
+      process.exit(1);
+    }
+  }
+}
+
+/**
+ * Initialize and push artifact directory.
+ */
+async function processArtifact(cwd: string): Promise<string> {
+  console.log();
+  console.log(chalk.bold("Processing artifact:"));
+
+  const artifactDir = path.join(cwd, ARTIFACT_DIR);
+
+  try {
+    // Create directory if not exists
+    if (!existsSync(artifactDir)) {
+      printCommand(`mkdir ${ARTIFACT_DIR}`);
+      await mkdir(artifactDir, { recursive: true });
+    }
+
+    printCommand(`cd ${ARTIFACT_DIR}`);
+
+    // Check if already initialized
+    const existingConfig = await readStorageConfig(artifactDir);
+    if (!existingConfig) {
+      printCommand(`vm0 artifact init --name ${ARTIFACT_DIR}`);
+      await execVm0Command(["artifact", "init", "--name", ARTIFACT_DIR], {
+        cwd: artifactDir,
+        silent: true,
+      });
+    }
+
+    // Push artifact
+    printCommand("vm0 artifact push");
+    await execVm0Command(["artifact", "push"], {
+      cwd: artifactDir,
+      silent: true,
+    });
+
+    printCommand("cd ..");
+  } catch (error) {
+    console.error(chalk.red(`✗ Failed`));
+    if (error instanceof Error) {
+      console.error(chalk.dim(`  ${error.message}`));
+    }
+    process.exit(1);
+  }
+
+  return artifactDir;
+}
+
+/**
+ * Compose the agent using vm0 compose command.
+ */
+async function composeAgent(cwd: string, skipConfirm: boolean): Promise<void> {
+  console.log();
+  console.log(chalk.bold("Composing agent:"));
+  const composeArgs = skipConfirm
+    ? ["compose", "--yes", CONFIG_FILE]
+    : ["compose", CONFIG_FILE];
+  printCommand(`vm0 ${composeArgs.join(" ")}`);
+
+  try {
+    await execVm0Command(composeArgs, { cwd });
+  } catch (error) {
+    console.error(chalk.red(`✗ Compose failed`));
+    if (error instanceof Error) {
+      console.error(chalk.dim(`  ${error.message}`));
+    }
+    process.exit(1);
+  }
+}
+
+/**
+ * Run the agent with the given prompt.
+ */
+async function runAgent(
+  agentName: string,
+  artifactDir: string,
+  prompt: string,
+  cwd: string,
+  debugNoMockClaude: boolean,
+): Promise<void> {
+  console.log();
+  console.log(chalk.bold("Running agent:"));
+  printCommand(
+    `vm0 run ${agentName} --artifact-name ${ARTIFACT_DIR} "${prompt}"`,
+  );
+  console.log();
+
+  let runOutput: string;
+  try {
+    const runArgs = [
+      "run",
+      agentName,
+      "--artifact-name",
+      ARTIFACT_DIR,
+      ...(debugNoMockClaude ? ["--debug-no-mock-claude"] : []),
+      prompt,
+    ];
+    runOutput = await execVm0RunWithCapture(runArgs, { cwd });
+  } catch {
+    // Error already displayed by vm0 run
+    process.exit(1);
+  }
+
+  // Save session state for continue/resume commands
+  const runIds = parseRunIdsFromOutput(runOutput);
+  if (runIds.runId || runIds.sessionId || runIds.checkpointId) {
+    await saveCookState({
+      lastRunId: runIds.runId,
+      lastSessionId: runIds.sessionId,
+      lastCheckpointId: runIds.checkpointId,
+    });
+  }
+
+  // Auto-pull artifact if run completed with artifact changes
+  await autoPullArtifact(runOutput, artifactDir);
+}
+
 export const cookAction = new Command()
   .name("cook")
   .description("Quick start: prepare, compose and run agent from vm0.yaml")
@@ -102,7 +355,6 @@ export const cookAction = new Command()
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .addOption(new Option("--no-auto-update").hideHelp())
   .action(
-    // eslint-disable-next-line complexity -- TODO: refactor complex function
     async (
       prompt: string | undefined,
       options: {
@@ -122,223 +374,30 @@ export const cookAction = new Command()
 
       const cwd = process.cwd();
 
-      // Step 1: Read and parse config
-      console.log(chalk.bold(`Reading config: ${CONFIG_FILE}`));
+      // Step 1: Load and validate config
+      const { config, agentName } = await loadAndValidateConfig();
 
-      if (!existsSync(CONFIG_FILE)) {
-        console.error(chalk.red(`✗ Config file not found: ${CONFIG_FILE}`));
-        process.exit(1);
-      }
+      // Step 2: Validate environment variables
+      validateEnvVariables(config, options.envFile);
 
-      let config: AgentComposeConfig;
-      try {
-        const content = await readFile(CONFIG_FILE, "utf8");
-        config = parseYaml(content) as AgentComposeConfig;
-      } catch (error) {
-        console.error(chalk.red("✗ Invalid YAML format"));
-        if (error instanceof Error) {
-          console.error(chalk.dim(`  ${error.message}`));
-        }
-        process.exit(1);
-      }
+      // Step 3: Process volumes
+      await processVolumes(config, cwd);
 
-      const validation = validateAgentCompose(config);
-      if (!validation.valid) {
-        console.error(chalk.red(`✗ ${validation.error}`));
-        process.exit(1);
-      }
+      // Step 4: Process artifact
+      const artifactDir = await processArtifact(cwd);
 
-      const agentNames = Object.keys(config.agents);
-      const agentName = agentNames[0]!;
-      const volumeCount = config.volumes
-        ? Object.keys(config.volumes).length
-        : 0;
+      // Step 5: Compose agent
+      await composeAgent(cwd, options.yes ?? false);
 
-      console.log(
-        chalk.green(`✓ Config validated: 1 agent, ${volumeCount} volume(s)`),
-      );
-
-      // Step 1.5: Check for missing environment variables
-      const requiredVarNames = extractRequiredVarNames(config);
-      if (requiredVarNames.length > 0) {
-        try {
-          const missingVars = checkMissingVariables(
-            requiredVarNames,
-            options.envFile,
-          );
-
-          if (missingVars.length > 0) {
-            console.log();
-            console.error(chalk.red("✗ Missing required variables:"));
-            for (const varName of missingVars) {
-              console.error(chalk.red(`  ${varName}`));
-            }
-            console.error(
-              chalk.dim(
-                "\n  Provide via --env-file, or set as environment variables",
-              ),
-            );
-            process.exit(1);
-          }
-        } catch (error) {
-          if (error instanceof Error) {
-            console.error(chalk.red(`✗ ${error.message}`));
-          }
-          process.exit(1);
-        }
-      }
-
-      // Step 2: Process volumes
-      if (config.volumes && Object.keys(config.volumes).length > 0) {
-        console.log();
-        console.log(chalk.bold("Processing volumes:"));
-
-        for (const volumeConfig of Object.values(config.volumes)) {
-          const volumeDir = path.join(cwd, volumeConfig.name);
-
-          if (!existsSync(volumeDir)) {
-            console.error(
-              chalk.red(`✗ Directory not found: ${volumeConfig.name}`),
-            );
-            console.error(
-              chalk.dim("  Create the directory and add files first"),
-            );
-            process.exit(1);
-          }
-
-          try {
-            printCommand(`cd ${volumeConfig.name}`);
-
-            // Check if already initialized
-            const existingConfig = await readStorageConfig(volumeDir);
-            if (!existingConfig) {
-              printCommand(`vm0 volume init --name ${volumeConfig.name}`);
-              await execVm0Command(
-                ["volume", "init", "--name", volumeConfig.name],
-                {
-                  cwd: volumeDir,
-                  silent: true,
-                },
-              );
-            }
-
-            // Push volume
-            printCommand("vm0 volume push");
-            await execVm0Command(["volume", "push"], {
-              cwd: volumeDir,
-              silent: true,
-            });
-
-            printCommand("cd ..");
-          } catch (error) {
-            console.error(chalk.red(`✗ Failed`));
-            if (error instanceof Error) {
-              console.error(chalk.dim(`  ${error.message}`));
-            }
-            process.exit(1);
-          }
-        }
-      }
-
-      // Step 3: Process artifact
-      console.log();
-      console.log(chalk.bold("Processing artifact:"));
-
-      const artifactDir = path.join(cwd, ARTIFACT_DIR);
-
-      try {
-        // Create directory if not exists
-        if (!existsSync(artifactDir)) {
-          printCommand(`mkdir ${ARTIFACT_DIR}`);
-          await mkdir(artifactDir, { recursive: true });
-        }
-
-        printCommand(`cd ${ARTIFACT_DIR}`);
-
-        // Check if already initialized
-        const existingConfig = await readStorageConfig(artifactDir);
-        if (!existingConfig) {
-          printCommand(`vm0 artifact init --name ${ARTIFACT_DIR}`);
-          await execVm0Command(["artifact", "init", "--name", ARTIFACT_DIR], {
-            cwd: artifactDir,
-            silent: true,
-          });
-        }
-
-        // Push artifact
-        printCommand("vm0 artifact push");
-        await execVm0Command(["artifact", "push"], {
-          cwd: artifactDir,
-          silent: true,
-        });
-
-        printCommand("cd ..");
-      } catch (error) {
-        console.error(chalk.red(`✗ Failed`));
-        if (error instanceof Error) {
-          console.error(chalk.dim(`  ${error.message}`));
-        }
-        process.exit(1);
-      }
-
-      // Step 4: Compose agent
-      console.log();
-      console.log(chalk.bold("Composing agent:"));
-      const composeArgs = options.yes
-        ? ["compose", "--yes", CONFIG_FILE]
-        : ["compose", CONFIG_FILE];
-      printCommand(`vm0 ${composeArgs.join(" ")}`);
-
-      try {
-        // Use inherit to show compose output and allow confirmation prompts
-        await execVm0Command(composeArgs, {
-          cwd,
-        });
-      } catch (error) {
-        console.error(chalk.red(`✗ Compose failed`));
-        if (error instanceof Error) {
-          console.error(chalk.dim(`  ${error.message}`));
-        }
-        process.exit(1);
-      }
-
-      // Step 5: Run agent (if prompt provided)
+      // Step 6: Run agent (if prompt provided)
       if (prompt) {
-        console.log();
-        console.log(chalk.bold("Running agent:"));
-        printCommand(
-          `vm0 run ${agentName} --artifact-name ${ARTIFACT_DIR} "${prompt}"`,
+        await runAgent(
+          agentName,
+          artifactDir,
+          prompt,
+          cwd,
+          options.debugNoMockClaude ?? false,
         );
-        console.log();
-
-        let runOutput: string;
-        try {
-          const runArgs = [
-            "run",
-            agentName,
-            "--artifact-name",
-            ARTIFACT_DIR,
-            ...(options.debugNoMockClaude ? ["--debug-no-mock-claude"] : []),
-            prompt,
-          ];
-          runOutput = await execVm0RunWithCapture(runArgs, { cwd });
-        } catch {
-          // Error already displayed by vm0 run
-          process.exit(1);
-        }
-
-        // Save session state for continue/resume commands
-        const runIds = parseRunIdsFromOutput(runOutput);
-        if (runIds.runId || runIds.sessionId || runIds.checkpointId) {
-          await saveCookState({
-            lastRunId: runIds.runId,
-            lastSessionId: runIds.sessionId,
-            lastCheckpointId: runIds.checkpointId,
-          });
-        }
-
-        // Step 6: Auto-pull artifact if run completed with artifact changes
-        await autoPullArtifact(runOutput, artifactDir);
       } else {
         console.log();
         console.log("To run your agent:");
