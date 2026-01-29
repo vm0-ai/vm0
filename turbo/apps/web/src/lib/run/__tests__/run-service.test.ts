@@ -3,7 +3,6 @@ import { eq } from "drizzle-orm";
 import { agentComposeVersions } from "../../../db/schema/agent-compose";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { randomUUID } from "crypto";
-import { Sandbox } from "@e2b/code-interpreter";
 import { calculateSessionHistoryPath, RunService } from "../run-service";
 import {
   NotFoundError,
@@ -25,46 +24,18 @@ import {
   setupUser,
   type UserContext,
 } from "../../../__tests__/test-helpers";
-import * as s3Client from "../../s3/s3-client";
 
-vi.mock("@clerk/nextjs/server", () => ({
-  auth: vi.fn(),
-}));
+vi.mock("@clerk/nextjs/server");
 vi.mock("@e2b/code-interpreter");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 
-testContext();
+const context = testContext();
 
 describe("run-service", () => {
   // Setup mocks before each test
   beforeEach(() => {
-    // Setup E2B SDK mock
-    const mockSandbox = {
-      sandboxId: "test-sandbox-123",
-      getHostname: () => "test-sandbox.e2b.dev",
-      files: {
-        write: vi.fn().mockResolvedValue(undefined),
-      },
-      commands: {
-        run: vi.fn().mockResolvedValue({
-          stdout: "Mock output",
-          stderr: "",
-          exitCode: 0,
-        }),
-      },
-      kill: vi.fn().mockResolvedValue(undefined),
-    };
-    vi.mocked(Sandbox.create).mockResolvedValue(
-      mockSandbox as unknown as Sandbox,
-    );
-
-    // Setup S3 mocks
-    vi.spyOn(s3Client, "generatePresignedUrl").mockResolvedValue(
-      "https://mock-presigned-url",
-    );
-    vi.spyOn(s3Client, "listS3Objects").mockResolvedValue([]);
-    vi.spyOn(s3Client, "uploadS3Buffer").mockResolvedValue(undefined);
+    context.setupMocks();
   });
 
   describe("calculateSessionHistoryPath", () => {
