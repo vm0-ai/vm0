@@ -15,16 +15,6 @@ vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
 
-// Mock croner to return nextRun based on mocked Date.now()
-// This ensures nextRunAt uses the same time base as our mocked time
-vi.mock("croner", () => ({
-  Cron: vi.fn().mockImplementation(() => ({
-    // Return a time slightly before the current (possibly mocked) Date.now()
-    // This makes the schedule immediately due after advancing time
-    nextRun: () => new Date(Date.now() - 1000),
-  })),
-}));
-
 const context = testContext();
 
 describe("GET /api/cron/execute-schedules", () => {
