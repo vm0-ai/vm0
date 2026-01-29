@@ -627,6 +627,12 @@ function ResultContent({
   const lines = text.split("\n");
   const isLong = lines.length > 10 || text.length > 500;
 
+  // Check if search term matches this content
+  const hasSearchMatch =
+    searchTerm &&
+    searchTerm.trim() &&
+    text.toLowerCase().includes(searchTerm.toLowerCase());
+
   // Check if it looks like code
   const looksLikeCode =
     text.includes("function ") ||
@@ -649,8 +655,10 @@ function ResultContent({
     : text;
 
   if (isLong) {
+    // Open the details if search matches content or if it's short enough
+    const shouldBeOpen = hasSearchMatch || lines.length <= 15;
     return (
-      <details className="group" open={lines.length <= 15}>
+      <details className="group" open={shouldBeOpen}>
         <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground">
           Output ({lines.length} lines)
         </summary>
