@@ -246,6 +246,10 @@ export class RunService {
    * @param userId User ID to check
    * @param limit Maximum allowed concurrent runs (default: 1, or CONCURRENT_RUN_LIMIT env var, 0 = no limit)
    * @throws ConcurrentRunLimitError if limit exceeded
+   *
+   * TODO: cleanup-sandboxes cron job only cleans up "running" runs, not "pending" runs.
+   * If a run gets stuck in "pending" status, it will block the user's concurrent limit forever.
+   * Need to add cleanup logic for stale pending runs.
    */
   async checkConcurrencyLimit(userId: string, limit?: number): Promise<void> {
     // Use provided limit, or env var, or default to 1
