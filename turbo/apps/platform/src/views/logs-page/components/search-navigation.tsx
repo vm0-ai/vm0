@@ -22,36 +22,28 @@ export function SearchNavigation({
   const displayIndex = totalCount > 0 ? currentIndex + 1 : 0;
 
   return (
-    <div className="flex items-center h-full border-l border-border">
-      <span className="text-xs text-muted-foreground whitespace-nowrap px-2">
-        {totalCount > 0 ? (
-          <>
-            {displayIndex}/{totalCount}
-          </>
-        ) : (
-          "0/0"
-        )}
+    <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 bg-background">
+      <span className="text-xs text-muted-foreground whitespace-nowrap px-1">
+        {displayIndex}/{totalCount}
       </span>
-      <div className="flex items-center border-l border-border">
-        <button
-          onClick={onPrevious}
-          disabled={totalCount === 0}
-          className="h-9 px-1 text-muted-foreground hover:text-foreground hover:bg-muted/50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          title="Previous match (Shift+Enter)"
-          aria-label="Previous match"
-        >
-          <IconChevronUp className="h-4 w-4" />
-        </button>
-        <button
-          onClick={onNext}
-          disabled={totalCount === 0}
-          className="h-9 px-1 text-muted-foreground hover:text-foreground hover:bg-muted/50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          title="Next match (Enter)"
-          aria-label="Next match"
-        >
-          <IconChevronDown className="h-4 w-4" />
-        </button>
-      </div>
+      <button
+        onClick={onPrevious}
+        disabled={totalCount === 0}
+        className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors rounded"
+        title="Previous match (Shift+Enter)"
+        aria-label="Previous match"
+      >
+        <IconChevronUp className="h-4 w-4" />
+      </button>
+      <button
+        onClick={onNext}
+        disabled={totalCount === 0}
+        className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors rounded"
+        title="Next match (Enter)"
+        aria-label="Next match"
+      >
+        <IconChevronDown className="h-4 w-4" />
+      </button>
     </div>
   );
 }

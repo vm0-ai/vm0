@@ -578,8 +578,8 @@ function AgentEventsCard({
           </div>
           <div className="flex items-center gap-3">
             <ViewModeToggle mode={viewMode} setMode={handleViewModeChange} />
-            <div className="flex h-9 items-center rounded-md border border-border bg-background">
-              <div className="flex h-9 w-9 items-center justify-center border-r border-border">
+            <div className="relative flex h-9 items-center rounded-md border border-border bg-background">
+              <div className="flex h-9 w-9 items-center justify-center">
                 <IconSearch className="h-4 w-4 text-muted-foreground" />
               </div>
               <Input
@@ -587,7 +587,7 @@ function AgentEventsCard({
                 value={searchTerm}
                 onChange={(e) => handleSearchChange(e.target.value)}
                 onKeyDown={handleKeyDown}
-                className="h-full w-40 border-0 text-sm focus-visible:ring-0"
+                className="h-full w-56 border-0 text-sm focus-visible:ring-0 focus-visible:ring-offset-0 pr-20"
               />
               <SearchNavigation
                 currentIndex={currentMatchIdx}
