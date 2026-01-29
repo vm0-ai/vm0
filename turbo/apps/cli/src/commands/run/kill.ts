@@ -15,7 +15,10 @@ export const killCommand = new Command()
       if (error instanceof Error) {
         if (error.message.includes("Not authenticated")) {
           console.error(chalk.dim("  Run: vm0 auth login"));
-        } else if (error.message.includes("not found")) {
+        } else if (
+          error.message.includes("not found") ||
+          error.message.includes("No such run")
+        ) {
           console.error(chalk.dim(`  Run not found: ${runId}`));
         } else if (error.message.includes("cannot be cancelled")) {
           console.error(chalk.dim(`  ${error.message}`));
