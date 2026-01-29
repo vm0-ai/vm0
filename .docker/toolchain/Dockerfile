@@ -155,5 +155,8 @@ RUN groupadd -f --gid 1000 vscode \
     && mkdir -p /home/vscode/.local/share /home/vscode/.cache /home/vscode/.config \
     && chown -R vscode:vscode /home/vscode
 
+# Install rust-src for rust-analyzer (IDE support for standard library)
+RUN rustup component add rust-src
+
 # Default command
 CMD ["/usr/bin/zsh"]
