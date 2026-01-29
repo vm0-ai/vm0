@@ -2,10 +2,10 @@ import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
   IconSearch,
   IconFolder,
-  IconList,
-  IconRobot,
-  IconCode,
-  IconLayoutList,
+  IconUser,
+  IconChevronDown,
+  IconCheck,
+  IconAdjustmentsHorizontal,
 } from "@tabler/icons-react";
 import { AppShell } from "../layout/app-shell.tsx";
 import { Card, CardContent, CopyButton, Input } from "@vm0/ui";
@@ -144,7 +144,7 @@ function getEventTypeCounts(events: AgentEvent[]): Map<string, number> {
   return counts;
 }
 
-/** View mode toggle button */
+/** View mode toggle button - Figma style with orange border for active */
 function ViewModeToggle({
   mode,
   setMode,
@@ -153,35 +153,33 @@ function ViewModeToggle({
   setMode: (mode: ViewMode) => void;
 }) {
   return (
-    <div className="flex items-center rounded-md border border-border bg-background">
+    <div className="flex items-center">
       <button
         onClick={() => setMode("formatted")}
-        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-l-md transition-colors ${
+        className={`h-9 px-4 text-sm font-medium transition-colors rounded-l-lg ${
           mode === "formatted"
-            ? "bg-primary text-primary-foreground"
-            : "text-muted-foreground hover:text-foreground"
+            ? "border border-sidebar-primary bg-accent text-sidebar-primary"
+            : "border border-border border-r-0 bg-card text-foreground hover:bg-muted"
         }`}
       >
-        <IconLayoutList className="h-4 w-4" />
         Formatted
       </button>
       <button
         onClick={() => setMode("raw")}
-        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-r-md transition-colors ${
+        className={`h-9 px-4 text-sm font-medium transition-colors rounded-r-lg ${
           mode === "raw"
-            ? "bg-primary text-primary-foreground"
-            : "text-muted-foreground hover:text-foreground"
+            ? "border border-sidebar-primary bg-accent text-sidebar-primary"
+            : "border border-border border-l-0 bg-card text-foreground hover:bg-muted"
         }`}
       >
-        <IconCode className="h-4 w-4" />
         Raw JSON
       </button>
     </div>
   );
 }
 
-/** Event type filter buttons */
-function EventTypeFilters({
+/** Event type filter dropdown - Figma "All types" style using details/summary */
+function EventTypeFilterDropdown({
   counts,
   hiddenTypes,
   setHiddenTypes,
@@ -212,36 +210,65 @@ function EventTypeFilters({
   );
 
   const allTypes = [...existingTypes, ...unknownTypes];
+  const visibleCount = allTypes.filter((type) => !hiddenTypes.has(type)).length;
+  const isAllSelected = visibleCount === allTypes.length;
+
+  const selectAll = () => {
+    setHiddenTypes(new Set());
+  };
 
   if (allTypes.length === 0) {
     return null;
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {allTypes.map((type) => {
-        const style = getEventStyle(type);
-        const Icon = style.icon;
-        const count = counts.get(type) ?? 0;
-        const isHidden = hiddenTypes.has(type);
+    <details className="relative group">
+      <summary className="flex items-center gap-2 px-3 py-1.5 text-sm border border-border rounded-md bg-card hover:bg-muted transition-colors cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+        <IconAdjustmentsHorizontal className="h-4 w-4 text-muted-foreground" />
+        <span className="text-foreground">
+          {isAllSelected ? "All types" : `${visibleCount} types`}
+        </span>
+        <IconChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
+      </summary>
 
-        return (
+      <div className="absolute top-full left-0 mt-1 w-48 bg-card border border-border rounded-md shadow-lg z-50">
+        <div className="p-1">
           <button
-            key={type}
-            onClick={() => toggleType(type)}
-            className={`flex items-center gap-1.5 px-2 py-1 text-xs rounded-full border transition-colors ${
-              isHidden
-                ? "border-border text-muted-foreground opacity-50"
-                : `${style.badgeColor} border-transparent`
-            }`}
+            onClick={selectAll}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left rounded hover:bg-muted transition-colors"
           >
-            <Icon className="h-3 w-3" />
-            <span>{style.label}</span>
-            <span className="opacity-70">({count})</span>
+            <div
+              className={`w-4 h-4 rounded border flex items-center justify-center ${isAllSelected ? "bg-sidebar-primary border-sidebar-primary" : "border-border"}`}
+            >
+              {isAllSelected && <IconCheck className="h-3 w-3 text-white" />}
+            </div>
+            <span>All types</span>
           </button>
-        );
-      })}
-    </div>
+          <div className="h-px bg-border my-1" />
+          {allTypes.map((type) => {
+            const style = getEventStyle(type);
+            const count = counts.get(type) ?? 0;
+            const isVisible = !hiddenTypes.has(type);
+
+            return (
+              <button
+                key={type}
+                onClick={() => toggleType(type)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left rounded hover:bg-muted transition-colors"
+              >
+                <div
+                  className={`w-4 h-4 rounded border flex items-center justify-center ${isVisible ? "bg-sidebar-primary border-sidebar-primary" : "border-border"}`}
+                >
+                  {isVisible && <IconCheck className="h-3 w-3 text-white" />}
+                </div>
+                <span>{style.label}</span>
+                <span className="text-muted-foreground ml-auto">({count})</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </details>
   );
 }
 
@@ -496,60 +523,33 @@ function AgentEventsCard({
     setCurrentMatchIdx(0);
   };
 
-  // Common header for loading/error states
-  const renderHeader = (showControls = false) => (
-    <div className="flex flex-col gap-3 rounded-t-lg border-b border-border bg-muted px-4 py-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <IconList className="h-5 w-5 text-muted-foreground" />
-          <span className="text-sm font-medium text-card-foreground">
-            Agent Events
-          </span>
-        </div>
-        {showControls && (
-          <div className="flex items-center gap-3">
-            <ViewModeToggle mode={viewMode} setMode={handleViewModeChange} />
-            <div className="flex h-9 items-center rounded-md border border-border bg-background">
-              <Input
-                placeholder="Search logs"
-                value={searchTerm}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                onKeyDown={handleKeyDown}
-                className="h-full w-48 border-0 text-sm focus-visible:ring-0"
-              />
-              <div className="flex h-9 w-9 items-center justify-center border-l border-border">
-                <IconSearch className="h-5 w-5 text-muted-foreground" />
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
   if (eventsLoadable.state === "loading") {
     return (
-      <Card className="overflow-hidden">
-        {renderHeader()}
-        <CardContent className="p-4">
-          <div className="p-8 text-center text-muted-foreground">
-            Loading events...
-          </div>
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <span className="text-base font-medium text-foreground">
+            Agent events
+          </span>
+        </div>
+        <div className="p-8 text-center text-muted-foreground">
+          Loading events...
+        </div>
+      </div>
     );
   }
 
   if (eventsLoadable.state === "hasError") {
     return (
-      <Card className="overflow-hidden">
-        {renderHeader()}
-        <CardContent className="p-4">
-          <div className="p-8 text-center text-muted-foreground">
-            Failed to load events
-          </div>
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <span className="text-base font-medium text-foreground">
+            Agent events
+          </span>
+        </div>
+        <div className="p-8 text-center text-muted-foreground">
+          Failed to load events
+        </div>
+      </div>
     );
   }
 
@@ -562,70 +562,69 @@ function AgentEventsCard({
     : events.length;
 
   return (
-    <Card className="overflow-hidden">
-      <div className="flex flex-col gap-3 rounded-t-lg border-b border-border bg-muted px-4 py-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <IconList className="h-5 w-5 text-muted-foreground" />
-            <span className="text-sm font-medium text-card-foreground">
-              Agent Events
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {searchTerm.trim()
-                ? `(${matchingCount}/${events.length} matched)`
-                : `(${events.length} total)`}
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            <ViewModeToggle mode={viewMode} setMode={handleViewModeChange} />
-            <div className="relative flex h-9 items-center rounded-md border border-border bg-background">
-              <div className="flex h-9 w-9 items-center justify-center">
-                <IconSearch className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <Input
-                placeholder="Search logs"
-                value={searchTerm}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                onKeyDown={handleKeyDown}
-                className="h-full w-56 border-0 text-sm focus-visible:ring-0 focus-visible:ring-offset-0 pr-20"
-              />
-              <SearchNavigation
-                currentIndex={currentMatchIdx}
-                totalCount={totalMatches}
-                onNext={handleNext}
-                onPrevious={handlePrevious}
-                hasSearchTerm={searchTerm.trim().length > 0}
-              />
-            </div>
-          </div>
+    <div className="space-y-4">
+      {/* Toolbar - not a card, just a simple bar */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className="text-base font-medium text-foreground">
+            Agent events
+          </span>
+          <span className="text-sm text-muted-foreground">
+            {searchTerm.trim()
+              ? `(${matchingCount}/${events.length} matched)`
+              : `${events.length} total`}
+          </span>
         </div>
-        {viewMode === "formatted" && events.length > 0 && (
-          <EventTypeFilters
-            counts={eventTypeCounts}
-            hiddenTypes={hiddenTypes}
-            setHiddenTypes={setHiddenTypes}
-          />
-        )}
+        <div className="flex items-center gap-3">
+          {viewMode === "formatted" && events.length > 0 && (
+            <EventTypeFilterDropdown
+              counts={eventTypeCounts}
+              hiddenTypes={hiddenTypes}
+              setHiddenTypes={setHiddenTypes}
+            />
+          )}
+          <div className="relative flex h-9 items-center rounded-md border border-border bg-card">
+            <div className="pl-2">
+              <IconSearch className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <Input
+              placeholder="Search logs"
+              value={searchTerm}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              onKeyDown={handleKeyDown}
+              className="h-full w-44 border-0 text-sm focus-visible:ring-0 focus-visible:ring-offset-0 pl-2 pr-20"
+            />
+            <SearchNavigation
+              currentIndex={currentMatchIdx}
+              totalCount={totalMatches}
+              onNext={handleNext}
+              onPrevious={handlePrevious}
+              hasSearchTerm={searchTerm.trim().length > 0}
+            />
+          </div>
+          <div className="h-5 w-px bg-border" />
+          <ViewModeToggle mode={viewMode} setMode={handleViewModeChange} />
+        </div>
       </div>
-      <CardContent className="p-4">
-        {viewMode === "formatted" ? (
-          <FormattedEventsView
-            events={events}
-            searchTerm={searchTerm}
-            hiddenTypes={hiddenTypes}
-            currentMatchIndex={currentMatchIdx}
-            setTotalMatches={setTotalMatches}
-          />
-        ) : (
-          <RawJsonView
-            events={events}
-            searchTerm={searchTerm}
-            currentMatchIndex={currentMatchIdx}
-            setTotalMatches={setTotalMatches}
-          />
-        )}
-      </CardContent>
-    </Card>
+
+      {/* Events list */}
+      {viewMode === "formatted" ? (
+        <FormattedEventsView
+          events={events}
+          searchTerm={searchTerm}
+          hiddenTypes={hiddenTypes}
+          currentMatchIndex={currentMatchIdx}
+          setTotalMatches={setTotalMatches}
+        />
+      ) : (
+        <RawJsonView
+          events={events}
+          searchTerm={searchTerm}
+          currentMatchIndex={currentMatchIdx}
+          setTotalMatches={setTotalMatches}
+        />
+      )}
+    </div>
   );
 }
 
@@ -687,7 +686,7 @@ function LogDetailContentInner({ logId }: { logId: string }) {
             {/* Right column */}
             <div>
               <InfoRow label="Agent">
-                <IconRobot className="h-4 w-4 text-muted-foreground" />
+                <IconUser className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm text-foreground">
                   {detail.agentName}
                 </span>
@@ -700,7 +699,7 @@ function LogDetailContentInner({ logId }: { logId: string }) {
                 </span>
               </InfoRow>
               <InfoRow label="Time">
-                <span className="text-sm text-muted-foreground">
+                <span className="text-sm text-foreground">
                   {formatTime(detail.createdAt)}
                 </span>
               </InfoRow>

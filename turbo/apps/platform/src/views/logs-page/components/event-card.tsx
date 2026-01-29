@@ -788,10 +788,11 @@ function EventHeader({
 
   return (
     <div className="flex items-center gap-2 text-sm">
-      <Icon className={`h-4 w-4 ${style.textColor}`} />
+      {/* Badge with icon inside */}
       <span
-        className={`px-2 py-0.5 rounded-full text-xs font-medium ${style.badgeColor}`}
+        className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${style.badgeColor}`}
       >
+        <Icon className="h-3.5 w-3.5" />
         {label}
       </span>
       {sublabel && (
@@ -819,7 +820,7 @@ export function EventCard({
     const subtype = eventData.subtype;
     return (
       <div
-        className={`rounded-lg border-l-4 ${style.borderColor} ${style.bgColor} p-3`}
+        className={`rounded-lg border ${style.borderColor} ${style.bgColor} p-4`}
       >
         <EventHeader
           event={event}
@@ -843,9 +844,9 @@ export function EventCard({
     const resultStyle = isError ? getEventStyle("tool_result_error") : style;
     return (
       <div
-        className={`rounded-lg border-l-4 ${resultStyle.borderColor} ${resultStyle.bgColor} p-3`}
+        className={`rounded-lg border ${resultStyle.borderColor} ${resultStyle.bgColor} p-4`}
       >
-        <EventHeader event={event} label={isError ? "Failed" : "Completed"} />
+        <EventHeader event={event} label={isError ? "Failed" : "Result"} />
         <ResultEventContent eventData={eventData} />
       </div>
     );
@@ -859,7 +860,7 @@ export function EventCard({
     // Fallback: show raw data
     return (
       <div
-        className={`rounded-lg border-l-4 ${style.borderColor} ${style.bgColor} p-3`}
+        className={`rounded-lg border ${style.borderColor} ${style.bgColor} p-4`}
       >
         <EventHeader event={event} label={event.eventType} />
         <div className="mt-2">
@@ -872,7 +873,7 @@ export function EventCard({
   // Render each content block
   return (
     <div
-      className={`rounded-lg border-l-4 ${style.borderColor} ${style.bgColor} p-3 space-y-3`}
+      className={`rounded-lg border ${style.borderColor} ${style.bgColor} p-4 space-y-3`}
     >
       <EventHeader
         event={event}

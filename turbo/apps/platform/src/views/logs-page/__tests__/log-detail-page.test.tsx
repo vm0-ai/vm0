@@ -272,7 +272,7 @@ describe("log detail page", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Agent Events")).toBeInTheDocument();
+      expect(screen.getByText("Agent events")).toBeInTheDocument();
     });
 
     // Verify the events are rendered (in formatted view)

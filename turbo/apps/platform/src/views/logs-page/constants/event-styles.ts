@@ -1,16 +1,15 @@
 import {
-  IconRocket,
+  IconSettings,
   IconMessage,
   IconTool,
   IconCheck,
-  IconBrain,
   IconUser,
-  IconFlag,
   IconAlertCircle,
+  IconSquareCheck,
 } from "@tabler/icons-react";
 
 interface EventStyle {
-  icon: typeof IconRocket;
+  icon: typeof IconSettings;
   label: string;
   borderColor: string;
   bgColor: string;
@@ -19,57 +18,56 @@ interface EventStyle {
 }
 
 /**
- * Event styles using semantic colors for clear visual hierarchy.
- * - Blue for system/init events (informational)
- * - Gray for assistant events (neutral)
- * - Cyan for user events (user interaction)
- * - Green for result events (success/completion)
- * - Red for errors only
+ * Event styles matching Figma design.
+ * - Orange border badge for system/assistant events
+ * - Red border badge for user events
+ * - Green border badge for result events
+ * Cards have white background with light border (no left color stripe)
  */
 function createEventStyles(): Readonly<Record<string, EventStyle>> {
   return {
-    // System event - blue (informational)
+    // System event - gear icon, blue border badge (matching Figma)
     system: {
-      icon: IconRocket,
+      icon: IconSettings,
       label: "System",
-      borderColor: "border-l-blue-500",
-      bgColor: "bg-blue-50 dark:bg-blue-950/30",
-      textColor: "text-blue-700 dark:text-blue-400",
+      borderColor: "border-border",
+      bgColor: "bg-white dark:bg-slate-900",
+      textColor: "text-sky-600",
       badgeColor:
-        "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-400",
+        "border border-sky-400 text-sky-600 bg-sky-50 dark:border-sky-500 dark:text-sky-400 dark:bg-sky-950/30",
     },
 
-    // Assistant event - neutral gray
+    // Assistant event - user icon, orange/amber border badge (matching Figma)
     assistant: {
-      icon: IconBrain,
+      icon: IconUser,
       label: "Assistant",
-      borderColor: "border-l-slate-400 dark:border-l-slate-500",
-      bgColor: "bg-slate-50 dark:bg-slate-900/30",
-      textColor: "text-slate-700 dark:text-slate-300",
+      borderColor: "border-border",
+      bgColor: "bg-white dark:bg-slate-900",
+      textColor: "text-amber-600",
       badgeColor:
-        "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+        "border border-amber-400 text-amber-600 bg-amber-50 dark:border-amber-500 dark:text-amber-400 dark:bg-amber-950/30",
     },
 
-    // User event - cyan/teal (user interaction)
+    // User event - user icon, pink/magenta border badge (matching Figma)
     user: {
       icon: IconUser,
       label: "User",
-      borderColor: "border-l-cyan-500",
-      bgColor: "bg-cyan-50 dark:bg-cyan-950/30",
-      textColor: "text-cyan-700 dark:text-cyan-400",
+      borderColor: "border-border",
+      bgColor: "bg-white dark:bg-slate-900",
+      textColor: "text-pink-500",
       badgeColor:
-        "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-400",
+        "border border-pink-400 text-pink-500 bg-pink-50 dark:border-pink-500 dark:text-pink-400 dark:bg-pink-950/30",
     },
 
-    // Result event - green (success/completion)
+    // Result event - check icon, lime border badge (matching Figma)
     result: {
-      icon: IconFlag,
+      icon: IconSquareCheck,
       label: "Result",
-      borderColor: "border-l-emerald-500",
-      bgColor: "bg-emerald-50 dark:bg-emerald-950/30",
-      textColor: "text-emerald-700 dark:text-emerald-400",
+      borderColor: "border-border",
+      bgColor: "bg-white dark:bg-slate-900",
+      textColor: "text-lime-600",
       badgeColor:
-        "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-400",
+        "border border-lime-600 text-lime-600 bg-lime-50 dark:border-lime-500 dark:text-lime-400 dark:bg-lime-950/30",
     },
 
     // Content types - subtle styling within cards
@@ -112,7 +110,7 @@ function createEventStyles(): Readonly<Record<string, EventStyle>> {
 
     // Legacy types for backwards compatibility
     init: {
-      icon: IconRocket,
+      icon: IconSettings,
       label: "Init",
       borderColor: "border-l-blue-500",
       bgColor: "bg-blue-50 dark:bg-blue-950/30",
@@ -121,7 +119,7 @@ function createEventStyles(): Readonly<Record<string, EventStyle>> {
         "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-400",
     },
     thinking: {
-      icon: IconBrain,
+      icon: IconUser,
       label: "Thinking",
       borderColor: "border-l-violet-400 dark:border-l-violet-500",
       bgColor: "bg-violet-50/50 dark:bg-violet-950/20",

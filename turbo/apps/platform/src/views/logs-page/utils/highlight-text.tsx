@@ -56,8 +56,8 @@ export function highlightText(
           data-match-index={globalIndex}
           className={
             isCurrent
-              ? "bg-orange-300 text-orange-900 rounded px-0.5"
-              : "bg-yellow-200 text-yellow-900 rounded px-0.5"
+              ? "bg-orange-200 text-orange-900 rounded px-0.5"
+              : "bg-orange-100 text-orange-800 rounded px-0.5"
           }
         >
           {part}
