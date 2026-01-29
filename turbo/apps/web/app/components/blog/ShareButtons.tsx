@@ -13,8 +13,9 @@ export default function ShareButtons({ title, url }: ShareButtonsProps) {
   const encodedUrl = encodeURIComponent(url);
 
   const copyToClipboard = () => {
-    navigator.clipboard.writeText(url).catch(() => {
-      // Silently fail if clipboard is unavailable
+    navigator.clipboard.writeText(url).catch((error: unknown) => {
+      // Log error when clipboard API is unavailable (e.g., insecure context)
+      console.warn("Failed to copy to clipboard:", error);
     });
   };
 

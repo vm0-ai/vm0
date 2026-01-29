@@ -8,35 +8,35 @@ import {
 
 const DATA_SOURCE = process.env.NEXT_PUBLIC_DATA_SOURCE || "strapi";
 
-export async function getPosts(locale: string = "en"): Promise<BlogPost[]> {
-  if (DATA_SOURCE === "strapi") {
-    return getPostsFromStrapi(locale);
+function assertStrapiDataSource(dataSource: string): void {
+  if (dataSource !== "strapi") {
+    throw new Error(
+      `Unsupported data source: ${dataSource}. Only "strapi" is supported.`,
+    );
   }
-  return [];
+}
+
+export async function getPosts(locale: string = "en"): Promise<BlogPost[]> {
+  assertStrapiDataSource(DATA_SOURCE);
+  return getPostsFromStrapi(locale);
 }
 
 export async function getPost(
   slug: string,
   locale: string = "en",
 ): Promise<BlogPost | null> {
-  if (DATA_SOURCE === "strapi") {
-    return getPostBySlugFromStrapi(slug, locale);
-  }
-  return null;
+  assertStrapiDataSource(DATA_SOURCE);
+  return getPostBySlugFromStrapi(slug, locale);
 }
 
 export async function getFeatured(
   locale: string = "en",
 ): Promise<BlogPost | null> {
-  if (DATA_SOURCE === "strapi") {
-    return getFeaturedPostFromStrapi(locale);
-  }
-  return null;
+  assertStrapiDataSource(DATA_SOURCE);
+  return getFeaturedPostFromStrapi(locale);
 }
 
 export async function getCategories(locale: string = "en"): Promise<string[]> {
-  if (DATA_SOURCE === "strapi") {
-    return getAllCategoriesFromStrapi(locale);
-  }
-  return [];
+  assertStrapiDataSource(DATA_SOURCE);
+  return getAllCategoriesFromStrapi(locale);
 }

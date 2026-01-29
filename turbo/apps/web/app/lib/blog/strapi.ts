@@ -1,7 +1,16 @@
 import { BlogPost } from "./types";
 
-const STRAPI_URL =
-  process.env.NEXT_PUBLIC_STRAPI_URL || "http://localhost:1337";
+function getStrapiUrl(): string {
+  const url = process.env.NEXT_PUBLIC_STRAPI_URL;
+  if (!url) {
+    throw new Error(
+      "NEXT_PUBLIC_STRAPI_URL environment variable is not configured",
+    );
+  }
+  return url;
+}
+
+const STRAPI_URL = getStrapiUrl();
 
 interface StrapiResponse<T> {
   data: T;
