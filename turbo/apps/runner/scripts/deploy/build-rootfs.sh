@@ -173,18 +173,11 @@ verify_rootfs() {
         echo "  Python: ${PYTHON_VERSION}"
     fi
 
-    if [ ! -f "$MOUNT_POINT/usr/local/bin/vm0-agent/vm-init" ]; then
+    if [ ! -f "$MOUNT_POINT/sbin/vm-init" ]; then
         echo "ERROR: vm-init binary not found in rootfs"
         ERRORS=$((ERRORS + 1))
     else
-        echo "  vm-init: installed (Rust binary)"
-    fi
-
-    if [ ! -f "$MOUNT_POINT/sbin/vm-init" ]; then
-        echo "ERROR: vm-init not found in rootfs"
-        ERRORS=$((ERRORS + 1))
-    else
-        echo "  vm-init: installed"
+        echo "  vm-init: installed (Rust binary at /sbin/vm-init)"
     fi
 
     # Check for agent scripts
