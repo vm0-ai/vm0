@@ -171,4 +171,44 @@ describe("GET /api/usage", () => {
     expect(data.summary.total_runs).toBe(2);
     expect(typeof data.summary.total_run_time_ms).toBe("number");
   });
+
+  it("should calculate run times correctly with mocked dates", async () => {
+    // Note: createdAt is set by PostgreSQL defaultNow() and cannot be mocked.
+    // We mock startedAt/completedAt to test run_time_ms calculation.
+    // startedAt is set during createTestRun, completedAt during completeTestRun.
+
+    // Run 1: mock time before creating run (startedAt), then advance for completion
+    const startTime1 = new Date("2024-06-13T12:00:00.000Z");
+    context.mocks.date.setSystemTime(startTime1);
+    const { runId: runId1 } = await createTestRun(testComposeId, "Prompt 1");
+
+    // Advance time by 1 minute before completing
+    context.mocks.date.setSystemTime(
+      new Date(startTime1.getTime() + 60 * 1000),
+    );
+    await completeTestRun(user.userId, runId1);
+
+    // Run 2: same pattern - mock time, create, advance, complete
+    const startTime2 = new Date("2024-06-12T12:00:00.000Z");
+    context.mocks.date.setSystemTime(startTime2);
+    const { runId: runId2 } = await createTestRun(testComposeId, "Prompt 2");
+
+    // Advance time by 2 minutes before completing
+    context.mocks.date.setSystemTime(
+      new Date(startTime2.getTime() + 2 * 60 * 1000),
+    );
+    await completeTestRun(user.userId, runId2);
+
+    // Restore real time and query with default range (uses real createdAt)
+    context.mocks.date.useRealTime();
+
+    const request = createTestRequest("http://localhost:3000/api/usage");
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.summary.total_runs).toBe(2);
+    // Run 1: 60000ms (1 min) + Run 2: 120000ms (2 min) = 180000ms
+    expect(data.summary.total_run_time_ms).toBe(180000);
+  });
 });

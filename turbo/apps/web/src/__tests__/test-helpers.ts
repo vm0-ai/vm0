@@ -76,13 +76,26 @@ interface AxiomMocks {
 }
 
 /**
+ * Date mock structure for controlling time in tests
+ */
+interface DateMocks {
+  /** Set a fixed system time for new Date() and Date.now() */
+  setSystemTime(date: Date): void;
+  /** Restore real time behavior */
+  useRealTime(): void;
+}
+
+/**
  * Combined mock helpers for E2B, S3, Axiom, and Date
  */
 interface MockHelpers {
   e2b: E2bMocks;
   s3: S3Mocks;
   axiom: AxiomMocks;
+  /** @deprecated Use context.mocks.date.setSystemTime() instead */
   dateNow: MockInstance<() => number>;
+  /** Date mock for controlling new Date() and Date.now() */
+  date: DateMocks;
 }
 
 interface SetupUserOptions {
@@ -203,11 +216,46 @@ export function testContext(): TestContext {
       .spyOn(Date, "now")
       .mockImplementation(() => originalDateNow());
 
+    // Date constructor mock for controlling new Date()
+    const RealDate = globalThis.Date;
+    let isMocked = false;
+
+    const dateMocks: DateMocks = {
+      setSystemTime(date: Date) {
+        // Also update dateNow mock for consistency
+        dateNowMock.mockReturnValue(date.getTime());
+        // Replace Date constructor with mock
+        globalThis.Date = class extends RealDate {
+          constructor(...args: unknown[]) {
+            if (args.length === 0) {
+              super(date.getTime());
+            } else {
+              // @ts-expect-error - calling super with variable args
+              super(...args);
+            }
+          }
+
+          static now() {
+            return date.getTime();
+          }
+        } as DateConstructor;
+        isMocked = true;
+      },
+      useRealTime() {
+        dateNowMock.mockImplementation(() => originalDateNow());
+        if (isMocked) {
+          globalThis.Date = RealDate;
+          isMocked = false;
+        }
+      },
+    };
+
     const helpers: MockHelpers = {
       e2b: { sandbox: mockSandbox },
       s3: s3Mocks,
       axiom: axiomMocks,
       dateNow: dateNowMock,
+      date: dateMocks,
     };
     mockHelpers = helpers;
     return helpers;
