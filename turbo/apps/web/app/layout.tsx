@@ -6,6 +6,7 @@ import { getClerkPublishableKey } from "../src/lib/clerk-config";
 import { ThemeProvider } from "./components/ThemeProvider";
 import "./globals.css";
 import "./landing.css";
+import "./blog.css";
 
 const bypassAuth = process.env.BYPASS_AUTH === "true";
 

@@ -272,5 +272,18 @@
         "definition": "Una herramienta de línea de comandos para el desarrollo y despliegue de agentes. Codex proporciona a los desarrolladores utilidades para construir, probar y gestionar agentes a través del terminal. Ofrece características como generación de código, scaffolding e integración con modelos de IA para optimizar el flujo de trabajo de desarrollo de agentes."
       }
     }
+  },
+  "blog": {
+    "title": "Blog",
+    "description": "Perspectivas, tutoriales y actualizaciones sobre desarrollo nativo de agentes y el futuro de la infraestructura de IA.",
+    "allPosts": "Todas las publicaciones",
+    "readMore": "Leer más",
+    "backToAllPosts": "Volver a todas las publicaciones",
+    "relatedArticles": "Artículos relacionados",
+    "stayInLoop": "Mantente al día",
+    "stayInLoopDesc": "// Obtén las últimas perspectivas sobre desarrollo nativo de agentes.",
+    "subscribe": "Suscribirse",
+    "joinDiscord": "Únete a Discord",
+    "shareArticle": "Compartir este artículo"
   }
 }

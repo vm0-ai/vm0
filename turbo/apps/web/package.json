@@ -43,6 +43,9 @@
     "postgres": "^3.4.7",
     "react": "^19.1.2",
     "react-dom": "^19.1.2",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "remark-gfm": "^4.0.1",
     "server-only": "^0.0.1",
     "zod": "^4.1.12"
   },

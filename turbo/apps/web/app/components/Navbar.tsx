@@ -77,14 +77,9 @@ export default function Navbar() {
             >
               {t("docs")}
             </a>
-            <a
-              href="https://blog.vm0.ai"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="nav-link"
-            >
+            <Link href="/blog" className="nav-link">
               {t("blog")}
-            </a>
+            </Link>
             <Link href="/skills" className="nav-link">
               {t("skills")}
             </Link>
@@ -162,15 +157,13 @@ export default function Navbar() {
             >
               {t("docs")}
             </a>
-            <a
-              href="https://blog.vm0.ai"
-              target="_blank"
-              rel="noopener noreferrer"
+            <Link
+              href="/blog"
               className="mobile-menu-link"
               onClick={() => setMobileMenuOpen(false)}
             >
               {t("blog")}
-            </a>
+            </Link>
             <Link
               href="/skills"
               className="mobile-menu-link"
