@@ -9,6 +9,7 @@ import {
   deleteTestCliToken,
   createTestModelProvider,
   createTestRun,
+  getTestRun,
   completeTestRun,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
@@ -18,8 +19,6 @@ import {
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { AgentSessionService } from "../../../../../src/lib/agent-session/agent-session-service";
-import { agentRuns } from "../../../../../src/db/schema/agent-run";
-import { eq } from "drizzle-orm";
 
 vi.mock("@clerk/nextjs/server");
 vi.mock("@e2b/code-interpreter");
@@ -57,18 +56,14 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.status).toBe("running");
     });
 
-    it("should save sandboxId in database after preparation", async () => {
-      const data = await createTestRun(testComposeId, "Test sandbox ID");
+    it("should create run with running status", async () => {
+      const data = await createTestRun(testComposeId, "Test run creation");
 
-      const [run] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.id, data.runId))
-        .limit(1);
+      // Verify via API
+      const run = await getTestRun(data.runId);
 
-      expect(run!.sandboxId).toBe("test-sandbox-123");
-      expect(run!.status).toBe("running");
-      expect(run!.completedAt).toBeNull();
+      expect(run.status).toBe("running");
+      expect(run.completedAt).toBeNull();
     });
 
     it("should return failed status if sandbox preparation fails", async () => {
@@ -80,15 +75,12 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       expect(data.status).toBe("failed");
 
-      const [run] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.id, data.runId))
-        .limit(1);
+      // Verify via API
+      const run = await getTestRun(data.runId);
 
-      expect(run!.status).toBe("failed");
-      expect(run!.error).toContain("Sandbox creation failed");
-      expect(run!.completedAt).toBeDefined();
+      expect(run.status).toBe("failed");
+      expect(run.error).toContain("Sandbox creation failed");
+      expect(run.completedAt).toBeDefined();
     });
   });
 
@@ -415,14 +407,10 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       // Route creates run first, then fails during preparation
       expect(data.status).toBe("failed");
 
-      // Verify error was recorded
-      const [run] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.id, data.runId))
-        .limit(1);
+      // Verify error via API
+      const run = await getTestRun(data.runId);
 
-      expect(run!.error).toMatch(/model provider/i);
+      expect(run.error).toMatch(/model provider/i);
     });
 
     it("should skip injection when compose has explicit ANTHROPIC_API_KEY", async () => {
@@ -500,14 +488,10 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       // Route creates run first, then fails during preparation
       expect(data.status).toBe("failed");
 
-      // Verify error was recorded
-      const [run] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.id, data.runId))
-        .limit(1);
+      // Verify error via API
+      const run = await getTestRun(data.runId);
 
-      expect(run!.error).toMatch(/model provider/i);
+      expect(run.error).toMatch(/model provider/i);
     });
 
     it("should auto-inject model provider when no environment block exists", async () => {

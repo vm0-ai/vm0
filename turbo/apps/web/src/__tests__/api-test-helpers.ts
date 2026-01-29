@@ -15,6 +15,7 @@ import { eq } from "drizzle-orm";
 import { POST as createComposeRoute } from "../../app/api/agent/composes/route";
 import { POST as createScopeRoute } from "../../app/api/scope/route";
 import { POST as createRunRoute } from "../../app/api/agent/runs/route";
+import { GET as getRunRoute } from "../../app/v1/runs/[id]/route";
 import { PUT as upsertModelProviderRoute } from "../../app/api/model-providers/route";
 import { POST as checkpointWebhook } from "../../app/api/webhooks/agent/checkpoints/route";
 import { POST as completeWebhook } from "../../app/api/webhooks/agent/complete/route";
@@ -254,6 +255,29 @@ export async function createTestRun(
     }),
   });
   const response = await createRunRoute(request);
+  return response.json();
+}
+
+/**
+ * Get test run details via public API route handler.
+ *
+ * @param runId - The run ID to fetch
+ * @returns The run details including status, error, etc.
+ */
+export async function getTestRun(runId: string): Promise<{
+  id: string;
+  status: string;
+  error: string | null;
+  completedAt: string | null;
+}> {
+  const request = createTestRequest(`http://localhost:3000/v1/runs/${runId}`);
+  const response = await getRunRoute(request);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `Failed to get run: ${error.error?.message || response.status}`,
+    );
+  }
   return response.json();
 }
 
