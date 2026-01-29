@@ -23,6 +23,7 @@ import { mockClerk, clearClerkMock } from "./clerk-mock";
 import { initServices } from "../lib/init-services";
 import { createTestScope } from "./api-test-helpers";
 import * as s3Client from "../lib/s3/s3-client";
+import * as axiomClient from "../lib/axiom/client";
 
 /**
  * E2B Sandbox mock structure
@@ -64,6 +65,8 @@ interface AxiomMocks {
   query: Mock;
   ingest: Mock;
   flush: Mock;
+  /** Spy for queryAxiom function - use mockResolvedValue to set return value */
+  queryAxiom: MockInstance<typeof axiomClient.queryAxiom>;
 }
 
 /**
@@ -166,6 +169,9 @@ export function testContext(): TestContext {
       query: vi.fn().mockResolvedValue({ matches: [] }),
       ingest: vi.fn(),
       flush: vi.fn().mockResolvedValue(undefined),
+      queryAxiom: vi
+        .spyOn(axiomClient, "queryAxiom")
+        .mockResolvedValue([]) as MockInstance<typeof axiomClient.queryAxiom>,
     };
     // Use try/catch since Axiom may not be mocked in all test files
     try {
