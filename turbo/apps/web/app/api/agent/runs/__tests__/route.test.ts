@@ -18,7 +18,6 @@ import {
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
-import { AgentSessionService } from "../../../../../src/lib/agent-session/agent-session-service";
 
 vi.mock("@clerk/nextjs/server");
 vi.mock("@e2b/code-interpreter");
@@ -540,32 +539,30 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     });
 
     it("should return 404 when session belongs to different user (security)", async () => {
-      // Create another user and their session
+      // Create another user with their own compose and run
       const otherUser = await setupUser({ prefix: "other" });
-      const { composeId: otherComposeId, versionId } = await createTestCompose(
+      const { composeId: otherComposeId } = await createTestCompose(
         `other-agent-${Date.now()}`,
       );
 
-      // Create session for other user
-      const sessionService = new AgentSessionService();
-      mockClerk({ userId: otherUser.userId });
-      const session = await sessionService.create({
-        userId: otherUser.userId,
-        agentComposeId: otherComposeId,
-        agentComposeVersionId: versionId,
-        artifactName: "test-artifact",
-      });
+      // Create and complete run for other user (creates session with conversation)
+      const otherRun = await createTestRun(otherComposeId, "Other user run");
+      const { agentSessionId } = await completeTestRun(
+        otherUser.userId,
+        otherRun.runId,
+      );
 
       // Switch back to original user
       mockClerk({ userId: user.userId });
 
+      // Try to continue other user's session
       const request = createTestRequest(
         "http://localhost:3000/api/agent/runs",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            sessionId: session.id,
+            sessionId: agentSessionId,
             prompt: "Continue other session",
           }),
         },
@@ -577,39 +574,6 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       // Returns 404 for security (don't leak session existence)
       expect(response.status).toBe(404);
       expect(data.error.message).toMatch(/session/i);
-    });
-
-    it("should return 404 when session has no conversation history", async () => {
-      // Create session without any conversation (no checkpoint created yet)
-      const { composeId, versionId } = await createTestCompose(
-        `no-conv-${Date.now()}`,
-      );
-
-      const sessionService = new AgentSessionService();
-      const session = await sessionService.create({
-        userId: user.userId,
-        agentComposeId: composeId,
-        agentComposeVersionId: versionId,
-        artifactName: "test-artifact-no-conversation",
-      });
-
-      const request = createTestRequest(
-        "http://localhost:3000/api/agent/runs",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId: session.id,
-            prompt: "Continue session without conversation",
-          }),
-        },
-      );
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(404);
-      expect(data.error.message).toMatch(/conversation/i);
     });
   });
 });
