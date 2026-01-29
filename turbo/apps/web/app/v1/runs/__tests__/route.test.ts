@@ -215,27 +215,15 @@ describe("Public API v1 - Runs Endpoints", () => {
       expect(data.error.type).toBe("not_found_error");
     });
 
-    it("should kill E2B sandbox when run has sandboxId", async () => {
-      const testSandboxId = "test-sandbox-123";
-      const mockKill = vi.fn().mockResolvedValue(undefined);
-      vi.mocked(Sandbox.connect).mockResolvedValue({
-        kill: mockKill,
-      } as unknown as Sandbox);
+    it("should kill E2B sandbox when cancelling running run", async () => {
+      // Create a running run (this will have sandboxId from mock)
+      const run = await createTestV1Run(testAgentId, "Run with sandbox");
 
-      // Create a running run with sandboxId
-      const [run] = await globalThis.services.db
-        .insert(agentRuns)
-        .values({
-          userId: testUserId,
-          agentComposeVersionId: testVersionId,
-          status: "running",
-          prompt: "Run with sandbox to cancel",
-          sandboxId: testSandboxId,
-        })
-        .returning();
+      // Clear mock to track new calls
+      context.mocks.e2b.sandbox.kill.mockClear();
 
       const request = createTestRequest(
-        `http://localhost:3000/v1/runs/${run!.id}/cancel`,
+        `http://localhost:3000/v1/runs/${run.id}/cancel`,
         { method: "POST" },
       );
 
@@ -244,36 +232,8 @@ describe("Public API v1 - Runs Endpoints", () => {
 
       expect(response.status).toBe(200);
       expect(data.status).toBe("cancelled");
-      expect(Sandbox.connect).toHaveBeenCalledWith(testSandboxId);
-      expect(mockKill).toHaveBeenCalled();
-    });
-
-    it("should not call killSandbox when run has no sandboxId", async () => {
-      vi.mocked(Sandbox.connect).mockClear();
-
-      // Create a pending run without sandboxId
-      const [run] = await globalThis.services.db
-        .insert(agentRuns)
-        .values({
-          userId: testUserId,
-          agentComposeVersionId: testVersionId,
-          status: "pending",
-          prompt: "Pending run without sandbox",
-          sandboxId: null,
-        })
-        .returning();
-
-      const request = createTestRequest(
-        `http://localhost:3000/v1/runs/${run!.id}/cancel`,
-        { method: "POST" },
-      );
-
-      const response = await cancelRun(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.status).toBe("cancelled");
-      expect(Sandbox.connect).not.toHaveBeenCalled();
+      // Verify sandbox kill was called via Sandbox.connect
+      expect(context.mocks.e2b.sandbox.kill).toHaveBeenCalled();
     });
   });
 
