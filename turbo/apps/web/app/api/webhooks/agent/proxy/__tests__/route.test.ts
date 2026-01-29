@@ -1,24 +1,24 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "../route";
-import { NextRequest } from "next/server";
-import { initServices } from "../../../../../../src/lib/init-services";
-import { createProxyToken } from "../../../../../../src/lib/proxy/token-service";
 import { createTestSandboxToken } from "../../../../../../src/__tests__/api-test-helpers";
+import { testContext } from "../../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { createProxyToken } from "../../../../../../src/lib/proxy/token-service";
 import { randomUUID } from "crypto";
+import { NextRequest } from "next/server";
 
-// Mock Clerk auth
-vi.mock("@clerk/nextjs/server", () => ({
-  auth: vi.fn(),
-}));
+// Only mock external services
+vi.mock("@clerk/nextjs/server");
+vi.mock("@e2b/code-interpreter");
+vi.mock("@aws-sdk/client-s3");
+vi.mock("@aws-sdk/s3-request-presigner");
+vi.mock("@axiomhq/js");
 
 // Mock fetch for proxying
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
-import {
-  mockClerk,
-  clearClerkMock,
-} from "../../../../../../src/__tests__/clerk-mock";
+const context = testContext();
 
 describe("POST /api/webhooks/agent/proxy", () => {
   const testUserId = `test-user-proxy-${Date.now()}-${process.pid}`;
@@ -27,18 +27,13 @@ describe("POST /api/webhooks/agent/proxy", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    initServices();
+    context.setupMocks();
 
     // Generate JWT token for sandbox auth
     testToken = await createTestSandboxToken(testUserId, testRunId);
 
     // Mock Clerk auth to return null (webhook uses token auth)
     mockClerk({ userId: null });
-  });
-
-  afterEach(async () => {
-    clearClerkMock();
-    // No cleanup needed for JWT tokens (stateless)
   });
 
   // ============================================
