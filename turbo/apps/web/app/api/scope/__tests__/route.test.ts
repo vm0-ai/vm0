@@ -1,52 +1,27 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
-import { NextRequest } from "next/server";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET, POST, PUT } from "../route";
-import { initServices } from "../../../../src/lib/init-services";
-import { scopes } from "../../../../src/db/schema/scope";
-import { eq } from "drizzle-orm";
+import { createTestRequest } from "../../../../src/__tests__/api-test-helpers";
+import { testContext } from "../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../src/__tests__/clerk-mock";
 
-// Mock Clerk auth (external SaaS)
-vi.mock("@clerk/nextjs/server", () => ({
-  auth: vi.fn(),
-}));
+vi.mock("@clerk/nextjs/server");
+vi.mock("@e2b/code-interpreter");
+vi.mock("@aws-sdk/client-s3");
+vi.mock("@aws-sdk/s3-request-presigner");
+vi.mock("@axiomhq/js");
 
-import { auth } from "@clerk/nextjs/server";
-
-const mockAuth = vi.mocked(auth);
+const context = testContext();
 
 describe("/api/scope", () => {
-  const testUserId = "test-user-scope-api";
-  const testUserId2 = "test-user-scope-api-2";
-
-  beforeAll(() => {
-    initServices();
-
-    // Mock Clerk auth to return test user
-    mockAuth.mockResolvedValue({
-      userId: testUserId,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
-  });
-
-  afterAll(async () => {
-    // Cleanup: Delete all test scopes
-    await globalThis.services.db
-      .delete(scopes)
-      .where(eq(scopes.ownerId, testUserId));
-    await globalThis.services.db
-      .delete(scopes)
-      .where(eq(scopes.ownerId, testUserId2));
+  beforeEach(() => {
+    context.setupMocks();
   });
 
   describe("GET /api/scope", () => {
     it("should require authentication", async () => {
-      mockAuth.mockResolvedValueOnce({
-        userId: null,
-      } as unknown as Awaited<ReturnType<typeof auth>>);
+      mockClerk({ userId: null });
 
-      const request = new NextRequest("http://localhost:3000/api/scope", {
-        method: "GET",
-      });
-
+      const request = createTestRequest("http://localhost:3000/api/scope");
       const response = await GET(request);
       const data = await response.json();
 
@@ -55,14 +30,10 @@ describe("/api/scope", () => {
     });
 
     it("should return 404 if user has no scope", async () => {
-      mockAuth.mockResolvedValueOnce({
-        userId: "user-with-no-scope",
-      } as unknown as Awaited<ReturnType<typeof auth>>);
+      // Create a unique user ID that has no scope
+      mockClerk({ userId: `user-with-no-scope-${Date.now()}` });
 
-      const request = new NextRequest("http://localhost:3000/api/scope", {
-        method: "GET",
-      });
-
+      const request = createTestRequest("http://localhost:3000/api/scope");
       const response = await GET(request);
       const data = await response.json();
 
@@ -73,16 +44,13 @@ describe("/api/scope", () => {
 
   describe("POST /api/scope", () => {
     it("should require authentication", async () => {
-      mockAuth.mockResolvedValueOnce({
-        userId: null,
-      } as unknown as Awaited<ReturnType<typeof auth>>);
+      mockClerk({ userId: null });
 
-      const request = new NextRequest("http://localhost:3000/api/scope", {
+      const request = createTestRequest("http://localhost:3000/api/scope", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slug: "test-scope" }),
       });
-
       const response = await POST(request);
       const data = await response.json();
 
@@ -91,14 +59,15 @@ describe("/api/scope", () => {
     });
 
     it("should create a scope successfully", async () => {
+      // Create a unique user without a scope
+      mockClerk({ userId: `new-user-${Date.now()}` });
       const slug = `api-test-${Date.now()}`;
 
-      const request = new NextRequest("http://localhost:3000/api/scope", {
+      const request = createTestRequest("http://localhost:3000/api/scope", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slug }),
       });
-
       const response = await POST(request);
       const data = await response.json();
 
@@ -109,23 +78,24 @@ describe("/api/scope", () => {
     });
 
     it("should reject duplicate scope creation for same user", async () => {
-      const slug = `dup-test-${Date.now()}`;
+      // Create a user and their first scope
+      const userId = `dup-test-user-${Date.now()}`;
+      mockClerk({ userId });
 
-      // Create first scope
-      const request1 = new NextRequest("http://localhost:3000/api/scope", {
+      const slug1 = `dup-test-${Date.now()}`;
+      const request1 = createTestRequest("http://localhost:3000/api/scope", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug }),
+        body: JSON.stringify({ slug: slug1 }),
       });
       await POST(request1);
 
       // Try to create another scope for same user
-      const request2 = new NextRequest("http://localhost:3000/api/scope", {
+      const request2 = createTestRequest("http://localhost:3000/api/scope", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug: `${slug}-2` }),
+        body: JSON.stringify({ slug: `${slug1}-2` }),
       });
-
       const response = await POST(request2);
       const data = await response.json();
 
@@ -134,28 +104,26 @@ describe("/api/scope", () => {
     });
 
     it("should reject invalid slug format", async () => {
-      // Use different user without scope
+      mockClerk({ userId: `invalid-slug-user-${Date.now()}` });
 
-      const request = new NextRequest("http://localhost:3000/api/scope", {
+      const request = createTestRequest("http://localhost:3000/api/scope", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slug: "AB" }), // Too short
       });
-
       const response = await POST(request);
 
       expect(response.status).toBe(400);
     });
 
     it("should reject reserved slugs", async () => {
-      // Use different user without scope
+      mockClerk({ userId: `reserved-slug-user-${Date.now()}` });
 
-      const request = new NextRequest("http://localhost:3000/api/scope", {
+      const request = createTestRequest("http://localhost:3000/api/scope", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slug: "vm0" }),
       });
-
       const response = await POST(request);
       const data = await response.json();
 
@@ -165,17 +133,19 @@ describe("/api/scope", () => {
   });
 
   describe("PUT /api/scope", () => {
-    it("should require authentication", async () => {
-      mockAuth.mockResolvedValueOnce({
-        userId: null,
-      } as unknown as Awaited<ReturnType<typeof auth>>);
+    beforeEach(async () => {
+      // Set up a user with an existing scope for PUT tests
+      await context.setupUser();
+    });
 
-      const request = new NextRequest("http://localhost:3000/api/scope", {
+    it("should require authentication", async () => {
+      mockClerk({ userId: null });
+
+      const request = createTestRequest("http://localhost:3000/api/scope", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slug: "new-slug", force: true }),
       });
-
       const response = await PUT(request);
       const data = await response.json();
 
@@ -184,12 +154,11 @@ describe("/api/scope", () => {
     });
 
     it("should require force flag to update", async () => {
-      const request = new NextRequest("http://localhost:3000/api/scope", {
+      const request = createTestRequest("http://localhost:3000/api/scope", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slug: "new-slug", force: false }),
       });
-
       const response = await PUT(request);
       const data = await response.json();
 
@@ -200,12 +169,11 @@ describe("/api/scope", () => {
     it("should update scope slug with force flag", async () => {
       const newSlug = `updated-${Date.now()}`;
 
-      const request = new NextRequest("http://localhost:3000/api/scope", {
+      const request = createTestRequest("http://localhost:3000/api/scope", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slug: newSlug, force: true }),
       });
-
       const response = await PUT(request);
       const data = await response.json();
 
@@ -215,11 +183,13 @@ describe("/api/scope", () => {
   });
 
   describe("GET /api/scope (after scope created)", () => {
-    it("should return user's scope", async () => {
-      const request = new NextRequest("http://localhost:3000/api/scope", {
-        method: "GET",
-      });
+    beforeEach(async () => {
+      // Set up a user with a scope
+      await context.setupUser();
+    });
 
+    it("should return user's scope", async () => {
+      const request = createTestRequest("http://localhost:3000/api/scope");
       const response = await GET(request);
       const data = await response.json();
 
