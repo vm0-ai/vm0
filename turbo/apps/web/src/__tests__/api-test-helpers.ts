@@ -535,3 +535,23 @@ export async function createTestArtifact(
 }> {
   return createTestStorage(name, { ...options, type: "artifact" });
 }
+
+/**
+ * Create a test volume via API route handlers.
+ * Convenience wrapper around createTestStorage with type="volume".
+ *
+ * @param name - Volume name
+ * @param options - Optional configuration
+ * @returns The created volume with versionId
+ */
+export async function createTestVolume(
+  name: string,
+  options?: Omit<CreateTestStorageOptions, "type">,
+): Promise<{
+  versionId: string;
+  name: string;
+  size: number;
+  fileCount: number;
+}> {
+  return createTestStorage(name, { ...options, type: "volume" });
+}

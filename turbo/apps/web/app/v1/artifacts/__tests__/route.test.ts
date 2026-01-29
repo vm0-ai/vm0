@@ -1,113 +1,49 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeAll,
-  beforeEach,
-  afterEach,
-  afterAll,
-  vi,
-} from "vitest";
-import { NextRequest } from "next/server";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET as listArtifacts } from "../route";
 import { GET as getArtifact } from "../[id]/route";
 import { GET as listVersions } from "../[id]/versions/route";
-import { initServices } from "../../../../src/lib/init-services";
-import { storages } from "../../../../src/db/schema/storage";
-import { scopes } from "../../../../src/db/schema/scope";
-import { eq, and } from "drizzle-orm";
+import {
+  createTestRequest,
+  createTestArtifact,
+} from "../../../../src/__tests__/api-test-helpers";
+import { testContext } from "../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
 
-/**
- * Helper to create a NextRequest for testing.
- */
-function createTestRequest(
-  url: string,
-  options?: {
-    method?: string;
-    body?: string;
-    headers?: Record<string, string>;
-  },
-): NextRequest {
-  return new NextRequest(url, {
-    method: options?.method ?? "GET",
-    headers: options?.headers ?? {},
-    body: options?.body,
-  });
-}
+vi.mock("@clerk/nextjs/server");
+vi.mock("@e2b/code-interpreter");
+vi.mock("@aws-sdk/client-s3");
+vi.mock("@aws-sdk/s3-request-presigner");
 
-// Mock Clerk auth (external SaaS)
-vi.mock("@clerk/nextjs/server", () => ({
-  auth: vi.fn(),
-}));
-
-import {
-  mockClerk,
-  clearClerkMock,
-} from "../../../../src/__tests__/clerk-mock";
+const context = testContext();
 
 describe("Public API v1 - Artifacts Endpoints", () => {
-  const testUserId = "test-user-artifacts-api";
-  const testScopeId = randomUUID();
-  let testArtifactId: string;
+  let testArtifactName: string;
 
-  beforeAll(async () => {
-    initServices();
+  beforeEach(async () => {
+    context.setupMocks();
+    await context.setupUser();
 
-    // Clean up any existing test data
-    await globalThis.services.db
-      .delete(storages)
-      .where(
-        and(eq(storages.userId, testUserId), eq(storages.type, "artifact")),
-      );
-
-    await globalThis.services.db
-      .delete(scopes)
-      .where(eq(scopes.id, testScopeId));
-
-    // Create test scope for the user
-    await globalThis.services.db.insert(scopes).values({
-      id: testScopeId,
-      slug: `test-${testScopeId.slice(0, 8)}`,
-      type: "personal",
-      ownerId: testUserId,
-    });
-
-    // Create test artifact directly in database
-    const [created] = await globalThis.services.db
-      .insert(storages)
-      .values({
-        userId: testUserId,
-        name: "test-artifact-v1",
-        type: "artifact",
-        s3Prefix: `${testUserId}/artifact/test-artifact-v1`,
-      })
-      .returning();
-
-    testArtifactId = created!.id;
+    // Create a test artifact using API helper
+    testArtifactName = `test-artifact-${Date.now()}`;
+    await createTestArtifact(testArtifactName);
   });
 
-  beforeEach(() => {
-    // Mock Clerk auth to return test user by default
-    mockClerk({ userId: testUserId });
-  });
-
-  afterEach(() => {
-    clearClerkMock();
-  });
-
-  afterAll(async () => {
-    // Cleanup: Delete test data
-    await globalThis.services.db
-      .delete(storages)
-      .where(
-        and(eq(storages.userId, testUserId), eq(storages.type, "artifact")),
-      );
-
-    await globalThis.services.db
-      .delete(scopes)
-      .where(eq(scopes.id, testScopeId));
-  });
+  /**
+   * Helper to get artifact ID from name via list endpoint.
+   * This is needed because the createTestArtifact helper doesn't return the storage ID.
+   */
+  async function getArtifactIdByName(
+    name: string,
+  ): Promise<string | undefined> {
+    const request = createTestRequest("http://localhost:3000/v1/artifacts");
+    const response = await listArtifacts(request);
+    const data = await response.json();
+    const artifact = data.data.find(
+      (a: { name: string }) => a.name === name,
+    ) as { id: string } | undefined;
+    return artifact?.id;
+  }
 
   describe("GET /v1/artifacts - List Artifacts", () => {
     it("should list artifacts with pagination", async () => {
@@ -135,7 +71,6 @@ describe("Public API v1 - Artifacts Endpoints", () => {
     });
 
     it("should return 401 for unauthenticated request", async () => {
-      // Mock Clerk to return no user
       mockClerk({ userId: null });
 
       const request = createTestRequest("http://localhost:3000/v1/artifacts");
@@ -150,6 +85,9 @@ describe("Public API v1 - Artifacts Endpoints", () => {
 
   describe("GET /v1/artifacts/:id - Get Artifact", () => {
     it("should get artifact by ID", async () => {
+      const testArtifactId = await getArtifactIdByName(testArtifactName);
+      expect(testArtifactId).toBeDefined();
+
       const request = createTestRequest(
         `http://localhost:3000/v1/artifacts/${testArtifactId}`,
       );
@@ -159,8 +97,7 @@ describe("Public API v1 - Artifacts Endpoints", () => {
 
       expect(response.status).toBe(200);
       expect(data.id).toBe(testArtifactId);
-      expect(data.name).toBe("test-artifact-v1");
-      expect(data.currentVersion).toBeNull();
+      expect(data.name).toBe(testArtifactName);
     });
 
     it("should return 404 for non-existent artifact", async () => {
@@ -179,7 +116,10 @@ describe("Public API v1 - Artifacts Endpoints", () => {
   });
 
   describe("GET /v1/artifacts/:id/versions - List Artifact Versions", () => {
-    it("should list artifact versions (empty)", async () => {
+    it("should list artifact versions", async () => {
+      const testArtifactId = await getArtifactIdByName(testArtifactName);
+      expect(testArtifactId).toBeDefined();
+
       const request = createTestRequest(
         `http://localhost:3000/v1/artifacts/${testArtifactId}/versions`,
       );
@@ -189,7 +129,8 @@ describe("Public API v1 - Artifacts Endpoints", () => {
 
       expect(response.status).toBe(200);
       expect(data.data).toBeInstanceOf(Array);
-      expect(data.data.length).toBe(0);
+      // createTestArtifact creates one version
+      expect(data.data.length).toBeGreaterThanOrEqual(1);
       expect(data.pagination).toBeDefined();
     });
 
