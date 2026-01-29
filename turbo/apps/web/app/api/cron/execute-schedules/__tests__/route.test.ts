@@ -7,10 +7,7 @@ import {
   enableTestSchedule,
   getTestSchedule,
 } from "../../../../../src/__tests__/api-test-helpers";
-import {
-  testContext,
-  type MockHelpers,
-} from "../../../../../src/__tests__/test-helpers";
+import { testContext } from "../../../../../src/__tests__/test-helpers";
 
 vi.mock("@clerk/nextjs/server");
 vi.mock("@e2b/code-interpreter");
@@ -32,10 +29,9 @@ const context = testContext();
 
 describe("GET /api/cron/execute-schedules", () => {
   let testComposeId: string;
-  let mocks: MockHelpers;
 
   beforeEach(async () => {
-    mocks = context.setupMocks();
+    context.setupMocks();
     await context.setupUser();
 
     const { composeId } = await createTestCompose(
@@ -159,8 +155,7 @@ describe("GET /api/cron/execute-schedules", () => {
   describe("Schedule Triggering", () => {
     it("should execute due cron schedule", async () => {
       // 1. Mock time to 8:00 AM UTC
-      const eightAm = new Date("2025-01-15T08:00:00Z").getTime();
-      mocks.dateNow.mockReturnValue(eightAm);
+      context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:00Z"));
 
       // 2. Create schedule with cron for 9 AM - nextRunAt will be calculated as 9 AM today
       await createTestSchedule(testComposeId, "cron-trigger-test", {
@@ -171,8 +166,7 @@ describe("GET /api/cron/execute-schedules", () => {
       await enableTestSchedule(testComposeId, "cron-trigger-test");
 
       // 3. Advance time to 9:01 AM (schedule is now due)
-      const nineOneAm = new Date("2025-01-15T09:01:00Z").getTime();
-      mocks.dateNow.mockReturnValue(nineOneAm);
+      context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
 
       // 4. Execute cron endpoint
       const request = createTestRequest(
@@ -196,8 +190,7 @@ describe("GET /api/cron/execute-schedules", () => {
 
     it("should execute due one-time (atTime) schedule", async () => {
       // 1. Mock time to 8:00 AM UTC
-      const eightAm = new Date("2025-01-15T08:00:00Z").getTime();
-      mocks.dateNow.mockReturnValue(eightAm);
+      context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:00Z"));
 
       // 2. Create one-time schedule for 9:00 AM
       await createTestSchedule(testComposeId, "onetime-trigger-test", {
@@ -208,8 +201,7 @@ describe("GET /api/cron/execute-schedules", () => {
       await enableTestSchedule(testComposeId, "onetime-trigger-test");
 
       // 3. Advance time to 9:01 AM UTC (schedule is now due)
-      const nineOneAm = new Date("2025-01-15T09:01:00Z").getTime();
-      mocks.dateNow.mockReturnValue(nineOneAm);
+      context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
 
       // 4. Execute cron endpoint
       const request = createTestRequest(
@@ -226,8 +218,7 @@ describe("GET /api/cron/execute-schedules", () => {
 
     it("should disable one-time schedule after execution", async () => {
       // 1. Mock time to 8:00 AM UTC
-      const eightAm = new Date("2025-01-15T08:00:00Z").getTime();
-      mocks.dateNow.mockReturnValue(eightAm);
+      context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:00Z"));
 
       // 2. Create and enable one-time schedule
       await createTestSchedule(testComposeId, "onetime-disable-test", {
@@ -245,8 +236,7 @@ describe("GET /api/cron/execute-schedules", () => {
       expect(beforeSchedule.enabled).toBe(true);
 
       // 3. Advance time past the scheduled time
-      const nineOneAm = new Date("2025-01-15T09:01:00Z").getTime();
-      mocks.dateNow.mockReturnValue(nineOneAm);
+      context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
 
       // 4. Execute cron
       const request = createTestRequest(
