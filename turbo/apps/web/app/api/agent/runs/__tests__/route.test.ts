@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { POST } from "../route";
 import { randomUUID } from "crypto";
+import { Sandbox } from "@e2b/code-interpreter";
 import {
   createTestRequest,
   createTestCompose,
@@ -15,6 +16,7 @@ import {
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import { AgentSessionService } from "../../../../../src/lib/agent-session/agent-session-service";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { eq } from "drizzle-orm";
 
@@ -96,7 +98,6 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     });
 
     it("should return failed status if sandbox preparation fails", async () => {
-      const { Sandbox } = await import("@e2b/code-interpreter");
       vi.mocked(Sandbox.create).mockRejectedValueOnce(
         new Error("Sandbox creation failed"),
       );
@@ -594,9 +595,6 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       );
 
       // Create session for other user
-      const { AgentSessionService } = await import(
-        "../../../../../src/lib/agent-session/agent-session-service"
-      );
       const sessionService = new AgentSessionService();
       mockClerk({ userId: otherUser.userId });
       const session = await sessionService.create({
@@ -635,9 +633,6 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         `no-conv-${Date.now()}`,
       );
 
-      const { AgentSessionService } = await import(
-        "../../../../../src/lib/agent-session/agent-session-service"
-      );
       const sessionService = new AgentSessionService();
       const session = await sessionService.create({
         userId: user.userId,
