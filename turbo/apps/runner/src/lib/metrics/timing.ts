@@ -41,7 +41,7 @@ export async function withSandboxTiming<T>(
     throw error;
   } finally {
     recordSandboxOperation({
-      actionType: `runner:${actionType}`,
+      actionType,
       durationMs: Date.now() - startTime,
       success,
     });

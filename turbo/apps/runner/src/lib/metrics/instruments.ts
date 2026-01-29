@@ -1,11 +1,3 @@
-import { getMeter, isMetricsEnabled, getRunnerLabel } from "./provider";
-import type { Counter, Histogram } from "@opentelemetry/api";
-
-// Lazy-initialized instruments (created after initMetrics is called)
-let runnerOperationTotal: Counter | null = null;
-let runnerOperationErrorsTotal: Counter | null = null;
-let runnerOperationDuration: Histogram | null = null;
-
 // Sandbox context for telemetry API reporting
 interface SandboxContext {
   apiUrl: string;
@@ -50,14 +42,14 @@ export async function clearSandboxContext(): Promise<void> {
 
   // Final flush with captured state
   if (ctx && ops.length > 0) {
-    await flushSandboxOpsWithContext(ctx, ops);
+    await flushOpsWithContext(ctx, ops);
   }
 }
 
 /**
- * Flush pending sandbox operations to telemetry API
+ * Flush pending operations to telemetry API
  */
-async function flushSandboxOps(): Promise<void> {
+async function flushOps(): Promise<void> {
   if (!sandboxContext || pendingOps.length === 0) return;
 
   const ctx = sandboxContext;
@@ -65,13 +57,13 @@ async function flushSandboxOps(): Promise<void> {
   pendingOps = [];
   oldestPendingTime = null;
 
-  await flushSandboxOpsWithContext(ctx, ops);
+  await flushOpsWithContext(ctx, ops);
 }
 
 /**
  * Flush given operations to telemetry API with provided context
  */
-async function flushSandboxOpsWithContext(
+async function flushOpsWithContext(
   ctx: SandboxContext,
   ops: SandboxOpEntry[],
 ): Promise<void> {
@@ -102,88 +94,25 @@ async function flushSandboxOpsWithContext(
 
     if (!response.ok) {
       console.warn(
-        `[metrics] Failed to flush sandbox operations: HTTP ${response.status}`,
+        `[metrics] Failed to flush operations: HTTP ${response.status}`,
       );
     }
   } catch (err) {
-    console.warn(`[metrics] Failed to flush sandbox operations: ${err}`);
+    console.warn(`[metrics] Failed to flush operations: ${err}`);
   }
-}
-
-function getRunnerInstruments() {
-  if (!runnerOperationTotal) {
-    const meter = getMeter("vm0-runner");
-    runnerOperationTotal = meter.createCounter("runner_operation_total", {
-      description: "Total number of runner operations",
-    });
-    runnerOperationErrorsTotal = meter.createCounter(
-      "runner_operation_errors_total",
-      {
-        description: "Total number of runner operation errors",
-      },
-    );
-    runnerOperationDuration = meter.createHistogram(
-      "runner_operation_duration_ms",
-      {
-        description: "Runner operation duration in milliseconds",
-        unit: "ms",
-      },
-    );
-  }
-  return {
-    runnerOperationTotal: runnerOperationTotal!,
-    runnerOperationErrorsTotal: runnerOperationErrorsTotal!,
-    runnerOperationDuration: runnerOperationDuration!,
-  };
-}
-
-export function recordRunnerOperation(attrs: {
-  actionType: string;
-  durationMs: number;
-  success: boolean;
-}): void {
-  if (!isMetricsEnabled()) return;
-
-  const {
-    runnerOperationTotal,
-    runnerOperationErrorsTotal,
-    runnerOperationDuration,
-  } = getRunnerInstruments();
-
-  const labels = {
-    action_type: attrs.actionType,
-    runner_label: getRunnerLabel(),
-  };
-
-  // Always increment total counter
-  runnerOperationTotal.add(1, labels);
-
-  // Increment error counter if failed
-  if (!attrs.success) {
-    runnerOperationErrorsTotal.add(1, labels);
-  }
-
-  // Always record duration histogram
-  runnerOperationDuration.record(attrs.durationMs, {
-    ...labels,
-    success: String(attrs.success),
-  });
 }
 
 /**
- * Record a sandbox operation metric
+ * Record a metric via telemetry API (no prefix)
  * Collects in memory, auto-flushes if oldest pending op exceeds threshold
  */
-export function recordSandboxOperation(attrs: {
+export function recordOperation(attrs: {
   actionType: string;
   durationMs: number;
   success: boolean;
 }): void {
-  if (!isMetricsEnabled()) return;
   if (!sandboxContext) {
-    console.warn(
-      `[metrics] Cannot record sandbox operation: context not set (action=${attrs.actionType})`,
-    );
+    // Context not set - this is expected before job starts or after job ends
     return;
   }
 
@@ -191,7 +120,7 @@ export function recordSandboxOperation(attrs: {
 
   // Check if we should flush before adding new op
   if (oldestPendingTime && now - oldestPendingTime >= FLUSH_THRESHOLD_MS) {
-    flushSandboxOps().catch(() => {
+    flushOps().catch(() => {
       // Ignore - metrics are best-effort
     });
   }
@@ -204,6 +133,38 @@ export function recordSandboxOperation(attrs: {
   pendingOps.push({
     action_type: attrs.actionType,
     duration_ms: attrs.durationMs,
+    success: attrs.success,
+  });
+}
+
+/**
+ * Record a runner operation metric
+ * Uses telemetry API via sandbox context
+ */
+export function recordRunnerOperation(attrs: {
+  actionType: string;
+  durationMs: number;
+  success: boolean;
+}): void {
+  recordOperation({
+    actionType: `runner:${attrs.actionType}`,
+    durationMs: attrs.durationMs,
+    success: attrs.success,
+  });
+}
+
+/**
+ * Record a sandbox operation metric
+ * Uses telemetry API via sandbox context
+ */
+export function recordSandboxOperation(attrs: {
+  actionType: string;
+  durationMs: number;
+  success: boolean;
+}): void {
+  recordOperation({
+    actionType: `sandbox:${attrs.actionType}`,
+    durationMs: attrs.durationMs,
     success: attrs.success,
   });
 }

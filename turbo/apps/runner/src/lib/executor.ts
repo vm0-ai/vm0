@@ -26,7 +26,7 @@ import { getVMRegistry } from "./proxy/index.js";
 import {
   withSandboxTiming,
   recordRunnerOperation,
-  recordSandboxOperation,
+  recordOperation,
   setSandboxContext,
   clearSandboxContext,
 } from "./metrics/index.js";
@@ -188,7 +188,7 @@ export async function executeJob(
 
   // Record api_to_vm_start metric
   if (context.apiStartTime) {
-    recordSandboxOperation({
+    recordOperation({
       actionType: "api_to_vm_start",
       durationMs: Date.now() - context.apiStartTime,
       success: true,

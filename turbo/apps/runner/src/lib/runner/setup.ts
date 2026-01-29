@@ -11,11 +11,6 @@ import {
   initVMRegistry,
   getProxyManager,
 } from "../proxy/index.js";
-import {
-  initMetrics,
-  flushMetrics,
-  shutdownMetrics,
-} from "../metrics/index.js";
 import type { RunnerResources } from "./types.js";
 
 interface SetupOptions {
@@ -23,29 +18,12 @@ interface SetupOptions {
 }
 
 /**
- * Initialize runner environment: metrics, network, and proxy
+ * Initialize runner environment: network and proxy
  */
 export async function setupEnvironment(
   options: SetupOptions,
 ): Promise<RunnerResources> {
   const { config } = options;
-
-  // Initialize metrics (from AXIOM_TOKEN env var)
-  const datasetSuffix = process.env.AXIOM_DATASET_SUFFIX as
-    | "dev"
-    | "prod"
-    | undefined;
-  if (!datasetSuffix) {
-    throw new Error(
-      "AXIOM_DATASET_SUFFIX is required. Set to 'dev' or 'prod'.",
-    );
-  }
-  initMetrics({
-    serviceName: "vm0-runner",
-    runnerLabel: config.name,
-    axiomToken: process.env.AXIOM_TOKEN,
-    environment: datasetSuffix,
-  });
 
   // Check network prerequisites
   const networkCheck = checkNetworkPrerequisites();
@@ -107,7 +85,7 @@ export async function setupEnvironment(
 }
 
 /**
- * Clean up runner resources: proxy, metrics
+ * Clean up runner resources: proxy
  */
 export async function cleanupEnvironment(
   resources: RunnerResources,
@@ -117,9 +95,4 @@ export async function cleanupEnvironment(
     console.log("Stopping network proxy...");
     await getProxyManager().stop();
   }
-
-  // Flush and shutdown metrics
-  console.log("Flushing metrics...");
-  await flushMetrics();
-  await shutdownMetrics();
 }

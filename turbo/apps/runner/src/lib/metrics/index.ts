@@ -1,7 +1,6 @@
-export { initMetrics, flushMetrics, shutdownMetrics } from "./provider";
 export {
+  recordOperation,
   recordRunnerOperation,
-  recordSandboxOperation,
   setSandboxContext,
   clearSandboxContext,
 } from "./instruments";
