@@ -68,6 +68,16 @@ class E2BExecutor implements Executor {
    * @returns ExecutorResult with status "running" and sandboxId
    */
   async execute(context: PreparedContext): Promise<ExecutorResult> {
+    // Record api_to_dispatch metric
+    if (context.apiStartTime) {
+      recordSandboxOperation({
+        sandboxType: "e2b",
+        actionType: "api_to_executor",
+        durationMs: Date.now() - context.apiStartTime,
+        success: true,
+      });
+    }
+
     const startTime = Date.now();
     const isResume = !!context.resumeSession;
 

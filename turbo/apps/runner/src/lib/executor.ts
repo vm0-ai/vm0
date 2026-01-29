@@ -23,7 +23,11 @@ import type { ExecutionContext } from "./api.js";
 import type { RunnerConfig } from "./config.js";
 import { ENV_LOADER_PATH } from "./scripts/index.js";
 import { getVMRegistry } from "./proxy/index.js";
-import { withSandboxTiming, recordRunnerOperation } from "./metrics/index.js";
+import {
+  withSandboxTiming,
+  recordRunnerOperation,
+  recordSandboxOperation,
+} from "./metrics/index.js";
 
 // Import from extracted modules
 import type {
@@ -173,6 +177,15 @@ export async function executeJob(
   config: RunnerConfig,
   options: ExecutionOptions = {},
 ): Promise<ExecutionResult> {
+  // Record api_to_executor metric
+  if (context.apiStartTime) {
+    recordSandboxOperation({
+      actionType: "api_to_vm_start",
+      durationMs: Date.now() - context.apiStartTime,
+      success: true,
+    });
+  }
+
   // Use runId (UUID) to derive unique VM identifier
   // This ensures no conflicts even across process restarts
   const vmId = getVmIdFromRunId(context.runId);

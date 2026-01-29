@@ -4,6 +4,7 @@ import { encryptSecrets } from "../../crypto/secrets-encryption";
 import { validateRunnerGroupScope } from "../../scope/scope-service";
 import { publishJobNotification } from "../../realtime/client";
 import { logger } from "../../logger";
+import { recordSandboxOperation } from "../../metrics";
 import type { PreparedContext, ExecutorResult, Executor } from "./types";
 
 const log = logger("executor:runner");
@@ -23,6 +24,16 @@ class RunnerExecutor implements Executor {
    * @returns ExecutorResult with status "pending"
    */
   async execute(context: PreparedContext): Promise<ExecutorResult> {
+    // Record api_to_dispatch metric
+    if (context.apiStartTime) {
+      recordSandboxOperation({
+        sandboxType: "runner",
+        actionType: "api_to_executor",
+        durationMs: Date.now() - context.apiStartTime,
+        success: true,
+      });
+    }
+
     const runnerGroup = context.runnerGroup;
 
     if (!runnerGroup) {
