@@ -16,7 +16,7 @@ export {
 } from "./domains/composes";
 
 // Domain modules - Runs
-export { createRun, getEvents } from "./domains/runs";
+export { createRun, getEvents, listRuns, cancelRun } from "./domains/runs";
 
 // Domain modules - Sessions
 export { getSession, getCheckpoint } from "./domains/sessions";
