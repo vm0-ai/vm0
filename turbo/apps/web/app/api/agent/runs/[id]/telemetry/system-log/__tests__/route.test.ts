@@ -1,11 +1,4 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  vi,
-  type MockInstance,
-} from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "../route";
 import {
   createTestRequest,
@@ -18,37 +11,22 @@ import {
 } from "../../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
-import { queryAxiom } from "../../../../../../../../src/lib/axiom";
 
 vi.mock("@clerk/nextjs/server");
 vi.mock("@e2b/code-interpreter");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
-vi.mock("../../../../../../../../src/lib/axiom", async (importOriginal) => {
-  const original =
-    await importOriginal<
-      typeof import("../../../../../../../../src/lib/axiom")
-    >();
-  return {
-    ...original,
-    queryAxiom: vi.fn(),
-  };
-});
 
 const context = testContext();
 
 describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
   let user: UserContext;
   let testRunId: string;
-  let queryAxiomMock: MockInstance<typeof queryAxiom>;
 
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
-
-    // Setup mock on queryAxiom - returns empty array by default
-    queryAxiomMock = vi.mocked(queryAxiom).mockResolvedValue([]);
 
     // Create test compose and run
     const { composeId } = await createTestCompose(`system-log-${Date.now()}`);
@@ -117,7 +95,7 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
 
   describe("Success - Basic Retrieval", () => {
     it("should return empty system log when no telemetry exists", async () => {
-      // Default queryAxiomMock returns empty array
+      // Default context.mocks.axiom.queryAxiom returns empty array
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/system-log`,
       );
@@ -131,7 +109,7 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
     });
 
     it("should return system log from Axiom", async () => {
-      queryAxiomMock.mockResolvedValue([
+      context.mocks.axiom.queryAxiom.mockResolvedValue([
         {
           _time: new Date().toISOString(),
           runId: testRunId,
@@ -154,7 +132,7 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
 
   describe("Aggregation", () => {
     it("should aggregate system logs from multiple records", async () => {
-      queryAxiomMock.mockResolvedValue([
+      context.mocks.axiom.queryAxiom.mockResolvedValue([
         {
           _time: new Date(Date.now() - 2000).toISOString(),
           runId: testRunId,
@@ -187,7 +165,7 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
     });
 
     it("should handle Axiom returning null (not configured)", async () => {
-      queryAxiomMock.mockResolvedValue(null);
+      context.mocks.axiom.queryAxiom.mockResolvedValue(null);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/system-log?limit=10`,
@@ -205,7 +183,7 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
   describe("Pagination", () => {
     it("should respect limit parameter", async () => {
       // Mock Axiom returning 3 records (more than limit of 2)
-      queryAxiomMock.mockResolvedValue([
+      context.mocks.axiom.queryAxiom.mockResolvedValue([
         {
           _time: new Date(Date.now() - 3000).toISOString(),
           runId: testRunId,
@@ -239,7 +217,7 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
 
     it("should pass since parameter to Axiom query", async () => {
       // Mock Axiom returning only recent entry (since filter applied by Axiom)
-      queryAxiomMock.mockResolvedValue([
+      context.mocks.axiom.queryAxiom.mockResolvedValue([
         {
           _time: new Date(Date.now() - 1000).toISOString(),
           runId: testRunId,
@@ -259,7 +237,7 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
       expect(data.systemLog).toBe("[INFO] Recent entry\n");
 
       // Verify queryAxiom was called with a query containing the since filter
-      expect(queryAxiomMock).toHaveBeenCalledWith(
+      expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledWith(
         expect.stringContaining("where _time >"),
       );
     });

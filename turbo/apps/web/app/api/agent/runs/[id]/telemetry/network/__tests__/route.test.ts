@@ -1,11 +1,4 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  vi,
-  type MockInstance,
-} from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "../route";
 import {
   createTestRequest,
@@ -18,23 +11,12 @@ import {
 } from "../../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
-import { queryAxiom } from "../../../../../../../../src/lib/axiom";
 
 vi.mock("@clerk/nextjs/server");
 vi.mock("@e2b/code-interpreter");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
-vi.mock("../../../../../../../../src/lib/axiom", async (importOriginal) => {
-  const original =
-    await importOriginal<
-      typeof import("../../../../../../../../src/lib/axiom")
-    >();
-  return {
-    ...original,
-    queryAxiom: vi.fn(),
-  };
-});
 
 const context = testContext();
 
@@ -74,14 +56,10 @@ function createAxiomNetworkEvent(
 describe("GET /api/agent/runs/:id/telemetry/network", () => {
   let user: UserContext;
   let testRunId: string;
-  let queryAxiomMock: MockInstance<typeof queryAxiom>;
 
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
-
-    // Setup mock on queryAxiom - returns empty array by default
-    queryAxiomMock = vi.mocked(queryAxiom).mockResolvedValue([]);
 
     // Create test compose and run
     const { composeId } = await createTestCompose(`network-${Date.now()}`);
@@ -150,7 +128,7 @@ describe("GET /api/agent/runs/:id/telemetry/network", () => {
 
   describe("Success - Basic Retrieval", () => {
     it("should return empty network logs when Axiom returns empty", async () => {
-      queryAxiomMock.mockResolvedValue([]);
+      context.mocks.axiom.queryAxiom.mockResolvedValue([]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/network`,
@@ -165,7 +143,7 @@ describe("GET /api/agent/runs/:id/telemetry/network", () => {
     });
 
     it("should return empty network logs when Axiom is not configured", async () => {
-      queryAxiomMock.mockResolvedValue(null);
+      context.mocks.axiom.queryAxiom.mockResolvedValue(null);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/network`,
@@ -180,7 +158,7 @@ describe("GET /api/agent/runs/:id/telemetry/network", () => {
     });
 
     it("should return network logs from Axiom", async () => {
-      queryAxiomMock.mockResolvedValue([
+      context.mocks.axiom.queryAxiom.mockResolvedValue([
         createAxiomNetworkEvent(
           "2024-01-01T00:00:00Z",
           "GET",
@@ -207,7 +185,7 @@ describe("GET /api/agent/runs/:id/telemetry/network", () => {
       expect(data.hasMore).toBe(false);
 
       // Verify Axiom was queried with correct APL
-      expect(queryAxiomMock).toHaveBeenCalledWith(
+      expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledWith(
         expect.stringContaining(`where runId == "${testRunId}"`),
       );
     });
@@ -215,7 +193,7 @@ describe("GET /api/agent/runs/:id/telemetry/network", () => {
 
   describe("Retrieval from Axiom", () => {
     it("should return multiple network logs in order", async () => {
-      queryAxiomMock.mockResolvedValue([
+      context.mocks.axiom.queryAxiom.mockResolvedValue([
         createAxiomNetworkEvent(
           "2024-01-01T00:00:00Z",
           "GET",
@@ -271,7 +249,7 @@ describe("GET /api/agent/runs/:id/telemetry/network", () => {
   describe("Pagination", () => {
     it("should respect limit parameter and indicate hasMore", async () => {
       // Mock Axiom returning limit+1 records (indicating more data exists)
-      queryAxiomMock.mockResolvedValue([
+      context.mocks.axiom.queryAxiom.mockResolvedValue([
         createAxiomNetworkEvent(
           "2024-01-01T00:00:00Z",
           "GET",
@@ -321,13 +299,13 @@ describe("GET /api/agent/runs/:id/telemetry/network", () => {
       expect(data.hasMore).toBe(true);
 
       // Verify limit+1 was requested
-      expect(queryAxiomMock).toHaveBeenCalledWith(
+      expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledWith(
         expect.stringContaining("limit 4"),
       );
     });
 
     it("should include since filter in Axiom query", async () => {
-      queryAxiomMock.mockResolvedValue([
+      context.mocks.axiom.queryAxiom.mockResolvedValue([
         createAxiomNetworkEvent(
           "2024-01-01T00:00:10Z",
           "GET",
@@ -351,7 +329,7 @@ describe("GET /api/agent/runs/:id/telemetry/network", () => {
       expect(data.networkLogs[0].url).toBe("https://api.example.com/recent");
 
       // Verify since filter was included in APL query
-      expect(queryAxiomMock).toHaveBeenCalledWith(
+      expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledWith(
         expect.stringContaining("where _time > datetime"),
       );
     });
