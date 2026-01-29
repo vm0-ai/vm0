@@ -13,20 +13,35 @@ In the CLI app (`turbo/apps/cli`), only write command-level integration tests. T
 
 ## File Location
 
-Test files should be placed in `__tests__/` directories next to the command files.
+Test files should be placed in `__tests__/` directories next to the command files. **Each subcommand should have its own test file with the same name as the command file.**
 
 ```
 src/commands/
+├── artifact/
+│   ├── __tests__/
+│   │   ├── init.test.ts      # Tests for init.ts
+│   │   ├── push.test.ts      # Tests for push.ts
+│   │   ├── pull.test.ts      # Tests for pull.ts
+│   │   ├── status.test.ts    # Tests for status.ts
+│   │   ├── list.test.ts      # Tests for list.ts
+│   │   └── clone.test.ts     # Tests for clone.ts
+│   ├── index.ts              # Main command (artifactCommand)
+│   ├── init.ts
+│   ├── push.ts
+│   ├── pull.ts
+│   ├── status.ts
+│   ├── list.ts
+│   └── clone.ts
 ├── compose/
-│   ├── index.ts
-│   └── __tests__/
-│       └── compose.test.ts
-├── run/
-│   ├── index.ts
-│   ├── run.ts
-│   └── __tests__/
-│       └── run.test.ts
+│   ├── __tests__/
+│   │   └── index.test.ts     # Single file command
+│   └── index.ts
 ```
+
+**Naming Convention:**
+- Test file name = Command file name (e.g., `init.ts` → `init.test.ts`)
+- For single-file commands, use `index.test.ts`
+- Each test file focuses on one subcommand's complete behavior
 
 ---
 
