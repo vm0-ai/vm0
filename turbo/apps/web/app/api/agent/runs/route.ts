@@ -3,7 +3,11 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../src/lib/ts-rest-handler";
-import { runsMainContract, createErrorResponse } from "@vm0/core";
+import {
+  runsMainContract,
+  createErrorResponse,
+  type RunStatus,
+} from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   agentComposes,
@@ -101,7 +105,7 @@ const router = tsr.router(runsMainContract, {
           id: run.id,
           agentName:
             versionToCompose.get(run.agentComposeVersionId) || "unknown",
-          status: run.status,
+          status: run.status as RunStatus,
           prompt: run.prompt,
           createdAt: run.createdAt.toISOString(),
           startedAt: run.startedAt?.toISOString() ?? null,
