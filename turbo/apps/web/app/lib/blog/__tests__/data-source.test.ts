@@ -1,74 +1,149 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { BlogPost } from "../types";
+import { describe, it, expect, beforeAll, afterEach, afterAll } from "vitest";
+import { setupServer } from "msw/node";
+import { http, HttpResponse } from "msw";
 
-// Mock the strapi module
-vi.mock("../strapi", () => ({
-  getPostsFromStrapi: vi.fn(),
-  getPostBySlugFromStrapi: vi.fn(),
-  getFeaturedPostFromStrapi: vi.fn(),
-  getAllCategoriesFromStrapi: vi.fn(),
-}));
+const STRAPI_URL = "https://test-strapi.example.com";
+
+// Mock article data
+const mockArticle = {
+  id: 1,
+  documentId: "doc-1",
+  title: "Test Post",
+  description: "Test excerpt",
+  slug: "test-post",
+  createdAt: "2024-01-01T00:00:00.000Z",
+  updatedAt: "2024-01-01T00:00:00.000Z",
+  publishedAt: "2024-01-01T00:00:00.000Z",
+  cover: { url: "/covers/test.jpg" },
+  author: { name: "Test Author" },
+  category: { name: "Technology", slug: "technology" },
+  blocks: [{ __component: "shared.rich-text", id: 1, body: "Test content" }],
+};
+
+const mockCategories = [
+  { id: 1, name: "Technology", slug: "technology" },
+  { id: 2, name: "Business", slug: "business" },
+  { id: 3, name: "Lifestyle", slug: "lifestyle" },
+];
+
+// Set up MSW server to intercept Strapi API requests
+const server = setupServer(
+  // Mock GET /api/articles
+  http.get(`${STRAPI_URL}/api/articles`, ({ request }) => {
+    const url = new URL(request.url);
+    const slug = url.searchParams.get("filters[slug][$eq]");
+    const limit = url.searchParams.get("pagination[limit]");
+
+    // If filtering by slug
+    if (slug) {
+      if (slug === "test-post") {
+        return HttpResponse.json({ data: [mockArticle], meta: {} });
+      }
+      return HttpResponse.json({ data: [], meta: {} });
+    }
+
+    // If requesting featured (limit=1)
+    if (limit === "1") {
+      return HttpResponse.json({ data: [mockArticle], meta: {} });
+    }
+
+    // Default: return all articles
+    return HttpResponse.json({ data: [mockArticle], meta: {} });
+  }),
+
+  // Mock GET /api/categories
+  http.get(`${STRAPI_URL}/api/categories`, () => {
+    return HttpResponse.json({ data: mockCategories, meta: {} });
+  }),
+);
+
+// Store original env values
+const originalStrapiUrl = process.env.NEXT_PUBLIC_STRAPI_URL;
+const originalDataSource = process.env.NEXT_PUBLIC_DATA_SOURCE;
+
+beforeAll(() => {
+  process.env.NEXT_PUBLIC_STRAPI_URL = STRAPI_URL;
+  process.env.NEXT_PUBLIC_DATA_SOURCE = "strapi";
+  server.listen({ onUnhandledRequest: "error" });
+});
+
+afterEach(() => {
+  server.resetHandlers();
+});
+
+afterAll(() => {
+  server.close();
+  // Restore original env values
+  if (originalStrapiUrl !== undefined) {
+    process.env.NEXT_PUBLIC_STRAPI_URL = originalStrapiUrl;
+  } else {
+    delete process.env.NEXT_PUBLIC_STRAPI_URL;
+  }
+  if (originalDataSource !== undefined) {
+    process.env.NEXT_PUBLIC_DATA_SOURCE = originalDataSource;
+  } else {
+    delete process.env.NEXT_PUBLIC_DATA_SOURCE;
+  }
+});
 
 describe("blog/data-source", () => {
-  const mockPost: BlogPost = {
-    slug: "test-post",
-    title: "Test Post",
-    excerpt: "Test excerpt",
-    content: "Test content",
-    category: "Technology",
-    author: { name: "Test Author" },
-    publishedAt: "2024-01-01T00:00:00.000Z",
-    readTime: "5 min read",
-    cover: "/covers/test.jpg",
-  };
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
   describe("getPosts", () => {
-    it("delegates to strapi when data source is strapi", async () => {
-      const { getPostsFromStrapi } = await import("../strapi");
-      vi.mocked(getPostsFromStrapi).mockResolvedValue([mockPost]);
-
+    it("fetches posts from strapi and returns transformed data", async () => {
       const { getPosts } = await import("../data-source");
       const posts = await getPosts("en");
 
-      expect(getPostsFromStrapi).toHaveBeenCalledWith("en");
-      expect(posts).toEqual([mockPost]);
+      expect(posts).toHaveLength(1);
+      expect(posts[0]).toMatchObject({
+        slug: "test-post",
+        title: "Test Post",
+        excerpt: "Test excerpt",
+        category: "Technology",
+        author: { name: "Test Author" },
+      });
     });
 
     it("uses default locale when not provided", async () => {
-      const { getPostsFromStrapi } = await import("../strapi");
-      vi.mocked(getPostsFromStrapi).mockResolvedValue([]);
+      let capturedLocale: string | null = null;
+
+      server.use(
+        http.get(`${STRAPI_URL}/api/articles`, ({ request }) => {
+          const url = new URL(request.url);
+          capturedLocale = url.searchParams.get("locale");
+          return HttpResponse.json({ data: [], meta: {} });
+        }),
+      );
 
       const { getPosts } = await import("../data-source");
       await getPosts();
 
-      expect(getPostsFromStrapi).toHaveBeenCalledWith("en");
+      expect(capturedLocale).toBe("en");
+    });
+
+    it("returns empty array when no posts exist", async () => {
+      server.use(
+        http.get(`${STRAPI_URL}/api/articles`, () => {
+          return HttpResponse.json({ data: [], meta: {} });
+        }),
+      );
+
+      const { getPosts } = await import("../data-source");
+      const posts = await getPosts("en");
+
+      expect(posts).toEqual([]);
     });
   });
 
   describe("getPost", () => {
-    it("delegates to strapi when data source is strapi", async () => {
-      const { getPostBySlugFromStrapi } = await import("../strapi");
-      vi.mocked(getPostBySlugFromStrapi).mockResolvedValue(mockPost);
-
+    it("fetches single post by slug from strapi", async () => {
       const { getPost } = await import("../data-source");
       const post = await getPost("test-post", "en");
 
-      expect(getPostBySlugFromStrapi).toHaveBeenCalledWith("test-post", "en");
-      expect(post).toEqual(mockPost);
+      expect(post).not.toBeNull();
+      expect(post?.slug).toBe("test-post");
+      expect(post?.title).toBe("Test Post");
     });
 
     it("returns null when post not found", async () => {
-      const { getPostBySlugFromStrapi } = await import("../strapi");
-      vi.mocked(getPostBySlugFromStrapi).mockResolvedValue(null);
-
       const { getPost } = await import("../data-source");
       const post = await getPost("non-existent", "en");
 
@@ -77,21 +152,20 @@ describe("blog/data-source", () => {
   });
 
   describe("getFeatured", () => {
-    it("delegates to strapi when data source is strapi", async () => {
-      const { getFeaturedPostFromStrapi } = await import("../strapi");
-      const featuredPost = { ...mockPost, featured: true };
-      vi.mocked(getFeaturedPostFromStrapi).mockResolvedValue(featuredPost);
-
+    it("fetches featured post from strapi and marks it as featured", async () => {
       const { getFeatured } = await import("../data-source");
       const post = await getFeatured("en");
 
-      expect(getFeaturedPostFromStrapi).toHaveBeenCalledWith("en");
-      expect(post).toEqual(featuredPost);
+      expect(post).not.toBeNull();
+      expect(post?.featured).toBe(true);
     });
 
     it("returns null when no featured post exists", async () => {
-      const { getFeaturedPostFromStrapi } = await import("../strapi");
-      vi.mocked(getFeaturedPostFromStrapi).mockResolvedValue(null);
+      server.use(
+        http.get(`${STRAPI_URL}/api/articles`, () => {
+          return HttpResponse.json({ data: [], meta: {} });
+        }),
+      );
 
       const { getFeatured } = await import("../data-source");
       const post = await getFeatured("en");
@@ -101,26 +175,24 @@ describe("blog/data-source", () => {
   });
 
   describe("getCategories", () => {
-    it("delegates to strapi when data source is strapi", async () => {
-      const { getAllCategoriesFromStrapi } = await import("../strapi");
-      const categories = ["Technology", "Business", "Lifestyle"];
-      vi.mocked(getAllCategoriesFromStrapi).mockResolvedValue(categories);
-
+    it("fetches categories from strapi", async () => {
       const { getCategories } = await import("../data-source");
-      const result = await getCategories("en");
+      const categories = await getCategories("en");
 
-      expect(getAllCategoriesFromStrapi).toHaveBeenCalledWith("en");
-      expect(result).toEqual(categories);
+      expect(categories).toEqual(["Technology", "Business", "Lifestyle"]);
     });
 
     it("returns empty array when no categories exist", async () => {
-      const { getAllCategoriesFromStrapi } = await import("../strapi");
-      vi.mocked(getAllCategoriesFromStrapi).mockResolvedValue([]);
+      server.use(
+        http.get(`${STRAPI_URL}/api/categories`, () => {
+          return HttpResponse.json({ data: [], meta: {} });
+        }),
+      );
 
       const { getCategories } = await import("../data-source");
-      const result = await getCategories("en");
+      const categories = await getCategories("en");
 
-      expect(result).toEqual([]);
+      expect(categories).toEqual([]);
     });
   });
 });
