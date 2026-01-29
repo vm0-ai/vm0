@@ -14,6 +14,7 @@ import { eq } from "drizzle-orm";
 // Route handlers - imported here so callers don't need to pass them
 import { POST as createComposeRoute } from "../../app/api/agent/composes/route";
 import { POST as createScopeRoute } from "../../app/api/scope/route";
+import { POST as createRunRoute } from "../../app/api/agent/runs/route";
 import { PUT as upsertModelProviderRoute } from "../../app/api/model-providers/route";
 import { POST as checkpointWebhook } from "../../app/api/webhooks/agent/checkpoints/route";
 import { POST as completeWebhook } from "../../app/api/webhooks/agent/complete/route";
@@ -222,6 +223,38 @@ export async function createTestModelProvider(
   }
   const data = await response.json();
   return data.provider;
+}
+
+/**
+ * Create a test run via internal API route handler.
+ *
+ * @param agentComposeId - The compose ID to run
+ * @param prompt - The prompt for the run
+ * @param options - Optional run parameters
+ * @returns The created run with runId and status
+ */
+export async function createTestRun(
+  agentComposeId: string,
+  prompt: string,
+  options?: {
+    vars?: Record<string, string>;
+    secrets?: Record<string, string>;
+    sessionId?: string;
+    checkpointId?: string;
+    modelProvider?: string;
+  },
+): Promise<{ runId: string; status: string }> {
+  const request = createTestRequest("http://localhost:3000/api/agent/runs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      agentComposeId,
+      prompt,
+      ...options,
+    }),
+  });
+  const response = await createRunRoute(request);
+  return response.json();
 }
 
 /**

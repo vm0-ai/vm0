@@ -8,6 +8,7 @@ import {
   createTestCliToken,
   deleteTestCliToken,
   createTestModelProvider,
+  createTestRun,
   completeTestRun,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
@@ -28,33 +29,6 @@ vi.mock("@axiomhq/js");
 
 const context = testContext();
 
-/**
- * Helper to create a run via internal API.
- */
-async function createInternalRun(
-  agentComposeId: string,
-  prompt: string,
-  options?: {
-    vars?: Record<string, string>;
-    secrets?: Record<string, string>;
-    sessionId?: string;
-    checkpointId?: string;
-    modelProvider?: string;
-  },
-): Promise<{ runId: string; status: string }> {
-  const request = createTestRequest("http://localhost:3000/api/agent/runs", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      agentComposeId,
-      prompt,
-      ...options,
-    }),
-  });
-  const response = await POST(request);
-  return response.json();
-}
-
 describe("POST /api/agent/runs - Internal Runs API", () => {
   let user: UserContext;
   let testComposeId: string;
@@ -74,7 +48,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
   describe("Fire-and-Forget Execution", () => {
     it("should return immediately with running status", async () => {
       const startTime = Date.now();
-      const data = await createInternalRun(testComposeId, "Test prompt");
+      const data = await createTestRun(testComposeId, "Test prompt");
       const responseTime = Date.now() - startTime;
 
       // Should return quickly (sandbox prep only, not agent execution)
@@ -84,7 +58,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     });
 
     it("should save sandboxId in database after preparation", async () => {
-      const data = await createInternalRun(testComposeId, "Test sandbox ID");
+      const data = await createTestRun(testComposeId, "Test sandbox ID");
 
       const [run] = await globalThis.services.db
         .select()
@@ -102,7 +76,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         new Error("Sandbox creation failed"),
       );
 
-      const data = await createInternalRun(testComposeId, "Test failure");
+      const data = await createTestRun(testComposeId, "Test failure");
 
       expect(data.status).toBe("failed");
 
@@ -292,7 +266,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       try {
         // First run should succeed
-        const run1 = await createInternalRun(testComposeId, "First run");
+        const run1 = await createTestRun(testComposeId, "First run");
         expect(run1.status).toBe("running");
 
         // Second run should fail with 429
@@ -322,9 +296,9 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT", "0");
 
       try {
-        const run1 = await createInternalRun(testComposeId, "Run 1");
-        const run2 = await createInternalRun(testComposeId, "Run 2");
-        const run3 = await createInternalRun(testComposeId, "Run 3");
+        const run1 = await createTestRun(testComposeId, "Run 1");
+        const run2 = await createTestRun(testComposeId, "Run 2");
+        const run3 = await createTestRun(testComposeId, "Run 3");
 
         expect(run1.status).toBe("running");
         expect(run2.status).toBe("running");
@@ -339,12 +313,12 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       try {
         // Create and complete first run
-        const run1 = await createInternalRun(testComposeId, "First run");
+        const run1 = await createTestRun(testComposeId, "First run");
         expect(run1.status).toBe("running");
         await completeTestRun(user.userId, run1.runId);
 
         // Second run should succeed since first is completed
-        const run2 = await createInternalRun(testComposeId, "Second run");
+        const run2 = await createTestRun(testComposeId, "Second run");
         expect(run2.status).toBe("running");
       } finally {
         vi.unstubAllEnvs();
@@ -355,9 +329,9 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT", "3");
 
       try {
-        const run1 = await createInternalRun(testComposeId, "Run 1");
-        const run2 = await createInternalRun(testComposeId, "Run 2");
-        const run3 = await createInternalRun(testComposeId, "Run 3");
+        const run1 = await createTestRun(testComposeId, "Run 1");
+        const run2 = await createTestRun(testComposeId, "Run 2");
+        const run3 = await createTestRun(testComposeId, "Run 3");
 
         expect(run1.status).toBe("running");
         expect(run2.status).toBe("running");
@@ -388,7 +362,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       try {
         // First run should succeed (default limit is 1)
-        const run1 = await createInternalRun(testComposeId, "First run");
+        const run1 = await createTestRun(testComposeId, "First run");
         expect(run1.status).toBe("running");
 
         // Second run should fail with 429 (default limit of 1)
@@ -422,10 +396,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         skipDefaultApiKey: true,
       });
 
-      const data = await createInternalRun(
-        composeId,
-        "Test with model provider",
-      );
+      const data = await createTestRun(composeId, "Test with model provider");
 
       expect(data.status).toBe("running");
     });
@@ -436,7 +407,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         noEnvironmentBlock: true,
       });
 
-      const data = await createInternalRun(
+      const data = await createTestRun(
         composeId,
         "Test without model provider",
       );
@@ -456,10 +427,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
     it("should skip injection when compose has explicit ANTHROPIC_API_KEY", async () => {
       // Compose with default API key should work without model provider
-      const data = await createInternalRun(
-        testComposeId,
-        "Test with explicit key",
-      );
+      const data = await createTestRun(testComposeId, "Test with explicit key");
 
       expect(data.status).toBe("running");
     });
@@ -473,7 +441,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         skipDefaultApiKey: true,
       });
 
-      const data = await createInternalRun(
+      const data = await createTestRun(
         composeId,
         "Test with specified provider",
         {
@@ -493,7 +461,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         },
       });
 
-      const data = await createInternalRun(composeId, "Test codex with key");
+      const data = await createTestRun(composeId, "Test codex with key");
 
       expect(data.status).toBe("running");
     });
@@ -507,7 +475,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         },
       });
 
-      const data = await createInternalRun(composeId, "Test with Foundry auth");
+      const data = await createTestRun(composeId, "Test with Foundry auth");
 
       expect(data.status).toBe("running");
     });
@@ -521,7 +489,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         },
       );
 
-      const data = await createInternalRun(
+      const data = await createTestRun(
         composeId,
         "Test with invalid provider",
         {
@@ -557,7 +525,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         },
       );
 
-      const data = await createInternalRun(
+      const data = await createTestRun(
         composeId,
         "Test auto-inject no env block",
       );
