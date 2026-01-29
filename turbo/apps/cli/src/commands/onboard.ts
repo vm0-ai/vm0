@@ -6,7 +6,6 @@ import { validateAgentName } from "../lib/domain/yaml-validator.js";
 import {
   isInteractive,
   promptText,
-  promptConfirm,
   promptSelect,
   promptPassword,
 } from "../lib/utils/prompt-utils.js";
@@ -179,14 +178,6 @@ async function handleAgentCreation(ctx: OnboardContext): Promise<string> {
     console.log("Remove it first or choose a different name:");
     console.log(chalk.cyan(`  rm -rf ${agentName}`));
     process.exit(1);
-  }
-
-  if (!ctx.options.yes && ctx.interactive) {
-    const confirmed = await promptConfirm(`Create ${agentName}/?`, true);
-    if (!confirmed) {
-      console.log(chalk.dim("Cancelled"));
-      process.exit(0);
-    }
   }
 
   await mkdir(agentName, { recursive: true });
