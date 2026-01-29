@@ -15,6 +15,7 @@ import { eq } from "drizzle-orm";
 import { POST as createComposeRoute } from "../../app/api/agent/composes/route";
 import { POST as createScopeRoute } from "../../app/api/scope/route";
 import { POST as createRunRoute } from "../../app/api/agent/runs/route";
+import { POST as createV1RunRoute } from "../../app/v1/runs/route";
 import { GET as getRunRoute } from "../../app/v1/runs/[id]/route";
 import { PUT as upsertModelProviderRoute } from "../../app/api/model-providers/route";
 import { POST as checkpointWebhook } from "../../app/api/webhooks/agent/checkpoints/route";
@@ -256,6 +257,32 @@ export async function createTestRun(
   });
   const response = await createRunRoute(request);
   return response.json();
+}
+
+/**
+ * Create a test run via public v1 API route handler.
+ *
+ * @param agentId - The agent/compose ID to run
+ * @param prompt - The prompt for the run
+ * @returns The created run with id and status
+ */
+export async function createTestV1Run(
+  agentId: string,
+  prompt: string,
+): Promise<{ id: string; status: string }> {
+  const request = createTestRequest("http://localhost:3000/v1/runs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ agentId, prompt }),
+  });
+  const response = await createV1RunRoute(request);
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(
+      `Failed to create v1 run: ${data.error?.message || response.status}`,
+    );
+  }
+  return data;
 }
 
 /**
