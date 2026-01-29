@@ -98,7 +98,7 @@ interface DateMocks {
 /**
  * Combined mock helpers for E2B, S3, Axiom, and Date
  */
-export interface MockHelpers {
+interface MockHelpers {
   e2b: E2bMocks;
   s3: S3Mocks;
   axiom: AxiomMocks;
