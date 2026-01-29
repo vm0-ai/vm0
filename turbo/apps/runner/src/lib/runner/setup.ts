@@ -4,6 +4,7 @@ import {
   setupBridge,
   cleanupOrphanedProxyRules,
   flushBridgeArpCache,
+  setupCIDRProxyRules,
 } from "../firecracker/network.js";
 import { cleanupOrphanedAllocations } from "../firecracker/ip-pool.js";
 import {
@@ -65,13 +66,17 @@ export async function setupEnvironment(
   });
 
   // Try to start proxy - if mitmproxy is not installed, continue without it
-  // Note: Per-VM iptables rules are set up in executor.ts when a job with
-  // experimentalFirewall is executed, not globally here.
   let proxyEnabled = false;
   try {
     await proxyManager.start();
     proxyEnabled = true;
     console.log("Network proxy initialized successfully");
+
+    // Set up CIDR-based proxy rules for all VMs
+    // This redirects all VM traffic (172.16.0.0/24) to the proxy at startup
+    // The proxy handles unregistered VMs by passing traffic through
+    console.log("Setting up CIDR proxy rules...");
+    await setupCIDRProxyRules(config.proxy.port);
   } catch (err) {
     console.warn(
       `Network proxy not available: ${err instanceof Error ? err.message : "Unknown error"}`,

@@ -474,6 +474,77 @@ export async function removeVMProxyRules(
 }
 
 /**
+ * Set up CIDR-based proxy redirect rules for all VMs
+ * Called once at runner startup instead of per-VM
+ *
+ * This redirects all traffic from the VM subnet (172.16.0.0/24) to the proxy.
+ * The proxy handles unregistered VMs by passing traffic through.
+ *
+ * @param proxyPort The port mitmproxy is listening on
+ */
+export async function setupCIDRProxyRules(proxyPort: number): Promise<void> {
+  const comment = "vm0:cidr-proxy";
+  console.log(
+    `Setting up CIDR proxy rules for ${BRIDGE_CIDR} -> port ${proxyPort}`,
+  );
+
+  // HTTP redirect
+  try {
+    await execCommand(
+      `iptables -t nat -C PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 80 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
+    );
+    console.log("CIDR proxy rule for port 80 already exists");
+  } catch {
+    await execCommand(
+      `iptables -t nat -A PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 80 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
+    );
+    console.log("CIDR proxy rule for port 80 added");
+  }
+
+  // HTTPS redirect
+  try {
+    await execCommand(
+      `iptables -t nat -C PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 443 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
+    );
+    console.log("CIDR proxy rule for port 443 already exists");
+  } catch {
+    await execCommand(
+      `iptables -t nat -A PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 443 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
+    );
+    console.log("CIDR proxy rule for port 443 added");
+  }
+}
+
+/**
+ * Clean up CIDR proxy rules
+ * Called at runner shutdown or during cleanup
+ *
+ * @param proxyPort The port mitmproxy is listening on
+ */
+export async function cleanupCIDRProxyRules(proxyPort: number): Promise<void> {
+  const comment = "vm0:cidr-proxy";
+  console.log("Cleaning up CIDR proxy rules...");
+
+  try {
+    await execCommand(
+      `iptables -t nat -D PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 80 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
+    );
+    console.log("CIDR proxy rule for port 80 removed");
+  } catch {
+    // Rule doesn't exist, that's fine
+  }
+
+  try {
+    await execCommand(
+      `iptables -t nat -D PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 443 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
+    );
+    console.log("CIDR proxy rule for port 443 removed");
+  } catch {
+    // Rule doesn't exist, that's fine
+  }
+}
+
+/**
  * List all TAP devices that match our naming pattern (tap + 8 hex chars)
  */
 export async function listTapDevices(): Promise<string[]> {
