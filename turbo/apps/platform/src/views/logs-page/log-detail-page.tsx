@@ -376,7 +376,7 @@ function FormattedEventsView({
 
   if (visibleEvents.length === 0) {
     return (
-      <div className="p-8 text-center text-muted-foreground">
+      <div ref={containerRef} className="p-8 text-center text-muted-foreground">
         {events.length === 0
           ? "No events available"
           : searchTerm.trim()
