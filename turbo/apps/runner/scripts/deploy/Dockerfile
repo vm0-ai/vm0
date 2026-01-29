@@ -19,8 +19,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Install required packages
 # Core:
-# - python3: Python 3.11+ for agent scripts and vsock-agent
-# - tini: Lightweight init system for signal handling and zombie reaping
+# - python3: Python 3.11+ for agent scripts
 # - procps: Process utilities (pgrep, free) needed by metrics and executor
 # Development tools (matching e2b template):
 # - curl: HTTP client
@@ -35,7 +34,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
-    tini \
     procps \
     curl \
     git \

@@ -1,12 +1,16 @@
 [workspace]
 resolver = "2"
-members = ["vsock-agent"]
+members = ["vsock-agent", "vm-init"]
 
 [profile.release]
 lto = true
 strip = true
 
 [profile.release.package.vsock-agent]
+opt-level = "z"
+codegen-units = 1
+
+[profile.release.package.vm-init]
 opt-level = "z"
 codegen-units = 1
 

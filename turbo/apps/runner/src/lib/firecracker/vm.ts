@@ -256,7 +256,7 @@ export class FirecrackerVM {
     //   - numa=off: disable NUMA (single node)
     //   - mitigations=off: disable CPU vulnerability mitigations
     //   - noresume: skip hibernation resume check
-    //   - init=/sbin/vm-init: use vm-init to set up overlayfs and start vsock-agent with tini
+    //   - init=/sbin/vm-init: use vm-init (Rust binary) for filesystem setup and vsock-agent
     //   - ip=...: network configuration (guest IP, gateway, netmask)
     const networkBootArgs = generateNetworkBootArgs(this.networkConfig);
     const bootArgs = `console=ttyS0 reboot=k panic=1 pci=off nomodules random.trust_cpu=on quiet loglevel=0 nokaslr audit=0 numa=off mitigations=off noresume init=/sbin/vm-init ${networkBootArgs}`;
