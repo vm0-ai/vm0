@@ -157,13 +157,21 @@ export function testContext(): TestContext {
         .mockResolvedValue(undefined),
     };
 
-    // Axiom mocks
+    // Axiom mocks - only set up if Axiom is mocked (vi.mock at module level in test file)
     const axiomMocks: AxiomMocks = {
       query: vi.fn().mockResolvedValue({ matches: [] }),
       ingest: vi.fn(),
       flush: vi.fn().mockResolvedValue(undefined),
     };
-    vi.mocked(Axiom).mockImplementation(() => axiomMocks as unknown as Axiom);
+    // Use try/catch since Axiom may not be mocked in all test files
+    try {
+      const mocked = vi.mocked(Axiom);
+      if (typeof mocked.mockImplementation === "function") {
+        mocked.mockImplementation(() => axiomMocks as unknown as Axiom);
+      }
+    } catch {
+      // Axiom not mocked, skip
+    }
 
     const helpers: MockHelpers = {
       e2b: { sandbox: mockSandbox },

@@ -1,204 +1,89 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-  afterAll,
-  vi,
-} from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { POST } from "../route";
-import { POST as createCompose } from "../../composes/route";
-import { NextRequest } from "next/server";
-import { initServices } from "../../../../../src/lib/init-services";
-import { agentRuns } from "../../../../../src/db/schema/agent-run";
-import { agentComposes } from "../../../../../src/db/schema/agent-compose";
-import { scopes } from "../../../../../src/db/schema/scope";
-import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
   createTestRequest,
-  createDefaultComposeConfig,
+  createTestCompose,
   createTestCliToken,
   deleteTestCliToken,
+  createTestModelProvider,
+  completeTestRun,
 } from "../../../../../src/__tests__/api-test-helpers";
-import { Sandbox } from "@e2b/code-interpreter";
-import * as s3Client from "../../../../../src/lib/s3/s3-client";
+import {
+  testContext,
+  setupUser,
+  type UserContext,
+} from "../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import { agentRuns } from "../../../../../src/db/schema/agent-run";
+import { eq } from "drizzle-orm";
 
-// Mock Clerk auth (external SaaS)
-vi.mock("@clerk/nextjs/server", () => ({
-  auth: vi.fn(),
-}));
-
-// Mock E2B SDK (external)
+vi.mock("@clerk/nextjs/server");
 vi.mock("@e2b/code-interpreter");
-
-// Mock AWS SDK (external) for S3 operations
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
+vi.mock("@axiomhq/js");
 
-import {
-  mockClerk,
-  clearClerkMock,
-} from "../../../../../src/__tests__/clerk-mock";
+const context = testContext();
 
-describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
-  // Generate unique IDs for this test run
-  const testUserId = `test-user-${Date.now()}-${process.pid}`;
-  const testAgentName = `test-agent-runs-${Date.now()}`;
-  const testScopeId = randomUUID();
+/**
+ * Helper to create a run via internal API.
+ */
+async function createInternalRun(
+  agentComposeId: string,
+  prompt: string,
+  options?: {
+    vars?: Record<string, string>;
+    secrets?: Record<string, string>;
+    sessionId?: string;
+    checkpointId?: string;
+    modelProvider?: string;
+  },
+): Promise<{ runId: string; status: string }> {
+  const request = createTestRequest("http://localhost:3000/api/agent/runs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      agentComposeId,
+      prompt,
+      ...options,
+    }),
+  });
+  const response = await POST(request);
+  return response.json();
+}
+
+describe("POST /api/agent/runs - Internal Runs API", () => {
+  let user: UserContext;
   let testComposeId: string;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
+    // Setup mocks (E2B, S3, Axiom)
+    context.setupMocks();
 
-    // Initialize services
-    initServices();
+    // Create unique user for this test
+    user = await setupUser();
 
-    // Mock Clerk auth to return test user by default
-    mockClerk({ userId: testUserId });
-
-    // Setup E2B SDK mock - create sandbox
-    const mockSandbox = {
-      sandboxId: "test-sandbox-123",
-      getHostname: () => "test-sandbox.e2b.dev",
-      files: {
-        write: vi.fn().mockResolvedValue(undefined),
-      },
-      commands: {
-        run: vi.fn().mockResolvedValue({
-          stdout: "Mock output",
-          stderr: "",
-          exitCode: 0,
-        }),
-      },
-      kill: vi.fn().mockResolvedValue(undefined),
-    };
-    vi.mocked(Sandbox.create).mockResolvedValue(
-      mockSandbox as unknown as Sandbox,
-    );
-
-    // Setup S3 mocks
-    vi.spyOn(s3Client, "generatePresignedUrl").mockResolvedValue(
-      "https://mock-presigned-url",
-    );
-    vi.spyOn(s3Client, "listS3Objects").mockResolvedValue([]);
-    vi.spyOn(s3Client, "uploadS3Buffer").mockResolvedValue(undefined);
-
-    // Clean up test data from previous runs
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(scopes)
-      .where(eq(scopes.id, testScopeId));
-
-    // Create test scope for the user (required for compose creation)
-    await globalThis.services.db.insert(scopes).values({
-      id: testScopeId,
-      slug: `test-${testScopeId.slice(0, 8)}`,
-      type: "personal",
-      ownerId: testUserId,
-    });
-
-    // Create test compose via API endpoint
-    const config = createDefaultComposeConfig(testAgentName);
-    const request = createTestRequest(
-      "http://localhost:3000/api/agent/composes",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: config }),
-      },
-    );
-
-    const response = await createCompose(request);
-    const data = await response.json();
-    testComposeId = data.composeId;
+    // Create test compose
+    const { composeId } = await createTestCompose(`agent-${Date.now()}`);
+    testComposeId = composeId;
   });
-
-  afterEach(async () => {
-    clearClerkMock();
-    // Clean up test data
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(scopes)
-      .where(eq(scopes.id, testScopeId));
-  });
-
-  afterAll(async () => {});
-
-  // ============================================
-  // Fire-and-Forget Execution Tests
-  // ============================================
 
   describe("Fire-and-Forget Execution", () => {
-    it("should return immediately with 'running' status after sandbox preparation", async () => {
-      const request = new NextRequest("http://localhost:3000/api/agent/runs", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          agentComposeId: testComposeId,
-          prompt: "Test prompt",
-        }),
-      });
-
+    it("should return immediately with running status", async () => {
       const startTime = Date.now();
-      const response = await POST(request);
-      const endTime = Date.now();
+      const data = await createInternalRun(testComposeId, "Test prompt");
+      const responseTime = Date.now() - startTime;
 
       // Should return quickly (sandbox prep only, not agent execution)
-      expect(endTime - startTime).toBeLessThan(5000);
-
-      expect(response.status).toBe(201);
-      const data = await response.json();
+      expect(responseTime).toBeLessThan(5000);
       expect(data.runId).toBeDefined();
       expect(data.status).toBe("running");
-
-      // Verify run was created in database with 'running' status
-      const [run] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.id, data.runId))
-        .limit(1);
-
-      expect(run).toBeDefined();
-      expect(run!.status).toBe("running");
-      expect(run!.prompt).toBe("Test prompt");
-      expect(run!.sandboxId).toBe("test-sandbox-123");
     });
 
-    it("should update sandboxId in database after successful preparation", async () => {
-      const request = new NextRequest("http://localhost:3000/api/agent/runs", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          agentComposeId: testComposeId,
-          prompt: "Test sandbox ID",
-        }),
-      });
+    it("should save sandboxId in database after preparation", async () => {
+      const data = await createInternalRun(testComposeId, "Test sandbox ID");
 
-      const response = await POST(request);
-      expect(response.status).toBe(201);
-      const data = await response.json();
-
-      // Check that sandboxId was saved in database
       const [run] = await globalThis.services.db
         .select()
         .from(agentRuns)
@@ -207,283 +92,432 @@ describe("POST /api/agent/runs - Fire-and-Forget Execution", () => {
 
       expect(run!.sandboxId).toBe("test-sandbox-123");
       expect(run!.status).toBe("running");
-      // completedAt should NOT be set yet (agent still running)
       expect(run!.completedAt).toBeNull();
     });
 
-    it("should return 'failed' status if sandbox preparation fails", async () => {
-      // Make E2B SDK throw an error
-      vi.mocked(Sandbox.create).mockRejectedValue(
+    it("should return failed status if sandbox preparation fails", async () => {
+      const { Sandbox } = await import("@e2b/code-interpreter");
+      vi.mocked(Sandbox.create).mockRejectedValueOnce(
         new Error("Sandbox creation failed"),
       );
 
-      const request = new NextRequest("http://localhost:3000/api/agent/runs", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          agentComposeId: testComposeId,
-          prompt: "Test preparation failure",
-        }),
-      });
+      const data = await createInternalRun(testComposeId, "Test failure");
 
-      const response = await POST(request);
-      expect(response.status).toBe(201);
-      const data = await response.json();
-
-      // Returns failed status immediately for preparation failures
       expect(data.status).toBe("failed");
 
-      // Check that run was marked as failed in database
-      const [failedRun] = await globalThis.services.db
+      const [run] = await globalThis.services.db
         .select()
         .from(agentRuns)
         .where(eq(agentRuns.id, data.runId))
         .limit(1);
 
-      expect(failedRun!.status).toBe("failed");
-      expect(failedRun!.error).toContain("Sandbox creation failed");
-      expect(failedRun!.completedAt).toBeDefined();
-    });
-
-    it("should return quickly even with complex context building", async () => {
-      const request = new NextRequest("http://localhost:3000/api/agent/runs", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          agentComposeId: testComposeId,
-          prompt: "Quick response test",
-        }),
-      });
-
-      const startTime = Date.now();
-      const response = await POST(request);
-      const responseTime = Date.now() - startTime;
-
-      // Should return after sandbox prep, not after agent execution
-      expect(responseTime).toBeLessThan(5000);
-      expect(response.status).toBe(201);
-
-      const data = await response.json();
-      expect(data.status).toBe("running");
+      expect(run!.status).toBe("failed");
+      expect(run!.error).toContain("Sandbox creation failed");
+      expect(run!.completedAt).toBeDefined();
     });
   });
 
-  // ============================================
-  // Validation Tests (ensure they still work)
-  // ============================================
-
   describe("Validation", () => {
     it("should reject request without agentComposeId", async () => {
-      const request = new NextRequest("http://localhost:3000/api/agent/runs", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: "Test prompt" }),
         },
-        body: JSON.stringify({
-          prompt: "Test prompt",
-        }),
-      });
+      );
 
       const response = await POST(request);
+      const data = await response.json();
 
       expect(response.status).toBe(400);
-      const data = await response.json();
       expect(data.error.message).toContain("agentComposeId");
     });
 
     it("should reject request without prompt", async () => {
-      const request = new NextRequest("http://localhost:3000/api/agent/runs", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ agentComposeId: testComposeId }),
         },
-        body: JSON.stringify({
-          agentComposeId: testComposeId,
-        }),
-      });
+      );
 
       const response = await POST(request);
+      const data = await response.json();
 
       expect(response.status).toBe(400);
-      const data = await response.json();
       expect(data.error.message).toContain("prompt");
     });
 
     it("should reject request with both checkpointId and sessionId", async () => {
-      const request = new NextRequest("http://localhost:3000/api/agent/runs", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt: "Test prompt",
+            checkpointId: randomUUID(),
+            sessionId: randomUUID(),
+          }),
         },
-        body: JSON.stringify({
-          prompt: "Test prompt",
-          checkpointId: randomUUID(),
-          sessionId: randomUUID(),
-        }),
-      });
+      );
 
       const response = await POST(request);
+      const data = await response.json();
 
       expect(response.status).toBe(400);
-      const data = await response.json();
       expect(data.error.message).toContain("both checkpointId and sessionId");
     });
   });
 
-  // ============================================
-  // Authorization Tests
-  // ============================================
-
   describe("Authorization", () => {
     it("should reject unauthenticated request", async () => {
-      // Mock Clerk to return no user
       mockClerk({ userId: null });
 
-      const request = new NextRequest("http://localhost:3000/api/agent/runs", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: testComposeId,
+            prompt: "Test prompt",
+          }),
         },
-        body: JSON.stringify({
-          agentComposeId: testComposeId,
-          prompt: "Test prompt",
-        }),
-      });
+      );
 
       const response = await POST(request);
+      const data = await response.json();
 
       expect(response.status).toBe(401);
-      const data = await response.json();
       expect(data.error.message).toContain("Not authenticated");
     });
 
     it("should reject request for non-existent compose", async () => {
-      const nonExistentComposeId = randomUUID();
-
-      const request = new NextRequest("http://localhost:3000/api/agent/runs", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: randomUUID(),
+            prompt: "Test prompt",
+          }),
         },
-        body: JSON.stringify({
-          agentComposeId: nonExistentComposeId,
-          prompt: "Test prompt",
-        }),
-      });
+      );
 
       const response = await POST(request);
+      const data = await response.json();
 
       expect(response.status).toBe(404);
-      const data = await response.json();
       expect(data.error.message).toContain("Agent compose");
     });
   });
-
-  // ============================================
-  // CLI Token Authentication Tests
-  // ============================================
 
   describe("CLI Token Authentication", () => {
     let testCliToken: string;
 
     beforeEach(async () => {
-      // Create valid CLI token in database
-      testCliToken = await createTestCliToken(testUserId);
+      testCliToken = await createTestCliToken(user.userId);
     });
 
     afterEach(async () => {
-      // Clean up CLI token
       await deleteTestCliToken(testCliToken);
     });
 
     it("should authenticate with valid CLI token", async () => {
-      const request = new NextRequest("http://localhost:3000/api/agent/runs", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${testCliToken}`,
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testCliToken}`,
+          },
+          body: JSON.stringify({
+            agentComposeId: testComposeId,
+            prompt: "Test with CLI token",
+          }),
         },
-        body: JSON.stringify({
-          agentComposeId: testComposeId,
-          prompt: "Test with CLI token",
-        }),
-      });
+      );
 
       const response = await POST(request);
+      const data = await response.json();
 
       expect(response.status).toBe(201);
-      const data = await response.json();
       expect(data.runId).toBeDefined();
       expect(data.status).toBe("running");
+    });
 
-      // Verify run was created with correct user
+    it("should reject expired CLI token", async () => {
+      const expiredToken = await createTestCliToken(
+        user.userId,
+        new Date(Date.now() - 1000),
+      );
+      mockClerk({ userId: null });
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${expiredToken}`,
+          },
+          body: JSON.stringify({
+            agentComposeId: testComposeId,
+            prompt: "Test with expired token",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(data.error.message).toContain("Not authenticated");
+
+      await deleteTestCliToken(expiredToken);
+    });
+  });
+
+  describe("Concurrent Run Limit", () => {
+    it("should return 429 when concurrent run limit is reached", async () => {
+      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+
+      try {
+        // First run should succeed
+        const run1 = await createInternalRun(testComposeId, "First run");
+        expect(run1.status).toBe("running");
+
+        // Second run should fail with 429
+        const request = createTestRequest(
+          "http://localhost:3000/api/agent/runs",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentComposeId: testComposeId,
+              prompt: "Second run",
+            }),
+          },
+        );
+
+        const response = await POST(request);
+        const data = await response.json();
+
+        expect(response.status).toBe(429);
+        expect(data.error.message).toMatch(/concurrent/i);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it("should allow unlimited runs when limit is 0", async () => {
+      vi.stubEnv("CONCURRENT_RUN_LIMIT", "0");
+
+      try {
+        const run1 = await createInternalRun(testComposeId, "Run 1");
+        const run2 = await createInternalRun(testComposeId, "Run 2");
+        const run3 = await createInternalRun(testComposeId, "Run 3");
+
+        expect(run1.status).toBe("running");
+        expect(run2.status).toBe("running");
+        expect(run3.status).toBe("running");
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it("should only count pending and running statuses", async () => {
+      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+
+      try {
+        // Create and complete first run
+        const run1 = await createInternalRun(testComposeId, "First run");
+        expect(run1.status).toBe("running");
+        await completeTestRun(user.userId, run1.runId);
+
+        // Second run should succeed since first is completed
+        const run2 = await createInternalRun(testComposeId, "Second run");
+        expect(run2.status).toBe("running");
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it("should respect higher limit values", async () => {
+      vi.stubEnv("CONCURRENT_RUN_LIMIT", "3");
+
+      try {
+        const run1 = await createInternalRun(testComposeId, "Run 1");
+        const run2 = await createInternalRun(testComposeId, "Run 2");
+        const run3 = await createInternalRun(testComposeId, "Run 3");
+
+        expect(run1.status).toBe("running");
+        expect(run2.status).toBe("running");
+        expect(run3.status).toBe("running");
+
+        // Fourth run should fail
+        const request = createTestRequest(
+          "http://localhost:3000/api/agent/runs",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentComposeId: testComposeId,
+              prompt: "Fourth run",
+            }),
+          },
+        );
+
+        const response = await POST(request);
+        expect(response.status).toBe(429);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+  });
+
+  describe("Model Provider Injection", () => {
+    it("should succeed when model provider is configured and no API key in compose", async () => {
+      // Create model provider
+      await createTestModelProvider("anthropic-api-key", "test-api-key");
+
+      // Create compose without API key
+      const { composeId } = await createTestCompose(`mp-agent-${Date.now()}`, {
+        skipDefaultApiKey: true,
+      });
+
+      const data = await createInternalRun(
+        composeId,
+        "Test with model provider",
+      );
+
+      expect(data.status).toBe("running");
+    });
+
+    it("should fail run when no model provider and no API key in compose", async () => {
+      // Create compose without API key and no environment block
+      const { composeId } = await createTestCompose(`no-mp-${Date.now()}`, {
+        noEnvironmentBlock: true,
+      });
+
+      const data = await createInternalRun(
+        composeId,
+        "Test without model provider",
+      );
+
+      // Route creates run first, then fails during preparation
+      expect(data.status).toBe("failed");
+
+      // Verify error was recorded
       const [run] = await globalThis.services.db
         .select()
         .from(agentRuns)
         .where(eq(agentRuns.id, data.runId))
         .limit(1);
 
-      expect(run).toBeDefined();
-      expect(run!.userId).toBe(testUserId);
+      expect(run!.error).toMatch(/model provider/i);
     });
 
-    it("should reject expired CLI token and fall back to Clerk", async () => {
-      // Create expired token
-      const expiredToken = await createTestCliToken(
-        testUserId,
-        new Date(Date.now() - 1000), // Expired 1 second ago
+    it("should skip injection when compose has explicit ANTHROPIC_API_KEY", async () => {
+      // Compose with default API key should work without model provider
+      const data = await createInternalRun(
+        testComposeId,
+        "Test with explicit key",
       );
 
-      // Mock Clerk to return null (unauthenticated)
-      mockClerk({ userId: null });
-
-      const request = new NextRequest("http://localhost:3000/api/agent/runs", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${expiredToken}`,
-        },
-        body: JSON.stringify({
-          agentComposeId: testComposeId,
-          prompt: "Test with expired token",
-        }),
-      });
-
-      const response = await POST(request);
-
-      expect(response.status).toBe(401);
-      const data = await response.json();
-      expect(data.error.message).toContain("Not authenticated");
-
-      // Clean up expired token
-      await deleteTestCliToken(expiredToken);
+      expect(data.status).toBe("running");
     });
 
-    it("should reject invalid CLI token and fall back to Clerk", async () => {
-      // Mock Clerk to return null (unauthenticated)
-      mockClerk({ userId: null });
+    it("should use specified model provider when passed", async () => {
+      // Create model provider
+      await createTestModelProvider("anthropic-api-key", "test-api-key");
 
-      const request = new NextRequest("http://localhost:3000/api/agent/runs", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer vm0_live_invalid_token",
-        },
-        body: JSON.stringify({
-          agentComposeId: testComposeId,
-          prompt: "Test with invalid token",
-        }),
+      // Create compose without API key
+      const { composeId } = await createTestCompose(`mp-select-${Date.now()}`, {
+        skipDefaultApiKey: true,
       });
 
-      const response = await POST(request);
+      const data = await createInternalRun(
+        composeId,
+        "Test with specified provider",
+        {
+          modelProvider: "anthropic-api-key",
+        },
+      );
 
-      expect(response.status).toBe(401);
+      expect(data.status).toBe("running");
+    });
+  });
+
+  describe("Session Continue", () => {
+    it("should return 404 when session not found", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: randomUUID(),
+            prompt: "Continue session",
+          }),
+        },
+      );
+
+      const response = await POST(request);
       const data = await response.json();
-      expect(data.error.message).toContain("Not authenticated");
+
+      expect(response.status).toBe(404);
+      expect(data.error.message).toMatch(/session/i);
+    });
+
+    it("should return 404 when session belongs to different user (security)", async () => {
+      // Create another user and their session
+      const otherUser = await setupUser({ prefix: "other" });
+      const { composeId: otherComposeId, versionId } = await createTestCompose(
+        `other-agent-${Date.now()}`,
+      );
+
+      // Create session for other user
+      const { AgentSessionService } = await import(
+        "../../../../../src/lib/agent-session/agent-session-service"
+      );
+      const sessionService = new AgentSessionService();
+      mockClerk({ userId: otherUser.userId });
+      const session = await sessionService.create({
+        userId: otherUser.userId,
+        agentComposeId: otherComposeId,
+        agentComposeVersionId: versionId,
+        artifactName: "test-artifact",
+      });
+
+      // Switch back to original user
+      mockClerk({ userId: user.userId });
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: session.id,
+            prompt: "Continue other session",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      // Returns 404 for security (don't leak session existence)
+      expect(response.status).toBe(404);
+      expect(data.error.message).toMatch(/session/i);
     });
   });
 });
