@@ -259,26 +259,33 @@ export async function executeJob(
         `[Executor] Setting up network security for VM ${guestIp} (mitm=${mitmEnabled}, sealSecrets=${sealSecretsEnabled})`,
       );
 
-      // Set up per-VM iptables rules to redirect this VM's traffic to mitmproxy
-      // This must be done before the VM makes any network requests
-      await setupVMProxyRules(guestIp, config.proxy.port, config.name);
+      await withSandboxTiming("network_setup", async () => {
+        // Set up per-VM iptables rules to redirect this VM's traffic to mitmproxy
+        // This must be done before the VM makes any network requests
+        await setupVMProxyRules(guestIp!, config.proxy.port, config.name);
 
-      // Register VM in the proxy registry with firewall rules
-      getVMRegistry().register(guestIp, context.runId, context.sandboxToken, {
-        firewallRules: firewallConfig?.rules,
-        mitmEnabled,
-        sealSecretsEnabled,
-      });
-
-      // Install proxy CA certificate only if MITM is enabled
-      // For SNI-only mode (filter without MITM), we don't need CA
-      if (mitmEnabled) {
-        const caCertPath = path.join(
-          config.proxy.ca_dir,
-          "mitmproxy-ca-cert.pem",
+        // Register VM in the proxy registry with firewall rules
+        getVMRegistry().register(
+          guestIp!,
+          context.runId,
+          context.sandboxToken,
+          {
+            firewallRules: firewallConfig?.rules,
+            mitmEnabled,
+            sealSecretsEnabled,
+          },
         );
-        await installProxyCA(guest, caCertPath);
-      }
+
+        // Install proxy CA certificate only if MITM is enabled
+        // For SNI-only mode (filter without MITM), we don't need CA
+        if (mitmEnabled) {
+          const caCertPath = path.join(
+            config.proxy.ca_dir,
+            "mitmproxy-ca-cert.pem",
+          );
+          await installProxyCA(guest, caCertPath);
+        }
+      });
     }
 
     // Download storages if manifest provided
@@ -308,7 +315,9 @@ export async function executeJob(
     log(
       `[Executor] Writing env JSON (${envJson.length} bytes) to ${ENV_JSON_PATH}`,
     );
-    await guest.writeFile(ENV_JSON_PATH, envJson);
+    await withSandboxTiming("env_write", () =>
+      guest.writeFile(ENV_JSON_PATH, envJson),
+    );
 
     // Run preflight connectivity check before starting agent
     // This verifies VM can reach VM0 API - if not, we report failure immediately
@@ -316,12 +325,14 @@ export async function executeJob(
     if (!options.benchmarkMode) {
       log(`[Executor] Running preflight connectivity check...`);
       const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-      const preflight = await runPreflightCheck(
-        guest,
-        config.server.url,
-        context.runId,
-        context.sandboxToken,
-        bypassSecret,
+      const preflight = await withSandboxTiming("preflight_check", () =>
+        runPreflightCheck(
+          guest,
+          config.server.url,
+          context.runId,
+          context.sandboxToken,
+          bypassSecret,
+        ),
       );
 
       if (!preflight.success) {
