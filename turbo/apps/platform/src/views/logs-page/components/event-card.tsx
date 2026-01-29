@@ -436,8 +436,13 @@ function ToolInputParams({
                   ? "text-blue-600 dark:text-blue-400"
                   : "text-muted-foreground";
             return (
-              <div key={`${status}-${content}`} className="flex items-start gap-2">
-                <StatusIcon className={`h-4 w-4 shrink-0 mt-0.5 ${statusColor}`} />
+              <div
+                key={`${status}-${content}`}
+                className="flex items-start gap-2"
+              >
+                <StatusIcon
+                  className={`h-4 w-4 shrink-0 mt-0.5 ${statusColor}`}
+                />
                 <span
                   className={
                     status === "completed"
