@@ -17,6 +17,7 @@ pub fn shutdown_requested() -> bool {
 /// Setup signal handlers for PID 1 operation.
 ///
 /// - SIGTERM/SIGINT: Set shutdown flag for graceful exit
+/// - SIGTTIN/SIGTTOU: Ignore to prevent blocking on TTY operations
 /// - SIGCHLD: Use default handler (SIG_DFL) so waitpid() works correctly
 ///
 /// NOTE: We intentionally do NOT set SIGCHLD to SIG_IGN because that causes
@@ -26,6 +27,9 @@ pub fn setup_signal_handlers() {
     unsafe {
         libc::signal(libc::SIGTERM, handle_shutdown_signal as *const () as usize);
         libc::signal(libc::SIGINT, handle_shutdown_signal as *const () as usize);
+        // Ignore SIGTTIN/SIGTTOU to prevent blocking on TTY operations (like tini does)
+        libc::signal(libc::SIGTTIN, libc::SIG_IGN);
+        libc::signal(libc::SIGTTOU, libc::SIG_IGN);
         // Keep SIGCHLD at SIG_DFL - reap_zombies() will handle orphaned processes
     }
 }
