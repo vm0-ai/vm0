@@ -168,14 +168,6 @@ class E2BExecutor implements Executor {
       }
 
       // Start agent execution (fire-and-forget)
-      if (context.apiStartTime) {
-        recordSandboxOperation({
-          sandboxType: "e2b",
-          actionType: "api_to_sandbox_ready",
-          durationMs: Date.now() - context.apiStartTime,
-          success: true,
-        });
-      }
       log.debug(`[${context.runId}] Starting agent execution...`);
       await withSandboxMetrics("agent_start", () =>
         this.startAgentExecution(sandbox!, context.runId),

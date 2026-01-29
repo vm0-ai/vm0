@@ -357,15 +357,6 @@ export async function executeJob(
     const exitCodeFile = `/tmp/vm0-exit-${context.runId}`;
     const startTime = Date.now();
 
-    // Record api_to_sandbox_ready metric
-    if (context.apiStartTime) {
-      recordOperation({
-        actionType: "api_to_sandbox_ready",
-        durationMs: Date.now() - context.apiStartTime,
-        success: true,
-      });
-    }
-
     if (options.benchmarkMode) {
       // Benchmark mode: run prompt directly as bash command (skip run-agent.mjs)
       // This avoids API dependencies while still testing the full VM setup pipeline
