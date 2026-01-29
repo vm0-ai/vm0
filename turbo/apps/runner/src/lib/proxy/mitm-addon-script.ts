@@ -210,7 +210,10 @@ def tls_clienthello(data: tls.ClientHelloData) -> None:
 
     vm_info = get_vm_info(client_ip)
     if not vm_info:
-        return  # Not a registered VM, let it through
+        # Not a registered VM - pass through without MITM interception
+        # This is critical for CIDR-based rules where all VM traffic is redirected
+        data.ignore_connection = True
+        return
 
     # If MITM is enabled, let the normal flow handle it
     if vm_info.get("mitmEnabled", False):
