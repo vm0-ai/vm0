@@ -1,98 +1,33 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeAll,
-  beforeEach,
-  afterEach,
-  afterAll,
-  vi,
-} from "vitest";
-import { NextRequest } from "next/server";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "../route";
-import { POST } from "../../route";
-import { initServices } from "../../../../../../src/lib/init-services";
-import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
-import { scopes } from "../../../../../../src/db/schema/scope";
-import { eq } from "drizzle-orm";
-import { randomUUID } from "crypto";
-
-/**
- * Helper to create a NextRequest for testing.
- */
-function createTestRequest(
-  url: string,
-  options?: {
-    method?: string;
-    body?: string;
-    headers?: Record<string, string>;
-  },
-): NextRequest {
-  return new NextRequest(url, {
-    method: options?.method ?? "GET",
-    headers: options?.headers ?? {},
-    body: options?.body,
-  });
-}
-
-// Mock Clerk auth (external SaaS)
-vi.mock("@clerk/nextjs/server", () => ({
-  auth: vi.fn(),
-}));
-
 import {
-  mockClerk,
-  clearClerkMock,
-} from "../../../../../../src/__tests__/clerk-mock";
+  createTestRequest,
+  createTestCompose,
+} from "../../../../../../src/__tests__/api-test-helpers";
+import {
+  testContext,
+  type UserContext,
+} from "../../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+
+// Only mock external services
+vi.mock("@clerk/nextjs/server");
+vi.mock("@e2b/code-interpreter");
+vi.mock("@aws-sdk/client-s3");
+vi.mock("@aws-sdk/s3-request-presigner");
+vi.mock("@axiomhq/js");
+
+const context = testContext();
 
 describe("GET /api/agent/composes/list", () => {
-  const testUserId = "test-user-list";
-  const testScopeId = randomUUID();
-  const testScopeSlug = `test-list-${testScopeId.slice(0, 8)}`;
+  let user: UserContext;
 
-  beforeAll(async () => {
-    initServices();
-
-    // Clean up any existing test data
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(scopes)
-      .where(eq(scopes.id, testScopeId));
-
-    // Create test scope for the user
-    await globalThis.services.db.insert(scopes).values({
-      id: testScopeId,
-      slug: testScopeSlug,
-      type: "personal",
-      ownerId: testUserId,
-    });
-  });
-
-  beforeEach(() => {
-    // Mock Clerk auth to return test user by default
-    mockClerk({ userId: testUserId });
-  });
-
-  afterEach(() => {
-    clearClerkMock();
-  });
-
-  afterAll(async () => {
-    // Cleanup: Delete test composes and scope
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(scopes)
-      .where(eq(scopes.id, testScopeId));
+  beforeEach(async () => {
+    context.setupMocks();
+    user = await context.setupUser();
   });
 
   it("should return 401 when not authenticated", async () => {
-    // Mock Clerk to return no user
     mockClerk({ userId: null });
 
     const request = createTestRequest(
@@ -117,140 +52,74 @@ describe("GET /api/agent/composes/list", () => {
   });
 
   it("should return all composes for the user scope", async () => {
-    // Create two test composes
-    const config1 = {
-      version: "1.0",
-      agents: {
-        "test-list-agent-1": {
-          description: "First agent",
-          framework: "claude-code",
-          working_dir: "/home/user/workspace",
-        },
-      },
-    };
+    // Create two test composes via API
+    const agentName1 = `test-list-agent-1-${Date.now()}`;
+    const agentName2 = `test-list-agent-2-${Date.now()}`;
 
-    const config2 = {
-      version: "1.0",
-      agents: {
-        "test-list-agent-2": {
-          description: "Second agent",
-          framework: "claude-code",
-          working_dir: "/home/user/workspace",
-        },
-      },
-    };
-
-    // Create first compose
-    const createRequest1 = createTestRequest(
-      "http://localhost:3000/api/agent/composes",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: config1 }),
-      },
-    );
-    const createResponse1 = await POST(createRequest1);
-    expect(createResponse1.status).toBe(201);
-
-    // Create second compose
-    const createRequest2 = createTestRequest(
-      "http://localhost:3000/api/agent/composes",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: config2 }),
-      },
-    );
-    const createResponse2 = await POST(createRequest2);
-    expect(createResponse2.status).toBe(201);
+    await createTestCompose(agentName1);
+    await createTestCompose(agentName2);
 
     // List composes
-    const listRequest = createTestRequest(
+    const request = createTestRequest(
       "http://localhost:3000/api/agent/composes/list",
     );
-    const listResponse = await GET(listRequest);
-    const listData = await listResponse.json();
+    const response = await GET(request);
+    const data = await response.json();
 
-    expect(listResponse.status).toBe(200);
-    expect(listData.composes).toHaveLength(2);
+    expect(response.status).toBe(200);
+    expect(data.composes).toHaveLength(2);
 
     // Check that both agents are in the list
-    const names = listData.composes.map((c: { name: string }) => c.name);
-    expect(names).toContain("test-list-agent-1");
-    expect(names).toContain("test-list-agent-2");
+    const names = data.composes.map((c: { name: string }) => c.name);
+    expect(names).toContain(agentName1);
+    expect(names).toContain(agentName2);
 
     // Check structure of each compose
-    for (const compose of listData.composes) {
+    for (const compose of data.composes) {
       expect(compose.name).toBeDefined();
       expect(compose.headVersionId).toBeDefined();
       expect(compose.updatedAt).toBeDefined();
       // headVersionId should be 64 hex chars
       expect(compose.headVersionId).toMatch(/^[a-f0-9]{64}$/);
     }
-
-    // Cleanup
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.userId, testUserId));
   });
 
-  it("should filter by scope correctly", async () => {
-    // Create another user and scope
-    const otherUserId = "test-user-list-other";
-    const otherScopeId = randomUUID();
-    const otherScopeSlug = `test-other-${otherScopeId.slice(0, 8)}`;
+  it("should filter by scope correctly - not show other user's composes", async () => {
+    // Create compose for current user
+    const userAgentName = `test-user-agent-${Date.now()}`;
+    await createTestCompose(userAgentName);
 
-    await globalThis.services.db.insert(scopes).values({
-      id: otherScopeId,
-      slug: otherScopeSlug,
-      type: "personal",
-      ownerId: otherUserId,
-    });
-
-    // Create compose as other user
-    mockClerk({ userId: otherUserId });
-
-    const config = {
-      version: "1.0",
-      agents: {
-        "test-other-agent": {
-          description: "Other user's agent",
-          framework: "claude-code",
-          working_dir: "/home/user/workspace",
-        },
-      },
-    };
-
-    const createRequest = createTestRequest(
-      "http://localhost:3000/api/agent/composes",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: config }),
-      },
-    );
-    await POST(createRequest);
+    // Create another user and their compose
+    const otherUser = await context.setupUser({ prefix: "other-user" });
+    const otherAgentName = `test-other-agent-${Date.now()}`;
+    await createTestCompose(otherAgentName);
 
     // Switch back to original user and list their composes
-    mockClerk({ userId: testUserId });
-    const listRequest = createTestRequest(
+    mockClerk({ userId: user.userId });
+    const request = createTestRequest(
       "http://localhost:3000/api/agent/composes/list",
     );
-    const listResponse = await GET(listRequest);
-    const listData = await listResponse.json();
+    const response = await GET(request);
+    const data = await response.json();
 
-    expect(listResponse.status).toBe(200);
+    expect(response.status).toBe(200);
+    // Should include user's compose
+    const names = data.composes.map((c: { name: string }) => c.name);
+    expect(names).toContain(userAgentName);
     // Should not include other user's compose
-    const names = listData.composes.map((c: { name: string }) => c.name);
-    expect(names).not.toContain("test-other-agent");
+    expect(names).not.toContain(otherAgentName);
 
-    // Cleanup
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.userId, otherUserId));
-    await globalThis.services.db
-      .delete(scopes)
-      .where(eq(scopes.id, otherScopeId));
+    // Verify other user can see their own compose
+    mockClerk({ userId: otherUser.userId });
+    const otherRequest = createTestRequest(
+      "http://localhost:3000/api/agent/composes/list",
+    );
+    const otherResponse = await GET(otherRequest);
+    const otherData = await otherResponse.json();
+
+    const otherNames = otherData.composes.map((c: { name: string }) => c.name);
+    expect(otherNames).toContain(otherAgentName);
+    expect(otherNames).not.toContain(userAgentName);
   });
 
   it("should return 400 for non-existent scope", async () => {
@@ -265,19 +134,20 @@ describe("GET /api/agent/composes/list", () => {
   });
 
   it("should return 403 when user tries to access another user's scope", async () => {
-    // Create another user's scope
-    const otherUserId = "test-user-unauthorized";
-    const otherScopeId = randomUUID();
-    const otherScopeSlug = `test-unauth-${otherScopeId.slice(0, 8)}`;
+    // Create another user with their own scope
+    const otherUser = await context.setupUser({ prefix: "forbidden-user" });
 
-    await globalThis.services.db.insert(scopes).values({
-      id: otherScopeId,
-      slug: otherScopeSlug,
-      type: "personal",
-      ownerId: otherUserId,
-    });
+    // Create a compose for the other user
+    await createTestCompose(`forbidden-compose-${Date.now()}`);
 
-    // Try to access other user's scope as test user
+    // Derive the other user's scope slug from their userId
+    // userId format: {prefix}-{timestamp}-{uuid}
+    // scope slug format: scope-{timestamp}-{uuid}
+    const uniqueSuffix = otherUser.userId.replace("forbidden-user-", "");
+    const otherScopeSlug = `scope-${uniqueSuffix}`;
+
+    // Switch back to original user and try to access the other user's scope
+    mockClerk({ userId: user.userId });
     const request = createTestRequest(
       `http://localhost:3000/api/agent/composes/list?scope=${otherScopeSlug}`,
     );
@@ -287,50 +157,28 @@ describe("GET /api/agent/composes/list", () => {
     expect(response.status).toBe(403);
     expect(data.error.code).toBe("FORBIDDEN");
     expect(data.error.message).toContain("don't have access");
-
-    // Cleanup
-    await globalThis.services.db
-      .delete(scopes)
-      .where(eq(scopes.id, otherScopeId));
   });
 
   it("should list composes by specified scope slug", async () => {
     // Create a compose first
-    const config = {
-      version: "1.0",
-      agents: {
-        "test-scope-agent": {
-          description: "Agent with scope",
-          framework: "claude-code",
-          working_dir: "/home/user/workspace",
-        },
-      },
-    };
+    const agentName = `test-scope-agent-${Date.now()}`;
+    await createTestCompose(agentName);
 
-    const createRequest = createTestRequest(
-      "http://localhost:3000/api/agent/composes",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: config }),
-      },
-    );
-    await POST(createRequest);
+    // Derive the user's scope slug from their userId
+    // userId format: test-user-{timestamp}-{uuid}
+    // scope slug format: scope-{timestamp}-{uuid}
+    const uniqueSuffix = user.userId.replace("test-user-", "");
+    const scopeSlug = `scope-${uniqueSuffix}`;
 
     // List by scope slug
-    const listRequest = createTestRequest(
-      `http://localhost:3000/api/agent/composes/list?scope=${testScopeSlug}`,
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/composes/list?scope=${scopeSlug}`,
     );
-    const listResponse = await GET(listRequest);
-    const listData = await listResponse.json();
+    const response = await GET(request);
+    const data = await response.json();
 
-    expect(listResponse.status).toBe(200);
-    const names = listData.composes.map((c: { name: string }) => c.name);
-    expect(names).toContain("test-scope-agent");
-
-    // Cleanup
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.userId, testUserId));
+    expect(response.status).toBe(200);
+    const names = data.composes.map((c: { name: string }) => c.name);
+    expect(names).toContain(agentName);
   });
 });
