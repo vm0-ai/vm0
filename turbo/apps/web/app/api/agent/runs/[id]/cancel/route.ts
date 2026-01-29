@@ -9,6 +9,7 @@ import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { eq, and } from "drizzle-orm";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
 import { logger } from "../../../../../../src/lib/logger";
+import { e2bService } from "../../../../../../src/lib/e2b/e2b-service";
 
 const log = logger("api:runs:cancel");
 
@@ -66,7 +67,14 @@ const router = tsr.router(runsCancelContract, {
       })
       .where(eq(agentRuns.id, runId));
 
-    log.debug(`Run ${runId} cancelled by user ${userId}`);
+    // Kill E2B sandbox if it exists
+    if (run.sandboxId) {
+      await e2bService.killSandbox(run.sandboxId);
+    }
+
+    log.debug(
+      `Run ${runId} cancelled by user ${userId}, sandbox: ${run.sandboxId ?? "none"}`,
+    );
 
     return {
       status: 200 as const,
