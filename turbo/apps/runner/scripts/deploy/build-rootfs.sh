@@ -119,14 +119,13 @@ create_squashfs_image() {
     echo "nameserver 8.8.4.4" | sudo tee -a "$EXTRACT_DIR/etc/resolv.conf" > /dev/null
     echo "nameserver 1.1.1.1" | sudo tee -a "$EXTRACT_DIR/etc/resolv.conf" > /dev/null
 
-    # Install vm-init script (PID 1)
+    # Install vm-init binary (PID 1) - directly as /sbin/vm-init
     echo "[INSTALL] Installing vm-init..."
-    sudo cp "$SCRIPT_DIR/vm-init.sh" "$EXTRACT_DIR/sbin/vm-init"
+    sudo cp "$SCRIPT_DIR/vm-init" "$EXTRACT_DIR/sbin/vm-init"
     sudo chmod 755 "$EXTRACT_DIR/sbin/vm-init"
 
-    # Install agent files (vm-init binary and ESM scripts)
+    # Install agent files (ESM scripts)
     echo "[INSTALL] Installing agent files..."
-    sudo cp "$SCRIPT_DIR/vm-init" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
     sudo cp "$SCRIPT_DIR/run-agent.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
     sudo cp "$SCRIPT_DIR/download.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
     sudo cp "$SCRIPT_DIR/mock-claude.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
