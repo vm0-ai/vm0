@@ -23,7 +23,12 @@ import type { ExecutionContext } from "./api.js";
 import type { RunnerConfig } from "./config.js";
 import { ENV_LOADER_PATH } from "./scripts/index.js";
 import { getVMRegistry } from "./proxy/index.js";
-import { withSandboxTiming, recordRunnerOperation } from "./metrics/index.js";
+import {
+  withSandboxTiming,
+  recordOperation,
+  setSandboxContext,
+  clearSandboxContext,
+} from "./metrics/index.js";
 
 // Import from extracted modules
 import type {
@@ -173,6 +178,22 @@ export async function executeJob(
   config: RunnerConfig,
   options: ExecutionOptions = {},
 ): Promise<ExecutionResult> {
+  // Set sandbox context for metrics reporting via telemetry API
+  setSandboxContext({
+    apiUrl: config.server.url,
+    runId: context.runId,
+    sandboxToken: context.sandboxToken,
+  });
+
+  // Record api_to_vm_start metric
+  if (context.apiStartTime) {
+    recordOperation({
+      actionType: "api_to_vm_start",
+      durationMs: Date.now() - context.apiStartTime,
+      success: true,
+    });
+  }
+
   // Use runId (UUID) to derive unique VM identifier
   // This ensures no conflicts even across process restarts
   const vmId = getVmIdFromRunId(context.runId);
@@ -237,26 +258,33 @@ export async function executeJob(
         `[Executor] Setting up network security for VM ${guestIp} (mitm=${mitmEnabled}, sealSecrets=${sealSecretsEnabled})`,
       );
 
-      // Set up per-VM iptables rules to redirect this VM's traffic to mitmproxy
-      // This must be done before the VM makes any network requests
-      await setupVMProxyRules(guestIp, config.proxy.port, config.name);
+      await withSandboxTiming("network_setup", async () => {
+        // Set up per-VM iptables rules to redirect this VM's traffic to mitmproxy
+        // This must be done before the VM makes any network requests
+        await setupVMProxyRules(guestIp!, config.proxy.port, config.name);
 
-      // Register VM in the proxy registry with firewall rules
-      getVMRegistry().register(guestIp, context.runId, context.sandboxToken, {
-        firewallRules: firewallConfig?.rules,
-        mitmEnabled,
-        sealSecretsEnabled,
-      });
-
-      // Install proxy CA certificate only if MITM is enabled
-      // For SNI-only mode (filter without MITM), we don't need CA
-      if (mitmEnabled) {
-        const caCertPath = path.join(
-          config.proxy.ca_dir,
-          "mitmproxy-ca-cert.pem",
+        // Register VM in the proxy registry with firewall rules
+        getVMRegistry().register(
+          guestIp!,
+          context.runId,
+          context.sandboxToken,
+          {
+            firewallRules: firewallConfig?.rules,
+            mitmEnabled,
+            sealSecretsEnabled,
+          },
         );
-        await installProxyCA(guest, caCertPath);
-      }
+
+        // Install proxy CA certificate only if MITM is enabled
+        // For SNI-only mode (filter without MITM), we don't need CA
+        if (mitmEnabled) {
+          const caCertPath = path.join(
+            config.proxy.ca_dir,
+            "mitmproxy-ca-cert.pem",
+          );
+          await installProxyCA(guest, caCertPath);
+        }
+      });
     }
 
     // Download storages if manifest provided
@@ -294,12 +322,14 @@ export async function executeJob(
     if (!options.benchmarkMode) {
       log(`[Executor] Running preflight connectivity check...`);
       const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-      const preflight = await runPreflightCheck(
-        guest,
-        config.server.url,
-        context.runId,
-        context.sandboxToken,
-        bypassSecret,
+      const preflight = await withSandboxTiming("preflight_check", () =>
+        runPreflightCheck(
+          guest,
+          config.server.url,
+          context.runId,
+          context.sandboxToken,
+          bypassSecret,
+        ),
       );
 
       if (!preflight.success) {
@@ -400,7 +430,7 @@ export async function executeJob(
 
           // Record metric and return failure
           const durationMs = Date.now() - startTime;
-          recordRunnerOperation({
+          recordOperation({
             actionType: "agent_execute",
             durationMs,
             success: false,
@@ -420,7 +450,7 @@ export async function executeJob(
     if (!completed) {
       log(`[Executor] Agent timed out after ${duration}s`);
       // Record agent_execute metric for timeout
-      recordRunnerOperation({
+      recordOperation({
         actionType: "agent_execute",
         durationMs,
         success: false,
@@ -432,7 +462,7 @@ export async function executeJob(
     }
 
     // Record agent_execute metric
-    recordRunnerOperation({
+    recordOperation({
       actionType: "agent_execute",
       durationMs,
       success: exitCode === 0,
@@ -500,5 +530,8 @@ export async function executeJob(
       log(`[Executor] Cleaning up VM ${vmId}...`);
       await withSandboxTiming("cleanup", () => vm!.kill());
     }
+
+    // Flush and clear sandbox context after job completion
+    await clearSandboxContext();
   }
 }

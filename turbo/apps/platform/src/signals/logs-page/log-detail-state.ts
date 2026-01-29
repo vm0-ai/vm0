@@ -16,6 +16,10 @@ const internalHiddenEventTypes$ = state<Set<string>>(
   new Set(getHiddenByDefault()),
 );
 
+// Search navigation state
+const internalCurrentMatchIndex$ = state(0);
+const internalTotalMatchCount$ = state(0);
+
 // Exported computed for read access
 export const currentLogId$ = computed((get) => get(internalCurrentLogId$));
 
@@ -27,6 +31,10 @@ export const viewMode$ = internalViewMode$;
 
 // Exported hidden event types state
 export const hiddenEventTypes$ = internalHiddenEventTypes$;
+
+// Exported search navigation state
+export const currentMatchIndex$ = internalCurrentMatchIndex$;
+export const totalMatchCount$ = internalTotalMatchCount$;
 
 // Export internal state for the page setup command to write to
 export const setCurrentLogId$ = internalCurrentLogId$;

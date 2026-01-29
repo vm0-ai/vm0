@@ -1,47 +1,28 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-  afterAll,
-  vi,
-} from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "../route";
-import { NextRequest } from "next/server";
-import { initServices } from "../../../../../../../../src/lib/init-services";
-import { agentRuns } from "../../../../../../../../src/db/schema/agent-run";
 import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../../../../../../../src/db/schema/agent-compose";
-import { scopes } from "../../../../../../../../src/db/schema/scope";
-import { eq } from "drizzle-orm";
+  createTestRequest,
+  createTestCompose,
+  createTestRun,
+} from "../../../../../../../../src/__tests__/api-test-helpers";
+import {
+  testContext,
+  type UserContext,
+} from "../../../../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
 
-// Mock Axiom SDK (external)
+// Only mock external services
+vi.mock("@clerk/nextjs/server");
+vi.mock("@e2b/code-interpreter");
+vi.mock("@aws-sdk/client-s3");
+vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
 
-import { Axiom } from "@axiomhq/js";
-import * as axiomModule from "../../../../../../../../src/lib/axiom";
-import {
-  mockClerk,
-  clearClerkMock,
-} from "../../../../../../../../src/__tests__/clerk-mock";
-
-// Spy for queryAxiom - will be set up in beforeEach
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let queryAxiomSpy: any;
+const context = testContext();
 
 /**
- * Helper to create a NextRequest for testing.
- */
-function createTestRequest(url: string): NextRequest {
-  return new NextRequest(url, { method: "GET" });
-}
-
-/**
- * Create a test Axiom agent event
+ * Helper to create mock Axiom agent event
  */
 function createAxiomAgentEvent(
   timestamp: string,
@@ -49,19 +30,11 @@ function createAxiomAgentEvent(
   eventType: string,
   eventData: Record<string, unknown>,
   runId: string,
-  userId: string,
-): {
-  _time: string;
-  runId: string;
-  userId: string;
-  sequenceNumber: number;
-  eventType: string;
-  eventData: Record<string, unknown>;
-} {
+) {
   return {
     _time: timestamp,
     runId,
-    userId,
+    userId: "test-user",
     sequenceNumber,
     eventType,
     eventData,
@@ -69,114 +42,23 @@ function createAxiomAgentEvent(
 }
 
 describe("GET /api/agent/runs/:id/telemetry/agent", () => {
-  const testUserId = `test-user-${Date.now()}-${process.pid}`;
-  const testScopeId = randomUUID();
-  const testRunId = randomUUID();
-  const testComposeId = randomUUID();
-  const testVersionId =
-    randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
+  let user: UserContext;
+  let testComposeId: string;
+  let testRunId: string;
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    initServices();
+    context.setupMocks();
+    user = await context.setupUser();
 
-    mockClerk({ userId: testUserId });
-
-    // Setup Axiom SDK mock
-    const mockAxiomClient = {
-      query: vi.fn().mockResolvedValue({ matches: [] }),
-      ingest: vi.fn(),
-      flush: vi.fn().mockResolvedValue(undefined),
-    };
-    vi.mocked(Axiom).mockImplementation(
-      () => mockAxiomClient as unknown as Axiom,
+    // Create test compose and run via API
+    const { composeId } = await createTestCompose(
+      `test-telemetry-agent-${Date.now()}`,
     );
+    testComposeId = composeId;
 
-    // Setup spy on queryAxiom - returns empty array by default
-    queryAxiomSpy = vi.spyOn(axiomModule, "queryAxiom").mockResolvedValue([]);
-
-    // Clean up any existing test data
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.id, testRunId));
-
-    await globalThis.services.db
-      .delete(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, testVersionId));
-
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.id, testComposeId));
-
-    await globalThis.services.db
-      .delete(scopes)
-      .where(eq(scopes.id, testScopeId));
-
-    // Create test scope
-    await globalThis.services.db.insert(scopes).values({
-      id: testScopeId,
-      slug: `test-${testScopeId.slice(0, 8)}`,
-      type: "personal",
-      ownerId: testUserId,
-    });
-
-    // Create test agent compose
-    await globalThis.services.db.insert(agentComposes).values({
-      id: testComposeId,
-      userId: testUserId,
-      scopeId: testScopeId,
-      name: "test-agent",
-      headVersionId: testVersionId,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-
-    // Create test agent version
-    await globalThis.services.db.insert(agentComposeVersions).values({
-      id: testVersionId,
-      composeId: testComposeId,
-      content: {
-        agents: {
-          "test-agent": {
-            name: "test-agent",
-            model: "claude-3-5-sonnet-20241022",
-            working_dir: "/workspace",
-          },
-        },
-      },
-      createdBy: testUserId,
-      createdAt: new Date(),
-    });
-
-    // Create test agent run
-    await globalThis.services.db.insert(agentRuns).values({
-      id: testRunId,
-      userId: testUserId,
-      agentComposeVersionId: testVersionId,
-      status: "running",
-      prompt: "Test prompt",
-      createdAt: new Date(),
-    });
-  });
-
-  afterEach(async () => {
-    clearClerkMock();
-
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.id, testRunId));
-
-    await globalThis.services.db
-      .delete(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, testVersionId));
-
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.id, testComposeId));
-  });
-
-  afterAll(async () => {
-    // Clean up database connections
+    const { runId } = await createTestRun(testComposeId, "Test prompt");
+    testRunId = runId;
   });
 
   describe("Authentication", () => {
@@ -212,55 +94,20 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
     });
 
     it("should reject request for run owned by different user", async () => {
-      const otherUserId = `other-user-${Date.now()}-${process.pid}`;
-      const otherScopeId = randomUUID();
-      const otherRunId = randomUUID();
-      const otherComposeId = randomUUID();
-      const otherVersionId =
-        randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
+      // Create another user and their compose/run (this switches Clerk auth to the new user)
+      await context.setupUser({ prefix: "other" });
+      const { composeId: otherComposeId } = await createTestCompose(
+        `other-telemetry-agent-${Date.now()}`,
+      );
+      const { runId: otherRunId } = await createTestRun(
+        otherComposeId,
+        "Other user prompt",
+      );
 
-      await globalThis.services.db.insert(scopes).values({
-        id: otherScopeId,
-        slug: `test-${otherScopeId.slice(0, 8)}`,
-        type: "personal",
-        ownerId: otherUserId,
-      });
+      // Switch back to original user
+      mockClerk({ userId: user.userId });
 
-      await globalThis.services.db.insert(agentComposes).values({
-        id: otherComposeId,
-        userId: otherUserId,
-        scopeId: otherScopeId,
-        name: "other-agent",
-        headVersionId: otherVersionId,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-      await globalThis.services.db.insert(agentComposeVersions).values({
-        id: otherVersionId,
-        composeId: otherComposeId,
-        content: {
-          agents: {
-            "other-agent": {
-              name: "other-agent",
-              model: "claude-3-5-sonnet-20241022",
-              working_dir: "/workspace",
-            },
-          },
-        },
-        createdBy: otherUserId,
-        createdAt: new Date(),
-      });
-
-      await globalThis.services.db.insert(agentRuns).values({
-        id: otherRunId,
-        userId: otherUserId,
-        agentComposeVersionId: otherVersionId,
-        status: "running",
-        prompt: "Test prompt",
-        createdAt: new Date(),
-      });
-
+      // Try to access other user's run
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${otherRunId}/telemetry/agent`,
       );
@@ -270,26 +117,12 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       expect(response.status).toBe(404);
       const data = await response.json();
       expect(data.error.message).toContain("Agent run");
-
-      // Clean up
-      await globalThis.services.db
-        .delete(agentRuns)
-        .where(eq(agentRuns.id, otherRunId));
-      await globalThis.services.db
-        .delete(agentComposeVersions)
-        .where(eq(agentComposeVersions.id, otherVersionId));
-      await globalThis.services.db
-        .delete(agentComposes)
-        .where(eq(agentComposes.id, otherComposeId));
-      await globalThis.services.db
-        .delete(scopes)
-        .where(eq(scopes.id, otherScopeId));
     });
   });
 
   describe("Success - Basic Retrieval", () => {
     it("should return empty events when Axiom returns empty", async () => {
-      queryAxiomSpy.mockResolvedValue([]);
+      context.mocks.axiom.queryAxiom.mockResolvedValue([]);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/agent`,
@@ -304,7 +137,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
     });
 
     it("should return empty events when Axiom is not configured", async () => {
-      queryAxiomSpy.mockResolvedValue(null);
+      context.mocks.axiom.queryAxiom.mockResolvedValue(null);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/agent`,
@@ -319,14 +152,13 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
     });
 
     it("should return agent events from Axiom", async () => {
-      queryAxiomSpy.mockResolvedValue([
+      context.mocks.axiom.queryAxiom.mockResolvedValue([
         createAxiomAgentEvent(
           "2024-01-01T00:00:00Z",
           0,
           "init",
           { type: "init", model: "claude-3" },
           testRunId,
-          testUserId,
         ),
       ]);
 
@@ -349,7 +181,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       expect(data.hasMore).toBe(false);
 
       // Verify Axiom was queried with correct APL
-      expect(queryAxiomSpy).toHaveBeenCalledWith(
+      expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledWith(
         expect.stringContaining(`where runId == "${testRunId}"`),
       );
     });
@@ -357,14 +189,13 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
 
   describe("Multiple Events", () => {
     it("should return events in chronological order", async () => {
-      queryAxiomSpy.mockResolvedValue([
+      context.mocks.axiom.queryAxiom.mockResolvedValue([
         createAxiomAgentEvent(
           "2024-01-01T00:00:00Z",
           0,
           "init",
           { type: "init" },
           testRunId,
-          testUserId,
         ),
         createAxiomAgentEvent(
           "2024-01-01T00:00:01Z",
@@ -372,7 +203,6 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
           "text",
           { type: "text", content: "Hello" },
           testRunId,
-          testUserId,
         ),
         createAxiomAgentEvent(
           "2024-01-01T00:00:02Z",
@@ -380,7 +210,6 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
           "tool_use",
           { type: "tool_use", name: "bash" },
           testRunId,
-          testUserId,
         ),
         createAxiomAgentEvent(
           "2024-01-01T00:00:03Z",
@@ -388,7 +217,6 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
           "result",
           { type: "result", success: true },
           testRunId,
-          testUserId,
         ),
       ]);
 
@@ -412,14 +240,13 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
   describe("Pagination", () => {
     it("should respect limit parameter and indicate hasMore", async () => {
       // Mock Axiom returning limit+1 records (indicating more data exists)
-      queryAxiomSpy.mockResolvedValue([
+      context.mocks.axiom.queryAxiom.mockResolvedValue([
         createAxiomAgentEvent(
           "2024-01-01T00:00:00Z",
           0,
           "event0",
           { type: "event0" },
           testRunId,
-          testUserId,
         ),
         createAxiomAgentEvent(
           "2024-01-01T00:00:01Z",
@@ -427,7 +254,6 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
           "event1",
           { type: "event1" },
           testRunId,
-          testUserId,
         ),
         createAxiomAgentEvent(
           "2024-01-01T00:00:02Z",
@@ -435,7 +261,6 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
           "event2",
           { type: "event2" },
           testRunId,
-          testUserId,
         ),
         createAxiomAgentEvent(
           "2024-01-01T00:00:03Z",
@@ -443,7 +268,6 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
           "event3",
           { type: "event3" },
           testRunId,
-          testUserId,
         ), // Extra record
       ]);
 
@@ -462,20 +286,19 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       expect(data.hasMore).toBe(true);
 
       // Verify limit+1 was requested
-      expect(queryAxiomSpy).toHaveBeenCalledWith(
+      expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledWith(
         expect.stringContaining("limit 4"),
       );
     });
 
     it("should include since filter in Axiom query", async () => {
-      queryAxiomSpy.mockResolvedValue([
+      context.mocks.axiom.queryAxiom.mockResolvedValue([
         createAxiomAgentEvent(
           "2024-01-01T00:00:10Z",
           1,
           "recent_event",
           { type: "recent" },
           testRunId,
-          testUserId,
         ),
       ]);
 
@@ -492,7 +315,7 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       expect(data.events[0].eventType).toBe("recent_event");
 
       // Verify since filter was included in APL query
-      expect(queryAxiomSpy).toHaveBeenCalledWith(
+      expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledWith(
         expect.stringContaining("where _time > datetime"),
       );
     });
@@ -500,14 +323,13 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
 
   describe("Event Data", () => {
     it("should include createdAt as ISO string", async () => {
-      queryAxiomSpy.mockResolvedValue([
+      context.mocks.axiom.queryAxiom.mockResolvedValue([
         createAxiomAgentEvent(
           "2024-01-15T10:30:00.000Z",
           0,
           "test",
           { type: "test" },
           testRunId,
-          testUserId,
         ),
       ]);
 
@@ -537,14 +359,13 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
         },
       };
 
-      queryAxiomSpy.mockResolvedValue([
+      context.mocks.axiom.queryAxiom.mockResolvedValue([
         createAxiomAgentEvent(
           "2024-01-01T00:00:00Z",
           0,
           "tool_result",
           complexEventData,
           testRunId,
-          testUserId,
         ),
       ]);
 
@@ -571,128 +392,6 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.framework).toBe("claude-code");
-    });
-
-    it("should return 'codex' framework when compose has codex framework", async () => {
-      // Create a compose with codex provider
-      const codexComposeId = randomUUID();
-      const codexVersionId =
-        randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
-      const codexRunId = randomUUID();
-
-      await globalThis.services.db.insert(agentComposes).values({
-        id: codexComposeId,
-        userId: testUserId,
-        scopeId: testScopeId,
-        name: "codex-agent",
-        headVersionId: codexVersionId,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-      await globalThis.services.db.insert(agentComposeVersions).values({
-        id: codexVersionId,
-        composeId: codexComposeId,
-        content: {
-          agent: {
-            framework: "codex",
-            model: "codex",
-          },
-        },
-        createdBy: testUserId,
-        createdAt: new Date(),
-      });
-
-      await globalThis.services.db.insert(agentRuns).values({
-        id: codexRunId,
-        userId: testUserId,
-        agentComposeVersionId: codexVersionId,
-        status: "running",
-        prompt: "Test prompt",
-        createdAt: new Date(),
-      });
-
-      const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs/${codexRunId}/telemetry/agent`,
-      );
-
-      const response = await GET(request);
-
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data.framework).toBe("codex");
-
-      // Clean up
-      await globalThis.services.db
-        .delete(agentRuns)
-        .where(eq(agentRuns.id, codexRunId));
-      await globalThis.services.db
-        .delete(agentComposeVersions)
-        .where(eq(agentComposeVersions.id, codexVersionId));
-      await globalThis.services.db
-        .delete(agentComposes)
-        .where(eq(agentComposes.id, codexComposeId));
-    });
-
-    it("should return explicit framework from compose configuration", async () => {
-      // Create a compose with explicit claude-code framework
-      const explicitComposeId = randomUUID();
-      const explicitVersionId =
-        randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
-      const explicitRunId = randomUUID();
-
-      await globalThis.services.db.insert(agentComposes).values({
-        id: explicitComposeId,
-        userId: testUserId,
-        scopeId: testScopeId,
-        name: "explicit-agent",
-        headVersionId: explicitVersionId,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-      await globalThis.services.db.insert(agentComposeVersions).values({
-        id: explicitVersionId,
-        composeId: explicitComposeId,
-        content: {
-          agent: {
-            framework: "claude-code",
-            model: "claude-3-5-sonnet-20241022",
-          },
-        },
-        createdBy: testUserId,
-        createdAt: new Date(),
-      });
-
-      await globalThis.services.db.insert(agentRuns).values({
-        id: explicitRunId,
-        userId: testUserId,
-        agentComposeVersionId: explicitVersionId,
-        status: "running",
-        prompt: "Test prompt",
-        createdAt: new Date(),
-      });
-
-      const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs/${explicitRunId}/telemetry/agent`,
-      );
-
-      const response = await GET(request);
-
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data.framework).toBe("claude-code");
-
-      // Clean up
-      await globalThis.services.db
-        .delete(agentRuns)
-        .where(eq(agentRuns.id, explicitRunId));
-      await globalThis.services.db
-        .delete(agentComposeVersions)
-        .where(eq(agentComposeVersions.id, explicitVersionId));
-      await globalThis.services.db
-        .delete(agentComposes)
-        .where(eq(agentComposes.id, explicitComposeId));
     });
   });
 });

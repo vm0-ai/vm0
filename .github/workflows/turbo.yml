@@ -244,6 +244,7 @@ jobs:
           deployment-env: web
           environment-variables: |
             DATABASE_URL=${{ steps.branch.outputs.database-url }}
+            NEXT_PUBLIC_BASE_URL=https://www.vm0.ai
             NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
             E2B_API_KEY=${{ secrets.E2B_API_KEY }}

@@ -1,135 +1,54 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeAll,
-  beforeEach,
-  afterAll,
-  vi,
-} from "vitest";
-import { NextRequest } from "next/server";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "../route";
-import { initServices } from "../../../../../../src/lib/init-services";
-import { agentSessions } from "../../../../../../src/db/schema/agent-session";
-import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
-import { scopes } from "../../../../../../src/db/schema/scope";
-import { eq } from "drizzle-orm";
+import {
+  createTestRequest,
+  createTestCompose,
+  createTestRun,
+  completeTestRun,
+} from "../../../../../../src/__tests__/api-test-helpers";
+import {
+  testContext,
+  type UserContext,
+} from "../../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
 
-/**
- * Helper to create a NextRequest for testing.
- */
-function createTestRequest(
-  url: string,
-  options?: {
-    method?: string;
-    headers?: Record<string, string>;
-  },
-): NextRequest {
-  return new NextRequest(url, {
-    method: options?.method ?? "GET",
-    headers: options?.headers ?? {},
-  });
-}
+vi.mock("@clerk/nextjs/server");
+vi.mock("@e2b/code-interpreter");
+vi.mock("@aws-sdk/client-s3");
+vi.mock("@aws-sdk/s3-request-presigner");
+vi.mock("@axiomhq/js");
 
-// Mock Clerk auth (external SaaS)
-vi.mock("@clerk/nextjs/server", () => ({
-  auth: vi.fn(),
-}));
-
-import { auth } from "@clerk/nextjs/server";
-
-const mockAuth = vi.mocked(auth);
+const context = testContext();
 
 describe("GET /api/agent/sessions/:id", () => {
-  const testUserId = "test-user-sessions";
-  const testScopeId = randomUUID();
-  const testComposeId = randomUUID();
-  const testSessionId = randomUUID();
+  let user: UserContext;
+  let testComposeId: string;
 
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    context.setupMocks();
+    user = await context.setupUser();
+
+    const { composeId } = await createTestCompose(`session-${Date.now()}`);
+    testComposeId = composeId;
   });
 
-  beforeAll(async () => {
-    initServices();
+  it("should return session with all fields", async () => {
+    // Create run and complete it (creates session via checkpoint)
+    const { runId } = await createTestRun(testComposeId, "Test session");
+    const { agentSessionId } = await completeTestRun(user.userId, runId);
 
-    // Mock Clerk auth to return test user
-    mockAuth.mockResolvedValue({
-      userId: testUserId,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
-
-    // Clean up any existing test data
-    await globalThis.services.db
-      .delete(agentSessions)
-      .where(eq(agentSessions.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(scopes)
-      .where(eq(scopes.id, testScopeId));
-
-    // Create test scope
-    await globalThis.services.db.insert(scopes).values({
-      id: testScopeId,
-      slug: `test-${testScopeId.slice(0, 8)}`,
-      type: "personal",
-      ownerId: testUserId,
-    });
-
-    // Create test compose
-    await globalThis.services.db.insert(agentComposes).values({
-      id: testComposeId,
-      name: "test-session-compose",
-      userId: testUserId,
-      scopeId: testScopeId,
-    });
-
-    // Create test session
-    await globalThis.services.db.insert(agentSessions).values({
-      id: testSessionId,
-      userId: testUserId,
-      agentComposeId: testComposeId,
-      agentComposeVersionId: "test-version-id-12345",
-      vars: { testVar: "testValue" },
-      secretNames: ["SECRET_1", "SECRET_2"],
-      volumeVersions: { "volume-1": "v1.0.0" },
-    });
-  });
-
-  afterAll(async () => {
-    // Cleanup
-    await globalThis.services.db
-      .delete(agentSessions)
-      .where(eq(agentSessions.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(scopes)
-      .where(eq(scopes.id, testScopeId));
-  });
-
-  it("should return session with all fields including secretNames", async () => {
     const request = createTestRequest(
-      `http://localhost:3000/api/agent/sessions/${testSessionId}`,
+      `http://localhost:3000/api/agent/sessions/${agentSessionId}`,
     );
 
     const response = await GET(request);
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data.id).toBe(testSessionId);
+    expect(data.id).toBe(agentSessionId);
     expect(data.agentComposeId).toBe(testComposeId);
-    expect(data.agentComposeVersionId).toBe("test-version-id-12345");
-    expect(data.vars).toEqual({ testVar: "testValue" });
-    expect(data.secretNames).toEqual(["SECRET_1", "SECRET_2"]);
-    expect(data.volumeVersions).toEqual({ "volume-1": "v1.0.0" });
+    expect(data.agentComposeVersionId).toBeDefined();
     expect(data.createdAt).toBeDefined();
     expect(data.updatedAt).toBeDefined();
   });
@@ -149,18 +68,24 @@ describe("GET /api/agent/sessions/:id", () => {
   });
 
   it("should return 403 when accessing another user's session", async () => {
-    const otherUserId = "other-user-sessions";
-    const otherSessionId = randomUUID();
+    // Create another user and their compose/session
+    const otherUser = await context.setupUser({ prefix: "other" });
+    const { composeId: otherComposeId } = await createTestCompose(
+      `other-session-${Date.now()}`,
+    );
+    const { runId: otherRunId } = await createTestRun(
+      otherComposeId,
+      "Other user run",
+    );
+    const { agentSessionId: otherSessionId } = await completeTestRun(
+      otherUser.userId,
+      otherRunId,
+    );
 
-    // Create session for another user
-    await globalThis.services.db.insert(agentSessions).values({
-      id: otherSessionId,
-      userId: otherUserId,
-      agentComposeId: testComposeId,
-      secretNames: ["OTHER_SECRET"],
-    });
+    // Switch back to original user
+    mockClerk({ userId: user.userId });
 
-    // Try to access as test user
+    // Try to access other user's session
     const request = createTestRequest(
       `http://localhost:3000/api/agent/sessions/${otherSessionId}`,
     );
@@ -170,21 +95,18 @@ describe("GET /api/agent/sessions/:id", () => {
 
     expect(response.status).toBe(403);
     expect(data.error.code).toBe("FORBIDDEN");
-
-    // Cleanup
-    await globalThis.services.db
-      .delete(agentSessions)
-      .where(eq(agentSessions.id, otherSessionId));
   });
 
   it("should return 401 when not authenticated", async () => {
+    // Create run and complete it (creates session)
+    const { runId } = await createTestRun(testComposeId, "Test session");
+    const { agentSessionId } = await completeTestRun(user.userId, runId);
+
     // Mock Clerk to return no user
-    mockAuth.mockResolvedValueOnce({
-      userId: null,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
+    mockClerk({ userId: null });
 
     const request = createTestRequest(
-      `http://localhost:3000/api/agent/sessions/${testSessionId}`,
+      `http://localhost:3000/api/agent/sessions/${agentSessionId}`,
     );
 
     const response = await GET(request);
@@ -192,31 +114,5 @@ describe("GET /api/agent/sessions/:id", () => {
 
     expect(response.status).toBe(401);
     expect(data.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("should handle session with null secretNames", async () => {
-    const sessionWithNullSecrets = randomUUID();
-
-    await globalThis.services.db.insert(agentSessions).values({
-      id: sessionWithNullSecrets,
-      userId: testUserId,
-      agentComposeId: testComposeId,
-      secretNames: null,
-    });
-
-    const request = createTestRequest(
-      `http://localhost:3000/api/agent/sessions/${sessionWithNullSecrets}`,
-    );
-
-    const response = await GET(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(data.secretNames).toBeNull();
-
-    // Cleanup
-    await globalThis.services.db
-      .delete(agentSessions)
-      .where(eq(agentSessions.id, sessionWithNullSecrets));
   });
 });

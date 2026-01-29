@@ -20,6 +20,7 @@ import {
   validateRunnerGroupScope,
   isOfficialRunnerGroup,
 } from "../../../../../../src/lib/scope/scope-service";
+import { recordSandboxOperation } from "../../../../../../src/lib/metrics";
 
 const log = logger("api:runners:jobs:claim");
 
@@ -142,6 +143,16 @@ const router = tsr.router(runnersJobClaimContract, {
         "BAD_REQUEST",
         "Job missing execution context",
       );
+    }
+
+    // Record api_to_claim metric
+    if (storedContext.apiStartTime) {
+      recordSandboxOperation({
+        sandboxType: "runner",
+        actionType: "api_to_claim",
+        durationMs: now.getTime() - storedContext.apiStartTime,
+        success: true,
+      });
     }
 
     log.debug(

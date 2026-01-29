@@ -386,4 +386,342 @@ describe("log detail page", () => {
       expect(screen.getByText("No events available")).toBeInTheDocument();
     });
   });
+
+  describe("search functionality", () => {
+    function createSearchTestResponse() {
+      return {
+        events: [
+          {
+            sequenceNumber: 1,
+            eventType: "assistant",
+            eventData: {
+              message: {
+                content: [{ type: "text", text: "Hello world from assistant" }],
+                role: "assistant",
+              },
+            },
+            createdAt: "2024-01-01T00:00:02Z",
+          },
+          {
+            sequenceNumber: 2,
+            eventType: "assistant",
+            eventData: {
+              message: {
+                content: [
+                  { type: "text", text: "Another message with world keyword" },
+                ],
+                role: "assistant",
+              },
+            },
+            createdAt: "2024-01-01T00:00:03Z",
+          },
+          {
+            sequenceNumber: 3,
+            eventType: "user",
+            eventData: {
+              message: {
+                content: [{ type: "text", text: "User says hello world" }],
+                role: "user",
+              },
+            },
+            createdAt: "2024-01-01T00:00:04Z",
+          },
+        ],
+        hasMore: false,
+        framework: "claude-code",
+      };
+    }
+
+    function setupSearchHandlers() {
+      server.use(
+        http.get("*/api/platform/logs/:id", () => {
+          return HttpResponse.json({
+            id: "run-search-test",
+            sessionId: "session-search",
+            agentName: "Search Test Agent",
+            framework: "claude-code",
+            status: "completed",
+            prompt: "Search test",
+            error: null,
+            createdAt: "2024-01-01T00:00:00Z",
+            startedAt: "2024-01-01T00:00:01Z",
+            completedAt: "2024-01-01T00:00:10Z",
+            artifact: { name: null, version: null },
+          });
+        }),
+        http.get("*/api/agent/runs/:id/telemetry/agent", () => {
+          return HttpResponse.json(createSearchTestResponse());
+        }),
+      );
+    }
+
+    it("should display search input in the events card", async () => {
+      setupSearchHandlers();
+
+      await setupPage({
+        context,
+        path: "/logs/run-search-test",
+      });
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText("Search logs")).toBeInTheDocument();
+      });
+    });
+
+    it("should filter events when searching", async () => {
+      setupSearchHandlers();
+
+      await setupPage({
+        context,
+        path: "/logs/run-search-test",
+      });
+
+      // Wait for events to load
+      await waitFor(() => {
+        expect(
+          screen.getByText(/Hello world from assistant/),
+        ).toBeInTheDocument();
+      });
+
+      // Type a search term
+      const searchInput = screen.getByPlaceholderText("Search logs");
+      await user.type(searchInput, "User says");
+
+      // Should show matching count in header
+      await waitFor(() => {
+        expect(screen.getByText("(1/3 matched)")).toBeInTheDocument();
+      });
+    });
+
+    it("should show match navigation when search has results", async () => {
+      setupSearchHandlers();
+
+      await setupPage({
+        context,
+        path: "/logs/run-search-test",
+      });
+
+      // Wait for events to load
+      await waitFor(() => {
+        expect(
+          screen.getByText(/Hello world from assistant/),
+        ).toBeInTheDocument();
+      });
+
+      // Type a search term that matches multiple times
+      const searchInput = screen.getByPlaceholderText("Search logs");
+      await user.type(searchInput, "world");
+
+      // Should show match counter
+      await waitFor(() => {
+        // Match counter format is "X/Y" where X is current and Y is total
+        expect(screen.getByText(/\/3$/)).toBeInTheDocument();
+      });
+
+      // Should show navigation buttons
+      expect(
+        screen.getByTitle("Previous match (Shift+Enter)"),
+      ).toBeInTheDocument();
+      expect(screen.getByTitle("Next match (Enter)")).toBeInTheDocument();
+    });
+
+    it("should navigate to next match with Enter key", async () => {
+      setupSearchHandlers();
+
+      await setupPage({
+        context,
+        path: "/logs/run-search-test",
+      });
+
+      // Wait for events to load
+      await waitFor(() => {
+        expect(
+          screen.getByText(/Hello world from assistant/),
+        ).toBeInTheDocument();
+      });
+
+      // Type a search term
+      const searchInput = screen.getByPlaceholderText("Search logs");
+      await user.type(searchInput, "world");
+
+      // Wait for match counter to appear
+      await waitFor(() => {
+        expect(screen.getByText("1/3")).toBeInTheDocument();
+      });
+
+      // Press Enter to go to next match
+      await user.type(searchInput, "{Enter}");
+
+      // Should update to show match 2/3
+      await waitFor(() => {
+        expect(screen.getByText("2/3")).toBeInTheDocument();
+      });
+    });
+
+    it("should navigate to previous match with Shift+Enter", async () => {
+      setupSearchHandlers();
+
+      await setupPage({
+        context,
+        path: "/logs/run-search-test",
+      });
+
+      // Wait for events to load
+      await waitFor(() => {
+        expect(
+          screen.getByText(/Hello world from assistant/),
+        ).toBeInTheDocument();
+      });
+
+      // Type a search term
+      const searchInput = screen.getByPlaceholderText("Search logs");
+      await user.type(searchInput, "world");
+
+      // Wait for match counter to appear
+      await waitFor(() => {
+        expect(screen.getByText("1/3")).toBeInTheDocument();
+      });
+
+      // Press Shift+Enter to go to previous match (wraps to last)
+      await user.type(searchInput, "{Shift>}{Enter}{/Shift}");
+
+      // Should wrap to match 3/3
+      await waitFor(() => {
+        expect(screen.getByText("3/3")).toBeInTheDocument();
+      });
+    });
+
+    it("should navigate with navigation buttons", async () => {
+      setupSearchHandlers();
+
+      await setupPage({
+        context,
+        path: "/logs/run-search-test",
+      });
+
+      // Wait for events to load
+      await waitFor(() => {
+        expect(
+          screen.getByText(/Hello world from assistant/),
+        ).toBeInTheDocument();
+      });
+
+      // Type a search term
+      const searchInput = screen.getByPlaceholderText("Search logs");
+      await user.type(searchInput, "world");
+
+      // Wait for match counter to appear
+      await waitFor(() => {
+        expect(screen.getByText("1/3")).toBeInTheDocument();
+      });
+
+      // Click next button
+      const nextButton = screen.getByTitle("Next match (Enter)");
+      await user.click(nextButton);
+
+      await waitFor(() => {
+        expect(screen.getByText("2/3")).toBeInTheDocument();
+      });
+
+      // Click previous button
+      const prevButton = screen.getByTitle("Previous match (Shift+Enter)");
+      await user.click(prevButton);
+
+      await waitFor(() => {
+        expect(screen.getByText("1/3")).toBeInTheDocument();
+      });
+    });
+
+    it("should reset match index when search term changes", async () => {
+      setupSearchHandlers();
+
+      await setupPage({
+        context,
+        path: "/logs/run-search-test",
+      });
+
+      // Wait for events to load
+      await waitFor(() => {
+        expect(
+          screen.getByText(/Hello world from assistant/),
+        ).toBeInTheDocument();
+      });
+
+      // Type a search term
+      const searchInput = screen.getByPlaceholderText("Search logs");
+      await user.type(searchInput, "world");
+
+      // Wait and navigate to a different match
+      await waitFor(() => {
+        expect(screen.getByText("1/3")).toBeInTheDocument();
+      });
+
+      await user.type(searchInput, "{Enter}");
+      await waitFor(() => {
+        expect(screen.getByText("2/3")).toBeInTheDocument();
+      });
+
+      // Change search term
+      await user.clear(searchInput);
+      await user.type(searchInput, "Hello");
+
+      // Should reset to first match
+      await waitFor(() => {
+        expect(screen.getByText("1/2")).toBeInTheDocument();
+      });
+    });
+
+    it("should show 0/0 when search has no matches", async () => {
+      setupSearchHandlers();
+
+      await setupPage({
+        context,
+        path: "/logs/run-search-test",
+      });
+
+      // Wait for events to load
+      await waitFor(() => {
+        expect(
+          screen.getByText(/Hello world from assistant/),
+        ).toBeInTheDocument();
+      });
+
+      // Type a search term with no matches
+      const searchInput = screen.getByPlaceholderText("Search logs");
+      await user.type(searchInput, "nonexistent");
+
+      // Should show 0/0
+      await waitFor(() => {
+        expect(screen.getByText("0/0")).toBeInTheDocument();
+      });
+
+      // Navigation buttons should be disabled
+      const nextButton = screen.getByTitle("Next match (Enter)");
+      const prevButton = screen.getByTitle("Previous match (Shift+Enter)");
+      expect(nextButton).toBeDisabled();
+      expect(prevButton).toBeDisabled();
+    });
+
+    it("should not show navigation when search is empty", async () => {
+      setupSearchHandlers();
+
+      await setupPage({
+        context,
+        path: "/logs/run-search-test",
+      });
+
+      // Wait for events to load
+      await waitFor(() => {
+        expect(
+          screen.getByText(/Hello world from assistant/),
+        ).toBeInTheDocument();
+      });
+
+      // Search navigation should not be visible
+      expect(screen.queryByTitle("Next match (Enter)")).not.toBeInTheDocument();
+      expect(
+        screen.queryByTitle("Previous match (Shift+Enter)"),
+      ).not.toBeInTheDocument();
+    });
+  });
 });

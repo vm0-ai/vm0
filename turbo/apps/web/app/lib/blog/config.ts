@@ -1,3 +1,4 @@
+// Returns the base URL for blog content
 function getBlogBaseUrl(): string {
   const url = process.env.NEXT_PUBLIC_BASE_URL;
   if (!url) {

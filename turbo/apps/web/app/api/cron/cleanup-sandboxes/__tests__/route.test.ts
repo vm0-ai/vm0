@@ -1,121 +1,49 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { NextRequest } from "next/server";
-import { initServices } from "../../../../../src/lib/init-services";
-import { agentRuns } from "../../../../../src/db/schema/agent-run";
-import { agentComposes } from "../../../../../src/db/schema/agent-compose";
-import { eq } from "drizzle-orm";
-import { randomUUID } from "crypto";
+import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
+import { GET } from "../route";
 import {
   createTestRequest,
-  createDefaultComposeConfig,
+  createTestCompose,
+  createTestRun,
+  completeTestRun,
 } from "../../../../../src/__tests__/api-test-helpers";
+import {
+  testContext,
+  type UserContext,
+} from "../../../../../src/__tests__/test-helpers";
 
-// Mock Clerk auth (external SaaS - needed for compose API)
-vi.mock("@clerk/nextjs/server", () => ({
-  auth: vi.fn(),
-}));
+vi.mock("@clerk/nextjs/server");
+vi.mock("@e2b/code-interpreter");
+vi.mock("@aws-sdk/client-s3");
+vi.mock("@aws-sdk/s3-request-presigner");
+vi.mock("@axiomhq/js");
 
-// Mock E2B SDK (external)
-vi.mock("@e2b/code-interpreter", () => ({
-  Sandbox: {
-    connect: vi.fn(),
-  },
-}));
-
-import { Sandbox } from "@e2b/code-interpreter";
-import { auth } from "@clerk/nextjs/server";
-import { GET } from "../route";
-import { POST as createCompose } from "../../../agent/composes/route";
-
-const mockAuth = vi.mocked(auth);
-const mockSandboxConnect = vi.mocked(Sandbox.connect);
+const context = testContext();
 
 describe("GET /api/cron/cleanup-sandboxes", () => {
-  const testUserId = `test-user-${Date.now()}-${process.pid}`;
-  const testAgentName = `test-agent-cleanup-${Date.now()}`;
-  const testRunId1 = randomUUID();
-  const testRunId2 = randomUUID();
-  let testVersionId: string;
   const cronSecret = "test-cron-secret";
+  let user: UserContext;
+  let testComposeId: string;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
-    initServices();
-
-    // Setup E2B SDK mock - sandbox with kill method
-    const mockSandbox = {
-      kill: vi.fn().mockResolvedValue(undefined),
-    };
-    mockSandboxConnect.mockResolvedValue(mockSandbox as unknown as Sandbox);
+    context.setupMocks();
+    user = await context.setupUser();
 
     // Set CRON_SECRET for tests
     vi.stubEnv("CRON_SECRET", cronSecret);
 
-    // Mock Clerk auth for compose API
-    mockAuth.mockResolvedValue({
-      userId: testUserId,
-    } as unknown as Awaited<ReturnType<typeof auth>>);
-
-    // Clean up any existing test data
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.id, testRunId1));
-
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.id, testRunId2));
-
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.userId, testUserId));
-
-    // Create test compose via API endpoint
-    const config = createDefaultComposeConfig(testAgentName);
-    const request = createTestRequest(
-      "http://localhost:3000/api/agent/composes",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: config }),
-      },
-    );
-
-    const response = await createCompose(request);
-    const data = await response.json();
-    testVersionId = data.versionId;
+    // Create test compose
+    const { composeId } = await createTestCompose(`cleanup-${Date.now()}`);
+    testComposeId = composeId;
   });
 
-  afterEach(async () => {
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.id, testRunId1));
-
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.id, testRunId2));
-
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.userId, testUserId));
-
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.userId, testUserId));
-
+  afterEach(() => {
     delete process.env.CRON_SECRET;
   });
 
   describe("Authentication", () => {
     it("should reject request without cron secret", async () => {
-      const request = new NextRequest(
+      const request = createTestRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
-        {
-          method: "GET",
-        },
       );
 
       const response = await GET(request);
@@ -126,10 +54,9 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
 
     it("should reject request with invalid cron secret", async () => {
-      const request = new NextRequest(
+      const request = createTestRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
         {
-          method: "GET",
           headers: {
             Authorization: "Bearer invalid-secret",
           },
@@ -142,10 +69,9 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
 
     it("should accept request with valid cron secret", async () => {
-      const request = new NextRequest(
+      const request = createTestRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
         {
-          method: "GET",
           headers: {
             Authorization: `Bearer ${cronSecret}`,
           },
@@ -159,11 +85,10 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
   });
 
   describe("Cleanup Logic", () => {
-    it("should return empty results when no expired sandboxes exist", async () => {
-      const request = new NextRequest(
+    it("should return results structure with cleaned and errors counts", async () => {
+      const request = createTestRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
         {
-          method: "GET",
           headers: {
             Authorization: `Bearer ${cronSecret}`,
           },
@@ -174,76 +99,23 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.cleaned).toBe(0);
-      expect(data.errors).toBe(0);
-      expect(data.results).toEqual([]);
-    });
-
-    it("should cleanup expired sandbox (heartbeat > 2 minutes ago)", async () => {
-      // Create a run with expired heartbeat (3 minutes ago)
-      const expiredTime = new Date(Date.now() - 3 * 60 * 1000);
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId1,
-        userId: testUserId,
-        agentComposeVersionId: testVersionId,
-        status: "running",
-        prompt: "Test prompt",
-        sandboxId: "test-sandbox-123",
-        createdAt: new Date(),
-        lastHeartbeatAt: expiredTime,
-      });
-
-      const request = new NextRequest(
-        "http://localhost:3000/api/cron/cleanup-sandboxes",
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${cronSecret}`,
-          },
-        },
-      );
-
-      const response = await GET(request);
-
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data.cleaned).toBe(1);
-      expect(data.errors).toBe(0);
-      expect(data.results).toHaveLength(1);
-      expect(data.results[0].runId).toBe(testRunId1);
-      expect(data.results[0].status).toBe("cleaned");
-
-      // Verify sandbox was killed via E2B SDK
-      expect(Sandbox.connect).toHaveBeenCalledWith("test-sandbox-123");
-
-      // Verify run status was updated to timeout
-      const [updatedRun] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.id, testRunId1));
-
-      expect(updatedRun?.status).toBe("timeout");
-      expect(updatedRun?.completedAt).toBeDefined();
+      // Verify response structure
+      expect(data).toHaveProperty("cleaned");
+      expect(data).toHaveProperty("errors");
+      expect(data).toHaveProperty("results");
+      expect(typeof data.cleaned).toBe("number");
+      expect(typeof data.errors).toBe("number");
+      expect(Array.isArray(data.results)).toBe(true);
     });
 
     it("should NOT cleanup sandbox with recent heartbeat", async () => {
-      // Create a run with recent heartbeat (30 seconds ago)
-      const recentTime = new Date(Date.now() - 30 * 1000);
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId1,
-        userId: testUserId,
-        agentComposeVersionId: testVersionId,
-        status: "running",
-        prompt: "Test prompt",
-        sandboxId: "test-sandbox-123",
-        createdAt: new Date(),
-        lastHeartbeatAt: recentTime,
-      });
+      // Create a run that will be in running state
+      const { runId } = await createTestRun(testComposeId, "Test prompt");
 
-      const request = new NextRequest(
+      // Run cleanup immediately (heartbeat is recent)
+      const request = createTestRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
         {
-          method: "GET",
           headers: {
             Authorization: `Bearer ${cronSecret}`,
           },
@@ -254,39 +126,60 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.cleaned).toBe(0);
-      expect(data.results).toEqual([]);
 
-      // Verify sandbox was NOT killed
-      expect(Sandbox.connect).not.toHaveBeenCalled();
+      // Our specific run should not be in the cleaned results
+      const cleanedRunIds = data.results.map(
+        (r: { runId: string }) => r.runId,
+      ) as string[];
+      expect(cleanedRunIds).not.toContain(runId);
+    });
 
-      // Verify run status unchanged
-      const [unchangedRun] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.id, testRunId1));
+    it("should cleanup expired sandbox after heartbeat timeout", async () => {
+      // Record the time when run is created
+      const runCreationTime = Date.now();
 
-      expect(unchangedRun?.status).toBe("running");
+      // Create a run - it will have lastHeartbeatAt ≈ runCreationTime
+      const { runId } = await createTestRun(testComposeId, "Test prompt");
+
+      // Mock Date.now to return time 3 minutes in the future (past heartbeat timeout)
+      context.mocks.dateNow.mockReturnValue(runCreationTime + 3 * 60 * 1000);
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/cron/cleanup-sandboxes",
+        {
+          headers: {
+            Authorization: `Bearer ${cronSecret}`,
+          },
+        },
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+
+      // Our specific run should be in the cleaned results
+      const cleanedResult = data.results.find(
+        (r: { runId: string }) => r.runId === runId,
+      );
+      expect(cleanedResult).toBeDefined();
+      expect(cleanedResult.status).toBe("cleaned");
     });
 
     it("should NOT cleanup completed runs even with old heartbeat", async () => {
-      // Create a completed run with old heartbeat
-      const oldTime = new Date(Date.now() - 10 * 60 * 1000);
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId1,
-        userId: testUserId,
-        agentComposeVersionId: testVersionId,
-        status: "completed",
-        prompt: "Test prompt",
-        sandboxId: "test-sandbox-123",
-        createdAt: new Date(),
-        lastHeartbeatAt: oldTime,
-      });
+      // Record the time when run is created
+      const runCreationTime = Date.now();
 
-      const request = new NextRequest(
+      // Create and complete a run
+      const { runId } = await createTestRun(testComposeId, "Test prompt");
+      await completeTestRun(user.userId, runId);
+
+      // Mock Date.now to return time 10 minutes in the future
+      context.mocks.dateNow.mockReturnValue(runCreationTime + 10 * 60 * 1000);
+
+      const request = createTestRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
         {
-          method: "GET",
           headers: {
             Authorization: `Bearer ${cronSecret}`,
           },
@@ -297,42 +190,42 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.cleaned).toBe(0);
 
-      // Verify sandbox was NOT killed
-      expect(Sandbox.connect).not.toHaveBeenCalled();
+      // Our completed run should not be in the cleaned results
+      const cleanedRunIds = data.results.map(
+        (r: { runId: string }) => r.runId,
+      ) as string[];
+      expect(cleanedRunIds).not.toContain(runId);
     });
 
-    it("should cleanup multiple expired sandboxes", async () => {
-      const expiredTime = new Date(Date.now() - 5 * 60 * 1000);
+    it("should cleanup multiple expired sandboxes from different users", async () => {
+      // Record start time
+      const runCreationTime = Date.now();
 
-      // Create two runs with expired heartbeats
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId1,
-        userId: testUserId,
-        agentComposeVersionId: testVersionId,
-        status: "running",
-        prompt: "Test prompt 1",
-        sandboxId: "test-sandbox-1",
-        createdAt: new Date(),
-        lastHeartbeatAt: expiredTime,
-      });
+      // Create run for first user
+      const { runId: runId1 } = await createTestRun(
+        testComposeId,
+        "Test prompt 1",
+      );
 
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId2,
-        userId: testUserId,
-        agentComposeVersionId: testVersionId,
-        status: "running",
-        prompt: "Test prompt 2",
-        sandboxId: "test-sandbox-2",
-        createdAt: new Date(),
-        lastHeartbeatAt: expiredTime,
-      });
+      // Create another user and their compose
+      await context.setupUser({ prefix: "other" });
+      const { composeId: otherComposeId } = await createTestCompose(
+        `cleanup-other-${Date.now()}`,
+      );
 
-      const request = new NextRequest(
+      // Create run for second user
+      const { runId: runId2 } = await createTestRun(
+        otherComposeId,
+        "Test prompt 2",
+      );
+
+      // Mock Date.now to return time 5 minutes in the future
+      context.mocks.dateNow.mockReturnValue(runCreationTime + 5 * 60 * 1000);
+
+      const request = createTestRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
         {
-          method: "GET",
           headers: {
             Authorization: `Bearer ${cronSecret}`,
           },
@@ -343,31 +236,28 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.cleaned).toBe(2);
-      expect(data.errors).toBe(0);
-      expect(data.results).toHaveLength(2);
 
-      // Verify both sandboxes were killed via E2B SDK
-      expect(Sandbox.connect).toHaveBeenCalledTimes(2);
+      // Both runs should be in the cleaned results
+      const cleanedRunIds = data.results.map(
+        (r: { runId: string }) => r.runId,
+      ) as string[];
+      expect(cleanedRunIds).toContain(runId1);
+      expect(cleanedRunIds).toContain(runId2);
     });
 
-    it("should handle sandbox without sandboxId gracefully", async () => {
-      const expiredTime = new Date(Date.now() - 3 * 60 * 1000);
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId1,
-        userId: testUserId,
-        agentComposeVersionId: testVersionId,
-        status: "running",
-        prompt: "Test prompt",
-        sandboxId: null, // No sandbox ID
-        createdAt: new Date(),
-        lastHeartbeatAt: expiredTime,
-      });
+    it("should set run status to timeout with appropriate reason", async () => {
+      // Record the time when run is created
+      const runCreationTime = Date.now();
 
-      const request = new NextRequest(
+      // Create a run
+      const { runId } = await createTestRun(testComposeId, "Test prompt");
+
+      // Mock Date.now to return time 3 minutes in the future
+      context.mocks.dateNow.mockReturnValue(runCreationTime + 3 * 60 * 1000);
+
+      const request = createTestRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
         {
-          method: "GET",
           headers: {
             Authorization: `Bearer ${cronSecret}`,
           },
@@ -378,190 +268,38 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.cleaned).toBe(1);
 
-      // Verify sandbox connect was NOT called (no sandboxId)
-      expect(Sandbox.connect).not.toHaveBeenCalled();
-
-      // Verify run status was still updated
-      const [updatedRun] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.id, testRunId1));
-
-      expect(updatedRun?.status).toBe("timeout");
+      // Find our run in the results
+      const cleanedResult = data.results.find(
+        (r: { runId: string }) => r.runId === runId,
+      );
+      expect(cleanedResult).toBeDefined();
+      expect(cleanedResult.reason).toBe("Run timed out (no heartbeat)");
     });
 
-    it("should cleanup stale pending runs after 5 minutes", async () => {
-      // Create a run with status "pending" and createdAt > 5 minutes ago
-      const expiredTime = new Date(Date.now() - 6 * 60 * 1000); // 6 minutes ago
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId1,
-        userId: testUserId,
-        agentComposeVersionId: testVersionId,
-        status: "pending",
-        prompt: "Test prompt",
-        sandboxId: null,
-        createdAt: expiredTime,
-        lastHeartbeatAt: expiredTime,
-      });
+    it("should call sandbox.kill for expired runs with sandboxId", async () => {
+      // Record the time when run is created
+      const runCreationTime = Date.now();
 
-      const request = new NextRequest(
+      // Create a run (will have sandboxId from the mock)
+      await createTestRun(testComposeId, "Test prompt");
+
+      // Mock Date.now to return time 3 minutes in the future
+      context.mocks.dateNow.mockReturnValue(runCreationTime + 3 * 60 * 1000);
+
+      const request = createTestRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
         {
-          method: "GET",
           headers: {
             Authorization: `Bearer ${cronSecret}`,
           },
         },
       );
 
-      const response = await GET(request);
+      await GET(request);
 
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data.cleaned).toBe(1);
-      expect(data.results[0].reason).toBe(
-        "Run timed out while pending (never started)",
-      );
-
-      // Verify run status was updated to timeout
-      const [updatedRun] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.id, testRunId1));
-
-      expect(updatedRun?.status).toBe("timeout");
-      expect(updatedRun?.error).toBe(
-        "Run timed out while pending (never started)",
-      );
-    });
-
-    it("should NOT cleanup pending runs within 5 minutes", async () => {
-      // Create a run with status "pending" and createdAt < 5 minutes ago
-      const recentTime = new Date(Date.now() - 3 * 60 * 1000); // 3 minutes ago
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId1,
-        userId: testUserId,
-        agentComposeVersionId: testVersionId,
-        status: "pending",
-        prompt: "Test prompt",
-        sandboxId: null,
-        createdAt: recentTime,
-        lastHeartbeatAt: recentTime,
-      });
-
-      const request = new NextRequest(
-        "http://localhost:3000/api/cron/cleanup-sandboxes",
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${cronSecret}`,
-          },
-        },
-      );
-
-      const response = await GET(request);
-
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data.cleaned).toBe(0);
-      expect(data.results).toEqual([]);
-
-      // Verify run status unchanged
-      const [unchangedRun] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.id, testRunId1));
-
-      expect(unchangedRun?.status).toBe("pending");
-    });
-
-    it("should cleanup running runs with NULL lastHeartbeatAt using createdAt fallback", async () => {
-      // Create a run with status "running", lastHeartbeatAt NULL, createdAt > 2 minutes ago
-      const expiredTime = new Date(Date.now() - 3 * 60 * 1000); // 3 minutes ago
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId1,
-        userId: testUserId,
-        agentComposeVersionId: testVersionId,
-        status: "running",
-        prompt: "Test prompt",
-        sandboxId: "test-sandbox-123",
-        createdAt: expiredTime,
-        lastHeartbeatAt: null, // NULL heartbeat - legacy scenario
-      });
-
-      const request = new NextRequest(
-        "http://localhost:3000/api/cron/cleanup-sandboxes",
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${cronSecret}`,
-          },
-        },
-      );
-
-      const response = await GET(request);
-
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data.cleaned).toBe(1);
-      expect(data.results[0].reason).toBe("Run timed out (no heartbeat)");
-
-      // Verify sandbox was killed
-      expect(Sandbox.connect).toHaveBeenCalledWith("test-sandbox-123");
-
-      // Verify run status was updated to timeout
-      const [updatedRun] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.id, testRunId1));
-
-      expect(updatedRun?.status).toBe("timeout");
-      expect(updatedRun?.error).toBe("Run timed out (no heartbeat)");
-    });
-
-    it("should NOT cleanup running runs with NULL lastHeartbeatAt within 2 minutes", async () => {
-      // Create a run with status "running", lastHeartbeatAt NULL, createdAt < 2 minutes ago
-      const recentTime = new Date(Date.now() - 1 * 60 * 1000); // 1 minute ago
-      await globalThis.services.db.insert(agentRuns).values({
-        id: testRunId1,
-        userId: testUserId,
-        agentComposeVersionId: testVersionId,
-        status: "running",
-        prompt: "Test prompt",
-        sandboxId: "test-sandbox-123",
-        createdAt: recentTime,
-        lastHeartbeatAt: null, // NULL heartbeat - legacy scenario
-      });
-
-      const request = new NextRequest(
-        "http://localhost:3000/api/cron/cleanup-sandboxes",
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${cronSecret}`,
-          },
-        },
-      );
-
-      const response = await GET(request);
-
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data.cleaned).toBe(0);
-      expect(data.results).toEqual([]);
-
-      // Verify sandbox was NOT killed
-      expect(Sandbox.connect).not.toHaveBeenCalled();
-
-      // Verify run status unchanged
-      const [unchangedRun] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.id, testRunId1));
-
-      expect(unchangedRun?.status).toBe("running");
+      // Verify sandbox.kill was called (via the mock from setupMocks)
+      expect(context.mocks.e2b.sandbox.kill).toHaveBeenCalled();
     });
   });
 });

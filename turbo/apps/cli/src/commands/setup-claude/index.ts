@@ -5,7 +5,7 @@ import {
   handlePluginError,
   PRIMARY_SKILL_NAME,
   type PluginScope,
-} from "../lib/domain/onboard/index.js";
+} from "../../lib/domain/onboard/index.js";
 
 export const setupClaudeCommand = new Command()
   .name("setup-claude")

@@ -14,6 +14,8 @@ import {
   logDetailSearchTerm$,
   viewMode$,
   hiddenEventTypes$,
+  currentMatchIndex$,
+  totalMatchCount$,
   type ViewMode,
 } from "../../signals/logs-page/log-detail-state.ts";
 import {
@@ -26,6 +28,8 @@ import { detach, Reason } from "../../signals/utils.ts";
 import type { AgentEvent } from "../../signals/logs-page/types.ts";
 import { StatusBadge } from "./status-badge.tsx";
 import { EventCard } from "./components/event-card.tsx";
+import { SearchNavigation } from "./components/search-navigation.tsx";
+import { highlightText, countMatches } from "./utils/highlight-text.tsx";
 import { getEventStyle, KNOWN_EVENT_TYPES } from "./constants/event-styles.ts";
 
 function InfoRow({
@@ -241,18 +245,79 @@ function EventTypeFilters({
   );
 }
 
-/** Raw JSON view with syntax highlighting */
-function RawJsonView({ events }: { events: AgentEvent[] }) {
+/** Scroll to element with data-match-index attribute within container only */
+function scrollToMatch(container: HTMLElement | null, matchIndex: number) {
+  if (!container || matchIndex < 0) {
+    return;
+  }
+  const matchElement = container.querySelector(
+    `[data-match-index="${matchIndex}"]`,
+  );
+  if (matchElement instanceof HTMLElement) {
+    // Calculate scroll position to center the element within the container
+    const containerRect = container.getBoundingClientRect();
+    const elementRect = matchElement.getBoundingClientRect();
+    const elementOffsetTop =
+      elementRect.top - containerRect.top + container.scrollTop;
+    const targetScrollTop =
+      elementOffsetTop - container.clientHeight / 2 + elementRect.height / 2;
+
+    container.scrollTo({
+      top: Math.max(0, targetScrollTop),
+      behavior: "smooth",
+    });
+  }
+}
+
+const EVENTS_CONTAINER_ID = "events-scroll-container";
+
+/** Raw JSON view with search highlighting */
+function RawJsonView({
+  events,
+  searchTerm,
+  currentMatchIndex,
+  setTotalMatches,
+}: {
+  events: AgentEvent[];
+  searchTerm: string;
+  currentMatchIndex: number;
+  setTotalMatches: (count: number) => void;
+}) {
   const jsonString = JSON.stringify(events, null, 2);
+
+  // Calculate matches and create highlighted content
+  let element: React.ReactNode = jsonString;
+  let matchCount = 0;
+
+  if (searchTerm.trim()) {
+    const result = highlightText(jsonString, {
+      searchTerm,
+      currentMatchIndex,
+      matchStartIndex: 0,
+    });
+    element = result.element;
+    matchCount = result.matchCount;
+  }
+
+  // Update total matches in parent via ref callback
+  const containerRef = (node: HTMLPreElement | null) => {
+    if (node) {
+      setTotalMatches(matchCount);
+    }
+  };
 
   return (
     <div className="relative">
       <CopyButton
         text={jsonString}
-        className="absolute top-2 right-2 h-8 w-8 bg-background/80 hover:bg-background"
+        className="absolute top-2 right-2 h-8 w-8 bg-background/80 hover:bg-background z-10"
       />
-      <pre className="font-mono text-sm whitespace-pre-wrap overflow-auto max-h-[600px] p-4 bg-muted/30 rounded-lg">
-        {jsonString}
+      <pre
+        id={EVENTS_CONTAINER_ID}
+        ref={containerRef}
+        className="font-mono text-sm whitespace-pre-wrap overflow-auto max-h-[600px] p-4 bg-muted/30 rounded-lg"
+      >
+        {element}
       </pre>
     </div>
   );
@@ -278,10 +343,14 @@ function FormattedEventsView({
   events,
   searchTerm,
   hiddenTypes,
+  currentMatchIndex,
+  setTotalMatches,
 }: {
   events: AgentEvent[];
   searchTerm: string;
   hiddenTypes: Set<string>;
+  currentMatchIndex: number;
+  setTotalMatches: (count: number) => void;
 }) {
   const visibleEvents = events.filter(
     (event) =>
@@ -289,9 +358,25 @@ function FormattedEventsView({
       eventMatchesSearch(event, searchTerm),
   );
 
+  // Calculate total matches across all visible events
+  let totalMatches = 0;
+  if (searchTerm.trim()) {
+    for (const event of visibleEvents) {
+      const dataStr = JSON.stringify(event.eventData);
+      totalMatches += countMatches(dataStr, searchTerm);
+    }
+  }
+
+  // Update total matches in parent via ref callback
+  const containerRef = (node: HTMLDivElement | null) => {
+    if (node) {
+      setTotalMatches(totalMatches);
+    }
+  };
+
   if (visibleEvents.length === 0) {
     return (
-      <div className="p-8 text-center text-muted-foreground">
+      <div ref={containerRef} className="p-8 text-center text-muted-foreground">
         {events.length === 0
           ? "No events available"
           : searchTerm.trim()
@@ -301,15 +386,34 @@ function FormattedEventsView({
     );
   }
 
+  // Calculate match start indices for each event
+  let matchOffset = 0;
+
   return (
-    <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
-      {visibleEvents.map((event) => (
-        <EventCard
-          key={`${event.sequenceNumber}-${event.createdAt}`}
-          event={event}
-          searchTerm={searchTerm}
-        />
-      ))}
+    <div
+      id={EVENTS_CONTAINER_ID}
+      ref={containerRef}
+      className="space-y-3 max-h-[600px] overflow-y-auto pr-1"
+    >
+      {visibleEvents.map((event) => {
+        const eventMatchStart = matchOffset;
+        // Calculate matches for this event to update offset
+        const eventDataStr = JSON.stringify(event.eventData);
+        const eventMatches = searchTerm.trim()
+          ? countMatches(eventDataStr, searchTerm)
+          : 0;
+        matchOffset += eventMatches;
+
+        return (
+          <EventCard
+            key={`${event.sequenceNumber}-${event.createdAt}`}
+            event={event}
+            searchTerm={searchTerm}
+            currentMatchIndex={currentMatchIndex}
+            matchStartIndex={eventMatchStart}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -332,6 +436,66 @@ function AgentEventsCard({
   const hiddenTypes = useGet(hiddenEventTypes$);
   const setHiddenTypes = useSet(hiddenEventTypes$);
 
+  // Search navigation state
+  const currentMatchIdx = useGet(currentMatchIndex$);
+  const setCurrentMatchIdx = useSet(currentMatchIndex$);
+  const totalMatches = useGet(totalMatchCount$);
+  const setTotalMatches = useSet(totalMatchCount$);
+
+  // Scroll to match by index (called after state update)
+  const scrollToMatchByIndex = (matchIndex: number) => {
+    const container = document.getElementById(EVENTS_CONTAINER_ID);
+    scrollToMatch(container, matchIndex);
+  };
+
+  // Navigation handlers
+  const handleNext = () => {
+    if (totalMatches > 0) {
+      const newIndex = (currentMatchIdx + 1) % totalMatches;
+      setCurrentMatchIdx(newIndex);
+      // Delay scroll to let React update the DOM
+      Promise.resolve()
+        .then(() => scrollToMatchByIndex(newIndex))
+        .catch(() => {});
+    }
+  };
+
+  const handlePrevious = () => {
+    if (totalMatches > 0) {
+      const newIndex =
+        currentMatchIdx === 0 ? totalMatches - 1 : currentMatchIdx - 1;
+      setCurrentMatchIdx(newIndex);
+      // Delay scroll to let React update the DOM
+      Promise.resolve()
+        .then(() => scrollToMatchByIndex(newIndex))
+        .catch(() => {});
+    }
+  };
+
+  // Keyboard shortcuts
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (e.shiftKey) {
+        handlePrevious();
+      } else {
+        handleNext();
+      }
+    }
+  };
+
+  // Reset match index on search term change
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    setCurrentMatchIdx(0);
+  };
+
+  // Reset match index on view mode change
+  const handleViewModeChange = (mode: ViewMode) => {
+    setViewMode(mode);
+    setCurrentMatchIdx(0);
+  };
+
   // Common header for loading/error states
   const renderHeader = (showControls = false) => (
     <div className="flex flex-col gap-3 rounded-t-lg border-b border-border bg-muted px-4 py-3">
@@ -344,12 +508,13 @@ function AgentEventsCard({
         </div>
         {showControls && (
           <div className="flex items-center gap-3">
-            <ViewModeToggle mode={viewMode} setMode={setViewMode} />
+            <ViewModeToggle mode={viewMode} setMode={handleViewModeChange} />
             <div className="flex h-9 items-center rounded-md border border-border bg-background">
               <Input
                 placeholder="Search logs"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                onKeyDown={handleKeyDown}
                 className="h-full w-48 border-0 text-sm focus-visible:ring-0"
               />
               <div className="flex h-9 w-9 items-center justify-center border-l border-border">
@@ -412,17 +577,25 @@ function AgentEventsCard({
             </span>
           </div>
           <div className="flex items-center gap-3">
-            <ViewModeToggle mode={viewMode} setMode={setViewMode} />
-            <div className="flex h-9 items-center rounded-md border border-border bg-background">
+            <ViewModeToggle mode={viewMode} setMode={handleViewModeChange} />
+            <div className="relative flex h-9 items-center rounded-md border border-border bg-background">
+              <div className="flex h-9 w-9 items-center justify-center">
+                <IconSearch className="h-4 w-4 text-muted-foreground" />
+              </div>
               <Input
                 placeholder="Search logs"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="h-full w-48 border-0 text-sm focus-visible:ring-0"
+                onChange={(e) => handleSearchChange(e.target.value)}
+                onKeyDown={handleKeyDown}
+                className="h-full w-56 border-0 text-sm focus-visible:ring-0 focus-visible:ring-offset-0 pr-20"
               />
-              <div className="flex h-9 w-9 items-center justify-center border-l border-border">
-                <IconSearch className="h-5 w-5 text-muted-foreground" />
-              </div>
+              <SearchNavigation
+                currentIndex={currentMatchIdx}
+                totalCount={totalMatches}
+                onNext={handleNext}
+                onPrevious={handlePrevious}
+                hasSearchTerm={searchTerm.trim().length > 0}
+              />
             </div>
           </div>
         </div>
@@ -440,9 +613,16 @@ function AgentEventsCard({
             events={events}
             searchTerm={searchTerm}
             hiddenTypes={hiddenTypes}
+            currentMatchIndex={currentMatchIdx}
+            setTotalMatches={setTotalMatches}
           />
         ) : (
-          <RawJsonView events={events} />
+          <RawJsonView
+            events={events}
+            searchTerm={searchTerm}
+            currentMatchIndex={currentMatchIdx}
+            setTotalMatches={setTotalMatches}
+          />
         )}
       </CardContent>
     </Card>

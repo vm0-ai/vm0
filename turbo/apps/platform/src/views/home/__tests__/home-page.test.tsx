@@ -67,7 +67,9 @@ describe("home page", () => {
     // Click "Add it later" to close the modal
     await user.click(screen.getByText("Add it later"));
 
-    expect(saveButton).not.toBeInTheDocument();
+    await vi.waitFor(() => {
+      expect(saveButton).not.toBeInTheDocument();
+    });
   });
 
   it("should show onboarding modal when no claude-code-oauth-token exists", async () => {

@@ -1,4 +1,4 @@
-import { recordRunnerOperation, recordSandboxOperation } from "./instruments";
+import { recordOperation } from "./instruments";
 
 /**
  * Wrap an async function with runner operation metrics recording
@@ -16,7 +16,7 @@ export async function withRunnerTiming<T>(
     success = false;
     throw error;
   } finally {
-    recordRunnerOperation({
+    recordOperation({
       actionType,
       durationMs: Date.now() - startTime,
       success,
@@ -40,7 +40,7 @@ export async function withSandboxTiming<T>(
     success = false;
     throw error;
   } finally {
-    recordSandboxOperation({
+    recordOperation({
       actionType,
       durationMs: Date.now() - startTime,
       success,

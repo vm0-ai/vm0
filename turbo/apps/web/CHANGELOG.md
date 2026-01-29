@@ -1,5 +1,12 @@
 # Changelog
 
+## [11.6.1](https://github.com/vm0-ai/vm0/compare/web-v11.6.0...web-v11.6.1) (2026-01-29)
+
+
+### Bug Fixes
+
+* add missing NEXT_PUBLIC_BASE_URL env var for blog ([#1856](https://github.com/vm0-ai/vm0/issues/1856)) ([a80ccef](https://github.com/vm0-ai/vm0/commit/a80ccef34c9052206be0abd35ac90c1a6b376144))
+
 ## [11.6.0](https://github.com/vm0-ai/vm0/compare/web-v11.5.0...web-v11.6.0) (2026-01-29)
 
 

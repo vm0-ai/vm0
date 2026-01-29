@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.28.0](https://github.com/vm0-ai/vm0/compare/platform-v0.27.0...platform-v0.28.0) (2026-01-29)
+
+
+### Features
+
+* **platform:** add full search navigation to agent events log viewer ([#1806](https://github.com/vm0-ai/vm0/issues/1806)) ([f24dd8b](https://github.com/vm0-ai/vm0/commit/f24dd8bc75c5e09add6bdc6968485192a732f3da))
+
+
+### Bug Fixes
+
+* **web:** wrap async assertion in vi.waitfor for home page test ([#1864](https://github.com/vm0-ai/vm0/issues/1864)) ([4ea52a5](https://github.com/vm0-ai/vm0/commit/4ea52a53f58338ee61a3df727477ee61b14cf8bf))
+
 ## [0.27.0](https://github.com/vm0-ai/vm0/compare/platform-v0.26.1...platform-v0.27.0) (2026-01-29)
 
 

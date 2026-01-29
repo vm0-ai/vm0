@@ -1,153 +1,38 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-  afterAll,
-  vi,
-} from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "../route";
-import { NextRequest } from "next/server";
-import { initServices } from "../../../../../../../../src/lib/init-services";
-import { agentRuns } from "../../../../../../../../src/db/schema/agent-run";
 import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../../../../../../../src/db/schema/agent-compose";
-import { scopes } from "../../../../../../../../src/db/schema/scope";
-import { eq } from "drizzle-orm";
+  createTestRequest,
+  createTestCompose,
+  createTestRun,
+} from "../../../../../../../../src/__tests__/api-test-helpers";
+import {
+  testContext,
+  type UserContext,
+} from "../../../../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
 
-// Mock Axiom module
-vi.mock("../../../../../../../../src/lib/axiom", () => ({
-  queryAxiom: vi.fn(),
-  ingestRequestLog: vi.fn(),
-  ingestSandboxOpLog: vi.fn(),
-  getDatasetName: vi.fn((base: string) => `vm0-${base}-dev`),
-  DATASETS: {
-    SANDBOX_TELEMETRY_SYSTEM: "sandbox-telemetry-system",
-    AGENT_RUN_EVENTS: "agent-run-events",
-    WEB_LOGS: "web-logs",
-    REQUEST_LOG: "request-log",
-    SANDBOX_OP_LOG: "sandbox-op-log",
-  },
-}));
+vi.mock("@clerk/nextjs/server");
+vi.mock("@e2b/code-interpreter");
+vi.mock("@aws-sdk/client-s3");
+vi.mock("@aws-sdk/s3-request-presigner");
+vi.mock("@axiomhq/js");
 
-import { queryAxiom } from "../../../../../../../../src/lib/axiom";
-import {
-  mockClerk,
-  clearClerkMock,
-} from "../../../../../../../../src/__tests__/clerk-mock";
-
-const mockQueryAxiom = vi.mocked(queryAxiom);
-
-/**
- * Helper to create a NextRequest for testing.
- */
-function createTestRequest(url: string): NextRequest {
-  return new NextRequest(url, { method: "GET" });
-}
+const context = testContext();
 
 describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
-  const testUserId = `test-user-${Date.now()}-${process.pid}`;
-  const testScopeId = randomUUID();
-  const testRunId = randomUUID();
-  const testComposeId = randomUUID();
-  const testVersionId =
-    randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
+  let user: UserContext;
+  let testRunId: string;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
-    initServices();
+    context.setupMocks();
+    user = await context.setupUser();
 
-    mockClerk({ userId: testUserId });
+    // Create test compose and run
+    const { composeId } = await createTestCompose(`system-log-${Date.now()}`);
 
-    // Setup mockQueryAxiom - returns empty array by default
-    mockQueryAxiom.mockResolvedValue([]);
-
-    // Clean up any existing test data
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.id, testRunId));
-
-    await globalThis.services.db
-      .delete(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, testVersionId));
-
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.id, testComposeId));
-
-    await globalThis.services.db
-      .delete(scopes)
-      .where(eq(scopes.id, testScopeId));
-
-    // Create test scope
-    await globalThis.services.db.insert(scopes).values({
-      id: testScopeId,
-      slug: `test-${testScopeId.slice(0, 8)}`,
-      type: "personal",
-      ownerId: testUserId,
-    });
-
-    // Create test agent compose
-    await globalThis.services.db.insert(agentComposes).values({
-      id: testComposeId,
-      userId: testUserId,
-      scopeId: testScopeId,
-      name: "test-agent",
-      headVersionId: testVersionId,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-
-    // Create test agent version
-    await globalThis.services.db.insert(agentComposeVersions).values({
-      id: testVersionId,
-      composeId: testComposeId,
-      content: {
-        agents: {
-          "test-agent": {
-            name: "test-agent",
-            model: "claude-3-5-sonnet-20241022",
-            working_dir: "/workspace",
-          },
-        },
-      },
-      createdBy: testUserId,
-      createdAt: new Date(),
-    });
-
-    // Create test agent run
-    await globalThis.services.db.insert(agentRuns).values({
-      id: testRunId,
-      userId: testUserId,
-      agentComposeVersionId: testVersionId,
-      status: "running",
-      prompt: "Test prompt",
-      createdAt: new Date(),
-    });
-  });
-
-  afterEach(async () => {
-    clearClerkMock();
-
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.id, testRunId));
-
-    await globalThis.services.db
-      .delete(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, testVersionId));
-
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.id, testComposeId));
-  });
-
-  afterAll(async () => {
-    // Clean up database connections
+    const { runId } = await createTestRun(composeId, "Test prompt");
+    testRunId = runId;
   });
 
   describe("Authentication", () => {
@@ -183,54 +68,18 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
     });
 
     it("should reject request for run owned by different user", async () => {
-      const otherUserId = `other-user-${Date.now()}-${process.pid}`;
-      const otherScopeId = randomUUID();
-      const otherRunId = randomUUID();
-      const otherComposeId = randomUUID();
-      const otherVersionId =
-        randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
+      // Create another user with their own compose and run
+      await context.setupUser({ prefix: "other" });
+      const { composeId: otherComposeId } = await createTestCompose(
+        `other-system-log-${Date.now()}`,
+      );
+      const { runId: otherRunId } = await createTestRun(
+        otherComposeId,
+        "Other user run",
+      );
 
-      await globalThis.services.db.insert(scopes).values({
-        id: otherScopeId,
-        slug: `test-${otherScopeId.slice(0, 8)}`,
-        type: "personal",
-        ownerId: otherUserId,
-      });
-
-      await globalThis.services.db.insert(agentComposes).values({
-        id: otherComposeId,
-        userId: otherUserId,
-        scopeId: otherScopeId,
-        name: "other-agent",
-        headVersionId: otherVersionId,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-      await globalThis.services.db.insert(agentComposeVersions).values({
-        id: otherVersionId,
-        composeId: otherComposeId,
-        content: {
-          agents: {
-            "other-agent": {
-              name: "other-agent",
-              model: "claude-3-5-sonnet-20241022",
-              working_dir: "/workspace",
-            },
-          },
-        },
-        createdBy: otherUserId,
-        createdAt: new Date(),
-      });
-
-      await globalThis.services.db.insert(agentRuns).values({
-        id: otherRunId,
-        userId: otherUserId,
-        agentComposeVersionId: otherVersionId,
-        status: "running",
-        prompt: "Test prompt",
-        createdAt: new Date(),
-      });
+      // Switch back to original user
+      mockClerk({ userId: user.userId });
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${otherRunId}/telemetry/system-log`,
@@ -241,26 +90,12 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
       expect(response.status).toBe(404);
       const data = await response.json();
       expect(data.error.message).toContain("Agent run");
-
-      // Clean up
-      await globalThis.services.db
-        .delete(agentRuns)
-        .where(eq(agentRuns.id, otherRunId));
-      await globalThis.services.db
-        .delete(agentComposeVersions)
-        .where(eq(agentComposeVersions.id, otherVersionId));
-      await globalThis.services.db
-        .delete(agentComposes)
-        .where(eq(agentComposes.id, otherComposeId));
-      await globalThis.services.db
-        .delete(scopes)
-        .where(eq(scopes.id, otherScopeId));
     });
   });
 
   describe("Success - Basic Retrieval", () => {
     it("should return empty system log when no telemetry exists", async () => {
-      // Default mockQueryAxiom returns empty array
+      // Default context.mocks.axiom.queryAxiom returns empty array
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/system-log`,
       );
@@ -274,7 +109,7 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
     });
 
     it("should return system log from Axiom", async () => {
-      mockQueryAxiom.mockResolvedValue([
+      context.mocks.axiom.queryAxiom.mockResolvedValue([
         {
           _time: new Date().toISOString(),
           runId: testRunId,
@@ -297,7 +132,7 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
 
   describe("Aggregation", () => {
     it("should aggregate system logs from multiple records", async () => {
-      mockQueryAxiom.mockResolvedValue([
+      context.mocks.axiom.queryAxiom.mockResolvedValue([
         {
           _time: new Date(Date.now() - 2000).toISOString(),
           runId: testRunId,
@@ -330,7 +165,7 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
     });
 
     it("should handle Axiom returning null (not configured)", async () => {
-      mockQueryAxiom.mockResolvedValue(null);
+      context.mocks.axiom.queryAxiom.mockResolvedValue(null);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/system-log?limit=10`,
@@ -348,7 +183,7 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
   describe("Pagination", () => {
     it("should respect limit parameter", async () => {
       // Mock Axiom returning 3 records (more than limit of 2)
-      mockQueryAxiom.mockResolvedValue([
+      context.mocks.axiom.queryAxiom.mockResolvedValue([
         {
           _time: new Date(Date.now() - 3000).toISOString(),
           runId: testRunId,
@@ -382,7 +217,7 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
 
     it("should pass since parameter to Axiom query", async () => {
       // Mock Axiom returning only recent entry (since filter applied by Axiom)
-      mockQueryAxiom.mockResolvedValue([
+      context.mocks.axiom.queryAxiom.mockResolvedValue([
         {
           _time: new Date(Date.now() - 1000).toISOString(),
           runId: testRunId,
@@ -402,7 +237,7 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
       expect(data.systemLog).toBe("[INFO] Recent entry\n");
 
       // Verify queryAxiom was called with a query containing the since filter
-      expect(mockQueryAxiom).toHaveBeenCalledWith(
+      expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledWith(
         expect.stringContaining("where _time >"),
       );
     });

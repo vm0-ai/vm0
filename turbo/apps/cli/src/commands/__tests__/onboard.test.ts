@@ -28,7 +28,7 @@ vi.mock("child_process", () => ({
 
 import prompts from "prompts";
 import { spawn } from "child_process";
-import { onboardCommand } from "../onboard.js";
+import { onboardCommand } from "../onboard";
 
 // Helper to create a mock child process
 function createMockChildProcess(exitCode: number, stdout = "", stderr = "") {

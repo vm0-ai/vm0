@@ -1,5 +1,6 @@
 import { getEventStyle } from "../constants/event-styles.ts";
 import { CollapsibleJson } from "./collapsible-json.tsx";
+import { highlightText } from "../utils/highlight-text.tsx";
 import type { AgentEvent } from "../../../signals/logs-page/types.ts";
 import {
   IconFile,
@@ -19,6 +20,8 @@ import {
 interface EventCardProps {
   event: AgentEvent;
   searchTerm?: string;
+  currentMatchIndex?: number;
+  matchStartIndex?: number;
 }
 
 // Type definitions for message content
@@ -114,34 +117,6 @@ function formatEventTime(isoString: string): string {
     minute: "2-digit",
     hour12: false,
   });
-}
-
-function highlightText(
-  text: string,
-  searchTerm: string,
-): React.ReactNode | string {
-  if (!searchTerm.trim()) {
-    return text;
-  }
-
-  const escapedTerm = searchTerm.replace(
-    /[.*+?^${}()|[\]\\]/g,
-    String.raw`\$&`,
-  );
-  const parts = text.split(new RegExp(`(${escapedTerm})`, "gi"));
-
-  return parts.map((part) =>
-    part.toLowerCase() === searchTerm.toLowerCase() ? (
-      <mark
-        key={`${part}-${Math.random()}`}
-        className="bg-yellow-200 text-yellow-900 rounded px-0.5"
-      >
-        {part}
-      </mark>
-    ) : (
-      part
-    ),
-  );
 }
 
 function formatDuration(ms: number): string {
@@ -262,18 +237,30 @@ function SystemInitContent({ eventData }: { eventData: EventData }) {
 function TextContentView({
   content,
   searchTerm,
+  currentMatchIndex,
+  matchStartIndex,
 }: {
   content: TextContent;
   searchTerm?: string;
+  currentMatchIndex?: number;
+  matchStartIndex?: number;
 }) {
   const text = content.text;
   if (!text) {
     return null;
   }
 
+  const contentElement = searchTerm
+    ? highlightText(text, {
+        searchTerm,
+        currentMatchIndex,
+        matchStartIndex,
+      }).element
+    : text;
+
   return (
     <div className="text-sm text-foreground whitespace-pre-wrap">
-      {searchTerm ? highlightText(text, searchTerm) : text}
+      {contentElement}
     </div>
   );
 }
@@ -534,16 +521,27 @@ function ToolResultContentView({
   content,
   toolMeta,
   searchTerm,
+  currentMatchIndex,
+  matchStartIndex,
 }: {
   content: ToolResultContent;
   toolMeta?: ToolResultMeta;
   searchTerm?: string;
+  currentMatchIndex?: number;
+  matchStartIndex?: number;
 }) {
   const isError = content.is_error === true;
   const resultText = content.content;
 
   // Error display
   if (isError) {
+    const errorElement = searchTerm
+      ? highlightText(resultText, {
+          searchTerm,
+          currentMatchIndex,
+          matchStartIndex,
+        }).element
+      : resultText;
     return (
       <div className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded text-sm">
         <div className="flex items-center gap-2 text-red-700 dark:text-red-400 font-medium mb-2">
@@ -551,7 +549,7 @@ function ToolResultContentView({
           Error
         </div>
         <pre className="whitespace-pre-wrap overflow-x-auto text-xs text-red-700 dark:text-red-400">
-          {searchTerm ? highlightText(resultText, searchTerm) : resultText}
+          {errorElement}
         </pre>
       </div>
     );
@@ -599,7 +597,12 @@ function ToolResultContentView({
       )}
 
       {/* Result content */}
-      <ResultContent text={resultText} searchTerm={searchTerm} />
+      <ResultContent
+        text={resultText}
+        searchTerm={searchTerm}
+        currentMatchIndex={currentMatchIndex}
+        matchStartIndex={matchStartIndex}
+      />
     </div>
   );
 }
@@ -607,9 +610,13 @@ function ToolResultContentView({
 function ResultContent({
   text,
   searchTerm,
+  currentMatchIndex,
+  matchStartIndex,
 }: {
   text: string;
   searchTerm?: string;
+  currentMatchIndex?: number;
+  matchStartIndex?: number;
 }) {
   if (!text || text.trim() === "") {
     return (
@@ -619,6 +626,12 @@ function ResultContent({
 
   const lines = text.split("\n");
   const isLong = lines.length > 10 || text.length > 500;
+
+  // Check if search term matches this content
+  const hasSearchMatch =
+    searchTerm &&
+    searchTerm.trim() &&
+    text.toLowerCase().includes(searchTerm.toLowerCase());
 
   // Check if it looks like code
   const looksLikeCode =
@@ -633,16 +646,26 @@ function ResultContent({
     ? "bg-foreground/90 text-background"
     : "bg-muted/30 text-foreground";
 
+  const contentElement = searchTerm
+    ? highlightText(text, {
+        searchTerm,
+        currentMatchIndex,
+        matchStartIndex,
+      }).element
+    : text;
+
   if (isLong) {
+    // Open the details if search matches content or if it's short enough
+    const shouldBeOpen = hasSearchMatch || lines.length <= 15;
     return (
-      <details className="group" open={lines.length <= 15}>
+      <details className="group" open={shouldBeOpen}>
         <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground">
           Output ({lines.length} lines)
         </summary>
         <pre
           className={`mt-2 text-xs whitespace-pre-wrap overflow-x-auto p-3 rounded max-h-80 overflow-y-auto ${preClass}`}
         >
-          {searchTerm ? highlightText(text, searchTerm) : text}
+          {contentElement}
         </pre>
       </details>
     );
@@ -652,7 +675,7 @@ function ResultContent({
     <pre
       className={`text-xs whitespace-pre-wrap overflow-x-auto p-2 rounded ${preClass}`}
     >
-      {searchTerm ? highlightText(text, searchTerm) : text}
+      {contentElement}
     </pre>
   );
 }
@@ -781,9 +804,15 @@ function EventHeader({
   );
 }
 
-export function EventCard({ event, searchTerm }: EventCardProps) {
+export function EventCard({
+  event,
+  searchTerm,
+  currentMatchIndex,
+  matchStartIndex = 0,
+}: EventCardProps) {
   const eventData = event.eventData as EventData;
   const style = getEventStyle(event.eventType);
+  const localMatchOffset = matchStartIndex;
 
   // System event (init)
   if (event.eventType === "system") {
@@ -859,6 +888,8 @@ export function EventCard({ event, searchTerm }: EventCardProps) {
               <TextContentView
                 content={content as TextContent}
                 searchTerm={searchTerm}
+                currentMatchIndex={currentMatchIndex}
+                matchStartIndex={localMatchOffset}
               />
             </div>
           );
@@ -892,6 +923,8 @@ export function EventCard({ event, searchTerm }: EventCardProps) {
                 content={resultContent}
                 toolMeta={eventData.tool_use_result ?? undefined}
                 searchTerm={searchTerm}
+                currentMatchIndex={currentMatchIndex}
+                matchStartIndex={localMatchOffset}
               />
             </div>
           );
