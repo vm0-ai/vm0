@@ -6,6 +6,7 @@ interface SandboxContext {
 }
 
 interface SandboxOpEntry {
+  ts: string;
   action_type: string;
   duration_ms: number;
   success: boolean;
@@ -131,6 +132,7 @@ export function recordOperation(attrs: {
   }
 
   pendingOps.push({
+    ts: new Date().toISOString(),
     action_type: attrs.actionType,
     duration_ms: attrs.durationMs,
     success: attrs.success,
