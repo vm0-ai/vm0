@@ -1617,6 +1617,22 @@ describe("Module Name", () => {
 
 ---
 
+## References
+
+### Web Testing (`/testing web`)
+
+For web app testing patterns specific to `turbo/apps/web`, see:
+- [Web Testing Patterns](./reference/web-testing.md)
+
+Key topics:
+- Route-level testing only (no service-level tests)
+- `testContext()` and `setupUser()` for user isolation
+- API test helpers (`createTestCompose`, `createTestRun`, etc.)
+- State transitions via webhook helpers
+- No manual cleanup needed
+
+---
+
 ## Quick Anti-Pattern Checklist
 
 Use this checklist when reviewing test code:

@@ -31,10 +31,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
   let testComposeId: string;
 
   beforeEach(async () => {
-    // Setup mocks (E2B, S3, Axiom)
     context.setupMocks();
-
-    // Create unique user for this test
     user = await context.setupUser();
 
     // Create test compose

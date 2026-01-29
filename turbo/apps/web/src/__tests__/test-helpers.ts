@@ -83,6 +83,7 @@ interface SetupUserOptions {
 interface TestContext {
   readonly signal: AbortSignal;
   readonly mocks: MockHelpers;
+  readonly user: Promise<UserContext>;
   setupMocks(): MockHelpers;
   setupUser(options?: SetupUserOptions): Promise<UserContext>;
 }
@@ -117,6 +118,7 @@ export interface UserContext {
 export function testContext(): TestContext {
   let controller = new AbortController();
   let mockHelpers: MockHelpers | null = null;
+  let mockUser: Promise<UserContext> | null = null;
 
   /**
    * Creates mock helpers (called by getter or setupMocks)
@@ -196,8 +198,9 @@ export function testContext(): TestContext {
     // Create new controller for next test
     controller = new AbortController();
 
-    // Reset mocks for next test
+    // Reset mocks and cached user for next test
     mockHelpers = null;
+    mockUser = null;
   });
 
   /**
@@ -214,22 +217,38 @@ export function testContext(): TestContext {
   async function setupUser({
     prefix = "test-user",
   }: SetupUserOptions = {}): Promise<UserContext> {
-    initServices();
+    // Only cache when using default prefix to support creating multiple users
+    // with different prefixes in the same test (e.g., for cross-user security tests)
+    if (mockUser && prefix === "test-user") {
+      return mockUser;
+    }
 
-    // Generate unique user ID
-    const uniqueSuffix = `${Date.now()}-${randomUUID().slice(0, 8)}`;
-    const userId = `${prefix}-${uniqueSuffix}`;
+    const userPromise = (async () => {
+      initServices();
 
-    // Mock Clerk for this user
-    mockClerk({ userId });
+      // Generate unique user ID
+      const uniqueSuffix = `${Date.now()}-${randomUUID().slice(0, 8)}`;
+      const userId = `${prefix}-${uniqueSuffix}`;
 
-    // Create scope via API
-    const scopeData = await createTestScope(`scope-${uniqueSuffix}`);
+      // Mock Clerk for this user
+      mockClerk({ userId });
 
-    return {
-      userId,
-      scopeId: scopeData.id,
-    };
+      // Create scope via API
+      const scopeData = await createTestScope(`scope-${uniqueSuffix}`);
+      controller.signal.throwIfAborted();
+
+      return {
+        userId,
+        scopeId: scopeData.id,
+      };
+    })();
+
+    // Only cache the default user
+    if (prefix === "test-user") {
+      mockUser = userPromise;
+    }
+
+    return await userPromise;
   }
 
   return {
@@ -238,6 +257,9 @@ export function testContext(): TestContext {
     },
     get mocks(): MockHelpers {
       return createMocks();
+    },
+    get user(): Promise<UserContext> {
+      return setupUser();
     },
     setupMocks(): MockHelpers {
       return createMocks();

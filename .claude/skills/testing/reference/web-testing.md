@@ -1,0 +1,318 @@
+# Web Testing Patterns
+
+## Principle
+
+In the web app (`turbo/apps/web`), only write `route.test.ts` files - test API endpoints only.
+
+## File Location
+
+Test files should be placed in `__tests__/route.test.ts` next to the corresponding `route.ts`.
+
+```
+app/api/agent/runs/
+├── route.ts
+└── __tests__/
+    └── route.test.ts
+```
+
+## Test File Structure
+
+```typescript
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { POST, GET } from "../route";
+import {
+  createTestRequest,
+  createTestCompose,
+  createTestRun,
+  completeTestRun,
+} from "../../../../../src/__tests__/api-test-helpers";
+import {
+  testContext,
+  type UserContext,
+} from "../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+
+vi.mock("@clerk/nextjs/server");
+vi.mock("@e2b/code-interpreter");
+vi.mock("@aws-sdk/client-s3");
+vi.mock("@aws-sdk/s3-request-presigner");
+vi.mock("@axiomhq/js");
+
+const context = testContext();
+
+describe("POST /api/agent/runs", () => {
+  let user: UserContext;
+  let testComposeId: string;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    user = await context.setupUser();
+    const { composeId } = await createTestCompose(`agent-${Date.now()}`);
+    testComposeId = composeId;
+  });
+
+  it("should create a run with running status", async () => {
+    // Given - fixtures prepared in beforeEach
+
+    // When - execute the behavior under test
+    const data = await createTestRun(testComposeId, "Test prompt");
+
+    // Then - assert the result
+    expect(data.status).toBe("running");
+    expect(data.runId).toBeDefined();
+  });
+});
+```
+
+---
+
+## Import
+
+Avoid importing any internal services - this usually means using internal implementation to build fixtures.
+
+**Bad Case**
+
+```typescript
+import { RunService } from "../../../lib/run/run-service";
+import { AgentSessionService } from "../../../lib/agent-session/agent-session-service";
+import { agentRuns } from "../../../db/schema/agent-run";
+import { agentComposes } from "../../../db/schema/agent-compose";
+import { scopes } from "../../../db/schema/scope";
+import { credentials } from "../../../db/schema/credential";
+import { eq } from "drizzle-orm";
+import { encryptCredentialValue } from "../../../lib/crypto";
+```
+
+**Good Case**
+
+```typescript
+import { POST, GET } from "../route";
+import {
+  createTestRequest,
+  createTestCompose,
+  createTestRun,
+  createTestModelProvider,
+  completeTestRun,
+} from "../../../../../src/__tests__/api-test-helpers";
+import { testContext, type UserContext } from "../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+```
+
+---
+
+## Mock
+
+Place `vi.mock` calls immediately after the import section. Only mock external services.
+
+**Bad Case**
+
+```typescript
+// Mocking internal services
+vi.mock("../../../lib/run/run-service", () => ({
+  RunService: vi.fn().mockImplementation(() => ({
+    buildExecutionContext: vi.fn(),
+    checkConcurrencyLimit: vi.fn(),
+  })),
+}));
+
+vi.mock("../../../lib/agent-session", () => ({
+  agentSessionService: {
+    getByIdWithConversation: vi.fn(),
+  },
+}));
+```
+
+**Good Case**
+
+```typescript
+// Only mock external services
+vi.mock("@clerk/nextjs/server");
+vi.mock("@e2b/code-interpreter");
+vi.mock("@aws-sdk/client-s3");
+vi.mock("@aws-sdk/s3-request-presigner");
+vi.mock("@axiomhq/js");
+```
+
+---
+
+## Test Context
+
+`testContext()` should be called after the mock section, outside of all describe blocks.
+
+```typescript
+vi.mock("@clerk/nextjs/server");
+// ... other mocks
+
+const context = testContext(); // Outside all describe blocks
+
+describe("...", () => {
+  beforeEach(() => {
+    context.setupMocks(); // Set up default mock behavior for E2B, S3, Axiom, etc.
+  });
+});
+```
+
+`testContext()` provides:
+
+- `setupMocks()` - Set up default mock behavior for external services
+- `setupUser()` - Create isolated user context (unique userId and scopeId)
+- `mocks` - Access mock objects for customization or assertions
+
+---
+
+## beforeEach
+
+Use beforeEach within a describe block to consolidate repeated fixture setup:
+
+```typescript
+describe("POST /api/agent/runs", () => {
+  let user: UserContext;
+  let testComposeId: string;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    user = await context.setupUser();
+
+    const { composeId } = await createTestCompose(`agent-${Date.now()}`);
+    testComposeId = composeId;
+  });
+
+  it("test 1", async () => {
+    /* ... */
+  });
+  it("test 2", async () => {
+    /* ... */
+  });
+});
+```
+
+---
+
+## Avoid DB Operations
+
+Similar to importing internal services, direct DB operations for data setup often mean testing scenarios that can't occur in real usage.
+
+**Bad Case - Direct database operations**
+
+```typescript
+// Creating data
+await globalThis.services.db.insert(scopes).values({
+  id: testScopeId,
+  slug: `test-${testScopeId.slice(0, 8)}`,
+  type: "personal",
+  ownerId: testUserId,
+});
+
+await globalThis.services.db.insert(agentComposes).values({
+  id: testAgentId,
+  name: testAgentName,
+  userId: testUserId,
+  scopeId: testScopeId,
+});
+
+// Modifying state
+await globalThis.services.db
+  .update(agentRuns)
+  .set({ status: "completed" })
+  .where(eq(agentRuns.id, runId));
+
+// Cleaning up data
+await globalThis.services.db
+  .delete(agentRuns)
+  .where(eq(agentRuns.userId, testUserId));
+```
+
+**Good Case - Via API helpers**
+
+```typescript
+// Create data via API
+const user = await context.setupUser();
+const { composeId } = await createTestCompose("test-agent");
+const { runId } = await createTestRun(composeId, "test prompt");
+
+// State transitions via webhooks
+await completeTestRun(user.userId, runId);
+
+// No cleanup needed - user isolation handles it
+```
+
+---
+
+## State Transitions
+
+Run state transitions should be done via webhook helpers, not direct database modifications:
+
+```typescript
+// Create run (status automatically set to running)
+const { runId } = await createTestRun(composeId, "test prompt");
+
+// Complete run (via checkpoint + complete webhook)
+await completeTestRun(user.userId, runId);
+
+// Test failure scenarios - mock Sandbox creation failure
+vi.mocked(Sandbox.create).mockRejectedValueOnce(new Error("Sandbox failed"));
+const data = await createTestRun(composeId, "test");
+expect(data.status).toBe("failed");
+```
+
+---
+
+## Test Target
+
+Only test route-level and pure functions:
+
+| Type            | Location                | Examples                                    |
+| --------------- | ----------------------- | ------------------------------------------- |
+| Route tests     | `app/.../route.test.ts` | Validation, authorization, business logic   |
+| Pure function tests | `lib/.../xxx.test.ts`   | Side-effect-free utility functions          |
+
+```typescript
+// Route-level test
+describe("POST /api/agent/runs", () => {
+  it("should reject unauthenticated request", async () => {
+    mockClerk({ userId: null });
+    const request = createTestRequest(url, { method: "POST", body: "..." });
+    const response = await POST(request);
+    expect(response.status).toBe(401);
+  });
+});
+
+// Pure function test
+describe("calculateSessionHistoryPath", () => {
+  it("handles workspace path", () => {
+    const result = calculateSessionHistoryPath("/workspace", "session-123");
+    expect(result).toBe("/workspace/.claude/sessions/session-123.jsonl");
+  });
+});
+```
+
+---
+
+## Test Cleanup
+
+Don't manually delete - this creates order dependencies. `testContext()` handles user isolation, no cleanup needed.
+
+**Bad Case**
+
+```typescript
+afterEach(async () => {
+  await globalThis.services.db
+    .delete(checkpoints)
+    .where(eq(checkpoints.runId, run.id));
+  await globalThis.services.db
+    .delete(conversations)
+    .where(eq(conversations.runId, run.id));
+  await globalThis.services.db
+    .delete(agentRuns)
+    .where(eq(agentRuns.userId, testUserId));
+  // ... more cleanup, order must be correct
+});
+```
+
+**Good Case**
+
+```typescript
+// No cleanup code needed
+// context.setupUser() creates unique userId each time
+// Data is naturally isolated by unique IDs
+```
