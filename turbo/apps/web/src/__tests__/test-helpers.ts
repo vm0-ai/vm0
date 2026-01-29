@@ -18,21 +18,18 @@ import { afterEach } from "vitest";
 import { randomUUID } from "crypto";
 import { mockClerk, clearClerkMock } from "./clerk-mock";
 import { initServices } from "../lib/init-services";
-import { getTestDataContext, type TestDataContext } from "./api-test-helpers";
+import { createTestScope } from "./api-test-helpers";
 
 interface TestContext {
   readonly signal: AbortSignal;
-  readonly ctx: TestDataContext;
 }
 
 export interface UserContext {
   readonly userId: string;
   readonly scopeId: string;
-  readonly ctx: TestDataContext;
 }
 
 interface SetupUserOptions {
-  context: TestContext;
   /** Optional prefix for the user ID (default: "test-user") */
   prefix?: string;
 }
@@ -46,19 +43,16 @@ interface SetupUserOptions {
  *
  * Usage:
  *   describe("my tests", () => {
- *     const context = testContext();
+ *     testContext(); // Sets up afterEach cleanup
  *
  *     test("test 1", async () => {
- *       const user = await setupUser({ context });
+ *       const user = await setupUser();
  *       // ...
  *     });
  *   });
  */
 export function testContext(): TestContext {
   let controller = new AbortController();
-
-  // Get test data context (routes are imported internally)
-  const ctx = getTestDataContext();
 
   afterEach(() => {
     // Clear Clerk mock
@@ -77,7 +71,6 @@ export function testContext(): TestContext {
     get signal(): AbortSignal {
       return controller.signal;
     },
-    ctx,
   };
 }
 
@@ -86,17 +79,15 @@ export function testContext(): TestContext {
  * Each call creates a unique user ID and scope.
  *
  * Usage:
- *   const user = await setupUser({ context });
+ *   const user = await setupUser();
  *   // user.userId is unique, e.g., "test-user-1706123456789-a1b2c3d4"
  *   // user.scopeId is the created scope's ID
- *   // user.ctx provides API helpers for creating test data
  *
  * The Clerk mock is automatically configured for this user.
  */
 export async function setupUser({
-  context,
   prefix = "test-user",
-}: SetupUserOptions): Promise<UserContext> {
+}: SetupUserOptions = {}): Promise<UserContext> {
   initServices();
 
   // Generate unique user ID
@@ -107,11 +98,10 @@ export async function setupUser({
   mockClerk({ userId });
 
   // Create scope via API
-  const scopeData = await context.ctx.createScope(`scope-${uniqueSuffix}`);
+  const scopeData = await createTestScope(`scope-${uniqueSuffix}`);
 
   return {
     userId,
     scopeId: scopeData.id,
-    ctx: context.ctx,
   };
 }

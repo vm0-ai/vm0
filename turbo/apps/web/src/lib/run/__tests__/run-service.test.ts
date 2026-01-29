@@ -14,7 +14,12 @@ import {
 import { AgentSessionService } from "../../agent-session/agent-session-service";
 import { mockClerk } from "../../../__tests__/clerk-mock";
 import { POST as createRunRoute } from "../../../../app/api/agent/runs/route";
-import { createTestRequest } from "../../../__tests__/api-test-helpers";
+import {
+  createTestRequest,
+  createTestCompose,
+  createTestCredential,
+  createTestModelProvider,
+} from "../../../__tests__/api-test-helpers";
 import {
   testContext,
   setupUser,
@@ -29,7 +34,7 @@ vi.mock("@e2b/code-interpreter");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 
-const context = testContext();
+testContext();
 
 describe("run-service", () => {
   // Setup mocks before each test
@@ -222,15 +227,15 @@ describe("run-service", () => {
       }
 
       test("passes when no active runs exist for user", async () => {
-        const user = await setupUser({ context });
+        const user = await setupUser();
         await expect(
           runService.checkConcurrencyLimit(user.userId, 1),
         ).resolves.toBeUndefined();
       });
 
       test("skips check entirely when limit is 0 (no limit)", async () => {
-        const user = await setupUser({ context });
-        const { composeId } = await user.ctx.createCompose("test-agent");
+        const user = await setupUser();
+        const { composeId } = await createTestCompose("test-agent");
         await createTestRun(user, composeId, "running");
 
         await expect(
@@ -239,8 +244,8 @@ describe("run-service", () => {
       });
 
       test("respects higher limit values", async () => {
-        const user = await setupUser({ context });
-        const { composeId } = await user.ctx.createCompose("test-agent");
+        const user = await setupUser();
+        const { composeId } = await createTestCompose("test-agent");
         await createTestRun(user, composeId, "running");
 
         await expect(
@@ -249,8 +254,8 @@ describe("run-service", () => {
       });
 
       test("throws ConcurrentRunLimitError when active runs >= limit", async () => {
-        const user = await setupUser({ context });
-        const { composeId } = await user.ctx.createCompose("test-agent");
+        const user = await setupUser();
+        const { composeId } = await createTestCompose("test-agent");
         await createTestRun(user, composeId, "running");
 
         await expect(
@@ -259,8 +264,8 @@ describe("run-service", () => {
       });
 
       test("throws ConcurrentRunLimitError when active runs exceed limit", async () => {
-        const user = await setupUser({ context });
-        const { composeId } = await user.ctx.createCompose("test-agent");
+        const user = await setupUser();
+        const { composeId } = await createTestCompose("test-agent");
         await createTestRun(user, composeId, "running");
         await createTestRun(user, composeId, "pending");
 
@@ -270,8 +275,8 @@ describe("run-service", () => {
       });
 
       test("passes when active runs below limit", async () => {
-        const user = await setupUser({ context });
-        const { composeId } = await user.ctx.createCompose("test-agent");
+        const user = await setupUser();
+        const { composeId } = await createTestCompose("test-agent");
         await createTestRun(user, composeId, "running");
 
         await expect(
@@ -280,8 +285,8 @@ describe("run-service", () => {
       });
 
       test("only counts pending and running statuses", async () => {
-        const user = await setupUser({ context });
-        const { composeId } = await user.ctx.createCompose("test-agent");
+        const user = await setupUser();
+        const { composeId } = await createTestCompose("test-agent");
         await createTestRun(user, composeId, "completed");
         await createTestRun(user, composeId, "failed");
         await createTestRun(user, composeId, "timeout");
@@ -303,7 +308,7 @@ describe("run-service", () => {
       });
 
       test("falls back to default when CONCURRENT_RUN_LIMIT is invalid", async () => {
-        const user = await setupUser({ context });
+        const user = await setupUser();
         vi.stubEnv("CONCURRENT_RUN_LIMIT", "invalid");
 
         try {
@@ -319,8 +324,8 @@ describe("run-service", () => {
     describe("buildExecutionContext", () => {
       describe("new run mode", () => {
         test("builds context for new run with real database", async () => {
-          const user = await setupUser({ context });
-          const { versionId } = await user.ctx.createCompose("test-agent", {
+          const user = await setupUser();
+          const { versionId } = await createTestCompose("test-agent", {
             working_dir: "/workspace",
             environment: { ANTHROPIC_API_KEY: "test-key" },
           });
@@ -349,7 +354,7 @@ describe("run-service", () => {
         });
 
         test("throws NotFoundError when compose not found", async () => {
-          const user = await setupUser({ context });
+          const user = await setupUser();
 
           await expect(
             runService.buildExecutionContext({
@@ -363,7 +368,7 @@ describe("run-service", () => {
         });
 
         test("throws NotFoundError when no agentComposeVersionId provided for new run", async () => {
-          const user = await setupUser({ context });
+          const user = await setupUser();
 
           await expect(
             runService.buildExecutionContext({
@@ -380,7 +385,7 @@ describe("run-service", () => {
         const agentSessionService = new AgentSessionService();
 
         test("throws NotFoundError when session not found", async () => {
-          const user = await setupUser({ context });
+          const user = await setupUser();
 
           await expect(
             runService.buildExecutionContext({
@@ -395,12 +400,12 @@ describe("run-service", () => {
 
         test("throws UnauthorizedError when session belongs to different user", async () => {
           // Create two users
-          const user1 = await setupUser({ context, prefix: "user1" });
-          const user2 = await setupUser({ context, prefix: "user2" });
+          const user1 = await setupUser({ prefix: "user1" });
+          const user2 = await setupUser({ prefix: "user2" });
 
           // Create compose and session for user1
           const { composeId, versionId } =
-            await user1.ctx.createCompose("test-agent");
+            await createTestCompose("test-agent");
           const session = await agentSessionService.create({
             userId: user1.userId,
             agentComposeId: composeId,
@@ -421,9 +426,9 @@ describe("run-service", () => {
         });
 
         test("throws NotFoundError when session has no conversation", async () => {
-          const user = await setupUser({ context });
+          const user = await setupUser();
           const { composeId, versionId } =
-            await user.ctx.createCompose("test-agent");
+            await createTestCompose("test-agent");
 
           const session = await agentSessionService.create({
             userId: user.userId,
@@ -446,12 +451,12 @@ describe("run-service", () => {
 
       describe("credential merging into secrets", () => {
         test("merges credentials into secrets for masking", async () => {
-          const user = await setupUser({ context });
-          await user.ctx.createCredential(
+          const user = await setupUser();
+          await createTestCredential(
             "MY_CREDENTIAL",
             "credential-secret-value",
           );
-          const { versionId } = await user.ctx.createCompose(
+          const { versionId } = await createTestCompose(
             "test-compose-credential-merge",
             {
               environment: {
@@ -475,9 +480,9 @@ describe("run-service", () => {
         });
 
         test("CLI secrets take priority over credentials on collision", async () => {
-          const user = await setupUser({ context });
-          await user.ctx.createCredential("API_KEY", "credential-value");
-          const { versionId } = await user.ctx.createCompose(
+          const user = await setupUser();
+          await createTestCredential("API_KEY", "credential-value");
+          const { versionId } = await createTestCompose(
             "test-compose-priority",
             {
               environment: {
@@ -502,19 +507,16 @@ describe("run-service", () => {
         });
 
         test("merges multiple credentials with multiple CLI secrets", async () => {
-          const user = await setupUser({ context });
-          await user.ctx.createCredential("CRED_A", "cred-a-value");
-          await user.ctx.createCredential("CRED_B", "cred-b-value");
-          const { versionId } = await user.ctx.createCompose(
-            "test-compose-multi",
-            {
-              environment: {
-                ANTHROPIC_API_KEY: "test-api-key",
-                CRED_A: "${{ credentials.CRED_A }}",
-                CRED_B: "${{ credentials.CRED_B }}",
-              },
+          const user = await setupUser();
+          await createTestCredential("CRED_A", "cred-a-value");
+          await createTestCredential("CRED_B", "cred-b-value");
+          const { versionId } = await createTestCompose("test-compose-multi", {
+            environment: {
+              ANTHROPIC_API_KEY: "test-api-key",
+              CRED_A: "${{ credentials.CRED_A }}",
+              CRED_B: "${{ credentials.CRED_B }}",
             },
-          );
+          });
 
           const execContext = await runService.buildExecutionContext({
             agentComposeVersionId: versionId,
@@ -538,8 +540,8 @@ describe("run-service", () => {
 
       describe("model provider credential injection", () => {
         test("skips injection when compose has explicit ANTHROPIC_API_KEY", async () => {
-          const user = await setupUser({ context });
-          const { versionId } = await user.ctx.createCompose(
+          const user = await setupUser();
+          const { versionId } = await createTestCompose(
             "test-compose-explicit-anthropic",
             {
               framework: "claude-code",
@@ -559,8 +561,8 @@ describe("run-service", () => {
         });
 
         test("skips injection when compose has explicit OPENAI_API_KEY", async () => {
-          const user = await setupUser({ context });
-          const { versionId } = await user.ctx.createCompose(
+          const user = await setupUser();
+          const { versionId } = await createTestCompose(
             "test-compose-explicit-openai",
             {
               framework: "codex",
@@ -580,8 +582,8 @@ describe("run-service", () => {
         });
 
         test("skips injection when compose has alternative auth method (CLAUDE_CODE_USE_FOUNDRY)", async () => {
-          const user = await setupUser({ context });
-          const { versionId } = await user.ctx.createCompose(
+          const user = await setupUser();
+          const { versionId } = await createTestCompose(
             "test-compose-foundry",
             {
               framework: "claude-code",
@@ -601,12 +603,12 @@ describe("run-service", () => {
         });
 
         test("uses specified model provider when --model-provider is passed", async () => {
-          const user = await setupUser({ context });
-          await user.ctx.createModelProvider(
+          const user = await setupUser();
+          await createTestModelProvider(
             "anthropic-api-key",
             "test-anthropic-api-key-value",
           );
-          const { versionId } = await user.ctx.createCompose(
+          const { versionId } = await createTestCompose(
             "test-compose-no-mp-config",
             {
               framework: "claude-code",
@@ -629,12 +631,12 @@ describe("run-service", () => {
         });
 
         test("uses default model provider when no explicit config", async () => {
-          const user = await setupUser({ context });
-          await user.ctx.createModelProvider(
+          const user = await setupUser();
+          await createTestModelProvider(
             "anthropic-api-key",
             "default-provider-key-value",
           );
-          const { versionId } = await user.ctx.createCompose(
+          const { versionId } = await createTestCompose(
             "test-compose-default-mp",
             {
               framework: "claude-code",
@@ -671,13 +673,10 @@ describe("run-service", () => {
         });
 
         test("throws BadRequestError when no model provider configured", async () => {
-          const user = await setupUser({ context });
-          const { versionId } = await user.ctx.createCompose(
-            "test-compose-no-mp",
-            {
-              framework: "claude-code",
-            },
-          );
+          const user = await setupUser();
+          const { versionId } = await createTestCompose("test-compose-no-mp", {
+            framework: "claude-code",
+          });
 
           // Remove auto-created ANTHROPIC_API_KEY
           await globalThis.services.db
@@ -717,8 +716,8 @@ describe("run-service", () => {
         });
 
         test("throws BadRequestError when model provider type is invalid", async () => {
-          const user = await setupUser({ context });
-          const { versionId } = await user.ctx.createCompose(
+          const user = await setupUser();
+          const { versionId } = await createTestCompose(
             "test-compose-invalid-mp",
             {
               framework: "claude-code",
@@ -765,12 +764,12 @@ describe("run-service", () => {
         });
 
         test("auto-injects model provider credential into environment when no environment block exists", async () => {
-          const user = await setupUser({ context });
-          await user.ctx.createModelProvider(
+          const user = await setupUser();
+          await createTestModelProvider(
             "claude-code-oauth-token",
             "test-oauth-token-value",
           );
-          const { versionId } = await user.ctx.createCompose(
+          const { versionId } = await createTestCompose(
             "test-compose-no-env-block",
             {
               framework: "claude-code",
@@ -810,12 +809,12 @@ describe("run-service", () => {
         });
 
         test("user-defined environment takes precedence over auto-injected credential", async () => {
-          const user = await setupUser({ context });
-          await user.ctx.createModelProvider(
+          const user = await setupUser();
+          await createTestModelProvider(
             "anthropic-api-key",
             "model-provider-key",
           );
-          const { versionId } = await user.ctx.createCompose(
+          const { versionId } = await createTestCompose(
             "test-compose-user-precedence",
             {
               framework: "claude-code",
