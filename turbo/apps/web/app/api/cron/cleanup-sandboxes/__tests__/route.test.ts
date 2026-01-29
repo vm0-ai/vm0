@@ -23,6 +23,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
   const cronSecret = "test-cron-secret";
   let user: UserContext;
   let testComposeId: string;
+  let dateNowSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
     context.setupMocks();
@@ -37,7 +38,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
   });
 
   afterEach(() => {
-    vi.useRealTimers();
+    dateNowSpy?.mockRestore();
     delete process.env.CRON_SECRET;
   });
 
@@ -135,26 +136,17 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       expect(cleanedRunIds).not.toContain(runId);
     });
 
-    it("should cleanup expired sandbox after heartbeat timeout using fake timers", async () => {
-      // Use fake timers BEFORE creating the run so Date.now() is controlled
-      const baseTime = Date.now();
-      vi.useFakeTimers({ now: baseTime });
+    it("should cleanup expired sandbox after heartbeat timeout", async () => {
+      // Record the time when run is created
+      const runCreationTime = Date.now();
 
-      // Create a run - it will have lastHeartbeatAt = baseTime
+      // Create a run - it will have lastHeartbeatAt ≈ runCreationTime
       const { runId } = await createTestRun(testComposeId, "Test prompt");
 
-      // Advance time past the heartbeat timeout (2 minutes)
-      vi.advanceTimersByTime(3 * 60 * 1000); // 3 minutes
-
-      // Re-mock E2B sandbox for the cleanup call
-      const mockKill = vi.fn().mockResolvedValue(undefined);
-      vi.mocked(
-        (await import("@e2b/code-interpreter")).Sandbox.connect,
-      ).mockResolvedValue({
-        kill: mockKill,
-      } as unknown as Awaited<
-        ReturnType<typeof import("@e2b/code-interpreter").Sandbox.connect>
-      >);
+      // Mock Date.now to return time 3 minutes in the future (past heartbeat timeout)
+      dateNowSpy = vi
+        .spyOn(Date, "now")
+        .mockReturnValue(runCreationTime + 3 * 60 * 1000);
 
       const request = createTestRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
@@ -179,16 +171,17 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
 
     it("should NOT cleanup completed runs even with old heartbeat", async () => {
-      // Use fake timers
-      const baseTime = Date.now();
-      vi.useFakeTimers({ now: baseTime });
+      // Record the time when run is created
+      const runCreationTime = Date.now();
 
       // Create and complete a run
       const { runId } = await createTestRun(testComposeId, "Test prompt");
       await completeTestRun(user.userId, runId);
 
-      // Advance time past the heartbeat timeout
-      vi.advanceTimersByTime(10 * 60 * 1000); // 10 minutes
+      // Mock Date.now to return time 10 minutes in the future
+      dateNowSpy = vi
+        .spyOn(Date, "now")
+        .mockReturnValue(runCreationTime + 10 * 60 * 1000);
 
       const request = createTestRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
@@ -212,8 +205,8 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
 
     it("should cleanup multiple expired sandboxes from different users", async () => {
-      // Record start time for fake timers
-      const baseTime = Date.now();
+      // Record start time
+      const runCreationTime = Date.now();
 
       // Create run for first user
       const { runId: runId1 } = await createTestRun(
@@ -233,19 +226,10 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
         "Test prompt 2",
       );
 
-      // Now enable fake timers and advance time
-      // Both runs have lastHeartbeatAt ≈ baseTime
-      vi.useFakeTimers({ now: baseTime + 5 * 60 * 1000 }); // 5 minutes in future
-
-      // Mock E2B for cleanup
-      const mockKill = vi.fn().mockResolvedValue(undefined);
-      vi.mocked(
-        (await import("@e2b/code-interpreter")).Sandbox.connect,
-      ).mockResolvedValue({
-        kill: mockKill,
-      } as unknown as Awaited<
-        ReturnType<typeof import("@e2b/code-interpreter").Sandbox.connect>
-      >);
+      // Mock Date.now to return time 5 minutes in the future
+      dateNowSpy = vi
+        .spyOn(Date, "now")
+        .mockReturnValue(runCreationTime + 5 * 60 * 1000);
 
       const request = createTestRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
@@ -270,24 +254,16 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
 
     it("should set run status to timeout with appropriate reason", async () => {
-      // Use fake timers
-      const baseTime = Date.now();
-      vi.useFakeTimers({ now: baseTime });
+      // Record the time when run is created
+      const runCreationTime = Date.now();
 
       // Create a run
       const { runId } = await createTestRun(testComposeId, "Test prompt");
 
-      // Advance time past heartbeat timeout
-      vi.advanceTimersByTime(3 * 60 * 1000); // 3 minutes
-
-      // Mock E2B for cleanup
-      vi.mocked(
-        (await import("@e2b/code-interpreter")).Sandbox.connect,
-      ).mockResolvedValue({
-        kill: vi.fn().mockResolvedValue(undefined),
-      } as unknown as Awaited<
-        ReturnType<typeof import("@e2b/code-interpreter").Sandbox.connect>
-      >);
+      // Mock Date.now to return time 3 minutes in the future
+      dateNowSpy = vi
+        .spyOn(Date, "now")
+        .mockReturnValue(runCreationTime + 3 * 60 * 1000);
 
       const request = createTestRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
@@ -311,25 +287,17 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       expect(cleanedResult.reason).toBe("Run timed out (no heartbeat)");
     });
 
-    it("should call E2B sandbox.connect and kill for expired runs with sandboxId", async () => {
-      // Use fake timers
-      const baseTime = Date.now();
-      vi.useFakeTimers({ now: baseTime });
+    it("should call sandbox.kill for expired runs with sandboxId", async () => {
+      // Record the time when run is created
+      const runCreationTime = Date.now();
 
       // Create a run (will have sandboxId from the mock)
       await createTestRun(testComposeId, "Test prompt");
 
-      // Advance time past heartbeat timeout
-      vi.advanceTimersByTime(3 * 60 * 1000); // 3 minutes
-
-      // Track E2B calls
-      const mockKill = vi.fn().mockResolvedValue(undefined);
-      const mockConnect = vi.mocked(
-        (await import("@e2b/code-interpreter")).Sandbox.connect,
-      );
-      mockConnect.mockResolvedValue({
-        kill: mockKill,
-      } as unknown as Awaited<ReturnType<typeof mockConnect>>);
+      // Mock Date.now to return time 3 minutes in the future
+      dateNowSpy = vi
+        .spyOn(Date, "now")
+        .mockReturnValue(runCreationTime + 3 * 60 * 1000);
 
       const request = createTestRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
@@ -342,9 +310,8 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
 
       await GET(request);
 
-      // Verify E2B was called to connect and kill the sandbox
-      expect(mockConnect).toHaveBeenCalled();
-      expect(mockKill).toHaveBeenCalled();
+      // Verify sandbox.kill was called (via the mock from setupMocks)
+      expect(context.mocks.e2b.sandbox.kill).toHaveBeenCalled();
     });
   });
 });
