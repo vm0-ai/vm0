@@ -1,5 +1,40 @@
 import chalk from "chalk";
 
+// Orange gradient colors (light to dark, top to bottom)
+const gradientColors = [
+  chalk.hex("#FF9650"), // Line 1 - lightest
+  chalk.hex("#FF7832"), // Line 2
+  chalk.hex("#FF7832"), // Line 3
+  chalk.hex("#ED4E01"), // Line 4 - brand orange
+  chalk.hex("#ED4E01"), // Line 5
+  chalk.hex("#C83C00"), // Line 6 - darkest
+];
+
+/**
+ * VM0 ASCII art logo lines
+ */
+const vm0LogoLines = [
+  "██╗   ██╗███╗   ███╗ ██████╗",
+  "██║   ██║████╗ ████║██╔═══██╗",
+  "██║   ██║██╔████╔██║██║   ██║",
+  "╚██╗ ██╔╝██║╚██╔╝██║██║   ██║",
+  " ╚████╔╝ ██║ ╚═╝ ██║╚██████╔╝",
+  "  ╚═══╝  ╚═╝     ╚═╝ ╚═════╝",
+];
+
+/**
+ * Renders the VM0 ASCII art banner with orange gradient
+ */
+function renderVm0Banner(): void {
+  console.log();
+  for (let i = 0; i < vm0LogoLines.length; i++) {
+    const color =
+      gradientColors[i] ?? gradientColors[gradientColors.length - 1];
+    console.log(`  ${color?.(vm0LogoLines[i])}`);
+  }
+  console.log();
+}
+
 /**
  * Renders a welcome box with Unicode borders
  * @param lines - Array of text lines to display inside the box
@@ -28,14 +63,11 @@ export function renderWelcomeBox(lines: string[], width?: number): void {
 }
 
 /**
- * Renders the default VM0 welcome box for onboarding
+ * Renders the default VM0 welcome banner for onboarding
  */
 export function renderOnboardWelcome(): void {
-  renderWelcomeBox([
-    "",
-    "Welcome to VM0!",
-    "",
-    "Let's create your first agent.",
-    "",
-  ]);
+  renderVm0Banner();
+  console.log(`  ${chalk.bold("Welcome to VM0!")}`);
+  console.log(`  ${chalk.dim("Let's create your first agent.")}`);
+  console.log();
 }
