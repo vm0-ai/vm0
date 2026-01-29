@@ -27,6 +27,8 @@ import {
   withSandboxTiming,
   recordRunnerOperation,
   recordSandboxOperation,
+  setSandboxContext,
+  clearSandboxContext,
 } from "./metrics/index.js";
 
 // Import from extracted modules
@@ -177,7 +179,14 @@ export async function executeJob(
   config: RunnerConfig,
   options: ExecutionOptions = {},
 ): Promise<ExecutionResult> {
-  // Record api_to_executor metric
+  // Set sandbox context for metrics reporting via telemetry API
+  setSandboxContext({
+    apiUrl: config.server.url,
+    runId: context.runId,
+    sandboxToken: context.sandboxToken,
+  });
+
+  // Record api_to_vm_start metric
   if (context.apiStartTime) {
     recordSandboxOperation({
       actionType: "api_to_vm_start",
@@ -513,5 +522,8 @@ export async function executeJob(
       log(`[Executor] Cleaning up VM ${vmId}...`);
       await withSandboxTiming("cleanup", () => vm!.kill());
     }
+
+    // Flush and clear sandbox context after job completion
+    await clearSandboxContext();
   }
 }
