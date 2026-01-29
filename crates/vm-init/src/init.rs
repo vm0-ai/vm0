@@ -159,14 +159,20 @@ pub fn init_filesystem() -> Result<(), InitError> {
     })?;
     eprintln!("[vm-init] Virtual filesystems mounted");
 
-    // 10. Set PATH environment variable
+    // 10. Set environment variables
     // SAFETY: We are the init process, no other threads are running yet
     unsafe {
         std::env::set_var(
             "PATH",
             "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
         );
+        std::env::set_var("HOME", "/home/user");
+        std::env::set_var("USER", "user");
+        std::env::set_var("SHELL", "/bin/bash");
     }
+
+    // 11. Change to home directory
+    let _ = std::env::set_current_dir("/home/user");
 
     eprintln!("[vm-init] Filesystem initialization complete");
     Ok(())

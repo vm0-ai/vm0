@@ -208,7 +208,19 @@ fn handle_exec(payload: &[u8]) -> (i32, Vec<u8>, Vec<u8>) {
         .spawn();
 
     match child {
-        Ok(child) => wait_with_timeout(child, timeout_ms),
+        Ok(child) => {
+            let result = wait_with_timeout(child, timeout_ms);
+            log(
+                "INFO",
+                &format!(
+                    "exec result: exit_code={}, stdout_len={}, stderr_len={}",
+                    result.0,
+                    result.1.len(),
+                    result.2.len()
+                ),
+            );
+            result
+        }
         Err(e) => (
             1,
             Vec::new(),
