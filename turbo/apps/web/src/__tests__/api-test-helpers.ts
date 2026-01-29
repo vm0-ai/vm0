@@ -16,6 +16,8 @@ import { POST as createComposeRoute } from "../../app/api/agent/composes/route";
 import { POST as createScopeRoute } from "../../app/api/scope/route";
 import { PUT as setCredentialRoute } from "../../app/api/credentials/route";
 import { PUT as upsertModelProviderRoute } from "../../app/api/model-providers/route";
+import { POST as checkpointWebhook } from "../../app/api/webhooks/agent/checkpoints/route";
+import { POST as completeWebhook } from "../../app/api/webhooks/agent/complete/route";
 
 /**
  * Helper to create a NextRequest for testing.
@@ -238,4 +240,131 @@ export async function createTestModelProvider(
   }
   const data = await response.json();
   return data.provider;
+}
+
+/**
+ * Create a test checkpoint via webhook route handler.
+ * This is required before completing a run with exitCode=0.
+ * Used internally by completeTestRun.
+ */
+async function createTestCheckpoint(
+  userId: string,
+  runId: string,
+): Promise<{
+  checkpointId: string;
+  agentSessionId: string;
+  conversationId: string;
+}> {
+  const sandboxToken = await generateSandboxToken(userId, runId);
+  const request = createTestRequest(
+    "http://localhost:3000/api/webhooks/agent/checkpoints",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sandboxToken}`,
+      },
+      body: JSON.stringify({
+        runId,
+        cliAgentType: "test-agent",
+        cliAgentSessionId: `test-session-${runId}`,
+        cliAgentSessionHistory: JSON.stringify([
+          { role: "user", content: "test" },
+        ]),
+      }),
+    },
+  );
+  const response = await checkpointWebhook(request);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `Failed to create checkpoint: ${error.error?.message || response.status}`,
+    );
+  }
+  return response.json();
+}
+
+/**
+ * Fail a test run via complete webhook.
+ * Sets the run status to "failed".
+ *
+ * @param userId - The user ID
+ * @param runId - The run ID
+ * @param error - Optional error message
+ */
+export async function failTestRun(
+  userId: string,
+  runId: string,
+  error?: string,
+): Promise<void> {
+  const sandboxToken = await generateSandboxToken(userId, runId);
+  const request = createTestRequest(
+    "http://localhost:3000/api/webhooks/agent/complete",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sandboxToken}`,
+      },
+      body: JSON.stringify({
+        runId,
+        exitCode: 1,
+        error: error ?? "Test failure",
+      }),
+    },
+  );
+  const response = await completeWebhook(request);
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(
+      `Failed to fail run: ${errorData.error?.message || response.status}`,
+    );
+  }
+}
+
+/**
+ * Complete a test run via checkpoint + complete webhooks.
+ * Creates a checkpoint first, then completes the run with exitCode=0.
+ * Sets the run status to "completed".
+ *
+ * @param userId - The user ID
+ * @param runId - The run ID
+ * @returns The checkpoint details
+ */
+export async function completeTestRun(
+  userId: string,
+  runId: string,
+): Promise<{
+  checkpointId: string;
+  agentSessionId: string;
+  conversationId: string;
+}> {
+  // First create checkpoint (required for completed status)
+  const checkpoint = await createTestCheckpoint(userId, runId);
+
+  // Then complete the run
+  const sandboxToken = await generateSandboxToken(userId, runId);
+  const request = createTestRequest(
+    "http://localhost:3000/api/webhooks/agent/complete",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sandboxToken}`,
+      },
+      body: JSON.stringify({
+        runId,
+        exitCode: 0,
+      }),
+    },
+  );
+  const response = await completeWebhook(request);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `Failed to complete run: ${error.error?.message || response.status}`,
+    );
+  }
+
+  return checkpoint;
 }

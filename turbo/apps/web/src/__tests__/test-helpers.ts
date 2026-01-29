@@ -131,6 +131,9 @@ export function testContext(): TestContext {
     vi.mocked(Sandbox.create).mockResolvedValue(
       mockSandbox as unknown as Sandbox,
     );
+    vi.mocked(Sandbox.connect).mockResolvedValue(
+      mockSandbox as unknown as Sandbox,
+    );
 
     // S3 mocks
     const s3Mocks: S3Mocks = {

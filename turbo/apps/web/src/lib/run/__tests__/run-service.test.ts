@@ -1,7 +1,6 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { eq } from "drizzle-orm";
 import { agentComposeVersions } from "../../../db/schema/agent-compose";
-import { agentRuns } from "../../../db/schema/agent-run";
 import { randomUUID } from "crypto";
 import { calculateSessionHistoryPath, RunService } from "../run-service";
 import {
@@ -18,6 +17,8 @@ import {
   createTestCompose,
   createTestCredential,
   createTestModelProvider,
+  failTestRun,
+  completeTestRun,
 } from "../../../__tests__/api-test-helpers";
 import {
   testContext,
@@ -165,11 +166,18 @@ describe("run-service", () => {
     });
 
     describe("checkConcurrencyLimit", () => {
-      // Helper to create a run via API and optionally set a specific status
+      /**
+       * Helper to create a run via API.
+       * API creates runs in "running" status automatically.
+       *
+       * For status changes:
+       * - completed: use completeTestRun(userId, runId) - requires checkpoint
+       * - failed: use failTestRun(userId, runId) - via webhook
+       * - pending/timeout: direct DB update (system states, no webhook)
+       */
       async function createTestRun(
         user: UserContext,
         composeId: string,
-        status?: "pending" | "running" | "completed" | "failed" | "timeout",
       ): Promise<string> {
         mockClerk({ userId: user.userId });
         const request = createTestRequest(
@@ -185,15 +193,6 @@ describe("run-service", () => {
         );
         const response = await createRunRoute(request);
         const data = await response.json();
-
-        // If a specific status is needed (other than what API creates), update it
-        if (status && status !== "running") {
-          await globalThis.services.db
-            .update(agentRuns)
-            .set({ status })
-            .where(eq(agentRuns.id, data.runId));
-        }
-
         return data.runId;
       }
 
@@ -207,7 +206,7 @@ describe("run-service", () => {
       test("skips check entirely when limit is 0 (no limit)", async () => {
         const user = await setupUser();
         const { composeId } = await createTestCompose("test-agent");
-        await createTestRun(user, composeId, "running");
+        await createTestRun(user, composeId);
 
         await expect(
           runService.checkConcurrencyLimit(user.userId, 0),
@@ -217,7 +216,7 @@ describe("run-service", () => {
       test("respects higher limit values", async () => {
         const user = await setupUser();
         const { composeId } = await createTestCompose("test-agent");
-        await createTestRun(user, composeId, "running");
+        await createTestRun(user, composeId);
 
         await expect(
           runService.checkConcurrencyLimit(user.userId, 100),
@@ -227,7 +226,7 @@ describe("run-service", () => {
       test("throws ConcurrentRunLimitError when active runs >= limit", async () => {
         const user = await setupUser();
         const { composeId } = await createTestCompose("test-agent");
-        await createTestRun(user, composeId, "running");
+        await createTestRun(user, composeId);
 
         await expect(
           runService.checkConcurrencyLimit(user.userId, 1),
@@ -237,8 +236,9 @@ describe("run-service", () => {
       test("throws ConcurrentRunLimitError when active runs exceed limit", async () => {
         const user = await setupUser();
         const { composeId } = await createTestCompose("test-agent");
-        await createTestRun(user, composeId, "running");
-        await createTestRun(user, composeId, "pending");
+        // Create two running runs to exceed limit of 1
+        await createTestRun(user, composeId);
+        await createTestRun(user, composeId);
 
         await expect(
           runService.checkConcurrencyLimit(user.userId, 1),
@@ -248,7 +248,7 @@ describe("run-service", () => {
       test("passes when active runs below limit", async () => {
         const user = await setupUser();
         const { composeId } = await createTestCompose("test-agent");
-        await createTestRun(user, composeId, "running");
+        await createTestRun(user, composeId);
 
         await expect(
           runService.checkConcurrencyLimit(user.userId, 3),
@@ -258,10 +258,15 @@ describe("run-service", () => {
       test("only counts pending and running statuses", async () => {
         const user = await setupUser();
         const { composeId } = await createTestCompose("test-agent");
-        await createTestRun(user, composeId, "completed");
-        await createTestRun(user, composeId, "failed");
-        await createTestRun(user, composeId, "timeout");
 
+        // Create runs and transition to non-active statuses via webhooks
+        const completedRunId = await createTestRun(user, composeId);
+        await completeTestRun(user.userId, completedRunId);
+
+        const failedRunId = await createTestRun(user, composeId);
+        await failTestRun(user.userId, failedRunId);
+
+        // None of completed/failed should count toward limit
         await expect(
           runService.checkConcurrencyLimit(user.userId, 1),
         ).resolves.toBeUndefined();
