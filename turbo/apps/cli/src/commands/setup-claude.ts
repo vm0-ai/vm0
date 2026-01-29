@@ -1,46 +1,42 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { mkdir, writeFile } from "fs/promises";
-import path from "path";
 import {
-  fetchSkillContent,
+  installAllClaudeSkills,
   handleFetchError,
-  SKILL_DIR,
-  SKILL_NAME,
+  SKILLS,
+  PRIMARY_SKILL_NAME,
 } from "../lib/domain/onboard/index.js";
 
 export const setupClaudeCommand = new Command()
   .name("setup-claude")
-  .description("Add/update Claude skill for VM0 CLI usage")
+  .description("Add/update Claude skills for VM0 usage")
   .option(
     "--agent-dir <dir>",
     "Agent directory (shown in next step instructions)",
   )
   .action(async (options: { agentDir?: string }) => {
-    console.log(chalk.dim(`Installing ${SKILL_NAME} skill...`));
+    console.log(chalk.dim("Installing Claude skills..."));
 
-    let content: string;
     try {
-      content = await fetchSkillContent();
+      const result = await installAllClaudeSkills();
+      result.skills.forEach((skillResult, i) => {
+        const skillName = SKILLS[i]?.name ?? "unknown";
+        console.log(
+          chalk.green(
+            `✓ Installed ${skillName} skill to ${skillResult.skillDir}`,
+          ),
+        );
+      });
     } catch (error) {
       handleFetchError(error);
     }
 
-    // Create directory
-    await mkdir(SKILL_DIR, { recursive: true });
-
-    // Write skill file
-    await writeFile(path.join(SKILL_DIR, "SKILL.md"), content);
-
-    console.log(
-      chalk.green(`Done! Installed ${SKILL_NAME} skill to ${SKILL_DIR}`),
-    );
     console.log();
     console.log("Next step:");
     const cdPrefix = options.agentDir ? `cd ${options.agentDir} && ` : "";
     console.log(
       chalk.cyan(
-        `  ${cdPrefix}claude "/${SKILL_NAME} I want to build an agent that..."`,
+        `  ${cdPrefix}claude "/${PRIMARY_SKILL_NAME} let's build a workflow"`,
       ),
     );
   });

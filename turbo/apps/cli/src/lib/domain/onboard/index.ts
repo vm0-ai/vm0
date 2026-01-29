@@ -7,9 +7,8 @@ export {
 } from "./model-provider.js";
 
 export {
-  installClaudeSkill,
-  fetchSkillContent,
+  installAllClaudeSkills,
   handleFetchError,
-  SKILL_DIR,
-  SKILL_NAME,
+  SKILLS,
+  PRIMARY_SKILL_NAME,
 } from "./claude-setup.js";

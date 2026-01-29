@@ -20,9 +20,10 @@ import {
   checkModelProviderStatus,
   getProviderChoices,
   setupModelProvider,
-  installClaudeSkill,
+  installAllClaudeSkills,
   handleFetchError,
-  SKILL_NAME,
+  SKILLS,
+  PRIMARY_SKILL_NAME,
 } from "../lib/domain/onboard/index.js";
 import type { ModelProviderType } from "@vm0/core";
 
@@ -196,10 +197,15 @@ async function handleSkillInstallation(
   ctx.updateProgress(3, "in-progress");
 
   try {
-    const skillResult = await installClaudeSkill(agentName);
-    console.log(
-      chalk.green(`✓ Installed ${SKILL_NAME} skill to ${skillResult.skillDir}`),
-    );
+    const result = await installAllClaudeSkills(agentName);
+    result.skills.forEach((skillResult, i) => {
+      const skillName = SKILLS[i]?.name ?? "unknown";
+      console.log(
+        chalk.green(
+          `✓ Installed ${skillName} skill to ${skillResult.skillDir}`,
+        ),
+      );
+    });
   } catch (error) {
     handleFetchError(error);
   }
@@ -212,7 +218,7 @@ function printNextSteps(agentName: string): void {
   console.log(chalk.bold("Next step:"));
   console.log();
   console.log(
-    `  ${chalk.cyan(`cd ${agentName} && claude "/${SKILL_NAME} I want to build an agent that..."`)}`,
+    `  ${chalk.cyan(`cd ${agentName} && claude "/${PRIMARY_SKILL_NAME} let's build a workflow"`)}`,
   );
   console.log();
 }

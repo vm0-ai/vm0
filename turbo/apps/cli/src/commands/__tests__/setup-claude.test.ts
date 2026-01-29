@@ -5,7 +5,7 @@ import * as path from "path";
 import * as os from "os";
 import { setupClaudeCommand } from "../setup-claude";
 
-const MOCK_SKILL_CONTENT = `---
+const MOCK_CLI_SKILL_CONTENT = `---
 name: vm0-cli
 description: VM0 CLI for building and running AI agents in secure sandboxes.
 vm0_secrets:
@@ -19,6 +19,16 @@ Build and run AI agents in secure sandboxed environments.
 ## When to Use
 
 Use this skill when you need to install and set up the VM0 CLI.
+`;
+
+const MOCK_AGENT_SKILL_CONTENT = `---
+name: vm0-agent
+description: VM0 Agent skill for building workflows.
+---
+
+# VM0 Agent
+
+Build AI agent workflows.
 `;
 
 describe("setup-claude command", () => {
@@ -43,11 +53,27 @@ describe("setup-claude command", () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
 
-    // Mock fetch at system boundary
-    vi.spyOn(global, "fetch").mockResolvedValue({
-      ok: true,
-      text: () => Promise.resolve(MOCK_SKILL_CONTENT),
-    } as Response);
+    // Mock fetch at system boundary - handle both skill URLs
+    vi.spyOn(global, "fetch").mockImplementation(async (url) => {
+      const urlStr = url.toString();
+      if (urlStr.includes("vm0-cli")) {
+        return {
+          ok: true,
+          text: () => Promise.resolve(MOCK_CLI_SKILL_CONTENT),
+        } as Response;
+      }
+      if (urlStr.includes("vm0-agent")) {
+        return {
+          ok: true,
+          text: () => Promise.resolve(MOCK_AGENT_SKILL_CONTENT),
+        } as Response;
+      }
+      return {
+        ok: false,
+        status: 404,
+        statusText: "Not Found",
+      } as Response;
+    });
   });
 
   afterEach(() => {
@@ -58,24 +84,37 @@ describe("setup-claude command", () => {
   });
 
   describe("skill installation", () => {
-    it("should create .claude/skills/vm0-cli directory", async () => {
+    it("should create skill directories for both skills", async () => {
       await setupClaudeCommand.parseAsync(["node", "cli"]);
 
       expect(existsSync(path.join(tempDir, ".claude/skills/vm0-cli"))).toBe(
         true,
       );
+      expect(existsSync(path.join(tempDir, ".claude/skills/vm0-agent"))).toBe(
+        true,
+      );
     });
 
-    it("should create SKILL.md with fetched content", async () => {
+    it("should create SKILL.md with fetched content for both skills", async () => {
       await setupClaudeCommand.parseAsync(["node", "cli"]);
 
-      const skillPath = path.join(tempDir, ".claude/skills/vm0-cli/SKILL.md");
-      expect(existsSync(skillPath)).toBe(true);
+      const cliSkillPath = path.join(
+        tempDir,
+        ".claude/skills/vm0-cli/SKILL.md",
+      );
+      const agentSkillPath = path.join(
+        tempDir,
+        ".claude/skills/vm0-agent/SKILL.md",
+      );
 
-      const content = await fs.readFile(skillPath, "utf8");
-      expect(content).toContain("name: vm0-cli");
-      expect(content).toContain("# VM0 CLI");
-      expect(content).toContain("## When to Use");
+      expect(existsSync(cliSkillPath)).toBe(true);
+      expect(existsSync(agentSkillPath)).toBe(true);
+
+      const cliContent = await fs.readFile(cliSkillPath, "utf8");
+      expect(cliContent).toContain("name: vm0-cli");
+
+      const agentContent = await fs.readFile(agentSkillPath, "utf8");
+      expect(agentContent).toContain("name: vm0-agent");
     });
 
     it("should overwrite existing files (idempotent)", async () => {
@@ -104,17 +143,23 @@ describe("setup-claude command", () => {
       expect(console.log).toHaveBeenCalledWith(
         expect.stringContaining("Installed vm0-cli skill"),
       );
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining("Installed vm0-agent skill"),
+      );
       expect(console.log).toHaveBeenCalledWith("Next step:");
       expect(console.log).toHaveBeenCalledWith(
-        expect.stringContaining("/vm0-cli"),
+        expect.stringContaining("/vm0-agent"),
       );
     });
 
-    it("should fetch skill content from GitHub", async () => {
+    it("should fetch skill content from GitHub for both skills", async () => {
       await setupClaudeCommand.parseAsync(["node", "cli"]);
 
       expect(global.fetch).toHaveBeenCalledWith(
         "https://raw.githubusercontent.com/vm0-ai/vm0-skills/main/vm0-cli/SKILL.md",
+      );
+      expect(global.fetch).toHaveBeenCalledWith(
+        "https://raw.githubusercontent.com/vm0-ai/vm0-skills/main/vm0-agent/SKILL.md",
       );
     });
   });
