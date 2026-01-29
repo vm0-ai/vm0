@@ -1,6 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { eq } from "drizzle-orm";
-import { initServices } from "../../init-services";
 import { agentComposeVersions } from "../../../db/schema/agent-compose";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { randomUUID } from "crypto";
@@ -30,13 +29,11 @@ vi.mock("@e2b/code-interpreter");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 
-describe("run-service", () => {
-  const context = testContext();
+const context = testContext();
 
+describe("run-service", () => {
   // Setup mocks before each test
   beforeEach(() => {
-    initServices();
-
     // Setup E2B SDK mock
     const mockSandbox = {
       sandboxId: "test-sandbox-123",
