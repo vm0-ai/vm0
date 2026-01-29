@@ -412,8 +412,9 @@ describe("GET /api/agent/schedules - List Schedules", () => {
     const schedules = await listTestSchedules();
 
     expect(schedules.length).toBe(1);
-    expect(schedules[0].name).toBe("list-test-schedule");
-    expect(schedules[0].composeId).toBe(composeId);
+    const schedule = schedules[0]!;
+    expect(schedule.name).toBe("list-test-schedule");
+    expect(schedule.composeId).toBe(composeId);
   });
 
   it("should not return other users' schedules", async () => {
@@ -440,7 +441,7 @@ describe("GET /api/agent/schedules - List Schedules", () => {
     const schedules = await listTestSchedules();
 
     expect(schedules.length).toBe(1);
-    expect(schedules[0].name).toBe("my-schedule");
+    expect(schedules[0]!.name).toBe("my-schedule");
   });
 
   it("should reject unauthenticated request", async () => {
