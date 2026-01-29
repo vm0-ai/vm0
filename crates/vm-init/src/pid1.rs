@@ -17,13 +17,16 @@ pub fn shutdown_requested() -> bool {
 /// Setup signal handlers for PID 1 operation.
 ///
 /// - SIGTERM/SIGINT: Set shutdown flag for graceful exit
-/// - SIGCHLD: Ignored (we reap zombies explicitly)
+/// - SIGCHLD: Use default handler (SIG_DFL) so waitpid() works correctly
+///
+/// NOTE: We intentionally do NOT set SIGCHLD to SIG_IGN because that causes
+/// the kernel to auto-reap children, which can race with waitpid() calls in
+/// vsock-agent and cause them to fail with ECHILD.
 pub fn setup_signal_handlers() {
     unsafe {
         libc::signal(libc::SIGTERM, handle_shutdown_signal as *const () as usize);
         libc::signal(libc::SIGINT, handle_shutdown_signal as *const () as usize);
-        // Ignore SIGCHLD - we handle zombies explicitly via reap_zombies()
-        libc::signal(libc::SIGCHLD, libc::SIG_IGN);
+        // Keep SIGCHLD at SIG_DFL - reap_zombies() will handle orphaned processes
     }
 }
 
