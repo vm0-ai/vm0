@@ -22,7 +22,6 @@ import { credentials } from "../../../db/schema/credential";
 import { modelProviders } from "../../../db/schema/model-provider";
 import { agentSessions } from "../../../db/schema/agent-session";
 import { randomUUID } from "crypto";
-import { encryptCredentialValue } from "../../crypto";
 import { Sandbox } from "@e2b/code-interpreter";
 import { calculateSessionHistoryPath, RunService } from "../run-service";
 import {
@@ -41,6 +40,9 @@ import { POST as createCompose } from "../../../../app/api/agent/composes/route"
 import { POST as createScope } from "../../../../app/api/scope/route";
 import { PUT as setCredential } from "../../../../app/api/credentials/route";
 import { PUT as upsertModelProvider } from "../../../../app/api/model-providers/route";
+import { POST as setModelProviderDefault } from "../../../../app/api/model-providers/[type]/set-default/route";
+import { POST as createRunRoute } from "../../../../app/api/agent/runs/route";
+import { createTestRequest } from "../../../__tests__/api-test-helpers";
 import * as s3Client from "../../s3/s3-client";
 
 vi.mock("@clerk/nextjs/server", () => ({
@@ -54,7 +56,6 @@ const TEST_USER_ID = `test-user-run-service-${Date.now()}-${process.pid}`;
 const TEST_AGENT_NAME = `test-agent-run-service-${Date.now()}`;
 
 describe("run-service", () => {
-  let testScopeId: string;
   let testComposeId: string;
   let testVersionId: string;
   let ctx: TestDataContext;
@@ -68,6 +69,7 @@ describe("run-service", () => {
       composeRoute: createCompose,
       credentialRoute: setCredential,
       modelProviderRoute: upsertModelProvider,
+      setDefaultRoute: setModelProviderDefault,
     });
 
     // Setup E2B SDK mock - create sandbox
@@ -101,8 +103,7 @@ describe("run-service", () => {
     mockClerk({ userId: TEST_USER_ID });
 
     // Create test scope and compose via API
-    const scopeData = await ctx.createScope(`test-scope-${Date.now()}`);
-    testScopeId = scopeData.id;
+    await ctx.createScope(`test-scope-${Date.now()}`);
 
     const composeData = await ctx.createCompose(TEST_AGENT_NAME);
     testComposeId = composeData.composeId;
@@ -309,7 +310,37 @@ describe("run-service", () => {
       const LIMIT_TEST_USER = `concurrent-limit-test-${Date.now()}-${process.pid}`;
       let limitTestScopeId: string;
       let limitTestComposeId: string;
-      let limitTestVersionId: string;
+
+      // Helper to create a run via API and optionally set a specific status
+      async function createTestRun(
+        status?: "pending" | "running" | "completed" | "failed" | "timeout",
+      ): Promise<string> {
+        mockClerk({ userId: LIMIT_TEST_USER });
+        const request = createTestRequest(
+          "http://localhost:3000/api/agent/runs",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentComposeId: limitTestComposeId,
+              prompt: `test prompt ${Date.now()}`,
+            }),
+          },
+        );
+        const response = await createRunRoute(request);
+        const data = await response.json();
+        mockClerk({ userId: TEST_USER_ID });
+
+        // If a specific status is needed (other than what API creates), update it
+        if (status && status !== "running") {
+          await globalThis.services.db
+            .update(agentRuns)
+            .set({ status })
+            .where(eq(agentRuns.id, data.runId));
+        }
+
+        return data.runId;
+      }
 
       beforeAll(async () => {
         // Mock Clerk for limit test user
@@ -323,23 +354,36 @@ describe("run-service", () => {
           `limit-test-agent-${Date.now()}`,
         );
         limitTestComposeId = composeData.composeId;
-        limitTestVersionId = composeData.versionId;
 
         // Restore Clerk mock to default test user
         mockClerk({ userId: TEST_USER_ID });
       });
 
       afterAll(async () => {
-        // Clean up in reverse order of creation
+        // Clean up in reverse order of creation (respecting foreign keys)
+        // 1. Delete runs
         await globalThis.services.db
           .delete(agentRuns)
           .where(eq(agentRuns.userId, LIMIT_TEST_USER));
-        await globalThis.services.db
-          .delete(agentComposeVersions)
-          .where(eq(agentComposeVersions.id, limitTestVersionId));
+
+        // 2. Delete compose versions for this scope's composes
+        const scopeComposes = await globalThis.services.db
+          .select({ id: agentComposes.id })
+          .from(agentComposes)
+          .where(eq(agentComposes.scopeId, limitTestScopeId));
+
+        for (const compose of scopeComposes) {
+          await globalThis.services.db
+            .delete(agentComposeVersions)
+            .where(eq(agentComposeVersions.composeId, compose.id));
+        }
+
+        // 3. Delete composes
         await globalThis.services.db
           .delete(agentComposes)
-          .where(eq(agentComposes.id, limitTestComposeId));
+          .where(eq(agentComposes.scopeId, limitTestScopeId));
+
+        // 4. Delete scope
         await globalThis.services.db
           .delete(scopes)
           .where(eq(scopes.id, limitTestScopeId));
@@ -360,13 +404,8 @@ describe("run-service", () => {
       });
 
       test("skips check entirely when limit is 0 (no limit)", async () => {
-        // Create an active run
-        await globalThis.services.db.insert(agentRuns).values({
-          userId: LIMIT_TEST_USER,
-          agentComposeVersionId: limitTestVersionId,
-          status: "running",
-          prompt: "test",
-        });
+        // Create an active run via API
+        await createTestRun("running");
 
         // With limit 0, should pass regardless of active runs
         await expect(
@@ -375,13 +414,8 @@ describe("run-service", () => {
       });
 
       test("respects higher limit values", async () => {
-        // Create one active run
-        await globalThis.services.db.insert(agentRuns).values({
-          userId: LIMIT_TEST_USER,
-          agentComposeVersionId: limitTestVersionId,
-          status: "running",
-          prompt: "test",
-        });
+        // Create one active run via API
+        await createTestRun("running");
 
         // With high limit, should pass
         await expect(
@@ -390,13 +424,8 @@ describe("run-service", () => {
       });
 
       test("throws ConcurrentRunLimitError when active runs >= limit", async () => {
-        // Create one active run
-        await globalThis.services.db.insert(agentRuns).values({
-          userId: LIMIT_TEST_USER,
-          agentComposeVersionId: limitTestVersionId,
-          status: "running",
-          prompt: "test",
-        });
+        // Create one active run via API
+        await createTestRun("running");
 
         // Limit is 1, user has 1 active run - should throw
         await expect(
@@ -405,21 +434,9 @@ describe("run-service", () => {
       });
 
       test("throws ConcurrentRunLimitError when active runs exceed limit", async () => {
-        // Create multiple active runs
-        await globalThis.services.db.insert(agentRuns).values([
-          {
-            userId: LIMIT_TEST_USER,
-            agentComposeVersionId: limitTestVersionId,
-            status: "running",
-            prompt: "test 1",
-          },
-          {
-            userId: LIMIT_TEST_USER,
-            agentComposeVersionId: limitTestVersionId,
-            status: "pending",
-            prompt: "test 2",
-          },
-        ]);
+        // Create multiple active runs via API
+        await createTestRun("running");
+        await createTestRun("pending");
 
         // Limit is 1, user has 2 active runs - should throw
         await expect(
@@ -428,13 +445,8 @@ describe("run-service", () => {
       });
 
       test("passes when active runs below limit", async () => {
-        // Create one active run
-        await globalThis.services.db.insert(agentRuns).values({
-          userId: LIMIT_TEST_USER,
-          agentComposeVersionId: limitTestVersionId,
-          status: "running",
-          prompt: "test",
-        });
+        // Create one active run via API
+        await createTestRun("running");
 
         // Limit is 3, user has 1 active run - should pass
         await expect(
@@ -443,27 +455,10 @@ describe("run-service", () => {
       });
 
       test("only counts pending and running statuses", async () => {
-        // Create runs with non-active statuses
-        await globalThis.services.db.insert(agentRuns).values([
-          {
-            userId: LIMIT_TEST_USER,
-            agentComposeVersionId: limitTestVersionId,
-            status: "completed",
-            prompt: "completed run",
-          },
-          {
-            userId: LIMIT_TEST_USER,
-            agentComposeVersionId: limitTestVersionId,
-            status: "failed",
-            prompt: "failed run",
-          },
-          {
-            userId: LIMIT_TEST_USER,
-            agentComposeVersionId: limitTestVersionId,
-            status: "timeout",
-            prompt: "timeout run",
-          },
-        ]);
+        // Create runs with non-active statuses via API then update status
+        await createTestRun("completed");
+        await createTestRun("failed");
+        await createTestRun("timeout");
 
         // No pending/running runs, should pass with limit 1
         await expect(
@@ -499,33 +494,17 @@ describe("run-service", () => {
     describe("buildExecutionContext", () => {
       describe("new run mode", () => {
         test("builds context for new run with real database", async () => {
-          // Create a test agent compose and version
-          const [compose] = await globalThis.services.db
-            .insert(agentComposes)
-            .values({
-              userId: TEST_USER_ID,
-              scopeId: testScopeId,
-              name: "test-compose-run-service",
-            })
-            .returning();
-
-          const versionId = "test-version-sha-for-run-service-test-123";
-          await globalThis.services.db.insert(agentComposeVersions).values({
-            id: versionId,
-            composeId: compose!.id,
-            content: {
-              agents: {
-                "test-agent": {
-                  working_dir: "/workspace",
-                  environment: { ANTHROPIC_API_KEY: "test-key" },
-                },
-              },
+          // Create a test agent compose via API
+          const composeData = await ctx.createCompose(
+            `test-compose-run-service-${Date.now()}`,
+            {
+              working_dir: "/workspace",
+              environment: { ANTHROPIC_API_KEY: "test-key" },
             },
-            createdBy: TEST_USER_ID,
-          });
+          );
 
           const context = await runService.buildExecutionContext({
-            agentComposeVersionId: versionId,
+            agentComposeVersionId: composeData.versionId,
             prompt: "test prompt",
             runId: "run-123",
             sandboxToken: "token",
@@ -537,7 +516,7 @@ describe("run-service", () => {
           });
 
           expect(context.runId).toBe("run-123");
-          expect(context.agentComposeVersionId).toBe(versionId);
+          expect(context.agentComposeVersionId).toBe(composeData.versionId);
           expect(context.prompt).toBe("test prompt");
           expect(context.artifactName).toBe("artifact-1");
           expect(context.artifactVersion).toBe("v1");
@@ -549,10 +528,10 @@ describe("run-service", () => {
           // Cleanup
           await globalThis.services.db
             .delete(agentComposeVersions)
-            .where(eq(agentComposeVersions.id, versionId));
+            .where(eq(agentComposeVersions.id, composeData.versionId));
           await globalThis.services.db
             .delete(agentComposes)
-            .where(eq(agentComposes.id, compose!.id));
+            .where(eq(agentComposes.id, composeData.composeId));
         });
 
         test("throws NotFoundError when compose not found", async () => {
@@ -994,67 +973,43 @@ describe("run-service", () => {
 
         test("uses default model provider when no explicit config", async () => {
           const testUserId = `model-provider-default-${Date.now()}`;
-          const testScopeId = randomUUID();
-          createdScopeIds.add(testScopeId);
-          const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
 
-          await globalThis.services.db.insert(scopes).values({
-            id: testScopeId,
-            slug: `mp-default-${Date.now()}`,
-            type: "personal",
-            ownerId: testUserId,
-          });
+          // Create scope and model provider via API
+          // First model provider for a framework is automatically default
+          mockClerk({ userId: testUserId });
+          const scopeData = await ctx.createScope(`mp-default-${Date.now()}`);
+          createdScopeIds.add(scopeData.id);
+          await ctx.createModelProvider(
+            "anthropic-api-key",
+            "default-provider-key-value",
+          );
+          const composeData = await ctx.createCompose(
+            "test-compose-default-mp",
+            {
+              framework: "claude-code",
+            },
+          );
+          mockClerk({ userId: TEST_USER_ID });
 
-          // Create credential for the default model provider
-          const [credential] = await globalThis.services.db
-            .insert(credentials)
-            .values({
-              scopeId: testScopeId,
-              name: "ANTHROPIC_API_KEY",
-              encryptedValue: encryptCredentialValue(
-                "default-provider-key-value",
-                encryptionKey,
-              ),
-            })
-            .returning();
-
-          // Create default model provider
-          await globalThis.services.db.insert(modelProviders).values({
-            scopeId: testScopeId,
-            type: "anthropic-api-key",
-            credentialId: credential!.id,
-            isDefault: true, // This is the default!
-          });
-
-          // Create compose WITHOUT explicit model provider config
-          const [compose] = await globalThis.services.db
-            .insert(agentComposes)
-            .values({
-              userId: testUserId,
-              scopeId: testScopeId,
-              name: "test-compose-default-mp",
-            })
-            .returning();
-
-          const versionId = `test-version-default-mp-${Date.now()}`;
-          await globalThis.services.db.insert(agentComposeVersions).values({
-            id: versionId,
-            composeId: compose!.id,
-            content: {
-              agents: {
-                "test-agent": {
-                  framework: "claude-code",
-                  working_dir: "/workspace",
-                  environment: {},
+          // Remove auto-created ANTHROPIC_API_KEY to trigger default lookup
+          await globalThis.services.db
+            .update(agentComposeVersions)
+            .set({
+              content: {
+                agents: {
+                  "test-compose-default-mp": {
+                    framework: "claude-code",
+                    working_dir: "/home/user/workspace",
+                    environment: {},
+                  },
                 },
               },
-            },
-            createdBy: testUserId,
-          });
+            })
+            .where(eq(agentComposeVersions.id, composeData.versionId));
 
           // No modelProvider param - should use default
           const context = await runService.buildExecutionContext({
-            agentComposeVersionId: versionId,
+            agentComposeVersionId: composeData.versionId,
             prompt: "test prompt",
             runId: `run-default-mp-${Date.now()}`,
             sandboxToken: "token",
@@ -1177,68 +1132,37 @@ describe("run-service", () => {
 
         test("throws BadRequestError when model provider incompatible with framework", async () => {
           const testUserId = `model-provider-mismatch-${Date.now()}`;
-          const testScopeId = randomUUID();
-          createdScopeIds.add(testScopeId);
-          const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
 
-          await globalThis.services.db.insert(scopes).values({
-            id: testScopeId,
-            slug: `mp-mismatch-${Date.now()}`,
-            type: "personal",
-            ownerId: testUserId,
+          // Create scope, OpenAI model provider, and claude-code compose via API
+          mockClerk({ userId: testUserId });
+          const scopeData = await ctx.createScope(`mp-mismatch-${Date.now()}`);
+          createdScopeIds.add(scopeData.id);
+          await ctx.createModelProvider("openai-api-key", "test-openai-key");
+          const composeData = await ctx.createCompose("test-compose-mismatch", {
+            framework: "claude-code", // claude-code agent
           });
+          mockClerk({ userId: TEST_USER_ID });
 
-          // Create credential for OpenAI
-          const [credential] = await globalThis.services.db
-            .insert(credentials)
-            .values({
-              scopeId: testScopeId,
-              name: "OPENAI_API_KEY",
-              encryptedValue: encryptCredentialValue(
-                "test-openai-key",
-                encryptionKey,
-              ),
-            })
-            .returning();
-
-          // Create OpenAI model provider
-          await globalThis.services.db.insert(modelProviders).values({
-            scopeId: testScopeId,
-            type: "openai-api-key",
-            credentialId: credential!.id,
-            isDefault: false,
-          });
-
-          // Create claude-code compose (incompatible with openai-api-key)
-          const [compose] = await globalThis.services.db
-            .insert(agentComposes)
-            .values({
-              userId: testUserId,
-              scopeId: testScopeId,
-              name: "test-compose-mismatch",
-            })
-            .returning();
-
-          const versionId = `test-version-mismatch-${Date.now()}`;
-          await globalThis.services.db.insert(agentComposeVersions).values({
-            id: versionId,
-            composeId: compose!.id,
-            content: {
-              agents: {
-                "test-agent": {
-                  framework: "claude-code", // claude-code agent
-                  working_dir: "/workspace",
-                  environment: {},
+          // Remove auto-created ANTHROPIC_API_KEY to trigger model provider lookup
+          await globalThis.services.db
+            .update(agentComposeVersions)
+            .set({
+              content: {
+                agents: {
+                  "test-compose-mismatch": {
+                    framework: "claude-code",
+                    working_dir: "/home/user/workspace",
+                    environment: {},
+                  },
                 },
               },
-            },
-            createdBy: testUserId,
-          });
+            })
+            .where(eq(agentComposeVersions.id, composeData.versionId));
 
           // Try to use OpenAI provider with claude-code framework
           await expect(
             runService.buildExecutionContext({
-              agentComposeVersionId: versionId,
+              agentComposeVersionId: composeData.versionId,
               prompt: "test prompt",
               runId: `run-mismatch-${Date.now()}`,
               sandboxToken: "token",
@@ -1249,7 +1173,7 @@ describe("run-service", () => {
 
           await expect(
             runService.buildExecutionContext({
-              agentComposeVersionId: versionId,
+              agentComposeVersionId: composeData.versionId,
               prompt: "test prompt",
               runId: `run-mismatch-2-${Date.now()}`,
               sandboxToken: "token",
@@ -1261,66 +1185,43 @@ describe("run-service", () => {
 
         test("auto-injects model provider credential into environment when no environment block exists", async () => {
           const testUserId = `model-provider-auto-inject-${Date.now()}`;
-          const testScopeId = randomUUID();
-          createdScopeIds.add(testScopeId);
-          const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
 
-          await globalThis.services.db.insert(scopes).values({
-            id: testScopeId,
-            slug: `mp-auto-inject-${Date.now()}`,
-            type: "personal",
-            ownerId: testUserId,
-          });
+          // Create scope and model provider via API
+          mockClerk({ userId: testUserId });
+          const scopeData = await ctx.createScope(
+            `mp-auto-inject-${Date.now()}`,
+          );
+          createdScopeIds.add(scopeData.id);
+          await ctx.createModelProvider(
+            "claude-code-oauth-token",
+            "test-oauth-token-value",
+          );
+          const composeData = await ctx.createCompose(
+            "test-compose-no-env-block",
+            {
+              framework: "claude-code",
+            },
+          );
+          mockClerk({ userId: TEST_USER_ID });
 
-          // Create credential for the default model provider
-          const [credential] = await globalThis.services.db
-            .insert(credentials)
-            .values({
-              scopeId: testScopeId,
-              name: "CLAUDE_CODE_OAUTH_TOKEN",
-              encryptedValue: encryptCredentialValue(
-                "test-oauth-token-value",
-                encryptionKey,
-              ),
-            })
-            .returning();
-
-          // Create default model provider
-          await globalThis.services.db.insert(modelProviders).values({
-            scopeId: testScopeId,
-            type: "claude-code-oauth-token",
-            credentialId: credential!.id,
-            isDefault: true,
-          });
-
-          // Create compose WITHOUT any environment block (the bug scenario)
-          const [compose] = await globalThis.services.db
-            .insert(agentComposes)
-            .values({
-              userId: testUserId,
-              scopeId: testScopeId,
-              name: "test-compose-no-env-block",
-            })
-            .returning();
-
-          const versionId = `test-version-no-env-${Date.now()}`;
-          await globalThis.services.db.insert(agentComposeVersions).values({
-            id: versionId,
-            composeId: compose!.id,
-            content: {
-              agents: {
-                "test-agent": {
-                  framework: "claude-code",
-                  working_dir: "/workspace",
-                  // NO environment block at all!
+          // Remove environment block completely (the bug scenario)
+          await globalThis.services.db
+            .update(agentComposeVersions)
+            .set({
+              content: {
+                agents: {
+                  "test-compose-no-env-block": {
+                    framework: "claude-code",
+                    working_dir: "/home/user/workspace",
+                    // NO environment block at all!
+                  },
                 },
               },
-            },
-            createdBy: testUserId,
-          });
+            })
+            .where(eq(agentComposeVersions.id, composeData.versionId));
 
           const context = await runService.buildExecutionContext({
-            agentComposeVersionId: versionId,
+            agentComposeVersionId: composeData.versionId,
             prompt: "test prompt",
             runId: `run-auto-inject-${Date.now()}`,
             sandboxToken: "token",
@@ -1341,67 +1242,30 @@ describe("run-service", () => {
 
         test("user-defined environment takes precedence over auto-injected credential", async () => {
           const testUserId = `model-provider-precedence-${Date.now()}`;
-          const testScopeId = randomUUID();
-          createdScopeIds.add(testScopeId);
-          const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
 
-          await globalThis.services.db.insert(scopes).values({
-            id: testScopeId,
-            slug: `mp-precedence-${Date.now()}`,
-            type: "personal",
-            ownerId: testUserId,
-          });
-
-          // Create credential for the default model provider
-          const [credential] = await globalThis.services.db
-            .insert(credentials)
-            .values({
-              scopeId: testScopeId,
-              name: "ANTHROPIC_API_KEY",
-              encryptedValue: encryptCredentialValue(
-                "model-provider-key",
-                encryptionKey,
-              ),
-            })
-            .returning();
-
-          await globalThis.services.db.insert(modelProviders).values({
-            scopeId: testScopeId,
-            type: "anthropic-api-key",
-            credentialId: credential!.id,
-            isDefault: true,
-          });
-
-          // Create compose WITH explicit environment value
-          const [compose] = await globalThis.services.db
-            .insert(agentComposes)
-            .values({
-              userId: testUserId,
-              scopeId: testScopeId,
-              name: "test-compose-user-precedence",
-            })
-            .returning();
-
-          const versionId = `test-version-precedence-${Date.now()}`;
-          await globalThis.services.db.insert(agentComposeVersions).values({
-            id: versionId,
-            composeId: compose!.id,
-            content: {
-              agents: {
-                "test-agent": {
-                  framework: "claude-code",
-                  working_dir: "/workspace",
-                  environment: {
-                    ANTHROPIC_API_KEY: "user-defined-key", // User explicitly sets this
-                  },
-                },
+          // Create scope, model provider, and compose via API
+          mockClerk({ userId: testUserId });
+          const scopeData = await ctx.createScope(
+            `mp-precedence-${Date.now()}`,
+          );
+          createdScopeIds.add(scopeData.id);
+          await ctx.createModelProvider(
+            "anthropic-api-key",
+            "model-provider-key",
+          );
+          const composeData = await ctx.createCompose(
+            "test-compose-user-precedence",
+            {
+              framework: "claude-code",
+              environment: {
+                ANTHROPIC_API_KEY: "user-defined-key", // User explicitly sets this
               },
             },
-            createdBy: testUserId,
-          });
+          );
+          mockClerk({ userId: TEST_USER_ID });
 
           const context = await runService.buildExecutionContext({
-            agentComposeVersionId: versionId,
+            agentComposeVersionId: composeData.versionId,
             prompt: "test prompt",
             runId: `run-precedence-${Date.now()}`,
             sandboxToken: "token",

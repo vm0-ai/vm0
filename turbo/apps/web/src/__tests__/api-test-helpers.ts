@@ -156,6 +156,7 @@ export interface TestDataContext {
     type: string,
     credentialValue: string,
   ) => Promise<{ id: string; type: string }>;
+  setModelProviderDefault: (type: string) => Promise<void>;
 }
 
 /**
@@ -186,6 +187,10 @@ export function createTestDataContext(routes: {
   composeRoute: (req: NextRequest) => Promise<Response>;
   credentialRoute: (req: NextRequest) => Promise<Response>;
   modelProviderRoute: (req: NextRequest) => Promise<Response>;
+  setDefaultRoute?: (
+    req: NextRequest,
+    context: { params: Promise<{ type: string }> },
+  ) => Promise<Response>;
 }): TestDataContext {
   return {
     async createScope(slug: string) {
@@ -263,6 +268,30 @@ export function createTestDataContext(routes: {
       }
       const data = await response.json();
       return data.provider;
+    },
+
+    async setModelProviderDefault(type) {
+      if (!routes.setDefaultRoute) {
+        throw new Error(
+          "setDefaultRoute not provided to createTestDataContext",
+        );
+      }
+      const request = createTestRequest(
+        `http://localhost:3000/api/model-providers/${type}/set-default`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+      const response = await routes.setDefaultRoute(request, {
+        params: Promise.resolve({ type }),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(
+          `Failed to set model provider default: ${error.error?.message || response.status}`,
+        );
+      }
     },
   };
 }
