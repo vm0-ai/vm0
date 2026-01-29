@@ -381,6 +381,34 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         vi.unstubAllEnvs();
       }
     });
+
+    it("should fall back to default limit when CONCURRENT_RUN_LIMIT is invalid", async () => {
+      vi.stubEnv("CONCURRENT_RUN_LIMIT", "invalid");
+
+      try {
+        // First run should succeed (default limit is 1)
+        const run1 = await createInternalRun(testComposeId, "First run");
+        expect(run1.status).toBe("running");
+
+        // Second run should fail with 429 (default limit of 1)
+        const request = createTestRequest(
+          "http://localhost:3000/api/agent/runs",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentComposeId: testComposeId,
+              prompt: "Second run",
+            }),
+          },
+        );
+
+        const response = await POST(request);
+        expect(response.status).toBe(429);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
   });
 
   describe("Model Provider Injection", () => {
@@ -454,6 +482,87 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       expect(data.status).toBe("running");
     });
+
+    it("should skip injection when compose has explicit OPENAI_API_KEY (codex)", async () => {
+      // Create compose with OPENAI_API_KEY for codex framework
+      const { composeId } = await createTestCompose(`codex-${Date.now()}`, {
+        overrides: {
+          framework: "codex",
+          environment: { OPENAI_API_KEY: "explicit-openai-key" },
+        },
+      });
+
+      const data = await createInternalRun(composeId, "Test codex with key");
+
+      expect(data.status).toBe("running");
+    });
+
+    it("should skip injection when compose has CLAUDE_CODE_USE_FOUNDRY", async () => {
+      // Create compose with alternative auth method
+      const { composeId } = await createTestCompose(`foundry-${Date.now()}`, {
+        overrides: {
+          framework: "claude-code",
+          environment: { CLAUDE_CODE_USE_FOUNDRY: "1" },
+        },
+      });
+
+      const data = await createInternalRun(composeId, "Test with Foundry auth");
+
+      expect(data.status).toBe("running");
+    });
+
+    it("should fail when specified model provider type is invalid", async () => {
+      // Create compose without API key
+      const { composeId } = await createTestCompose(
+        `invalid-mp-${Date.now()}`,
+        {
+          skipDefaultApiKey: true,
+        },
+      );
+
+      const data = await createInternalRun(
+        composeId,
+        "Test with invalid provider",
+        {
+          modelProvider: "non-existent-provider",
+        },
+      );
+
+      // Route creates run first, then fails during preparation
+      expect(data.status).toBe("failed");
+
+      // Verify error was recorded
+      const [run] = await globalThis.services.db
+        .select()
+        .from(agentRuns)
+        .where(eq(agentRuns.id, data.runId))
+        .limit(1);
+
+      expect(run!.error).toMatch(/model provider/i);
+    });
+
+    it("should auto-inject model provider when no environment block exists", async () => {
+      // Create model provider
+      await createTestModelProvider(
+        "claude-code-oauth-token",
+        "test-oauth-token",
+      );
+
+      // Create compose with no environment block at all
+      const { composeId } = await createTestCompose(
+        `no-env-block-${Date.now()}`,
+        {
+          noEnvironmentBlock: true,
+        },
+      );
+
+      const data = await createInternalRun(
+        composeId,
+        "Test auto-inject no env block",
+      );
+
+      expect(data.status).toBe("running");
+    });
   });
 
   describe("Session Continue", () => {
@@ -518,6 +627,42 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       // Returns 404 for security (don't leak session existence)
       expect(response.status).toBe(404);
       expect(data.error.message).toMatch(/session/i);
+    });
+
+    it("should return 404 when session has no conversation history", async () => {
+      // Create session without any conversation (no checkpoint created yet)
+      const { composeId, versionId } = await createTestCompose(
+        `no-conv-${Date.now()}`,
+      );
+
+      const { AgentSessionService } = await import(
+        "../../../../../src/lib/agent-session/agent-session-service"
+      );
+      const sessionService = new AgentSessionService();
+      const session = await sessionService.create({
+        userId: user.userId,
+        agentComposeId: composeId,
+        agentComposeVersionId: versionId,
+        artifactName: "test-artifact-no-conversation",
+      });
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: session.id,
+            prompt: "Continue session without conversation",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(data.error.message).toMatch(/conversation/i);
     });
   });
 });
