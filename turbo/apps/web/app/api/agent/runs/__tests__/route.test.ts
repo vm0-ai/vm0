@@ -14,7 +14,6 @@ import {
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
-  setupUser,
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
@@ -36,7 +35,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     context.setupMocks();
 
     // Create unique user for this test
-    user = await setupUser();
+    user = await context.setupUser();
 
     // Create test compose
     const { composeId } = await createTestCompose(`agent-${Date.now()}`);
@@ -540,7 +539,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
     it("should return 404 when session belongs to different user (security)", async () => {
       // Create another user with their own compose and run
-      const otherUser = await setupUser({ prefix: "other" });
+      const otherUser = await context.setupUser({ prefix: "other" });
       const { composeId: otherComposeId } = await createTestCompose(
         `other-agent-${Date.now()}`,
       );

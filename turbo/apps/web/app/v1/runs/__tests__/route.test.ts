@@ -13,7 +13,6 @@ import {
 } from "../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
-  setupUser,
   type UserContext,
 } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
@@ -59,7 +58,7 @@ describe("Public API v1 - Runs Endpoints", () => {
     context.setupMocks();
 
     // Create unique user for this test
-    user = await setupUser();
+    user = await context.setupUser();
 
     // Create test agent with compose
     testAgentName = `agent-${Date.now()}`;
@@ -162,7 +161,7 @@ describe("Public API v1 - Runs Endpoints", () => {
 
     it("should return 404 for run belonging to another user", async () => {
       // Create another user and their run
-      const otherUser = await setupUser({ prefix: "other-user" });
+      const otherUser = await context.setupUser({ prefix: "other-user" });
       const { composeId: otherComposeId } = await createTestCompose(
         `other-agent-${Date.now()}`,
       );

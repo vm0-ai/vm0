@@ -9,8 +9,8 @@
  *   const context = testContext();
  *
  *   test("my test", async () => {
- *     const { mocks } = context;  // Lazy initialization
- *     const user = await setupUser();
+ *     context.setupMocks();  // Setup E2B, S3, Axiom mocks
+ *     const user = await context.setupUser();
  *     // user.userId and user.scopeId are unique to this test
  *     // No cleanup needed - data is isolated by unique IDs
  *   });
@@ -75,20 +75,21 @@ interface MockHelpers {
   axiom: AxiomMocks;
 }
 
+interface SetupUserOptions {
+  /** Optional prefix for the user ID (default: "test-user") */
+  prefix?: string;
+}
+
 interface TestContext {
   readonly signal: AbortSignal;
   readonly mocks: MockHelpers;
   setupMocks(): MockHelpers;
+  setupUser(options?: SetupUserOptions): Promise<UserContext>;
 }
 
 export interface UserContext {
   readonly userId: string;
   readonly scopeId: string;
-}
-
-interface SetupUserOptions {
-  /** Optional prefix for the user ID (default: "test-user") */
-  prefix?: string;
 }
 
 /**
@@ -99,16 +100,17 @@ interface SetupUserOptions {
  * - signal: AbortSignal for cleanup handlers
  * - mocks: Lazy getter for E2B and S3 mocks
  * - setupMocks(): Explicit setup method (same effect as mocks getter)
+ * - setupUser(): Create isolated user context for the test
  *
  * Usage:
  *   describe("my tests", () => {
  *     const context = testContext();
  *
  *     test("test 1", async () => {
- *       const { mocks } = context;  // Lazy initialization
- *       const user = await setupUser();
+ *       context.setupMocks();
+ *       const user = await context.setupUser();
  *       // Customize mocks if needed:
- *       // mocks.e2b.sandbox.files.write.mockRejectedValue(new Error('fail'));
+ *       // context.mocks.e2b.sandbox.files.write.mockRejectedValue(new Error('fail'));
  *     });
  *   });
  */
@@ -198,6 +200,38 @@ export function testContext(): TestContext {
     mockHelpers = null;
   });
 
+  /**
+   * Creates an isolated user context for a single test.
+   * Each call creates a unique user ID and scope.
+   *
+   * Usage:
+   *   const user = await context.setupUser();
+   *   // user.userId is unique, e.g., "test-user-1706123456789-a1b2c3d4"
+   *   // user.scopeId is the created scope's ID
+   *
+   * The Clerk mock is automatically configured for this user.
+   */
+  async function setupUser({
+    prefix = "test-user",
+  }: SetupUserOptions = {}): Promise<UserContext> {
+    initServices();
+
+    // Generate unique user ID
+    const uniqueSuffix = `${Date.now()}-${randomUUID().slice(0, 8)}`;
+    const userId = `${prefix}-${uniqueSuffix}`;
+
+    // Mock Clerk for this user
+    mockClerk({ userId });
+
+    // Create scope via API
+    const scopeData = await createTestScope(`scope-${uniqueSuffix}`);
+
+    return {
+      userId,
+      scopeId: scopeData.id,
+    };
+  }
+
   return {
     get signal(): AbortSignal {
       return controller.signal;
@@ -208,37 +242,6 @@ export function testContext(): TestContext {
     setupMocks(): MockHelpers {
       return createMocks();
     },
-  };
-}
-
-/**
- * Creates an isolated user context for a single test.
- * Each call creates a unique user ID and scope.
- *
- * Usage:
- *   const user = await setupUser();
- *   // user.userId is unique, e.g., "test-user-1706123456789-a1b2c3d4"
- *   // user.scopeId is the created scope's ID
- *
- * The Clerk mock is automatically configured for this user.
- */
-export async function setupUser({
-  prefix = "test-user",
-}: SetupUserOptions = {}): Promise<UserContext> {
-  initServices();
-
-  // Generate unique user ID
-  const uniqueSuffix = `${Date.now()}-${randomUUID().slice(0, 8)}`;
-  const userId = `${prefix}-${uniqueSuffix}`;
-
-  // Mock Clerk for this user
-  mockClerk({ userId });
-
-  // Create scope via API
-  const scopeData = await createTestScope(`scope-${uniqueSuffix}`);
-
-  return {
-    userId,
-    scopeId: scopeData.id,
+    setupUser,
   };
 }
