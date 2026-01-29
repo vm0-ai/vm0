@@ -32,24 +32,16 @@ describe("run kill command", () => {
   describe("successful cancellation", () => {
     it("should cancel a running run", async () => {
       server.use(
-        http.post(`http://localhost:3000/v1/runs/${testRunId}/cancel`, () => {
-          return HttpResponse.json({
-            id: testRunId,
-            agentId: "agent-1",
-            agentName: "my-agent",
-            status: "cancelled",
-            prompt: "test prompt",
-            createdAt: new Date().toISOString(),
-            startedAt: new Date().toISOString(),
-            completedAt: new Date().toISOString(),
-            error: null,
-            executionTimeMs: 1000,
-            checkpointId: null,
-            sessionId: null,
-            artifactName: null,
-            artifactVersion: null,
-          });
-        }),
+        http.post(
+          `http://localhost:3000/api/agent/runs/${testRunId}/cancel`,
+          () => {
+            return HttpResponse.json({
+              id: testRunId,
+              status: "cancelled",
+              message: "Run cancelled successfully",
+            });
+          },
+        ),
       );
 
       await killCommand.parseAsync(["node", "cli", testRunId]);
@@ -63,23 +55,12 @@ describe("run kill command", () => {
       const pendingRunId = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
       server.use(
         http.post(
-          `http://localhost:3000/v1/runs/${pendingRunId}/cancel`,
+          `http://localhost:3000/api/agent/runs/${pendingRunId}/cancel`,
           () => {
             return HttpResponse.json({
               id: pendingRunId,
-              agentId: "agent-1",
-              agentName: "my-agent",
               status: "cancelled",
-              prompt: "test prompt",
-              createdAt: new Date().toISOString(),
-              startedAt: null,
-              completedAt: new Date().toISOString(),
-              error: null,
-              executionTimeMs: null,
-              checkpointId: null,
-              sessionId: null,
-              artifactName: null,
-              artifactVersion: null,
+              message: "Run cancelled successfully",
             });
           },
         ),
@@ -98,14 +79,13 @@ describe("run kill command", () => {
       const nonExistentId = "00000000-0000-0000-0000-000000000000";
       server.use(
         http.post(
-          `http://localhost:3000/v1/runs/${nonExistentId}/cancel`,
+          `http://localhost:3000/api/agent/runs/${nonExistentId}/cancel`,
           () => {
             return HttpResponse.json(
               {
                 error: {
-                  type: "not_found_error",
-                  code: "resource_not_found",
                   message: `No such run: '${nonExistentId}'`,
+                  code: "NOT_FOUND",
                 },
               },
               { status: 404 },
@@ -128,19 +108,21 @@ describe("run kill command", () => {
 
     it("should show error when run is already completed", async () => {
       server.use(
-        http.post(`http://localhost:3000/v1/runs/${testRunId}/cancel`, () => {
-          return HttpResponse.json(
-            {
-              error: {
-                type: "invalid_request_error",
-                code: "invalid_state",
-                message:
-                  "Run cannot be cancelled: current status is 'completed'",
+        http.post(
+          `http://localhost:3000/api/agent/runs/${testRunId}/cancel`,
+          () => {
+            return HttpResponse.json(
+              {
+                error: {
+                  message:
+                    "Run cannot be cancelled: current status is 'completed'",
+                  code: "BAD_REQUEST",
+                },
               },
-            },
-            { status: 400 },
-          );
-        }),
+              { status: 400 },
+            );
+          },
+        ),
       );
 
       await expect(async () => {
@@ -157,19 +139,21 @@ describe("run kill command", () => {
 
     it("should show error when run is already cancelled", async () => {
       server.use(
-        http.post(`http://localhost:3000/v1/runs/${testRunId}/cancel`, () => {
-          return HttpResponse.json(
-            {
-              error: {
-                type: "invalid_request_error",
-                code: "invalid_state",
-                message:
-                  "Run cannot be cancelled: current status is 'cancelled'",
+        http.post(
+          `http://localhost:3000/api/agent/runs/${testRunId}/cancel`,
+          () => {
+            return HttpResponse.json(
+              {
+                error: {
+                  message:
+                    "Run cannot be cancelled: current status is 'cancelled'",
+                  code: "BAD_REQUEST",
+                },
               },
-            },
-            { status: 400 },
-          );
-        }),
+              { status: 400 },
+            );
+          },
+        ),
       );
 
       await expect(async () => {
@@ -201,12 +185,15 @@ describe("run kill command", () => {
 
     it("should handle API errors gracefully", async () => {
       server.use(
-        http.post(`http://localhost:3000/v1/runs/${testRunId}/cancel`, () => {
-          return HttpResponse.json(
-            { error: { message: "Internal server error", code: "INTERNAL" } },
-            { status: 500 },
-          );
-        }),
+        http.post(
+          `http://localhost:3000/api/agent/runs/${testRunId}/cancel`,
+          () => {
+            return HttpResponse.json(
+              { error: { message: "Internal server error", code: "INTERNAL" } },
+              { status: 500 },
+            );
+          },
+        ),
       );
 
       await expect(async () => {

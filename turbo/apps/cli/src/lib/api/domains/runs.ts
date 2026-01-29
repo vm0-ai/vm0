@@ -2,30 +2,13 @@ import { initClient } from "@ts-rest/core";
 import {
   runsMainContract,
   runEventsContract,
-  publicRunsListContract,
-  publicRunCancelContract,
-  type PublicRun,
-  type PublicRunDetail,
-  type PublicRunStatus,
+  runsCancelContract,
+  type RunsListResponse,
+  type CancelRunResponse,
+  type RunStatus,
 } from "@vm0/core";
 import { getClientConfig, handleError } from "../core/client-factory";
 import type { CreateRunResponse, GetEventsResponse } from "../core/types";
-
-/**
- * Response type for listRuns
- */
-interface ListRunsResponse {
-  data: PublicRun[];
-  pagination: {
-    hasMore: boolean;
-    nextCursor: string | null;
-  };
-}
-
-/**
- * Response type for cancelRun
- */
-type CancelRunResponse = PublicRunDetail;
 
 /**
  * Create a run with unified request format
@@ -90,18 +73,16 @@ export async function getEvents(
  * List runs with optional status filter
  */
 export async function listRuns(params?: {
-  status?: PublicRunStatus;
+  status?: RunStatus;
   limit?: number;
-  cursor?: string;
-}): Promise<ListRunsResponse> {
+}): Promise<RunsListResponse> {
   const config = await getClientConfig();
-  const client = initClient(publicRunsListContract, config);
+  const client = initClient(runsMainContract, config);
 
   const result = await client.list({
     query: {
       status: params?.status,
       limit: params?.limit ?? 50,
-      cursor: params?.cursor,
     },
   });
 
@@ -117,7 +98,7 @@ export async function listRuns(params?: {
  */
 export async function cancelRun(runId: string): Promise<CancelRunResponse> {
   const config = await getClientConfig();
-  const client = initClient(publicRunCancelContract, config);
+  const client = initClient(runsCancelContract, config);
 
   const result = await client.cancel({
     params: { id: runId },

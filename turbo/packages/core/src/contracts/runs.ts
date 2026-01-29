@@ -120,10 +120,47 @@ const eventsResponseSchema = z.object({
 });
 
 /**
+ * Run list item schema
+ */
+const runListItemSchema = z.object({
+  id: z.string(),
+  agentName: z.string(),
+  status: runStatusSchema,
+  prompt: z.string(),
+  createdAt: z.string(),
+  startedAt: z.string().nullable(),
+});
+
+/**
+ * Runs list response schema
+ */
+const runsListResponseSchema = z.object({
+  runs: z.array(runListItemSchema),
+});
+
+/**
  * Runs main route contract (/api/agent/runs)
- * Handles POST create
+ * Handles GET list and POST create
  */
 export const runsMainContract = c.router({
+  /**
+   * GET /api/agent/runs
+   * List agent runs (pending and running by default)
+   */
+  list: {
+    method: "GET",
+    path: "/api/agent/runs",
+    headers: authHeadersSchema,
+    query: z.object({
+      status: runStatusSchema.optional(),
+      limit: z.coerce.number().min(1).max(100).default(50),
+    }),
+    responses: {
+      200: runsListResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "List agent runs",
+  },
   /**
    * POST /api/agent/runs
    * Create and execute a new agent run
@@ -166,6 +203,41 @@ export const runsByIdContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Get agent run by ID",
+  },
+});
+
+/**
+ * Cancel run response schema
+ */
+const cancelRunResponseSchema = z.object({
+  id: z.string(),
+  status: z.literal("cancelled"),
+  message: z.string(),
+});
+
+/**
+ * Runs cancel route contract (/api/agent/runs/[id]/cancel)
+ */
+export const runsCancelContract = c.router({
+  /**
+   * POST /api/agent/runs/:id/cancel
+   * Cancel a pending or running run
+   */
+  cancel: {
+    method: "POST",
+    path: "/api/agent/runs/:id/cancel",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      id: z.string().min(1, "Run ID is required"),
+    }),
+    body: z.undefined(),
+    responses: {
+      200: cancelRunResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Cancel a pending or running run",
   },
 });
 
@@ -417,6 +489,7 @@ export const runNetworkLogsContract = c.router({
 
 export type RunsMainContract = typeof runsMainContract;
 export type RunsByIdContract = typeof runsByIdContract;
+export type RunsCancelContract = typeof runsCancelContract;
 export type RunEventsContract = typeof runEventsContract;
 export type RunTelemetryContract = typeof runTelemetryContract;
 export type RunSystemLogContract = typeof runSystemLogContract;
@@ -430,6 +503,9 @@ export {
   unifiedRunRequestSchema,
   createRunResponseSchema,
   getRunResponseSchema,
+  runListItemSchema,
+  runsListResponseSchema,
+  cancelRunResponseSchema,
   runEventSchema,
   runResultSchema,
   runStateSchema,
@@ -450,6 +526,9 @@ export type RunState = z.infer<typeof runStateSchema>;
 export type RunEvent = z.infer<typeof runEventSchema>;
 export type CreateRunResponse = z.infer<typeof createRunResponseSchema>;
 export type GetRunResponse = z.infer<typeof getRunResponseSchema>;
+export type RunListItem = z.infer<typeof runListItemSchema>;
+export type RunsListResponse = z.infer<typeof runsListResponseSchema>;
+export type CancelRunResponse = z.infer<typeof cancelRunResponseSchema>;
 export type EventsResponse = z.infer<typeof eventsResponseSchema>;
 export type TelemetryMetric = z.infer<typeof telemetryMetricSchema>;
 export type TelemetryResponse = z.infer<typeof telemetryResponseSchema>;

@@ -9,13 +9,11 @@ export const listCommand = new Command()
   .description("List active runs (pending and running)")
   .action(async () => {
     try {
-      // Fetch runs without status filter, then filter client-side
+      // Fetch pending and running runs (internal API filters by default)
       const response = await listRuns({ limit: 100 });
 
-      // Filter to only pending and running
-      const activeRuns = response.data.filter(
-        (run) => run.status === "pending" || run.status === "running",
-      );
+      // The internal API already filters to pending/running by default
+      const activeRuns = response.runs;
 
       if (activeRuns.length === 0) {
         console.log(chalk.dim("No active runs"));

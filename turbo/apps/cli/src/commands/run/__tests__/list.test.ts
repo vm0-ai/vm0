@@ -30,34 +30,26 @@ describe("run list command", () => {
   describe("successful listing", () => {
     it("should display active runs in table format", async () => {
       server.use(
-        http.get("http://localhost:3000/v1/runs", () => {
+        http.get("http://localhost:3000/api/agent/runs", () => {
           return HttpResponse.json({
-            data: [
+            runs: [
               {
                 id: "550e8400-e29b-41d4-a716-446655440000",
-                agentId: "agent-1",
                 agentName: "my-agent",
                 status: "running",
                 prompt: "test prompt",
                 createdAt: new Date().toISOString(),
                 startedAt: new Date().toISOString(),
-                completedAt: null,
               },
               {
                 id: "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
-                agentId: "agent-2",
                 agentName: "data-analyzer",
                 status: "pending",
                 prompt: "analyze data",
                 createdAt: new Date().toISOString(),
                 startedAt: null,
-                completedAt: null,
               },
             ],
-            pagination: {
-              hasMore: false,
-              nextCursor: null,
-            },
           });
         }),
       );
@@ -99,46 +91,21 @@ describe("run list command", () => {
       );
     });
 
-    it("should filter out completed runs", async () => {
+    it("should display only pending/running runs (server-side filtering)", async () => {
       server.use(
-        http.get("http://localhost:3000/v1/runs", () => {
+        http.get("http://localhost:3000/api/agent/runs", () => {
+          // Internal API returns only pending/running runs by default
           return HttpResponse.json({
-            data: [
+            runs: [
               {
                 id: "run-1",
-                agentId: "agent-1",
                 agentName: "my-agent",
                 status: "running",
                 prompt: "test",
                 createdAt: new Date().toISOString(),
                 startedAt: new Date().toISOString(),
-                completedAt: null,
-              },
-              {
-                id: "run-2",
-                agentId: "agent-2",
-                agentName: "completed-agent",
-                status: "completed",
-                prompt: "test",
-                createdAt: new Date().toISOString(),
-                startedAt: new Date().toISOString(),
-                completedAt: new Date().toISOString(),
-              },
-              {
-                id: "run-3",
-                agentId: "agent-3",
-                agentName: "failed-agent",
-                status: "failed",
-                prompt: "test",
-                createdAt: new Date().toISOString(),
-                startedAt: new Date().toISOString(),
-                completedAt: new Date().toISOString(),
               },
             ],
-            pagination: {
-              hasMore: false,
-              nextCursor: null,
-            },
           });
         }),
       );
@@ -149,53 +116,13 @@ describe("run list command", () => {
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("my-agent"),
       );
-
-      // Should not show completed or failed runs
-      const allCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(allCalls).not.toContain("completed-agent");
-      expect(allCalls).not.toContain("failed-agent");
-    });
-
-    it("should show 'No active runs' when no pending/running runs", async () => {
-      server.use(
-        http.get("http://localhost:3000/v1/runs", () => {
-          return HttpResponse.json({
-            data: [
-              {
-                id: "run-1",
-                agentId: "agent-1",
-                agentName: "completed-agent",
-                status: "completed",
-                prompt: "test",
-                createdAt: new Date().toISOString(),
-                startedAt: new Date().toISOString(),
-                completedAt: new Date().toISOString(),
-              },
-            ],
-            pagination: {
-              hasMore: false,
-              nextCursor: null,
-            },
-          });
-        }),
-      );
-
-      await listCommand.parseAsync(["node", "cli"]);
-
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("No active runs"),
-      );
     });
 
     it("should show 'No active runs' when list is empty", async () => {
       server.use(
-        http.get("http://localhost:3000/v1/runs", () => {
+        http.get("http://localhost:3000/api/agent/runs", () => {
           return HttpResponse.json({
-            data: [],
-            pagination: {
-              hasMore: false,
-              nextCursor: null,
-            },
+            runs: [],
           });
         }),
       );
@@ -226,7 +153,7 @@ describe("run list command", () => {
 
     it("should handle API errors gracefully", async () => {
       server.use(
-        http.get("http://localhost:3000/v1/runs", () => {
+        http.get("http://localhost:3000/api/agent/runs", () => {
           return HttpResponse.json(
             { error: { message: "Internal server error", code: "INTERNAL" } },
             { status: 500 },

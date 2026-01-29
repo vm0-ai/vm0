@@ -10,7 +10,7 @@ import {
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, desc } from "drizzle-orm";
 import { runService } from "../../../../src/lib/run";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { generateSandboxToken } from "../../../../src/lib/auth/sandbox-token";
@@ -23,6 +23,92 @@ import { ConcurrentRunLimitError } from "../../../../src/lib/errors";
 const log = logger("api:runs");
 
 const router = tsr.router(runsMainContract, {
+  list: async ({ query, headers }) => {
+    initServices();
+
+    const userId = await getUserId(headers.authorization);
+    if (!userId) {
+      return {
+        status: 401 as const,
+        body: {
+          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        },
+      };
+    }
+
+    // Build query conditions
+    const conditions = [eq(agentRuns.userId, userId)];
+
+    // Filter by status if provided, otherwise return pending and running
+    if (query.status) {
+      conditions.push(eq(agentRuns.status, query.status));
+    } else {
+      conditions.push(inArray(agentRuns.status, ["pending", "running"]));
+    }
+
+    // Query runs with compose name
+    const runs = await globalThis.services.db
+      .select({
+        id: agentRuns.id,
+        status: agentRuns.status,
+        prompt: agentRuns.prompt,
+        createdAt: agentRuns.createdAt,
+        startedAt: agentRuns.startedAt,
+        agentComposeVersionId: agentRuns.agentComposeVersionId,
+      })
+      .from(agentRuns)
+      .where(and(...conditions))
+      .orderBy(desc(agentRuns.createdAt))
+      .limit(query.limit);
+
+    // Get compose names for all runs
+    const versionIds = [...new Set(runs.map((r) => r.agentComposeVersionId))];
+    const versionToCompose = new Map<string, string>();
+
+    if (versionIds.length > 0) {
+      const versions = await globalThis.services.db
+        .select({
+          id: agentComposeVersions.id,
+          composeId: agentComposeVersions.composeId,
+        })
+        .from(agentComposeVersions)
+        .where(inArray(agentComposeVersions.id, versionIds));
+
+      const composeIds = [...new Set(versions.map((v) => v.composeId))];
+      if (composeIds.length > 0) {
+        const composes = await globalThis.services.db
+          .select({
+            id: agentComposes.id,
+            name: agentComposes.name,
+          })
+          .from(agentComposes)
+          .where(inArray(agentComposes.id, composeIds));
+
+        const composeNameMap = new Map(composes.map((c) => [c.id, c.name]));
+        for (const version of versions) {
+          const composeName = composeNameMap.get(version.composeId);
+          if (composeName) {
+            versionToCompose.set(version.id, composeName);
+          }
+        }
+      }
+    }
+
+    return {
+      status: 200 as const,
+      body: {
+        runs: runs.map((run) => ({
+          id: run.id,
+          agentName:
+            versionToCompose.get(run.agentComposeVersionId) || "unknown",
+          status: run.status,
+          prompt: run.prompt,
+          createdAt: run.createdAt.toISOString(),
+          startedAt: run.startedAt?.toISOString() ?? null,
+        })),
+      },
+    };
+  },
   // eslint-disable-next-line complexity -- TODO: refactor complex function
   create: async ({ body, headers }) => {
     initServices();
@@ -484,4 +570,4 @@ const handler = createHandler(runsMainContract, router, {
   errorHandler,
 });
 
-export { handler as POST };
+export { handler as GET, handler as POST };
