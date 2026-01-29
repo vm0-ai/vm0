@@ -1,5 +1,17 @@
 # Changelog
 
+## [11.6.0](https://github.com/vm0-ai/vm0/compare/web-v11.5.0...web-v11.6.0) (2026-01-29)
+
+
+### Features
+
+* **web:** add install.sh for curl-based cli installation ([#1846](https://github.com/vm0-ai/vm0/issues/1846)) ([cf7a254](https://github.com/vm0-ai/vm0/commit/cf7a2540582ad55e70460f929f34a259fcc80c5b))
+
+
+### Bug Fixes
+
+* **web:** kill e2b sandbox when cancelling runs ([#1840](https://github.com/vm0-ai/vm0/issues/1840)) ([2af5ac7](https://github.com/vm0-ai/vm0/commit/2af5ac70ea95ec9b13364c922c14b717dedc9ae1))
+
 ## [11.5.0](https://github.com/vm0-ai/vm0/compare/web-v11.4.1...web-v11.5.0) (2026-01-29)
 
 

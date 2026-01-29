@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.4.1](https://github.com/vm0-ai/vm0/compare/cli-v9.4.0...cli-v9.4.1) (2026-01-29)
+
+
+### Bug Fixes
+
+* **web:** kill e2b sandbox when cancelling runs ([#1840](https://github.com/vm0-ai/vm0/issues/1840)) ([2af5ac7](https://github.com/vm0-ai/vm0/commit/2af5ac70ea95ec9b13364c922c14b717dedc9ae1))
+
 ## [9.4.0](https://github.com/vm0-ai/vm0/compare/cli-v9.3.1...cli-v9.4.0) (2026-01-29)
 
 
