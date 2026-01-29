@@ -35,7 +35,7 @@ export function renderOnboardWelcome(): void {
     "",
     "Welcome to VM0!",
     "",
-    "Let's set up your first agent.",
+    "Let's create your first agent.",
     "",
   ]);
 }
