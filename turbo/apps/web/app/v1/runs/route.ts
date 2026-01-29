@@ -128,6 +128,7 @@ const router = tsr.router(publicRunsListContract, {
 
   // eslint-disable-next-line complexity -- TODO: refactor complex function
   create: async ({ body, headers }) => {
+    const apiStartTime = Date.now();
     initServices();
 
     const auth = await authenticatePublicApi(headers.authorization);
@@ -360,6 +361,7 @@ const router = tsr.router(publicRunsListContract, {
       agentName: agentCompose?.name,
       resumedFromCheckpointId: body.checkpointId,
       continuedFromSessionId: body.sessionId,
+      apiStartTime,
     });
 
     const result = await runService.prepareAndDispatch(context);

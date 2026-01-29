@@ -183,6 +183,7 @@ const router = tsr.router(runnersJobClaimContract, {
         cliAgentType: storedContext.cliAgentType,
         experimentalFirewall: storedContext.experimentalFirewall,
         debugNoMockClaude: storedContext.debugNoMockClaude,
+        apiStartTime: storedContext.apiStartTime,
       },
     };
   },

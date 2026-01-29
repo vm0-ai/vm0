@@ -246,6 +246,9 @@ export async function prepareForExecution(
 
     // Debug flag
     debugNoMockClaude: context.debugNoMockClaude || false,
+
+    // API start time for E2E timing metrics
+    apiStartTime: context.apiStartTime ?? null,
   };
 
   log.debug(`PreparedContext built for run ${context.runId}`);

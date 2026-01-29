@@ -48,7 +48,7 @@ const router = tsr.router(webhookTelemetryContract, {
     // Note: secrets are no longer stored in DB - masking is done client-side
     const selectStart = Date.now();
     const [run] = await globalThis.services.db
-      .select({ id: agentRuns.id })
+      .select({ id: agentRuns.id, sandboxId: agentRuns.sandboxId })
       .from(agentRuns)
       .where(and(eq(agentRuns.id, body.runId), eq(agentRuns.userId, userId)))
       .limit(1);
@@ -138,12 +138,14 @@ const router = tsr.router(webhookTelemetryContract, {
     }
 
     // Record sandbox internal operations as OpenTelemetry metrics (to sandbox-metric-{env} dataset)
-    // Note: Currently only runner sandbox sends internal operations. E2B support can be added later.
     if (body.sandboxOperations && body.sandboxOperations.length > 0) {
+      // Determine sandbox type: E2B sets sandboxId, Runner does not
+      const sandboxType = run.sandboxId ? "e2b" : "runner";
+
       for (const op of body.sandboxOperations) {
         recordSandboxInternalOperation({
           actionType: op.action_type,
-          sandboxType: "runner",
+          sandboxType,
           durationMs: op.duration_ms,
           success: op.success,
         });

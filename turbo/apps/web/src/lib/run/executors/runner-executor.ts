@@ -54,6 +54,7 @@ class RunnerExecutor implements Executor {
       cliAgentType: context.cliAgentType,
       experimentalFirewall: context.experimentalFirewall ?? undefined,
       debugNoMockClaude: context.debugNoMockClaude || undefined,
+      apiStartTime: context.apiStartTime ?? undefined,
     };
 
     // Insert into runner job queue

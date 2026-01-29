@@ -28,6 +28,7 @@ import {
   AGENT_LOG_FILE,
   CLI_AGENT_TYPE,
   OPENAI_MODEL,
+  API_START_TIME,
   validateConfig,
   recordSandboxOp,
 } from "./lib/common.js";
@@ -150,6 +151,16 @@ async function cleanup(exitCode: number, errorMessage: string): Promise<void> {
  */
 // eslint-disable-next-line complexity -- TODO: refactor complex function
 async function run(): Promise<[number, string]> {
+  // Record API-to-agent E2E time (if API start timestamp is available)
+  if (API_START_TIME) {
+    const apiStartTime = parseInt(API_START_TIME, 10);
+    if (!isNaN(apiStartTime)) {
+      const e2eTime = Date.now() - apiStartTime;
+      recordSandboxOp("api_to_agent_start", e2eTime, true);
+      logInfo(`E2E time from API to agent start: ${e2eTime}ms`);
+    }
+  }
+
   // Validate configuration - throws if invalid
   validateConfig();
 

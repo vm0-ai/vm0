@@ -230,6 +230,8 @@ export interface BuildContextParams {
   debugNoMockClaude?: boolean;
   // Model provider for automatic credential injection
   modelProvider?: string;
+  // API start time for E2E timing metrics
+  apiStartTime?: number;
 }
 
 /**
@@ -451,5 +453,7 @@ export async function buildExecutionContext(
     continuedFromSessionId: params.continuedFromSessionId,
     // Debug flag
     debugNoMockClaude: params.debugNoMockClaude,
+    // API start time for E2E timing metrics
+    apiStartTime: params.apiStartTime,
   };
 }

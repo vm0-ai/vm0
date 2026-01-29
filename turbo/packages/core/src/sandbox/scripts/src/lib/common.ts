@@ -15,6 +15,9 @@ export const RESUME_SESSION_ID = process.env.VM0_RESUME_SESSION_ID ?? "";
 // CLI agent type - determines which CLI to invoke (claude-code or codex)
 export const CLI_AGENT_TYPE = process.env.CLI_AGENT_TYPE ?? "claude-code";
 
+// API start time (ms since epoch) - when the API request was received (for E2E timing)
+export const API_START_TIME = process.env.VM0_API_START_TIME ?? "";
+
 // OpenAI model override - used for OpenRouter/custom endpoints with Codex
 export const OPENAI_MODEL = process.env.OPENAI_MODEL ?? "";
 

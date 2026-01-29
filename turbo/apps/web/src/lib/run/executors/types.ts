@@ -52,6 +52,9 @@ export interface PreparedContext {
 
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude: boolean;
+
+  // API start time for E2E timing metrics
+  apiStartTime: number | null;
 }
 
 /**

@@ -240,6 +240,7 @@ class E2BExecutor implements Executor {
       VM0_API_TOKEN: context.sandboxToken,
       VM0_PROMPT: context.prompt,
       VM0_WORKING_DIR: context.workingDir,
+      VM0_API_START_TIME: context.apiStartTime?.toString() ?? "",
       CLI_AGENT_TYPE: context.cliAgentType,
     };
 
