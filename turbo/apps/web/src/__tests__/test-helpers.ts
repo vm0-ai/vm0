@@ -73,12 +73,13 @@ interface AxiomMocks {
 }
 
 /**
- * Combined mock helpers for E2B, S3, and Axiom
+ * Combined mock helpers for E2B, S3, Axiom, and Date
  */
 interface MockHelpers {
   e2b: E2bMocks;
   s3: S3Mocks;
   axiom: AxiomMocks;
+  dateNow: MockInstance<() => number>;
 }
 
 interface SetupUserOptions {
@@ -189,10 +190,18 @@ export function testContext(): TestContext {
       // Axiom not mocked, skip
     }
 
+    // Date.now mock - default implementation returns real time
+    // Tests can override with: context.mocks.dateNow.mockReturnValue(specificTime)
+    const originalDateNow = Date.now.bind(Date);
+    const dateNowMock = vi
+      .spyOn(Date, "now")
+      .mockImplementation(() => originalDateNow());
+
     const helpers: MockHelpers = {
       e2b: { sandbox: mockSandbox },
       s3: s3Mocks,
       axiom: axiomMocks,
+      dateNow: dateNowMock,
     };
     mockHelpers = helpers;
     return helpers;

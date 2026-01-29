@@ -23,7 +23,6 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
   const cronSecret = "test-cron-secret";
   let user: UserContext;
   let testComposeId: string;
-  let dateNowSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
     context.setupMocks();
@@ -38,7 +37,6 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
   });
 
   afterEach(() => {
-    dateNowSpy?.mockRestore();
     delete process.env.CRON_SECRET;
   });
 
@@ -144,9 +142,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       const { runId } = await createTestRun(testComposeId, "Test prompt");
 
       // Mock Date.now to return time 3 minutes in the future (past heartbeat timeout)
-      dateNowSpy = vi
-        .spyOn(Date, "now")
-        .mockReturnValue(runCreationTime + 3 * 60 * 1000);
+      context.mocks.dateNow.mockReturnValue(runCreationTime + 3 * 60 * 1000);
 
       const request = createTestRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
@@ -179,9 +175,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       await completeTestRun(user.userId, runId);
 
       // Mock Date.now to return time 10 minutes in the future
-      dateNowSpy = vi
-        .spyOn(Date, "now")
-        .mockReturnValue(runCreationTime + 10 * 60 * 1000);
+      context.mocks.dateNow.mockReturnValue(runCreationTime + 10 * 60 * 1000);
 
       const request = createTestRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
@@ -227,9 +221,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       );
 
       // Mock Date.now to return time 5 minutes in the future
-      dateNowSpy = vi
-        .spyOn(Date, "now")
-        .mockReturnValue(runCreationTime + 5 * 60 * 1000);
+      context.mocks.dateNow.mockReturnValue(runCreationTime + 5 * 60 * 1000);
 
       const request = createTestRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
@@ -261,9 +253,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       const { runId } = await createTestRun(testComposeId, "Test prompt");
 
       // Mock Date.now to return time 3 minutes in the future
-      dateNowSpy = vi
-        .spyOn(Date, "now")
-        .mockReturnValue(runCreationTime + 3 * 60 * 1000);
+      context.mocks.dateNow.mockReturnValue(runCreationTime + 3 * 60 * 1000);
 
       const request = createTestRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
@@ -295,9 +285,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       await createTestRun(testComposeId, "Test prompt");
 
       // Mock Date.now to return time 3 minutes in the future
-      dateNowSpy = vi
-        .spyOn(Date, "now")
-        .mockReturnValue(runCreationTime + 3 * 60 * 1000);
+      context.mocks.dateNow.mockReturnValue(runCreationTime + 3 * 60 * 1000);
 
       const request = createTestRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
