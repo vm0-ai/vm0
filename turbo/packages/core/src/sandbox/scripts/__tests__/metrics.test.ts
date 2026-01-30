@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import * as fs from "fs";
+import { vol } from "memfs";
 import { execSync } from "child_process";
 import {
   getCpuPercent,
@@ -8,13 +8,19 @@ import {
   collectMetrics,
 } from "../src/lib/metrics";
 
-// Mock the modules
-vi.mock("fs");
+// Use memfs for /proc/stat simulation
+vi.mock("fs", async () => {
+  const memfs = await import("memfs");
+  return memfs.fs;
+});
+
+// Keep execSync mock - shell commands cannot be simulated with memfs
 vi.mock("child_process");
 
 describe("metrics", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vol.reset();
   });
 
   afterEach(() => {
@@ -23,7 +29,6 @@ describe("metrics", () => {
 
   describe("getCpuPercent", () => {
     it("should parse /proc/stat and calculate CPU percentage", () => {
-      // Sample /proc/stat content
       // cpu  user nice system idle iowait irq softirq steal guest guest_nice
       // cpu  1000 100  500    2000  100    50  50      0     0     0
       // Total = 3800, Idle = 2000 + 100 = 2100
@@ -32,16 +37,15 @@ describe("metrics", () => {
 cpu0  500 50 250 1000 50 25 25 0 0 0
 cpu1  500 50 250 1000 50 25 25 0 0 0`;
 
-      vi.mocked(fs.readFileSync).mockReturnValue(procStat);
+      vol.fromJSON({ "/proc/stat": procStat });
 
       const result = getCpuPercent();
 
-      expect(fs.readFileSync).toHaveBeenCalledWith("/proc/stat", "utf-8");
       expect(result).toBeCloseTo(44.74, 1);
     });
 
     it("should return 0 for empty /proc/stat", () => {
-      vi.mocked(fs.readFileSync).mockReturnValue("");
+      vol.fromJSON({ "/proc/stat": "" });
 
       const result = getCpuPercent();
 
@@ -49,7 +53,7 @@ cpu1  500 50 250 1000 50 25 25 0 0 0`;
     });
 
     it("should return 0 when first line doesn't start with 'cpu'", () => {
-      vi.mocked(fs.readFileSync).mockReturnValue("invalid line\ncpu 1 2 3 4");
+      vol.fromJSON({ "/proc/stat": "invalid line\ncpu 1 2 3 4" });
 
       const result = getCpuPercent();
 
@@ -57,7 +61,7 @@ cpu1  500 50 250 1000 50 25 25 0 0 0`;
     });
 
     it("should return 0 when total is 0", () => {
-      vi.mocked(fs.readFileSync).mockReturnValue("cpu  0 0 0 0 0 0 0 0 0 0");
+      vol.fromJSON({ "/proc/stat": "cpu  0 0 0 0 0 0 0 0 0 0" });
 
       const result = getCpuPercent();
 
@@ -65,9 +69,8 @@ cpu1  500 50 250 1000 50 25 25 0 0 0`;
     });
 
     it("should return 0 on read error", () => {
-      vi.mocked(fs.readFileSync).mockImplementation(() => {
-        throw new Error("File not found");
-      });
+      // Don't create /proc/stat file
+      vol.fromJSON({});
 
       const result = getCpuPercent();
 
@@ -77,9 +80,9 @@ cpu1  500 50 250 1000 50 25 25 0 0 0`;
     it("should handle high CPU usage", () => {
       // idle=100, iowait=100, total=10000
       // CPU% = 100 * (1 - 200/10000) = 98%
-      vi.mocked(fs.readFileSync).mockReturnValue(
-        "cpu  5000 500 4000 100 100 100 100 50 25 25",
-      );
+      vol.fromJSON({
+        "/proc/stat": "cpu  5000 500 4000 100 100 100 100 50 25 25",
+      });
 
       const result = getCpuPercent();
 
@@ -87,10 +90,7 @@ cpu1  500 50 250 1000 50 25 25 0 0 0`;
     });
 
     it("should handle 0% CPU usage (all idle)", () => {
-      // All values are 0 except idle
-      vi.mocked(fs.readFileSync).mockReturnValue(
-        "cpu  0 0 0 10000 0 0 0 0 0 0",
-      );
+      vol.fromJSON({ "/proc/stat": "cpu  0 0 0 10000 0 0 0 0 0 0" });
 
       const result = getCpuPercent();
 
@@ -191,12 +191,8 @@ Swap:    4294967296           0  4294967296`;
 
   describe("collectMetrics", () => {
     it("should combine all metrics into single object", () => {
-      // Mock /proc/stat
-      vi.mocked(fs.readFileSync).mockReturnValue(
-        "cpu  1000 100 500 2000 100 50 50 0 0 0",
-      );
+      vol.fromJSON({ "/proc/stat": "cpu  1000 100 500 2000 100 50 50 0 0 0" });
 
-      // Mock free -b and df -B1
       vi.mocked(execSync).mockImplementation((cmd: string) => {
         if (cmd === "free -b") {
           return `              total        used        free      shared  buff/cache   available
@@ -220,14 +216,11 @@ Swap:             0           0           0`;
         disk_total: 100000000000,
       });
       expect(metrics.ts).toBeDefined();
-      // Verify timestamp is valid ISO format
       expect(new Date(metrics.ts).toISOString()).toBe(metrics.ts);
     });
 
     it("should return zeros when all sources fail", () => {
-      vi.mocked(fs.readFileSync).mockImplementation(() => {
-        throw new Error("File not found");
-      });
+      vol.fromJSON({});
       vi.mocked(execSync).mockImplementation(() => {
         throw new Error("Command failed");
       });
