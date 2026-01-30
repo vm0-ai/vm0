@@ -1,1 +1,1 @@
-export { LogDetailPage } from "./log-detail/index.tsx";
+export { LogDetailPage } from "./log-detail/log-detail.tsx";
