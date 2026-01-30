@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   formatTime,
   formatDuration,
@@ -118,6 +118,7 @@ describe("log-detail utils", () => {
     let container: HTMLDivElement;
 
     beforeEach(() => {
+      vi.clearAllMocks();
       container = document.createElement("div");
       container.id = EVENTS_CONTAINER_ID;
       container.style.height = "200px";
@@ -139,6 +140,10 @@ describe("log-detail utils", () => {
 
       // Mock scrollTo
       vi.spyOn(container, "scrollTo").mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      container.remove();
     });
 
     it("should do nothing when container is null", () => {
