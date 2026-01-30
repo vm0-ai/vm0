@@ -1,7 +1,13 @@
 /**
  * Runner mode for lifecycle management
+ *
+ * State transitions:
+ * - running -> stopping (SIGTERM/SIGINT received)
+ * - running -> draining (SIGUSR1 received)
+ * - draining -> stopping (all jobs completed)
+ * - stopping -> stopped (cleanup completed)
  */
-export type RunnerMode = "running" | "draining" | "stopped";
+export type RunnerMode = "running" | "draining" | "stopping" | "stopped";
 
 /**
  * Internal runner state shared across modules

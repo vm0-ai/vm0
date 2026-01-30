@@ -17,18 +17,19 @@ export function setupSignalHandlers(
   handlers: SignalHandlers,
 ): void {
   // Handle graceful shutdown (SIGINT, SIGTERM)
+  // Set to "stopping" first, "stopped" is set after cleanup completes
   process.on("SIGINT", () => {
     logger.log("\nShutting down...");
-    handlers.onShutdown();
-    state.mode = "stopped";
+    state.mode = "stopping";
     handlers.updateStatus();
+    handlers.onShutdown();
   });
 
   process.on("SIGTERM", () => {
     logger.log("\nShutting down...");
-    handlers.onShutdown();
-    state.mode = "stopped";
+    state.mode = "stopping";
     handlers.updateStatus();
+    handlers.onShutdown();
   });
 
   // Handle SIGUSR1 for maintenance/drain mode

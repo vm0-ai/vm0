@@ -72,6 +72,8 @@ export class Runner {
         // If no active jobs, shutdown immediately
         if (this.state.activeRuns.size === 0) {
           logger.log("[Maintenance] No active jobs, exiting immediately");
+          this.state.mode = "stopping";
+          this.updateStatus();
           this.resolveShutdown?.();
         }
       },
@@ -234,6 +236,8 @@ export class Runner {
             this.state.activeRuns.size === 0
           ) {
             logger.log("[Maintenance] All jobs completed, exiting");
+            this.state.mode = "stopping";
+            this.updateStatus();
             this.resolveShutdown?.();
             return;
           }
