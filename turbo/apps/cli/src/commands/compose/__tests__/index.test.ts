@@ -3,31 +3,61 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { composeCommand, getSecretsFromComposeContent } from "../index";
 import * as fs from "fs/promises";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as yaml from "yaml";
 import chalk from "chalk";
 
-// Mock uploadSkill since it uses git commands (external network call to GitHub)
-vi.mock("../../../lib/storage/system-storage", async (importOriginal) => {
+// Mock downloadGitHubSkill since it uses git commands (external system call)
+// This is the actual external boundary - git sparse-checkout via child_process.exec
+vi.mock("../../../lib/domain/github-skills", async (importOriginal) => {
   const original =
-    await importOriginal<
-      typeof import("../../../lib/storage/system-storage")
-    >();
+    await importOriginal<typeof import("../../../lib/domain/github-skills")>();
   return {
     ...original,
-    uploadSkill: vi.fn(),
-    uploadInstructions: vi.fn().mockResolvedValue({
-      name: "instructions",
-      versionId: "a".repeat(64),
-      action: "created",
-    }),
+    downloadGitHubSkill: vi.fn(),
   };
 });
 
-import { uploadSkill } from "../../../lib/storage/system-storage";
-const mockUploadSkill = vi.mocked(uploadSkill);
+import { downloadGitHubSkill } from "../../../lib/domain/github-skills";
+const mockDownloadGitHubSkill = vi.mocked(downloadGitHubSkill);
+
+/**
+ * Helper to create a mock skill directory with SKILL.md frontmatter.
+ * Returns the path to the skill directory.
+ */
+function createMockSkillDir(
+  destDir: string,
+  skillName: string,
+  frontmatter: { vm0_secrets?: string[]; vm0_vars?: string[] },
+): string {
+  const skillDir = path.join(destDir, skillName);
+  mkdirSync(skillDir, { recursive: true });
+
+  const frontmatterLines: string[] = [];
+  if (frontmatter.vm0_secrets?.length) {
+    frontmatterLines.push(
+      `vm0_secrets: [${frontmatter.vm0_secrets.map((s) => `"${s}"`).join(", ")}]`,
+    );
+  }
+  if (frontmatter.vm0_vars?.length) {
+    frontmatterLines.push(
+      `vm0_vars: [${frontmatter.vm0_vars.map((v) => `"${v}"`).join(", ")}]`,
+    );
+  }
+
+  const skillMd = `---
+${frontmatterLines.join("\n")}
+---
+
+# ${skillName}
+
+Mock skill for testing.
+`;
+  writeFileSync(path.join(skillDir, "SKILL.md"), skillMd);
+  return skillDir;
+}
 
 // Shared spies at file level
 const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -936,6 +966,27 @@ agents:
   });
 
   describe("skill frontmatter secret detection", () => {
+    // MSW handlers for storage upload APIs (prepareStorage, commitStorage)
+    // Using "existing: true" to skip actual S3 upload
+    const storageUploadHandlers = [
+      http.post("http://localhost:3000/api/storages/prepare", () => {
+        return HttpResponse.json({
+          versionId: "a".repeat(64),
+          existing: true, // Simulate deduplication to skip S3 upload
+        });
+      }),
+      http.post("http://localhost:3000/api/storages/commit", () => {
+        return HttpResponse.json({
+          success: true,
+          versionId: "a".repeat(64),
+          storageName: "test-storage",
+          size: 1000,
+          fileCount: 1,
+          deduplicated: true,
+        });
+      }),
+    ];
+
     describe("new secret marker", () => {
       it("should mark truly new secrets with (new) when HEAD has no secrets", async () => {
         await fs.writeFile(
@@ -948,17 +999,15 @@ agents:
       - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs`,
         );
 
-        mockUploadSkill.mockResolvedValue({
-          name: "agent-skills@elevenlabs",
-          versionId: "a".repeat(64),
-          action: "created",
-          skillName: "elevenlabs",
-          frontmatter: {
+        // Mock downloadGitHubSkill to create a skill directory with frontmatter
+        mockDownloadGitHubSkill.mockImplementation(async (parsed, destDir) => {
+          return createMockSkillDir(destDir, parsed.skillName, {
             vm0_secrets: ["ELEVENLABS_API_KEY"],
-          },
+          });
         });
 
         server.use(
+          ...storageUploadHandlers,
           http.get("http://localhost:3000/api/agent/composes", () => {
             return HttpResponse.json(
               { error: { message: "Not found", code: "NOT_FOUND" } },
@@ -1004,17 +1053,15 @@ agents:
       - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs`,
         );
 
-        mockUploadSkill.mockResolvedValue({
-          name: "agent-skills@elevenlabs",
-          versionId: "a".repeat(64),
-          action: "created",
-          skillName: "elevenlabs",
-          frontmatter: {
+        // Mock downloadGitHubSkill to create a skill directory with frontmatter
+        mockDownloadGitHubSkill.mockImplementation(async (parsed, destDir) => {
+          return createMockSkillDir(destDir, parsed.skillName, {
             vm0_secrets: ["ELEVENLABS_API_KEY"],
-          },
+          });
         });
 
         server.use(
+          ...storageUploadHandlers,
           http.get("http://localhost:3000/api/agent/composes", () => {
             return HttpResponse.json({
               id: "existing-compose-id",
@@ -1075,17 +1122,15 @@ agents:
       - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs`,
         );
 
-        mockUploadSkill.mockResolvedValue({
-          name: "agent-skills@elevenlabs",
-          versionId: "a".repeat(64),
-          action: "created",
-          skillName: "elevenlabs",
-          frontmatter: {
+        // Mock downloadGitHubSkill to create a skill directory with frontmatter
+        mockDownloadGitHubSkill.mockImplementation(async (parsed, destDir) => {
+          return createMockSkillDir(destDir, parsed.skillName, {
             vm0_secrets: ["NEW_SECRET"],
-          },
+          });
         });
 
         server.use(
+          ...storageUploadHandlers,
           http.get("http://localhost:3000/api/agent/composes", () => {
             return HttpResponse.json(
               { error: { message: "Not found", code: "NOT_FOUND" } },
@@ -1120,17 +1165,15 @@ agents:
       - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs`,
         );
 
-        mockUploadSkill.mockResolvedValue({
-          name: "agent-skills@elevenlabs",
-          versionId: "a".repeat(64),
-          action: "created",
-          skillName: "elevenlabs",
-          frontmatter: {
+        // Mock downloadGitHubSkill to create a skill directory with frontmatter
+        mockDownloadGitHubSkill.mockImplementation(async (parsed, destDir) => {
+          return createMockSkillDir(destDir, parsed.skillName, {
             vm0_secrets: ["ELEVENLABS_API_KEY"],
-          },
+          });
         });
 
         server.use(
+          ...storageUploadHandlers,
           http.get("http://localhost:3000/api/agent/composes", () => {
             return HttpResponse.json({
               id: "existing-compose-id",
