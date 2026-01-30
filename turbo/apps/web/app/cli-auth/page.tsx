@@ -232,7 +232,7 @@ export default function CliAuthPage(): React.JSX.Element {
                     onKeyDown={(e) => handleKeyDown(index, e)}
                     onPaste={handlePaste}
                     disabled={loading}
-                    className="h-9 w-9 rounded-lg border border-border bg-card text-center text-base font-medium uppercase text-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="h-9 w-9 rounded-lg border border-border bg-input text-center text-base font-medium uppercase text-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
                     maxLength={1}
                   />
                 ))}
@@ -256,7 +256,7 @@ export default function CliAuthPage(): React.JSX.Element {
                     onKeyDown={(e) => handleKeyDown(index, e)}
                     onPaste={handlePaste}
                     disabled={loading}
-                    className="h-9 w-9 rounded-lg border border-border bg-card text-center text-base font-medium uppercase text-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="h-9 w-9 rounded-lg border border-border bg-input text-center text-base font-medium uppercase text-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
                     maxLength={1}
                   />
                 ))}

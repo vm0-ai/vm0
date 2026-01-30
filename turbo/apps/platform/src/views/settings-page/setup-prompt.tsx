@@ -10,7 +10,7 @@ export function ClaudeCodeSetupPrompt() {
     <p className="text-xs text-muted-foreground">
       You can find it by enter{" "}
       <code
-        className="cursor-pointer rounded bg-muted px-1 py-0.5 font-mono hover:bg-muted/80 active:bg-muted/60"
+        className="cursor-pointer rounded border border-border bg-gray-50 px-1 py-0.5 font-mono hover:bg-gray-100 active:bg-gray-200"
         onClick={() => {
           detach(copyToClipboard("claude setup-token"), Reason.DomCallback);
         }}

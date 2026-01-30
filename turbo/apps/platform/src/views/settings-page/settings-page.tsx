@@ -2,7 +2,13 @@ import { useGet, useSet, useLastResolved, useLoadable } from "ccstate-react";
 import { Card } from "@vm0/ui/components/ui/card";
 import { Button } from "@vm0/ui/components/ui/button";
 import { Input } from "@vm0/ui/components/ui/input";
-import { IconTrash } from "@tabler/icons-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@vm0/ui/components/ui/tooltip";
+import { IconX, IconLock, IconInfoCircle } from "@tabler/icons-react";
 import { AppShell } from "../layout/app-shell.tsx";
 
 import { detach, Reason } from "../../signals/utils.ts";
@@ -13,7 +19,6 @@ import {
   deleteOAuthToken$,
   hasClaudeCodeOauthToken$,
   isEditingClaudeCodeOauthToken$,
-  claudeCodeOauthTokenPlaceholder$,
   saveClaudeCodeOauthToken$,
   updateClaudeCodeOauthTokenValue$,
   claudeCodeOauthTokenValue$,
@@ -26,7 +31,7 @@ export function SettingsPage() {
     <AppShell
       breadcrumb={["Settings"]}
       title="Settings"
-      subtitle="Your project settings"
+      subtitle="Configure your model providers and project preferences"
     >
       <div className="flex flex-col gap-6 px-8 pb-8">
         <ClaudeCodeOAuthTokenCard />
@@ -42,11 +47,16 @@ function ClaudeCodeOAuthTokenCard() {
   const setIsEditing = useSet(startEditing$);
   const saveProvider = useSet(saveClaudeCodeOauthToken$);
   const cancelEdit = useSet(cancelSettingsEdit$);
-  const placeholder = useLastResolved(claudeCodeOauthTokenPlaceholder$);
   const hasToken = useLastResolved(hasClaudeCodeOauthToken$);
   const deleteToken = useSet(deleteOAuthToken$);
   const pageSignal = useGet(pageSignal$);
   const actionStatus = useLoadable(actionPromise$);
+
+  // Show masked token when user has token and is not editing
+  const displayValue =
+    !isEditing && hasToken && !tokenValue
+      ? "sk-ant-oat-••••••••••••••••"
+      : tokenValue;
 
   const handleSave = () => {
     detach(saveProvider(pageSignal), Reason.DomCallback);
@@ -62,7 +72,7 @@ function ClaudeCodeOAuthTokenCard() {
 
   return (
     <Card className="p-6">
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-6">
         <div>
           <h3 className="text-base font-medium text-foreground">
             Manage your model provider
@@ -73,32 +83,62 @@ function ClaudeCodeOAuthTokenCard() {
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-foreground">
+          <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
             Claude Code OAuth token
+            <TooltipProvider delayDuration={100}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button type="button" className="inline-flex">
+                    <IconInfoCircle className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-[280px]">
+                  <p className="text-xs">
+                    Your token is encrypted and securely stored. It will only be
+                    used for sandboxed execution and never shared with third
+                    parties.
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </label>
 
           <div className="flex gap-2">
-            <Input
-              value={tokenValue}
-              placeholder={
-                actionStatus.state === "loading" ? "Saving..." : placeholder
-              }
-              onChange={(e) => setTokenValue(e.target.value)}
-              readOnly={actionStatus.state === "loading"}
-              onFocus={() => {
-                detach(setIsEditing(pageSignal), Reason.DomCallback);
-              }}
-            />
+            <div className="relative flex items-center flex-1">
+              <IconLock className="absolute left-3 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                value={displayValue}
+                placeholder={
+                  isEditing && hasToken
+                    ? "Update your Claude Code OAuth token"
+                    : "sk-ant-oat..."
+                }
+                onChange={(e) => setTokenValue(e.target.value)}
+                readOnly={actionStatus.state === "loading"}
+                onFocus={() => {
+                  detach(setIsEditing(pageSignal), Reason.DomCallback);
+                }}
+                className="pl-9 font-mono"
+                style={{ fontFamily: "'JetBrains Mono', monospace" }}
+              />
+            </div>
             {actionStatus.state !== "loading" && hasToken && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleDelete}
-                aria-label="Delete Claude Code OAuth token"
-                className="shrink-0 text-muted-foreground hover:text-destructive"
-              >
-                <IconTrash className="h-4 w-4" />
-              </Button>
+              <TooltipProvider delayDuration={100}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={handleDelete}
+                      aria-label="Clear token"
+                      className="icon-button shrink-0"
+                    >
+                      <IconX className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs">Clear token</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             )}
           </div>
           <ClaudeCodeSetupPrompt />

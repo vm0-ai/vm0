@@ -111,6 +111,25 @@
   --line-height-7: 28px;
   --line-height-5: 20px;
   --line-height-4: 16px;
+
+  /* ===================================
+   * Icon System
+   * =================================== */
+  --icon-stroke-width: 1.5;
+
+  /* ===================================
+   * Input System
+   * Design tokens for consistent input styles across the application
+   * Applied automatically to all input and textarea elements
+   * =================================== */
+  --input-border-radius: 8px; /* rounded-lg */
+  --input-focus-ring-width: 3px;
+  --input-focus-ring-opacity: 0.1;
+
+  /* ===================================
+   * Button System
+   * =================================== */
+  --color-button-hover: hsl(var(--button-hover));
 }
 
 @layer base {
@@ -148,7 +167,7 @@
     --gray-950: 20 12% 12%; /* #231F1B */
 
     /* Divider Color */
-    --divider: 14 31% 86%; /* #EED5CB */
+    --divider: 27 50% 92%; /* #F5EAE1 */
 
     /* Theme-aware Colors */
     --white: 0 0% 100%; /* #FFFFFF */
@@ -182,7 +201,7 @@
     --destructive-foreground: 0 0% 100%;
 
     --border: var(--gray-300); /* background-300 */
-    --input: var(--gray-50); /* background-50 */
+    --input: var(--white); /* white - same as card */
     --ring: var(--primary-600); /* primary-600 */
 
     --sidebar: var(--gray-50); /* background-50 */
@@ -192,6 +211,10 @@
     --sidebar-accent: var(--gray-100); /* background-100 */
 
     --semantic-foreground: var(--gray-0); /* background-0 */
+
+    --button-hover: var(
+      --gray-50
+    ); /* background-50 - subtle hover for outline buttons */
 
     --radius: 0.5rem;
   }
@@ -231,7 +254,7 @@
     --gray-950: 240 11% 94%; /* #EEEEF0 */
 
     /* Divider Color (Dark) */
-    --divider: 20 11% 29%; /* #4A413E */
+    --divider: 240 3% 19%; /* #2F2F32 */
 
     /* Theme-aware Colors (Dark - inverted) */
     --white: 240 3% 10%; /* #19191B */
@@ -265,7 +288,9 @@
     --destructive-foreground: 0 0% 100%;
 
     --border: var(--gray-300); /* background-300 */
-    --input: var(--gray-50); /* background-50 */
+    --input: var(
+      --white
+    ); /* white - same as light theme, adapts to dark value */
     --ring: var(--primary-600); /* primary-600 */
 
     --sidebar: var(--gray-50); /* background-50 */
@@ -275,6 +300,10 @@
     --sidebar-accent: var(--gray-100); /* background-100 */
 
     --semantic-foreground: var(--gray-0); /* background-0 */
+
+    --button-hover: var(
+      --gray-50
+    ); /* background-50 - subtle hover for outline buttons */
   }
 }
 
@@ -284,5 +313,17 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+
+  /* Global icon stroke width for Tabler Icons */
+  svg[class*="tabler-icon"] {
+    stroke-width: var(--icon-stroke-width);
+  }
+}
+
+@layer components {
+  /* Icon Button - used for close buttons, theme toggles, etc */
+  .icon-button {
+    @apply flex items-center justify-center size-9 hover:bg-muted rounded-lg transition-colors;
   }
 }

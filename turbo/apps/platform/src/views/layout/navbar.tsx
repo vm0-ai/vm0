@@ -1,5 +1,11 @@
 import { IconLayoutSidebar } from "@tabler/icons-react";
 import { useSet } from "ccstate-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@vm0/ui/components/ui/tooltip";
 import { ThemeToggle } from "../components/theme-toggle.tsx";
 import { navigateInReact$ } from "../../signals/route.ts";
 import type { RoutePath } from "../../types/route.ts";
@@ -19,24 +25,27 @@ export function Navbar({ breadcrumb }: NavbarProps) {
   return (
     <header className="h-[49px] flex items-center border-b border-divider bg-background">
       {/* Left section: Sidebar toggle + Divider + Breadcrumb */}
-      <div className="flex flex-1 items-center gap-2 px-4">
-        <div className="flex items-center gap-2">
-          {/* Sidebar toggle button - 28px container with 8px horizontal padding */}
-          <button
-            className="flex items-center justify-center size-7 px-2 hover:bg-muted rounded transition-colors"
-            aria-label="Toggle sidebar"
-          >
-            <IconLayoutSidebar
-              size={16}
-              stroke={1.5}
-              className="shrink-0 text-foreground"
-            />
-          </button>
+      <div className="flex flex-1 items-center gap-3 px-4">
+        <div className="flex items-center gap-1">
+          {/* Sidebar toggle button */}
+          <TooltipProvider delayDuration={100}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button className="icon-button" aria-label="Toggle sidebar">
+                  <IconLayoutSidebar
+                    size={16}
+                    className="shrink-0 text-foreground"
+                  />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="text-xs">Toggle sidebar</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
 
-          {/* Vertical divider - matching Figma's logo placeholder */}
-          <div className="w-4 h-[17px] flex items-center justify-center">
-            <div className="w-px h-4 bg-divider" />
-          </div>
+          {/* Vertical divider */}
+          <div className="h-4 w-px bg-divider" />
         </div>
 
         {/* Breadcrumb */}

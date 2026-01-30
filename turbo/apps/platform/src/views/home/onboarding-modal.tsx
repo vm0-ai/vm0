@@ -8,7 +8,13 @@ import {
 } from "@vm0/ui/components/ui/dialog";
 import { Button } from "@vm0/ui/components/ui/button";
 import { Input } from "@vm0/ui/components/ui/input";
-import { IconX } from "@tabler/icons-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@vm0/ui/components/ui/tooltip";
+import { IconX, IconLock, IconInfoCircle } from "@tabler/icons-react";
 import {
   showOnboardingModal$,
   closeOnboardingModal$,
@@ -33,54 +39,78 @@ export function OnboardingModal() {
   return (
     <Dialog open={isOpen}>
       <DialogContent
-        className="sm:max-w-[600px] p-6 gap-4 border-border rounded-[10px]"
+        className="sm:max-w-[600px] p-6 border-border rounded-[10px]"
         style={{
           backgroundImage:
             "linear-gradient(91deg, rgba(255, 200, 176, 0.26) 0%, rgba(166, 222, 255, 0.26) 51%, rgba(255, 231, 162, 0.26) 100%), linear-gradient(90deg, rgb(255, 255, 255) 0%, rgb(255, 255, 255) 100%)",
         }}
       >
         {/* Close button */}
-        <DialogClose asChild>
-          <button
-            onClick={() => detach(closeModal(pageSignal), Reason.DomCallback)}
-            className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-          >
-            <IconX className="h-6 w-6 text-foreground" />
-            <span className="sr-only">Close</span>
-          </button>
-        </DialogClose>
+        <TooltipProvider delayDuration={100}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DialogClose asChild>
+                <button
+                  onClick={() =>
+                    detach(closeModal(pageSignal), Reason.DomCallback)
+                  }
+                  className="absolute right-4 top-4 icon-button opacity-70 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                  aria-label="Close"
+                >
+                  <IconX size={20} className="text-foreground" />
+                </button>
+              </DialogClose>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="text-xs">Close</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
 
-        {/* Illustration */}
-        <div className="flex justify-center">
-          <img
-            src="/images/onboarding/time-is-money.png"
-            alt="Setup illustration"
-            className="h-[120px] w-[153px] object-cover"
-          />
+        {/* Logo */}
+        <div className="flex items-center justify-center gap-2 mt-[24px]">
+          <img src="/logo_light.svg" alt="VM0" className="h-[40px] w-auto" />
+          <span className="text-4xl font-normal text-foreground">Platform</span>
         </div>
 
         {/* Header */}
-        <div className="text-center">
+        <div className="text-center mt-[24px]">
           <DialogTitle className="text-lg font-medium leading-7 text-foreground">
-            First, tell us how your LLM works and which model
-            <br />
-            is used to power your agent.
+            Define your model provider
           </DialogTitle>
-          <DialogDescription className="sr-only">
-            Configure your LLM subscription and OAuth token
+          <DialogDescription className="text-sm text-foreground mt-[10px]">
+            A Claude Code OAuth token is required for sandboxed execution.
           </DialogDescription>
         </div>
 
         {/* Subscription Selection */}
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-6 mt-[24px]">
           {/* OAuth Token Input */}
           <div className="flex flex-col gap-2">
-            <label className="px-1 text-sm font-medium text-foreground">
-              Your OAuth token is needed to driven claude code in sandboxes.
+            <label className="px-1 text-sm font-medium text-foreground flex items-center gap-1.5">
+              Claude Code OAuth token
+              <TooltipProvider delayDuration={100}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button type="button" className="inline-flex">
+                      <IconInfoCircle className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-[280px]">
+                    <p className="text-xs">
+                      Your token is encrypted and securely stored. It will only
+                      be used for sandboxed execution and never shared with
+                      third parties.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </label>
-            <div className="flex gap-2">
+            <div className="relative flex items-center">
+              <IconLock className="absolute left-3 h-4 w-4 text-muted-foreground pointer-events-none" />
               <Input
-                className="flex-1 h-9"
+                className="flex-1 h-9 pl-9 font-mono"
+                style={{ fontFamily: "'JetBrains Mono', monospace" }}
                 placeholder="sk-ant-oat..."
                 value={tokenValue}
                 onChange={(e) => setTokenValue(e.target.value)}
@@ -92,7 +122,7 @@ export function OnboardingModal() {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex justify-end gap-2">
+        <div className="flex justify-end gap-2 mt-[24px]">
           <Button
             variant="outline"
             onClick={() => detach(closeModal(pageSignal), Reason.DomCallback)}

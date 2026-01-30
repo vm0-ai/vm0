@@ -32,19 +32,6 @@ export const startEditing$ = command(async ({ set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 });
 
-export const claudeCodeOauthTokenPlaceholder$ = computed(async (get) => {
-  const { modelProviders } = await get(modelProviders$);
-  const oauthProvider = modelProviders.find(
-    (p) => p.type === "claude-code-oauth-token",
-  );
-
-  if (oauthProvider) {
-    return "sk-ant-oat********";
-  }
-
-  return "(empty)";
-});
-
 export const saveClaudeCodeOauthToken$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const tokenValue = get(internalTokenValue$);
