@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
-import { server } from "../../mocks/server";
-import { composeCommand, getSecretsFromComposeContent } from "../compose";
+import { server } from "../../../mocks/server";
+import { composeCommand, getSecretsFromComposeContent } from "../index";
 import * as fs from "fs/promises";
 import { mkdtempSync, rmSync } from "fs";
 import * as path from "path";

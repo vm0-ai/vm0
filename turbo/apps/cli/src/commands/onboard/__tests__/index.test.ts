@@ -4,7 +4,7 @@ import * as path from "path";
 import * as os from "os";
 import { EventEmitter } from "events";
 import { http, HttpResponse } from "msw";
-import { server } from "../../mocks/server.js";
+import { server } from "../../../mocks/server.js";
 
 // Mock prompts at system boundary (third-party library for user input)
 vi.mock("prompts", () => ({
@@ -28,7 +28,7 @@ vi.mock("child_process", () => ({
 
 import prompts from "prompts";
 import { spawn } from "child_process";
-import { onboardCommand } from "../onboard";
+import { onboardCommand } from "../index";
 
 // Helper to create a mock child process
 function createMockChildProcess(exitCode: number, stdout = "", stderr = "") {

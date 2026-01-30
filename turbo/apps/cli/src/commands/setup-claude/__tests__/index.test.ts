@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "fs";
 import * as path from "path";
 import * as os from "os";
 import { EventEmitter } from "events";
-import { setupClaudeCommand } from "../setup-claude";
+import { setupClaudeCommand } from "../index";
 
 // Mock child_process for Claude CLI commands
 vi.mock("child_process", () => ({

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
-import { server } from "../../mocks/server";
-import { runCommand } from "../run";
+import { server } from "../../../mocks/server";
+import { runCommand } from "../index";
 import chalk from "chalk";
 
 describe("run command", () => {

@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { initCommand } from "../init";
+import { initCommand } from "../index";
 import * as fs from "fs/promises";
 import { existsSync, mkdtempSync, rmSync } from "fs";
 import * as path from "path";

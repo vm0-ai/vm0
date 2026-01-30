@@ -8,7 +8,7 @@ import {
   extractRequiredVarNames,
   checkMissingVariables,
   CONFIG_FILE,
-} from "../cook";
+} from "../index";
 
 // Mock os module to return our temp directory as homedir for cook-state tests
 vi.mock("os", async () => {
@@ -318,7 +318,7 @@ describe("cook subcommand error handling", () => {
   describe("cook logs without prior run", () => {
     it("returns empty state when cook.json does not exist", async () => {
       // No cook.json file exists
-      const { loadCookState } = await import("../../lib/domain/cook-state");
+      const { loadCookState } = await import("../../../lib/domain/cook-state");
       const state = await loadCookState();
 
       expect(state.lastRunId).toBeUndefined();
@@ -337,7 +337,7 @@ describe("cook subcommand error handling", () => {
   describe("cook continue without prior run", () => {
     it("returns empty state when no session exists", async () => {
       // No cook.json file exists
-      const { loadCookState } = await import("../../lib/domain/cook-state");
+      const { loadCookState } = await import("../../../lib/domain/cook-state");
       const state = await loadCookState();
 
       expect(state.lastSessionId).toBeUndefined();
@@ -356,7 +356,7 @@ describe("cook subcommand error handling", () => {
   describe("cook resume without prior run", () => {
     it("returns empty state when no checkpoint exists", async () => {
       // No cook.json file exists
-      const { loadCookState } = await import("../../lib/domain/cook-state");
+      const { loadCookState } = await import("../../../lib/domain/cook-state");
       const state = await loadCookState();
 
       expect(state.lastCheckpointId).toBeUndefined();
@@ -391,7 +391,7 @@ describe("cook subcommand error handling", () => {
         }),
       );
 
-      const { loadCookState } = await import("../../lib/domain/cook-state");
+      const { loadCookState } = await import("../../../lib/domain/cook-state");
       const state = await loadCookState();
 
       // Verify the command hint format
@@ -419,7 +419,7 @@ describe("cook subcommand error handling", () => {
         }),
       );
 
-      const { loadCookState } = await import("../../lib/domain/cook-state");
+      const { loadCookState } = await import("../../../lib/domain/cook-state");
       const state = await loadCookState();
 
       // Verify the command hint format
@@ -447,7 +447,7 @@ describe("cook subcommand error handling", () => {
         }),
       );
 
-      const { loadCookState } = await import("../../lib/domain/cook-state");
+      const { loadCookState } = await import("../../../lib/domain/cook-state");
       const state = await loadCookState();
 
       // Verify the command hint format
