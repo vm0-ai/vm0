@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Script from "next/script";
-import { Noto_Sans, Fira_Code, Fira_Mono } from "next/font/google";
+import { Noto_Sans, Fira_Code, Fira_Mono, JetBrains_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ThemeProvider } from "./components/ThemeProvider";
 import "./globals.css";
@@ -28,6 +28,14 @@ const firaMono = Fira_Mono({
   subsets: ["latin"],
   weight: ["400", "500", "700"],
   variable: "--font-fira-mono",
+  display: "swap",
+  preload: false,
+});
+
+const jetBrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-jetbrains-mono",
   display: "swap",
   preload: false,
 });
@@ -161,7 +169,7 @@ export default function RootLayout({
         </Script>
       </head>
       <body
-        className={`${notoSans.variable} ${firaCode.variable} ${firaMono.variable}`}
+        className={`${notoSans.variable} ${firaCode.variable} ${firaMono.variable} ${jetBrainsMono.variable}`}
       >
         <Script
           id="json-ld"

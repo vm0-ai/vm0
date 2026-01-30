@@ -126,10 +126,11 @@ html {
 /* Make scrollbar overlay content without pushing it */
 body {
   margin-right: 0 !important;
-}
-
-body {
   background: var(--bg-primary);
+  background-image:
+    linear-gradient(rgba(255, 140, 77, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 140, 77, 0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
   color: var(--text-primary);
   font-family: "Noto Sans", sans-serif;
   line-height: 1.5;
@@ -139,6 +140,12 @@ body {
   transition:
     background-color 0.3s ease,
     color 0.3s ease;
+}
+
+[data-theme="light"] body {
+  background-image:
+    linear-gradient(rgba(237, 78, 1, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(237, 78, 1, 0.04) 1px, transparent 1px);
 }
 
 /* Overlay scrollbar for webkit browsers */
