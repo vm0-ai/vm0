@@ -7,18 +7,49 @@ import { mkdtempSync, rmSync } from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as yaml from "yaml";
+import chalk from "chalk";
+
+// Mock uploadSkill since it uses git commands (external network call to GitHub)
+vi.mock("../../../lib/storage/system-storage", async (importOriginal) => {
+  const original =
+    await importOriginal<
+      typeof import("../../../lib/storage/system-storage")
+    >();
+  return {
+    ...original,
+    uploadSkill: vi.fn(),
+    uploadInstructions: vi.fn().mockResolvedValue({
+      name: "instructions",
+      versionId: "a".repeat(64),
+      action: "created",
+    }),
+  };
+});
+
+import { uploadSkill } from "../../../lib/storage/system-storage";
+const mockUploadSkill = vi.mocked(uploadSkill);
+
+// Shared spies at file level
+const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
+  throw new Error("process.exit called");
+}) as never);
+const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+const mockConsoleError = vi
+  .spyOn(console, "error")
+  .mockImplementation(() => {});
 
 describe("compose command", () => {
   let tempDir: string;
   let originalCwd: string;
 
-  const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
-    throw new Error("process.exit called");
-  }) as never);
-  const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
-  const mockConsoleError = vi
-    .spyOn(console, "error")
-    .mockImplementation(() => {});
+  const scopeResponse = {
+    id: "scope-123",
+    slug: "user-abc12345",
+    type: "personal",
+    displayName: null,
+    createdAt: "2025-01-01T00:00:00Z",
+    updatedAt: "2025-01-01T00:00:00Z",
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -27,14 +58,12 @@ describe("compose command", () => {
     process.chdir(tempDir);
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
+    chalk.level = 0;
   });
 
   afterEach(() => {
     process.chdir(originalCwd);
     rmSync(tempDir, { recursive: true, force: true });
-    mockExit.mockClear();
-    mockConsoleLog.mockClear();
-    mockConsoleError.mockClear();
     vi.unstubAllEnvs();
   });
 
@@ -66,14 +95,7 @@ describe("compose command", () => {
           });
         }),
         http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json({
-            id: "scope-123",
-            slug: "user-abc12345",
-            type: "personal",
-            displayName: null,
-            createdAt: "2025-01-01T00:00:00Z",
-            updatedAt: "2025-01-01T00:00:00Z",
-          });
+          return HttpResponse.json(scopeResponse);
         }),
       );
 
@@ -120,14 +142,7 @@ describe("compose command", () => {
           });
         }),
         http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json({
-            id: "scope-123",
-            slug: "user-abc12345",
-            type: "personal",
-            displayName: null,
-            createdAt: "2025-01-01T00:00:00Z",
-            updatedAt: "2025-01-01T00:00:00Z",
-          });
+          return HttpResponse.json(scopeResponse);
         }),
       );
 
@@ -195,14 +210,7 @@ describe("compose command", () => {
           });
         }),
         http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json({
-            id: "scope-123",
-            slug: "user-abc12345",
-            type: "personal",
-            displayName: null,
-            createdAt: "2025-01-01T00:00:00Z",
-            updatedAt: "2025-01-01T00:00:00Z",
-          });
+          return HttpResponse.json(scopeResponse);
         }),
       );
 
@@ -220,14 +228,7 @@ describe("compose command", () => {
       );
       server.use(
         http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json({
-            id: "scope-123",
-            slug: "user-abc12345",
-            type: "personal",
-            displayName: null,
-            createdAt: "2025-01-01T00:00:00Z",
-            updatedAt: "2025-01-01T00:00:00Z",
-          });
+          return HttpResponse.json(scopeResponse);
         }),
       );
     });
@@ -384,6 +385,252 @@ describe("compose command", () => {
         expect.stringContaining("Failed to fetch"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
+    });
+  });
+
+  describe("skill frontmatter secret detection", () => {
+    describe("new secret marker", () => {
+      it("should mark truly new secrets with (new) when HEAD has no secrets", async () => {
+        await fs.writeFile(
+          path.join(tempDir, "vm0.yaml"),
+          `version: "1.0"
+agents:
+  my-agent:
+    framework: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs`,
+        );
+
+        mockUploadSkill.mockResolvedValue({
+          name: "agent-skills@elevenlabs",
+          versionId: "a".repeat(64),
+          action: "created",
+          skillName: "elevenlabs",
+          frontmatter: {
+            vm0_secrets: ["ELEVENLABS_API_KEY"],
+          },
+        });
+
+        server.use(
+          http.get("http://localhost:3000/api/agent/composes", () => {
+            return HttpResponse.json(
+              { error: { message: "Not found", code: "NOT_FOUND" } },
+              { status: 404 },
+            );
+          }),
+          http.post("http://localhost:3000/api/agent/composes", () => {
+            return HttpResponse.json({
+              composeId: "cmp-123",
+              name: "my-agent",
+              versionId: "b".repeat(64),
+              action: "created",
+            });
+          }),
+          http.get("http://localhost:3000/api/scope", () => {
+            return HttpResponse.json(scopeResponse);
+          }),
+        );
+
+        await composeCommand.parseAsync(["node", "cli", "vm0.yaml", "--yes"]);
+
+        const allLogs = mockConsoleLog.mock.calls
+          .map((call) => call[0])
+          .filter((log): log is string => typeof log === "string");
+
+        expect(allLogs.some((log) => log.includes("Secrets:"))).toBe(true);
+        expect(
+          allLogs.some(
+            (log) =>
+              log.includes("ELEVENLABS_API_KEY") && log.includes("(new)"),
+          ),
+        ).toBe(true);
+      });
+
+      it("should not mark existing secrets as (new) when HEAD already has them", async () => {
+        await fs.writeFile(
+          path.join(tempDir, "vm0.yaml"),
+          `version: "1.0"
+agents:
+  my-agent:
+    framework: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs`,
+        );
+
+        mockUploadSkill.mockResolvedValue({
+          name: "agent-skills@elevenlabs",
+          versionId: "a".repeat(64),
+          action: "created",
+          skillName: "elevenlabs",
+          frontmatter: {
+            vm0_secrets: ["ELEVENLABS_API_KEY"],
+          },
+        });
+
+        server.use(
+          http.get("http://localhost:3000/api/agent/composes", () => {
+            return HttpResponse.json({
+              id: "existing-compose-id",
+              name: "my-agent",
+              headVersionId: "c".repeat(64),
+              content: {
+                version: "1.0",
+                agents: {
+                  "my-agent": {
+                    framework: "claude-code",
+                    environment: {
+                      ELEVENLABS_API_KEY: "${{ secrets.ELEVENLABS_API_KEY }}",
+                    },
+                  },
+                },
+              },
+              createdAt: "2025-01-01T00:00:00Z",
+              updatedAt: "2025-01-01T00:00:00Z",
+            });
+          }),
+          http.post("http://localhost:3000/api/agent/composes", () => {
+            return HttpResponse.json({
+              composeId: "cmp-123",
+              name: "my-agent",
+              versionId: "b".repeat(64),
+              action: "existing",
+            });
+          }),
+          http.get("http://localhost:3000/api/scope", () => {
+            return HttpResponse.json(scopeResponse);
+          }),
+        );
+
+        await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
+
+        const allLogs = mockConsoleLog.mock.calls
+          .map((call) => call[0])
+          .filter((log): log is string => typeof log === "string");
+
+        expect(allLogs.some((log) => log.includes("Secrets:"))).toBe(true);
+        const secretLine = allLogs.find((log) =>
+          log.includes("ELEVENLABS_API_KEY"),
+        );
+        expect(secretLine).toBeDefined();
+        expect(secretLine).not.toContain("(new)");
+      });
+    });
+
+    describe("confirmation requirement", () => {
+      it("should require --yes flag in non-interactive mode when new secrets detected", async () => {
+        await fs.writeFile(
+          path.join(tempDir, "vm0.yaml"),
+          `version: "1.0"
+agents:
+  my-agent:
+    framework: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs`,
+        );
+
+        mockUploadSkill.mockResolvedValue({
+          name: "agent-skills@elevenlabs",
+          versionId: "a".repeat(64),
+          action: "created",
+          skillName: "elevenlabs",
+          frontmatter: {
+            vm0_secrets: ["NEW_SECRET"],
+          },
+        });
+
+        server.use(
+          http.get("http://localhost:3000/api/agent/composes", () => {
+            return HttpResponse.json(
+              { error: { message: "Not found", code: "NOT_FOUND" } },
+              { status: 404 },
+            );
+          }),
+        );
+
+        vi.stubEnv("CI", "true");
+
+        await expect(async () => {
+          await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
+        }).rejects.toThrow("process.exit called");
+
+        expect(mockConsoleError).toHaveBeenCalledWith(
+          expect.stringContaining("New secrets detected"),
+        );
+        expect(mockConsoleError).toHaveBeenCalledWith(
+          expect.stringContaining("--yes"),
+        );
+        expect(mockExit).toHaveBeenCalledWith(1);
+      });
+
+      it("should not require confirmation when no new secrets (all exist in HEAD)", async () => {
+        await fs.writeFile(
+          path.join(tempDir, "vm0.yaml"),
+          `version: "1.0"
+agents:
+  my-agent:
+    framework: claude-code
+    skills:
+      - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs`,
+        );
+
+        mockUploadSkill.mockResolvedValue({
+          name: "agent-skills@elevenlabs",
+          versionId: "a".repeat(64),
+          action: "created",
+          skillName: "elevenlabs",
+          frontmatter: {
+            vm0_secrets: ["ELEVENLABS_API_KEY"],
+          },
+        });
+
+        server.use(
+          http.get("http://localhost:3000/api/agent/composes", () => {
+            return HttpResponse.json({
+              id: "existing-compose-id",
+              name: "my-agent",
+              headVersionId: "c".repeat(64),
+              content: {
+                version: "1.0",
+                agents: {
+                  "my-agent": {
+                    framework: "claude-code",
+                    environment: {
+                      ELEVENLABS_API_KEY: "${{ secrets.ELEVENLABS_API_KEY }}",
+                    },
+                  },
+                },
+              },
+              createdAt: "2025-01-01T00:00:00Z",
+              updatedAt: "2025-01-01T00:00:00Z",
+            });
+          }),
+          http.post("http://localhost:3000/api/agent/composes", () => {
+            return HttpResponse.json({
+              composeId: "cmp-123",
+              name: "my-agent",
+              versionId: "b".repeat(64),
+              action: "existing",
+            });
+          }),
+          http.get("http://localhost:3000/api/scope", () => {
+            return HttpResponse.json(scopeResponse);
+          }),
+        );
+
+        await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
+
+        const allErrors = mockConsoleError.mock.calls
+          .map((call) => call[0])
+          .filter((err): err is string => typeof err === "string");
+        expect(
+          allErrors.some((err) => err.includes("New secrets detected")),
+        ).toBe(false);
+
+        const allLogs = mockConsoleLog.mock.calls
+          .map((call) => call[0])
+          .filter((log): log is string => typeof log === "string");
+        expect(allLogs.some((log) => log.includes("Compose"))).toBe(true);
+      });
     });
   });
 });

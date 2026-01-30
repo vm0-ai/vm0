@@ -1301,4 +1301,187 @@ describe("run command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
   });
+
+  describe("error message formatting", () => {
+    const errorTestRunId = "run-error-test-123";
+    const errorTestRunResponse = {
+      runId: errorTestRunId,
+      status: "running",
+      sandboxId: "sbx-456",
+      executionTimeMs: 1000,
+      createdAt: "2025-01-01T00:00:00Z",
+    };
+
+    function createFailedEventsResponse(errorMessage: string) {
+      return {
+        events: [],
+        hasMore: false,
+        nextSequence: 0,
+        run: {
+          status: "failed",
+          error: errorMessage,
+        },
+        framework: "claude-code",
+      };
+    }
+
+    it("should display detailed error message instead of generic exit code", async () => {
+      const detailedError =
+        "Error: Could not resume session 'test-session': Session history file not found";
+
+      server.use(
+        http.post("http://localhost:3000/api/agent/runs", () => {
+          return HttpResponse.json(errorTestRunResponse, { status: 201 });
+        }),
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json(createFailedEventsResponse(detailedError));
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync([
+          "node",
+          "cli",
+          testUuid,
+          "test prompt",
+          "--artifact-name",
+          "test-artifact",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      const allLogs = mockConsoleLog.mock.calls
+        .map((call) => call[0])
+        .filter((log): log is string => typeof log === "string");
+
+      expect(allLogs.some((log) => log.includes("Run failed"))).toBe(true);
+      expect(
+        allLogs.some((log) => log.includes("Could not resume session")),
+      ).toBe(true);
+      expect(
+        allLogs.some((log) => log.includes("Session history file not found")),
+      ).toBe(true);
+      expect(
+        allLogs.some((log) => log.includes("Agent exited with code 1")),
+      ).toBe(false);
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should show system logs hint for debugging", async () => {
+      server.use(
+        http.post("http://localhost:3000/api/agent/runs", () => {
+          return HttpResponse.json(errorTestRunResponse, { status: 201 });
+        }),
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json(
+            createFailedEventsResponse("Some error occurred"),
+          );
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync([
+          "node",
+          "cli",
+          testUuid,
+          "test prompt",
+          "--artifact-name",
+          "test-artifact",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      const allLogs = mockConsoleLog.mock.calls
+        .map((call) => call[0])
+        .filter((log): log is string => typeof log === "string");
+
+      expect(
+        allLogs.some((log) =>
+          log.includes(`vm0 logs ${errorTestRunId} --system`),
+        ),
+      ).toBe(true);
+    });
+
+    it("should handle undefined error gracefully", async () => {
+      server.use(
+        http.post("http://localhost:3000/api/agent/runs", () => {
+          return HttpResponse.json(errorTestRunResponse, { status: 201 });
+        }),
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            nextSequence: 0,
+            run: { status: "failed" },
+            framework: "claude-code",
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync([
+          "node",
+          "cli",
+          testUuid,
+          "test prompt",
+          "--artifact-name",
+          "test-artifact",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      const allLogs = mockConsoleLog.mock.calls
+        .map((call) => call[0])
+        .filter((log): log is string => typeof log === "string");
+
+      expect(allLogs.some((log) => log.includes("Unknown error"))).toBe(true);
+    });
+
+    it("should display various error patterns correctly", async () => {
+      const errorPatterns = [
+        {
+          error: "Error: Authentication failed: Invalid API key",
+          expected: "Authentication failed",
+        },
+        {
+          error: "Error: Network request failed: ECONNREFUSED",
+          expected: "Network request failed",
+        },
+        {
+          error: "Error: Permission denied: Cannot write to /etc/passwd",
+          expected: "Permission denied",
+        },
+        {
+          error: "Error: Operation timed out after 300000ms",
+          expected: "timed out",
+        },
+      ];
+
+      for (const { error, expected } of errorPatterns) {
+        vi.clearAllMocks();
+        server.use(
+          http.post("http://localhost:3000/api/agent/runs", () => {
+            return HttpResponse.json(errorTestRunResponse, { status: 201 });
+          }),
+          http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+            return HttpResponse.json(createFailedEventsResponse(error));
+          }),
+        );
+
+        await expect(async () => {
+          await runCommand.parseAsync([
+            "node",
+            "cli",
+            testUuid,
+            "test prompt",
+            "--artifact-name",
+            "test-artifact",
+          ]);
+        }).rejects.toThrow("process.exit called");
+
+        const allLogs = mockConsoleLog.mock.calls
+          .map((call) => call[0])
+          .filter((log): log is string => typeof log === "string");
+
+        expect(allLogs.some((log) => log.includes(expected))).toBe(true);
+      }
+    });
+  });
 });
