@@ -19,7 +19,7 @@ const log = logger("service:storage");
  * Storage Service
  * Manages storage preparation, mounting, and cleanup operations
  */
-export class StorageService {
+class StorageService {
   /**
    * Resolve version ID from version string
    * @param userId - User ID for storage access
