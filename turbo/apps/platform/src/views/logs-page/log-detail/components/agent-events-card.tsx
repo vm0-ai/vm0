@@ -23,15 +23,18 @@ import {
 
 export function AgentEventsCard({
   logId,
+  framework,
   searchTerm,
   setSearchTerm,
   className,
 }: {
   logId: string;
+  framework: string | null;
   searchTerm: string;
   setSearchTerm: (term: string) => void;
   className?: string;
 }) {
+  const isCodex = framework === "codex";
   const getOrCreateAgentEvents = useSet(getOrCreateAgentEvents$);
   const events$ = getOrCreateAgentEvents(logId);
   const eventsLoadable = useLoadable(events$);
@@ -144,7 +147,7 @@ export function AgentEventsCard({
           </span>
         </div>
         <div className="flex items-center gap-3">
-          {viewMode === "formatted" && events.length > 0 && (
+          {!isCodex && viewMode === "formatted" && events.length > 0 && (
             <EventTypeFilterDropdown
               counts={eventTypeCounts}
               hiddenTypes={hiddenTypes}
@@ -170,13 +173,17 @@ export function AgentEventsCard({
               hasSearchTerm={searchTerm.trim().length > 0}
             />
           </div>
-          <div className="h-5 w-px bg-border" />
-          <ViewModeToggle mode={viewMode} setMode={handleViewModeChange} />
+          {!isCodex && (
+            <>
+              <div className="h-5 w-px bg-border" />
+              <ViewModeToggle mode={viewMode} setMode={handleViewModeChange} />
+            </>
+          )}
         </div>
       </div>
 
       <div id={EVENTS_CONTAINER_ID} className="flex-1 min-h-0 overflow-y-auto">
-        {viewMode === "formatted" ? (
+        {!isCodex && viewMode === "formatted" ? (
           <FormattedEventsView
             events={events}
             searchTerm={searchTerm}
