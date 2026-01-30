@@ -84,6 +84,14 @@ cargo build -p vsock-agent
 ./target/debug/vsock-agent --unix-socket /tmp/test.sock
 ```
 
+Protocol encoding/decoding and message handling tests are located in the TypeScript runner:
+
+```
+turbo/apps/runner/src/lib/firecracker/__tests__/vsock.test.ts
+```
+
+This tests the full Host ↔ Guest communication, verifying that messages encoded by TypeScript are correctly parsed by Rust and vice versa.
+
 ## Release Profile
 
 Both crates are optimized for minimal binary size:
