@@ -185,7 +185,7 @@ export const modelProvidersByTypeContract = c.router({
       type: modelProviderTypeSchema,
     }),
     responses: {
-      204: z.undefined(),
+      204: c.noBody(),
       401: apiErrorSchema,
       404: apiErrorSchema,
       500: apiErrorSchema,

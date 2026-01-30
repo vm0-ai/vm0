@@ -214,7 +214,7 @@ export const schedulesByNameContract = c.router({
       composeId: z.string().uuid("Compose ID required"),
     }),
     responses: {
-      204: z.undefined(),
+      204: c.noBody(),
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
