@@ -70,8 +70,14 @@ export function execVm0RunWithCapture(
   options: { cwd?: string } = {},
 ): Promise<string> {
   return new Promise((resolve, reject) => {
+    // Force color output when parent is a TTY, since piped stdio disables TTY detection
+    const env = process.stdout.isTTY
+      ? { ...process.env, FORCE_COLOR: "1" }
+      : process.env;
+
     const proc = spawn("vm0", args, {
       cwd: options.cwd,
+      env,
       stdio: ["inherit", "pipe", "pipe"],
       shell: process.platform === "win32",
     });
