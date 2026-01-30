@@ -66,14 +66,8 @@ export async function acquireRunnerLock(): Promise<void> {
  * Release runner lock
  */
 export function releaseRunnerLock(): void {
-  try {
-    if (fs.existsSync(PID_FILE)) {
-      fs.unlinkSync(PID_FILE);
-      console.log("Runner lock released");
-    }
-  } catch (err) {
-    console.warn(
-      `Warning: Failed to release runner lock: ${err instanceof Error ? err.message : err}`,
-    );
+  if (fs.existsSync(PID_FILE)) {
+    fs.unlinkSync(PID_FILE);
+    console.log("Runner lock released");
   }
 }
