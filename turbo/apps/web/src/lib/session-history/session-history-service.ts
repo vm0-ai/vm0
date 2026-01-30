@@ -4,7 +4,7 @@
  * using R2 blob storage for scalability.
  */
 
-import { blobService } from "../blob/blob-service";
+import { uploadBlobs, downloadBlob } from "../blob/blob-service";
 import { hashFileContent } from "../storage/content-hash";
 import { logger } from "../logger";
 
@@ -22,8 +22,8 @@ export async function storeSessionHistory(content: string): Promise<string> {
 
   log.debug(`Storing session history, hash=${hash}, size=${buffer.length}`);
 
-  // Upload to R2 using blob service (handles deduplication)
-  await blobService.uploadBlobs([
+  // Upload to R2 (handles deduplication)
+  await uploadBlobs([
     {
       path: `session-history-${hash}.jsonl`,
       content: buffer,
@@ -42,7 +42,7 @@ export async function storeSessionHistory(content: string): Promise<string> {
 async function retrieveSessionHistory(hash: string): Promise<string> {
   log.debug(`Retrieving session history, hash=${hash}`);
 
-  const buffer = await blobService.downloadBlob(hash);
+  const buffer = await downloadBlob(hash);
   return buffer.toString("utf-8");
 }
 
