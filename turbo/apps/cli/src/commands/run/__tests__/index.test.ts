@@ -1252,6 +1252,245 @@ describe("run command", () => {
     });
   });
 
+  describe("scope error handling", () => {
+    it("should show error when scope does not exist", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
+          const url = new URL(request.url);
+          const scope = url.searchParams.get("scope");
+
+          if (scope === "nonexistent-scope-xyz123") {
+            return HttpResponse.json(
+              {
+                error: {
+                  message: "Scope not found: nonexistent-scope-xyz123",
+                  code: "NOT_FOUND",
+                },
+              },
+              { status: 404 },
+            );
+          }
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync([
+          "node",
+          "cli",
+          "nonexistent-scope-xyz123/my-agent",
+          "test prompt",
+          "--artifact-name",
+          "test-artifact",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("not found"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should provide helpful error message for non-existent scope", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message: "Scope not found: invalid-scope",
+                code: "NOT_FOUND",
+              },
+            },
+            { status: 404 },
+          );
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync([
+          "node",
+          "cli",
+          "invalid-scope/test-agent",
+          "test prompt",
+          "--artifact-name",
+          "test-artifact",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Agent not found"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("vm0 compose"),
+      );
+    });
+
+    it("should show error when agent does not exist in valid scope", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
+          const url = new URL(request.url);
+          const name = url.searchParams.get("name");
+          const scope = url.searchParams.get("scope");
+
+          if (
+            scope === "user-abc12345" &&
+            name === "nonexistent-agent-xyz123"
+          ) {
+            return HttpResponse.json(
+              {
+                error: {
+                  message:
+                    "Compose not found: nonexistent-agent-xyz123 in scope user-abc12345",
+                  code: "NOT_FOUND",
+                },
+              },
+              { status: 404 },
+            );
+          }
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync([
+          "node",
+          "cli",
+          "user-abc12345/nonexistent-agent-xyz123",
+          "test prompt",
+          "--artifact-name",
+          "test-artifact",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Agent not found"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should suggest creating a compose when agent not found", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message: "Compose not found: missing-agent",
+                code: "NOT_FOUND",
+              },
+            },
+            { status: 404 },
+          );
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync([
+          "node",
+          "cli",
+          "user-scope/missing-agent",
+          "test prompt",
+          "--artifact-name",
+          "test-artifact",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("vm0 compose"),
+      );
+    });
+
+    it("should not allow access to agent from different scope", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
+          const url = new URL(request.url);
+          const name = url.searchParams.get("name");
+          const scope = url.searchParams.get("scope");
+
+          if (scope === "other-user-scope" && name === "my-agent") {
+            return HttpResponse.json(
+              {
+                error: {
+                  message:
+                    "Compose not found: my-agent in scope other-user-scope",
+                  code: "NOT_FOUND",
+                },
+              },
+              { status: 404 },
+            );
+          }
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync([
+          "node",
+          "cli",
+          "other-user-scope/my-agent",
+          "test prompt",
+          "--artifact-name",
+          "test-artifact",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("not found"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should treat scope isolation as not found rather than forbidden", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message: "Compose not found",
+                code: "NOT_FOUND",
+              },
+            },
+            { status: 404 },
+          );
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync([
+          "node",
+          "cli",
+          "another-scope/secret-agent",
+          "test prompt",
+          "--artifact-name",
+          "test-artifact",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      const allErrors = mockConsoleError.mock.calls.map(
+        (call) => call[0] as string,
+      );
+      const hasForbidden = allErrors.some(
+        (err) =>
+          err.toLowerCase().includes("forbidden") ||
+          err.toLowerCase().includes("unauthorized") ||
+          err.toLowerCase().includes("permission denied"),
+      );
+      expect(hasForbidden).toBe(false);
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("not found"),
+      );
+    });
+  });
+
   describe("--env-file option", () => {
     it("should error when --env-file points to nonexistent file", async () => {
       // Use a compose that references variables to trigger loadValues
