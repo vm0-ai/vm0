@@ -87,7 +87,11 @@ export async function acquireRunnerLock(
     }
 
     // Stale PID file - clean up
-    logger.log(`Cleaning up stale PID file (PID ${pid} not running)`);
+    if (isNaN(pid)) {
+      logger.log("Cleaning up invalid PID file");
+    } else {
+      logger.log(`Cleaning up stale PID file (PID ${pid} not running)`);
+    }
     fs.unlinkSync(pidFile);
   }
 
