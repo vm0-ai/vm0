@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { http, HttpResponse } from "msw";
 import { POST } from "../route";
 import { createTestSandboxToken } from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
@@ -6,17 +7,14 @@ import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { createProxyToken } from "../../../../../../src/lib/proxy/token-service";
 import { randomUUID } from "crypto";
 import { NextRequest } from "next/server";
+import { server } from "../../../../../../src/mocks/server";
 
-// Only mock external services
+// Mock external services (required by testContext)
 vi.mock("@clerk/nextjs/server");
 vi.mock("@e2b/code-interpreter");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
-
-// Mock fetch for proxying
-const mockFetch = vi.fn();
-vi.stubGlobal("fetch", mockFetch);
 
 const context = testContext();
 
@@ -26,7 +24,6 @@ describe("POST /api/webhooks/agent/proxy", () => {
   let testToken: string;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
     context.setupMocks();
 
     // Generate JWT token for sandbox auth
@@ -218,11 +215,13 @@ describe("POST /api/webhooks/agent/proxy", () => {
 
   describe("Proxy Forwarding", () => {
     it("should forward request to target URL", async () => {
-      const targetResponse = new Response(JSON.stringify({ success: true }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-      mockFetch.mockResolvedValueOnce(targetResponse);
+      let capturedRequest: Request | undefined;
+      server.use(
+        http.post("https://api.example.com/test", async ({ request }) => {
+          capturedRequest = request.clone();
+          return HttpResponse.json({ success: true });
+        }),
+      );
 
       const request = new NextRequest(
         `http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.example.com%2Ftest&runId=${testRunId}`,
@@ -239,20 +238,22 @@ describe("POST /api/webhooks/agent/proxy", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(200);
-      expect(mockFetch).toHaveBeenCalledWith(
-        "https://api.example.com/test",
-        expect.objectContaining({
-          method: "POST",
-        }),
-      );
+      expect(capturedRequest).toBeDefined();
+      expect(capturedRequest?.url).toBe("https://api.example.com/test");
+      expect(capturedRequest?.method).toBe("POST");
     });
 
     it("should handle target URL with query parameters", async () => {
-      const targetResponse = new Response(JSON.stringify({ ok: true }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-      mockFetch.mockResolvedValueOnce(targetResponse);
+      let capturedRequest: Request | undefined;
+      server.use(
+        http.post(
+          "https://api.example.com/v1/messages",
+          async ({ request }) => {
+            capturedRequest = request.clone();
+            return HttpResponse.json({ ok: true });
+          },
+        ),
+      );
 
       // URL with query params: https://api.example.com/v1/messages?stream=true
       const encodedUrl = encodeURIComponent(
@@ -269,14 +270,17 @@ describe("POST /api/webhooks/agent/proxy", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(200);
-      expect(mockFetch).toHaveBeenCalledWith(
+      expect(capturedRequest?.url).toBe(
         "https://api.example.com/v1/messages?stream=true&model=claude",
-        expect.anything(),
       );
     });
 
     it("should return 502 when target is unreachable", async () => {
-      mockFetch.mockRejectedValueOnce(new Error("Connection refused"));
+      server.use(
+        http.post("https://unreachable.example.com/", () => {
+          return HttpResponse.error();
+        }),
+      );
 
       const request = new NextRequest(
         `http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Funreachable.example.com&runId=${testRunId}`,
@@ -300,11 +304,16 @@ describe("POST /api/webhooks/agent/proxy", () => {
 
   describe("Header Forwarding", () => {
     it("should forward custom headers to target", async () => {
-      const targetResponse = new Response("{}", {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-      mockFetch.mockResolvedValueOnce(targetResponse);
+      let capturedRequest: Request | undefined;
+      server.use(
+        http.post(
+          "https://api.anthropic.com/v1/messages",
+          async ({ request }) => {
+            capturedRequest = request.clone();
+            return HttpResponse.json({});
+          },
+        ),
+      );
 
       const request = new NextRequest(
         `http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.anthropic.com%2Fv1%2Fmessages&runId=${testRunId}`,
@@ -321,21 +330,24 @@ describe("POST /api/webhooks/agent/proxy", () => {
 
       await POST(request);
 
-      const fetchCall = mockFetch.mock.calls[0];
-      const fetchHeaders = fetchCall?.[1]?.headers as Headers;
-
       // Should forward custom headers
-      expect(fetchHeaders.get("X-Api-Key")).toBe("sk-ant-test-key");
-      expect(fetchHeaders.get("anthropic-version")).toBe("2023-06-01");
-      expect(fetchHeaders.get("Content-Type")).toBe("application/json");
+      expect(capturedRequest?.headers.get("X-Api-Key")).toBe("sk-ant-test-key");
+      expect(capturedRequest?.headers.get("anthropic-version")).toBe(
+        "2023-06-01",
+      );
+      expect(capturedRequest?.headers.get("Content-Type")).toBe(
+        "application/json",
+      );
     });
 
     it("should not forward hop-by-hop headers", async () => {
-      const targetResponse = new Response("{}", {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-      mockFetch.mockResolvedValueOnce(targetResponse);
+      let capturedRequest: Request | undefined;
+      server.use(
+        http.post("https://api.example.com/", async ({ request }) => {
+          capturedRequest = request.clone();
+          return HttpResponse.json({});
+        }),
+      );
 
       const request = new NextRequest(
         `http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.example.com&runId=${testRunId}`,
@@ -351,12 +363,9 @@ describe("POST /api/webhooks/agent/proxy", () => {
 
       await POST(request);
 
-      const fetchCall = mockFetch.mock.calls[0];
-      const fetchHeaders = fetchCall?.[1]?.headers as Headers;
-
       // Should not forward hop-by-hop headers
-      expect(fetchHeaders.get("Host")).toBeNull();
-      expect(fetchHeaders.get("Connection")).toBeNull();
+      expect(capturedRequest?.headers.get("Host")).toBeNull();
+      expect(capturedRequest?.headers.get("Connection")).toBeNull();
     });
   });
 
@@ -366,24 +375,25 @@ describe("POST /api/webhooks/agent/proxy", () => {
 
   describe("SSE Streaming", () => {
     it("should pass through SSE content-type", async () => {
-      // Mock SSE response
-      const sseBody = new ReadableStream({
-        start(controller) {
-          controller.enqueue(
-            new TextEncoder().encode('data: {"type":"message"}\n\n'),
-          );
-          controller.close();
-        },
-      });
-
-      const targetResponse = new Response(sseBody, {
-        status: 200,
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-        },
-      });
-      mockFetch.mockResolvedValueOnce(targetResponse);
+      server.use(
+        http.post("https://api.anthropic.com/v1/messages", () => {
+          const encoder = new TextEncoder();
+          const stream = new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode('data: {"type":"message"}\n\n'),
+              );
+              controller.close();
+            },
+          });
+          return new HttpResponse(stream, {
+            headers: {
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+            },
+          });
+        }),
+      );
 
       const request = new NextRequest(
         `http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.anthropic.com%2Fv1%2Fmessages&runId=${testRunId}`,
@@ -423,11 +433,16 @@ describe("POST /api/webhooks/agent/proxy", () => {
         testSecretValue,
       );
 
-      const targetResponse = new Response(JSON.stringify({ success: true }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-      mockFetch.mockResolvedValueOnce(targetResponse);
+      let capturedRequest: Request | undefined;
+      server.use(
+        http.post(
+          "https://api.anthropic.com/v1/messages",
+          async ({ request }) => {
+            capturedRequest = request.clone();
+            return HttpResponse.json({ success: true });
+          },
+        ),
+      );
 
       const request = new NextRequest(
         `http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.anthropic.com%2Fv1%2Fmessages&runId=${proxyTestRunId}`,
@@ -447,9 +462,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
       expect(response.status).toBe(200);
 
       // Verify the decrypted secret was sent to target
-      const fetchCall = mockFetch.mock.calls[0];
-      const fetchHeaders = fetchCall?.[1]?.headers as Headers;
-      expect(fetchHeaders.get("x-api-key")).toBe(testSecretValue);
+      expect(capturedRequest?.headers.get("x-api-key")).toBe(testSecretValue);
     });
 
     it("should decrypt proxy token in x-api-key header", async () => {
@@ -460,11 +473,16 @@ describe("POST /api/webhooks/agent/proxy", () => {
         testSecretValue,
       );
 
-      const targetResponse = new Response(JSON.stringify({ success: true }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-      mockFetch.mockResolvedValueOnce(targetResponse);
+      let capturedRequest: Request | undefined;
+      server.use(
+        http.post(
+          "https://api.anthropic.com/v1/messages",
+          async ({ request }) => {
+            capturedRequest = request.clone();
+            return HttpResponse.json({ success: true });
+          },
+        ),
+      );
 
       const request = new NextRequest(
         `http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.anthropic.com%2Fv1%2Fmessages&runId=${proxyTestRunId}`,
@@ -482,19 +500,22 @@ describe("POST /api/webhooks/agent/proxy", () => {
       expect(response.status).toBe(200);
 
       // Verify the decrypted secret was sent to target
-      const fetchCall = mockFetch.mock.calls[0];
-      const fetchHeaders = fetchCall?.[1]?.headers as Headers;
-      expect(fetchHeaders.get("x-api-key")).toBe(testSecretValue);
+      expect(capturedRequest?.headers.get("x-api-key")).toBe(testSecretValue);
     });
 
     it("should pass through non-proxy tokens unchanged", async () => {
       const regularApiKey = "sk-ant-regular-api-key";
 
-      const targetResponse = new Response(JSON.stringify({ success: true }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-      mockFetch.mockResolvedValueOnce(targetResponse);
+      let capturedRequest: Request | undefined;
+      server.use(
+        http.post(
+          "https://api.anthropic.com/v1/messages",
+          async ({ request }) => {
+            capturedRequest = request.clone();
+            return HttpResponse.json({ success: true });
+          },
+        ),
+      );
 
       const request = new NextRequest(
         `http://localhost:3000/api/webhooks/agent/proxy?url=https%3A%2F%2Fapi.anthropic.com%2Fv1%2Fmessages&runId=${proxyTestRunId}`,
@@ -512,9 +533,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
       expect(response.status).toBe(200);
 
       // Verify the regular API key was passed through unchanged
-      const fetchCall = mockFetch.mock.calls[0];
-      const fetchHeaders = fetchCall?.[1]?.headers as Headers;
-      expect(fetchHeaders.get("x-api-key")).toBe(regularApiKey);
+      expect(capturedRequest?.headers.get("x-api-key")).toBe(regularApiKey);
     });
 
     it("should return 401 when runId doesn't match", async () => {
@@ -530,6 +549,15 @@ describe("POST /api/webhooks/agent/proxy", () => {
       const differentRunToken = await createTestSandboxToken(
         testUserId,
         differentRunId,
+      );
+
+      // Track if fetch was called
+      let fetchCalled = false;
+      server.use(
+        http.post("https://api.anthropic.com/v1/messages", () => {
+          fetchCalled = true;
+          return HttpResponse.json({ success: true });
+        }),
       );
 
       const request = new NextRequest(
@@ -554,7 +582,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
       expect(data.error.header).toBe("x-api-key");
 
       // Should NOT have called fetch since decryption failed
-      expect(mockFetch).not.toHaveBeenCalled();
+      expect(fetchCalled).toBe(false);
     });
 
     it("should return 401 when proxy token is expired", async () => {
@@ -565,6 +593,15 @@ describe("POST /api/webhooks/agent/proxy", () => {
         testSecretName,
         testSecretValue,
         -1000, // expired 1 second ago
+      );
+
+      // Track if fetch was called
+      let fetchCalled = false;
+      server.use(
+        http.post("https://api.anthropic.com/v1/messages", () => {
+          fetchCalled = true;
+          return HttpResponse.json({ success: true });
+        }),
       );
 
       const request = new NextRequest(
@@ -586,7 +623,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
       expect(data.error.message).toContain("decryption failed");
 
       // Should NOT have called fetch
-      expect(mockFetch).not.toHaveBeenCalled();
+      expect(fetchCalled).toBe(false);
     });
 
     it("should reject request without runId parameter (security)", async () => {
@@ -595,6 +632,15 @@ describe("POST /api/webhooks/agent/proxy", () => {
         testUserId,
         testSecretName,
         testSecretValue,
+      );
+
+      // Track if fetch was called
+      let fetchCalled = false;
+      server.use(
+        http.post("https://api.anthropic.com/v1/messages", () => {
+          fetchCalled = true;
+          return HttpResponse.json({ success: true });
+        }),
       );
 
       const request = new NextRequest(
@@ -618,7 +664,7 @@ describe("POST /api/webhooks/agent/proxy", () => {
       expect(data.error.message).toContain("runId");
 
       // Should not have made any fetch calls
-      expect(mockFetch).not.toHaveBeenCalled();
+      expect(fetchCalled).toBe(false);
     });
   });
 });

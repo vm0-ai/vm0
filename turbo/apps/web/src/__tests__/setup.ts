@@ -1,5 +1,6 @@
 import "@testing-library/jest-dom/vitest";
-import { vi } from "vitest";
+import { afterAll, afterEach, beforeAll, vi } from "vitest";
+import { server } from "../mocks/server";
 
 // Stub environment variables before any imports
 // Using vi.hoisted() ensures stubs run before module imports
@@ -41,3 +42,19 @@ vi.mock("@clerk/nextjs/server", () => ({
   clerkMiddleware: vi.fn(),
   createRouteMatcher: vi.fn(),
 }));
+
+// MSW server lifecycle
+// Note: Using "bypass" because some test files have their own MSW server setup
+// (e.g., strapi.test.ts). The "error" strategy would conflict with those.
+// Tests that want strict unhandled request checking should use their own server.
+beforeAll(() => {
+  server.listen({ onUnhandledRequest: "bypass" });
+});
+
+afterEach(() => {
+  server.resetHandlers();
+});
+
+afterAll(() => {
+  server.close();
+});
