@@ -13,6 +13,7 @@ import {
   initVMRegistry,
   getProxyManager,
 } from "../proxy/index.js";
+import { acquireRunnerLock, releaseRunnerLock } from "./runner-lock.js";
 import type { RunnerResources } from "./types.js";
 import { createLogger } from "../logger.js";
 
@@ -29,6 +30,9 @@ export async function setupEnvironment(
   options: SetupOptions,
 ): Promise<RunnerResources> {
   const { config } = options;
+
+  // Acquire runner lock first - ensures only one runner per device
+  await acquireRunnerLock();
 
   // Check network prerequisites
   const networkCheck = checkNetworkPrerequisites();
@@ -110,4 +114,7 @@ export async function cleanupEnvironment(
     logger.log("Stopping network proxy...");
     await getProxyManager().stop();
   }
+
+  // Release runner lock last
+  releaseRunnerLock();
 }
