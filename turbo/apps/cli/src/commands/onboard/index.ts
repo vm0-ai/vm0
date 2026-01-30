@@ -58,11 +58,9 @@ async function handleAuthentication(ctx: OnboardContext): Promise<void> {
     process.exit(1);
   }
 
-  ctx.progress.detail("Authentication required...");
-
   await runAuthFlow({
     onInitiating: () => {
-      ctx.progress.detail("Initiating device flow...");
+      // No detail needed - step header is enough
     },
     onDeviceCodeReady: (url, code, expiresIn) => {
       ctx.progress.detail(`Visit: ${url}`);
