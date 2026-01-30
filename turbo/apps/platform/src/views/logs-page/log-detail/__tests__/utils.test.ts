@@ -4,6 +4,7 @@ import {
   formatDuration,
   getEventTypeCounts,
   eventMatchesSearch,
+  getVisibleEventText,
   scrollToMatch,
   EVENTS_CONTAINER_ID,
 } from "../utils.ts";
@@ -80,6 +81,180 @@ describe("log-detail utils", () => {
     });
   });
 
+  describe("getVisibleEventText", () => {
+    it("should include event type", () => {
+      const event: AgentEvent = {
+        sequenceNumber: 1,
+        eventType: "assistant",
+        eventData: {},
+        createdAt: "2024-01-01T00:00:00Z",
+      };
+      expect(getVisibleEventText(event)).toContain("assistant");
+    });
+
+    it("should extract text content from messages", () => {
+      const event: AgentEvent = {
+        sequenceNumber: 1,
+        eventType: "assistant",
+        eventData: {
+          message: { content: [{ type: "text", text: "Hello world" }] },
+        },
+        createdAt: "2024-01-01T00:00:00Z",
+      };
+      const visibleText = getVisibleEventText(event);
+      expect(visibleText).toContain("Hello world");
+    });
+
+    it("should extract tool name from tool_use", () => {
+      const event: AgentEvent = {
+        sequenceNumber: 1,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [{ type: "tool_use", name: "Read", input: {} }],
+          },
+        },
+        createdAt: "2024-01-01T00:00:00Z",
+      };
+      expect(getVisibleEventText(event)).toContain("Read");
+    });
+
+    it("should extract bash command from tool_use input", () => {
+      const event: AgentEvent = {
+        sequenceNumber: 1,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                name: "Bash",
+                input: { command: "ls -la" },
+              },
+            ],
+          },
+        },
+        createdAt: "2024-01-01T00:00:00Z",
+      };
+      const visibleText = getVisibleEventText(event);
+      expect(visibleText).toContain("Bash");
+      expect(visibleText).toContain("ls -la");
+    });
+
+    it("should extract URL from webfetch tool_use", () => {
+      const event: AgentEvent = {
+        sequenceNumber: 1,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                name: "WebFetch",
+                input: { url: "https://example.com", prompt: "fetch data" },
+              },
+            ],
+          },
+        },
+        createdAt: "2024-01-01T00:00:00Z",
+      };
+      const visibleText = getVisibleEventText(event);
+      expect(visibleText).toContain("https://example.com");
+      expect(visibleText).toContain("fetch data");
+    });
+
+    it("should extract file path from read tool_use", () => {
+      const event: AgentEvent = {
+        sequenceNumber: 1,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                name: "Read",
+                input: { file_path: "/path/to/file.ts" },
+              },
+            ],
+          },
+        },
+        createdAt: "2024-01-01T00:00:00Z",
+      };
+      expect(getVisibleEventText(event)).toContain("/path/to/file.ts");
+    });
+
+    it("should extract tool result content", () => {
+      const event: AgentEvent = {
+        sequenceNumber: 1,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [{ type: "tool_result", content: "File contents here" }],
+          },
+        },
+        createdAt: "2024-01-01T00:00:00Z",
+      };
+      expect(getVisibleEventText(event)).toContain("File contents here");
+    });
+
+    it("should extract system event subtype and tools", () => {
+      const event: AgentEvent = {
+        sequenceNumber: 1,
+        eventType: "system",
+        eventData: {
+          subtype: "init",
+          tools: ["Bash", "Read", "Write"],
+          agents: ["explorer"],
+        },
+        createdAt: "2024-01-01T00:00:00Z",
+      };
+      const visibleText = getVisibleEventText(event);
+      expect(visibleText).toContain("system");
+      expect(visibleText).toContain("init");
+      expect(visibleText).toContain("Initialize");
+      expect(visibleText).toContain("Bash");
+      expect(visibleText).toContain("Read");
+      expect(visibleText).toContain("explorer");
+    });
+
+    it("should extract result event data", () => {
+      const event: AgentEvent = {
+        sequenceNumber: 1,
+        eventType: "result",
+        eventData: {
+          result: "Task completed successfully",
+        },
+        createdAt: "2024-01-01T00:00:00Z",
+      };
+      expect(getVisibleEventText(event)).toContain(
+        "Task completed successfully",
+      );
+    });
+
+    it("should NOT include internal JSON fields", () => {
+      const event: AgentEvent = {
+        sequenceNumber: 1,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                id: "tool_123abc",
+                name: "Bash",
+                input: { command: "echo hello" },
+              },
+            ],
+          },
+        },
+        createdAt: "2024-01-01T00:00:00Z",
+      };
+      const visibleText = getVisibleEventText(event);
+      expect(visibleText).not.toContain("tool_123abc");
+      expect(visibleText).not.toContain("tool_use"); // the type field
+    });
+  });
+
   describe("eventMatchesSearch", () => {
     const event: AgentEvent = {
       sequenceNumber: 1,
@@ -99,7 +274,7 @@ describe("log-detail utils", () => {
       expect(eventMatchesSearch(event, "assistant")).toBeTruthy();
     });
 
-    it("should match event data content", () => {
+    it("should match visible text content", () => {
       expect(eventMatchesSearch(event, "Hello")).toBeTruthy();
       expect(eventMatchesSearch(event, "world")).toBeTruthy();
     });
@@ -111,6 +286,34 @@ describe("log-detail utils", () => {
 
     it("should return false when no match", () => {
       expect(eventMatchesSearch(event, "nonexistent")).toBeFalsy();
+    });
+
+    it("should NOT match internal JSON fields", () => {
+      const eventWithInternalData: AgentEvent = {
+        sequenceNumber: 1,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                id: "toolu_abc123",
+                name: "Bash",
+                input: { command: "ls" },
+              },
+            ],
+          },
+        },
+        createdAt: "2024-01-01T00:00:00Z",
+      };
+      // Should match visible fields
+      expect(eventMatchesSearch(eventWithInternalData, "Bash")).toBeTruthy();
+      expect(eventMatchesSearch(eventWithInternalData, "ls")).toBeTruthy();
+      // Should NOT match internal fields
+      expect(
+        eventMatchesSearch(eventWithInternalData, "toolu_abc123"),
+      ).toBeFalsy();
+      expect(eventMatchesSearch(eventWithInternalData, "tool_use")).toBeFalsy();
     });
   });
 
