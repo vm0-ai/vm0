@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.31.0](https://github.com/vm0-ai/vm0/compare/platform-v0.30.0...platform-v0.31.0) (2026-01-30)
+
+
+### Features
+
+* **platform:** add copy buttons and update event card styling ([#1946](https://github.com/vm0-ai/vm0/issues/1946)) ([4e416b8](https://github.com/vm0-ai/vm0/commit/4e416b8134d0bb6a42088582d79b8c60732aeef5))
+* **platform:** improve log detail page ui ([#1940](https://github.com/vm0-ai/vm0/issues/1940)) ([e6e521a](https://github.com/vm0-ai/vm0/commit/e6e521aac59ff301a4375ab83689f49c227648bc))
+* **platform:** show raw events view for codex framework ([#1942](https://github.com/vm0-ai/vm0/issues/1942)) ([95f6e3c](https://github.com/vm0-ai/vm0/commit/95f6e3cf131808f09e7a4ed0a898a55906edfd1d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.4.1
+
 ## [0.30.0](https://github.com/vm0-ai/vm0/compare/platform-v0.29.0...platform-v0.30.0) (2026-01-30)
 
 

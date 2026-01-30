@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.5.1](https://github.com/vm0-ai/vm0/compare/cli-v9.5.0...cli-v9.5.1) (2026-01-30)
+
+
+### Bug Fixes
+
+* **cli:** preserve color output in nested vm0 run from cook ([#1943](https://github.com/vm0-ai/vm0/issues/1943)) ([0ff302e](https://github.com/vm0-ai/vm0/commit/0ff302ef66ae9a310c4247b4cd0dd989a56727a9))
+* **contracts:** use c.nobody() for 204 responses ([#1910](https://github.com/vm0-ai/vm0/issues/1910)) ([9ba5354](https://github.com/vm0-ai/vm0/commit/9ba5354aa76182540a398ced5e5e968d6c9878e2)), closes [#1902](https://github.com/vm0-ai/vm0/issues/1902)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.4.1
+
 ## [9.5.0](https://github.com/vm0-ai/vm0/compare/cli-v9.4.1...cli-v9.5.0) (2026-01-30)
 
 

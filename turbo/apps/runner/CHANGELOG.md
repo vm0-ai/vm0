@@ -1,5 +1,20 @@
 # Changelog
 
+## [3.6.1](https://github.com/vm0-ai/vm0/compare/runner-v3.6.0...runner-v3.6.1) (2026-01-30)
+
+
+### Performance Improvements
+
+* **runner:** implement event-driven process exit notification via vsock ([#1944](https://github.com/vm0-ai/vm0/issues/1944)) ([c520535](https://github.com/vm0-ai/vm0/commit/c520535a8f8dc2a66ef196ab11e63c70067681f3))
+* **runner:** pre-bake proxy ca certificate into rootfs ([#1933](https://github.com/vm0-ai/vm0/issues/1933)) ([6cd5fb6](https://github.com/vm0-ai/vm0/commit/6cd5fb632b3ad2ead632f436daac8828821d5559)), closes [#1919](https://github.com/vm0-ai/vm0/issues/1919)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.4.1
+
 ## [3.6.0](https://github.com/vm0-ai/vm0/compare/runner-v3.5.0...runner-v3.6.0) (2026-01-30)
 
 

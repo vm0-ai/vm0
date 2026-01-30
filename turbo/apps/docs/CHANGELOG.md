@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.3.0](https://github.com/vm0-ai/vm0/compare/docs-v2.2.0...docs-v2.3.0) (2026-01-30)
+
+
+### Features
+
+* **seo:** enhance seo and social sharing for vm0.ai and docs.vm0.ai ([#1939](https://github.com/vm0-ai/vm0/issues/1939)) ([761fecb](https://github.com/vm0-ai/vm0/commit/761fecb9d3afdbe50b3b8d7b568bc40926db14cf))
+
 ## [2.2.0](https://github.com/vm0-ai/vm0/compare/docs-v2.1.1...docs-v2.2.0) (2026-01-29)
 
 

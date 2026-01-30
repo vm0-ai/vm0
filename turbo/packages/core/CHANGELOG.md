@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.4.1](https://github.com/vm0-ai/vm0/compare/core-v7.4.0...core-v7.4.1) (2026-01-30)
+
+
+### Bug Fixes
+
+* **contracts:** use c.nobody() for 204 responses ([#1910](https://github.com/vm0-ai/vm0/issues/1910)) ([9ba5354](https://github.com/vm0-ai/vm0/commit/9ba5354aa76182540a398ced5e5e968d6c9878e2)), closes [#1902](https://github.com/vm0-ai/vm0/issues/1902)
+
 ## [7.4.0](https://github.com/vm0-ai/vm0/compare/core-v7.3.0...core-v7.4.0) (2026-01-29)
 
 
