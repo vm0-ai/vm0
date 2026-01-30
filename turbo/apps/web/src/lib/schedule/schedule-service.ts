@@ -138,7 +138,7 @@ function buildMissingConfigError(missing: {
  * Schedule Service
  * Handles business logic for schedule management
  */
-export class ScheduleService {
+class ScheduleService {
   /**
    * Calculate next run time from cron expression and timezone
    */
