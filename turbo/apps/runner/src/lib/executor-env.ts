@@ -5,6 +5,7 @@
  */
 
 import type { ExecutionContext } from "./api.js";
+import { VM_PROXY_CA_PATH } from "./vm-setup/index.js";
 
 /**
  * Path to environment JSON file in VM
@@ -77,10 +78,9 @@ export function buildEnvironmentVariables(
   // For MITM mode, tell Node.js to trust the proxy CA certificate
   // This is required because mitmproxy intercepts HTTPS traffic and re-signs
   // certificates with its own CA. Without this, Node.js will reject the connection.
-  // Note: Python and curl automatically use the system CA bundle after update-ca-certificates.
+  // Note: Python and curl automatically use the system CA bundle.
   if (context.experimentalFirewall?.experimental_mitm) {
-    envVars.NODE_EXTRA_CA_CERTS =
-      "/usr/local/share/ca-certificates/vm0-proxy-ca.crt";
+    envVars.NODE_EXTRA_CA_CERTS = VM_PROXY_CA_PATH;
   }
 
   return envVars;

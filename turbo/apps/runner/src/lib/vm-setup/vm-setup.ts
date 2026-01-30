@@ -11,6 +11,10 @@ import type { GuestClient } from "../firecracker/guest.js";
 import type { StorageManifest, ResumeSession } from "../api.js";
 import { SCRIPT_PATHS } from "../scripts/index.js";
 
+/** Path where proxy CA certificate is installed in VM (for NODE_EXTRA_CA_CERTS) */
+export const VM_PROXY_CA_PATH =
+  "/usr/local/share/ca-certificates/vm0-proxy-ca.crt";
+
 /**
  * Download storages to VM using storage manifest
  */
@@ -112,15 +116,12 @@ export async function installProxyCA(
   );
 
   // Write CA cert to standard location (for NODE_EXTRA_CA_CERTS)
-  await guest.writeFileWithSudo(
-    "/usr/local/share/ca-certificates/vm0-proxy-ca.crt",
-    certWithNewline,
-  );
+  await guest.writeFileWithSudo(VM_PROXY_CA_PATH, certWithNewline);
 
   // Append directly to CA bundle - much faster than update-ca-certificates (~10ms vs ~200-500ms)
   // This works because ca-certificates.crt is just a concatenation of PEM certs
   await guest.execOrThrow(
-    "cat /usr/local/share/ca-certificates/vm0-proxy-ca.crt | sudo tee -a /etc/ssl/certs/ca-certificates.crt > /dev/null",
+    `cat ${VM_PROXY_CA_PATH} | sudo tee -a /etc/ssl/certs/ca-certificates.crt > /dev/null`,
   );
 
   console.log("[Executor] Proxy CA certificate installed successfully");
