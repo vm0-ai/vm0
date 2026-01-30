@@ -13,7 +13,7 @@ import type { AgentComposeSnapshot } from "../checkpoint/types";
 import { agentSessionService } from "../agent-session";
 import { prepareForExecution } from "./context/execution-preparer";
 import { e2bExecutor } from "./executors/e2b-executor";
-import { runnerExecutor } from "./executors/runner-executor";
+import { executeRunnerJob } from "./executors/runner-executor";
 import type { ExecutorResult, PreparedContext } from "./executors/types";
 import {
   buildExecutionContext as buildContext,
@@ -307,7 +307,7 @@ class RunService {
       log.debug(
         `Dispatching run ${context.runId} to runner group: ${context.runnerGroup}`,
       );
-      return await runnerExecutor.execute(context);
+      return await executeRunnerJob(context);
     } else {
       log.debug(`Dispatching run ${context.runId} to E2B executor`);
       return await e2bExecutor.execute(context);
