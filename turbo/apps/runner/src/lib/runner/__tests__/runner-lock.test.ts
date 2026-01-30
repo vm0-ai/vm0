@@ -9,6 +9,7 @@ describe("runner-lock", () => {
   let pidFile: string;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     // Create temp directory for each test
     testDir = fs.mkdtempSync(path.join(os.tmpdir(), "runner-lock-test-"));
     pidFile = path.join(testDir, "runner.pid");
