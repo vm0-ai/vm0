@@ -57,7 +57,9 @@ describe("welcome-box", () => {
 
       const output = logOutput.join("\n");
       expect(output).toContain("Welcome to VM0!");
-      expect(output).toContain("Let's create your first agent.");
+      expect(output).toContain(
+        "Build agentic workflows using natural language.",
+      );
     });
   });
 });

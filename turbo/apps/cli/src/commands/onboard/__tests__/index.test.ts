@@ -197,10 +197,10 @@ describe("onboard command", () => {
       await onboardCommand.parseAsync(["node", "cli", "-y"]);
 
       const logCalls = vi.mocked(console.log).mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Authentication");
-      expect(logCalls).toContain("Model Provider Setup");
-      expect(logCalls).toContain("Create Agent");
-      expect(logCalls).toContain("Claude Plugin Install");
+      expect(logCalls).toContain("Authenticate to vm0.ai");
+      expect(logCalls).toContain("Set Up Model Provider");
+      expect(logCalls).toContain("Create New Project");
+      expect(logCalls).toContain("Install Claude Plugin");
     });
   });
 

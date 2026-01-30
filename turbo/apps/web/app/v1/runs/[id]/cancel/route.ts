@@ -19,7 +19,7 @@ import {
   agentComposeVersions,
 } from "../../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
-import { e2bService } from "../../../../../src/lib/e2b/e2b-service";
+import { killSandbox } from "../../../../../src/lib/e2b/e2b-service";
 
 interface RunResult {
   output?: string;
@@ -138,7 +138,7 @@ const router = tsr.router(publicRunCancelContract, {
 
     // Kill E2B sandbox if it exists
     if (run.sandboxId) {
-      await e2bService.killSandbox(run.sandboxId);
+      await killSandbox(run.sandboxId);
     }
 
     // Parse result JSON for output and other fields

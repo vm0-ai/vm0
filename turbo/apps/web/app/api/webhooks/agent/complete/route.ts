@@ -10,7 +10,7 @@ import { checkpoints } from "../../../../../src/db/schema/checkpoint";
 import { agentSessions } from "../../../../../src/db/schema/agent-session";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
-import { e2bService } from "../../../../../src/lib/e2b/e2b-service";
+import { killSandbox } from "../../../../../src/lib/e2b/e2b-service";
 import type { ArtifactSnapshot } from "../../../../../src/lib/checkpoint";
 import type { RunResult } from "../../../../../src/lib/run/types";
 import { logger } from "../../../../../src/lib/logger";
@@ -96,7 +96,7 @@ const router = tsr.router(webhookCompleteContract, {
           .where(eq(agentRuns.id, body.runId));
 
         if (sandboxId) {
-          await e2bService.killSandbox(sandboxId);
+          await killSandbox(sandboxId);
         }
 
         return {
@@ -182,7 +182,7 @@ const router = tsr.router(webhookCompleteContract, {
 
     // Kill sandbox (wait for completion to ensure cleanup before response)
     if (sandboxId) {
-      await e2bService.killSandbox(sandboxId);
+      await killSandbox(sandboxId);
     }
 
     return {

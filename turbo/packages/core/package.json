@@ -22,6 +22,7 @@
     "@vm0/typescript-config": "workspace:*",
     "esbuild": "^0.24.0",
     "eslint": "^9.34.0",
+    "memfs": "^4.56.10",
     "oxlint": "^1.14.0",
     "tsx": "^4.20.6",
     "typescript": "5.9.2",

@@ -7,7 +7,7 @@ import {
   agentComposes,
 } from "../../../../src/db/schema/agent-compose";
 import { eq, inArray } from "drizzle-orm";
-import { e2bService } from "../../../../src/lib/e2b/e2b-service";
+import { killSandbox } from "../../../../src/lib/e2b/e2b-service";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("cron:cleanup-sandboxes");
@@ -113,7 +113,7 @@ const router = tsr.router(cronCleanupSandboxesContract, {
       try {
         // Kill the E2B sandbox only if it exists (pending runs may not have one)
         if (run.sandboxId) {
-          await e2bService.killSandbox(run.sandboxId);
+          await killSandbox(run.sandboxId);
         }
 
         // Determine error message based on status
