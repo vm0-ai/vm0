@@ -1,3 +1,4 @@
+import { CopyButton } from "@vm0/ui";
 import { getEventStyle } from "../constants/event-styles.ts";
 import { CollapsibleJson } from "./collapsible-json.tsx";
 import { highlightText } from "../utils/highlight-text.tsx";
@@ -353,9 +354,17 @@ function ToolInputParams({
   if (lowerName === "bash") {
     const command = input.command as string | undefined;
     return (
-      <code className="block font-mono text-sm bg-input text-foreground px-4 py-3 rounded-[10px] w-full overflow-x-auto whitespace-pre-wrap">
-        {command}
-      </code>
+      <div className="flex gap-2 items-start bg-sidebar rounded-[10px] px-4 py-3 w-full">
+        <code className="flex-1 font-mono text-sm text-foreground overflow-x-auto whitespace-pre-wrap min-w-0">
+          {command}
+        </code>
+        {command && (
+          <CopyButton
+            text={command}
+            className="shrink-0 h-9 w-10 bg-card border border-border rounded-lg"
+          />
+        )}
+      </div>
     );
   }
 
@@ -607,8 +616,6 @@ function ResultContent({
     searchTerm.trim() &&
     text.toLowerCase().includes(searchTerm.toLowerCase());
 
-  const preClass = "bg-input text-foreground";
-
   const contentElement = searchTerm
     ? highlightText(text, {
         searchTerm,
@@ -625,21 +632,29 @@ function ResultContent({
         <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground">
           Output ({lines.length} lines)
         </summary>
-        <pre
-          className={`mt-2 text-xs whitespace-pre-wrap overflow-x-auto p-3 rounded max-h-80 overflow-y-auto ${preClass}`}
-        >
-          {contentElement}
-        </pre>
+        <div className="mt-2 flex gap-2 items-start bg-sidebar rounded-[10px] px-4 py-3">
+          <pre className="flex-1 text-xs text-foreground whitespace-pre-wrap overflow-x-auto max-h-80 overflow-y-auto min-w-0">
+            {contentElement}
+          </pre>
+          <CopyButton
+            text={text}
+            className="shrink-0 h-9 w-10 bg-card border border-border rounded-lg"
+          />
+        </div>
       </details>
     );
   }
 
   return (
-    <pre
-      className={`text-xs whitespace-pre-wrap overflow-x-auto p-2 rounded ${preClass}`}
-    >
-      {contentElement}
-    </pre>
+    <div className="flex gap-2 items-start bg-sidebar rounded-[10px] px-4 py-3">
+      <pre className="flex-1 text-xs text-foreground whitespace-pre-wrap overflow-x-auto min-w-0">
+        {contentElement}
+      </pre>
+      <CopyButton
+        text={text}
+        className="shrink-0 h-9 w-10 bg-card border border-border rounded-lg"
+      />
+    </div>
   );
 }
 

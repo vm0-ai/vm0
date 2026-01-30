@@ -31,7 +31,7 @@ function createEventStyles(): Readonly<Record<string, EventStyle>> {
       icon: IconSettings,
       label: "System",
       borderColor: "border-border",
-      bgColor: "bg-white dark:bg-slate-900",
+      bgColor: "bg-card",
       textColor: "text-sky-600",
       badgeColor:
         "border border-sky-400 text-sky-600 bg-sky-50 dark:border-sky-500 dark:text-sky-400 dark:bg-sky-950/30",
@@ -42,7 +42,7 @@ function createEventStyles(): Readonly<Record<string, EventStyle>> {
       icon: IconUser,
       label: "Assistant",
       borderColor: "border-border",
-      bgColor: "bg-white dark:bg-slate-900",
+      bgColor: "bg-card",
       textColor: "text-amber-600",
       badgeColor:
         "border border-amber-400 text-amber-600 bg-amber-50 dark:border-amber-500 dark:text-amber-400 dark:bg-amber-950/30",
@@ -53,7 +53,7 @@ function createEventStyles(): Readonly<Record<string, EventStyle>> {
       icon: IconUser,
       label: "User",
       borderColor: "border-border",
-      bgColor: "bg-white dark:bg-slate-900",
+      bgColor: "bg-card",
       textColor: "text-pink-500",
       badgeColor:
         "border border-pink-400 text-pink-500 bg-pink-50 dark:border-pink-500 dark:text-pink-400 dark:bg-pink-950/30",
@@ -64,7 +64,7 @@ function createEventStyles(): Readonly<Record<string, EventStyle>> {
       icon: IconSquareCheck,
       label: "Result",
       borderColor: "border-border",
-      bgColor: "bg-white dark:bg-slate-900",
+      bgColor: "bg-card",
       textColor: "text-lime-600",
       badgeColor:
         "border border-lime-600 text-lime-600 bg-lime-50 dark:border-lime-500 dark:text-lime-400 dark:bg-lime-950/30",
