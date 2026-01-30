@@ -14,7 +14,7 @@ const log = logger("service:session-history");
  * Session History Service
  * Stores session history (JSONL) in R2 blob storage with content-addressable hashing
  */
-export class SessionHistoryService {
+class SessionHistoryService {
   /**
    * Store session history content to R2 blob storage
    *
