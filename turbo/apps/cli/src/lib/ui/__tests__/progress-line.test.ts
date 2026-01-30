@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import {
-  renderProgressLine,
-  createOnboardProgress,
-  type Step,
-} from "../progress-line.js";
+import { createProgressiveProgress } from "../progress-line.js";
 
 describe("progress-line", () => {
   let consoleLogSpy: ReturnType<typeof vi.spyOn>;
@@ -20,111 +16,104 @@ describe("progress-line", () => {
     consoleLogSpy.mockRestore();
   });
 
-  describe("renderProgressLine", () => {
-    it("should render completed steps with filled circle", () => {
-      const steps: Step[] = [{ label: "Step 1", status: "completed" }];
-      renderProgressLine(steps);
+  describe("createProgressiveProgress", () => {
+    let stdoutOutput: string[];
+    let originalWrite: typeof process.stdout.write;
 
-      expect(logOutput[0]).toContain("●");
-      expect(logOutput[0]).toContain("Step 1");
+    beforeEach(() => {
+      stdoutOutput = [];
+      originalWrite = process.stdout.write;
+      process.stdout.write = ((chunk: string | Uint8Array): boolean => {
+        stdoutOutput.push(String(chunk));
+        return true;
+      }) as typeof process.stdout.write;
     });
 
-    it("should render in-progress steps with half circle", () => {
-      const steps: Step[] = [{ label: "Step 1", status: "in-progress" }];
-      renderProgressLine(steps);
-
-      expect(logOutput[0]).toContain("◐");
-      expect(logOutput[0]).toContain("Step 1");
+    afterEach(() => {
+      process.stdout.write = originalWrite;
     });
 
-    it("should render pending steps with empty circle", () => {
-      const steps: Step[] = [{ label: "Step 1", status: "pending" }];
-      renderProgressLine(steps);
+    it("should print step with empty circle on startStep", () => {
+      const progress = createProgressiveProgress(false);
+      progress.startStep("Authentication");
 
       expect(logOutput[0]).toContain("○");
-      expect(logOutput[0]).toContain("Step 1");
+      expect(logOutput[0]).toContain("Authentication");
     });
 
-    it("should render failed steps with X", () => {
-      const steps: Step[] = [{ label: "Step 1", status: "failed" }];
-      renderProgressLine(steps);
+    it("should print detail lines with connector prefix", () => {
+      const progress = createProgressiveProgress(false);
+      progress.startStep("Authentication");
+      progress.detail("Initiating device flow...");
+      progress.detail("Waiting for confirmation...");
 
-      expect(logOutput[0]).toContain("✗");
-      expect(logOutput[0]).toContain("Step 1");
-    });
-
-    it("should render connecting lines between steps", () => {
-      const steps: Step[] = [
-        { label: "Step 1", status: "completed" },
-        { label: "Step 2", status: "pending" },
-      ];
-      renderProgressLine(steps);
-
-      expect(logOutput.length).toBe(3);
       expect(logOutput[1]).toContain("│");
+      expect(logOutput[1]).toContain("Initiating device flow...");
+      expect(logOutput[2]).toContain("│");
+      expect(logOutput[2]).toContain("Waiting for confirmation...");
     });
 
-    it("should not render line after last step", () => {
-      const steps: Step[] = [{ label: "Only Step", status: "completed" }];
-      renderProgressLine(steps);
+    it("should print completed step with filled circle", () => {
+      const progress = createProgressiveProgress(false);
+      progress.startStep("Authentication");
+      progress.completeStep();
 
-      expect(logOutput.length).toBe(1);
-    });
-  });
-
-  describe("createOnboardProgress", () => {
-    it("should create progress with 5 steps", () => {
-      const progress = createOnboardProgress();
-
-      expect(progress.steps.length).toBe(5);
-      expect(progress.steps[0]?.label).toBe("Authentication");
-      expect(progress.steps[1]?.label).toBe("Model Provider Setup");
-      expect(progress.steps[2]?.label).toBe("Create Agent");
-      expect(progress.steps[3]?.label).toBe("Claude Plugin Install");
-      expect(progress.steps[4]?.label).toBe("Complete");
-    });
-
-    it("should initialize all steps as pending", () => {
-      const progress = createOnboardProgress();
-
-      for (const step of progress.steps) {
-        expect(step.status).toBe("pending");
-      }
-    });
-
-    it("should update step status correctly", () => {
-      const progress = createOnboardProgress();
-
-      progress.update(0, "completed");
-      expect(progress.steps[0]?.status).toBe("completed");
-
-      progress.update(1, "in-progress");
-      expect(progress.steps[1]?.status).toBe("in-progress");
-
-      progress.update(2, "failed");
-      expect(progress.steps[2]?.status).toBe("failed");
-    });
-
-    it("should handle out of bounds index gracefully", () => {
-      const progress = createOnboardProgress();
-
-      progress.update(-1, "completed");
-      progress.update(10, "completed");
-
-      for (const step of progress.steps) {
-        expect(step.status).toBe("pending");
-      }
-    });
-
-    it("should render progress line", () => {
-      const progress = createOnboardProgress();
-
-      progress.render();
-
-      expect(logOutput.length).toBeGreaterThan(0);
+      expect(logOutput.some((line) => line.includes("●"))).toBe(true);
       expect(logOutput.some((line) => line.includes("Authentication"))).toBe(
         true,
       );
+    });
+
+    it("should print connector line after completed step", () => {
+      const progress = createProgressiveProgress(false);
+      progress.startStep("Authentication");
+      progress.completeStep();
+
+      // Last output should be connector line
+      const lastLog = logOutput[logOutput.length - 1];
+      expect(lastLog).toContain("│");
+    });
+
+    it("should not print connector line for final step", () => {
+      const progress = createProgressiveProgress(false);
+      progress.startStep("Complete");
+      progress.setFinalStep();
+      progress.completeStep();
+
+      // Should have step line but no trailing connector
+      expect(logOutput.some((line) => line.includes("●"))).toBe(true);
+      expect(logOutput.filter((line) => line.includes("│")).length).toBe(0);
+    });
+
+    it("should print failed step with X", () => {
+      const progress = createProgressiveProgress(false);
+      progress.startStep("Authentication");
+      progress.failStep();
+
+      expect(logOutput.some((line) => line.includes("✗"))).toBe(true);
+      expect(logOutput.some((line) => line.includes("Authentication"))).toBe(
+        true,
+      );
+    });
+
+    it("should use ANSI escapes in interactive mode", () => {
+      const progress = createProgressiveProgress(true);
+      progress.startStep("Authentication");
+      progress.detail("Some detail");
+      progress.completeStep();
+
+      // Should have written ANSI escape sequences to stdout
+      expect(stdoutOutput.some((s) => s.includes("\x1b["))).toBe(true);
+    });
+
+    it("should not use ANSI escapes in non-interactive mode", () => {
+      const progress = createProgressiveProgress(false);
+      progress.startStep("Authentication");
+      progress.detail("Some detail");
+      progress.completeStep();
+
+      // Should not have written any ANSI escape sequences
+      expect(stdoutOutput.every((s) => !s.includes("\x1b["))).toBe(true);
     });
   });
 });

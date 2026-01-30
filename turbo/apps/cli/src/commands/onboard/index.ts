@@ -13,8 +13,8 @@ import {
 } from "../../lib/utils/prompt-utils.js";
 import { renderOnboardWelcome } from "../../lib/ui/welcome-box.js";
 import {
-  createOnboardProgress,
-  type StepStatus,
+  createProgressiveProgress,
+  type ProgressiveProgress,
 } from "../../lib/ui/progress-line.js";
 import {
   isAuthenticated,
@@ -39,71 +39,70 @@ interface OnboardOptions {
 interface OnboardContext {
   interactive: boolean;
   options: OnboardOptions;
-  updateProgress: (index: number, status: StepStatus) => void;
+  progress: ProgressiveProgress;
 }
 
 async function handleAuthentication(ctx: OnboardContext): Promise<void> {
-  ctx.updateProgress(0, "in-progress");
+  ctx.progress.startStep("Authentication");
 
   const authenticated = await isAuthenticated();
   if (authenticated) {
-    ctx.updateProgress(0, "completed");
+    ctx.progress.completeStep();
     return;
   }
 
   if (!ctx.interactive) {
+    ctx.progress.failStep();
     console.error(chalk.red("Error: Not authenticated"));
     console.error("Run 'vm0 auth login' first or set VM0_TOKEN");
     process.exit(1);
   }
 
-  console.log(chalk.dim("Authentication required..."));
-  console.log();
+  ctx.progress.detail("Authentication required...");
 
   await runAuthFlow({
     onInitiating: () => {
-      console.log("Initiating authentication...");
+      ctx.progress.detail("Initiating device flow...");
     },
     onDeviceCodeReady: (url, code, expiresIn) => {
-      console.log(chalk.green("\nDevice code generated"));
-      console.log(chalk.cyan(`\nTo authenticate, visit: ${url}`));
-      console.log(`And enter this code: ${chalk.bold(code)}`);
-      console.log(`\nThe code expires in ${expiresIn} minutes.`);
-      console.log("\nWaiting for authentication...");
+      ctx.progress.detail(`Visit: ${url}`);
+      ctx.progress.detail(`Code: ${code}`);
+      ctx.progress.detail(`Expires in ${expiresIn} minutes`);
+      ctx.progress.detail("Waiting for confirmation...");
     },
     onPolling: () => {
-      process.stdout.write(chalk.dim("."));
+      // Don't add detail for each poll - would create too many lines
     },
     onSuccess: () => {
-      console.log(chalk.green("\nAuthentication successful!"));
-      console.log("Your credentials have been saved.");
+      // Will be shown as completed step
     },
     onError: (error) => {
+      ctx.progress.failStep();
       console.error(chalk.red(`\n${error.message}`));
       process.exit(1);
     },
   });
 
-  ctx.updateProgress(0, "completed");
+  ctx.progress.completeStep();
 }
 
 async function handleModelProvider(ctx: OnboardContext): Promise<void> {
-  ctx.updateProgress(1, "in-progress");
+  ctx.progress.startStep("Model Provider Setup");
 
   const providerStatus = await checkModelProviderStatus();
   if (providerStatus.hasProvider) {
-    ctx.updateProgress(1, "completed");
+    ctx.progress.completeStep();
     return;
   }
 
   if (!ctx.interactive) {
+    ctx.progress.failStep();
     console.error(chalk.red("Error: No model provider configured"));
     console.error("Run 'vm0 model-provider setup' first");
     process.exit(1);
   }
 
-  console.log(chalk.dim("Model provider setup required..."));
-  console.log();
+  ctx.progress.detail("Setup required...");
 
   const choices = getProviderChoices();
   const providerType = await promptSelect<ModelProviderType>(
@@ -120,11 +119,6 @@ async function handleModelProvider(ctx: OnboardContext): Promise<void> {
   }
 
   const selectedChoice = choices.find((c) => c.type === providerType);
-  if (selectedChoice) {
-    console.log();
-    console.log(chalk.dim(selectedChoice.helpText));
-    console.log();
-  }
 
   const credential = await promptPassword(
     `Enter your ${selectedChoice?.credentialLabel ?? "credential"}:`,
@@ -136,17 +130,15 @@ async function handleModelProvider(ctx: OnboardContext): Promise<void> {
   }
 
   const result = await setupModelProvider(providerType, credential);
-  console.log(
-    chalk.green(
-      `\n✓ Model provider "${providerType}" ${result.created ? "created" : "updated"}${result.isDefault ? ` (default for ${result.framework})` : ""}`,
-    ),
+  ctx.progress.detail(
+    `${providerType} ${result.created ? "created" : "updated"}${result.isDefault ? ` (default for ${result.framework})` : ""}`,
   );
 
-  ctx.updateProgress(1, "completed");
+  ctx.progress.completeStep();
 }
 
 async function handleAgentCreation(ctx: OnboardContext): Promise<string> {
-  ctx.updateProgress(2, "in-progress");
+  ctx.progress.startStep("Create Agent");
 
   let agentName = ctx.options.name ?? DEFAULT_AGENT_NAME;
 
@@ -169,6 +161,7 @@ async function handleAgentCreation(ctx: OnboardContext): Promise<string> {
   }
 
   if (!validateAgentName(agentName)) {
+    ctx.progress.failStep();
     console.error(
       chalk.red(
         "Invalid agent name: must be 3-64 chars, alphanumeric + hyphens",
@@ -178,7 +171,8 @@ async function handleAgentCreation(ctx: OnboardContext): Promise<string> {
   }
 
   if (existsSync(agentName)) {
-    console.error(chalk.red(`\n✗ ${agentName}/ already exists`));
+    ctx.progress.failStep();
+    console.error(chalk.red(`${agentName}/ already exists`));
     console.log();
     console.log("Remove it first or choose a different name:");
     console.log(chalk.cyan(`  rm -rf ${agentName}`));
@@ -186,9 +180,9 @@ async function handleAgentCreation(ctx: OnboardContext): Promise<string> {
   }
 
   await mkdir(agentName, { recursive: true });
-  console.log(chalk.green(`✓ Created ${agentName}/`));
+  ctx.progress.detail(`Created ${agentName}/`);
 
-  ctx.updateProgress(2, "completed");
+  ctx.progress.completeStep();
   return agentName;
 }
 
@@ -196,7 +190,7 @@ async function handlePluginInstallation(
   ctx: OnboardContext,
   agentName: string,
 ): Promise<void> {
-  ctx.updateProgress(3, "in-progress");
+  ctx.progress.startStep("Claude Plugin Install");
 
   // Ask if user wants to install the plugin
   let shouldInstall = true;
@@ -209,8 +203,8 @@ async function handlePluginInstallation(
   }
 
   if (!shouldInstall) {
-    console.log(chalk.dim("Skipped plugin installation"));
-    ctx.updateProgress(3, "completed");
+    ctx.progress.detail("Skipped");
+    ctx.progress.completeStep();
     return;
   }
 
@@ -222,14 +216,14 @@ async function handlePluginInstallation(
     const agentDir = path.resolve(process.cwd(), agentName);
 
     const result = await installVm0Plugin(scope, agentDir);
-    console.log(
-      chalk.green(`✓ Installed ${result.pluginId} (scope: ${result.scope})`),
+    ctx.progress.detail(
+      `Installed ${result.pluginId} (scope: ${result.scope})`,
     );
   } catch (error) {
     handlePluginError(error);
   }
 
-  ctx.updateProgress(3, "completed");
+  ctx.progress.completeStep();
 }
 
 function printNextSteps(agentName: string): void {
@@ -250,39 +244,25 @@ export const onboardCommand = new Command()
   .action(async (options: OnboardOptions) => {
     const interactive = isInteractive();
 
+    // Print welcome banner once at the start (it will scroll away)
     if (interactive) {
       console.log();
       renderOnboardWelcome();
       console.log();
     }
 
-    const progress = createOnboardProgress();
-
-    const updateProgress = (index: number, status: StepStatus) => {
-      progress.update(index, status);
-      if (interactive) {
-        console.clear();
-        renderOnboardWelcome();
-        console.log();
-        progress.render();
-        console.log();
-      }
-    };
-
-    if (interactive) {
-      progress.render();
-      console.log();
-    }
-
-    const ctx: OnboardContext = { interactive, options, updateProgress };
+    const progress = createProgressiveProgress(interactive);
+    const ctx: OnboardContext = { interactive, options, progress };
 
     await handleAuthentication(ctx);
     await handleModelProvider(ctx);
     const agentName = await handleAgentCreation(ctx);
     await handlePluginInstallation(ctx, agentName);
 
-    // Mark complete
-    ctx.updateProgress(4, "completed");
+    // Mark final step as complete (no connector line after)
+    progress.startStep("Complete");
+    progress.setFinalStep();
+    progress.completeStep();
 
     printNextSteps(agentName);
   });

@@ -1,77 +1,116 @@
 import chalk from "chalk";
 
-export type StepStatus = "pending" | "in-progress" | "completed" | "failed";
-
-export interface Step {
-  label: string;
-  status: StepStatus;
-}
-
-const STATUS_SYMBOLS: Record<StepStatus, string> = {
-  completed: "●",
-  "in-progress": "◐",
-  pending: "○",
-  failed: "✗",
-};
-
-function getStatusColor(status: StepStatus): (text: string) => string {
-  switch (status) {
-    case "completed":
-      return chalk.green;
-    case "in-progress":
-      return chalk.yellow;
-    case "failed":
-      return chalk.red;
-    case "pending":
-    default:
-      return chalk.dim;
-  }
+/**
+ * Progressive progress tracker that reveals steps one at a time.
+ * Steps are shown only when they start, and detail lines can be added
+ * during execution. When a step completes, detail lines are cleared.
+ */
+export interface ProgressiveProgress {
+  /** Start a new step (prints step line with ○) */
+  startStep: (label: string) => void;
+  /** Print a detail line (prefixed with │) */
+  detail: (message: string) => void;
+  /** Complete current step (clears details, prints ● with │ connector) */
+  completeStep: () => void;
+  /** Fail current step (clears details, prints ✗) */
+  failStep: () => void;
+  /** Mark as final step (no connector line after completion) */
+  setFinalStep: () => void;
 }
 
 /**
- * Renders a vertical progress line with steps
- * @param steps - Array of steps with labels and statuses
+ * Creates a progressive progress tracker for streaming-style output.
+ * @param interactive - Whether to use ANSI escape sequences for cursor control
  */
-export function renderProgressLine(steps: Step[]): void {
-  for (let i = 0; i < steps.length; i++) {
-    const step = steps[i];
-    if (!step) continue;
+export function createProgressiveProgress(
+  interactive: boolean = true,
+): ProgressiveProgress {
+  let currentLabel = "";
+  let detailLineCount = 0;
+  let isFinalStep = false;
 
-    const symbol = STATUS_SYMBOLS[step.status];
-    const color = getStatusColor(step.status);
+  const clearDetails = (): void => {
+    if (!interactive || detailLineCount === 0) return;
 
-    console.log(color(`${symbol} ${step.label}`));
+    // Move cursor up to the step line (detailLineCount + 1)
+    process.stdout.write(`\x1b[${detailLineCount + 1}A`);
+    // Clear the step line
+    process.stdout.write(`\x1b[K`);
+  };
 
-    if (i < steps.length - 1) {
-      console.log(chalk.dim("│"));
+  const clearDetailLines = (): void => {
+    if (!interactive) return;
+
+    // We're now at the step line position, need to clear detail lines below
+    // First, move down and clear each detail line
+    for (let i = 0; i < detailLineCount; i++) {
+      process.stdout.write(`\n\x1b[K`);
     }
-  }
-}
-
-/**
- * Creates a progress tracker for the onboard flow
- */
-export function createOnboardProgress(): {
-  steps: Step[];
-  render: () => void;
-  update: (index: number, status: StepStatus) => void;
-} {
-  const steps: Step[] = [
-    { label: "Authentication", status: "pending" },
-    { label: "Model Provider Setup", status: "pending" },
-    { label: "Create Agent", status: "pending" },
-    { label: "Claude Plugin Install", status: "pending" },
-    { label: "Complete", status: "pending" },
-  ];
+    // Move back up to just below step line
+    if (detailLineCount > 0) {
+      process.stdout.write(`\x1b[${detailLineCount}A`);
+    }
+  };
 
   return {
-    steps,
-    render: () => renderProgressLine(steps),
-    update: (index: number, status: StepStatus) => {
-      const step = steps[index];
-      if (step) {
-        step.status = status;
+    startStep: (label: string): void => {
+      currentLabel = label;
+      detailLineCount = 0;
+      isFinalStep = false;
+      console.log(chalk.yellow(`○ ${label}`));
+    },
+
+    detail: (message: string): void => {
+      console.log(chalk.dim(`│ ${message}`));
+      detailLineCount++;
+    },
+
+    completeStep: (): void => {
+      if (interactive && detailLineCount > 0) {
+        clearDetails();
+      } else if (interactive) {
+        // Just move up one line to overwrite the step line
+        process.stdout.write(`\x1b[1A\x1b[K`);
       }
+
+      // Print completed step
+      console.log(chalk.green(`● ${currentLabel}`));
+
+      if (interactive && detailLineCount > 0) {
+        clearDetailLines();
+      }
+
+      // Print connector line (unless this is the final step)
+      if (!isFinalStep) {
+        console.log(chalk.dim("│"));
+      }
+
+      // Reset state
+      currentLabel = "";
+      detailLineCount = 0;
+    },
+
+    failStep: (): void => {
+      if (interactive && detailLineCount > 0) {
+        clearDetails();
+      } else if (interactive) {
+        process.stdout.write(`\x1b[1A\x1b[K`);
+      }
+
+      // Print failed step
+      console.log(chalk.red(`✗ ${currentLabel}`));
+
+      if (interactive && detailLineCount > 0) {
+        clearDetailLines();
+      }
+
+      // Reset state
+      currentLabel = "";
+      detailLineCount = 0;
+    },
+
+    setFinalStep: (): void => {
+      isFinalStep = true;
     },
   };
 }
