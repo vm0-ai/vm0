@@ -125,12 +125,15 @@ export const initCommand = new Command()
     console.log();
     console.log("Next steps:");
     console.log(
-      `  1. Set model provider (one-time): ${chalk.cyan("vm0 model-provider setup")}`,
+      `  1. Set up model provider (one-time): ${chalk.cyan("vm0 model-provider setup")}`,
     );
     console.log(
       `  2. Edit ${chalk.cyan("AGENTS.md")} to customize your agent's workflow`,
     );
     console.log(
-      `  3. Run your agent: ${chalk.cyan(`vm0 cook "let's start working."`)}`,
+      `     Or install Claude plugin: ${chalk.cyan('vm0 setup-claude && claude "/vm0-agent help me build an agent"')}`,
+    );
+    console.log(
+      `  3. Run your agent: ${chalk.cyan('vm0 cook "let\'s start working"')}`,
     );
   });
