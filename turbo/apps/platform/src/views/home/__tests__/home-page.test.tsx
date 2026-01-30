@@ -49,9 +49,7 @@ describe("home page", () => {
       path: "/",
     });
 
-    expect(
-      screen.getByText(/First, tell us how your LLM works/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Define your model provider/)).toBeInTheDocument();
 
     // Save button should be disabled when token is empty
     const saveButton = screen.getByRole("button", { name: "Save" });
@@ -84,7 +82,7 @@ describe("home page", () => {
       path: "/",
     });
 
-    expect(screen.getByText(/First, tell us how your LLM works/)).toBeDefined();
+    expect(screen.getByText(/Define your model provider/)).toBeDefined();
   });
 
   it("should not show onboarding modal when both scope and oauth token exist", async () => {
@@ -94,7 +92,7 @@ describe("home page", () => {
       path: "/",
     });
 
-    expect(screen.queryByText(/First, tell us how your LLM works/)).toBeNull();
+    expect(screen.queryByText(/Define your model provider/)).toBeNull();
   });
 
   it("should create model provider when Save button is clicked", async () => {
@@ -150,6 +148,6 @@ describe("home page", () => {
       expect(providerCreated).toBeTruthy();
     });
     expect(createdType).toBe("claude-code-oauth-token");
-    expect(screen.queryByText(/First, tell us how your LLM works/)).toBeNull();
+    expect(screen.queryByText(/Define your model provider/)).toBeNull();
   });
 });

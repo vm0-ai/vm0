@@ -43,7 +43,8 @@ describe("settings page", () => {
     await user.click(button);
 
     expect(button).not.toBeInTheDocument();
-    expect(input).toHaveValue("");
+    // After saving, the input should show the masked token
+    expect(input).toHaveValue("sk-ant-oat-••••••••••••••••");
   });
 
   it("can cancel input", async () => {
@@ -63,7 +64,8 @@ describe("settings page", () => {
 
     expect(button).not.toBeInTheDocument();
 
-    expect(input).toHaveValue("");
+    // After canceling, the input should show the masked token (not empty)
+    expect(input).toHaveValue("sk-ant-oat-••••••••••••••••");
   });
 
   it('should be empty if use does not have "claude-code-oauth-token" provider', async () => {
@@ -75,7 +77,8 @@ describe("settings page", () => {
 
     await setupPage({ context, path: "/settings" });
 
-    const input = screen.getByPlaceholderText("(empty)");
+    // When no token exists, placeholder should be "sk-ant-oat..."
+    const input = screen.getByPlaceholderText("sk-ant-oat...");
     expect(input).toBeInTheDocument();
   });
 
@@ -87,12 +90,14 @@ describe("settings page", () => {
 
     const input = screen.getByPlaceholderText(/sk-ant.*/i);
 
+    // Changed from "delete claude code oauth token" to "Clear token"
     const deleteButton = screen.getByRole("button", {
-      name: /delete claude code oauth token/i,
+      name: /clear token/i,
     });
     await user.click(deleteButton);
 
-    expect(input).toHaveProperty("placeholder", "(empty)");
+    // After deletion, placeholder should still be "sk-ant-oat..."
+    expect(input).toHaveProperty("placeholder", "sk-ant-oat...");
 
     await user.click(input);
     await user.keyboard("sk-ant-oauth-token-12345");
@@ -101,6 +106,7 @@ describe("settings page", () => {
     const button = screen.getByRole("button", { name: /save/i });
     await user.click(button);
 
-    expect(input).toHaveProperty("placeholder", "sk-ant-oat********");
+    // After saving, should show masked token
+    expect(input).toHaveValue("sk-ant-oat-••••••••••••••••");
   });
 });
