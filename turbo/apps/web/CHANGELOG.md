@@ -1,5 +1,12 @@
 # Changelog
 
+## [11.8.0](https://github.com/vm0-ai/vm0/compare/web-v11.7.0...web-v11.8.0) (2026-01-30)
+
+
+### Features
+
+* **ui:** enhance design system and improve onboarding and settings ui ([#1894](https://github.com/vm0-ai/vm0/issues/1894)) ([6a11166](https://github.com/vm0-ai/vm0/commit/6a1116694544c01c69ea20dbf80a986ee8294f30))
+
 ## [11.7.0](https://github.com/vm0-ai/vm0/compare/web-v11.6.1...web-v11.7.0) (2026-01-30)
 
 

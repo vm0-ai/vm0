@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.30.0](https://github.com/vm0-ai/vm0/compare/platform-v0.29.0...platform-v0.30.0) (2026-01-30)
+
+
+### Features
+
+* **ui:** enhance design system and improve onboarding and settings ui ([#1894](https://github.com/vm0-ai/vm0/issues/1894)) ([6a11166](https://github.com/vm0-ai/vm0/commit/6a1116694544c01c69ea20dbf80a986ee8294f30))
+
 ## [0.29.0](https://github.com/vm0-ai/vm0/compare/platform-v0.28.0...platform-v0.29.0) (2026-01-30)
 
 
