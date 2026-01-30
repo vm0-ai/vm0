@@ -1,7 +1,7 @@
 import type { AgentEvent } from "../../../../signals/logs-page/types.ts";
 import { EventCard } from "../../components/event-card.tsx";
 import { countMatches } from "../../utils/highlight-text.tsx";
-import { eventMatchesSearch } from "../utils.ts";
+import { eventMatchesSearch, getVisibleEventText } from "../utils.ts";
 
 export function FormattedEventsView({
   events,
@@ -25,8 +25,8 @@ export function FormattedEventsView({
   let totalMatches = 0;
   if (searchTerm.trim()) {
     for (const event of visibleEvents) {
-      const dataStr = JSON.stringify(event.eventData);
-      totalMatches += countMatches(dataStr, searchTerm);
+      const visibleText = getVisibleEventText(event);
+      totalMatches += countMatches(visibleText, searchTerm);
     }
   }
 
@@ -54,9 +54,9 @@ export function FormattedEventsView({
     <div ref={containerRef} className="space-y-3">
       {visibleEvents.map((event) => {
         const eventMatchStart = matchOffset;
-        const eventDataStr = JSON.stringify(event.eventData);
+        const visibleText = getVisibleEventText(event);
         const eventMatches = searchTerm.trim()
-          ? countMatches(eventDataStr, searchTerm)
+          ? countMatches(visibleText, searchTerm)
           : 0;
         matchOffset += eventMatches;
 
