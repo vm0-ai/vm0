@@ -38,7 +38,7 @@ interface BlobUploadResult {
  * Blob Service class
  * Handles blob upload with deduplication
  */
-export class BlobService {
+class BlobService {
   /**
    * Upload file entries as blobs with deduplication
    *
