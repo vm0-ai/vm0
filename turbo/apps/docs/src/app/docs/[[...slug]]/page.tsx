@@ -1,4 +1,5 @@
 import { source } from "@/lib/source";
+import { createMetadata, getPageImageUrl } from "@/lib/metadata";
 import {
   DocsBody,
   DocsDescription,
@@ -44,8 +45,29 @@ export async function generateMetadata(
   const page = source.getPage(params.slug);
   if (!page) notFound();
 
-  return {
-    title: page.data.title,
-    description: page.data.description,
+  const description =
+    page.data.description ??
+    "Build agents and automate workflows with natural language";
+
+  const image = {
+    url: getPageImageUrl(page.slugs),
+    width: 1200,
+    height: 630,
+    alt: page.data.title,
   };
+
+  return createMetadata({
+    title: page.data.title,
+    description,
+    openGraph: {
+      url: `/docs/${page.slugs.join("/")}`,
+      images: [image],
+    },
+    twitter: {
+      images: [image],
+    },
+    alternates: {
+      canonical: `/docs/${page.slugs.join("/")}`,
+    },
+  });
 }

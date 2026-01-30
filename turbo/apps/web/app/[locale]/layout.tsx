@@ -38,6 +38,18 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
         .filter((loc) => loc !== locale)
         .map((loc) => localeNames[loc])
         .filter((name): name is string => name !== undefined),
+      url: `${baseUrl}/${locale}`,
+      images: [
+        {
+          url: "/og-image.png",
+          width: 1200,
+          height: 630,
+          alt: "VM0 - Build agents and automate workflows with natural language",
+        },
+      ],
+    },
+    twitter: {
+      images: ["/og-image.png"],
     },
   };
 }

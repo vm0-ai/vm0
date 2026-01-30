@@ -11,6 +11,22 @@ export const metadata: Metadata = {
     description:
       "Explore our comprehensive collection of 54+ pre-built skills for AI agents.",
     type: "website",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "VM0 Agent Skills - Pre-built Integrations",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "VM0 Agent Skills - Pre-built Integrations",
+    description:
+      "Explore our comprehensive collection of 54+ pre-built skills for AI agents.",
+    images: ["/og-image.png"],
+    creator: "@vm0_ai",
   },
 };
 

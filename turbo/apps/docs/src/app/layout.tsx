@@ -2,25 +2,35 @@ import "@/app/global.css";
 import { RootProvider } from "fumadocs-ui/provider";
 import { Noto_Sans } from "next/font/google";
 import Script from "next/script";
-import type { Metadata } from "next";
+import { createMetadata, baseUrl } from "@/lib/metadata";
 
 const notoSans = Noto_Sans({
   subsets: ["latin"],
   weight: ["400", "700"],
 });
 
-export const metadata: Metadata = {
-  metadataBase: new URL("https://docs.vm0.ai"),
+export const metadata = createMetadata({
+  metadataBase: baseUrl,
   title: {
     default: "VM0 Documentation",
     template: "%s | VM0 Docs",
   },
   description: "Build agents and automate workflows with natural language",
+  keywords: [
+    "VM0",
+    "AI agents",
+    "documentation",
+    "agent development",
+    "CLI agents",
+    "sandbox",
+    "natural language",
+    "agent skills",
+  ],
   robots: {
     index: true,
     follow: true,
   },
-};
+});
 
 export default function Layout({ children }: LayoutProps<"/">) {
   return (
