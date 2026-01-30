@@ -1,25 +1,19 @@
 /**
- * Unit tests for credential command validation and help text
+ * Tests for credential set command
  *
- * These tests validate credential name validation rules and help text output.
- * They replace E2E tests that tested the same behavior through the full stack.
- *
- * Key behaviors tested:
- * - Credential name validation (uppercase, no dashes, must start with letter)
- * - Help text for list, set, and delete subcommands
- * - Non-existent credential deletion error handling
+ * Tests command-level behavior via parseAsync() following CLI testing principles:
+ * - Entry point: command.parseAsync()
+ * - Mock (external): Web API via MSW
+ * - Real (internal): All CLI code, formatters, validators
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
-import { server } from "../mocks/server";
-import { setCommand } from "../commands/credential/set";
-import { listCommand } from "../commands/credential/list";
-import { deleteCommand } from "../commands/credential/delete";
-import { credentialCommand } from "../commands/credential/index";
+import { server } from "../../../mocks/server";
+import { setCommand } from "../set";
 import chalk from "chalk";
 
-describe("Credential Command", () => {
+describe("credential set command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -43,48 +37,7 @@ describe("Credential Command", () => {
   });
 
   describe("help text", () => {
-    it("credential --help shows command description", async () => {
-      // Commander outputs help to stdout via process.stdout.write
-      const mockStdoutWrite = vi
-        .spyOn(process.stdout, "write")
-        .mockImplementation(() => true);
-
-      try {
-        await credentialCommand.parseAsync(["node", "cli", "--help"]);
-      } catch {
-        // Commander calls process.exit(0) after help
-      }
-
-      const output = mockStdoutWrite.mock.calls.map((call) => call[0]).join("");
-
-      expect(output).toContain("Manage stored credentials");
-      expect(output).toContain("list");
-      expect(output).toContain("set");
-      expect(output).toContain("delete");
-
-      mockStdoutWrite.mockRestore();
-    });
-
-    it("credential list --help shows ls alias", async () => {
-      const mockStdoutWrite = vi
-        .spyOn(process.stdout, "write")
-        .mockImplementation(() => true);
-
-      try {
-        await listCommand.parseAsync(["node", "cli", "--help"]);
-      } catch {
-        // Commander calls process.exit(0) after help
-      }
-
-      const output = mockStdoutWrite.mock.calls.map((call) => call[0]).join("");
-
-      expect(output).toContain("List all credentials");
-      expect(output).toContain("ls");
-
-      mockStdoutWrite.mockRestore();
-    });
-
-    it("credential set --help shows usage", async () => {
+    it("should show usage information", async () => {
       const mockStdoutWrite = vi
         .spyOn(process.stdout, "write")
         .mockImplementation(() => true);
@@ -101,25 +54,6 @@ describe("Credential Command", () => {
       expect(output).toContain("<name>");
       expect(output).toContain("<value>");
       expect(output).toContain("--description");
-
-      mockStdoutWrite.mockRestore();
-    });
-
-    it("credential delete --help shows usage", async () => {
-      const mockStdoutWrite = vi
-        .spyOn(process.stdout, "write")
-        .mockImplementation(() => true);
-
-      try {
-        await deleteCommand.parseAsync(["node", "cli", "--help"]);
-      } catch {
-        // Commander calls process.exit(0) after help
-      }
-
-      const output = mockStdoutWrite.mock.calls.map((call) => call[0]).join("");
-
-      expect(output).toContain("Delete a credential");
-      expect(output).toContain("<name>");
 
       mockStdoutWrite.mockRestore();
     });
@@ -237,44 +171,8 @@ describe("Credential Command", () => {
     });
   });
 
-  describe("delete non-existent credential", () => {
-    it("should fail when deleting non-existent credential", async () => {
-      server.use(
-        http.get(
-          "http://localhost:3000/api/credentials/:name",
-          ({ params }) => {
-            const { name } = params;
-            return HttpResponse.json(
-              {
-                error: {
-                  message: `Credential "${name}" not found`,
-                  code: "NOT_FOUND",
-                },
-              },
-              { status: 404 },
-            );
-          },
-        ),
-      );
-
-      await expect(async () => {
-        await deleteCommand.parseAsync([
-          "node",
-          "cli",
-          "NONEXISTENT_CRED",
-          "-y",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("not found"),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-  });
-
-  describe("authentication errors", () => {
-    it("should handle not authenticated error for set", async () => {
+  describe("error handling", () => {
+    it("should handle authentication error", async () => {
       server.use(
         http.put("http://localhost:3000/api/credentials", () => {
           return HttpResponse.json(
@@ -298,61 +196,6 @@ describe("Credential Command", () => {
       );
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("vm0 auth login"),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-
-    it("should handle not authenticated error for list", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/credentials", () => {
-          return HttpResponse.json(
-            {
-              error: {
-                message: "Not authenticated",
-                code: "UNAUTHORIZED",
-              },
-            },
-            { status: 401 },
-          );
-        }),
-      );
-
-      await expect(async () => {
-        await listCommand.parseAsync(["node", "cli"]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Not authenticated"),
-      );
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 auth login"),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-
-    it("should handle not authenticated error for delete", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/credentials/:name", () => {
-          return HttpResponse.json(
-            {
-              error: {
-                message: "Not authenticated",
-                code: "UNAUTHORIZED",
-              },
-            },
-            { status: 401 },
-          );
-        }),
-      );
-
-      await expect(async () => {
-        await deleteCommand.parseAsync(["node", "cli", "MY_API_KEY", "-y"]);
-      }).rejects.toThrow("process.exit called");
-
-      // The delete command catches the error and displays "not found" message
-      // because it wraps the get call in a try/catch
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("not found"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
