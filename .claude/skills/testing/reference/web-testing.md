@@ -238,6 +238,39 @@ await completeTestRun(user.userId, runId);
 
 ---
 
+## No initServices in Route Tests
+
+Route tests should never call `initServices()` directly. If you're properly using API helpers for data operations and verification, `initServices()` is not needed - the route handlers themselves call it internally.
+
+**Bad Case**
+
+```typescript
+import { initServices } from "../../../lib/init-services";
+
+describe("POST /api/agent/runs", () => {
+  beforeEach(async () => {
+    initServices(); // Don't do this
+    // ...
+  });
+});
+```
+
+**Good Case**
+
+```typescript
+describe("POST /api/agent/runs", () => {
+  beforeEach(async () => {
+    context.setupMocks();
+    user = await context.setupUser();
+    // No initServices() - API helpers handle it
+  });
+});
+```
+
+If you find yourself needing `initServices()`, it's a sign that you're accessing the database directly instead of through API helpers.
+
+---
+
 ## State Transitions
 
 Run state transitions should be done via webhook helpers, not direct database modifications:
@@ -285,6 +318,56 @@ describe("calculateSessionHistoryPath", () => {
   });
 });
 ```
+
+---
+
+## Pure Function Test Guidelines
+
+Pure function tests should be simple and isolated - no mocks, no database operations, no external dependencies.
+
+**Bad Case**
+
+```typescript
+import { vi } from "vitest";
+import { initServices } from "../../../lib/init-services";
+import { formatPath } from "../path-utils";
+
+vi.mock("@clerk/nextjs/server");
+
+describe("formatPath", () => {
+  beforeEach(() => {
+    initServices(); // Pure functions don't need services
+  });
+
+  it("formats path correctly", () => {
+    const result = formatPath("/workspace", "file.txt");
+    expect(result).toBe("/workspace/file.txt");
+  });
+});
+```
+
+**Good Case**
+
+```typescript
+import { describe, it, expect } from "vitest";
+import { formatPath } from "../path-utils";
+
+describe("formatPath", () => {
+  it("formats path correctly", () => {
+    const result = formatPath("/workspace", "file.txt");
+    expect(result).toBe("/workspace/file.txt");
+  });
+
+  it("handles trailing slash", () => {
+    const result = formatPath("/workspace/", "file.txt");
+    expect(result).toBe("/workspace/file.txt");
+  });
+});
+```
+
+If your "pure function" test requires mocks or database access, either:
+1. The function isn't actually pure - move the test to a route test
+2. You're testing implementation details - refactor to test behavior through APIs
 
 ---
 
