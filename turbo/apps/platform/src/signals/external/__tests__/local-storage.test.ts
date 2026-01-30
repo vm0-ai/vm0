@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { testContext } from "../../__tests__/test-helpers";
-import { setupPage } from "../../../__tests__/helper";
+import { setupPage } from "../../../__tests__/page-helper";
 import { localStorageSignals } from "../local-storage";
 
 const context = testContext();

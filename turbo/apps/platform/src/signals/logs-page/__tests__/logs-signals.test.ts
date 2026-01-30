@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import {
@@ -17,26 +17,6 @@ import {
 } from "../logs-signals.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { mockLocation, mockPushState } from "../../location.ts";
-
-// Mock Clerk BEFORE any module evaluation using vi.hoisted
-vi.hoisted(() => {
-  vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY", "test_key");
-  vi.stubEnv("VITE_API_URL", "http://localhost:3000");
-});
-
-// Mock Clerk to avoid network requests
-vi.mock("@clerk/clerk-js", () => ({
-  Clerk: function MockClerk() {
-    return {
-      user: null,
-      session: {
-        getToken: () => Promise.resolve("mock-token"),
-      },
-      load: () => Promise.resolve(),
-      addListener: () => () => {},
-    };
-  },
-}));
 
 const context = testContext();
 

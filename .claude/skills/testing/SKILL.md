@@ -1644,6 +1644,18 @@ Key topics:
 - Console output and exit codes as valid assertions
 - Non-interactive mode testing only
 
+### Platform Testing (`/testing platform`)
+
+For platform app testing patterns specific to `turbo/apps/platform`, see:
+- [Platform Testing Patterns](./reference/platform-testing.md)
+
+Key topics:
+- UI tests (`.test.tsx` in `views/`) and State tests (`.test.ts` in `signals/`)
+- `testContext()` and `setupPage()` for test isolation
+- MSW handlers for API mocking (no external network requests allowed)
+- Handler patterns: static, stateful with reset, request inspection
+- `server.use()` for per-test handler overrides
+
 ---
 
 ## Quick Anti-Pattern Checklist

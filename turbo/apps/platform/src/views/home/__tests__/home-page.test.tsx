@@ -1,4 +1,4 @@
-import { setupPage } from "../../../__tests__/helper";
+import { setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";

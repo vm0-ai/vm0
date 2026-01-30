@@ -10,7 +10,7 @@ import {
   updateSearchParams$,
 } from "../route.ts";
 import { testContext } from "./test-helpers.ts";
-import { createPushStateMock } from "../../__tests__/helper.ts";
+import { createPushStateMock } from "../../__tests__/page-helper.ts";
 
 const context = testContext();
 

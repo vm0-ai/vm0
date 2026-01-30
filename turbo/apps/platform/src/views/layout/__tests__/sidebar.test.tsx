@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers";
-import { setupPage } from "../../../__tests__/helper";
+import { setupPage } from "../../../__tests__/page-helper";
 import { screen } from "@testing-library/react";
 
 const context = testContext();

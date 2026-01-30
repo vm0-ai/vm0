@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/helper.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
 import { pathname$ } from "../../../signals/route.ts";
 import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";

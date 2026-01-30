@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { testContext } from "../../__tests__/test-helpers";
-import { setupPage } from "../../../__tests__/helper";
+import { setupPage } from "../../../__tests__/page-helper";
 import {
   modelProviders$,
   hasClaudeCodeOAuthToken$,

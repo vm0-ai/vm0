@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { testContext } from "./test-helpers";
-import { setupPage } from "../../__tests__/helper";
+import { setupPage } from "../../__tests__/page-helper";
 
 const context = testContext();
 beforeAll(() => {

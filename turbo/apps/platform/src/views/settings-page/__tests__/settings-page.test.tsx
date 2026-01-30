@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { server } from "../../../mocks/server";
 import { http, HttpResponse } from "msw";
-import { setupPage } from "../../../__tests__/helper";
+import { setupPage } from "../../../__tests__/page-helper";
 import { testContext } from "../../../signals/__tests__/test-helpers";
 import { pathname$ } from "../../../signals/route";
 import { screen } from "@testing-library/react";

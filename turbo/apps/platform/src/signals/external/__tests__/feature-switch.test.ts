@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { testContext } from "../../__tests__/test-helpers";
-import { setupPage } from "../../../__tests__/helper";
+import { setupPage } from "../../../__tests__/page-helper";
 import { featureSwitch$ } from "../feature-switch";
 
 const context = testContext();

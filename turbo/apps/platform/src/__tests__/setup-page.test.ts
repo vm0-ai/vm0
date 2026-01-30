@@ -1,5 +1,5 @@
 import { testContext } from "../signals/__tests__/test-helpers";
-import { setupPage } from "./helper";
+import { setupPage } from "./page-helper";
 import { expect, it, describe, beforeAll, vi } from "vitest";
 import { Level, logger } from "../signals/log";
 import { localStorageSignals } from "../signals/external/local-storage";
