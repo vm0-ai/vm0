@@ -25,10 +25,12 @@ export function AgentEventsCard({
   logId,
   searchTerm,
   setSearchTerm,
+  className,
 }: {
   logId: string;
   searchTerm: string;
   setSearchTerm: (term: string) => void;
+  className?: string;
 }) {
   const getOrCreateAgentEvents = useSet(getOrCreateAgentEvents$);
   const events$ = getOrCreateAgentEvents(logId);
@@ -129,8 +131,8 @@ export function AgentEventsCard({
     : events.length;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+    <div className={`flex flex-col gap-4 ${className ?? ""}`}>
+      <div className="flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
           <span className="text-base font-medium text-foreground">
             Agent events
@@ -173,22 +175,24 @@ export function AgentEventsCard({
         </div>
       </div>
 
-      {viewMode === "formatted" ? (
-        <FormattedEventsView
-          events={events}
-          searchTerm={searchTerm}
-          hiddenTypes={hiddenTypes}
-          currentMatchIndex={currentMatchIdx}
-          setTotalMatches={setTotalMatches}
-        />
-      ) : (
-        <RawJsonView
-          events={events}
-          searchTerm={searchTerm}
-          currentMatchIndex={currentMatchIdx}
-          setTotalMatches={setTotalMatches}
-        />
-      )}
+      <div id={EVENTS_CONTAINER_ID} className="flex-1 min-h-0 overflow-y-auto">
+        {viewMode === "formatted" ? (
+          <FormattedEventsView
+            events={events}
+            searchTerm={searchTerm}
+            hiddenTypes={hiddenTypes}
+            currentMatchIndex={currentMatchIdx}
+            setTotalMatches={setTotalMatches}
+          />
+        ) : (
+          <RawJsonView
+            events={events}
+            searchTerm={searchTerm}
+            currentMatchIndex={currentMatchIdx}
+            setTotalMatches={setTotalMatches}
+          />
+        )}
+      </div>
     </div>
   );
 }

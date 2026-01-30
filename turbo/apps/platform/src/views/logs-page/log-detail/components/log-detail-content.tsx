@@ -39,8 +39,8 @@ export function LogDetailContent({ logId }: { logId: string }) {
   const detail = loadable.data;
 
   return (
-    <div className="space-y-6">
-      <Card>
+    <div className="flex flex-col gap-6 h-full min-h-0">
+      <Card className="shrink-0">
         <CardContent className="py-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-16">
             <div>
@@ -109,6 +109,7 @@ export function LogDetailContent({ logId }: { logId: string }) {
         logId={logId}
         searchTerm={searchTerm}
         setSearchTerm={setSearchTerm}
+        className="flex-1 min-h-0"
       />
     </div>
   );

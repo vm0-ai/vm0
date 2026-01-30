@@ -1,7 +1,7 @@
 import type { AgentEvent } from "../../../../signals/logs-page/types.ts";
 import { EventCard } from "../../components/event-card.tsx";
 import { countMatches } from "../../utils/highlight-text.tsx";
-import { eventMatchesSearch, EVENTS_CONTAINER_ID } from "../utils.ts";
+import { eventMatchesSearch } from "../utils.ts";
 
 export function FormattedEventsView({
   events,
@@ -51,11 +51,7 @@ export function FormattedEventsView({
   let matchOffset = 0;
 
   return (
-    <div
-      id={EVENTS_CONTAINER_ID}
-      ref={containerRef}
-      className="space-y-3 max-h-[600px] overflow-y-auto pr-1"
-    >
+    <div ref={containerRef} className="space-y-3">
       {visibleEvents.map((event) => {
         const eventMatchStart = matchOffset;
         const eventDataStr = JSON.stringify(event.eventData);

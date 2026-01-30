@@ -1,7 +1,6 @@
 import { CopyButton } from "@vm0/ui";
 import type { AgentEvent } from "../../../../signals/logs-page/types.ts";
 import { highlightText } from "../../utils/highlight-text.tsx";
-import { EVENTS_CONTAINER_ID } from "../utils.ts";
 
 export function RawJsonView({
   events,
@@ -36,15 +35,14 @@ export function RawJsonView({
   };
 
   return (
-    <div className="relative">
+    <div className="relative h-full">
       <CopyButton
         text={jsonString}
         className="absolute top-2 right-2 h-8 w-8 bg-background/80 hover:bg-background z-10"
       />
       <pre
-        id={EVENTS_CONTAINER_ID}
         ref={containerRef}
-        className="font-mono text-sm whitespace-pre-wrap overflow-auto max-h-[600px] p-4 bg-muted/30 rounded-lg"
+        className="font-mono text-sm whitespace-pre-wrap h-full p-4 bg-muted/30 rounded-lg"
       >
         {element}
       </pre>

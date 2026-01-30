@@ -12,9 +12,10 @@ import {
   IconAlertCircle,
   IconArrowRight,
   IconCircleCheck,
-  IconLoader2,
-  IconCircle,
+  IconProgress,
+  IconCircleDashed,
   IconListCheck,
+  IconChevronRight,
 } from "@tabler/icons-react";
 
 interface EventCardProps {
@@ -141,92 +142,75 @@ function formatCost(usd: number): string {
 
 // ============ SYSTEM EVENT (Init) ============
 
+function CollapsibleSection({
+  title,
+  count,
+  children,
+  defaultOpen = false,
+}: {
+  title: string;
+  count: number;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}) {
+  return (
+    <details className="group" open={defaultOpen}>
+      <summary className="flex cursor-pointer list-none items-center gap-1 text-sm text-foreground hover:text-foreground/80 transition-colors">
+        <span>
+          {count} {title}
+        </span>
+        <IconChevronRight className="h-5 w-5 text-muted-foreground transition-transform group-open:rotate-90" />
+      </summary>
+      <div className="mt-2">{children}</div>
+    </details>
+  );
+}
+
+function TagList({ items }: { items: string[] }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {items.map((item) => (
+        <span
+          key={item}
+          className="text-xs font-medium text-muted-foreground bg-background border border-border px-1.5 py-0.5 rounded-md"
+        >
+          {item}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function SystemInitContent({ eventData }: { eventData: EventData }) {
   const tools = eventData.tools ?? [];
   const agents = eventData.agents ?? [];
   const slashCommands = eventData.slash_commands ?? [];
 
   return (
-    <div className="mt-3 space-y-3">
-      {/* Model & Session */}
-      <div className="grid grid-cols-2 gap-4 text-sm">
-        {eventData.model && (
-          <div className="flex items-center gap-2">
-            <span className="text-muted-foreground text-xs uppercase tracking-wide">
-              Model
-            </span>
-            <span className="font-medium text-foreground">
-              {eventData.model}
-            </span>
-          </div>
-        )}
-        {eventData.session_id && (
-          <div className="flex items-center gap-2">
-            <span className="text-muted-foreground text-xs uppercase tracking-wide">
-              Session
-            </span>
-            <code className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded truncate max-w-[200px]">
-              {eventData.session_id}
-            </code>
-          </div>
-        )}
-      </div>
-
+    <div className="mt-2 space-y-2">
       {/* Tools */}
       {tools.length > 0 && (
-        <details className="group">
-          <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground uppercase tracking-wide">
-            {tools.length} Tools Available
-          </summary>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {tools.map((tool) => (
-              <span
-                key={tool}
-                className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full"
-              >
-                {tool}
-              </span>
-            ))}
-          </div>
-        </details>
+        <CollapsibleSection
+          title="tools available"
+          count={tools.length}
+          defaultOpen
+        >
+          <TagList items={tools} />
+        </CollapsibleSection>
       )}
 
       {/* Agents */}
       {agents.length > 0 && (
-        <details className="group">
-          <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground uppercase tracking-wide">
-            {agents.length} Agents
-          </summary>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {agents.map((agent) => (
-              <span
-                key={agent}
-                className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full"
-              >
-                {agent}
-              </span>
-            ))}
-          </div>
-        </details>
+        <CollapsibleSection title="agents" count={agents.length}>
+          <TagList items={agents} />
+        </CollapsibleSection>
       )}
 
       {/* Slash Commands */}
       {slashCommands.length > 0 && (
-        <details className="group">
-          <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground uppercase tracking-wide">
-            {slashCommands.length} Slash Commands
-          </summary>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {slashCommands.map((cmd) => (
-              <span
-                key={cmd}
-                className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full font-mono"
-              >
-                /{cmd}
-              </span>
-            ))}
-          </div>
-        </details>
+        <CollapsibleSection title="Slash Commands" count={slashCommands.length}>
+          <TagList items={slashCommands.map((cmd) => `/${cmd}`)} />
+        </CollapsibleSection>
       )}
     </div>
   );
@@ -297,13 +281,16 @@ function ToolUseContentView({ content }: { content: ToolUseContent }) {
   const toolName = content.name;
   const input = content.input;
   const ToolIcon = getToolIcon(toolName);
+  const isTodoWrite = toolName.toLowerCase() === "todowrite";
 
   return (
     <div className="space-y-2">
       {/* Tool header */}
       <div className="flex items-center gap-2">
-        {ToolIcon && <ToolIcon className="h-4 w-4 text-muted-foreground" />}
-        <span className="font-medium text-foreground">{toolName}</span>
+        {!isTodoWrite && ToolIcon && (
+          <ToolIcon className="h-4 w-4 text-muted-foreground" />
+        )}
+        <span className="font-medium text-sm text-foreground">{toolName}</span>
       </div>
 
       {/* Tool parameters */}
@@ -366,12 +353,9 @@ function ToolInputParams({
   if (lowerName === "bash") {
     const command = input.command as string | undefined;
     return (
-      <div className="flex items-start gap-2 text-sm">
-        <IconTerminal className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-        <code className="font-mono text-xs bg-foreground/90 text-background px-2 py-1 rounded block w-full overflow-x-auto whitespace-pre-wrap">
-          {command}
-        </code>
-      </div>
+      <code className="block font-mono text-sm bg-input text-foreground px-4 py-3 rounded-[10px] w-full overflow-x-auto whitespace-pre-wrap">
+        {command}
+      </code>
     );
   }
 
@@ -389,7 +373,7 @@ function ToolInputParams({
     return (
       <div className="flex items-center gap-2 text-sm">
         <IconFile className="h-4 w-4 text-muted-foreground shrink-0" />
-        <code className="font-mono text-xs bg-muted px-2 py-1 rounded">
+        <code className="font-mono text-xs bg-background px-2 py-1 rounded">
           {filePath}
         </code>
       </div>
@@ -401,7 +385,7 @@ function ToolInputParams({
     const todos = input.todos;
     if (Array.isArray(todos)) {
       return (
-        <div className="space-y-1.5 text-sm">
+        <div className="space-y-2">
           {todos.map((todo) => {
             const item = todo as {
               content?: string;
@@ -414,31 +398,21 @@ function ToolInputParams({
               status === "completed"
                 ? IconCircleCheck
                 : status === "in_progress"
-                  ? IconLoader2
-                  : IconCircle;
+                  ? IconProgress
+                  : IconCircleDashed;
             const statusColor =
               status === "completed"
-                ? "text-emerald-600 dark:text-emerald-400"
+                ? "text-emerald-500 dark:text-emerald-400"
                 : status === "in_progress"
-                  ? "text-blue-600 dark:text-blue-400"
+                  ? "text-yellow-600 dark:text-yellow-400"
                   : "text-muted-foreground";
             return (
               <div
                 key={`${status}-${content}`}
-                className="flex items-start gap-2"
+                className="flex items-center gap-2"
               >
-                <StatusIcon
-                  className={`h-4 w-4 shrink-0 mt-0.5 ${statusColor}`}
-                />
-                <span
-                  className={
-                    status === "completed"
-                      ? "text-muted-foreground line-through"
-                      : "text-foreground"
-                  }
-                >
-                  {content}
-                </span>
+                <StatusIcon className={`h-6 w-6 shrink-0 ${statusColor}`} />
+                <span className="text-sm text-foreground">{content}</span>
               </div>
             );
           })}
@@ -499,7 +473,7 @@ function ParamValue({ value }: { value: unknown }) {
           <summary className="cursor-pointer text-muted-foreground hover:text-foreground text-xs">
             &quot;{value.slice(0, 50)}...&quot;
           </summary>
-          <div className="mt-1 text-xs bg-muted/50 p-2 rounded whitespace-pre-wrap">
+          <div className="mt-1 text-xs bg-background p-2 rounded whitespace-pre-wrap">
             {value}
           </div>
         </details>
@@ -587,7 +561,7 @@ function ToolResultContentView({
           {metaItems.map((item) => (
             <span
               key={item.label}
-              className="bg-muted px-2 py-0.5 rounded text-muted-foreground"
+              className="bg-background px-2 py-0.5 rounded text-muted-foreground"
             >
               {item.label}:{" "}
               <span className="text-foreground">{item.value}</span>
@@ -633,18 +607,7 @@ function ResultContent({
     searchTerm.trim() &&
     text.toLowerCase().includes(searchTerm.toLowerCase());
 
-  // Check if it looks like code
-  const looksLikeCode =
-    text.includes("function ") ||
-    text.includes("const ") ||
-    text.includes("import ") ||
-    text.includes("class ") ||
-    text.includes("```") ||
-    /^\s{2,}/m.test(text);
-
-  const preClass = looksLikeCode
-    ? "bg-foreground/90 text-background"
-    : "bg-muted/30 text-foreground";
+  const preClass = "bg-input text-foreground";
 
   const contentElement = searchTerm
     ? highlightText(text, {
@@ -730,7 +693,7 @@ function ResultEventContent({ eventData }: { eventData: EventData }) {
               return (
                 <div
                   key={model}
-                  className="flex items-center justify-between text-xs bg-muted/50 p-2 rounded"
+                  className="flex items-center justify-between text-xs bg-background p-2 rounded"
                 >
                   <span className="font-mono text-muted-foreground">
                     {model}
@@ -759,9 +722,7 @@ function ResultEventContent({ eventData }: { eventData: EventData }) {
 
       {/* Result text */}
       {result && (
-        <div
-          className={`p-3 rounded text-sm ${isError ? "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400" : "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400"}`}
-        >
+        <div className="text-sm text-foreground">
           <div className="font-medium mb-1">
             {isError ? "Error" : "Success"}
           </div>
@@ -818,15 +779,28 @@ export function EventCard({
   // System event (init)
   if (event.eventType === "system") {
     const subtype = eventData.subtype;
+    const Icon = style.icon;
     return (
       <div
         className={`rounded-lg border ${style.borderColor} ${style.bgColor} p-4`}
       >
-        <EventHeader
-          event={event}
-          label="System"
-          sublabel={subtype === "init" ? "Initialize" : subtype}
-        />
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 space-y-1">
+            {/* Badge */}
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-xs font-medium bg-sky-50 border border-sky-600 text-sky-600 dark:bg-sky-950/30 dark:border-sky-500 dark:text-sky-400">
+              <Icon className="h-4 w-4" />
+              System
+            </span>
+            {/* Title */}
+            <div className="font-medium text-sm text-foreground">
+              {subtype === "init" ? "Initialize" : subtype}
+            </div>
+          </div>
+          {/* Timestamp */}
+          <span className="text-sm text-muted-foreground">
+            {formatEventTime(event.createdAt)}
+          </span>
+        </div>
         {subtype === "init" && <SystemInitContent eventData={eventData} />}
         {subtype !== "init" && eventData.message?.content === null && (
           <div className="mt-2">
@@ -855,6 +829,13 @@ export function EventCard({
   // Assistant or User event - render message.content array
   const message = eventData.message;
   const contents = message?.content;
+  const Icon = style.icon;
+  const isAssistant = event.eventType === "assistant";
+
+  // Badge colors based on event type
+  const badgeClass = isAssistant
+    ? "bg-yellow-50 border border-yellow-600 text-yellow-600 dark:bg-yellow-950/30 dark:border-yellow-500 dark:text-yellow-400"
+    : "bg-pink-50 border border-pink-600 text-pink-600 dark:bg-pink-950/30 dark:border-pink-500 dark:text-pink-400";
 
   if (!contents || !Array.isArray(contents) || contents.length === 0) {
     // Fallback: show raw data
@@ -862,7 +843,17 @@ export function EventCard({
       <div
         className={`rounded-lg border ${style.borderColor} ${style.bgColor} p-4`}
       >
-        <EventHeader event={event} label={event.eventType} />
+        <div className="flex items-start justify-between gap-4">
+          <span
+            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-xs font-medium ${badgeClass}`}
+          >
+            <Icon className="h-4 w-4" />
+            {isAssistant ? "Assistant" : "User"}
+          </span>
+          <span className="text-sm text-muted-foreground">
+            {formatEventTime(event.createdAt)}
+          </span>
+        </div>
         <div className="mt-2">
           <CollapsibleJson data={eventData} label="Event Data" />
         </div>
@@ -873,12 +864,19 @@ export function EventCard({
   // Render each content block
   return (
     <div
-      className={`rounded-lg border ${style.borderColor} ${style.bgColor} p-4 space-y-3`}
+      className={`rounded-lg border ${style.borderColor} ${style.bgColor} p-4 space-y-2`}
     >
-      <EventHeader
-        event={event}
-        label={event.eventType === "assistant" ? "Assistant" : "User"}
-      />
+      <div className="flex items-start justify-between gap-4">
+        <span
+          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-xs font-medium ${badgeClass}`}
+        >
+          <Icon className="h-4 w-4" />
+          {isAssistant ? "Assistant" : "User"}
+        </span>
+        <span className="text-sm text-muted-foreground">
+          {formatEventTime(event.createdAt)}
+        </span>
+      </div>
 
       {contents.map((content) => {
         const contentKey = `${event.sequenceNumber}-${content.type}-${(content as ToolUseContent).id ?? (content as ToolResultContent).tool_use_id ?? Math.random()}`;
@@ -898,12 +896,8 @@ export function EventCard({
 
         if (content.type === "tool_use") {
           const toolContent = content as ToolUseContent;
-          const toolStyle = getEventStyle("tool_use");
           return (
-            <div
-              key={contentKey}
-              className={`rounded border-l-2 ${toolStyle.borderColor} ${toolStyle.bgColor} p-2`}
-            >
+            <div key={contentKey}>
               <ToolUseContentView content={toolContent} />
             </div>
           );
@@ -912,14 +906,21 @@ export function EventCard({
         if (content.type === "tool_result") {
           const resultContent = content as ToolResultContent;
           const isError = resultContent.is_error === true;
-          const resultStyle = getEventStyle(
-            isError ? "tool_result_error" : "tool_result",
-          );
+          if (isError) {
+            return (
+              <div key={contentKey}>
+                <ToolResultContentView
+                  content={resultContent}
+                  toolMeta={eventData.tool_use_result ?? undefined}
+                  searchTerm={searchTerm}
+                  currentMatchIndex={currentMatchIndex}
+                  matchStartIndex={localMatchOffset}
+                />
+              </div>
+            );
+          }
           return (
-            <div
-              key={contentKey}
-              className={`rounded border-l-2 ${resultStyle.borderColor} ${resultStyle.bgColor} p-2`}
-            >
+            <div key={contentKey}>
               <ToolResultContentView
                 content={resultContent}
                 toolMeta={eventData.tool_use_result ?? undefined}

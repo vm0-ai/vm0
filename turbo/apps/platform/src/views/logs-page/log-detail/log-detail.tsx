@@ -13,7 +13,7 @@ export function LogDetailPage() {
 
   return (
     <AppShell breadcrumb={breadcrumb}>
-      <div className="px-6 py-4">
+      <div className="p-8 h-full flex flex-col">
         {logId ? (
           <LogDetailContent logId={logId} />
         ) : (
