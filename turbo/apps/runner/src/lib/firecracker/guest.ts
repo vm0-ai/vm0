@@ -15,6 +15,23 @@ export interface ExecResult {
 }
 
 /**
+ * Result of spawnAndWatch - contains the spawned process PID
+ */
+export interface SpawnResult {
+  pid: number;
+}
+
+/**
+ * Event emitted when a spawned process exits
+ */
+export interface ProcessExitEvent {
+  pid: number;
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}
+
+/**
  * Guest Client Interface
  *
  * Common interface for VM communication clients.
@@ -31,4 +48,20 @@ export interface GuestClient {
   waitForGuestConnection(timeoutMs?: number): Promise<void>;
   mkdir(remotePath: string): Promise<void>;
   exists(remotePath: string): Promise<boolean>;
+
+  /**
+   * Spawn a process and monitor for exit (event-driven mode)
+   *
+   * Returns immediately with the PID. Use waitForExit() to wait for completion.
+   * When the process exits, the agent sends an unsolicited notification.
+   */
+  spawnAndWatch(command: string, timeoutMs?: number): Promise<SpawnResult>;
+
+  /**
+   * Wait for a spawned process to exit
+   *
+   * Blocks until the process exits or timeout is reached.
+   * The exit event is pushed by the guest agent (no polling).
+   */
+  waitForExit(pid: number, timeoutMs?: number): Promise<ProcessExitEvent>;
 }

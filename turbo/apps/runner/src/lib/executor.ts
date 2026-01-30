@@ -345,104 +345,40 @@ export async function executeJob(
       logger.log(`Preflight check passed`);
     }
 
-    // Execute agent or direct command based on mode
+    // Execute agent or direct command using event-driven mode
+    // The agent spawns in background, and we wait for exit notification (no polling)
     const systemLogFile = `/tmp/vm0-main-${context.runId}.log`;
-    const exitCodeFile = `/tmp/vm0-exit-${context.runId}`;
     const startTime = Date.now();
+    const maxWaitMs = 2 * 60 * 60 * 1000; // 2 hours max (same as E2B sandbox timeout)
 
+    // Build the command to run
+    let command: string;
     if (options.benchmarkMode) {
       // Benchmark mode: run prompt directly as bash command (skip run-agent.mjs)
-      // This avoids API dependencies while still testing the full VM setup pipeline
       logger.log(`Running command directly (benchmark mode)...`);
-      await guest.exec(
-        `nohup sh -c '${context.prompt}; echo $? > ${exitCodeFile}' > ${systemLogFile} 2>&1 &`,
-      );
-      logger.log(`Command started in background`);
+      command = `${context.prompt} > ${systemLogFile} 2>&1`;
     } else {
       // Production mode: run env-loader.mjs which loads environment and runs run-agent.mjs
-      logger.log(`Running agent via env-loader (background)...`);
-      await guest.exec(
-        `nohup sh -c 'node ${ENV_LOADER_PATH}; echo $? > ${exitCodeFile}' > ${systemLogFile} 2>&1 &`,
-      );
-      logger.log(`Agent started in background`);
+      logger.log(`Running agent via env-loader...`);
+      command = `node ${ENV_LOADER_PATH} > ${systemLogFile} 2>&1`;
     }
 
-    // Poll for completion by checking if exit code file exists
-    // Timeout after 2 hours (same as E2B sandbox timeout)
-    const pollIntervalMs = 2000; // Check every 2 seconds
-    const maxWaitMs = 2 * 60 * 60 * 1000; // 2 hours max
+    // Spawn process and get PID (returns immediately)
+    const { pid } = await guest.spawnAndWatch(command, maxWaitMs);
+    logger.log(`Process started with pid=${pid}`);
+
+    // Wait for process exit event (event-driven, no polling)
+    // Add 5s buffer to maxWaitMs for exit event timeout
     let exitCode = 1;
-    let completed = false;
-
-    while (Date.now() - startTime < maxWaitMs) {
-      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
-
-      // Check if exit code file exists
-      const checkResult = await guest.exec(`cat ${exitCodeFile} 2>/dev/null`);
-      if (checkResult.exitCode === 0 && checkResult.stdout.trim()) {
-        const parsed = parseInt(checkResult.stdout.trim(), 10);
-        exitCode = Number.isNaN(parsed) ? 1 : parsed;
-        completed = true;
-        break;
-      }
-
-      // Check if agent process is still running (production mode only)
-      // If exit code file doesn't exist but process is dead, agent crashed unexpectedly
-      if (!options.benchmarkMode) {
-        const processCheck = await guest.exec(
-          `pgrep -f "env-loader.mjs" > /dev/null 2>&1 && echo "RUNNING" || echo "DEAD"`,
-        );
-
-        if (processCheck.stdout.trim() === "DEAD") {
-          // Process is dead but no exit code file - agent crashed unexpectedly
-          logger.log(
-            `Agent process died unexpectedly without writing exit code`,
-          );
-
-          // Try to get diagnostic info from system log and dmesg
-          const logContent = await guest.exec(
-            `tail -50 ${systemLogFile} 2>/dev/null`,
-          );
-          const dmesgCheck = await guest.exec(
-            `dmesg | tail -20 | grep -iE "killed|oom" 2>/dev/null`,
-          );
-
-          let errorMsg = "Agent process terminated unexpectedly";
-          if (
-            dmesgCheck.stdout.toLowerCase().includes("oom") ||
-            dmesgCheck.stdout.toLowerCase().includes("killed")
-          ) {
-            errorMsg = "Agent process killed by OOM killer";
-            logger.log(`OOM detected: ${dmesgCheck.stdout}`);
-          }
-          if (logContent.stdout) {
-            logger.log(
-              `Last log output: ${logContent.stdout.substring(0, 500)}`,
-            );
-          }
-
-          // Record metric and return failure
-          const durationMs = Date.now() - startTime;
-          recordOperation({
-            actionType: "agent_execute",
-            durationMs,
-            success: false,
-          });
-
-          return {
-            exitCode: 1,
-            error: errorMsg,
-          };
-        }
-      }
-    }
-
-    const durationMs = Date.now() - startTime;
-    const duration = Math.round(durationMs / 1000);
-
-    if (!completed) {
+    let exitEvent;
+    try {
+      exitEvent = await guest.waitForExit(pid, maxWaitMs + 5000);
+      exitCode = exitEvent.exitCode;
+    } catch {
+      // Timeout waiting for exit event
+      const durationMs = Date.now() - startTime;
+      const duration = Math.round(durationMs / 1000);
       logger.log(`Agent timed out after ${duration}s`);
-      // Record agent_execute metric for timeout
       recordOperation({
         actionType: "agent_execute",
         durationMs,
@@ -454,6 +390,31 @@ export async function executeJob(
       };
     }
 
+    const durationMs = Date.now() - startTime;
+    const duration = Math.round(durationMs / 1000);
+
+    // Check for OOM kill (exit code 137 = 128 + SIGKILL)
+    if (exitCode === 137 || exitCode === 9) {
+      const dmesgCheck = await guest.exec(
+        `dmesg | tail -20 | grep -iE "killed|oom" 2>/dev/null`,
+      );
+      if (
+        dmesgCheck.stdout.toLowerCase().includes("oom") ||
+        dmesgCheck.stdout.toLowerCase().includes("killed")
+      ) {
+        logger.log(`OOM detected: ${dmesgCheck.stdout}`);
+        recordOperation({
+          actionType: "agent_execute",
+          durationMs,
+          success: false,
+        });
+        return {
+          exitCode: 1,
+          error: "Agent process killed by OOM killer",
+        };
+      }
+    }
+
     // Record agent_execute metric
     recordOperation({
       actionType: "agent_execute",
@@ -463,19 +424,16 @@ export async function executeJob(
 
     logger.log(`Agent finished in ${duration}s with exit code ${exitCode}`);
 
-    // Read log file for debugging output
-    const logResult = await guest.exec(
-      `tail -100 ${systemLogFile} 2>/dev/null`,
-    );
-    if (logResult.stdout) {
+    // Log output from the process exit event
+    if (exitEvent.stderr) {
       logger.log(
-        `Log output (${logResult.stdout.length} chars): ${logResult.stdout.substring(0, 500)}`,
+        `Stderr (${exitEvent.stderr.length} chars): ${exitEvent.stderr.substring(0, 500)}`,
       );
     }
 
     return {
       exitCode,
-      error: exitCode !== 0 ? logResult.stdout || undefined : undefined,
+      error: exitCode !== 0 ? exitEvent.stderr || undefined : undefined,
     };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : "Unknown error";

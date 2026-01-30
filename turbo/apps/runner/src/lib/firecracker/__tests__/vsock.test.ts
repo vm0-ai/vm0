@@ -334,4 +334,485 @@ describe("VsockClient Integration Tests", () => {
       }
     });
   });
+
+  describe("spawnAndWatch / waitForExit (Event-driven)", () => {
+    it("should spawn process and return pid immediately", async () => {
+      const { pid } = await client!.spawnAndWatch("echo hello");
+      expect(pid).toBeGreaterThan(0);
+
+      // Wait for exit
+      const exitEvent = await client!.waitForExit(pid, 5000);
+      expect(exitEvent.exitCode).toBe(0);
+      expect(exitEvent.stdout.trim()).toBe("hello");
+    });
+
+    it("should receive exit event with exit code", async () => {
+      const { pid } = await client!.spawnAndWatch("exit 42");
+      const exitEvent = await client!.waitForExit(pid, 5000);
+      expect(exitEvent.exitCode).toBe(42);
+    });
+
+    it("should receive stderr in exit event", async () => {
+      const { pid } = await client!.spawnAndWatch("echo error >&2 && exit 1");
+      const exitEvent = await client!.waitForExit(pid, 5000);
+      expect(exitEvent.exitCode).toBe(1);
+      expect(exitEvent.stderr.trim()).toBe("error");
+    });
+
+    it("should handle concurrent spawn and wait", async () => {
+      // Spawn two processes
+      const spawn1 = await client!.spawnAndWatch("sleep 0.1 && echo first");
+      const spawn2 = await client!.spawnAndWatch("echo second");
+
+      // Wait for both (in reverse order to test proper PID tracking)
+      const exit2 = await client!.waitForExit(spawn2.pid, 5000);
+      const exit1 = await client!.waitForExit(spawn1.pid, 5000);
+
+      expect(exit1.exitCode).toBe(0);
+      expect(exit1.stdout.trim()).toBe("first");
+      expect(exit2.exitCode).toBe(0);
+      expect(exit2.stdout.trim()).toBe("second");
+    });
+
+    it("should timeout on long-running process with timeout parameter", async () => {
+      const { pid } = await client!.spawnAndWatch("sleep 10", 100);
+
+      // Wait for exit - should receive timeout (exit code 124)
+      const exitEvent = await client!.waitForExit(pid, 5000);
+      expect(exitEvent.exitCode).toBe(124);
+      expect(exitEvent.stderr).toContain("Timeout");
+    });
+
+    it("should timeout waitForExit if process never exits", async () => {
+      // Spawn a process that sleeps for a long time, but don't set spawn timeout
+      const { pid } = await client!.spawnAndWatch("sleep 60");
+
+      // waitForExit should timeout after 100ms
+      await expect(client!.waitForExit(pid, 100)).rejects.toThrow(/Timeout/);
+
+      // Kill the process to clean up
+      await client!.exec(`kill -9 ${pid} 2>/dev/null || true`);
+    });
+
+    it("should handle process with large output", async () => {
+      // Generate 10KB of output
+      const { pid } = await client!.spawnAndWatch(
+        "dd if=/dev/zero bs=1024 count=10 2>/dev/null | base64",
+      );
+      const exitEvent = await client!.waitForExit(pid, 10000);
+
+      expect(exitEvent.exitCode).toBe(0);
+      expect(exitEvent.stdout.length).toBeGreaterThan(10000);
+    });
+
+    it("should handle process killed by signal (SIGTERM)", async () => {
+      // Start a process that waits, then kill it
+      // Use exec rather than sleep to avoid shell wrapper issues
+      const { pid } = await client!.spawnAndWatch("exec sleep 60");
+
+      // Give the process time to start
+      await new Promise((r) => setTimeout(r, 100));
+
+      // Kill the process with SIGTERM (signal 15) - kill entire process group
+      await client!.exec(`kill -15 -${pid} 2>/dev/null || kill -15 ${pid}`);
+
+      // Wait for exit - should receive exit code 143 (128 + 15)
+      const exitEvent = await client!.waitForExit(pid, 5000);
+      expect(exitEvent.exitCode).toBe(143); // 128 + SIGTERM (15)
+    });
+
+    it("should handle process killed by SIGKILL", async () => {
+      // Start a process that waits, then kill it
+      // Use exec rather than sleep to avoid shell wrapper issues
+      const { pid } = await client!.spawnAndWatch("exec sleep 60");
+
+      // Give the process time to start
+      await new Promise((r) => setTimeout(r, 100));
+
+      // Kill the process with SIGKILL (signal 9) - kill entire process group
+      await client!.exec(`kill -9 -${pid} 2>/dev/null || kill -9 ${pid}`);
+
+      // Wait for exit - should receive exit code 137 (128 + 9)
+      const exitEvent = await client!.waitForExit(pid, 5000);
+      expect(exitEvent.exitCode).toBe(137); // 128 + SIGKILL (9)
+    });
+
+    it("should handle spawning multiple processes rapidly", async () => {
+      // Spawn 5 processes rapidly
+      const spawns = await Promise.all([
+        client!.spawnAndWatch("echo p1"),
+        client!.spawnAndWatch("echo p2"),
+        client!.spawnAndWatch("echo p3"),
+        client!.spawnAndWatch("echo p4"),
+        client!.spawnAndWatch("echo p5"),
+      ]);
+
+      // All should have different PIDs
+      const pids = spawns.map((s) => s.pid);
+      const uniquePids = new Set(pids);
+      expect(uniquePids.size).toBe(5);
+
+      // Wait for all to complete
+      const exits = await Promise.all(
+        spawns.map((s) => client!.waitForExit(s.pid, 5000)),
+      );
+
+      // All should exit successfully
+      for (let i = 0; i < 5; i++) {
+        const exit = exits[i]!;
+        expect(exit.exitCode).toBe(0);
+        expect(exit.stdout.trim()).toBe(`p${i + 1}`);
+      }
+    });
+
+    it("should handle process with no output", async () => {
+      const { pid } = await client!.spawnAndWatch("true"); // 'true' exits 0 with no output
+      const exitEvent = await client!.waitForExit(pid, 5000);
+
+      expect(exitEvent.exitCode).toBe(0);
+      expect(exitEvent.stdout).toBe("");
+      expect(exitEvent.stderr).toBe("");
+    });
+
+    it("should handle process with both stdout and stderr", async () => {
+      const { pid } = await client!.spawnAndWatch(
+        "echo out && echo err >&2 && exit 2",
+      );
+      const exitEvent = await client!.waitForExit(pid, 5000);
+
+      expect(exitEvent.exitCode).toBe(2);
+      expect(exitEvent.stdout.trim()).toBe("out");
+      expect(exitEvent.stderr.trim()).toBe("err");
+    });
+
+    it("should handle multiline output in spawn mode", async () => {
+      const { pid } = await client!.spawnAndWatch(
+        "printf 'line1\\nline2\\nline3\\n'",
+      );
+      const exitEvent = await client!.waitForExit(pid, 5000);
+
+      expect(exitEvent.exitCode).toBe(0);
+      const lines = exitEvent.stdout.trim().split("\n");
+      expect(lines).toHaveLength(3);
+      expect(lines[0]).toBe("line1");
+      expect(lines[1]).toBe("line2");
+      expect(lines[2]).toBe("line3");
+    });
+
+    it("should handle non-existent command", async () => {
+      const { pid } = await client!.spawnAndWatch(
+        "nonexistent_command_12345 2>&1",
+      );
+      const exitEvent = await client!.waitForExit(pid, 5000);
+
+      expect(exitEvent.exitCode).not.toBe(0);
+      // stderr or stdout should contain error message
+      const output = exitEvent.stderr || exitEvent.stdout;
+      expect(output.toLowerCase()).toMatch(/not found|command not found/);
+    });
+
+    it("should handle environment variables in spawned process", async () => {
+      const { pid } = await client!.spawnAndWatch(
+        "export MY_VAR=hello_spawn; echo $MY_VAR",
+      );
+      const exitEvent = await client!.waitForExit(pid, 5000);
+
+      expect(exitEvent.exitCode).toBe(0);
+      expect(exitEvent.stdout.trim()).toBe("hello_spawn");
+    });
+
+    it("should handle process that outputs special characters", async () => {
+      const { pid } = await client!.spawnAndWatch(
+        "printf 'tab:\\there\\nnewline done'",
+      );
+      const exitEvent = await client!.waitForExit(pid, 5000);
+
+      expect(exitEvent.exitCode).toBe(0);
+      expect(exitEvent.stdout).toContain("tab:\there");
+      expect(exitEvent.stdout).toContain("newline done");
+    });
+
+    it("should handle zero exit code with stderr output", async () => {
+      // Some commands output warnings to stderr but still exit 0
+      const { pid } = await client!.spawnAndWatch(
+        "echo warning >&2 && echo success && exit 0",
+      );
+      const exitEvent = await client!.waitForExit(pid, 5000);
+
+      expect(exitEvent.exitCode).toBe(0);
+      expect(exitEvent.stdout.trim()).toBe("success");
+      expect(exitEvent.stderr.trim()).toBe("warning");
+    });
+
+    it("should handle unicode and non-ASCII output", async () => {
+      const { pid } = await client!.spawnAndWatch(
+        "printf '你好世界\\nこんにちは\\n🎉emoji🚀'",
+      );
+      const exitEvent = await client!.waitForExit(pid, 5000);
+
+      expect(exitEvent.exitCode).toBe(0);
+      expect(exitEvent.stdout).toContain("你好世界");
+      expect(exitEvent.stdout).toContain("こんにちは");
+      expect(exitEvent.stdout).toContain("🎉emoji🚀");
+    });
+
+    it("should handle complex pipe chains", async () => {
+      const { pid } = await client!.spawnAndWatch(
+        "echo 'hello world' | tr 'a-z' 'A-Z' | sed 's/WORLD/UNIVERSE/'",
+      );
+      const exitEvent = await client!.waitForExit(pid, 5000);
+
+      expect(exitEvent.exitCode).toBe(0);
+      expect(exitEvent.stdout.trim()).toBe("HELLO UNIVERSE");
+    });
+
+    it("should return different PIDs for same command spawned multiple times", async () => {
+      const spawn1 = await client!.spawnAndWatch("echo test");
+      const spawn2 = await client!.spawnAndWatch("echo test");
+      const spawn3 = await client!.spawnAndWatch("echo test");
+
+      // All PIDs should be different
+      expect(spawn1.pid).not.toBe(spawn2.pid);
+      expect(spawn2.pid).not.toBe(spawn3.pid);
+      expect(spawn1.pid).not.toBe(spawn3.pid);
+
+      // All should complete successfully
+      const exits = await Promise.all([
+        client!.waitForExit(spawn1.pid, 5000),
+        client!.waitForExit(spawn2.pid, 5000),
+        client!.waitForExit(spawn3.pid, 5000),
+      ]);
+      for (const exit of exits) {
+        expect(exit.exitCode).toBe(0);
+      }
+    });
+
+    it("should timeout waitForExit for never-spawned PID", async () => {
+      // PID 99999999 was never spawned - should timeout
+      await expect(client!.waitForExit(99999999, 100)).rejects.toThrow(
+        /Timeout/,
+      );
+    });
+
+    it("should handle empty command gracefully", async () => {
+      // Empty command typically results in shell doing nothing and exiting 0
+      const { pid } = await client!.spawnAndWatch("");
+      const exitEvent = await client!.waitForExit(pid, 5000);
+
+      // Shell should handle empty command (exit 0 or small exit code)
+      expect(exitEvent.exitCode).toBeLessThanOrEqual(127);
+    });
+
+    it("should handle command with only whitespace", async () => {
+      const { pid } = await client!.spawnAndWatch("   ");
+      const exitEvent = await client!.waitForExit(pid, 5000);
+
+      // Shell should handle whitespace-only command
+      expect(exitEvent.exitCode).toBeLessThanOrEqual(127);
+    });
+
+    it("should handle process that forks child processes", async () => {
+      // Parent spawns a child that echoes, then parent exits
+      // Child output should still be captured
+      const { pid } = await client!.spawnAndWatch(
+        "sh -c 'echo parent; (echo child) & wait'",
+      );
+      const exitEvent = await client!.waitForExit(pid, 5000);
+
+      expect(exitEvent.exitCode).toBe(0);
+      expect(exitEvent.stdout).toContain("parent");
+      expect(exitEvent.stdout).toContain("child");
+    });
+
+    it("should handle interleaved stdout and stderr", async () => {
+      const { pid } = await client!.spawnAndWatch(
+        "echo out1 && echo err1 >&2 && echo out2 && echo err2 >&2",
+      );
+      const exitEvent = await client!.waitForExit(pid, 5000);
+
+      expect(exitEvent.exitCode).toBe(0);
+      expect(exitEvent.stdout).toContain("out1");
+      expect(exitEvent.stdout).toContain("out2");
+      expect(exitEvent.stderr).toContain("err1");
+      expect(exitEvent.stderr).toContain("err2");
+    });
+
+    it("should handle very long command", async () => {
+      // Generate a command with many arguments
+      const args = Array.from({ length: 100 }, (_, i) => `arg${i}`).join(" ");
+      const { pid } = await client!.spawnAndWatch(`echo ${args}`);
+      const exitEvent = await client!.waitForExit(pid, 5000);
+
+      expect(exitEvent.exitCode).toBe(0);
+      expect(exitEvent.stdout).toContain("arg0");
+      expect(exitEvent.stdout).toContain("arg99");
+    });
+
+    it("should handle subshell execution", async () => {
+      const { pid } = await client!.spawnAndWatch(
+        "(cd /tmp && pwd && echo done)",
+      );
+      const exitEvent = await client!.waitForExit(pid, 5000);
+
+      expect(exitEvent.exitCode).toBe(0);
+      expect(exitEvent.stdout).toContain("/tmp");
+      expect(exitEvent.stdout).toContain("done");
+    });
+
+    it("should handle command substitution", async () => {
+      const { pid } = await client!.spawnAndWatch('echo "Current dir: $(pwd)"');
+      const exitEvent = await client!.waitForExit(pid, 5000);
+
+      expect(exitEvent.exitCode).toBe(0);
+      expect(exitEvent.stdout).toContain("Current dir:");
+      expect(exitEvent.stdout).toContain("/");
+    });
+
+    it("should handle heredoc input", async () => {
+      // Use POSIX-compatible heredoc syntax (works in sh, bash, etc.)
+      const { pid } = await client!.spawnAndWatch(
+        "cat << 'EOF'\nhello from heredoc\nEOF",
+      );
+      const exitEvent = await client!.waitForExit(pid, 5000);
+
+      expect(exitEvent.exitCode).toBe(0);
+      expect(exitEvent.stdout.trim()).toBe("hello from heredoc");
+    });
+
+    it("should handle process that sleeps briefly then outputs", async () => {
+      // Ensures we properly wait for output after short delay
+      const { pid } = await client!.spawnAndWatch("sleep 0.2 && echo delayed");
+      const exitEvent = await client!.waitForExit(pid, 5000);
+
+      expect(exitEvent.exitCode).toBe(0);
+      expect(exitEvent.stdout.trim()).toBe("delayed");
+    });
+
+    it("should throw error when calling waitForExit twice for same PID", async () => {
+      // Spawn a slow process
+      const { pid } = await client!.spawnAndWatch("sleep 1");
+
+      // First waitForExit call - should not throw
+      const promise1 = client!.waitForExit(pid, 5000);
+
+      // Second waitForExit call for same PID - should throw
+      await expect(client!.waitForExit(pid, 5000)).rejects.toThrow(
+        /Already waiting for process/,
+      );
+
+      // Clean up - wait for the first promise and kill the process
+      await client!.exec(`kill -9 ${pid} 2>/dev/null || true`);
+      await promise1.catch(() => {}); // Ignore any errors
+    });
+
+    it("should throw error when calling waitForExit after connection closed", async () => {
+      // Spawn a process first
+      const { pid } = await client!.spawnAndWatch("sleep 5");
+
+      // Close the connection
+      client!.close();
+
+      // Now waitForExit should throw
+      await expect(client!.waitForExit(pid, 5000)).rejects.toThrow(
+        /Not connected/,
+      );
+    });
+
+    it("should throw error when calling spawnAndWatch after connection closed", async () => {
+      // Close the connection
+      client!.close();
+
+      // Now spawnAndWatch should throw
+      await expect(client!.spawnAndWatch("echo test")).rejects.toThrow(
+        /Not connected/,
+      );
+    });
+
+    it("should handle waitForExit called after exit event already cached", async () => {
+      // Spawn a very fast process
+      const { pid } = await client!.spawnAndWatch("echo cached_test");
+
+      // Wait long enough for the exit event to arrive and be cached
+      await new Promise((r) => setTimeout(r, 300));
+
+      // Now call waitForExit - should return immediately from cache
+      const startTime = Date.now();
+      const exitEvent = await client!.waitForExit(pid, 5000);
+      const elapsed = Date.now() - startTime;
+
+      expect(exitEvent.exitCode).toBe(0);
+      expect(exitEvent.stdout.trim()).toBe("cached_test");
+      // Should return almost immediately (< 100ms) since it's cached
+      expect(elapsed).toBeLessThan(100);
+    });
+
+    it("should allow calling waitForExit again after timeout for same PID", async () => {
+      // Spawn a process that takes 500ms
+      const { pid } = await client!.spawnAndWatch("sleep 0.5 && echo done");
+
+      // First waitForExit with very short timeout - should fail
+      await expect(client!.waitForExit(pid, 50)).rejects.toThrow(/Timeout/);
+
+      // After timeout, should be able to call waitForExit again
+      // This time with longer timeout - should succeed
+      const exitEvent = await client!.waitForExit(pid, 5000);
+      expect(exitEvent.exitCode).toBe(0);
+      expect(exitEvent.stdout.trim()).toBe("done");
+    });
+
+    it("should handle very fast process that exits before waitForExit is called", async () => {
+      // Spawn multiple very fast processes in sequence
+      // The exit events might arrive before we call waitForExit
+      const results: string[] = [];
+
+      for (let i = 0; i < 3; i++) {
+        const { pid } = await client!.spawnAndWatch(`echo fast${i}`);
+        // Small delay to let exit event potentially arrive and be cached
+        await new Promise((r) => setTimeout(r, 50));
+        const exitEvent = await client!.waitForExit(pid, 5000);
+        results.push(exitEvent.stdout.trim());
+      }
+
+      expect(results).toEqual(["fast0", "fast1", "fast2"]);
+    });
+
+    it("should handle close() being called multiple times", async () => {
+      // Close should be idempotent - calling it multiple times should not throw
+      client!.close();
+      client!.close();
+      client!.close();
+
+      // Should still report as not connected
+      await expect(client!.spawnAndWatch("echo test")).rejects.toThrow(
+        /Not connected/,
+      );
+    });
+
+    it("should cleanly reject pending waitForExit when close() is called during wait", async () => {
+      // Spawn a slow process
+      const { pid } = await client!.spawnAndWatch("sleep 10");
+
+      // Start waiting - this will create a pending exit
+      const waitPromise = client!.waitForExit(pid, 30000);
+
+      // Close immediately
+      client!.close();
+
+      // waitForExit should be rejected with connection closed
+      await expect(waitPromise).rejects.toThrow(/Connection closed/);
+    });
+
+    it("should return error result for exec when close() is called during exec", async () => {
+      // Start an exec that won't complete before close
+      const execPromise = client!.exec("sleep 10", 30000);
+
+      // Close immediately
+      client!.close();
+
+      // exec returns error result instead of throwing (by design)
+      const result = await execPromise;
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Connection closed");
+    });
+  });
 });

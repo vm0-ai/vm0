@@ -24,12 +24,15 @@
 //! - `0x04` exec_result (G→H): Command result
 //! - `0x05` write_file (H→G): Write file
 //! - `0x06` write_file_result (G→H): Write result
+//! - `0x07` spawn_watch (H→G): Spawn process and monitor for exit
+//! - `0x08` spawn_watch_result (G→H): Acknowledgment with PID
+//! - `0x09` process_exit (G→H): Unsolicited notification when process exits
 //! - `0xFF` error (G→H): Error message
 
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::process::{Child, Command, Stdio};
-use std::sync::OnceLock;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use std::{fs, thread};
 
@@ -51,6 +54,9 @@ const MSG_EXEC: u8 = 0x03;
 const MSG_EXEC_RESULT: u8 = 0x04;
 const MSG_WRITE_FILE: u8 = 0x05;
 const MSG_WRITE_FILE_RESULT: u8 = 0x06;
+const MSG_SPAWN_WATCH: u8 = 0x07;
+const MSG_SPAWN_WATCH_RESULT: u8 = 0x08;
+const MSG_PROCESS_EXIT: u8 = 0x09;
 const MSG_ERROR: u8 = 0xFF;
 
 /// Exit code returned when command times out (same as bash/Python)
@@ -115,6 +121,25 @@ fn encode_write_file_result(seq: u32, success: bool, error: &str) -> Vec<u8> {
         payload.extend_from_slice(&error_bytes[..len as usize]);
     }
     encode(MSG_WRITE_FILE_RESULT, seq, &payload)
+}
+
+/// Encode spawn_watch_result message
+fn encode_spawn_watch_result(seq: u32, pid: u32) -> Vec<u8> {
+    let mut payload = Vec::with_capacity(4);
+    payload.extend_from_slice(&pid.to_be_bytes());
+    encode(MSG_SPAWN_WATCH_RESULT, seq, &payload)
+}
+
+/// Encode process_exit message (unsolicited notification, seq=0)
+fn encode_process_exit(pid: u32, exit_code: i32, stdout: &[u8], stderr: &[u8]) -> Vec<u8> {
+    let mut payload = Vec::with_capacity(4 + 4 + 4 + stdout.len() + 4 + stderr.len());
+    payload.extend_from_slice(&pid.to_be_bytes());
+    payload.extend_from_slice(&exit_code.to_be_bytes());
+    payload.extend_from_slice(&(stdout.len() as u32).to_be_bytes());
+    payload.extend_from_slice(stdout);
+    payload.extend_from_slice(&(stderr.len() as u32).to_be_bytes());
+    payload.extend_from_slice(stderr);
+    encode(MSG_PROCESS_EXIT, 0, &payload) // seq=0 for unsolicited messages
 }
 
 /// Run a child process with timeout. Returns (exit_code, stdout, stderr).
@@ -350,6 +375,116 @@ fn handle_write_file(payload: &[u8]) -> (bool, String) {
     }
 }
 
+/// Handle spawn_watch message - spawn process and monitor in background
+/// Returns immediate acknowledgment with PID, then sends process_exit when done
+fn handle_spawn_watch(payload: &[u8], seq: u32, writer: Arc<Mutex<UnixStream>>) -> Vec<u8> {
+    if payload.len() < 8 {
+        return encode_error(seq, "Invalid spawn_watch payload");
+    }
+
+    let timeout_ms = u32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]);
+    let cmd_len = u32::from_be_bytes([payload[4], payload[5], payload[6], payload[7]]) as usize;
+
+    if payload.len() < 8 + cmd_len {
+        return encode_error(seq, "Invalid spawn_watch payload: truncated");
+    }
+
+    let command = match std::str::from_utf8(&payload[8..8 + cmd_len]) {
+        Ok(s) => s.to_string(),
+        Err(_) => return encode_error(seq, "Invalid UTF-8 in command"),
+    };
+
+    let preview = if command.len() > 100 {
+        let end = command
+            .char_indices()
+            .take_while(|(i, _)| *i < 100)
+            .last()
+            .map(|(i, c)| i + c.len_utf8())
+            .unwrap_or(100);
+        format!("{}...", &command[..end])
+    } else {
+        command.clone()
+    };
+    log(
+        "INFO",
+        &format!("spawn_watch: {} (timeout={}ms)", preview, timeout_ms),
+    );
+
+    // Create new process group so we can kill the entire tree on timeout
+    #[cfg(unix)]
+    let child = {
+        use std::os::unix::process::CommandExt;
+        Command::new("sh")
+            .arg("-c")
+            .arg(&command)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .process_group(0)
+            .spawn()
+    };
+    #[cfg(not(unix))]
+    let child = Command::new("sh")
+        .arg("-c")
+        .arg(&command)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn();
+
+    match child {
+        Ok(child) => {
+            let pid = child.id();
+            log("INFO", &format!("spawn_watch: started pid={}", pid));
+
+            // Spawn background thread to monitor process exit
+            thread::spawn(move || {
+                let result = if timeout_ms > 0 {
+                    wait_with_timeout(child, timeout_ms)
+                } else {
+                    // No timeout - wait indefinitely
+                    match child.wait_with_output() {
+                        Ok(output) => {
+                            #[cfg(unix)]
+                            let exit_code = {
+                                use std::os::unix::process::ExitStatusExt;
+                                output.status.code().unwrap_or_else(|| {
+                                    output.status.signal().map(|sig| 128 + sig).unwrap_or(1)
+                                })
+                            };
+                            #[cfg(not(unix))]
+                            let exit_code = output.status.code().unwrap_or(1);
+                            (exit_code, output.stdout, output.stderr)
+                        }
+                        Err(e) => (1, Vec::new(), format!("Failed to wait: {}", e).into_bytes()),
+                    }
+                };
+
+                log(
+                    "INFO",
+                    &format!(
+                        "spawn_watch: pid={} exited with code={}, stdout_len={}, stderr_len={}",
+                        pid,
+                        result.0,
+                        result.1.len(),
+                        result.2.len()
+                    ),
+                );
+
+                // Send process_exit notification
+                let exit_msg = encode_process_exit(pid, result.0, &result.1, &result.2);
+                if let Ok(mut w) = writer.lock()
+                    && let Err(e) = w.write_all(&exit_msg)
+                {
+                    log("ERROR", &format!("Failed to send process_exit: {}", e));
+                }
+            });
+
+            // Return immediate acknowledgment with PID
+            encode_spawn_watch_result(seq, pid)
+        }
+        Err(e) => encode_error(seq, &format!("Failed to spawn: {}", e)),
+    }
+}
+
 /// Handle incoming message and return response
 fn handle_message(msg_type: u8, seq: u32, payload: &[u8]) -> Option<Vec<u8>> {
     log(
@@ -474,24 +609,43 @@ pub fn connect_unix(path: &str) -> std::io::Result<UnixStream> {
 }
 
 /// Handle connection - the main event loop
-pub fn handle_connection<S: Read + Write>(mut stream: S) -> std::io::Result<()> {
+/// Uses separate reader/writer to avoid deadlock between main loop and background threads
+pub fn handle_connection(stream: UnixStream) -> std::io::Result<()> {
+    // Clone the stream to get separate reader and writer
+    // This avoids deadlock: reader can block while writer sends process_exit
+    let mut reader = stream.try_clone()?;
+    let writer = Arc::new(Mutex::new(stream));
+
     let mut decoder = Decoder::new();
 
     // Send ready signal
-    let ready = encode(MSG_READY, 0, &[]);
-    stream.write_all(&ready)?;
+    {
+        let ready = encode(MSG_READY, 0, &[]);
+        let mut w = writer.lock().unwrap();
+        w.write_all(&ready)?;
+    }
     log("INFO", "Sent ready signal");
 
     let mut buf = [0u8; 65536];
     loop {
-        let n = stream.read(&mut buf)?;
+        // Read from stream (reader is separate, no lock needed)
+        let n = reader.read(&mut buf)?;
+
         if n == 0 {
             break;
         }
 
         for (msg_type, seq, payload) in decoder.decode(&buf[..n]) {
-            if let Some(response) = handle_message(msg_type, seq, &payload) {
-                stream.write_all(&response)?;
+            // Handle spawn_watch separately since it needs the writer Arc
+            let response = if msg_type == MSG_SPAWN_WATCH {
+                Some(handle_spawn_watch(&payload, seq, Arc::clone(&writer)))
+            } else {
+                handle_message(msg_type, seq, &payload)
+            };
+
+            if let Some(msg) = response {
+                let mut w = writer.lock().unwrap();
+                w.write_all(&msg)?;
             }
         }
     }

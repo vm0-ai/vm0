@@ -25,12 +25,20 @@
  *   0x04 exec_result    G→H  [4-byte exit_code][4-byte stdout_len][stdout][4-byte stderr_len][stderr]
  *   0x05 write_file     H→G  [2-byte path_len][path][1-byte flags][4-byte content_len][content]
  *   0x06 write_file_result G→H [1-byte success][2-byte error_len][error]
+ *   0x07 spawn_watch    H→G  [4-byte timeout_ms][4-byte cmd_len][command]
+ *   0x08 spawn_watch_result G→H [4-byte pid]
+ *   0x09 process_exit   G→H  [4-byte pid][4-byte exit_code][4-byte stdout_len][stdout][4-byte stderr_len][stderr]
  *   0xFF error          G→H  [2-byte error_len][error]
  */
 
 import * as net from "node:net";
 import * as fs from "node:fs";
-import type { ExecResult, GuestClient } from "./guest.js";
+import type {
+  ExecResult,
+  GuestClient,
+  SpawnResult,
+  ProcessExitEvent,
+} from "./guest.js";
 
 const VSOCK_PORT = 1000;
 const HEADER_SIZE = 4;
@@ -43,6 +51,9 @@ const MSG_PING = 0x01;
 const MSG_PONG = 0x02;
 const MSG_EXEC = 0x03;
 const MSG_WRITE_FILE = 0x05;
+const MSG_SPAWN_WATCH = 0x07;
+const MSG_SPAWN_WATCH_RESULT = 0x08;
+const MSG_PROCESS_EXIT = 0x09;
 const MSG_ERROR = 0xff;
 
 // Write file flags
@@ -58,6 +69,18 @@ interface PendingRequest {
   resolve: (msg: DecodedMessage) => void;
   reject: (err: Error) => void;
   timeout: NodeJS.Timeout;
+}
+
+interface PendingExit {
+  resolve: (event: ProcessExitEvent) => void;
+  reject: (err: Error) => void;
+  timeout?: NodeJS.Timeout;
+}
+
+// Buffer for exit events that arrive before waitForExit is called
+interface CachedExitEvent {
+  event: ProcessExitEvent;
+  timestamp: number;
 }
 
 /**
@@ -127,15 +150,41 @@ function encodeWriteFilePayload(
  * Decode exec_result payload
  */
 function decodeExecResult(payload: Buffer): ExecResult {
-  if (payload.length < 8) {
-    return { exitCode: 1, stdout: "", stderr: "Invalid exec_result payload" };
+  // Minimum: exit_code(4) + stdout_len(4) + stderr_len(4) = 12 bytes
+  if (payload.length < 12) {
+    return {
+      exitCode: 1,
+      stdout: "",
+      stderr: "Invalid exec_result payload: too short",
+    };
   }
 
   const exitCode = payload.readInt32BE(0);
   const stdoutLen = payload.readUInt32BE(4);
-  const stdout = payload.subarray(8, 8 + stdoutLen).toString("utf-8");
+
+  // Validate stdout bounds
   const stderrLenOffset = 8 + stdoutLen;
+  if (payload.length < stderrLenOffset + 4) {
+    return {
+      exitCode: 1,
+      stdout: "",
+      stderr: "Invalid exec_result payload: stdout truncated",
+    };
+  }
+
+  const stdout = payload.subarray(8, 8 + stdoutLen).toString("utf-8");
   const stderrLen = payload.readUInt32BE(stderrLenOffset);
+
+  // Validate stderr bounds
+  const expectedLen = stderrLenOffset + 4 + stderrLen;
+  if (payload.length < expectedLen) {
+    return {
+      exitCode: 1,
+      stdout,
+      stderr: "Invalid exec_result payload: stderr truncated",
+    };
+  }
+
   const stderr = payload
     .subarray(stderrLenOffset + 4, stderrLenOffset + 4 + stderrLen)
     .toString("utf-8");
@@ -150,12 +199,25 @@ function decodeWriteFileResult(payload: Buffer): {
   success: boolean;
   error: string;
 } {
+  // Minimum: success(1) + error_len(2) = 3 bytes
   if (payload.length < 3) {
-    return { success: false, error: "Invalid write_file_result payload" };
+    return {
+      success: false,
+      error: "Invalid write_file_result payload: too short",
+    };
   }
 
   const success = payload.readUInt8(0) === 1;
   const errorLen = payload.readUInt16BE(1);
+
+  // Validate error string bounds
+  if (payload.length < 3 + errorLen) {
+    return {
+      success: false,
+      error: "Invalid write_file_result payload: error truncated",
+    };
+  }
+
   const error = payload.subarray(3, 3 + errorLen).toString("utf-8");
 
   return { success, error };
@@ -166,10 +228,58 @@ function decodeWriteFileResult(payload: Buffer): {
  */
 function decodeError(payload: Buffer): string {
   if (payload.length < 2) {
-    return "Invalid error payload";
+    return "Invalid error payload: too short";
   }
   const errorLen = payload.readUInt16BE(0);
+  if (payload.length < 2 + errorLen) {
+    return "Invalid error payload: message truncated";
+  }
   return payload.subarray(2, 2 + errorLen).toString("utf-8");
+}
+
+/**
+ * Decode spawn_watch_result payload
+ */
+function decodeSpawnWatchResult(payload: Buffer): SpawnResult {
+  if (payload.length < 4) {
+    throw new Error("Invalid spawn_watch_result payload");
+  }
+  return { pid: payload.readUInt32BE(0) };
+}
+
+/**
+ * Decode process_exit payload (unsolicited notification)
+ */
+function decodeProcessExit(payload: Buffer): ProcessExitEvent {
+  // Minimum: pid(4) + exit_code(4) + stdout_len(4) + stderr_len(4) = 16 bytes
+  if (payload.length < 16) {
+    throw new Error("Invalid process_exit payload: too short");
+  }
+
+  const pid = payload.readUInt32BE(0);
+  const exitCode = payload.readInt32BE(4);
+  const stdoutLen = payload.readUInt32BE(8);
+
+  // Validate stdout bounds
+  const stderrLenOffset = 12 + stdoutLen;
+  if (payload.length < stderrLenOffset + 4) {
+    throw new Error("Invalid process_exit payload: stdout truncated");
+  }
+
+  const stdout = payload.subarray(12, 12 + stdoutLen).toString("utf-8");
+  const stderrLen = payload.readUInt32BE(stderrLenOffset);
+
+  // Validate stderr bounds
+  const expectedLen = stderrLenOffset + 4 + stderrLen;
+  if (payload.length < expectedLen) {
+    throw new Error("Invalid process_exit payload: stderr truncated");
+  }
+
+  const stderr = payload
+    .subarray(stderrLenOffset + 4, stderrLenOffset + 4 + stderrLen)
+    .toString("utf-8");
+
+  return { pid, exitCode, stdout, stderr };
 }
 
 /**
@@ -218,6 +328,9 @@ export class VsockClient implements GuestClient {
   private connected = false;
   private nextSeq = 1;
   private pendingRequests = new Map<number, PendingRequest>();
+  private pendingExits = new Map<number, PendingExit>();
+  // Cache for exit events that arrive before waitForExit is called
+  private cachedExits = new Map<number, CachedExitEvent>();
 
   constructor(vsockPath: string) {
     this.vsockPath = vsockPath;
@@ -237,6 +350,27 @@ export class VsockClient implements GuestClient {
    * Handle incoming message and route to pending request
    */
   private handleMessage(msg: DecodedMessage): void {
+    // Handle unsolicited process_exit notifications (seq=0)
+    if (msg.type === MSG_PROCESS_EXIT && msg.seq === 0) {
+      const event = decodeProcessExit(msg.payload);
+      const pending = this.pendingExits.get(event.pid);
+      if (pending) {
+        // waitForExit was already called, resolve it
+        if (pending.timeout) clearTimeout(pending.timeout);
+        this.pendingExits.delete(event.pid);
+        pending.resolve(event);
+      } else if (!this.cachedExits.has(event.pid)) {
+        // waitForExit not called yet, cache the event for later
+        // Only cache if not already cached (ignore duplicate exit events)
+        this.cachedExits.set(event.pid, {
+          event,
+          timestamp: Date.now(),
+        });
+      }
+      return;
+    }
+
+    // Handle regular request/response
     const pending = this.pendingRequests.get(msg.seq);
     if (pending) {
       clearTimeout(pending.timeout);
@@ -481,7 +615,13 @@ export class VsockClient implements GuestClient {
                 this.connected = true;
                 resolve();
               } else if (state === State.Connected) {
-                this.handleMessage(msg);
+                // Handle message errors gracefully - don't crash the connection
+                try {
+                  this.handleMessage(msg);
+                } catch (msgErr) {
+                  // Log but don't crash - one bad message shouldn't kill connection
+                  console.error(`[vsock] Error handling message: ${msgErr}`);
+                }
               }
             }
           } catch (e) {
@@ -499,12 +639,25 @@ export class VsockClient implements GuestClient {
           }
           this.connected = false;
           this.socket = null;
-          const pending = Array.from(this.pendingRequests.values());
+
+          // Clean up pending requests
+          const pendingReqs = Array.from(this.pendingRequests.values());
           this.pendingRequests.clear();
-          for (const req of pending) {
+          for (const req of pendingReqs) {
             clearTimeout(req.timeout);
             req.reject(new Error("Connection closed"));
           }
+
+          // Clean up pending exits
+          const pendingExits = Array.from(this.pendingExits.values());
+          this.pendingExits.clear();
+          for (const exit of pendingExits) {
+            if (exit.timeout) clearTimeout(exit.timeout);
+            exit.reject(new Error("Connection closed"));
+          }
+
+          // Clean up cached exits
+          this.cachedExits.clear();
         });
       });
 
@@ -530,6 +683,77 @@ export class VsockClient implements GuestClient {
   }
 
   /**
+   * Spawn a process and monitor for exit (event-driven mode)
+   *
+   * Returns immediately with the PID. Use waitForExit() to wait for completion.
+   * When the process exits, the agent sends an unsolicited notification.
+   */
+  async spawnAndWatch(
+    command: string,
+    timeoutMs: number = 0,
+  ): Promise<SpawnResult> {
+    const payload = encodeExecPayload(command, timeoutMs);
+    const response = await this.request(
+      MSG_SPAWN_WATCH,
+      payload,
+      30000, // 30s timeout for spawn acknowledgment
+    );
+
+    if (response.type === MSG_ERROR) {
+      throw new Error(`spawnAndWatch failed: ${decodeError(response.payload)}`);
+    }
+
+    if (response.type !== MSG_SPAWN_WATCH_RESULT) {
+      throw new Error(
+        `Unexpected response type: 0x${response.type.toString(16)}`,
+      );
+    }
+
+    return decodeSpawnWatchResult(response.payload);
+  }
+
+  /**
+   * Wait for a spawned process to exit
+   *
+   * Blocks until the process exits or timeout is reached.
+   * The exit event is pushed by the guest agent (no polling).
+   */
+  async waitForExit(
+    pid: number,
+    timeoutMs: number = 0,
+  ): Promise<ProcessExitEvent> {
+    // Check connection state first
+    if (!this.connected || !this.socket) {
+      throw new Error("Not connected - cannot wait for process exit");
+    }
+
+    // Check if already waiting for this PID
+    if (this.pendingExits.has(pid)) {
+      throw new Error(`Already waiting for process ${pid} to exit`);
+    }
+
+    // Check if exit event was already received (cached)
+    const cached = this.cachedExits.get(pid);
+    if (cached) {
+      this.cachedExits.delete(pid);
+      return cached.event;
+    }
+
+    return new Promise((resolve, reject) => {
+      const pending: PendingExit = { resolve, reject };
+
+      if (timeoutMs > 0) {
+        pending.timeout = setTimeout(() => {
+          this.pendingExits.delete(pid);
+          reject(new Error(`Timeout waiting for process ${pid} to exit`));
+        }, timeoutMs);
+      }
+
+      this.pendingExits.set(pid, pending);
+    });
+  }
+
+  /**
    * Get the vsock path (for logging/debugging)
    */
   getVsockPath(): string {
@@ -545,11 +769,24 @@ export class VsockClient implements GuestClient {
       this.socket = null;
     }
     this.connected = false;
-    const pending = Array.from(this.pendingRequests.values());
+
+    // Clean up pending requests
+    const pendingRequests = Array.from(this.pendingRequests.values());
     this.pendingRequests.clear();
-    for (const req of pending) {
+    for (const req of pendingRequests) {
       clearTimeout(req.timeout);
       req.reject(new Error("Connection closed"));
     }
+
+    // Clean up pending exits
+    const pendingExits = Array.from(this.pendingExits.values());
+    this.pendingExits.clear();
+    for (const exit of pendingExits) {
+      if (exit.timeout) clearTimeout(exit.timeout);
+      exit.reject(new Error("Connection closed"));
+    }
+
+    // Clean up cached exits
+    this.cachedExits.clear();
   }
 }
