@@ -13,7 +13,7 @@ import type {
  * Agent Session Service
  * Manages VM0 agent sessions - persistent running contexts across multiple runs
  */
-export class AgentSessionService {
+class AgentSessionService {
   /**
    * Create a new agent session
    * Note: secrets values are NEVER stored - only names for validation
