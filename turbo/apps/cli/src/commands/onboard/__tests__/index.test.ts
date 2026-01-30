@@ -368,7 +368,7 @@ describe("onboard command", () => {
       expect(logCalls).toContain("cd my-vm0-agent");
       expect(logCalls).toContain("claude");
       expect(logCalls).toContain("/vm0-agent");
-      expect(logCalls).toContain("let's build a workflow");
+      expect(logCalls).toContain("let's build an agent");
     });
 
     it("should show custom agent name in next steps", async () => {
