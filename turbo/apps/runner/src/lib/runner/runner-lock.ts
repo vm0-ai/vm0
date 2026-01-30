@@ -7,20 +7,35 @@
 
 import { exec } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 import { promisify } from "node:util";
 
 const execAsync = promisify(exec);
 
-const VM0_RUN_DIR = "/var/run/vm0";
-const PID_FILE = `${VM0_RUN_DIR}/runner.pid`;
+const DEFAULT_RUN_DIR = "/var/run/vm0";
+const DEFAULT_PID_FILE = `${DEFAULT_RUN_DIR}/runner.pid`;
+
+// Module state for tracking current lock
+let currentPidFile: string | null = null;
+
+interface RunnerLockOptions {
+  /** Custom PID file path (for testing). Defaults to /var/run/vm0/runner.pid */
+  pidFile?: string;
+  /** Skip sudo for directory creation (for testing). Defaults to false */
+  skipSudo?: boolean;
+}
 
 /**
- * Ensure the vm0 run directory exists
+ * Ensure the directory for PID file exists
  */
-async function ensureRunDir(): Promise<void> {
-  if (!fs.existsSync(VM0_RUN_DIR)) {
-    await execAsync(`sudo mkdir -p ${VM0_RUN_DIR}`);
-    await execAsync(`sudo chmod 777 ${VM0_RUN_DIR}`);
+async function ensureRunDir(dirPath: string, skipSudo: boolean): Promise<void> {
+  if (!fs.existsSync(dirPath)) {
+    if (skipSudo) {
+      fs.mkdirSync(dirPath, { recursive: true });
+    } else {
+      await execAsync(`sudo mkdir -p ${dirPath}`);
+      await execAsync(`sudo chmod 777 ${dirPath}`);
+    }
   }
 }
 
@@ -49,26 +64,33 @@ function isProcessRunning(pid: number): boolean {
 /**
  * Acquire runner lock - exits if another runner is running
  */
-export async function acquireRunnerLock(): Promise<void> {
-  await ensureRunDir();
+export async function acquireRunnerLock(
+  options: RunnerLockOptions = {},
+): Promise<void> {
+  const pidFile = options.pidFile ?? DEFAULT_PID_FILE;
+  const skipSudo = options.skipSudo ?? false;
+  const runDir = path.dirname(pidFile);
 
-  if (fs.existsSync(PID_FILE)) {
-    const pidStr = fs.readFileSync(PID_FILE, "utf-8").trim();
+  await ensureRunDir(runDir, skipSudo);
+
+  if (fs.existsSync(pidFile)) {
+    const pidStr = fs.readFileSync(pidFile, "utf-8").trim();
     const pid = parseInt(pidStr, 10);
 
     if (!isNaN(pid) && isProcessRunning(pid)) {
       console.error(`Error: Another runner is already running (PID ${pid})`);
-      console.error(`If this is incorrect, remove ${PID_FILE} and try again.`);
+      console.error(`If this is incorrect, remove ${pidFile} and try again.`);
       process.exit(1);
     }
 
     // Stale PID file - clean up
     console.log(`Cleaning up stale PID file (PID ${pid} not running)`);
-    fs.unlinkSync(PID_FILE);
+    fs.unlinkSync(pidFile);
   }
 
   // Write current PID
-  fs.writeFileSync(PID_FILE, process.pid.toString());
+  fs.writeFileSync(pidFile, process.pid.toString());
+  currentPidFile = pidFile;
   console.log(`Runner lock acquired (PID ${process.pid})`);
 }
 
@@ -76,8 +98,10 @@ export async function acquireRunnerLock(): Promise<void> {
  * Release runner lock
  */
 export function releaseRunnerLock(): void {
-  if (fs.existsSync(PID_FILE)) {
-    fs.unlinkSync(PID_FILE);
+  const pidFile = currentPidFile ?? DEFAULT_PID_FILE;
+  if (fs.existsSync(pidFile)) {
+    fs.unlinkSync(pidFile);
     console.log("Runner lock released");
   }
+  currentPidFile = null;
 }
