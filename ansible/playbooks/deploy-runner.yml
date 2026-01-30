@@ -269,6 +269,56 @@
       when: mitmproxy_check.rc != 0
       tags: [prepare]
 
+    # Generate proxy CA certificate (needed for rootfs build)
+    - name: Ensure per-runner proxy directory exists
+      file:
+        path: "{{ runner_base_dir }}/proxy"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+      tags: [prepare]
+
+    - name: Check if proxy CA certificate exists
+      stat:
+        path: "{{ runner_base_dir }}/proxy/mitmproxy-ca.pem"
+      register: proxy_ca_file
+      tags: [prepare]
+
+    - name: Generate proxy CA certificate if not exists
+      command: "{{ runner_base_dir }}/deploy-runner/generate-proxy-ca.sh {{ runner_base_dir }}/proxy"
+      when: not proxy_ca_file.stat.exists
+      tags: [prepare]
+
+    - name: Fix proxy CA certificate ownership
+      file:
+        path: "{{ runner_base_dir }}/proxy"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        recurse: yes
+      when: not proxy_ca_file.stat.exists
+      tags: [prepare]
+
+    - name: Ensure proxy-ca directory exists in deploy-runner
+      file:
+        path: "{{ runner_base_dir }}/deploy-runner/proxy-ca"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+      tags: [prepare]
+
+    - name: Copy proxy CA certificate to deploy-runner for rootfs build
+      copy:
+        src: "{{ runner_base_dir }}/proxy/mitmproxy-ca-cert.pem"
+        dest: "{{ runner_base_dir }}/deploy-runner/proxy-ca/mitmproxy-ca-cert.pem"
+        remote_src: yes
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+      tags: [prepare]
+
     - name: Check if rootfs exists
       stat:
         path: "{{ rootfs_path }}"
@@ -276,11 +326,11 @@
       tags: [prepare]
 
     # Calculate hash of all files that affect rootfs content
-    # Must match files copied above: Dockerfile, *.sh, vm-init (binary), *.mjs
+    # Must match files copied above: Dockerfile, *.sh, vm-init (binary), *.mjs, proxy CA cert
     - name: Calculate rootfs build inputs hash
       shell: |
         find "{{ runner_base_dir }}/deploy-runner/" \
-          \( -name "Dockerfile" -o -name "*.sh" -o -name "vm-init" -o -name "*.mjs" \) \
+          \( -name "Dockerfile" -o -name "*.sh" -o -name "vm-init" -o -name "*.mjs" -o -name "*.pem" \) \
           -type f -print0 | sort -z | xargs -0 cat | sha256sum | cut -d' ' -f1
       args:
         executable: /bin/bash
@@ -329,36 +379,6 @@
         dest: "{{ rootfs_path }}.sha256"
         mode: '0644'
       when: rootfs_needs_rebuild
-      tags: [prepare]
-
-    - name: Ensure per-runner proxy directory exists
-      file:
-        path: "{{ runner_base_dir }}/proxy"
-        state: directory
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: '0755'
-      tags: [prepare]
-
-    - name: Check if proxy CA certificate exists
-      stat:
-        path: "{{ runner_base_dir }}/proxy/mitmproxy-ca.pem"
-      register: proxy_ca_file
-      tags: [prepare]
-
-    - name: Generate proxy CA certificate if not exists
-      command: "{{ runner_base_dir }}/deploy-runner/generate-proxy-ca.sh {{ runner_base_dir }}/proxy"
-      when: not proxy_ca_file.stat.exists
-      tags: [prepare]
-
-    - name: Fix proxy CA certificate ownership
-      file:
-        path: "{{ runner_base_dir }}/proxy"
-        state: directory
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        recurse: yes
-      when: not proxy_ca_file.stat.exists
       tags: [prepare]
 
     - name: Ensure user is in kvm group for Firecracker

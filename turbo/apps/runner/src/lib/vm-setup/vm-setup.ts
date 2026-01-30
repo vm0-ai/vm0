@@ -6,7 +6,6 @@
  * Works with any GuestClient implementation (currently VsockClient).
  */
 
-import fs from "fs";
 import type { GuestClient } from "../firecracker/guest.js";
 import type { StorageManifest, ResumeSession } from "../api.js";
 import { SCRIPT_PATHS } from "../scripts/index.js";
@@ -87,43 +86,4 @@ export async function restoreSessionHistory(
   logger.log(
     `Session history restored (${sessionHistory.split("\n").length} lines)`,
   );
-}
-
-/**
- * Install proxy CA certificate in VM for network security mode
- * This allows the VM to trust the runner's mitmproxy for HTTPS interception
- *
- * @param guest - Guest client connected to the VM
- * @param caCertPath - Path to the CA certificate file on the runner host
- */
-export async function installProxyCA(
-  guest: GuestClient,
-  caCertPath: string,
-): Promise<void> {
-  // Read CA certificate from runner host
-  if (!fs.existsSync(caCertPath)) {
-    throw new Error(
-      `Proxy CA certificate not found at ${caCertPath}. Run generate-proxy-ca.sh first.`,
-    );
-  }
-
-  const caCert = fs.readFileSync(caCertPath, "utf-8");
-
-  // Ensure cert ends with newline for proper PEM concatenation
-  const certWithNewline = caCert.endsWith("\n") ? caCert : caCert + "\n";
-
-  logger.log(
-    `Installing proxy CA certificate (${certWithNewline.length} bytes)`,
-  );
-
-  // Write CA cert to standard location (for NODE_EXTRA_CA_CERTS)
-  await guest.writeFileWithSudo(VM_PROXY_CA_PATH, certWithNewline);
-
-  // Append directly to CA bundle - much faster than update-ca-certificates (~10ms vs ~200-500ms)
-  // This works because ca-certificates.crt is just a concatenation of PEM certs
-  await guest.execOrThrow(
-    `cat ${VM_PROXY_CA_PATH} | sudo tee -a /etc/ssl/certs/ca-certificates.crt > /dev/null`,
-  );
-
-  logger.log("Proxy CA certificate installed successfully");
 }

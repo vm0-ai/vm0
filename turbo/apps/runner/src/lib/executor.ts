@@ -34,11 +34,7 @@ import type {
 } from "./executor-types.js";
 import { buildEnvironmentVariables, ENV_JSON_PATH } from "./executor-env.js";
 import { uploadNetworkLogs } from "./network-logs/index.js";
-import {
-  downloadStorages,
-  restoreSessionHistory,
-  installProxyCA,
-} from "./vm-setup/index.js";
+import { downloadStorages, restoreSessionHistory } from "./vm-setup/index.js";
 import { createLogger } from "./logger.js";
 
 const logger = createLogger("Executor");
@@ -267,16 +263,8 @@ export async function executeJob(
             sealSecretsEnabled,
           },
         );
-
-        // Install proxy CA certificate only if MITM is enabled
-        // For SNI-only mode (filter without MITM), we don't need CA
-        if (mitmEnabled) {
-          const caCertPath = path.join(
-            config.proxy.ca_dir,
-            "mitmproxy-ca-cert.pem",
-          );
-          await installProxyCA(guest, caCertPath);
-        }
+        // Note: Proxy CA certificate is pre-baked into rootfs (see build-rootfs.sh)
+        // No runtime installation needed
       });
     }
 

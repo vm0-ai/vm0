@@ -132,6 +132,20 @@ create_squashfs_image() {
     sudo cp "$SCRIPT_DIR/env-loader.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
     sudo chmod +x "$EXTRACT_DIR/usr/local/bin/vm0-agent/"*
 
+    # Install proxy CA certificate (required for MITM mode)
+    echo "[INSTALL] Installing proxy CA certificate..."
+    CA_CERT_PATH="${SCRIPT_DIR}/proxy-ca/mitmproxy-ca-cert.pem"
+    if [ ! -f "$CA_CERT_PATH" ]; then
+        echo "ERROR: CA certificate not found at ${CA_CERT_PATH}"
+        echo "Run ./generate-proxy-ca.sh first to generate the CA certificate"
+        exit 1
+    fi
+    sudo mkdir -p "$EXTRACT_DIR/usr/local/share/ca-certificates"
+    sudo cp "$CA_CERT_PATH" "$EXTRACT_DIR/usr/local/share/ca-certificates/vm0-proxy-ca.crt"
+    sudo chmod 644 "$EXTRACT_DIR/usr/local/share/ca-certificates/vm0-proxy-ca.crt"
+    sudo chroot "$EXTRACT_DIR" update-ca-certificates
+    echo "[OK] Proxy CA certificate installed"
+
     # Create squashfs with xz compression (best compression ratio)
     echo "[SQUASH] Creating squashfs (this may take a moment)..."
     sudo mksquashfs "$EXTRACT_DIR" "$OUTPUT_PATH" -comp xz -noappend -quiet
@@ -200,6 +214,14 @@ verify_rootfs() {
         echo "WARNING: GitHub CLI not found in rootfs"
     else
         echo "  GitHub CLI: installed"
+    fi
+
+    # Check proxy CA certificate
+    if [ ! -f "$MOUNT_POINT/usr/local/share/ca-certificates/vm0-proxy-ca.crt" ]; then
+        echo "ERROR: Proxy CA certificate not found in rootfs"
+        ERRORS=$((ERRORS + 1))
+    else
+        echo "  Proxy CA: installed"
     fi
 
     sudo umount "$MOUNT_POINT"
