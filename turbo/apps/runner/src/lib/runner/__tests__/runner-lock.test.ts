@@ -45,6 +45,19 @@ describe("runner-lock", () => {
       releaseRunnerLock();
     });
 
+    it("should clean up invalid PID file with non-numeric content", async () => {
+      // Write invalid content
+      fs.writeFileSync(pidFile, "not-a-number");
+
+      await acquireRunnerLock({ pidFile, skipSudo: true });
+
+      // Should have replaced with current PID
+      const content = fs.readFileSync(pidFile, "utf-8");
+      expect(content).toBe(process.pid.toString());
+
+      releaseRunnerLock();
+    });
+
     it("should exit if another runner is running", async () => {
       // Write current process's parent PID (known to be running)
       const parentPid = process.ppid;
