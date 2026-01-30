@@ -11,6 +11,9 @@ import fs from "fs";
 import path from "path";
 import { getVMRegistry, DEFAULT_REGISTRY_PATH } from "./vm-registry";
 import { RUNNER_MITM_ADDON_SCRIPT } from "./mitm-addon-script";
+import { createLogger } from "../logger.js";
+
+const logger = createLogger("ProxyManager");
 
 /**
  * Required proxy configuration (must be provided)
@@ -106,9 +109,7 @@ export class ProxyManager {
     fs.writeFileSync(this.config.addonPath, RUNNER_MITM_ADDON_SCRIPT, {
       mode: 0o755,
     });
-    console.log(
-      `[ProxyManager] Addon script written to ${this.config.addonPath}`,
-    );
+    logger.log(`Addon script written to ${this.config.addonPath}`);
   }
 
   /**
@@ -135,7 +136,7 @@ export class ProxyManager {
    */
   async start(): Promise<void> {
     if (this.isRunning) {
-      console.log("[ProxyManager] Proxy already running");
+      logger.log("Proxy already running");
       return;
     }
 
@@ -153,11 +154,11 @@ export class ProxyManager {
     // Initialize VM registry to create the file
     getVMRegistry();
 
-    console.log("[ProxyManager] Starting mitmproxy...");
-    console.log(`  Port: ${this.config.port}`);
-    console.log(`  CA Dir: ${this.config.caDir}`);
-    console.log(`  Addon: ${this.config.addonPath}`);
-    console.log(`  Registry: ${this.config.registryPath}`);
+    logger.log("Starting mitmproxy...");
+    logger.log(`  Port: ${this.config.port}`);
+    logger.log(`  CA Dir: ${this.config.caDir}`);
+    logger.log(`  Addon: ${this.config.addonPath}`);
+    logger.log(`  Registry: ${this.config.registryPath}`);
 
     // Start mitmproxy in transparent mode
     const args = [
@@ -185,23 +186,24 @@ export class ProxyManager {
       detached: false,
     });
 
-    // Log stdout/stderr
+    // Log stdout/stderr (use mitmproxy prefix for process output)
+    const mitmLogger = createLogger("mitmproxy");
     this.process.stdout?.on("data", (data: Buffer) => {
-      console.log(`[mitmproxy] ${data.toString().trim()}`);
+      mitmLogger.log(data.toString().trim());
     });
 
     this.process.stderr?.on("data", (data: Buffer) => {
-      console.error(`[mitmproxy] ${data.toString().trim()}`);
+      mitmLogger.log(data.toString().trim());
     });
 
     this.process.on("close", (code) => {
-      console.log(`[ProxyManager] mitmproxy exited with code ${code}`);
+      logger.log(`mitmproxy exited with code ${code}`);
       this.isRunning = false;
       this.process = null;
     });
 
     this.process.on("error", (err) => {
-      console.error(`[ProxyManager] mitmproxy error: ${err.message}`);
+      logger.error(`mitmproxy error: ${err.message}`);
       this.isRunning = false;
       this.process = null;
     });
@@ -210,7 +212,7 @@ export class ProxyManager {
     await this.waitForReady();
 
     this.isRunning = true;
-    console.log("[ProxyManager] mitmproxy started successfully");
+    logger.log("mitmproxy started successfully");
   }
 
   /**
@@ -245,11 +247,11 @@ export class ProxyManager {
    */
   async stop(): Promise<void> {
     if (!this.process || !this.isRunning) {
-      console.log("[ProxyManager] Proxy not running");
+      logger.log("Proxy not running");
       return;
     }
 
-    console.log("[ProxyManager] Stopping mitmproxy...");
+    logger.log("Stopping mitmproxy...");
 
     return new Promise((resolve) => {
       if (!this.process) {
@@ -258,7 +260,7 @@ export class ProxyManager {
       }
 
       const timeout = setTimeout(() => {
-        console.log("[ProxyManager] Force killing mitmproxy...");
+        logger.log("Force killing mitmproxy...");
         this.process?.kill("SIGKILL");
       }, 5000);
 
@@ -266,7 +268,7 @@ export class ProxyManager {
         clearTimeout(timeout);
         this.isRunning = false;
         this.process = null;
-        console.log("[ProxyManager] mitmproxy stopped");
+        logger.log("mitmproxy stopped");
         resolve();
       });
 

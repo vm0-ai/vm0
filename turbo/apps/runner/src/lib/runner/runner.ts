@@ -15,6 +15,9 @@ import type { RunnerState, RunnerResources } from "./types.js";
 import { createStatusUpdater } from "./status.js";
 import { setupEnvironment, cleanupEnvironment } from "./setup.js";
 import { setupSignalHandlers } from "./signals.js";
+import { createLogger } from "../logger.js";
+
+const logger = createLogger("Runner");
 
 export class Runner {
   private config: RunnerConfig;
@@ -68,7 +71,7 @@ export class Runner {
 
         // If no active jobs, shutdown immediately
         if (this.state.activeRuns.size === 0) {
-          console.log("[Maintenance] No active jobs, exiting immediately");
+          logger.log("[Maintenance] No active jobs, exiting immediately");
           this.resolveShutdown?.();
         }
       },
@@ -76,43 +79,43 @@ export class Runner {
     });
 
     // 4. Start message
-    console.log(
+    logger.log(
       `Starting runner '${this.config.name}' for group '${this.config.group}'...`,
     );
-    console.log(`Max concurrent jobs: ${this.config.sandbox.max_concurrent}`);
-    console.log(`Status file: ${this.statusFilePath}`);
-    console.log("Press Ctrl+C to stop");
-    console.log("");
+    logger.log(`Max concurrent jobs: ${this.config.sandbox.max_concurrent}`);
+    logger.log(`Status file: ${this.statusFilePath}`);
+    logger.log("Press Ctrl+C to stop");
+    logger.log("");
 
     // Write initial status
     this.updateStatus();
 
     // 5. Poll on startup to clear any backlog
-    console.log("Checking for pending jobs...");
+    logger.log("Checking for pending jobs...");
     await this.pollFallback();
 
     // 6. Subscribe to Ably job notifications
-    console.log("Connecting to realtime job notifications...");
+    logger.log("Connecting to realtime job notifications...");
     this.subscription = await subscribeToJobs(
       this.config.server,
       this.config.group,
       (notification) => {
-        console.log(`Ably notification: ${notification.runId}`);
+        logger.log(`Ably notification: ${notification.runId}`);
         this.processJob(notification.runId).catch(console.error);
       },
       (connectionState, reason) => {
-        console.log(
+        logger.log(
           `Ably connection: ${connectionState}${reason ? ` (${reason})` : ""}`,
         );
       },
     );
-    console.log("Connected to realtime job notifications");
+    logger.log("Connected to realtime job notifications");
 
     // 7. Start polling fallback interval
     this.pollInterval = setInterval(() => {
       this.pollFallback().catch(console.error);
     }, this.config.sandbox.poll_interval_ms);
-    console.log(
+    logger.log(
       `Polling fallback enabled (every ${this.config.sandbox.poll_interval_ms / 1000}s)`,
     );
 
@@ -131,7 +134,7 @@ export class Runner {
 
     // 11. Wait for active jobs to complete
     if (this.state.jobPromises.size > 0) {
-      console.log(
+      logger.log(
         `Waiting for ${this.state.jobPromises.size} active job(s) to complete...`,
       );
       await Promise.all(this.state.jobPromises);
@@ -144,7 +147,7 @@ export class Runner {
     this.state.mode = "stopped";
     this.updateStatus();
 
-    console.log("Runner stopped");
+    logger.log("Runner stopped");
     process.exit(0);
   }
 
@@ -162,13 +165,12 @@ export class Runner {
         pollForJob(this.config.server, this.config.group),
       );
       if (job) {
-        console.log(`Poll fallback found job: ${job.runId}`);
+        logger.log(`Poll fallback found job: ${job.runId}`);
         await this.processJob(job.runId);
       }
     } catch (error) {
-      console.error(
-        `Poll fallback error:`,
-        error instanceof Error ? error.message : "Unknown error",
+      logger.error(
+        `Poll fallback error: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
     }
   }
@@ -179,7 +181,7 @@ export class Runner {
   private async processJob(runId: string): Promise<void> {
     // Skip if not in running mode (draining or stopped)
     if (this.state.mode !== "running") {
-      console.log(`Not running (${this.state.mode}), ignoring job ${runId}`);
+      logger.log(`Not running (${this.state.mode}), ignoring job ${runId}`);
       return;
     }
 
@@ -195,10 +197,10 @@ export class Runner {
         !this.pendingJobs.includes(runId) &&
         this.pendingJobs.length < Runner.MAX_PENDING_QUEUE_SIZE
       ) {
-        console.log(`At capacity, queueing job ${runId}`);
+        logger.log(`At capacity, queueing job ${runId}`);
         this.pendingJobs.push(runId);
       } else if (this.pendingJobs.length >= Runner.MAX_PENDING_QUEUE_SIZE) {
-        console.log(
+        logger.log(
           `Pending queue full (${Runner.MAX_PENDING_QUEUE_SIZE}), dropping job ${runId}`,
         );
       }
@@ -209,7 +211,7 @@ export class Runner {
       const context = await withRunnerTiming("claim", () =>
         claimJob(this.config.server, runId),
       );
-      console.log(`Claimed job: ${context.runId}`);
+      logger.log(`Claimed job: ${context.runId}`);
 
       // Track and execute in background
       this.state.activeRuns.add(context.runId);
@@ -217,9 +219,8 @@ export class Runner {
 
       const jobPromise: Promise<void> = this.executeJob(context)
         .catch((error) => {
-          console.error(
-            `Job ${context.runId} failed:`,
-            error instanceof Error ? error.message : "Unknown error",
+          logger.error(
+            `Job ${context.runId} failed: ${error instanceof Error ? error.message : "Unknown error"}`,
           );
         })
         .finally(() => {
@@ -232,7 +233,7 @@ export class Runner {
             this.state.mode === "draining" &&
             this.state.activeRuns.size === 0
           ) {
-            console.log("[Maintenance] All jobs completed, exiting");
+            logger.log("[Maintenance] All jobs completed, exiting");
             this.resolveShutdown?.();
             return;
           }
@@ -248,35 +249,34 @@ export class Runner {
       this.state.jobPromises.add(jobPromise);
     } catch (error) {
       // Job was claimed by another runner
-      console.log(
-        `Could not claim job ${runId}:`,
-        error instanceof Error ? error.message : "Unknown error",
+      logger.log(
+        `Could not claim job ${runId}: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
     }
   }
 
   private async executeJob(context: ExecutionContext): Promise<void> {
-    console.log(`  Executing job ${context.runId}...`);
-    console.log(`  Prompt: ${context.prompt.substring(0, 100)}...`);
-    console.log(`  Compose version: ${context.agentComposeVersionId}`);
+    logger.log(`  Executing job ${context.runId}...`);
+    logger.log(`  Prompt: ${context.prompt.substring(0, 100)}...`);
+    logger.log(`  Compose version: ${context.agentComposeVersionId}`);
 
     try {
       // Execute in Firecracker VM
       const result = await executeJobInVM(context, this.config);
 
-      console.log(
+      logger.log(
         `  Job ${context.runId} execution completed with exit code ${result.exitCode}`,
       );
 
       // The executor's bootstrap script calls the complete API directly
       // But if execution fails before that, we need to report it ourselves
       if (result.exitCode !== 0 && result.error) {
-        console.log(`  Job ${context.runId} failed: ${result.error}`);
+        logger.error(`  Job ${context.runId} failed: ${result.error}`);
       }
     } catch (err) {
       const error =
         err instanceof Error ? err.message : "Unknown execution error";
-      console.error(`  Job ${context.runId} execution failed: ${error}`);
+      logger.error(`  Job ${context.runId} execution failed: ${error}`);
 
       // Report failure to server if VM execution failed before bootstrap
       const result = await completeJob(
@@ -285,7 +285,7 @@ export class Runner {
         1,
         error,
       );
-      console.log(`  Job ${context.runId} reported as ${result.status}`);
+      logger.log(`  Job ${context.runId} reported as ${result.status}`);
     }
   }
 }

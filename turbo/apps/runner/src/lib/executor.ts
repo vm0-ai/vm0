@@ -39,6 +39,9 @@ import {
   restoreSessionHistory,
   installProxyCA,
 } from "./vm-setup/index.js";
+import { createLogger } from "./logger.js";
+
+const logger = createLogger("Executor");
 
 /**
  * Extract short VM ID from runId (UUID)
@@ -156,12 +159,12 @@ export async function reportPreflightFailure(
     });
 
     if (!response.ok) {
-      console.error(
-        `[Executor] Failed to report preflight failure: HTTP ${response.status}`,
+      logger.error(
+        `Failed to report preflight failure: HTTP ${response.status}`,
       );
     }
   } catch (err) {
-    console.error(`[Executor] Failed to report preflight failure: ${err}`);
+    logger.error(`Failed to report preflight failure: ${err}`);
   }
 }
 
@@ -196,10 +199,7 @@ export async function executeJob(
   let vm: FirecrackerVM | null = null;
   let guestIp: string | null = null;
 
-  // Use custom logger if provided, otherwise default to console.log
-  const log = options.logger ?? ((msg: string) => console.log(msg));
-
-  log(`[Executor] Starting job ${context.runId} in VM ${vmId}`);
+  logger.log(`Starting job ${context.runId} in VM ${vmId}`);
 
   try {
     // Create VM configuration
@@ -214,11 +214,10 @@ export async function executeJob(
       rootfsPath: config.firecracker.rootfs,
       firecrackerBinary: config.firecracker.binary,
       workDir: path.join(workspacesDir, `vm0-${vmId}`),
-      logger: log,
     };
 
     // Create and start VM
-    log(`[Executor] Creating VM ${vmId}...`);
+    logger.log(`Creating VM ${vmId}...`);
     vm = new FirecrackerVM(vmConfig);
     await withSandboxTiming("vm_create", () => vm!.start());
 
@@ -227,20 +226,20 @@ export async function executeJob(
     if (!guestIp) {
       throw new Error("VM started but no IP address available");
     }
-    log(`[Executor] VM ${vmId} started, guest IP: ${guestIp}`);
+    logger.log(`VM ${vmId} started, guest IP: ${guestIp}`);
 
     // Create vsock guest client
     const vsockPath = vm.getVsockPath();
     const guest: GuestClient = new VsockClient(vsockPath);
-    log(`[Executor] Using vsock for guest communication: ${vsockPath}`);
+    logger.log(`Using vsock for guest communication: ${vsockPath}`);
 
     // Wait for guest to connect (zero-latency: guest notifies host when ready)
-    log(`[Executor] Waiting for guest connection...`);
+    logger.log(`Waiting for guest connection...`);
     await withSandboxTiming("guest_wait", () =>
       guest.waitForGuestConnection(30000),
     );
 
-    log(`[Executor] Guest client ready`);
+    logger.log(`Guest client ready`);
 
     // Handle network security with experimental_firewall
     const firewallConfig = context.experimentalFirewall;
@@ -250,8 +249,8 @@ export async function executeJob(
       const sealSecretsEnabled =
         firewallConfig.experimental_seal_secrets ?? false;
 
-      log(
-        `[Executor] Setting up network security for VM ${guestIp} (mitm=${mitmEnabled}, sealSecrets=${sealSecretsEnabled})`,
+      logger.log(
+        `Setting up network security for VM ${guestIp} (mitm=${mitmEnabled}, sealSecrets=${sealSecretsEnabled})`,
       );
 
       await withSandboxTiming("network_setup", async () => {
@@ -305,8 +304,8 @@ export async function executeJob(
     // API URL comes from runner config, not from claim response
     const envVars = buildEnvironmentVariables(context, config.server.url);
     const envJson = JSON.stringify(envVars);
-    log(
-      `[Executor] Writing env JSON (${envJson.length} bytes) to ${ENV_JSON_PATH}`,
+    logger.log(
+      `Writing env JSON (${envJson.length} bytes) to ${ENV_JSON_PATH}`,
     );
     await guest.writeFile(ENV_JSON_PATH, envJson);
 
@@ -314,7 +313,7 @@ export async function executeJob(
     // This verifies VM can reach VM0 API - if not, we report failure immediately
     // Skip in benchmark mode since it doesn't use API
     if (!options.benchmarkMode) {
-      log(`[Executor] Running preflight connectivity check...`);
+      logger.log(`Running preflight connectivity check...`);
       const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
       const preflight = await withSandboxTiming("preflight_check", () =>
         runPreflightCheck(
@@ -327,7 +326,7 @@ export async function executeJob(
       );
 
       if (!preflight.success) {
-        log(`[Executor] Preflight check failed: ${preflight.error}`);
+        logger.log(`Preflight check failed: ${preflight.error}`);
 
         // Report failure via complete API so CLI sees it immediately
         await reportPreflightFailure(
@@ -343,7 +342,7 @@ export async function executeJob(
           error: preflight.error,
         };
       }
-      log(`[Executor] Preflight check passed`);
+      logger.log(`Preflight check passed`);
     }
 
     // Execute agent or direct command based on mode
@@ -354,18 +353,18 @@ export async function executeJob(
     if (options.benchmarkMode) {
       // Benchmark mode: run prompt directly as bash command (skip run-agent.mjs)
       // This avoids API dependencies while still testing the full VM setup pipeline
-      log(`[Executor] Running command directly (benchmark mode)...`);
+      logger.log(`Running command directly (benchmark mode)...`);
       await guest.exec(
         `nohup sh -c '${context.prompt}; echo $? > ${exitCodeFile}' > ${systemLogFile} 2>&1 &`,
       );
-      log(`[Executor] Command started in background`);
+      logger.log(`Command started in background`);
     } else {
       // Production mode: run env-loader.mjs which loads environment and runs run-agent.mjs
-      log(`[Executor] Running agent via env-loader (background)...`);
+      logger.log(`Running agent via env-loader (background)...`);
       await guest.exec(
         `nohup sh -c 'node ${ENV_LOADER_PATH}; echo $? > ${exitCodeFile}' > ${systemLogFile} 2>&1 &`,
       );
-      log(`[Executor] Agent started in background`);
+      logger.log(`Agent started in background`);
     }
 
     // Poll for completion by checking if exit code file exists
@@ -396,8 +395,8 @@ export async function executeJob(
 
         if (processCheck.stdout.trim() === "DEAD") {
           // Process is dead but no exit code file - agent crashed unexpectedly
-          log(
-            `[Executor] Agent process died unexpectedly without writing exit code`,
+          logger.log(
+            `Agent process died unexpectedly without writing exit code`,
           );
 
           // Try to get diagnostic info from system log and dmesg
@@ -414,11 +413,11 @@ export async function executeJob(
             dmesgCheck.stdout.toLowerCase().includes("killed")
           ) {
             errorMsg = "Agent process killed by OOM killer";
-            log(`[Executor] OOM detected: ${dmesgCheck.stdout}`);
+            logger.log(`OOM detected: ${dmesgCheck.stdout}`);
           }
           if (logContent.stdout) {
-            log(
-              `[Executor] Last log output: ${logContent.stdout.substring(0, 500)}`,
+            logger.log(
+              `Last log output: ${logContent.stdout.substring(0, 500)}`,
             );
           }
 
@@ -442,7 +441,7 @@ export async function executeJob(
     const duration = Math.round(durationMs / 1000);
 
     if (!completed) {
-      log(`[Executor] Agent timed out after ${duration}s`);
+      logger.log(`Agent timed out after ${duration}s`);
       // Record agent_execute metric for timeout
       recordOperation({
         actionType: "agent_execute",
@@ -462,15 +461,15 @@ export async function executeJob(
       success: exitCode === 0,
     });
 
-    log(`[Executor] Agent finished in ${duration}s with exit code ${exitCode}`);
+    logger.log(`Agent finished in ${duration}s with exit code ${exitCode}`);
 
     // Read log file for debugging output
     const logResult = await guest.exec(
       `tail -100 ${systemLogFile} 2>/dev/null`,
     );
     if (logResult.stdout) {
-      log(
-        `[Executor] Log output (${logResult.stdout.length} chars): ${logResult.stdout.substring(0, 500)}`,
+      logger.log(
+        `Log output (${logResult.stdout.length} chars): ${logResult.stdout.substring(0, 500)}`,
       );
     }
 
@@ -480,7 +479,7 @@ export async function executeJob(
     };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : "Unknown error";
-    console.error(`[Executor] Job ${context.runId} failed: ${errorMsg}`);
+    logger.error(`Job ${context.runId} failed: ${errorMsg}`);
 
     return {
       exitCode: 1,
@@ -489,7 +488,7 @@ export async function executeJob(
   } finally {
     // Clean up network security if firewall was enabled
     if (context.experimentalFirewall?.enabled && guestIp) {
-      log(`[Executor] Cleaning up network security for VM ${guestIp}`);
+      logger.log(`Cleaning up network security for VM ${guestIp}`);
 
       // Unregister from proxy registry
       // Note: CIDR-based iptables rules are global (set at runner startup)
@@ -505,8 +504,8 @@ export async function executeJob(
             context.runId,
           );
         } catch (err) {
-          console.error(
-            `[Executor] Failed to upload network logs: ${err instanceof Error ? err.message : "Unknown error"}`,
+          logger.error(
+            `Failed to upload network logs: ${err instanceof Error ? err.message : "Unknown error"}`,
           );
         }
       }
@@ -514,7 +513,7 @@ export async function executeJob(
 
     // Always cleanup VM - let errors propagate (fail-fast principle)
     if (vm) {
-      log(`[Executor] Cleaning up VM ${vmId}...`);
+      logger.log(`Cleaning up VM ${vmId}...`);
       await withSandboxTiming("cleanup", () => vm!.kill());
     }
 

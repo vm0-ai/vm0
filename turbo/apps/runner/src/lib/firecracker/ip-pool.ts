@@ -14,8 +14,10 @@ import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { createLogger } from "../logger.js";
 
 const execAsync = promisify(exec);
+const logger = createLogger("IP Pool");
 
 /**
  * Configuration constants
@@ -253,8 +255,8 @@ function reconcileRegistry(
       // Keep recent allocation - TAP might be in process of being created
       reconciled.allocations[ip] = allocation;
     } else {
-      console.log(
-        `[IP Pool] Removing stale allocation for ${ip} (TAP ${allocation.tapDevice} no longer exists)`,
+      logger.log(
+        `Removing stale allocation for ${ip} (TAP ${allocation.tapDevice} no longer exists)`,
       );
     }
   }
@@ -317,8 +319,8 @@ export async function allocateIP(vmId: string): Promise<string> {
     // Debug: log current allocation state
     const allocatedCount = Object.keys(registry.allocations).length;
     const allocatedIPs = Object.keys(registry.allocations).sort();
-    console.log(
-      `[IP Pool] Current state: ${allocatedCount} IPs allocated [${allocatedIPs.join(", ")}], assigning ${ip}`,
+    logger.log(
+      `Current state: ${allocatedCount} IPs allocated [${allocatedIPs.join(", ")}], assigning ${ip}`,
     );
 
     // Add allocation to registry
@@ -331,7 +333,7 @@ export async function allocateIP(vmId: string): Promise<string> {
     // Write updated registry
     writeRegistry(registry);
 
-    console.log(`[IP Pool] Allocated ${ip} for VM ${vmId} (TAP ${tapDevice})`);
+    logger.log(`Allocated ${ip} for VM ${vmId} (TAP ${tapDevice})`);
     return ip;
   });
 }
@@ -349,11 +351,9 @@ export async function releaseIP(ip: string): Promise<void> {
       const allocation = registry.allocations[ip];
       delete registry.allocations[ip];
       writeRegistry(registry);
-      console.log(
-        `[IP Pool] Released ${ip} (was allocated to VM ${allocation.vmId})`,
-      );
+      logger.log(`Released ${ip} (was allocated to VM ${allocation.vmId})`);
     } else {
-      console.log(`[IP Pool] IP ${ip} was not in registry, nothing to release`);
+      logger.log(`IP ${ip} was not in registry, nothing to release`);
     }
   });
 }
@@ -373,22 +373,20 @@ export async function releaseIP(ip: string): Promise<void> {
  */
 export async function cleanupOrphanedAllocations(): Promise<void> {
   return withLock(async () => {
-    console.log("[IP Pool] Cleaning up orphaned allocations...");
+    logger.log("Cleaning up orphaned allocations...");
 
     // Read current registry
     const registry = readRegistry();
     const beforeCount = Object.keys(registry.allocations).length;
 
     if (beforeCount === 0) {
-      console.log("[IP Pool] No allocations in registry, nothing to clean up");
+      logger.log("No allocations in registry, nothing to clean up");
       return;
     }
 
     // Scan actual TAP devices on the bridge
     const activeTaps = await scanTapDevices();
-    console.log(
-      `[IP Pool] Found ${activeTaps.size} active TAP device(s) on bridge`,
-    );
+    logger.log(`Found ${activeTaps.size} active TAP device(s) on bridge`);
 
     // Reconcile registry with actual state
     const reconciled = reconcileRegistry(registry, activeTaps);
@@ -396,11 +394,11 @@ export async function cleanupOrphanedAllocations(): Promise<void> {
 
     if (afterCount !== beforeCount) {
       writeRegistry(reconciled);
-      console.log(
-        `[IP Pool] Cleaned up ${beforeCount - afterCount} orphaned allocation(s)`,
+      logger.log(
+        `Cleaned up ${beforeCount - afterCount} orphaned allocation(s)`,
       );
     } else {
-      console.log("[IP Pool] No orphaned allocations found");
+      logger.log("No orphaned allocations found");
     }
   });
 }

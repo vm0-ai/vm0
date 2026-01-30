@@ -20,8 +20,10 @@ import {
   generateNetworkBootArgs,
   type VMNetworkConfig,
 } from "./network.js";
+import { createLogger } from "../logger.js";
 
 const execAsync = promisify(exec);
+const logger = createLogger("VM");
 
 /**
  * VM configuration options
@@ -34,7 +36,6 @@ export interface VMConfig {
   rootfsPath: string;
   firecrackerBinary: string;
   workDir?: string; // Working directory for VM files (default: /tmp/vm0-vm-{vmId})
-  logger?: (msg: string) => void; // Optional logger function
 }
 
 /**
@@ -68,10 +69,6 @@ export class FirecrackerVM {
     this.socketPath = path.join(this.workDir, "firecracker.sock");
     this.vmOverlayPath = path.join(this.workDir, "overlay.ext4");
     this.vsockPath = path.join(this.workDir, "vsock.sock");
-  }
-
-  private log(msg: string): void {
-    (this.config.logger ?? console.log)(msg);
   }
 
   /**
@@ -129,7 +126,7 @@ export class FirecrackerVM {
 
       // Create sparse overlay file and set up network in parallel
       // These operations are independent and can run concurrently
-      this.log(`[VM ${this.config.vmId}] Setting up overlay and network...`);
+      logger.log(`[VM ${this.config.vmId}] Setting up overlay and network...`);
 
       const createOverlay = async () => {
         // Create sparse overlay file for this VM
@@ -141,17 +138,17 @@ export class FirecrackerVM {
         fs.ftruncateSync(fd, overlaySize);
         fs.closeSync(fd);
         await execAsync(`mkfs.ext4 -F -q "${this.vmOverlayPath}"`);
-        this.log(`[VM ${this.config.vmId}] Overlay created`);
+        logger.log(`[VM ${this.config.vmId}] Overlay created`);
       };
 
       const [, networkConfig] = await Promise.all([
         createOverlay(),
-        createTapDevice(this.config.vmId, this.log.bind(this)),
+        createTapDevice(this.config.vmId),
       ]);
       this.networkConfig = networkConfig;
 
       // Spawn Firecracker process
-      this.log(`[VM ${this.config.vmId}] Starting Firecracker...`);
+      logger.log(`[VM ${this.config.vmId}] Starting Firecracker...`);
       this.process = spawn(
         this.config.firecrackerBinary,
         ["--api-sock", this.socketPath],
@@ -164,12 +161,12 @@ export class FirecrackerVM {
 
       // Handle process errors
       this.process.on("error", (err) => {
-        this.log(`[VM ${this.config.vmId}] Firecracker error: ${err}`);
+        logger.log(`[VM ${this.config.vmId}] Firecracker error: ${err}`);
         this.state = "error";
       });
 
       this.process.on("exit", (code, signal) => {
-        this.log(
+        logger.log(
           `[VM ${this.config.vmId}] Firecracker exited: code=${code}, signal=${signal}`,
         );
         if (this.state !== "stopped") {
@@ -185,7 +182,7 @@ export class FirecrackerVM {
         stdoutRL.on("line", (line) => {
           // Only log non-empty kernel boot messages at debug level
           if (line.trim()) {
-            this.log(`[VM ${this.config.vmId}] ${line}`);
+            logger.log(`[VM ${this.config.vmId}] ${line}`);
           }
         });
       }
@@ -195,14 +192,14 @@ export class FirecrackerVM {
         });
         stderrRL.on("line", (line) => {
           if (line.trim()) {
-            this.log(`[VM ${this.config.vmId}] stderr: ${line}`);
+            logger.log(`[VM ${this.config.vmId}] stderr: ${line}`);
           }
         });
       }
 
       // Wait for API to become ready
       this.client = new FirecrackerClient(this.socketPath);
-      this.log(`[VM ${this.config.vmId}] Waiting for API...`);
+      logger.log(`[VM ${this.config.vmId}] Waiting for API...`);
       await this.client.waitUntilReady(10000, 100);
 
       // Configure the VM
@@ -210,11 +207,11 @@ export class FirecrackerVM {
       await this.configure();
 
       // Boot the VM
-      this.log(`[VM ${this.config.vmId}] Booting...`);
+      logger.log(`[VM ${this.config.vmId}] Booting...`);
       await this.client.start();
       this.state = "running";
 
-      this.log(
+      logger.log(
         `[VM ${this.config.vmId}] Running at ${this.networkConfig.guestIp}`,
       );
     } catch (error) {
@@ -234,7 +231,7 @@ export class FirecrackerVM {
     }
 
     // Configure machine (vCPUs, memory)
-    this.log(
+    logger.log(
       `[VM ${this.config.vmId}] Configuring: ${this.config.vcpus} vCPUs, ${this.config.memoryMb}MB RAM`,
     );
     await this.client.setMachineConfig({
@@ -261,7 +258,7 @@ export class FirecrackerVM {
     const networkBootArgs = generateNetworkBootArgs(this.networkConfig);
     const bootArgs = `console=ttyS0 reboot=k panic=1 pci=off nomodules random.trust_cpu=on quiet loglevel=0 nokaslr audit=0 numa=off mitigations=off noresume init=/sbin/vm-init ${networkBootArgs}`;
 
-    this.log(`[VM ${this.config.vmId}] Boot args: ${bootArgs}`);
+    logger.log(`[VM ${this.config.vmId}] Boot args: ${bootArgs}`);
     await this.client.setBootSource({
       kernel_image_path: this.config.kernelPath,
       boot_args: bootArgs,
@@ -269,7 +266,9 @@ export class FirecrackerVM {
 
     // Configure base drive (squashfs, read-only, shared across VMs)
     // This is mounted as /dev/vda inside the VM
-    this.log(`[VM ${this.config.vmId}] Base rootfs: ${this.config.rootfsPath}`);
+    logger.log(
+      `[VM ${this.config.vmId}] Base rootfs: ${this.config.rootfsPath}`,
+    );
     await this.client.setDrive({
       drive_id: "rootfs",
       path_on_host: this.config.rootfsPath,
@@ -280,7 +279,7 @@ export class FirecrackerVM {
     // Configure overlay drive (ext4, read-write, per-VM)
     // This is mounted as /dev/vdb inside the VM
     // The vm-init script combines these using overlayfs
-    this.log(`[VM ${this.config.vmId}] Overlay: ${this.vmOverlayPath}`);
+    logger.log(`[VM ${this.config.vmId}] Overlay: ${this.vmOverlayPath}`);
     await this.client.setDrive({
       drive_id: "overlay",
       path_on_host: this.vmOverlayPath,
@@ -289,7 +288,7 @@ export class FirecrackerVM {
     });
 
     // Configure network interface
-    this.log(
+    logger.log(
       `[VM ${this.config.vmId}] Network: ${this.networkConfig.tapDevice}`,
     );
     await this.client.setNetworkInterface({
@@ -300,7 +299,7 @@ export class FirecrackerVM {
 
     // Configure vsock for host-guest communication
     // Guest CID 3 is the standard guest identifier (CID 0=hypervisor, 1=local, 2=host)
-    this.log(`[VM ${this.config.vmId}] Vsock: ${this.vsockPath}`);
+    logger.log(`[VM ${this.config.vmId}] Vsock: ${this.vsockPath}`);
     await this.client.setVsock({
       vsock_id: "vsock0",
       guest_cid: 3,
@@ -313,19 +312,19 @@ export class FirecrackerVM {
    */
   async stop(): Promise<void> {
     if (this.state !== "running") {
-      this.log(`[VM ${this.config.vmId}] Not running, state: ${this.state}`);
+      logger.log(`[VM ${this.config.vmId}] Not running, state: ${this.state}`);
       return;
     }
 
     this.state = "stopping";
-    this.log(`[VM ${this.config.vmId}] Stopping...`);
+    logger.log(`[VM ${this.config.vmId}] Stopping...`);
 
     try {
       // Send graceful shutdown signal
       if (this.client) {
         await this.client.sendCtrlAltDel().catch((error: unknown) => {
           // Expected: API may fail if VM is already stopping
-          this.log(
+          logger.log(
             `[VM ${this.config.vmId}] Graceful shutdown signal failed (VM may already be stopping): ${error instanceof Error ? error.message : error}`,
           );
         });
@@ -339,7 +338,7 @@ export class FirecrackerVM {
    * Force kill the VM
    */
   async kill(): Promise<void> {
-    this.log(`[VM ${this.config.vmId}] Force killing...`);
+    logger.log(`[VM ${this.config.vmId}] Force killing...`);
     await this.cleanup();
   }
 
@@ -371,7 +370,7 @@ export class FirecrackerVM {
 
     this.client = null;
     this.state = "stopped";
-    this.log(`[VM ${this.config.vmId}] Stopped`);
+    logger.log(`[VM ${this.config.vmId}] Stopped`);
   }
 
   /**

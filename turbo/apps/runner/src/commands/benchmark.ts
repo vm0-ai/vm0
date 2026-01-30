@@ -8,6 +8,7 @@ import {
   setupBridge,
 } from "../lib/firecracker/network.js";
 import { Timer } from "../lib/timing.js";
+import { setGlobalLogger } from "../lib/logger.js";
 
 interface BenchmarkOptions {
   config: string;
@@ -56,6 +57,9 @@ export const benchmarkCommand = new Command("benchmark")
   .action(async (prompt: string, options: BenchmarkOptions): Promise<void> => {
     const timer = new Timer();
 
+    // Set global logger to use Timer.log for all modules
+    setGlobalLogger(timer.log.bind(timer));
+
     try {
       // Load config
       timer.log("Loading configuration...");
@@ -85,7 +89,6 @@ export const benchmarkCommand = new Command("benchmark")
       // Execute job in benchmark mode (runs bash command directly, skips run-agent.py)
       const result = await executeJob(context, config, {
         benchmarkMode: true,
-        logger: timer.log.bind(timer),
       });
 
       // Output results

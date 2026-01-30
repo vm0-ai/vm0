@@ -7,6 +7,9 @@
 
 import fs from "fs";
 import type { NetworkLogEntry } from "./types.js";
+import { createLogger } from "../logger.js";
+
+const logger = createLogger("NetworkLogs");
 
 /**
  * Get the network log file path for a run
@@ -30,8 +33,8 @@ function readNetworkLogs(runId: string): NetworkLogEntry[] {
     const lines = content.split("\n").filter((line) => line.trim());
     return lines.map((line) => JSON.parse(line) as NetworkLogEntry);
   } catch (err) {
-    console.error(
-      `[Executor] Failed to read network logs: ${err instanceof Error ? err.message : "Unknown error"}`,
+    logger.error(
+      `Failed to read network logs: ${err instanceof Error ? err.message : "Unknown error"}`,
     );
     return [];
   }
@@ -48,8 +51,8 @@ function cleanupNetworkLogs(runId: string): void {
       fs.unlinkSync(logPath);
     }
   } catch (err) {
-    console.error(
-      `[Executor] Failed to cleanup network logs: ${err instanceof Error ? err.message : "Unknown error"}`,
+    logger.error(
+      `Failed to cleanup network logs: ${err instanceof Error ? err.message : "Unknown error"}`,
     );
   }
 }
@@ -65,12 +68,12 @@ export async function uploadNetworkLogs(
   const networkLogs = readNetworkLogs(runId);
 
   if (networkLogs.length === 0) {
-    console.log(`[Executor] No network logs to upload for ${runId}`);
+    logger.log(`No network logs to upload for ${runId}`);
     return;
   }
 
-  console.log(
-    `[Executor] Uploading ${networkLogs.length} network log entries for ${runId}`,
+  logger.log(
+    `Uploading ${networkLogs.length} network log entries for ${runId}`,
   );
 
   const headers: Record<string, string> = {
@@ -95,11 +98,11 @@ export async function uploadNetworkLogs(
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error(`[Executor] Failed to upload network logs: ${errorText}`);
+    logger.error(`Failed to upload network logs: ${errorText}`);
     return;
   }
 
-  console.log(`[Executor] Network logs uploaded successfully for ${runId}`);
+  logger.log(`Network logs uploaded successfully for ${runId}`);
 
   // Cleanup log file after successful upload
   cleanupNetworkLogs(runId);

@@ -67,7 +67,7 @@ describe("Network Cleanup Functions", () => {
       await flushBridgeArpCache();
 
       expect(consoleSpy).toHaveBeenCalledWith(
-        "Bridge does not exist, skipping ARP flush",
+        "[Network] Bridge does not exist, skipping ARP flush",
       );
       consoleSpy.mockRestore();
     });
@@ -87,7 +87,9 @@ describe("Network Cleanup Functions", () => {
 
       await flushBridgeArpCache();
 
-      expect(consoleSpy).toHaveBeenCalledWith("No ARP entries on bridge");
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "[Network] No ARP entries on bridge",
+      );
       consoleSpy.mockRestore();
     });
 
@@ -121,7 +123,7 @@ describe("Network Cleanup Functions", () => {
       expect(deletedIps).toContain("172.16.0.2");
       expect(deletedIps).toContain("172.16.0.3");
       expect(consoleSpy).toHaveBeenCalledWith(
-        "Cleared 2 ARP entries from bridge",
+        "[Network] Cleared 2 ARP entries from bridge",
       );
       consoleSpy.mockRestore();
     });
@@ -144,7 +146,7 @@ describe("Network Cleanup Functions", () => {
       await expect(flushBridgeArpCache()).resolves.toBeUndefined();
 
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Warning: Could not flush ARP cache"),
+        expect.stringContaining("[Network] Warning: Could not flush ARP cache"),
       );
       consoleSpy.mockRestore();
     });
@@ -163,7 +165,9 @@ describe("Network Cleanup Functions", () => {
 
       await cleanupOrphanedProxyRules("test-runner");
 
-      expect(consoleSpy).toHaveBeenCalledWith("No orphaned proxy rules found");
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "[Network] No orphaned proxy rules found",
+      );
       consoleSpy.mockRestore();
     });
 
@@ -196,7 +200,7 @@ describe("Network Cleanup Functions", () => {
       expect(deletedRules.some((r) => r.includes("172.16.0.4"))).toBe(false);
 
       expect(consoleSpy).toHaveBeenCalledWith(
-        "Found 2 orphaned rule(s) to clean up",
+        "[Network] Found 2 orphaned rule(s) to clean up",
       );
       consoleSpy.mockRestore();
     });
@@ -214,7 +218,9 @@ describe("Network Cleanup Functions", () => {
       ).resolves.toBeUndefined();
 
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Warning: Could not clean up orphaned rules"),
+        expect.stringContaining(
+          "[Network] Warning: Could not clean up orphaned rules",
+        ),
       );
       consoleSpy.mockRestore();
     });
@@ -246,7 +252,7 @@ describe("Network Cleanup Functions", () => {
       // Should attempt to delete both rules even if first fails
       expect(deleteCallCount).toBe(2);
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to delete rule"),
+        expect.stringContaining("[Network] Failed to delete rule"),
       );
       consoleSpy.mockRestore();
     });

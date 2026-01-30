@@ -8,6 +8,9 @@
  * The registry is stored as a JSON file that the mitmproxy addon can read.
  */
 import fs from "fs";
+import { createLogger } from "../logger.js";
+
+const logger = createLogger("VMRegistry");
 
 /**
  * Firewall rule for VM network egress control
@@ -120,8 +123,8 @@ export class VMRegistry {
       ? ` with ${options.firewallRules.length} firewall rules`
       : "";
     const mitmInfo = options?.mitmEnabled ? ", MITM enabled" : "";
-    console.log(
-      `[VMRegistry] Registered VM ${vmIp} for run ${runId}${firewallInfo}${mitmInfo}`,
+    logger.log(
+      `Registered VM ${vmIp} for run ${runId}${firewallInfo}${mitmInfo}`,
     );
   }
 
@@ -133,9 +136,7 @@ export class VMRegistry {
       const registration = this.data.vms[vmIp];
       delete this.data.vms[vmIp];
       this.save();
-      console.log(
-        `[VMRegistry] Unregistered VM ${vmIp} (run ${registration.runId})`,
-      );
+      logger.log(`Unregistered VM ${vmIp} (run ${registration.runId})`);
     }
   }
 
@@ -159,7 +160,7 @@ export class VMRegistry {
   clear(): void {
     this.data.vms = {};
     this.save();
-    console.log("[VMRegistry] Cleared all registrations");
+    logger.log("Cleared all registrations");
   }
 
   /**

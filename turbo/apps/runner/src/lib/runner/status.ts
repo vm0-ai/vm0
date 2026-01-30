@@ -1,5 +1,8 @@
 import { writeFileSync } from "fs";
 import type { RunnerMode, RunnerState, RunnerStatus } from "./types.js";
+import { createLogger } from "../logger.js";
+
+const logger = createLogger("Runner");
 
 /**
  * Write runner status to a JSON file for external monitoring.
@@ -23,7 +26,7 @@ function writeStatusFile(
     writeFileSync(statusFilePath, JSON.stringify(status, null, 2));
   } catch (err) {
     // Non-fatal: log and continue
-    console.error(
+    logger.error(
       `Failed to write status file: ${err instanceof Error ? err.message : "Unknown error"}`,
     );
   }

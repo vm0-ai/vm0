@@ -11,8 +11,10 @@
 import { execSync, exec } from "node:child_process";
 import { promisify } from "node:util";
 import { allocateIP, releaseIP } from "./ip-pool.js";
+import { createLogger } from "../logger.js";
 
 const execAsync = promisify(exec);
+const logger = createLogger("Network");
 
 /**
  * Network configuration for a VM
@@ -109,19 +111,19 @@ async function getDefaultInterface(): Promise<string> {
  */
 async function setupForwardRules(): Promise<void> {
   const extIface = await getDefaultInterface();
-  console.log(`Setting up FORWARD rules for ${BRIDGE_NAME} <-> ${extIface}`);
+  logger.log(`Setting up FORWARD rules for ${BRIDGE_NAME} <-> ${extIface}`);
 
   // Allow outbound traffic from VM bridge to external interface
   try {
     await execCommand(
       `iptables -C FORWARD -i ${BRIDGE_NAME} -o ${extIface} -j ACCEPT`,
     );
-    console.log("FORWARD outbound rule already exists");
+    logger.log("FORWARD outbound rule already exists");
   } catch {
     await execCommand(
       `iptables -I FORWARD -i ${BRIDGE_NAME} -o ${extIface} -j ACCEPT`,
     );
-    console.log("FORWARD outbound rule added");
+    logger.log("FORWARD outbound rule added");
   }
 
   // Allow return traffic from external interface to VM bridge
@@ -129,12 +131,12 @@ async function setupForwardRules(): Promise<void> {
     await execCommand(
       `iptables -C FORWARD -i ${extIface} -o ${BRIDGE_NAME} -m state --state RELATED,ESTABLISHED -j ACCEPT`,
     );
-    console.log("FORWARD inbound rule already exists");
+    logger.log("FORWARD inbound rule already exists");
   } catch {
     await execCommand(
       `iptables -I FORWARD -i ${extIface} -o ${BRIDGE_NAME} -m state --state RELATED,ESTABLISHED -j ACCEPT`,
     );
-    console.log("FORWARD inbound rule added");
+    logger.log("FORWARD inbound rule added");
   }
 }
 
@@ -157,13 +159,13 @@ export async function bridgeExists(): Promise<boolean> {
 export async function setupBridge(): Promise<void> {
   // Check if bridge already exists
   if (await bridgeExists()) {
-    console.log(`Bridge ${BRIDGE_NAME} already exists`);
+    logger.log(`Bridge ${BRIDGE_NAME} already exists`);
     // Still ensure FORWARD rules are set up (they may be missing after reboot or Docker restart)
     await setupForwardRules();
     return;
   }
 
-  console.log(`Creating bridge ${BRIDGE_NAME}...`);
+  logger.log(`Creating bridge ${BRIDGE_NAME}...`);
 
   // Create bridge
   await execCommand(`ip link add name ${BRIDGE_NAME} type bridge`);
@@ -185,20 +187,20 @@ export async function setupBridge(): Promise<void> {
     await execCommand(
       `iptables -t nat -C POSTROUTING -s ${BRIDGE_CIDR} -j MASQUERADE`,
     );
-    console.log("NAT rule already exists");
+    logger.log("NAT rule already exists");
   } catch {
     // Rule doesn't exist, add it
     await execCommand(
       `iptables -t nat -A POSTROUTING -s ${BRIDGE_CIDR} -j MASQUERADE`,
     );
-    console.log("NAT rule added");
+    logger.log("NAT rule added");
   }
 
   // Set up FORWARD rules for VM traffic
   // Docker sets FORWARD policy to DROP, so we need explicit rules
   await setupForwardRules();
 
-  console.log(`Bridge ${BRIDGE_NAME} configured with IP ${BRIDGE_IP}`);
+  logger.log(`Bridge ${BRIDGE_NAME} configured with IP ${BRIDGE_IP}`);
 }
 
 /**
@@ -234,7 +236,7 @@ async function clearStaleIptablesRulesForIP(ip: string): Promise<void> {
       return;
     }
 
-    console.log(
+    logger.log(
       `Clearing ${rulesForIP.length} stale iptables rule(s) for IP ${ip}`,
     );
 
@@ -257,42 +259,41 @@ async function clearStaleIptablesRulesForIP(ip: string): Promise<void> {
  * Create and configure a TAP device for a VM
  * Uses the IP pool manager for race-safe IP allocation
  */
-export async function createTapDevice(
-  vmId: string,
-  logger?: (msg: string) => void,
-): Promise<VMNetworkConfig> {
-  const log = logger ?? console.log;
-
+export async function createTapDevice(vmId: string): Promise<VMNetworkConfig> {
   // TAP device name limited to 15 chars, use "tap" + first 8 chars of vmId
   const tapDevice = `tap${vmId.substring(0, 8)}`;
   const guestMac = generateMacAddress(vmId);
 
   // Allocate IP from pool (race-safe with file locking)
   const guestIp = await allocateIP(vmId);
-  log(`[VM ${vmId}] IP allocated: ${guestIp}`);
+  logger.log(`[VM ${vmId}] IP allocated: ${guestIp}`);
 
   // Clear any stale iptables rules for this IP from previous VMs
   // This prevents leftover REDIRECT rules from interfering with network
   await clearStaleIptablesRulesForIP(guestIp);
-  log(`[VM ${vmId}] Stale iptables cleared`);
+  logger.log(`[VM ${vmId}] Stale iptables cleared`);
 
   // Delete existing TAP device if it exists (from previous runs or failed cleanup)
   if (await tapDeviceExists(tapDevice)) {
-    log(`[VM ${vmId}] TAP device ${tapDevice} already exists, deleting...`);
+    logger.log(
+      `[VM ${vmId}] TAP device ${tapDevice} already exists, deleting...`,
+    );
     await deleteTapDevice(tapDevice);
   }
 
   // Create TAP device
   await execCommand(`ip tuntap add ${tapDevice} mode tap`);
-  log(`[VM ${vmId}] TAP device created`);
+  logger.log(`[VM ${vmId}] TAP device created`);
 
   // Add TAP to bridge
   await execCommand(`ip link set ${tapDevice} master ${BRIDGE_NAME}`);
-  log(`[VM ${vmId}] TAP added to bridge`);
+  logger.log(`[VM ${vmId}] TAP added to bridge`);
 
   // Bring TAP up
   await execCommand(`ip link set ${tapDevice} up`);
-  log(`[VM ${vmId}] TAP created: ${tapDevice}, MAC ${guestMac}, IP ${guestIp}`);
+  logger.log(
+    `[VM ${vmId}] TAP created: ${tapDevice}, MAC ${guestMac}, IP ${guestIp}`,
+  );
 
   return {
     tapDevice,
@@ -315,10 +316,10 @@ export async function deleteTapDevice(
 ): Promise<void> {
   // Only attempt delete if device exists
   if (!(await tapDeviceExists(tapDevice))) {
-    console.log(`TAP device ${tapDevice} does not exist, skipping delete`);
+    logger.log(`TAP device ${tapDevice} does not exist, skipping delete`);
   } else {
     await execCommand(`ip link delete ${tapDevice}`);
-    console.log(`TAP device ${tapDevice} deleted`);
+    logger.log(`TAP device ${tapDevice} deleted`);
   }
 
   // Clear ARP cache entry for the VM's IP to prevent stale MAC associations
@@ -327,7 +328,7 @@ export async function deleteTapDevice(
   if (guestIp) {
     try {
       await execCommand(`ip neigh del ${guestIp} dev ${BRIDGE_NAME}`, true);
-      console.log(`ARP entry cleared for ${guestIp}`);
+      logger.log(`ARP entry cleared for ${guestIp}`);
     } catch {
       // ARP entry might not exist, that's fine
     }
@@ -396,7 +397,7 @@ export function checkNetworkPrerequisites(): { ok: boolean; errors: string[] } {
  */
 export async function setupCIDRProxyRules(proxyPort: number): Promise<void> {
   const comment = "vm0:cidr-proxy";
-  console.log(
+  logger.log(
     `Setting up CIDR proxy rules for ${BRIDGE_CIDR} -> port ${proxyPort}`,
   );
 
@@ -405,12 +406,12 @@ export async function setupCIDRProxyRules(proxyPort: number): Promise<void> {
     await execCommand(
       `iptables -t nat -C PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 80 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
     );
-    console.log("CIDR proxy rule for port 80 already exists");
+    logger.log("CIDR proxy rule for port 80 already exists");
   } catch {
     await execCommand(
       `iptables -t nat -A PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 80 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
     );
-    console.log("CIDR proxy rule for port 80 added");
+    logger.log("CIDR proxy rule for port 80 added");
   }
 
   // HTTPS redirect
@@ -418,12 +419,12 @@ export async function setupCIDRProxyRules(proxyPort: number): Promise<void> {
     await execCommand(
       `iptables -t nat -C PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 443 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
     );
-    console.log("CIDR proxy rule for port 443 already exists");
+    logger.log("CIDR proxy rule for port 443 already exists");
   } catch {
     await execCommand(
       `iptables -t nat -A PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 443 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
     );
-    console.log("CIDR proxy rule for port 443 added");
+    logger.log("CIDR proxy rule for port 443 added");
   }
 }
 
@@ -435,13 +436,13 @@ export async function setupCIDRProxyRules(proxyPort: number): Promise<void> {
  */
 export async function cleanupCIDRProxyRules(proxyPort: number): Promise<void> {
   const comment = "vm0:cidr-proxy";
-  console.log("Cleaning up CIDR proxy rules...");
+  logger.log("Cleaning up CIDR proxy rules...");
 
   try {
     await execCommand(
       `iptables -t nat -D PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 80 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
     );
-    console.log("CIDR proxy rule for port 80 removed");
+    logger.log("CIDR proxy rule for port 80 removed");
   } catch {
     // Rule doesn't exist, that's fine
   }
@@ -450,7 +451,7 @@ export async function cleanupCIDRProxyRules(proxyPort: number): Promise<void> {
     await execCommand(
       `iptables -t nat -D PREROUTING -s ${BRIDGE_CIDR} -p tcp --dport 443 -j REDIRECT --to-port ${proxyPort} -m comment --comment "${comment}"`,
     );
-    console.log("CIDR proxy rule for port 443 removed");
+    logger.log("CIDR proxy rule for port 443 removed");
   } catch {
     // Rule doesn't exist, that's fine
   }
@@ -593,12 +594,12 @@ export async function findOrphanedIptablesRules(
  * reused by new VMs with different MAC addresses.
  */
 export async function flushBridgeArpCache(): Promise<void> {
-  console.log(`Flushing ARP cache on bridge ${BRIDGE_NAME}...`);
+  logger.log(`Flushing ARP cache on bridge ${BRIDGE_NAME}...`);
 
   try {
     // Check if bridge exists first
     if (!(await bridgeExists())) {
-      console.log("Bridge does not exist, skipping ARP flush");
+      logger.log("Bridge does not exist, skipping ARP flush");
       return;
     }
 
@@ -608,7 +609,7 @@ export async function flushBridgeArpCache(): Promise<void> {
     );
 
     if (!stdout.trim()) {
-      console.log("No ARP entries on bridge");
+      logger.log("No ARP entries on bridge");
       return;
     }
 
@@ -630,9 +631,9 @@ export async function flushBridgeArpCache(): Promise<void> {
       }
     }
 
-    console.log(`Cleared ${cleared} ARP entries from bridge`);
+    logger.log(`Cleared ${cleared} ARP entries from bridge`);
   } catch (error) {
-    console.log(
+    logger.log(
       `Warning: Could not flush ARP cache: ${error instanceof Error ? error.message : "Unknown error"}`,
     );
   }
@@ -651,7 +652,7 @@ export async function cleanupOrphanedProxyRules(
   runnerName: string,
 ): Promise<void> {
   const comment = `vm0:runner:${runnerName}`;
-  console.log(`Cleaning up orphaned proxy rules for runner '${runnerName}'...`);
+  logger.log(`Cleaning up orphaned proxy rules for runner '${runnerName}'...`);
 
   try {
     // List all PREROUTING rules in save format (-S gives us the exact command syntax)
@@ -661,30 +662,30 @@ export async function cleanupOrphanedProxyRules(
     const ourRules = rules.split("\n").filter((rule) => rule.includes(comment));
 
     if (ourRules.length === 0) {
-      console.log("No orphaned proxy rules found");
+      logger.log("No orphaned proxy rules found");
       return;
     }
 
-    console.log(`Found ${ourRules.length} orphaned rule(s) to clean up`);
+    logger.log(`Found ${ourRules.length} orphaned rule(s) to clean up`);
 
     // Delete each rule (convert -A to -D)
     for (const rule of ourRules) {
       const deleteRule = rule.replace("-A ", "-D ");
       try {
         await execCommand(`iptables -t nat ${deleteRule}`);
-        console.log(`Deleted orphaned rule: ${rule.substring(0, 80)}...`);
+        logger.log(`Deleted orphaned rule: ${rule.substring(0, 80)}...`);
       } catch {
-        console.log(
+        logger.log(
           `Failed to delete rule (may already be gone): ${rule.substring(0, 80)}...`,
         );
       }
     }
 
-    console.log("Orphaned proxy rules cleanup complete");
+    logger.log("Orphaned proxy rules cleanup complete");
   } catch (error) {
     // If iptables command fails, log but continue
     // This could happen if iptables is not available or we don't have permissions
-    console.log(
+    logger.log(
       `Warning: Could not clean up orphaned rules: ${error instanceof Error ? error.message : "Unknown error"}`,
     );
   }

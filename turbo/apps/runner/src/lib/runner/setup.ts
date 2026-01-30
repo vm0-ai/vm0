@@ -14,6 +14,9 @@ import {
   getProxyManager,
 } from "../proxy/index.js";
 import type { RunnerResources } from "./types.js";
+import { createLogger } from "../logger.js";
+
+const logger = createLogger("Runner");
 
 interface SetupOptions {
   config: RunnerConfig;
@@ -30,35 +33,35 @@ export async function setupEnvironment(
   // Check network prerequisites
   const networkCheck = checkNetworkPrerequisites();
   if (!networkCheck.ok) {
-    console.error("Network prerequisites not met:");
+    logger.error("Network prerequisites not met:");
     for (const error of networkCheck.errors) {
-      console.error(`  - ${error}`);
+      logger.error(`  - ${error}`);
     }
     process.exit(1);
   }
 
   // Set up bridge network
-  console.log("Setting up network bridge...");
+  logger.log("Setting up network bridge...");
   await setupBridge();
 
   // Flush bridge ARP cache to clear stale entries from previous runs
   // This prevents routing issues when IPs are reused with different MACs
-  console.log("Flushing bridge ARP cache...");
+  logger.log("Flushing bridge ARP cache...");
   await flushBridgeArpCache();
 
   // Clean up orphaned proxy rules from previous runs
   // This handles rules left behind after crashes or SIGKILL
-  console.log("Cleaning up orphaned proxy rules...");
+  logger.log("Cleaning up orphaned proxy rules...");
   await cleanupOrphanedProxyRules(config.name);
 
   // Clean up orphaned IP allocations from previous runs
   // This reconciles the IP registry with actual TAP devices
-  console.log("Cleaning up orphaned IP allocations...");
+  logger.log("Cleaning up orphaned IP allocations...");
   await cleanupOrphanedAllocations();
 
   // Initialize proxy for network security mode
   // The proxy is always started but only used when experimentalFirewall is enabled
-  console.log("Initializing network proxy...");
+  logger.log("Initializing network proxy...");
   initVMRegistry();
   const proxyManager = initProxyManager({
     apiUrl: config.server.url,
@@ -71,18 +74,18 @@ export async function setupEnvironment(
   try {
     await proxyManager.start();
     proxyEnabled = true;
-    console.log("Network proxy initialized successfully");
+    logger.log("Network proxy initialized successfully");
 
     // Set up CIDR-based proxy rules for all VMs
     // This redirects all VM traffic (172.16.0.0/24) to the proxy at startup
     // The proxy handles unregistered VMs by passing traffic through
-    console.log("Setting up CIDR proxy rules...");
+    logger.log("Setting up CIDR proxy rules...");
     await setupCIDRProxyRules(config.proxy.port);
   } catch (err) {
-    console.warn(
+    logger.log(
       `Network proxy not available: ${err instanceof Error ? err.message : "Unknown error"}`,
     );
-    console.warn(
+    logger.log(
       "Jobs with experimentalFirewall enabled will run without network interception",
     );
   }
@@ -98,13 +101,13 @@ export async function cleanupEnvironment(
 ): Promise<void> {
   // Cleanup CIDR proxy rules first
   if (resources.proxyEnabled) {
-    console.log("Cleaning up CIDR proxy rules...");
+    logger.log("Cleaning up CIDR proxy rules...");
     await cleanupCIDRProxyRules(resources.proxyPort);
   }
 
   // Cleanup proxy
   if (resources.proxyEnabled) {
-    console.log("Stopping network proxy...");
+    logger.log("Stopping network proxy...");
     await getProxyManager().stop();
   }
 }

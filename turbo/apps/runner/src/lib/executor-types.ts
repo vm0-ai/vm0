@@ -24,13 +24,6 @@ export interface ExecutionOptions {
    * Used by the benchmark command
    */
   benchmarkMode?: boolean;
-
-  /**
-   * Custom logger function for execution output.
-   * If provided, executor will use this instead of console.log.
-   * Useful for adding timestamps or custom prefixes.
-   */
-  logger?: (message: string) => void;
 }
 
 /**

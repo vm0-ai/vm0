@@ -1,4 +1,7 @@
 import type { RunnerState } from "./types.js";
+import { createLogger } from "../logger.js";
+
+const logger = createLogger("Runner");
 
 interface SignalHandlers {
   onShutdown: () => void;
@@ -15,14 +18,14 @@ export function setupSignalHandlers(
 ): void {
   // Handle graceful shutdown (SIGINT, SIGTERM)
   process.on("SIGINT", () => {
-    console.log("\nShutting down...");
+    logger.log("\nShutting down...");
     handlers.onShutdown();
     state.mode = "stopped";
     handlers.updateStatus();
   });
 
   process.on("SIGTERM", () => {
-    console.log("\nShutting down...");
+    logger.log("\nShutting down...");
     handlers.onShutdown();
     state.mode = "stopped";
     handlers.updateStatus();
@@ -32,8 +35,8 @@ export function setupSignalHandlers(
   // When received, stop polling for new jobs but continue executing active jobs
   process.on("SIGUSR1", () => {
     if (state.mode === "running") {
-      console.log("\n[Maintenance] Entering drain mode...");
-      console.log(
+      logger.log("\n[Maintenance] Entering drain mode...");
+      logger.log(
         `[Maintenance] Active jobs: ${state.activeRuns.size} (will wait for completion)`,
       );
       state.mode = "draining";

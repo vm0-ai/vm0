@@ -10,6 +10,9 @@ import fs from "fs";
 import type { GuestClient } from "../firecracker/guest.js";
 import type { StorageManifest, ResumeSession } from "../api.js";
 import { SCRIPT_PATHS } from "../scripts/index.js";
+import { createLogger } from "../logger.js";
+
+const logger = createLogger("VMSetup");
 
 /** Path where proxy CA certificate is installed in VM (for NODE_EXTRA_CA_CERTS) */
 export const VM_PROXY_CA_PATH =
@@ -28,11 +31,11 @@ export async function downloadStorages(
     (manifest.artifact?.archiveUrl ? 1 : 0);
 
   if (totalArchives === 0) {
-    console.log(`[Executor] No archives to download`);
+    logger.log(`No archives to download`);
     return;
   }
 
-  console.log(`[Executor] Downloading ${totalArchives} archive(s)...`);
+  logger.log(`Downloading ${totalArchives} archive(s)...`);
 
   // Write manifest to VM
   const manifestJson = JSON.stringify(manifest);
@@ -47,7 +50,7 @@ export async function downloadStorages(
     throw new Error(`Storage download failed: ${result.stderr}`);
   }
 
-  console.log(`[Executor] Storage download completed`);
+  logger.log(`Storage download completed`);
 }
 
 /**
@@ -66,9 +69,7 @@ export async function restoreSessionHistory(
   if (cliAgentType === "codex") {
     // Codex uses different path structure - for now use a marker
     // The checkpoint.py will search for the actual file
-    console.log(
-      `[Executor] Codex resume session will be handled by checkpoint.py`,
-    );
+    logger.log(`Codex resume session will be handled by checkpoint.py`);
     return;
   } else {
     // Claude Code path: ~/.claude/projects/-{path}/{session_id}.jsonl
@@ -76,15 +77,15 @@ export async function restoreSessionHistory(
     sessionPath = `/home/user/.claude/projects/-${projectName}/${sessionId}.jsonl`;
   }
 
-  console.log(`[Executor] Restoring session history to ${sessionPath}`);
+  logger.log(`Restoring session history to ${sessionPath}`);
 
   // Create directory and write file
   const dirPath = sessionPath.substring(0, sessionPath.lastIndexOf("/"));
   await guest.execOrThrow(`mkdir -p "${dirPath}"`);
   await guest.writeFile(sessionPath, sessionHistory);
 
-  console.log(
-    `[Executor] Session history restored (${sessionHistory.split("\n").length} lines)`,
+  logger.log(
+    `Session history restored (${sessionHistory.split("\n").length} lines)`,
   );
 }
 
@@ -111,8 +112,8 @@ export async function installProxyCA(
   // Ensure cert ends with newline for proper PEM concatenation
   const certWithNewline = caCert.endsWith("\n") ? caCert : caCert + "\n";
 
-  console.log(
-    `[Executor] Installing proxy CA certificate (${certWithNewline.length} bytes)`,
+  logger.log(
+    `Installing proxy CA certificate (${certWithNewline.length} bytes)`,
   );
 
   // Write CA cert to standard location (for NODE_EXTRA_CA_CERTS)
@@ -124,5 +125,5 @@ export async function installProxyCA(
     `cat ${VM_PROXY_CA_PATH} | sudo tee -a /etc/ssl/certs/ca-certificates.crt > /dev/null`,
   );
 
-  console.log("[Executor] Proxy CA certificate installed successfully");
+  logger.log("Proxy CA certificate installed successfully");
 }
