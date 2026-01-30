@@ -9,11 +9,6 @@ const PLUGIN_ID = "vm0@vm0-skills";
 // Primary skill for user prompt (vm0-agent)
 export const PRIMARY_SKILL_NAME = "vm0-agent";
 
-// Legacy exports for backward compatibility
-export const SKILL_DIR = ".claude/skills/vm0-cli";
-export const SKILL_FILE = "SKILL.md";
-export const SKILL_NAME = "vm0-cli";
-
 export type PluginScope = "user" | "project";
 
 interface ClaudeCommandResult {

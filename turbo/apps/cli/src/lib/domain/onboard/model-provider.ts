@@ -7,7 +7,6 @@ import {
 import {
   listModelProviders,
   upsertModelProvider,
-  checkModelProviderCredential,
 } from "../../api/domains/model-providers.js";
 
 interface ModelProviderStatus {
@@ -27,12 +26,6 @@ interface SetupResult {
   created: boolean;
   isDefault: boolean;
   framework: string;
-}
-
-interface ExistingCredentialInfo {
-  exists: boolean;
-  credentialName: string;
-  currentType?: "user" | "model-provider";
 }
 
 /**
@@ -58,20 +51,6 @@ export function getProviderChoices(): ProviderChoice[] {
       credentialLabel: MODEL_PROVIDER_TYPES[type].credentialLabel,
     }),
   );
-}
-
-/**
- * Check if a credential already exists for a provider type
- */
-export async function checkExistingCredential(
-  type: ModelProviderType,
-): Promise<ExistingCredentialInfo> {
-  const response = await checkModelProviderCredential(type);
-  return {
-    exists: response.exists,
-    credentialName: response.credentialName,
-    currentType: response.currentType,
-  };
 }
 
 /**
