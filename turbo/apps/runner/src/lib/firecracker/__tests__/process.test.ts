@@ -21,6 +21,7 @@ function cmdline(...args: string[]): string {
 
 describe("process discovery", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vol.reset();
   });
 
@@ -205,6 +206,35 @@ describe("process discovery", () => {
       const result = findFirecrackerProcesses();
 
       expect(result).toHaveLength(0);
+    });
+
+    it("skips processes with unreadable cmdline", async () => {
+      vol.fromJSON({
+        "/proc/1234/cmdline": cmdline(
+          "firecracker",
+          "--api-sock",
+          "/tmp/vm0-aaaabbbb/firecracker.sock",
+        ),
+        "/proc/5678/cmdline": "will be mocked to throw",
+      });
+
+      // Spy on readFileSync to throw EACCES for specific path
+      const fs = await import("fs");
+      const originalReadFileSync = fs.readFileSync;
+      vi.spyOn(fs, "readFileSync").mockImplementation((path, options) => {
+        if (path === "/proc/5678/cmdline") {
+          const error = new Error("EACCES: permission denied");
+          (error as NodeJS.ErrnoException).code = "EACCES";
+          throw error;
+        }
+        return originalReadFileSync(path, options);
+      });
+
+      const result = findFirecrackerProcesses();
+
+      // Should find the readable process and skip the unreadable one
+      expect(result).toHaveLength(1);
+      expect(result[0]?.vmId).toBe("aaaabbbb");
     });
   });
 
