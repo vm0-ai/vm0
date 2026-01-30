@@ -381,7 +381,11 @@ struct Decoder {
 
 impl Decoder {
     fn new() -> Self {
-        Self { buf: Vec::new() }
+        // Pre-allocate buffer to avoid frequent reallocations
+        // 64KB matches the read buffer size in handle_connection
+        Self {
+            buf: Vec::with_capacity(65536),
+        }
     }
 
     fn decode(&mut self, data: &[u8]) -> Vec<(u8, u32, Vec<u8>)> {
