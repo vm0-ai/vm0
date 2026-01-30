@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
-import { scheduleService } from "../../../../../../src/lib/schedule";
+import { disableSchedule } from "../../../../../../src/lib/schedule";
 import { logger } from "../../../../../../src/lib/logger";
 import { NotFoundError } from "../../../../../../src/lib/errors";
 
@@ -45,11 +45,7 @@ export async function POST(
   log.debug(`Disabling schedule ${name} for compose ${body.composeId}`);
 
   try {
-    const schedule = await scheduleService.disable(
-      userId,
-      body.composeId,
-      name,
-    );
+    const schedule = await disableSchedule(userId, body.composeId, name);
 
     return NextResponse.json(schedule, { status: 200 });
   } catch (error) {

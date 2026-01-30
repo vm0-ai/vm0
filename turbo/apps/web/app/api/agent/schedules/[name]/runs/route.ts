@@ -6,7 +6,7 @@ import {
 import { scheduleRunsContract } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
-import { scheduleService } from "../../../../../../src/lib/schedule";
+import { getScheduleRecentRuns } from "../../../../../../src/lib/schedule";
 import { logger } from "../../../../../../src/lib/logger";
 import { NotFoundError } from "../../../../../../src/lib/errors";
 
@@ -31,7 +31,7 @@ const router = tsr.router(scheduleRunsContract, {
     );
 
     try {
-      const runs = await scheduleService.getRecentRuns(
+      const runs = await getScheduleRecentRuns(
         userId,
         query.composeId,
         params.name,

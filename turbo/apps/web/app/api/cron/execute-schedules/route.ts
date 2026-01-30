@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
-import { scheduleService } from "../../../../src/lib/schedule";
+import { executeDueSchedules } from "../../../../src/lib/schedule";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("cron:execute-schedules");
@@ -27,7 +27,7 @@ export async function GET(request: Request) {
   log.debug("Executing due schedules...");
 
   try {
-    const result = await scheduleService.executeDueSchedules();
+    const result = await executeDueSchedules();
 
     log.debug(
       `Cron completed: ${result.executed} executed, ${result.skipped} skipped`,

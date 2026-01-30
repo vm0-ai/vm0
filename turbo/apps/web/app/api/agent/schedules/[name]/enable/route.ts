@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
-import { scheduleService } from "../../../../../../src/lib/schedule";
+import { enableSchedule } from "../../../../../../src/lib/schedule";
 import { logger } from "../../../../../../src/lib/logger";
 import {
   NotFoundError,
@@ -48,7 +48,7 @@ export async function POST(
   log.debug(`Enabling schedule ${name} for compose ${body.composeId}`);
 
   try {
-    const schedule = await scheduleService.enable(userId, body.composeId, name);
+    const schedule = await enableSchedule(userId, body.composeId, name);
 
     return NextResponse.json(schedule, { status: 200 });
   } catch (error) {

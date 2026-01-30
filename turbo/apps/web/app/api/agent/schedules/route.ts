@@ -6,7 +6,7 @@ import {
 import { schedulesMainContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
-import { scheduleService } from "../../../../src/lib/schedule";
+import { deploySchedule, listSchedules } from "../../../../src/lib/schedule";
 import { logger } from "../../../../src/lib/logger";
 import { NotFoundError, BadRequestError } from "../../../../src/lib/errors";
 
@@ -55,7 +55,7 @@ const router = tsr.router(schedulesMainContract, {
     log.debug(`Deploying schedule ${body.name} for compose ${body.composeId}`);
 
     try {
-      const result = await scheduleService.deploy(userId, {
+      const result = await deploySchedule(userId, {
         name: body.name,
         composeId: body.composeId,
         cronExpression: body.cronExpression,
@@ -109,7 +109,7 @@ const router = tsr.router(schedulesMainContract, {
 
     log.debug(`Listing schedules for user ${userId}`);
 
-    const schedules = await scheduleService.list(userId);
+    const schedules = await listSchedules(userId);
 
     return {
       status: 200 as const,

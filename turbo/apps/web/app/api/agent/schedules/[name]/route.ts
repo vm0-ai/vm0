@@ -6,7 +6,10 @@ import {
 import { schedulesByNameContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
-import { scheduleService } from "../../../../../src/lib/schedule";
+import {
+  getScheduleByName,
+  deleteSchedule,
+} from "../../../../../src/lib/schedule";
 import { logger } from "../../../../../src/lib/logger";
 import { NotFoundError } from "../../../../../src/lib/errors";
 
@@ -29,7 +32,7 @@ const router = tsr.router(schedulesByNameContract, {
     log.debug(`Getting schedule ${params.name} for compose ${query.composeId}`);
 
     try {
-      const schedule = await scheduleService.getByName(
+      const schedule = await getScheduleByName(
         userId,
         query.composeId,
         params.name,
@@ -70,7 +73,7 @@ const router = tsr.router(schedulesByNameContract, {
     );
 
     try {
-      await scheduleService.delete(userId, query.composeId, params.name);
+      await deleteSchedule(userId, query.composeId, params.name);
 
       return {
         status: 204 as const,
