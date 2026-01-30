@@ -103,17 +103,25 @@ export async function installProxyCA(
   }
 
   const caCert = fs.readFileSync(caCertPath, "utf-8");
+
+  // Ensure cert ends with newline for proper PEM concatenation
+  const certWithNewline = caCert.endsWith("\n") ? caCert : caCert + "\n";
+
   console.log(
-    `[Executor] Installing proxy CA certificate (${caCert.length} bytes)`,
+    `[Executor] Installing proxy CA certificate (${certWithNewline.length} bytes)`,
   );
 
-  // Write CA cert to VM's CA certificates directory
+  // Write CA cert to standard location (for NODE_EXTRA_CA_CERTS)
   await guest.writeFileWithSudo(
     "/usr/local/share/ca-certificates/vm0-proxy-ca.crt",
-    caCert,
+    certWithNewline,
   );
 
-  // Update CA certificates (requires sudo)
-  await guest.execOrThrow("sudo update-ca-certificates");
-  console.log(`[Executor] Proxy CA certificate installed successfully`);
+  // Append directly to CA bundle - much faster than update-ca-certificates (~10ms vs ~200-500ms)
+  // This works because ca-certificates.crt is just a concatenation of PEM certs
+  await guest.execOrThrow(
+    "cat /usr/local/share/ca-certificates/vm0-proxy-ca.crt | sudo tee -a /etc/ssl/certs/ca-certificates.crt > /dev/null",
+  );
+
+  console.log("[Executor] Proxy CA certificate installed successfully");
 }
