@@ -10,7 +10,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 
+import { createLogger } from "../logger.js";
+
 const execAsync = promisify(exec);
+const logger = createLogger("RunnerLock");
 
 const DEFAULT_RUN_DIR = "/var/run/vm0";
 const DEFAULT_PID_FILE = `${DEFAULT_RUN_DIR}/runner.pid`;
@@ -78,20 +81,20 @@ export async function acquireRunnerLock(
     const pid = parseInt(pidStr, 10);
 
     if (!isNaN(pid) && isProcessRunning(pid)) {
-      console.error(`Error: Another runner is already running (PID ${pid})`);
-      console.error(`If this is incorrect, remove ${pidFile} and try again.`);
+      logger.error(`Error: Another runner is already running (PID ${pid})`);
+      logger.error(`If this is incorrect, remove ${pidFile} and try again.`);
       process.exit(1);
     }
 
     // Stale PID file - clean up
-    console.log(`Cleaning up stale PID file (PID ${pid} not running)`);
+    logger.log(`Cleaning up stale PID file (PID ${pid} not running)`);
     fs.unlinkSync(pidFile);
   }
 
   // Write current PID
   fs.writeFileSync(pidFile, process.pid.toString());
   currentPidFile = pidFile;
-  console.log(`Runner lock acquired (PID ${process.pid})`);
+  logger.log(`Runner lock acquired (PID ${process.pid})`);
 }
 
 /**
@@ -101,7 +104,7 @@ export function releaseRunnerLock(): void {
   const pidFile = currentPidFile ?? DEFAULT_PID_FILE;
   if (fs.existsSync(pidFile)) {
     fs.unlinkSync(pidFile);
-    console.log("Runner lock released");
+    logger.log("Runner lock released");
   }
   currentPidFile = null;
 }
