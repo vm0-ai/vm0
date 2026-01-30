@@ -1,7 +1,4 @@
-import {
-  IconAdjustmentsHorizontal,
-  IconChevronDown,
-} from "@tabler/icons-react";
+import { IconChevronDown, IconClearAll } from "@tabler/icons-react";
 import { Popover, PopoverContent, PopoverTrigger, Checkbox } from "@vm0/ui";
 import {
   getEventStyle,
@@ -55,7 +52,7 @@ export function EventTypeFilterDropdown({
   return (
     <Popover>
       <PopoverTrigger className="flex items-center gap-2 px-3 py-1.5 text-sm border border-border rounded-md bg-card hover:bg-muted transition-colors cursor-pointer">
-        <IconAdjustmentsHorizontal className="h-4 w-4 text-muted-foreground" />
+        <IconClearAll className="h-4 w-4 text-foreground" />
         <span className="text-foreground">
           {isAllSelected ? "All types" : `${visibleCount} types`}
         </span>

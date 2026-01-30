@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { LogDetailPage } from "../../views/logs-page/log-detail-page.tsx";
+import { LogDetailPage } from "../../views/logs-page/log-detail/log-detail.tsx";
 import { updatePage$ } from "../react-router.ts";
 import { pathParams$ } from "../route.ts";
 import {
