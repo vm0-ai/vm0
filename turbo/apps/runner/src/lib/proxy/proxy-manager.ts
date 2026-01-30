@@ -213,6 +213,14 @@ export class ProxyManager {
 
     this.isRunning = true;
     logger.log("mitmproxy started successfully");
+
+    // Register exit handler to ensure proxy is killed when runner exits
+    // This handles cases where pm2 delete doesn't give runner time to cleanup
+    process.on("exit", () => {
+      if (this.process && !this.process.killed) {
+        this.process.kill("SIGKILL");
+      }
+    });
   }
 
   /**

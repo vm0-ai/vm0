@@ -989,22 +989,35 @@ jobs:
           echo "runner-deployed=true" >> $GITHUB_OUTPUT
           echo "Runner started at ${RUNNER_DIR} on ${RUNNER_HOST}"
 
-  # Release runner host lock after cli-e2e-03-runner completes (or fails/times out)
-  # Note: Runner cleanup happens in cleanup.yml when PR is closed (to allow reruns)
+  # Stop runner and release host lock after cli-e2e-03-runner completes (or fails/times out)
+  # Runner must be stopped to prevent stale runners from claiming jobs in subsequent CI runs
   # Skip on push to main - runner deployment is only needed for PRs
   unlock-runner-host:
     runs-on: ubuntu-latest
     needs: [deploy-runner-prepare, cli-e2e-03-runner]
     if: always() && contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') && github.event_name != 'push' && needs.deploy-runner-prepare.outputs.runner-host != ''
     steps:
-      - name: Unlock runner host
+      - name: Stop runner and unlock host
         env:
           RUNNER_HOST: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
+          RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
           METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
           SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
         run: |
           mkdir -p "$HOME/.ssh"
           echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
           chmod 600 "$HOME/.ssh/runner.pem"
-          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i "$HOME/.ssh/runner.pem" ${METAL_USER}@${RUNNER_HOST} "rm -rf /opt/vm0-runner/.lock" || true
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
+
+          # Extract job ref from runner dir (e.g., /opt/vm0-runner/pr-1900 -> pr-1900)
+          JOB_REF=$(basename "$RUNNER_DIR")
+          if [ -n "$JOB_REF" ]; then
+            PM2_NAME="vm0-runner-${JOB_REF}"
+            echo "Stopping runner ${PM2_NAME}..."
+            ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "pm2 delete ${PM2_NAME} 2>/dev/null || true"
+            echo "Runner stopped"
+          fi
+
+          # Release the host lock
+          ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "rm -rf /opt/vm0-runner/.lock" || true
           echo "Unlocked runner host: $RUNNER_HOST"
