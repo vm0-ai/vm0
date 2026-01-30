@@ -100,6 +100,41 @@ describe("runner-lock", () => {
 
       killSpy.mockRestore();
     });
+
+    it("should exit if process exists but we lack permission (EPERM)", async () => {
+      // PID file exists with process owned by another user
+      const runningPid = 1; // init/systemd - typically can't signal
+      vi.mocked(fs.existsSync).mockImplementation((path) => {
+        if (path === "/var/run/vm0") return true;
+        if (path === "/var/run/vm0/runner.pid") return true;
+        return false;
+      });
+      vi.mocked(fs.readFileSync).mockReturnValue(runningPid.toString());
+
+      // Mock process.kill to throw EPERM (process exists but no permission)
+      const epermError = new Error("EPERM") as Error & { code: string };
+      epermError.code = "EPERM";
+      const killSpy = vi.spyOn(process, "kill").mockImplementation(() => {
+        throw epermError;
+      });
+      const exitSpy = vi
+        .spyOn(process, "exit")
+        .mockImplementation(() => undefined as never);
+      const errorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
+
+      await acquireRunnerLock();
+
+      // EPERM means process exists, so should exit
+      expect(killSpy).toHaveBeenCalledWith(runningPid, 0);
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Another runner is already running"),
+      );
+
+      killSpy.mockRestore();
+    });
   });
 
   describe("releaseRunnerLock", () => {
