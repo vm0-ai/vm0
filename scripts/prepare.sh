@@ -63,13 +63,24 @@ if command -v pg_isready >/dev/null 2>&1; then
   else
     echo -e "${YELLOW}   Starting PostgreSQL...${NC}"
     if command -v sudo >/dev/null 2>&1; then
-      sudo service postgresql start 2>/dev/null || true
+      if ! sudo service postgresql start; then
+        echo -e "${RED}   Error: Failed to start PostgreSQL service${NC}"
+        echo "   Please start PostgreSQL manually"
+        FAILED=1
+      fi
     fi
-    sleep 2
-    if pg_isready -q 2>/dev/null; then
-      echo -e "${GREEN}   PostgreSQL started${NC}"
-    else
-      echo -e "${RED}   Error: Failed to start PostgreSQL${NC}"
+    # Wait for PostgreSQL to be ready (max 10 seconds)
+    RETRIES=10
+    while [ $RETRIES -gt 0 ]; do
+      if pg_isready -q 2>/dev/null; then
+        echo -e "${GREEN}   PostgreSQL started${NC}"
+        break
+      fi
+      RETRIES=$((RETRIES - 1))
+      sleep 1
+    done
+    if [ $RETRIES -eq 0 ]; then
+      echo -e "${RED}   Error: PostgreSQL not ready after 10 seconds${NC}"
       echo "   Please start PostgreSQL manually"
       FAILED=1
     fi
@@ -84,11 +95,13 @@ fi
 # -----------------------------------------------------------------------------
 echo "4. Checking DATABASE_URL..."
 if [ -z "$DATABASE_URL" ]; then
-  echo -e "${YELLOW}   Warning: DATABASE_URL not set${NC}"
-  echo "   Setting default: postgresql://postgres:postgres@localhost:5432/postgres"
-  export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/postgres"
+  echo -e "${RED}   Error: DATABASE_URL not set${NC}"
+  echo "   Please set DATABASE_URL environment variable"
+  echo "   Example: export DATABASE_URL=\"postgresql://postgres:postgres@localhost:5432/postgres\""
+  FAILED=1
+else
+  echo -e "${GREEN}   DATABASE_URL is set${NC}"
 fi
-echo -e "${GREEN}   DATABASE_URL is set${NC}"
 
 # -----------------------------------------------------------------------------
 # 5. Check .env.local files
@@ -112,11 +125,11 @@ fi
 
 if [ $ENV_MISSING -eq 1 ]; then
   echo ""
-  echo -e "${YELLOW}   Some .env.local files are missing.${NC}"
+  echo -e "${RED}   Error: Some .env.local files are missing.${NC}"
   echo "   Options:"
   echo "   - Run: ./scripts/sync-env.sh (requires 1Password CLI)"
   echo "   - Or manually create .env.local files from .env.local.tpl templates"
-  # Don't fail - let user continue if they want
+  FAILED=1
 fi
 
 # -----------------------------------------------------------------------------
@@ -168,11 +181,6 @@ if [ $FAILED -eq 0 ]; then
   echo "You can now run:"
   echo "  cd turbo && pnpm dev"
   echo ""
-  if [ $ENV_MISSING -eq 1 ]; then
-    echo -e "${YELLOW}Note: Some .env.local files are missing.${NC}"
-    echo "The dev server may fail without proper environment variables."
-    echo ""
-  fi
 else
   echo -e "${RED}  Setup failed!${NC}"
   echo "========================================"
