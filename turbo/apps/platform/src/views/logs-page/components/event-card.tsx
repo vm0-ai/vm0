@@ -656,7 +656,7 @@ function ResultEventContent({ eventData }: { eventData: EventData }) {
   const result = eventData.result;
 
   return (
-    <div className="mt-3 space-y-3">
+    <div className="space-y-3">
       {/* Summary stats */}
       <div className="flex flex-wrap gap-4 text-sm">
         {durationMs !== null && durationMs !== undefined && (
@@ -695,12 +695,12 @@ function ResultEventContent({ eventData }: { eventData: EventData }) {
               return (
                 <div
                   key={model}
-                  className="flex items-center justify-between text-xs bg-background p-2 rounded"
+                  className="flex items-center justify-between gap-4 text-xs bg-background p-2 rounded min-w-0"
                 >
-                  <span className="font-mono text-muted-foreground">
+                  <span className="font-mono text-muted-foreground truncate min-w-0">
                     {model}
                   </span>
-                  <div className="flex gap-3">
+                  <div className="flex gap-3 shrink-0">
                     {usage.inputTokens !== null &&
                       usage.inputTokens !== undefined && (
                         <span>In: {usage.inputTokens.toLocaleString()}</span>
@@ -736,37 +736,6 @@ function ResultEventContent({ eventData }: { eventData: EventData }) {
 }
 
 // ============ MAIN EVENT CARD ============
-
-function EventHeader({
-  event,
-  label,
-  sublabel,
-}: {
-  event: AgentEvent;
-  label: string;
-  sublabel?: string;
-}) {
-  const style = getEventStyle(event.eventType);
-  const Icon = style.icon;
-
-  return (
-    <div className="flex items-center gap-2 text-sm">
-      {/* Badge with icon inside */}
-      <span
-        className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${style.badgeColor}`}
-      >
-        <Icon className="h-3.5 w-3.5" />
-        {label}
-      </span>
-      {sublabel && (
-        <span className="font-medium text-foreground">{sublabel}</span>
-      )}
-      <span className="text-muted-foreground ml-auto">
-        {formatEventTime(event.createdAt)}
-      </span>
-    </div>
-  );
-}
 
 export function EventCard({
   event,
@@ -816,12 +785,25 @@ export function EventCard({
     const subtype = eventData.subtype;
     const isError = eventData.is_error === true || subtype === "error";
     const resultStyle = isError ? getEventStyle("tool_result_error") : style;
+    const ResultIcon = resultStyle.icon;
     return (
       <div
         className={`rounded-lg border ${resultStyle.borderColor} ${resultStyle.bgColor} p-4`}
       >
-        <EventHeader event={event} label={isError ? "Failed" : "Result"} />
-        <ResultEventContent eventData={eventData} />
+        <div className="flex gap-4 items-start">
+          <div className="flex-1 min-w-0 space-y-2">
+            <span
+              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-xs font-medium ${resultStyle.badgeColor}`}
+            >
+              <ResultIcon className="h-4 w-4" />
+              {isError ? "Failed" : "Result"}
+            </span>
+            <ResultEventContent eventData={eventData} />
+          </div>
+          <span className="shrink-0 text-sm text-muted-foreground">
+            {formatEventTime(event.createdAt)}
+          </span>
+        </div>
       </div>
     );
   }
