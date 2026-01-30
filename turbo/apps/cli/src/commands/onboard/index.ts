@@ -240,7 +240,7 @@ function printNextSteps(agentName: string): void {
   console.log(chalk.bold("Next step:"));
   console.log();
   console.log(
-    `  ${chalk.cyan(`cd ${agentName} && claude "/${PRIMARY_SKILL_NAME} let's build a workflow"`)}`,
+    `  ${chalk.cyan(`cd ${agentName} && claude "/${PRIMARY_SKILL_NAME} let's build an agent"`)}`,
   );
   console.log();
 }
