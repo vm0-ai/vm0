@@ -130,7 +130,7 @@ export interface SkillFrontmatter {
  * @param content - Raw content of SKILL.md file
  * @returns Parsed frontmatter fields
  */
-export function parseSkillFrontmatter(content: string): SkillFrontmatter {
+function parseSkillFrontmatter(content: string): SkillFrontmatter {
   // Match frontmatter between --- markers at the start of the file
   const frontmatterMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!frontmatterMatch) {

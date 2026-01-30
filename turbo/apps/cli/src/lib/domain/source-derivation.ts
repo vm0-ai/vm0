@@ -90,7 +90,7 @@ async function fetchSkillFrontmatter(
  * @param options - Options for derivation
  * @returns Variable sources with skill attribution
  */
-export async function deriveAgentVariableSources(
+async function deriveAgentVariableSources(
   agent: AgentDefinition,
   options?: { skipNetwork?: boolean },
 ): Promise<AgentVariableSources> {

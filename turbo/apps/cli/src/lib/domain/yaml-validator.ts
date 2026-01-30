@@ -18,7 +18,7 @@ const cliAgentNameSchema = z
  * Validates GitHub tree URL format for skills
  * Expected format: https://github.com/{owner}/{repo}/tree/{branch}/{path}
  */
-export function validateGitHubTreeUrl(url: string): boolean {
+function validateGitHubTreeUrl(url: string): boolean {
   const githubTreeRegex =
     /^https:\/\/github\.com\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+\/tree\/[^/]+\/.+$/;
   return githubTreeRegex.test(url);
@@ -213,16 +213,6 @@ function formatZodError(error: z.ZodError): string {
  */
 export function validateAgentName(name: string): boolean {
   return cliAgentNameSchema.safeParse(name).success;
-}
-
-/**
- * Normalizes agent name to lowercase
- * Returns null if the name format is invalid
- */
-export function normalizeAgentName(name: string): string | null {
-  const result = cliAgentNameSchema.safeParse(name);
-  if (!result.success) return null;
-  return name.toLowerCase();
 }
 
 /**
