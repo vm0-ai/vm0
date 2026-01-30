@@ -67,15 +67,3 @@ export interface ExecutorResult {
   createdAt: string;
   error?: string;
 }
-
-/**
- * Executor interface
- *
- * Both E2B and Runner executors implement this interface.
- * The key difference:
- * - E2B executor: Executes immediately, returns "running" status
- * - Runner executor: Queues for later execution, returns "pending" status
- */
-export interface Executor {
-  execute(context: PreparedContext): Promise<ExecutorResult>;
-}

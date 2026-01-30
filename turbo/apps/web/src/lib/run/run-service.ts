@@ -12,7 +12,7 @@ import type { ExecutionContext } from "./types";
 import type { AgentComposeSnapshot } from "../checkpoint/types";
 import { getAgentSessionWithConversation } from "../agent-session";
 import { prepareForExecution } from "./context/execution-preparer";
-import { e2bExecutor } from "./executors/e2b-executor";
+import { executeE2bRun } from "./executors/e2b-executor";
 import { executeRunnerJob } from "./executors/runner-executor";
 import type { ExecutorResult, PreparedContext } from "./executors/types";
 import {
@@ -263,6 +263,6 @@ async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
     return await executeRunnerJob(context);
   } else {
     log.debug(`Dispatching run ${context.runId} to E2B executor`);
-    return await e2bExecutor.execute(context);
+    return await executeE2bRun(context);
   }
 }
