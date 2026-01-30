@@ -15,7 +15,13 @@ import {
 } from "../../../../src/db/schema/agent-compose";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { and, eq, inArray, desc } from "drizzle-orm";
-import { runService } from "../../../../src/lib/run";
+import {
+  checkRunConcurrencyLimit,
+  validateCheckpoint,
+  validateAgentSession,
+  buildExecutionContext,
+  prepareAndDispatchRun,
+} from "../../../../src/lib/run";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { generateSandboxToken } from "../../../../src/lib/auth/sandbox-token";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
@@ -130,7 +136,7 @@ const router = tsr.router(runsMainContract, {
 
     // Check concurrent run limit
     try {
-      await runService.checkConcurrencyLimit(userId);
+      await checkRunConcurrencyLimit(userId);
     } catch (error) {
       if (error instanceof ConcurrentRunLimitError) {
         return createErrorResponse("TOO_MANY_REQUESTS", error.message);
@@ -322,7 +328,7 @@ const router = tsr.router(runsMainContract, {
       let checkpointVars: Record<string, string> | null = null;
       let checkpointSecretNames: string[] | null = null;
       try {
-        const checkpointData = await runService.validateCheckpoint(
+        const checkpointData = await validateCheckpoint(
           body.checkpointId!,
           userId,
         );
@@ -367,10 +373,7 @@ const router = tsr.router(runsMainContract, {
       // Session continue
       let sessionData;
       try {
-        sessionData = await runService.validateAgentSession(
-          body.sessionId!,
-          userId,
-        );
+        sessionData = await validateAgentSession(body.sessionId!, userId);
       } catch (error) {
         return {
           status: 404 as const,
@@ -459,7 +462,7 @@ const router = tsr.router(runsMainContract, {
 
     // Build execution context and dispatch to appropriate executor
     try {
-      const context = await runService.buildExecutionContext({
+      const context = await buildExecutionContext({
         checkpointId: body.checkpointId,
         sessionId: body.sessionId,
         agentComposeVersionId:
@@ -483,7 +486,7 @@ const router = tsr.router(runsMainContract, {
       });
 
       // Prepare and dispatch to executor (unified path for E2B and runner)
-      const result = await runService.prepareAndDispatch(context);
+      const result = await prepareAndDispatchRun(context);
 
       log.debug(
         `Run ${run.id} dispatched successfully (status: ${result.status})`,

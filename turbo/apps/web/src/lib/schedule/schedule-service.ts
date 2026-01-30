@@ -16,7 +16,11 @@ import {
   ConcurrentRunLimitError,
 } from "../errors";
 import { logger } from "../logger";
-import { runService } from "../run/run-service";
+import {
+  checkRunConcurrencyLimit,
+  buildExecutionContext,
+  prepareAndDispatchRun,
+} from "../run/run-service";
 import { generateSandboxToken } from "../auth/sandbox-token";
 
 const log = logger("service:schedule");
@@ -784,7 +788,7 @@ class ScheduleService {
 
     // Check concurrent run limit before creating run
     try {
-      await runService.checkConcurrencyLimit(compose.userId);
+      await checkRunConcurrencyLimit(compose.userId);
     } catch (error) {
       if (error instanceof ConcurrentRunLimitError) {
         log.debug(`Schedule ${schedule.name} blocked by concurrent run limit`);
@@ -856,7 +860,7 @@ class ScheduleService {
       const sandboxToken = await generateSandboxToken(compose.userId, run.id);
 
       // Build execution context and dispatch
-      const context = await runService.buildExecutionContext({
+      const context = await buildExecutionContext({
         runId: run.id,
         agentComposeVersionId: compose.headVersionId,
         prompt: schedule.prompt,
@@ -870,7 +874,7 @@ class ScheduleService {
         agentName: compose.name,
       });
 
-      await runService.prepareAndDispatch(context);
+      await prepareAndDispatchRun(context);
     } catch (error) {
       // Mark run as failed with error message
       const errorMessage =

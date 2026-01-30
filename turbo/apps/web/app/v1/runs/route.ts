@@ -21,7 +21,13 @@ import {
   agentComposeVersions,
 } from "../../../src/db/schema/agent-compose";
 import { eq, and, desc, gt } from "drizzle-orm";
-import { runService } from "../../../src/lib/run";
+import {
+  checkRunConcurrencyLimit,
+  validateCheckpoint,
+  validateAgentSession,
+  buildExecutionContext,
+  prepareAndDispatchRun,
+} from "../../../src/lib/run";
 import { generateSandboxToken } from "../../../src/lib/auth/sandbox-token";
 import { ConcurrentRunLimitError } from "../../../src/lib/errors";
 
@@ -163,7 +169,7 @@ const router = tsr.router(publicRunsListContract, {
 
     // Check concurrent run limit
     try {
-      await runService.checkConcurrencyLimit(auth.userId);
+      await checkRunConcurrencyLimit(auth.userId);
     } catch (error) {
       if (error instanceof ConcurrentRunLimitError) {
         return {
@@ -187,14 +193,14 @@ const router = tsr.router(publicRunsListContract, {
     // Priority: checkpointId > sessionId > agentId > agent (name)
     if (body.checkpointId) {
       // Resume from checkpoint - validate and get version ID
-      const checkpointData = await runService.validateCheckpoint(
+      const checkpointData = await validateCheckpoint(
         body.checkpointId,
         auth.userId,
       );
       agentComposeVersionId = checkpointData.agentComposeVersionId;
     } else if (body.sessionId) {
       // Continue session
-      const sessionData = await runService.validateAgentSession(
+      const sessionData = await validateAgentSession(
         body.sessionId,
         auth.userId,
       );
@@ -347,7 +353,7 @@ const router = tsr.router(publicRunsListContract, {
     // Generate sandbox token and dispatch
     const sandboxToken = await generateSandboxToken(auth.userId, run.id);
 
-    const context = await runService.buildExecutionContext({
+    const context = await buildExecutionContext({
       checkpointId: body.checkpointId,
       sessionId: body.sessionId,
       agentComposeVersionId: agentComposeVersionId!,
@@ -364,7 +370,7 @@ const router = tsr.router(publicRunsListContract, {
       apiStartTime,
     });
 
-    const result = await runService.prepareAndDispatch(context);
+    const result = await prepareAndDispatchRun(context);
 
     return {
       status: 202 as const,
