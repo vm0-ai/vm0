@@ -11,27 +11,9 @@
  * - "vm0 run fails when experimental_vars shorthand vars are missing"
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { expandEnvironmentFromCompose } from "../expand-environment";
 import { BadRequestError } from "../../../errors";
-
-// Mock the proxy token service
-vi.mock("../../../proxy/token-service", () => ({
-  createProxyToken: vi.fn(
-    (_runId: string, _userId: string, name: string, value: string) =>
-      `vm0_enc_${name}_${value.slice(0, 4)}`,
-  ),
-}));
-
-// Mock the logger
-vi.mock("../../../logger", () => ({
-  logger: () => ({
-    debug: vi.fn(),
-    warn: vi.fn(),
-    info: vi.fn(),
-    error: vi.fn(),
-  }),
-}));
 
 describe("expandEnvironmentFromCompose", () => {
   const userId = "user-123";
