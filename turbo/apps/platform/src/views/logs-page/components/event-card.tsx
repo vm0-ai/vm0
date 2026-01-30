@@ -329,7 +329,7 @@ function ToolInputParams({
               href={url}
               target="_blank"
               rel="noopener noreferrer"
-              className="font-mono text-xs text-blue-600 dark:text-blue-400 hover:underline break-all"
+              className="font-mono text-xs text-blue-600 hover:underline break-all"
             >
               {url}
             </a>
@@ -408,9 +408,9 @@ function ToolInputParams({
                   : IconCircleDashed;
             const statusColor =
               status === "completed"
-                ? "text-emerald-500 dark:text-emerald-400"
+                ? "text-emerald-600"
                 : status === "in_progress"
-                  ? "text-yellow-600 dark:text-yellow-400"
+                  ? "text-yellow-600"
                   : "text-muted-foreground";
             return (
               <div
@@ -455,7 +455,7 @@ function ParamValue({ value }: { value: unknown }) {
       <span
         className={
           value
-            ? "text-emerald-600 dark:text-emerald-400 text-xs font-medium"
+            ? "text-emerald-600 text-xs font-medium"
             : "text-muted-foreground text-xs"
         }
       >
@@ -465,11 +465,7 @@ function ParamValue({ value }: { value: unknown }) {
   }
 
   if (typeof value === "number") {
-    return (
-      <span className="text-violet-600 dark:text-violet-400 text-xs font-medium">
-        {value}
-      </span>
-    );
+    return <span className="text-violet-600 text-xs font-medium">{value}</span>;
   }
 
   if (typeof value === "string") {
@@ -523,12 +519,12 @@ function ToolResultContentView({
         }).element
       : resultText;
     return (
-      <div className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded text-sm">
-        <div className="flex items-center gap-2 text-red-700 dark:text-red-400 font-medium mb-2">
+      <div className="p-3 bg-red-500/10 border border-red-500/30 rounded text-sm">
+        <div className="flex items-center gap-2 text-red-600 font-medium mb-2">
           <IconAlertCircle className="h-4 w-4" />
           Error
         </div>
-        <pre className="whitespace-pre-wrap overflow-x-auto text-xs text-red-700 dark:text-red-400">
+        <pre className="whitespace-pre-wrap overflow-x-auto text-xs text-red-600">
           {errorElement}
         </pre>
       </div>
@@ -714,7 +710,7 @@ function ResultEventContent({ eventData }: { eventData: EventData }) {
                         <span>Out: {usage.outputTokens.toLocaleString()}</span>
                       )}
                     {usage.costUSD !== null && usage.costUSD !== undefined && (
-                      <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                      <span className="text-emerald-600 font-medium">
                         {formatCost(usage.costUSD)}
                       </span>
                     )}
@@ -793,7 +789,7 @@ export function EventCard({
         <div className="flex gap-4 items-start">
           <div className="flex-1 min-w-0 space-y-2">
             {/* Badge */}
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-xs font-medium bg-sky-50 border border-sky-600 text-sky-600 dark:bg-sky-950/30 dark:border-sky-500 dark:text-sky-400">
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-xs font-medium bg-sky-600/10 border border-sky-600 text-sky-600">
               <Icon className="h-4 w-4" />
               System
             </span>
@@ -838,8 +834,8 @@ export function EventCard({
 
   // Badge colors based on event type
   const badgeClass = isAssistant
-    ? "bg-yellow-50 border border-yellow-600 text-yellow-600 dark:bg-yellow-950/30 dark:border-yellow-500 dark:text-yellow-400"
-    : "bg-pink-50 border border-pink-600 text-pink-600 dark:bg-pink-950/30 dark:border-pink-500 dark:text-pink-400";
+    ? "bg-yellow-600/10 border border-yellow-600 text-yellow-600"
+    : "bg-pink-600/10 border border-pink-600 text-pink-600";
 
   if (!contents || !Array.isArray(contents) || contents.length === 0) {
     // Fallback: show raw data
