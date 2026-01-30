@@ -216,12 +216,22 @@ verify_rootfs() {
         echo "  GitHub CLI: installed"
     fi
 
-    # Check proxy CA certificate
+    # Check proxy CA certificate file exists
     if [ ! -f "$MOUNT_POINT/usr/local/share/ca-certificates/vm0-proxy-ca.crt" ]; then
         echo "ERROR: Proxy CA certificate not found in rootfs"
         ERRORS=$((ERRORS + 1))
     else
-        echo "  Proxy CA: installed"
+        echo "  Proxy CA file: installed"
+    fi
+
+    # Check proxy CA is in system CA bundle (update-ca-certificates worked)
+    # Extract a unique line from our CA cert and check if it exists in the bundle
+    CA_CERT_LINE=$(sed -n '2p' "$MOUNT_POINT/usr/local/share/ca-certificates/vm0-proxy-ca.crt" 2>/dev/null)
+    if [ -z "$CA_CERT_LINE" ] || ! grep -qF "$CA_CERT_LINE" "$MOUNT_POINT/etc/ssl/certs/ca-certificates.crt" 2>/dev/null; then
+        echo "ERROR: Proxy CA not found in system CA bundle (update-ca-certificates may have failed)"
+        ERRORS=$((ERRORS + 1))
+    else
+        echo "  Proxy CA bundle: updated"
     fi
 
     sudo umount "$MOUNT_POINT"
