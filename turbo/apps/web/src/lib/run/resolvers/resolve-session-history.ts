@@ -1,4 +1,4 @@
-import { sessionHistoryService } from "../../session-history";
+import { resolveSessionHistory as resolveFromStorage } from "../../session-history";
 import { NotFoundError } from "../../errors";
 
 /**
@@ -14,7 +14,7 @@ export async function resolveSessionHistory(
   hash: string | null,
   legacyText: string | null,
 ): Promise<string> {
-  const sessionHistory = await sessionHistoryService.resolve(hash, legacyText);
+  const sessionHistory = await resolveFromStorage(hash, legacyText);
   if (!sessionHistory) {
     throw new NotFoundError("Session history not found for conversation");
   }

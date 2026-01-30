@@ -1,1 +1,4 @@
-export { sessionHistoryService } from "./session-history-service";
+export {
+  storeSessionHistory,
+  resolveSessionHistory,
+} from "./session-history-service";

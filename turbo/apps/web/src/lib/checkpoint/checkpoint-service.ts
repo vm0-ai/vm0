@@ -5,7 +5,7 @@ import { conversations } from "../../db/schema/conversation";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { NotFoundError } from "../errors";
 import { agentSessionService } from "../agent-session";
-import { sessionHistoryService } from "../session-history";
+import { storeSessionHistory } from "../session-history";
 import { logger } from "../logger";
 import type {
   CheckpointRequest,
@@ -61,7 +61,7 @@ class CheckpointService {
     );
 
     // Store session history in R2 blob storage
-    const historyHash = await sessionHistoryService.store(
+    const historyHash = await storeSessionHistory(
       request.cliAgentSessionHistory,
     );
     log.debug(`Session history stored in R2, hash=${historyHash}`);
