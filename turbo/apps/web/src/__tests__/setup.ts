@@ -28,6 +28,11 @@ vi.hoisted(() => {
     "SECRETS_ENCRYPTION_KEY",
     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   );
+  // 64 hex chars = 32 bytes secret for official runner authentication
+  vi.stubEnv(
+    "OFFICIAL_RUNNER_SECRET",
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  );
 });
 
 // Mock server-only package (no-op in tests)

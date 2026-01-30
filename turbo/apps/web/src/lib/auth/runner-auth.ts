@@ -17,14 +17,14 @@ const log = logger("auth:runner");
 /**
  * Token prefix for official runner authentication
  */
-export const OFFICIAL_RUNNER_TOKEN_PREFIX = "vm0_official_";
+const OFFICIAL_RUNNER_TOKEN_PREFIX = "vm0_official_";
 
 /**
  * Runner authentication context
  * - 'user': Authenticated via CLI token, tied to a specific user
  * - 'official-runner': Authenticated via official runner secret
  */
-export type RunnerAuthContext =
+type RunnerAuthContext =
   | { type: "user"; userId: string }
   | { type: "official-runner" };
 
