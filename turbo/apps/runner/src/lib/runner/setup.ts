@@ -99,22 +99,47 @@ export async function setupEnvironment(
 
 /**
  * Clean up runner resources: proxy and CIDR rules
+ * Each step is isolated so failures don't prevent subsequent cleanup
  */
 export async function cleanupEnvironment(
   resources: RunnerResources,
 ): Promise<void> {
+  const errors: Error[] = [];
+
   // Cleanup CIDR proxy rules first
   if (resources.proxyEnabled) {
-    logger.log("Cleaning up CIDR proxy rules...");
-    await cleanupCIDRProxyRules(resources.proxyPort);
+    try {
+      logger.log("Cleaning up CIDR proxy rules...");
+      await cleanupCIDRProxyRules(resources.proxyPort);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      errors.push(error);
+      logger.error(`Failed to cleanup CIDR proxy rules: ${error.message}`);
+    }
   }
 
   // Cleanup proxy
   if (resources.proxyEnabled) {
-    logger.log("Stopping network proxy...");
-    await getProxyManager().stop();
+    try {
+      logger.log("Stopping network proxy...");
+      await getProxyManager().stop();
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      errors.push(error);
+      logger.error(`Failed to stop network proxy: ${error.message}`);
+    }
   }
 
   // Release runner lock last
-  releaseRunnerLock();
+  try {
+    releaseRunnerLock();
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    errors.push(error);
+    logger.error(`Failed to release runner lock: ${error.message}`);
+  }
+
+  if (errors.length > 0) {
+    logger.error(`Cleanup completed with ${errors.length} error(s)`);
+  }
 }
