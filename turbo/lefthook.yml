@@ -8,8 +8,9 @@ pre-commit:
       glob: "turbo/**/*.{js,ts,tsx,jsx,mjs,cjs}"
     prettier:
       root: turbo/
-      run: pnpm prettier --list-different --ignore-unknown {staged_files}
+      run: pnpm prettier --write --ignore-unknown {staged_files}
       glob: "turbo/**/*"
+      stage_fixed: true
     check-types:
       root: turbo/
       # Only type-check packages affected by staged changes (much faster than full check)
