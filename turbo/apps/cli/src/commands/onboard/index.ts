@@ -2,7 +2,6 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { mkdir } from "fs/promises";
 import { existsSync } from "fs";
-import path from "path";
 import { validateAgentName } from "../../lib/domain/yaml-validator.js";
 import {
   isInteractive,
@@ -13,9 +12,10 @@ import {
 } from "../../lib/utils/prompt-utils.js";
 import { renderOnboardWelcome } from "../../lib/ui/welcome-box.js";
 import {
-  createProgressiveProgress,
-  type ProgressiveProgress,
-} from "../../lib/ui/progress-line.js";
+  createStepRunner,
+  type StepContext,
+  type StepRunner,
+} from "../../lib/ui/step-runner.js";
 import {
   isAuthenticated,
   runAuthFlow,
@@ -39,148 +39,164 @@ interface OnboardOptions {
 interface OnboardContext {
   interactive: boolean;
   options: OnboardOptions;
-  progress: ProgressiveProgress;
+  runner: StepRunner;
 }
 
 async function handleAuthentication(ctx: OnboardContext): Promise<void> {
-  ctx.progress.startStep("Authentication");
+  await ctx.runner.step("Authenticate to vm0.ai", async (step: StepContext) => {
+    const authenticated = await isAuthenticated();
+    if (authenticated) {
+      return;
+    }
 
-  const authenticated = await isAuthenticated();
-  if (authenticated) {
-    ctx.progress.completeStep();
-    return;
-  }
-
-  if (!ctx.interactive) {
-    ctx.progress.failStep();
-    console.error(chalk.red("Error: Not authenticated"));
-    console.error("Run 'vm0 auth login' first or set VM0_TOKEN");
-    process.exit(1);
-  }
-
-  await runAuthFlow({
-    onInitiating: () => {
-      // No detail needed - step header is enough
-    },
-    onDeviceCodeReady: (url, code, expiresIn) => {
-      ctx.progress.detail(`Visit: ${url}`);
-      ctx.progress.detail(`Code: ${code}`);
-      ctx.progress.detail(`Expires in ${expiresIn} minutes`);
-      ctx.progress.detail("Waiting for confirmation...");
-    },
-    onPolling: () => {
-      // Don't add detail for each poll - would create too many lines
-    },
-    onSuccess: () => {
-      // Will be shown as completed step
-    },
-    onError: (error) => {
-      ctx.progress.failStep();
-      console.error(chalk.red(`\n${error.message}`));
+    if (!ctx.interactive) {
+      console.error(chalk.red("Error: Not authenticated"));
+      console.error("Run 'vm0 auth login' first or set VM0_TOKEN");
       process.exit(1);
-    },
-  });
+    }
 
-  ctx.progress.completeStep();
+    await runAuthFlow({
+      onInitiating: () => {
+        // Step header is sufficient
+      },
+      onDeviceCodeReady: (url, code, expiresIn) => {
+        step.detail(`Copy code: ${chalk.cyan.bold(code)}`);
+        step.detail(`Open: ${chalk.cyan(url)}`);
+        step.detail(chalk.dim(`Expires in ${expiresIn} minutes`));
+      },
+      onPolling: () => {
+        // Don't add detail for each poll
+      },
+      onSuccess: () => {
+        // Will be shown as completed step
+      },
+      onError: (error) => {
+        console.error(chalk.red(`\n${error.message}`));
+        process.exit(1);
+      },
+    });
+  });
 }
 
 async function handleModelProvider(ctx: OnboardContext): Promise<void> {
-  ctx.progress.startStep("Model Provider Setup");
+  await ctx.runner.step("Set Up Model Provider", async (step: StepContext) => {
+    const providerStatus = await checkModelProviderStatus();
+    if (providerStatus.hasProvider) {
+      return;
+    }
 
-  const providerStatus = await checkModelProviderStatus();
-  if (providerStatus.hasProvider) {
-    ctx.progress.completeStep();
-    return;
-  }
+    if (!ctx.interactive) {
+      console.error(chalk.red("Error: No model provider configured"));
+      console.error("Run 'vm0 model-provider setup' first");
+      process.exit(1);
+    }
 
-  if (!ctx.interactive) {
-    ctx.progress.failStep();
-    console.error(chalk.red("Error: No model provider configured"));
-    console.error("Run 'vm0 model-provider setup' first");
-    process.exit(1);
-  }
+    const choices = getProviderChoices();
 
-  ctx.progress.detail("Setup required...");
+    step.connector();
+    const providerType = await step.prompt(() =>
+      promptSelect<ModelProviderType>(
+        "Select provider type:",
+        choices.map((c) => ({
+          title: c.label,
+          value: c.type,
+        })),
+      ),
+    );
 
-  const choices = getProviderChoices();
-  const providerType = await promptSelect<ModelProviderType>(
-    "Select provider type:",
-    choices.map((c) => ({
-      title: c.label,
-      value: c.type,
-      description: c.helpText,
-    })),
-  );
+    if (!providerType) {
+      process.exit(0);
+    }
 
-  if (!providerType) {
-    process.exit(0);
-  }
+    const selectedChoice = choices.find((c) => c.type === providerType);
 
-  const selectedChoice = choices.find((c) => c.type === providerType);
+    // Show provider-specific help text
+    if (selectedChoice?.helpText) {
+      for (const line of selectedChoice.helpText.split("\n")) {
+        step.detail(chalk.dim(line));
+      }
+    }
 
-  const credential = await promptPassword(
-    `Enter your ${selectedChoice?.credentialLabel ?? "credential"}:`,
-  );
+    const credential = await step.prompt(() =>
+      promptPassword(
+        `Enter your ${selectedChoice?.credentialLabel ?? "credential"}:`,
+      ),
+    );
 
-  if (!credential) {
-    console.log(chalk.dim("Cancelled"));
-    process.exit(0);
-  }
+    if (!credential) {
+      console.log(chalk.dim("Cancelled"));
+      process.exit(0);
+    }
 
-  const result = await setupModelProvider(providerType, credential);
-  ctx.progress.detail(
-    `${providerType} ${result.created ? "created" : "updated"}${result.isDefault ? ` (default for ${result.framework})` : ""}`,
-  );
-
-  ctx.progress.completeStep();
+    const result = await setupModelProvider(providerType, credential);
+    step.detail(
+      chalk.green(
+        `${providerType} ${result.created ? "created" : "updated"}${result.isDefault ? ` (default for ${result.framework})` : ""}`,
+      ),
+    );
+  });
 }
 
 async function handleAgentCreation(ctx: OnboardContext): Promise<string> {
-  ctx.progress.startStep("Create Agent");
-
   let agentName = ctx.options.name ?? DEFAULT_AGENT_NAME;
 
-  if (!ctx.options.yes && !ctx.options.name && ctx.interactive) {
-    const inputName = await promptText(
-      "Enter agent name:",
-      DEFAULT_AGENT_NAME,
-      (value: string) => {
-        if (!validateAgentName(value)) {
-          return "Invalid name: 3-64 chars, alphanumeric + hyphens, start/end with letter/number";
+  await ctx.runner.step("Create New Project", async (step: StepContext) => {
+    // Interactive mode: prompt for name, re-prompt if folder exists
+    if (!ctx.options.yes && !ctx.options.name && ctx.interactive) {
+      let folderExists = true;
+
+      while (folderExists) {
+        step.connector();
+        const inputName = await step.prompt(() =>
+          promptText(
+            "Enter project name:",
+            DEFAULT_AGENT_NAME,
+            (value: string) => {
+              if (!validateAgentName(value)) {
+                return "Invalid name: 3-64 chars, alphanumeric + hyphens, start/end with letter/number";
+              }
+              return true;
+            },
+          ),
+        );
+
+        if (!inputName) {
+          process.exit(0);
         }
-        return true;
-      },
-    );
+        agentName = inputName;
 
-    if (!inputName) {
-      process.exit(0);
+        if (existsSync(agentName)) {
+          step.detail(
+            chalk.yellow(`${agentName}/ already exists, choose another name`),
+          );
+        } else {
+          folderExists = false;
+        }
+      }
+    } else {
+      // Non-interactive mode: validate and fail if exists
+      if (!validateAgentName(agentName)) {
+        console.error(
+          chalk.red(
+            "Invalid agent name: must be 3-64 chars, alphanumeric + hyphens",
+          ),
+        );
+        process.exit(1);
+      }
+
+      if (existsSync(agentName)) {
+        console.error(chalk.red(`${agentName}/ already exists`));
+        console.log();
+        console.log("Remove it first or choose a different name:");
+        console.log(chalk.cyan(`  rm -rf ${agentName}`));
+        process.exit(1);
+      }
     }
-    agentName = inputName;
-  }
 
-  if (!validateAgentName(agentName)) {
-    ctx.progress.failStep();
-    console.error(
-      chalk.red(
-        "Invalid agent name: must be 3-64 chars, alphanumeric + hyphens",
-      ),
-    );
-    process.exit(1);
-  }
+    await mkdir(agentName, { recursive: true });
+    step.detail(chalk.green(`Created ${agentName}/`));
+  });
 
-  if (existsSync(agentName)) {
-    ctx.progress.failStep();
-    console.error(chalk.red(`${agentName}/ already exists`));
-    console.log();
-    console.log("Remove it first or choose a different name:");
-    console.log(chalk.cyan(`  rm -rf ${agentName}`));
-    process.exit(1);
-  }
-
-  await mkdir(agentName, { recursive: true });
-  ctx.progress.detail(`Created ${agentName}/`);
-
-  ctx.progress.completeStep();
   return agentName;
 }
 
@@ -188,40 +204,35 @@ async function handlePluginInstallation(
   ctx: OnboardContext,
   agentName: string,
 ): Promise<void> {
-  ctx.progress.startStep("Claude Plugin Install");
+  await ctx.runner.step("Install Claude Plugin", async (step: StepContext) => {
+    // Ask if user wants to install the plugin
+    let shouldInstall = true;
+    if (!ctx.options.yes && ctx.interactive) {
+      step.connector();
+      const confirmed = await step.prompt(() =>
+        promptConfirm("Install VM0 Claude Plugin?", true),
+      );
+      shouldInstall = confirmed ?? true;
+    }
 
-  // Ask if user wants to install the plugin
-  let shouldInstall = true;
-  if (!ctx.options.yes && ctx.interactive) {
-    const confirmed = await promptConfirm(
-      "Install VM0 Claude Plugin?",
-      true, // default: Yes
-    );
-    shouldInstall = confirmed ?? true;
-  }
+    if (!shouldInstall) {
+      step.detail(chalk.dim("Skipped"));
+      return;
+    }
 
-  if (!shouldInstall) {
-    ctx.progress.detail("Skipped");
-    ctx.progress.completeStep();
-    return;
-  }
+    // Install at project scope in the demo project directory
+    const scope: PluginScope = "project";
 
-  // Always use project scope since we're creating a new project
-  const scope: PluginScope = "project";
-
-  try {
-    // Get absolute path for the agent directory
-    const agentDir = path.resolve(process.cwd(), agentName);
-
-    const result = await installVm0Plugin(scope, agentDir);
-    ctx.progress.detail(
-      `Installed ${result.pluginId} (scope: ${result.scope})`,
-    );
-  } catch (error) {
-    handlePluginError(error);
-  }
-
-  ctx.progress.completeStep();
+    try {
+      const agentDir = `${process.cwd()}/${agentName}`;
+      const result = await installVm0Plugin(scope, agentDir);
+      step.detail(
+        chalk.green(`Installed ${result.pluginId} (scope: ${result.scope})`),
+      );
+    } catch (error) {
+      handlePluginError(error);
+    }
+  });
 }
 
 function printNextSteps(agentName: string): void {
@@ -242,25 +253,29 @@ export const onboardCommand = new Command()
   .action(async (options: OnboardOptions) => {
     const interactive = isInteractive();
 
-    // Print welcome banner once at the start (it will scroll away)
+    // Clear screen and print welcome banner at the start
     if (interactive) {
+      process.stdout.write("\x1b[2J\x1b[H");
       console.log();
       renderOnboardWelcome();
       console.log();
     }
 
-    const progress = createProgressiveProgress(interactive);
-    const ctx: OnboardContext = { interactive, options, progress };
+    const runner = createStepRunner({
+      interactive,
+      header: interactive ? renderOnboardWelcome : undefined,
+    });
+    const ctx: OnboardContext = { interactive, options, runner };
 
     await handleAuthentication(ctx);
     await handleModelProvider(ctx);
     const agentName = await handleAgentCreation(ctx);
     await handlePluginInstallation(ctx, agentName);
 
-    // Mark final step as complete (no connector line after)
-    progress.startStep("Complete");
-    progress.setFinalStep();
-    progress.completeStep();
+    // Final step
+    await ctx.runner.finalStep("Completed", async () => {
+      // Empty - just marks completion
+    });
 
     printNextSteps(agentName);
   });
