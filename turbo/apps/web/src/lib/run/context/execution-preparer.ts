@@ -5,7 +5,7 @@ import type {
 } from "../../../types/agent-compose";
 import type { ExecutionContext } from "../types";
 import type { PreparedContext } from "../executors/types";
-import { storageService } from "../../storage/storage-service";
+import { prepareStorageManifest } from "../../storage/storage-service";
 import { BadRequestError } from "../../errors";
 import { logger } from "../../logger";
 import type { ExperimentalFirewall as CoreExperimentalFirewall } from "@vm0/core";
@@ -188,7 +188,7 @@ export async function prepareForExecution(
 
   // Prepare storage manifest with presigned URLs
   // This is done ONCE here, not in each executor
-  const storageManifest = await storageService.prepareStorageManifest(
+  const storageManifest = await prepareStorageManifest(
     context.agentCompose as AgentComposeYaml,
     context.vars || {},
     context.userId || "",

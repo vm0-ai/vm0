@@ -1,7 +1,7 @@
 import { Sandbox } from "@e2b/code-interpreter";
 import { e2bConfig } from "./config";
 import type { RunResult } from "./types";
-import { storageService } from "../storage/storage-service";
+import { prepareStorageManifest } from "../storage/storage-service";
 import { BadRequestError } from "../errors";
 import { resolveImageAlias } from "../image/image-service";
 import type {
@@ -78,7 +78,7 @@ class E2BService {
       const artifactMountPath = firstAgent.working_dir;
       // Prepare storage manifest with presigned URLs for direct download to sandbox
       // This works for both new runs and resume scenarios
-      const storageManifest = await storageService.prepareStorageManifest(
+      const storageManifest = await prepareStorageManifest(
         agentCompose,
         context.vars || {},
         context.userId || "",
