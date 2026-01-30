@@ -587,7 +587,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260129
-    needs: [prepare, cli-e2e-01-serial, deploy-web, deploy-runner-start]
+    needs: [prepare, cli-e2e-01-serial, deploy-web, deploy-runner-start, deploy-runner-benchmark]
     if: |
       contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
       github.event_name != 'push' &&
@@ -676,6 +676,7 @@ jobs:
     outputs:
       runner-host: ${{ steps.lock.outputs.host }}
       runner-dir: ${{ steps.prepare.outputs.runner-dir }}
+      proxy-port: ${{ steps.prepare.outputs.proxy-port }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
@@ -872,6 +873,7 @@ jobs:
             -v
 
           echo "runner-dir=${RUNNER_DIR}" >> $GITHUB_OUTPUT
+          echo "proxy-port=${PROXY_PORT}" >> $GITHUB_OUTPUT
           echo "Runner prepared at ${RUNNER_DIR} on ${RUNNER_HOST}"
 
   # Run benchmark command to test VM boot performance (runs after prepare, before start)
@@ -880,7 +882,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260129
-    needs: [prepare, deploy-runner-prepare]
+    needs: [prepare, deploy-runner-prepare, deploy-runner-start]
     if: |
       contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
       github.event_name != 'push' &&
@@ -897,6 +899,7 @@ jobs:
           METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
           RUNNER_HOST: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
           RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
+          PROXY_PORT: ${{ needs.deploy-runner-prepare.outputs.proxy-port }}
           SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
         run: |
           mkdir -p "$HOME/.ssh"
@@ -907,15 +910,16 @@ jobs:
 
           echo "=== Running VM Benchmark on ${RUNNER_HOST} ==="
           echo "Runner directory: ${RUNNER_DIR}"
+          echo "Proxy port: ${PROXY_PORT}"
           echo ""
 
-          # Create minimal benchmark config (paths match runner.yaml.j2 template)
-          ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "echo 'firecracker:' > ${RUNNER_DIR}/benchmark.yaml && echo '  binary: /usr/local/bin/firecracker' >> ${RUNNER_DIR}/benchmark.yaml && echo '  kernel: /opt/firecracker/vmlinux' >> ${RUNNER_DIR}/benchmark.yaml && echo '  rootfs: ${RUNNER_DIR}/rootfs.squashfs' >> ${RUNNER_DIR}/benchmark.yaml"
+          # Create benchmark config with proxy settings (firewall + mitm enabled by default)
+          ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "echo 'firecracker:' > ${RUNNER_DIR}/benchmark.yaml && echo '  binary: /usr/local/bin/firecracker' >> ${RUNNER_DIR}/benchmark.yaml && echo '  kernel: /opt/firecracker/vmlinux' >> ${RUNNER_DIR}/benchmark.yaml && echo '  rootfs: ${RUNNER_DIR}/rootfs.squashfs' >> ${RUNNER_DIR}/benchmark.yaml && echo 'proxy:' >> ${RUNNER_DIR}/benchmark.yaml && echo '  port: ${PROXY_PORT}' >> ${RUNNER_DIR}/benchmark.yaml && echo '  ca_dir: ${RUNNER_DIR}/proxy' >> ${RUNNER_DIR}/benchmark.yaml"
 
-          # Run benchmark command with a simple echo test
-          ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "cd ${RUNNER_DIR} && node index.js benchmark --config benchmark.yaml 'echo VM boot test successful'" 2>&1 || {
+          # Run benchmark command with curl test to verify HTTPS through proxy
+          ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "cd ${RUNNER_DIR} && node index.js benchmark --config benchmark.yaml 'curl -s https://httpbin.org/get | head -5'" 2>&1 || {
             echo "Benchmark command failed (exit code: $?)"
-            echo "This may indicate issues with VM boot or Firecracker setup"
+            echo "This may indicate issues with VM boot, proxy, or Firecracker setup"
             exit 1
           }
 
@@ -952,14 +956,13 @@ jobs:
           METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
           RUNNER_HOST: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
           RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
+          PROXY_PORT: ${{ needs.deploy-runner-prepare.outputs.proxy-port }}
           SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
         run: |
-          PROXY_PORT=$(echo -n "${JOB_REF}" | md5sum | cut -c1-8 | sed 's/[a-f]//g' | cut -c1-3 | awk '{print 8080 + int($1)}')
-
           mkdir -p "$HOME/.ssh"
           echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
           chmod 600 "$HOME/.ssh/runner.pem"

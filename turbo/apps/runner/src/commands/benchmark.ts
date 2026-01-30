@@ -37,6 +37,11 @@ function createBenchmarkContext(
     resumeSession: null,
     secretValues: null,
     cliAgentType: options.agentType,
+    // Enable firewall and MITM by default for benchmark to test proxy flow
+    experimentalFirewall: {
+      enabled: true,
+      experimental_mitm: true,
+    },
   };
 }
 
