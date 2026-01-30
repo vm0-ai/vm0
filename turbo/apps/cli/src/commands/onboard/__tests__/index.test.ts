@@ -1,3 +1,14 @@
+/**
+ * Tests for onboard command
+ *
+ * Tests command-level behavior via parseAsync() following CLI testing principles:
+ * - Entry point: command.parseAsync()
+ * - Mock (external): Web API via MSW, child_process (Claude CLI)
+ * - Real (internal): All CLI code, filesystem, config, validators
+ *
+ * All tests use non-interactive mode (-y flag) per CLI testing guidelines.
+ */
+
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { existsSync, mkdtempSync, rmSync } from "fs";
 import * as path from "path";
@@ -6,13 +17,8 @@ import { EventEmitter } from "events";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.js";
 
-// Mock prompts at system boundary (third-party library for user input)
-vi.mock("prompts", () => ({
-  default: vi.fn(),
-}));
-
-// Mock os.homedir at system boundary (Node.js built-in)
-// This allows us to use real config files in a temp directory
+// Mock os.homedir to isolate config files in temp directory
+// This is acceptable per CLI testing patterns (similar to auth tests)
 vi.mock("os", async (importOriginal) => {
   const original = await importOriginal<typeof import("os")>();
   return {
@@ -21,12 +27,11 @@ vi.mock("os", async (importOriginal) => {
   };
 });
 
-// Mock child_process for Claude CLI commands
+// Mock child_process for Claude CLI commands (external third-party tool)
 vi.mock("child_process", () => ({
   spawn: vi.fn(),
 }));
 
-import prompts from "prompts";
 import { spawn } from "child_process";
 import { onboardCommand } from "../index";
 
@@ -161,28 +166,6 @@ describe("onboard command", () => {
         });
       }),
     );
-
-    // Default prompts mock - return values for interactive prompts
-    vi.mocked(prompts).mockImplementation(async (questions) => {
-      const q = Array.isArray(questions) ? questions[0] : questions;
-      if (!q) return {};
-      if (q.name === "type") {
-        return { type: "anthropic-api-key" };
-      }
-      if (q.name === "credential" || q.name === "value") {
-        return { [q.name]: "sk-test-key" };
-      }
-      if (q.name === "convert") {
-        return { convert: false };
-      }
-      if (q.name === "value" && q.type === "text") {
-        return { value: "my-vm0-agent" };
-      }
-      if (q.name === "value" && q.type === "confirm") {
-        return { value: true };
-      }
-      return {};
-    });
   });
 
   afterEach(() => {
@@ -201,7 +184,7 @@ describe("onboard command", () => {
   });
 
   describe("welcome screen", () => {
-    it("should display welcome box in interactive mode", async () => {
+    it("should display welcome box in non-interactive mode", async () => {
       await onboardCommand.parseAsync(["node", "cli", "-y"]);
 
       const logCalls = vi.mocked(console.log).mock.calls.flat().join("\n");
