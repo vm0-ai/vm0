@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.31.1](https://github.com/vm0-ai/vm0/compare/platform-v0.31.0...platform-v0.31.1) (2026-01-30)
+
+
+### Bug Fixes
+
+* **platform:** align result card layout with other event cards ([#1950](https://github.com/vm0-ai/vm0/issues/1950)) ([46930c1](https://github.com/vm0-ai/vm0/commit/46930c117e637e3c1cd35b26bb8dc2ca1b585e12))
+* **platform:** search only matches visible text in formatted view ([#1951](https://github.com/vm0-ai/vm0/issues/1951)) ([b198423](https://github.com/vm0-ai/vm0/commit/b198423042aa503f71e48b9e7f75f7d9aa73302f))
+
 ## [0.31.0](https://github.com/vm0-ai/vm0/compare/platform-v0.30.0...platform-v0.31.0) (2026-01-30)
 
 

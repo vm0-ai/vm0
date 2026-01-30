@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.6.2](https://github.com/vm0-ai/vm0/compare/runner-v3.6.1...runner-v3.6.2) (2026-01-30)
+
+
+### Bug Fixes
+
+* **runner:** enhance rootfs ca verification to check bundle ([#1947](https://github.com/vm0-ai/vm0/issues/1947)) ([c1d59a5](https://github.com/vm0-ai/vm0/commit/c1d59a59ecd67ca7f2659dd67d20d988f41c69fc))
+
 ## [3.6.1](https://github.com/vm0-ai/vm0/compare/runner-v3.6.0...runner-v3.6.1) (2026-01-30)
 
 
