@@ -9,7 +9,7 @@ import {
   BadRequestError,
 } from "../../errors";
 import { logger } from "../../logger";
-import { agentSessionService } from "../../agent-session";
+import { getAgentSessionWithConversation } from "../../agent-session";
 import type { ConversationResolution } from "./types";
 import { extractWorkingDir } from "../utils";
 import { resolveSessionHistory } from "./resolve-session-history";
@@ -33,7 +33,7 @@ export async function resolveSession(
 ): Promise<ConversationResolution> {
   log.debug(`Resolving session ${sessionId} for user ${userId}`);
 
-  const session = await agentSessionService.getByIdWithConversation(sessionId);
+  const session = await getAgentSessionWithConversation(sessionId);
 
   if (!session) {
     throw new NotFoundError("Agent session not found");

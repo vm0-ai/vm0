@@ -10,7 +10,7 @@ import {
 import { logger } from "../logger";
 import type { ExecutionContext } from "./types";
 import type { AgentComposeSnapshot } from "../checkpoint/types";
-import { agentSessionService } from "../agent-session";
+import { getAgentSessionWithConversation } from "../agent-session";
 import { prepareForExecution } from "./context/execution-preparer";
 import { e2bExecutor } from "./executors/e2b-executor";
 import { executeRunnerJob } from "./executors/runner-executor";
@@ -171,8 +171,7 @@ class RunService {
     log.debug(`Validating agent session ${agentSessionId} for user ${userId}`);
 
     // Load session with conversation data
-    const session =
-      await agentSessionService.getByIdWithConversation(agentSessionId);
+    const session = await getAgentSessionWithConversation(agentSessionId);
 
     if (!session) {
       throw new NotFoundError("Agent session not found");

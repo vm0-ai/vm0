@@ -4,7 +4,7 @@ import { agentComposeVersions } from "../../db/schema/agent-compose";
 import { conversations } from "../../db/schema/conversation";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { NotFoundError } from "../errors";
-import { agentSessionService } from "../agent-session";
+import { findOrCreateAgentSession } from "../agent-session";
 import { storeSessionHistory } from "../session-history";
 import { logger } from "../logger";
 import type {
@@ -184,7 +184,7 @@ export async function createCheckpoint(
   const volumeSnapshot = request.volumeVersionsSnapshot as
     | VolumeVersionsSnapshot
     | undefined;
-  const { session: agentSession } = await agentSessionService.findOrCreate(
+  const { session: agentSession } = await findOrCreateAgentSession(
     run.userId,
     version.composeId,
     artifactSnapshot?.artifactName, // May be undefined for runs without artifact
