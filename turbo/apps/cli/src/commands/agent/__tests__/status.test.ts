@@ -231,4 +231,170 @@ describe("agent status command", () => {
       );
     });
   });
+
+  describe("variable source derivation", () => {
+    it("should display environment variables with source info when --no-sources used", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
+          const url = new URL(request.url);
+          if (url.searchParams.get("name") === "my-agent") {
+            return HttpResponse.json({
+              id: "cmp-123",
+              name: "my-agent",
+              headVersionId:
+                "abc123def456789012345678901234567890123456789012345678901234",
+              content: {
+                version: "1.0",
+                agents: {
+                  "test-agent": {
+                    framework: "claude-code",
+                    working_dir: "/workspace",
+                    environment: {
+                      API_KEY: "${{ secrets.OPENAI_API_KEY }}",
+                      DEBUG_MODE: "${{ vars.DEBUG_MODE }}",
+                      GITHUB_CRED: "${{ credentials.GITHUB_APP }}",
+                    },
+                  },
+                },
+              },
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            });
+          }
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 400 },
+          );
+        }),
+      );
+
+      await statusCommand.parseAsync([
+        "node",
+        "cli",
+        "my-agent",
+        "--no-sources",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+
+      // Should display secrets section
+      expect(logCalls).toContain("Secrets:");
+      expect(logCalls).toContain("OPENAI_API_KEY");
+      expect(logCalls).toContain("agent environment");
+
+      // Should display vars section
+      expect(logCalls).toContain("Vars:");
+      expect(logCalls).toContain("DEBUG_MODE");
+
+      // Should display credentials section
+      expect(logCalls).toContain("Credentials:");
+      expect(logCalls).toContain("GITHUB_APP");
+    });
+
+    it("should display multiple secrets and vars from compose", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
+          const url = new URL(request.url);
+          if (url.searchParams.get("name") === "multi-var-agent") {
+            return HttpResponse.json({
+              id: "cmp-456",
+              name: "multi-var-agent",
+              headVersionId:
+                "def456abc789012345678901234567890123456789012345678901234567",
+              content: {
+                version: "1.0",
+                agents: {
+                  "multi-agent": {
+                    framework: "claude-code",
+                    working_dir: "/workspace",
+                    environment: {
+                      SECRET_A: "${{ secrets.SECRET_ONE }}",
+                      SECRET_B: "${{ secrets.SECRET_TWO }}",
+                      VAR_A: "${{ vars.CONFIG_VALUE }}",
+                      VAR_B: "${{ vars.FEATURE_FLAG }}",
+                    },
+                  },
+                },
+              },
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            });
+          }
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 400 },
+          );
+        }),
+      );
+
+      await statusCommand.parseAsync([
+        "node",
+        "cli",
+        "multi-var-agent",
+        "--no-sources",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+
+      // Should display all secrets
+      expect(logCalls).toContain("SECRET_ONE");
+      expect(logCalls).toContain("SECRET_TWO");
+
+      // Should display all vars
+      expect(logCalls).toContain("CONFIG_VALUE");
+      expect(logCalls).toContain("FEATURE_FLAG");
+    });
+
+    it("should display agent with no environment variables", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
+          const url = new URL(request.url);
+          if (url.searchParams.get("name") === "simple-agent") {
+            return HttpResponse.json({
+              id: "cmp-789",
+              name: "simple-agent",
+              headVersionId:
+                "ghi789abc012345678901234567890123456789012345678901234567890",
+              content: {
+                version: "1.0",
+                agents: {
+                  "basic-agent": {
+                    framework: "claude-code",
+                    working_dir: "/workspace",
+                    // No environment variables
+                  },
+                },
+              },
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            });
+          }
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 400 },
+          );
+        }),
+      );
+
+      await statusCommand.parseAsync([
+        "node",
+        "cli",
+        "simple-agent",
+        "--no-sources",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+
+      // Should not display secrets/vars sections when none exist
+      expect(logCalls).not.toContain("Secrets:");
+      expect(logCalls).not.toContain("Vars:");
+      expect(logCalls).not.toContain("Credentials:");
+
+      // Should still show basic info
+      expect(logCalls).toContain("Name:");
+      expect(logCalls).toContain("simple-agent");
+      expect(logCalls).toContain("Framework:");
+      expect(logCalls).toContain("claude-code");
+    });
+  });
 });

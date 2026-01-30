@@ -94,10 +94,17 @@ describe("cook command", () => {
     await fs.rm(configDir, { recursive: true, force: true });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     process.chdir(originalCwd);
     rmSync(tempDir, { recursive: true, force: true });
     rmSync(testHome, { recursive: true, force: true });
+    // Clean up state file from default location (tmpdir/.vm0/cook.json)
+    const defaultStateFile = path.join(os.tmpdir(), ".vm0", "cook.json");
+    try {
+      await fs.unlink(defaultStateFile);
+    } catch {
+      // File may not exist
+    }
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
@@ -313,6 +320,210 @@ agents:
         expect.stringContaining("vm0 cook"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
+    });
+  });
+
+  describe("state persistence", () => {
+    // Note: cook-state.ts computes CONFIG_DIR at module load time using homedir().
+    // Since homedir() returns os.tmpdir() at module load, we write state files there.
+    // We use a unique PPID in each test to avoid conflicts between tests.
+
+    async function writeStateToDefaultLocation(
+      ppid: string,
+      state: {
+        lastRunId?: string;
+        lastSessionId?: string;
+        lastCheckpointId?: string;
+      },
+    ): Promise<void> {
+      // cook-state uses tmpdir()/.vm0/cook.json (since homedir mock returns tmpdir at load time)
+      const configDir = path.join(os.tmpdir(), ".vm0");
+      await fs.mkdir(configDir, { recursive: true });
+      const stateFile = path.join(configDir, "cook.json");
+
+      // Read existing state to preserve other PPID entries
+      let existingState: { ppid: Record<string, unknown> } = { ppid: {} };
+      try {
+        const content = await fs.readFile(stateFile, "utf8");
+        existingState = JSON.parse(content);
+      } catch {
+        // File doesn't exist, use empty state
+      }
+
+      existingState.ppid[ppid] = {
+        ...state,
+        lastActiveAt: Date.now(),
+      };
+
+      await fs.writeFile(stateFile, JSON.stringify(existingState));
+    }
+
+    it("should load state for logs subcommand when previous run exists", async () => {
+      const ppid = String(process.ppid);
+      await writeStateToDefaultLocation(ppid, {
+        lastRunId: "run-123-saved",
+        lastSessionId: "session-456-saved",
+        lastCheckpointId: "checkpoint-789-saved",
+      });
+
+      // Mock spawn to return success for logs command
+      vi.mocked(spawn).mockImplementation(() => {
+        return createMockChildProcess(0, "Logs output") as ReturnType<
+          typeof spawn
+        >;
+      });
+
+      // logs subcommand should use the saved run ID
+      await cookCommand.parseAsync(["node", "cli", "logs"]);
+
+      // Verify spawn was called with the saved run ID
+      expect(spawn).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.arrayContaining(["logs", "run-123-saved"]),
+        expect.anything(),
+      );
+    });
+
+    it("should load state for continue subcommand when previous session exists", async () => {
+      const ppid = String(process.ppid);
+      await writeStateToDefaultLocation(ppid, {
+        lastRunId: "run-123",
+        lastSessionId: "session-456-saved",
+        lastCheckpointId: "checkpoint-789",
+      });
+
+      // Create minimal vm0.yaml for continue command
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        `version: "1.0"
+agents:
+  test-agent:
+    framework: claude-code
+    working_dir: /workspace
+`,
+      );
+
+      // Mock spawn to return success
+      vi.mocked(spawn).mockImplementation(() => {
+        return createMockChildProcess(
+          0,
+          "Run ID: run-new\nSession ID: session-new",
+        ) as ReturnType<typeof spawn>;
+      });
+
+      // continue subcommand should use the saved session ID
+      await cookCommand.parseAsync([
+        "node",
+        "cli",
+        "continue",
+        "next prompt",
+        "--no-auto-update",
+      ]);
+
+      // Verify spawn was called with session continuation args
+      const spawnCalls = vi.mocked(spawn).mock.calls;
+      const runCall = spawnCalls.find(
+        (call) => Array.isArray(call[1]) && call[1].includes("run"),
+      );
+      expect(runCall).toBeDefined();
+      expect(runCall![1]).toContain("continue");
+      expect(runCall![1]).toContain("session-456-saved");
+    });
+
+    it("should load state for resume subcommand when previous checkpoint exists", async () => {
+      const ppid = String(process.ppid);
+      await writeStateToDefaultLocation(ppid, {
+        lastRunId: "run-123",
+        lastSessionId: "session-456",
+        lastCheckpointId: "checkpoint-789-saved",
+      });
+
+      // Create minimal vm0.yaml for resume command
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        `version: "1.0"
+agents:
+  test-agent:
+    framework: claude-code
+    working_dir: /workspace
+`,
+      );
+
+      // Mock spawn to return success
+      vi.mocked(spawn).mockImplementation(() => {
+        return createMockChildProcess(
+          0,
+          "Run ID: run-new\nCheckpoint ID: checkpoint-new",
+        ) as ReturnType<typeof spawn>;
+      });
+
+      // resume subcommand should use the saved checkpoint ID
+      await cookCommand.parseAsync([
+        "node",
+        "cli",
+        "resume",
+        "next prompt",
+        "--no-auto-update",
+      ]);
+
+      // Verify spawn was called with checkpoint continuation args
+      const spawnCalls = vi.mocked(spawn).mock.calls;
+      const runCall = spawnCalls.find(
+        (call) => Array.isArray(call[1]) && call[1].includes("run"),
+      );
+      expect(runCall).toBeDefined();
+      expect(runCall![1]).toContain("resume");
+      expect(runCall![1]).toContain("checkpoint-789-saved");
+    });
+
+    it("should isolate state by PPID (different terminal sessions)", async () => {
+      // Write state for a different PPID
+      await writeStateToDefaultLocation("99999", {
+        lastRunId: "run-other-terminal",
+        lastSessionId: "session-other-terminal",
+        lastCheckpointId: "checkpoint-other-terminal",
+      });
+
+      // Current process should not see state from different PPID
+      await expect(async () => {
+        await cookCommand.parseAsync(["node", "cli", "logs"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("No previous run found"),
+      );
+    });
+
+    it("should migrate old format cook.json to new PPID-based format", async () => {
+      // Create old format cook.json (without ppid field)
+      const configDir = path.join(os.tmpdir(), ".vm0");
+      await fs.mkdir(configDir, { recursive: true });
+      const stateFile = path.join(configDir, "cook.json");
+      await fs.writeFile(
+        stateFile,
+        JSON.stringify({
+          lastRunId: "run-old-format",
+          lastSessionId: "session-old-format",
+          lastCheckpointId: "checkpoint-old-format",
+        }),
+      );
+
+      // Mock spawn to return success for logs command
+      vi.mocked(spawn).mockImplementation(() => {
+        return createMockChildProcess(0, "Logs output") as ReturnType<
+          typeof spawn
+        >;
+      });
+
+      // logs subcommand should migrate and use the old run ID
+      await cookCommand.parseAsync(["node", "cli", "logs"]);
+
+      // Verify spawn was called with the migrated run ID
+      expect(spawn).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.arrayContaining(["logs", "run-old-format"]),
+        expect.anything(),
+      );
     });
   });
 });
