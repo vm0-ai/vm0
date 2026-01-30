@@ -8,7 +8,7 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
-import { checkpointService } from "../../../../../src/lib/checkpoint";
+import { createCheckpoint } from "../../../../../src/lib/checkpoint";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("webhook:checkpoints");
@@ -57,7 +57,7 @@ const router = tsr.router(webhookCheckpointsContract, {
     // the sandbox before the E2B service updates the run status to "completed"
 
     // Create checkpoint
-    const result = await checkpointService.createCheckpoint(body);
+    const result = await createCheckpoint(body);
 
     log.debug(
       `Checkpoint created: ${result.checkpointId}, session: ${result.agentSessionId}, conversation: ${result.conversationId}`,
