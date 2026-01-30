@@ -1,5 +1,17 @@
 # Changelog
 
+## [11.7.0](https://github.com/vm0-ai/vm0/compare/web-v11.6.1...web-v11.7.0) (2026-01-30)
+
+
+### Features
+
+* add api timing metrics for runner and e2b executor analysis ([#1836](https://github.com/vm0-ai/vm0/issues/1836)) ([3ac62ef](https://github.com/vm0-ai/vm0/commit/3ac62ef48325514c2e7fa8d5d1c87bd45d440446))
+
+
+### Bug Fixes
+
+* detect and use existing package manager in install.sh ([#1882](https://github.com/vm0-ai/vm0/issues/1882)) ([740ee67](https://github.com/vm0-ai/vm0/commit/740ee670cc0052545c2df640e17845bfd3f77edf)), closes [#1881](https://github.com/vm0-ai/vm0/issues/1881)
+
 ## [11.6.1](https://github.com/vm0-ai/vm0/compare/web-v11.6.0...web-v11.6.1) (2026-01-29)
 
 

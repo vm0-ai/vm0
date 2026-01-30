@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.6.0](https://github.com/vm0-ai/vm0/compare/runner-v3.5.0...runner-v3.6.0) (2026-01-30)
+
+
+### Features
+
+* add api timing metrics for runner and e2b executor analysis ([#1836](https://github.com/vm0-ai/vm0/issues/1836)) ([3ac62ef](https://github.com/vm0-ai/vm0/commit/3ac62ef48325514c2e7fa8d5d1c87bd45d440446))
+
+
+### Performance Improvements
+
+* **runner:** merge vm-init and vsock-agent into single rust binary ([#1874](https://github.com/vm0-ai/vm0/issues/1874)) ([74d0bd0](https://github.com/vm0-ai/vm0/commit/74d0bd0e1db626694b27b52079b65bda87003582))
+* **runner:** optimize ca installation by appending to ca-certificates.crt ([#1890](https://github.com/vm0-ai/vm0/issues/1890)) ([a7376ef](https://github.com/vm0-ai/vm0/commit/a7376ef8d062a158f5c373ad435615bbbd094914)), closes [#1884](https://github.com/vm0-ai/vm0/issues/1884)
+* **runner:** use cidr-based iptables rules instead of per-vm rules ([#1871](https://github.com/vm0-ai/vm0/issues/1871)) ([b94af8b](https://github.com/vm0-ai/vm0/commit/b94af8b84708d72d0d09dc1d67843e514b69c9f5))
+
 ## [3.5.0](https://github.com/vm0-ai/vm0/compare/runner-v3.4.0...runner-v3.5.0) (2026-01-29)
 
 

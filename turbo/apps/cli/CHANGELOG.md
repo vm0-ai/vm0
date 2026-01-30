@@ -1,5 +1,13 @@
 # Changelog
 
+## [9.5.0](https://github.com/vm0-ai/vm0/compare/cli-v9.4.1...cli-v9.5.0) (2026-01-30)
+
+
+### Features
+
+* **cli:** add ascii art banner with orange gradient to onboard command ([#1880](https://github.com/vm0-ai/vm0/issues/1880)) ([749f057](https://github.com/vm0-ai/vm0/commit/749f0577801dd8022053a35c5e2cb91bdd36334d)), closes [#1878](https://github.com/vm0-ai/vm0/issues/1878)
+* **cli:** implement progressive step reveal for onboard flow ([#1887](https://github.com/vm0-ai/vm0/issues/1887)) ([c153f41](https://github.com/vm0-ai/vm0/commit/c153f41fd2d9fb298554b29f92fa03428125bcef)), closes [#1886](https://github.com/vm0-ai/vm0/issues/1886)
+
 ## [9.4.1](https://github.com/vm0-ai/vm0/compare/cli-v9.4.0...cli-v9.4.1) (2026-01-29)
 
 

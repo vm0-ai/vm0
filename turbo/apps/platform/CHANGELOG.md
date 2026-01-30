@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.0](https://github.com/vm0-ai/vm0/compare/platform-v0.28.0...platform-v0.29.0) (2026-01-30)
+
+
+### Features
+
+* **platform:** update log detail page ui to match figma design ([#1872](https://github.com/vm0-ai/vm0/issues/1872)) ([60943bc](https://github.com/vm0-ai/vm0/commit/60943bcc15a5f9264a4c7d28e6bb05765f50553e))
+
 ## [0.28.0](https://github.com/vm0-ai/vm0/compare/platform-v0.27.0...platform-v0.28.0) (2026-01-29)
 
 
