@@ -9,6 +9,10 @@ import {
 } from "../firecracker/network.js";
 import { cleanupOrphanedAllocations } from "../firecracker/ip-pool.js";
 import {
+  initOverlayPool,
+  cleanupOverlayPool,
+} from "../firecracker/overlay-pool.js";
+import {
   initProxyManager,
   initVMRegistry,
   getProxyManager,
@@ -62,6 +66,14 @@ export async function setupEnvironment(
   // This reconciles the IP registry with actual TAP devices
   logger.log("Cleaning up orphaned IP allocations...");
   await cleanupOrphanedAllocations();
+
+  // Initialize overlay pool for faster VM boot
+  // Pre-creates sparse ext4 overlay files that can be acquired instantly
+  logger.log("Initializing overlay pool...");
+  await initOverlayPool({
+    size: config.sandbox.max_concurrent + 2,
+    replenishThreshold: config.sandbox.max_concurrent, // Start replenishing early to handle bursts
+  });
 
   // Initialize proxy for network security mode
   // The proxy is always started but only used when experimentalFirewall is enabled
@@ -128,6 +140,15 @@ export async function cleanupEnvironment(
       errors.push(error);
       logger.error(`Failed to stop network proxy: ${error.message}`);
     }
+  }
+
+  // Cleanup overlay pool
+  try {
+    cleanupOverlayPool();
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    errors.push(error);
+    logger.error(`Failed to cleanup overlay pool: ${error.message}`);
   }
 
   // Release runner lock last

@@ -8,11 +8,10 @@
  * - Boot and shutdown
  */
 
-import { exec, spawn, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
-import { promisify } from "node:util";
 import { FirecrackerClient } from "./client.js";
 import {
   createTapDevice,
@@ -20,9 +19,9 @@ import {
   generateNetworkBootArgs,
   type VMNetworkConfig,
 } from "./network.js";
+import { acquireOverlay } from "./overlay-pool.js";
 import { createLogger } from "../logger.js";
 
-const execAsync = promisify(exec);
 const logger = createLogger("VM");
 
 /**
@@ -60,14 +59,13 @@ export class FirecrackerVM {
   private state: VMState = "created";
   private workDir: string;
   private socketPath: string;
-  private vmOverlayPath: string; // Per-VM sparse overlay for writes
+  private vmOverlayPath: string | null = null; // Set by acquireOverlay() during start
   private vsockPath: string; // Vsock UDS path for host-guest communication
 
   constructor(config: VMConfig) {
     this.config = config;
     this.workDir = config.workDir || `/tmp/vm0-vm-${config.vmId}`;
     this.socketPath = path.join(this.workDir, "firecracker.sock");
-    this.vmOverlayPath = path.join(this.workDir, "overlay.ext4");
     this.vsockPath = path.join(this.workDir, "vsock.sock");
   }
 
@@ -128,21 +126,19 @@ export class FirecrackerVM {
       // These operations are independent and can run concurrently
       logger.log(`[VM ${this.config.vmId}] Setting up overlay and network...`);
 
-      const createOverlay = async () => {
-        // Create sparse overlay file for this VM
+      const setupOverlay = async () => {
+        // Acquire overlay from pre-warmed pool for faster boot
         // The base rootfs (squashfs) is shared read-only across all VMs
         // Each VM gets its own sparse ext4 overlay for writes (only allocates on write)
-        // Size matches the original rootfs size (2GB) to maintain same writable capacity
-        const overlaySize = 2 * 1024 * 1024 * 1024; // 2GB sparse file (same as original rootfs)
-        const fd = fs.openSync(this.vmOverlayPath, "w");
-        fs.ftruncateSync(fd, overlaySize);
-        fs.closeSync(fd);
-        await execAsync(`mkfs.ext4 -F -q "${this.vmOverlayPath}"`);
-        logger.log(`[VM ${this.config.vmId}] Overlay created`);
+        // Falls back to on-demand creation if pool is exhausted
+        this.vmOverlayPath = await acquireOverlay();
+        logger.log(
+          `[VM ${this.config.vmId}] Overlay acquired: ${this.vmOverlayPath}`,
+        );
       };
 
       const [, networkConfig] = await Promise.all([
-        createOverlay(),
+        setupOverlay(),
         createTapDevice(this.config.vmId),
       ]);
       this.networkConfig = networkConfig;
@@ -226,7 +222,7 @@ export class FirecrackerVM {
    * Configure the VM via Firecracker API
    */
   private async configure(): Promise<void> {
-    if (!this.client || !this.networkConfig) {
+    if (!this.client || !this.networkConfig || !this.vmOverlayPath) {
       throw new Error("VM not properly initialized");
     }
 
@@ -363,7 +359,13 @@ export class FirecrackerVM {
       this.networkConfig = null;
     }
 
-    // Clean up entire workDir (includes socket and rootfs)
+    // Delete overlay file (from pool, not in workDir)
+    if (this.vmOverlayPath && fs.existsSync(this.vmOverlayPath)) {
+      fs.unlinkSync(this.vmOverlayPath);
+      this.vmOverlayPath = null;
+    }
+
+    // Clean up entire workDir (includes socket)
     if (fs.existsSync(this.workDir)) {
       fs.rmSync(this.workDir, { recursive: true, force: true });
     }
