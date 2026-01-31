@@ -1,48 +1,48 @@
 # CLI Testing Patterns
 
-## Testing Pyramid
+## Testing Strategy
 
-CLI testing follows a pyramid structure with three levels:
+We use a two-layer testing approach with **system boundary integration tests** as the primary testing method:
 
 ```
-                    ┌─────────────┐
-                    │   E2E Tests │  Happy path only (BATS)
-                    │  (~15s each)│  e2e/tests/
-                    └──────┬──────┘
-                           │
-              ┌────────────┴────────────┐
-              │    Command-Level Tests  │  Error cases, variations (MSW)
-              │     (fast, isolated)    │  src/commands/**/__tests__/
-              └────────────┬────────────┘
-                           │
-    ┌──────────────────────┴──────────────────────┐
-    │              Unit Tests (if needed)          │  Complex pure logic only
-    │          (pure functions, no I/O)           │  src/lib/**/__tests__/
-    └──────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                         E2E Tests (BATS)                            │
+│                      Happy path only (~15s each)                    │
+│                          e2e/tests/                                 │
+└─────────────────────────────────────────────────────────────────────┘
+                                 │
+                                 │ verifies
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│              System Boundary Integration Tests                       │
+│                    (Full coverage, all scenarios)                    │
+├─────────────────────────────────┬───────────────────────────────────┤
+│     CLI: Command-Level Tests    │    Web: API Route Tests           │
+│     command.parseAsync()        │    route handler functions        │
+│     MSW mocks Web API           │    MSW mocks external services    │
+│  src/commands/**/__tests__/     │  app/api/**/__tests__/            │
+└─────────────────────────────────┴───────────────────────────────────┘
 ```
 
-### When to Use Each Level
+### Key Principles
 
-| Level | What to Test | Test Count |
-|-------|--------------|------------|
-| **E2E** | Happy path only - verify the complete flow works | Few (5-10 per feature) |
-| **Command** | All scenarios: success, errors, edge cases, variations | Many (10-30 per command) |
-| **Unit** | Complex pure logic that's hard to test through commands | Rare |
+1. **No unit tests** - We test at system boundaries, not internal functions
+2. **Command/Route tests are the primary tests** - Full coverage of all scenarios
+3. **E2E tests verify integration** - Happy path only, confirms systems work together
 
-### Key Principle: Prefer Command-Level Tests
+### Why This Works
 
-**Command-level tests give the best ROI:**
-- Fast: Run in milliseconds (no real API calls)
-- Isolated: MSW provides controlled responses
-- Comprehensive: Test all code paths including error handling
-- Realistic: Exercise real CLI code, validators, formatters
+**Command-level tests (CLI) and Route tests (Web) ARE integration tests:**
+- They exercise all internal code: validators, formatters, domain logic
+- External dependencies are mocked at the boundary (MSW for HTTP)
+- All scenarios are covered: success, errors, edge cases, variations
 
-**E2E tests are expensive:**
+**E2E tests are expensive and brittle:**
 - Each `vm0 run` takes ~15 seconds
-- Subject to network issues and API rate limits
-- Hard to test error conditions reliably
+- Network issues, API rate limits, external service availability
+- Hard to reliably test error conditions
 
-**Move error cases from E2E to command tests** - E2E should only verify "it works", not all the ways it can fail.
+**Move ALL scenario coverage to command/route tests** - E2E only verifies "it works end-to-end".
 
 ---
 
