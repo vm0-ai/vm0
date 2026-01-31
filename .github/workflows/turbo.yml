@@ -914,7 +914,15 @@ jobs:
           echo ""
 
           # Create benchmark config with proxy settings (firewall + mitm enabled by default)
-          ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "echo 'firecracker:' > ${RUNNER_DIR}/benchmark.yaml && echo '  binary: /usr/local/bin/firecracker' >> ${RUNNER_DIR}/benchmark.yaml && echo '  kernel: /opt/firecracker/vmlinux' >> ${RUNNER_DIR}/benchmark.yaml && echo '  rootfs: ${RUNNER_DIR}/rootfs.squashfs' >> ${RUNNER_DIR}/benchmark.yaml && echo 'proxy:' >> ${RUNNER_DIR}/benchmark.yaml && echo '  port: ${PROXY_PORT}' >> ${RUNNER_DIR}/benchmark.yaml && echo '  ca_dir: ${RUNNER_DIR}/proxy' >> ${RUNNER_DIR}/benchmark.yaml"
+          ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "
+            echo 'firecracker:' > ${RUNNER_DIR}/benchmark.yaml
+            echo '  binary: /usr/local/bin/firecracker' >> ${RUNNER_DIR}/benchmark.yaml
+            echo '  kernel: /opt/firecracker/vmlinux' >> ${RUNNER_DIR}/benchmark.yaml
+            echo '  rootfs: ${RUNNER_DIR}/rootfs.squashfs' >> ${RUNNER_DIR}/benchmark.yaml
+            echo 'proxy:' >> ${RUNNER_DIR}/benchmark.yaml
+            echo '  port: ${PROXY_PORT}' >> ${RUNNER_DIR}/benchmark.yaml
+            echo '  ca_dir: ${RUNNER_DIR}/proxy' >> ${RUNNER_DIR}/benchmark.yaml
+          "
 
           # Run benchmark command with curl test to verify HTTPS through proxy
           ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "cd ${RUNNER_DIR} && node index.js benchmark --config benchmark.yaml 'curl -s https://httpbin.org/get | head -5'" 2>&1 || {

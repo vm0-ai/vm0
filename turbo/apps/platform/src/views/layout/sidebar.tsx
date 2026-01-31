@@ -97,10 +97,6 @@ export function Sidebar() {
             return null;
           }
 
-          if (group.label === "Observation" && !featureSwitches?.platformLogs) {
-            return null;
-          }
-
           return (
             <div key={group.label} className="p-2">
               {!collapsed && (

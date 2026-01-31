@@ -249,6 +249,45 @@ describe("artifact push", () => {
       expect(filesInRequest.some((f) => f.path.startsWith(".vm0"))).toBe(false);
     });
 
+    it("should include files with vm0 in name (not .vm0 directory)", async () => {
+      // Create files with "vm0" in their names - these should NOT be excluded
+      await fs.writeFile(path.join(tempDir, "vm0-config.txt"), "vm0 config");
+      await fs.writeFile(path.join(tempDir, "my.vm0.data"), "my data");
+      await fs.writeFile(path.join(tempDir, "vm0"), "just vm0");
+
+      let filesInRequest: Array<{ path: string }> = [];
+
+      server.use(
+        http.post("http://localhost:3000/api/storages/prepare", async (req) => {
+          const body = (await req.request.json()) as {
+            files: Array<{ path: string }>;
+          };
+          filesInRequest = body.files;
+          return HttpResponse.json({
+            versionId: "a1b2c3d4e5f6g7h8",
+            existing: true,
+          });
+        }),
+        http.post("http://localhost:3000/api/storages/commit", () => {
+          return HttpResponse.json({
+            success: true,
+            versionId: "a1b2c3d4e5f6g7h8",
+            storageName: "test-artifact",
+            size: 30,
+            fileCount: 3,
+            deduplicated: true,
+          });
+        }),
+      );
+
+      await pushCommand.parseAsync(["node", "cli"]);
+
+      // All three files should be included
+      expect(filesInRequest).toHaveLength(3);
+      const paths = filesInRequest.map((f) => f.path).sort();
+      expect(paths).toEqual(["my.vm0.data", "vm0", "vm0-config.txt"]);
+    });
+
     it("should compute correct SHA-256 hash for files", async () => {
       // Create file with known content
       await fs.writeFile(path.join(tempDir, "test.txt"), "hello world");

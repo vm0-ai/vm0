@@ -31,7 +31,7 @@ export const runnerConfigSchema = z.object({
       "Group must be in format 'scope/name' (lowercase, hyphens allowed)",
     ),
   server: z.object({
-    url: z.string().url("Server URL must be a valid URL"),
+    url: z.url({ message: "Server URL must be a valid URL" }),
     token: z.string().min(1, "Server token is required"),
   }),
   sandbox: z
@@ -77,7 +77,7 @@ export const debugConfigSchema = z.object({
   group: z.string().default("debug/local"),
   server: z
     .object({
-      url: z.string().url().default(DEBUG_SERVER_DEFAULTS.url),
+      url: z.url().default(DEBUG_SERVER_DEFAULTS.url),
       token: z.string().default(DEBUG_SERVER_DEFAULTS.token),
     })
     .default(DEBUG_SERVER_DEFAULTS),

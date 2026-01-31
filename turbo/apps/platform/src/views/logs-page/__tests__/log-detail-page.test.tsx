@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { pathname$ } from "../../../signals/route.ts";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { http, HttpResponse } from "msw";
 import { userEvent } from "@testing-library/user-event";
@@ -314,8 +314,9 @@ describe("log detail page", () => {
       expect(screen.getByText("Back Test Agent")).toBeInTheDocument();
     });
 
-    // Click Logs link in breadcrumb
-    await user.click(screen.getByText("Logs"));
+    // Click Logs link in breadcrumb (use within to scope to nav element)
+    const breadcrumbNav = screen.getByRole("navigation");
+    await user.click(within(breadcrumbNav).getByText("Logs"));
 
     // Should navigate to logs list
     await waitFor(() => {

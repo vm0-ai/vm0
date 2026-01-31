@@ -65,10 +65,3 @@ function parseRelativeTime(value: number, unit: string): number {
 
   return now - value * multiplier;
 }
-
-/**
- * Format a timestamp for display
- */
-export function formatTimestamp(timestamp: number): string {
-  return new Date(timestamp).toISOString();
-}
