@@ -469,8 +469,8 @@ export class TapPool {
 
     // Release all IPs and delete all TAPs (fire-and-forget)
     for (const { tapDevice, guestIp } of this.queue) {
-      releaseIP(guestIp).catch(() => {});
-      execAsync(`sudo ip link delete ${tapDevice}`).catch((err) => {
+      this.config.releaseIP(guestIp).catch(() => {});
+      this.config.deleteTap(tapDevice).catch((err) => {
         logger.log(
           `Failed to delete ${tapDevice}: ${err instanceof Error ? err.message : "Unknown"}`,
         );

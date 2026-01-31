@@ -1,4 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+// Mock ip-registry to avoid sudo calls in CI (cleanupOrphanedIPs is called in init())
+// Other functions (allocateIP, releaseIP, etc.) are injected via config in tests
+vi.mock("../ip-registry.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../ip-registry.js")>();
+  return {
+    ...original,
+    cleanupOrphanedIPs: vi.fn().mockResolvedValue(undefined),
+  };
+});
+
 import { TapPool } from "../tap-pool.js";
 
 describe("TapPool", () => {
