@@ -1,6 +1,7 @@
 import { CopyButton } from "@vm0/ui";
 import { getEventStyle } from "../constants/event-styles.ts";
 import { CollapsibleJson } from "./collapsible-json.tsx";
+import { JsonViewer } from "./json-viewer.tsx";
 import { highlightText } from "../utils/highlight-text.tsx";
 import type { AgentEvent } from "../../../signals/logs-page/types.ts";
 import {
@@ -485,7 +486,7 @@ function ParamValue({ value }: { value: unknown }) {
   }
 
   if (Array.isArray(value) || typeof value === "object") {
-    return <CollapsibleJson data={value} />;
+    return <JsonViewer data={value} maxInitialDepth={1} />;
   }
 
   return <span className="text-xs">{String(value)}</span>;
@@ -625,11 +626,18 @@ function ResultContent({
         <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground">
           Output ({lines.length} lines)
         </summary>
-        <div className="mt-2 flex gap-2 items-start bg-sidebar rounded-[10px] px-4 py-3 overflow-hidden">
-          <pre className="flex-1 text-xs text-foreground whitespace-pre-wrap max-h-80 overflow-y-auto min-w-0 break-all">
-            {contentElement}
-          </pre>
-          <CopyButton text={text} className="shrink-0 h-4 w-4 p-0" />
+        <div className="mt-2 bg-sidebar rounded-[10px] overflow-hidden">
+          <div className="max-h-80 overflow-y-auto px-4 py-3">
+            <div className="sticky top-0 z-10 flex justify-end -mt-1 mb-1">
+              <CopyButton
+                text={text}
+                className="h-6 w-6 p-1 bg-sidebar/90 hover:bg-sidebar rounded"
+              />
+            </div>
+            <pre className="text-xs text-foreground whitespace-pre-wrap min-w-0 break-all">
+              {contentElement}
+            </pre>
+          </div>
         </div>
       </details>
     );
