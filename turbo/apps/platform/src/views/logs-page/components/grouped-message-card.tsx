@@ -13,6 +13,7 @@ import {
   formatEventTime,
   type EventData,
 } from "./event-card.tsx";
+import { highlightText } from "../utils/highlight-text.tsx";
 
 interface GroupedMessageCardProps {
   message: GroupedMessage;
@@ -30,6 +31,13 @@ function shouldCollapseText(text: string): boolean {
   return text.length > TEXT_COLLAPSE_CHARS || lines > TEXT_COLLAPSE_LINES;
 }
 
+function textContainsSearch(text: string, searchTerm: string): boolean {
+  if (!searchTerm.trim()) {
+    return false;
+  }
+  return text.toLowerCase().includes(searchTerm.toLowerCase());
+}
+
 function MarkdownContent({ text }: { text: string }) {
   return (
     <MarkdownPreview
@@ -44,10 +52,67 @@ function MarkdownContent({ text }: { text: string }) {
   );
 }
 
-function CollapsibleMarkdown({ text }: { text: string }) {
-  const shouldCollapse = shouldCollapseText(text);
+function HighlightedMarkdownContent({
+  text,
+  searchTerm,
+  currentMatchIndex,
+  matchStartIndex,
+}: {
+  text: string;
+  searchTerm: string;
+  currentMatchIndex: number;
+  matchStartIndex: number;
+}) {
+  // For markdown, we highlight the plain text but render as markdown
+  // This is a simplified approach - highlighting inside markdown is complex
+  const hasMatch = textContainsSearch(text, searchTerm);
 
-  if (!shouldCollapse) {
+  if (!hasMatch) {
+    return <MarkdownContent text={text} />;
+  }
+
+  // When there's a match, show highlighted plain text instead of markdown
+  // This ensures the highlighting is visible
+  const result = highlightText(text, {
+    searchTerm,
+    currentMatchIndex,
+    matchStartIndex,
+  });
+
+  return (
+    <div className="text-sm whitespace-pre-wrap break-words">
+      {result.element}
+    </div>
+  );
+}
+
+function CollapsibleMarkdown({
+  text,
+  searchTerm,
+  currentMatchIndex,
+  matchStartIndex,
+}: {
+  text: string;
+  searchTerm?: string;
+  currentMatchIndex?: number;
+  matchStartIndex?: number;
+}) {
+  const shouldCollapse = shouldCollapseText(text);
+  const hasSearch = searchTerm && searchTerm.trim().length > 0;
+  const hasMatch = hasSearch && textContainsSearch(text, searchTerm);
+
+  // If not collapsible or has search match, show full content
+  if (!shouldCollapse || hasMatch) {
+    if (hasSearch) {
+      return (
+        <HighlightedMarkdownContent
+          text={text}
+          searchTerm={searchTerm}
+          currentMatchIndex={currentMatchIndex ?? 0}
+          matchStartIndex={matchStartIndex ?? 0}
+        />
+      );
+    }
     return <MarkdownContent text={text} />;
   }
 
@@ -104,7 +169,7 @@ export function GroupedMessageCard({
 
   // Todo card (standalone)
   if (message.type === "todo") {
-    return <TodoCard message={message} />;
+    return <TodoCard message={message} searchTerm={searchTerm} />;
   }
 
   // Assistant message
@@ -191,13 +256,28 @@ function getTodoStatusIcon(status: string) {
  * Standalone todo card that shows current task status.
  * Displays in-progress task prominently with expandable full list.
  */
-function TodoCard({ message }: { message: GroupedMessage }) {
+function TodoCard({
+  message,
+  searchTerm,
+}: {
+  message: GroupedMessage;
+  searchTerm?: string;
+}) {
   const todoItems = message.todoState ?? [];
   const inProgressTask = todoItems.find((t) => t.status === "in_progress");
   const completedCount = todoItems.filter(
     (t) => t.status === "completed",
   ).length;
   const totalCount = todoItems.length;
+
+  // Check if any todo item matches search
+  const hasSearchMatch = Boolean(
+    searchTerm &&
+      searchTerm.trim() &&
+      todoItems.some((t) =>
+        t.content.toLowerCase().includes(searchTerm.toLowerCase()),
+      ),
+  );
 
   return (
     <div className="rounded-lg border border-purple-600/30 bg-purple-600/5 p-4">
@@ -223,8 +303,8 @@ function TodoCard({ message }: { message: GroupedMessage }) {
             </span>
           </div>
 
-          {/* Expandable full list */}
-          <details className="group">
+          {/* Expandable full list - auto open when search matches */}
+          <details className="group" open={hasSearchMatch}>
             <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
               View all tasks
             </summary>
@@ -275,30 +355,60 @@ function AssistantMessageCard({
   const { textBefore, textAfter, toolOperations } = message;
   const hasTools = toolOperations && toolOperations.length > 0;
 
+  // Calculate match offset for text sections
+  const currentOffset = matchStartIndex ?? 0;
+
+  // Count matches in textBefore for offset calculation
+  const textBeforeMatches =
+    searchTerm && textBefore
+      ? (
+          textBefore
+            .toLowerCase()
+            .match(new RegExp(searchTerm.toLowerCase(), "g")) ?? []
+        ).length
+      : 0;
+
   return (
     <div className="rounded-lg border border-yellow-600/30 bg-yellow-600/5 p-4">
       <div className="flex gap-4 items-start">
         <div className="flex-1 min-w-0 space-y-3">
           {/* Text before tools */}
-          {textBefore && <CollapsibleMarkdown text={textBefore} />}
+          {textBefore && (
+            <CollapsibleMarkdown
+              text={textBefore}
+              searchTerm={searchTerm}
+              currentMatchIndex={currentMatchIndex}
+              matchStartIndex={currentOffset}
+            />
+          )}
 
           {/* Tool operations */}
           {hasTools && (
             <div className="space-y-1">
-              {toolOperations.map((op) => (
-                <ToolSummary
-                  key={op.toolUseId}
-                  operation={op}
-                  searchTerm={searchTerm}
-                  currentMatchIndex={currentMatchIndex}
-                  matchStartIndex={matchStartIndex}
-                />
-              ))}
+              {toolOperations.map((op) => {
+                const toolMatchStart = currentOffset + textBeforeMatches;
+                return (
+                  <ToolSummary
+                    key={op.toolUseId}
+                    operation={op}
+                    searchTerm={searchTerm}
+                    currentMatchIndex={currentMatchIndex}
+                    matchStartIndex={toolMatchStart}
+                  />
+                );
+              })}
             </div>
           )}
 
           {/* Text after tools */}
-          {textAfter && <CollapsibleMarkdown text={textAfter} />}
+          {textAfter && (
+            <CollapsibleMarkdown
+              text={textAfter}
+              searchTerm={searchTerm}
+              currentMatchIndex={currentMatchIndex}
+              matchStartIndex={currentOffset + textBeforeMatches}
+            />
+          )}
         </div>
 
         {/* Timestamp */}

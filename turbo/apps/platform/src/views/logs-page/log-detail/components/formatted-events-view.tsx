@@ -5,6 +5,7 @@ import {
   groupEventsIntoMessages,
   getVisibleGroupedMessageText,
   groupedMessageMatchesSearch,
+  scrollToMatch,
 } from "../utils.ts";
 
 export function FormattedEventsView({
@@ -38,6 +39,13 @@ export function FormattedEventsView({
   const containerRef = (node: HTMLDivElement | null) => {
     if (node) {
       setTotalMatches(totalMatches);
+
+      // Scroll to current match after render
+      if (searchTerm.trim() && currentMatchIndex >= 0) {
+        queueMicrotask(() => {
+          scrollToMatch(node, currentMatchIndex);
+        });
+      }
     }
   };
 
