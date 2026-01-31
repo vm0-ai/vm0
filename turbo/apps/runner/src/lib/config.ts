@@ -1,6 +1,7 @@
 import { z } from "zod";
 import fs from "fs";
 import yaml from "yaml";
+import { tempPaths } from "./paths.js";
 
 /**
  * Default values for sandbox configuration
@@ -104,9 +105,9 @@ export const debugConfigSchema = z.object({
   proxy: z
     .object({
       port: z.number().int().min(1024).max(65535).default(PROXY_DEFAULTS.port),
-      ca_dir: z.string().default("/tmp/vm0-proxy"),
+      ca_dir: z.string().default(tempPaths.proxyDir),
     })
-    .default({ ...PROXY_DEFAULTS, ca_dir: "/tmp/vm0-proxy" }),
+    .default({ ...PROXY_DEFAULTS, ca_dir: tempPaths.proxyDir }),
 });
 
 type DebugConfig = z.infer<typeof debugConfigSchema>;

@@ -8,6 +8,7 @@
 import fs from "fs";
 import type { NetworkLogEntry } from "./types.js";
 import { createLogger } from "../logger.js";
+import { tempPaths } from "../paths.js";
 
 const logger = createLogger("NetworkLogs");
 
@@ -15,7 +16,7 @@ const logger = createLogger("NetworkLogs");
  * Get the network log file path for a run
  */
 function getNetworkLogPath(runId: string): string {
-  return `/tmp/vm0-network-${runId}.jsonl`;
+  return tempPaths.networkLog(runId);
 }
 
 /**

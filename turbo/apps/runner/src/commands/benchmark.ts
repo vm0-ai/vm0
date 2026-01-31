@@ -10,6 +10,7 @@ import {
 import { initOverlayPool } from "../lib/firecracker/overlay-pool.js";
 import { Timer } from "../lib/timing.js";
 import { setGlobalLogger } from "../lib/logger.js";
+import { paths } from "../lib/paths.js";
 
 interface BenchmarkOptions {
   config: string;
@@ -89,7 +90,7 @@ export const benchmarkCommand = new Command("benchmark")
       await initOverlayPool({
         size: 2,
         replenishThreshold: 1,
-        poolDir: "/var/run/vm0/overlay-pool-benchmark",
+        poolDir: paths.overlayPoolBenchmark,
       });
 
       // Create benchmark execution context

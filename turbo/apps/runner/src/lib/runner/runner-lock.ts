@@ -1,8 +1,8 @@
 /**
  * Runner Lock - ensures only one runner per device
  *
- * Uses a PID file at /var/run/vm0/runner.pid to prevent multiple
- * runner instances from running on the same device.
+ * Uses a PID file to prevent multiple runner instances
+ * from running on the same device.
  */
 
 import { exec } from "node:child_process";
@@ -11,12 +11,12 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { createLogger } from "../logger.js";
+import { paths } from "../paths.js";
 
 const execAsync = promisify(exec);
 const logger = createLogger("RunnerLock");
 
-const DEFAULT_RUN_DIR = "/var/run/vm0";
-const DEFAULT_PID_FILE = `${DEFAULT_RUN_DIR}/runner.pid`;
+const DEFAULT_PID_FILE = paths.runnerPid;
 
 // Module state for tracking current lock
 let currentPidFile: string | null = null;

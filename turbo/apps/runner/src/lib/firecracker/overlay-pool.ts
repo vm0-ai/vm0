@@ -18,6 +18,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { createLogger } from "../logger.js";
+import { paths } from "../paths.js";
 
 const execAsync = promisify(exec);
 const logger = createLogger("OverlayPool");
@@ -25,8 +26,7 @@ const logger = createLogger("OverlayPool");
 /**
  * Configuration constants
  */
-const VM0_RUN_DIR = "/var/run/vm0";
-const DEFAULT_POOL_DIR = path.join(VM0_RUN_DIR, "overlay-pool");
+const DEFAULT_POOL_DIR = paths.overlayPool;
 const OVERLAY_SIZE = 2 * 1024 * 1024 * 1024; // 2GB sparse file
 
 /**

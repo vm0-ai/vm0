@@ -9,6 +9,7 @@
  */
 import fs from "fs";
 import { createLogger } from "../logger.js";
+import { tempPaths } from "../paths.js";
 
 const logger = createLogger("VMRegistry");
 
@@ -55,7 +56,7 @@ interface RegistryData {
  * Default path for the registry file
  * This path is read by the mitmproxy addon
  */
-export const DEFAULT_REGISTRY_PATH = "/tmp/vm0-vm-registry.json";
+export const DEFAULT_REGISTRY_PATH = tempPaths.vmRegistry;
 
 /**
  * VM Registry class for managing VM IP → RunId mappings

@@ -21,6 +21,7 @@ import {
 } from "./network.js";
 import { acquireOverlay } from "./overlay-pool.js";
 import { createLogger } from "../logger.js";
+import { tempPaths } from "../paths.js";
 
 const logger = createLogger("VM");
 
@@ -64,7 +65,7 @@ export class FirecrackerVM {
 
   constructor(config: VMConfig) {
     this.config = config;
-    this.workDir = config.workDir || `/tmp/vm0-vm-${config.vmId}`;
+    this.workDir = config.workDir || tempPaths.vmWorkDir(config.vmId);
     this.socketPath = path.join(this.workDir, "firecracker.sock");
     this.vsockPath = path.join(this.workDir, "vsock.sock");
   }

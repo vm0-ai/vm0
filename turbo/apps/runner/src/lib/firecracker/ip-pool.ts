@@ -13,8 +13,8 @@
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import * as fs from "node:fs";
-import * as path from "node:path";
 import { createLogger } from "../logger.js";
+import { VM0_RUN_DIR, paths } from "../paths.js";
 
 const execAsync = promisify(exec);
 const logger = createLogger("IP Pool");
@@ -22,8 +22,7 @@ const logger = createLogger("IP Pool");
 /**
  * Configuration constants
  */
-const VM0_RUN_DIR = "/var/run/vm0";
-const REGISTRY_FILE_PATH = path.join(VM0_RUN_DIR, "ip-registry.json");
+const REGISTRY_FILE_PATH = paths.ipRegistry;
 const BRIDGE_NAME = "vm0br0";
 
 /**
@@ -89,7 +88,7 @@ async function ensureRunDir(): Promise<void> {
 async function withLock<T>(fn: () => Promise<T>): Promise<T> {
   await ensureRunDir();
 
-  const lockMarker = path.join(VM0_RUN_DIR, "ip-pool.lock.active");
+  const lockMarker = paths.ipPoolLock;
   const startTime = Date.now();
   let lockAcquired = false;
 
