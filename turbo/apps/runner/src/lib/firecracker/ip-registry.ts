@@ -31,6 +31,7 @@ const LOCK_RETRY_INTERVAL_MS = 100;
  * IP allocation entry
  */
 interface IPAllocation {
+  runnerPid: number; // PID of the runner that created this allocation
   tapDevice: string;
   vmId: string | null; // null when pooled, set when acquired by a VM
 }
@@ -58,6 +59,8 @@ export interface IPRegistryConfig {
   scanTapDevices?: () => Promise<Set<string>>;
   /** Function to check if a TAP device exists */
   checkTapExists?: (tapDevice: string) => Promise<boolean>;
+  /** Function to delete a TAP device */
+  deleteTap?: (tapDevice: string) => Promise<void>;
 }
 
 // ============ Default Functions ============
@@ -97,6 +100,22 @@ async function defaultCheckTapExists(tapDevice: string): Promise<boolean> {
   }
 }
 
+async function defaultDeleteTap(tapDevice: string): Promise<void> {
+  await execAsync(`sudo ip link delete ${tapDevice}`);
+}
+
+/**
+ * Check if a process is running by sending signal 0
+ */
+function isProcessRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ============ IP Registry Class ============
 
 /**
@@ -111,6 +130,7 @@ export class IPRegistry {
   private readonly ensureRunDirFn: () => Promise<void>;
   private readonly scanTapDevicesFn: () => Promise<Set<string>>;
   private readonly checkTapExistsFn: (tapDevice: string) => Promise<boolean>;
+  private readonly deleteTapFn: (tapDevice: string) => Promise<void>;
 
   constructor(config: IPRegistryConfig = {}) {
     this.runDir = config.runDir ?? VM0_RUN_DIR;
@@ -122,6 +142,7 @@ export class IPRegistry {
       config.ensureRunDir ?? (() => defaultEnsureRunDir(this.runDir));
     this.scanTapDevicesFn = config.scanTapDevices ?? defaultScanTapDevices;
     this.checkTapExistsFn = config.checkTapExists ?? defaultCheckTapExists;
+    this.deleteTapFn = config.deleteTap ?? defaultDeleteTap;
   }
 
   // ============ File Lock ============
@@ -232,7 +253,11 @@ export class IPRegistry {
         );
       }
 
-      registry.allocations[ip] = { tapDevice, vmId: null };
+      registry.allocations[ip] = {
+        runnerPid: process.pid,
+        tapDevice,
+        vmId: null,
+      };
       this.writeRegistry(registry);
 
       logger.log(`Allocated IP ${ip} for TAP ${tapDevice}`);
@@ -261,8 +286,13 @@ export class IPRegistry {
   // ============ Cleanup ============
 
   /**
-   * Clean up orphaned IP allocations (TAP devices that no longer exist on the system)
-   * Scans actual TAP devices to ensure multi-runner safety
+   * Clean up orphaned IP allocations
+   *
+   * An allocation is orphaned if:
+   * 1. TAP device no longer exists on the system, OR
+   * 2. Runner process that created it is no longer running
+   *
+   * When runner PID is dead but TAP still exists, we also delete the TAP device.
    */
   async cleanupOrphanedIPs(): Promise<void> {
     // Scan TAP devices BEFORE acquiring lock to minimize lock hold time
@@ -278,21 +308,48 @@ export class IPRegistry {
       }
 
       const cleanedRegistry: IPRegistryData = { allocations: {} };
+      const tapsToDelete: string[] = [];
+
       for (const [ip, allocation] of Object.entries(registry.allocations)) {
-        if (activeTaps.has(allocation.tapDevice)) {
-          cleanedRegistry.allocations[ip] = allocation;
+        const tapExists = activeTaps.has(allocation.tapDevice);
+        // Check if runner process is still alive (handle legacy entries without runnerPid)
+        const runnerAlive = allocation.runnerPid
+          ? isProcessRunning(allocation.runnerPid)
+          : true; // Assume alive for legacy entries
+
+        if (!tapExists) {
+          // TAP doesn't exist - orphaned IP
+          logger.log(
+            `Removing orphaned IP ${ip} (TAP ${allocation.tapDevice} not found)`,
+          );
+        } else if (!runnerAlive) {
+          // TAP exists but runner is dead - orphaned TAP and IP
+          logger.log(
+            `Removing orphaned IP ${ip} (runner PID ${allocation.runnerPid} not running)`,
+          );
+          tapsToDelete.push(allocation.tapDevice);
         } else {
-          // Double-check: TAP might have been created after initial scan
-          // This prevents race condition where another runner creates TAP+IP
-          // between scanTapDevices() and withIPLock()
+          // Double-check TAP existence (might have been created after initial scan)
           const exists = await this.checkTapExistsFn(allocation.tapDevice);
           if (exists) {
             cleanedRegistry.allocations[ip] = allocation;
           } else {
             logger.log(
-              `Removing orphaned IP ${ip} (TAP ${allocation.tapDevice} not found)`,
+              `Removing orphaned IP ${ip} (TAP ${allocation.tapDevice} not found on recheck)`,
             );
           }
+        }
+      }
+
+      // Delete orphaned TAP devices
+      for (const tap of tapsToDelete) {
+        try {
+          await this.deleteTapFn(tap);
+          logger.log(`Deleted orphaned TAP ${tap}`);
+        } catch (err) {
+          logger.log(
+            `Failed to delete TAP ${tap}: ${err instanceof Error ? err.message : "Unknown"}`,
+          );
         }
       }
 
@@ -343,7 +400,10 @@ export class IPRegistry {
    * Get all current IP allocations (for diagnostic purposes)
    * Used by the doctor command to display allocated IPs.
    */
-  getAllocations(): Map<string, { tapDevice: string; vmId: string | null }> {
+  getAllocations(): Map<
+    string,
+    { runnerPid: number; tapDevice: string; vmId: string | null }
+  > {
     const registry = this.readRegistry();
     return new Map(Object.entries(registry.allocations));
   }
@@ -433,7 +493,7 @@ export async function clearVmIdFromIP(
  */
 export function getAllocations(): Map<
   string,
-  { tapDevice: string; vmId: string | null }
+  { runnerPid: number; tapDevice: string; vmId: string | null }
 > {
   return getRegistry().getAllocations();
 }

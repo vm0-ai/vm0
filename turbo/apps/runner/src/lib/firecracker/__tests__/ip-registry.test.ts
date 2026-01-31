@@ -56,10 +56,11 @@ describe("IPRegistry", () => {
       const data = JSON.parse(
         fs.readFileSync(path.join(testDir, "ip-registry.json"), "utf-8"),
       );
-      expect(data.allocations["172.16.0.2"]).toEqual({
+      expect(data.allocations["172.16.0.2"]).toMatchObject({
         tapDevice: "tap000",
         vmId: null,
       });
+      expect(data.allocations["172.16.0.2"].runnerPid).toBe(process.pid);
     });
 
     it("should allocate sequential IPs", async () => {
@@ -72,9 +73,16 @@ describe("IPRegistry", () => {
 
     it("should throw when all IPs are exhausted", async () => {
       // Pre-fill registry with all IPs
-      const allocations: Record<string, { tapDevice: string; vmId: null }> = {};
+      const allocations: Record<
+        string,
+        { runnerPid: number; tapDevice: string; vmId: null }
+      > = {};
       for (let i = 2; i <= 254; i++) {
-        allocations[`172.16.0.${i}`] = { tapDevice: `tap${i}`, vmId: null };
+        allocations[`172.16.0.${i}`] = {
+          runnerPid: process.pid,
+          tapDevice: `tap${i}`,
+          vmId: null,
+        };
       }
       fs.writeFileSync(
         path.join(testDir, "ip-registry.json"),
@@ -156,10 +164,11 @@ describe("IPRegistry", () => {
 
       expect(allocations).toBeInstanceOf(Map);
       expect(allocations.size).toBe(2);
-      expect(allocations.get("172.16.0.2")).toEqual({
+      expect(allocations.get("172.16.0.2")).toMatchObject({
         tapDevice: "tap000",
         vmId: "vm1",
       });
+      expect(allocations.get("172.16.0.2")?.runnerPid).toBe(process.pid);
     });
 
     it("getIPForVm should find IP by vmId", async () => {
