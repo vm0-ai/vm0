@@ -206,6 +206,48 @@ describe("artifact push", () => {
         expect.stringContaining("No files found"),
       );
     });
+
+    it("should exclude .vm0 directory from upload", async () => {
+      // Create files including .vm0 config files
+      await fs.writeFile(path.join(tempDir, "data.txt"), "user data");
+      await fs.writeFile(
+        path.join(tempDir, ".vm0", "some-other-config.yaml"),
+        "additional config",
+      );
+
+      // Track files sent in prepare request
+      let filesInRequest: Array<{ path: string }> = [];
+
+      server.use(
+        http.post("http://localhost:3000/api/storages/prepare", async (req) => {
+          const body = (await req.request.json()) as {
+            files: Array<{ path: string }>;
+          };
+          filesInRequest = body.files;
+          return HttpResponse.json({
+            versionId: "a1b2c3d4e5f6g7h8",
+            existing: true,
+          });
+        }),
+        http.post("http://localhost:3000/api/storages/commit", () => {
+          return HttpResponse.json({
+            success: true,
+            versionId: "a1b2c3d4e5f6g7h8",
+            storageName: "test-artifact",
+            size: 9,
+            fileCount: 1,
+            deduplicated: true,
+          });
+        }),
+      );
+
+      await pushCommand.parseAsync(["node", "cli"]);
+
+      // Should only include data.txt, not .vm0 files
+      expect(filesInRequest).toHaveLength(1);
+      expect(filesInRequest[0]?.path).toBe("data.txt");
+      expect(filesInRequest.some((f) => f.path.startsWith(".vm0"))).toBe(false);
+    });
   });
 
   describe("error handling", () => {
