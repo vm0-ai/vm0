@@ -876,7 +876,7 @@ jobs:
           echo "proxy-port=${PROXY_PORT}" >> $GITHUB_OUTPUT
           echo "Runner prepared at ${RUNNER_DIR} on ${RUNNER_HOST}"
 
-  # Run benchmark command to test VM boot performance (runs after prepare, before start)
+  # Run benchmark command to test VM boot performance (runs after start)
   # Skip on push to main - runner benchmark is only needed for PRs
   deploy-runner-benchmark:
     runs-on: ubuntu-latest
