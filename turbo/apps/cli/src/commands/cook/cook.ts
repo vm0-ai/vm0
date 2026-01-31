@@ -304,7 +304,7 @@ async function runAgent(
   artifactDir: string,
   prompt: string,
   cwd: string,
-  debugNoMockClaude: boolean,
+  options: { verbose?: boolean; debugNoMockClaude?: boolean },
 ): Promise<void> {
   console.log();
   console.log(chalk.bold("Running agent:"));
@@ -320,7 +320,8 @@ async function runAgent(
       agentName,
       "--artifact-name",
       ARTIFACT_DIR,
-      ...(debugNoMockClaude ? ["--debug-no-mock-claude"] : []),
+      ...(options.verbose ? ["--verbose"] : []),
+      ...(options.debugNoMockClaude ? ["--debug-no-mock-claude"] : []),
       prompt,
     ];
     runOutput = await execVm0RunWithCapture(runArgs, { cwd });
@@ -352,6 +353,7 @@ export const cookAction = new Command()
     "Load environment variables from file (priority: CLI flags > file > env vars)",
   )
   .option("-y, --yes", "Skip confirmation prompts")
+  .option("-v, --verbose", "Show full tool inputs and outputs")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .addOption(new Option("--no-auto-update").hideHelp())
   .action(
@@ -360,6 +362,7 @@ export const cookAction = new Command()
       options: {
         envFile?: string;
         yes?: boolean;
+        verbose?: boolean;
         debugNoMockClaude?: boolean;
         noAutoUpdate?: boolean;
       },
@@ -391,13 +394,10 @@ export const cookAction = new Command()
 
       // Step 6: Run agent (if prompt provided)
       if (prompt) {
-        await runAgent(
-          agentName,
-          artifactDir,
-          prompt,
-          cwd,
-          options.debugNoMockClaude ?? false,
-        );
+        await runAgent(agentName, artifactDir, prompt, cwd, {
+          verbose: options.verbose,
+          debugNoMockClaude: options.debugNoMockClaude,
+        });
       } else {
         console.log();
         console.log("To run your agent:");
