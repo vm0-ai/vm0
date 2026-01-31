@@ -71,9 +71,7 @@ const toolHeadlineFormatters: Record<
   Edit: (input) => `Edit(${chalk.dim(String(input.file_path || ""))})`,
   Write: (input) => `Write(${chalk.dim(String(input.file_path || ""))})`,
   Bash: (input) =>
-    input.description
-      ? `Bash(${chalk.dim(truncate(String(input.description), 60))})`
-      : `Bash(${chalk.dim(truncate(String(input.command || ""), 60))})`,
+    `Bash(${chalk.dim(truncate(String(input.command || ""), 60))})`,
   Glob: (input) => `Glob(${chalk.dim(String(input.pattern || ""))})`,
   Grep: (input) => `Grep(${chalk.dim(String(input.pattern || ""))})`,
   Task: (input) =>
