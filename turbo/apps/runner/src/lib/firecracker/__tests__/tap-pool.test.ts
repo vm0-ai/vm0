@@ -205,7 +205,7 @@ describe("TapPool", () => {
 
       const config = await pool.acquire("test-vm");
 
-      await pool.release(config.tapDevice, config.guestIp);
+      await pool.release(config.tapDevice, config.guestIp, "test-vm");
 
       // Pair is returned to pool, IP should NOT be released
       expect(releaseIPCalls).toHaveLength(0);
@@ -227,7 +227,7 @@ describe("TapPool", () => {
 
       // Acquire and release
       const config1 = await pool.acquire("vm1");
-      await pool.release(config1.tapDevice, config1.guestIp);
+      await pool.release(config1.tapDevice, config1.guestIp, "vm1");
 
       // Reset counters
       createTapCalls = [];
@@ -258,8 +258,8 @@ describe("TapPool", () => {
       const config = await pool.acquire("test-vm");
 
       // Release the same pair twice
-      await pool.release(config.tapDevice, config.guestIp);
-      await pool.release(config.tapDevice, config.guestIp);
+      await pool.release(config.tapDevice, config.guestIp, "test-vm");
+      await pool.release(config.tapDevice, config.guestIp, "test-vm");
 
       // Acquire twice - should get two different pairs (not the same one twice)
       const config1 = await pool.acquire("vm1");
@@ -284,7 +284,7 @@ describe("TapPool", () => {
       await pool.init();
 
       // Release a non-pooled TAP (doesn't match pool prefix)
-      await pool.release("tap-legacy", "172.16.0.5");
+      await pool.release("tap-legacy", "172.16.0.5", "legacy-vm");
 
       expect(deleteTapCalls).toContain("tap-legacy");
       expect(releaseIPCalls).toContain("172.16.0.5");
@@ -361,7 +361,7 @@ describe("TapPool", () => {
       deleteTapCalls = [];
       releaseIPCalls = [];
 
-      await pool.release(config.tapDevice, config.guestIp);
+      await pool.release(config.tapDevice, config.guestIp, "vm1");
 
       expect(deleteTapCalls).toContain(config.tapDevice);
       expect(releaseIPCalls).toContain(config.guestIp);
@@ -430,8 +430,8 @@ describe("TapPool", () => {
       await pool.init();
 
       // Release TAPs with high index - should be recognized as pooled
-      await pool.release("vm078f6669b1000", "172.16.0.5");
-      await pool.release("vm078f6669b12345", "172.16.0.6");
+      await pool.release("vm078f6669b1000", "172.16.0.5", "high-index-vm1");
+      await pool.release("vm078f6669b12345", "172.16.0.6", "high-index-vm2");
 
       // High index TAPs should NOT be deleted (they're pooled)
       expect(deleteTapCalls).not.toContain("vm078f6669b1000");
@@ -511,8 +511,10 @@ describe("TapPool", () => {
       await pool.acquire("vm4");
 
       // Release pairs back while replenish is running
-      for (const config of configs) {
-        await pool.release(config.tapDevice, config.guestIp);
+      const vmIds = ["vm1", "vm2", "vm3"];
+      for (let i = 0; i < configs.length; i++) {
+        const config = configs[i]!;
+        await pool.release(config.tapDevice, config.guestIp, vmIds[i]!);
       }
 
       // Wait for replenish to complete

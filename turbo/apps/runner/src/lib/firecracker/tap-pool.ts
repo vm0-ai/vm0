@@ -387,8 +387,13 @@ export class TapPool {
 
   /**
    * Release a {TAP, IP} pair back to the pool
+   * @param vmId The VM ID that is releasing this pair (for registry cleanup)
    */
-  async release(tapDevice: string, guestIp: string): Promise<void> {
+  async release(
+    tapDevice: string,
+    guestIp: string,
+    vmId: string,
+  ): Promise<void> {
     // Clear ARP entry
     await clearArpEntry(guestIp);
 
@@ -425,9 +430,10 @@ export class TapPool {
       );
 
       // Clear vmId from registry since pair is returning to pool
+      // Only clears if vmId matches to prevent race condition where new VM's vmId is cleared
       // This is non-critical - failure should not prevent pair from being recycled
       try {
-        await clearVmIdFromIP(guestIp);
+        await clearVmIdFromIP(guestIp, vmId);
       } catch (err) {
         logger.error(
           `Failed to clear vmId from IP registry: ${err instanceof Error ? err.message : "Unknown"}`,
@@ -507,16 +513,18 @@ export async function acquireTap(vmId: string): Promise<VMNetworkConfig> {
 
 /**
  * Release a {TAP, IP} pair back to the global pool
+ * @param vmId The VM ID that is releasing this pair (for registry cleanup)
  * @throws Error if pool was not initialized with initTapPool
  */
 export async function releaseTap(
   tapDevice: string,
   guestIp: string,
+  vmId: string,
 ): Promise<void> {
   if (!tapPool) {
     throw new Error("TAP pool not initialized. Call initTapPool() first.");
   }
-  return tapPool.release(tapDevice, guestIp);
+  return tapPool.release(tapDevice, guestIp, vmId);
 }
 
 /**

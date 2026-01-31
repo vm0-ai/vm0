@@ -289,11 +289,19 @@ export async function assignVmIdToIP(ip: string, vmId: string): Promise<void> {
 
 /**
  * Clear vmId from an IP allocation (called when pair is returned to pool)
+ * Only clears if the current vmId matches expectedVmId to prevent race conditions
+ * where a new VM's vmId could be cleared by the previous VM's release.
  */
-export async function clearVmIdFromIP(ip: string): Promise<void> {
+export async function clearVmIdFromIP(
+  ip: string,
+  expectedVmId: string,
+): Promise<void> {
   return withIPLock(async () => {
     const registry = readIPRegistry();
-    if (registry.allocations[ip]) {
+    if (
+      registry.allocations[ip] &&
+      registry.allocations[ip].vmId === expectedVmId
+    ) {
       registry.allocations[ip].vmId = null;
       writeIPRegistry(registry);
     }

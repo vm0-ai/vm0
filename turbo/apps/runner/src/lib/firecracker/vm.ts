@@ -349,6 +349,7 @@ export class FirecrackerVM {
         await releaseTap(
           this.networkConfig.tapDevice,
           this.networkConfig.guestIp,
+          this.config.vmId,
         );
       } catch (err) {
         logger.log(

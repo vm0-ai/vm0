@@ -231,7 +231,7 @@ describe("IP Registry", () => {
       expect(registry.allocations["172.16.0.2"].vmId).toBe("test-vm-123");
     });
 
-    it("should clear vmId from IP allocation", async () => {
+    it("should clear vmId from IP allocation when vmId matches", async () => {
       mockFs.existsSync.mockImplementation((path) => {
         if (path === "/tmp/vm0-test") return true;
         if (path === "/tmp/vm0-test/ip-registry.json") return true;
@@ -255,11 +255,42 @@ describe("IP Registry", () => {
         }
       });
 
-      await clearVmIdFromIP("172.16.0.2");
+      await clearVmIdFromIP("172.16.0.2", "test-vm-123");
 
       expect(savedRegistry).not.toBeNull();
       const registry = JSON.parse(savedRegistry!);
       expect(registry.allocations["172.16.0.2"].vmId).toBeNull();
+    });
+
+    it("should not clear vmId when expectedVmId does not match", async () => {
+      mockFs.existsSync.mockImplementation((path) => {
+        if (path === "/tmp/vm0-test") return true;
+        if (path === "/tmp/vm0-test/ip-registry.json") return true;
+        return false;
+      });
+      mockFs.readFileSync.mockImplementation((path) => {
+        if (String(path).includes("ip-registry.json")) {
+          return JSON.stringify({
+            allocations: {
+              "172.16.0.2": { tapDevice: "tap000", vmId: "new-vm-456" },
+            },
+          });
+        }
+        return "";
+      });
+
+      let savedRegistry: string | null = null;
+      mockFs.writeFileSync.mockImplementation((path, data) => {
+        if (String(path).includes("ip-registry.json")) {
+          savedRegistry = String(data);
+        }
+      });
+
+      // Try to clear with old vmId - should not clear because current vmId is different
+      await clearVmIdFromIP("172.16.0.2", "old-vm-123");
+
+      // Should not have written to registry (vmId didn't match)
+      expect(savedRegistry).toBeNull();
     });
   });
 
