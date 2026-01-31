@@ -157,7 +157,6 @@ export const logsCommand = new Command()
   )
   .option("--tail <n>", "Show last N entries (default: 5, max: 100)")
   .option("--head <n>", "Show first N entries (max: 100)")
-  .option("-v, --verbose", "Show full tool inputs and outputs")
   .action(
     async (
       runId: string,
@@ -169,7 +168,6 @@ export const logsCommand = new Command()
         since?: string;
         tail?: string;
         head?: string;
-        verbose?: boolean;
       },
     ) => {
       try {
@@ -199,12 +197,7 @@ export const logsCommand = new Command()
 
         switch (logType) {
           case "agent":
-            await showAgentEvents(runId, {
-              since,
-              limit,
-              order,
-              verbose: options.verbose,
-            });
+            await showAgentEvents(runId, { since, limit, order });
             break;
           case "system":
             await showSystemLog(runId, { since, limit, order });
@@ -232,7 +225,6 @@ async function showAgentEvents(
     since?: number;
     limit: number;
     order: "asc" | "desc";
-    verbose?: boolean;
   },
 ): Promise<void> {
   const response = await apiClient.getAgentEvents(runId, options);
@@ -246,8 +238,8 @@ async function showAgentEvents(
   const events =
     options.order === "desc" ? [...response.events].reverse() : response.events;
 
-  // Create renderer for log viewing (with timestamps)
-  const renderer = createLogRenderer(options.verbose ?? false);
+  // Create renderer for log viewing (with timestamps, always verbose)
+  const renderer = createLogRenderer(true);
 
   for (const event of events) {
     renderAgentEvent(event, response.framework, renderer);
