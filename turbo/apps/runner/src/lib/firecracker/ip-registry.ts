@@ -118,23 +118,19 @@ function isProcessRunning(pid: number): boolean {
  * Manages IP address allocation with file-based persistence and locking.
  */
 export class IPRegistry {
-  private readonly runDir: string;
-  private readonly lockPath: string;
-  private readonly registryPath: string;
-  private readonly ensureRunDirFn: () => Promise<void>;
-  private readonly scanTapDevicesFn: () => Promise<Set<string>>;
-  private readonly checkTapExistsFn: (tapDevice: string) => Promise<boolean>;
+  private readonly config: Required<IPRegistryConfig>;
 
   constructor(config: IPRegistryConfig = {}) {
-    this.runDir = config.runDir ?? VM0_RUN_DIR;
-    this.lockPath =
-      config.lockPath ?? path.join(this.runDir, "ip-pool.lock.active");
-    this.registryPath =
-      config.registryPath ?? path.join(this.runDir, "ip-registry.json");
-    this.ensureRunDirFn =
-      config.ensureRunDir ?? (() => defaultEnsureRunDir(this.runDir));
-    this.scanTapDevicesFn = config.scanTapDevices ?? defaultScanTapDevices;
-    this.checkTapExistsFn = config.checkTapExists ?? defaultCheckTapExists;
+    const runDir = config.runDir ?? VM0_RUN_DIR;
+    this.config = {
+      runDir,
+      lockPath: config.lockPath ?? path.join(runDir, "ip-pool.lock.active"),
+      registryPath:
+        config.registryPath ?? path.join(runDir, "ip-registry.json"),
+      ensureRunDir: config.ensureRunDir ?? (() => defaultEnsureRunDir(runDir)),
+      scanTapDevices: config.scanTapDevices ?? defaultScanTapDevices,
+      checkTapExists: config.checkTapExists ?? defaultCheckTapExists,
+    };
   }
 
   // ============ File Lock ============
@@ -143,24 +139,26 @@ export class IPRegistry {
    * Execute a function while holding an exclusive lock on the IP pool
    */
   private async withIPLock<T>(fn: () => Promise<T>): Promise<T> {
-    await this.ensureRunDirFn();
+    await this.config.ensureRunDir();
 
     const startTime = Date.now();
     let lockAcquired = false;
 
     while (Date.now() - startTime < LOCK_TIMEOUT_MS) {
       try {
-        fs.writeFileSync(this.lockPath, process.pid.toString(), { flag: "wx" });
+        fs.writeFileSync(this.config.lockPath, process.pid.toString(), {
+          flag: "wx",
+        });
         lockAcquired = true;
         break;
       } catch {
         try {
-          const pidStr = fs.readFileSync(this.lockPath, "utf-8");
+          const pidStr = fs.readFileSync(this.config.lockPath, "utf-8");
           const pid = parseInt(pidStr, 10);
           try {
             process.kill(pid, 0);
           } catch {
-            fs.unlinkSync(this.lockPath);
+            fs.unlinkSync(this.config.lockPath);
             continue;
           }
         } catch {
@@ -182,7 +180,7 @@ export class IPRegistry {
       return await fn();
     } finally {
       try {
-        fs.unlinkSync(this.lockPath);
+        fs.unlinkSync(this.config.lockPath);
       } catch {
         // Ignore errors on unlock
       }
@@ -196,8 +194,8 @@ export class IPRegistry {
    */
   private readRegistry(): IPRegistryData {
     try {
-      if (fs.existsSync(this.registryPath)) {
-        const content = fs.readFileSync(this.registryPath, "utf-8");
+      if (fs.existsSync(this.config.registryPath)) {
+        const content = fs.readFileSync(this.config.registryPath, "utf-8");
         return JSON.parse(content) as IPRegistryData;
       }
     } catch {
@@ -210,7 +208,10 @@ export class IPRegistry {
    * Write the IP registry to file
    */
   private writeRegistry(registry: IPRegistryData): void {
-    fs.writeFileSync(this.registryPath, JSON.stringify(registry, null, 2));
+    fs.writeFileSync(
+      this.config.registryPath,
+      JSON.stringify(registry, null, 2),
+    );
   }
 
   /**
@@ -288,7 +289,7 @@ export class IPRegistry {
    */
   async cleanupOrphanedIPs(): Promise<string[]> {
     // Scan TAP devices BEFORE acquiring lock to minimize lock hold time
-    const activeTaps = await this.scanTapDevicesFn();
+    const activeTaps = await this.config.scanTapDevices();
     logger.log(`Found ${activeTaps.size} TAP device(s) on system`);
 
     return this.withIPLock(async () => {
@@ -322,7 +323,7 @@ export class IPRegistry {
           orphanedTaps.push(allocation.tapDevice);
         } else {
           // Double-check TAP existence (might have been created after initial scan)
-          const exists = await this.checkTapExistsFn(allocation.tapDevice);
+          const exists = await this.config.checkTapExists(allocation.tapDevice);
           if (exists) {
             cleanedRegistry.allocations[ip] = allocation;
           } else {
