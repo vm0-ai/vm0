@@ -106,10 +106,10 @@ function isProcessRunning(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (err) {
-    // ESRCH = process doesn't exist → not running
     // EPERM = process exists but no permission → assume running
-    const code = (err as NodeJS.ErrnoException).code;
-    return code !== "ESRCH";
+    // ESRCH = process doesn't exist → not running
+    // Other errors (invalid pid, etc.) → not running
+    return (err as NodeJS.ErrnoException).code === "EPERM";
   }
 }
 
