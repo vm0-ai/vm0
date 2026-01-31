@@ -1,5 +1,12 @@
 # Changelog
 
+## [11.12.0](https://github.com/vm0-ai/vm0/compare/web-v11.11.0...web-v11.12.0) (2026-01-31)
+
+
+### Features
+
+* **web:** optimize sign-up verification code input styling ([#2044](https://github.com/vm0-ai/vm0/issues/2044)) ([0efacaf](https://github.com/vm0-ai/vm0/commit/0efacafd69f93cffa4952d5206d7f87fd3c48a53))
+
 ## [11.11.0](https://github.com/vm0-ai/vm0/compare/web-v11.10.0...web-v11.11.0) (2026-01-31)
 
 

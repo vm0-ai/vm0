@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.1](https://github.com/vm0-ai/vm0/compare/platform-v0.34.0...platform-v0.34.1) (2026-01-31)
+
+
+### Bug Fixes
+
+* **platform:** correct step 1 description on homepage ([#2046](https://github.com/vm0-ai/vm0/issues/2046)) ([8b49b47](https://github.com/vm0-ai/vm0/commit/8b49b470d00a01cb55bcdf1a7a395285ed2b23fa))
+
 ## [0.34.0](https://github.com/vm0-ai/vm0/compare/platform-v0.33.0...platform-v0.34.0) (2026-01-31)
 
 
