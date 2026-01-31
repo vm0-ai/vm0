@@ -23,15 +23,15 @@ function getLightStyles() {
     undefinedValue: "text-gray-400 italic",
     punctuation: "text-gray-500",
     expandIcon:
-      "text-blue-500 hover:text-blue-700 cursor-pointer select-none font-bold",
+      "text-primary hover:text-primary/80 cursor-pointer select-none before:content-['▶'] before:mr-1 before:text-[0.6em]",
     collapseIcon:
-      "text-blue-500 hover:text-blue-700 cursor-pointer select-none font-bold",
+      "text-primary hover:text-primary/80 cursor-pointer select-none before:content-['▼'] before:mr-1 before:text-[0.6em]",
     collapsedContent:
-      "text-blue-500 hover:text-blue-700 cursor-pointer px-1 rounded hover:bg-blue-50",
+      "text-primary/70 hover:text-primary cursor-pointer px-1 rounded hover:bg-primary/10",
     basicChildStyle: "pl-4",
     childFieldsContainer: "",
     clickableLabel:
-      "cursor-pointer hover:underline hover:bg-purple-50 rounded px-0.5",
+      "cursor-pointer hover:underline hover:bg-primary/10 rounded px-0.5",
     otherValue: "text-gray-600",
   };
 }
@@ -48,15 +48,15 @@ function getDarkStyles() {
     undefinedValue: "text-gray-500 italic",
     punctuation: "text-gray-400",
     expandIcon:
-      "text-blue-400 hover:text-blue-300 cursor-pointer select-none font-bold",
+      "text-primary hover:text-primary/80 cursor-pointer select-none before:content-['▶'] before:mr-1 before:text-[0.6em]",
     collapseIcon:
-      "text-blue-400 hover:text-blue-300 cursor-pointer select-none font-bold",
+      "text-primary hover:text-primary/80 cursor-pointer select-none before:content-['▼'] before:mr-1 before:text-[0.6em]",
     collapsedContent:
-      "text-blue-400 hover:text-blue-300 cursor-pointer px-1 rounded hover:bg-blue-900/30",
+      "text-primary/70 hover:text-primary cursor-pointer px-1 rounded hover:bg-primary/10",
     basicChildStyle: "pl-4",
     childFieldsContainer: "",
     clickableLabel:
-      "cursor-pointer hover:underline hover:bg-purple-900/30 rounded px-0.5",
+      "cursor-pointer hover:underline hover:bg-primary/10 rounded px-0.5",
     otherValue: "text-gray-300",
   };
 }
