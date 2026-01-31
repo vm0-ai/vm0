@@ -62,16 +62,6 @@ interface TapPoolConfig {
   deleteTap?: (name: string) => Promise<void>;
   /** Custom MAC setter function (optional, for testing) */
   setMac?: (tap: string, mac: string) => Promise<void>;
-  /** Custom IP allocator function (optional, for testing) */
-  allocateIP?: (tapDevice: string) => Promise<string>;
-  /** Custom IP releaser function (optional, for testing) */
-  releaseIP?: (ip: string) => Promise<void>;
-  /** Custom orphaned IP cleanup function (optional, for testing) */
-  cleanupOrphanedIPs?: () => Promise<void>;
-  /** Custom vmId assigner function (optional, for testing) */
-  assignVmIdToIP?: (ip: string, vmId: string) => Promise<void>;
-  /** Custom vmId clearer function (optional, for testing) */
-  clearVmIdFromIP?: (ip: string, expectedVmId: string) => Promise<void>;
 }
 
 // ============ Helper Functions ============
@@ -152,11 +142,6 @@ export class TapPool {
       createTap: config.createTap ?? defaultCreateTap,
       deleteTap: config.deleteTap ?? defaultDeleteTap,
       setMac: config.setMac ?? defaultSetMac,
-      allocateIP: config.allocateIP ?? allocateIP,
-      releaseIP: config.releaseIP ?? releaseIP,
-      cleanupOrphanedIPs: config.cleanupOrphanedIPs ?? cleanupOrphanedIPs,
-      assignVmIdToIP: config.assignVmIdToIP ?? assignVmIdToIP,
-      clearVmIdFromIP: config.clearVmIdFromIP ?? clearVmIdFromIP,
     };
   }
 
@@ -187,7 +172,7 @@ export class TapPool {
     // Allocate IP
     let guestIp: string;
     try {
-      guestIp = await this.config.allocateIP(tapDevice);
+      guestIp = await allocateIP(tapDevice);
     } catch (err) {
       // Rollback: delete TAP if IP allocation fails
       await this.config.deleteTap(tapDevice).catch(() => {});
@@ -234,7 +219,7 @@ export class TapPool {
           // to avoid pushing to a cleaned-up queue
           if (!this.initialized) {
             // Pool was shutdown while creating pair - cleanup the pair
-            await this.config.releaseIP(pair.guestIp).catch(() => {});
+            await releaseIP(pair.guestIp).catch(() => {});
             await this.config.deleteTap(pair.tapDevice).catch(() => {});
             logger.log("Pool shutdown detected, cleaned up in-flight pair");
             break;
@@ -302,7 +287,7 @@ export class TapPool {
     }
 
     // Clean up orphaned IPs (those whose TAP devices no longer exist on system)
-    await this.config.cleanupOrphanedIPs();
+    await cleanupOrphanedIPs();
 
     this.initialized = true;
     await this.replenish();
@@ -362,7 +347,7 @@ export class TapPool {
           `Returned pair to pool after MAC set failure: ${resource.tapDevice}`,
         );
       } else {
-        await this.config.releaseIP(resource.guestIp).catch(() => {});
+        await releaseIP(resource.guestIp).catch(() => {});
         await this.config.deleteTap(resource.tapDevice).catch(() => {});
       }
       throw err;
@@ -374,7 +359,7 @@ export class TapPool {
     // Update registry with vmId for diagnostic purposes
     // This is non-critical - failure should not prevent VM from starting
     try {
-      await this.config.assignVmIdToIP(resource.guestIp, vmId);
+      await assignVmIdToIP(resource.guestIp, vmId);
     } catch (err) {
       logger.error(
         `Failed to assign vmId to IP registry: ${err instanceof Error ? err.message : "Unknown"}`,
@@ -408,7 +393,7 @@ export class TapPool {
 
     // If pool is not initialized (e.g., during shutdown), cleanup resources
     if (!this.initialized) {
-      await this.config.releaseIP(guestIp).catch(() => {});
+      await releaseIP(guestIp).catch(() => {});
       try {
         await this.config.deleteTap(tapDevice);
         logger.log(`Pair deleted (pool shutdown): ${tapDevice}, ${guestIp}`);
@@ -442,7 +427,7 @@ export class TapPool {
       // Only clears if vmId matches to prevent race condition where new VM's vmId is cleared
       // This is non-critical - failure should not prevent pair from being recycled
       try {
-        await this.config.clearVmIdFromIP(guestIp, vmId);
+        await clearVmIdFromIP(guestIp, vmId);
       } catch (err) {
         logger.error(
           `Failed to clear vmId from IP registry: ${err instanceof Error ? err.message : "Unknown"}`,
@@ -450,7 +435,7 @@ export class TapPool {
       }
     } else {
       // TAP from different pool, cleanup
-      await this.config.releaseIP(guestIp).catch(() => {});
+      await releaseIP(guestIp).catch(() => {});
       try {
         await this.config.deleteTap(tapDevice);
         logger.log(`Non-pooled pair deleted: ${tapDevice}, ${guestIp}`);
@@ -478,7 +463,7 @@ export class TapPool {
 
     // Release all IPs and delete all TAPs (fire-and-forget)
     for (const { tapDevice, guestIp } of this.queue) {
-      this.config.releaseIP(guestIp).catch(() => {});
+      releaseIP(guestIp).catch(() => {});
       this.config.deleteTap(tapDevice).catch((err) => {
         logger.log(
           `Failed to delete ${tapDevice}: ${err instanceof Error ? err.message : "Unknown"}`,
