@@ -327,6 +327,49 @@ describe("IPRegistry", () => {
       // No orphaned TAPs to return (TAP already gone)
       expect(orphanedTaps).toEqual([]);
     });
+
+    it("should keep IP when runner PID check returns EPERM (process exists but no permission)", async () => {
+      // PID 1 (init) typically returns EPERM when checked by non-root user
+      // Skip test if running as root (where PID 1 check succeeds)
+      let pid1ReturnsEperm = false;
+      try {
+        process.kill(1, 0);
+        // If we reach here, we have permission (running as root)
+      } catch (err) {
+        pid1ReturnsEperm = (err as NodeJS.ErrnoException).code === "EPERM";
+      }
+
+      if (!pid1ReturnsEperm) {
+        // Running as root, skip this test
+        return;
+      }
+
+      // Use PID 1 which will return EPERM
+      const allocations = {
+        "172.16.0.2": {
+          runnerPid: 1,
+          tapDevice: "tap000",
+          vmId: null,
+        },
+      };
+      fs.writeFileSync(
+        path.join(testDir, "ip-registry.json"),
+        JSON.stringify({ allocations }),
+      );
+
+      // TAP exists on system
+      mockTapDevices = new Set(["tap000"]);
+
+      const orphanedTaps = await registry.cleanupOrphanedIPs();
+
+      const data = JSON.parse(
+        fs.readFileSync(path.join(testDir, "ip-registry.json"), "utf-8"),
+      );
+      // IP should be KEPT (EPERM means process exists, just no permission)
+      expect(data.allocations["172.16.0.2"]).toBeDefined();
+      // No orphaned TAPs (runner is considered alive)
+      expect(orphanedTaps).toEqual([]);
+    });
   });
 
   describe("file lock", () => {
