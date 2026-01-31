@@ -203,7 +203,9 @@ async function handleAgentCreation(ctx: OnboardContext): Promise<string> {
 async function handlePluginInstallation(
   ctx: OnboardContext,
   agentName: string,
-): Promise<void> {
+): Promise<boolean> {
+  let pluginInstalled = false;
+
   await ctx.runner.step("Install Claude Plugin", async (step: StepContext) => {
     // Ask if user wants to install the plugin
     let shouldInstall = true;
@@ -229,19 +231,26 @@ async function handlePluginInstallation(
       step.detail(
         chalk.green(`Installed ${result.pluginId} (scope: ${result.scope})`),
       );
+      pluginInstalled = true;
     } catch (error) {
       handlePluginError(error);
     }
   });
+
+  return pluginInstalled;
 }
 
-function printNextSteps(agentName: string): void {
+function printNextSteps(agentName: string, pluginInstalled: boolean): void {
   console.log();
   console.log(chalk.bold("Next step:"));
   console.log();
-  console.log(
-    `  ${chalk.cyan(`cd ${agentName} && claude "/${PRIMARY_SKILL_NAME} let's build an agent"`)}`,
-  );
+  if (pluginInstalled) {
+    console.log(
+      `  ${chalk.cyan(`cd ${agentName} && claude "/${PRIMARY_SKILL_NAME} let's build an agent"`)}`,
+    );
+  } else {
+    console.log(`  ${chalk.cyan(`cd ${agentName} && vm0 init`)}`);
+  }
   console.log();
 }
 
@@ -270,12 +279,12 @@ export const onboardCommand = new Command()
     await handleAuthentication(ctx);
     await handleModelProvider(ctx);
     const agentName = await handleAgentCreation(ctx);
-    await handlePluginInstallation(ctx, agentName);
+    const pluginInstalled = await handlePluginInstallation(ctx, agentName);
 
     // Final step
     await ctx.runner.finalStep("Completed", async () => {
       // Empty - just marks completion
     });
 
-    printNextSteps(agentName);
+    printNextSteps(agentName, pluginInstalled);
   });
