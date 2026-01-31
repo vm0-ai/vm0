@@ -32,6 +32,11 @@ export interface HeartbeatConfig {
   heartbeatUrl: string;
   runId: string;
   intervalSeconds: number;
+  /**
+   * Optional scheduler for next heartbeat. Defaults to setTimeout.
+   * Injected for testing to avoid fake timers.
+   */
+  scheduleNext?: (callback: () => void, delayMs: number) => void;
 }
 
 /**
@@ -45,7 +50,8 @@ export interface HeartbeatConfig {
  * @returns Promise that rejects if first heartbeat fails (never resolves otherwise)
  */
 export function startHeartbeat(config: HeartbeatConfig): Promise<never> {
-  const { heartbeatUrl, runId, intervalSeconds } = config;
+  const { heartbeatUrl, runId, intervalSeconds, scheduleNext } = config;
+  const scheduler = scheduleNext ?? setTimeout;
 
   let isFirstHeartbeat = true;
   let rejectFirstHeartbeat: ((error: Error) => void) | null = null;
@@ -94,7 +100,7 @@ export function startHeartbeat(config: HeartbeatConfig): Promise<never> {
     }
 
     // Schedule next heartbeat (fire-and-forget, errors handled internally)
-    setTimeout(() => {
+    scheduler(() => {
       sendHeartbeat().catch(() => {
         // Errors already logged in sendHeartbeat
       });
