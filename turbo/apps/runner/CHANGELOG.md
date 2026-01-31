@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.8.1](https://github.com/vm0-ai/vm0/compare/runner-v3.8.0...runner-v3.8.1) (2026-01-31)
+
+
+### Bug Fixes
+
+* **ci:** use graceful shutdown for runner to prevent resource leaks ([#2067](https://github.com/vm0-ai/vm0/issues/2067)) ([5a2aba9](https://github.com/vm0-ai/vm0/commit/5a2aba9d1e8d1936e361e0f8cdb09ef83c507347))
+* **runner:** track runner pid in ip registry for orphan cleanup ([#2068](https://github.com/vm0-ai/vm0/issues/2068)) ([c76d898](https://github.com/vm0-ai/vm0/commit/c76d89815830e96d9cd707eef81ad979803e7fc9))
+
+
+### Performance Improvements
+
+* **runner:** pre-allocate TAP and IP as pairs in network resource pool ([#2066](https://github.com/vm0-ai/vm0/issues/2066)) ([8bd3db4](https://github.com/vm0-ai/vm0/commit/8bd3db4d4b11b154b5b7d33e815548cb07db39b9))
+* **runner:** pre-warm tap device pool for faster vm boot ([#1997](https://github.com/vm0-ai/vm0/issues/1997)) ([294b22b](https://github.com/vm0-ai/vm0/commit/294b22bdc9bc80542a3a04620bb17a0aaa36f2be))
+
 ## [3.8.0](https://github.com/vm0-ai/vm0/compare/runner-v3.7.3...runner-v3.8.0) (2026-01-31)
 
 

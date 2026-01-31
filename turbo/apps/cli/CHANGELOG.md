@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.8.0](https://github.com/vm0-ai/vm0/compare/cli-v9.7.1...cli-v9.8.0) (2026-01-31)
+
+
+### Features
+
+* **cli:** add platform url output to logs command ([#2064](https://github.com/vm0-ai/vm0/issues/2064)) ([de6e1cb](https://github.com/vm0-ai/vm0/commit/de6e1cb4c24c7b3ea0788b4c41e0d0f20b8bbffd))
+
 ## [9.7.1](https://github.com/vm0-ai/vm0/compare/cli-v9.7.0...cli-v9.7.1) (2026-01-31)
 
 
