@@ -119,26 +119,22 @@ export class FirecrackerVM {
         fs.unlinkSync(this.socketPath);
       }
 
-      // Create sparse overlay file and set up network in parallel
-      // These operations are independent and can run concurrently
-      logger.log(`[VM ${this.config.vmId}] Setting up overlay and network...`);
+      // Acquire overlay and TAP sequentially to ensure proper cleanup on failure
+      // If overlay acquisition fails, TAP won't be acquired (no leak)
+      // If TAP acquisition fails, overlay is already assigned and will be cleaned up
 
-      const setupOverlay = async () => {
-        // Acquire overlay from pre-warmed pool for faster boot
-        // The base rootfs (squashfs) is shared read-only across all VMs
-        // Each VM gets its own sparse ext4 overlay for writes (only allocates on write)
-        // Falls back to on-demand creation if pool is exhausted
-        this.vmOverlayPath = await acquireOverlay();
-        logger.log(
-          `[VM ${this.config.vmId}] Overlay acquired: ${this.vmOverlayPath}`,
-        );
-      };
+      // Acquire overlay from pre-warmed pool for faster boot
+      // The base rootfs (squashfs) is shared read-only across all VMs
+      // Each VM gets its own sparse ext4 overlay for writes (only allocates on write)
+      // Falls back to on-demand creation if pool is exhausted
+      logger.log(`[VM ${this.config.vmId}] Acquiring overlay...`);
+      this.vmOverlayPath = await acquireOverlay();
+      logger.log(`[VM ${this.config.vmId}] Overlay acquired`);
 
-      const [, networkConfig] = await Promise.all([
-        setupOverlay(),
-        acquireTap(this.config.vmId),
-      ]);
-      this.networkConfig = networkConfig;
+      // Acquire TAP+IP pair from pre-warmed pool
+      logger.log(`[VM ${this.config.vmId}] Acquiring TAP+IP...`);
+      this.networkConfig = await acquireTap(this.config.vmId);
+      logger.log(`[VM ${this.config.vmId}] TAP+IP acquired`);
 
       // Spawn Firecracker process
       logger.log(`[VM ${this.config.vmId}] Starting Firecracker...`);
