@@ -33,6 +33,7 @@ vi.mock("child_process", () => ({
 }));
 
 import { spawn } from "child_process";
+import prompts from "prompts";
 import { onboardCommand } from "../index";
 
 // Helper to create a mock child process
@@ -385,11 +386,10 @@ describe("onboard command", () => {
     });
 
     it("should show vm0 init when plugin installation is skipped", async () => {
-      const prompts = await import("prompts");
       // Inject responses in order:
       // 1. "my-vm0-agent" for agent name prompt
       // 2. false for "Install VM0 Claude Plugin?" confirmation
-      prompts.default.inject(["my-vm0-agent", false]);
+      prompts.inject(["my-vm0-agent", false]);
 
       await onboardCommand.parseAsync(["node", "cli"]);
 

@@ -286,18 +286,20 @@ it("should create files with --name flag", async () => {
 Use `prompts.inject()` - the library's native testing feature - to simulate user responses. This is NOT mocking; it's using the official testing API provided by the `prompts` library.
 
 **Prerequisites**:
-1. Enable TTY mode (usually done in test file's `beforeEach`)
-2. Inject ALL prompt responses in the order they will be asked
+1. Import prompts at top of file: `import prompts from "prompts"`
+2. Enable TTY mode (usually done in test file's `beforeEach`)
+3. Inject ALL prompt responses in the order they will be asked
 
 **Example**: Testing that onboard shows `vm0 init` when user skips plugin installation.
 
 ```typescript
+import prompts from "prompts";
+
 it("should show vm0 init when plugin installation is skipped", async () => {
-  const prompts = await import("prompts");
   // Inject responses in order:
   // 1. "my-vm0-agent" for agent name prompt
   // 2. false for "Install VM0 Claude Plugin?" confirmation
-  prompts.default.inject(["my-vm0-agent", false]);
+  prompts.inject(["my-vm0-agent", false]);
 
   await onboardCommand.parseAsync(["node", "cli"]);
 
@@ -320,10 +322,9 @@ beforeEach(() => {
 ```
 
 **Key Points**:
-- Use dynamic import: `const prompts = await import("prompts")`
-- Call inject on default export: `prompts.default.inject([...])`
+- Use static import: `import prompts from "prompts"`
 - Inject ALL responses in prompt order - missing values will cause prompts to hang or return undefined
-- `prompts.default.inject([new Error()])` - Simulate user cancellation (Ctrl+C)
+- `prompts.inject([new Error()])` - Simulate user cancellation (Ctrl+C)
 
 ---
 
