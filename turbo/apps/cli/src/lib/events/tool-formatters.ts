@@ -176,20 +176,17 @@ function formatWritePreview(
   const contentLines = content.split("\n");
   const totalLines = contentLines.length;
 
-  // Summary line
-  lines.push(
-    `⎿ ${chalk.dim(`${totalLines} ${pluralize(totalLines, "line", "lines")} written`)}`,
-  );
-
   // Show content preview
   if (verbose) {
-    for (const line of contentLines) {
-      lines.push(`  ${chalk.dim(line)}`);
+    for (let i = 0; i < contentLines.length; i++) {
+      const prefix = i === 0 ? "⎿ " : "  ";
+      lines.push(`${prefix}${chalk.dim(contentLines[i] ?? "")}`);
     }
   } else {
     const previewCount = Math.min(3, totalLines);
     for (let i = 0; i < previewCount; i++) {
-      lines.push(`  ${chalk.dim(contentLines[i] ?? "")}`);
+      const prefix = i === 0 ? "⎿ " : "  ";
+      lines.push(`${prefix}${chalk.dim(contentLines[i] ?? "")}`);
     }
     const remaining = totalLines - previewCount;
     if (remaining > 0) {
@@ -228,9 +225,7 @@ function formatEditDiff(input: Record<string, unknown>): string[] {
 
   // Show removed lines
   for (let i = 0; i < showOld; i++) {
-    lines.push(
-      `  ${chalk.red("-")} ${chalk.dim(truncate(oldLines[i] ?? "", 60))}`,
-    );
+    lines.push(`  ${chalk.dim(`- ${truncate(oldLines[i] ?? "", 60)}`)}`);
   }
   if (oldLines.length > previewLimit) {
     lines.push(`  ${chalk.dim(`  … +${oldLines.length - previewLimit} more`)}`);
@@ -238,9 +233,7 @@ function formatEditDiff(input: Record<string, unknown>): string[] {
 
   // Show added lines
   for (let i = 0; i < showNew; i++) {
-    lines.push(
-      `  ${chalk.green("+")} ${chalk.dim(truncate(newLines[i] ?? "", 60))}`,
-    );
+    lines.push(`  ${chalk.dim(`+ ${truncate(newLines[i] ?? "", 60)}`)}`);
   }
   if (newLines.length > previewLimit) {
     lines.push(`  ${chalk.dim(`  … +${newLines.length - previewLimit} more`)}`);
