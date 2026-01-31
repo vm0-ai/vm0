@@ -15,7 +15,7 @@ This guide covers BATS-based E2E testing for the CLI, including parallelization,
 
 ### 1. Happy Path Only
 
-E2E tests verify the system works end-to-end. Error cases belong in command-level tests.
+E2E tests verify the system works end-to-end. Error cases belong in CLI Command Integration Tests.
 
 ```bash
 # ✅ E2E: Test that the feature works
@@ -24,8 +24,8 @@ E2E tests verify the system works end-to-end. Error cases belong in command-leve
     assert_success
 }
 
-# ❌ Don't test error cases in E2E - use command-level tests instead
-@test "vm0 run fails with invalid agent" { ... }  # Move to command-level test
+# ❌ Don't test error cases in E2E - use CLI Command Integration Tests instead
+@test "vm0 run fails with invalid agent" { ... }  # Move to Command Integration Test
 ```
 
 ### 2. `vm0 run` is Expensive (~15s)
@@ -330,7 +330,7 @@ setup_file() {
 ### AP-4: Testing Error Cases in E2E
 
 ```bash
-# ❌ BAD: Error cases belong in command-level tests
+# ❌ BAD: Error cases belong in CLI Command Integration Tests
 @test "vm0 run fails with missing artifact" {
     run vm0 run "$AGENT" --artifact-name "nonexistent"
     assert_failure
@@ -410,7 +410,7 @@ teardown_file() {
 
 Before committing E2E tests:
 
-- [ ] Happy path only (error cases → command-level tests)
+- [ ] Happy path only (error cases → CLI Command Integration Tests)
 - [ ] Max ONE `vm0 run` per test case (timeout safety)
 - [ ] State-sharing tests in same file, independent tests in separate files
 - [ ] Use `setup_file()` for expensive one-time setup (compose)

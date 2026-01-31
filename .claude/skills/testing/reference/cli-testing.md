@@ -2,7 +2,7 @@
 
 ## Principle
 
-In the CLI app (`turbo/apps/cli`), only write command-level integration tests. Test commands via `command.parseAsync()` with MSW mocking the Web API.
+In the CLI app (`turbo/apps/cli`), only write **CLI Command Integration Tests**. Test commands via `command.parseAsync()` with MSW mocking the Web API.
 
 **Integration boundary:**
 - **Entry point**: Commander.js command action (`command.parseAsync()`)
@@ -330,7 +330,7 @@ beforeEach(() => {
 
 ## Test Targets
 
-Only test at command level. Do not write separate unit tests for internal modules.
+Only test at command integration level. Do not write separate unit tests for internal modules.
 
 **Bad Case**
 
@@ -344,7 +344,7 @@ Only test at command level. Do not write separate unit tests for internal module
 **Good Case**
 
 ```typescript
-// Command-level tests that exercise internal modules
+// CLI Command Integration Tests that exercise internal modules
 describe("compose command", () => {
   it("should reject invalid YAML", async () => {
     await fs.writeFile(path.join(tempDir, "vm0.yaml"), "invalid: yaml: content:");
