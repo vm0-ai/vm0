@@ -17,7 +17,7 @@
     "@tabler/icons-react": "^3.31.0",
     "@vm0/ui": "workspace:*",
     "next": "^15.5.7",
-    "next-intl": "^4.6.1",
+    "next-intl": "^4.8.1",
     "react": "^19.1.2",
     "react-dom": "^19.1.2",
     "react-markdown": "^10.1.0",
