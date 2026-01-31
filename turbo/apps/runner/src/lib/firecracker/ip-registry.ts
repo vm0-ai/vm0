@@ -305,10 +305,7 @@ export class IPRegistry {
 
       for (const [ip, allocation] of Object.entries(registry.allocations)) {
         const tapInScan = activeTaps.has(allocation.tapDevice);
-        // Check if runner process is still alive (handle legacy entries without runnerPid)
-        const runnerAlive = allocation.runnerPid
-          ? isProcessRunning(allocation.runnerPid)
-          : true; // Assume alive for legacy entries
+        const runnerAlive = isProcessRunning(allocation.runnerPid);
 
         // If runner is dead, allocation is orphaned (regardless of TAP status)
         if (!runnerAlive) {

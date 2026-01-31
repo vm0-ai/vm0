@@ -262,33 +262,6 @@ describe("IPRegistry", () => {
       expect(orphanedTaps).toEqual(["tap000"]);
     });
 
-    it("should keep IPs for legacy entries without runnerPid", async () => {
-      // Manually write registry with legacy entry (no runnerPid)
-      const allocations = {
-        "172.16.0.2": {
-          tapDevice: "tap000",
-          vmId: null,
-        },
-      };
-      fs.writeFileSync(
-        path.join(testDir, "ip-registry.json"),
-        JSON.stringify({ allocations }),
-      );
-
-      // TAP exists on system
-      mockTapDevices = new Set(["tap000"]);
-
-      const orphanedTaps = await registry.cleanupOrphanedIPs();
-
-      const data = JSON.parse(
-        fs.readFileSync(path.join(testDir, "ip-registry.json"), "utf-8"),
-      );
-      // Legacy entry should be kept (assume alive)
-      expect(data.allocations["172.16.0.2"]).toBeDefined();
-      // No orphaned TAPs
-      expect(orphanedTaps).toEqual([]);
-    });
-
     it("should return multiple orphaned TAPs when multiple runners are dead", async () => {
       const deadPid = 999999;
       const allocations = {
