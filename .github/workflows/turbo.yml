@@ -26,7 +26,7 @@ jobs:
       runner-changed: ${{ steps.detect.outputs.runner-changed }}
       platform-changed: ${{ steps.detect.outputs.platform-changed }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -90,7 +90,7 @@ jobs:
   file-size-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -127,7 +127,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
       # Run lint, check-types, prettier and knip directly (not via lefthook)
@@ -168,7 +168,7 @@ jobs:
           POSTGRES_HOST_AUTH_METHOD: trust
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
       - name: Build Core Package
@@ -219,7 +219,7 @@ jobs:
       pull-requests: write
       deployments: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
       # Step 1: Create Neon database branch
@@ -278,7 +278,7 @@ jobs:
       pull-requests: write
       deployments: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
       - name: Deploy Docs to Vercel
@@ -306,7 +306,7 @@ jobs:
       pull-requests: write
       deployments: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
       - name: Deploy Site to Vercel
@@ -338,7 +338,7 @@ jobs:
       pull-requests: write
       deployments: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
       - name: Deploy Platform to Vercel
@@ -369,7 +369,7 @@ jobs:
         needs.prepare.outputs.runner-changed == 'true'
       )
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
       - uses: ./.github/actions/toolchain-init
@@ -406,7 +406,7 @@ jobs:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
       - name: Save auth config to cache
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ~/.vm0
           key: e2e-auth-${{ github.run_id }}-${{ github.run_attempt }}
@@ -420,12 +420,12 @@ jobs:
     if: needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.web-changed == 'true'
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive # For BATS test framework
 
       - name: Restore auth config from cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ~/.vm0
           key: e2e-auth-${{ github.run_id }}-${{ github.run_attempt }}
@@ -453,7 +453,7 @@ jobs:
       )
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
       - uses: ./.github/actions/toolchain-init
@@ -474,7 +474,7 @@ jobs:
         run: cd turbo/apps/cli && pnpm link --global
 
       - name: Restore auth config from cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ~/.vm0
           key: e2e-auth-${{ github.run_id }}-${{ github.run_attempt }}
@@ -522,7 +522,7 @@ jobs:
       )
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
       - uses: ./.github/actions/toolchain-init
@@ -546,7 +546,7 @@ jobs:
         run: apt-get update && apt-get install -y parallel
 
       - name: Restore auth config from cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ~/.vm0
           key: e2e-auth-${{ github.run_id }}-${{ github.run_attempt }}
@@ -598,7 +598,7 @@ jobs:
       )
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
       - uses: ./.github/actions/toolchain-init
@@ -622,7 +622,7 @@ jobs:
         run: apt-get update && apt-get install -y parallel
 
       - name: Restore auth config from cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ~/.vm0
           key: e2e-auth-${{ github.run_id }}-${{ github.run_attempt }}
@@ -678,7 +678,7 @@ jobs:
       runner-dir: ${{ steps.prepare.outputs.runner-dir }}
       proxy-port: ${{ steps.prepare.outputs.proxy-port }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
       - name: Lock runner host
@@ -892,7 +892,7 @@ jobs:
         needs.prepare.outputs.runner-changed == 'true'
       )
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Run benchmark command for VM performance testing
         env:
@@ -946,7 +946,7 @@ jobs:
       runner-dir: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
       runner-host: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
       - name: Start runner (configure and launch)
