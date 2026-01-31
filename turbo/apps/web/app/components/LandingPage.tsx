@@ -4,19 +4,60 @@ import { useEffect, useRef } from "react";
 import Image from "next/image";
 import Script from "next/script";
 import { useTranslations } from "next-intl";
+import { useUser } from "@clerk/nextjs";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
 import { useTheme } from "./ThemeProvider";
 
+/**
+ * Construct platform URL from current host
+ * - vm0.ai → platform.vm0.ai
+ * - www.vm0.ai → platform.vm0.ai
+ * - localhost:3000 → localhost:3001
+ */
+function getPlatformUrl(host: string): string {
+  const colonIndex = host.indexOf(":");
+  const hostname = colonIndex === -1 ? host : host.slice(0, colonIndex);
+  const port = colonIndex === -1 ? null : host.slice(colonIndex + 1);
+
+  // Handle localhost - use different port for platform
+  if (hostname === "localhost" || hostname === "127.0.0.1") {
+    return `http://${hostname}:3001`;
+  }
+
+  // For production domains, replace www or prepend platform
+  const parts = hostname.split(".");
+  if (parts[0] === "www") {
+    parts[0] = "platform";
+  } else {
+    parts.unshift("platform");
+  }
+
+  const platformHost = parts.join(".");
+  const protocol = "https";
+  return port
+    ? `${protocol}://${platformHost}:${port}`
+    : `${protocol}://${platformHost}`;
+}
+
 export default function LandingPage() {
   const sandboxRef = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
+  const { isSignedIn, isLoaded } = useUser();
   const t = useTranslations("hero");
   const tBuild = useTranslations("build");
   const tCliAgents = useTranslations("cliAgents");
   const tFeatures = useTranslations("features");
   const tInfra = useTranslations("infrastructure");
   const tCta = useTranslations("cta");
+
+  // Redirect logged-in users to platform
+  useEffect(() => {
+    if (isLoaded && isSignedIn) {
+      const platformUrl = getPlatformUrl(window.location.host);
+      window.location.href = platformUrl;
+    }
+  }, [isLoaded, isSignedIn]);
 
   useEffect(() => {
     // Defer non-critical animations to improve LCP
