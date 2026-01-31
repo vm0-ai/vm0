@@ -1,5 +1,51 @@
 # CLI Testing Patterns
 
+## Testing Pyramid
+
+CLI testing follows a pyramid structure with three levels:
+
+```
+                    ┌─────────────┐
+                    │   E2E Tests │  Happy path only (BATS)
+                    │  (~15s each)│  e2e/tests/
+                    └──────┬──────┘
+                           │
+              ┌────────────┴────────────┐
+              │    Command-Level Tests  │  Error cases, variations (MSW)
+              │     (fast, isolated)    │  src/commands/**/__tests__/
+              └────────────┬────────────┘
+                           │
+    ┌──────────────────────┴──────────────────────┐
+    │              Unit Tests (if needed)          │  Complex pure logic only
+    │          (pure functions, no I/O)           │  src/lib/**/__tests__/
+    └──────────────────────────────────────────────┘
+```
+
+### When to Use Each Level
+
+| Level | What to Test | Test Count |
+|-------|--------------|------------|
+| **E2E** | Happy path only - verify the complete flow works | Few (5-10 per feature) |
+| **Command** | All scenarios: success, errors, edge cases, variations | Many (10-30 per command) |
+| **Unit** | Complex pure logic that's hard to test through commands | Rare |
+
+### Key Principle: Prefer Command-Level Tests
+
+**Command-level tests give the best ROI:**
+- Fast: Run in milliseconds (no real API calls)
+- Isolated: MSW provides controlled responses
+- Comprehensive: Test all code paths including error handling
+- Realistic: Exercise real CLI code, validators, formatters
+
+**E2E tests are expensive:**
+- Each `vm0 run` takes ~15 seconds
+- Subject to network issues and API rate limits
+- Hard to test error conditions reliably
+
+**Move error cases from E2E to command tests** - E2E should only verify "it works", not all the ways it can fail.
+
+---
+
 ## Principle
 
 In the CLI app (`turbo/apps/cli`), only write command-level integration tests. Test commands via `command.parseAsync()` with MSW mocking the Web API.
@@ -412,6 +458,110 @@ it("should handle API error", async () => {
   expect(mockConsoleError).toHaveBeenCalledWith(
     expect.stringContaining("Invalid compose"),
   );
+});
+```
+
+---
+
+## MSW Handler Organization
+
+When testing commands that call multiple API endpoints, organize handlers in dedicated files.
+
+### Directory Structure
+
+```
+src/mocks/
+├── server.ts           # MSW server setup
+├── handlers/
+│   ├── index.ts        # Exports all handler arrays
+│   ├── api-handlers.ts # General API handlers
+│   ├── schedule-handlers.ts  # Schedule-specific handlers
+│   └── npm-registry-handlers.ts
+```
+
+### Creating Reusable Handlers
+
+```typescript
+// src/mocks/handlers/schedule-handlers.ts
+import { http, HttpResponse } from "msw";
+
+/**
+ * Default MSW handlers for schedule API endpoints.
+ * Individual tests can override using server.use().
+ */
+export const scheduleHandlers = [
+  // GET /api/agent/schedules
+  http.get("http://localhost:3000/api/agent/schedules", () => {
+    return HttpResponse.json({ schedules: [] });
+  }),
+
+  // POST /api/agent/schedules
+  http.post("http://localhost:3000/api/agent/schedules", () => {
+    return HttpResponse.json({
+      created: true,
+      schedule: { id: "schedule-123", name: "test-schedule" },
+    }, { status: 201 });
+  }),
+
+  // DELETE /api/agent/schedules/:name
+  http.delete("http://localhost:3000/api/agent/schedules/:name", () => {
+    return new HttpResponse(null, { status: 204 });
+  }),
+];
+```
+
+### Registering Handlers
+
+```typescript
+// src/mocks/handlers/index.ts
+import { apiHandlers } from "./api-handlers";
+import { scheduleHandlers } from "./schedule-handlers";
+
+export const handlers = [...apiHandlers, ...scheduleHandlers];
+```
+
+### Overriding in Tests
+
+Default handlers provide baseline responses. Override for specific test scenarios:
+
+```typescript
+// Test-specific override
+it("should handle schedule not found", async () => {
+  server.use(
+    http.get("http://localhost:3000/api/agent/schedules", () => {
+      return HttpResponse.json({ schedules: [] }); // Empty list
+    }),
+  );
+  // ... test assertions
+});
+```
+
+### Helper Functions for Tests
+
+Create helper functions to generate consistent mock data:
+
+```typescript
+// In test file
+function createMockSchedule(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "schedule-1",
+    composeName: "test-agent",
+    name: "test-agent-schedule",
+    cronExpression: "0 9 * * *",
+    enabled: true,
+    ...overrides,
+  };
+}
+
+it("should display schedule details", async () => {
+  const schedule = createMockSchedule({ timezone: "America/New_York" });
+
+  server.use(
+    http.get("http://localhost:3000/api/agent/schedules", () => {
+      return HttpResponse.json({ schedules: [schedule] });
+    }),
+  );
+  // ...
 });
 ```
 
