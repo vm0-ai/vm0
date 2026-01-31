@@ -38,7 +38,7 @@ export interface SkillUploadResult extends StorageUploadResult {
  * @returns The canonical filename for instructions
  * @throws Error if framework is defined but not supported
  */
-export function getInstructionsFilename(framework?: string): string {
+function getInstructionsFilename(framework?: string): string {
   const validatedFramework = getValidatedFramework(framework);
   if (validatedFramework === "codex") {
     return "AGENTS.md";

@@ -9,7 +9,7 @@ import { excludeVm0Filter } from "../utils/file-utils";
 /**
  * File entry with pre-computed hash for direct upload
  */
-export interface FileEntryWithHash {
+interface FileEntryWithHash {
   path: string;
   hash: string;
   size: number;
@@ -32,16 +32,9 @@ interface DirectUploadResult {
 type ProgressCallback = (message: string) => void;
 
 /**
- * Compute SHA-256 hash of file content (for testing with small buffers)
- */
-export function hashFileContent(content: Buffer): string {
-  return createHash("sha256").update(content).digest("hex");
-}
-
-/**
  * Compute SHA-256 hash of a file using streaming to avoid loading large files into memory
  */
-export async function hashFileStream(filePath: string): Promise<string> {
+async function hashFileStream(filePath: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const hash = createHash("sha256");
     const stream = fs.createReadStream(filePath);
@@ -55,7 +48,7 @@ export async function hashFileStream(filePath: string): Promise<string> {
 /**
  * Get all files in directory recursively, excluding .vm0/
  */
-export async function getAllFiles(
+async function getAllFiles(
   dirPath: string,
   baseDir: string = dirPath,
 ): Promise<string[]> {
@@ -85,7 +78,7 @@ export async function getAllFiles(
 /**
  * Collect file metadata with hashes using streaming to handle large files
  */
-export async function collectFileMetadata(
+async function collectFileMetadata(
   cwd: string,
   files: string[],
   onProgress?: ProgressCallback,
@@ -120,10 +113,7 @@ export async function collectFileMetadata(
 /**
  * Create tar.gz archive of files
  */
-export async function createArchive(
-  cwd: string,
-  files: string[],
-): Promise<Buffer> {
+async function createArchive(cwd: string, files: string[]): Promise<Buffer> {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vm0-"));
   const tarPath = path.join(tmpDir, "archive.tar.gz");
 
@@ -166,7 +156,7 @@ export async function createArchive(
 /**
  * Create manifest JSON for the upload
  */
-export function createManifest(files: FileEntryWithHash[]): Buffer {
+function createManifest(files: FileEntryWithHash[]): Buffer {
   const manifest = {
     version: 1,
     files,
