@@ -18,6 +18,7 @@ export interface S3Object {
 /**
  * S3 download error
  */
+// eslint-disable-next-line no-restricted-syntax -- legacy code
 export class S3DownloadError extends Error {
   constructor(
     message: string,
@@ -33,6 +34,7 @@ export class S3DownloadError extends Error {
 /**
  * S3 upload error
  */
+// eslint-disable-next-line no-restricted-syntax -- legacy code
 export class S3UploadError extends Error {
   constructor(
     message: string,

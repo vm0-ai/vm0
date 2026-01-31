@@ -45,6 +45,7 @@ interface ProxyResult {
 /**
  * Error thrown when proxy token decryption fails
  */
+// eslint-disable-next-line no-restricted-syntax -- legacy code
 export class ProxyTokenDecryptionError extends Error {
   constructor(
     message: string,
