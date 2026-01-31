@@ -63,6 +63,7 @@ describe("ProxyManager", () => {
       const minimalDir = path.join(tempDir, "minimal", "proxy");
       const minimalManager = new ProxyManager({
         caDir: minimalDir,
+        apiUrl: "https://test.api.com",
       });
 
       const config = minimalManager.getConfig();

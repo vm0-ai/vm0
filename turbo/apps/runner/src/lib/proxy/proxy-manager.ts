@@ -21,6 +21,8 @@ const logger = createLogger("ProxyManager");
 interface RequiredProxyConfig {
   /** Path to the mitmproxy CA directory (per-runner isolation) */
   caDir: string;
+  /** VM0 API URL for the addon (from runner config server.url) */
+  apiUrl: string;
 }
 
 /**
@@ -31,8 +33,6 @@ interface OptionalProxyConfig {
   port: number;
   /** Path to the VM registry file */
   registryPath: string;
-  /** VM0 API URL for the addon */
-  apiUrl: string;
 }
 
 /**
@@ -54,7 +54,6 @@ type ProxyConfigInput = RequiredProxyConfig & Partial<OptionalProxyConfig>;
 const DEFAULT_PROXY_OPTIONS: OptionalProxyConfig = {
   port: 8080,
   registryPath: DEFAULT_REGISTRY_PATH,
-  apiUrl: process.env.VM0_API_URL || "https://www.vm0.ai",
 };
 
 /**
