@@ -112,6 +112,13 @@ export function formatToolResult(
     return lines;
   }
 
+  // Special handling for Edit - show diff format
+  if (tool === "Edit" && !isError) {
+    const editLines = formatEditDiff(input);
+    lines.push(...editLines);
+    return lines;
+  }
+
   // Error case: show error message
   if (isError) {
     const errorMsg = resultText ? truncate(resultText, 80) : "Error";
@@ -145,6 +152,53 @@ export function formatToolResult(
   } else {
     // No result content, show done
     lines.push(`└ ✓ ${chalk.dim("Done")}`);
+  }
+
+  return lines;
+}
+
+/**
+ * Format Edit tool output as diff
+ * Shows added/removed line counts and preview of changes
+ */
+function formatEditDiff(input: Record<string, unknown>): string[] {
+  const lines: string[] = [];
+  const oldString = String(input.old_string || "");
+  const newString = String(input.new_string || "");
+
+  const oldLines = oldString.split("\n");
+  const newLines = newString.split("\n");
+
+  const removed = oldLines.length;
+  const added = newLines.length;
+
+  // Summary line
+  const summary = `Added ${added} ${pluralize(added, "line", "lines")}, removed ${removed} ${pluralize(removed, "line", "lines")}`;
+  lines.push(`⎿ ${chalk.dim(summary)}`);
+
+  // Show diff preview (first few lines of each)
+  const previewLimit = 3;
+  const showOld = Math.min(previewLimit, oldLines.length);
+  const showNew = Math.min(previewLimit, newLines.length);
+
+  // Show removed lines
+  for (let i = 0; i < showOld; i++) {
+    lines.push(
+      `  ${chalk.red("-")} ${chalk.dim(truncate(oldLines[i] ?? "", 60))}`,
+    );
+  }
+  if (oldLines.length > previewLimit) {
+    lines.push(`  ${chalk.dim(`  … +${oldLines.length - previewLimit} more`)}`);
+  }
+
+  // Show added lines
+  for (let i = 0; i < showNew; i++) {
+    lines.push(
+      `  ${chalk.green("+")} ${chalk.dim(truncate(newLines[i] ?? "", 60))}`,
+    );
+  }
+  if (newLines.length > previewLimit) {
+    lines.push(`  ${chalk.dim(`  … +${newLines.length - previewLimit} more`)}`);
   }
 
   return lines;
