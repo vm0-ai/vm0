@@ -18,7 +18,7 @@ export interface S3Object {
 /**
  * S3 download error
  */
-export interface S3DownloadError extends Error {
+interface S3DownloadError extends Error {
   readonly name: "S3DownloadError";
   readonly bucket: string;
   readonly key?: string;
@@ -43,14 +43,10 @@ export function s3DownloadError(
   return error;
 }
 
-export function isS3DownloadError(e: unknown): e is S3DownloadError {
-  return e instanceof Error && e.name === "S3DownloadError";
-}
-
 /**
  * S3 upload error
  */
-export interface S3UploadError extends Error {
+interface S3UploadError extends Error {
   readonly name: "S3UploadError";
   readonly bucket: string;
   readonly key?: string;
@@ -73,10 +69,6 @@ export function s3UploadError(
     (error as { cause: Error }).cause = cause;
   }
   return error;
-}
-
-export function isS3UploadError(e: unknown): e is S3UploadError {
-  return e instanceof Error && e.name === "S3UploadError";
 }
 
 /**

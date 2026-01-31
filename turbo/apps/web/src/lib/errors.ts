@@ -11,13 +11,13 @@ interface ApiErrorBase extends Error {
   readonly code: string;
 }
 
-export interface UnauthorizedError extends ApiErrorBase {
+interface UnauthorizedError extends ApiErrorBase {
   readonly name: "UnauthorizedError";
   readonly statusCode: 401;
   readonly code: "UNAUTHORIZED";
 }
 
-export interface NotFoundError extends ApiErrorBase {
+interface NotFoundError extends ApiErrorBase {
   readonly name: "NotFoundError";
   readonly statusCode: 404;
   readonly code: "NOT_FOUND";
@@ -29,25 +29,25 @@ export interface BadRequestError extends ApiErrorBase {
   readonly code: "BAD_REQUEST";
 }
 
-export interface ForbiddenError extends ApiErrorBase {
+interface ForbiddenError extends ApiErrorBase {
   readonly name: "ForbiddenError";
   readonly statusCode: 403;
   readonly code: "FORBIDDEN";
 }
 
-export interface ConflictError extends ApiErrorBase {
+interface ConflictError extends ApiErrorBase {
   readonly name: "ConflictError";
   readonly statusCode: 409;
   readonly code: "CONFLICT";
 }
 
-export interface SchedulePastError extends ApiErrorBase {
+interface SchedulePastError extends ApiErrorBase {
   readonly name: "SchedulePastError";
   readonly statusCode: 400;
   readonly code: "SCHEDULE_PAST";
 }
 
-export interface ConcurrentRunLimitError extends ApiErrorBase {
+interface ConcurrentRunLimitError extends ApiErrorBase {
   readonly name: "ConcurrentRunLimitError";
   readonly statusCode: 429;
   readonly code: "TOO_MANY_REQUESTS";
@@ -120,10 +120,6 @@ export function concurrentRunLimit(
 // ============================================================================
 // Type Guards
 // ============================================================================
-
-export function isUnauthorized(e: unknown): e is UnauthorizedError {
-  return e instanceof Error && e.name === "UnauthorizedError";
-}
 
 export function isNotFound(e: unknown): e is NotFoundError {
   return e instanceof Error && e.name === "NotFoundError";

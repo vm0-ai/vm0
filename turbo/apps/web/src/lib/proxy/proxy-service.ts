@@ -45,12 +45,12 @@ interface ProxyResult {
 /**
  * Error thrown when proxy token decryption fails
  */
-export interface ProxyTokenDecryptionError extends Error {
+interface ProxyTokenDecryptionError extends Error {
   readonly name: "ProxyTokenDecryptionError";
   readonly header: string;
 }
 
-export function proxyTokenDecryptionError(
+function proxyTokenDecryptionError(
   message: string,
   header: string,
 ): ProxyTokenDecryptionError {
