@@ -26,13 +26,16 @@ export const paths = {
 
   /** IP allocation registry */
   ipRegistry: path.join(VM0_RUN_DIR, "ip-registry.json"),
-
-  /** Overlay pool directory */
-  overlayPool: path.join(VM0_RUN_DIR, "overlay-pool"),
-
-  /** Overlay pool directory for benchmark (isolated) */
-  overlayPoolBenchmark: path.join(VM0_RUN_DIR, "overlay-pool-benchmark"),
 } as const;
+
+/**
+ * Per-runner data paths (config.data_dir)
+ * Each runner instance has its own data directory
+ */
+export const dataPaths = {
+  /** Overlay pool directory for pre-warmed VM overlays */
+  overlayPool: (dataDir: string) => path.join(dataDir, "overlay-pool"),
+};
 
 /**
  * Temporary file paths (/tmp/vm0-*)

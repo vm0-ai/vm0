@@ -18,7 +18,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { createLogger } from "../logger.js";
-import { paths } from "../paths.js";
 
 const execAsync = promisify(exec);
 const logger = createLogger("OverlayPool");
@@ -26,7 +25,6 @@ const logger = createLogger("OverlayPool");
 /**
  * Configuration constants
  */
-const DEFAULT_POOL_DIR = paths.overlayPool;
 const OVERLAY_SIZE = 2 * 1024 * 1024 * 1024; // 2GB sparse file
 
 /**
@@ -37,8 +35,8 @@ interface OverlayPoolConfig {
   size: number;
   /** Start replenishing when pool drops below this count */
   replenishThreshold: number;
-  /** Custom pool directory (optional, for testing) */
-  poolDir?: string;
+  /** Pool directory for overlay files */
+  poolDir: string;
   /** Custom file creator function (optional, for testing) */
   createFile?: (filePath: string) => Promise<void>;
 }
@@ -69,7 +67,7 @@ export class OverlayPool {
     this.config = {
       size: config.size,
       replenishThreshold: config.replenishThreshold,
-      poolDir: config.poolDir ?? DEFAULT_POOL_DIR,
+      poolDir: config.poolDir,
       createFile: config.createFile ?? defaultCreateFile,
     };
   }

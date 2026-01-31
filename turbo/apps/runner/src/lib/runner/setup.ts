@@ -1,4 +1,5 @@
 import type { RunnerConfig } from "../config.js";
+import { dataPaths } from "../paths.js";
 import {
   checkNetworkPrerequisites,
   setupBridge,
@@ -73,6 +74,7 @@ export async function setupEnvironment(
   await initOverlayPool({
     size: config.sandbox.max_concurrent + 2,
     replenishThreshold: config.sandbox.max_concurrent,
+    poolDir: dataPaths.overlayPool(config.data_dir),
   });
 
   // Initialize proxy for network security mode

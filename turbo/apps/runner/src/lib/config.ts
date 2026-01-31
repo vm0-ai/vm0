@@ -30,6 +30,7 @@ export const runnerConfigSchema = z.object({
       /^[a-z0-9-]+\/[a-z0-9-]+$/,
       "Group must be in format 'scope/name' (lowercase, hyphens allowed)",
     ),
+  data_dir: z.string().min(1, "Data directory is required"),
   server: z.object({
     url: z.url({ message: "Server URL must be a valid URL" }),
     token: z.string().min(1, "Server token is required"),
@@ -75,6 +76,7 @@ const DEBUG_SERVER_DEFAULTS = {
 export const debugConfigSchema = z.object({
   name: z.string().default("debug-runner"),
   group: z.string().default("debug/local"),
+  data_dir: z.string().min(1, "Data directory is required"),
   server: z
     .object({
       url: z.url().default(DEBUG_SERVER_DEFAULTS.url),

@@ -3,6 +3,7 @@
 
 name: vm0-runner-{{ inventory_hostname | regex_replace('[^a-zA-Z0-9]', '-') }}
 group: {{ runner_group }}
+data_dir: {{ runner_base_dir }}/data
 
 server:
   url: {{ api_url }}
