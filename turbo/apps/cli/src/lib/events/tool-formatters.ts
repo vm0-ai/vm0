@@ -153,13 +153,13 @@ export function formatToolResult(
 /**
  * Format Read tool output - strip line numbers and filter system content
  * Input format: "     1→content" (line numbers with → separator)
- * Filters out lines without line numbers (empty lines, system-reminder tags)
+ * Falls back to raw content if no line numbers are present
  */
 function formatReadContent(resultText: string, verbose: boolean): string[] {
   const lines: string[] = [];
   const rawLines = resultText.split("\n");
 
-  // Parse lines: only keep lines with line number format, strip the number prefix
+  // Parse lines: try to extract content from line number format, strip the number prefix
   const contentLines: string[] = [];
   const lineNumberPattern = /^\s*\d+→(.*)$/;
 
@@ -170,7 +170,12 @@ function formatReadContent(resultText: string, verbose: boolean): string[] {
     }
   }
 
-  const totalLines = contentLines.length;
+  // If no line numbers found, use raw content (fallback for plain text results)
+  const displayLines =
+    contentLines.length > 0
+      ? contentLines
+      : rawLines.filter((line) => line.trim().length > 0);
+  const totalLines = displayLines.length;
 
   if (totalLines === 0) {
     lines.push(`└ ✓ ${chalk.dim("(empty)")}`);
@@ -179,15 +184,15 @@ function formatReadContent(resultText: string, verbose: boolean): string[] {
 
   // Show content preview
   if (verbose) {
-    for (let i = 0; i < contentLines.length; i++) {
+    for (let i = 0; i < displayLines.length; i++) {
       const prefix = i === 0 ? "└ " : "  ";
-      lines.push(`${prefix}${chalk.dim(contentLines[i] ?? "")}`);
+      lines.push(`${prefix}${chalk.dim(displayLines[i] ?? "")}`);
     }
   } else {
     const previewCount = Math.min(3, totalLines);
     for (let i = 0; i < previewCount; i++) {
       const prefix = i === 0 ? "└ " : "  ";
-      lines.push(`${prefix}${chalk.dim(contentLines[i] ?? "")}`);
+      lines.push(`${prefix}${chalk.dim(displayLines[i] ?? "")}`);
     }
     const remaining = totalLines - previewCount;
     if (remaining > 0) {
