@@ -44,8 +44,8 @@ export function formatToolHeader(
   const headline = getToolHeadline(tool, input);
   lines.push(headline);
 
-  // In verbose mode, show all input parameters
-  if (verbose && input && typeof input === "object") {
+  // In verbose mode, show all input parameters (except for TodoWrite which shows formatted list)
+  if (verbose && tool !== "TodoWrite" && input && typeof input === "object") {
     for (const [key, value] of Object.entries(input)) {
       if (value !== undefined && value !== null) {
         const displayValue =
