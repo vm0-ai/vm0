@@ -304,31 +304,37 @@ export class IPRegistry {
       const orphanedTaps: string[] = [];
 
       for (const [ip, allocation] of Object.entries(registry.allocations)) {
-        const tapExists = activeTaps.has(allocation.tapDevice);
+        const tapInScan = activeTaps.has(allocation.tapDevice);
         // Check if runner process is still alive (handle legacy entries without runnerPid)
         const runnerAlive = allocation.runnerPid
           ? isProcessRunning(allocation.runnerPid)
           : true; // Assume alive for legacy entries
 
-        if (!tapExists) {
-          // TAP doesn't exist - orphaned IP
-          logger.log(
-            `Removing orphaned IP ${ip} (TAP ${allocation.tapDevice} not found)`,
-          );
-        } else if (!runnerAlive) {
-          // TAP exists but runner is dead - orphaned TAP and IP
+        // If runner is dead, allocation is orphaned (regardless of TAP status)
+        if (!runnerAlive) {
           logger.log(
             `Removing orphaned IP ${ip} (runner PID ${allocation.runnerPid} not running)`,
           );
-          orphanedTaps.push(allocation.tapDevice);
+          // If TAP still exists, it's orphaned and should be deleted
+          if (tapInScan) {
+            orphanedTaps.push(allocation.tapDevice);
+          }
+          continue;
+        }
+
+        // Runner is alive, check TAP existence
+        if (tapInScan) {
+          // TAP exists in initial scan, keep allocation
+          cleanedRegistry.allocations[ip] = allocation;
         } else {
-          // Double-check TAP existence (might have been created after initial scan)
+          // TAP not in initial scan, double-check
+          // (might have been created after scan, before we acquired lock)
           const exists = await this.config.checkTapExists(allocation.tapDevice);
           if (exists) {
             cleanedRegistry.allocations[ip] = allocation;
           } else {
             logger.log(
-              `Removing orphaned IP ${ip} (TAP ${allocation.tapDevice} not found on recheck)`,
+              `Removing orphaned IP ${ip} (TAP ${allocation.tapDevice} not found)`,
             );
           }
         }
