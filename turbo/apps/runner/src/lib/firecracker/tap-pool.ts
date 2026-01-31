@@ -12,6 +12,7 @@
  * - Pool replenishes in background when below threshold
  */
 
+import { createHash } from "node:crypto";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { createLogger } from "../logger.js";
@@ -35,6 +36,8 @@ const BRIDGE_NETMASK = "255.255.255.0";
  * Pool configuration
  */
 interface TapPoolConfig {
+  /** Runner name for generating unique TAP prefix */
+  name: string;
   /** Number of TAP devices to maintain in pool */
   size: number;
   /** Start replenishing when pool drops below this count */
@@ -45,6 +48,15 @@ interface TapPoolConfig {
   deleteTap?: (name: string) => Promise<void>;
   /** Custom MAC setter function (optional, for testing) */
   setMac?: (tap: string, mac: string) => Promise<void>;
+}
+
+/**
+ * Generate TAP prefix from runner name
+ * Format: vm0{hash8} = 11 chars, leaving 4 chars for index (up to 9999)
+ */
+function generateTapPrefix(name: string): string {
+  const hash = createHash("md5").update(name).digest("hex").substring(0, 8);
+  return `vm0${hash}`;
 }
 
 /**
@@ -91,46 +103,6 @@ async function clearArpEntry(ip: string): Promise<void> {
 }
 
 /**
- * Clear stale iptables rules for a specific IP
- */
-async function clearStaleIptablesRulesForIP(ip: string): Promise<void> {
-  try {
-    const { stdout } = await execAsync(
-      "sudo iptables -t nat -S PREROUTING 2>/dev/null || true",
-    );
-    const lines = stdout.split("\n");
-    const rulesForIP = lines.filter((line) => line.includes(`-s ${ip}`));
-
-    for (const rule of rulesForIP) {
-      const deleteRule = rule.replace("-A ", "-D ");
-      try {
-        await execCommand(`iptables -t nat ${deleteRule}`);
-      } catch {
-        // Rule might already be gone
-      }
-    }
-  } catch {
-    // Ignore errors - this is defensive cleanup
-  }
-}
-
-/**
- * Generate TAP device name for pool
- * Format: tappXXX (e.g., tapp000, tapp001, tapp1000)
- * Linux interface names have 15 char max, tapp + digits stays well under
- */
-function generateTapName(index: number): string {
-  return `tapp${index.toString().padStart(3, "0")}`;
-}
-
-/**
- * Check if a name matches pool TAP pattern
- */
-function isPooledTapName(name: string): boolean {
-  return /^tapp\d+$/.test(name);
-}
-
-/**
  * TAP Pool class
  *
  * Manages a pool of pre-created TAP devices for fast VM boot.
@@ -140,16 +112,34 @@ export class TapPool {
   private queue: string[] = [];
   private replenishing = false;
   private nextIndex = 0;
+  private readonly prefix: string;
   private readonly config: Required<TapPoolConfig>;
 
   constructor(config: TapPoolConfig) {
+    this.prefix = generateTapPrefix(config.name);
     this.config = {
+      name: config.name,
       size: config.size,
       replenishThreshold: config.replenishThreshold,
       createTap: config.createTap ?? defaultCreateTap,
       deleteTap: config.deleteTap ?? defaultDeleteTap,
       setMac: config.setMac ?? defaultSetMac,
     };
+  }
+
+  /**
+   * Generate TAP device name
+   * Format: {prefix}{index} (e.g., vm01a2b3c4d000)
+   */
+  private generateTapName(index: number): string {
+    return `${this.prefix}${index.toString().padStart(3, "0")}`;
+  }
+
+  /**
+   * Check if a TAP name belongs to this pool instance
+   */
+  private isOwnTap(name: string): boolean {
+    return name.startsWith(this.prefix);
   }
 
   /**
@@ -171,7 +161,7 @@ export class TapPool {
     try {
       const promises = [];
       for (let i = 0; i < needed; i++) {
-        const tapName = generateTapName(this.nextIndex++);
+        const tapName = this.generateTapName(this.nextIndex++);
         promises.push(
           this.config.createTap(tapName).then(() => {
             this.queue.push(tapName);
@@ -190,6 +180,30 @@ export class TapPool {
   }
 
   /**
+   * Scan for orphaned TAP devices from previous runs (matching this pool's prefix)
+   */
+  private async scanOrphanedTaps(): Promise<string[]> {
+    try {
+      const { stdout } = await execAsync(
+        `ip -o link show type tuntap 2>/dev/null || true`,
+      );
+
+      const orphaned: string[] = [];
+      const lines = stdout.split("\n");
+      for (const line of lines) {
+        // Match TAP devices with our prefix
+        const match = line.match(/^\d+:\s+([a-z0-9]+):/);
+        if (match && match[1] && this.isOwnTap(match[1])) {
+          orphaned.push(match[1]);
+        }
+      }
+      return orphaned;
+    } catch {
+      return [];
+    }
+  }
+
+  /**
    * Initialize the TAP pool
    */
   async init(): Promise<void> {
@@ -199,6 +213,19 @@ export class TapPool {
     logger.log(
       `Initializing TAP pool (size=${this.config.size}, threshold=${this.config.replenishThreshold})...`,
     );
+
+    // Clean up orphaned TAPs from previous runs
+    const orphaned = await this.scanOrphanedTaps();
+    if (orphaned.length > 0) {
+      logger.log(`Cleaning up ${orphaned.length} orphaned TAP(s)`);
+      for (const tap of orphaned) {
+        try {
+          await execCommand(`ip link delete ${tap}`);
+        } catch {
+          // Device might already be gone
+        }
+      }
+    }
 
     this.initialized = true;
     await this.replenish();
@@ -212,10 +239,12 @@ export class TapPool {
    * Falls back to on-demand creation if pool is exhausted.
    */
   async acquire(vmId: string): Promise<VMNetworkConfig> {
-    let tapDevice = this.queue.shift();
-    let fromPool = false;
+    const pooledTap = this.queue.shift();
+    let tapDevice: string;
+    let fromPool: boolean;
 
-    if (tapDevice) {
+    if (pooledTap) {
+      tapDevice = pooledTap;
       fromPool = true;
       logger.log(`Acquired TAP from pool (${this.queue.length} remaining)`);
 
@@ -230,7 +259,8 @@ export class TapPool {
     } else {
       // Pool exhausted - create on demand
       logger.log("Pool exhausted, creating TAP on-demand");
-      tapDevice = generateTapName(this.nextIndex++);
+      tapDevice = this.generateTapName(this.nextIndex++);
+      fromPool = false;
       await this.config.createTap(tapDevice);
     }
 
@@ -250,9 +280,6 @@ export class TapPool {
       }
       throw err;
     }
-
-    // Clear stale iptables rules for this IP
-    await clearStaleIptablesRulesForIP(guestIp);
 
     // Set MAC address based on vmId
     const guestMac = generateMacAddress(vmId);
@@ -307,14 +334,14 @@ export class TapPool {
       return;
     }
 
-    // Return TAP to queue if it's a pooled device
-    if (isPooledTapName(tapDevice)) {
+    // Return TAP to queue if it belongs to this pool
+    if (this.isOwnTap(tapDevice)) {
       this.queue.push(tapDevice);
       logger.log(
         `TAP released: ${tapDevice}, IP ${guestIp} (${this.queue.length} available)`,
       );
     } else {
-      // Non-pooled TAP (e.g., from before pool was enabled), delete it
+      // TAP from different pool or before pooling was enabled, delete it
       try {
         await this.config.deleteTap(tapDevice);
         logger.log(`Non-pooled TAP deleted: ${tapDevice}`);
@@ -331,7 +358,7 @@ export class TapPool {
    *
    * Note: This is a sync function for compatibility with process cleanup.
    * TAP devices are deleted asynchronously (fire-and-forget).
-   * Any remaining TAPs will be cleaned up by cleanupOrphanedPooledTaps() on next startup.
+   * Any remaining TAPs will be cleaned up by init() on next startup.
    */
   cleanup(): void {
     if (!this.initialized) {
@@ -357,94 +384,53 @@ export class TapPool {
 }
 
 /**
- * Global instance management
+ * Global TAP pool instance
  */
-let tapPoolInstance: TapPool | null = null;
+let tapPool: TapPool | null = null;
 
 /**
  * Initialize the global TAP pool
  */
-export async function initTapPool(config: TapPoolConfig): Promise<void> {
-  tapPoolInstance = new TapPool(config);
-  await tapPoolInstance.init();
-}
-
-/**
- * Get the global TAP pool instance
- */
-function getTapPool(): TapPool {
-  if (!tapPoolInstance) {
-    throw new Error("TAP pool not initialized");
+export async function initTapPool(config: TapPoolConfig): Promise<TapPool> {
+  if (tapPool) {
+    tapPool.cleanup();
   }
-  return tapPoolInstance;
+  tapPool = new TapPool(config);
+  await tapPool.init();
+  return tapPool;
 }
 
 /**
  * Acquire a TAP device from the global pool
+ * @throws Error if pool was not initialized with initTapPool
  */
 export async function acquireTap(vmId: string): Promise<VMNetworkConfig> {
-  return getTapPool().acquire(vmId);
+  if (!tapPool) {
+    throw new Error("TAP pool not initialized. Call initTapPool() first.");
+  }
+  return tapPool.acquire(vmId);
 }
 
 /**
  * Release a TAP device back to the global pool
+ * @throws Error if pool was not initialized with initTapPool
  */
 export async function releaseTap(
   tapDevice: string,
   guestIp: string,
 ): Promise<void> {
-  return getTapPool().release(tapDevice, guestIp);
+  if (!tapPool) {
+    throw new Error("TAP pool not initialized. Call initTapPool() first.");
+  }
+  return tapPool.release(tapDevice, guestIp);
 }
 
 /**
  * Clean up the global TAP pool
  */
 export function cleanupTapPool(): void {
-  if (tapPoolInstance) {
-    tapPoolInstance.cleanup();
-    tapPoolInstance = null;
-  }
-}
-
-/**
- * Scan for and delete orphaned pooled TAP devices from previous runs
- * Called at runner startup before pool initialization
- */
-export async function cleanupOrphanedPooledTaps(): Promise<void> {
-  logger.log("Scanning for orphaned pooled TAPs...");
-
-  try {
-    // List all TAP devices
-    const { stdout } = await execAsync(
-      `ip -o link show type tuntap 2>/dev/null || true`,
-    );
-
-    const orphaned: string[] = [];
-    const lines = stdout.split("\n");
-    for (const line of lines) {
-      const match = line.match(/^\d+:\s+(tapp\d+):/);
-      if (match && match[1]) {
-        orphaned.push(match[1]);
-      }
-    }
-
-    if (orphaned.length === 0) {
-      logger.log("No orphaned pooled TAPs found");
-      return;
-    }
-
-    logger.log(`Found ${orphaned.length} orphaned pooled TAP(s), cleaning up`);
-    for (const tap of orphaned) {
-      try {
-        await execCommand(`ip link delete ${tap}`);
-        logger.log(`Deleted orphaned TAP: ${tap}`);
-      } catch {
-        // Device might already be gone
-      }
-    }
-  } catch (err) {
-    logger.log(
-      `Warning: Could not scan for orphaned TAPs: ${err instanceof Error ? err.message : "Unknown"}`,
-    );
+  if (tapPool) {
+    tapPool.cleanup();
+    tapPool = null;
   }
 }

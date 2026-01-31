@@ -13,11 +13,7 @@ import {
   initOverlayPool,
   cleanupOverlayPool,
 } from "../firecracker/overlay-pool.js";
-import {
-  initTapPool,
-  cleanupTapPool,
-  cleanupOrphanedPooledTaps,
-} from "../firecracker/tap-pool.js";
+import { initTapPool, cleanupTapPool } from "../firecracker/tap-pool.js";
 import {
   initProxyManager,
   initVMRegistry,
@@ -73,11 +69,6 @@ export async function setupEnvironment(
   logger.log("Cleaning up orphaned IP allocations...");
   await cleanupOrphanedAllocations();
 
-  // Clean up orphaned pooled TAPs from previous runs
-  // This removes any TAP devices left behind after crashes
-  logger.log("Cleaning up orphaned pooled TAPs...");
-  await cleanupOrphanedPooledTaps();
-
   // Initialize overlay pool for faster VM boot
   // Pre-creates sparse ext4 overlay files that can be acquired instantly
   logger.log("Initializing overlay pool...");
@@ -91,6 +82,7 @@ export async function setupEnvironment(
   // Pre-creates TAP devices attached to bridge for instant acquisition
   logger.log("Initializing TAP pool...");
   await initTapPool({
+    name: config.name,
     size: config.sandbox.max_concurrent + 2,
     replenishThreshold: config.sandbox.max_concurrent,
   });
