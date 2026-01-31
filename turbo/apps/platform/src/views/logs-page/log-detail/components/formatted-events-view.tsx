@@ -10,24 +10,20 @@ import {
 export function FormattedEventsView({
   events,
   searchTerm,
-  hiddenTypes,
   currentMatchIndex,
   setTotalMatches,
 }: {
   events: AgentEvent[];
   searchTerm: string;
-  hiddenTypes: Set<string>;
   currentMatchIndex: number;
   setTotalMatches: (count: number) => void;
 }) {
   // Group events into messages
   const groupedMessages = groupEventsIntoMessages(events);
 
-  // Filter grouped messages by hidden types and search
-  const visibleMessages = groupedMessages.filter(
-    (message) =>
-      !hiddenTypes.has(message.type) &&
-      groupedMessageMatchesSearch(message, searchTerm),
+  // Filter grouped messages by search
+  const visibleMessages = groupedMessages.filter((message) =>
+    groupedMessageMatchesSearch(message, searchTerm),
   );
 
   // Count total matches for search navigation
@@ -50,9 +46,7 @@ export function FormattedEventsView({
       <div ref={containerRef} className="p-8 text-center text-muted-foreground">
         {events.length === 0
           ? "No events available"
-          : searchTerm.trim()
-            ? `No events matching "${searchTerm}"`
-            : "All events are filtered out"}
+          : `No events matching "${searchTerm}"`}
       </div>
     );
   }

@@ -1,5 +1,4 @@
 import { computed, state } from "ccstate";
-import { getHiddenByDefault } from "../../views/logs-page/constants/event-styles.ts";
 
 // Internal state for current log ID
 const internalCurrentLogId$ = state<string | null>(null);
@@ -10,11 +9,6 @@ const internalLogDetailSearchTerm$ = state("");
 // View mode: 'formatted' shows styled cards, 'raw' shows JSON
 export type ViewMode = "formatted" | "raw";
 const internalViewMode$ = state<ViewMode>("formatted");
-
-// Hidden event types (events that should not be displayed)
-const internalHiddenEventTypes$ = state<Set<string>>(
-  new Set(getHiddenByDefault()),
-);
 
 // Search navigation state
 const internalCurrentMatchIndex$ = state(0);
@@ -28,9 +22,6 @@ export const logDetailSearchTerm$ = internalLogDetailSearchTerm$;
 
 // Exported view mode state
 export const viewMode$ = internalViewMode$;
-
-// Exported hidden event types state
-export const hiddenEventTypes$ = internalHiddenEventTypes$;
 
 // Exported search navigation state
 export const currentMatchIndex$ = internalCurrentMatchIndex$;

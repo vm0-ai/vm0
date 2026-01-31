@@ -3,7 +3,6 @@ import { IconSearch } from "@tabler/icons-react";
 import { Input } from "@vm0/ui";
 import {
   viewMode$,
-  hiddenEventTypes$,
   currentMatchIndex$,
   totalMatchCount$,
   type ViewMode,
@@ -11,11 +10,9 @@ import {
 import { getOrCreateAgentEvents$ } from "../../../../signals/logs-page/logs-signals.ts";
 import { SearchNavigation } from "../../components/search-navigation.tsx";
 import { ViewModeToggle } from "./view-mode-toggle.tsx";
-import { EventTypeFilterDropdown } from "./event-type-filter-dropdown.tsx";
 import { RawJsonView } from "./raw-json-view.tsx";
 import { FormattedEventsView } from "./formatted-events-view.tsx";
 import {
-  getEventTypeCounts,
   eventMatchesSearch,
   scrollToMatch,
   EVENTS_CONTAINER_ID,
@@ -41,8 +38,6 @@ export function AgentEventsCard({
 
   const viewMode = useGet(viewMode$);
   const setViewMode = useSet(viewMode$);
-  const hiddenTypes = useGet(hiddenEventTypes$);
-  const setHiddenTypes = useSet(hiddenEventTypes$);
 
   const currentMatchIdx = useGet(currentMatchIndex$);
   const setCurrentMatchIdx = useSet(currentMatchIndex$);
@@ -127,7 +122,6 @@ export function AgentEventsCard({
   }
 
   const { events } = eventsLoadable.data;
-  const eventTypeCounts = getEventTypeCounts(events);
 
   const matchingCount = searchTerm.trim()
     ? events.filter((e) => eventMatchesSearch(e, searchTerm)).length
@@ -147,13 +141,6 @@ export function AgentEventsCard({
           </span>
         </div>
         <div className="flex items-center gap-3">
-          {!isCodex && viewMode === "formatted" && events.length > 0 && (
-            <EventTypeFilterDropdown
-              counts={eventTypeCounts}
-              hiddenTypes={hiddenTypes}
-              setHiddenTypes={setHiddenTypes}
-            />
-          )}
           <div className="relative flex h-9 items-center rounded-md border border-border bg-card">
             <div className="pl-2">
               <IconSearch className="h-4 w-4 text-muted-foreground" />
@@ -187,7 +174,6 @@ export function AgentEventsCard({
           <FormattedEventsView
             events={events}
             searchTerm={searchTerm}
-            hiddenTypes={hiddenTypes}
             currentMatchIndex={currentMatchIdx}
             setTotalMatches={setTotalMatches}
           />

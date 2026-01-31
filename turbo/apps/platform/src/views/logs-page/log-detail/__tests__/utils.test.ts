@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   formatTime,
   formatDuration,
-  getEventTypeCounts,
   eventMatchesSearch,
   getVisibleEventText,
   scrollToMatch,
@@ -47,40 +46,6 @@ describe("log-detail utils", () => {
       expect(
         formatDuration("2024-01-01T00:00:00Z", "2024-01-01T00:01:30Z"),
       ).toBe("1m 30s");
-    });
-  });
-
-  describe("getEventTypeCounts", () => {
-    it("should count event types correctly", () => {
-      const events: AgentEvent[] = [
-        {
-          sequenceNumber: 1,
-          eventType: "assistant",
-          eventData: {},
-          createdAt: "2024-01-01T00:00:00Z",
-        },
-        {
-          sequenceNumber: 2,
-          eventType: "assistant",
-          eventData: {},
-          createdAt: "2024-01-01T00:00:01Z",
-        },
-        {
-          sequenceNumber: 3,
-          eventType: "user",
-          eventData: {},
-          createdAt: "2024-01-01T00:00:02Z",
-        },
-      ];
-
-      const counts = getEventTypeCounts(events);
-      expect(counts.get("assistant")).toBe(2);
-      expect(counts.get("user")).toBe(1);
-    });
-
-    it("should return empty map for empty events", () => {
-      const counts = getEventTypeCounts([]);
-      expect(counts.size).toBe(0);
     });
   });
 

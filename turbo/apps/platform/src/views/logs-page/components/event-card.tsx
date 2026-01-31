@@ -2,8 +2,11 @@ import {
   IconClock,
   IconCurrencyDollar,
   IconArrowRight,
-  IconChevronRight,
+  IconTool,
+  IconRobot,
+  IconTerminal,
 } from "@tabler/icons-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@vm0/ui";
 
 // Type definitions for EventData
 interface MessageData {
@@ -103,30 +106,6 @@ function formatCost(usd: number): string {
 
 // ============ SYSTEM EVENT (Init) ============
 
-function CollapsibleSection({
-  title,
-  count,
-  children,
-  defaultOpen = false,
-}: {
-  title: string;
-  count: number;
-  children: React.ReactNode;
-  defaultOpen?: boolean;
-}) {
-  return (
-    <details className="group" open={defaultOpen}>
-      <summary className="flex cursor-pointer list-none items-center gap-1 text-sm text-foreground hover:text-foreground/80 transition-colors">
-        <span>
-          {count} {title}
-        </span>
-        <IconChevronRight className="h-5 w-5 text-muted-foreground transition-transform group-open:rotate-90" />
-      </summary>
-      <div className="mt-2">{children}</div>
-    </details>
-  );
-}
-
 function TagList({ items }: { items: string[] }) {
   return (
     <div className="flex flex-wrap gap-2">
@@ -142,34 +121,84 @@ function TagList({ items }: { items: string[] }) {
   );
 }
 
+function PopoverItem({
+  icon: Icon,
+  label,
+  count,
+  items,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  count: number;
+  items: string[];
+}) {
+  if (count === 0) {
+    return null;
+  }
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <Icon className="h-4 w-4" />
+          <span>
+            {count} {label}
+          </span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        side="bottom"
+        collisionPadding={16}
+        className="w-64 max-w-[calc(100vw-2rem)] p-3"
+      >
+        <div className="space-y-2">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            {label}
+          </div>
+          <TagList items={items} />
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // Exported for use in GroupedMessageCard
 export function SystemInitContent({ eventData }: { eventData: EventData }) {
   const tools = eventData.tools ?? [];
   const agents = eventData.agents ?? [];
   const slashCommands = eventData.slash_commands ?? [];
 
+  const hasContent =
+    tools.length > 0 || agents.length > 0 || slashCommands.length > 0;
+
+  if (!hasContent) {
+    return null;
+  }
+
   return (
-    <div className="mt-2 space-y-2">
-      {/* Tools */}
-      {tools.length > 0 && (
-        <CollapsibleSection title="tools available" count={tools.length}>
-          <TagList items={tools} />
-        </CollapsibleSection>
-      )}
-
-      {/* Agents */}
-      {agents.length > 0 && (
-        <CollapsibleSection title="agents" count={agents.length}>
-          <TagList items={agents} />
-        </CollapsibleSection>
-      )}
-
-      {/* Slash Commands */}
-      {slashCommands.length > 0 && (
-        <CollapsibleSection title="Slash Commands" count={slashCommands.length}>
-          <TagList items={slashCommands.map((cmd) => `/${cmd}`)} />
-        </CollapsibleSection>
-      )}
+    <div className="flex flex-wrap items-center gap-4">
+      <PopoverItem
+        icon={IconTool}
+        label="tools"
+        count={tools.length}
+        items={tools}
+      />
+      <PopoverItem
+        icon={IconRobot}
+        label="agents"
+        count={agents.length}
+        items={agents}
+      />
+      <PopoverItem
+        icon={IconTerminal}
+        label="commands"
+        count={slashCommands.length}
+        items={slashCommands.map((cmd) => `/${cmd}`)}
+      />
     </div>
   );
 }
