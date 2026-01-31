@@ -96,7 +96,7 @@ teardown_file() {
     # Verify mock-claude execution events
     assert_output --partial "● Bash("
     assert_output --partial "echo 'created by agent'"
-    assert_output --partial "Completed"
+    assert_output --partial "◆ Claude Code Completed"
     assert_output --partial "Checkpoint:"
 
     # Extract and save checkpoint ID for next test

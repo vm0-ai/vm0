@@ -76,7 +76,7 @@ EOF
     # Verify cook started the run
     assert_output --partial "Running agent"
     # Check for init event (Claude Code Started) which indicates agent started (replaces vm0_start)
-    assert_output --partial "Claude Code Started"
+    assert_output --partial "▷ Claude Code Started"
 
     echo "# Step 8: Check auto-pull behavior..."
     # If run succeeded and version changed, we should see pull message

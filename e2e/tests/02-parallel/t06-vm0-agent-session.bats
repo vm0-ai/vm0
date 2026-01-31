@@ -107,7 +107,7 @@ teardown_file() {
 
     assert_success
     assert_output --partial "● Bash("
-    assert_output --partial "Completed"
+    assert_output --partial "◆ Claude Code Completed"
     assert_output --partial "Checkpoint:"
     assert_output --partial "Session:"
 

@@ -88,10 +88,10 @@ teardown() {
     assert_success
 
     # Verify events were streamed (same as polling mode)
-    assert_output --partial "Claude Code Started"
+    assert_output --partial "▷ Claude Code Started"
     assert_output --partial "● "
     assert_output --partial "● "
-    assert_output --partial "Completed"
+    assert_output --partial "◆ Claude Code Completed"
 
     # Verify run completed
     assert_output --partial "completed successfully"
@@ -123,8 +123,8 @@ teardown() {
     REALTIME_OUTPUT="$output"
 
     # Verify realtime mode shows all event types
-    echo "$REALTIME_OUTPUT" | grep -q "Claude Code Started" || fail "Missing init event in realtime mode"
-    echo "$REALTIME_OUTPUT" | grep -q "Completed" || fail "Missing result event in realtime mode"
+    echo "$REALTIME_OUTPUT" | grep -q "▷ Claude Code Started" || fail "Missing init event in realtime mode"
+    echo "$REALTIME_OUTPUT" | grep -q "◆ Claude Code Completed" || fail "Missing result event in realtime mode"
 
     echo "# Realtime streaming test passed - events displayed correctly"
 }
