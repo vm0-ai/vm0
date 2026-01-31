@@ -10,7 +10,7 @@
 
 import { execSync, exec } from "node:child_process";
 import { promisify } from "node:util";
-import { releaseIP } from "./ip-pool.js";
+import { releaseIP } from "./tap-pool.js";
 import { createLogger } from "../logger.js";
 
 const execAsync = promisify(exec);

@@ -8,7 +8,6 @@ import {
   setupCIDRProxyRules,
   cleanupCIDRProxyRules,
 } from "../firecracker/network.js";
-import { cleanupOrphanedAllocations } from "../firecracker/ip-pool.js";
 import {
   initOverlayPool,
   cleanupOverlayPool,
@@ -63,11 +62,6 @@ export async function setupEnvironment(
   // This handles rules left behind after crashes or SIGKILL
   logger.log("Cleaning up orphaned proxy rules...");
   await cleanupOrphanedProxyRules(config.name);
-
-  // Clean up orphaned IP allocations from previous runs
-  // This reconciles the IP registry with actual TAP devices
-  logger.log("Cleaning up orphaned IP allocations...");
-  await cleanupOrphanedAllocations();
 
   // Initialize overlay pool for faster VM boot
   // Pre-creates sparse ext4 overlay files that can be acquired instantly
