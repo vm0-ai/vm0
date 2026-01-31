@@ -358,9 +358,14 @@ describe("compose command", () => {
     });
 
     it("should handle authentication errors", async () => {
-      // Remove token to simulate unauthenticated state
-      vi.unstubAllEnvs();
-      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+      server.use(
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(
+            { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+            { status: 401 },
+          );
+        }),
+      );
 
       await expect(async () => {
         await composeCommand.parseAsync(["node", "cli", "config.yaml"]);

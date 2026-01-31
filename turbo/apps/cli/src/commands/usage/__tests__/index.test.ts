@@ -213,9 +213,14 @@ describe("usage command", () => {
 
   describe("error handling", () => {
     it("should handle authentication errors", async () => {
-      // Remove token to simulate unauthenticated state
-      vi.unstubAllEnvs();
-      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+      server.use(
+        http.get("http://localhost:3000/api/usage", () => {
+          return HttpResponse.json(
+            { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+            { status: 401 },
+          );
+        }),
+      );
 
       await expect(async () => {
         await usageCommand.parseAsync(["node", "cli"]);

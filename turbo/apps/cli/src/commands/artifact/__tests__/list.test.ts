@@ -154,9 +154,14 @@ describe("artifact list", () => {
 
   describe("error handling", () => {
     it("should handle authentication error", async () => {
-      vi.unstubAllEnvs();
-      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
-      // No token set
+      server.use(
+        http.get("http://localhost:3000/api/storages/list", () => {
+          return HttpResponse.json(
+            { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+            { status: 401 },
+          );
+        }),
+      );
 
       await expect(async () => {
         await listCommand.parseAsync(["node", "cli"]);

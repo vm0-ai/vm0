@@ -66,7 +66,7 @@ describe("log detail page", () => {
     expect(context.store.get(pathname$)).toBe("/logs/test-run-123");
   });
 
-  it("should display run details in compact header and details popover", async () => {
+  it("should display run details in inline info card", async () => {
     server.use(
       http.get("*/api/platform/logs/:id", () => {
         return HttpResponse.json({
@@ -93,22 +93,14 @@ describe("log detail page", () => {
       path: "/logs/run-abc-123",
     });
 
-    // Wait for detail to load - key info should be in compact header
+    // Wait for detail to load - all info is now inline in the info card
     await waitFor(() => {
       expect(screen.getByText("My Test Agent")).toBeInTheDocument();
     });
     expect(screen.getByText("Done")).toBeInTheDocument(); // Status badge
-
-    // Click Details button to open popover
-    await user.click(screen.getByText("Details"));
-
-    // Verify full details in popover
-    await waitFor(() => {
-      expect(screen.getByText("run-abc-123")).toBeInTheDocument();
-    });
-    expect(screen.getByText("session-xyz-789")).toBeInTheDocument();
-    expect(screen.getByText("openai")).toBeInTheDocument();
-    expect(screen.getByText("My artifact folders")).toBeInTheDocument();
+    expect(screen.getByText("openai")).toBeInTheDocument(); // Framework
+    expect(screen.getByText("Run:")).toBeInTheDocument(); // Run label
+    expect(screen.getByText("Session:")).toBeInTheDocument(); // Session label
   });
 
   it("should display duration correctly", async () => {
@@ -143,7 +135,7 @@ describe("log detail page", () => {
     });
   });
 
-  it("should display dash when sessionId is null in details popover", async () => {
+  it("should not display session when sessionId is null", async () => {
     server.use(
       http.get("*/api/platform/logs/:id", () => {
         return HttpResponse.json({
@@ -174,15 +166,8 @@ describe("log detail page", () => {
       expect(screen.getByText("No Session Agent")).toBeInTheDocument();
     });
 
-    // Open details popover
-    await user.click(screen.getByText("Details"));
-
-    // Session ID should show dash in popover
-    await waitFor(() => {
-      const sessionLabel = screen.getByText("Session ID");
-      const sessionItem = sessionLabel.closest("div");
-      expect(sessionItem).toContainHTML("-");
-    });
+    // Session label should not be shown when sessionId is null
+    expect(screen.queryByText("Session:")).not.toBeInTheDocument();
   });
 
   it("should display error message for failed runs", async () => {

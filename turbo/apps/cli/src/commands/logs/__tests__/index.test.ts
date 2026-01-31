@@ -536,9 +536,17 @@ describe("logs command", () => {
 
   describe("error handling", () => {
     it("should handle not authenticated error", async () => {
-      vi.unstubAllEnvs();
-      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
-      // No token set
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json(
+              { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+              { status: 401 },
+            );
+          },
+        ),
+      );
 
       await expect(async () => {
         await logsCommand.parseAsync(["node", "cli", "run-123"]);

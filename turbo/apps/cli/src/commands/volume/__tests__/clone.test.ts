@@ -223,9 +223,14 @@ describe("volume clone", () => {
     });
 
     it("should handle authentication error", async () => {
-      vi.unstubAllEnvs();
-      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
-      // No token
+      server.use(
+        http.get("http://localhost:3000/api/storages/download", () => {
+          return HttpResponse.json(
+            { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+            { status: 401 },
+          );
+        }),
+      );
 
       await expect(async () => {
         await cloneCommand.parseAsync(["node", "cli", "my-volume"]);
