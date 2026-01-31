@@ -180,14 +180,15 @@ export class EventRenderer {
     }
 
     const verbose = this.options.verbose ?? false;
+    const cont = this.getContinuationPrefix();
     const headerLines = formatToolHeader(toolUse, verbose);
 
-    // First line gets the bullet
+    // First line gets the bullet, rest get simple indent
     for (let i = 0; i < headerLines.length; i++) {
       if (i === 0) {
         console.log(prefix + "● " + headerLines[i]);
       } else {
-        console.log(prefix + "  " + headerLines[i]);
+        console.log(cont + headerLines[i]);
       }
     }
     console.log(); // Empty line after each tool_use
@@ -213,6 +214,13 @@ export class EventRenderer {
   }
 
   /**
+   * Get continuation prefix (simple indent, no timestamp alignment)
+   */
+  private getContinuationPrefix(): string {
+    return "  ";
+  }
+
+  /**
    * Render grouped tool output (tool_use + tool_result together)
    */
   private renderGroupedTool(
@@ -226,20 +234,21 @@ export class EventRenderer {
     }
 
     const verbose = this.options.verbose ?? false;
+    const cont = this.getContinuationPrefix();
 
     const headerLines = formatToolHeader(toolUse, verbose);
     const resultLines = formatToolResult(toolUse, result, verbose);
 
-    // First line gets the bullet
+    // First line gets timestamp + bullet, rest get simple indent
     for (let i = 0; i < headerLines.length; i++) {
       if (i === 0) {
         console.log(prefix + "● " + headerLines[i]);
       } else {
-        console.log(prefix + "  " + headerLines[i]);
+        console.log(cont + headerLines[i]);
       }
     }
     for (const line of resultLines) {
-      console.log(prefix + line);
+      console.log(cont + line);
     }
     console.log(); // Empty line after each group
     this.lastEventType = "tool";
