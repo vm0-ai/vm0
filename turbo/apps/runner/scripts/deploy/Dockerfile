@@ -12,7 +12,7 @@
 # Build: docker build -t vm0-rootfs .
 # Export: See build-rootfs.sh
 
-FROM node:24-bookworm-slim
+FROM node:25-bookworm-slim
 
 # Avoid interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
