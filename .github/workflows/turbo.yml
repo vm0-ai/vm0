@@ -1184,7 +1184,11 @@ jobs:
           JOB_REF=$(basename "$RUNNER_DIR")
           if [ -n "$JOB_REF" ]; then
             PM2_NAME="vm0-runner-${JOB_REF}"
-            echo "Stopping runner ${PM2_NAME}..."
+            echo "Stopping runner ${PM2_NAME} gracefully..."
+            # Use pm2 stop first to send SIGTERM and allow cleanup (TAP/IP release)
+            # --kill-timeout gives the process 10s to cleanup before SIGKILL
+            ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "pm2 stop ${PM2_NAME} --kill-timeout 10000 2>/dev/null || true"
+            # Remove from pm2 process list
             ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "pm2 delete ${PM2_NAME} 2>/dev/null || true"
             echo "Runner stopped"
           fi
