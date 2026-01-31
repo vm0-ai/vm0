@@ -99,16 +99,10 @@ export const copyToClipboard$ = command(({ get, set }, text: string) => {
  * Start the onboarding flow - show modal only.
  * Scope and model provider creation is deferred to save action.
  */
-export const startOnboarding$ = command(({ set }) => {
-  set(internalShowOnboardingModal$, true);
-});
-
-/**
- * Close the onboarding modal (Add it later).
- * Creates scope if needed but skips model provider creation.
- */
-export const closeOnboardingModal$ = command(
+export const startOnboarding$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    set(internalShowOnboardingModal$, true);
+
     // Create scope if it doesn't exist
     const scopeExists = await get(hasScope$);
     signal.throwIfAborted();
@@ -117,12 +111,17 @@ export const closeOnboardingModal$ = command(
       await set(initScope$, signal);
       signal.throwIfAborted();
     }
-
-    // Clear token and close modal
-    set(internalTokenValue$, "");
-    set(internalShowOnboardingModal$, false);
   },
 );
+
+/**
+ * Close the onboarding modal (Add it later).
+ * Creates scope if needed but skips model provider creation.
+ */
+export const closeOnboardingModal$ = command(({ set }) => {
+  set(internalTokenValue$, "");
+  set(internalShowOnboardingModal$, false);
+});
 
 /**
  * Save the onboarding configuration.

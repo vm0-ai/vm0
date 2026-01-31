@@ -73,15 +73,6 @@ function ClaudeCodeOAuthTokenCard() {
   return (
     <Card className="p-6">
       <div className="flex flex-col gap-6">
-        <div>
-          <h3 className="text-base font-medium text-foreground">
-            Manage your model provider
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            An OAuth token is required to run Claude Code in sandboxes.
-          </p>
-        </div>
-
         <div className="flex flex-col gap-2">
           <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
             Claude Code OAuth token

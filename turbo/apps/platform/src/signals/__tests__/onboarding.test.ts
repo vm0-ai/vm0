@@ -10,7 +10,6 @@ import {
   setTokenValue$,
   saveOnboardingConfig$,
   closeOnboardingModal$,
-  startOnboarding$,
 } from "../onboarding.ts";
 import { act } from "@testing-library/react";
 
@@ -41,6 +40,9 @@ describe("needsOnboarding$", () => {
     server.use(
       http.get("/api/scope", () => {
         return new HttpResponse(null, { status: 404 });
+      }),
+      http.post("/api/scope", () => {
+        return new HttpResponse(null, { status: 201 });
       }),
     );
 
@@ -107,9 +109,7 @@ describe("saveOnboardingConfig$", () => {
 
     await setupPage({ context, path: "/" });
 
-    await act(() => {
-      // Set token value and save
-      context.store.set(startOnboarding$);
+    act(() => {
       context.store.set(setTokenValue$, "test-oauth-token");
     });
 
@@ -135,8 +135,6 @@ describe("saveOnboardingConfig$", () => {
     await setupPage({ context, path: "/" });
 
     await act(async () => {
-      // Try to save without setting token
-      context.store.set(startOnboarding$);
       await context.store.set(saveOnboardingConfig$, context.signal);
     });
 
@@ -165,9 +163,8 @@ describe("closeOnboardingModal$", () => {
 
     await setupPage({ context, path: "/" });
 
-    await act(async () => {
-      context.store.set(startOnboarding$);
-      await context.store.set(closeOnboardingModal$, context.signal);
+    act(() => {
+      context.store.set(closeOnboardingModal$);
     });
 
     expect(scopeCreated).toBeTruthy();
@@ -188,9 +185,8 @@ describe("closeOnboardingModal$", () => {
     // Default mock has scope
     await setupPage({ context, path: "/" });
 
-    await act(async () => {
-      context.store.set(startOnboarding$);
-      await context.store.set(closeOnboardingModal$, context.signal);
+    act(() => {
+      context.store.set(closeOnboardingModal$);
     });
 
     expect(scopeCreated).toBeFalsy();
