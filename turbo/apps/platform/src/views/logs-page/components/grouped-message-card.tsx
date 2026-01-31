@@ -23,15 +23,6 @@ interface GroupedMessageCardProps {
   matchStartIndex?: number;
 }
 
-// Auto-collapse thresholds
-const TEXT_COLLAPSE_CHARS = 200;
-const TEXT_COLLAPSE_LINES = 3;
-
-function shouldCollapseText(text: string): boolean {
-  const lines = text.split("\n").length;
-  return text.length > TEXT_COLLAPSE_CHARS || lines > TEXT_COLLAPSE_LINES;
-}
-
 function MarkdownContent({ text }: { text: string }) {
   return (
     <MarkdownPreview
@@ -43,52 +34,6 @@ function MarkdownContent({ text }: { text: string }) {
         lineHeight: "1.5",
       }}
     />
-  );
-}
-
-function CollapsibleText({
-  text,
-}: {
-  text: string;
-  searchTerm?: string;
-  currentMatchIndex?: number;
-  matchStartIndex?: number;
-}) {
-  const shouldCollapse = shouldCollapseText(text);
-
-  if (!shouldCollapse) {
-    return <MarkdownContent text={text} />;
-  }
-
-  // Collapsed view with details/summary
-  const truncatedText = text.slice(0, 150) + "...";
-
-  return (
-    <details className="group">
-      <summary className="cursor-pointer list-none">
-        <span className="text-sm text-foreground whitespace-pre-wrap group-open:hidden">
-          {truncatedText}
-        </span>
-        <span className="ml-1 text-xs text-blue-600 hover:underline group-open:hidden">
-          Show more
-        </span>
-      </summary>
-      <div>
-        <MarkdownContent text={text} />
-        <button
-          type="button"
-          className="mt-1 text-xs text-muted-foreground hover:text-foreground"
-          onClick={(e) => {
-            const details = e.currentTarget.closest("details");
-            if (details) {
-              details.open = false;
-            }
-          }}
-        >
-          Show less
-        </button>
-      </div>
-    </details>
   );
 }
 
@@ -276,14 +221,7 @@ function AssistantMessageCard({
       <div className="flex gap-4 items-start">
         <div className="flex-1 min-w-0 space-y-3">
           {/* Text before tools */}
-          {textBefore && (
-            <CollapsibleText
-              text={textBefore}
-              searchTerm={searchTerm}
-              currentMatchIndex={currentMatchIndex}
-              matchStartIndex={matchStartIndex}
-            />
-          )}
+          {textBefore && <MarkdownContent text={textBefore} />}
 
           {/* Tool operations */}
           {hasTools && (
@@ -301,14 +239,7 @@ function AssistantMessageCard({
           )}
 
           {/* Text after tools */}
-          {textAfter && (
-            <CollapsibleText
-              text={textAfter}
-              searchTerm={searchTerm}
-              currentMatchIndex={currentMatchIndex}
-              matchStartIndex={matchStartIndex}
-            />
-          )}
+          {textAfter && <MarkdownContent text={textAfter} />}
         </div>
 
         {/* Timestamp */}
