@@ -126,6 +126,133 @@ describe("usage command", () => {
       expect(mockConsoleLog).toHaveBeenCalled();
     });
 
+    it("should accept seconds format (30s)", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/usage", () => {
+          return HttpResponse.json({
+            period: {
+              start: "2026-01-19T11:59:30.000Z",
+              end: "2026-01-19T12:00:00.000Z",
+            },
+            summary: { total_runs: 1, total_run_time_ms: 30000 },
+            daily: [],
+          });
+        }),
+      );
+
+      await usageCommand.parseAsync(["node", "cli", "--since", "30s"]);
+      expect(mockConsoleLog).toHaveBeenCalled();
+    });
+
+    it("should accept hours format (2h)", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/usage", () => {
+          return HttpResponse.json({
+            period: {
+              start: "2026-01-19T10:00:00.000Z",
+              end: "2026-01-19T12:00:00.000Z",
+            },
+            summary: { total_runs: 3, total_run_time_ms: 180000 },
+            daily: [],
+          });
+        }),
+      );
+
+      await usageCommand.parseAsync(["node", "cli", "--since", "2h"]);
+      expect(mockConsoleLog).toHaveBeenCalled();
+    });
+
+    it("should accept weeks format (1w)", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/usage", () => {
+          return HttpResponse.json({
+            period: {
+              start: "2026-01-12T12:00:00.000Z",
+              end: "2026-01-19T12:00:00.000Z",
+            },
+            summary: { total_runs: 10, total_run_time_ms: 600000 },
+            daily: [],
+          });
+        }),
+      );
+
+      await usageCommand.parseAsync(["node", "cli", "--since", "1w"]);
+      expect(mockConsoleLog).toHaveBeenCalled();
+    });
+
+    it("should accept Unix timestamp in seconds", async () => {
+      let capturedUrl: string | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/usage", ({ request }) => {
+          capturedUrl = request.url;
+          return HttpResponse.json({
+            period: {
+              start: "2026-01-15T10:30:00.000Z",
+              end: "2026-01-19T00:00:00.000Z",
+            },
+            summary: { total_runs: 5, total_run_time_ms: 300000 },
+            daily: [],
+          });
+        }),
+      );
+
+      // Unix timestamp for 2026-01-15T10:30:00Z = 1768483800
+      await usageCommand.parseAsync(["node", "cli", "--since", "1768483800"]);
+
+      expect(capturedUrl).toContain("start_date");
+    });
+
+    it("should accept Unix timestamp in milliseconds", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/usage", () => {
+          return HttpResponse.json({
+            period: {
+              start: "2026-01-15T10:30:00.000Z",
+              end: "2026-01-19T00:00:00.000Z",
+            },
+            summary: { total_runs: 5, total_run_time_ms: 300000 },
+            daily: [],
+          });
+        }),
+      );
+
+      // Unix timestamp in ms for 2026-01-15T10:30:00Z = 1768483800000
+      await usageCommand.parseAsync([
+        "node",
+        "cli",
+        "--since",
+        "1768483800000",
+      ]);
+      expect(mockConsoleLog).toHaveBeenCalled();
+    });
+
+    it("should accept ISO 8601 with timezone offset", async () => {
+      let capturedUrl: string | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/usage", ({ request }) => {
+          capturedUrl = request.url;
+          return HttpResponse.json({
+            period: {
+              start: "2026-01-15T02:30:00.000Z",
+              end: "2026-01-19T00:00:00.000Z",
+            },
+            summary: { total_runs: 5, total_run_time_ms: 300000 },
+            daily: [],
+          });
+        }),
+      );
+
+      // 2026-01-15T10:30:00+08:00 = 2026-01-15T02:30:00Z
+      await usageCommand.parseAsync([
+        "node",
+        "cli",
+        "--since",
+        "2026-01-15T10:30:00+08:00",
+      ]);
+
+      expect(capturedUrl).toContain("start_date");
+    });
+
     it("should reject invalid --since format", async () => {
       await expect(async () => {
         await usageCommand.parseAsync(["node", "cli", "--since", "invalid"]);
