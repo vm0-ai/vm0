@@ -2,7 +2,7 @@
   "extends": "@vm0/typescript-config/base.json",
   "compilerOptions": {
     "lib": ["ES2022"],
-    "types": ["node", "vitest/globals"]
+    "types": ["vitest/globals"]
   },
   "include": ["src/**/*", "scripts/**/*"],
   "exclude": ["node_modules", "dist"]
