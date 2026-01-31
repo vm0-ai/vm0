@@ -68,6 +68,10 @@ interface TapPoolConfig {
   releaseIP?: (ip: string) => Promise<void>;
   /** Custom orphaned IP cleanup function (optional, for testing) */
   cleanupOrphanedIPs?: () => Promise<void>;
+  /** Custom vmId assigner function (optional, for testing) */
+  assignVmIdToIP?: (ip: string, vmId: string) => Promise<void>;
+  /** Custom vmId clearer function (optional, for testing) */
+  clearVmIdFromIP?: (ip: string, expectedVmId: string) => Promise<void>;
 }
 
 // ============ Helper Functions ============
@@ -151,6 +155,8 @@ export class TapPool {
       allocateIP: config.allocateIP ?? allocateIP,
       releaseIP: config.releaseIP ?? releaseIP,
       cleanupOrphanedIPs: config.cleanupOrphanedIPs ?? cleanupOrphanedIPs,
+      assignVmIdToIP: config.assignVmIdToIP ?? assignVmIdToIP,
+      clearVmIdFromIP: config.clearVmIdFromIP ?? clearVmIdFromIP,
     };
   }
 
@@ -368,7 +374,7 @@ export class TapPool {
     // Update registry with vmId for diagnostic purposes
     // This is non-critical - failure should not prevent VM from starting
     try {
-      await assignVmIdToIP(resource.guestIp, vmId);
+      await this.config.assignVmIdToIP(resource.guestIp, vmId);
     } catch (err) {
       logger.error(
         `Failed to assign vmId to IP registry: ${err instanceof Error ? err.message : "Unknown"}`,
@@ -436,7 +442,7 @@ export class TapPool {
       // Only clears if vmId matches to prevent race condition where new VM's vmId is cleared
       // This is non-critical - failure should not prevent pair from being recycled
       try {
-        await clearVmIdFromIP(guestIp, vmId);
+        await this.config.clearVmIdFromIP(guestIp, vmId);
       } catch (err) {
         logger.error(
           `Failed to clear vmId from IP registry: ${err instanceof Error ? err.message : "Unknown"}`,

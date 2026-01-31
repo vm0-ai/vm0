@@ -32,6 +32,10 @@ describe("TapPool", () => {
 
   const mockCleanupOrphanedIPs = vi.fn(async () => {});
 
+  const mockAssignVmIdToIP = vi.fn(async () => {});
+
+  const mockClearVmIdFromIP = vi.fn(async () => {});
+
   beforeEach(() => {
     vi.clearAllMocks();
     createTapCalls = [];
@@ -58,6 +62,8 @@ describe("TapPool", () => {
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
         cleanupOrphanedIPs: mockCleanupOrphanedIPs,
+        assignVmIdToIP: mockAssignVmIdToIP,
+        clearVmIdFromIP: mockClearVmIdFromIP,
       });
 
       await pool.init();
@@ -82,6 +88,8 @@ describe("TapPool", () => {
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
         cleanupOrphanedIPs: mockCleanupOrphanedIPs,
+        assignVmIdToIP: mockAssignVmIdToIP,
+        clearVmIdFromIP: mockClearVmIdFromIP,
       });
 
       await pool.init();
@@ -103,6 +111,8 @@ describe("TapPool", () => {
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
         cleanupOrphanedIPs: mockCleanupOrphanedIPs,
+        assignVmIdToIP: mockAssignVmIdToIP,
+        clearVmIdFromIP: mockClearVmIdFromIP,
       });
 
       await pool.init();
@@ -129,6 +139,8 @@ describe("TapPool", () => {
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
         cleanupOrphanedIPs: mockCleanupOrphanedIPs,
+        assignVmIdToIP: mockAssignVmIdToIP,
+        clearVmIdFromIP: mockClearVmIdFromIP,
       });
 
       await pool.init();
@@ -150,6 +162,8 @@ describe("TapPool", () => {
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
         cleanupOrphanedIPs: mockCleanupOrphanedIPs,
+        assignVmIdToIP: mockAssignVmIdToIP,
+        clearVmIdFromIP: mockClearVmIdFromIP,
       });
 
       await pool.init();
@@ -178,6 +192,8 @@ describe("TapPool", () => {
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
         cleanupOrphanedIPs: mockCleanupOrphanedIPs,
+        assignVmIdToIP: mockAssignVmIdToIP,
+        clearVmIdFromIP: mockClearVmIdFromIP,
       });
 
       await pool.init();
@@ -208,6 +224,8 @@ describe("TapPool", () => {
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
         cleanupOrphanedIPs: mockCleanupOrphanedIPs,
+        assignVmIdToIP: mockAssignVmIdToIP,
+        clearVmIdFromIP: mockClearVmIdFromIP,
       });
 
       await pool.init();
@@ -231,6 +249,8 @@ describe("TapPool", () => {
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
         cleanupOrphanedIPs: mockCleanupOrphanedIPs,
+        assignVmIdToIP: mockAssignVmIdToIP,
+        clearVmIdFromIP: mockClearVmIdFromIP,
       });
 
       await pool.init();
@@ -262,6 +282,8 @@ describe("TapPool", () => {
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
         cleanupOrphanedIPs: mockCleanupOrphanedIPs,
+        assignVmIdToIP: mockAssignVmIdToIP,
+        clearVmIdFromIP: mockClearVmIdFromIP,
       });
 
       await pool.init();
@@ -291,6 +313,8 @@ describe("TapPool", () => {
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
         cleanupOrphanedIPs: mockCleanupOrphanedIPs,
+        assignVmIdToIP: mockAssignVmIdToIP,
+        clearVmIdFromIP: mockClearVmIdFromIP,
       });
 
       await pool.init();
@@ -315,6 +339,8 @@ describe("TapPool", () => {
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
         cleanupOrphanedIPs: mockCleanupOrphanedIPs,
+        assignVmIdToIP: mockAssignVmIdToIP,
+        clearVmIdFromIP: mockClearVmIdFromIP,
       });
 
       await pool.init();
@@ -334,6 +360,8 @@ describe("TapPool", () => {
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
         cleanupOrphanedIPs: mockCleanupOrphanedIPs,
+        assignVmIdToIP: mockAssignVmIdToIP,
+        clearVmIdFromIP: mockClearVmIdFromIP,
       });
 
       await pool.init();
@@ -352,6 +380,8 @@ describe("TapPool", () => {
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
         cleanupOrphanedIPs: mockCleanupOrphanedIPs,
+        assignVmIdToIP: mockAssignVmIdToIP,
+        clearVmIdFromIP: mockClearVmIdFromIP,
       });
 
       expect(() => pool.cleanup()).not.toThrow();
@@ -368,6 +398,8 @@ describe("TapPool", () => {
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
         cleanupOrphanedIPs: mockCleanupOrphanedIPs,
+        assignVmIdToIP: mockAssignVmIdToIP,
+        clearVmIdFromIP: mockClearVmIdFromIP,
       });
 
       await pool.init();
@@ -396,6 +428,8 @@ describe("TapPool", () => {
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
         cleanupOrphanedIPs: mockCleanupOrphanedIPs,
+        assignVmIdToIP: mockAssignVmIdToIP,
+        clearVmIdFromIP: mockClearVmIdFromIP,
       });
 
       await pool.init();
@@ -420,6 +454,8 @@ describe("TapPool", () => {
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
         cleanupOrphanedIPs: mockCleanupOrphanedIPs,
+        assignVmIdToIP: mockAssignVmIdToIP,
+        clearVmIdFromIP: mockClearVmIdFromIP,
       });
 
       await pool.init();
@@ -444,6 +480,8 @@ describe("TapPool", () => {
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
         cleanupOrphanedIPs: mockCleanupOrphanedIPs,
+        assignVmIdToIP: mockAssignVmIdToIP,
+        clearVmIdFromIP: mockClearVmIdFromIP,
       });
 
       await pool.init();
@@ -470,6 +508,8 @@ describe("TapPool", () => {
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
         cleanupOrphanedIPs: mockCleanupOrphanedIPs,
+        assignVmIdToIP: mockAssignVmIdToIP,
+        clearVmIdFromIP: mockClearVmIdFromIP,
       });
 
       await pool.init();
@@ -512,6 +552,8 @@ describe("TapPool", () => {
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
         cleanupOrphanedIPs: mockCleanupOrphanedIPs,
+        assignVmIdToIP: mockAssignVmIdToIP,
+        clearVmIdFromIP: mockClearVmIdFromIP,
       });
 
       await pool.init();
@@ -571,6 +613,8 @@ describe("TapPool", () => {
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
         cleanupOrphanedIPs: mockCleanupOrphanedIPs,
+        assignVmIdToIP: mockAssignVmIdToIP,
+        clearVmIdFromIP: mockClearVmIdFromIP,
       });
 
       await pool.init();
@@ -614,6 +658,8 @@ describe("TapPool", () => {
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
         cleanupOrphanedIPs: mockCleanupOrphanedIPs,
+        assignVmIdToIP: mockAssignVmIdToIP,
+        clearVmIdFromIP: mockClearVmIdFromIP,
       });
 
       await pool.init();
@@ -657,6 +703,8 @@ describe("TapPool", () => {
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
         cleanupOrphanedIPs: mockCleanupOrphanedIPs,
+        assignVmIdToIP: mockAssignVmIdToIP,
+        clearVmIdFromIP: mockClearVmIdFromIP,
       });
 
       await pool.init();
@@ -715,6 +763,8 @@ describe("TapPool", () => {
         allocateIP: failingAllocateIP,
         releaseIP: mockReleaseIP,
         cleanupOrphanedIPs: mockCleanupOrphanedIPs,
+        assignVmIdToIP: mockAssignVmIdToIP,
+        clearVmIdFromIP: mockClearVmIdFromIP,
       });
 
       // init() should not throw even if pair creation fails
@@ -739,6 +789,8 @@ describe("TapPool", () => {
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
         cleanupOrphanedIPs: mockCleanupOrphanedIPs,
+        assignVmIdToIP: mockAssignVmIdToIP,
+        clearVmIdFromIP: mockClearVmIdFromIP,
       });
 
       await pool.init();
@@ -779,6 +831,8 @@ describe("TapPool", () => {
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
         cleanupOrphanedIPs: mockCleanupOrphanedIPs,
+        assignVmIdToIP: mockAssignVmIdToIP,
+        clearVmIdFromIP: mockClearVmIdFromIP,
       });
 
       await pool.init();

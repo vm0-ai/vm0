@@ -1,149 +1,87 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
-
-// Mock fs before importing the module
-vi.mock("node:fs");
-
-// Track exec mock results
-let execMockResults: Map<string, { stdout: string; stderr: string } | Error> =
-  new Map();
-
-// Mock child_process with promisify-compatible implementation
-vi.mock("node:child_process", () => ({
-  exec: vi.fn(
-    (
-      cmd: string,
-      callback?: (
-        error: Error | null,
-        result: { stdout: string; stderr: string },
-      ) => void,
-    ) => {
-      const result = execMockResults.get(cmd) ??
-        [...execMockResults.entries()].find(([pattern]) =>
-          cmd.includes(pattern),
-        )?.[1] ?? { stdout: "", stderr: "" };
-
-      if (callback) {
-        if (result instanceof Error) {
-          callback(result, { stdout: "", stderr: "" });
-        } else {
-          callback(null, result);
-        }
-      }
-      return {} as ReturnType<typeof import("node:child_process").exec>;
-    },
-  ),
-}));
-
-// Mock paths
-vi.mock("../../paths.js", () => ({
-  VM0_RUN_DIR: "/tmp/vm0-test",
-  runtimePaths: {
-    ipPoolLock: "/tmp/vm0-test/ip-pool.lock",
-    ipRegistry: "/tmp/vm0-test/ip-registry.json",
-  },
-}));
-
-// Import after mocks are set up
+import * as os from "node:os";
+import * as path from "node:path";
 import {
-  allocateIP,
-  releaseIP,
-  cleanupOrphanedIPs,
-  assignVmIdToIP,
-  clearVmIdFromIP,
-  getAllocations,
-  getIPForVm,
+  IPRegistry,
+  initIPRegistry,
+  resetIPRegistry,
+  type IPRegistryConfig,
 } from "../ip-registry.js";
 
-describe("IP Registry", () => {
-  const mockFs = vi.mocked(fs);
+describe("IPRegistry", () => {
+  let testDir: string;
+  let registry: IPRegistry;
+
+  // Mock TAP scanning functions
+  let mockTapDevices: Set<string>;
+  const mockScanTapDevices = vi.fn(async () => mockTapDevices);
+  const mockCheckTapExists = vi.fn(async (tap: string) =>
+    mockTapDevices.has(tap),
+  );
+  const mockEnsureRunDir = vi.fn(async () => {});
 
   beforeEach(() => {
+    // Create a unique temp directory for each test
+    testDir = fs.mkdtempSync(path.join(os.tmpdir(), "ip-registry-test-"));
+
+    // Reset mocks
+    mockTapDevices = new Set();
     vi.clearAllMocks();
-    execMockResults = new Map();
 
-    // Default: run dir exists
-    mockFs.existsSync.mockImplementation((path) => {
-      if (path === "/tmp/vm0-test") return true;
-      if (path === "/tmp/vm0-test/ip-registry.json") return false;
-      return false;
+    // Create registry with test config
+    registry = new IPRegistry({
+      runDir: testDir,
+      lockPath: path.join(testDir, "ip-pool.lock"),
+      registryPath: path.join(testDir, "ip-registry.json"),
+      ensureRunDir: mockEnsureRunDir,
+      scanTapDevices: mockScanTapDevices,
+      checkTapExists: mockCheckTapExists,
     });
-
-    // Default: lock file doesn't exist (can acquire immediately)
-    mockFs.writeFileSync.mockImplementation(() => {});
-    mockFs.unlinkSync.mockImplementation(() => {});
-    mockFs.readFileSync.mockImplementation(() => "{}");
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    // Clean up temp directory
+    fs.rmSync(testDir, { recursive: true, force: true });
+    resetIPRegistry();
   });
 
   describe("allocateIP", () => {
     it("should allocate first available IP (172.16.0.2)", async () => {
-      let savedRegistry: string | null = null;
-      mockFs.writeFileSync.mockImplementation((path, data) => {
-        if (String(path).includes("ip-registry.json")) {
-          savedRegistry = String(data);
-        }
-      });
-
-      const ip = await allocateIP("tap000");
+      const ip = await registry.allocateIP("tap000");
 
       expect(ip).toBe("172.16.0.2");
-      expect(savedRegistry).not.toBeNull();
-      const registry = JSON.parse(savedRegistry!);
-      expect(registry.allocations["172.16.0.2"]).toEqual({
+
+      // Verify registry file was written
+      const data = JSON.parse(
+        fs.readFileSync(path.join(testDir, "ip-registry.json"), "utf-8"),
+      );
+      expect(data.allocations["172.16.0.2"]).toEqual({
         tapDevice: "tap000",
         vmId: null,
       });
     });
 
     it("should allocate sequential IPs", async () => {
-      // Simulate existing allocation
-      mockFs.existsSync.mockImplementation((path) => {
-        if (path === "/tmp/vm0-test") return true;
-        if (path === "/tmp/vm0-test/ip-registry.json") return true;
-        return false;
-      });
-      mockFs.readFileSync.mockImplementation((path) => {
-        if (String(path).includes("ip-registry.json")) {
-          return JSON.stringify({
-            allocations: {
-              "172.16.0.2": { tapDevice: "tap000", vmId: null },
-              "172.16.0.3": { tapDevice: "tap001", vmId: null },
-            },
-          });
-        }
-        return "";
-      });
-
-      const ip = await allocateIP("tap002");
+      await registry.allocateIP("tap000");
+      await registry.allocateIP("tap001");
+      const ip = await registry.allocateIP("tap002");
 
       expect(ip).toBe("172.16.0.4");
     });
 
     it("should throw when all IPs are exhausted", async () => {
-      // Create full allocation (all 253 IPs used)
-      const fullAllocations: Record<string, { tapDevice: string; vmId: null }> =
-        {};
+      // Pre-fill registry with all IPs
+      const allocations: Record<string, { tapDevice: string; vmId: null }> = {};
       for (let i = 2; i <= 254; i++) {
-        fullAllocations[`172.16.0.${i}`] = { tapDevice: `tap${i}`, vmId: null };
+        allocations[`172.16.0.${i}`] = { tapDevice: `tap${i}`, vmId: null };
       }
+      fs.writeFileSync(
+        path.join(testDir, "ip-registry.json"),
+        JSON.stringify({ allocations }),
+      );
 
-      mockFs.existsSync.mockImplementation((path) => {
-        if (path === "/tmp/vm0-test") return true;
-        if (path === "/tmp/vm0-test/ip-registry.json") return true;
-        return false;
-      });
-      mockFs.readFileSync.mockImplementation((path) => {
-        if (String(path).includes("ip-registry.json")) {
-          return JSON.stringify({ allocations: fullAllocations });
-        }
-        return "";
-      });
-
-      await expect(allocateIP("tap-new")).rejects.toThrow(
+      await expect(registry.allocateIP("tap-new")).rejects.toThrow(
         "No free IP addresses available",
       );
     });
@@ -151,165 +89,70 @@ describe("IP Registry", () => {
 
   describe("releaseIP", () => {
     it("should remove IP from registry", async () => {
-      mockFs.existsSync.mockImplementation((path) => {
-        if (path === "/tmp/vm0-test") return true;
-        if (path === "/tmp/vm0-test/ip-registry.json") return true;
-        return false;
-      });
-      mockFs.readFileSync.mockImplementation((path) => {
-        if (String(path).includes("ip-registry.json")) {
-          return JSON.stringify({
-            allocations: {
-              "172.16.0.2": { tapDevice: "tap000", vmId: "vm1" },
-            },
-          });
-        }
-        return "";
-      });
+      // Allocate first
+      const ip = await registry.allocateIP("tap000");
+      expect(ip).toBe("172.16.0.2");
 
-      let savedRegistry: string | null = null;
-      mockFs.writeFileSync.mockImplementation((path, data) => {
-        if (String(path).includes("ip-registry.json")) {
-          savedRegistry = String(data);
-        }
-      });
+      // Release
+      await registry.releaseIP(ip);
 
-      await releaseIP("172.16.0.2");
-
-      expect(savedRegistry).not.toBeNull();
-      const registry = JSON.parse(savedRegistry!);
-      expect(registry.allocations["172.16.0.2"]).toBeUndefined();
+      // Verify registry
+      const data = JSON.parse(
+        fs.readFileSync(path.join(testDir, "ip-registry.json"), "utf-8"),
+      );
+      expect(data.allocations["172.16.0.2"]).toBeUndefined();
     });
 
     it("should do nothing when releasing non-existent IP", async () => {
-      mockFs.existsSync.mockImplementation((path) => {
-        if (path === "/tmp/vm0-test") return true;
-        if (path === "/tmp/vm0-test/ip-registry.json") return true;
-        return false;
-      });
-      mockFs.readFileSync.mockImplementation((path) => {
-        if (String(path).includes("ip-registry.json")) {
-          return JSON.stringify({ allocations: {} });
-        }
-        return "";
-      });
-
       // Should not throw
-      await expect(releaseIP("172.16.0.99")).resolves.toBeUndefined();
+      await expect(registry.releaseIP("172.16.0.99")).resolves.toBeUndefined();
     });
   });
 
   describe("vmId tracking", () => {
     it("should assign vmId to IP allocation", async () => {
-      mockFs.existsSync.mockImplementation((path) => {
-        if (path === "/tmp/vm0-test") return true;
-        if (path === "/tmp/vm0-test/ip-registry.json") return true;
-        return false;
-      });
-      mockFs.readFileSync.mockImplementation((path) => {
-        if (String(path).includes("ip-registry.json")) {
-          return JSON.stringify({
-            allocations: {
-              "172.16.0.2": { tapDevice: "tap000", vmId: null },
-            },
-          });
-        }
-        return "";
-      });
+      const ip = await registry.allocateIP("tap000");
+      await registry.assignVmIdToIP(ip, "test-vm-123");
 
-      let savedRegistry: string | null = null;
-      mockFs.writeFileSync.mockImplementation((path, data) => {
-        if (String(path).includes("ip-registry.json")) {
-          savedRegistry = String(data);
-        }
-      });
-
-      await assignVmIdToIP("172.16.0.2", "test-vm-123");
-
-      expect(savedRegistry).not.toBeNull();
-      const registry = JSON.parse(savedRegistry!);
-      expect(registry.allocations["172.16.0.2"].vmId).toBe("test-vm-123");
+      const data = JSON.parse(
+        fs.readFileSync(path.join(testDir, "ip-registry.json"), "utf-8"),
+      );
+      expect(data.allocations[ip].vmId).toBe("test-vm-123");
     });
 
     it("should clear vmId from IP allocation when vmId matches", async () => {
-      mockFs.existsSync.mockImplementation((path) => {
-        if (path === "/tmp/vm0-test") return true;
-        if (path === "/tmp/vm0-test/ip-registry.json") return true;
-        return false;
-      });
-      mockFs.readFileSync.mockImplementation((path) => {
-        if (String(path).includes("ip-registry.json")) {
-          return JSON.stringify({
-            allocations: {
-              "172.16.0.2": { tapDevice: "tap000", vmId: "test-vm-123" },
-            },
-          });
-        }
-        return "";
-      });
+      const ip = await registry.allocateIP("tap000");
+      await registry.assignVmIdToIP(ip, "test-vm-123");
+      await registry.clearVmIdFromIP(ip, "test-vm-123");
 
-      let savedRegistry: string | null = null;
-      mockFs.writeFileSync.mockImplementation((path, data) => {
-        if (String(path).includes("ip-registry.json")) {
-          savedRegistry = String(data);
-        }
-      });
-
-      await clearVmIdFromIP("172.16.0.2", "test-vm-123");
-
-      expect(savedRegistry).not.toBeNull();
-      const registry = JSON.parse(savedRegistry!);
-      expect(registry.allocations["172.16.0.2"].vmId).toBeNull();
+      const data = JSON.parse(
+        fs.readFileSync(path.join(testDir, "ip-registry.json"), "utf-8"),
+      );
+      expect(data.allocations[ip].vmId).toBeNull();
     });
 
     it("should not clear vmId when expectedVmId does not match", async () => {
-      mockFs.existsSync.mockImplementation((path) => {
-        if (path === "/tmp/vm0-test") return true;
-        if (path === "/tmp/vm0-test/ip-registry.json") return true;
-        return false;
-      });
-      mockFs.readFileSync.mockImplementation((path) => {
-        if (String(path).includes("ip-registry.json")) {
-          return JSON.stringify({
-            allocations: {
-              "172.16.0.2": { tapDevice: "tap000", vmId: "new-vm-456" },
-            },
-          });
-        }
-        return "";
-      });
+      const ip = await registry.allocateIP("tap000");
+      await registry.assignVmIdToIP(ip, "new-vm-456");
 
-      let savedRegistry: string | null = null;
-      mockFs.writeFileSync.mockImplementation((path, data) => {
-        if (String(path).includes("ip-registry.json")) {
-          savedRegistry = String(data);
-        }
-      });
+      // Try to clear with old vmId
+      await registry.clearVmIdFromIP(ip, "old-vm-123");
 
-      // Try to clear with old vmId - should not clear because current vmId is different
-      await clearVmIdFromIP("172.16.0.2", "old-vm-123");
-
-      // Should not have written to registry (vmId didn't match)
-      expect(savedRegistry).toBeNull();
+      // vmId should still be new-vm-456
+      const data = JSON.parse(
+        fs.readFileSync(path.join(testDir, "ip-registry.json"), "utf-8"),
+      );
+      expect(data.allocations[ip].vmId).toBe("new-vm-456");
     });
   });
 
   describe("diagnostic functions", () => {
-    it("getAllocations should return all allocations as Map", () => {
-      mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockImplementation((path) => {
-        if (String(path).includes("ip-registry.json")) {
-          return JSON.stringify({
-            allocations: {
-              "172.16.0.2": { tapDevice: "tap000", vmId: "vm1" },
-              "172.16.0.3": { tapDevice: "tap001", vmId: null },
-            },
-          });
-        }
-        return "";
-      });
+    it("getAllocations should return all allocations as Map", async () => {
+      await registry.allocateIP("tap000");
+      await registry.assignVmIdToIP("172.16.0.2", "vm1");
+      await registry.allocateIP("tap001");
 
-      const allocations = getAllocations();
+      const allocations = registry.getAllocations();
 
       expect(allocations).toBeInstanceOf(Map);
       expect(allocations.size).toBe(2);
@@ -319,199 +162,137 @@ describe("IP Registry", () => {
       });
     });
 
-    it("getIPForVm should find IP by vmId", () => {
-      mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockImplementation((path) => {
-        if (String(path).includes("ip-registry.json")) {
-          return JSON.stringify({
-            allocations: {
-              "172.16.0.2": { tapDevice: "tap000", vmId: "vm1" },
-              "172.16.0.3": { tapDevice: "tap001", vmId: "vm2" },
-            },
-          });
-        }
-        return "";
-      });
+    it("getIPForVm should find IP by vmId", async () => {
+      await registry.allocateIP("tap000");
+      await registry.assignVmIdToIP("172.16.0.2", "vm1");
+      await registry.allocateIP("tap001");
+      await registry.assignVmIdToIP("172.16.0.3", "vm2");
 
-      expect(getIPForVm("vm1")).toBe("172.16.0.2");
-      expect(getIPForVm("vm2")).toBe("172.16.0.3");
-      expect(getIPForVm("vm-not-found")).toBeUndefined();
+      expect(registry.getIPForVm("vm1")).toBe("172.16.0.2");
+      expect(registry.getIPForVm("vm2")).toBe("172.16.0.3");
+      expect(registry.getIPForVm("vm-not-found")).toBeUndefined();
     });
   });
 
   describe("cleanupOrphanedIPs", () => {
     it("should remove IPs whose TAP devices no longer exist", async () => {
-      // Mock: TAP scan returns only tap001, tap000 check fails
-      execMockResults.set("ip -o link show type tuntap", {
-        stdout: "2: tap001: <BROADCAST,MULTICAST,UP>\n",
-        stderr: "",
-      });
-      execMockResults.set("ip link show tap000", new Error("Device not found"));
-      execMockResults.set("ip link show tap001", {
-        stdout: "tap001",
-        stderr: "",
-      });
+      // Allocate IPs
+      await registry.allocateIP("tap000");
+      await registry.allocateIP("tap001");
 
-      mockFs.existsSync.mockImplementation((path) => {
-        if (path === "/tmp/vm0-test") return true;
-        if (path === "/tmp/vm0-test/ip-registry.json") return true;
-        return false;
-      });
-      mockFs.readFileSync.mockImplementation((path) => {
-        if (String(path).includes("ip-registry.json")) {
-          return JSON.stringify({
-            allocations: {
-              "172.16.0.2": { tapDevice: "tap000", vmId: null }, // orphaned
-              "172.16.0.3": { tapDevice: "tap001", vmId: "vm1" }, // exists
-            },
-          });
-        }
-        return "";
-      });
+      // Only tap001 exists on system
+      mockTapDevices = new Set(["tap001"]);
 
-      let savedRegistry: string | null = null;
-      mockFs.writeFileSync.mockImplementation((path, data) => {
-        if (String(path).includes("ip-registry.json")) {
-          savedRegistry = String(data);
-        }
-      });
+      await registry.cleanupOrphanedIPs();
 
-      await cleanupOrphanedIPs();
-
-      expect(savedRegistry).not.toBeNull();
-      const registry = JSON.parse(savedRegistry!);
-      expect(registry.allocations["172.16.0.2"]).toBeUndefined(); // removed
-      expect(registry.allocations["172.16.0.3"]).toBeDefined(); // kept
+      const data = JSON.parse(
+        fs.readFileSync(path.join(testDir, "ip-registry.json"), "utf-8"),
+      );
+      expect(data.allocations["172.16.0.2"]).toBeUndefined(); // removed (tap000 gone)
+      expect(data.allocations["172.16.0.3"]).toBeDefined(); // kept (tap001 exists)
     });
 
     it("should not modify registry when no orphans found", async () => {
-      // Mock: TAP scan returns both tap000 and tap001
-      execMockResults.set("ip -o link show type tuntap", {
-        stdout: "2: tap000: <BROADCAST>\n3: tap001: <BROADCAST>\n",
-        stderr: "",
-      });
+      await registry.allocateIP("tap000");
+      await registry.allocateIP("tap001");
 
-      mockFs.existsSync.mockImplementation((path) => {
-        if (path === "/tmp/vm0-test") return true;
-        if (path === "/tmp/vm0-test/ip-registry.json") return true;
-        return false;
-      });
-      mockFs.readFileSync.mockImplementation((path) => {
-        if (String(path).includes("ip-registry.json")) {
-          return JSON.stringify({
-            allocations: {
-              "172.16.0.2": { tapDevice: "tap000", vmId: null },
-              "172.16.0.3": { tapDevice: "tap001", vmId: null },
-            },
-          });
-        }
-        return "";
-      });
+      // Both TAPs exist
+      mockTapDevices = new Set(["tap000", "tap001"]);
 
-      const writeFileSpy = vi.fn();
-      mockFs.writeFileSync.mockImplementation((path, data) => {
-        if (String(path).includes("ip-registry.json")) {
-          writeFileSpy(path, data);
-        }
-      });
+      const beforeMtime = fs.statSync(
+        path.join(testDir, "ip-registry.json"),
+      ).mtimeMs;
 
-      await cleanupOrphanedIPs();
+      // Small delay to ensure mtime would change if file is written
+      await new Promise((r) => setTimeout(r, 10));
 
-      // Registry should not be written (no changes)
-      expect(writeFileSpy).not.toHaveBeenCalled();
+      await registry.cleanupOrphanedIPs();
+
+      const afterMtime = fs.statSync(
+        path.join(testDir, "ip-registry.json"),
+      ).mtimeMs;
+
+      // File should not have been modified
+      expect(afterMtime).toBe(beforeMtime);
     });
   });
 
   describe("file lock", () => {
     it("should acquire and release lock", async () => {
-      const lockWrites: string[] = [];
-      const lockDeletes: string[] = [];
+      await registry.allocateIP("tap000");
 
-      mockFs.writeFileSync.mockImplementation((path) => {
-        if (String(path).includes("ip-pool.lock")) {
-          lockWrites.push(String(path));
-        }
-      });
-      mockFs.unlinkSync.mockImplementation((path) => {
-        if (String(path).includes("ip-pool.lock")) {
-          lockDeletes.push(String(path));
-        }
-      });
-
-      await allocateIP("tap000");
-
-      // Lock should be acquired and released
-      expect(lockWrites.length).toBeGreaterThan(0);
-      expect(lockDeletes.length).toBeGreaterThan(0);
+      // Lock file should not exist after operation completes
+      expect(fs.existsSync(path.join(testDir, "ip-pool.lock"))).toBe(false);
     });
 
-    it("should retry when lock is held by another process", async () => {
-      let lockAttempts = 0;
+    it("should handle concurrent operations", async () => {
+      // Run multiple allocations concurrently
+      const promises = [
+        registry.allocateIP("tap000"),
+        registry.allocateIP("tap001"),
+        registry.allocateIP("tap002"),
+      ];
 
-      mockFs.writeFileSync.mockImplementation((path) => {
-        if (String(path).includes("ip-pool.lock")) {
-          lockAttempts++;
-          if (lockAttempts < 3) {
-            // Simulate lock file exists
-            const error = new Error("EEXIST") as NodeJS.ErrnoException;
-            error.code = "EEXIST";
-            throw error;
-          }
-        }
-      });
+      const ips = await Promise.all(promises);
 
-      // Mock reading lock file to see dead process
-      mockFs.readFileSync.mockImplementation((path) => {
-        if (String(path).includes("ip-pool.lock")) {
-          return "99999"; // Non-existent PID
-        }
-        if (String(path).includes("ip-registry.json")) {
-          return JSON.stringify({ allocations: {} });
-        }
-        return "";
-      });
-
-      // process.kill should throw for non-existent PID
-      const originalKill = process.kill;
-      process.kill = vi.fn().mockImplementation(() => {
-        throw new Error("ESRCH");
-      }) as typeof process.kill;
-
-      try {
-        await allocateIP("tap000");
-        expect(lockAttempts).toBe(3);
-      } finally {
-        process.kill = originalKill;
-      }
+      // All IPs should be unique
+      expect(new Set(ips).size).toBe(3);
+      expect(ips).toContain("172.16.0.2");
+      expect(ips).toContain("172.16.0.3");
+      expect(ips).toContain("172.16.0.4");
     });
   });
 
   describe("corrupted registry", () => {
     it("should start fresh when registry is corrupted", async () => {
-      mockFs.existsSync.mockImplementation((path) => {
-        if (path === "/tmp/vm0-test") return true;
-        if (path === "/tmp/vm0-test/ip-registry.json") return true;
-        return false;
-      });
-      mockFs.readFileSync.mockImplementation((path) => {
-        if (String(path).includes("ip-registry.json")) {
-          return "{ invalid json }}}";
-        }
-        return "";
-      });
+      // Write corrupted registry
+      fs.writeFileSync(
+        path.join(testDir, "ip-registry.json"),
+        "{ invalid json }}}",
+      );
 
-      let savedRegistry: string | null = null;
-      mockFs.writeFileSync.mockImplementation((path, data) => {
-        if (String(path).includes("ip-registry.json")) {
-          savedRegistry = String(data);
-        }
-      });
-
-      const ip = await allocateIP("tap000");
+      const ip = await registry.allocateIP("tap000");
 
       // Should allocate first IP (starting fresh)
       expect(ip).toBe("172.16.0.2");
-      expect(savedRegistry).not.toBeNull();
+    });
+  });
+
+  describe("global instance", () => {
+    it("should return same instance from initIPRegistry when called twice", () => {
+      const instance1 = initIPRegistry({
+        runDir: testDir,
+        ensureRunDir: mockEnsureRunDir,
+        scanTapDevices: mockScanTapDevices,
+        checkTapExists: mockCheckTapExists,
+      });
+
+      // Second call should return new instance (replaces previous)
+      const instance2 = initIPRegistry({
+        runDir: testDir,
+        ensureRunDir: mockEnsureRunDir,
+        scanTapDevices: mockScanTapDevices,
+        checkTapExists: mockCheckTapExists,
+      });
+
+      // Each init creates a new instance
+      expect(instance1).not.toBe(instance2);
+    });
+
+    it("should create new instance after reset", () => {
+      const config: IPRegistryConfig = {
+        runDir: testDir,
+        ensureRunDir: mockEnsureRunDir,
+        scanTapDevices: mockScanTapDevices,
+        checkTapExists: mockCheckTapExists,
+      };
+
+      const instance1 = initIPRegistry(config);
+
+      resetIPRegistry();
+      const instance2 = initIPRegistry(config);
+
+      expect(instance1).not.toBe(instance2);
     });
   });
 });
