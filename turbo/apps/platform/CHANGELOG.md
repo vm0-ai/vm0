@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.35.0](https://github.com/vm0-ai/vm0/compare/platform-v0.34.1...platform-v0.35.0) (2026-01-31)
+
+
+### Features
+
+* **platform:** redesign event cards with minimalist style ([#2057](https://github.com/vm0-ai/vm0/issues/2057)) ([d2b120f](https://github.com/vm0-ai/vm0/commit/d2b120ff340d2510dc9109b0692c8d5aa5558a9f))
+
 ## [0.34.1](https://github.com/vm0-ai/vm0/compare/platform-v0.34.0...platform-v0.34.1) (2026-01-31)
 
 

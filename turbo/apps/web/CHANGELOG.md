@@ -1,5 +1,12 @@
 # Changelog
 
+## [11.12.1](https://github.com/vm0-ai/vm0/compare/web-v11.12.0...web-v11.12.1) (2026-01-31)
+
+
+### Bug Fixes
+
+* **web:** make logo clickable on sign-in and sign-up pages ([#2053](https://github.com/vm0-ai/vm0/issues/2053)) ([18e7ff5](https://github.com/vm0-ai/vm0/commit/18e7ff5071a919dac9edf4ee6af86e9ee19a970c)), closes [#2051](https://github.com/vm0-ai/vm0/issues/2051)
+
 ## [11.12.0](https://github.com/vm0-ai/vm0/compare/web-v11.11.0...web-v11.12.0) (2026-01-31)
 
 
