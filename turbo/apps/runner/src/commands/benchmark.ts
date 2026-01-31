@@ -8,7 +8,10 @@ import {
   setupBridge,
 } from "../lib/firecracker/network.js";
 import { initOverlayPool } from "../lib/firecracker/overlay-pool.js";
-import { initTapPool } from "../lib/firecracker/tap-pool.js";
+import {
+  initTapPool,
+  cleanupOrphanedPooledTaps,
+} from "../lib/firecracker/tap-pool.js";
 import { Timer } from "../lib/timing.js";
 import { setGlobalLogger } from "../lib/logger.js";
 import { dataPaths } from "../lib/paths.js";
@@ -92,6 +95,7 @@ export const benchmarkCommand = new Command("benchmark")
         replenishThreshold: 1,
         poolDir: dataPaths.overlayPool(config.data_dir),
       });
+      await cleanupOrphanedPooledTaps();
       await initTapPool({ size: 2, replenishThreshold: 1 });
 
       // Create benchmark execution context
