@@ -123,11 +123,26 @@ export function formatToolResult(
   const statusIcon = isError ? "✗" : "✓";
   lines.push(`└ ${statusIcon} ${chalk.dim(summary)}`);
 
-  // In verbose mode, show full result
-  if (verbose && resultText) {
+  // Show result preview or full result
+  if (resultText) {
     const resultLines = resultText.split("\n");
-    for (const line of resultLines) {
-      lines.push(`  ${chalk.dim(line)}`);
+    if (verbose) {
+      // In verbose mode, show full result
+      for (const line of resultLines) {
+        lines.push(`  ${chalk.dim(line)}`);
+      }
+    } else if (resultLines.length > 0) {
+      // In normal mode, show first 3 lines with expand hint
+      const previewCount = Math.min(3, resultLines.length);
+      for (let i = 0; i < previewCount; i++) {
+        lines.push(`  ${chalk.dim(resultLines[i])}`);
+      }
+      const remaining = resultLines.length - previewCount;
+      if (remaining > 0) {
+        lines.push(
+          `  ${chalk.dim(`+${remaining} ${pluralize(remaining, "line", "lines")} (--verbose to expand)`)}`,
+        );
+      }
     }
   }
 
