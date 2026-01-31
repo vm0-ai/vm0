@@ -4,7 +4,6 @@ import { countMatches } from "../../utils/highlight-text.tsx";
 import {
   groupEventsIntoMessages,
   getVisibleGroupedMessageText,
-  groupedMessageMatchesSearch,
   scrollToMatch,
 } from "../utils.ts";
 
@@ -22,12 +21,23 @@ export function FormattedEventsView({
   // Group events into messages
   const groupedMessages = groupEventsIntoMessages(events);
 
-  // Filter grouped messages by search
-  const visibleMessages = groupedMessages.filter((message) =>
-    groupedMessageMatchesSearch(message, searchTerm),
-  );
+  // Filter out text-only assistant messages right before result (they're redundant)
+  const visibleMessages = groupedMessages.filter((message, index) => {
+    if (message.type !== "assistant") {
+      return true;
+    }
+    // Check if next message is a result
+    const nextMessage = groupedMessages[index + 1];
+    if (!nextMessage || nextMessage.type !== "result") {
+      return true;
+    }
+    // Filter out if assistant message has only text (no tools)
+    const hasTools =
+      message.toolOperations && message.toolOperations.length > 0;
+    return hasTools;
+  });
 
-  // Count total matches for search navigation
+  // Count total matches for search navigation (no filtering, just highlight and scroll)
   let totalMatches = 0;
   if (searchTerm.trim()) {
     for (const message of visibleMessages) {
@@ -52,9 +62,7 @@ export function FormattedEventsView({
   if (visibleMessages.length === 0) {
     return (
       <div ref={containerRef} className="p-8 text-center text-muted-foreground">
-        {events.length === 0
-          ? "No events available"
-          : `No events matching "${searchTerm}"`}
+        No events available
       </div>
     );
   }

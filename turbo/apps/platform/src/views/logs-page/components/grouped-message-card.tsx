@@ -14,6 +14,7 @@ import {
   type EventData,
 } from "./event-card.tsx";
 import { highlightText } from "../utils/highlight-text.tsx";
+import { StatusDot } from "./status-dot.tsx";
 
 interface GroupedMessageCardProps {
   message: GroupedMessage;
@@ -47,6 +48,7 @@ function MarkdownContent({ text }: { text: string }) {
         backgroundColor: "transparent",
         fontSize: "0.875rem",
         lineHeight: "1.5",
+        fontFamily: "var(--font-family-sans)",
       }}
     />
   );
@@ -116,35 +118,29 @@ function CollapsibleMarkdown({
     return <MarkdownContent text={text} />;
   }
 
-  // Get first few lines for preview
+  // Calculate line count for display
   const lines = text.split("\n");
-  const previewText = lines.slice(0, 3).join("\n") + "...";
+  const lineCount = lines.length;
+  const previewLines = lines.slice(0, 3);
+  const previewText = previewLines.join("\n");
+  const remainingLines = lineCount - 3;
 
   return (
     <details className="group">
       <summary className="cursor-pointer list-none">
-        <div className="group-open:hidden">
+        <span className="group-open:hidden">
           <MarkdownContent text={previewText} />
-          <span className="text-xs text-blue-600 hover:underline">
-            Show more
+          <span className="text-xs text-muted-foreground hover:text-foreground">
+            ... +{remainingLines} lines
           </span>
-        </div>
+        </span>
+        <span className="hidden group-open:block">
+          <MarkdownContent text={text} />
+          <span className="text-xs text-muted-foreground hover:text-foreground">
+            ... -{remainingLines} lines
+          </span>
+        </span>
       </summary>
-      <div>
-        <MarkdownContent text={text} />
-        <button
-          type="button"
-          className="mt-1 text-xs text-muted-foreground hover:text-foreground"
-          onClick={(e) => {
-            const details = e.currentTarget.closest("details");
-            if (details) {
-              details.open = false;
-            }
-          }}
-        >
-          Show less
-        </button>
-      </div>
     </details>
   );
 }
@@ -192,18 +188,22 @@ function SystemMessageCard({
 }) {
   const subtype = eventData.subtype;
   return (
-    <div className="rounded-lg border border-sky-600/30 bg-sky-600/5 p-4">
-      <div className="flex gap-4 items-start">
-        <div className="flex-1 min-w-0 space-y-2">
-          <div className="font-medium text-sm text-foreground">
-            {subtype === "init" ? "Initialize" : subtype}
-          </div>
-          {subtype === "init" && <SystemInitContent eventData={eventData} />}
-        </div>
-        <span className="shrink-0 text-sm text-muted-foreground">
+    <div className="py-2">
+      <div className="flex gap-2 items-center">
+        <StatusDot variant="neutral" />
+        <span className="font-semibold text-sm text-foreground">
+          {subtype === "init" ? "Initialize" : subtype}
+        </span>
+        <span className="flex-1" />
+        <span className="text-xs text-muted-foreground shrink-0 ml-4">
           {formatEventTime(message.createdAt)}
         </span>
       </div>
+      {subtype === "init" && (
+        <div className="pl-5 mt-2">
+          <SystemInitContent eventData={eventData} />
+        </div>
+      )}
     </div>
   );
 }
@@ -217,23 +217,21 @@ function ResultMessageCard({
 }) {
   const subtype = eventData.subtype;
   const isError = eventData.is_error === true || subtype === "error";
-  const borderColor = isError ? "border-red-500/30" : "border-lime-600/30";
-  const bgColor = isError ? "bg-red-500/5" : "bg-lime-600/5";
-  const textColor = isError ? "text-red-600" : "text-lime-600";
+  const statusVariant = isError ? "error" : "success";
+  const borderColor = isError ? "border-red-500/30" : "border-lime-500/30";
+  const bgColor = isError ? "bg-red-500/5" : "bg-lime-500/5";
 
   return (
-    <div className={`rounded-lg border ${borderColor} ${bgColor} p-4`}>
-      <div className="flex gap-4 items-start">
-        <div className="flex-1 min-w-0 space-y-2">
-          <div className={`font-medium text-sm ${textColor}`}>
-            {isError ? "Failed" : "Result"}
-          </div>
-          <ResultEventContent eventData={eventData} />
-        </div>
-        <span className="shrink-0 text-sm text-muted-foreground">
-          {formatEventTime(message.createdAt)}
-        </span>
+    <div className="py-2 flex gap-2 items-start">
+      <StatusDot variant={statusVariant} />
+      <div
+        className={`flex-1 min-w-0 p-3 rounded-lg border ${borderColor} ${bgColor}`}
+      >
+        <ResultEventContent eventData={eventData} />
       </div>
+      <span className="text-xs text-muted-foreground shrink-0 w-[84px] text-right">
+        {formatEventTime(message.createdAt)}
+      </span>
     </div>
   );
 }
@@ -241,10 +239,10 @@ function ResultMessageCard({
 function getTodoStatusIcon(status: string) {
   switch (status) {
     case "completed": {
-      return <IconCheck className="h-4 w-4 text-lime-600" />;
+      return <IconCheck className="h-4 w-4 text-lime-500" />;
     }
     case "in_progress": {
-      return <IconLoader className="h-4 w-4 text-yellow-600" />;
+      return <IconLoader className="h-4 w-4 text-yellow-500" />;
     }
     default: {
       return <IconCircle className="h-4 w-4 text-muted-foreground" />;
@@ -253,8 +251,8 @@ function getTodoStatusIcon(status: string) {
 }
 
 /**
- * Standalone todo card that shows current task status.
- * Displays in-progress task prominently with expandable full list.
+ * Standalone todo card that shows current task status as a single line.
+ * Displays in-progress task with expandable full list.
  */
 function TodoCard({
   message,
@@ -280,64 +278,50 @@ function TodoCard({
   );
 
   return (
-    <div className="rounded-lg border border-purple-600/30 bg-purple-600/5 p-4">
-      <div className="flex gap-4 items-start">
-        <div className="flex-1 min-w-0 space-y-3">
-          {/* Header with current task */}
-          <div className="flex items-center gap-2">
-            <IconListCheck className="h-4 w-4 text-purple-600 shrink-0" />
-            {inProgressTask ? (
-              <div className="flex-1 min-w-0 flex items-center gap-2">
-                <IconLoader className="h-3.5 w-3.5 text-yellow-600 shrink-0" />
-                <span className="text-sm text-foreground truncate">
-                  {inProgressTask.content}
-                </span>
-              </div>
-            ) : (
-              <span className="text-sm text-muted-foreground">
-                All tasks completed
-              </span>
-            )}
-            <span className="text-xs text-muted-foreground shrink-0">
-              {completedCount}/{totalCount}
-            </span>
-          </div>
-
-          {/* Expandable full list - auto open when search matches */}
-          <details className="group" open={hasSearchMatch}>
-            <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
-              View all tasks
-            </summary>
-            <div className="mt-2 space-y-1.5">
-              {todoItems.map((item, index) => (
-                <div
-                  key={`${item.content}-${index}`}
-                  className="flex items-start gap-2 text-sm"
-                >
-                  <span className="mt-0.5 shrink-0">
-                    {getTodoStatusIcon(item.status)}
-                  </span>
-                  <span
-                    className={
-                      item.status === "completed"
-                        ? "text-muted-foreground line-through"
-                        : "text-foreground"
-                    }
-                  >
-                    {item.content}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </details>
-        </div>
-
-        {/* Timestamp */}
-        <span className="shrink-0 text-sm text-muted-foreground">
+    <details className="py-2 group" open={hasSearchMatch}>
+      <summary className="flex gap-2 items-center cursor-pointer list-none">
+        <StatusDot variant="todo" />
+        <IconListCheck className="h-4 w-4 text-cyan-500 shrink-0" />
+        <span className="text-sm text-muted-foreground shrink-0">
+          {completedCount}/{totalCount}
+        </span>
+        {inProgressTask ? (
+          <span
+            className="text-sm text-foreground truncate"
+            title={inProgressTask.content}
+          >
+            {inProgressTask.content}
+          </span>
+        ) : (
+          <span className="text-sm text-muted-foreground">
+            All tasks completed
+          </span>
+        )}
+        <span className="flex-1" />
+        <span className="text-xs text-muted-foreground shrink-0 ml-4">
           {formatEventTime(message.createdAt)}
         </span>
+      </summary>
+      <div className="mt-2 space-y-1.5 ml-[18px]">
+        {todoItems.map((item, index) => (
+          <div
+            key={`${item.content}-${index}`}
+            className="flex items-center gap-2 text-sm"
+          >
+            <span className="shrink-0">{getTodoStatusIcon(item.status)}</span>
+            <span
+              className={
+                item.status === "completed"
+                  ? "text-muted-foreground line-through"
+                  : "text-foreground"
+              }
+            >
+              {item.content}
+            </span>
+          </div>
+        ))}
       </div>
-    </div>
+    </details>
   );
 }
 
@@ -368,54 +352,63 @@ function AssistantMessageCard({
         ).length
       : 0;
 
-  return (
-    <div className="rounded-lg border border-yellow-600/30 bg-yellow-600/5 p-4">
-      <div className="flex gap-4 items-start">
-        <div className="flex-1 min-w-0 space-y-3">
-          {/* Text before tools */}
-          {textBefore && (
-            <CollapsibleMarkdown
-              text={textBefore}
-              searchTerm={searchTerm}
-              currentMatchIndex={currentMatchIndex}
-              matchStartIndex={currentOffset}
-            />
-          )}
+  // Build array of elements to render independently
+  const elements: React.ReactNode[] = [];
 
-          {/* Tool operations */}
-          {hasTools && (
-            <div className="space-y-1">
-              {toolOperations.map((op) => {
-                const toolMatchStart = currentOffset + textBeforeMatches;
-                return (
-                  <ToolSummary
-                    key={op.toolUseId}
-                    operation={op}
-                    searchTerm={searchTerm}
-                    currentMatchIndex={currentMatchIndex}
-                    matchStartIndex={toolMatchStart}
-                  />
-                );
-              })}
-            </div>
-          )}
-
-          {/* Text after tools */}
-          {textAfter && (
-            <CollapsibleMarkdown
-              text={textAfter}
-              searchTerm={searchTerm}
-              currentMatchIndex={currentMatchIndex}
-              matchStartIndex={currentOffset + textBeforeMatches}
-            />
-          )}
+  // Text before tools with timestamp
+  if (textBefore) {
+    elements.push(
+      <div key="text-before" className="py-2 flex gap-2 items-start">
+        <StatusDot variant="neutral" className="mt-1.5" />
+        <div className="flex-1 min-w-0">
+          <CollapsibleMarkdown
+            text={textBefore}
+            searchTerm={searchTerm}
+            currentMatchIndex={currentMatchIndex}
+            matchStartIndex={currentOffset}
+          />
         </div>
-
-        {/* Timestamp */}
-        <span className="shrink-0 text-sm text-muted-foreground">
+        <span className="text-xs text-muted-foreground shrink-0 ml-4">
           {formatEventTime(message.createdAt)}
         </span>
-      </div>
-    </div>
-  );
+      </div>,
+    );
+  }
+
+  // Tool operations - each independent with its own timestamp
+  if (hasTools) {
+    for (const op of toolOperations) {
+      const toolMatchStart = currentOffset + textBeforeMatches;
+      elements.push(
+        <div key={op.toolUseId} className="py-2">
+          <ToolSummary
+            operation={op}
+            searchTerm={searchTerm}
+            currentMatchIndex={currentMatchIndex}
+            matchStartIndex={toolMatchStart}
+            timestamp={formatEventTime(message.createdAt)}
+          />
+        </div>,
+      );
+    }
+  }
+
+  // Text after tools
+  if (textAfter) {
+    elements.push(
+      <div key="text-after" className="py-2 flex gap-2 items-start">
+        <StatusDot variant="neutral" className="mt-1.5" />
+        <div className="flex-1 min-w-0">
+          <CollapsibleMarkdown
+            text={textAfter}
+            searchTerm={searchTerm}
+            currentMatchIndex={currentMatchIndex}
+            matchStartIndex={currentOffset + textBeforeMatches}
+          />
+        </div>
+      </div>,
+    );
+  }
+
+  return <>{elements}</>;
 }

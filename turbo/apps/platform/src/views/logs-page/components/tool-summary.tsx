@@ -1,45 +1,15 @@
 import type { ReactNode } from "react";
-import { CopyButton } from "@vm0/ui";
-import {
-  IconChevronRight,
-  IconCheck,
-  IconX,
-  IconFile,
-  IconTerminal,
-  IconWorld,
-  IconSearch,
-  IconListCheck,
-} from "@tabler/icons-react";
 import { highlightText } from "../utils/highlight-text.tsx";
 import type { ToolOperation } from "../log-detail/utils.ts";
 import { formatDuration } from "./event-card.tsx";
+import { StatusDot } from "./status-dot.tsx";
 
 interface ToolSummaryProps {
   operation: ToolOperation;
   searchTerm?: string;
   currentMatchIndex?: number;
   matchStartIndex?: number;
-}
-
-function getToolIcon(toolName: string) {
-  const name = toolName.toLowerCase();
-  if (name === "bash") {
-    return IconTerminal;
-  }
-  if (name === "webfetch") {
-    return IconWorld;
-  }
-  if (name === "websearch") {
-    return IconSearch;
-  }
-  if (name === "todowrite") {
-    return IconListCheck;
-  }
-  const fileTools = ["read", "write", "edit", "glob", "grep"];
-  if (fileTools.some((t) => name.includes(t))) {
-    return IconFile;
-  }
-  return null;
+  timestamp?: string;
 }
 
 function checkSearchMatch(
@@ -59,16 +29,6 @@ function checkSearchMatch(
   );
 }
 
-function getStatusIcon(isError: boolean, hasResult: boolean) {
-  if (isError) {
-    return IconX;
-  }
-  if (hasResult) {
-    return IconCheck;
-  }
-  return null;
-}
-
 function ToolSummaryHeader({
   toolName,
   keyParamElement,
@@ -76,6 +36,7 @@ function ToolSummaryHeader({
   isError,
   hasResult,
   durationText,
+  timestamp,
 }: {
   toolName: string;
   keyParamElement: ReactNode;
@@ -83,30 +44,42 @@ function ToolSummaryHeader({
   isError: boolean;
   hasResult: boolean;
   durationText: string | null;
+  timestamp?: string;
 }) {
-  const ToolIcon = getToolIcon(toolName);
-  const StatusIcon = getStatusIcon(isError, hasResult);
-  const statusColor = isError ? "text-red-500" : "text-emerald-500";
+  // Determine status dot variant based on result state
+  const getStatusVariant = () => {
+    if (isError) {
+      return "error";
+    }
+    if (hasResult) {
+      return "success";
+    }
+    return "pending";
+  };
 
   return (
-    <summary className="flex cursor-pointer list-none items-center gap-2 w-full text-left hover:bg-accent/50 rounded px-1 -ml-1 transition-colors">
-      <IconChevronRight className="h-4 w-4 text-muted-foreground shrink-0 transition-transform group-open:rotate-90" />
-      {ToolIcon && (
-        <ToolIcon className="h-4 w-4 text-muted-foreground shrink-0" />
-      )}
-      <span className="font-medium text-sm text-foreground">{toolName}</span>
+    <summary className="flex cursor-pointer list-none items-center gap-2 w-full text-left">
+      <StatusDot variant={getStatusVariant()} />
+      <span className="font-semibold text-sm text-foreground shrink-0">
+        {toolName}
+      </span>
       {keyParam && (
-        <code className="text-xs text-muted-foreground font-mono truncate max-w-[300px]">
+        <code
+          className="text-xs text-muted-foreground font-mono truncate min-w-0 flex-1 mt-px"
+          title={keyParam}
+        >
           {keyParamElement}
         </code>
       )}
-      <span className="flex-1" />
-      {StatusIcon && (
-        <StatusIcon className={`h-4 w-4 shrink-0 ${statusColor}`} />
-      )}
+      {!keyParam && <span className="flex-1" />}
       {durationText && (
         <span className="text-xs text-muted-foreground shrink-0">
           {durationText}
+        </span>
+      )}
+      {timestamp && (
+        <span className="text-xs text-muted-foreground shrink-0 ml-4">
+          {timestamp}
         </span>
       )}
     </summary>
@@ -118,6 +91,7 @@ export function ToolSummary({
   searchTerm,
   currentMatchIndex,
   matchStartIndex,
+  timestamp,
 }: ToolSummaryProps) {
   const { toolName, keyParam, result, input } = operation;
   const isError = result?.isError ?? false;
@@ -143,10 +117,7 @@ export function ToolSummary({
       : keyParam;
 
   return (
-    <details
-      className="group border-l-2 border-border pl-3 py-1"
-      open={hasSearchMatch}
-    >
+    <details className="group" open={hasSearchMatch}>
       <ToolSummaryHeader
         toolName={toolName}
         keyParamElement={keyParamElement}
@@ -154,21 +125,25 @@ export function ToolSummary({
         isError={isError}
         hasResult={Boolean(result)}
         durationText={durationText}
+        timestamp={timestamp}
       />
 
-      <div className="mt-2 ml-6 space-y-2">
-        {input && Object.keys(input).length > 0 && (
-          <ToolInputDetails input={input} toolName={toolName} />
-        )}
+      <div className="mt-1 flex items-start gap-1.5 ml-[18px] mr-[100px]">
+        <span className="text-muted-foreground text-xs shrink-0">└</span>
+        <div className="flex-1 min-w-0 space-y-1">
+          {input && Object.keys(input).length > 0 && (
+            <ToolInputDetails input={input} toolName={toolName} />
+          )}
 
-        {result && (
-          <ToolResultDetails
-            result={result}
-            searchTerm={searchTerm}
-            currentMatchIndex={currentMatchIndex}
-            matchStartIndex={matchStartIndex}
-          />
-        )}
+          {result && (
+            <ToolResultDetails
+              result={result}
+              searchTerm={searchTerm}
+              currentMatchIndex={currentMatchIndex}
+              matchStartIndex={matchStartIndex}
+            />
+          )}
+        </div>
       </div>
     </details>
   );
@@ -178,7 +153,19 @@ function shouldFilterKey(lowerName: string, key: string): boolean {
   if (lowerName === "bash" && key === "command") {
     return true;
   }
-  if (["read", "write", "edit", "glob", "grep"].includes(lowerName)) {
+  if (lowerName === "skill" && ["skill", "args"].includes(key)) {
+    return true;
+  }
+  if (lowerName === "write" && ["file_path", "content"].includes(key)) {
+    return true;
+  }
+  if (
+    lowerName === "edit" &&
+    ["file_path", "old_string", "new_string"].includes(key)
+  ) {
+    return true;
+  }
+  if (["read", "glob", "grep"].includes(lowerName)) {
     if (["file_path", "path", "pattern"].includes(key)) {
       return true;
     }
@@ -206,20 +193,74 @@ function ToolInputDetails({
     const command = input.command as string | undefined;
     if (command) {
       return (
-        <div className="relative bg-sidebar dark:bg-sidebar rounded-lg px-3 py-2">
-          <CopyButton
-            text={command}
-            className="sticky top-0 float-right ml-2 h-6 w-6 p-1 bg-background/80 hover:bg-background rounded z-10"
-          />
-          <code className="font-mono text-xs text-foreground whitespace-pre-wrap break-all">
-            {command}
-          </code>
+        <pre className="font-mono text-xs text-foreground whitespace-pre-wrap break-all overflow-hidden leading-5">
+          {command}
+        </pre>
+      );
+    }
+  }
+
+  // Skill - show skill name and args with labels
+  if (lowerName === "skill") {
+    const skill = input.skill as string | undefined;
+    const args = input.args as string | undefined;
+    if (skill) {
+      return (
+        <div className="font-mono text-xs">
+          <span className="text-muted-foreground">name: </span>
+          <span className="text-foreground">{skill}</span>
+          {args && (
+            <>
+              <span className="text-muted-foreground ml-3">args: </span>
+              <span className="text-foreground">{args}</span>
+            </>
+          )}
         </div>
       );
     }
   }
 
-  // For other tools, show key-value pairs
+  // Write - show full content
+  if (lowerName === "write") {
+    const content = input.content as string | undefined;
+    if (content) {
+      return (
+        <pre className="font-mono text-xs text-muted-foreground whitespace-pre-wrap break-all max-h-60 overflow-y-auto">
+          {content}
+        </pre>
+      );
+    }
+  }
+
+  // Edit - show old_string and new_string
+  if (lowerName === "edit") {
+    const oldString = input.old_string as string | undefined;
+    const newString = input.new_string as string | undefined;
+    if (oldString || newString) {
+      return (
+        <div className="space-y-1">
+          {oldString && (
+            <div className="flex items-start gap-2">
+              <span className="text-red-500 shrink-0">-</span>
+              <pre className="font-mono text-xs text-red-500/70 whitespace-pre-wrap break-all max-h-40 overflow-y-auto">
+                {oldString}
+              </pre>
+            </div>
+          )}
+          {newString && (
+            <div className="flex items-start gap-2">
+              <span className="text-lime-500 shrink-0">+</span>
+              <pre className="font-mono text-xs text-lime-500/70 whitespace-pre-wrap break-all max-h-40 overflow-y-auto">
+                {newString}
+              </pre>
+            </div>
+          )}
+        </div>
+      );
+    }
+  }
+
+  // For other tools, show key-value pairs inline
   const entries = Object.entries(input).filter(
     ([key]) => !shouldFilterKey(lowerName, key),
   );
@@ -228,26 +269,28 @@ function ToolInputDetails({
     return null;
   }
 
+  const formatValue = (val: unknown): string => {
+    if (typeof val === "string") {
+      return val.length > 50 ? `${val.slice(0, 47)}...` : val;
+    }
+    return JSON.stringify(val);
+  };
+
+  const getFullValue = (val: unknown): string => {
+    if (typeof val === "string") {
+      return val;
+    }
+    return JSON.stringify(val);
+  };
+
+  const fullText = entries
+    .map(([key, val]) => `${key}: ${getFullValue(val)}`)
+    .join(", ");
+
   return (
-    <details className="text-xs">
-      <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-        Parameters ({entries.length})
-      </summary>
-      <div className="mt-1 space-y-1 pl-2">
-        {entries.map(([key, val]) => (
-          <div key={key} className="flex items-start gap-2">
-            <span className="text-muted-foreground shrink-0">{key}:</span>
-            <span className="text-foreground break-all">
-              {typeof val === "string"
-                ? val.length > 100
-                  ? `${val.slice(0, 97)}...`
-                  : val
-                : JSON.stringify(val)}
-            </span>
-          </div>
-        ))}
-      </div>
-    </details>
+    <span className="text-xs text-muted-foreground" title={fullText}>
+      ({entries.map(([key, val]) => `${key}: ${formatValue(val)}`).join(", ")})
+    </span>
   );
 }
 
@@ -266,12 +309,15 @@ function ToolResultDetails({
 
   if (!content || content.trim() === "") {
     return (
-      <div className="text-xs text-muted-foreground italic">(empty output)</div>
+      <span className="text-xs text-muted-foreground italic">
+        (empty output)
+      </span>
     );
   }
 
   const lines = content.split("\n");
-  const isLong = lines.length > 5 || content.length > 100;
+  const lineCount = lines.length;
+  const isLong = lineCount > 3 || content.length > 300;
 
   // Check if search matches this content
   const hasSearchMatch =
@@ -289,43 +335,37 @@ function ToolResultDetails({
 
   if (isError) {
     return (
-      <div className="p-2 bg-red-500/10 border border-red-500/30 rounded text-xs">
-        <pre className="whitespace-pre-wrap overflow-x-auto text-red-600 max-h-40 overflow-y-auto">
-          {contentElement}
-        </pre>
-      </div>
+      <pre className="text-xs text-red-500 whitespace-pre-wrap max-h-40 overflow-y-auto break-all">
+        {contentElement}
+      </pre>
     );
   }
 
   if (isLong && !hasSearchMatch) {
+    const previewText = lines.slice(0, 3).join("\n");
+    const remainingLines = lineCount - 3;
+
     return (
-      <details className="group">
-        <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
-          Output ({lines.length} lines
-          {bytes ? `, ${(bytes / 1024).toFixed(1)} KB` : ""})
-        </summary>
-        <div className="mt-1 relative bg-sidebar dark:bg-sidebar rounded-lg px-3 py-2">
-          <CopyButton
-            text={content}
-            className="sticky top-0 float-right ml-2 h-6 w-6 p-1 bg-background/80 hover:bg-background rounded z-10"
-          />
-          <pre className="text-xs text-foreground whitespace-pre-wrap max-h-40 overflow-y-auto break-all">
-            {contentElement}
+      <div>
+        <pre className="text-xs text-foreground whitespace-pre-wrap break-all">
+          {previewText}
+        </pre>
+        <details className="[&[open]>summary]:hidden">
+          <summary className="list-none cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+            +{remainingLines} lines
+            {bytes ? ` (${(bytes / 1024).toFixed(1)} KB)` : ""}
+          </summary>
+          <pre className="text-xs text-foreground whitespace-pre-wrap max-h-60 overflow-y-auto break-all">
+            {lines.slice(3).join("\n")}
           </pre>
-        </div>
-      </details>
+        </details>
+      </div>
     );
   }
 
   return (
-    <div className="relative bg-sidebar dark:bg-sidebar rounded-lg px-3 py-2">
-      <CopyButton
-        text={content}
-        className="sticky top-0 float-right ml-2 h-6 w-6 p-1 bg-background/80 hover:bg-background rounded z-10"
-      />
-      <pre className="text-xs text-foreground whitespace-pre-wrap max-h-40 overflow-y-auto break-all">
-        {contentElement}
-      </pre>
-    </div>
+    <pre className="text-xs text-foreground whitespace-pre-wrap max-h-40 overflow-y-auto break-all">
+      {contentElement}
+    </pre>
   );
 }

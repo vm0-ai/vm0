@@ -311,6 +311,10 @@ function extractKeyParam(
     return prompt.length > 60 ? `${prompt.slice(0, 57)}...` : prompt;
   }
 
+  if (name === "skill" && typeof input.skill === "string") {
+    return input.skill;
+  }
+
   // Generic: try common parameter names
   for (const key of [
     "file_path",
