@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.7.2](https://github.com/vm0-ai/vm0/compare/runner-v3.7.1...runner-v3.7.2) (2026-01-31)
+
+
+### Bug Fixes
+
+* **runner:** add safety checks to overlay pool ([#2012](https://github.com/vm0-ai/vm0/issues/2012)) ([9725cff](https://github.com/vm0-ai/vm0/commit/9725cff9ee56c13621c23acea75d67bf0d478888))
+
 ## [3.7.1](https://github.com/vm0-ai/vm0/compare/runner-v3.7.0...runner-v3.7.1) (2026-01-31)
 
 
