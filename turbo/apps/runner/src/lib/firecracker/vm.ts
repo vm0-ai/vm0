@@ -345,10 +345,16 @@ export class FirecrackerVM {
 
     // Release TAP device back to pool
     if (this.networkConfig) {
-      await releaseTap(
-        this.networkConfig.tapDevice,
-        this.networkConfig.guestIp,
-      );
+      try {
+        await releaseTap(
+          this.networkConfig.tapDevice,
+          this.networkConfig.guestIp,
+        );
+      } catch (err) {
+        logger.log(
+          `[VM ${this.config.vmId}] Failed to release TAP: ${err instanceof Error ? err.message : "Unknown"}`,
+        );
+      }
       this.networkConfig = null;
     }
 
