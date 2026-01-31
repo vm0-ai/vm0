@@ -77,15 +77,14 @@ function formatNetworkLog(entry: NetworkLogEntry): string {
 }
 
 /**
- * Create an EventRenderer for log viewing (verbose mode with timestamps)
- * Uses buffered: false since logs are historical and tool_use/tool_result
- * may be fetched separately with pagination
+ * Create an EventRenderer for log viewing (with timestamps)
+ * Uses buffered mode to group tool_use/tool_result together for consistent
+ * rendering with vm0 run output
  */
-function createLogRenderer(): EventRenderer {
+function createLogRenderer(verbose: boolean): EventRenderer {
   return new EventRenderer({
     showTimestamp: true,
-    verbose: true,
-    buffered: false,
+    verbose,
   });
 }
 
@@ -158,6 +157,7 @@ export const logsCommand = new Command()
   )
   .option("--tail <n>", "Show last N entries (default: 5, max: 100)")
   .option("--head <n>", "Show first N entries (max: 100)")
+  .option("-v, --verbose", "Show full tool inputs and outputs")
   .action(
     async (
       runId: string,
@@ -169,6 +169,7 @@ export const logsCommand = new Command()
         since?: string;
         tail?: string;
         head?: string;
+        verbose?: boolean;
       },
     ) => {
       try {
@@ -198,7 +199,12 @@ export const logsCommand = new Command()
 
         switch (logType) {
           case "agent":
-            await showAgentEvents(runId, { since, limit, order });
+            await showAgentEvents(runId, {
+              since,
+              limit,
+              order,
+              verbose: options.verbose,
+            });
             break;
           case "system":
             await showSystemLog(runId, { since, limit, order });
@@ -222,7 +228,12 @@ export const logsCommand = new Command()
  */
 async function showAgentEvents(
   runId: string,
-  options: { since?: number; limit: number; order: "asc" | "desc" },
+  options: {
+    since?: number;
+    limit: number;
+    order: "asc" | "desc";
+    verbose?: boolean;
+  },
 ): Promise<void> {
   const response = await apiClient.getAgentEvents(runId, options);
 
@@ -235,8 +246,8 @@ async function showAgentEvents(
   const events =
     options.order === "desc" ? [...response.events].reverse() : response.events;
 
-  // Create renderer for log viewing (verbose mode with timestamps)
-  const renderer = createLogRenderer();
+  // Create renderer for log viewing (with timestamps)
+  const renderer = createLogRenderer(options.verbose ?? false);
 
   for (const event of events) {
     renderAgentEvent(event, response.framework, renderer);
