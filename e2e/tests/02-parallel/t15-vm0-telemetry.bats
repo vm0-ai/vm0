@@ -79,7 +79,7 @@ teardown() {
     assert_output --partial "Run ID:"
 
     # Verify run completed successfully
-    assert_output --partial "[result]"
+    assert_output --partial "Completed"
     assert_output --partial "Run completed successfully"
 
     # Verify "vm0 logs" command hint is shown in next steps
@@ -105,7 +105,7 @@ teardown() {
     # Default output shows agent events - verify event type markers are present
     # Mock-claude produces: Claude Code Started, text, tool calls, Completed
     assert_output --partial "Claude Code Started"
-    assert_output --partial "[result]"
+    assert_output --partial "Completed"
     echo "# Agent events contain expected event types"
 
     # Step 5: Verify --agent option explicitly shows agent events

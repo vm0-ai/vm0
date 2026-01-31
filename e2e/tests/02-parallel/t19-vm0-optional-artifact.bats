@@ -62,7 +62,7 @@ teardown() {
     assert_success
     assert_output --partial "● Bash("
     assert_output --partial "hello world"
-    assert_output --partial "[result]"
+    assert_output --partial "Completed"
 
     # Should still report session and checkpoint
     assert_output --partial "Session:"

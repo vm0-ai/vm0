@@ -89,9 +89,9 @@ teardown() {
 
     # Verify events were streamed (same as polling mode)
     assert_output --partial "Claude Code Started"
-    assert_output --partial "[text]"
     assert_output --partial "● "
-    assert_output --partial "[result]"
+    assert_output --partial "● "
+    assert_output --partial "Completed"
 
     # Verify run completed
     assert_output --partial "completed successfully"
