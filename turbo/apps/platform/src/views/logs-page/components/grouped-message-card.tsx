@@ -1,5 +1,4 @@
 import {
-  IconUser,
   IconSettings,
   IconCheck,
   IconX,
@@ -297,8 +296,7 @@ function AssistantMessageCard({
       <div className="flex gap-4 items-start">
         <div className="flex-1 min-w-0 space-y-3">
           {/* Badge */}
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-xs font-medium bg-yellow-600/10 border border-yellow-600 text-yellow-600">
-            <IconUser className="h-4 w-4" />
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded-lg text-xs font-medium bg-yellow-600/10 border border-yellow-600 text-yellow-600">
             Claude
           </span>
 
