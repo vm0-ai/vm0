@@ -3,10 +3,7 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
 import { enableSchedule } from "../../../../../../src/lib/schedule";
 import { logger } from "../../../../../../src/lib/logger";
-import {
-  isNotFound,
-  isSchedulePast,
-} from "../../../../../../src/lib/errors";
+import { isNotFound, isSchedulePast } from "../../../../../../src/lib/errors";
 
 const log = logger("api:schedules:enable");
 

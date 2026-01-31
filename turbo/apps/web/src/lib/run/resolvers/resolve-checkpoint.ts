@@ -3,11 +3,7 @@ import { checkpoints } from "../../../db/schema/checkpoint";
 import { conversations } from "../../../db/schema/conversation";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { agentComposeVersions } from "../../../db/schema/agent-compose";
-import {
-  notFound,
-  unauthorized,
-  badRequest,
-} from "../../errors";
+import { notFound, unauthorized, badRequest } from "../../errors";
 import { logger } from "../../logger";
 import type {
   ArtifactSnapshot,
@@ -57,9 +53,7 @@ export async function resolveCheckpoint(
     .limit(1);
 
   if (!originalRun) {
-    throw unauthorized(
-      "Checkpoint does not belong to authenticated user",
-    );
+    throw unauthorized("Checkpoint does not belong to authenticated user");
   }
 
   // Load conversation
@@ -84,9 +78,7 @@ export async function resolveCheckpoint(
   // Get version ID from snapshot
   const agentComposeVersionId = agentComposeSnapshot.agentComposeVersionId;
   if (!agentComposeVersionId) {
-    throw badRequest(
-      "Invalid checkpoint: missing agentComposeVersionId",
-    );
+    throw badRequest("Invalid checkpoint: missing agentComposeVersionId");
   }
 
   // Lookup content from version table
@@ -97,9 +89,7 @@ export async function resolveCheckpoint(
     .limit(1);
 
   if (!version) {
-    throw notFound(
-      `Agent compose version ${agentComposeVersionId} not found`,
-    );
+    throw notFound(`Agent compose version ${agentComposeVersionId} not found`);
   }
   const agentCompose = version.content as AgentComposeYaml;
 

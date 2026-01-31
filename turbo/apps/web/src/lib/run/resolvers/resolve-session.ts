@@ -3,11 +3,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
-import {
-  notFound,
-  unauthorized,
-  badRequest,
-} from "../../errors";
+import { notFound, unauthorized, badRequest } from "../../errors";
 import { logger } from "../../logger";
 import { getAgentSessionWithConversation } from "../../agent-session";
 import type { ConversationResolution } from "./types";
@@ -40,9 +36,7 @@ export async function resolveSession(
   }
 
   if (session.userId !== userId) {
-    throw unauthorized(
-      "Agent session does not belong to authenticated user",
-    );
+    throw unauthorized("Agent session does not belong to authenticated user");
   }
 
   if (!session.conversation) {
@@ -67,9 +61,7 @@ export async function resolveSession(
   }
 
   if (!compose.headVersionId) {
-    throw badRequest(
-      "Agent compose has no versions. Run 'vm0 build' first.",
-    );
+    throw badRequest("Agent compose has no versions. Run 'vm0 build' first.");
   }
 
   // Use session's fixed compose version if available, fall back to HEAD for backwards compatibility

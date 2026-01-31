@@ -12,11 +12,7 @@ import {
   updateScopeSlug,
 } from "../../../src/lib/scope/scope-service";
 import { logger } from "../../../src/lib/logger";
-import {
-  isBadRequest,
-  isForbidden,
-  isNotFound,
-} from "../../../src/lib/errors";
+import { isBadRequest, isForbidden, isNotFound } from "../../../src/lib/errors";
 
 const log = logger("api:scope");
 

@@ -126,9 +126,7 @@ export async function validateCheckpoint(
     .limit(1);
 
   if (!originalRun) {
-    throw unauthorized(
-      "Checkpoint does not belong to authenticated user",
-    );
+    throw unauthorized("Checkpoint does not belong to authenticated user");
   }
 
   // Get version ID from snapshot
@@ -137,9 +135,7 @@ export async function validateCheckpoint(
 
   const agentComposeVersionId = agentComposeSnapshot.agentComposeVersionId;
   if (!agentComposeVersionId) {
-    throw badRequest(
-      "Invalid checkpoint: missing agentComposeVersionId",
-    );
+    throw badRequest("Invalid checkpoint: missing agentComposeVersionId");
   }
 
   log.debug(
@@ -189,9 +185,7 @@ export async function validateAgentSession(
 
   // Verify session belongs to user
   if (session.userId !== userId) {
-    throw unauthorized(
-      "Agent session does not belong to authenticated user",
-    );
+    throw unauthorized("Agent session does not belong to authenticated user");
   }
 
   // Session must have a conversation to continue from

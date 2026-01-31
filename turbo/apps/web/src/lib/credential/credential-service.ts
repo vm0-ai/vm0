@@ -22,9 +22,7 @@ const NAME_REGEX = /^[A-Z][A-Z0-9_]*$/;
  */
 export function validateCredentialName(name: string): void {
   if (name.length === 0 || name.length > 255) {
-    throw badRequest(
-      "Credential name must be between 1 and 255 characters",
-    );
+    throw badRequest("Credential name must be between 1 and 255 characters");
   }
 
   if (!NAME_REGEX.test(name)) {

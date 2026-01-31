@@ -48,9 +48,7 @@ export async function resolveDirectConversation(
     .limit(1);
 
   if (!originalRun) {
-    throw unauthorized(
-      "Conversation does not belong to authenticated user",
-    );
+    throw unauthorized("Conversation does not belong to authenticated user");
   }
 
   // Load agent compose version

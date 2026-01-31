@@ -2,7 +2,13 @@ import { eq, and, desc, like } from "drizzle-orm";
 
 import { images } from "../../db/schema/image";
 import { scopes } from "../../db/schema/scope";
-import { badRequest, notFound, forbidden, isNotFound, isBadRequest } from "../errors";
+import {
+  badRequest,
+  notFound,
+  forbidden,
+  isNotFound,
+  isBadRequest,
+} from "../errors";
 import { getUserScopeByClerkId } from "../scope/scope-service";
 import {
   parseImageReferenceWithTag,
