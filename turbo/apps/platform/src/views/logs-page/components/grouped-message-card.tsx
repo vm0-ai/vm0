@@ -295,11 +295,6 @@ function AssistantMessageCard({
     <div className="rounded-lg border border-yellow-600/30 bg-yellow-600/5 p-4">
       <div className="flex gap-4 items-start">
         <div className="flex-1 min-w-0 space-y-3">
-          {/* Badge */}
-          <span className="inline-flex items-center px-1.5 py-0.5 rounded-lg text-xs font-medium bg-yellow-600/10 border border-yellow-600 text-yellow-600">
-            Claude
-          </span>
-
           {/* Text before tools */}
           {textBefore && (
             <CollapsibleText
