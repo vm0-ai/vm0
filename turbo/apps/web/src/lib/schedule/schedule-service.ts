@@ -25,6 +25,10 @@ import { generateSandboxToken } from "../auth/sandbox-token";
 
 const log = logger("service:schedule");
 
+// Retry configuration for concurrency failures
+const RETRY_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const MAX_RETRY_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
+
 /**
  * Schedule data for API responses
  */
@@ -46,6 +50,7 @@ export interface ScheduleResponse {
   enabled: boolean;
   nextRunAt: string | null;
   lastRunAt: string | null;
+  retryStartedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -188,6 +193,7 @@ function toResponse(
     enabled: schedule.enabled,
     nextRunAt: schedule.nextRunAt?.toISOString() ?? null,
     lastRunAt: schedule.lastRunAt?.toISOString() ?? null,
+    retryStartedAt: schedule.retryStartedAt?.toISOString() ?? null,
     createdAt: schedule.createdAt.toISOString(),
     updatedAt: schedule.updatedAt.toISOString(),
   };
@@ -640,6 +646,7 @@ export async function enableSchedule(
     .set({
       enabled: true,
       nextRunAt,
+      retryStartedAt: null, // Clear any stale retry state
       updatedAt: new Date(Date.now()),
     })
     .where(eq(agentSchedules.id, schedule.id))
@@ -673,6 +680,7 @@ export async function disableSchedule(
     .update(agentSchedules)
     .set({
       enabled: false,
+      retryStartedAt: null, // Clear retry state
       updatedAt: new Date(Date.now()),
     })
     .where(
@@ -750,6 +758,76 @@ export async function executeDueSchedules(): Promise<{
 }
 
 /**
+ * Handle concurrency limit failure with retry logic.
+ * Returns true if retry was scheduled (don't re-throw), false if should advance to next occurrence.
+ */
+async function handleConcurrencyFailure(
+  schedule: typeof agentSchedules.$inferSelect,
+  compose: { userId: string; headVersionId: string },
+  error: ConcurrentRunLimitError,
+): Promise<boolean> {
+  const now = new Date(Date.now());
+
+  // Create failed run record
+  const [failedRun] = await globalThis.services.db
+    .insert(agentRuns)
+    .values({
+      userId: compose.userId,
+      agentComposeVersionId: compose.headVersionId,
+      scheduleId: schedule.id,
+      status: "failed",
+      prompt: schedule.prompt,
+      vars: schedule.vars,
+      error: error.message,
+      completedAt: now,
+      createdAt: now,
+    })
+    .returning();
+
+  // Determine retry window start (use existing or start new window)
+  const retryStartedAt = schedule.retryStartedAt ?? now;
+  const windowElapsed = now.getTime() - retryStartedAt.getTime();
+
+  if (windowElapsed < MAX_RETRY_WINDOW_MS) {
+    // Within retry window: schedule retry in 5 minutes
+    const nextRetryAt = new Date(now.getTime() + RETRY_INTERVAL_MS);
+
+    await globalThis.services.db
+      .update(agentSchedules)
+      .set({
+        lastRunId: failedRun?.id ?? schedule.lastRunId,
+        retryStartedAt,
+        nextRunAt: nextRetryAt,
+      })
+      .where(eq(agentSchedules.id, schedule.id));
+
+    log.debug(
+      `Schedule ${schedule.name} retry scheduled at ${nextRetryAt.toISOString()} ` +
+        `(${Math.round(windowElapsed / 60000)} min into retry window)`,
+    );
+
+    return true; // Retry scheduled, don't re-throw
+  }
+
+  // Retry window expired: clear state and advance to next occurrence
+  log.debug(
+    `Schedule ${schedule.name} retry window expired after ${Math.round(windowElapsed / 60000)} min`,
+  );
+
+  if (failedRun) {
+    await globalThis.services.db
+      .update(agentSchedules)
+      .set({
+        lastRunId: failedRun.id,
+        retryStartedAt: null,
+      })
+      .where(eq(agentSchedules.id, schedule.id));
+  }
+
+  return false; // Should advance to next occurrence
+}
+
+/**
  * Execute a single schedule
  */
 async function executeSchedule(
@@ -788,31 +866,17 @@ async function executeSchedule(
     if (isConcurrentRunLimit(error)) {
       log.debug(`Schedule ${schedule.name} blocked by concurrent run limit`);
 
-      // Create failed run record
-      const [failedRun] = await globalThis.services.db
-        .insert(agentRuns)
-        .values({
-          userId: compose.userId,
-          agentComposeVersionId: compose.headVersionId,
-          scheduleId: schedule.id,
-          status: "failed",
-          prompt: schedule.prompt,
-          vars: schedule.vars,
-          error: error.message,
-          completedAt: new Date(Date.now()),
-          createdAt: new Date(Date.now()),
-        })
-        .returning();
+      const retryScheduled = await handleConcurrencyFailure(
+        schedule,
+        { userId: compose.userId, headVersionId: compose.headVersionId },
+        error,
+      );
 
-      // Update schedule's lastRunId
-      if (failedRun) {
-        await globalThis.services.db
-          .update(agentSchedules)
-          .set({ lastRunId: failedRun.id })
-          .where(eq(agentSchedules.id, schedule.id));
+      if (retryScheduled) {
+        return; // Retry scheduled, don't continue
       }
-
-      throw error; // Re-throw to count as skipped
+      // Retry window expired, re-throw to advance to next occurrence
+      throw error;
     }
     throw error;
   }
@@ -893,19 +957,24 @@ async function executeSchedule(
       );
       await globalThis.services.db
         .update(agentSchedules)
-        .set({ lastRunAt: new Date(Date.now()), nextRunAt })
+        .set({
+          lastRunAt: new Date(Date.now()),
+          nextRunAt,
+          retryStartedAt: null, // Clear retry state on non-concurrency failure
+        })
         .where(eq(agentSchedules.id, schedule.id));
       log.debug(
         `Cron schedule ${schedule.name} failed, next run at ${nextRunAt?.toISOString()}`,
       );
     } else {
-      // One-time schedule: disable after failed execution
+      // One-time schedule: disable after failed execution (non-concurrency errors)
       await globalThis.services.db
         .update(agentSchedules)
         .set({
           enabled: false,
           lastRunAt: new Date(Date.now()),
           nextRunAt: null,
+          retryStartedAt: null, // Clear retry state
         })
         .where(eq(agentSchedules.id, schedule.id));
       log.debug(`One-time schedule ${schedule.name} failed and disabled`);
@@ -926,6 +995,7 @@ async function executeSchedule(
         enabled: false,
         lastRunAt: new Date(Date.now()),
         nextRunAt: null,
+        retryStartedAt: null, // Clear retry state
       })
       .where(eq(agentSchedules.id, schedule.id));
     log.debug(`One-time schedule ${schedule.name} executed and disabled`);
@@ -938,6 +1008,7 @@ async function executeSchedule(
     .set({
       lastRunAt: new Date(Date.now()),
       nextRunAt,
+      retryStartedAt: null, // Clear retry state on success
     })
     .where(eq(agentSchedules.id, schedule.id));
 

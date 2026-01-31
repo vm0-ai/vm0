@@ -351,6 +351,8 @@ describe("schedules contracts", () => {
         volumeVersions: null,
         enabled: true,
         nextRunAt: "2025-01-13T09:00:00Z",
+        lastRunAt: "2025-01-12T09:00:00Z",
+        retryStartedAt: null,
         createdAt: "2025-01-12T10:00:00Z",
         updatedAt: "2025-01-12T10:00:00Z",
       });
@@ -376,6 +378,8 @@ describe("schedules contracts", () => {
         volumeVersions: null,
         enabled: false,
         nextRunAt: null,
+        lastRunAt: null,
+        retryStartedAt: null,
         createdAt: "2025-01-12T10:00:00Z",
         updatedAt: "2025-01-12T10:00:00Z",
       });
