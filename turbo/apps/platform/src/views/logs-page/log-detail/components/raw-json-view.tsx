@@ -35,16 +35,14 @@ export function RawJsonView({
   };
 
   return (
-    <div className="relative h-full overflow-y-auto">
-      <div className="sticky top-0 z-10 flex justify-end p-2 pointer-events-none">
-        <CopyButton
-          text={jsonString}
-          className="h-8 w-8 bg-background/90 hover:bg-background shadow-sm pointer-events-auto"
-        />
-      </div>
+    <div className="relative h-full overflow-y-auto bg-muted/30 rounded-lg">
+      <CopyButton
+        text={jsonString}
+        className="sticky top-2 float-right mr-2 mt-2 h-8 w-8 bg-background/90 hover:bg-background shadow-sm z-10"
+      />
       <pre
         ref={containerRef}
-        className="font-mono text-sm whitespace-pre-wrap p-4 pt-0 bg-muted/30 rounded-lg -mt-10"
+        className="font-mono text-sm whitespace-pre-wrap p-4"
       >
         {element}
       </pre>
