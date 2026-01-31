@@ -23,6 +23,61 @@ This skill provides:
 
 ---
 
+## Testing Strategy
+
+We use a **two-layer testing approach** with system boundary integration tests as the primary method:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         E2E Tests (BATS)                            │
+│                      Happy path only (~15s each)                    │
+│                          e2e/tests/                                 │
+└─────────────────────────────────────────────────────────────────────┘
+                                 │
+                                 │ verifies
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│              System Boundary Integration Tests                       │
+│                    (Full coverage, all scenarios)                    │
+├─────────────────────────────────┬───────────────────────────────────┤
+│     CLI: Command-Level Tests    │    Web: API Route Tests           │
+│     command.parseAsync()        │    route handler functions        │
+│     MSW mocks Web API           │    MSW mocks external services    │
+│  src/commands/**/__tests__/     │  app/api/**/__tests__/            │
+└─────────────────────────────────┴───────────────────────────────────┘
+```
+
+### Key Principles
+
+1. **No unit tests** - We test at system boundaries, not internal functions
+2. **Command/Route tests are the primary tests** - Full coverage of all scenarios (success, errors, edge cases, variations)
+3. **E2E tests verify integration** - Happy path only, confirms systems work together
+
+### Why This Works
+
+**Command-level (CLI) and Route-level (Web) tests ARE comprehensive integration tests:**
+- They exercise all internal code: validators, formatters, domain logic
+- External dependencies are mocked at the boundary (MSW for HTTP)
+- All scenarios are covered in these tests, not in E2E
+
+**E2E tests are expensive and brittle:**
+- Each `vm0 run` takes ~15 seconds
+- Network issues, API rate limits, external service availability
+- Hard to reliably test error conditions
+
+**Move ALL scenario coverage to command/route tests** - E2E only verifies "it works end-to-end".
+
+### Reference Documentation
+
+| Topic | Reference |
+|-------|-----------|
+| CLI command-level testing | [cli-testing.md](./reference/cli-testing.md) |
+| CLI E2E testing (BATS) | [cli-e2e-testing.md](./reference/cli-e2e-testing.md) |
+| Web API route testing | [web-testing.md](./reference/web-testing.md) |
+| Platform component testing | [platform-testing.md](./reference/platform-testing.md) |
+
+---
+
 ## Core Testing Principles
 
 ### The Golden Rules

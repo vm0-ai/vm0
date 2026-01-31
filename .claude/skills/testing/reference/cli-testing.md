@@ -1,51 +1,5 @@
 # CLI Testing Patterns
 
-## Testing Strategy
-
-We use a two-layer testing approach with **system boundary integration tests** as the primary testing method:
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         E2E Tests (BATS)                            │
-│                      Happy path only (~15s each)                    │
-│                          e2e/tests/                                 │
-└─────────────────────────────────────────────────────────────────────┘
-                                 │
-                                 │ verifies
-                                 ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│              System Boundary Integration Tests                       │
-│                    (Full coverage, all scenarios)                    │
-├─────────────────────────────────┬───────────────────────────────────┤
-│     CLI: Command-Level Tests    │    Web: API Route Tests           │
-│     command.parseAsync()        │    route handler functions        │
-│     MSW mocks Web API           │    MSW mocks external services    │
-│  src/commands/**/__tests__/     │  app/api/**/__tests__/            │
-└─────────────────────────────────┴───────────────────────────────────┘
-```
-
-### Key Principles
-
-1. **No unit tests** - We test at system boundaries, not internal functions
-2. **Command/Route tests are the primary tests** - Full coverage of all scenarios
-3. **E2E tests verify integration** - Happy path only, confirms systems work together
-
-### Why This Works
-
-**Command-level tests (CLI) and Route tests (Web) ARE integration tests:**
-- They exercise all internal code: validators, formatters, domain logic
-- External dependencies are mocked at the boundary (MSW for HTTP)
-- All scenarios are covered: success, errors, edge cases, variations
-
-**E2E tests are expensive and brittle:**
-- Each `vm0 run` takes ~15 seconds
-- Network issues, API rate limits, external service availability
-- Hard to reliably test error conditions
-
-**Move ALL scenario coverage to command/route tests** - E2E only verifies "it works end-to-end".
-
----
-
 ## Principle
 
 In the CLI app (`turbo/apps/cli`), only write command-level integration tests. Test commands via `command.parseAsync()` with MSW mocking the Web API.
