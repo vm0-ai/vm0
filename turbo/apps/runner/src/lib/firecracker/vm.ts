@@ -59,7 +59,7 @@ export class FirecrackerVM {
   private state: VMState = "created";
   private workDir: string;
   private socketPath: string;
-  private vmOverlayPath: string | null = null; // Set by acquireOverlay() during start
+  private vmOverlayPath: string | null = null; // Set during start()
   private vsockPath: string; // Vsock UDS path for host-guest communication
 
   constructor(config: VMConfig) {

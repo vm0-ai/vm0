@@ -73,6 +73,20 @@ describe("OverlayPool", () => {
   });
 
   describe("acquire", () => {
+    it("throws if pool not initialized", async () => {
+      const poolDir = path.join(tempDir, "pool");
+      const pool = new OverlayPool({
+        poolDir,
+        size: 2,
+        replenishThreshold: 1,
+        createFile: testCreateFile,
+      });
+
+      await expect(pool.acquire()).rejects.toThrow(
+        "Overlay pool not initialized",
+      );
+    });
+
     it("returns file from pool", async () => {
       const poolDir = path.join(tempDir, "pool");
       const pool = new OverlayPool({

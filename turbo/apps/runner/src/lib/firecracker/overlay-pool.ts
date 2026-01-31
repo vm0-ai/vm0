@@ -7,7 +7,7 @@
  *
  * Design:
  * - Pool maintains a queue of pre-created overlay file paths
- * - acquireOverlay() returns a path from the pool (VM owns the file)
+ * - acquire() returns a path from the pool (VM owns the file)
  * - VM deletes the file when done
  * - Pool replenishes in background when below threshold
  */
@@ -181,6 +181,10 @@ export class OverlayPool {
    * Falls back to on-demand creation if pool is exhausted.
    */
   async acquire(): Promise<string> {
+    if (!this.initialized) {
+      throw new Error("Overlay pool not initialized");
+    }
+
     const filePath = this.queue.shift();
 
     if (filePath) {
@@ -245,43 +249,43 @@ export class OverlayPool {
 }
 
 /**
- * Global instance management (for backward compatibility)
+ * Global overlay pool instance
  */
-let overlayPoolInstance: OverlayPool | null = null;
+let overlayPool: OverlayPool | null = null;
 
 /**
  * Initialize the global overlay pool
  */
 export async function initOverlayPool(
   config: OverlayPoolConfig,
-): Promise<void> {
-  overlayPoolInstance = new OverlayPool(config);
-  await overlayPoolInstance.init();
-}
-
-/**
- * Get the global overlay pool instance
- */
-function getOverlayPool(): OverlayPool {
-  if (!overlayPoolInstance) {
-    throw new Error("Overlay pool not initialized");
+): Promise<OverlayPool> {
+  if (overlayPool) {
+    overlayPool.cleanup();
   }
-  return overlayPoolInstance;
+  overlayPool = new OverlayPool(config);
+  await overlayPool.init();
+  return overlayPool;
 }
 
 /**
  * Acquire an overlay file from the global pool
+ * @throws Error if pool was not initialized with initOverlayPool
  */
-export async function acquireOverlay(): Promise<string> {
-  return getOverlayPool().acquire();
+export function acquireOverlay(): Promise<string> {
+  if (!overlayPool) {
+    throw new Error(
+      "Overlay pool not initialized. Call initOverlayPool() first.",
+    );
+  }
+  return overlayPool.acquire();
 }
 
 /**
  * Clean up the global overlay pool
  */
 export function cleanupOverlayPool(): void {
-  if (overlayPoolInstance) {
-    overlayPoolInstance.cleanup();
-    overlayPoolInstance = null;
+  if (overlayPool) {
+    overlayPool.cleanup();
+    overlayPool = null;
   }
 }
