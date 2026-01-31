@@ -244,6 +244,7 @@ export function testContext(): TestContext {
         // Replace Date constructor with vi.stubGlobal (auto-restored by vitest)
         vi.stubGlobal(
           "Date",
+          // eslint-disable-next-line no-restricted-syntax -- legacy code
           class extends RealDate {
             constructor(...args: unknown[]) {
               if (args.length === 0) {

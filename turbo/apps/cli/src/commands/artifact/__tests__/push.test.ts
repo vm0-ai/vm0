@@ -206,6 +206,122 @@ describe("artifact push", () => {
         expect.stringContaining("No files found"),
       );
     });
+
+    it("should exclude .vm0 directory from upload", async () => {
+      // Create files including .vm0 config files
+      await fs.writeFile(path.join(tempDir, "data.txt"), "user data");
+      await fs.writeFile(
+        path.join(tempDir, ".vm0", "some-other-config.yaml"),
+        "additional config",
+      );
+
+      // Track files sent in prepare request
+      let filesInRequest: Array<{ path: string }> = [];
+
+      server.use(
+        http.post("http://localhost:3000/api/storages/prepare", async (req) => {
+          const body = (await req.request.json()) as {
+            files: Array<{ path: string }>;
+          };
+          filesInRequest = body.files;
+          return HttpResponse.json({
+            versionId: "a1b2c3d4e5f6g7h8",
+            existing: true,
+          });
+        }),
+        http.post("http://localhost:3000/api/storages/commit", () => {
+          return HttpResponse.json({
+            success: true,
+            versionId: "a1b2c3d4e5f6g7h8",
+            storageName: "test-artifact",
+            size: 9,
+            fileCount: 1,
+            deduplicated: true,
+          });
+        }),
+      );
+
+      await pushCommand.parseAsync(["node", "cli"]);
+
+      // Should only include data.txt, not .vm0 files
+      expect(filesInRequest).toHaveLength(1);
+      expect(filesInRequest[0]?.path).toBe("data.txt");
+      expect(filesInRequest.some((f) => f.path.startsWith(".vm0"))).toBe(false);
+    });
+
+    it("should compute correct SHA-256 hash for files", async () => {
+      // Create file with known content
+      await fs.writeFile(path.join(tempDir, "test.txt"), "hello world");
+
+      let fileHash = "";
+      server.use(
+        http.post("http://localhost:3000/api/storages/prepare", async (req) => {
+          const body = (await req.request.json()) as {
+            files: Array<{ path: string; hash: string; size: number }>;
+          };
+          fileHash = body.files[0]?.hash ?? "";
+          return HttpResponse.json({
+            versionId: "a1b2c3d4e5f6g7h8",
+            existing: true,
+          });
+        }),
+        http.post("http://localhost:3000/api/storages/commit", () => {
+          return HttpResponse.json({
+            success: true,
+            versionId: "a1b2c3d4e5f6g7h8",
+            storageName: "test-artifact",
+            size: 11,
+            fileCount: 1,
+            deduplicated: true,
+          });
+        }),
+      );
+
+      await pushCommand.parseAsync(["node", "cli"]);
+
+      // SHA-256 of "hello world"
+      expect(fileHash).toBe(
+        "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9",
+      );
+    });
+
+    it("should compute correct hash for binary content", async () => {
+      // Create file with binary content
+      await fs.writeFile(
+        path.join(tempDir, "binary.bin"),
+        Buffer.from([0x00, 0x01, 0x02, 0xff, 0xfe, 0xfd]),
+      );
+
+      let fileHash = "";
+      server.use(
+        http.post("http://localhost:3000/api/storages/prepare", async (req) => {
+          const body = (await req.request.json()) as {
+            files: Array<{ path: string; hash: string; size: number }>;
+          };
+          fileHash = body.files[0]?.hash ?? "";
+          return HttpResponse.json({
+            versionId: "a1b2c3d4e5f6g7h8",
+            existing: true,
+          });
+        }),
+        http.post("http://localhost:3000/api/storages/commit", () => {
+          return HttpResponse.json({
+            success: true,
+            versionId: "a1b2c3d4e5f6g7h8",
+            storageName: "test-artifact",
+            size: 6,
+            fileCount: 1,
+            deduplicated: true,
+          });
+        }),
+      );
+
+      await pushCommand.parseAsync(["node", "cli"]);
+
+      // Verify hash is 64-char hex (SHA-256 format)
+      expect(fileHash).toHaveLength(64);
+      expect(fileHash).toMatch(/^[a-f0-9]{64}$/);
+    });
   });
 
   describe("error handling", () => {

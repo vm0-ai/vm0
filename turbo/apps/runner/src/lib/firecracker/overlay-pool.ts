@@ -7,7 +7,7 @@
  *
  * Design:
  * - Pool maintains a queue of pre-created overlay file paths
- * - acquireOverlay() returns a path from the pool (VM owns the file)
+ * - acquire() returns a path from the pool (VM owns the file)
  * - VM deletes the file when done
  * - Pool replenishes in background when below threshold
  */
@@ -26,7 +26,7 @@ const logger = createLogger("OverlayPool");
  * Configuration constants
  */
 const VM0_RUN_DIR = "/var/run/vm0";
-const POOL_DIR = path.join(VM0_RUN_DIR, "overlay-pool");
+const DEFAULT_POOL_DIR = path.join(VM0_RUN_DIR, "overlay-pool");
 const OVERLAY_SIZE = 2 * 1024 * 1024 * 1024; // 2GB sparse file
 
 /**
@@ -37,42 +37,17 @@ interface OverlayPoolConfig {
   size: number;
   /** Start replenishing when pool drops below this count */
   replenishThreshold: number;
+  /** Custom pool directory (optional, for testing) */
+  poolDir?: string;
+  /** Custom file creator function (optional, for testing) */
+  createFile?: (filePath: string) => Promise<void>;
 }
 
 /**
- * Pool state
+ * Default overlay file creator
+ * Creates a sparse ext4 file
  */
-interface PoolState {
-  initialized: boolean;
-  config: OverlayPoolConfig | null;
-  queue: string[];
-  replenishing: boolean;
-}
-
-const poolState: PoolState = {
-  initialized: false,
-  config: null,
-  queue: [],
-  replenishing: false,
-};
-
-/**
- * Ensure the pool directory exists
- */
-async function ensurePoolDir(): Promise<void> {
-  if (!fs.existsSync(VM0_RUN_DIR)) {
-    await execAsync(`sudo mkdir -p ${VM0_RUN_DIR}`);
-    await execAsync(`sudo chmod 777 ${VM0_RUN_DIR}`);
-  }
-  if (!fs.existsSync(POOL_DIR)) {
-    fs.mkdirSync(POOL_DIR, { recursive: true });
-  }
-}
-
-/**
- * Create a single overlay file
- */
-async function createOverlayFile(filePath: string): Promise<void> {
+async function defaultCreateFile(filePath: string): Promise<void> {
   const fd = fs.openSync(filePath, "w");
   fs.ftruncateSync(fd, OVERLAY_SIZE);
   fs.closeSync(fd);
@@ -80,161 +55,237 @@ async function createOverlayFile(filePath: string): Promise<void> {
 }
 
 /**
- * Generate unique file name using UUID
+ * Overlay Pool class
+ *
+ * Manages a pool of pre-created overlay files for fast VM boot.
  */
-function generateFileName(): string {
-  return `overlay-${randomUUID()}.ext4`;
-}
+export class OverlayPool {
+  private initialized = false;
+  private queue: string[] = [];
+  private replenishing = false;
+  private readonly config: Required<OverlayPoolConfig>;
 
-/**
- * Scan pool directory for overlay files
- */
-function scanPoolDir(): string[] {
-  if (!fs.existsSync(POOL_DIR)) {
-    return [];
-  }
-  return fs
-    .readdirSync(POOL_DIR)
-    .filter((f) => f.startsWith("overlay-") && f.endsWith(".ext4"))
-    .map((f) => path.join(POOL_DIR, f));
-}
-
-/**
- * Replenish the pool in background
- */
-async function replenishPool(): Promise<void> {
-  if (poolState.replenishing || !poolState.initialized || !poolState.config) {
-    return;
+  constructor(config: OverlayPoolConfig) {
+    this.config = {
+      size: config.size,
+      replenishThreshold: config.replenishThreshold,
+      poolDir: config.poolDir ?? DEFAULT_POOL_DIR,
+      createFile: config.createFile ?? defaultCreateFile,
+    };
   }
 
-  const needed = poolState.config.size - poolState.queue.length;
-  if (needed <= 0) {
-    return;
+  /**
+   * Generate unique file name using UUID
+   */
+  private generateFileName(): string {
+    return `overlay-${randomUUID()}.ext4`;
   }
 
-  poolState.replenishing = true;
-  logger.log(`Replenishing pool: creating ${needed} overlay(s)...`);
-
-  try {
-    const promises = [];
-    for (let i = 0; i < needed; i++) {
-      const filePath = path.join(POOL_DIR, generateFileName());
-      promises.push(
-        createOverlayFile(filePath).then(() => {
-          poolState.queue.push(filePath);
-        }),
-      );
+  /**
+   * Ensure the pool directory exists
+   */
+  private async ensurePoolDir(): Promise<void> {
+    const parentDir = path.dirname(this.config.poolDir);
+    if (!fs.existsSync(parentDir)) {
+      await execAsync(`sudo mkdir -p ${parentDir}`);
+      await execAsync(`sudo chmod 777 ${parentDir}`);
     }
-    await Promise.all(promises);
-    logger.log(`Pool replenished: ${poolState.queue.length} available`);
-  } catch (err) {
-    logger.error(
-      `Replenish failed: ${err instanceof Error ? err.message : "Unknown"}`,
+    if (!fs.existsSync(this.config.poolDir)) {
+      fs.mkdirSync(this.config.poolDir, { recursive: true });
+    }
+  }
+
+  /**
+   * Scan pool directory for overlay files
+   */
+  private scanPoolDir(): string[] {
+    if (!fs.existsSync(this.config.poolDir)) {
+      return [];
+    }
+    return fs
+      .readdirSync(this.config.poolDir)
+      .filter((f) => f.startsWith("overlay-") && f.endsWith(".ext4"))
+      .map((f) => path.join(this.config.poolDir, f));
+  }
+
+  /**
+   * Replenish the pool in background
+   */
+  private async replenish(): Promise<void> {
+    if (this.replenishing || !this.initialized) {
+      return;
+    }
+
+    const needed = this.config.size - this.queue.length;
+    if (needed <= 0) {
+      return;
+    }
+
+    this.replenishing = true;
+    logger.log(`Replenishing pool: creating ${needed} overlay(s)...`);
+
+    try {
+      const promises = [];
+      for (let i = 0; i < needed; i++) {
+        const filePath = path.join(
+          this.config.poolDir,
+          this.generateFileName(),
+        );
+        promises.push(
+          this.config.createFile(filePath).then(() => {
+            this.queue.push(filePath);
+          }),
+        );
+      }
+      await Promise.all(promises);
+      logger.log(`Pool replenished: ${this.queue.length} available`);
+    } catch (err) {
+      logger.error(
+        `Replenish failed: ${err instanceof Error ? err.message : "Unknown"}`,
+      );
+    } finally {
+      this.replenishing = false;
+    }
+  }
+
+  /**
+   * Initialize the overlay pool
+   */
+  async init(): Promise<void> {
+    this.queue = [];
+
+    logger.log(
+      `Initializing overlay pool (size=${this.config.size}, threshold=${this.config.replenishThreshold})...`,
     );
-  } finally {
-    poolState.replenishing = false;
+
+    await this.ensurePoolDir();
+
+    // Clean up stale files from previous runs
+    const existing = this.scanPoolDir();
+    if (existing.length > 0) {
+      logger.log(`Cleaning up ${existing.length} stale overlay(s)`);
+      for (const file of existing) {
+        fs.unlinkSync(file);
+      }
+    }
+
+    this.initialized = true;
+    await this.replenish();
+    logger.log("Overlay pool initialized");
+  }
+
+  /**
+   * Acquire an overlay file from the pool
+   *
+   * Returns the file path. Caller owns the file and must delete it when done.
+   * Falls back to on-demand creation if pool is exhausted.
+   */
+  async acquire(): Promise<string> {
+    if (!this.initialized) {
+      throw new Error("Overlay pool not initialized");
+    }
+
+    const filePath = this.queue.shift();
+
+    if (filePath) {
+      logger.log(`Acquired overlay from pool (${this.queue.length} remaining)`);
+
+      // Trigger background replenishment if below threshold
+      if (this.queue.length < this.config.replenishThreshold) {
+        this.replenish().catch((err) => {
+          logger.error(
+            `Background replenish failed: ${err instanceof Error ? err.message : "Unknown"}`,
+          );
+        });
+      }
+
+      return filePath;
+    }
+
+    // Pool exhausted - create on demand
+    logger.log("Pool exhausted, creating overlay on-demand");
+    const newPath = path.join(this.config.poolDir, this.generateFileName());
+    await this.config.createFile(newPath);
+    return newPath;
+  }
+
+  /**
+   * Clean up the overlay pool
+   */
+  cleanup(): void {
+    if (!this.initialized) {
+      return;
+    }
+
+    logger.log("Cleaning up overlay pool...");
+
+    // Delete files in queue
+    for (const file of this.queue) {
+      try {
+        fs.unlinkSync(file);
+      } catch (err) {
+        logger.log(
+          `Failed to delete ${file}: ${err instanceof Error ? err.message : "Unknown"}`,
+        );
+      }
+    }
+    this.queue = [];
+
+    // Also clean any orphaned files
+    for (const file of this.scanPoolDir()) {
+      try {
+        fs.unlinkSync(file);
+      } catch (err) {
+        logger.log(
+          `Failed to delete ${file}: ${err instanceof Error ? err.message : "Unknown"}`,
+        );
+      }
+    }
+
+    this.initialized = false;
+    this.replenishing = false;
+    logger.log("Overlay pool cleaned up");
   }
 }
 
 /**
- * Initialize the overlay pool
+ * Global overlay pool instance
+ */
+let overlayPool: OverlayPool | null = null;
+
+/**
+ * Initialize the global overlay pool
  */
 export async function initOverlayPool(
   config: OverlayPoolConfig,
-): Promise<void> {
-  poolState.config = config;
-  poolState.queue = [];
-
-  logger.log(
-    `Initializing overlay pool (size=${config.size}, threshold=${config.replenishThreshold})...`,
-  );
-
-  await ensurePoolDir();
-
-  // Clean up stale files from previous runs
-  const existing = scanPoolDir();
-  if (existing.length > 0) {
-    logger.log(`Cleaning up ${existing.length} stale overlay(s)`);
-    for (const file of existing) {
-      fs.unlinkSync(file);
-    }
+): Promise<OverlayPool> {
+  if (overlayPool) {
+    overlayPool.cleanup();
   }
-
-  poolState.initialized = true;
-  await replenishPool();
-  logger.log("Overlay pool initialized");
+  overlayPool = new OverlayPool(config);
+  await overlayPool.init();
+  return overlayPool;
 }
 
 /**
- * Acquire an overlay file from the pool
- *
- * Returns the file path. Caller owns the file and must delete it when done.
- * Falls back to on-demand creation if pool is exhausted.
+ * Acquire an overlay file from the global pool
+ * @throws Error if pool was not initialized with initOverlayPool
  */
-export async function acquireOverlay(): Promise<string> {
-  const filePath = poolState.queue.shift();
-
-  if (filePath) {
-    logger.log(
-      `Acquired overlay from pool (${poolState.queue.length} remaining)`,
+export function acquireOverlay(): Promise<string> {
+  if (!overlayPool) {
+    throw new Error(
+      "Overlay pool not initialized. Call initOverlayPool() first.",
     );
-
-    // Trigger background replenishment if below threshold
-    if (
-      poolState.config &&
-      poolState.queue.length < poolState.config.replenishThreshold
-    ) {
-      replenishPool().catch((err) => {
-        logger.error(
-          `Background replenish failed: ${err instanceof Error ? err.message : "Unknown"}`,
-        );
-      });
-    }
-
-    return filePath;
   }
-
-  // Pool exhausted - create on demand
-  logger.log("Pool exhausted, creating overlay on-demand");
-  const newPath = path.join(POOL_DIR, generateFileName());
-  await createOverlayFile(newPath);
-  return newPath;
+  return overlayPool.acquire();
 }
 
 /**
- * Clean up the overlay pool
+ * Clean up the global overlay pool
  */
 export function cleanupOverlayPool(): void {
-  if (!poolState.initialized) {
-    return;
+  if (overlayPool) {
+    overlayPool.cleanup();
+    overlayPool = null;
   }
-
-  logger.log("Cleaning up overlay pool...");
-
-  // Delete files in queue
-  for (const file of poolState.queue) {
-    try {
-      fs.unlinkSync(file);
-    } catch (err) {
-      logger.log(
-        `Failed to delete ${file}: ${err instanceof Error ? err.message : "Unknown"}`,
-      );
-    }
-  }
-  poolState.queue = [];
-
-  // Also clean any orphaned files
-  for (const file of scanPoolDir()) {
-    try {
-      fs.unlinkSync(file);
-    } catch (err) {
-      logger.log(
-        `Failed to delete ${file}: ${err instanceof Error ? err.message : "Unknown"}`,
-      );
-    }
-  }
-
-  poolState.initialized = false;
-  poolState.replenishing = false;
-  logger.log("Overlay pool cleaned up");
 }

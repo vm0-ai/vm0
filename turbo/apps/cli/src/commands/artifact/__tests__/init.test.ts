@@ -92,6 +92,52 @@ describe("artifact init", () => {
       );
     });
 
+    it("should reject names longer than 64 characters", async () => {
+      const longName = "a".repeat(65);
+      await expect(async () => {
+        await initCommand.parseAsync(["node", "cli", "--name", longName]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid artifact name"),
+      );
+    });
+
+    it("should reject names starting with hyphen", async () => {
+      await expect(async () => {
+        await initCommand.parseAsync(["node", "cli", "--name", "-dataset"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid artifact name"),
+      );
+    });
+
+    it("should reject names ending with hyphen", async () => {
+      await expect(async () => {
+        await initCommand.parseAsync(["node", "cli", "--name", "dataset-"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid artifact name"),
+      );
+    });
+
+    it("should reject names with special characters", async () => {
+      const invalidNames = ["my@dataset", "data.set", "my/dataset"];
+
+      for (const name of invalidNames) {
+        await expect(async () => {
+          await initCommand.parseAsync(["node", "cli", "--name", name]);
+        }).rejects.toThrow("process.exit called");
+
+        expect(mockConsoleError).toHaveBeenCalledWith(
+          expect.stringContaining("Invalid artifact name"),
+        );
+        mockConsoleError.mockClear();
+      }
+    });
+
     it("should show format requirements on validation error", async () => {
       await expect(async () => {
         await initCommand.parseAsync(["node", "cli", "--name", "ab"]);
@@ -171,6 +217,48 @@ describe("artifact init", () => {
         expect.stringContaining(".vm0/storage.yaml"),
       );
     });
+
+    it("should read legacy volume.yaml config", async () => {
+      // Create legacy config using volume.yaml (old format)
+      await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, ".vm0", "volume.yaml"),
+        "name: legacy-volume\ntype: volume",
+      );
+
+      await initCommand.parseAsync(["node", "cli", "--name", "new-artifact"]);
+
+      // Should detect existing config from legacy file
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("initialized as volume"),
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("legacy-volume"),
+      );
+    });
+
+    it("should prefer storage.yaml over legacy volume.yaml", async () => {
+      await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
+      // Create both legacy and new config
+      await fs.writeFile(
+        path.join(tempDir, ".vm0", "volume.yaml"),
+        "name: legacy-volume\ntype: volume",
+      );
+      await fs.writeFile(
+        path.join(tempDir, ".vm0", "storage.yaml"),
+        "name: new-artifact\ntype: artifact",
+      );
+
+      await initCommand.parseAsync(["node", "cli", "--name", "another-name"]);
+
+      // Should detect storage.yaml, not volume.yaml
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Artifact already initialized"),
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("new-artifact"),
+      );
+    });
   });
 
   describe("successful initialization", () => {
@@ -225,6 +313,23 @@ describe("artifact init", () => {
       const configPath = path.join(tempDir, ".vm0", "storage.yaml");
       const content = await fs.readFile(configPath, "utf8");
       expect(content).toContain("name: artifact123");
+    });
+
+    it("should accept minimum length name (3 characters)", async () => {
+      await initCommand.parseAsync(["node", "cli", "--name", "abc"]);
+
+      const configPath = path.join(tempDir, ".vm0", "storage.yaml");
+      const content = await fs.readFile(configPath, "utf8");
+      expect(content).toContain("name: abc");
+    });
+
+    it("should accept maximum length name (64 characters)", async () => {
+      const maxName = "a".repeat(64);
+      await initCommand.parseAsync(["node", "cli", "--name", maxName]);
+
+      const configPath = path.join(tempDir, ".vm0", "storage.yaml");
+      const content = await fs.readFile(configPath, "utf8");
+      expect(content).toContain(`name: ${maxName}`);
     });
 
     it("should work with -n short option", async () => {

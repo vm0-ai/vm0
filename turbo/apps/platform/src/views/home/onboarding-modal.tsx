@@ -1,4 +1,4 @@
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useLoadable, useSet } from "ccstate-react";
 import {
   Dialog,
   DialogContent,
@@ -15,6 +15,7 @@ import {
   TooltipTrigger,
 } from "@vm0/ui/components/ui/tooltip";
 import { IconX, IconLock, IconInfoCircle } from "@tabler/icons-react";
+import { Loader2 } from "lucide-react";
 import {
   showOnboardingModal$,
   closeOnboardingModal$,
@@ -22,6 +23,7 @@ import {
   setTokenValue$,
   saveOnboardingConfig$,
   canSaveOnboarding$,
+  actionPromise$,
 } from "../../signals/onboarding.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -33,7 +35,9 @@ export function OnboardingModal() {
   const tokenValue = useGet(tokenValue$);
   const setTokenValue = useSet(setTokenValue$);
   const saveConfig = useSet(saveOnboardingConfig$);
-  const canSave = useGet(canSaveOnboarding$);
+  const actionPromise = useLoadable(actionPromise$);
+  const canSave =
+    useGet(canSaveOnboarding$) && actionPromise.state !== "loading";
   const pageSignal = useGet(pageSignal$);
 
   return (
@@ -51,9 +55,7 @@ export function OnboardingModal() {
             <TooltipTrigger asChild>
               <DialogClose asChild>
                 <button
-                  onClick={() =>
-                    detach(closeModal(pageSignal), Reason.DomCallback)
-                  }
+                  onClick={() => closeModal()}
                   className="absolute right-4 top-4 icon-button opacity-70 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                   aria-label="Close"
                 >
@@ -79,7 +81,8 @@ export function OnboardingModal() {
             Define your model provider
           </DialogTitle>
           <DialogDescription className="text-sm text-foreground mt-[10px]">
-            A Claude Code OAuth token is required for sandboxed execution.
+            Claude Code OAuth token is required for Claude Code running in cloud
+            sandboxes.
           </DialogDescription>
         </div>
 
@@ -114,6 +117,7 @@ export function OnboardingModal() {
                 placeholder="sk-ant-oat..."
                 value={tokenValue}
                 onChange={(e) => setTokenValue(e.target.value)}
+                autoFocus
                 required
               />
             </div>
@@ -123,16 +127,16 @@ export function OnboardingModal() {
 
         {/* Action Buttons */}
         <div className="flex justify-end gap-2 mt-[24px]">
-          <Button
-            variant="outline"
-            onClick={() => detach(closeModal(pageSignal), Reason.DomCallback)}
-          >
+          <Button variant="outline" onClick={() => closeModal()}>
             Add it later
           </Button>
           <Button
             onClick={() => detach(saveConfig(pageSignal), Reason.DomCallback)}
             disabled={!canSave}
           >
+            {actionPromise.state === "loading" && (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            )}
             Save
           </Button>
         </div>

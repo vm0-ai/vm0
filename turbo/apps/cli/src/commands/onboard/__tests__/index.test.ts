@@ -203,6 +203,22 @@ describe("onboard command", () => {
       expect(logCalls).toContain("Create New Project");
       expect(logCalls).toContain("Install Claude Plugin");
     });
+
+    it("should show step completion indicators", async () => {
+      await onboardCommand.parseAsync(["node", "cli", "-y"]);
+
+      const logCalls = vi.mocked(console.log).mock.calls.flat().join("\n");
+      // Completed steps should show filled circle indicator
+      expect(logCalls).toContain("●");
+    });
+
+    it("should show connector lines between steps", async () => {
+      await onboardCommand.parseAsync(["node", "cli", "-y"]);
+
+      const logCalls = vi.mocked(console.log).mock.calls.flat().join("\n");
+      // Connector lines between steps
+      expect(logCalls).toContain("│");
+    });
   });
 
   describe("authentication check", () => {

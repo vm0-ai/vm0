@@ -72,7 +72,7 @@ export async function setupEnvironment(
   logger.log("Initializing overlay pool...");
   await initOverlayPool({
     size: config.sandbox.max_concurrent + 2,
-    replenishThreshold: config.sandbox.max_concurrent, // Start replenishing early to handle bursts
+    replenishThreshold: config.sandbox.max_concurrent,
   });
 
   // Initialize proxy for network security mode

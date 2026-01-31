@@ -1,7 +1,7 @@
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { describe, expect, it, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
 import { pathname$ } from "../../../signals/route.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import { server } from "../../../mocks/server.ts";
@@ -149,5 +149,66 @@ describe("home page", () => {
     });
     expect(createdType).toBe("claude-code-oauth-token");
     expect(screen.queryByText(/Define your model provider/)).toBeNull();
+  });
+
+  it("should disable save button while model provider upload is in progress", async () => {
+    let resolveUpload: () => void;
+    const uploadDeferred = new Promise<void>((resolve) => {
+      resolveUpload = resolve;
+    });
+
+    server.use(
+      http.get("/api/scope", () => {
+        return new HttpResponse(null, { status: 404 });
+      }),
+      http.post("/api/scope", () => {
+        return HttpResponse.json({}, { status: 201 });
+      }),
+      http.put("/api/model-providers", async ({ request }) => {
+        await uploadDeferred;
+        const body = (await request.json()) as {
+          type: string;
+          credential: string;
+        };
+        return HttpResponse.json(
+          {
+            provider: {
+              id: "new-provider",
+              type: body.type,
+              framework: "claude-code",
+              credentialName: "CLAUDE_CODE_OAUTH_TOKEN",
+              isDefault: false,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+            created: true,
+          },
+          { status: 201 },
+        );
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/",
+    });
+
+    const tokenInput = screen.getByPlaceholderText("sk-ant-oat...");
+    await user.type(tokenInput, "sk-ant-oat-test-token");
+
+    const saveButton = screen.getByRole("button", { name: "Save" });
+    expect(saveButton).toBeEnabled();
+
+    await user.click(saveButton);
+
+    expect(saveButton).toBeDisabled();
+
+    await act(() => {
+      resolveUpload!();
+    });
+
+    await vi.waitFor(() => {
+      expect(saveButton).not.toBeInTheDocument();
+    });
   });
 });

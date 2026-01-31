@@ -241,6 +241,64 @@ describe("artifact pull", () => {
       );
     });
 
+    it("should remove existing files when syncing to empty artifact", async () => {
+      // Create local files that should be removed
+      await fs.writeFile(path.join(tempDir, "file1.txt"), "content1");
+      await fs.writeFile(path.join(tempDir, "file2.txt"), "content2");
+      await fs.mkdir(path.join(tempDir, "subdir"), { recursive: true });
+      await fs.writeFile(path.join(tempDir, "subdir", "nested.txt"), "nested");
+
+      server.use(
+        http.get("http://localhost:3000/api/storages/download", () => {
+          return HttpResponse.json({
+            empty: true,
+            versionId: "a1b2c3d4e5f6g7h8",
+            fileCount: 0,
+            size: 0,
+          });
+        }),
+      );
+
+      await pullCommand.parseAsync(["node", "cli"]);
+
+      // Verify local files were removed
+      expect(existsSync(path.join(tempDir, "file1.txt"))).toBe(false);
+      expect(existsSync(path.join(tempDir, "file2.txt"))).toBe(false);
+      expect(existsSync(path.join(tempDir, "subdir", "nested.txt"))).toBe(
+        false,
+      );
+
+      // Verify removal message was shown
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Removed"),
+      );
+    });
+
+    it("should preserve .vm0 directory when syncing to empty artifact", async () => {
+      // Create local files including .vm0 config
+      await fs.writeFile(path.join(tempDir, "file.txt"), "content");
+
+      server.use(
+        http.get("http://localhost:3000/api/storages/download", () => {
+          return HttpResponse.json({
+            empty: true,
+            versionId: "a1b2c3d4e5f6g7h8",
+            fileCount: 0,
+            size: 0,
+          });
+        }),
+      );
+
+      await pullCommand.parseAsync(["node", "cli"]);
+
+      // Verify .vm0 directory was preserved
+      expect(existsSync(path.join(tempDir, ".vm0"))).toBe(true);
+      expect(existsSync(path.join(tempDir, ".vm0", "storage.yaml"))).toBe(true);
+
+      // Verify other file was removed
+      expect(existsSync(path.join(tempDir, "file.txt"))).toBe(false);
+    });
+
     it("should support version argument", async () => {
       const tarBuffer = await createTarGzBuffer([
         { name: "test.txt", content: "hello" },

@@ -8,13 +8,11 @@ export const setupHomePage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(updatePage$, createElement(HomePage));
 
-    // Check if user needs onboarding (no scope or no oauth token)
     const needsOnboarding = await get(needsOnboarding$);
     signal.throwIfAborted();
 
     if (needsOnboarding) {
-      // Start onboarding flow - shows modal
-      set(startOnboarding$);
+      await set(startOnboarding$, signal);
     }
   },
 );

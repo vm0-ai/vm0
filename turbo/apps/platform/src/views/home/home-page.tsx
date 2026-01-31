@@ -42,7 +42,7 @@ function StepHeader({ step, title }: { step: number; title: string }) {
 }
 
 function Step1InstallSkill() {
-  const command = "npx @vm0/cli setup-claude";
+  const command = "npm install -g @vm0/cli && vm0 onboard";
 
   return (
     <section>
@@ -52,7 +52,7 @@ function Step1InstallSkill() {
       />
       <Card className="flex items-center justify-between p-4 font-mono">
         <code className="text-sm overflow-x-auto text-muted-foreground">
-          <span>npx</span> <span>@vm0/cli</span> <span>setup-claude</span>
+          <span>npm install -g @vm0/cli && vm0 onboard</span>
         </code>
         <CopyButton text={`${command}`} />
       </Card>
@@ -118,8 +118,9 @@ function Step2SampleAgents() {
           iconBg=""
           commands={[
             "git clone https://github.com/vm0-ai/vm0-cookbooks",
-            "cd vm0-cookbooks/201-hackernews",
-            "vm0 cook start",
+            "cd vm0-cookbooks/examples/201-hackernews",
+            "vm0 setup-claude",
+            'claude "Show me the agent and run it."',
           ]}
         />
         <SampleAgentCard
@@ -135,8 +136,9 @@ function Step2SampleAgents() {
           iconBg=""
           commands={[
             "git clone https://github.com/vm0-ai/vm0-cookbooks",
-            "cd vm0-cookbooks/206-tiktok-influencer",
-            "vm0 cook start",
+            "cd vm0-cookbooks/examples/206-tiktok-influencer",
+            "vm0 setup-claude",
+            'claude "Show me the agent and run it."',
           ]}
         />
       </div>
