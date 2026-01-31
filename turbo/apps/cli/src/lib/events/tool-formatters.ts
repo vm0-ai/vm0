@@ -131,7 +131,7 @@ export function formatToolResult(
       const remaining = resultLines.length - previewCount;
       if (remaining > 0) {
         lines.push(
-          `  ${chalk.dim(`… +${remaining} ${pluralize(remaining, "line", "lines")} (--verbose to see all)`)}`,
+          `  ${chalk.dim(`… +${remaining} ${pluralize(remaining, "line", "lines")} (vm0 logs <runId> to see all)`)}`,
         );
       }
     }
@@ -170,7 +170,7 @@ function formatWritePreview(
     const remaining = totalLines - previewCount;
     if (remaining > 0) {
       lines.push(
-        `  ${chalk.dim(`… +${remaining} ${pluralize(remaining, "line", "lines")} (--verbose to see all)`)}`,
+        `  ${chalk.dim(`… +${remaining} ${pluralize(remaining, "line", "lines")} (vm0 logs <runId> to see all)`)}`,
       );
     }
   }
@@ -221,7 +221,7 @@ function formatEditDiff(
     const remainingOld = oldLines.length - previewLimit;
     if (remainingOld > 0) {
       lines.push(
-        `  ${chalk.dim(`  … +${remainingOld} ${pluralize(remainingOld, "line", "lines")} (--verbose to see all)`)}`,
+        `  ${chalk.dim(`  … +${remainingOld} ${pluralize(remainingOld, "line", "lines")} (vm0 logs <runId> to see all)`)}`,
       );
     }
 
@@ -232,7 +232,7 @@ function formatEditDiff(
     const remainingNew = newLines.length - previewLimit;
     if (remainingNew > 0) {
       lines.push(
-        `  ${chalk.dim(`  … +${remainingNew} ${pluralize(remainingNew, "line", "lines")} (--verbose to see all)`)}`,
+        `  ${chalk.dim(`  … +${remainingNew} ${pluralize(remainingNew, "line", "lines")} (vm0 logs <runId> to see all)`)}`,
       );
     }
   }
