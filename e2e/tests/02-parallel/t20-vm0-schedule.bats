@@ -8,21 +8,21 @@
 # - turbo/apps/web/app/api/agent/schedules/**/__tests__/route.test.ts (API routes)
 #
 # Test Structure:
-# - setup_file: Creates shared agent ONCE for all tests
+# - setup_file: Creates shared agent ONCE for all tests, saves state to BATS_FILE_TMPDIR
 # - teardown_file: Cleans up agent ONCE after all tests
-# - Each @test: Uses the shared agent (no redundant setup)
+# - Each @test: Loads state from BATS_FILE_TMPDIR and uses the shared agent
 
 load '../../helpers/setup'
 
-# Shared state for all tests
-export UNIQUE_ID=""
-export AGENT_NAME=""
-export TEST_DIR=""
-
 setup_file() {
-    export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
-    export AGENT_NAME="schedule-e2e-${UNIQUE_ID}"
-    export TEST_DIR="$(mktemp -d)"
+    local UNIQUE_ID="$(date +%s%3N)-$RANDOM"
+    local AGENT_NAME="schedule-e2e-${UNIQUE_ID}"
+    local TEST_DIR="$(mktemp -d)"
+
+    # Save state to persist across tests (required for BATS parallel execution)
+    echo "$UNIQUE_ID" > "$BATS_FILE_TMPDIR/unique_id"
+    echo "$AGENT_NAME" > "$BATS_FILE_TMPDIR/agent_name"
+    echo "$TEST_DIR" > "$BATS_FILE_TMPDIR/test_dir"
 
     # Create and compose agent ONCE for all tests
     cat > "$TEST_DIR/vm0.yaml" <<EOF
@@ -41,6 +41,10 @@ EOF
 }
 
 teardown_file() {
+    # Load state from files
+    local AGENT_NAME=$(cat "$BATS_FILE_TMPDIR/agent_name" 2>/dev/null || true)
+    local TEST_DIR=$(cat "$BATS_FILE_TMPDIR/test_dir" 2>/dev/null || true)
+
     # Clean up schedule and temp directory
     if [ -n "$AGENT_NAME" ]; then
         $CLI_COMMAND schedule delete "$AGENT_NAME" --force 2>/dev/null || true
@@ -51,7 +55,10 @@ teardown_file() {
 }
 
 setup() {
-    # Each test uses the shared TEST_DIR
+    # Load state from files (required for BATS parallel execution)
+    UNIQUE_ID=$(cat "$BATS_FILE_TMPDIR/unique_id")
+    AGENT_NAME=$(cat "$BATS_FILE_TMPDIR/agent_name")
+    TEST_DIR=$(cat "$BATS_FILE_TMPDIR/test_dir")
     cd "$TEST_DIR"
 }
 
