@@ -25,56 +25,54 @@ This skill provides:
 
 ## Testing Strategy
 
-We use a **two-layer testing approach** with system boundary integration tests as the primary method:
+We follow Kent C. Dodds' philosophy: **"Write tests. Not too many. Mostly integration."**
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         E2E Tests (BATS)                            │
-│                      Happy path only (~15s each)                    │
-│                          e2e/tests/                                 │
-└─────────────────────────────────────────────────────────────────────┘
-                                 │
-                                 │ verifies
-                                 ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│              System Boundary Integration Tests                       │
-│                    (Full coverage, all scenarios)                    │
-├─────────────────────────────────┬───────────────────────────────────┤
-│     CLI: Command-Level Tests    │    Web: API Route Tests           │
-│     command.parseAsync()        │    route handler functions        │
-│     MSW mocks Web API           │    MSW mocks external services    │
-│  src/commands/**/__tests__/     │  app/api/**/__tests__/            │
-└─────────────────────────────────┴───────────────────────────────────┘
+        ┌─────┐
+        │ E2E │           ← Few tests, happy path only
+       ┌┴─────┴┐
+       │ Integ │          ← Primary tests, full coverage
+      ┌┴───────┴┐
+      │  Static │         ← TypeScript, ESLint
+      └─────────┘
 ```
 
-### Key Principles
+### Integration Tests (Primary)
 
-1. **No unit tests** - We test at system boundaries, not internal functions
-2. **Command/Route tests are the primary tests** - Full coverage of all scenarios (success, errors, edge cases, variations)
-3. **E2E tests verify integration** - Happy path only, confirms systems work together
+Test at system entry points with external dependencies mocked. These are our **primary tests** covering all scenarios: success, errors, edge cases, variations.
 
-### Why This Works
+| System | Entry Point | Mock Boundary | Location |
+|--------|-------------|---------------|----------|
+| CLI | `command.parseAsync()` | Web API (MSW) | `src/commands/**/__tests__/` |
+| Web | Route handlers (GET/POST) | External services (Clerk, S3, E2B) | `app/api/**/__tests__/` |
 
-**Command-level (CLI) and Route-level (Web) tests ARE comprehensive integration tests:**
-- They exercise all internal code: validators, formatters, domain logic
-- External dependencies are mocked at the boundary (MSW for HTTP)
-- All scenarios are covered in these tests, not in E2E
+**Why integration tests give the best ROI:**
+- Exercise all internal code: validators, formatters, domain logic
+- Fast: MSW mocks external HTTP, no real network calls
+- Reliable: No flaky external dependencies
+- Comprehensive: Cover all code paths including error handling
 
-**E2E tests are expensive and brittle:**
+### E2E Tests (Verification)
+
+Happy path only. Verify systems work together end-to-end.
+
+**Why E2E tests are expensive:**
 - Each `vm0 run` takes ~15 seconds
 - Network issues, API rate limits, external service availability
 - Hard to reliably test error conditions
 
-**Move ALL scenario coverage to command/route tests** - E2E only verifies "it works end-to-end".
+### No Unit Tests
+
+We don't write unit tests. Integration tests at entry points already exercise all internal logic. Testing internal functions separately adds maintenance burden without additional confidence.
 
 ### Reference Documentation
 
 | Topic | Reference |
 |-------|-----------|
-| CLI command-level testing | [cli-testing.md](./reference/cli-testing.md) |
-| CLI E2E testing (BATS) | [cli-e2e-testing.md](./reference/cli-e2e-testing.md) |
-| Web API route testing | [web-testing.md](./reference/web-testing.md) |
-| Platform component testing | [platform-testing.md](./reference/platform-testing.md) |
+| CLI Integration Tests | [cli-testing.md](./reference/cli-testing.md) |
+| CLI E2E Tests (BATS) | [cli-e2e-testing.md](./reference/cli-e2e-testing.md) |
+| Web Integration Tests | [web-testing.md](./reference/web-testing.md) |
+| Platform Integration Tests | [platform-testing.md](./reference/platform-testing.md) |
 
 ---
 
