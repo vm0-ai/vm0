@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.2](https://github.com/vm0-ai/vm0/compare/platform-v0.31.1...platform-v0.31.2) (2026-01-31)
+
+
+### Bug Fixes
+
+* **platform:** prevent horizontal overflow in event card code blocks ([#1968](https://github.com/vm0-ai/vm0/issues/1968)) ([a9e26f1](https://github.com/vm0-ai/vm0/commit/a9e26f17593bbc5771c74667e8ef7960f923792b))
+
 ## [0.31.1](https://github.com/vm0-ai/vm0/compare/platform-v0.31.0...platform-v0.31.1) (2026-01-30)
 
 

@@ -1,5 +1,22 @@
 # Changelog
 
+## [3.7.0](https://github.com/vm0-ai/vm0/compare/runner-v3.6.2...runner-v3.7.0) (2026-01-31)
+
+
+### Features
+
+* **runner:** enforce single runner per device with pid file lock ([#1900](https://github.com/vm0-ai/vm0/issues/1900)) ([966ceec](https://github.com/vm0-ai/vm0/commit/966ceec543003da0937fa7dd73cc3b88a01479e7))
+
+
+### Bug Fixes
+
+* **runner:** isolate cleanup errors to prevent resource leaks ([#1959](https://github.com/vm0-ai/vm0/issues/1959)) ([95bced9](https://github.com/vm0-ai/vm0/commit/95bced97fb85cc20d5f27316ba59cf51cd9df1f3))
+
+
+### Performance Improvements
+
+* **runner:** pre-warm overlay pool for faster vm boot ([#1967](https://github.com/vm0-ai/vm0/issues/1967)) ([a4027ed](https://github.com/vm0-ai/vm0/commit/a4027ed0028c93704d447f5cd817237d6bfd57e0))
+
 ## [3.6.2](https://github.com/vm0-ai/vm0/compare/runner-v3.6.1...runner-v3.6.2) (2026-01-30)
 
 

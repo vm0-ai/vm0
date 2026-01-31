@@ -1,5 +1,17 @@
 # Changelog
 
+## [9.6.0](https://github.com/vm0-ai/vm0/compare/cli-v9.5.1...cli-v9.6.0) (2026-01-31)
+
+
+### Features
+
+* **cli:** add claude plugin tip to init next steps ([#1963](https://github.com/vm0-ai/vm0/issues/1963)) ([850f590](https://github.com/vm0-ai/vm0/commit/850f590e103d2c112c3af20c55b18a2f97e12b1d))
+
+
+### Bug Fixes
+
+* **cli:** show correct next steps when skipping claude plugin in onboard ([#1965](https://github.com/vm0-ai/vm0/issues/1965)) ([519ff16](https://github.com/vm0-ai/vm0/commit/519ff16b8b0f76df0c0fef8f37743008f72a8358))
+
 ## [9.5.1](https://github.com/vm0-ai/vm0/compare/cli-v9.5.0...cli-v9.5.1) (2026-01-30)
 
 
