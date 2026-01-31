@@ -14,6 +14,7 @@ import {
   badRequest,
   schedulePast,
   isConcurrentRunLimit,
+  type ConcurrentRunLimitError,
 } from "../errors";
 import { logger } from "../logger";
 import {

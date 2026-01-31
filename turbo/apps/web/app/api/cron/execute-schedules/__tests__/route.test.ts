@@ -10,7 +10,7 @@ import {
   setScheduleRetryStartedAt,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
-import { ConcurrentRunLimitError } from "../../../../../src/lib/errors";
+import { concurrentRunLimit } from "../../../../../src/lib/errors";
 
 vi.mock("@clerk/nextjs/server");
 vi.mock("@e2b/code-interpreter");
@@ -269,7 +269,7 @@ describe("GET /api/cron/execute-schedules", () => {
       const checkSpy = vi
         .spyOn(runService, "checkRunConcurrencyLimit")
         .mockRejectedValueOnce(
-          new ConcurrentRunLimitError("Concurrent run limit reached"),
+          concurrentRunLimit("Concurrent run limit reached"),
         );
 
       try {
@@ -336,7 +336,7 @@ describe("GET /api/cron/execute-schedules", () => {
       const checkSpy = vi
         .spyOn(runService, "checkRunConcurrencyLimit")
         .mockRejectedValueOnce(
-          new ConcurrentRunLimitError("Concurrent run limit reached"),
+          concurrentRunLimit("Concurrent run limit reached"),
         );
 
       try {
@@ -393,7 +393,7 @@ describe("GET /api/cron/execute-schedules", () => {
       const checkSpy = vi
         .spyOn(runService, "checkRunConcurrencyLimit")
         .mockRejectedValueOnce(
-          new ConcurrentRunLimitError("Concurrent run limit reached"),
+          concurrentRunLimit("Concurrent run limit reached"),
         );
 
       try {
@@ -503,7 +503,7 @@ describe("GET /api/cron/execute-schedules", () => {
       const checkSpy = vi
         .spyOn(runService, "checkRunConcurrencyLimit")
         .mockRejectedValueOnce(
-          new ConcurrentRunLimitError("Concurrent run limit reached"),
+          concurrentRunLimit("Concurrent run limit reached"),
         );
 
       try {
