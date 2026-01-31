@@ -16,14 +16,6 @@ export interface ToolResultData {
 }
 
 /**
- * Count lines in a string
- */
-function countLines(text: string): number {
-  if (!text) return 0;
-  return text.split("\n").length;
-}
-
-/**
  * Pluralize a word based on count
  */
 function pluralize(count: number, singular: string, plural: string): string {
@@ -100,7 +92,7 @@ function getToolHeadline(tool: string, input: Record<string, unknown>): string {
 }
 
 /**
- * Format the result line (e.g., "└ ✓ 245 lines")
+ * Format the result line with content preview
  */
 export function formatToolResult(
   toolUse: ToolUseData,
@@ -118,24 +110,28 @@ export function formatToolResult(
     return lines;
   }
 
-  // Get the result summary based on tool type
-  const summary = getToolResultSummary(tool, resultText, isError);
-  const statusIcon = isError ? "✗" : "✓";
-  lines.push(`└ ${statusIcon} ${chalk.dim(summary)}`);
+  // Error case: show error message
+  if (isError) {
+    const errorMsg = resultText ? truncate(resultText, 80) : "Error";
+    lines.push(`└ ✗ ${chalk.dim(errorMsg)}`);
+    return lines;
+  }
 
-  // Show result preview or full result
+  // Success case: show content preview
   if (resultText) {
     const resultLines = resultText.split("\n");
     if (verbose) {
-      // In verbose mode, show full result
-      for (const line of resultLines) {
-        lines.push(`  ${chalk.dim(line)}`);
+      // In verbose mode, show full result with └ on first line
+      for (let i = 0; i < resultLines.length; i++) {
+        const prefix = i === 0 ? "└ " : "  ";
+        lines.push(`${prefix}${chalk.dim(resultLines[i])}`);
       }
     } else if (resultLines.length > 0) {
       // In normal mode, show first 3 lines with expand hint
       const previewCount = Math.min(3, resultLines.length);
       for (let i = 0; i < previewCount; i++) {
-        lines.push(`  ${chalk.dim(resultLines[i])}`);
+        const prefix = i === 0 ? "└ " : "  ";
+        lines.push(`${prefix}${chalk.dim(resultLines[i])}`);
       }
       const remaining = resultLines.length - previewCount;
       if (remaining > 0) {
@@ -144,6 +140,9 @@ export function formatToolResult(
         );
       }
     }
+  } else {
+    // No result content, show done
+    lines.push(`└ ✓ ${chalk.dim("Done")}`);
   }
 
   return lines;
@@ -208,70 +207,5 @@ function formatTodoContent(content: string, status: string): string {
     case "pending":
     default:
       return chalk.dim(content);
-  }
-}
-
-/**
- * Get the result summary for a tool based on its type
- */
-function getToolResultSummary(
-  tool: string,
-  result: string,
-  isError: boolean,
-): string {
-  if (isError) {
-    return "Error";
-  }
-
-  switch (tool) {
-    case "Read": {
-      const lineCount = countLines(result);
-      return `${lineCount} ${pluralize(lineCount, "line", "lines")}`;
-    }
-
-    case "Edit":
-      return "Applied";
-
-    case "Write":
-      return "Written";
-
-    case "Bash": {
-      // Try to extract exit code from result
-      const exitMatch = result.match(/exit code[:\s]*(\d+)/i);
-      const exitCode = exitMatch ? exitMatch[1] : "0";
-      const lineCount = countLines(result);
-      if (lineCount > 1) {
-        return `exit ${exitCode}, +${lineCount} ${pluralize(lineCount, "line", "lines")}`;
-      }
-      return `exit ${exitCode}`;
-    }
-
-    case "Glob": {
-      // Count files in result (one per line)
-      const fileCount = countLines(result);
-      return `${fileCount} ${pluralize(fileCount, "file", "files")}`;
-    }
-
-    case "Grep": {
-      // Try to count matches
-      const matchCount = countLines(result);
-      return `${matchCount} ${pluralize(matchCount, "match", "matches")}`;
-    }
-
-    case "Task":
-      return "Completed";
-
-    case "WebFetch": {
-      const lineCount = countLines(result);
-      return `${lineCount} ${pluralize(lineCount, "line", "lines")}`;
-    }
-
-    case "WebSearch": {
-      const resultCount = countLines(result);
-      return `${resultCount} ${pluralize(resultCount, "result", "results")}`;
-    }
-
-    default:
-      return "Done";
   }
 }
