@@ -8,6 +8,7 @@ import {
   setupBridge,
 } from "../lib/firecracker/network.js";
 import { initOverlayPool } from "../lib/firecracker/overlay-pool.js";
+import { initTapPool } from "../lib/firecracker/tap-pool.js";
 import { Timer } from "../lib/timing.js";
 import { setGlobalLogger } from "../lib/logger.js";
 import { dataPaths } from "../lib/paths.js";
@@ -84,13 +85,14 @@ export const benchmarkCommand = new Command("benchmark")
       timer.log("Setting up network bridge...");
       await setupBridge();
 
-      // Initialize overlay pool for VM boot
-      timer.log("Initializing overlay pool...");
+      // Initialize pools for VM resources
+      timer.log("Initializing pools...");
       await initOverlayPool({
         size: 2,
         replenishThreshold: 1,
         poolDir: dataPaths.overlayPool(config.data_dir),
       });
+      await initTapPool({ size: 2, replenishThreshold: 1 });
 
       // Create benchmark execution context
       timer.log(`Executing command: ${prompt}`);
