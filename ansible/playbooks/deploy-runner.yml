@@ -63,6 +63,7 @@
     # Defaults for production - CI should override these
     runner_base_dir: /opt/vm0-runner/production
     runner_group: vm0/production
+    runner_suffix: production
     pm2_process_name: vm0-runner-production
     enable_drain: true
     drain_timeout: 7200  # 2 hours

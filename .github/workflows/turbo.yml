@@ -1148,6 +1148,7 @@ jobs:
             -e "ansible_user=${METAL_USER}" \
             -e "runner_base_dir=${RUNNER_DIR}" \
             -e "runner_group=vm0/development-${JOB_REF}" \
+            -e "runner_suffix=${JOB_REF}" \
             -e "pm2_process_name=vm0-runner-${JOB_REF}" \
             -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
             -e "api_url=${PREVIEW_URL}" \
