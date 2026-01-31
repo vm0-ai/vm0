@@ -186,14 +186,10 @@ interface PollResult {
 }
 
 /**
- * Render a single event (used by streamEvents callback)
+ * Options for polling/streaming events
  */
-function renderEvent(event: unknown): void {
-  const eventData = event as Record<string, unknown>;
-  const parsed = parseEvent(eventData);
-  if (parsed) {
-    EventRenderer.render(parsed);
-  }
+interface EventRenderingOptions {
+  verbose?: boolean;
 }
 
 /**
@@ -202,9 +198,18 @@ function renderEvent(event: unknown): void {
  */
 export async function streamRealtimeEvents(
   runId: string,
+  options?: EventRenderingOptions,
 ): Promise<StreamResult> {
+  const renderer = new EventRenderer({ verbose: options?.verbose });
+
   return streamEvents(runId, {
-    onEvent: renderEvent,
+    onEvent: (event: unknown) => {
+      const eventData = event as Record<string, unknown>;
+      const parsed = parseEvent(eventData);
+      if (parsed) {
+        renderer.render(parsed);
+      }
+    },
     onRunCompleted: (result) => {
       EventRenderer.renderRunCompleted(result as RunResult | undefined);
     },
@@ -224,7 +229,12 @@ export async function streamRealtimeEvents(
  * Poll for events until run completes (via run.status field)
  * @returns Poll result with success status and optional session/checkpoint IDs
  */
-export async function pollEvents(runId: string): Promise<PollResult> {
+export async function pollEvents(
+  runId: string,
+  options?: EventRenderingOptions,
+): Promise<PollResult> {
+  const renderer = new EventRenderer({ verbose: options?.verbose });
+
   let nextSequence = -1;
   let complete = false;
   let result: PollResult = { succeeded: true, runId };
@@ -246,7 +256,7 @@ export async function pollEvents(runId: string): Promise<PollResult> {
         // Use Claude Code renderer (default)
         const parsed = parseEvent(eventData);
         if (parsed) {
-          EventRenderer.render(parsed);
+          renderer.render(parsed);
         }
       }
     }
@@ -340,4 +350,34 @@ export function handleGenericRunError(
     console.error(chalk.red(`✗ ${commandLabel} failed`));
     console.error(chalk.dim(`  ${error.message}`));
   }
+}
+
+/**
+ * Common error handler for resume/continue commands
+ * Handles all standard error cases and calls process.exit(1)
+ */
+export function handleResumeOrContinueError(
+  error: unknown,
+  commandLabel: "Continue" | "Resume",
+  resourceId: string,
+  resourceLabel: "Agent session" | "Checkpoint",
+): void {
+  if (error instanceof Error) {
+    if (error.message.includes("Not authenticated")) {
+      console.error(chalk.red("✗ Not authenticated. Run: vm0 auth login"));
+    } else if (error.message.includes("Realtime connection failed")) {
+      console.error(chalk.red("✗ Realtime streaming failed"));
+      console.error(chalk.dim(`  ${error.message}`));
+      console.error(chalk.dim("  Try running without --experimental-realtime"));
+    } else if (error.message.startsWith("Environment file not found:")) {
+      console.error(chalk.red(`✗ ${error.message}`));
+    } else if (error.message.includes("not found")) {
+      console.error(chalk.red(`✗ ${resourceLabel} not found: ${resourceId}`));
+    } else {
+      handleGenericRunError(error, commandLabel);
+    }
+  } else {
+    console.error(chalk.red("✗ An unexpected error occurred"));
+  }
+  process.exit(1);
 }

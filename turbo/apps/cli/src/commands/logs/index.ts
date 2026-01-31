@@ -77,9 +77,26 @@ function formatNetworkLog(entry: NetworkLogEntry): string {
 }
 
 /**
+ * Create an EventRenderer for log viewing (verbose mode with timestamps)
+ * Uses buffered: false since logs are historical and tool_use/tool_result
+ * may be fetched separately with pagination
+ */
+function createLogRenderer(): EventRenderer {
+  return new EventRenderer({
+    showTimestamp: true,
+    verbose: true,
+    buffered: false,
+  });
+}
+
+/**
  * Render an agent event with timestamp for historical log viewing
  */
-function renderAgentEvent(event: RunEvent, provider: string): void {
+function renderAgentEvent(
+  event: RunEvent,
+  provider: string,
+  renderer: EventRenderer,
+): void {
   const eventData = event.eventData as Record<string, unknown>;
 
   if (provider === "codex") {
@@ -91,7 +108,7 @@ function renderAgentEvent(event: RunEvent, provider: string): void {
     if (parsed) {
       // Set timestamp from event
       parsed.timestamp = new Date(event.createdAt);
-      EventRenderer.render(parsed, { showTimestamp: true });
+      renderer.render(parsed);
     }
   }
 }
@@ -218,8 +235,11 @@ async function showAgentEvents(
   const events =
     options.order === "desc" ? [...response.events].reverse() : response.events;
 
+  // Create renderer for log viewing (verbose mode with timestamps)
+  const renderer = createLogRenderer();
+
   for (const event of events) {
-    renderAgentEvent(event, response.framework);
+    renderAgentEvent(event, response.framework, renderer);
   }
 
   if (response.hasMore) {

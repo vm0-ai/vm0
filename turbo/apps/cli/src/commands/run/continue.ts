@@ -10,7 +10,7 @@ import {
   pollEvents,
   streamRealtimeEvents,
   showNextSteps,
-  handleGenericRunError,
+  handleResumeOrContinueError,
 } from "./shared";
 
 export const continueCommand = new Command()
@@ -50,6 +50,7 @@ export const continueCommand = new Command()
     "--model-provider <type>",
     "Override model provider (e.g., anthropic-api-key)",
   )
+  .option("--verbose", "Show full tool inputs and outputs")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .action(
     async (
@@ -61,6 +62,7 @@ export const continueCommand = new Command()
         secrets: Record<string, string>;
         experimentalRealtime?: boolean;
         modelProvider?: string;
+        verbose?: boolean;
         debugNoMockClaude?: boolean;
       },
       command: { optsWithGlobals: () => Record<string, unknown> },
@@ -74,6 +76,7 @@ export const continueCommand = new Command()
         volumeVersion: Record<string, string>;
         experimentalRealtime?: boolean;
         modelProvider?: string;
+        verbose?: boolean;
         debugNoMockClaude?: boolean;
       };
 
@@ -134,38 +137,21 @@ export const continueCommand = new Command()
         // 6. Poll or stream for events and exit with appropriate code
         const experimentalRealtime =
           options.experimentalRealtime || allOpts.experimentalRealtime;
+        const verbose = options.verbose || allOpts.verbose;
         const result = experimentalRealtime
-          ? await streamRealtimeEvents(response.runId)
-          : await pollEvents(response.runId);
+          ? await streamRealtimeEvents(response.runId, { verbose })
+          : await pollEvents(response.runId, { verbose });
         if (!result.succeeded) {
           process.exit(1);
         }
         showNextSteps(result);
       } catch (error) {
-        if (error instanceof Error) {
-          if (error.message.includes("Not authenticated")) {
-            console.error(
-              chalk.red("✗ Not authenticated. Run: vm0 auth login"),
-            );
-          } else if (error.message.includes("Realtime connection failed")) {
-            console.error(chalk.red("✗ Realtime streaming failed"));
-            console.error(chalk.dim(`  ${error.message}`));
-            console.error(
-              chalk.dim("  Try running without --experimental-realtime"),
-            );
-          } else if (error.message.startsWith("Environment file not found:")) {
-            console.error(chalk.red(`✗ ${error.message}`));
-          } else if (error.message.includes("not found")) {
-            console.error(
-              chalk.red(`✗ Agent session not found: ${agentSessionId}`),
-            );
-          } else {
-            handleGenericRunError(error, "Continue");
-          }
-        } else {
-          console.error(chalk.red("✗ An unexpected error occurred"));
-        }
-        process.exit(1);
+        handleResumeOrContinueError(
+          error,
+          "Continue",
+          agentSessionId,
+          "Agent session",
+        );
       }
     },
   );
