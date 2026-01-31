@@ -1,7 +1,5 @@
 import {
-  IconSettings,
   IconCheck,
-  IconX,
   IconCircle,
   IconLoader,
   IconListCheck,
@@ -127,10 +125,6 @@ function SystemMessageCard({
     <div className="rounded-lg border border-sky-600/30 bg-sky-600/5 p-4">
       <div className="flex gap-4 items-start">
         <div className="flex-1 min-w-0 space-y-2">
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-xs font-medium bg-sky-600/10 border border-sky-600 text-sky-600">
-            <IconSettings className="h-4 w-4" />
-            System
-          </span>
           <div className="font-medium text-sm text-foreground">
             {subtype === "init" ? "Initialize" : subtype}
           </div>
@@ -155,21 +149,11 @@ function ResultMessageCard({
   const isError = eventData.is_error === true || subtype === "error";
   const borderColor = isError ? "border-red-500/30" : "border-lime-600/30";
   const bgColor = isError ? "bg-red-500/5" : "bg-lime-600/5";
-  const badgeColor = isError
-    ? "bg-red-500/10 border-red-500 text-red-500"
-    : "bg-lime-600/10 border-lime-600 text-lime-600";
-  const StatusIcon = isError ? IconX : IconCheck;
 
   return (
     <div className={`rounded-lg border ${borderColor} ${bgColor} p-4`}>
       <div className="flex gap-4 items-start">
         <div className="flex-1 min-w-0 space-y-2">
-          <span
-            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-xs font-medium border ${badgeColor}`}
-          >
-            <StatusIcon className="h-4 w-4" />
-            {isError ? "Failed" : "Result"}
-          </span>
           <ResultEventContent eventData={eventData} />
         </div>
         <span className="shrink-0 text-sm text-muted-foreground">

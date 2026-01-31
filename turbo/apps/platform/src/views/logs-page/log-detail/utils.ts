@@ -213,15 +213,6 @@ export function formatDuration(
   return `${minutes}m ${seconds}s`;
 }
 
-export function getEventTypeCounts(events: AgentEvent[]): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const event of events) {
-    const type = event.eventType;
-    counts.set(type, (counts.get(type) ?? 0) + 1);
-  }
-  return counts;
-}
-
 export function eventMatchesSearch(
   event: AgentEvent,
   searchTerm: string,
