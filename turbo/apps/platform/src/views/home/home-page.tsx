@@ -120,7 +120,7 @@ function Step2SampleAgents() {
             "git clone https://github.com/vm0-ai/vm0-cookbooks",
             "cd vm0-cookbooks/examples/201-hackernews",
             "vm0 setup-claude",
-            'claude "introduce this agent to me."',
+            'claude "Show me the agent and run it."',
           ]}
         />
         <SampleAgentCard
@@ -138,7 +138,7 @@ function Step2SampleAgents() {
             "git clone https://github.com/vm0-ai/vm0-cookbooks",
             "cd vm0-cookbooks/examples/206-tiktok-influencer",
             "vm0 setup-claude",
-            'claude "introduce this agent to me."',
+            'claude "Show me the agent and run it."',
           ]}
         />
       </div>
