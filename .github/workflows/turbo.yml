@@ -89,6 +89,8 @@ jobs:
 
   file-size-check:
     runs-on: ubuntu-latest
+    # Skip for release-please commits (only version bumps and changelogs)
+    if: "${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release') }}"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -125,6 +127,8 @@ jobs:
   # Lint jobs - split into 4 parallel jobs for faster CI
   lint-eslint:
     runs-on: ubuntu-latest
+    # Skip for release-please commits (only version bumps and changelogs)
+    if: "${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release') }}"
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     steps:
@@ -179,6 +183,8 @@ jobs:
   # Test jobs - split into 4 parallel jobs by project
   test-web:
     runs-on: ubuntu-latest
+    # Skip for release-please commits (only version bumps and changelogs)
+    if: "${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release') }}"
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     services:
@@ -268,8 +274,9 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare]
-    # Deploy if job-ref is set (PR or main) and web, CLI, runner, site, or platform changed
+    # Deploy if job-ref is set (PR or main), not a release-please commit, and web, CLI, runner, site, or platform changed
     if: |
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
@@ -336,8 +343,8 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare]
-    # Deploy if job-ref is set (PR or main) and docs changed
-    if: needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.docs-changed == 'true'
+    # Deploy if job-ref is set (PR or main), not a release-please commit, and docs changed
+    if: "${{ (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) && needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.docs-changed == 'true' }}"
     permissions:
       contents: read
       pull-requests: write
@@ -364,8 +371,8 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare, deploy-web]
-    # Deploy if job-ref is set (PR or main) and site changed
-    if: needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.site-changed == 'true'
+    # Deploy if job-ref is set (PR or main), not a release-please commit, and site changed
+    if: "${{ (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) && needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.site-changed == 'true' }}"
     permissions:
       contents: read
       pull-requests: write
@@ -396,8 +403,8 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare, deploy-web]
-    # Deploy if job-ref is set (PR or main) and platform changed
-    if: needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.platform-changed == 'true'
+    # Deploy if job-ref is set (PR or main), not a release-please commit, and platform changed
+    if: "${{ (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) && needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.platform-changed == 'true' }}"
     permissions:
       contents: read
       pull-requests: write
@@ -428,6 +435,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare, deploy-web]
     if: |
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
@@ -482,7 +490,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare, e2e-auth, deploy-web]
-    if: needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.web-changed == 'true'
+    if: "${{ (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) && needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.web-changed == 'true' }}"
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -511,6 +519,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare, e2e-auth, deploy-web, lint-eslint, lint-types, lint-format, lint-knip, test-web, test-cli, test-platform, test-other]
     if: |
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
@@ -580,6 +589,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare, cli-e2e-01-serial, deploy-web]
     if: |
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
