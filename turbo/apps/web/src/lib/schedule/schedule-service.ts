@@ -814,17 +814,42 @@ async function handleConcurrencyFailure(
     `Schedule ${schedule.name} retry window expired after ${Math.round(windowElapsed / 60000)} min`,
   );
 
-  if (failedRun) {
+  if (schedule.cronExpression) {
+    // Cron schedule: advance to next occurrence
+    const nextRunAt = calculateNextRun(
+      schedule.cronExpression,
+      schedule.timezone,
+    );
     await globalThis.services.db
       .update(agentSchedules)
       .set({
-        lastRunId: failedRun.id,
+        lastRunId: failedRun?.id ?? schedule.lastRunId,
+        lastRunAt: now,
         retryStartedAt: null,
+        nextRunAt,
       })
       .where(eq(agentSchedules.id, schedule.id));
+    log.debug(
+      `Cron schedule ${schedule.name} retry window expired, next run at ${nextRunAt?.toISOString()}`,
+    );
+  } else {
+    // One-time schedule: disable after retry window expires
+    await globalThis.services.db
+      .update(agentSchedules)
+      .set({
+        enabled: false,
+        lastRunId: failedRun?.id ?? schedule.lastRunId,
+        lastRunAt: now,
+        retryStartedAt: null,
+        nextRunAt: null,
+      })
+      .where(eq(agentSchedules.id, schedule.id));
+    log.debug(
+      `One-time schedule ${schedule.name} retry window expired and disabled`,
+    );
   }
 
-  return false; // Should advance to next occurrence
+  return true; // Already handled, don't re-throw
 }
 
 /**
