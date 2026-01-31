@@ -1,16 +1,9 @@
 import { useGet, useSet, useLoadable } from "ccstate-react";
-import {
-  IconUser,
-  IconClock,
-  IconInfoCircle,
-  IconChevronDown,
-} from "@tabler/icons-react";
-import { Popover, PopoverContent, PopoverTrigger, Button } from "@vm0/ui";
+import { IconClock } from "@tabler/icons-react";
+import { CopyButton } from "@vm0/ui";
 import { logDetailSearchTerm$ } from "../../../../signals/logs-page/log-detail-state.ts";
 import { getOrCreateLogDetail$ } from "../../../../signals/logs-page/logs-signals.ts";
 import { StatusBadge } from "../../status-badge.tsx";
-import { InfoRow } from "./info-row.tsx";
-import { CopyField } from "./copy-field.tsx";
 import { ArtifactDownloadButton } from "./artifact-download-button.tsx";
 import { AgentEventsCard } from "./agent-events-card.tsx";
 import { formatTime, formatDuration } from "../utils.ts";
@@ -45,78 +38,46 @@ export function LogDetailContent({ logId }: { logId: string }) {
 
   return (
     <div className="flex flex-col gap-4 h-full min-h-0">
-      {/* Compact Header Bar */}
-      <div className="shrink-0 flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3 bg-muted/30 rounded-lg border border-border">
-        {/* Status */}
+      {/* Info Card */}
+      <div className="shrink-0 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm px-4 py-3 bg-muted/30 rounded-lg border border-border">
         <StatusBadge status={detail.status} />
 
-        {/* Duration */}
-        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-          <IconClock className="h-4 w-4" />
-          <span>{formatDuration(detail.startedAt, detail.completedAt)}</span>
-        </div>
+        <span className="font-medium text-foreground">{detail.agentName}</span>
 
-        {/* Agent */}
-        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-          <IconUser className="h-4 w-4" />
-          <span>{detail.agentName}</span>
-        </div>
+        {detail.framework && (
+          <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+            {detail.framework}
+          </span>
+        )}
 
-        {/* Time */}
-        <span className="text-sm text-muted-foreground">
+        <Separator />
+
+        <span className="flex items-center gap-1 text-muted-foreground">
+          <IconClock className="h-3.5 w-3.5" />
+          {formatDuration(detail.startedAt, detail.completedAt)}
+        </span>
+
+        <span className="text-muted-foreground">
           {formatTime(detail.createdAt)}
         </span>
 
-        {/* Details Popover */}
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="ml-auto h-7 px-2 text-muted-foreground hover:text-foreground"
-            >
-              <IconInfoCircle className="h-4 w-4 mr-1" />
-              Details
-              <IconChevronDown className="h-3 w-3 ml-1" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent
-            align="end"
-            side="bottom"
-            collisionPadding={16}
-            className="w-80 max-w-[calc(100vw-2rem)] p-4"
-          >
-            <div className="space-y-3 overflow-hidden">
-              <InfoRow label="Run ID">
-                <CopyField text={detail.id} />
-              </InfoRow>
-              <InfoRow label="Session ID">
-                {detail.sessionId ? (
-                  <CopyField text={detail.sessionId} />
-                ) : (
-                  <span className="text-sm text-muted-foreground">-</span>
-                )}
-              </InfoRow>
-              <InfoRow label="Framework">
-                <span className="text-sm text-foreground">
-                  {detail.framework ?? (
-                    <span className="text-muted-foreground">-</span>
-                  )}
-                </span>
-              </InfoRow>
-              <InfoRow label="Artifact">
-                {detail.artifact.name && detail.artifact.version ? (
-                  <ArtifactDownloadButton
-                    name={detail.artifact.name}
-                    version={detail.artifact.version}
-                  />
-                ) : (
-                  <span className="text-sm text-muted-foreground">-</span>
-                )}
-              </InfoRow>
-            </div>
-          </PopoverContent>
-        </Popover>
+        <Separator />
+
+        <CopyableId label="Run" value={detail.id} />
+
+        {detail.sessionId && (
+          <CopyableId label="Session" value={detail.sessionId} />
+        )}
+
+        {detail.artifact.name && detail.artifact.version && (
+          <>
+            <Separator />
+            <ArtifactDownloadButton
+              name={detail.artifact.name}
+              version={detail.artifact.version}
+            />
+          </>
+        )}
       </div>
 
       {/* Error Banner */}
@@ -135,5 +96,19 @@ export function LogDetailContent({ logId }: { logId: string }) {
         className="flex-1 min-h-0"
       />
     </div>
+  );
+}
+
+function Separator() {
+  return <span className="text-border">|</span>;
+}
+
+function CopyableId({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 text-muted-foreground">
+      <span>{label}:</span>
+      <span className="font-mono text-xs">{value.slice(0, 8)}</span>
+      <CopyButton text={value} className="h-4 w-4 p-0" />
+    </span>
   );
 }

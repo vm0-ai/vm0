@@ -671,7 +671,7 @@ describe("log-detail utils", () => {
       expect(result[1].toolOperations).toBeUndefined();
     });
 
-    it("should insert todo summary before result", () => {
+    it("should create standalone todo card for TodoWrite", () => {
       const events: AgentEvent[] = [
         {
           sequenceNumber: 1,
@@ -703,15 +703,13 @@ describe("log-detail utils", () => {
         },
       ];
       const result = groupEventsIntoMessages(events);
-      // Should be: assistant (tool), assistant (todo summary), result
-      expect(result).toHaveLength(3);
-      expect(result[0].type).toBe("assistant");
-      expect(result[0].toolOperations).toHaveLength(1);
-      expect(result[1].type).toBe("assistant");
-      expect(result[1].todoSummary).toHaveLength(2);
-      expect(result[1].todoSummary?.[0].content).toBe("Task 1");
-      expect(result[1].todoSummary?.[0].status).toBe("completed");
-      expect(result[2].type).toBe("result");
+      // Should be: todo card, result (no separate assistant card since only TodoWrite)
+      expect(result).toHaveLength(2);
+      expect(result[0].type).toBe("todo");
+      expect(result[0].todoState).toHaveLength(2);
+      expect(result[0].todoState?.[0].content).toBe("Task 1");
+      expect(result[0].todoState?.[0].status).toBe("completed");
+      expect(result[1].type).toBe("result");
     });
   });
 

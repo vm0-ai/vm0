@@ -206,7 +206,7 @@ function ToolInputDetails({
     const command = input.command as string | undefined;
     if (command) {
       return (
-        <div className="flex gap-2 items-start bg-sidebar rounded-lg px-3 py-2">
+        <div className="flex gap-2 items-start bg-gray-50 rounded-lg px-3 py-2">
           <code className="flex-1 font-mono text-xs text-foreground whitespace-pre-wrap break-all">
             {command}
           </code>
@@ -301,7 +301,7 @@ function ToolResultDetails({
           Output ({lines.length} lines
           {bytes ? `, ${(bytes / 1024).toFixed(1)} KB` : ""})
         </summary>
-        <div className="mt-1 flex gap-2 items-start bg-sidebar rounded-lg px-3 py-2">
+        <div className="mt-1 flex gap-2 items-start bg-gray-50 rounded-lg px-3 py-2">
           <pre className="flex-1 text-xs text-foreground whitespace-pre-wrap max-h-40 overflow-y-auto break-all">
             {contentElement}
           </pre>
@@ -312,7 +312,7 @@ function ToolResultDetails({
   }
 
   return (
-    <div className="flex gap-2 items-start bg-sidebar rounded-lg px-3 py-2">
+    <div className="flex gap-2 items-start bg-gray-50 rounded-lg px-3 py-2">
       <pre className="flex-1 text-xs text-foreground whitespace-pre-wrap max-h-40 overflow-y-auto break-all">
         {contentElement}
       </pre>

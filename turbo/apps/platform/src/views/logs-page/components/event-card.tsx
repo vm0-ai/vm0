@@ -2,9 +2,12 @@ import {
   IconClock,
   IconCurrencyDollar,
   IconArrowRight,
-  IconChevronRight,
+  IconTool,
+  IconRobot,
+  IconTerminal,
 } from "@tabler/icons-react";
 import MarkdownPreview from "@uiw/react-markdown-preview";
+import { Popover, PopoverContent, PopoverTrigger } from "@vm0/ui";
 
 // Type definitions for EventData
 interface MessageData {
@@ -77,6 +80,7 @@ export function formatEventTime(isoString: string): string {
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    second: "2-digit",
     hour12: false,
   });
 }
@@ -104,42 +108,40 @@ function formatCost(usd: number): string {
 
 // ============ SYSTEM EVENT (Init) ============
 
-function CollapsibleSection({
-  title,
+function CategoryPopover({
+  icon: Icon,
+  label,
   count,
-  children,
-  defaultOpen = false,
+  items,
 }: {
-  title: string;
+  icon: typeof IconTool;
+  label: string;
   count: number;
-  children: React.ReactNode;
-  defaultOpen?: boolean;
+  items: string[];
 }) {
   return (
-    <details className="group" open={defaultOpen}>
-      <summary className="flex cursor-pointer list-none items-center gap-1 text-sm text-foreground hover:text-foreground/80 transition-colors">
-        <span>
-          {count} {title}
-        </span>
-        <IconChevronRight className="h-5 w-5 text-muted-foreground transition-transform group-open:rotate-90" />
-      </summary>
-      <div className="mt-2">{children}</div>
-    </details>
-  );
-}
-
-function TagList({ items }: { items: string[] }) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      {items.map((item) => (
-        <span
-          key={item}
-          className="text-xs font-medium text-muted-foreground bg-background border border-border px-1.5 py-0.5 rounded-md"
-        >
-          {item}
-        </span>
-      ))}
-    </div>
+    <Popover>
+      <PopoverTrigger className="inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded-md text-xs font-medium bg-background border border-border text-muted-foreground hover:bg-muted transition-colors cursor-pointer">
+        <Icon className="h-3.5 w-3.5" />
+        <span>{count}</span>
+        <span>{label}</span>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-80 max-h-64 overflow-y-auto p-3 bg-card"
+      >
+        <div className="flex flex-wrap gap-2">
+          {items.map((item) => (
+            <span
+              key={item}
+              className="text-xs font-medium text-muted-foreground bg-background border border-border px-1.5 py-0.5 rounded-md"
+            >
+              {item}
+            </span>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -149,27 +151,38 @@ export function SystemInitContent({ eventData }: { eventData: EventData }) {
   const agents = eventData.agents ?? [];
   const slashCommands = eventData.slash_commands ?? [];
 
+  const hasAnyItems =
+    tools.length > 0 || agents.length > 0 || slashCommands.length > 0;
+
+  if (!hasAnyItems) {
+    return null;
+  }
+
   return (
-    <div className="mt-2 space-y-2">
-      {/* Tools */}
+    <div className="flex flex-wrap gap-2">
       {tools.length > 0 && (
-        <CollapsibleSection title="tools available" count={tools.length}>
-          <TagList items={tools} />
-        </CollapsibleSection>
+        <CategoryPopover
+          icon={IconTool}
+          label="tools"
+          count={tools.length}
+          items={tools}
+        />
       )}
-
-      {/* Agents */}
       {agents.length > 0 && (
-        <CollapsibleSection title="agents" count={agents.length}>
-          <TagList items={agents} />
-        </CollapsibleSection>
+        <CategoryPopover
+          icon={IconRobot}
+          label="agents"
+          count={agents.length}
+          items={agents}
+        />
       )}
-
-      {/* Slash Commands */}
       {slashCommands.length > 0 && (
-        <CollapsibleSection title="Slash Commands" count={slashCommands.length}>
-          <TagList items={slashCommands.map((cmd) => `/${cmd}`)} />
-        </CollapsibleSection>
+        <CategoryPopover
+          icon={IconTerminal}
+          label="commands"
+          count={slashCommands.length}
+          items={slashCommands.map((cmd) => `/${cmd}`)}
+        />
       )}
     </div>
   );
@@ -179,7 +192,6 @@ export function SystemInitContent({ eventData }: { eventData: EventData }) {
 
 // Exported for use in GroupedMessageCard
 export function ResultEventContent({ eventData }: { eventData: EventData }) {
-  const isError = eventData.is_error === true;
   const totalCost = eventData.total_cost_usd;
   const durationMs = eventData.duration_ms;
   const numTurns = eventData.num_turns;
@@ -215,10 +227,10 @@ export function ResultEventContent({ eventData }: { eventData: EventData }) {
       {/* Model usage breakdown */}
       {modelUsage && Object.keys(modelUsage).length > 0 && (
         <details className="group">
-          <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground uppercase tracking-wide">
-            Model Usage
+          <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+            Model Usage ({Object.keys(modelUsage).length})
           </summary>
-          <div className="mt-2 space-y-2">
+          <div className="mt-2 space-y-1">
             {Object.entries(modelUsage).map(([model, usage]) => {
               if (!usage.inputTokens && !usage.outputTokens) {
                 return null;
@@ -226,19 +238,25 @@ export function ResultEventContent({ eventData }: { eventData: EventData }) {
               return (
                 <div
                   key={model}
-                  className="flex items-center justify-between gap-4 text-xs bg-background p-2 rounded min-w-0"
+                  className="flex items-center justify-between gap-4 text-xs bg-background px-3 py-2 rounded-md"
                 >
                   <span className="font-mono text-muted-foreground truncate min-w-0">
                     {model}
                   </span>
-                  <div className="flex gap-3 shrink-0">
+                  <div className="flex gap-3 shrink-0 text-foreground">
                     {usage.inputTokens !== null &&
                       usage.inputTokens !== undefined && (
-                        <span>In: {usage.inputTokens.toLocaleString()}</span>
+                        <span>
+                          <span className="text-muted-foreground">In:</span>{" "}
+                          {usage.inputTokens.toLocaleString()}
+                        </span>
                       )}
                     {usage.outputTokens !== null &&
                       usage.outputTokens !== undefined && (
-                        <span>Out: {usage.outputTokens.toLocaleString()}</span>
+                        <span>
+                          <span className="text-muted-foreground">Out:</span>{" "}
+                          {usage.outputTokens.toLocaleString()}
+                        </span>
                       )}
                     {usage.costUSD !== null && usage.costUSD !== undefined && (
                       <span className="text-emerald-600 font-medium">
@@ -255,20 +273,15 @@ export function ResultEventContent({ eventData }: { eventData: EventData }) {
 
       {/* Result text */}
       {result && (
-        <div className="text-sm text-foreground">
-          <div className="font-medium mb-1">
-            {isError ? "Error" : "Success"}
-          </div>
-          <MarkdownPreview
-            source={result}
-            className="!bg-transparent !text-foreground text-sm"
-            style={{
-              backgroundColor: "transparent",
-              fontSize: "0.875rem",
-              lineHeight: "1.5",
-            }}
-          />
-        </div>
+        <MarkdownPreview
+          source={result}
+          className="!bg-transparent !text-foreground text-sm"
+          style={{
+            backgroundColor: "transparent",
+            fontSize: "0.875rem",
+            lineHeight: "1.5",
+          }}
+        />
       )}
     </div>
   );

@@ -39,19 +39,20 @@ export interface ToolOperation {
   };
 }
 
-export interface TodoItem {
+interface TodoItem {
   content: string;
   status: string;
 }
 
 export interface GroupedMessage {
-  type: "system" | "assistant" | "result";
+  type: "system" | "assistant" | "result" | "todo";
   sequenceNumber: number;
   createdAt: string;
   textBefore?: string;
   textAfter?: string;
   toolOperations?: ToolOperation[];
-  todoSummary?: TodoItem[];
+  // For "todo" type: current state of all tasks
+  todoState?: TodoItem[];
   eventData: unknown;
 }
 
@@ -449,143 +450,178 @@ function appendToolsToMessage(
 }
 
 /**
- * Collect all todo items from TodoWrite tool operations.
+ * Process TodoWrite operation and update todo state.
+ * Returns the new in_progress task content if any.
  */
-function collectTodoItems(
-  grouped: GroupedMessage[],
-): { content: string; status: string }[] {
-  const todoMap = new Map<string, { content: string; status: string }>();
-
-  for (const message of grouped) {
-    if (message.type !== "assistant" || !message.toolOperations) {
-      continue;
+function processTodoWrite(
+  op: ToolOperation,
+  todoState: Map<string, { content: string; status: string }>,
+): string | null {
+  if (op.toolName.toLowerCase() !== "todowrite") {
+    return null;
+  }
+  const todos = op.input.todos;
+  if (!Array.isArray(todos)) {
+    return null;
+  }
+  let newInProgressTask: string | null = null;
+  for (const todo of todos) {
+    const item = todo as { content?: string; status?: string };
+    const content = item.content ?? String(todo);
+    const status = item.status ?? "pending";
+    todoState.set(content, { content, status });
+    if (status === "in_progress") {
+      newInProgressTask = content;
     }
-    for (const op of message.toolOperations) {
-      if (op.toolName.toLowerCase() !== "todowrite") {
-        continue;
-      }
-      const todos = op.input.todos;
-      if (!Array.isArray(todos)) {
-        continue;
-      }
-      for (const todo of todos) {
-        const item = todo as { content?: string; status?: string; id?: string };
-        const content = item.content ?? String(todo);
-        const status = item.status ?? "pending";
-        // Use content as key to track latest status
-        todoMap.set(content, { content, status });
-      }
+  }
+  return newInProgressTask;
+}
+
+interface GroupingContext {
+  grouped: GroupedMessage[];
+  pendingToolUses: Map<
+    string,
+    { operation: ToolOperation; message: GroupedMessage }
+  >;
+  todoState: Map<string, { content: string; status: string }>;
+}
+
+function processSystemEvent(event: AgentEvent, ctx: GroupingContext): void {
+  ctx.grouped.push({
+    type: "system",
+    sequenceNumber: event.sequenceNumber,
+    createdAt: event.createdAt,
+    eventData: event.eventData,
+  });
+}
+
+function processResultEvent(event: AgentEvent, ctx: GroupingContext): void {
+  ctx.grouped.push({
+    type: "result",
+    sequenceNumber: event.sequenceNumber,
+    createdAt: event.createdAt,
+    eventData: event.eventData,
+  });
+}
+
+function processAssistantEvent(
+  event: AgentEvent,
+  eventData: GroupingEventData,
+  ctx: GroupingContext,
+): void {
+  const contents = eventData.message?.content ?? [];
+  const { textParts, toolOperations } = parseAssistantContent(contents);
+  const hasText = textParts.length > 0;
+
+  // Separate TodoWrite operations from other tools
+  const todoWriteOps: ToolOperation[] = [];
+  const otherToolOps: ToolOperation[] = [];
+
+  for (const op of toolOperations) {
+    if (op.toolName.toLowerCase() === "todowrite") {
+      processTodoWrite(op, ctx.todoState);
+      todoWriteOps.push(op);
+    } else {
+      otherToolOps.push(op);
     }
   }
 
-  return Array.from(todoMap.values());
+  const hasOtherTools = otherToolOps.length > 0;
+
+  // Rule: Tools without text get appended to the previous assistant card
+  if (!hasText && hasOtherTools && todoWriteOps.length === 0) {
+    const lastAssistant = getLastMergeableAssistant(ctx.grouped);
+    if (lastAssistant) {
+      appendToolsToMessage(lastAssistant, otherToolOps, ctx.pendingToolUses);
+      return;
+    }
+  }
+
+  // Create assistant message for text and non-TodoWrite tools
+  if (hasText || hasOtherTools) {
+    const message: GroupedMessage = {
+      type: "assistant",
+      sequenceNumber: event.sequenceNumber,
+      createdAt: event.createdAt,
+      textBefore: hasText ? textParts.join("\n\n") : undefined,
+      toolOperations: hasOtherTools ? otherToolOps : undefined,
+      eventData: event.eventData,
+    };
+    ctx.grouped.push(message);
+    for (const op of otherToolOps) {
+      ctx.pendingToolUses.set(op.toolUseId, { operation: op, message });
+    }
+  }
+
+  // Create standalone todo card for each TodoWrite operation
+  for (const todoOp of todoWriteOps) {
+    const todoMessage: GroupedMessage = {
+      type: "todo",
+      sequenceNumber: event.sequenceNumber + 0.01,
+      createdAt: event.createdAt,
+      todoState: Array.from(ctx.todoState.values()),
+      eventData: {},
+    };
+    ctx.grouped.push(todoMessage);
+    ctx.pendingToolUses.set(todoOp.toolUseId, {
+      operation: todoOp,
+      message: todoMessage,
+    });
+  }
+}
+
+function processUserEvent(
+  event: AgentEvent,
+  eventData: GroupingEventData,
+  ctx: GroupingContext,
+): void {
+  const contents = eventData.message?.content ?? [];
+  const toolMeta = eventData.tool_use_result;
+
+  for (const content of contents) {
+    if (content.type === "tool_result") {
+      processToolResult(
+        content as ToolResultContent,
+        toolMeta,
+        ctx.pendingToolUses,
+        event,
+        ctx.grouped,
+      );
+    }
+  }
 }
 
 /**
  * Groups flat event array into message-centric structure.
  * - Consecutive assistant messages are merged (text + tools in one card)
  * - Tool results are linked to their tool_use calls
- * - Todo summary is inserted before result event
+ * - TodoWrite operations create standalone "todo" type cards
  * - System and Result events remain independent
  */
 export function groupEventsIntoMessages(
   events: AgentEvent[],
 ): GroupedMessage[] {
-  const grouped: GroupedMessage[] = [];
-  const pendingToolUses = new Map<
-    string,
-    { operation: ToolOperation; message: GroupedMessage }
-  >();
+  const ctx: GroupingContext = {
+    grouped: [],
+    pendingToolUses: new Map(),
+    todoState: new Map(),
+  };
 
   for (const event of events) {
     const eventData = event.eventData as GroupingEventData;
 
     if (event.eventType === "system") {
-      grouped.push({
-        type: "system",
-        sequenceNumber: event.sequenceNumber,
-        createdAt: event.createdAt,
-        eventData: event.eventData,
-      });
-      continue;
-    }
-
-    if (event.eventType === "result") {
-      // Insert todo summary before result if there are any todos
-      const todoItems = collectTodoItems(grouped);
-      if (todoItems.length > 0) {
-        grouped.push({
-          type: "assistant",
-          sequenceNumber: event.sequenceNumber - 0.5,
-          createdAt: event.createdAt,
-          todoSummary: todoItems,
-          eventData: {},
-        });
-      }
-
-      grouped.push({
-        type: "result",
-        sequenceNumber: event.sequenceNumber,
-        createdAt: event.createdAt,
-        eventData: event.eventData,
-      });
-      continue;
-    }
-
-    if (event.eventType === "assistant") {
-      const contents = eventData.message?.content ?? [];
-      const { textParts, toolOperations } = parseAssistantContent(contents);
-
-      const hasText = textParts.length > 0;
-      const hasTools = toolOperations.length > 0;
-
-      // Rule: New text always starts a new card
-      // Tools without text get appended to the previous assistant card
-      if (!hasText && hasTools) {
-        const lastAssistant = getLastMergeableAssistant(grouped);
-        if (lastAssistant) {
-          appendToolsToMessage(lastAssistant, toolOperations, pendingToolUses);
-          continue;
-        }
-      }
-
-      // Create new message (has text, or has tools but no previous assistant to merge into)
-      const message: GroupedMessage = {
-        type: "assistant",
-        sequenceNumber: event.sequenceNumber,
-        createdAt: event.createdAt,
-        textBefore: hasText ? textParts.join("\n\n") : undefined,
-        toolOperations: hasTools ? toolOperations : undefined,
-        eventData: event.eventData,
-      };
-
-      grouped.push(message);
-
-      for (const op of toolOperations) {
-        pendingToolUses.set(op.toolUseId, { operation: op, message });
-      }
-      continue;
-    }
-
-    if (event.eventType === "user") {
-      const contents = eventData.message?.content ?? [];
-      const toolMeta = eventData.tool_use_result;
-
-      for (const content of contents) {
-        if (content.type === "tool_result") {
-          processToolResult(
-            content as ToolResultContent,
-            toolMeta,
-            pendingToolUses,
-            event,
-            grouped,
-          );
-        }
-      }
+      processSystemEvent(event, ctx);
+    } else if (event.eventType === "result") {
+      processResultEvent(event, ctx);
+    } else if (event.eventType === "assistant") {
+      processAssistantEvent(event, eventData, ctx);
+    } else if (event.eventType === "user") {
+      processUserEvent(event, eventData, ctx);
     }
   }
 
-  return grouped;
+  return ctx.grouped;
 }
 
 /**
