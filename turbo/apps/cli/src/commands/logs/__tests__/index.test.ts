@@ -117,13 +117,32 @@ describe("logs command", () => {
       expect(logCalls).toContain("Use --tail to see more");
     });
 
-    it("should handle tool_use events", async () => {
+    it("should handle paired tool_use and tool_result events", async () => {
       server.use(
         http.get(
           "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
           () => {
+            // API returns events in desc order (newest first)
+            // They get reversed in showAgentEvents for chronological display
             return HttpResponse.json({
               events: [
+                {
+                  sequenceNumber: 2,
+                  eventType: "user",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "user",
+                    message: {
+                      content: [
+                        {
+                          type: "tool_result",
+                          tool_use_id: "tool-123",
+                          content: "File content here",
+                        },
+                      ],
+                    },
+                  },
+                },
                 {
                   sequenceNumber: 1,
                   eventType: "assistant",
@@ -154,6 +173,7 @@ describe("logs command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Read");
+      expect(logCalls).toContain("File content here");
     });
 
     it("should handle tool_result events", async () => {

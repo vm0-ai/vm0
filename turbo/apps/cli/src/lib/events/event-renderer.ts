@@ -216,16 +216,6 @@ export class EventRenderer {
   }
 
   /**
-   * Flush any remaining buffered tool_use events that didn't have matching results
-   */
-  flush(): void {
-    for (const [, { toolUse, prefix }] of this.pendingToolUse) {
-      this.renderToolUseOnly(toolUse, prefix);
-    }
-    this.pendingToolUse.clear();
-  }
-
-  /**
    * Get continuation prefix (simple indent, no timestamp alignment)
    */
   private getContinuationPrefix(): string {
