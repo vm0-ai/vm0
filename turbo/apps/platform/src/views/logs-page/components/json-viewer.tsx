@@ -18,19 +18,19 @@ function getLightStyles() {
   return {
     ...defaultStyles,
     container: "font-mono text-xs leading-relaxed",
-    label: "text-purple-600 font-medium json-searchable",
-    stringValue: "text-green-600 json-searchable",
-    numberValue: "text-blue-600 json-searchable",
-    booleanValue: "text-amber-600 json-searchable",
+    label: "text-rose-700/80 font-medium json-searchable",
+    stringValue: "text-emerald-700/80 json-searchable",
+    numberValue: "text-blue-700/80 json-searchable",
+    booleanValue: "text-violet-700/80 json-searchable",
     nullValue: "text-gray-400 italic json-searchable",
     undefinedValue: "text-gray-400 italic json-searchable",
-    punctuation: "text-gray-500",
+    punctuation: "text-gray-400",
     expandIcon:
-      "text-gray-600 hover:text-gray-800 cursor-pointer select-none before:content-['▶'] before:mr-1 before:text-[0.6em]",
+      "text-gray-500 hover:text-gray-700 cursor-pointer select-none before:content-['▶'] before:mr-1 before:text-[0.6em]",
     collapseIcon:
-      "text-gray-600 hover:text-gray-800 cursor-pointer select-none before:content-['▼'] before:mr-1 before:text-[0.6em]",
+      "text-gray-500 hover:text-gray-700 cursor-pointer select-none before:content-['▼'] before:mr-1 before:text-[0.6em]",
     collapsedContent:
-      "text-gray-600 hover:text-gray-800 cursor-pointer px-1 rounded hover:bg-gray-100",
+      "text-gray-500 hover:text-gray-700 cursor-pointer px-1 rounded hover:bg-gray-100",
     basicChildStyle: "pl-4",
     childFieldsContainer: "",
     clickableLabel:
@@ -43,24 +43,24 @@ function getDarkStyles() {
   return {
     ...darkStyles,
     container: "font-mono text-xs leading-relaxed",
-    label: "text-purple-400 font-medium json-searchable",
-    stringValue: "text-green-400 json-searchable",
-    numberValue: "text-blue-400 json-searchable",
-    booleanValue: "text-amber-400 json-searchable",
+    label: "text-rose-400/90 font-medium json-searchable",
+    stringValue: "text-emerald-400/90 json-searchable",
+    numberValue: "text-blue-400/90 json-searchable",
+    booleanValue: "text-violet-400/90 json-searchable",
     nullValue: "text-gray-500 italic json-searchable",
     undefinedValue: "text-gray-500 italic json-searchable",
-    punctuation: "text-gray-400",
+    punctuation: "text-gray-500",
     expandIcon:
-      "text-gray-400 hover:text-gray-200 cursor-pointer select-none before:content-['▶'] before:mr-1 before:text-[0.6em]",
+      "text-gray-500 hover:text-gray-300 cursor-pointer select-none before:content-['▶'] before:mr-1 before:text-[0.6em]",
     collapseIcon:
-      "text-gray-400 hover:text-gray-200 cursor-pointer select-none before:content-['▼'] before:mr-1 before:text-[0.6em]",
+      "text-gray-500 hover:text-gray-300 cursor-pointer select-none before:content-['▼'] before:mr-1 before:text-[0.6em]",
     collapsedContent:
-      "text-gray-400 hover:text-gray-200 cursor-pointer px-1 rounded hover:bg-gray-700",
+      "text-gray-500 hover:text-gray-300 cursor-pointer px-1 rounded hover:bg-gray-700",
     basicChildStyle: "pl-4",
     childFieldsContainer: "",
     clickableLabel:
       "cursor-pointer hover:underline hover:bg-gray-700 rounded px-0.5 json-searchable",
-    otherValue: "text-gray-300 json-searchable",
+    otherValue: "text-gray-400 json-searchable",
   };
 }
 
