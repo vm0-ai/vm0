@@ -66,6 +66,8 @@ interface TapPoolConfig {
   allocateIP?: (tapDevice: string) => Promise<string>;
   /** Custom IP releaser function (optional, for testing) */
   releaseIP?: (ip: string) => Promise<void>;
+  /** Custom orphaned IP cleanup function (optional, for testing) */
+  cleanupOrphanedIPs?: () => Promise<void>;
 }
 
 // ============ Helper Functions ============
@@ -148,6 +150,7 @@ export class TapPool {
       setMac: config.setMac ?? defaultSetMac,
       allocateIP: config.allocateIP ?? allocateIP,
       releaseIP: config.releaseIP ?? releaseIP,
+      cleanupOrphanedIPs: config.cleanupOrphanedIPs ?? cleanupOrphanedIPs,
     };
   }
 
@@ -293,7 +296,7 @@ export class TapPool {
     }
 
     // Clean up orphaned IPs (those whose TAP devices no longer exist on system)
-    await cleanupOrphanedIPs();
+    await this.config.cleanupOrphanedIPs();
 
     this.initialized = true;
     await this.replenish();

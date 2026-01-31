@@ -1,15 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-
-// Mock ip-registry to avoid sudo calls in CI (cleanupOrphanedIPs is called in init())
-// Other functions (allocateIP, releaseIP, etc.) are injected via config in tests
-vi.mock("../ip-registry.js", async (importOriginal) => {
-  const original = await importOriginal<typeof import("../ip-registry.js")>();
-  return {
-    ...original,
-    cleanupOrphanedIPs: vi.fn().mockResolvedValue(undefined),
-  };
-});
-
 import { TapPool } from "../tap-pool.js";
 
 describe("TapPool", () => {
@@ -41,6 +30,8 @@ describe("TapPool", () => {
     releaseIPCalls.push(ip);
   });
 
+  const mockCleanupOrphanedIPs = vi.fn(async () => {});
+
   beforeEach(() => {
     vi.clearAllMocks();
     createTapCalls = [];
@@ -66,6 +57,7 @@ describe("TapPool", () => {
         setMac: mockSetMac,
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
+        cleanupOrphanedIPs: mockCleanupOrphanedIPs,
       });
 
       await pool.init();
@@ -89,6 +81,7 @@ describe("TapPool", () => {
         setMac: mockSetMac,
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
+        cleanupOrphanedIPs: mockCleanupOrphanedIPs,
       });
 
       await pool.init();
@@ -109,6 +102,7 @@ describe("TapPool", () => {
         setMac: mockSetMac,
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
+        cleanupOrphanedIPs: mockCleanupOrphanedIPs,
       });
 
       await pool.init();
@@ -134,6 +128,7 @@ describe("TapPool", () => {
         setMac: mockSetMac,
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
+        cleanupOrphanedIPs: mockCleanupOrphanedIPs,
       });
 
       await pool.init();
@@ -154,6 +149,7 @@ describe("TapPool", () => {
         setMac: mockSetMac,
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
+        cleanupOrphanedIPs: mockCleanupOrphanedIPs,
       });
 
       await pool.init();
@@ -181,6 +177,7 @@ describe("TapPool", () => {
         setMac: mockSetMac,
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
+        cleanupOrphanedIPs: mockCleanupOrphanedIPs,
       });
 
       await pool.init();
@@ -210,6 +207,7 @@ describe("TapPool", () => {
         setMac: mockSetMac,
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
+        cleanupOrphanedIPs: mockCleanupOrphanedIPs,
       });
 
       await pool.init();
@@ -232,6 +230,7 @@ describe("TapPool", () => {
         setMac: mockSetMac,
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
+        cleanupOrphanedIPs: mockCleanupOrphanedIPs,
       });
 
       await pool.init();
@@ -262,6 +261,7 @@ describe("TapPool", () => {
         setMac: mockSetMac,
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
+        cleanupOrphanedIPs: mockCleanupOrphanedIPs,
       });
 
       await pool.init();
@@ -290,6 +290,7 @@ describe("TapPool", () => {
         setMac: mockSetMac,
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
+        cleanupOrphanedIPs: mockCleanupOrphanedIPs,
       });
 
       await pool.init();
@@ -313,6 +314,7 @@ describe("TapPool", () => {
         setMac: mockSetMac,
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
+        cleanupOrphanedIPs: mockCleanupOrphanedIPs,
       });
 
       await pool.init();
@@ -331,6 +333,7 @@ describe("TapPool", () => {
         setMac: mockSetMac,
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
+        cleanupOrphanedIPs: mockCleanupOrphanedIPs,
       });
 
       await pool.init();
@@ -348,6 +351,7 @@ describe("TapPool", () => {
         setMac: mockSetMac,
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
+        cleanupOrphanedIPs: mockCleanupOrphanedIPs,
       });
 
       expect(() => pool.cleanup()).not.toThrow();
@@ -363,6 +367,7 @@ describe("TapPool", () => {
         setMac: mockSetMac,
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
+        cleanupOrphanedIPs: mockCleanupOrphanedIPs,
       });
 
       await pool.init();
@@ -390,6 +395,7 @@ describe("TapPool", () => {
         setMac: mockSetMac,
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
+        cleanupOrphanedIPs: mockCleanupOrphanedIPs,
       });
 
       await pool.init();
@@ -413,6 +419,7 @@ describe("TapPool", () => {
         setMac: mockSetMac,
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
+        cleanupOrphanedIPs: mockCleanupOrphanedIPs,
       });
 
       await pool.init();
@@ -436,6 +443,7 @@ describe("TapPool", () => {
         setMac: mockSetMac,
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
+        cleanupOrphanedIPs: mockCleanupOrphanedIPs,
       });
 
       await pool.init();
@@ -461,6 +469,7 @@ describe("TapPool", () => {
         setMac: mockSetMac,
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
+        cleanupOrphanedIPs: mockCleanupOrphanedIPs,
       });
 
       await pool.init();
@@ -502,6 +511,7 @@ describe("TapPool", () => {
         setMac: mockSetMac,
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
+        cleanupOrphanedIPs: mockCleanupOrphanedIPs,
       });
 
       await pool.init();
@@ -560,6 +570,7 @@ describe("TapPool", () => {
         setMac: mockSetMac,
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
+        cleanupOrphanedIPs: mockCleanupOrphanedIPs,
       });
 
       await pool.init();
@@ -602,6 +613,7 @@ describe("TapPool", () => {
         setMac: mockSetMac,
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
+        cleanupOrphanedIPs: mockCleanupOrphanedIPs,
       });
 
       await pool.init();
@@ -644,6 +656,7 @@ describe("TapPool", () => {
         setMac: mockSetMac,
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
+        cleanupOrphanedIPs: mockCleanupOrphanedIPs,
       });
 
       await pool.init();
@@ -701,6 +714,7 @@ describe("TapPool", () => {
         setMac: mockSetMac,
         allocateIP: failingAllocateIP,
         releaseIP: mockReleaseIP,
+        cleanupOrphanedIPs: mockCleanupOrphanedIPs,
       });
 
       // init() should not throw even if pair creation fails
@@ -724,6 +738,7 @@ describe("TapPool", () => {
         setMac: failingSetMac,
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
+        cleanupOrphanedIPs: mockCleanupOrphanedIPs,
       });
 
       await pool.init();
@@ -763,6 +778,7 @@ describe("TapPool", () => {
         setMac: conditionalSetMac,
         allocateIP: mockAllocateIP,
         releaseIP: mockReleaseIP,
+        cleanupOrphanedIPs: mockCleanupOrphanedIPs,
       });
 
       await pool.init();
