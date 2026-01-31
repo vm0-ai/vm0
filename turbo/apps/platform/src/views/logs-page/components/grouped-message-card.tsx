@@ -23,6 +23,15 @@ interface GroupedMessageCardProps {
   matchStartIndex?: number;
 }
 
+// Auto-collapse thresholds
+const TEXT_COLLAPSE_CHARS = 500;
+const TEXT_COLLAPSE_LINES = 8;
+
+function shouldCollapseText(text: string): boolean {
+  const lines = text.split("\n").length;
+  return text.length > TEXT_COLLAPSE_CHARS || lines > TEXT_COLLAPSE_LINES;
+}
+
 function MarkdownContent({ text }: { text: string }) {
   return (
     <MarkdownPreview
@@ -34,6 +43,46 @@ function MarkdownContent({ text }: { text: string }) {
         lineHeight: "1.5",
       }}
     />
+  );
+}
+
+function CollapsibleMarkdown({ text }: { text: string }) {
+  const shouldCollapse = shouldCollapseText(text);
+
+  if (!shouldCollapse) {
+    return <MarkdownContent text={text} />;
+  }
+
+  // Get first few lines for preview
+  const lines = text.split("\n");
+  const previewText = lines.slice(0, 3).join("\n") + "...";
+
+  return (
+    <details className="group">
+      <summary className="cursor-pointer list-none">
+        <div className="group-open:hidden">
+          <MarkdownContent text={previewText} />
+          <span className="text-xs text-blue-600 hover:underline">
+            Show more
+          </span>
+        </div>
+      </summary>
+      <div>
+        <MarkdownContent text={text} />
+        <button
+          type="button"
+          className="mt-1 text-xs text-muted-foreground hover:text-foreground"
+          onClick={(e) => {
+            const details = e.currentTarget.closest("details");
+            if (details) {
+              details.open = false;
+            }
+          }}
+        >
+          Show less
+        </button>
+      </div>
+    </details>
   );
 }
 
@@ -221,7 +270,7 @@ function AssistantMessageCard({
       <div className="flex gap-4 items-start">
         <div className="flex-1 min-w-0 space-y-3">
           {/* Text before tools */}
-          {textBefore && <MarkdownContent text={textBefore} />}
+          {textBefore && <CollapsibleMarkdown text={textBefore} />}
 
           {/* Tool operations */}
           {hasTools && (
@@ -239,7 +288,7 @@ function AssistantMessageCard({
           )}
 
           {/* Text after tools */}
-          {textAfter && <MarkdownContent text={textAfter} />}
+          {textAfter && <CollapsibleMarkdown text={textAfter} />}
         </div>
 
         {/* Timestamp */}
