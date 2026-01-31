@@ -33,31 +33,12 @@ function truncate(text: string, maxLength: number): string {
 /**
  * Format the header line for a tool (e.g., "Read src/lib/api.ts")
  */
-export function formatToolHeader(
-  data: ToolUseData,
-  verbose: boolean,
-): string[] {
+export function formatToolHeader(data: ToolUseData): string[] {
   const { tool, input } = data;
-  const lines: string[] = [];
 
   // Get the headline based on tool type
   const headline = getToolHeadline(tool, input);
-  lines.push(headline);
-
-  // In verbose mode, show all input parameters (except for TodoWrite which shows formatted list)
-  if (verbose && tool !== "TodoWrite" && input && typeof input === "object") {
-    for (const [key, value] of Object.entries(input)) {
-      if (value !== undefined && value !== null) {
-        const displayValue =
-          typeof value === "object"
-            ? JSON.stringify(value, null, 2)
-            : String(value);
-        lines.push(`  ${key}: ${chalk.dim(displayValue)}`);
-      }
-    }
-  }
-
-  return lines;
+  return [headline];
 }
 
 /**
@@ -112,7 +93,7 @@ export function formatToolResult(
 
   // Special handling for Edit - show diff format
   if (tool === "Edit" && !isError) {
-    const editLines = formatEditDiff(input);
+    const editLines = formatEditDiff(input, verbose);
     lines.push(...editLines);
     return lines;
   }
@@ -201,7 +182,10 @@ function formatWritePreview(
  * Format Edit tool output as diff
  * Shows added/removed line counts and preview of changes
  */
-function formatEditDiff(input: Record<string, unknown>): string[] {
+function formatEditDiff(
+  input: Record<string, unknown>,
+  verbose: boolean,
+): string[] {
   const lines: string[] = [];
   const oldString = String(input.old_string || "");
   const newString = String(input.new_string || "");
@@ -216,31 +200,41 @@ function formatEditDiff(input: Record<string, unknown>): string[] {
   const summary = `Added ${added} ${pluralize(added, "line", "lines")}, removed ${removed} ${pluralize(removed, "line", "lines")}`;
   lines.push(`⎿ ${chalk.dim(summary)}`);
 
-  // Show diff preview (first few lines of each)
-  const previewLimit = 3;
-  const showOld = Math.min(previewLimit, oldLines.length);
-  const showNew = Math.min(previewLimit, newLines.length);
+  if (verbose) {
+    // Verbose mode: show all lines
+    for (const line of oldLines) {
+      lines.push(`  ${chalk.dim(`- ${line}`)}`);
+    }
+    for (const line of newLines) {
+      lines.push(`  ${chalk.dim(`+ ${line}`)}`);
+    }
+  } else {
+    // Compact mode: show first few lines of each
+    const previewLimit = 3;
+    const showOld = Math.min(previewLimit, oldLines.length);
+    const showNew = Math.min(previewLimit, newLines.length);
 
-  // Show removed lines
-  for (let i = 0; i < showOld; i++) {
-    lines.push(`  ${chalk.dim(`- ${truncate(oldLines[i] ?? "", 60)}`)}`);
-  }
-  const remainingOld = oldLines.length - previewLimit;
-  if (remainingOld > 0) {
-    lines.push(
-      `  ${chalk.dim(`  … +${remainingOld} ${pluralize(remainingOld, "line", "lines")} (--verbose to see all)`)}`,
-    );
-  }
+    // Show removed lines
+    for (let i = 0; i < showOld; i++) {
+      lines.push(`  ${chalk.dim(`- ${truncate(oldLines[i] ?? "", 60)}`)}`);
+    }
+    const remainingOld = oldLines.length - previewLimit;
+    if (remainingOld > 0) {
+      lines.push(
+        `  ${chalk.dim(`  … +${remainingOld} ${pluralize(remainingOld, "line", "lines")} (--verbose to see all)`)}`,
+      );
+    }
 
-  // Show added lines
-  for (let i = 0; i < showNew; i++) {
-    lines.push(`  ${chalk.dim(`+ ${truncate(newLines[i] ?? "", 60)}`)}`);
-  }
-  const remainingNew = newLines.length - previewLimit;
-  if (remainingNew > 0) {
-    lines.push(
-      `  ${chalk.dim(`  … +${remainingNew} ${pluralize(remainingNew, "line", "lines")} (--verbose to see all)`)}`,
-    );
+    // Show added lines
+    for (let i = 0; i < showNew; i++) {
+      lines.push(`  ${chalk.dim(`+ ${truncate(newLines[i] ?? "", 60)}`)}`);
+    }
+    const remainingNew = newLines.length - previewLimit;
+    if (remainingNew > 0) {
+      lines.push(
+        `  ${chalk.dim(`  … +${remainingNew} ${pluralize(remainingNew, "line", "lines")} (--verbose to see all)`)}`,
+      );
+    }
   }
 
   return lines;

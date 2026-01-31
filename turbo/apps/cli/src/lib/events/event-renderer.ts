@@ -179,9 +179,8 @@ export class EventRenderer {
       console.log();
     }
 
-    const verbose = this.options.verbose ?? false;
     const cont = this.getContinuationPrefix();
-    const headerLines = formatToolHeader(toolUse, verbose);
+    const headerLines = formatToolHeader(toolUse);
 
     // First line gets the bullet, rest get simple indent
     for (let i = 0; i < headerLines.length; i++) {
@@ -236,7 +235,7 @@ export class EventRenderer {
     const verbose = this.options.verbose ?? false;
     const cont = this.getContinuationPrefix();
 
-    const headerLines = formatToolHeader(toolUse, verbose);
+    const headerLines = formatToolHeader(toolUse);
     const resultLines = formatToolResult(toolUse, result, verbose);
 
     // First line gets timestamp + bullet, rest get simple indent
