@@ -93,24 +93,33 @@ jobs:
         shell: bash
         run: |
           # Scan test files and distribute them across chunks using load balancing
-          # to ensure even test distribution (not just file count)
-          NUM_CHUNKS=5
+          # Dynamic chunk count: ~25 tests per chunk, max 10 chunks
+          TESTS_PER_CHUNK=25
+          MAX_CHUNKS=10
 
-          # Count tests per file and sort by test count (descending)
+          # Count tests per file
           declare -A FILE_TESTS
+          TOTAL_TESTS=0
           for f in e2e/tests/02-parallel/*.bats; do
             count=$(grep -c "^@test" "$f" 2>/dev/null || echo 0)
             FILE_TESTS["$f"]=$count
+            TOTAL_TESTS=$((TOTAL_TESTS + count))
           done
 
-          # Sort files by test count descending
+          # Calculate number of chunks (min 1, max MAX_CHUNKS)
+          NUM_CHUNKS=$(( (TOTAL_TESTS + TESTS_PER_CHUNK - 1) / TESTS_PER_CHUNK ))
+          NUM_CHUNKS=$(( NUM_CHUNKS < 1 ? 1 : NUM_CHUNKS ))
+          NUM_CHUNKS=$(( NUM_CHUNKS > MAX_CHUNKS ? MAX_CHUNKS : NUM_CHUNKS ))
+
+          # Sort files by test count descending for better distribution
           mapfile -t SORTED_FILES < <(
             for f in "${!FILE_TESTS[@]}"; do
               echo "${FILE_TESTS[$f]} $f"
             done | sort -rn | cut -d' ' -f2
           )
 
-          echo "Found ${#SORTED_FILES[@]} test files"
+          echo "Found ${#SORTED_FILES[@]} files with $TOTAL_TESTS total tests"
+          echo "Creating $NUM_CHUNKS chunks (~$TESTS_PER_CHUNK tests each)"
 
           # Initialize chunk arrays and test counts
           declare -a CHUNK_FILES
