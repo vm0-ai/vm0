@@ -17,7 +17,7 @@
 
 [Documentation](https://docs.vm0.ai) / [Website](https://www.vm0.ai) / [Join Waitlist](https://www.vm0.ai/sign-up) / [Discord](https://discord.gg/WMpAmHFfp6)
 
-`VM0` runs natural language-described workflows automatically on schedule in remote sandbox environments (E2B containers or Firecracker microVMs with KVM isolation).
+`VM0` runs natural language-described workflows automatically on schedule in remote sandbox environments.
 
 ⭐ Star us on GitHub, it motivates us a lot! ⭐
 
@@ -25,26 +25,20 @@
 
 ## 🔥 What you GET
 
-- **Cloud sandbox**, run Claude Code or Codex agents in isolated containers
-- **60+ skills**, GitHub, Slack, Notion, Firecrawl, and [more](https://github.com/vm0-ai/vm0-skills)
+- **Cloud sandbox**, run Claude Code in isolated claude sandbox 24/7
+- **Skill Native**, Compatible with 35,738+ skills in [skills.sh](https://skills.sh), and 70+ high quality SaaS integration skill like GitHub, Slack, Notion, Firecrawl, and [more](https://github.com/vm0-ai/vm0-skills), 
 - **Persistence**, continue chat, resume, fork, and version your workflow sessions
 - **Observability**, logs, metrics, and network visibility for every run
-
-**Supported**: Claude Code, Codex · **Coming soon**: Gemini CLI, DeepAgent CLI, OpenCode
 
 ## 🚀 [Quick Start](https://docs.vm0.ai/docs/quick-start)
 
 From zero to workflow agent in 5 minutes
 
 ```bash
-npm install -g @vm0/cli
-vm0 auth login
-mkdir my-agent && cd my-agent
-
-vm0 init
-cat AGENTS.md # check the workflow which your agent will run
-vm0 cook "let's start working"
+npm install -g @vm0/cli && vm0 onboard
 ```
+
+## 📕 Showcase
 
 <img src="https://raw.githubusercontent.com/vm0-ai/vm0-cookbooks/main/tapes/welcome/welcome.gif" alt="VM0 CLI Quickstart Demo" width="500">
 
