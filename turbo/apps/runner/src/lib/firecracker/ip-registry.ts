@@ -102,13 +102,16 @@ async function defaultCheckTapExists(tapDevice: string): Promise<boolean> {
  * Check if a process is running by sending signal 0
  */
 function isProcessRunning(pid: number): boolean {
+  // PID must be a positive integer
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return false;
+  }
   try {
     process.kill(pid, 0);
     return true;
   } catch (err) {
     // EPERM = process exists but no permission → assume running
     // ESRCH = process doesn't exist → not running
-    // Other errors (invalid pid, etc.) → not running
     return (err as NodeJS.ErrnoException).code === "EPERM";
   }
 }
