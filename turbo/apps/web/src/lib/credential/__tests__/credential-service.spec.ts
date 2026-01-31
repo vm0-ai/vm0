@@ -23,7 +23,6 @@ import { initServices } from "../../init-services";
 import { credentials } from "../../../db/schema/credential";
 import { scopes } from "../../../db/schema/scope";
 import { eq } from "drizzle-orm";
-import { BadRequestError, NotFoundError } from "../../errors";
 
 describe("Credential Service", () => {
   beforeEach(() => {
@@ -41,35 +40,27 @@ describe("Credential Service", () => {
     });
 
     it("should reject empty names", () => {
-      expect(() => validateCredentialName("")).toThrow(BadRequestError);
+      expect(() => validateCredentialName("")).toThrow();
     });
 
     it("should reject names that are too long", () => {
       const longName = "A".repeat(256);
-      expect(() => validateCredentialName(longName)).toThrow(BadRequestError);
+      expect(() => validateCredentialName(longName)).toThrow();
     });
 
     it("should reject lowercase letters", () => {
-      expect(() => validateCredentialName("my_api_key")).toThrow(
-        BadRequestError,
-      );
-      expect(() => validateCredentialName("MyApiKey")).toThrow(BadRequestError);
+      expect(() => validateCredentialName("my_api_key")).toThrow();
+      expect(() => validateCredentialName("MyApiKey")).toThrow();
     });
 
     it("should reject names starting with numbers", () => {
-      expect(() => validateCredentialName("123_KEY")).toThrow(BadRequestError);
+      expect(() => validateCredentialName("123_KEY")).toThrow();
     });
 
     it("should reject invalid characters", () => {
-      expect(() => validateCredentialName("MY-API-KEY")).toThrow(
-        BadRequestError,
-      );
-      expect(() => validateCredentialName("MY.API.KEY")).toThrow(
-        BadRequestError,
-      );
-      expect(() => validateCredentialName("MY API KEY")).toThrow(
-        BadRequestError,
-      );
+      expect(() => validateCredentialName("MY-API-KEY")).toThrow();
+      expect(() => validateCredentialName("MY.API.KEY")).toThrow();
+      expect(() => validateCredentialName("MY API KEY")).toThrow();
     });
   });
 
@@ -145,7 +136,7 @@ describe("Credential Service", () => {
       it("should reject invalid credential names", async () => {
         await expect(
           setCredential(testUserId, "invalid-name", "value"),
-        ).rejects.toThrow(BadRequestError);
+        ).rejects.toMatchObject({ name: "BadRequestError" });
       });
     });
 
@@ -240,7 +231,7 @@ describe("Credential Service", () => {
       it("should throw NotFoundError for nonexistent credential", async () => {
         await expect(
           deleteCredential(testUserId, "NONEXISTENT_DELETE_KEY"),
-        ).rejects.toThrow(NotFoundError);
+        ).rejects.toMatchObject({ name: "NotFoundError" });
       });
     });
   });

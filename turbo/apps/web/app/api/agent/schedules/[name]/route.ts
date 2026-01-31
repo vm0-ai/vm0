@@ -11,7 +11,7 @@ import {
   deleteSchedule,
 } from "../../../../../src/lib/schedule";
 import { logger } from "../../../../../src/lib/logger";
-import { NotFoundError } from "../../../../../src/lib/errors";
+import { isNotFound } from "../../../../../src/lib/errors";
 
 const log = logger("api:schedules:name");
 
@@ -43,7 +43,7 @@ const router = tsr.router(schedulesByNameContract, {
         body: schedule,
       };
     } catch (error) {
-      if (error instanceof NotFoundError) {
+      if (isNotFound(error)) {
         return {
           status: 404 as const,
           body: {
@@ -80,7 +80,7 @@ const router = tsr.router(schedulesByNameContract, {
         body: undefined,
       };
     } catch (error) {
-      if (error instanceof NotFoundError) {
+      if (isNotFound(error)) {
         return {
           status: 404 as const,
           body: {

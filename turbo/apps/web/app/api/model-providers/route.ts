@@ -15,7 +15,7 @@ import {
   upsertModelProvider,
 } from "../../../src/lib/model-provider/model-provider-service";
 import { logger } from "../../../src/lib/logger";
-import { BadRequestError, ConflictError } from "../../../src/lib/errors";
+import { isBadRequest, isConflict } from "../../../src/lib/errors";
 
 const log = logger("api:model-providers");
 
@@ -88,10 +88,10 @@ const router = tsr.router(modelProvidersMainContract, {
         },
       };
     } catch (error) {
-      if (error instanceof BadRequestError) {
+      if (isBadRequest(error)) {
         return createErrorResponse("BAD_REQUEST", error.message);
       }
-      if (error instanceof ConflictError) {
+      if (isConflict(error)) {
         return {
           status: 409 as const,
           body: {

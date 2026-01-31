@@ -1,4 +1,4 @@
-import { BadRequestError } from "../../errors";
+import { badRequest } from "../../errors";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
 
 /**
@@ -12,14 +12,14 @@ import type { AgentComposeYaml } from "../../../types/agent-compose";
 export function extractWorkingDir(config: unknown): string {
   const compose = config as AgentComposeYaml | undefined;
   if (!compose?.agents) {
-    throw new BadRequestError(
+    throw badRequest(
       "Agent compose must have agents configured with working_dir",
     );
   }
   const agents = Object.values(compose.agents);
   const firstAgent = agents[0];
   if (!firstAgent?.working_dir) {
-    throw new BadRequestError(
+    throw badRequest(
       "Agent must have working_dir configured (no default allowed)",
     );
   }

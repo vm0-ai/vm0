@@ -4,7 +4,7 @@ import {
   groupVariablesBySource,
 } from "@vm0/core";
 import { createProxyToken } from "../../proxy/token-service";
-import { BadRequestError } from "../../errors";
+import { badRequest } from "../../errors";
 import { logger } from "../../logger";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
 
@@ -87,7 +87,7 @@ export function expandEnvironmentFromCompose(
       (name) => !passedSecrets || !passedSecrets[name],
     );
     if (missingSecrets.length > 0) {
-      throw new BadRequestError(
+      throw badRequest(
         `Missing required secrets: ${missingSecrets.join(", ")}. Use '--secrets ${missingSecrets[0]}=<value>' or '--env-file <path>' to provide them.`,
       );
     }
@@ -124,7 +124,7 @@ export function expandEnvironmentFromCompose(
       (name) => !credentials || !credentials[name],
     );
     if (missingCredentials.length > 0) {
-      throw new BadRequestError(
+      throw badRequest(
         `Missing required credentials: ${missingCredentials.join(", ")}. Use 'vm0 credential set ${missingCredentials[0]} <value>' to add them.`,
       );
     }
@@ -189,7 +189,7 @@ export function expandEnvironmentFromCompose(
     .filter((v) => v.source === "vars")
     .map((v) => v.name);
   if (missingVarNames.length > 0) {
-    throw new BadRequestError(
+    throw badRequest(
       `Missing required variables: ${missingVarNames.join(", ")}. Use '--vars ${missingVarNames[0]}=<value>' or '--env-file <path>' to provide them.`,
     );
   }

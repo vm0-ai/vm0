@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 import { eq, and } from "drizzle-orm";
 import { scopes } from "../../db/schema/scope";
-import { BadRequestError, NotFoundError, ForbiddenError } from "../errors";
+import { badRequest, notFound, forbidden } from "../errors";
 import { logger } from "../logger";
 import type { ScopeType } from "../../db/schema/scope";
 import { isSystemScope } from "@vm0/core";
@@ -39,17 +39,17 @@ export function generateDefaultScopeSlug(clerkUserId: string): string {
  */
 export function validateScopeSlug(slug: string): void {
   if (slug.length < 3 || slug.length > 64) {
-    throw new BadRequestError("Scope slug must be between 3 and 64 characters");
+    throw badRequest("Scope slug must be between 3 and 64 characters");
   }
 
   if (!SLUG_REGEX.test(slug)) {
-    throw new BadRequestError(
+    throw badRequest(
       "Scope slug must contain only lowercase letters, numbers, and hyphens, and must start and end with an alphanumeric character",
     );
   }
 
   if (RESERVED_SLUGS.includes(slug) || slug.startsWith("vm0")) {
-    throw new BadRequestError(`Scope slug "${slug}" is reserved`);
+    throw badRequest(`Scope slug "${slug}" is reserved`);
   }
 }
 
@@ -92,7 +92,7 @@ export async function createScope(
   // Check if slug already exists
   const existing = await getScopeBySlug(slug);
   if (existing) {
-    throw new BadRequestError(`Scope "${slug}" already exists`);
+    throw badRequest(`Scope "${slug}" already exists`);
   }
 
   log.debug("creating scope", { slug, type, ownerId });
@@ -124,7 +124,7 @@ export async function createUserScope(clerkUserId: string, slug: string) {
     .limit(1);
 
   if (existingScope.length > 0) {
-    throw new BadRequestError(
+    throw badRequest(
       `You already have a scope: ${existingScope[0]!.slug}. Use --force to change it.`,
     );
   }
@@ -163,22 +163,22 @@ export async function updateScopeSlug(
   // Get the scope
   const scope = await getScopeById(scopeId);
   if (!scope) {
-    throw new NotFoundError("Scope not found");
+    throw notFound("Scope not found");
   }
 
   // Verify ownership
   if (scope.ownerId !== clerkUserId) {
-    throw new ForbiddenError("You don't have permission to modify this scope");
+    throw forbidden("You don't have permission to modify this scope");
   }
 
   // System scopes cannot be changed
   if (scope.type === "system") {
-    throw new ForbiddenError("System scopes cannot be modified");
+    throw forbidden("System scopes cannot be modified");
   }
 
   // Require force flag for slug changes
   if (!force) {
-    throw new BadRequestError(
+    throw badRequest(
       "Changing scope slug may break existing references. Use --force to confirm.",
     );
   }
@@ -188,7 +188,7 @@ export async function updateScopeSlug(
   // Check if new slug already exists
   const existing = await getScopeBySlug(newSlug);
   if (existing && existing.id !== scopeId) {
-    throw new BadRequestError(`Scope "${newSlug}" already exists`);
+    throw badRequest(`Scope "${newSlug}" already exists`);
   }
 
   log.debug("updating scope slug", {
@@ -263,7 +263,7 @@ export async function validateRunnerGroupScope(
 ): Promise<void> {
   const scopeSlug = group.split("/")[0];
   if (!scopeSlug) {
-    throw new ForbiddenError("Invalid runner group format");
+    throw forbidden("Invalid runner group format");
   }
 
   // Official runner groups (vm0/*) are accessible to all authenticated users
@@ -274,13 +274,13 @@ export async function validateRunnerGroupScope(
   // For user runner groups, validate scope ownership
   const userScope = await getUserScopeByClerkId(clerkUserId);
   if (!userScope) {
-    throw new ForbiddenError(
+    throw forbidden(
       `Runner group scope "${scopeSlug}" requires you to have a scope configured`,
     );
   }
 
   if (userScope.slug !== scopeSlug) {
-    throw new ForbiddenError(
+    throw forbidden(
       `Runner group scope "${scopeSlug}" does not match your scope "${userScope.slug}"`,
     );
   }

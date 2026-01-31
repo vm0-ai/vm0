@@ -15,7 +15,7 @@ import {
   deleteCredential,
 } from "../../../../src/lib/credential/credential-service";
 import { logger } from "../../../../src/lib/logger";
-import { NotFoundError } from "../../../../src/lib/errors";
+import { isNotFound } from "../../../../src/lib/errors";
 
 const log = logger("api:credentials");
 
@@ -73,7 +73,7 @@ const router = tsr.router(credentialsByNameContract, {
         body: undefined,
       };
     } catch (error) {
-      if (error instanceof NotFoundError) {
+      if (isNotFound(error)) {
         return createErrorResponse("NOT_FOUND", error.message);
       }
       throw error;

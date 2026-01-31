@@ -3,7 +3,7 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
 import { disableSchedule } from "../../../../../../src/lib/schedule";
 import { logger } from "../../../../../../src/lib/logger";
-import { NotFoundError } from "../../../../../../src/lib/errors";
+import { isNotFound } from "../../../../../../src/lib/errors";
 
 const log = logger("api:schedules:disable");
 
@@ -49,7 +49,7 @@ export async function POST(
 
     return NextResponse.json(schedule, { status: 200 });
   } catch (error) {
-    if (error instanceof NotFoundError) {
+    if (isNotFound(error)) {
       return NextResponse.json(
         { error: { message: error.message, code: "NOT_FOUND" } },
         { status: 404 },

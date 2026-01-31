@@ -1,7 +1,7 @@
 import { eq, and, isNull } from "drizzle-orm";
 import { agentSessions } from "../../db/schema/agent-session";
 import { conversations } from "../../db/schema/conversation";
-import { NotFoundError } from "../errors";
+import { notFound } from "../errors";
 import type {
   AgentSessionData,
   AgentSessionWithConversation,
@@ -181,7 +181,7 @@ async function updateAgentSession(
     .returning();
 
   if (!session) {
-    throw new NotFoundError("AgentSession not found");
+    throw notFound("AgentSession not found");
   }
 
   return mapToAgentSessionData(session);

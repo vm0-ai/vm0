@@ -17,7 +17,7 @@ import type {
   S3StorageManifest,
   UploadWithManifestResult,
 } from "./types";
-import { S3DownloadError, S3UploadError } from "./types";
+import { s3DownloadError, s3UploadError } from "./types";
 import { hashFileContent, type FileEntry } from "../storage/content-hash";
 
 /**
@@ -98,7 +98,7 @@ export async function listS3Objects(
 
     return objects;
   } catch (error) {
-    throw new S3DownloadError(
+    throw s3DownloadError(
       `Failed to list objects in s3://${bucket}/${prefix}`,
       bucket,
       undefined,
@@ -129,7 +129,7 @@ export async function uploadS3Buffer(
 
     await client.send(command);
   } catch (error) {
-    throw new S3UploadError(
+    throw s3UploadError(
       `Failed to upload buffer to s3://${bucket}/${key}`,
       bucket,
       key,
@@ -320,7 +320,7 @@ export async function downloadManifest(
   const response = await client.send(command);
 
   if (!response.Body) {
-    throw new S3DownloadError(
+    throw s3DownloadError(
       `Empty response body for manifest`,
       bucket,
       manifestKey,
@@ -359,7 +359,7 @@ export async function downloadBlob(
   const response = await client.send(command);
 
   if (!response.Body) {
-    throw new S3DownloadError(`Empty response body for blob`, bucket, blobKey);
+    throw s3DownloadError(`Empty response body for blob`, bucket, blobKey);
   }
 
   const chunks: Uint8Array[] = [];

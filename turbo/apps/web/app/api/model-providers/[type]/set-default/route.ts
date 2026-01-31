@@ -11,7 +11,7 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import { setModelProviderDefault } from "../../../../../src/lib/model-provider/model-provider-service";
 import { logger } from "../../../../../src/lib/logger";
-import { NotFoundError } from "../../../../../src/lib/errors";
+import { isNotFound } from "../../../../../src/lib/errors";
 
 const log = logger("api:model-providers");
 
@@ -48,7 +48,7 @@ const router = tsr.router(modelProvidersSetDefaultContract, {
         },
       };
     } catch (error) {
-      if (error instanceof NotFoundError) {
+      if (isNotFound(error)) {
         return createErrorResponse("NOT_FOUND", error.message);
       }
       throw error;

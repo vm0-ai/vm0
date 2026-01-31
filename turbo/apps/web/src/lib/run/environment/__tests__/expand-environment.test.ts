@@ -13,7 +13,7 @@
 
 import { describe, it, expect } from "vitest";
 import { expandEnvironmentFromCompose } from "../expand-environment";
-import { BadRequestError } from "../../../errors";
+import type { BadRequestError } from "../../../errors";
 
 describe("expandEnvironmentFromCompose", () => {
   const userId = "user-123";
@@ -45,7 +45,7 @@ describe("expandEnvironmentFromCompose", () => {
           userId,
           runId,
         ),
-      ).toThrow(BadRequestError);
+      ).toThrow();
 
       try {
         expandEnvironmentFromCompose(
@@ -57,7 +57,7 @@ describe("expandEnvironmentFromCompose", () => {
           runId,
         );
       } catch (error) {
-        expect(error).toBeInstanceOf(BadRequestError);
+        expect(error).toMatchObject({ name: "BadRequestError" });
         expect((error as BadRequestError).message).toContain(
           "Missing required secrets",
         );
@@ -91,7 +91,7 @@ describe("expandEnvironmentFromCompose", () => {
           userId,
           runId,
         ),
-      ).toThrow(BadRequestError);
+      ).toThrow();
 
       try {
         expandEnvironmentFromCompose(
@@ -103,6 +103,7 @@ describe("expandEnvironmentFromCompose", () => {
           runId,
         );
       } catch (error) {
+        expect(error).toMatchObject({ name: "BadRequestError" });
         expect((error as BadRequestError).message).toContain(
           "Missing required secrets",
         );
@@ -161,7 +162,7 @@ describe("expandEnvironmentFromCompose", () => {
           userId,
           runId,
         ),
-      ).toThrow(BadRequestError);
+      ).toThrow();
 
       try {
         expandEnvironmentFromCompose(
@@ -173,6 +174,7 @@ describe("expandEnvironmentFromCompose", () => {
           runId,
         );
       } catch (error) {
+        expect(error).toMatchObject({ name: "BadRequestError" });
         expect((error as BadRequestError).message).toContain("--env-file");
       }
     });
@@ -204,7 +206,7 @@ describe("expandEnvironmentFromCompose", () => {
           userId,
           runId,
         ),
-      ).toThrow(BadRequestError);
+      ).toThrow();
 
       try {
         expandEnvironmentFromCompose(
@@ -216,7 +218,7 @@ describe("expandEnvironmentFromCompose", () => {
           runId,
         );
       } catch (error) {
-        expect(error).toBeInstanceOf(BadRequestError);
+        expect(error).toMatchObject({ name: "BadRequestError" });
         expect((error as BadRequestError).message).toContain(
           "Missing required variables",
         );
@@ -250,7 +252,7 @@ describe("expandEnvironmentFromCompose", () => {
           userId,
           runId,
         ),
-      ).toThrow(BadRequestError);
+      ).toThrow();
 
       try {
         expandEnvironmentFromCompose(
@@ -262,6 +264,7 @@ describe("expandEnvironmentFromCompose", () => {
           runId,
         );
       } catch (error) {
+        expect(error).toMatchObject({ name: "BadRequestError" });
         expect((error as BadRequestError).message).toContain(
           "Missing required variables",
         );
@@ -292,7 +295,7 @@ describe("expandEnvironmentFromCompose", () => {
           userId,
           runId,
         ),
-      ).toThrow(BadRequestError);
+      ).toThrow();
 
       try {
         expandEnvironmentFromCompose(
@@ -304,6 +307,7 @@ describe("expandEnvironmentFromCompose", () => {
           runId,
         );
       } catch (error) {
+        expect(error).toMatchObject({ name: "BadRequestError" });
         expect((error as BadRequestError).message).toContain("--vars");
         expect((error as BadRequestError).message).toContain(
           "CLOUD_NAME=<value>",
@@ -341,7 +345,7 @@ describe("expandEnvironmentFromCompose", () => {
           userId,
           runId,
         ),
-      ).toThrow(BadRequestError);
+      ).toThrow();
 
       try {
         expandEnvironmentFromCompose(
@@ -354,6 +358,7 @@ describe("expandEnvironmentFromCompose", () => {
         );
       } catch (error) {
         // Should fail on missing secrets first (checked before vars)
+        expect(error).toMatchObject({ name: "BadRequestError" });
         expect((error as BadRequestError).message).toContain(
           "Missing required secrets",
         );
@@ -371,7 +376,7 @@ describe("expandEnvironmentFromCompose", () => {
           userId,
           runId,
         ),
-      ).toThrow(BadRequestError);
+      ).toThrow();
 
       try {
         expandEnvironmentFromCompose(
@@ -384,6 +389,7 @@ describe("expandEnvironmentFromCompose", () => {
         );
       } catch (error) {
         // Should now fail on missing vars
+        expect(error).toMatchObject({ name: "BadRequestError" });
         expect((error as BadRequestError).message).toContain(
           "Missing required variables",
         );

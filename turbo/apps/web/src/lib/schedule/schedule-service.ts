@@ -10,10 +10,10 @@ import { agentRuns } from "../../db/schema/agent-run";
 import { scopes } from "../../db/schema/scope";
 import { encryptSecretsMap, decryptSecretsMap } from "../crypto";
 import {
-  NotFoundError,
-  BadRequestError,
-  SchedulePastError,
-  ConcurrentRunLimitError,
+  notFound,
+  badRequest,
+  schedulePast,
+  isConcurrentRunLimit,
 } from "../errors";
 import { logger } from "../logger";
 import {
@@ -212,7 +212,7 @@ async function verifyComposeOwnership(
     .limit(1);
 
   if (!compose) {
-    throw new NotFoundError("Agent compose not found or not owned by user");
+    throw notFound("Agent compose not found or not owned by user");
   }
 
   // Get scope slug for response
@@ -249,7 +249,7 @@ export async function deploySchedule(
 
   // Validate timezone
   if (!isValidTimezone(request.timezone)) {
-    throw new BadRequestError(`Invalid timezone: ${request.timezone}`);
+    throw badRequest(`Invalid timezone: ${request.timezone}`);
   }
 
   // Check for existing schedule with same name on this compose (needed for validation)
@@ -273,7 +273,7 @@ export async function deploySchedule(
       .limit(1);
 
     if (existingSchedules.length > 0) {
-      throw new BadRequestError(
+      throw badRequest(
         "This agent already has a schedule. Please edit the existing schedule or delete it first.",
       );
     }
@@ -326,7 +326,7 @@ export async function deploySchedule(
       // so we don't validate them here
 
       if (missingSecrets.length > 0 || missingVars.length > 0) {
-        throw new BadRequestError(
+        throw badRequest(
           buildMissingConfigError({
             secrets: missingSecrets,
             vars: missingVars,
@@ -498,7 +498,7 @@ export async function getScheduleByName(
     .limit(1);
 
   if (!schedule) {
-    throw new NotFoundError(`Schedule '${name}' not found`);
+    throw notFound(`Schedule '${name}' not found`);
   }
 
   return toResponse(schedule, compose.name, scopeSlug);
@@ -533,7 +533,7 @@ export async function getScheduleRecentRuns(
     .limit(1);
 
   if (!schedule) {
-    throw new NotFoundError(`Schedule '${scheduleName}' not found`);
+    throw notFound(`Schedule '${scheduleName}' not found`);
   }
 
   // Query runs for this schedule
@@ -583,7 +583,7 @@ export async function deleteSchedule(
     .returning();
 
   if (result.length === 0) {
-    throw new NotFoundError(`Schedule '${name}' not found`);
+    throw notFound(`Schedule '${name}' not found`);
   }
 
   log.debug(`Deleted schedule ${name}`);
@@ -616,7 +616,7 @@ export async function enableSchedule(
     .limit(1);
 
   if (!schedule) {
-    throw new NotFoundError(`Schedule '${name}' not found`);
+    throw notFound(`Schedule '${name}' not found`);
   }
 
   // Recalculate next run time
@@ -629,7 +629,7 @@ export async function enableSchedule(
       nextRunAt = schedule.atTime;
     } else {
       // Refuse to enable past one-time schedules
-      throw new SchedulePastError(
+      throw schedulePast(
         `Cannot enable schedule: scheduled time ${schedule.atTime.toISOString()} has already passed`,
       );
     }
@@ -684,7 +684,7 @@ export async function disableSchedule(
     .returning();
 
   if (!updated) {
-    throw new NotFoundError(`Schedule '${name}' not found`);
+    throw notFound(`Schedule '${name}' not found`);
   }
 
   log.debug(`Disabled schedule ${name}`);
@@ -785,7 +785,7 @@ async function executeSchedule(
   try {
     await checkRunConcurrencyLimit(compose.userId);
   } catch (error) {
-    if (error instanceof ConcurrentRunLimitError) {
+    if (isConcurrentRunLimit(error)) {
       log.debug(`Schedule ${schedule.name} blocked by concurrent run limit`);
 
       // Create failed run record

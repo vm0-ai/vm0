@@ -15,7 +15,7 @@ import {
   setCredential,
 } from "../../../src/lib/credential/credential-service";
 import { logger } from "../../../src/lib/logger";
-import { BadRequestError } from "../../../src/lib/errors";
+import { isBadRequest } from "../../../src/lib/errors";
 
 const log = logger("api:credentials");
 
@@ -78,7 +78,7 @@ const router = tsr.router(credentialsMainContract, {
         },
       };
     } catch (error) {
-      if (error instanceof BadRequestError) {
+      if (isBadRequest(error)) {
         return createErrorResponse("BAD_REQUEST", error.message);
       }
       throw error;

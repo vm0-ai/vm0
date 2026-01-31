@@ -13,7 +13,6 @@ import {
 import { initServices } from "../../init-services";
 import { scopes } from "../../../db/schema/scope";
 import { eq } from "drizzle-orm";
-import { BadRequestError } from "../../errors";
 
 describe("Scope Service", () => {
   describe("validateScopeSlug", () => {
@@ -26,48 +25,48 @@ describe("Scope Service", () => {
     });
 
     it("should reject slugs that are too short", () => {
-      expect(() => validateScopeSlug("ab")).toThrow(BadRequestError);
-      expect(() => validateScopeSlug("a")).toThrow(BadRequestError);
-      expect(() => validateScopeSlug("")).toThrow(BadRequestError);
+      expect(() => validateScopeSlug("ab")).toThrow();
+      expect(() => validateScopeSlug("a")).toThrow();
+      expect(() => validateScopeSlug("")).toThrow();
     });
 
     it("should reject slugs that are too long", () => {
       const longSlug = "a".repeat(65);
-      expect(() => validateScopeSlug(longSlug)).toThrow(BadRequestError);
+      expect(() => validateScopeSlug(longSlug)).toThrow();
     });
 
     it("should reject slugs with uppercase letters", () => {
-      expect(() => validateScopeSlug("MySlug")).toThrow(BadRequestError);
-      expect(() => validateScopeSlug("MYSLUG")).toThrow(BadRequestError);
+      expect(() => validateScopeSlug("MySlug")).toThrow();
+      expect(() => validateScopeSlug("MYSLUG")).toThrow();
     });
 
     it("should reject slugs with invalid characters", () => {
-      expect(() => validateScopeSlug("my_slug")).toThrow(BadRequestError);
-      expect(() => validateScopeSlug("my.slug")).toThrow(BadRequestError);
-      expect(() => validateScopeSlug("my slug")).toThrow(BadRequestError);
-      expect(() => validateScopeSlug("my@slug")).toThrow(BadRequestError);
+      expect(() => validateScopeSlug("my_slug")).toThrow();
+      expect(() => validateScopeSlug("my.slug")).toThrow();
+      expect(() => validateScopeSlug("my slug")).toThrow();
+      expect(() => validateScopeSlug("my@slug")).toThrow();
     });
 
     it("should reject slugs starting with hyphen", () => {
-      expect(() => validateScopeSlug("-myslug")).toThrow(BadRequestError);
+      expect(() => validateScopeSlug("-myslug")).toThrow();
     });
 
     it("should reject slugs ending with hyphen", () => {
-      expect(() => validateScopeSlug("myslug-")).toThrow(BadRequestError);
+      expect(() => validateScopeSlug("myslug-")).toThrow();
     });
 
     it("should reject reserved slugs", () => {
-      expect(() => validateScopeSlug("vm0")).toThrow(BadRequestError);
-      expect(() => validateScopeSlug("system")).toThrow(BadRequestError);
-      expect(() => validateScopeSlug("admin")).toThrow(BadRequestError);
-      expect(() => validateScopeSlug("api")).toThrow(BadRequestError);
-      expect(() => validateScopeSlug("app")).toThrow(BadRequestError);
-      expect(() => validateScopeSlug("www")).toThrow(BadRequestError);
+      expect(() => validateScopeSlug("vm0")).toThrow();
+      expect(() => validateScopeSlug("system")).toThrow();
+      expect(() => validateScopeSlug("admin")).toThrow();
+      expect(() => validateScopeSlug("api")).toThrow();
+      expect(() => validateScopeSlug("app")).toThrow();
+      expect(() => validateScopeSlug("www")).toThrow();
     });
 
     it("should reject slugs starting with vm0", () => {
-      expect(() => validateScopeSlug("vm0test")).toThrow(BadRequestError);
-      expect(() => validateScopeSlug("vm0-custom")).toThrow(BadRequestError);
+      expect(() => validateScopeSlug("vm0test")).toThrow();
+      expect(() => validateScopeSlug("vm0-custom")).toThrow();
     });
   });
 

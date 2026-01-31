@@ -2,7 +2,7 @@ import { eq, and } from "drizzle-orm";
 import type { CredentialType } from "@vm0/core";
 import { credentials } from "../../db/schema/credential";
 import { encryptCredentialValue, decryptCredentialValue } from "../crypto";
-import { BadRequestError, NotFoundError } from "../errors";
+import { badRequest, notFound } from "../errors";
 import { logger } from "../logger";
 import { getUserScopeByClerkId } from "../scope/scope-service";
 
@@ -22,13 +22,13 @@ const NAME_REGEX = /^[A-Z][A-Z0-9_]*$/;
  */
 export function validateCredentialName(name: string): void {
   if (name.length === 0 || name.length > 255) {
-    throw new BadRequestError(
+    throw badRequest(
       "Credential name must be between 1 and 255 characters",
     );
   }
 
   if (!NAME_REGEX.test(name)) {
-    throw new BadRequestError(
+    throw badRequest(
       "Credential name must contain only uppercase letters, numbers, and underscores, and must start with a letter (e.g., MY_API_KEY)",
     );
   }
@@ -173,7 +173,7 @@ export async function setCredential(
 
   const scope = await getUserScopeByClerkId(clerkUserId);
   if (!scope) {
-    throw new BadRequestError(
+    throw badRequest(
       "You need to configure a scope first. Run `vm0 scope create` to set up your scope.",
     );
   }
@@ -250,7 +250,7 @@ export async function deleteCredential(
 ): Promise<void> {
   const scope = await getUserScopeByClerkId(clerkUserId);
   if (!scope) {
-    throw new NotFoundError("Credential not found");
+    throw notFound("Credential not found");
   }
 
   const result = await globalThis.services.db
@@ -259,7 +259,7 @@ export async function deleteCredential(
     .returning({ id: credentials.id });
 
   if (result.length === 0) {
-    throw new NotFoundError(`Credential "${name}" not found`);
+    throw notFound(`Credential "${name}" not found`);
   }
 
   log.debug("credential deleted", { scopeId: scope.id, name });

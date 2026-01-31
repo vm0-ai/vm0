@@ -18,33 +18,65 @@ export interface S3Object {
 /**
  * S3 download error
  */
-// eslint-disable-next-line no-restricted-syntax -- legacy code
-export class S3DownloadError extends Error {
-  constructor(
-    message: string,
-    public readonly bucket: string,
-    public readonly key?: string,
-    public readonly cause?: Error,
-  ) {
-    super(message);
-    this.name = "S3DownloadError";
+export interface S3DownloadError extends Error {
+  readonly name: "S3DownloadError";
+  readonly bucket: string;
+  readonly key?: string;
+  readonly cause?: Error;
+}
+
+export function s3DownloadError(
+  message: string,
+  bucket: string,
+  key?: string,
+  cause?: Error,
+): S3DownloadError {
+  const error = new Error(message) as S3DownloadError;
+  (error as { name: string }).name = "S3DownloadError";
+  (error as { bucket: string }).bucket = bucket;
+  if (key !== undefined) {
+    (error as { key: string }).key = key;
   }
+  if (cause !== undefined) {
+    (error as { cause: Error }).cause = cause;
+  }
+  return error;
+}
+
+export function isS3DownloadError(e: unknown): e is S3DownloadError {
+  return e instanceof Error && e.name === "S3DownloadError";
 }
 
 /**
  * S3 upload error
  */
-// eslint-disable-next-line no-restricted-syntax -- legacy code
-export class S3UploadError extends Error {
-  constructor(
-    message: string,
-    public readonly bucket: string,
-    public readonly key?: string,
-    public readonly cause?: Error,
-  ) {
-    super(message);
-    this.name = "S3UploadError";
+export interface S3UploadError extends Error {
+  readonly name: "S3UploadError";
+  readonly bucket: string;
+  readonly key?: string;
+  readonly cause?: Error;
+}
+
+export function s3UploadError(
+  message: string,
+  bucket: string,
+  key?: string,
+  cause?: Error,
+): S3UploadError {
+  const error = new Error(message) as S3UploadError;
+  (error as { name: string }).name = "S3UploadError";
+  (error as { bucket: string }).bucket = bucket;
+  if (key !== undefined) {
+    (error as { key: string }).key = key;
   }
+  if (cause !== undefined) {
+    (error as { cause: Error }).cause = cause;
+  }
+  return error;
+}
+
+export function isS3UploadError(e: unknown): e is S3UploadError {
+  return e instanceof Error && e.name === "S3UploadError";
 }
 
 /**

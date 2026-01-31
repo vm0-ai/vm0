@@ -4,9 +4,9 @@ import { conversations } from "../../../db/schema/conversation";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { agentComposeVersions } from "../../../db/schema/agent-compose";
 import {
-  NotFoundError,
-  UnauthorizedError,
-  BadRequestError,
+  notFound,
+  unauthorized,
+  badRequest,
 } from "../../errors";
 import { logger } from "../../logger";
 import type {
@@ -44,7 +44,7 @@ export async function resolveCheckpoint(
     .limit(1);
 
   if (!checkpoint) {
-    throw new NotFoundError("Checkpoint not found");
+    throw notFound("Checkpoint not found");
   }
 
   // Verify checkpoint belongs to user
@@ -57,7 +57,7 @@ export async function resolveCheckpoint(
     .limit(1);
 
   if (!originalRun) {
-    throw new UnauthorizedError(
+    throw unauthorized(
       "Checkpoint does not belong to authenticated user",
     );
   }
@@ -70,7 +70,7 @@ export async function resolveCheckpoint(
     .limit(1);
 
   if (!conversation) {
-    throw new NotFoundError("Conversation not found");
+    throw notFound("Conversation not found");
   }
 
   // Extract snapshots (artifactSnapshot may be null for runs without artifact)
@@ -84,7 +84,7 @@ export async function resolveCheckpoint(
   // Get version ID from snapshot
   const agentComposeVersionId = agentComposeSnapshot.agentComposeVersionId;
   if (!agentComposeVersionId) {
-    throw new BadRequestError(
+    throw badRequest(
       "Invalid checkpoint: missing agentComposeVersionId",
     );
   }
@@ -97,7 +97,7 @@ export async function resolveCheckpoint(
     .limit(1);
 
   if (!version) {
-    throw new NotFoundError(
+    throw notFound(
       `Agent compose version ${agentComposeVersionId} not found`,
     );
   }

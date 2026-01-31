@@ -2,7 +2,7 @@ import { eq, and, desc, like } from "drizzle-orm";
 
 import { images } from "../../db/schema/image";
 import { scopes } from "../../db/schema/scope";
-import { BadRequestError, NotFoundError, ForbiddenError } from "../errors";
+import { badRequest, notFound, forbidden, isNotFound, isBadRequest } from "../errors";
 import { getUserScopeByClerkId } from "../scope/scope-service";
 import {
   parseImageReferenceWithTag,
@@ -200,7 +200,7 @@ export async function resolveImageAlias(
       return { templateName: e2bTemplate, isUserImage: false };
     } catch (error) {
       if (error instanceof Error) {
-        throw new BadRequestError(error.message);
+        throw badRequest(error.message);
       }
       throw error;
     }
@@ -210,7 +210,7 @@ export async function resolveImageAlias(
   const scope = ref.scope ? await getScopeBySlug(ref.scope) : userScope;
 
   if (!scope) {
-    throw new NotFoundError(`Scope "${ref.scope}" not found`);
+    throw notFound(`Scope "${ref.scope}" not found`);
   }
 
   // 4. Resolve version based on tag
@@ -221,7 +221,7 @@ export async function resolveImageAlias(
     // Resolve :latest or no tag to most recent ready version
     image = await getLatestImage(scope.id, ref.name);
     if (!image) {
-      throw new NotFoundError(
+      throw notFound(
         `Image "${refDisplay}" not found. Custom image building has been removed. Use 'apps' field in vm0.yaml instead.`,
       );
     }
@@ -234,14 +234,14 @@ export async function resolveImageAlias(
     );
     if (isImageResolutionError(result)) {
       if (result.status === 400) {
-        throw new BadRequestError(result.error);
+        throw badRequest(result.error);
       }
-      throw new NotFoundError(`Image "${refDisplay}:${ref.tag}" not found.`);
+      throw notFound(`Image "${refDisplay}:${ref.tag}" not found.`);
     }
     image = result.image;
 
     if (image.status !== "ready") {
-      throw new BadRequestError(
+      throw badRequest(
         `Image "${refDisplay}:${ref.tag}" is not ready (status: ${image.status})`,
       );
     }
@@ -277,10 +277,10 @@ async function validateImageAccess(
     await resolveImageAlias(userId, imageAlias);
     return null;
   } catch (error) {
-    if (error instanceof NotFoundError) {
+    if (isNotFound(error)) {
       return { error: error.message, status: 404 };
     }
-    if (error instanceof BadRequestError) {
+    if (isBadRequest(error)) {
       return { error: error.message, status: 400 };
     }
     throw error;
@@ -298,11 +298,11 @@ export async function assertImageAccess(
   const error = await validateImageAccess(userId, imageAlias);
   if (error) {
     if (error.status === 404) {
-      throw new NotFoundError(error.error);
+      throw notFound(error.error);
     } else if (error.status === 403) {
-      throw new ForbiddenError(error.error);
+      throw forbidden(error.error);
     } else {
-      throw new BadRequestError(error.error);
+      throw badRequest(error.error);
     }
   }
 }

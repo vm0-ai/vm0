@@ -29,7 +29,7 @@ import {
   prepareAndDispatchRun,
 } from "../../../src/lib/run";
 import { generateSandboxToken } from "../../../src/lib/auth/sandbox-token";
-import { ConcurrentRunLimitError } from "../../../src/lib/errors";
+import { isConcurrentRunLimit } from "../../../src/lib/errors";
 
 const router = tsr.router(publicRunsListContract, {
   list: async ({ query, headers }) => {
@@ -171,7 +171,7 @@ const router = tsr.router(publicRunsListContract, {
     try {
       await checkRunConcurrencyLimit(auth.userId);
     } catch (error) {
-      if (error instanceof ConcurrentRunLimitError) {
+      if (isConcurrentRunLimit(error)) {
         return {
           status: 429 as const,
           body: {

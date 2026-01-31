@@ -8,7 +8,7 @@ import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { deploySchedule, listSchedules } from "../../../../src/lib/schedule";
 import { logger } from "../../../../src/lib/logger";
-import { NotFoundError, BadRequestError } from "../../../../src/lib/errors";
+import { isNotFound, isBadRequest } from "../../../../src/lib/errors";
 
 const log = logger("api:schedules");
 
@@ -74,7 +74,7 @@ const router = tsr.router(schedulesMainContract, {
         body: result,
       };
     } catch (error) {
-      if (error instanceof NotFoundError) {
+      if (isNotFound(error)) {
         return {
           status: 404 as const,
           body: {
@@ -82,7 +82,7 @@ const router = tsr.router(schedulesMainContract, {
           },
         };
       }
-      if (error instanceof BadRequestError) {
+      if (isBadRequest(error)) {
         return {
           status: 409 as const,
           body: {

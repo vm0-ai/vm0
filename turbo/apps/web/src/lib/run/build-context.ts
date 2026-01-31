@@ -9,7 +9,7 @@ import {
   type ModelProviderFramework,
 } from "@vm0/core";
 import { agentComposeVersions } from "../../db/schema/agent-compose";
-import { BadRequestError, NotFoundError } from "../errors";
+import { badRequest, notFound } from "../errors";
 import { logger } from "../logger";
 import type { ExecutionContext, ResumeSession } from "./types";
 import type { ArtifactSnapshot } from "../checkpoint/types";
@@ -57,7 +57,7 @@ async function resolveProviderType(
   if (explicitModelProvider) {
     // Validate that the specified model provider type is valid
     if (!(explicitModelProvider in MODEL_PROVIDER_TYPES)) {
-      throw new BadRequestError(
+      throw badRequest(
         `Unknown model provider type "${explicitModelProvider}". Valid types: ${Object.keys(MODEL_PROVIDER_TYPES).join(", ")}`,
       );
     }
@@ -67,7 +67,7 @@ async function resolveProviderType(
   // Get default provider for framework
   const defaultProvider = await getDefaultModelProvider(scopeId, framework);
   if (!defaultProvider?.type) {
-    throw new BadRequestError(
+    throw badRequest(
       "No model provider configured. " +
         "Run 'vm0 model-provider setup' to configure one, " +
         "or add environment variables to your vm0.yaml.",
@@ -120,7 +120,7 @@ async function resolveModelProviderCredential(
   // Validate framework compatibility
   const providerFramework = getFrameworkForType(providerType);
   if (providerFramework !== framework) {
-    throw new BadRequestError(
+    throw badRequest(
       `Model provider "${providerType}" is not compatible with framework "${framework}". ` +
         `This provider is for "${providerFramework}" agents.`,
     );
@@ -276,7 +276,7 @@ async function loadAgentComposeForNewRun(
     .limit(1);
 
   if (!version) {
-    throw new NotFoundError("Agent compose version not found");
+    throw notFound("Agent compose version not found");
   }
 
   return version.content;
@@ -362,13 +362,13 @@ export async function buildExecutionContext(
 
   // Validate required fields
   if (!agentComposeVersionId) {
-    throw new NotFoundError(
+    throw notFound(
       "Agent compose version ID is required (provide agentComposeVersionId, checkpointId, or sessionId)",
     );
   }
 
   if (!agentCompose) {
-    throw new NotFoundError("Agent compose could not be loaded");
+    throw notFound("Agent compose could not be loaded");
   }
 
   // Step 4: Check if credentials are needed and fetch them from the user's scope

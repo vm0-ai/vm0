@@ -2,10 +2,10 @@ import { eq, and, count, inArray } from "drizzle-orm";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { agentRuns } from "../../db/schema/agent-run";
 import {
-  NotFoundError,
-  UnauthorizedError,
-  BadRequestError,
-  ConcurrentRunLimitError,
+  notFound,
+  unauthorized,
+  badRequest,
+  concurrentRunLimit,
 } from "../errors";
 import { logger } from "../logger";
 import type { ExecutionContext } from "./types";
@@ -80,7 +80,7 @@ export async function checkRunConcurrencyLimit(
     log.debug(
       `User ${userId} has ${activeRunCount} active runs, limit is ${effectiveLimit}`,
     );
-    throw new ConcurrentRunLimitError();
+    throw concurrentRunLimit();
   }
 }
 
@@ -113,7 +113,7 @@ export async function validateCheckpoint(
     .limit(1);
 
   if (!checkpoint) {
-    throw new NotFoundError("Checkpoint not found");
+    throw notFound("Checkpoint not found");
   }
 
   // Verify checkpoint belongs to user by checking the associated run
@@ -126,7 +126,7 @@ export async function validateCheckpoint(
     .limit(1);
 
   if (!originalRun) {
-    throw new UnauthorizedError(
+    throw unauthorized(
       "Checkpoint does not belong to authenticated user",
     );
   }
@@ -137,7 +137,7 @@ export async function validateCheckpoint(
 
   const agentComposeVersionId = agentComposeSnapshot.agentComposeVersionId;
   if (!agentComposeVersionId) {
-    throw new BadRequestError(
+    throw badRequest(
       "Invalid checkpoint: missing agentComposeVersionId",
     );
   }
@@ -184,19 +184,19 @@ export async function validateAgentSession(
   const session = await getAgentSessionWithConversation(agentSessionId);
 
   if (!session) {
-    throw new NotFoundError("Agent session not found");
+    throw notFound("Agent session not found");
   }
 
   // Verify session belongs to user
   if (session.userId !== userId) {
-    throw new UnauthorizedError(
+    throw unauthorized(
       "Agent session does not belong to authenticated user",
     );
   }
 
   // Session must have a conversation to continue from
   if (!session.conversation) {
-    throw new NotFoundError(
+    throw notFound(
       "Agent session has no conversation history to continue from",
     );
   }

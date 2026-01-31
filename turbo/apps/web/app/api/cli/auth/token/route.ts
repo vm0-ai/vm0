@@ -14,7 +14,7 @@ import {
   createUserScope,
   generateDefaultScopeSlug,
 } from "../../../../../src/lib/scope/scope-service";
-import { BadRequestError } from "../../../../../src/lib/errors";
+import { isBadRequest } from "../../../../../src/lib/errors";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("api:cli:auth:token");
@@ -95,7 +95,7 @@ const router = tsr.router(cliAuthTokenContract, {
           } catch (error) {
             // Handle rare slug collision - retry with random suffix
             if (
-              error instanceof BadRequestError &&
+              isBadRequest(error) &&
               error.message.includes("already exists")
             ) {
               const fallbackSlug = `user-${crypto.randomBytes(4).toString("hex")}`;

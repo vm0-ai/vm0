@@ -8,7 +8,7 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import { convertCredentialToModelProvider } from "../../../../../src/lib/model-provider/model-provider-service";
 import { logger } from "../../../../../src/lib/logger";
-import { NotFoundError, BadRequestError } from "../../../../../src/lib/errors";
+import { isNotFound, isBadRequest } from "../../../../../src/lib/errors";
 
 const log = logger("api:model-providers");
 
@@ -48,10 +48,10 @@ const router = tsr.router(modelProvidersConvertContract, {
         },
       };
     } catch (error) {
-      if (error instanceof NotFoundError) {
+      if (isNotFound(error)) {
         return createErrorResponse("NOT_FOUND", error.message);
       }
-      if (error instanceof BadRequestError) {
+      if (isBadRequest(error)) {
         return createErrorResponse("BAD_REQUEST", error.message);
       }
       throw error;

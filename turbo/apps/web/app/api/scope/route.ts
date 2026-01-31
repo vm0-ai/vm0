@@ -13,9 +13,9 @@ import {
 } from "../../../src/lib/scope/scope-service";
 import { logger } from "../../../src/lib/logger";
 import {
-  BadRequestError,
-  ForbiddenError,
-  NotFoundError,
+  isBadRequest,
+  isForbidden,
+  isNotFound,
 } from "../../../src/lib/errors";
 
 const log = logger("api:scope");
@@ -81,7 +81,7 @@ const router = tsr.router(scopeContract, {
         },
       };
     } catch (error) {
-      if (error instanceof BadRequestError) {
+      if (isBadRequest(error)) {
         // Check if it's a conflict error (user already has scope)
         if (error.message.includes("already have a scope")) {
           return {
@@ -140,7 +140,7 @@ const router = tsr.router(scopeContract, {
         },
       };
     } catch (error) {
-      if (error instanceof BadRequestError) {
+      if (isBadRequest(error)) {
         // Check if it's a conflict error (slug already exists)
         if (error.message.includes("already exists")) {
           return {
@@ -152,10 +152,10 @@ const router = tsr.router(scopeContract, {
         }
         return createErrorResponse("BAD_REQUEST", error.message);
       }
-      if (error instanceof ForbiddenError) {
+      if (isForbidden(error)) {
         return createErrorResponse("FORBIDDEN", error.message);
       }
-      if (error instanceof NotFoundError) {
+      if (isNotFound(error)) {
         return createErrorResponse("NOT_FOUND", error.message);
       }
       throw error;

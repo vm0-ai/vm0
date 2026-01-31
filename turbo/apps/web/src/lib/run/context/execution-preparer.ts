@@ -6,7 +6,7 @@ import type {
 import type { ExecutionContext } from "../types";
 import type { PreparedContext } from "../executors/types";
 import { prepareStorageManifest } from "../../storage/storage-service";
-import { BadRequestError } from "../../errors";
+import { badRequest } from "../../errors";
 import { logger } from "../../logger";
 import type { ExperimentalFirewall as CoreExperimentalFirewall } from "@vm0/core";
 
@@ -54,7 +54,7 @@ function processFirewallConfig(
 
   // Validate experimental_runner is configured (firewall requires runner)
   if (!firstAgent.experimental_runner?.group) {
-    throw new BadRequestError(
+    throw badRequest(
       "experimental_firewall requires experimental_runner to be configured",
     );
   }
@@ -64,7 +64,7 @@ function processFirewallConfig(
     firewallConfig.experimental_seal_secrets &&
     !firewallConfig.experimental_mitm
   ) {
-    throw new BadRequestError(
+    throw badRequest(
       "experimental_seal_secrets requires experimental_mitm to be enabled",
     );
   }
@@ -125,14 +125,14 @@ function processFirewallConfig(
 function extractWorkingDir(agentCompose: unknown): string {
   const compose = agentCompose as AgentComposeYaml | undefined;
   if (!compose?.agents) {
-    throw new BadRequestError(
+    throw badRequest(
       "Agent must have working_dir configured (no default allowed)",
     );
   }
   const agents = Object.values(compose.agents);
   const workingDir = agents[0]?.working_dir;
   if (!workingDir) {
-    throw new BadRequestError(
+    throw badRequest(
       "Agent must have working_dir configured (no default allowed)",
     );
   }

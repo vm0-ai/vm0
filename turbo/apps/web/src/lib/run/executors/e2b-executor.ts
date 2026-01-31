@@ -1,7 +1,7 @@
 import { Sandbox } from "@e2b/code-interpreter";
 import { e2bConfig } from "../../e2b/config";
 import { resolveImageAlias } from "../../image/image-service";
-import { BadRequestError } from "../../errors";
+import { badRequest } from "../../errors";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
 import type { PreparedArtifact, StorageManifest } from "../../storage/types";
 import {
@@ -299,7 +299,7 @@ async function createSandbox(
   const imageAlias = agent?.image || e2bConfig.defaultTemplate;
 
   if (!imageAlias) {
-    throw new BadRequestError(
+    throw badRequest(
       "No template specified. Either set agent.image in vm0.config.yaml or E2B_TEMPLATE_NAME environment variable.",
     );
   }

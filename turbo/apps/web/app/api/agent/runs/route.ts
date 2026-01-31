@@ -28,7 +28,7 @@ import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 import { extractTemplateVars } from "../../../../src/lib/config-validator";
 import { assertImageAccess } from "../../../../src/lib/image/image-service";
 import { logger } from "../../../../src/lib/logger";
-import { ConcurrentRunLimitError } from "../../../../src/lib/errors";
+import { isConcurrentRunLimit } from "../../../../src/lib/errors";
 
 const log = logger("api:runs");
 
@@ -138,7 +138,7 @@ const router = tsr.router(runsMainContract, {
     try {
       await checkRunConcurrencyLimit(userId);
     } catch (error) {
-      if (error instanceof ConcurrentRunLimitError) {
+      if (isConcurrentRunLimit(error)) {
         return createErrorResponse("TOO_MANY_REQUESTS", error.message);
       }
       throw error;

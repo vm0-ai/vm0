@@ -3,7 +3,7 @@ import { agentRuns } from "../../db/schema/agent-run";
 import { agentComposeVersions } from "../../db/schema/agent-compose";
 import { conversations } from "../../db/schema/conversation";
 import { checkpoints } from "../../db/schema/checkpoint";
-import { NotFoundError } from "../errors";
+import { notFound } from "../errors";
 import { findOrCreateAgentSession } from "../agent-session";
 import { storeSessionHistory } from "../session-history";
 import { logger } from "../logger";
@@ -37,7 +37,7 @@ export async function createCheckpoint(
     .limit(1);
 
   if (!run) {
-    throw new NotFoundError("Agent run not found");
+    throw notFound("Agent run not found");
   }
 
   // Fetch agent compose version to get composeId for session
@@ -48,7 +48,7 @@ export async function createCheckpoint(
     .limit(1);
 
   if (!version) {
-    throw new NotFoundError("Agent compose version not found");
+    throw notFound("Agent compose version not found");
   }
 
   log.debug(

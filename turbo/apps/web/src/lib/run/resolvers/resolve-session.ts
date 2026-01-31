@@ -4,9 +4,9 @@ import {
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
 import {
-  NotFoundError,
-  UnauthorizedError,
-  BadRequestError,
+  notFound,
+  unauthorized,
+  badRequest,
 } from "../../errors";
 import { logger } from "../../logger";
 import { getAgentSessionWithConversation } from "../../agent-session";
@@ -36,23 +36,23 @@ export async function resolveSession(
   const session = await getAgentSessionWithConversation(sessionId);
 
   if (!session) {
-    throw new NotFoundError("Agent session not found");
+    throw notFound("Agent session not found");
   }
 
   if (session.userId !== userId) {
-    throw new UnauthorizedError(
+    throw unauthorized(
       "Agent session does not belong to authenticated user",
     );
   }
 
   if (!session.conversation) {
-    throw new NotFoundError(
+    throw notFound(
       "Agent session has no conversation history to continue from",
     );
   }
 
   if (!session.conversationId) {
-    throw new NotFoundError("Agent session has no conversation ID");
+    throw notFound("Agent session has no conversation ID");
   }
 
   // Load agent compose
@@ -63,11 +63,11 @@ export async function resolveSession(
     .limit(1);
 
   if (!compose) {
-    throw new NotFoundError("Agent compose not found");
+    throw notFound("Agent compose not found");
   }
 
   if (!compose.headVersionId) {
-    throw new BadRequestError(
+    throw badRequest(
       "Agent compose has no versions. Run 'vm0 build' first.",
     );
   }
@@ -84,7 +84,7 @@ export async function resolveSession(
     .limit(1);
 
   if (!version) {
-    throw new NotFoundError(`Agent compose version ${versionId} not found`);
+    throw notFound(`Agent compose version ${versionId} not found`);
   }
 
   // Get secret names from session (values are NEVER stored)

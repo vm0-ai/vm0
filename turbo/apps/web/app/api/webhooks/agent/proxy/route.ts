@@ -4,7 +4,7 @@ import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-au
 import {
   forwardRequest,
   decodeTargetUrl,
-  ProxyTokenDecryptionError,
+  isProxyTokenDecryptionError,
 } from "../../../../../src/lib/proxy/proxy-service";
 import { logger } from "../../../../../src/lib/logger";
 
@@ -87,7 +87,7 @@ async function handleProxyRequest(request: Request) {
     return result.response;
   } catch (err) {
     // Handle proxy token decryption errors specifically
-    if (err instanceof ProxyTokenDecryptionError) {
+    if (isProxyTokenDecryptionError(err)) {
       log.warn(`Token decryption failed for ${targetUrl}: ${err.message}`);
       return NextResponse.json(
         {

@@ -23,7 +23,6 @@ import { modelProviders } from "../../../db/schema/model-provider";
 import { credentials } from "../../../db/schema/credential";
 import { scopes } from "../../../db/schema/scope";
 import { eq, and } from "drizzle-orm";
-import { BadRequestError, NotFoundError } from "../../errors";
 
 describe("Model Provider Service", () => {
   const testUserId = `test-model-provider-user-${Date.now()}`;
@@ -175,7 +174,7 @@ describe("Model Provider Service", () => {
           "anthropic-api-key",
           "test-key",
         ),
-      ).rejects.toThrow(BadRequestError);
+      ).rejects.toMatchObject({ name: "BadRequestError" });
     });
 
     it("should set first provider as default for framework", async () => {
@@ -239,7 +238,7 @@ describe("Model Provider Service", () => {
     it("should throw NotFoundError for nonexistent credential", async () => {
       await expect(
         convertCredentialToModelProvider(testUserId, "anthropic-api-key"),
-      ).rejects.toThrow(NotFoundError);
+      ).rejects.toMatchObject({ name: "NotFoundError" });
     });
 
     it("should throw BadRequestError if credential is already model-provider", async () => {
@@ -248,7 +247,7 @@ describe("Model Provider Service", () => {
 
       await expect(
         convertCredentialToModelProvider(testUserId, "anthropic-api-key"),
-      ).rejects.toThrow(BadRequestError);
+      ).rejects.toMatchObject({ name: "BadRequestError" });
     });
   });
 
@@ -280,7 +279,7 @@ describe("Model Provider Service", () => {
     it("should throw NotFoundError for nonexistent provider", async () => {
       await expect(
         deleteModelProvider(testUserId, "anthropic-api-key"),
-      ).rejects.toThrow(NotFoundError);
+      ).rejects.toMatchObject({ name: "NotFoundError" });
     });
 
     it("should reassign default when deleting default provider", async () => {
@@ -338,7 +337,7 @@ describe("Model Provider Service", () => {
     it("should throw NotFoundError for nonexistent provider", async () => {
       await expect(
         setModelProviderDefault(testUserId, "anthropic-api-key"),
-      ).rejects.toThrow(NotFoundError);
+      ).rejects.toMatchObject({ name: "NotFoundError" });
     });
 
     it("should return existing default without changes", async () => {

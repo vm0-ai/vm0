@@ -9,7 +9,7 @@ import {
 import { modelProviders } from "../../db/schema/model-provider";
 import { credentials } from "../../db/schema/credential";
 import { encryptCredentialValue } from "../crypto";
-import { BadRequestError, NotFoundError, ConflictError } from "../errors";
+import { badRequest, notFound, conflict } from "../errors";
 import { logger } from "../logger";
 import { getUserScopeByClerkId } from "../scope/scope-service";
 
@@ -103,7 +103,7 @@ export async function upsertModelProvider(
 ): Promise<{ provider: ModelProviderInfo; created: boolean }> {
   const scope = await getUserScopeByClerkId(clerkUserId);
   if (!scope) {
-    throw new BadRequestError(
+    throw badRequest(
       "You need to configure a scope first. Run `vm0 scope create` to set up your scope.",
     );
   }
@@ -174,7 +174,7 @@ export async function upsertModelProvider(
   if (existingCredential) {
     if (existingCredential.type === "user" && !convertExisting) {
       // Conflict: user credential exists, need explicit conversion
-      throw new ConflictError(
+      throw conflict(
         `Credential "${credentialName}" already exists. Use --convert to convert it to a model provider.`,
       );
     }
@@ -296,7 +296,7 @@ export async function convertCredentialToModelProvider(
 ): Promise<ModelProviderInfo> {
   const scope = await getUserScopeByClerkId(clerkUserId);
   if (!scope) {
-    throw new NotFoundError("Credential not found");
+    throw notFound("Credential not found");
   }
 
   const credentialName = getCredentialNameForType(type);
@@ -315,11 +315,11 @@ export async function convertCredentialToModelProvider(
     .limit(1);
 
   if (!existingCredential) {
-    throw new NotFoundError(`Credential "${credentialName}" not found`);
+    throw notFound(`Credential "${credentialName}" not found`);
   }
 
   if (existingCredential.type === "model-provider") {
-    throw new BadRequestError(
+    throw badRequest(
       `Credential "${credentialName}" is already a model provider`,
     );
   }
@@ -377,7 +377,7 @@ export async function deleteModelProvider(
 ): Promise<void> {
   const scope = await getUserScopeByClerkId(clerkUserId);
   if (!scope) {
-    throw new NotFoundError("Model provider not found");
+    throw notFound("Model provider not found");
   }
 
   const framework = getFrameworkForType(type);
@@ -392,7 +392,7 @@ export async function deleteModelProvider(
     .limit(1);
 
   if (!provider) {
-    throw new NotFoundError(`Model provider "${type}" not found`);
+    throw notFound(`Model provider "${type}" not found`);
   }
 
   const wasDefault = provider.isDefault;
@@ -440,7 +440,7 @@ export async function setModelProviderDefault(
 ): Promise<ModelProviderInfo> {
   const scope = await getUserScopeByClerkId(clerkUserId);
   if (!scope) {
-    throw new NotFoundError("Model provider not found");
+    throw notFound("Model provider not found");
   }
 
   const framework = getFrameworkForType(type);
@@ -456,7 +456,7 @@ export async function setModelProviderDefault(
     .limit(1);
 
   if (!target) {
-    throw new NotFoundError(`Model provider "${type}" not found`);
+    throw notFound(`Model provider "${type}" not found`);
   }
 
   if (target.isDefault) {

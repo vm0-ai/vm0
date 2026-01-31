@@ -45,15 +45,25 @@ interface ProxyResult {
 /**
  * Error thrown when proxy token decryption fails
  */
-// eslint-disable-next-line no-restricted-syntax -- legacy code
-export class ProxyTokenDecryptionError extends Error {
-  constructor(
-    message: string,
-    public readonly header: string,
-  ) {
-    super(message);
-    this.name = "ProxyTokenDecryptionError";
-  }
+export interface ProxyTokenDecryptionError extends Error {
+  readonly name: "ProxyTokenDecryptionError";
+  readonly header: string;
+}
+
+export function proxyTokenDecryptionError(
+  message: string,
+  header: string,
+): ProxyTokenDecryptionError {
+  const error = new Error(message) as ProxyTokenDecryptionError;
+  (error as { name: string }).name = "ProxyTokenDecryptionError";
+  (error as { header: string }).header = header;
+  return error;
+}
+
+export function isProxyTokenDecryptionError(
+  e: unknown,
+): e is ProxyTokenDecryptionError {
+  return e instanceof Error && e.name === "ProxyTokenDecryptionError";
 }
 
 /**
@@ -107,7 +117,7 @@ export async function forwardRequest(
         log.warn(
           "Failed to decrypt Authorization proxy token - token invalid or expired",
         );
-        throw new ProxyTokenDecryptionError(
+        throw proxyTokenDecryptionError(
           "Proxy token decryption failed - token may be invalid or expired",
           "Authorization",
         );
@@ -132,7 +142,7 @@ export async function forwardRequest(
       log.warn(
         "Failed to decrypt x-api-key proxy token - token invalid or expired",
       );
-      throw new ProxyTokenDecryptionError(
+      throw proxyTokenDecryptionError(
         "Proxy token decryption failed - token may be invalid or expired",
         "x-api-key",
       );

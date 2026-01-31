@@ -1,7 +1,7 @@
 import { resolveVolumes } from "./storage-resolver";
 import { generatePresignedUrl, listS3Objects } from "../s3/s3-client";
 import { logger } from "../logger";
-import { BadRequestError } from "../errors";
+import { badRequest } from "../errors";
 import type {
   AgentVolumeConfig,
   StorageManifest,
@@ -175,7 +175,7 @@ export async function prepareStorageManifest(
   let artifactSource = volumeResult.artifact;
   if (resumeArtifact) {
     if (!resumeArtifactMountPath) {
-      throw new BadRequestError(
+      throw badRequest(
         "resumeArtifactMountPath is required when resumeArtifact is provided (working_dir must be configured)",
       );
     }
