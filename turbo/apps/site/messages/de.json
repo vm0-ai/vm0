@@ -85,7 +85,7 @@
     "pricing": "Preise",
     "github": "GitHub",
     "contact": "Demo vereinbaren",
-    "joinWaitlist": "Warteliste beitreten"
+    "joinWaitlist": "Registrieren"
   },
   "pricing": {
     "title": "Wählen Sie Ihren Plan",
@@ -93,7 +93,7 @@
   },
   "footer": {
     "tagline": "Die moderne Laufzeitumgebung für agentenbasierte Entwicklung",
-    "copyright": "© 2025 VM0.ai Alle Rechte vorbehalten.",
+    "copyright": "© 2026 VM0.ai Alle Rechte vorbehalten.",
     "language": "Sprache",
     "termsOfUse": "Nutzungsbedingungen",
     "privacyPolicy": "Datenschutzrichtlinie"

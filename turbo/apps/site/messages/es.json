@@ -85,7 +85,7 @@
     "pricing": "Precios",
     "github": "GitHub",
     "contact": "Agendar demo",
-    "joinWaitlist": "Unirse a lista de espera"
+    "joinWaitlist": "Registrarse"
   },
   "pricing": {
     "title": "Elige Tu Plan",
@@ -93,7 +93,7 @@
   },
   "footer": {
     "tagline": "El tiempo de ejecución moderno para desarrollo nativo de agentes",
-    "copyright": "© 2025 VM0.ai Todos los derechos reservados.",
+    "copyright": "© 2026 VM0.ai Todos los derechos reservados.",
     "language": "Idioma",
     "termsOfUse": "Términos de Uso",
     "privacyPolicy": "Política de Privacidad"

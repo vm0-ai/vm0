@@ -85,7 +85,7 @@
     "pricing": "料金",
     "github": "GitHub",
     "contact": "デモを予約",
-    "joinWaitlist": "ウェイトリストに参加"
+    "joinWaitlist": "サインアップ"
   },
   "pricing": {
     "title": "プランを選択",
@@ -93,7 +93,7 @@
   },
   "footer": {
     "tagline": "エージェントネイティブ開発のための最新ランタイム",
-    "copyright": "© 2025 VM0.ai 無断転載禁止",
+    "copyright": "© 2026 VM0.ai 無断転載禁止",
     "language": "言語",
     "termsOfUse": "利用規約",
     "privacyPolicy": "プライバシーポリシー"

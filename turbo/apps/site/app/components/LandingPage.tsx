@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
-import { IconCopy, IconChevronDown, IconFile } from "@tabler/icons-react";
+import Link from "next/link";
+import { IconChevronDown, IconFile } from "@tabler/icons-react";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
 
@@ -27,6 +28,9 @@ export default function LandingPage() {
   const runSectionRef = useRef<HTMLDivElement>(null);
   const [buildSectionVisible, setBuildSectionVisible] = useState(false);
   const [runSectionVisible, setRunSectionVisible] = useState(false);
+  const [copiedHero, setCopiedHero] = useState(false);
+  const [copiedEditor, setCopiedEditor] = useState(false);
+  const [copiedFooter, setCopiedFooter] = useState(false);
 
   // Intersection Observer for Build section
   useEffect(() => {
@@ -327,38 +331,53 @@ export default function LandingPage() {
                 }
               `}</style>
 
-              <h1 className="flex flex-col justify-center font-medium leading-[40px] text-center text-[36px] text-foreground tracking-normal whitespace-nowrap">
+              <h1 className="flex flex-col justify-center font-medium text-center text-[24px] sm:text-[30px] md:text-[36px] leading-[1.2] text-foreground tracking-normal px-4">
                 <span className="block mb-0">Build AI agents with natural language.</span>
                 <span className="block">Run them 24/7 in the cloud.</span>
               </h1>
 
               {/* CTA Section - More compact */}
-              <div className="flex flex-col items-center gap-[20px]">
+              <div className="flex flex-col items-center gap-[20px] w-full px-4">
                 {/* Install Command with description */}
-                <div className="flex flex-col items-center gap-[8px]">
-                  <div className="bg-card border border-[#f5eae1] border-solid rounded-[12px] px-[24px] py-[12px] w-[566px] flex gap-[32px] items-start justify-center">
-                    <code className="flex-1 font-normal leading-[40px] text-[18px] text-foreground whitespace-pre-wrap" style={{ fontFamily: 'var(--font-jetbrains-mono, "JetBrains Mono", monospace)' }}>
+                <div className="flex flex-col items-center gap-[8px] w-full max-w-[566px]">
+                  <div className="bg-card border border-[#f5eae1] dark:border-[#2f2f32] border-solid rounded-[12px] px-[16px] sm:px-[24px] py-[12px] w-full flex gap-[12px] sm:gap-[32px] items-center justify-center relative">
+                    <code className="flex-1 font-normal leading-[1.4] sm:leading-[40px] text-[14px] sm:text-[18px] text-foreground break-all sm:whitespace-pre-wrap" style={{ fontFamily: 'var(--font-jetbrains-mono, "JetBrains Mono", monospace)' }}>
                       npm install -g @vm0/cli && vm0 onboard
                     </code>
-                    <button className="bg-[var(--muted,#f0ebe5)] hover:bg-muted/80 h-[40px] w-[40px] flex items-center justify-center rounded-[10px] transition-colors shrink-0">
-                      <IconCopy size={20} />
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText('npm install -g @vm0/cli && vm0 onboard');
+                        setCopiedHero(true);
+                        setTimeout(() => setCopiedHero(false), 2000);
+                      }}
+                      className="bg-[#f0ebe5] dark:bg-[#292a2e] hover:bg-[#e5dfd8] dark:hover:bg-[#3a3a3e] h-[36px] w-[36px] sm:h-[40px] sm:w-[40px] flex items-center justify-center rounded-[10px] transition-colors shrink-0"
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="sm:w-[20px] sm:h-[20px]">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                      </svg>
                     </button>
+                    {copiedHero && (
+                      <div className="absolute -top-[50px] right-[0px] bg-[#231f1b] text-white px-[12px] py-[6px] rounded-[6px] text-[14px] whitespace-nowrap">
+                        Copied
+                      </div>
+                    )}
                   </div>
-                  <p className="text-sm text-muted-foreground text-center">Throw it in your terminal and vibe</p>
+                  <p className="text-sm text-muted-foreground text-center px-4">Throw it in your terminal and vibe</p>
                 </div>
 
                 {/* Divider with OR */}
-                <div className="w-[566px] flex items-center gap-4">
+                <div className="w-full max-w-[566px] flex items-center gap-4">
                   <div className="flex-1 h-px bg-border" />
                   <span className="text-sm text-muted-foreground">or</span>
                   <div className="flex-1 h-px bg-border" />
                 </div>
 
                 {/* CTA Button */}
-                <div className="w-[566px]">
-                  <button className="bg-[#ed4e01] hover:bg-[#ff6a1f] text-white w-full px-[24px] py-[12px] rounded-[10px] flex items-center justify-center transition-colors">
-                    <span className="font-medium leading-[28px] text-[18px] tracking-normal">Get started</span>
-                  </button>
+                <div className="w-full max-w-[566px]">
+                  <Link href="/sign-up" className="bg-[#ed4e01] hover:bg-[#ff6a1f] !text-white w-full px-[24px] py-[12px] rounded-[10px] flex items-center justify-center transition-colors">
+                    <span className="font-medium leading-[28px] text-[16px] sm:text-[18px] tracking-normal !text-white">Get started</span>
+                  </Link>
                 </div>
               </div>
             </div>
@@ -367,20 +386,20 @@ export default function LandingPage() {
             <div className="flex gap-[12px] items-center mb-[30px] justify-center">
               <button
                 onClick={() => setMainTab("run")}
-                className={`px-[14px] py-[6px] rounded-[6px] text-[14px] font-normal transition-all ${
+                className={`px-[14px] py-[6px] rounded-[6px] text-[14px] font-normal transition-all border ${
                   mainTab === "run"
-                    ? "bg-[#fef5ee] text-primary border border-[#f5eae1]"
-                    : "text-muted-foreground hover:text-foreground hover:bg-[#f9f9f9]"
+                    ? "bg-[#fef5ee] dark:bg-[#292a2e] text-primary border-[#f5eae1] dark:border-[#2f2f32]"
+                    : "text-muted-foreground hover:text-primary hover:bg-[#fef5ee] dark:hover:bg-[#292a2e] border-transparent hover:border-[#f5eae1] dark:hover:border-[#2f2f32]"
                 }`}
               >
                 Run an agent
               </button>
               <button
                 onClick={() => setMainTab("build")}
-                className={`px-[14px] py-[6px] rounded-[6px] text-[14px] font-normal transition-all ${
+                className={`px-[14px] py-[6px] rounded-[6px] text-[14px] font-normal transition-all border ${
                   mainTab === "build"
-                    ? "bg-[#fef5ee] text-primary border border-[#f5eae1]"
-                    : "text-muted-foreground hover:text-foreground hover:bg-[#f9f9f9]"
+                    ? "bg-[#fef5ee] dark:bg-[#292a2e] text-primary border-[#f5eae1] dark:border-[#2f2f32]"
+                    : "text-muted-foreground hover:text-primary hover:bg-[#fef5ee] dark:hover:bg-[#292a2e] border-transparent hover:border-[#f5eae1] dark:hover:border-[#2f2f32]"
                 }`}
               >
                 Build an agent
@@ -389,25 +408,25 @@ export default function LandingPage() {
 
             {/* Run an agent */}
             {mainTab === "run" && (
-            <div ref={runSectionRef} className="flex flex-col gap-[30px] mb-20">
+            <div ref={runSectionRef} className="flex flex-col gap-[30px] mb-20 px-4">
               <div className="text-center">
-                <h2 className="text-[36px] font-medium leading-[40px] text-foreground mb-4">Run an agent</h2>
-                <p className="text-[16px] leading-[24px] text-foreground">
-                  Execute your agents instantly with simple commands.
+                <h2 className="text-[24px] sm:text-[30px] md:text-[36px] font-medium leading-[1.2] text-foreground mb-4">Run an agent</h2>
+                <p className="text-[14px] sm:text-[16px] leading-[1.5] text-foreground">
+                  Execute your agents instantly, powered by workflows defined in natural language.
                 </p>
-                <p className="text-[16px] leading-[24px] text-foreground">
-                  Schedule recurring workflows or run on-demand with full observability and control.
+                <p className="text-[14px] sm:text-[16px] leading-[1.5] text-foreground">
+                  Schedule recurring runs or execute on demand, with full visibility and control.
                 </p>
               </div>
 
-              <div className="rounded-[6px] pt-[20px] pb-[30px] px-[30px] flex items-center justify-center" style={{
+              <div className="rounded-[6px] pt-[20px] pb-[20px] sm:pb-[30px] px-[16px] sm:px-[30px] flex items-center justify-center" style={{
                 backgroundImage: "linear-gradient(137.478deg, #E8A145 0.82464%, #F8732A 45.285%, #933803 99.384%)"
               }}>
-                <div className="flex gap-[24px] items-end w-[1123.984px] mx-auto">
+                <div className="flex flex-col lg:flex-row gap-[16px] sm:gap-[24px] items-stretch lg:items-end w-full max-w-[1124px] mx-auto">
                   {/* Terminal - Left Side */}
-                  <div className="flex-1 bg-white border-[0.5px] border-border rounded-[12px] shadow-[0px_25px_50px_-12px_rgba(0,0,0,0.25)] overflow-hidden h-[422px] flex flex-col">
+                  <div className="flex-1 bg-white dark:bg-[#19191b] border-[0.5px] border-border rounded-[12px] shadow-[0px_25px_50px_-12px_rgba(0,0,0,0.25)] overflow-hidden h-[422px] flex flex-col">
                     {/* Terminal Header */}
-                    <div className="bg-[#f9f4ef] p-[8px] flex gap-[76px] items-center shadow-[0px_0.5px_0px_0px_#d2d2d2]">
+                    <div className="bg-[#f9f4ef] dark:bg-[#292a2e] p-[8px] flex gap-[76px] items-center shadow-[0px_0.5px_0px_0px_#d2d2d2] dark:shadow-[0px_0.5px_0px_0px_#2f2f32]">
                       <div className="flex gap-1.5 w-[39px] h-[9px]">
                         <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
                         <div className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
@@ -423,13 +442,13 @@ export default function LandingPage() {
                     <div className="flex-1 p-[20px] overflow-y-auto" style={{ fontFamily: 'var(--font-jetbrains-mono)' }}>
                       <div className="flex gap-[10px] items-start text-[12px] leading-[16px]">
                         <div className="flex gap-[4px] items-center">
-                          <div className="text-black">
+                          <div className="text-black dark:text-white">
                             <p className="m-0"> *</p>
                             <p className="m-0">*</p>
                             <p className="m-0"> *</p>
                           </div>
                           <Image src="/landing/vector-logo.svg" alt="VM0" width="65" height="40" />
-                          <div className="text-black">
+                          <div className="text-black dark:text-white">
                             <p className="m-0">*</p>
                             <p className="m-0"> *</p>
                             <p className="m-0">*</p>
@@ -796,14 +815,14 @@ export default function LandingPage() {
                   {/* Code Editor - Right Side */}
                   <div className="flex-1 flex flex-col shadow-[0px_25px_50px_0px_rgba(0,0,0,0.25)] h-[422px]">
                     {/* Editor Header with Tabs */}
-                    <div className="bg-[#f9f4ef] border-b border-border h-[44px] flex items-center gap-[6px] px-[12px] py-[6px] rounded-tl-[8px] rounded-tr-[8px]">
+                    <div className="bg-[#f9f4ef] dark:bg-[#292a2e] border-b border-border h-[44px] flex items-center gap-[6px] px-[12px] py-[6px] rounded-tl-[8px] rounded-tr-[8px] relative">
                       <div className="flex-1 flex gap-[6px] items-center pl-[4px]">
                         <div
                           onClick={() => setActiveTab("agents")}
-                          className={`flex gap-[6px] items-center px-[6px] py-[4px] rounded-[6px] cursor-pointer transition-all ${
+                          className={`flex gap-[6px] items-center px-[6px] py-[4px] rounded-[6px] cursor-pointer transition-all border ${
                             activeTab === "agents"
-                              ? "bg-[rgba(255,255,255,0.6)] border border-border"
-                              : "hover:bg-[rgba(255,255,255,0.3)] hover:border hover:border-border"
+                              ? "bg-[rgba(255,255,255,0.6)] border-border"
+                              : "border-transparent hover:bg-[rgba(255,255,255,0.3)] hover:border-border"
                           }`}
                         >
                           <IconFile size={14.4} stroke={1.2} className="text-foreground" />
@@ -811,23 +830,41 @@ export default function LandingPage() {
                         </div>
                         <div
                           onClick={() => setActiveTab("yaml")}
-                          className={`flex gap-[6px] items-center px-[6px] py-[4px] rounded-[6px] cursor-pointer transition-all ${
+                          className={`flex gap-[6px] items-center px-[6px] py-[4px] rounded-[6px] cursor-pointer transition-all border ${
                             activeTab === "yaml"
-                              ? "bg-[rgba(255,255,255,0.6)] border border-border"
-                              : "hover:bg-[rgba(255,255,255,0.3)] hover:border hover:border-border"
+                              ? "bg-[rgba(255,255,255,0.6)] border-border"
+                              : "border-transparent hover:bg-[rgba(255,255,255,0.3)] hover:border-border"
                           }`}
                         >
                           <IconFile size={14.4} stroke={1.2} className="text-foreground" />
                           <p className="text-[14px] font-medium leading-[20px] text-foreground">vm0.yaml</p>
                         </div>
                       </div>
-                      <div className="bg-[#f9f4ef] rounded-[10px] w-[40px] h-[36px] flex items-center justify-center">
-                        <IconCopy size={16} stroke={1.33} className="text-foreground" />
-                      </div>
+                      <button
+                        onClick={() => {
+                          const content = activeTab === "agents"
+                            ? `Agent Instructions\n\nYou are a specialized agent for ${selectedAgent}.`
+                            : `name: ${selectedAgent}\nversion: 1.0.0`;
+                          navigator.clipboard.writeText(content);
+                          setCopiedEditor(true);
+                          setTimeout(() => setCopiedEditor(false), 2000);
+                        }}
+                        className="bg-[#f9f4ef] dark:bg-[#292a2e] hover:bg-[#f0ebe5] dark:hover:bg-[#3a3a3e] rounded-[10px] w-[40px] h-[36px] flex items-center justify-center transition-colors"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                      </button>
+                      {copiedEditor && (
+                        <div className="absolute -top-[50px] right-[12px] bg-[#231f1b] text-white px-[12px] py-[6px] rounded-[6px] text-[14px] whitespace-nowrap z-10">
+                          Copied
+                        </div>
+                      )}
                     </div>
 
                     {/* Editor Content */}
-                    <div className="flex-1 bg-white p-[16px] overflow-y-auto rounded-bl-[12px] rounded-br-[12px]">
+                    <div className="flex-1 bg-white dark:bg-[#19191b] p-[16px] overflow-y-auto rounded-bl-[12px] rounded-br-[12px]">
                       {selectedAgent === "hackernews" && activeTab === "agents" && (
                           <div className="text-[14px] leading-[20px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
                             <p className="m-0 font-semibold text-[18px] leading-[26px]">Agent Instructions</p>
@@ -1015,7 +1052,7 @@ export default function LandingPage() {
               </div>
 
               {/* Sample Agents */}
-              <div className="flex items-start rounded-[8px] mb-[20px]">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-[12px] sm:gap-[16px] rounded-[8px] mb-[20px]">
               <AgentCard
                 icon="/landing/ycombinator.svg"
                 title="HackerNews Agent"
@@ -1033,7 +1070,7 @@ export default function LandingPage() {
                 variant="white"
               />
               <AgentCard
-                icon="/landing/notion.svg"
+                icon={{ light: "/landing/notion.svg", dark: "/landing/notion-dark.svg" }}
                 title="Daily report agent"
                 description="Aggregate data from multiple sources and APIs, then summarize in Notion."
                 onClick={() => setSelectedAgent("daily-report")}
@@ -1068,23 +1105,23 @@ export default function LandingPage() {
 
             {/* Build an agent */}
             {mainTab === "build" && (
-            <div ref={buildSectionRef} className="flex flex-col gap-[30px] mb-20">
+            <div ref={buildSectionRef} className="flex flex-col gap-[30px] mb-20 px-4">
               <div className="text-center">
-                <h2 className="text-[36px] font-medium leading-[40px] text-foreground mb-4">Build an agent</h2>
-                <p className="text-[16px] leading-[24px] text-foreground">
+                <h2 className="text-[24px] sm:text-[30px] md:text-[36px] font-medium leading-[1.2] text-foreground mb-4">Build an agent</h2>
+                <p className="text-[14px] sm:text-[16px] leading-[1.5] text-foreground">
                   Build your agent with the VM0 builder skill and CLI.
                 </p>
-                <p className="text-[16px] leading-[24px] text-foreground">
+                <p className="text-[14px] sm:text-[16px] leading-[1.5] text-foreground">
                   Create agents in Claude Code using natural language, on a secure and reliable infrastructure.
                 </p>
               </div>
 
-              <div className="rounded-[6px] pt-[20px] pb-[30px] px-[300px]" style={{
+              <div className="rounded-[6px] pt-[20px] pb-[20px] sm:pb-[30px] px-[16px] sm:px-[30px] md:px-[100px] lg:px-[200px] xl:px-[300px]" style={{
                 backgroundImage: "linear-gradient(137.478deg, rgb(183, 200, 210) 0.82464%, rgb(253, 175, 83) 45.285%, rgb(248, 127, 48) 99.384%)"
               }}>
-                <div className="bg-white border-[0.5px] border-border rounded-[12px] shadow-[0px_25px_50px_-12px_rgba(0,0,0,0.25)] overflow-hidden h-[422px]">
+                <div className="bg-white dark:bg-[#19191b] border-[0.5px] border-border rounded-[12px] shadow-[0px_25px_50px_-12px_rgba(0,0,0,0.25)] overflow-hidden h-[422px]">
                   {/* Terminal Header */}
-                  <div className="bg-[#f9f4ef] p-[8px] flex gap-[76px] items-center shadow-[0px_0.5px_0px_0px_#d2d2d2]">
+                  <div className="bg-[#f9f4ef] dark:bg-[#292a2e] p-[8px] flex gap-[76px] items-center shadow-[0px_0.5px_0px_0px_#d2d2d2] dark:shadow-[0px_0.5px_0px_0px_#2f2f32]">
                     <div className="flex gap-1.5">
                       <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
                       <div className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
@@ -1100,13 +1137,13 @@ export default function LandingPage() {
                   <div className="p-[20px] overflow-y-auto h-[calc(422px-41px)]" style={{ fontFamily: 'var(--font-jetbrains-mono)' }}>
                     <div className="flex gap-[10px] items-start text-[12px] leading-[16px]">
                       <div className="flex gap-[4px] items-center">
-                        <div className="text-black">
+                        <div className="text-black dark:text-white">
                           <p className="m-0"> *</p>
                           <p className="m-0">*</p>
                           <p className="m-0"> *</p>
                         </div>
                         <Image src="/landing/vector-logo.svg" alt="VM0" width="65" height="40" />
-                        <div className="text-black">
+                        <div className="text-black dark:text-white">
                           <p className="m-0">*</p>
                           <p className="m-0"> *</p>
                           <p className="m-0">*</p>
@@ -1132,8 +1169,8 @@ export default function LandingPage() {
                       {buildAnimationStep >= 1 && (
                         <p className="m-0">
                           <span className="text-[#f59e0b]">●</span>{" "}
-                          <span className="text-black font-medium">{typedText}</span>
-                          {buildAnimationStep === 1 && <span className="text-black animate-pulse"> █</span>}
+                          <span className="text-black dark:text-white font-medium">{typedText}</span>
+                          {buildAnimationStep === 1 && <span className="text-black dark:text-white animate-pulse"> █</span>}
                         </p>
                       )}
 
@@ -1224,24 +1261,24 @@ export default function LandingPage() {
         </section>
 
         {/* Features Section */}
-        <section className="w-full max-w-[1440px] px-8 pb-10">
+        <section className="w-full max-w-[1440px] px-4 sm:px-6 md:px-8 pb-10">
           <div className="max-w-[1200px] mx-auto">
-            <h2 className="text-[36px] font-medium leading-[40px] mb-12" style={{ fontFamily: 'var(--font-noto-sans)' }}>Our features</h2>
+            <h2 className="text-[24px] sm:text-[30px] md:text-[36px] font-medium leading-[1.2] mb-8 sm:mb-12" style={{ fontFamily: 'var(--font-noto-sans)' }}>Our features</h2>
 
-            <div className="flex gap-[12px] mb-0">
+            <div className="flex flex-col lg:flex-row gap-[12px] mb-0">
               {/* Feature 1: Natural language building */}
-              <div className="flex-1 bg-white border border-[#f5eae1] rounded-[10px] overflow-hidden flex flex-col gap-[10px]">
+              <div className="flex-1 bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] overflow-hidden flex flex-col gap-[10px]">
                 <div className="flex flex-col gap-[24px] flex-1">
-                  <div className="flex flex-col gap-[16px] p-[24px]">
-                    <h3 className="text-[30px] leading-[36px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>Natural language building</h3>
-                    <p className="text-[16px] leading-[24px] text-foreground" style={{ fontFamily: 'var(--font-noto-sans)' }}>
-                      Describe your goals in Claude Code, Cursor, or any other editor to co-edit AGENTS.md. Pick the right skills, and you're all set.
+                  <div className="flex flex-col gap-[16px] p-[16px] sm:p-[24px]">
+                    <h3 className="text-[20px] sm:text-[24px] md:text-[30px] leading-[1.2]" style={{ fontFamily: 'var(--font-noto-sans)' }}>Natural language building</h3>
+                    <p className="text-[14px] sm:text-[16px] leading-[1.5] text-foreground" style={{ fontFamily: 'var(--font-noto-sans)' }}>
+                      Describe your goals in Claude Code to co-edit AGENTS.md. Pick the right skills, and you're all set.
                     </p>
                   </div>
 
                   {/* Code diff visualization */}
-                  <div className="bg-[#f9f4ef] flex-1 p-[24px]">
-                    <div className="bg-white border border-[#f5eae1] rounded-[12px] p-[10px] flex-1 flex flex-col justify-center items-center overflow-hidden">
+                  <div className="bg-[#f9f4ef] dark:bg-[#292a2e] flex-1 p-[24px]">
+                    <div className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[12px] p-[10px] flex-1 flex flex-col justify-center items-center overflow-hidden">
                       <div className="flex-1 flex gap-[8px] items-start justify-center w-full min-h-px min-w-px">
                         <div className="h-[16px] w-[8px] shrink-0 relative">
                           <svg width="8" height="16" viewBox="0 0 8 16" fill="none">
@@ -1265,20 +1302,20 @@ export default function LandingPage() {
 
                           <div className="flex items-center justify-center pl-[16px] w-full">
                             <div className="flex-1 text-[12px] leading-normal min-h-px min-w-px" style={{ fontFamily: 'var(--font-jetbrains-mono)' }}>
-                              <p className="mb-px bg-[#fee2e2]">1 - # Agent Instructions</p>
-                              <p className="mb-px bg-[#dcfce7]">1 + # Design Scout Agent Instructions</p>
+                              <p className="mb-px bg-[#fee2e2] dark:bg-[#4c1d1d]">1 - # Agent Instructions</p>
+                              <p className="mb-px bg-[#dcfce7] dark:bg-[#1d4c1d]">1 + # Design Scout Agent Instructions</p>
                               <p className="mb-px">2</p>
-                              <p className="mb-px bg-[#dcfce7]">{`3 + Your role is to help the team stay `}</p>
-                              <p className="mb-px bg-[#dcfce7]">{`4 + aware of emerging patterns, `}</p>
-                              <p className="mb-px bg-[#dcfce7]">{`5 + references, and ideas across product `}</p>
-                              <p className="mb-px bg-[#dcfce7]">{`6 + design, UI/UX, and developer `}</p>
-                              <p className="mb-px bg-[#dcfce7]">{`7 + experience, without requiring manual `}</p>
-                              <p className="mb-px bg-[#dcfce7]">8 + tracking.</p>
-                              <p className="mb-px bg-[#dcfce7]">9 + ## Workflow</p>
-                              <p className="mb-px bg-[#dcfce7]">10+ Phase 1</p>
-                              <p className="mb-px bg-[#dcfce7]">11+ Signal Collection</p>
-                              <p className="mb-px bg-[#dcfce7]">{`12+ In this phase, the agent focuses on 13+ broad signal gathering.Identify `}</p>
-                              <p className="bg-[#dcfce7]">14+ recurring themes and notable changes</p>
+                              <p className="mb-px bg-[#dcfce7] dark:bg-[#1d4c1d]">{`3 + Your role is to help the team stay `}</p>
+                              <p className="mb-px bg-[#dcfce7] dark:bg-[#1d4c1d]">{`4 + aware of emerging patterns, `}</p>
+                              <p className="mb-px bg-[#dcfce7] dark:bg-[#1d4c1d]">{`5 + references, and ideas across product `}</p>
+                              <p className="mb-px bg-[#dcfce7] dark:bg-[#1d4c1d]">{`6 + design, UI/UX, and developer `}</p>
+                              <p className="mb-px bg-[#dcfce7] dark:bg-[#1d4c1d]">{`7 + experience, without requiring manual `}</p>
+                              <p className="mb-px bg-[#dcfce7] dark:bg-[#1d4c1d]">8 + tracking.</p>
+                              <p className="mb-px bg-[#dcfce7] dark:bg-[#1d4c1d]">9 + ## Workflow</p>
+                              <p className="mb-px bg-[#dcfce7] dark:bg-[#1d4c1d]">10+ Phase 1</p>
+                              <p className="mb-px bg-[#dcfce7] dark:bg-[#1d4c1d]">11+ Signal Collection</p>
+                              <p className="mb-px bg-[#dcfce7] dark:bg-[#1d4c1d]">{`12+ In this phase, the agent focuses on 13+ broad signal gathering.Identify `}</p>
+                              <p className="bg-[#dcfce7] dark:bg-[#1d4c1d]">14+ recurring themes and notable changes</p>
                             </div>
                           </div>
                         </div>
@@ -1289,70 +1326,69 @@ export default function LandingPage() {
               </div>
 
               {/* Feature 2: Cloud sandbox continuously */}
-              <div className="flex-1 bg-white border border-[#f5eae1] rounded-[10px] overflow-hidden flex flex-col gap-[10px]">
+              <div className="flex-1 bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] overflow-hidden flex flex-col gap-[10px]">
                 <div className="flex flex-col gap-[24px] flex-1 min-h-px min-w-px">
-                  <div className="flex flex-col gap-[16px] p-[24px]">
-                    <h3 className="text-[30px] leading-[36px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>Cloud sandbox continuously</h3>
+                  <div className="flex flex-col gap-[16px] p-[16px] sm:p-[24px]">
+                    <h3 className="text-[20px] sm:text-[24px] md:text-[30px] leading-[1.2]" style={{ fontFamily: 'var(--font-noto-sans)' }}>Cloud sandbox continuously</h3>
                     <div className="flex flex-col">
-                      <p className="text-[16px] leading-[24px] text-foreground mb-0" style={{ fontFamily: 'var(--font-noto-sans)' }}>
+                      <p className="text-[14px] sm:text-[16px] leading-[1.5] text-foreground mb-0" style={{ fontFamily: 'var(--font-noto-sans)' }}>
                         Cook locally, run in the cloud. Convert your local skill to cloud 24/7.
                       </p>
-                      <p className="text-[16px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>&nbsp;</p>
+                      <p className="text-[14px] sm:text-[16px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>&nbsp;</p>
                     </div>
                   </div>
 
                   {/* Command flow visualization */}
-                  <div className="bg-[#f9f4ef] flex-1 min-h-px min-w-px p-[24px]">
-                    <div className="flex flex-col items-center flex-1 min-h-px min-w-px w-full">
-                      <div className="bg-white border border-[#f5eae1] rounded-[10px] px-[10px] py-[8px] flex-1 min-h-px min-w-px w-full flex items-center justify-center">
+                  <div className="bg-[#f9f4ef] dark:bg-[#292a2e] flex-1 min-h-px min-w-px p-[24px]">
+                    <div className="flex flex-col justify-between items-center h-full w-full">
+                      <div className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] px-[10px] py-[8px] w-full flex-1 flex items-center justify-center">
                         <div className="flex gap-[10px] items-center justify-center">
-                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0 overflow-hidden">
-                            <path d="M4 2.5L11 8L4 13.5V2.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                            <path d="M7 4v16l13 -8z" />
                           </svg>
-                          <h3 className="text-[16px] font-medium leading-[1.2]" style={{ fontFamily: 'var(--font-jetbrains-mono)' }}>
+                          <h3 className="text-[16px] font-medium leading-[1.2]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
                             vm0 run [prompt]
                           </h3>
                         </div>
                       </div>
 
-                      <div className="flex h-[30px] items-center justify-center w-0">
-                        <div className="rotate-90">
-                          <div className="h-0 w-[30px] relative">
-                            <svg className="absolute" style={{ top: '-2.89px', left: '-8.89%', right: 0, bottom: '-2.89px' }} height="5.774" width="32.667" viewBox="0 0 32.667 5.774" fill="none">
-                              <path d="M16.333 5.774L0 0L32.667 0L16.333 5.774Z" fill="#d9d3cd"/>
-                            </svg>
-                          </div>
-                        </div>
+                      <div className="flex h-[30px] items-center justify-end flex-col">
+                        <div className="w-[1px] flex-1 bg-[#d9d3cd]"></div>
+                        <svg width="10" height="6" viewBox="0 0 10 6" fill="none" className="shrink-0">
+                          <path d="M5 6L0 0L10 0L5 6Z" fill="#d9d3cd"/>
+                        </svg>
                       </div>
 
-                      <div className="bg-white border border-[#f5eae1] rounded-[10px] px-[10px] py-[8px] flex-1 min-h-px min-w-px w-full flex items-center justify-center">
+                      <div className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] px-[10px] py-[8px] w-full flex-1 flex items-center justify-center">
                         <div className="flex gap-[10px] items-center justify-center">
-                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0">
-                            <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-                            <path d="M8 5V8H10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none"/>
-                            <path d="M11 11L12.5 12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none"/>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                            <circle cx="12" cy="12" r="9" />
+                            <polyline points="12 7 12 12 15 15" />
                           </svg>
-                          <h3 className="text-[16px] font-medium leading-[1.2]" style={{ fontFamily: 'var(--font-jetbrains-mono)' }}>
+                          <h3 className="text-[16px] font-medium leading-[1.2]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
                             Schedule
                           </h3>
                         </div>
                       </div>
 
-                      <div className="flex h-[30px] items-center justify-center w-0">
-                        <div className="rotate-90">
-                          <div className="h-0 w-[30px] relative">
-                            <svg className="absolute" style={{ top: '-2.89px', left: '-8.89%', right: 0, bottom: '-2.89px' }} height="5.774" width="32.667" viewBox="0 0 32.667 5.774" fill="none">
-                              <path d="M16.333 5.774L0 0L32.667 0L16.333 5.774Z" fill="#d9d3cd"/>
-                            </svg>
-                          </div>
-                        </div>
+                      <div className="flex h-[30px] items-center justify-end flex-col">
+                        <div className="w-[1px] flex-1 bg-[#d9d3cd]"></div>
+                        <svg width="10" height="6" viewBox="0 0 10 6" fill="none" className="shrink-0">
+                          <path d="M5 6L0 0L10 0L5 6Z" fill="#d9d3cd"/>
+                        </svg>
                       </div>
 
-                      <div className="bg-white border border-[#f5eae1] rounded-[10px] px-[10px] py-[8px] flex-1 min-h-px min-w-px w-full flex items-center justify-center">
-                        <div className="flex flex-col items-start">
-                          <div className="flex flex-col justify-center leading-[1.2] text-center w-[258px]">
-                            <h3 className="block mb-0 text-[16px] font-medium" style={{ fontFamily: 'var(--font-jetbrains-mono)' }}>Executes in</h3>
-                            <h3 className="block text-[16px] font-medium" style={{ fontFamily: 'var(--font-jetbrains-mono)' }}>isolated sandbox</h3>
+                      <div className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] px-[10px] py-[8px] w-full flex-1 flex items-center justify-center">
+                        <div className="flex gap-[10px] items-center justify-center">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                            <path d="M12 3l8 4.5v9l-8 4.5l-8 -4.5v-9l8 -4.5" />
+                            <path d="M12 12l8 -4.5" />
+                            <path d="M12 12v9" />
+                            <path d="M12 12l-8 -4.5" />
+                          </svg>
+                          <div className="flex flex-col text-center">
+                            <h3 className="text-[16px] font-medium leading-[1.2]" style={{ fontFamily: 'var(--font-noto-sans)' }}>Executes in</h3>
+                            <h3 className="text-[16px] font-medium leading-[1.2]" style={{ fontFamily: 'var(--font-noto-sans)' }}>isolated sandbox</h3>
                           </div>
                         </div>
                       </div>
@@ -1362,18 +1398,18 @@ export default function LandingPage() {
               </div>
 
               {/* Feature 3: Full agent observability */}
-              <div className="flex-1 bg-white border border-[#f5eae1] rounded-[10px] overflow-hidden flex flex-col">
-                <div className="flex flex-col gap-[24px]">
-                  <div className="flex flex-col gap-[16px] p-[24px]">
+              <div className="flex-1 bg-white dark:bg-[#19191b] border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] overflow-hidden flex flex-col gap-[10px]">
+                <div className="flex flex-col gap-[24px] flex-1">
+                  <div className="flex flex-col gap-[16px] p-[16px] sm:p-[24px]">
                     <div className="flex flex-col">
-                      <h3 className="block mb-0 text-[30px] leading-[36px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>Full agent</h3>
-                      <h3 className="text-[30px] leading-[36px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
+                      <h3 className="block mb-0 text-[20px] sm:text-[24px] md:text-[30px] leading-[36px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>Full agent</h3>
+                      <h3 className="text-[20px] sm:text-[24px] md:text-[30px] leading-[36px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
                         <span className="leading-[36px]">o</span>
                         <span className="leading-[36px]">bservability</span>
                       </h3>
                     </div>
                     <div className="flex flex-col">
-                      <p className="text-[16px] leading-[24px] text-foreground mb-0" style={{ fontFamily: 'var(--font-noto-sans)' }}>
+                      <p className="text-[14px] sm:text-[16px] leading-[24px] text-foreground mb-0" style={{ fontFamily: 'var(--font-noto-sans)' }}>
                         See every execution detail.Real-time logs, artifact outputs, and checkpoint replay.
                       </p>
                       <p className="text-[16px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>&nbsp;</p>
@@ -1381,22 +1417,13 @@ export default function LandingPage() {
                   </div>
 
                   {/* Execution logs visualization */}
-                  <div className="bg-[#f9f4ef] flex flex-col items-start p-[24px]">
+                  <div className="bg-[#f9f4ef] dark:bg-[#292a2e] flex-1 p-[24px]">
                     <div className="flex flex-col gap-[16px] items-start w-full">
-                      {/* System Initialize log */}
-                      <div className="bg-white border border-[#d9d3cd] rounded-[8px] p-[16px] flex items-start justify-center overflow-hidden w-full">
+                      {/* Initialize log */}
+                      <div className="bg-white dark:bg-[#19191b] border border-[#f5eae1] dark:border-[#2f2f32] rounded-[8px] p-[16px] flex items-start justify-center overflow-hidden w-full">
                         <div className="flex-1 flex flex-col gap-[8px] items-start min-h-px min-w-px">
                           <div className="flex items-center justify-between w-full">
-                            <div className="flex gap-[10px] items-center">
-                              <div className="bg-[#f0f9ff] border border-[#0284c7] h-[22px] flex gap-[4px] items-center justify-center px-[6px] py-[2px] rounded-[8px]">
-                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0 overflow-hidden">
-                                  <path d="M8 2v2M8 12v2M14 8h-2M4 8H2M12.364 3.636l-1.414 1.414M5.05 10.95l-1.414 1.414M12.364 12.364l-1.414-1.414M5.05 5.05L3.636 3.636" stroke="#0284c7" strokeWidth="1.5" strokeLinecap="round"/>
-                                  <circle cx="8" cy="8" r="2" stroke="#0284c7" strokeWidth="1.5" fill="none"/>
-                                </svg>
-                                <p className="font-medium leading-[16px] text-[#0284c7] text-[12px] h-[20px] w-[42px] flex items-center" style={{ fontFamily: 'var(--font-noto-sans)' }}>
-                                  System
-                                </p>
-                              </div>
+                            <div className="flex items-center">
                               <p className="font-medium text-[14px] leading-[20px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
                                 Initialize
                               </p>
@@ -1407,100 +1434,99 @@ export default function LandingPage() {
                               </p>
                             </div>
                           </div>
-                          <div className="flex flex-col items-start w-full">
-                            <div className="flex flex-col gap-[8px] items-start w-full">
-                              <div className="flex flex-col items-start justify-center w-full">
-                                <div className="flex gap-[4px] items-center">
-                                  <p className="text-[14px] leading-[20px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
-                                    18 tools available
-                                  </p>
-                                  <div className="flex items-center justify-center size-[16px] -rotate-90">
-                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                                      <path d="M4 6L8 10L12 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                    </svg>
-                                  </div>
-                                </div>
+                          <div className="flex items-start w-full">
+                            <div className="flex gap-[8px] items-start">
+                              <div className="bg-[#fffcf9] dark:bg-[#19191b] border border-[#e1dbd5] dark:border-[#2f2f32] h-[22px] flex gap-[4px] items-center justify-center px-[6px] py-[2px] rounded-[8px]">
+                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="shrink-0">
+                                  <circle cx="6" cy="6" r="5.25" stroke="#22c55e" strokeWidth="1.5" fill="none"/>
+                                  <path d="M3.5 6L5 7.5L8.5 4" stroke="#22c55e" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                                </svg>
+                                <p className="font-medium leading-[16px] text-[#827d77] text-[12px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
+                                  18 tools
+                                </p>
                               </div>
-                              <div className="flex items-center w-full">
-                                <div className="flex gap-[4px] items-center">
-                                  <p className="text-[14px] leading-[20px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
-                                    5 agents
-                                  </p>
-                                  <div className="flex items-center justify-center size-[16px] -rotate-90">
-                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                                      <path d="M4 6L8 10L12 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                    </svg>
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="flex items-center w-full">
-                                <div className="flex gap-[4px] items-center">
-                                  <p className="text-[14px] leading-[20px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
-                                    8 Slash Commands
-                                  </p>
-                                  <div className="flex items-center justify-center size-[16px] -rotate-90">
-                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                                      <path d="M4 6L8 10L12 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                    </svg>
-                                  </div>
-                                </div>
+                              <div className="bg-[#fffcf9] dark:bg-[#19191b] border border-[#e1dbd5] dark:border-[#2f2f32] h-[22px] flex gap-[4px] items-center justify-center px-[6px] py-[2px] rounded-[8px]">
+                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="shrink-0">
+                                  <circle cx="6" cy="6" r="5.25" stroke="#22c55e" strokeWidth="1.5" fill="none"/>
+                                  <path d="M3.5 6L5 7.5L8.5 4" stroke="#22c55e" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                                </svg>
+                                <p className="font-medium leading-[16px] text-[#827d77] text-[12px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
+                                  10 commands
+                                </p>
                               </div>
                             </div>
                           </div>
                         </div>
                       </div>
 
-                      {/* Assistant TodoWrite log */}
-                      <div className="bg-white border border-[#d9d3cd] rounded-[8px] p-[16px] flex h-[166px] items-start justify-center overflow-hidden w-full">
+                      {/* Search TikTok log */}
+                      <div className="bg-white dark:bg-[#19191b] border border-[#f5eae1] dark:border-[#2f2f32] rounded-[8px] p-[16px] flex items-start justify-center overflow-hidden w-full">
                         <div className="flex-1 flex flex-col gap-[8px] items-start min-h-px min-w-px">
-                          <div className="flex items-start justify-between w-full">
-                            <div className="bg-[#fefce8] border border-[#ca8a04] h-[22px] flex gap-[4px] items-center justify-center px-[6px] py-[2px] rounded-[8px]">
-                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0">
-                                <circle cx="8" cy="5" r="2.5" stroke="#ca8a04" strokeWidth="1.5" fill="none"/>
-                                <path d="M4 13c0-2.21 1.79-4 4-4s4 1.79 4 4" stroke="#ca8a04" strokeWidth="1.5" strokeLinecap="round" fill="none"/>
-                              </svg>
-                              <p className="leading-[16px] text-[#ca8a04] text-[12px] font-medium" style={{ fontFamily: 'var(--font-noto-sans)' }}>
-                                Assistant
-                              </p>
-                            </div>
+                          <div className="flex gap-[10px] items-center justify-center w-full">
+                            <p className="flex-1 font-medium text-[14px] leading-[20px] min-h-px min-w-px" style={{ fontFamily: 'var(--font-noto-sans)' }}>
+                              Search TikTok for fitness influencers
+                            </p>
                             <div className="flex items-center justify-center">
                               <p className="text-[14px] leading-[20px] text-[#827d77]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
                                 14:26:02
                               </p>
                             </div>
                           </div>
-                          <div className="flex items-center justify-center w-full">
-                            <p className="flex-1 font-medium text-[14px] leading-[20px] min-h-px min-w-px" style={{ fontFamily: 'var(--font-noto-sans)' }}>
-                              TodoWrite
-                            </p>
-                          </div>
                           <div className="flex gap-[8px] items-center w-full">
                             <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className="shrink-0">
                               <circle cx="9" cy="9" r="6.75" stroke="#22c55e" strokeWidth="1.5" fill="none"/>
                               <path d="M6 9L8 11L12 7" stroke="#22c55e" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
                             </svg>
-                            <p className="text-[14px] leading-[20px] overflow-hidden text-ellipsis w-[285px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
-                              Fetch messages from Slack channel C09RUN8LVBL for past 24 hours
+                            <p className="text-[14px] leading-[20px] overflow-hidden text-ellipsis" style={{ fontFamily: 'var(--font-noto-sans)' }}>
+                              Search fitness creators on TikTok
                             </p>
                           </div>
                           <div className="flex gap-[8px] items-center w-full">
-                            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className="shrink-0">
-                              <path d="M15 4.5L7 1L3 3" stroke="#eab308" strokeWidth="1.5" strokeLinecap="round"/>
-                              <path d="M3 14V8" stroke="#eab308" strokeWidth="1.5" strokeLinecap="round"/>
-                              <path d="M8.5 12L12.5 14" stroke="#eab308" strokeWidth="1.5" strokeLinecap="round"/>
-                              <circle cx="5" cy="7.5" r="1.5" fill="#eab308"/>
-                              <circle cx="13.5" cy="12.5" r="1.5" fill="#eab308"/>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#eab308" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                              <path d="M10 20.777a8.942 8.942 0 0 1 -2.48 -.969" />
+                              <path d="M14 3.223a9.003 9.003 0 0 1 0 17.554" />
+                              <path d="M4.579 17.093a8.961 8.961 0 0 1 -1.227 -2.592" />
+                              <path d="M3.124 10.5c.16 -.95 .468 -1.85 .9 -2.675l.169 -.305" />
+                              <path d="M6.907 4.579a8.954 8.954 0 0 1 3.093 -1.356" />
                             </svg>
-                            <p className="text-[14px] leading-[20px] w-[279px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
-                              Analyzing and summarizing messages
+                            <p className="flex-1 text-[14px] leading-[20px] min-h-px min-w-px" style={{ fontFamily: 'var(--font-noto-sans)' }}>
+                              Analyzing engagement metrics
                             </p>
                           </div>
                           <div className="flex gap-[8px] items-center w-full">
                             <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className="shrink-0">
                               <circle cx="9" cy="9" r="6.75" stroke="#8c8782" strokeWidth="1.5" strokeDasharray="2 2" fill="none"/>
                             </svg>
-                            <p className="text-[14px] leading-[20px] overflow-hidden text-ellipsis w-[285px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
-                              Post summary to Slack channel C0A4ZFDMLTD
+                            <p className="flex-1 text-[14px] leading-[20px] overflow-hidden text-ellipsis min-h-px min-w-px" style={{ fontFamily: 'var(--font-noto-sans)' }}>
+                              Generate influencer report
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Let me prepare the request log */}
+                      <div className="bg-white dark:bg-[#19191b] border border-[#f5eae1] dark:border-[#2f2f32] rounded-[8px] p-[16px] flex items-start justify-center overflow-hidden w-full">
+                        <div className="flex-1 flex flex-col gap-[8px] items-start min-h-px min-w-px">
+                          <div className="flex gap-[10px] items-center justify-center w-full">
+                            <p className="flex-1 font-medium text-[14px] leading-[20px] min-h-px min-w-px" style={{ fontFamily: 'var(--font-noto-sans)' }}>
+                              Let me prepare the request
+                            </p>
+                            <div className="flex items-center justify-center">
+                              <p className="text-[14px] leading-[20px] text-[#827d77]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
+                                14:26:02
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex gap-[8px] items-center w-full">
+                            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className="shrink-0">
+                              <path d="M10.5 2.25H5.25C4.42 2.25 3.75 2.92 3.75 3.75V14.25C3.75 15.08 4.42 15.75 5.25 15.75H12.75C13.58 15.75 14.25 15.08 14.25 14.25V6L10.5 2.25Z" stroke="#827d77" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                              <path d="M10.5 2.25V6H14.25" stroke="#827d77" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                            </svg>
+                            <p className="text-[14px] leading-[20px] overflow-hidden text-ellipsis" style={{ fontFamily: 'var(--font-noto-sans)' }}>
+                              Write
+                            </p>
+                            <p className="text-[14px] leading-[20px] overflow-hidden text-ellipsis text-[#827d77]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
+                              /temp/brightdata_request.json
                             </p>
                           </div>
                         </div>
@@ -1514,92 +1540,111 @@ export default function LandingPage() {
         </section>
 
         {/* Comparison Section */}
-        <section className="w-full max-w-[1440px] px-8 py-10">
-          <div className="max-w-[1200px] mx-auto flex flex-col gap-[40px]">
-            <h2 className="text-[36px] font-medium leading-[40px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
+        <section className="w-full max-w-[1440px] px-4 sm:px-6 md:px-8 py-10">
+          <div className="max-w-[1200px] mx-auto flex flex-col gap-[30px] sm:gap-[40px]">
+            <h2 className="text-[24px] sm:text-[30px] md:text-[36px] font-medium leading-[1.2]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
               Flexible workflows. Lightweight frameworks. Full observability.
             </h2>
 
-            <div className="flex flex-col gap-[10px] p-[30px] rounded-[6px]" style={{ backgroundImage: 'linear-gradient(109.494deg, rgb(255, 182, 63) 1.9286%, rgb(129, 176, 203) 102.67%)' }}>
+            <div className="flex flex-col gap-[10px] p-[16px] sm:p-[24px] md:p-[30px] rounded-[6px]" style={{ backgroundImage: 'linear-gradient(109.494deg, rgb(255, 182, 63) 1.9286%, rgb(129, 176, 203) 102.67%)' }}>
               {/* Row 1: n8n & Dify vs VM0 */}
-              <div className="h-[114px] relative w-full">
-                <div className="absolute left-0 top-0 w-[536px] h-[114px]" style={{ boxShadow: '0px 20px 25px 0px rgba(0,0,0,0.1), 0px 8px 10px 0px rgba(0,0,0,0.1)' }}>
-                  <div className="bg-white rounded-[12px] p-[24px] flex flex-col gap-[12px] items-center justify-center h-full overflow-hidden">
-                    <div className="flex gap-[8px] items-center justify-center">
-                      <Image src="/landing/n8n-logo.svg" alt="n8n" width="111" height="30" />
+              <div className="flex flex-col md:flex-row md:relative gap-[10px] md:gap-0 md:h-[114px] w-full">
+                <div className="md:absolute md:left-0 md:top-0 w-full md:w-[536px] md:h-[114px]" style={{ boxShadow: '0px 20px 25px 0px rgba(0,0,0,0.1), 0px 8px 10px 0px rgba(0,0,0,0.1)' }}>
+                  <div className="bg-white rounded-[12px] p-[16px] sm:p-[24px] flex flex-col gap-[12px] items-center justify-center h-full overflow-hidden">
+                    <div className="flex gap-[8px] items-center justify-center flex-wrap">
+                      <Image src="/landing/n8n-logo.svg" alt="n8n" width="111" height="30" className="dark:hidden" />
+                      <Image src="/landing/n8n-logo-dark.svg" alt="n8n" width="111" height="30" className="hidden dark:block" />
                       <p className="text-[16px] leading-[24px] text-[#827d77]" style={{ fontFamily: 'var(--font-noto-sans)' }}>&</p>
-                      <Image src="/landing/dify-logo.svg" alt="Dify" width="67" height="30" />
+                      <Image src="/landing/dify-logo.svg" alt="Dify" width="67" height="30" className="dark:hidden" />
+                      <Image src="/landing/dify-logo-dark.svg" alt="Dify" width="67" height="30" className="hidden dark:block" />
                     </div>
-                    <p className="text-[16px] leading-[24px] text-center" style={{ fontFamily: 'var(--font-noto-sans)' }}>Drag nodes with preset paths</p>
+                    <p className="text-[14px] sm:text-[16px] leading-[1.5] text-center" style={{ fontFamily: 'var(--font-noto-sans)' }}>Drag nodes with preset paths</p>
                   </div>
                 </div>
-                <div className="absolute left-[604px] top-0 w-[536px] h-[114px]" style={{ boxShadow: '0px 20px 25px 0px rgba(0,0,0,0.1), 0px 8px 10px 0px rgba(0,0,0,0.1)' }}>
-                  <div className="bg-white rounded-[12px] p-[24px] flex flex-col gap-[12px] items-center justify-center h-full overflow-hidden">
-                    <Image src="/landing/logo.svg" alt="VM0" width="99" height="30" />
-                    <p className="text-[16px] leading-[24px] text-center" style={{ fontFamily: 'var(--font-noto-sans)' }}>Natural language + Agent reasoning</p>
+                <div className="md:absolute md:left-[604px] md:top-0 w-full md:w-[536px] md:h-[114px]" style={{ boxShadow: '0px 20px 25px 0px rgba(0,0,0,0.1), 0px 8px 10px 0px rgba(0,0,0,0.1)' }}>
+                  <div className="bg-white rounded-[12px] p-[16px] sm:p-[24px] flex flex-col gap-[12px] items-center justify-center h-full overflow-hidden">
+                    <Image src="/landing/logo.svg" alt="VM0" width="99" height="30" className="dark:hidden" />
+                    <Image src="/landing/logo-dark.svg" alt="VM0" width="99" height="30" className="hidden dark:block" />
+                    <p className="text-[14px] sm:text-[16px] leading-[1.5] text-center" style={{ fontFamily: 'var(--font-noto-sans)' }}>Natural language + Agent reasoning</p>
                   </div>
                 </div>
-                <div className="absolute left-[654px] top-[52px] w-[10px] h-[10px]">
+                <div className="hidden md:block md:absolute md:left-[654px] md:top-[52px] w-[10px] h-[10px]">
                   <div className="w-full h-full rounded-full bg-[#ed4e01]" />
                 </div>
-                <div className="absolute left-[416px] top-[56.88px] w-[243px] h-0 flex items-center justify-center">
-                  <div className="rotate-180 flex-none">
-                    <svg width="243" height="1" viewBox="0 0 243 1" fill="none">
-                      <path d="M0 0.5H243" stroke="#827d77" strokeWidth="1"/>
-                    </svg>
-                  </div>
+                <div className="hidden md:block md:absolute md:left-[416px] md:top-[56.88px] w-[243px] h-[1px]">
+                  <svg width="243" height="1" viewBox="0 0 243 1" fill="none" preserveAspectRatio="none">
+                    <defs>
+                      <linearGradient id="gradient-row1" x1="0" y1="0" x2="243" y2="0" gradientUnits="userSpaceOnUse">
+                        <stop offset="0%" stopColor="#ed4e01" stopOpacity="0"/>
+                        <stop offset="100%" stopColor="#ed4e01" stopOpacity="1"/>
+                      </linearGradient>
+                    </defs>
+                    <rect x="0" y="0" width="243" height="1" fill="url(#gradient-row1)"/>
+                  </svg>
                 </div>
               </div>
 
               {/* Row 2: E2B vs VM0 */}
-              <div className="h-[114px] relative w-full">
-                <div className="absolute left-0 top-0 w-[536px] h-[114px]" style={{ boxShadow: '0px 20px 25px 0px rgba(0,0,0,0.1), 0px 8px 10px 0px rgba(0,0,0,0.1)' }}>
-                  <div className="bg-white rounded-[12px] p-[24px] flex flex-col gap-[12px] items-center justify-center h-full overflow-hidden">
-                    <Image src="/landing/e2b-logo.svg" alt="E2B" width="87" height="30" />
-                    <p className="text-[16px] leading-[24px] text-center" style={{ fontFamily: 'var(--font-noto-sans)' }}>Generic infra needing config</p>
+              <div className="flex flex-col md:flex-row md:relative gap-[10px] md:gap-0 md:h-[114px] w-full">
+                <div className="md:absolute md:left-0 md:top-0 w-full md:w-[536px] md:h-[114px]" style={{ boxShadow: '0px 20px 25px 0px rgba(0,0,0,0.1), 0px 8px 10px 0px rgba(0,0,0,0.1)' }}>
+                  <div className="bg-white rounded-[12px] p-[16px] sm:p-[24px] flex flex-col gap-[12px] items-center justify-center h-full overflow-hidden">
+                    <Image src="/landing/e2b-logo.svg" alt="E2B" width="87" height="30" className="dark:hidden" />
+                    <Image src="/landing/e2b-logo-dark.svg" alt="E2B" width="87" height="30" className="hidden dark:block" />
+                    <p className="text-[14px] sm:text-[16px] leading-[1.5] text-center" style={{ fontFamily: 'var(--font-noto-sans)' }}>Generic infra needing config</p>
                   </div>
                 </div>
-                <div className="absolute left-[604px] top-0 w-[536px] h-[114px]" style={{ boxShadow: '0px 20px 25px 0px rgba(0,0,0,0.1), 0px 8px 10px 0px rgba(0,0,0,0.1)' }}>
-                  <div className="bg-white rounded-[12px] p-[24px] flex flex-col gap-[12px] items-center justify-center h-full overflow-hidden">
-                    <Image src="/landing/logo.svg" alt="VM0" width="99" height="30" />
-                    <p className="text-[16px] leading-[24px] text-center" style={{ fontFamily: 'var(--font-noto-sans)' }}>Purpose-built for agents, minimal config</p>
+                <div className="md:absolute md:left-[604px] md:top-0 w-full md:w-[536px] md:h-[114px]" style={{ boxShadow: '0px 20px 25px 0px rgba(0,0,0,0.1), 0px 8px 10px 0px rgba(0,0,0,0.1)' }}>
+                  <div className="bg-white rounded-[12px] p-[16px] sm:p-[24px] flex flex-col gap-[12px] items-center justify-center h-full overflow-hidden">
+                    <Image src="/landing/logo.svg" alt="VM0" width="99" height="30" className="dark:hidden" />
+                    <Image src="/landing/logo-dark.svg" alt="VM0" width="99" height="30" className="hidden dark:block" />
+                    <p className="text-[14px] sm:text-[16px] leading-[1.5] text-center" style={{ fontFamily: 'var(--font-noto-sans)' }}>Purpose-built for agents, minimal config</p>
                   </div>
                 </div>
-                <div className="absolute left-[654px] top-[52px] w-[10px] h-[10px]">
+                <div className="hidden md:block md:absolute md:left-[654px] md:top-[52px] w-[10px] h-[10px]">
                   <div className="w-full h-full rounded-full bg-[#ed4e01]" />
                 </div>
-                <div className="absolute left-[416px] top-[56.88px] w-[243px] h-0 flex items-center justify-center">
-                  <div className="rotate-180 flex-none">
-                    <svg width="243" height="1" viewBox="0 0 243 1" fill="none">
-                      <path d="M0 0.5H243" stroke="#827d77" strokeWidth="1"/>
-                    </svg>
-                  </div>
+                <div className="hidden md:block md:absolute md:left-[416px] md:top-[56.88px] w-[243px] h-[1px]">
+                  <svg width="243" height="1" viewBox="0 0 243 1" fill="none" preserveAspectRatio="none">
+                    <defs>
+                      <linearGradient id="gradient-row2" x1="0" y1="0" x2="243" y2="0" gradientUnits="userSpaceOnUse">
+                        <stop offset="0%" stopColor="#ed4e01" stopOpacity="0"/>
+                        <stop offset="100%" stopColor="#ed4e01" stopOpacity="1"/>
+                      </linearGradient>
+                    </defs>
+                    <rect x="0" y="0" width="243" height="1" fill="url(#gradient-row2)"/>
+                  </svg>
                 </div>
               </div>
 
               {/* Row 3: LangGraph vs VM0 */}
-              <div className="h-[114px] relative w-full">
-                <div className="absolute left-0 top-0 w-[536px] h-[114px]" style={{ boxShadow: '0px 20px 25px 0px rgba(0,0,0,0.1), 0px 8px 10px 0px rgba(0,0,0,0.1)' }}>
-                  <div className="bg-white rounded-[12px] p-[24px] flex flex-col gap-[12px] items-center justify-center h-full overflow-hidden">
-                    <Image src="/landing/langgraph-logo.svg" alt="LangGraph" width="167" height="30" />
-                    <p className="text-[16px] leading-[24px] text-center" style={{ fontFamily: 'var(--font-noto-sans)' }}>Write code + Self-deploy</p>
+              <div className="flex flex-col md:flex-row md:relative gap-[10px] md:gap-0 md:h-[114px] w-full">
+                <div className="md:absolute md:left-0 md:top-0 w-full md:w-[536px] md:h-[114px]" style={{ boxShadow: '0px 20px 25px 0px rgba(0,0,0,0.1), 0px 8px 10px 0px rgba(0,0,0,0.1)' }}>
+                  <div className="bg-white rounded-[12px] p-[16px] sm:p-[24px] flex flex-col gap-[12px] items-center justify-center h-full overflow-hidden">
+                    <Image src="/landing/langgraph-logo.svg" alt="LangGraph" width="167" height="30" className="dark:hidden" />
+                    <Image src="/landing/langgraph-logo-dark.svg" alt="LangGraph" width="167" height="30" className="hidden dark:block" />
+                    <p className="text-[14px] sm:text-[16px] leading-[1.5] text-center" style={{ fontFamily: 'var(--font-noto-sans)' }}>Write code + Self-deploy</p>
                   </div>
                 </div>
-                <div className="absolute left-[604px] top-0 w-[536px] h-[114px]" style={{ boxShadow: '0px 20px 25px 0px rgba(0,0,0,0.1), 0px 8px 10px 0px rgba(0,0,0,0.1)' }}>
-                  <div className="bg-white rounded-[12px] p-[24px] flex flex-col gap-[12px] items-center justify-center h-full overflow-hidden">
-                    <Image src="/landing/logo.svg" alt="VM0" width="99" height="30" />
-                    <p className="text-[16px] leading-[24px] text-center" style={{ fontFamily: 'var(--font-noto-sans)' }}>Zero code, one-click execution</p>
+                <div className="md:absolute md:left-[604px] md:top-0 w-full md:w-[536px] md:h-[114px]" style={{ boxShadow: '0px 20px 25px 0px rgba(0,0,0,0.1), 0px 8px 10px 0px rgba(0,0,0,0.1)' }}>
+                  <div className="bg-white rounded-[12px] p-[16px] sm:p-[24px] flex flex-col gap-[12px] items-center justify-center h-full overflow-hidden">
+                    <Image src="/landing/logo.svg" alt="VM0" width="99" height="30" className="dark:hidden" />
+                    <Image src="/landing/logo-dark.svg" alt="VM0" width="99" height="30" className="hidden dark:block" />
+                    <p className="text-[14px] sm:text-[16px] leading-[1.5] text-center" style={{ fontFamily: 'var(--font-noto-sans)' }}>Zero code, one-click execution</p>
                   </div>
                 </div>
-                <div className="absolute left-[654px] top-[52px] w-[10px] h-[10px]">
+                <div className="hidden md:block md:absolute md:left-[654px] md:top-[52px] w-[10px] h-[10px]">
                   <div className="w-full h-full rounded-full bg-[#ed4e01]" />
                 </div>
-                <div className="absolute left-[416px] top-[56.88px] w-[243px] h-0 flex items-center justify-center">
-                  <div className="rotate-180 flex-none">
-                    <svg width="243" height="1" viewBox="0 0 243 1" fill="none">
-                      <path d="M0 0.5H243" stroke="#827d77" strokeWidth="1"/>
-                    </svg>
-                  </div>
+                <div className="hidden md:block md:absolute md:left-[416px] md:top-[56.88px] w-[243px] h-[1px]">
+                  <svg width="243" height="1" viewBox="0 0 243 1" fill="none" preserveAspectRatio="none">
+                    <defs>
+                      <linearGradient id="gradient-row3" x1="0" y1="0" x2="243" y2="0" gradientUnits="userSpaceOnUse">
+                        <stop offset="0%" stopColor="#ed4e01" stopOpacity="0"/>
+                        <stop offset="100%" stopColor="#ed4e01" stopOpacity="1"/>
+                      </linearGradient>
+                    </defs>
+                    <rect x="0" y="0" width="243" height="1" fill="url(#gradient-row3)"/>
+                  </svg>
                 </div>
               </div>
             </div>
@@ -1607,17 +1652,17 @@ export default function LandingPage() {
         </section>
 
         {/* Built For Section */}
-        <section className="w-full max-w-[1440px] px-8 py-10">
-          <div className="max-w-[1200px] mx-auto flex flex-col gap-[40px]">
-            <h2 className="text-[36px] font-medium leading-[40px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
+        <section className="w-full max-w-[1440px] px-4 sm:px-6 md:px-8 py-10">
+          <div className="max-w-[1200px] mx-auto flex flex-col gap-[30px] sm:gap-[40px]">
+            <h2 className="text-[24px] sm:text-[30px] md:text-[36px] font-medium leading-[1.2]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
               Built for
             </h2>
 
-            <div className="flex gap-[12px] w-full">
+            <div className="flex flex-col lg:flex-row gap-[12px] w-full">
               {/* Left Card - Developers */}
-              <div className="flex-1 bg-white border border-[#f5eae1] rounded-[10px] flex flex-col gap-[24px] overflow-hidden min-h-px min-w-px">
+              <div className="flex-1 bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] flex flex-col gap-[24px] overflow-hidden min-h-px min-w-px">
                 <div className="flex flex-col gap-[10px] h-[232px] p-[24px]">
-                  <div className="bg-white border border-[#f5eae1] rounded-[10px] flex-1 flex items-center px-[24px] py-[8px] min-h-px min-w-px opacity-60">
+                  <div className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] flex-1 flex items-center px-[24px] py-[8px] min-h-px min-w-px opacity-60">
                     <div className="flex-1 flex gap-[24px] items-center min-h-px min-w-px">
                       <Image src="/landing/check-icon.svg" alt="" width="20" height="20" className="shrink-0" />
                       <p className="text-[16px] leading-[24px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
@@ -1625,7 +1670,7 @@ export default function LandingPage() {
                       </p>
                     </div>
                   </div>
-                  <div className="bg-white border border-[#f5eae1] rounded-[10px] flex-1 flex items-center px-[24px] py-[8px] min-h-px min-w-px" style={{ boxShadow: '0px 10px 15px 0px rgba(0,0,0,0.1), 0px 4px 6px 0px rgba(0,0,0,0.1)' }}>
+                  <div className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] flex-1 flex items-center px-[24px] py-[8px] min-h-px min-w-px" style={{ boxShadow: '0px 10px 15px 0px rgba(0,0,0,0.1), 0px 4px 6px 0px rgba(0,0,0,0.1)' }}>
                     <div className="flex-1 flex gap-[24px] items-center min-h-px min-w-px">
                       <Image src="/landing/check-icon.svg" alt="" width="20" height="20" className="shrink-0" />
                       <p className="text-[16px] leading-[24px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
@@ -1633,7 +1678,7 @@ export default function LandingPage() {
                       </p>
                     </div>
                   </div>
-                  <div className="bg-white border border-[#f5eae1] rounded-[10px] flex-1 flex items-center px-[24px] py-[8px] min-h-px min-w-px opacity-30">
+                  <div className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] flex-1 flex items-center px-[24px] py-[8px] min-h-px min-w-px opacity-30">
                     <div className="flex-1 flex gap-[24px] items-center min-h-px min-w-px">
                       <Image src="/landing/check-icon.svg" alt="" width="20" height="20" className="shrink-0" />
                       <p className="text-[16px] leading-[24px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
@@ -1642,7 +1687,7 @@ export default function LandingPage() {
                     </div>
                   </div>
                 </div>
-                <div className="bg-[#f9f4ef] p-[24px] flex flex-col gap-[16px]">
+                <div className="bg-[#f9f4ef] dark:bg-[#292a2e] p-[24px] flex flex-col gap-[16px]">
                   <h3 className="text-[30px] leading-[36px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
                     Developers and vibe coders building agent products
                   </h3>
@@ -1653,9 +1698,9 @@ export default function LandingPage() {
               </div>
 
               {/* Right Card - Teams */}
-              <div className="flex-1 bg-white border border-[#f5eae1] rounded-[10px] flex flex-col gap-[24px] overflow-hidden min-h-px min-w-px">
+              <div className="flex-1 bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] flex flex-col gap-[24px] overflow-hidden min-h-px min-w-px">
                 <div className="flex flex-col gap-[10px] h-[232px] p-[24px]">
-                  <div className="bg-white border border-[#f5eae1] rounded-[10px] flex-1 flex items-center px-[24px] py-[8px] min-h-px min-w-px opacity-60">
+                  <div className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] flex-1 flex items-center px-[24px] py-[8px] min-h-px min-w-px opacity-60">
                     <div className="flex-1 flex gap-[24px] items-center min-h-px min-w-px">
                       <Image src="/landing/check-icon.svg" alt="" width="20" height="20" className="shrink-0" />
                       <p className="text-[16px] leading-[24px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
@@ -1663,7 +1708,7 @@ export default function LandingPage() {
                       </p>
                     </div>
                   </div>
-                  <div className="bg-white border border-[#f5eae1] rounded-[10px] flex-1 flex items-center px-[24px] py-[8px] min-h-px min-w-px" style={{ boxShadow: '0px 10px 15px 0px rgba(0,0,0,0.1), 0px 4px 6px 0px rgba(0,0,0,0.1)' }}>
+                  <div className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] flex-1 flex items-center px-[24px] py-[8px] min-h-px min-w-px" style={{ boxShadow: '0px 10px 15px 0px rgba(0,0,0,0.1), 0px 4px 6px 0px rgba(0,0,0,0.1)' }}>
                     <div className="flex-1 flex gap-[24px] items-center min-h-px min-w-px">
                       <Image src="/landing/check-icon.svg" alt="" width="20" height="20" className="shrink-0" />
                       <p className="text-[16px] leading-[24px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
@@ -1671,7 +1716,7 @@ export default function LandingPage() {
                       </p>
                     </div>
                   </div>
-                  <div className="bg-white border border-[#f5eae1] rounded-[10px] flex-1 flex items-center px-[24px] py-[8px] min-h-px min-w-px opacity-30">
+                  <div className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] flex-1 flex items-center px-[24px] py-[8px] min-h-px min-w-px opacity-30">
                     <div className="flex-1 flex gap-[24px] items-center min-h-px min-w-px">
                       <Image src="/landing/check-icon.svg" alt="" width="20" height="20" className="shrink-0" />
                       <p className="text-[16px] leading-[24px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
@@ -1680,7 +1725,7 @@ export default function LandingPage() {
                     </div>
                   </div>
                 </div>
-                <div className="bg-[#f9f4ef] p-[24px] flex flex-col gap-[16px]">
+                <div className="bg-[#f9f4ef] dark:bg-[#292a2e] p-[24px] flex flex-col gap-[16px]">
                   <h3 className="text-[30px] leading-[36px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
                     Teams and individuals needing automated workflows
                   </h3>
@@ -1694,8 +1739,8 @@ export default function LandingPage() {
         </section>
 
         {/* Final CTA */}
-        <section className="w-full max-w-[1440px] px-8 py-10">
-          <div className="max-w-[1200px] mx-auto bg-white border border-[#f5eae1] rounded-[12px] p-[60px] relative overflow-hidden flex flex-col gap-[30px]">
+        <section className="w-full max-w-[1440px] px-4 sm:px-6 md:px-8 py-10">
+          <div className="max-w-[1200px] mx-auto bg-white dark:bg-[#19191b] border border-[#f5eae1] dark:border-[#2f2f32] rounded-[12px] p-[24px] sm:p-[40px] md:p-[60px] relative overflow-hidden flex flex-col gap-[24px] sm:gap-[30px]">
             {/* Decorative circular gradient background */}
             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[1627px] h-[1627px] pointer-events-none">
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[1400px] h-[1400px] rotate-[79.76deg]">
@@ -1714,32 +1759,46 @@ export default function LandingPage() {
             </div>
 
             {/* Content */}
-            <div className="relative z-10 flex flex-col gap-[30px]">
-              <h2 className="text-[36px] font-medium leading-[40px]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
+            <div className="relative z-10 flex flex-col gap-[24px] sm:gap-[30px]">
+              <h2 className="text-[24px] sm:text-[30px] md:text-[36px] font-medium leading-[1.2] dark:!text-[#ffffff]" style={{ fontFamily: 'var(--font-noto-sans)' }}>
                 Get started today
               </h2>
 
-              <div className="bg-white border border-[#f5eae1] rounded-[12px] p-[24px] flex gap-[32px] items-start">
-                <div className="flex-1 min-h-px min-w-px">
-                  <code className="block text-[18px] leading-[40px]" style={{ fontFamily: 'var(--font-jetbrains-mono)' }}>
+              <div className="bg-white dark:bg-[#19191b] border border-[#f5eae1] dark:border-[#2f2f32] rounded-[12px] p-[16px] sm:p-[24px] flex gap-[12px] sm:gap-[32px] items-center">
+                <div className="flex-1 min-h-px min-w-px overflow-x-auto">
+                  <code className="block text-[14px] sm:text-[16px] md:text-[18px] leading-[1.4] sm:leading-[1.6]" style={{ fontFamily: 'var(--font-jetbrains-mono)' }}>
                     <span className="text-[#0284c7]">npm install -g @vm0/cli && vm0 onboard</span>
                     <br />
                     <span className="text-[#827d77]"> //One command to build and run your agent using natural language, vibe coder friendly</span>
                   </code>
                 </div>
-                <button className="bg-[#f0ebe5] rounded-[10px] w-[40px] h-[36px] flex items-center justify-center shrink-0">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0">
-                    <rect x="5" y="2" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-                    <path d="M4 5H3C2.44772 5 2 5.44772 2 6V13C2 13.5523 2.44772 14 3 14H10C10.5523 14 11 13.5523 11 13V12" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-                  </svg>
-                </button>
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText('npm install -g @vm0/cli && vm0 onboard');
+                      setCopiedFooter(true);
+                      setTimeout(() => setCopiedFooter(false), 2000);
+                    }}
+                    className="bg-[#f0ebe5] dark:bg-[#292a2e] hover:bg-[#e5dfd8] dark:hover:bg-[#3a3a3e] rounded-[10px] w-[36px] h-[36px] sm:w-[40px] sm:h-[36px] flex items-center justify-center shrink-0 transition-colors"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                    </svg>
+                  </button>
+                  {copiedFooter && (
+                    <div className="absolute -top-[40px] left-1/2 -translate-x-1/2 bg-[#231f1b] text-white px-[12px] py-[6px] rounded-[6px] text-[14px] whitespace-nowrap">
+                      Copied
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="flex gap-[20px]">
-                <button className="bg-[#ed4e01] hover:bg-[#ff6a1f] text-white px-[24px] py-[12px] rounded-[10px] font-medium text-[18px] leading-[28px] w-[160px] transition-colors" style={{ fontFamily: 'var(--font-noto-sans)' }}>
+              <div className="flex flex-col sm:flex-row gap-[12px] sm:gap-[20px]">
+                <Link href="/sign-up" className="bg-[#ed4e01] hover:bg-[#ff6a1f] !text-white px-[24px] py-[12px] rounded-[10px] font-medium text-[16px] sm:text-[18px] leading-[28px] w-full sm:w-[160px] transition-colors flex items-center justify-center" style={{ fontFamily: 'var(--font-noto-sans)' }}>
                   Get started
-                </button>
-                <button className="bg-[rgba(255,255,255,0.6)] border border-[#ed4e01] hover:bg-white text-[#ed4e01] px-[24px] py-[12px] rounded-[10px] font-medium text-[18px] leading-[28px] w-[160px] flex items-center justify-center gap-[10px] transition-colors" style={{ fontFamily: 'var(--font-noto-sans)' }}>
+                </Link>
+                <button className="bg-[rgba(255,255,255,0.6)] dark:bg-[rgba(25,25,27,0.6)] border border-[#ed4e01] dark:border-[#ff6a1f] hover:bg-white dark:hover:bg-[#292a2e] text-[#ed4e01] dark:text-[#ff6a1f] px-[24px] py-[12px] rounded-[10px] font-medium text-[16px] sm:text-[18px] leading-[28px] w-full sm:w-[160px] flex items-center justify-center gap-[10px] transition-colors" style={{ fontFamily: 'var(--font-noto-sans)' }}>
                   <Image src="/landing/github.svg" alt="GitHub" width="24" height="24" />
                   GitHub
                 </button>
@@ -1763,36 +1822,45 @@ function AgentCard({
   isSelected,
   variant = "white"
 }: {
-  icon: string;
+  icon: string | { light: string; dark: string };
   title: string;
   description: string;
   onClick?: () => void;
   isSelected?: boolean;
   variant?: "gradient-left" | "white" | "gradient-right";
 }) {
-  const getBackgroundStyle = () => {
+  const getBackgroundClass = () => {
     if (variant === "gradient-left") {
-      return { backgroundImage: "linear-gradient(-90deg, rgb(255, 255, 255) 0%, rgba(255, 255, 255, 0) 94%)" };
+      return "bg-gradient-to-r from-white to-transparent dark:from-[#19191b] dark:to-transparent";
     } else if (variant === "gradient-right") {
-      return { backgroundImage: "linear-gradient(90deg, rgb(255, 255, 255) 0%, rgba(255, 255, 255, 0) 68%)" };
+      return "bg-gradient-to-l from-white to-transparent dark:from-[#19191b] dark:to-transparent";
+    } else if (variant === "white") {
+      return "bg-white dark:bg-[#19191b]";
     }
-    return {};
+    return "";
   };
+
+  const iconLight = typeof icon === 'string' ? icon : icon.light;
+  const iconDark = typeof icon === 'string' ? icon : icon.dark;
 
   return (
     <div
       onClick={onClick}
-      className={`flex flex-col flex-1 min-w-0 gap-[10px] p-[24px] border-[#f5eae1] border-t border-b border-r overflow-hidden ${
-        onClick ? 'cursor-pointer' : ''
-      } ${
-        isSelected ? 'ring-2 ring-[#ed4e01]/20' : ''
-      } ${
-        variant === "white" ? 'bg-white' : ''
-      }`}
-      style={getBackgroundStyle()}
+      className={`group flex flex-col flex-1 min-w-0 gap-[10px] p-[24px] border-[#f5eae1] dark:border-[#2f2f32] border-t border-b border-r overflow-hidden relative transition-all ${
+        onClick ? 'cursor-pointer hover:bg-[#fef5ee] dark:hover:bg-[#292a2e]' : ''
+      } ${getBackgroundClass()}`}
     >
+      {/* Selected state bar */}
+      {isSelected && (
+        <div className="absolute top-0 left-0 right-0 h-[3px] bg-primary" />
+      )}
+      {/* Hover state bar */}
+      {!isSelected && onClick && (
+        <div className="absolute top-0 left-0 right-0 h-[3px] bg-primary opacity-0 group-hover:opacity-40 transition-opacity" />
+      )}
       <div className="w-[40px] h-[40px] relative shrink-0">
-        <Image src={icon} alt={title} fill className="object-contain" />
+        <Image src={iconLight} alt={title} fill className="object-contain dark:hidden" />
+        <Image src={iconDark} alt={title} fill className="object-contain hidden dark:block" />
       </div>
       <div className="flex flex-col gap-[10px] w-full">
         <h3 className="text-[18px] font-medium leading-[28px] text-foreground" style={{ fontFamily: 'var(--font-noto-sans)' }}>{title}</h3>
