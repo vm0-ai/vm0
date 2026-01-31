@@ -13,13 +13,9 @@ import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { FirecrackerClient } from "./client.js";
-import {
-  createTapDevice,
-  deleteTapDevice,
-  generateNetworkBootArgs,
-  type VMNetworkConfig,
-} from "./network.js";
+import { generateNetworkBootArgs, type VMNetworkConfig } from "./network.js";
 import { acquireOverlay } from "./overlay-pool.js";
+import { acquireTap, releaseTap } from "./tap-pool.js";
 import { createLogger } from "../logger.js";
 import { tempPaths } from "../paths.js";
 
@@ -140,7 +136,7 @@ export class FirecrackerVM {
 
       const [, networkConfig] = await Promise.all([
         setupOverlay(),
-        createTapDevice(this.config.vmId),
+        acquireTap(this.config.vmId),
       ]);
       this.networkConfig = networkConfig;
 
@@ -351,9 +347,9 @@ export class FirecrackerVM {
       this.process = null;
     }
 
-    // Delete TAP device and release IP back to pool
+    // Release TAP device back to pool
     if (this.networkConfig) {
-      await deleteTapDevice(
+      await releaseTap(
         this.networkConfig.tapDevice,
         this.networkConfig.guestIp,
       );
