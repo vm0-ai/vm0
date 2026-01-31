@@ -51,7 +51,7 @@ function detectFrameworkFromEvent(
  * @returns The event parser class for that framework
  * @throws Error if framework is not supported
  */
-export function getEventParser(framework: SupportedFramework): EventParserType {
+function getEventParser(framework: SupportedFramework): EventParserType {
   if (framework === "codex") {
     return CodexEventParser;
   }

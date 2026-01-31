@@ -6,6 +6,8 @@
 logs
 # Exception for platform logs API folder
 !**/app/api/platform/logs/
+# Exception for CLI logs command
+!**/commands/logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
