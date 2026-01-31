@@ -20,7 +20,6 @@ describe("IPRegistry", () => {
     mockTapDevices.has(tap),
   );
   const mockEnsureRunDir = vi.fn(async () => {});
-  const mockDeleteTap = vi.fn(async () => {});
 
   beforeEach(() => {
     // Create a unique temp directory for each test
@@ -38,7 +37,6 @@ describe("IPRegistry", () => {
       ensureRunDir: mockEnsureRunDir,
       scanTapDevices: mockScanTapDevices,
       checkTapExists: mockCheckTapExists,
-      deleteTap: mockDeleteTap,
     });
   });
 
@@ -227,7 +225,7 @@ describe("IPRegistry", () => {
       expect(afterMtime).toBe(beforeMtime);
     });
 
-    it("should remove IPs and delete TAPs when runner PID is dead", async () => {
+    it("should remove IPs and return orphaned TAPs when runner PID is dead", async () => {
       // Manually write registry with a dead PID
       const deadPid = 999999; // Assume this PID is not running
       const allocations = {
@@ -250,7 +248,7 @@ describe("IPRegistry", () => {
       // Both TAPs exist on system
       mockTapDevices = new Set(["tap000", "tap001"]);
 
-      await registry.cleanupOrphanedIPs();
+      const orphanedTaps = await registry.cleanupOrphanedIPs();
 
       const data = JSON.parse(
         fs.readFileSync(path.join(testDir, "ip-registry.json"), "utf-8"),
@@ -260,9 +258,8 @@ describe("IPRegistry", () => {
       // IP with alive runner PID should be kept
       expect(data.allocations["172.16.0.3"]).toBeDefined();
 
-      // deleteTap should have been called for the orphaned TAP
-      expect(mockDeleteTap).toHaveBeenCalledWith("tap000");
-      expect(mockDeleteTap).toHaveBeenCalledTimes(1);
+      // Should return the orphaned TAP for caller to delete
+      expect(orphanedTaps).toEqual(["tap000"]);
     });
 
     it("should keep IPs for legacy entries without runnerPid", async () => {
@@ -281,18 +278,18 @@ describe("IPRegistry", () => {
       // TAP exists on system
       mockTapDevices = new Set(["tap000"]);
 
-      await registry.cleanupOrphanedIPs();
+      const orphanedTaps = await registry.cleanupOrphanedIPs();
 
       const data = JSON.parse(
         fs.readFileSync(path.join(testDir, "ip-registry.json"), "utf-8"),
       );
       // Legacy entry should be kept (assume alive)
       expect(data.allocations["172.16.0.2"]).toBeDefined();
-      // deleteTap should not have been called
-      expect(mockDeleteTap).not.toHaveBeenCalled();
+      // No orphaned TAPs
+      expect(orphanedTaps).toEqual([]);
     });
 
-    it("should continue cleanup even if deleteTap fails", async () => {
+    it("should return multiple orphaned TAPs when multiple runners are dead", async () => {
       const deadPid = 999999;
       const allocations = {
         "172.16.0.2": {
@@ -314,20 +311,19 @@ describe("IPRegistry", () => {
       // Both TAPs exist
       mockTapDevices = new Set(["tap000", "tap001"]);
 
-      // First deleteTap call fails
-      mockDeleteTap.mockRejectedValueOnce(new Error("Device busy"));
-
-      await registry.cleanupOrphanedIPs();
+      const orphanedTaps = await registry.cleanupOrphanedIPs();
 
       const data = JSON.parse(
         fs.readFileSync(path.join(testDir, "ip-registry.json"), "utf-8"),
       );
-      // Both IPs should still be removed from registry
+      // Both IPs should be removed from registry
       expect(data.allocations["172.16.0.2"]).toBeUndefined();
       expect(data.allocations["172.16.0.3"]).toBeUndefined();
 
-      // Both deleteTap calls should have been attempted
-      expect(mockDeleteTap).toHaveBeenCalledTimes(2);
+      // Should return both orphaned TAPs
+      expect(orphanedTaps).toHaveLength(2);
+      expect(orphanedTaps).toContain("tap000");
+      expect(orphanedTaps).toContain("tap001");
     });
   });
 

@@ -31,7 +31,6 @@ describe("TapPool", () => {
     mockTapDevices.has(tap),
   );
   const mockEnsureRunDir = vi.fn(async () => {});
-  const mockRegistryDeleteTap = vi.fn(async () => {});
 
   /** Helper to read IP registry and get allocation count */
   function getIPAllocationCount(): number {
@@ -57,7 +56,6 @@ describe("TapPool", () => {
       ensureRunDir: mockEnsureRunDir,
       scanTapDevices: mockScanTapDevices,
       checkTapExists: mockCheckTapExists,
-      deleteTap: mockRegistryDeleteTap,
     });
   });
 

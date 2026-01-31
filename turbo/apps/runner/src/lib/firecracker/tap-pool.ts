@@ -286,8 +286,16 @@ export class TapPool {
       }
     }
 
-    // Clean up orphaned IPs (those whose TAP devices no longer exist on system)
-    await cleanupOrphanedIPs();
+    // Clean up orphaned IPs and get list of orphaned TAPs to delete
+    const orphanedTapsFromRegistry = await cleanupOrphanedIPs();
+    for (const tap of orphanedTapsFromRegistry) {
+      try {
+        await execCommand(`ip link delete ${tap}`);
+        logger.log(`Deleted orphaned TAP ${tap} (runner dead)`);
+      } catch {
+        // Device might already be gone
+      }
+    }
 
     this.initialized = true;
     await this.replenish();

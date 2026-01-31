@@ -59,8 +59,6 @@ export interface IPRegistryConfig {
   scanTapDevices?: () => Promise<Set<string>>;
   /** Function to check if a TAP device exists */
   checkTapExists?: (tapDevice: string) => Promise<boolean>;
-  /** Function to delete a TAP device */
-  deleteTap?: (tapDevice: string) => Promise<void>;
 }
 
 // ============ Default Functions ============
@@ -100,10 +98,6 @@ async function defaultCheckTapExists(tapDevice: string): Promise<boolean> {
   }
 }
 
-async function defaultDeleteTap(tapDevice: string): Promise<void> {
-  await execAsync(`sudo ip link delete ${tapDevice}`);
-}
-
 /**
  * Check if a process is running by sending signal 0
  */
@@ -130,7 +124,6 @@ export class IPRegistry {
   private readonly ensureRunDirFn: () => Promise<void>;
   private readonly scanTapDevicesFn: () => Promise<Set<string>>;
   private readonly checkTapExistsFn: (tapDevice: string) => Promise<boolean>;
-  private readonly deleteTapFn: (tapDevice: string) => Promise<void>;
 
   constructor(config: IPRegistryConfig = {}) {
     this.runDir = config.runDir ?? VM0_RUN_DIR;
@@ -142,7 +135,6 @@ export class IPRegistry {
       config.ensureRunDir ?? (() => defaultEnsureRunDir(this.runDir));
     this.scanTapDevicesFn = config.scanTapDevices ?? defaultScanTapDevices;
     this.checkTapExistsFn = config.checkTapExists ?? defaultCheckTapExists;
-    this.deleteTapFn = config.deleteTap ?? defaultDeleteTap;
   }
 
   // ============ File Lock ============
@@ -292,9 +284,9 @@ export class IPRegistry {
    * 1. TAP device no longer exists on the system, OR
    * 2. Runner process that created it is no longer running
    *
-   * When runner PID is dead but TAP still exists, we also delete the TAP device.
+   * @returns List of orphaned TAP devices that should be deleted by caller
    */
-  async cleanupOrphanedIPs(): Promise<void> {
+  async cleanupOrphanedIPs(): Promise<string[]> {
     // Scan TAP devices BEFORE acquiring lock to minimize lock hold time
     const activeTaps = await this.scanTapDevicesFn();
     logger.log(`Found ${activeTaps.size} TAP device(s) on system`);
@@ -304,11 +296,11 @@ export class IPRegistry {
       const beforeCount = Object.keys(registry.allocations).length;
 
       if (beforeCount === 0) {
-        return;
+        return [];
       }
 
       const cleanedRegistry: IPRegistryData = { allocations: {} };
-      const tapsToDelete: string[] = [];
+      const orphanedTaps: string[] = [];
 
       for (const [ip, allocation] of Object.entries(registry.allocations)) {
         const tapExists = activeTaps.has(allocation.tapDevice);
@@ -327,7 +319,7 @@ export class IPRegistry {
           logger.log(
             `Removing orphaned IP ${ip} (runner PID ${allocation.runnerPid} not running)`,
           );
-          tapsToDelete.push(allocation.tapDevice);
+          orphanedTaps.push(allocation.tapDevice);
         } else {
           // Double-check TAP existence (might have been created after initial scan)
           const exists = await this.checkTapExistsFn(allocation.tapDevice);
@@ -341,23 +333,13 @@ export class IPRegistry {
         }
       }
 
-      // Delete orphaned TAP devices
-      for (const tap of tapsToDelete) {
-        try {
-          await this.deleteTapFn(tap);
-          logger.log(`Deleted orphaned TAP ${tap}`);
-        } catch (err) {
-          logger.log(
-            `Failed to delete TAP ${tap}: ${err instanceof Error ? err.message : "Unknown"}`,
-          );
-        }
-      }
-
       const afterCount = Object.keys(cleanedRegistry.allocations).length;
       if (afterCount !== beforeCount) {
         this.writeRegistry(cleanedRegistry);
         logger.log(`Cleaned up ${beforeCount - afterCount} orphaned IP(s)`);
       }
+
+      return orphanedTaps;
     });
   }
 
@@ -466,8 +448,9 @@ export async function releaseIP(ip: string): Promise<void> {
 
 /**
  * Clean up orphaned IP allocations
+ * @returns List of orphaned TAP devices that should be deleted by caller
  */
-export async function cleanupOrphanedIPs(): Promise<void> {
+export async function cleanupOrphanedIPs(): Promise<string[]> {
   return getRegistry().cleanupOrphanedIPs();
 }
 
