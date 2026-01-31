@@ -157,11 +157,10 @@ describe("TapPool", () => {
       // Acquire another - pool goes from 2 to 1, below threshold
       await pool.acquire("vm2");
 
-      // Wait for background replenishment
-      await new Promise((resolve) => setTimeout(resolve, 10));
-
-      // Should have created 2 more TAPs to reach size 3
-      expect(createTapCalls.length).toBeGreaterThanOrEqual(1);
+      // Wait for background replenishment to complete
+      await vi.waitFor(() => {
+        expect(createTapCalls.length).toBeGreaterThanOrEqual(1);
+      });
     });
   });
 
@@ -237,15 +236,9 @@ describe("TapPool", () => {
 
       await pool.init();
 
-      pool.cleanup();
-
-      // Cleanup uses async deletion but doesn't wait
-      // The TAPs should be scheduled for deletion
-      await new Promise((resolve) => setTimeout(resolve, 10));
-
-      // Note: cleanup uses execAsync directly, not mockDeleteTap
-      // So we can't easily verify deletions here
       // The important thing is cleanup doesn't throw
+      // Note: cleanup uses execAsync directly (fire-and-forget), not mockDeleteTap
+      expect(() => pool.cleanup()).not.toThrow();
     });
 
     it("should handle cleanup when pool is empty", async () => {
