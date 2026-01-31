@@ -15,6 +15,7 @@ const RUN_TYPED_TEXT = {
   "daily-report": "Generate daily report for the team"
 };
 
+// eslint-disable-next-line complexity
 export default function LandingPage() {
   const [activeTab, setActiveTab] = useState<"agents" | "yaml">("agents");
   const [selectedAgent, setSelectedAgent] = useState<"hackernews" | "tiktok" | "blog" | "daily-report">("hackernews");
@@ -36,7 +37,7 @@ export default function LandingPage() {
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting && !buildSectionVisible) {
+        if (entry && entry.isIntersecting && !buildSectionVisible) {
           setBuildSectionVisible(true);
           setBuildAnimationStep(0);
         }
@@ -55,7 +56,7 @@ export default function LandingPage() {
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting && !runSectionVisible) {
+        if (entry && entry.isIntersecting && !runSectionVisible) {
           setRunSectionVisible(true);
           setRunAnimationStep(0);
         }
@@ -190,7 +191,7 @@ export default function LandingPage() {
     }
 
     return () => timers.forEach(clearTimeout);
-  }, [runAnimationStep]);
+  }, [runAnimationStep, selectedAgent]);
 
   return (
     <div className="min-h-screen">
@@ -320,7 +321,7 @@ export default function LandingPage() {
                   />
                 </div>
               </div>
-              <style jsx>{`
+              <style>{`
                 @keyframes rotateCube {
                   from {
                     transform: rotateX(45deg) rotateY(0deg);
@@ -346,7 +347,7 @@ export default function LandingPage() {
                     </code>
                     <button
                       onClick={() => {
-                        navigator.clipboard.writeText('npm install -g @vm0/cli && vm0 onboard');
+                        navigator.clipboard.writeText('npm install -g @vm0/cli && vm0 onboard').catch(() => {});
                         setCopiedHero(true);
                         setTimeout(() => setCopiedHero(false), 2000);
                       }}
@@ -845,7 +846,7 @@ export default function LandingPage() {
                           const content = activeTab === "agents"
                             ? `Agent Instructions\n\nYou are a specialized agent for ${selectedAgent}.`
                             : `name: ${selectedAgent}\nversion: 1.0.0`;
-                          navigator.clipboard.writeText(content);
+                          navigator.clipboard.writeText(content).catch(() => {});
                           setCopiedEditor(true);
                           setTimeout(() => setCopiedEditor(false), 2000);
                         }}
@@ -1272,7 +1273,7 @@ export default function LandingPage() {
                   <div className="flex flex-col gap-[16px] p-[16px] sm:p-[24px]">
                     <h3 className="text-[20px] sm:text-[24px] md:text-[30px] leading-[1.2]" style={{ fontFamily: 'var(--font-noto-sans)' }}>Natural language building</h3>
                     <p className="text-[14px] sm:text-[16px] leading-[1.5] text-foreground" style={{ fontFamily: 'var(--font-noto-sans)' }}>
-                      Describe your goals in Claude Code to co-edit AGENTS.md. Pick the right skills, and you're all set.
+                      Describe your goals in Claude Code to co-edit AGENTS.md. Pick the right skills, and you&apos;re all set.
                     </p>
                   </div>
 
@@ -1769,13 +1770,13 @@ export default function LandingPage() {
                   <code className="block text-[14px] sm:text-[16px] md:text-[18px] leading-[1.4] sm:leading-[1.6]" style={{ fontFamily: 'var(--font-jetbrains-mono)' }}>
                     <span className="text-[#0284c7]">npm install -g @vm0/cli && vm0 onboard</span>
                     <br />
-                    <span className="text-[#827d77]"> //One command to build and run your agent using natural language, vibe coder friendly</span>
+                    <span className="text-[#827d77]"> {'//'}One command to build and run your agent using natural language, vibe coder friendly</span>
                   </code>
                 </div>
                 <div className="relative">
                   <button
                     onClick={() => {
-                      navigator.clipboard.writeText('npm install -g @vm0/cli && vm0 onboard');
+                      navigator.clipboard.writeText('npm install -g @vm0/cli && vm0 onboard').catch(() => {});
                       setCopiedFooter(true);
                       setTimeout(() => setCopiedFooter(false), 2000);
                     }}
@@ -1869,14 +1870,3 @@ function AgentCard({
     </div>
   );
 }
-
-function FeatureCard({ title, description, illustration }: { title: string; description: string; illustration: React.ReactNode }) {
-  return (
-    <div className="flex flex-col">
-      <div className="mb-6">{illustration}</div>
-      <h3 className="font-medium text-2xl mb-4">{title}</h3>
-      <p className="text-muted-foreground">{description}</p>
-    </div>
-  );
-}
-
