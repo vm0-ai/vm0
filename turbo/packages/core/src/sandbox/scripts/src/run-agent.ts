@@ -290,6 +290,7 @@ async function run(): Promise<[number, string]> {
 
   // Execute CLI agent and process output stream
   let agentExitCode = 0;
+  let executionError = ""; // Capture error from catch block for complete API
   const stderrLines: string[] = [];
   let logFile: fs.WriteStream | null = null;
 
@@ -387,6 +388,7 @@ async function run(): Promise<[number, string]> {
   } catch (error) {
     logError(`Failed to execute ${CLI_AGENT_TYPE}: ${error}`);
     agentExitCode = 1;
+    executionError = error instanceof Error ? error.message : String(error);
   } finally {
     if (logFile && !logFile.destroyed) {
       logFile.end();
@@ -446,8 +448,12 @@ async function run(): Promise<[number, string]> {
     if (agentExitCode !== 0) {
       logInfo(`${CLI_AGENT_TYPE} failed with exit code ${agentExitCode}`);
 
-      // Get detailed error from captured stderr lines
-      if (stderrLines.length > 0) {
+      // Get detailed error from execution error, stderr, or generic message
+      if (executionError) {
+        // Execution error (e.g., heartbeat failure, spawn error)
+        errorMessage = executionError;
+      } else if (stderrLines.length > 0) {
+        // Captured stderr from agent process
         errorMessage = stderrLines.map((line) => line.trim()).join(" ");
         logInfo(`Captured stderr: ${errorMessage}`);
       } else {
