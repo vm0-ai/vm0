@@ -467,9 +467,9 @@ export default function LandingPage() {
                       "linear-gradient(137.478deg, #E8A145 0.82464%, #F8732A 45.285%, #933803 99.384%)",
                   }}
                 >
-                  <div className="flex flex-col lg:flex-row gap-[16px] sm:gap-[24px] items-stretch lg:items-end w-full max-w-[1124px] mx-auto">
+                  <div className="flex flex-col lg:flex-row gap-[16px] sm:gap-[24px] lg:items-end w-full max-w-[1124px] mx-auto">
                     {/* Terminal - Left Side */}
-                    <div className="flex-1 bg-white dark:bg-[#19191b] border-[0.5px] border-border rounded-[12px] shadow-[0px_25px_50px_-12px_rgba(0,0,0,0.25)] overflow-hidden h-[422px] flex flex-col">
+                    <div className="flex-1 bg-white dark:bg-[#19191b] border-[0.5px] border-border rounded-[12px] shadow-[0px_25px_50px_-12px_rgba(0,0,0,0.25)] overflow-hidden h-[350px] md:h-[422px] flex flex-col">
                       {/* Terminal Header */}
                       <div className="bg-[#f9f4ef] dark:bg-[#292a2e] p-[8px] flex gap-[76px] items-center shadow-[0px_0.5px_0px_0px_#d2d2d2] dark:shadow-[0px_0.5px_0px_0px_#2f2f32]">
                         <div className="flex gap-1.5 w-[39px] h-[9px]">
@@ -1526,7 +1526,7 @@ export default function LandingPage() {
                     </div>
 
                     {/* Code Editor - Right Side */}
-                    <div className="flex-1 flex flex-col shadow-[0px_25px_50px_0px_rgba(0,0,0,0.25)] h-[422px]">
+                    <div className="flex-1 flex flex-col shadow-[0px_25px_50px_0px_rgba(0,0,0,0.25)] h-[350px] md:h-[422px]">
                       {/* Editor Header with Tabs */}
                       <div className="bg-[#f9f4ef] dark:bg-[#292a2e] border-b border-border h-[44px] flex items-center gap-[6px] px-[12px] py-[6px] rounded-tl-[8px] rounded-tr-[8px] relative">
                         <div className="flex-1 flex gap-[6px] items-center pl-[4px]">
@@ -2492,7 +2492,7 @@ export default function LandingPage() {
                       "linear-gradient(137.478deg, rgb(183, 200, 210) 0.82464%, rgb(253, 175, 83) 45.285%, rgb(248, 127, 48) 99.384%)",
                   }}
                 >
-                  <div className="bg-white dark:bg-[#19191b] border-[0.5px] border-border rounded-[12px] shadow-[0px_25px_50px_-12px_rgba(0,0,0,0.25)] overflow-hidden h-[422px]">
+                  <div className="bg-white dark:bg-[#19191b] border-[0.5px] border-border rounded-[12px] shadow-[0px_25px_50px_-12px_rgba(0,0,0,0.25)] overflow-hidden h-[350px] md:h-[422px]">
                     {/* Terminal Header */}
                     <div className="bg-[#f9f4ef] dark:bg-[#292a2e] p-[8px] flex gap-[76px] items-center shadow-[0px_0.5px_0px_0px_#d2d2d2] dark:shadow-[0px_0.5px_0px_0px_#2f2f32]">
                       <div className="flex gap-1.5">
@@ -2514,7 +2514,7 @@ export default function LandingPage() {
 
                     {/* Terminal Content */}
                     <div
-                      className="p-[20px] overflow-y-auto h-[calc(422px-41px)]"
+                      className="p-[20px] overflow-y-auto h-[calc(350px-41px)] md:h-[calc(422px-41px)]"
                       style={{ fontFamily: "var(--font-jetbrains-mono)" }}
                     >
                       <div className="flex gap-[10px] items-start text-[12px] leading-[16px]">
