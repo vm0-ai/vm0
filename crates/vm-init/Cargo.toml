@@ -6,7 +6,7 @@ description = "VM init process for Firecracker - filesystem setup, PID 1, and vs
 
 [dependencies]
 libc = "0.2"
-nix = { version = "0.29", default-features = false, features = ["mount", "fs"] }
+nix = { version = "0.31", default-features = false, features = ["mount", "fs"] }
 vsock-agent = { path = "../vsock-agent" }
 
 [lints]
