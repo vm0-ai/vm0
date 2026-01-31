@@ -44,7 +44,10 @@ interface EventRendererOptions {
  * and displays them grouped with their tool_result
  */
 export class EventRenderer {
-  private pendingToolUse = new Map<string, ToolUseData>();
+  private pendingToolUse = new Map<
+    string,
+    { toolUse: ToolUseData; prefix: string }
+  >();
   private options: EventRendererOptions;
   private lastEventType: string | null = null;
   private frameworkDisplayName: string = "Agent";
@@ -163,7 +166,7 @@ export class EventRenderer {
     // When buffered (default), store for later grouping
     // When not buffered, render immediately
     if (this.options.buffered !== false) {
-      this.pendingToolUse.set(toolUseId, toolUseData);
+      this.pendingToolUse.set(toolUseId, { toolUse: toolUseData, prefix });
     } else {
       // Non-buffered: render tool_use header immediately
       this.renderToolUseOnly(toolUseData, prefix);
@@ -202,14 +205,24 @@ export class EventRenderer {
     const result = String(event.data.result || "");
     const isError = Boolean(event.data.isError);
 
-    const toolUse = this.pendingToolUse.get(toolUseId);
+    const pending = this.pendingToolUse.get(toolUseId);
 
-    if (toolUse) {
+    if (pending) {
       // Render grouped output
-      this.renderGroupedTool(toolUse, { result, isError }, prefix);
+      this.renderGroupedTool(pending.toolUse, { result, isError }, prefix);
       this.pendingToolUse.delete(toolUseId);
     }
     // Skip orphan tool_results (no matching tool_use in buffer)
+  }
+
+  /**
+   * Flush any remaining buffered tool_use events that didn't have matching results
+   */
+  flush(): void {
+    for (const [, { toolUse, prefix }] of this.pendingToolUse) {
+      this.renderToolUseOnly(toolUse, prefix);
+    }
+    this.pendingToolUse.clear();
   }
 
   /**

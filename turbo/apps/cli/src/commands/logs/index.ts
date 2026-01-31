@@ -245,6 +245,9 @@ async function showAgentEvents(
     renderAgentEvent(event, response.framework, renderer);
   }
 
+  // Flush any remaining buffered tool_use events without matching results
+  renderer.flush();
+
   if (response.hasMore) {
     console.log();
     console.log(
