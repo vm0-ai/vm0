@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.4.0](https://github.com/vm0-ai/vm0/compare/docs-v2.3.0...docs-v2.4.0) (2026-01-31)
+
+
+### Features
+
+* **docs:** add vm0 run list and kill commands to cli reference ([#1974](https://github.com/vm0-ai/vm0/issues/1974)) ([1f92009](https://github.com/vm0-ai/vm0/commit/1f9200928715eef8b990f1bed21c5b892f0aadfb))
+* **docs:** move codex documentation to experimental section ([#1979](https://github.com/vm0-ai/vm0/issues/1979)) ([0edf624](https://github.com/vm0-ai/vm0/commit/0edf624fc614e8df1e439f8225c7a8fbbb9cac47))
+
 ## [2.3.0](https://github.com/vm0-ai/vm0/compare/docs-v2.2.0...docs-v2.3.0) (2026-01-30)
 
 

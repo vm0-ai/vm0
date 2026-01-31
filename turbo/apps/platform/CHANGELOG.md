@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.32.0](https://github.com/vm0-ai/vm0/compare/platform-v0.31.2...platform-v0.32.0) (2026-01-31)
+
+
+### Features
+
+* **platform:** add favicon and icon to platform app ([#2009](https://github.com/vm0-ai/vm0/issues/2009)) ([24a2bf1](https://github.com/vm0-ai/vm0/commit/24a2bf1390957d13909a1d1c11a50fdc81e1b331))
+* **platform:** improve log detail with message grouping and compact header ([#1984](https://github.com/vm0-ai/vm0/issues/1984)) ([4894373](https://github.com/vm0-ai/vm0/commit/4894373604579718eaca4175531213693f28fff8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.4.2
+
 ## [0.31.2](https://github.com/vm0-ai/vm0/compare/platform-v0.31.1...platform-v0.31.2) (2026-01-31)
 
 

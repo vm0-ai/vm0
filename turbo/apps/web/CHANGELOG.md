@@ -1,5 +1,14 @@
 # Changelog
 
+## [11.9.1](https://github.com/vm0-ai/vm0/compare/web-v11.9.0...web-v11.9.1) (2026-01-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.4.2
+
 ## [11.9.0](https://github.com/vm0-ai/vm0/compare/web-v11.8.0...web-v11.9.0) (2026-01-30)
 
 

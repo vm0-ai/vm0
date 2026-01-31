@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.4.2](https://github.com/vm0-ai/vm0/compare/core-v7.4.1...core-v7.4.2) (2026-01-31)
+
+
+### Performance Improvements
+
+* **runner:** remove preflight check and fail fast on first heartbeat ([#1976](https://github.com/vm0-ai/vm0/issues/1976)) ([1bb881a](https://github.com/vm0-ai/vm0/commit/1bb881a4a4b77eaa740cc98cd545bfc722bd1fac))
+
 ## [7.4.1](https://github.com/vm0-ai/vm0/compare/core-v7.4.0...core-v7.4.1) (2026-01-30)
 
 
