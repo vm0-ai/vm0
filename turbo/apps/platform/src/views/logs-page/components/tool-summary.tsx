@@ -13,7 +13,6 @@ import {
 import { highlightText } from "../utils/highlight-text.tsx";
 import type { ToolOperation } from "../log-detail/utils.ts";
 import { formatDuration } from "./event-card.tsx";
-import { JsonViewer, parseJsonSafely } from "./json-viewer.tsx";
 
 interface ToolSummaryProps {
   operation: ToolOperation;
@@ -280,9 +279,6 @@ function ToolResultDetails({
     searchTerm.trim() &&
     content.toLowerCase().includes(searchTerm.toLowerCase());
 
-  // Check if content is valid JSON for tree view (only when not searching)
-  const parsedJson = !searchTerm ? parseJsonSafely(content) : null;
-
   const contentElement = searchTerm
     ? highlightText(content, {
         searchTerm,
@@ -297,15 +293,6 @@ function ToolResultDetails({
         <pre className="whitespace-pre-wrap overflow-x-auto text-red-600 max-h-40 overflow-y-auto">
           {contentElement}
         </pre>
-      </div>
-    );
-  }
-
-  // Render JSON as interactive tree view when applicable
-  if (parsedJson && !hasSearchMatch) {
-    return (
-      <div className="bg-sidebar dark:bg-sidebar rounded-lg px-3 py-2 max-h-60 overflow-y-auto">
-        <JsonViewer data={parsedJson} maxInitialDepth={2} />
       </div>
     );
   }

@@ -1,14 +1,8 @@
 import { useGet } from "ccstate-react";
-import {
-  JsonView,
-  darkStyles,
-  defaultStyles,
-  collapseAllNested,
-} from "react-json-view-lite";
+import { JsonView, darkStyles, defaultStyles } from "react-json-view-lite";
 import "react-json-view-lite/dist/index.css";
 import { CopyButton } from "@vm0/ui";
 import { theme$ } from "../../../signals/theme.ts";
-import { throwIfAbort } from "../../../signals/utils.ts";
 
 interface JsonViewerProps {
   data: unknown;
@@ -63,10 +57,7 @@ function getDarkStyles() {
 
 function createExpandFunction(maxInitialDepth: number) {
   return (level: number): boolean => {
-    if (maxInitialDepth === 0) {
-      return false;
-    }
-    return collapseAllNested(level) && level < maxInitialDepth;
+    return level < maxInitialDepth;
   };
 }
 
@@ -112,20 +103,4 @@ export function JsonViewer({
       </div>
     </div>
   );
-}
-
-/**
- * Parse JSON string safely, returning the parsed object or null.
- */
-export function parseJsonSafely(value: string): object | null {
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (typeof parsed === "object" && parsed !== null) {
-      return parsed as object;
-    }
-    return null;
-  } catch (error) {
-    throwIfAbort(error);
-    return null;
-  }
 }
