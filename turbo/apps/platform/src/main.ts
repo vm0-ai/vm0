@@ -2,6 +2,7 @@ import "./polyfill.ts";
 import { createStore, type Store } from "ccstate";
 import { createRoot } from "react-dom/client";
 import { bootstrap$ } from "./signals/bootstrap.ts";
+import { initSidebar$ } from "./signals/sidebar.ts";
 import { initTheme$ } from "./signals/theme.ts";
 import { detach, Reason } from "./signals/utils.ts";
 import { setupRouter } from "./views/main.tsx";
@@ -9,8 +10,9 @@ import { setupRouter } from "./views/main.tsx";
 // pass store here is allowed because main is an entrance point
 // eslint-disable-next-line ccstate/no-store-in-params
 async function main(rootEl: HTMLDivElement, store: Store, signal: AbortSignal) {
-  // Initialize theme before bootstrap
+  // Initialize theme and sidebar before bootstrap
   detach(store.set(initTheme$), Reason.Entrance);
+  detach(store.set(initSidebar$), Reason.Entrance);
 
   await store.set(
     bootstrap$,

@@ -8,6 +8,7 @@ import {
 } from "@vm0/ui/components/ui/tooltip";
 import { ThemeToggle } from "../components/theme-toggle.tsx";
 import { navigateInReact$ } from "../../signals/route.ts";
+import { toggleSidebar$ } from "../../signals/sidebar.ts";
 import type { RoutePath } from "../../types/route.ts";
 
 export interface BreadcrumbItem {
@@ -21,6 +22,7 @@ interface NavbarProps {
 
 export function Navbar({ breadcrumb }: NavbarProps) {
   const navigate = useSet(navigateInReact$);
+  const toggleSidebar = useSet(toggleSidebar$);
 
   return (
     <header className="h-[49px] flex items-center border-b border-divider bg-background">
@@ -31,7 +33,11 @@ export function Navbar({ breadcrumb }: NavbarProps) {
           <TooltipProvider delayDuration={100}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <button className="icon-button" aria-label="Toggle sidebar">
+                <button
+                  className="icon-button"
+                  aria-label="Toggle sidebar"
+                  onClick={toggleSidebar}
+                >
                   <IconLayoutSidebar
                     size={16}
                     className="shrink-0 text-foreground"
