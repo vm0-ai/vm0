@@ -1690,12 +1690,23 @@ For CLI app testing patterns specific to `turbo/apps/cli`, see:
 - [CLI Testing Patterns](./reference/cli-testing.md)
 
 Key topics:
-- Command-level testing only via `command.parseAsync()`
+- Integration tests via `command.parseAsync()`
 - MSW for Web API mocking (external boundary)
 - `vi.stubEnv()` for config (not mocking config module)
 - Real filesystem with temp directories
 - Console output and exit codes as valid assertions
-- Non-interactive mode testing only
+
+### CLI E2E Testing (`/testing cli-e2e`)
+
+For CLI E2E testing with BATS, see:
+- [CLI E2E Testing Patterns](./reference/cli-e2e-testing.md)
+
+Key topics:
+- Happy path only (error cases → integration tests)
+- BATS parallelization model (`-j 10 --no-parallelize-within-files`)
+- State sharing via `$BATS_FILE_TMPDIR`
+- `setup_file()` for expensive one-time setup
+- Max ONE `vm0 run` per test case (timeout safety)
 
 ### Platform Testing (`/testing platform`)
 
