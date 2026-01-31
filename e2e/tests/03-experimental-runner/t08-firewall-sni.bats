@@ -158,6 +158,7 @@ EOF
     # In SNI-only mode, blocked connections get TLS certificate error
     run $CLI_COMMAND run "${AGENT_NAME}-block" \
         --artifact-name "$ARTIFACT_NAME-block" \
+        --verbose \
         "curl -sf --connect-timeout 5 https://example.com || echo 'BLOCKED'"
 
     echo "$output"

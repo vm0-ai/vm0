@@ -72,6 +72,7 @@ teardown() {
     # Use extended timeout for CI environments which may be slower
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
+        --verbose \
         "ls -la && cat test-file.txt && cat subdir/nested.txt"
 
     assert_success

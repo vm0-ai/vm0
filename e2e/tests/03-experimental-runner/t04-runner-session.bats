@@ -122,7 +122,7 @@ teardown() {
 
     # Step 4: Continue from session - should get LATEST artifact (HEAD)
     echo "# Step 4: Continuing from session..."
-    run $CLI_COMMAND run continue "$SESSION_ID" "ls && cat counter.txt"
+    run $CLI_COMMAND run continue "$SESSION_ID" --verbose "ls && cat counter.txt"
 
     echo "# Continue output:"
     echo "$output"
@@ -218,6 +218,7 @@ teardown() {
     run $CLI_COMMAND run "$AGENT_NAME" \
         --vars "testKey=testValue" \
         --artifact-name "$ARTIFACT_NAME" \
+        --verbose \
         "echo 'initial run' && cat testfile.txt"
 
     assert_success
@@ -237,7 +238,7 @@ teardown() {
 
     # Step 4: Continue from session
     echo "# Step 4: Continuing from session..."
-    run $CLI_COMMAND run continue "$SESSION_ID" "cat testfile.txt"
+    run $CLI_COMMAND run continue "$SESSION_ID" --verbose "cat testfile.txt"
 
     assert_success
 

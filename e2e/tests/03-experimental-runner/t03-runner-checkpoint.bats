@@ -123,6 +123,7 @@ teardown() {
     # Step 4: Resume from checkpoint
     echo "# Step 4: Resuming from checkpoint..."
     run $CLI_COMMAND run resume "$CHECKPOINT_ID" \
+        --verbose \
         "ls && cat counter.txt"
 
     echo "# Resume output:"

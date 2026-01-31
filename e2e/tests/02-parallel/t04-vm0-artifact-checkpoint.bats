@@ -140,6 +140,7 @@ teardown_file() {
     # Resume from checkpoint - should get checkpoint version, not HEAD (~15s)
     echo "# Resuming from checkpoint: $CHECKPOINT_ID"
     run $CLI_COMMAND run resume "$CHECKPOINT_ID" \
+        --verbose \
         "ls && cat counter.txt"
 
     assert_success

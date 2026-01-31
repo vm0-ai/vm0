@@ -78,6 +78,7 @@ setup_artifact() {
         --vars "testVar=${VAR_VALUE}" \
         --secrets "TEST_SECRET=${SECRET_VALUE}" \
         --artifact-name "$ARTIFACT_NAME" \
+        --verbose \
         "echo VAR=\$TEST_VAR && echo SECRET=\$TEST_SECRET"
     assert_success
 
@@ -137,6 +138,7 @@ EOF
         --secrets "SECRET_A=${SECRET_A_VALUE}" \
         --secrets "SECRET_B=${SECRET_B_VALUE}" \
         --artifact-name "$ARTIFACT_NAME" \
+        --verbose \
         "echo A=\$SECRET_A && echo B=\$SECRET_B"
     assert_success
 
@@ -163,6 +165,7 @@ EOF
         --vars "testVar=${VAR_VALUE}" \
         --secrets "TEST_SECRET=${SECRET_VALUE}" \
         --artifact-name "$ARTIFACT_NAME" \
+        --verbose \
         "echo INITIAL && echo SECRET=\$TEST_SECRET"
     assert_success
     assert_output --partial "INITIAL"
@@ -188,6 +191,7 @@ EOF
     echo "# Step 6: Continue WITH secrets succeeds"
     run $CLI_COMMAND run continue "$SESSION_ID" \
         --secrets "TEST_SECRET=${SECRET_VALUE}" \
+        --verbose \
         "echo CONTINUED && echo SECRET=\$TEST_SECRET"
     assert_success
     assert_output --partial "CONTINUED"
@@ -207,6 +211,7 @@ EOF
         --vars "testVar=${VAR_VALUE}" \
         --secrets "TEST_SECRET=${SECRET_VALUE}" \
         --artifact-name "$ARTIFACT_NAME" \
+        --verbose \
         "echo INITIAL && echo SECRET=\$TEST_SECRET"
     assert_success
 
@@ -230,6 +235,7 @@ EOF
     echo "# Step 6: Resume WITH secrets succeeds"
     run $CLI_COMMAND run resume "$CHECKPOINT_ID" \
         --secrets "TEST_SECRET=${SECRET_VALUE}" \
+        --verbose \
         "echo RESUMED && echo SECRET=\$TEST_SECRET"
     assert_success
     assert_output --partial "RESUMED"

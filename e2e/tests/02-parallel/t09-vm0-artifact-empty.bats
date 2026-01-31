@@ -97,6 +97,7 @@ teardown() {
     # The storage webhook should handle unchanged artifact content correctly
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
+        --verbose \
         "cat data.txt && cat subdir/nested.txt"
 
     assert_success

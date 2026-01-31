@@ -57,7 +57,7 @@ teardown() {
     # The agent should run, execute tasks, and complete successfully
 
     echo "# Running agent without artifact..."
-    run $CLI_COMMAND run "$AGENT_NAME" "echo 'hello world' && pwd"
+    run $CLI_COMMAND run "$AGENT_NAME" --verbose "echo 'hello world' && pwd"
 
     assert_success
     assert_output --partial "● Bash("
@@ -136,7 +136,7 @@ teardown() {
 
     # Step 2: Continue from session
     echo "# Step 2: Continuing from session..."
-    run $CLI_COMMAND run continue "$SESSION_ID" "echo 'continued from session'"
+    run $CLI_COMMAND run continue "$SESSION_ID" --verbose "echo 'continued from session'"
 
     assert_success
     assert_output --partial "● Bash("

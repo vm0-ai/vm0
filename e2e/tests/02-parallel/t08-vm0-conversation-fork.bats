@@ -180,6 +180,7 @@ teardown_file() {
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         --conversation "$CONVERSATION_ID" \
+        --verbose \
         "cat version.txt && cat counter.txt && ls"
 
     assert_success
