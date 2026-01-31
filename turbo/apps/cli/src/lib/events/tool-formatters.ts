@@ -67,19 +67,21 @@ const toolHeadlineFormatters: Record<
   string,
   (input: Record<string, unknown>) => string
 > = {
-  Read: (input) => `Read ${String(input.file_path || "")}`,
-  Edit: (input) => `Edit ${String(input.file_path || "")}`,
-  Write: (input) => `Write ${String(input.file_path || "")}`,
+  Read: (input) => `Read(${chalk.dim(String(input.file_path || ""))})`,
+  Edit: (input) => `Edit(${chalk.dim(String(input.file_path || ""))})`,
+  Write: (input) => `Write(${chalk.dim(String(input.file_path || ""))})`,
   Bash: (input) =>
     input.description
-      ? `Bash: ${truncate(String(input.description), 60)}`
-      : `Bash: ${truncate(String(input.command || ""), 60)}`,
-  Glob: (input) => `Glob: ${String(input.pattern || "")}`,
-  Grep: (input) => `Grep: ${String(input.pattern || "")}`,
-  Task: (input) => `Task: ${truncate(String(input.description || ""), 60)}`,
+      ? `Bash(${chalk.dim(truncate(String(input.description), 60))})`
+      : `Bash(${chalk.dim(truncate(String(input.command || ""), 60))})`,
+  Glob: (input) => `Glob(${chalk.dim(String(input.pattern || ""))})`,
+  Grep: (input) => `Grep(${chalk.dim(String(input.pattern || ""))})`,
+  Task: (input) =>
+    `Task(${chalk.dim(truncate(String(input.description || ""), 60))})`,
   WebFetch: (input) =>
-    `WebFetch: ${chalk.dim(truncate(String(input.url || ""), 60))}`,
-  WebSearch: (input) => `WebSearch: ${truncate(String(input.query || ""), 60)}`,
+    `WebFetch(${chalk.dim(truncate(String(input.url || ""), 60))})`,
+  WebSearch: (input) =>
+    `WebSearch(${chalk.dim(truncate(String(input.query || ""), 60))})`,
   TodoWrite: () => "TodoWrite",
 };
 
