@@ -6,11 +6,39 @@ import {
   RunEvent,
   NetworkLogEntry,
 } from "../../lib/api/api-client";
+import { getApiUrl } from "../../lib/api/config";
 import { parseTime } from "../../lib/utils/time-parser";
 import { formatBytes } from "../../lib/utils/file-utils";
 import { ClaudeEventParser } from "../../lib/events/claude-event-parser";
 import { EventRenderer } from "../../lib/events/event-renderer";
 import { CodexEventRenderer } from "../../lib/events/codex-event-renderer";
+
+/**
+ * Build platform URL for logs viewer
+ * Transforms API URL to platform URL and appends logs path
+ */
+function buildPlatformLogsUrl(apiUrl: string, runId: string): string {
+  const url = new URL(apiUrl);
+  const hostname = url.hostname;
+
+  // Handle localhost
+  if (hostname === "localhost" || hostname === "127.0.0.1") {
+    return `http://${hostname}:3001/logs/${runId}`;
+  }
+
+  // Transform: www.vm0.ai → platform.vm0.ai
+  //            vm0.ai → platform.vm0.ai
+  const parts = hostname.split(".");
+  if (parts[0] === "www") {
+    parts[0] = "platform";
+  } else {
+    parts.unshift("platform");
+  }
+
+  const platformHost = parts.join(".");
+  const port = url.port ? `:${url.port}` : "";
+  return `https://${platformHost}${port}/logs/${runId}`;
+}
 
 /**
  * Log type for mutually exclusive options
@@ -195,9 +223,20 @@ export const logsCommand = new Command()
         );
         const order: "asc" | "desc" = isHead ? "asc" : "desc";
 
+        // Build platform URL (fail fast if invalid)
+        const apiUrl = await getApiUrl();
+        let platformUrl: string;
+        try {
+          platformUrl = buildPlatformLogsUrl(apiUrl, runId);
+        } catch {
+          console.error(chalk.red("Failed to build platform URL"));
+          console.error(chalk.dim(`  API URL: ${apiUrl}`));
+          process.exit(1);
+        }
+
         switch (logType) {
           case "agent":
-            await showAgentEvents(runId, { since, limit, order });
+            await showAgentEvents(runId, { since, limit, order }, platformUrl);
             break;
           case "system":
             await showSystemLog(runId, { since, limit, order });
@@ -226,6 +265,7 @@ async function showAgentEvents(
     limit: number;
     order: "asc" | "desc";
   },
+  platformUrl: string,
 ): Promise<void> {
   const response = await apiClient.getAgentEvents(runId, options);
 
@@ -253,6 +293,7 @@ async function showAgentEvents(
       ),
     );
   }
+  console.log(chalk.dim(`View on platform: ${platformUrl}`));
 }
 
 /**

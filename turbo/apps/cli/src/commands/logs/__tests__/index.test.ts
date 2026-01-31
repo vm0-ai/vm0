@@ -655,6 +655,179 @@ describe("logs command", () => {
     });
   });
 
+  describe("platform URL", () => {
+    it("should display platform URL after agent events", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "assistant",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "assistant",
+                    message: {
+                      content: [{ type: "text", text: "Hello" }],
+                    },
+                  },
+                },
+              ],
+              framework: "claude-code",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("View on platform:");
+      expect(logCalls).toContain("http://localhost:3001/logs/run-123");
+    });
+
+    it("should NOT display platform URL for system logs", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/system-log",
+          () => {
+            return HttpResponse.json({
+              systemLog: "System log content",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--system"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).not.toContain("View on platform:");
+    });
+
+    it("should NOT display platform URL for metrics", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/metrics",
+          () => {
+            return HttpResponse.json({
+              metrics: [
+                {
+                  ts: "2024-01-15T10:30:00Z",
+                  cpu: 45.5,
+                  mem_used: 1073741824,
+                  mem_total: 4294967296,
+                  disk_used: 10737418240,
+                  disk_total: 107374182400,
+                },
+              ],
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--metrics"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).not.toContain("View on platform:");
+    });
+
+    it("should NOT display platform URL for network logs", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/network",
+          () => {
+            return HttpResponse.json({
+              networkLogs: [
+                {
+                  timestamp: "2024-01-15T10:30:00Z",
+                  mode: "sni",
+                  host: "api.example.com",
+                  port: 443,
+                  action: "ALLOW",
+                },
+              ],
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--network"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).not.toContain("View on platform:");
+    });
+
+    it("should transform www.vm0.ai to platform.vm0.ai", async () => {
+      vi.stubEnv("VM0_API_URL", "https://www.vm0.ai");
+
+      server.use(
+        http.get(
+          "https://www.vm0.ai/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "assistant",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "assistant",
+                    message: { content: [{ type: "text", text: "Test" }] },
+                  },
+                },
+              ],
+              framework: "claude-code",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("https://platform.vm0.ai/logs/run-123");
+    });
+
+    it("should transform vm7.ai:8443 to platform.vm7.ai:8443", async () => {
+      vi.stubEnv("VM0_API_URL", "https://www.vm7.ai:8443");
+
+      server.use(
+        http.get(
+          "https://www.vm7.ai:8443/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "assistant",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "assistant",
+                    message: { content: [{ type: "text", text: "Test" }] },
+                  },
+                },
+              ],
+              framework: "claude-code",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("https://platform.vm7.ai:8443/logs/run-123");
+    });
+  });
+
   describe("time and limit options", () => {
     it("should pass --since option to API", async () => {
       let capturedQuery: Record<string, unknown> | undefined;
