@@ -225,16 +225,22 @@ function formatEditDiff(input: Record<string, unknown>): string[] {
   for (let i = 0; i < showOld; i++) {
     lines.push(`  ${chalk.dim(`- ${truncate(oldLines[i] ?? "", 60)}`)}`);
   }
-  if (oldLines.length > previewLimit) {
-    lines.push(`  ${chalk.dim(`  … +${oldLines.length - previewLimit} more`)}`);
+  const remainingOld = oldLines.length - previewLimit;
+  if (remainingOld > 0) {
+    lines.push(
+      `  ${chalk.dim(`  … +${remainingOld} ${pluralize(remainingOld, "line", "lines")} (--verbose to see all)`)}`,
+    );
   }
 
   // Show added lines
   for (let i = 0; i < showNew; i++) {
     lines.push(`  ${chalk.dim(`+ ${truncate(newLines[i] ?? "", 60)}`)}`);
   }
-  if (newLines.length > previewLimit) {
-    lines.push(`  ${chalk.dim(`  … +${newLines.length - previewLimit} more`)}`);
+  const remainingNew = newLines.length - previewLimit;
+  if (remainingNew > 0) {
+    lines.push(
+      `  ${chalk.dim(`  … +${remainingNew} ${pluralize(remainingNew, "line", "lines")} (--verbose to see all)`)}`,
+    );
   }
 
   return lines;
