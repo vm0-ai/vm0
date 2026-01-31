@@ -325,6 +325,35 @@ describe("IPRegistry", () => {
       expect(orphanedTaps).toContain("tap000");
       expect(orphanedTaps).toContain("tap001");
     });
+
+    it("should remove IP but not return TAP when runner is dead and TAP not in scan", async () => {
+      // Runner dead, TAP already deleted (not in scan)
+      const deadPid = 999999;
+      const allocations = {
+        "172.16.0.2": {
+          runnerPid: deadPid,
+          tapDevice: "tap000",
+          vmId: null,
+        },
+      };
+      fs.writeFileSync(
+        path.join(testDir, "ip-registry.json"),
+        JSON.stringify({ allocations }),
+      );
+
+      // TAP does NOT exist on system
+      mockTapDevices = new Set();
+
+      const orphanedTaps = await registry.cleanupOrphanedIPs();
+
+      const data = JSON.parse(
+        fs.readFileSync(path.join(testDir, "ip-registry.json"), "utf-8"),
+      );
+      // IP should be removed
+      expect(data.allocations["172.16.0.2"]).toBeUndefined();
+      // No orphaned TAPs to return (TAP already gone)
+      expect(orphanedTaps).toEqual([]);
+    });
   });
 
   describe("file lock", () => {
