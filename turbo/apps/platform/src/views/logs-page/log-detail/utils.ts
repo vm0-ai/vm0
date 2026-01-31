@@ -26,6 +26,11 @@ type MessageContent = TextContent | ToolUseContent | ToolResultContent;
 
 // ============ GROUPED MESSAGE TYPES ============
 
+interface TodoItem {
+  content: string;
+  status: string;
+}
+
 export interface ToolOperation {
   toolUseId: string;
   toolName: string;
@@ -37,11 +42,8 @@ export interface ToolOperation {
     durationMs?: number;
     bytes?: number;
   };
-}
-
-interface TodoItem {
-  content: string;
-  status: string;
+  // For TodoWrite: snapshot of todo state at this point
+  todoState?: TodoItem[];
 }
 
 export interface GroupedMessage {
@@ -513,9 +515,9 @@ function processAssistantEvent(
   const { textParts, toolOperations } = parseAssistantContent(contents);
   const hasText = textParts.length > 0;
 
-  // Separate TodoWrite operations from other tools
-  const todoWriteOps: ToolOperation[] = [];
+  // Separate TodoWrite from other tools
   const otherToolOps: ToolOperation[] = [];
+  const todoWriteOps: ToolOperation[] = [];
 
   for (const op of toolOperations) {
     if (op.toolName.toLowerCase() === "todowrite") {
@@ -553,7 +555,7 @@ function processAssistantEvent(
     }
   }
 
-  // Create standalone todo card for each TodoWrite operation
+  // Create standalone todo card for each TodoWrite
   for (const todoOp of todoWriteOps) {
     const todoMessage: GroupedMessage = {
       type: "todo",

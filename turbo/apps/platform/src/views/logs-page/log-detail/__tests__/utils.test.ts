@@ -703,7 +703,7 @@ describe("log-detail utils", () => {
         },
       ];
       const result = groupEventsIntoMessages(events);
-      // Should be: todo card, result (no separate assistant card since only TodoWrite)
+      // Should be: standalone todo card, result
       expect(result).toHaveLength(2);
       expect(result[0].type).toBe("todo");
       expect(result[0].todoState).toHaveLength(2);

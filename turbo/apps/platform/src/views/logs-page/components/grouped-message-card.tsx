@@ -102,7 +102,7 @@ export function GroupedMessageCard({
     return <ResultMessageCard message={message} eventData={eventData} />;
   }
 
-  // Todo card (standalone from TodoWrite)
+  // Todo card (standalone)
   if (message.type === "todo") {
     return <TodoCard message={message} />;
   }
