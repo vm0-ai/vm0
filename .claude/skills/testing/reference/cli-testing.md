@@ -285,59 +285,45 @@ it("should create files with --name flag", async () => {
 
 Use `prompts.inject()` - the library's native testing feature - to simulate user responses. This is NOT mocking; it's using the official testing API provided by the `prompts` library.
 
-**Setup**: Enable TTY and inject responses before running the command.
+**Prerequisites**:
+1. Enable TTY mode (usually done in test file's `beforeEach`)
+2. Inject ALL prompt responses in the order they will be asked
+
+**Example**: Testing that onboard shows `vm0 init` when user skips plugin installation.
 
 ```typescript
-import prompts from "prompts";
+it("should show vm0 init when plugin installation is skipped", async () => {
+  const prompts = await import("prompts");
+  // Inject responses in order:
+  // 1. "my-vm0-agent" for agent name prompt
+  // 2. false for "Install VM0 Claude Plugin?" confirmation
+  prompts.default.inject(["my-vm0-agent", false]);
 
-describe("interactive mode", () => {
-  beforeEach(() => {
-    // Enable interactive mode by setting TTY
-    Object.defineProperty(process.stdout, "isTTY", {
-      value: true,
-      writable: true,
-      configurable: true,
-    });
-  });
+  await onboardCommand.parseAsync(["node", "cli"]);
 
-  it("should prompt for name and create files", async () => {
-    // Inject user responses in order they will be prompted
-    prompts.inject(["my-agent"]);
+  const logCalls = vi.mocked(console.log).mock.calls.flat().join("\n");
+  expect(logCalls).toContain("cd my-vm0-agent && vm0 init");
+  expect(logCalls).not.toContain("/vm0-agent");
+});
+```
 
-    await initCommand.parseAsync(["node", "cli"]);
+**TTY Setup** (if not already in beforeEach):
 
-    expect(existsSync(path.join(tempDir, "vm0.yaml"))).toBe(true);
-  });
-
-  it("should skip plugin when user declines", async () => {
-    // Inject: false for "Install plugin?" confirmation
-    prompts.inject([false]);
-
-    await onboardCommand.parseAsync(["node", "cli"]);
-
-    const logCalls = vi.mocked(console.log).mock.calls.flat().join("\n");
-    expect(logCalls).toContain("vm0 init");
-    expect(logCalls).not.toContain("/vm0-agent");
-  });
-
-  it("should handle user cancellation", async () => {
-    // Inject Error to simulate Ctrl+C
-    prompts.inject([new Error("User cancelled")]);
-
-    await initCommand.parseAsync(["node", "cli"]);
-
-    expect(mockConsoleLog).toHaveBeenCalledWith(
-      expect.stringContaining("Cancelled"),
-    );
+```typescript
+beforeEach(() => {
+  Object.defineProperty(process.stdout, "isTTY", {
+    value: true,
+    writable: true,
+    configurable: true,
   });
 });
 ```
 
 **Key Points**:
-- `prompts.inject([...])` - Inject responses in prompt order
-- `prompts.inject([new Error()])` - Simulate user cancellation (Ctrl+C)
-- Responses are consumed in order; inject multiple values for multiple prompts
-- Set `process.stdout.isTTY = true` to enable interactive mode
+- Use dynamic import: `const prompts = await import("prompts")`
+- Call inject on default export: `prompts.default.inject([...])`
+- Inject ALL responses in prompt order - missing values will cause prompts to hang or return undefined
+- `prompts.default.inject([new Error()])` - Simulate user cancellation (Ctrl+C)
 
 ---
 
