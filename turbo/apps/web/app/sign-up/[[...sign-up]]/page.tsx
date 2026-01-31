@@ -261,6 +261,53 @@ export default function SignUpPage() {
         [class*="footerActionLink"]:hover {
           color: hsl(var(--primary) / 0.9) !important;
         }
+
+        /* OTP/Verification Code Input Boxes - Match cli-auth style */
+        .cl-otpCodeFieldInput,
+        input[data-input-otp],
+        [data-input-otp] input {
+          height: 36px !important;
+          width: 36px !important;
+          background-color: hsl(var(--input)) !important;
+          border: 1px solid hsl(var(--border)) !important;
+          border-radius: 0.5rem !important;
+          color: hsl(var(--foreground)) !important;
+          font-size: 16px !important;
+          font-weight: 500 !important;
+          text-align: center !important;
+        }
+
+        /* OTP Input Focus State */
+        .cl-otpCodeFieldInput:focus,
+        input[data-input-otp]:focus,
+        [data-input-otp] input:focus {
+          border-color: hsl(var(--primary)) !important;
+          box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1) !important;
+        }
+
+        /* "Didn't receive a code" text color */
+        .cl-formResendCodeLink,
+        [class*="formResendCode"],
+        [class*="resendCode"],
+        .cl-card [class*="alternativeMethodsBlockButton"],
+        button[class*="alternativeMethodsBlockButton"] {
+          color: hsl(var(--muted-foreground)) !important;
+        }
+
+        /* Email address display - use muted foreground */
+        .cl-identityPreviewText,
+        [class*="identityPreview"] [class*="text"],
+        .cl-card [class*="userPreview"],
+        .cl-card [class*="emailAddress"] {
+          color: hsl(var(--muted-foreground)) !important;
+        }
+
+        /* Keep resend link primary color */
+        .cl-formResendCodeLink a,
+        [class*="formResendCode"] a,
+        a[class*="resendCode"] {
+          color: hsl(var(--primary)) !important;
+        }
       `}</style>
       <div className="relative flex min-h-screen items-center justify-center bg-background p-6 overflow-hidden">
         {/* Background grid pattern - medium grid with subtle visibility */}
@@ -380,7 +427,8 @@ export default function SignUpPage() {
               identityPreviewText: "text-foreground",
               identityPreviewEditButton: "text-muted-foreground",
               formFieldInputShowPasswordButton: "text-muted-foreground",
-              otpCodeFieldInput: "text-foreground rounded-lg",
+              otpCodeFieldInput:
+                "h-9 w-9 bg-input border border-border rounded-lg text-center text-base font-medium uppercase text-foreground focus:border-primary focus:ring-[3px] focus:ring-primary/10",
               formResendCodeLink: "text-primary",
               footer: "hidden",
             },
