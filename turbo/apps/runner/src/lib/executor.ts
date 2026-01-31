@@ -27,11 +27,7 @@ import {
 } from "./metrics/index.js";
 
 // Import from extracted modules
-import type {
-  ExecutionResult,
-  ExecutionOptions,
-  PreflightResult,
-} from "./executor-types.js";
+import type { ExecutionResult, ExecutionOptions } from "./executor-types.js";
 import { buildEnvironmentVariables, ENV_JSON_PATH } from "./executor-env.js";
 import { uploadNetworkLogs } from "./network-logs/index.js";
 import { downloadStorages, restoreSessionHistory } from "./vm-setup/index.js";
@@ -47,121 +43,6 @@ function getVmIdFromRunId(runId: string): string {
   // runId is a UUID like "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
   // Extract first 8 chars (before first hyphen) for a unique short ID
   return runId.split("-")[0] || runId.substring(0, 8);
-}
-
-/**
- * Map curl exit codes to meaningful error messages
- * Exported for testing
- */
-export const CURL_ERROR_MESSAGES: Record<number, string> = {
-  6: "DNS resolution failed",
-  7: "Connection refused",
-  28: "Connection timeout",
-  60: "TLS certificate error (proxy CA not trusted)",
-  22: "HTTP error from server",
-};
-
-/**
- * Preflight connectivity check - verify VM can reach VM0 API
- * Run this AFTER network is configured but BEFORE starting agent
- *
- * This function uses guest.exec() to run curl inside the VM (not on the host).
- * The curl command is hardcoded with no user input interpolation, so shell
- * injection is not a concern here.
- *
- * @param guest - Guest client connected to the VM
- * @param apiUrl - VM0 API URL to test
- * @param runId - Run ID for the heartbeat request
- * @param sandboxToken - Authentication token for the API
- * @param bypassSecret - Optional Vercel automation bypass secret for preview deployments
- * @returns PreflightResult indicating success or failure with error message
- */
-export async function runPreflightCheck(
-  guest: GuestClient,
-  apiUrl: string,
-  runId: string,
-  sandboxToken: string,
-  bypassSecret?: string,
-): Promise<PreflightResult> {
-  const heartbeatUrl = `${apiUrl}/api/webhooks/agent/heartbeat`;
-
-  // Build curl command to send test heartbeat from inside VM
-  // -s: silent mode (no progress bar)
-  // -f: fail silently on HTTP errors (returns exit code 22)
-  // --connect-timeout: max time for connection phase
-  // --max-time: total max time for the request
-  // Note: This runs inside the VM via vsock, not on the runner host
-  const bypassHeader = bypassSecret
-    ? ` -H "x-vercel-protection-bypass: ${bypassSecret}"`
-    : "";
-  const curlCmd = `curl -sf --connect-timeout 5 --max-time 10 "${heartbeatUrl}" -X POST -H "Content-Type: application/json" -H "Authorization: Bearer ${sandboxToken}"${bypassHeader} -d '{"runId":"${runId}"}'`;
-
-  // Use 20 second timeout for exec (curl has 10s max-time, plus buffer for overhead)
-  const result = await guest.exec(curlCmd, 20000);
-
-  if (result.exitCode === 0) {
-    return { success: true };
-  }
-
-  // Map curl exit code to meaningful error message
-  const errorDetail =
-    CURL_ERROR_MESSAGES[result.exitCode] ?? `curl exit code ${result.exitCode}`;
-  const stderrInfo = result.stderr?.trim() ? ` (${result.stderr.trim()})` : "";
-
-  return {
-    success: false,
-    error: `Preflight check failed: ${errorDetail}${stderrInfo} - VM cannot reach VM0 API at ${apiUrl}`,
-  };
-}
-
-/**
- * Report preflight failure to complete API
- * This allows CLI to see the error immediately instead of waiting forever
- *
- * @param apiUrl - VM0 API URL
- * @param runId - Run ID to mark as failed
- * @param sandboxToken - Authentication token
- * @param error - Error message to report
- * @param bypassSecret - Optional Vercel automation bypass secret for preview deployments
- */
-export async function reportPreflightFailure(
-  apiUrl: string,
-  runId: string,
-  sandboxToken: string,
-  error: string,
-  bypassSecret?: string,
-): Promise<void> {
-  const completeUrl = `${apiUrl}/api/webhooks/agent/complete`;
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${sandboxToken}`,
-  };
-
-  // Add Vercel bypass header for preview deployments
-  if (bypassSecret) {
-    headers["x-vercel-protection-bypass"] = bypassSecret;
-  }
-
-  try {
-    const response = await fetch(completeUrl, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        runId,
-        exitCode: 1,
-        error,
-      }),
-    });
-
-    if (!response.ok) {
-      logger.error(
-        `Failed to report preflight failure: HTTP ${response.status}`,
-      );
-    }
-  } catch (err) {
-    logger.error(`Failed to report preflight failure: ${err}`);
-  }
 }
 
 /**
@@ -297,43 +178,8 @@ export async function executeJob(
     );
     await guest.writeFile(ENV_JSON_PATH, envJson);
 
-    // Run preflight connectivity check before starting agent
-    // This verifies VM can reach VM0 API - if not, we report failure immediately
-    // Skip in benchmark mode since it doesn't use API
-    if (!options.benchmarkMode) {
-      logger.log(`Running preflight connectivity check...`);
-      const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-      const preflight = await withSandboxTiming("preflight_check", () =>
-        runPreflightCheck(
-          guest,
-          config.server.url,
-          context.runId,
-          context.sandboxToken,
-          bypassSecret,
-        ),
-      );
-
-      if (!preflight.success) {
-        logger.log(`Preflight check failed: ${preflight.error}`);
-
-        // Report failure via complete API so CLI sees it immediately
-        await reportPreflightFailure(
-          config.server.url,
-          context.runId,
-          context.sandboxToken,
-          preflight.error!,
-          bypassSecret,
-        );
-
-        return {
-          exitCode: 1,
-          error: preflight.error,
-        };
-      }
-      logger.log(`Preflight check passed`);
-    }
-
     // Execute agent or direct command using event-driven mode
+    // Note: Network connectivity is validated by agent's first heartbeat (fail-fast)
     // The agent spawns in background, and we wait for exit notification (no polling)
     const systemLogFile = `/tmp/vm0-main-${context.runId}.log`;
     const startTime = Date.now();

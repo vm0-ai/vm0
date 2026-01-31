@@ -25,11 +25,3 @@ export interface ExecutionOptions {
    */
   benchmarkMode?: boolean;
 }
-
-/**
- * Preflight check result
- */
-export interface PreflightResult {
-  success: boolean;
-  error?: string;
-}

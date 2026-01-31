@@ -32,52 +32,17 @@ import {
   validateConfig,
   recordSandboxOp,
 } from "./lib/common.js";
-import { logInfo, logError, logWarn, logDebug } from "./lib/log.js";
+import { logInfo, logError, logDebug } from "./lib/log.js";
 import { sendEvent } from "./lib/events.js";
 import { createCheckpoint } from "./lib/checkpoint.js";
 import { httpPostJson } from "./lib/http-client.js";
+import { startHeartbeat, requestShutdown } from "./lib/heartbeat.js";
 import { startMetricsCollector, stopMetricsCollector } from "./lib/metrics.js";
 import {
   startTelemetryUpload,
   stopTelemetryUpload,
   finalTelemetryUpload,
 } from "./lib/upload-telemetry.js";
-
-// Global shutdown flag for heartbeat
-let shutdownRequested = false;
-
-/**
- * Send periodic heartbeat signals to indicate agent is still alive.
- */
-function heartbeatLoop(): void {
-  const sendHeartbeat = async (): Promise<void> => {
-    if (shutdownRequested) {
-      return;
-    }
-
-    try {
-      if (await httpPostJson(HEARTBEAT_URL, { runId: RUN_ID })) {
-        logInfo("Heartbeat sent");
-      } else {
-        logWarn("Heartbeat failed");
-      }
-    } catch (error) {
-      logWarn(`Heartbeat error: ${error}`);
-    }
-
-    // Schedule next heartbeat (fire-and-forget, errors handled internally)
-    setTimeout(() => {
-      sendHeartbeat().catch(() => {
-        // Errors already logged in sendHeartbeat
-      });
-    }, HEARTBEAT_INTERVAL * 1000);
-  };
-
-  // Start heartbeat loop (fire-and-forget, errors handled internally)
-  sendHeartbeat().catch(() => {
-    // Errors already logged in sendHeartbeat, nothing more to do
-  });
-}
 
 /**
  * Cleanup and notify server.
@@ -131,7 +96,7 @@ async function cleanup(exitCode: number, errorMessage: string): Promise<void> {
   );
 
   // Stop background processes
-  shutdownRequested = true;
+  requestShutdown();
   stopMetricsCollector();
   stopTelemetryUpload();
   logInfo("Background processes stopped");
@@ -173,9 +138,16 @@ async function run(): Promise<[number, string]> {
 
   logInfo(`Working directory: ${WORKING_DIR}`);
 
-  // Start heartbeat
+  // Start heartbeat loop (async, first heartbeat failure rejects heartbeatFailure)
+  // This replaces the old preflight check by validating network connectivity
   const heartbeatStart = Date.now();
-  heartbeatLoop();
+  const heartbeatFailure = startHeartbeat({
+    heartbeatUrl: HEARTBEAT_URL,
+    runId: RUN_ID,
+    intervalSeconds: HEARTBEAT_INTERVAL,
+  });
+  // Prevent unhandled rejection - we'll race against this in the main loop
+  heartbeatFailure.catch(() => {});
   logInfo("Heartbeat started");
   recordSandboxOp("heartbeat_start", Date.now() - heartbeatStart, true);
 
@@ -409,8 +381,9 @@ async function run(): Promise<[number, string]> {
       }
     }
 
-    // Wait for process to complete (handlers already registered above)
-    agentExitCode = await exitPromise;
+    // Wait for process to complete, or fail fast if first heartbeat fails
+    // Promise.race ensures we detect network issues even during CLI execution
+    agentExitCode = await Promise.race([exitPromise, heartbeatFailure]);
   } catch (error) {
     logError(`Failed to execute ${CLI_AGENT_TYPE}: ${error}`);
     agentExitCode = 1;
