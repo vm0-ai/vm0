@@ -66,7 +66,7 @@ describe("log detail page", () => {
     expect(context.store.get(pathname$)).toBe("/logs/test-run-123");
   });
 
-  it("should display run details in info card", async () => {
+  it("should display run details in compact header and details popover", async () => {
     server.use(
       http.get("*/api/platform/logs/:id", () => {
         return HttpResponse.json({
@@ -93,17 +93,22 @@ describe("log detail page", () => {
       path: "/logs/run-abc-123",
     });
 
-    // Wait for detail to load - check for run ID in content
+    // Wait for detail to load - key info should be in compact header
+    await waitFor(() => {
+      expect(screen.getByText("My Test Agent")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Done")).toBeInTheDocument(); // Status badge
+
+    // Click Details button to open popover
+    await user.click(screen.getByText("Details"));
+
+    // Verify full details in popover
     await waitFor(() => {
       expect(screen.getByText("run-abc-123")).toBeInTheDocument();
     });
-
-    // Verify all info items are displayed
     expect(screen.getByText("session-xyz-789")).toBeInTheDocument();
-    expect(screen.getByText("My Test Agent")).toBeInTheDocument();
     expect(screen.getByText("openai")).toBeInTheDocument();
-    expect(screen.getByText("Done")).toBeInTheDocument(); // Status shows "Done" for completed
-    expect(screen.getByText("My artifact folders")).toBeInTheDocument(); // Artifact download button
+    expect(screen.getByText("My artifact folders")).toBeInTheDocument();
   });
 
   it("should display duration correctly", async () => {
@@ -138,7 +143,7 @@ describe("log detail page", () => {
     });
   });
 
-  it("should display dash when sessionId is null", async () => {
+  it("should display dash when sessionId is null in details popover", async () => {
     server.use(
       http.get("*/api/platform/logs/:id", () => {
         return HttpResponse.json({
@@ -169,10 +174,15 @@ describe("log detail page", () => {
       expect(screen.getByText("No Session Agent")).toBeInTheDocument();
     });
 
-    // Session ID should show dash
-    const sessionLabel = screen.getByText("Session ID");
-    const sessionItem = sessionLabel.closest("div");
-    expect(sessionItem).toContainHTML("-");
+    // Open details popover
+    await user.click(screen.getByText("Details"));
+
+    // Session ID should show dash in popover
+    await waitFor(() => {
+      const sessionLabel = screen.getByText("Session ID");
+      const sessionItem = sessionLabel.closest("div");
+      expect(sessionItem).toContainHTML("-");
+    });
   });
 
   it("should display error message for failed runs", async () => {
@@ -389,6 +399,9 @@ describe("log detail page", () => {
 
   describe("search functionality", () => {
     function createSearchTestResponse() {
+      // Note: user events with plain text are not shown in formatted view
+      // (user prompts are not displayed), so we use 3 assistant messages
+      // to test the search functionality with 3 "world" matches
       return {
         events: [
           {
@@ -417,11 +430,11 @@ describe("log detail page", () => {
           },
           {
             sequenceNumber: 3,
-            eventType: "user",
+            eventType: "assistant",
             eventData: {
               message: {
-                content: [{ type: "text", text: "User says hello world" }],
-                role: "user",
+                content: [{ type: "text", text: "Third world message" }],
+                role: "assistant",
               },
             },
             createdAt: "2024-01-01T00:00:04Z",
@@ -483,11 +496,11 @@ describe("log detail page", () => {
         ).toBeInTheDocument();
       });
 
-      // Type a search term
+      // Type a search term that matches one message
       const searchInput = screen.getByPlaceholderText("Search logs");
-      await user.type(searchInput, "User says");
+      await user.type(searchInput, "Third");
 
-      // Should show matching count in header
+      // Should show matching count in header (1 message matches out of 3)
       await waitFor(() => {
         expect(screen.getByText("(1/3 matched)")).toBeInTheDocument();
       });
@@ -661,11 +674,11 @@ describe("log detail page", () => {
         expect(screen.getByText("2/3")).toBeInTheDocument();
       });
 
-      // Change search term
+      // Change search term - "message" appears in 2 assistant messages
       await user.clear(searchInput);
-      await user.type(searchInput, "Hello");
+      await user.type(searchInput, "message");
 
-      // Should reset to first match
+      // Should reset to first match (2 matches for "message")
       await waitFor(() => {
         expect(screen.getByText("1/2")).toBeInTheDocument();
       });

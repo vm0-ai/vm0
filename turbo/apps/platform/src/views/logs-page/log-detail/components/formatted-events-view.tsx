@@ -1,7 +1,11 @@
 import type { AgentEvent } from "../../../../signals/logs-page/types.ts";
-import { EventCard } from "../../components/event-card.tsx";
+import { GroupedMessageCard } from "../../components/grouped-message-card.tsx";
 import { countMatches } from "../../utils/highlight-text.tsx";
-import { eventMatchesSearch, getVisibleEventText } from "../utils.ts";
+import {
+  groupEventsIntoMessages,
+  getVisibleGroupedMessageText,
+  groupedMessageMatchesSearch,
+} from "../utils.ts";
 
 export function FormattedEventsView({
   events,
@@ -16,16 +20,21 @@ export function FormattedEventsView({
   currentMatchIndex: number;
   setTotalMatches: (count: number) => void;
 }) {
-  const visibleEvents = events.filter(
-    (event) =>
-      !hiddenTypes.has(event.eventType) &&
-      eventMatchesSearch(event, searchTerm),
+  // Group events into messages
+  const groupedMessages = groupEventsIntoMessages(events);
+
+  // Filter grouped messages by hidden types and search
+  const visibleMessages = groupedMessages.filter(
+    (message) =>
+      !hiddenTypes.has(message.type) &&
+      groupedMessageMatchesSearch(message, searchTerm),
   );
 
+  // Count total matches for search navigation
   let totalMatches = 0;
   if (searchTerm.trim()) {
-    for (const event of visibleEvents) {
-      const visibleText = getVisibleEventText(event);
+    for (const message of visibleMessages) {
+      const visibleText = getVisibleGroupedMessageText(message);
       totalMatches += countMatches(visibleText, searchTerm);
     }
   }
@@ -36,7 +45,7 @@ export function FormattedEventsView({
     }
   };
 
-  if (visibleEvents.length === 0) {
+  if (visibleMessages.length === 0) {
     return (
       <div ref={containerRef} className="p-8 text-center text-muted-foreground">
         {events.length === 0
@@ -52,21 +61,21 @@ export function FormattedEventsView({
 
   return (
     <div ref={containerRef} className="space-y-3">
-      {visibleEvents.map((event) => {
-        const eventMatchStart = matchOffset;
-        const visibleText = getVisibleEventText(event);
-        const eventMatches = searchTerm.trim()
+      {visibleMessages.map((message) => {
+        const messageMatchStart = matchOffset;
+        const visibleText = getVisibleGroupedMessageText(message);
+        const messageMatches = searchTerm.trim()
           ? countMatches(visibleText, searchTerm)
           : 0;
-        matchOffset += eventMatches;
+        matchOffset += messageMatches;
 
         return (
-          <EventCard
-            key={`${event.sequenceNumber}-${event.createdAt}`}
-            event={event}
+          <GroupedMessageCard
+            key={`${message.type}-${message.sequenceNumber}-${message.createdAt}`}
+            message={message}
             searchTerm={searchTerm}
             currentMatchIndex={currentMatchIndex}
-            matchStartIndex={eventMatchStart}
+            matchStartIndex={messageMatchStart}
           />
         );
       })}

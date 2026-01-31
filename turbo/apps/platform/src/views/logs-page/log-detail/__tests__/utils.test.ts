@@ -7,6 +7,9 @@ import {
   getVisibleEventText,
   scrollToMatch,
   EVENTS_CONTAINER_ID,
+  groupEventsIntoMessages,
+  getVisibleGroupedMessageText,
+  groupedMessageMatchesSearch,
 } from "../utils.ts";
 import type { AgentEvent } from "../../../../signals/logs-page/types.ts";
 
@@ -421,6 +424,487 @@ describe("log-detail utils", () => {
     it("should be a valid string constant", () => {
       expect(typeof EVENTS_CONTAINER_ID).toBe("string");
       expect(EVENTS_CONTAINER_ID.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe("groupEventsIntoMessages", () => {
+    it("should return empty array for empty events", () => {
+      const result = groupEventsIntoMessages([]);
+      expect(result).toStrictEqual([]);
+    });
+
+    it("should keep system events as independent messages", () => {
+      const events: AgentEvent[] = [
+        {
+          sequenceNumber: 1,
+          eventType: "system",
+          eventData: { subtype: "init", tools: ["Bash"] },
+          createdAt: "2024-01-01T00:00:00Z",
+        },
+      ];
+      const result = groupEventsIntoMessages(events);
+      expect(result).toHaveLength(1);
+      expect(result[0].type).toBe("system");
+    });
+
+    it("should keep result events as independent messages", () => {
+      const events: AgentEvent[] = [
+        {
+          sequenceNumber: 1,
+          eventType: "result",
+          eventData: { result: "Task completed" },
+          createdAt: "2024-01-01T00:00:00Z",
+        },
+      ];
+      const result = groupEventsIntoMessages(events);
+      expect(result).toHaveLength(1);
+      expect(result[0].type).toBe("result");
+    });
+
+    it("should extract text from assistant messages", () => {
+      const events: AgentEvent[] = [
+        {
+          sequenceNumber: 1,
+          eventType: "assistant",
+          eventData: {
+            message: {
+              content: [{ type: "text", text: "Hello world" }],
+            },
+          },
+          createdAt: "2024-01-01T00:00:00Z",
+        },
+      ];
+      const result = groupEventsIntoMessages(events);
+      expect(result).toHaveLength(1);
+      expect(result[0].type).toBe("assistant");
+      expect(result[0].textBefore).toBe("Hello world");
+    });
+
+    it("should extract tool operations from assistant messages", () => {
+      const events: AgentEvent[] = [
+        {
+          sequenceNumber: 1,
+          eventType: "assistant",
+          eventData: {
+            message: {
+              content: [
+                {
+                  type: "tool_use",
+                  id: "tool_123",
+                  name: "Bash",
+                  input: { command: "ls -la" },
+                },
+              ],
+            },
+          },
+          createdAt: "2024-01-01T00:00:00Z",
+        },
+      ];
+      const result = groupEventsIntoMessages(events);
+      expect(result).toHaveLength(1);
+      expect(result[0].toolOperations).toHaveLength(1);
+      expect(result[0].toolOperations?.[0].toolName).toBe("Bash");
+      expect(result[0].toolOperations?.[0].keyParam).toBe("ls -la");
+    });
+
+    it("should link tool_result to pending tool_use", () => {
+      const events: AgentEvent[] = [
+        {
+          sequenceNumber: 1,
+          eventType: "assistant",
+          eventData: {
+            message: {
+              content: [
+                {
+                  type: "tool_use",
+                  id: "tool_123",
+                  name: "Bash",
+                  input: { command: "ls -la" },
+                },
+              ],
+            },
+          },
+          createdAt: "2024-01-01T00:00:00Z",
+        },
+        {
+          sequenceNumber: 2,
+          eventType: "user",
+          eventData: {
+            message: {
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: "tool_123",
+                  content: "file1.txt\nfile2.txt",
+                },
+              ],
+            },
+          },
+          createdAt: "2024-01-01T00:00:01Z",
+        },
+      ];
+      const result = groupEventsIntoMessages(events);
+      expect(result).toHaveLength(1);
+      expect(result[0].toolOperations?.[0].result?.content).toBe(
+        "file1.txt\nfile2.txt",
+      );
+    });
+
+    it("should handle orphan tool_result without matching tool_use", () => {
+      const events: AgentEvent[] = [
+        {
+          sequenceNumber: 1,
+          eventType: "user",
+          eventData: {
+            message: {
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: "orphan_tool",
+                  content: "orphan result",
+                },
+              ],
+            },
+          },
+          createdAt: "2024-01-01T00:00:00Z",
+        },
+      ];
+      const result = groupEventsIntoMessages(events);
+      expect(result).toHaveLength(1);
+      expect(result[0].type).toBe("assistant");
+      expect(result[0].toolOperations?.[0].result?.content).toBe(
+        "orphan result",
+      );
+    });
+
+    it("should extract key param for file operations", () => {
+      const events: AgentEvent[] = [
+        {
+          sequenceNumber: 1,
+          eventType: "assistant",
+          eventData: {
+            message: {
+              content: [
+                {
+                  type: "tool_use",
+                  id: "tool_123",
+                  name: "Read",
+                  input: { file_path: "/path/to/file.ts" },
+                },
+              ],
+            },
+          },
+          createdAt: "2024-01-01T00:00:00Z",
+        },
+      ];
+      const result = groupEventsIntoMessages(events);
+      expect(result[0].toolOperations?.[0].keyParam).toBe("/path/to/file.ts");
+    });
+
+    it("should merge consecutive tool-only events into previous assistant card", () => {
+      const events: AgentEvent[] = [
+        {
+          sequenceNumber: 1,
+          eventType: "assistant",
+          eventData: {
+            message: {
+              content: [{ type: "text", text: "Let me help you" }],
+            },
+          },
+          createdAt: "2024-01-01T00:00:00Z",
+        },
+        {
+          sequenceNumber: 2,
+          eventType: "assistant",
+          eventData: {
+            message: {
+              content: [
+                {
+                  type: "tool_use",
+                  id: "tool_1",
+                  name: "Read",
+                  input: { file_path: "/file1.ts" },
+                },
+              ],
+            },
+          },
+          createdAt: "2024-01-01T00:00:01Z",
+        },
+        {
+          sequenceNumber: 3,
+          eventType: "assistant",
+          eventData: {
+            message: {
+              content: [
+                {
+                  type: "tool_use",
+                  id: "tool_2",
+                  name: "Bash",
+                  input: { command: "ls" },
+                },
+              ],
+            },
+          },
+          createdAt: "2024-01-01T00:00:02Z",
+        },
+      ];
+      const result = groupEventsIntoMessages(events);
+      // All should be merged into one card
+      expect(result).toHaveLength(1);
+      expect(result[0].textBefore).toBe("Let me help you");
+      expect(result[0].toolOperations).toHaveLength(2);
+      expect(result[0].toolOperations?.[0].toolName).toBe("Read");
+      expect(result[0].toolOperations?.[1].toolName).toBe("Bash");
+    });
+
+    it("should start new card when new text appears", () => {
+      const events: AgentEvent[] = [
+        {
+          sequenceNumber: 1,
+          eventType: "assistant",
+          eventData: {
+            message: {
+              content: [{ type: "text", text: "First message" }],
+            },
+          },
+          createdAt: "2024-01-01T00:00:00Z",
+        },
+        {
+          sequenceNumber: 2,
+          eventType: "assistant",
+          eventData: {
+            message: {
+              content: [
+                {
+                  type: "tool_use",
+                  id: "tool_1",
+                  name: "Read",
+                  input: { file_path: "/file1.ts" },
+                },
+              ],
+            },
+          },
+          createdAt: "2024-01-01T00:00:01Z",
+        },
+        {
+          sequenceNumber: 3,
+          eventType: "assistant",
+          eventData: {
+            message: {
+              content: [{ type: "text", text: "Second message" }],
+            },
+          },
+          createdAt: "2024-01-01T00:00:02Z",
+        },
+      ];
+      const result = groupEventsIntoMessages(events);
+      // Should be two cards: first with text+tool, second with new text
+      expect(result).toHaveLength(2);
+      expect(result[0].textBefore).toBe("First message");
+      expect(result[0].toolOperations).toHaveLength(1);
+      expect(result[1].textBefore).toBe("Second message");
+      expect(result[1].toolOperations).toBeUndefined();
+    });
+
+    it("should insert todo summary before result", () => {
+      const events: AgentEvent[] = [
+        {
+          sequenceNumber: 1,
+          eventType: "assistant",
+          eventData: {
+            message: {
+              content: [
+                {
+                  type: "tool_use",
+                  id: "tool_1",
+                  name: "TodoWrite",
+                  input: {
+                    todos: [
+                      { content: "Task 1", status: "completed" },
+                      { content: "Task 2", status: "pending" },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+          createdAt: "2024-01-01T00:00:00Z",
+        },
+        {
+          sequenceNumber: 2,
+          eventType: "result",
+          eventData: { result: "Done" },
+          createdAt: "2024-01-01T00:00:01Z",
+        },
+      ];
+      const result = groupEventsIntoMessages(events);
+      // Should be: assistant (tool), assistant (todo summary), result
+      expect(result).toHaveLength(3);
+      expect(result[0].type).toBe("assistant");
+      expect(result[0].toolOperations).toHaveLength(1);
+      expect(result[1].type).toBe("assistant");
+      expect(result[1].todoSummary).toHaveLength(2);
+      expect(result[1].todoSummary?.[0].content).toBe("Task 1");
+      expect(result[1].todoSummary?.[0].status).toBe("completed");
+      expect(result[2].type).toBe("result");
+    });
+  });
+
+  describe("getVisibleGroupedMessageText", () => {
+    it("should include message type", () => {
+      const message = {
+        type: "assistant" as const,
+        sequenceNumber: 1,
+        createdAt: "2024-01-01T00:00:00Z",
+        eventData: {},
+      };
+      expect(getVisibleGroupedMessageText(message)).toContain("assistant");
+    });
+
+    it("should include textBefore and textAfter", () => {
+      const message = {
+        type: "assistant" as const,
+        sequenceNumber: 1,
+        createdAt: "2024-01-01T00:00:00Z",
+        textBefore: "Before text",
+        textAfter: "After text",
+        eventData: {},
+      };
+      const text = getVisibleGroupedMessageText(message);
+      expect(text).toContain("Before text");
+      expect(text).toContain("After text");
+    });
+
+    it("should include tool operation details", () => {
+      const message = {
+        type: "assistant" as const,
+        sequenceNumber: 1,
+        createdAt: "2024-01-01T00:00:00Z",
+        toolOperations: [
+          {
+            toolUseId: "tool_123",
+            toolName: "Bash",
+            keyParam: "ls -la",
+            input: { command: "ls -la" },
+            result: {
+              content: "file1.txt",
+              isError: false,
+            },
+          },
+        ],
+        eventData: {},
+      };
+      const text = getVisibleGroupedMessageText(message);
+      expect(text).toContain("Bash");
+      expect(text).toContain("ls -la");
+      expect(text).toContain("file1.txt");
+    });
+
+    it("should include system event details", () => {
+      const message = {
+        type: "system" as const,
+        sequenceNumber: 1,
+        createdAt: "2024-01-01T00:00:00Z",
+        eventData: {
+          subtype: "init",
+          tools: ["Bash", "Read"],
+        },
+      };
+      const text = getVisibleGroupedMessageText(message);
+      expect(text).toContain("init");
+      expect(text).toContain("Bash");
+      expect(text).toContain("Read");
+    });
+
+    it("should include result event details", () => {
+      const message = {
+        type: "result" as const,
+        sequenceNumber: 1,
+        createdAt: "2024-01-01T00:00:00Z",
+        eventData: {
+          result: "Task completed successfully",
+        },
+      };
+      expect(getVisibleGroupedMessageText(message)).toContain(
+        "Task completed successfully",
+      );
+    });
+  });
+
+  describe("groupedMessageMatchesSearch", () => {
+    it("should return true for empty search term", () => {
+      const message = {
+        type: "assistant" as const,
+        sequenceNumber: 1,
+        createdAt: "2024-01-01T00:00:00Z",
+        eventData: {},
+      };
+      expect(groupedMessageMatchesSearch(message, "")).toBeTruthy();
+      expect(groupedMessageMatchesSearch(message, "   ")).toBeTruthy();
+    });
+
+    it("should match message type", () => {
+      const message = {
+        type: "assistant" as const,
+        sequenceNumber: 1,
+        createdAt: "2024-01-01T00:00:00Z",
+        eventData: {},
+      };
+      expect(groupedMessageMatchesSearch(message, "assistant")).toBeTruthy();
+    });
+
+    it("should match text content", () => {
+      const message = {
+        type: "assistant" as const,
+        sequenceNumber: 1,
+        createdAt: "2024-01-01T00:00:00Z",
+        textBefore: "Hello world",
+        eventData: {},
+      };
+      expect(groupedMessageMatchesSearch(message, "Hello")).toBeTruthy();
+      expect(groupedMessageMatchesSearch(message, "world")).toBeTruthy();
+    });
+
+    it("should be case insensitive", () => {
+      const message = {
+        type: "assistant" as const,
+        sequenceNumber: 1,
+        createdAt: "2024-01-01T00:00:00Z",
+        textBefore: "Hello World",
+        eventData: {},
+      };
+      expect(groupedMessageMatchesSearch(message, "HELLO")).toBeTruthy();
+      expect(groupedMessageMatchesSearch(message, "WORLD")).toBeTruthy();
+    });
+
+    it("should match tool operation details", () => {
+      const message = {
+        type: "assistant" as const,
+        sequenceNumber: 1,
+        createdAt: "2024-01-01T00:00:00Z",
+        toolOperations: [
+          {
+            toolUseId: "tool_123",
+            toolName: "Bash",
+            keyParam: "ls -la",
+            input: { command: "ls -la" },
+          },
+        ],
+        eventData: {},
+      };
+      expect(groupedMessageMatchesSearch(message, "Bash")).toBeTruthy();
+      expect(groupedMessageMatchesSearch(message, "ls -la")).toBeTruthy();
+    });
+
+    it("should return false for no match", () => {
+      const message = {
+        type: "assistant" as const,
+        sequenceNumber: 1,
+        createdAt: "2024-01-01T00:00:00Z",
+        textBefore: "Hello world",
+        eventData: {},
+      };
+      expect(groupedMessageMatchesSearch(message, "nonexistent")).toBeFalsy();
     });
   });
 });
