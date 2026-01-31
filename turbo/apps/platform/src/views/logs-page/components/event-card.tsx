@@ -354,8 +354,8 @@ function ToolInputParams({
   if (lowerName === "bash") {
     const command = input.command as string | undefined;
     return (
-      <div className="flex gap-2 items-start bg-sidebar rounded-[10px] px-4 py-3 w-full">
-        <code className="flex-1 font-mono text-sm text-foreground overflow-x-auto whitespace-pre-wrap min-w-0">
+      <div className="flex gap-2 items-start bg-sidebar rounded-[10px] px-4 py-3 w-full overflow-hidden">
+        <code className="flex-1 font-mono text-sm text-foreground whitespace-pre-wrap min-w-0 break-all">
           {command}
         </code>
         {command && (
@@ -625,8 +625,8 @@ function ResultContent({
         <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground">
           Output ({lines.length} lines)
         </summary>
-        <div className="mt-2 flex gap-2 items-start bg-sidebar rounded-[10px] px-4 py-3">
-          <pre className="flex-1 text-xs text-foreground whitespace-pre-wrap overflow-x-auto max-h-80 overflow-y-auto min-w-0">
+        <div className="mt-2 flex gap-2 items-start bg-sidebar rounded-[10px] px-4 py-3 overflow-hidden">
+          <pre className="flex-1 text-xs text-foreground whitespace-pre-wrap max-h-80 overflow-y-auto min-w-0 break-all">
             {contentElement}
           </pre>
           <CopyButton text={text} className="shrink-0 h-4 w-4 p-0" />
@@ -636,8 +636,8 @@ function ResultContent({
   }
 
   return (
-    <div className="flex gap-2 items-start bg-sidebar rounded-[10px] px-4 py-3">
-      <pre className="flex-1 text-xs text-foreground whitespace-pre-wrap overflow-x-auto min-w-0">
+    <div className="flex gap-2 items-start bg-sidebar rounded-[10px] px-4 py-3 overflow-hidden">
+      <pre className="flex-1 text-xs text-foreground whitespace-pre-wrap min-w-0 break-all">
         {contentElement}
       </pre>
       <CopyButton text={text} className="shrink-0 h-4 w-4 p-0" />
