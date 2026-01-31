@@ -1,5 +1,12 @@
 # Changelog
 
+## [11.11.0](https://github.com/vm0-ai/vm0/compare/web-v11.10.0...web-v11.11.0) (2026-01-31)
+
+
+### Features
+
+* **web:** replace waitlist with signup component ([#2038](https://github.com/vm0-ai/vm0/issues/2038)) ([350c9f5](https://github.com/vm0-ai/vm0/commit/350c9f5268510f9e6484e5b933ab267ae3455cbf))
+
 ## [11.10.0](https://github.com/vm0-ai/vm0/compare/web-v11.9.1...web-v11.10.0) (2026-01-31)
 
 

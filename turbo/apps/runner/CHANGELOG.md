@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.8.0](https://github.com/vm0-ai/vm0/compare/runner-v3.7.3...runner-v3.8.0) (2026-01-31)
+
+
+### Features
+
+* **runner:** add data_dir config for per-instance isolation ([#2034](https://github.com/vm0-ai/vm0/issues/2034)) ([3cb0962](https://github.com/vm0-ai/vm0/commit/3cb0962c69ce79fda6e0bf13aaf4449a7e0609c0)), closes [#2016](https://github.com/vm0-ai/vm0/issues/2016)
+
 ## [3.7.3](https://github.com/vm0-ai/vm0/compare/runner-v3.7.2...runner-v3.7.3) (2026-01-31)
 
 

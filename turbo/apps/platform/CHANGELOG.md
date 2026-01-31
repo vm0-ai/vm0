@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.34.0](https://github.com/vm0-ai/vm0/compare/platform-v0.33.0...platform-v0.34.0) (2026-01-31)
+
+
+### Features
+
+* **platform:** add dark mode support to onboarding modal ([#2030](https://github.com/vm0-ai/vm0/issues/2030)) ([5e941f6](https://github.com/vm0-ai/vm0/commit/5e941f612e3e4d08f388f5a1acb47b96145e88c6))
+* **platform:** add interactive json viewer and sticky copy button in log detail ([#2033](https://github.com/vm0-ai/vm0/issues/2033)) ([0dd358e](https://github.com/vm0-ai/vm0/commit/0dd358e7957a5517ba18fdc5b9bad4a452fa55b4))
+
 ## [0.33.0](https://github.com/vm0-ai/vm0/compare/platform-v0.32.0...platform-v0.33.0) (2026-01-31)
 
 

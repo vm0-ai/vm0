@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.7.0](https://github.com/vm0-ai/vm0/compare/cli-v9.6.2...cli-v9.7.0) (2026-01-31)
+
+
+### Features
+
+* **cli:** add grouped tool output and verbose mode for run commands ([#2007](https://github.com/vm0-ai/vm0/issues/2007)) ([4b29edc](https://github.com/vm0-ai/vm0/commit/4b29edc5b7b120ca8244c46439f4e9cf33c900c5))
+
 ## [9.6.2](https://github.com/vm0-ai/vm0/compare/cli-v9.6.1...cli-v9.6.2) (2026-01-31)
 
 
