@@ -24,6 +24,13 @@ function countLines(text: string): number {
 }
 
 /**
+ * Pluralize a word based on count
+ */
+function pluralize(count: number, singular: string, plural: string): string {
+  return count === 1 ? singular : plural;
+}
+
+/**
  * Truncate text with ellipsis
  */
 function truncate(text: string, maxLength: number): string {
@@ -204,7 +211,7 @@ function getToolResultSummary(
   switch (tool) {
     case "Read": {
       const lineCount = countLines(result);
-      return `${lineCount} lines`;
+      return `${lineCount} ${pluralize(lineCount, "line", "lines")}`;
     }
 
     case "Edit":
@@ -219,7 +226,7 @@ function getToolResultSummary(
       const exitCode = exitMatch ? exitMatch[1] : "0";
       const lineCount = countLines(result);
       if (lineCount > 1) {
-        return `exit ${exitCode}, +${lineCount} lines`;
+        return `exit ${exitCode}, +${lineCount} ${pluralize(lineCount, "line", "lines")}`;
       }
       return `exit ${exitCode}`;
     }
@@ -227,13 +234,13 @@ function getToolResultSummary(
     case "Glob": {
       // Count files in result (one per line)
       const fileCount = countLines(result);
-      return `${fileCount} files`;
+      return `${fileCount} ${pluralize(fileCount, "file", "files")}`;
     }
 
     case "Grep": {
       // Try to count matches
-      const lineCount = countLines(result);
-      return `${lineCount} matches`;
+      const matchCount = countLines(result);
+      return `${matchCount} ${pluralize(matchCount, "match", "matches")}`;
     }
 
     case "Task":
@@ -241,12 +248,12 @@ function getToolResultSummary(
 
     case "WebFetch": {
       const lineCount = countLines(result);
-      return `Fetched ${lineCount} lines`;
+      return `Fetched ${lineCount} ${pluralize(lineCount, "line", "lines")}`;
     }
 
     case "WebSearch": {
-      const lineCount = countLines(result);
-      return `${lineCount} results`;
+      const resultCount = countLines(result);
+      return `${resultCount} ${pluralize(resultCount, "result", "results")}`;
     }
 
     default:
