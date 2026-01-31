@@ -90,6 +90,7 @@ jobs:
 
       - name: Generate CLI E2E parallel test matrix
         id: cli-e2e-matrix
+        shell: bash
         run: |
           # Scan test files and group them into chunks of 5 for parallel execution
           mapfile -t FILES < <(ls e2e/tests/02-parallel/*.bats 2>/dev/null | sort)
