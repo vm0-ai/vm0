@@ -18,14 +18,13 @@ import {
   findMitmproxyProcess,
 } from "../lib/firecracker/process.js";
 import {
-  listTapDevices,
   checkBridgeStatus,
   isPortInUse,
   listIptablesNatRules,
   findOrphanedIptablesRules,
   BRIDGE_NAME,
 } from "../lib/firecracker/network.js";
-import { getIPForVm, getAllocations } from "../lib/firecracker/tap-pool.js";
+import { getIPForVm, getAllocations } from "../lib/firecracker/ip-registry.js";
 
 interface RunnerStatus {
   mode: string;
@@ -141,7 +140,6 @@ export const doctorCommand = new Command("doctor")
 
         // Scan resources first to get active VM IPs
         const processes = findFirecrackerProcesses();
-        const tapDevices = await listTapDevices();
         const workspaces = existsSync(workspacesDir)
           ? readdirSync(workspacesDir).filter((d) => d.startsWith("vm0-"))
           : [];
@@ -241,15 +239,8 @@ export const doctorCommand = new Command("doctor")
           }
         }
 
-        // Orphan TAP devices
-        for (const tap of tapDevices) {
-          const vmId = tap.replace("tap", "");
-          if (!processVmIds.has(vmId) && !statusVmIds.has(vmId)) {
-            warnings.push({
-              message: `Orphan TAP device: ${tap} (no matching job or process)`,
-            });
-          }
-        }
+        // Note: TAP devices are managed by TapPool, which handles orphan cleanup
+        // during init(). No need to check for orphan TAPs here.
 
         // Orphan workspaces
         for (const ws of workspaces) {

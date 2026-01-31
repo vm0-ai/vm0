@@ -1,9 +1,8 @@
 /**
  * Runner Kill Command
  *
- * Force terminate a specific job and clean up all related resources:
- * - Kill Firecracker process
- * - Delete TAP device
+ * Force terminate a specific job and clean up resources:
+ * - Kill Firecracker process (TAP/IP released automatically by runner)
  * - Remove workspace directory
  * - Update status.json
  */
@@ -14,7 +13,7 @@ import { dirname, join } from "path";
 import * as readline from "readline";
 import { loadConfig } from "../lib/config.js";
 import { findProcessByVmId, killProcess } from "../lib/firecracker/process.js";
-import { deleteTapDevice } from "../lib/firecracker/network.js";
+import { getIPForVm } from "../lib/firecracker/ip-registry.js";
 
 interface RunnerStatus {
   mode: string;
@@ -54,7 +53,7 @@ export const killCommand = new Command("kill")
 
         // Find resources
         const proc = findProcessByVmId(vmId);
-        const tapDevice = `tap${vmId}`;
+        const guestIp = getIPForVm(vmId);
         const workspaceDir = join(workspacesDir, `vm0-${vmId}`);
 
         // Show what will be cleaned up
@@ -65,7 +64,9 @@ export const killCommand = new Command("kill")
         } else {
           console.log("  - Firecracker process: not found");
         }
-        console.log(`  - TAP device: ${tapDevice}`);
+        if (guestIp) {
+          console.log(`  - IP address: ${guestIp} (TAP/IP released by runner)`);
+        }
         console.log(`  - Workspace: ${workspaceDir}`);
         if (runId) {
           console.log(`  - status.json entry: ${runId.substring(0, 12)}...`);
@@ -102,23 +103,9 @@ export const killCommand = new Command("kill")
           });
         }
 
-        // 2. Delete TAP device
-        try {
-          await deleteTapDevice(tapDevice);
-          results.push({
-            step: "TAP device",
-            success: true,
-            message: `${tapDevice} deleted`,
-          });
-        } catch (error) {
-          results.push({
-            step: "TAP device",
-            success: false,
-            message: error instanceof Error ? error.message : "Unknown error",
-          });
-        }
-
-        // 3. Remove workspace
+        // 2. Remove workspace
+        // Note: TAP device and IP are released by the runner process when it
+        // detects the VM exit. We don't release them here to avoid conflicts.
         if (existsSync(workspaceDir)) {
           try {
             rmSync(workspaceDir, { recursive: true, force: true });
@@ -142,7 +129,7 @@ export const killCommand = new Command("kill")
           });
         }
 
-        // 4. Update status.json
+        // 3. Update status.json
         if (runId && existsSync(statusFilePath)) {
           try {
             const status: RunnerStatus = JSON.parse(

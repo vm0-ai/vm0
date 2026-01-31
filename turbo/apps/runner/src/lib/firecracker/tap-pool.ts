@@ -33,9 +33,6 @@ import {
   clearVmIdFromIP,
 } from "./ip-registry.js";
 
-// Re-export for external use (doctor.ts, network.ts)
-export { getAllocations, getIPForVm, releaseIP } from "./ip-registry.js";
-
 const execAsync = promisify(exec);
 const logger = createLogger("TapPool");
 
