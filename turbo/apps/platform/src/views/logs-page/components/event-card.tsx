@@ -4,6 +4,7 @@ import {
   IconArrowRight,
   IconChevronRight,
 } from "@tabler/icons-react";
+import MarkdownPreview from "@uiw/react-markdown-preview";
 
 // Type definitions for EventData
 interface MessageData {
@@ -258,7 +259,15 @@ export function ResultEventContent({ eventData }: { eventData: EventData }) {
           <div className="font-medium mb-1">
             {isError ? "Error" : "Success"}
           </div>
-          <div className="whitespace-pre-wrap">{result}</div>
+          <MarkdownPreview
+            source={result}
+            className="!bg-transparent !text-foreground text-sm"
+            style={{
+              backgroundColor: "transparent",
+              fontSize: "0.875rem",
+              lineHeight: "1.5",
+            }}
+          />
         </div>
       )}
     </div>

@@ -6,7 +6,7 @@ import {
   IconLoader,
   IconListCheck,
 } from "@tabler/icons-react";
-import { highlightText } from "../utils/highlight-text.tsx";
+import MarkdownPreview from "@uiw/react-markdown-preview";
 import type { GroupedMessage, TodoItem } from "../log-detail/utils.ts";
 import { ToolSummary } from "./tool-summary.tsx";
 import {
@@ -32,21 +32,22 @@ function shouldCollapseText(text: string): boolean {
   return text.length > TEXT_COLLAPSE_CHARS || lines > TEXT_COLLAPSE_LINES;
 }
 
-function checkTextSearchMatch(
-  text: string,
-  searchTerm: string | undefined,
-): boolean {
-  if (!searchTerm || !searchTerm.trim()) {
-    return false;
-  }
-  return text.toLowerCase().includes(searchTerm.toLowerCase());
+function MarkdownContent({ text }: { text: string }) {
+  return (
+    <MarkdownPreview
+      source={text}
+      className="!bg-transparent !text-foreground text-sm"
+      style={{
+        backgroundColor: "transparent",
+        fontSize: "0.875rem",
+        lineHeight: "1.5",
+      }}
+    />
+  );
 }
 
 function CollapsibleText({
   text,
-  searchTerm,
-  currentMatchIndex,
-  matchStartIndex,
 }: {
   text: string;
   searchTerm?: string;
@@ -54,50 +55,29 @@ function CollapsibleText({
   matchStartIndex?: number;
 }) {
   const shouldCollapse = shouldCollapseText(text);
-  const hasSearchMatch = checkTextSearchMatch(text, searchTerm);
-  const defaultOpen = !shouldCollapse || hasSearchMatch;
-
-  const contentElement = searchTerm
-    ? highlightText(text, {
-        searchTerm,
-        currentMatchIndex,
-        matchStartIndex,
-      }).element
-    : text;
 
   if (!shouldCollapse) {
-    return (
-      <div className="text-sm text-foreground whitespace-pre-wrap">
-        {contentElement}
-      </div>
-    );
+    return <MarkdownContent text={text} />;
   }
 
   // Collapsed view with details/summary
   const truncatedText = text.slice(0, 150) + "...";
-  const truncatedElement = searchTerm
-    ? highlightText(truncatedText, {
-        searchTerm,
-        currentMatchIndex,
-        matchStartIndex,
-      }).element
-    : truncatedText;
 
   return (
-    <details className="group" open={defaultOpen}>
+    <details className="group">
       <summary className="cursor-pointer list-none">
         <span className="text-sm text-foreground whitespace-pre-wrap group-open:hidden">
-          {truncatedElement}
+          {truncatedText}
         </span>
         <span className="ml-1 text-xs text-blue-600 hover:underline group-open:hidden">
           Show more
         </span>
       </summary>
-      <div className="text-sm text-foreground whitespace-pre-wrap">
-        {contentElement}
+      <div>
+        <MarkdownContent text={text} />
         <button
           type="button"
-          className="ml-2 text-xs text-muted-foreground hover:text-foreground"
+          className="mt-1 text-xs text-muted-foreground hover:text-foreground"
           onClick={(e) => {
             const details = e.currentTarget.closest("details");
             if (details) {
