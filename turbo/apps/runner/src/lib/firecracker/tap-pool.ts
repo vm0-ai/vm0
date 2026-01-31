@@ -20,17 +20,13 @@ import { allocateIP, releaseIP } from "./ip-pool.js";
 import {
   generateMacAddress,
   BRIDGE_NAME,
+  BRIDGE_IP,
+  BRIDGE_NETMASK,
   type VMNetworkConfig,
 } from "./network.js";
 
 const execAsync = promisify(exec);
 const logger = createLogger("TapPool");
-
-/**
- * Bridge configuration (must match network.ts)
- */
-const BRIDGE_IP = "172.16.0.1";
-const BRIDGE_NETMASK = "255.255.255.0";
 
 /**
  * Pool configuration

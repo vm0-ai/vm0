@@ -7,8 +7,11 @@ import {
   checkNetworkPrerequisites,
   setupBridge,
 } from "../lib/firecracker/network.js";
-import { initOverlayPool } from "../lib/firecracker/overlay-pool.js";
-import { initTapPool } from "../lib/firecracker/tap-pool.js";
+import {
+  initOverlayPool,
+  cleanupOverlayPool,
+} from "../lib/firecracker/overlay-pool.js";
+import { initTapPool, cleanupTapPool } from "../lib/firecracker/tap-pool.js";
 import { Timer } from "../lib/timing.js";
 import { setGlobalLogger } from "../lib/logger.js";
 import { dataPaths } from "../lib/paths.js";
@@ -63,6 +66,9 @@ export const benchmarkCommand = new Command("benchmark")
     // Set global logger to use Timer.log for all modules
     setGlobalLogger(timer.log.bind(timer));
 
+    let exitCode = 1;
+    let poolsInitialized = false;
+
     try {
       // Load config
       timer.log("Loading configuration...");
@@ -93,6 +99,7 @@ export const benchmarkCommand = new Command("benchmark")
         poolDir: dataPaths.overlayPool(config.data_dir),
       });
       await initTapPool({ name: config.name, size: 2, replenishThreshold: 1 });
+      poolsInitialized = true;
 
       // Create benchmark execution context
       timer.log(`Executing command: ${prompt}`);
@@ -110,11 +117,17 @@ export const benchmarkCommand = new Command("benchmark")
       }
       timer.log(`Total time: ${timer.totalSeconds().toFixed(1)}s`);
 
-      process.exit(result.exitCode);
+      exitCode = result.exitCode;
     } catch (error) {
       timer.log(
         `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
-      process.exit(1);
+    } finally {
+      if (poolsInitialized) {
+        cleanupTapPool();
+        cleanupOverlayPool();
+      }
     }
+
+    process.exit(exitCode);
   });

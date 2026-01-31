@@ -32,7 +32,7 @@ export interface VMNetworkConfig {
  */
 export const BRIDGE_NAME = "vm0br0";
 export const BRIDGE_IP = "172.16.0.1";
-const BRIDGE_NETMASK = "255.255.255.0";
+export const BRIDGE_NETMASK = "255.255.255.0";
 const BRIDGE_CIDR = "172.16.0.0/24";
 
 /**
