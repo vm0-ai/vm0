@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.5.0](https://github.com/vm0-ai/vm0/compare/core-v7.4.2...core-v7.5.0) (2026-01-31)
+
+
+### Features
+
+* enable observation logs and redirect logged-in users to platform ([#2027](https://github.com/vm0-ai/vm0/issues/2027)) ([eb51f47](https://github.com/vm0-ai/vm0/commit/eb51f47cfea75abaf1aee0a0a288bf1497675a15))
+
 ## [7.4.2](https://github.com/vm0-ai/vm0/compare/core-v7.4.1...core-v7.4.2) (2026-01-31)
 
 

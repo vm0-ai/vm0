@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.7.3](https://github.com/vm0-ai/vm0/compare/runner-v3.7.2...runner-v3.7.3) (2026-01-31)
+
+
+### Bug Fixes
+
+* **runner:** replace deprecated z.string().url() with z.url() ([#2024](https://github.com/vm0-ai/vm0/issues/2024)) ([8de31a9](https://github.com/vm0-ai/vm0/commit/8de31a9703477c2b61389d6cf7fa21ee0252ba50))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.5.0
+
 ## [3.7.2](https://github.com/vm0-ai/vm0/compare/runner-v3.7.1...runner-v3.7.2) (2026-01-31)
 
 

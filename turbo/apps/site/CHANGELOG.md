@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.0](https://github.com/vm0-ai/vm0/compare/site-v1.8.0...site-v1.9.0) (2026-01-31)
+
+
+### Features
+
+* **site:** implement official landing page with figma designs ([#2025](https://github.com/vm0-ai/vm0/issues/2025)) ([b0ccc1f](https://github.com/vm0-ai/vm0/commit/b0ccc1fa8016ba1dba6b70b19310a87547fc30d1))
+
 ## [1.8.0](https://github.com/vm0-ai/vm0/compare/site-v1.7.0...site-v1.8.0) (2026-01-28)
 
 

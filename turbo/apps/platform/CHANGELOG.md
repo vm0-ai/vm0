@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.33.0](https://github.com/vm0-ai/vm0/compare/platform-v0.32.0...platform-v0.33.0) (2026-01-31)
+
+
+### Features
+
+* enable observation logs and redirect logged-in users to platform ([#2027](https://github.com/vm0-ai/vm0/issues/2027)) ([eb51f47](https://github.com/vm0-ai/vm0/commit/eb51f47cfea75abaf1aee0a0a288bf1497675a15))
+* **platform:** implement sidebar toggle with icons-only collapsed mode ([#2022](https://github.com/vm0-ai/vm0/issues/2022)) ([922641f](https://github.com/vm0-ai/vm0/commit/922641f6c683e8654bc6d59a38bcd0de057cb93e)), closes [#2019](https://github.com/vm0-ai/vm0/issues/2019)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.5.0
+
 ## [0.32.0](https://github.com/vm0-ai/vm0/compare/platform-v0.31.2...platform-v0.32.0) (2026-01-31)
 
 

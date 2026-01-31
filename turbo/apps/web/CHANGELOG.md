@@ -1,5 +1,20 @@
 # Changelog
 
+## [11.10.0](https://github.com/vm0-ai/vm0/compare/web-v11.9.1...web-v11.10.0) (2026-01-31)
+
+
+### Features
+
+* enable observation logs and redirect logged-in users to platform ([#2027](https://github.com/vm0-ai/vm0/issues/2027)) ([eb51f47](https://github.com/vm0-ai/vm0/commit/eb51f47cfea75abaf1aee0a0a288bf1497675a15))
+* **web:** sync landing page from site app ([#2029](https://github.com/vm0-ai/vm0/issues/2029)) ([4cec6ab](https://github.com/vm0-ai/vm0/commit/4cec6ab0a2f3d3f124b98f0dcd677c2bbbf386d3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.5.0
+
 ## [11.9.1](https://github.com/vm0-ai/vm0/compare/web-v11.9.0...web-v11.9.1) (2026-01-31)
 
 
