@@ -119,6 +119,13 @@ export function formatToolResult(
     return lines;
   }
 
+  // Special handling for Write - show content preview
+  if (tool === "Write" && !isError) {
+    const writeLines = formatWritePreview(input, verbose);
+    lines.push(...writeLines);
+    return lines;
+  }
+
   // Error case: show error message
   if (isError) {
     const errorMsg = resultText ? truncate(resultText, 80) : "Error";
@@ -152,6 +159,44 @@ export function formatToolResult(
   } else {
     // No result content, show done
     lines.push(`└ ✓ ${chalk.dim("Done")}`);
+  }
+
+  return lines;
+}
+
+/**
+ * Format Write tool output with content preview
+ */
+function formatWritePreview(
+  input: Record<string, unknown>,
+  verbose: boolean,
+): string[] {
+  const lines: string[] = [];
+  const content = String(input.content || "");
+  const contentLines = content.split("\n");
+  const totalLines = contentLines.length;
+
+  // Summary line
+  lines.push(
+    `⎿ ${chalk.dim(`${totalLines} ${pluralize(totalLines, "line", "lines")} written`)}`,
+  );
+
+  // Show content preview
+  if (verbose) {
+    for (const line of contentLines) {
+      lines.push(`  ${chalk.dim(line)}`);
+    }
+  } else {
+    const previewCount = Math.min(3, totalLines);
+    for (let i = 0; i < previewCount; i++) {
+      lines.push(`  ${chalk.dim(contentLines[i] ?? "")}`);
+    }
+    const remaining = totalLines - previewCount;
+    if (remaining > 0) {
+      lines.push(
+        `  ${chalk.dim(`… +${remaining} ${pluralize(remaining, "line", "lines")} (--verbose to see all)`)}`,
+      );
+    }
   }
 
   return lines;
