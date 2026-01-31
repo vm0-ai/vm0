@@ -215,8 +215,10 @@ export function cleanupOverlayPool(): void {
   for (const file of poolState.queue) {
     try {
       fs.unlinkSync(file);
-    } catch {
-      // Ignore
+    } catch (err) {
+      logger.log(
+        `Failed to delete ${file}: ${err instanceof Error ? err.message : "Unknown"}`,
+      );
     }
   }
   poolState.queue = [];
@@ -225,8 +227,10 @@ export function cleanupOverlayPool(): void {
   for (const file of scanPoolDir()) {
     try {
       fs.unlinkSync(file);
-    } catch {
-      // Ignore
+    } catch (err) {
+      logger.log(
+        `Failed to delete ${file}: ${err instanceof Error ? err.message : "Unknown"}`,
+      );
     }
   }
 
