@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import Script from "next/script";
-import { Noto_Sans, Fira_Code, Fira_Mono, JetBrains_Mono } from "next/font/google";
+import {
+  Noto_Sans,
+  Fira_Code,
+  Fira_Mono,
+  JetBrains_Mono,
+} from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ThemeProvider } from "./components/ThemeProvider";
 import "./globals.css";
