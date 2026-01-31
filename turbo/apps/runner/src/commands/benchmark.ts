@@ -84,10 +84,12 @@ export const benchmarkCommand = new Command("benchmark")
       await setupBridge();
 
       // Initialize overlay pool for VM boot
+      // Use separate directory to avoid conflicts with running runner
       timer.log("Initializing overlay pool...");
       await initOverlayPool({
         size: 2,
         replenishThreshold: 1,
+        poolDir: "/var/run/vm0/overlay-pool-benchmark",
       });
 
       // Create benchmark execution context
