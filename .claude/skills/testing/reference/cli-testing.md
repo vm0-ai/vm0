@@ -254,13 +254,16 @@ expect(mockExit).toHaveBeenCalledWith(1);
 
 ## Interactive Prompts
 
-Only test non-interactive mode. Do not mock prompt libraries.
+Test both interactive and non-interactive modes. Use `prompts.inject()` for interactive mode testing.
 
-**Rationale**: When `isInteractive()` returns `false` (default in test environment), prompts return `undefined` automatically. Tests should verify non-interactive behavior.
+### Non-Interactive Mode
+
+When `isInteractive()` returns `false` (non-TTY environment), prompts return `undefined` automatically. Test that commands handle this gracefully.
 
 ```typescript
-// Test that command works in non-interactive mode
+// Test that command requires flags in non-interactive mode
 it("should require --name flag in non-interactive mode", async () => {
+  // Non-TTY by default in test environment
   await expect(async () => {
     await initCommand.parseAsync(["node", "cli"]);
   }).rejects.toThrow("process.exit called");
@@ -277,6 +280,64 @@ it("should create files with --name flag", async () => {
   expect(existsSync(path.join(tempDir, "vm0.yaml"))).toBe(true);
 });
 ```
+
+### Interactive Mode
+
+Use `prompts.inject()` - the library's native testing feature - to simulate user responses. This is NOT mocking; it's using the official testing API provided by the `prompts` library.
+
+**Setup**: Enable TTY and inject responses before running the command.
+
+```typescript
+import prompts from "prompts";
+
+describe("interactive mode", () => {
+  beforeEach(() => {
+    // Enable interactive mode by setting TTY
+    Object.defineProperty(process.stdout, "isTTY", {
+      value: true,
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  it("should prompt for name and create files", async () => {
+    // Inject user responses in order they will be prompted
+    prompts.inject(["my-agent"]);
+
+    await initCommand.parseAsync(["node", "cli"]);
+
+    expect(existsSync(path.join(tempDir, "vm0.yaml"))).toBe(true);
+  });
+
+  it("should skip plugin when user declines", async () => {
+    // Inject: false for "Install plugin?" confirmation
+    prompts.inject([false]);
+
+    await onboardCommand.parseAsync(["node", "cli"]);
+
+    const logCalls = vi.mocked(console.log).mock.calls.flat().join("\n");
+    expect(logCalls).toContain("vm0 init");
+    expect(logCalls).not.toContain("/vm0-agent");
+  });
+
+  it("should handle user cancellation", async () => {
+    // Inject Error to simulate Ctrl+C
+    prompts.inject([new Error("User cancelled")]);
+
+    await initCommand.parseAsync(["node", "cli"]);
+
+    expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect.stringContaining("Cancelled"),
+    );
+  });
+});
+```
+
+**Key Points**:
+- `prompts.inject([...])` - Inject responses in prompt order
+- `prompts.inject([new Error()])` - Simulate user cancellation (Ctrl+C)
+- Responses are consumed in order; inject multiple values for multiple prompts
+- Set `process.stdout.isTTY = true` to enable interactive mode
 
 ---
 

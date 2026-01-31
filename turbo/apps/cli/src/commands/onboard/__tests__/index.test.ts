@@ -383,6 +383,21 @@ describe("onboard command", () => {
       const logCalls = vi.mocked(console.log).mock.calls.flat().join("\n");
       expect(logCalls).toContain("cd custom-agent");
     });
+
+    it("should show vm0 init when plugin installation is skipped", async () => {
+      const prompts = await import("prompts");
+      // Inject responses in order:
+      // 1. "my-vm0-agent" for agent name prompt
+      // 2. false for "Install VM0 Claude Plugin?" confirmation
+      prompts.default.inject(["my-vm0-agent", false]);
+
+      await onboardCommand.parseAsync(["node", "cli"]);
+
+      const logCalls = vi.mocked(console.log).mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Next step:");
+      expect(logCalls).toContain("cd my-vm0-agent && vm0 init");
+      expect(logCalls).not.toContain("/vm0-agent");
+    });
   });
 
   describe("--yes flag", () => {
