@@ -1,0 +1,60 @@
+# Dependabot configuration for automated dependency updates
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  # npm dependencies for turbo workspace (apps and packages)
+  - package-ecosystem: "npm"
+    directory: "/turbo"
+    schedule:
+      interval: "weekly"
+    groups:
+      typescript-eslint:
+        patterns:
+          - "@typescript-eslint/*"
+          - "typescript-eslint"
+      vitest:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+      aws-sdk:
+        patterns:
+          - "@aws-sdk/*"
+      turbo:
+        patterns:
+          - "turbo"
+          - "@turbo/*"
+
+  # npm dependencies for e2e tests
+  - package-ecosystem: "npm"
+    directory: "/e2e"
+    schedule:
+      interval: "weekly"
+
+  # Rust dependencies
+  - package-ecosystem: "cargo"
+    directory: "/crates"
+    schedule:
+      interval: "weekly"
+
+  # Docker base images - toolchain
+  - package-ecosystem: "docker"
+    directory: "/.docker/toolchain"
+    schedule:
+      interval: "weekly"
+
+  # Docker base images - runner deployment
+  - package-ecosystem: "docker"
+    directory: "/turbo/apps/runner/scripts/deploy"
+    schedule:
+      interval: "weekly"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
