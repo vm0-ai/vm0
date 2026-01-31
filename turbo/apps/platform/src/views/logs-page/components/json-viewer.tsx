@@ -22,13 +22,16 @@ function getLightStyles() {
     nullValue: "text-gray-400 italic",
     undefinedValue: "text-gray-400 italic",
     punctuation: "text-gray-500",
-    expandIcon: "text-gray-400 hover:text-gray-600 cursor-pointer select-none",
+    expandIcon:
+      "text-blue-500 hover:text-blue-700 cursor-pointer select-none font-bold",
     collapseIcon:
-      "text-gray-400 hover:text-gray-600 cursor-pointer select-none",
-    collapsedContent: "text-gray-400",
+      "text-blue-500 hover:text-blue-700 cursor-pointer select-none font-bold",
+    collapsedContent:
+      "text-blue-500 hover:text-blue-700 cursor-pointer px-1 rounded hover:bg-blue-50",
     basicChildStyle: "pl-4",
     childFieldsContainer: "",
-    clickableLabel: "cursor-pointer hover:underline",
+    clickableLabel:
+      "cursor-pointer hover:underline hover:bg-purple-50 rounded px-0.5",
     otherValue: "text-gray-600",
   };
 }
@@ -44,13 +47,16 @@ function getDarkStyles() {
     nullValue: "text-gray-500 italic",
     undefinedValue: "text-gray-500 italic",
     punctuation: "text-gray-400",
-    expandIcon: "text-gray-500 hover:text-gray-300 cursor-pointer select-none",
+    expandIcon:
+      "text-blue-400 hover:text-blue-300 cursor-pointer select-none font-bold",
     collapseIcon:
-      "text-gray-500 hover:text-gray-300 cursor-pointer select-none",
-    collapsedContent: "text-gray-500",
+      "text-blue-400 hover:text-blue-300 cursor-pointer select-none font-bold",
+    collapsedContent:
+      "text-blue-400 hover:text-blue-300 cursor-pointer px-1 rounded hover:bg-blue-900/30",
     basicChildStyle: "pl-4",
     childFieldsContainer: "",
-    clickableLabel: "cursor-pointer hover:underline",
+    clickableLabel:
+      "cursor-pointer hover:underline hover:bg-purple-900/30 rounded px-0.5",
     otherValue: "text-gray-300",
   };
 }
