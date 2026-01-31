@@ -7,6 +7,7 @@ import { initIPRegistry, resetIPRegistry } from "../ip-registry.js";
 
 describe("TapPool", () => {
   let testDir: string;
+  let activePools: TapPool[] = []; // Track pools to cleanup after each test
 
   let createTapCalls: string[] = [];
   let deleteTapCalls: string[] = [];
@@ -40,12 +41,22 @@ describe("TapPool", () => {
     return Object.keys(data.allocations || {}).length;
   }
 
+  /** Helper to create a pool and register it for cleanup */
+  function createPool(
+    config: ConstructorParameters<typeof TapPool>[0],
+  ): TapPool {
+    const pool = new TapPool(config);
+    activePools.push(pool);
+    return pool;
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
     createTapCalls = [];
     deleteTapCalls = [];
     setMacCalls = [];
     mockTapDevices = new Set();
+    activePools = [];
 
     // Create temp directory and initialize global IPRegistry
     testDir = fs.mkdtempSync(path.join(os.tmpdir(), "tap-pool-test-"));
@@ -60,6 +71,10 @@ describe("TapPool", () => {
   });
 
   afterEach(() => {
+    // Cleanup all pools to terminate any pending async operations (e.g., replenish)
+    for (const pool of activePools) {
+      pool.cleanup();
+    }
     vi.restoreAllMocks();
     resetIPRegistry();
     // Clean up temp directory
@@ -68,7 +83,7 @@ describe("TapPool", () => {
 
   describe("init", () => {
     it("should create TAP devices and allocate IPs up to pool size", async () => {
-      const pool = new TapPool({
+      const pool = createPool({
         name: "test-runner",
         size: 3,
         replenishThreshold: 2,
@@ -89,7 +104,7 @@ describe("TapPool", () => {
     });
 
     it("should handle empty pool size", async () => {
-      const pool = new TapPool({
+      const pool = createPool({
         name: "test-runner",
         size: 0,
         replenishThreshold: 0,
@@ -107,7 +122,7 @@ describe("TapPool", () => {
 
   describe("acquire", () => {
     it("should return TAP and IP from pool", async () => {
-      const pool = new TapPool({
+      const pool = createPool({
         name: "test-runner",
         size: 2,
         replenishThreshold: 1,
@@ -130,7 +145,7 @@ describe("TapPool", () => {
     });
 
     it("should set MAC address on acquire", async () => {
-      const pool = new TapPool({
+      const pool = createPool({
         name: "test-runner",
         size: 1,
         replenishThreshold: 0,
@@ -148,7 +163,7 @@ describe("TapPool", () => {
     });
 
     it("should create pair on-demand when pool is exhausted", async () => {
-      const pool = new TapPool({
+      const pool = createPool({
         name: "test-runner",
         size: 1,
         replenishThreshold: 0,
@@ -171,7 +186,7 @@ describe("TapPool", () => {
     });
 
     it("should trigger replenishment when below threshold", async () => {
-      const pool = new TapPool({
+      const pool = createPool({
         name: "test-runner",
         size: 3,
         replenishThreshold: 2,
@@ -198,7 +213,7 @@ describe("TapPool", () => {
 
   describe("release", () => {
     it("should return pair to pool (IP kept in registry)", async () => {
-      const pool = new TapPool({
+      const pool = createPool({
         name: "test-runner",
         size: 1,
         replenishThreshold: 0,
@@ -218,7 +233,7 @@ describe("TapPool", () => {
     });
 
     it("should make pair available for next acquire after release", async () => {
-      const pool = new TapPool({
+      const pool = createPool({
         name: "test-runner",
         size: 1,
         replenishThreshold: 0,
@@ -244,7 +259,7 @@ describe("TapPool", () => {
     });
 
     it("should ignore duplicate release of same pair", async () => {
-      const pool = new TapPool({
+      const pool = createPool({
         name: "test-runner",
         size: 2,
         replenishThreshold: 0,
@@ -270,7 +285,7 @@ describe("TapPool", () => {
     });
 
     it("should delete non-pooled TAP devices and release IP", async () => {
-      const pool = new TapPool({
+      const pool = createPool({
         name: "test-runner",
         size: 1,
         replenishThreshold: 0,
@@ -290,7 +305,7 @@ describe("TapPool", () => {
 
   describe("cleanup", () => {
     it("should delete all TAPs and release all IPs in pool", async () => {
-      const pool = new TapPool({
+      const pool = createPool({
         name: "test-runner",
         size: 3,
         replenishThreshold: 2,
@@ -306,7 +321,7 @@ describe("TapPool", () => {
     });
 
     it("should handle cleanup when pool is empty", async () => {
-      const pool = new TapPool({
+      const pool = createPool({
         name: "test-runner",
         size: 0,
         replenishThreshold: 0,
@@ -321,7 +336,7 @@ describe("TapPool", () => {
     });
 
     it("should handle cleanup when not initialized", () => {
-      const pool = new TapPool({
+      const pool = createPool({
         name: "test-runner",
         size: 3,
         replenishThreshold: 2,
@@ -334,7 +349,7 @@ describe("TapPool", () => {
     });
 
     it("should delete TAP and release IP when release is called after cleanup", async () => {
-      const pool = new TapPool({
+      const pool = createPool({
         name: "test-runner",
         size: 1,
         replenishThreshold: 0,
@@ -357,7 +372,7 @@ describe("TapPool", () => {
 
   describe("TAP naming", () => {
     it("should generate sequential TAP names", async () => {
-      const pool = new TapPool({
+      const pool = createPool({
         name: "test-runner",
         size: 5,
         replenishThreshold: 0,
@@ -378,7 +393,7 @@ describe("TapPool", () => {
     });
 
     it("should continue sequence after on-demand creation", async () => {
-      const pool = new TapPool({
+      const pool = createPool({
         name: "test-runner",
         size: 1,
         replenishThreshold: 0,
@@ -399,7 +414,7 @@ describe("TapPool", () => {
     });
 
     it("should recognize TAP names with index > 999 as pooled", async () => {
-      const pool = new TapPool({
+      const pool = createPool({
         name: "test-runner",
         size: 1,
         replenishThreshold: 0,
@@ -422,7 +437,7 @@ describe("TapPool", () => {
 
   describe("concurrent operations", () => {
     it("should handle concurrent acquires", async () => {
-      const pool = new TapPool({
+      const pool = createPool({
         name: "test-runner",
         size: 5,
         replenishThreshold: 2,
@@ -461,7 +476,7 @@ describe("TapPool", () => {
         }
       });
 
-      const pool = new TapPool({
+      const pool = createPool({
         name: "test-runner",
         size: 3,
         replenishThreshold: 2,
@@ -517,7 +532,7 @@ describe("TapPool", () => {
         }
       });
 
-      const pool = new TapPool({
+      const pool = createPool({
         name: "test-runner",
         size: 2,
         replenishThreshold: 2, // High threshold to trigger on first acquire
@@ -551,7 +566,7 @@ describe("TapPool", () => {
     });
 
     it("should not trigger replenish when pool is exhausted and threshold = 0", async () => {
-      const pool = new TapPool({
+      const pool = createPool({
         name: "test-runner",
         size: 1,
         replenishThreshold: 0, // disabled
@@ -591,7 +606,7 @@ describe("TapPool", () => {
         }
       });
 
-      const pool = new TapPool({
+      const pool = createPool({
         name: "test-runner",
         size: 2,
         replenishThreshold: 2, // Trigger replenish on first acquire
@@ -627,11 +642,12 @@ describe("TapPool", () => {
         resolve();
       }
 
-      // Wait for replenish to detect shutdown and cleanup the in-flight pair
+      // Wait for ALL delete operations to complete:
+      // 1. cleanup() fire-and-forget deletes pool pair (index 1)
+      // 2. replenish cleanup deletes in-flight pair (index 2)
       await vi.waitFor(
         () => {
-          // The in-flight pair should be cleaned up (TAP deleted)
-          expect(deleteTapCalls.length).toBeGreaterThanOrEqual(1);
+          expect(deleteTapCalls.length).toBeGreaterThanOrEqual(2);
         },
         { timeout: 500 },
       );
@@ -644,7 +660,7 @@ describe("TapPool", () => {
         .fn()
         .mockRejectedValueOnce(new Error("MAC failed"));
 
-      const pool = new TapPool({
+      const pool = createPool({
         name: "test-runner",
         size: 1,
         replenishThreshold: 0,
@@ -679,7 +695,7 @@ describe("TapPool", () => {
         }
       });
 
-      const pool = new TapPool({
+      const pool = createPool({
         name: "test-runner",
         size: 1,
         replenishThreshold: 0,
