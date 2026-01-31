@@ -92,38 +92,70 @@ jobs:
         id: cli-e2e-matrix
         shell: bash
         run: |
-          # Scan test files and group them into chunks of 5 for parallel execution
-          mapfile -t FILES < <(ls e2e/tests/02-parallel/*.bats 2>/dev/null | sort)
-          TOTAL=${#FILES[@]}
-          CHUNK_SIZE=5
+          # Scan test files and distribute them across chunks using load balancing
+          # to ensure even test distribution (not just file count)
+          NUM_CHUNKS=5
 
-          echo "Found $TOTAL test files in e2e/tests/02-parallel/"
+          # Count tests per file and sort by test count (descending)
+          declare -A FILE_TESTS
+          for f in e2e/tests/02-parallel/*.bats; do
+            count=$(grep -c "^@test" "$f" 2>/dev/null || echo 0)
+            FILE_TESTS["$f"]=$count
+          done
 
-          # Build JSON array of chunks
-          CHUNKS="["
-          CHUNK_INDEX=0
-          for ((i=0; i<TOTAL; i+=CHUNK_SIZE)); do
-            # Get files for this chunk
-            CHUNK_FILES=""
-            for ((j=i; j<i+CHUNK_SIZE && j<TOTAL; j++)); do
-              if [ -n "$CHUNK_FILES" ]; then
-                CHUNK_FILES="$CHUNK_FILES "
+          # Sort files by test count descending
+          mapfile -t SORTED_FILES < <(
+            for f in "${!FILE_TESTS[@]}"; do
+              echo "${FILE_TESTS[$f]} $f"
+            done | sort -rn | cut -d' ' -f2
+          )
+
+          echo "Found ${#SORTED_FILES[@]} test files"
+
+          # Initialize chunk arrays and test counts
+          declare -a CHUNK_FILES
+          declare -a CHUNK_COUNTS
+          for ((i=0; i<NUM_CHUNKS; i++)); do
+            CHUNK_FILES[$i]=""
+            CHUNK_COUNTS[$i]=0
+          done
+
+          # Distribute files using greedy load balancing (assign to least loaded chunk)
+          for f in "${SORTED_FILES[@]}"; do
+            tests=${FILE_TESTS[$f]}
+
+            # Find chunk with minimum tests
+            min_chunk=0
+            min_count=${CHUNK_COUNTS[0]}
+            for ((i=1; i<NUM_CHUNKS; i++)); do
+              if [ ${CHUNK_COUNTS[$i]} -lt $min_count ]; then
+                min_chunk=$i
+                min_count=${CHUNK_COUNTS[$i]}
               fi
-              CHUNK_FILES="$CHUNK_FILES${FILES[j]}"
             done
 
-            # Add to JSON array
-            if [ $CHUNK_INDEX -gt 0 ]; then
+            # Add file to that chunk
+            if [ -n "${CHUNK_FILES[$min_chunk]}" ]; then
+              CHUNK_FILES[$min_chunk]="${CHUNK_FILES[$min_chunk]} $f"
+            else
+              CHUNK_FILES[$min_chunk]="$f"
+            fi
+            CHUNK_COUNTS[$min_chunk]=$((CHUNK_COUNTS[$min_chunk] + tests))
+          done
+
+          # Build JSON array
+          CHUNKS="["
+          for ((i=0; i<NUM_CHUNKS; i++)); do
+            if [ $i -gt 0 ]; then
               CHUNKS="$CHUNKS,"
             fi
-            CHUNKS="$CHUNKS{\"index\":$((CHUNK_INDEX+1)),\"files\":\"$CHUNK_FILES\"}"
-            CHUNK_INDEX=$((CHUNK_INDEX+1))
-
-            echo "Chunk $CHUNK_INDEX: $(echo $CHUNK_FILES | wc -w) files"
+            files="${CHUNK_FILES[$i]}"
+            file_count=$(echo $files | wc -w)
+            CHUNKS="$CHUNKS{\"index\":$((i+1)),\"files\":\"$files\"}"
+            echo "Chunk $((i+1)): $file_count files, ${CHUNK_COUNTS[$i]} tests"
           done
           CHUNKS="$CHUNKS]"
 
-          echo "Generated $CHUNK_INDEX chunks"
           echo "matrix=$CHUNKS" >> $GITHUB_OUTPUT
 
   file-size-check:
