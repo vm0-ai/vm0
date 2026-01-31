@@ -32,7 +32,7 @@ export interface StreamResult {
 /**
  * Options for streamEvents
  */
-export interface StreamOptions {
+interface StreamOptions {
   onEvent: (event: unknown) => void;
   onRunCompleted: (result: Record<string, unknown> | undefined) => void;
   onRunFailed: (error: string | undefined, runId: string) => void;
