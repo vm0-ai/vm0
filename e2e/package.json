@@ -20,6 +20,6 @@
     "playwright": "^1.55.1"
   },
   "devDependencies": {
-    "tsx": "^4.20.5"
+    "tsx": "^4.21.0"
   }
 }
