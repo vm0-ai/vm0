@@ -196,10 +196,12 @@ export function getIPForVm(vmId: string): string | undefined {
 
 /**
  * Scan TAP devices on the bridge to get actual state
- * Returns a map of TAP device names to their associated vmIds (derived from TAP name)
+ * Returns a set of TAP device names
+ *
+ * TAP naming format: vm0{hash8}{index3} (e.g., vm078f6669b000)
  */
-async function scanTapDevices(): Promise<Map<string, string>> {
-  const tapDevices = new Map<string, string>();
+async function scanTapDevices(): Promise<Set<string>> {
+  const tapDevices = new Set<string>();
 
   try {
     // List all interfaces attached to the bridge
@@ -207,19 +209,16 @@ async function scanTapDevices(): Promise<Map<string, string>> {
       `ip link show master ${BRIDGE_NAME} 2>/dev/null || true`,
     );
 
-    // Parse output to find TAP devices (format: "X: tapXXXXXXXX: <FLAGS>...")
+    // Parse output to find TAP devices (format: "X: vm0XXXXXXXXNNN: <FLAGS>...")
     const lines = stdout.split("\n");
     for (const line of lines) {
-      const match = line.match(/^\d+:\s+(tap[a-f0-9]+):/);
+      const match = line.match(/^\d+:\s+(vm0[a-f0-9]+):/);
       if (match && match[1]) {
-        const tapName = match[1];
-        // Extract vmId from TAP name (tap + first 8 chars of vmId)
-        const vmIdPrefix = tapName.substring(3); // Remove "tap" prefix
-        tapDevices.set(tapName, vmIdPrefix);
+        tapDevices.add(match[1]);
       }
     }
   } catch {
-    // Bridge doesn't exist or command failed, return empty map
+    // Bridge doesn't exist or command failed, return empty set
   }
 
   return tapDevices;
@@ -233,10 +232,9 @@ async function scanTapDevices(): Promise<Map<string, string>> {
  */
 function reconcileRegistry(
   registry: IPRegistry,
-  activeTaps: Map<string, string>,
+  activeTaps: Set<string>,
 ): IPRegistry {
   const reconciled: IPRegistry = { allocations: {} };
-  const activeTapNames = new Set(activeTaps.keys());
   const now = Date.now();
 
   for (const [ip, allocation] of Object.entries(registry.allocations)) {
@@ -248,7 +246,7 @@ function reconcileRegistry(
     // Keep allocation if:
     // 1. Its TAP device exists, OR
     // 2. It's within the grace period (TAP might not be created yet)
-    if (activeTapNames.has(allocation.tapDevice)) {
+    if (activeTaps.has(allocation.tapDevice)) {
       reconciled.allocations[ip] = allocation;
     } else if (isWithinGracePeriod) {
       // Keep recent allocation - TAP might be in process of being created
@@ -285,20 +283,19 @@ function findFreeIP(registry: IPRegistry): string | null {
  * This is the main entry point for IP allocation. It:
  * 1. Acquires an exclusive lock to prevent race conditions
  * 2. Reads the current registry
- * 3. Scans actual TAP devices for self-healing
- * 4. Reconciles registry with actual state
- * 5. Finds and allocates a free IP
- * 6. Updates the registry
- * 7. Releases the lock
+ * 3. Finds and allocates a free IP
+ * 4. Updates the registry
+ * 5. Releases the lock
  *
  * @param vmId The VM identifier
+ * @param tapDevice The TAP device name associated with this allocation
  * @returns The allocated IP address
  * @throws Error if no free IPs are available or lock cannot be acquired
  */
-export async function allocateIP(vmId: string): Promise<string> {
-  // TAP device name uses first 8 chars of vmId
-  const tapDevice = `tap${vmId.substring(0, 8)}`;
-
+export async function allocateIP(
+  vmId: string,
+  tapDevice: string,
+): Promise<string> {
   return withLock(async () => {
     // Read current registry
     const registry = readRegistry();

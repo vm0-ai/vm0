@@ -78,7 +78,7 @@ describe("IP Pool Manager", () => {
       mockFs.writeFileSync.mockImplementation(() => undefined);
       mockFs.unlinkSync.mockImplementation(() => undefined);
 
-      const ip = await allocateIP("test-vm-1234");
+      const ip = await allocateIP("test-vm-1234", "vm012345678000");
 
       expect(ip).toBe("172.16.0.2");
     });
@@ -104,7 +104,7 @@ describe("IP Pool Manager", () => {
       mockFs.writeFileSync.mockImplementation(() => undefined);
       mockFs.unlinkSync.mockImplementation(() => undefined);
 
-      const ip = await allocateIP("new-vm-5678");
+      const ip = await allocateIP("new-vm-5678", "vm0abcdef12001");
 
       expect(ip).toBe("172.16.0.3");
     });
@@ -134,12 +134,12 @@ describe("IP Pool Manager", () => {
       mockFs.writeFileSync.mockImplementation(() => undefined);
       mockFs.unlinkSync.mockImplementation(() => undefined);
 
-      await expect(allocateIP("overflow-vm")).rejects.toThrow(
+      await expect(allocateIP("overflow-vm", "vm0overflow000")).rejects.toThrow(
         "No free IP addresses available in pool",
       );
     });
 
-    it("should use first 8 chars of vmId for TAP device name", async () => {
+    it("should record provided tapDevice in registry", async () => {
       mockFs.existsSync.mockImplementation((path) => {
         if (String(path).includes("ip-registry.json")) return false;
         if (String(path).includes("lock.active")) return false;
@@ -154,10 +154,10 @@ describe("IP Pool Manager", () => {
       });
       mockFs.unlinkSync.mockImplementation(() => undefined);
 
-      await allocateIP("abcdefghijklmnop");
+      await allocateIP("abcdefghijklmnop", "vm0a1b2c3d4000");
 
       expect(writtenRegistry!.allocations["172.16.0.2"]?.tapDevice).toBe(
-        "tapabcdefgh",
+        "vm0a1b2c3d4000",
       );
     });
   });
@@ -292,12 +292,12 @@ describe("IP Pool Manager", () => {
 
     it("should keep allocations with active TAP devices", async () => {
       const oldAllocation = new Date(Date.now() - 60000).toISOString();
-      // Use hex-compatible vmId since TAP device regex expects [a-f0-9]+
+      // TAP device uses vm0{hash8}{index3} format
       const existingRegistry = {
         allocations: {
           "172.16.0.2": {
             vmId: "a1b2c3d4e5f6",
-            tapDevice: "tapa1b2c3d4",
+            tapDevice: "vm0a1b2c3d4000",
             allocatedAt: oldAllocation,
           },
         },
@@ -311,9 +311,9 @@ describe("IP Pool Manager", () => {
 
       mockFs.readFileSync.mockReturnValue(JSON.stringify(existingRegistry));
 
-      // Mock exec for TAP device scan - return active TAP device
+      // Mock exec for TAP device scan - return active TAP device (vm0* format)
       mockExecStdout =
-        "5: tapa1b2c3d4: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500";
+        "5: vm0a1b2c3d4000: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500";
 
       let writtenRegistry: IPRegistry | null = null;
       mockFs.writeFileSync.mockImplementation((_path, content) => {
@@ -342,7 +342,7 @@ describe("IP Pool Manager", () => {
       mockFs.writeFileSync.mockImplementation(() => undefined);
       mockFs.unlinkSync.mockImplementation(() => undefined);
 
-      const ip = await allocateIP("test-vm");
+      const ip = await allocateIP("test-vm", "vm0testvm00000");
 
       expect(ip).toBe("172.16.0.2");
       expect(ip).not.toBe("172.16.0.1"); // Gateway

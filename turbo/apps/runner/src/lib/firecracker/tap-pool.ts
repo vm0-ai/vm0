@@ -260,10 +260,10 @@ export class TapPool {
       await this.config.createTap(tapDevice);
     }
 
-    // Allocate IP from pool
+    // Allocate IP from pool (pass actual TAP device name for registry tracking)
     let guestIp: string;
     try {
-      guestIp = await allocateIP(vmId);
+      guestIp = await allocateIP(vmId, tapDevice);
     } catch (err) {
       // Return TAP to pool or delete on-demand TAP on failure
       if (fromPool) {
