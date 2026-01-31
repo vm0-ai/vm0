@@ -11,12 +11,12 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { createLogger } from "../logger.js";
-import { paths } from "../paths.js";
+import { runtimePaths } from "../paths.js";
 
 const execAsync = promisify(exec);
 const logger = createLogger("RunnerLock");
 
-const DEFAULT_PID_FILE = paths.runnerPid;
+const DEFAULT_PID_FILE = runtimePaths.runnerPid;
 
 // Module state for tracking current lock
 let currentPidFile: string | null = null;

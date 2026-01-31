@@ -6,11 +6,39 @@ import {
   RunEvent,
   NetworkLogEntry,
 } from "../../lib/api/api-client";
+import { getApiUrl } from "../../lib/api/config";
 import { parseTime } from "../../lib/utils/time-parser";
 import { formatBytes } from "../../lib/utils/file-utils";
 import { ClaudeEventParser } from "../../lib/events/claude-event-parser";
 import { EventRenderer } from "../../lib/events/event-renderer";
 import { CodexEventRenderer } from "../../lib/events/codex-event-renderer";
+
+/**
+ * Build platform URL for logs viewer
+ * Transforms API URL to platform URL and appends logs path
+ */
+function buildPlatformLogsUrl(apiUrl: string, runId: string): string {
+  const url = new URL(apiUrl);
+  const hostname = url.hostname;
+
+  // Handle localhost
+  if (hostname === "localhost" || hostname === "127.0.0.1") {
+    return `http://${hostname}:3001/logs/${runId}`;
+  }
+
+  // Transform: www.vm0.ai → platform.vm0.ai
+  //            vm0.ai → platform.vm0.ai
+  const parts = hostname.split(".");
+  if (parts[0] === "www") {
+    parts[0] = "platform";
+  } else {
+    parts.unshift("platform");
+  }
+
+  const platformHost = parts.join(".");
+  const port = url.port ? `:${url.port}` : "";
+  return `https://${platformHost}${port}/logs/${runId}`;
+}
 
 /**
  * Log type for mutually exclusive options
@@ -77,9 +105,25 @@ function formatNetworkLog(entry: NetworkLogEntry): string {
 }
 
 /**
+ * Create an EventRenderer for log viewing (with timestamps)
+ * Uses buffered mode to group tool_use/tool_result together for consistent
+ * rendering with vm0 run output
+ */
+function createLogRenderer(verbose: boolean): EventRenderer {
+  return new EventRenderer({
+    showTimestamp: true,
+    verbose,
+  });
+}
+
+/**
  * Render an agent event with timestamp for historical log viewing
  */
-function renderAgentEvent(event: RunEvent, provider: string): void {
+function renderAgentEvent(
+  event: RunEvent,
+  provider: string,
+  renderer: EventRenderer,
+): void {
   const eventData = event.eventData as Record<string, unknown>;
 
   if (provider === "codex") {
@@ -91,7 +135,7 @@ function renderAgentEvent(event: RunEvent, provider: string): void {
     if (parsed) {
       // Set timestamp from event
       parsed.timestamp = new Date(event.createdAt);
-      EventRenderer.render(parsed, { showTimestamp: true });
+      renderer.render(parsed);
     }
   }
 }
@@ -179,9 +223,13 @@ export const logsCommand = new Command()
         );
         const order: "asc" | "desc" = isHead ? "asc" : "desc";
 
+        // Build platform URL for agent logs
+        const apiUrl = await getApiUrl();
+        const platformUrl = buildPlatformLogsUrl(apiUrl, runId);
+
         switch (logType) {
           case "agent":
-            await showAgentEvents(runId, { since, limit, order });
+            await showAgentEvents(runId, { since, limit, order }, platformUrl);
             break;
           case "system":
             await showSystemLog(runId, { since, limit, order });
@@ -205,7 +253,12 @@ export const logsCommand = new Command()
  */
 async function showAgentEvents(
   runId: string,
-  options: { since?: number; limit: number; order: "asc" | "desc" },
+  options: {
+    since?: number;
+    limit: number;
+    order: "asc" | "desc";
+  },
+  platformUrl: string,
 ): Promise<void> {
   const response = await apiClient.getAgentEvents(runId, options);
 
@@ -218,8 +271,11 @@ async function showAgentEvents(
   const events =
     options.order === "desc" ? [...response.events].reverse() : response.events;
 
+  // Create renderer for log viewing (with timestamps, always verbose)
+  const renderer = createLogRenderer(true);
+
   for (const event of events) {
-    renderAgentEvent(event, response.framework);
+    renderAgentEvent(event, response.framework, renderer);
   }
 
   if (response.hasMore) {
@@ -230,6 +286,7 @@ async function showAgentEvents(
       ),
     );
   }
+  console.log(chalk.dim(`View on platform: ${platformUrl}`));
 }
 
 /**

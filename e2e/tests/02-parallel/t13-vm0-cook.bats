@@ -75,8 +75,8 @@ EOF
     run $CLI_COMMAND cook --no-auto-update "echo 'hello' > /home/user/workspace/result.txt"
     # Verify cook started the run
     assert_output --partial "Running agent"
-    # Check for [init] event which indicates agent started (replaces vm0_start)
-    assert_output --partial "[init]"
+    # Check for init event (Claude Code Started) which indicates agent started (replaces vm0_start)
+    assert_output --partial "▷ Claude Code Started"
 
     echo "# Step 8: Check auto-pull behavior..."
     # If run succeeded and version changed, we should see pull message

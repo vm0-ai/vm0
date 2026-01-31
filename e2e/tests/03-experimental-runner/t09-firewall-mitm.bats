@@ -158,6 +158,7 @@ EOF
     # MITM mode returns HTTP 403 for blocked requests
     run $CLI_COMMAND run "${AGENT_NAME}-block" \
         --artifact-name "$ARTIFACT_NAME-block" \
+        --verbose \
         "curl -sf https://example.com || echo 'BLOCKED'"
 
     echo "$output"
@@ -203,6 +204,7 @@ EOF
     run $CLI_COMMAND run "${AGENT_NAME}-seal" \
         --artifact-name "$ARTIFACT_NAME-seal" \
         --secrets "MY_SECRET=$TEST_SECRET" \
+        --verbose \
         "echo \"VALUE=\$MY_SECRET\""
 
     echo "$output"

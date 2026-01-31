@@ -20,11 +20,16 @@ export const resumeCommand = new Command()
     "--env-file <path>",
     "Load environment variables from file (priority: CLI flags > file > env vars)",
   )
+  .option("-v, --verbose", "Show full tool inputs and outputs")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .action(
     async (
       prompt: string,
-      options: { envFile?: string; debugNoMockClaude?: boolean },
+      options: {
+        envFile?: string;
+        verbose?: boolean;
+        debugNoMockClaude?: boolean;
+      },
     ) => {
       const state = await loadCookState();
       if (!state.lastCheckpointId) {
@@ -51,6 +56,7 @@ export const resumeCommand = new Command()
             "run",
             "resume",
             ...(options.envFile ? ["--env-file", options.envFile] : []),
+            ...(options.verbose ? ["--verbose"] : []),
             state.lastCheckpointId,
             ...(options.debugNoMockClaude ? ["--debug-no-mock-claude"] : []),
             prompt,

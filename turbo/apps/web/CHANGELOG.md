@@ -1,5 +1,26 @@
 # Changelog
 
+## [11.12.1](https://github.com/vm0-ai/vm0/compare/web-v11.12.0...web-v11.12.1) (2026-01-31)
+
+
+### Bug Fixes
+
+* **web:** make logo clickable on sign-in and sign-up pages ([#2053](https://github.com/vm0-ai/vm0/issues/2053)) ([18e7ff5](https://github.com/vm0-ai/vm0/commit/18e7ff5071a919dac9edf4ee6af86e9ee19a970c)), closes [#2051](https://github.com/vm0-ai/vm0/issues/2051)
+
+## [11.12.0](https://github.com/vm0-ai/vm0/compare/web-v11.11.0...web-v11.12.0) (2026-01-31)
+
+
+### Features
+
+* **web:** optimize sign-up verification code input styling ([#2044](https://github.com/vm0-ai/vm0/issues/2044)) ([0efacaf](https://github.com/vm0-ai/vm0/commit/0efacafd69f93cffa4952d5206d7f87fd3c48a53))
+
+## [11.11.0](https://github.com/vm0-ai/vm0/compare/web-v11.10.0...web-v11.11.0) (2026-01-31)
+
+
+### Features
+
+* **web:** replace waitlist with signup component ([#2038](https://github.com/vm0-ai/vm0/issues/2038)) ([350c9f5](https://github.com/vm0-ai/vm0/commit/350c9f5268510f9e6484e5b933ab267ae3455cbf))
+
 ## [11.10.0](https://github.com/vm0-ai/vm0/compare/web-v11.9.1...web-v11.10.0) (2026-01-31)
 
 

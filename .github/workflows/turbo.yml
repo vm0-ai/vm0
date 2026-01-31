@@ -25,6 +25,7 @@ jobs:
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
       runner-changed: ${{ steps.detect.outputs.runner-changed }}
       platform-changed: ${{ steps.detect.outputs.platform-changed }}
+      cli-e2e-parallel-matrix: ${{ steps.cli-e2e-matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -87,8 +88,89 @@ jobs:
             echo "Job ref set to: staging"
           fi
 
+      - name: Generate CLI E2E parallel test matrix
+        id: cli-e2e-matrix
+        shell: bash
+        run: |
+          # Scan test files and distribute them across chunks using load balancing
+          # Dynamic chunk count: ~25 tests per chunk, max 10 chunks
+          TESTS_PER_CHUNK=25
+          MAX_CHUNKS=10
+
+          # Count tests per file
+          declare -A FILE_TESTS
+          TOTAL_TESTS=0
+          for f in e2e/tests/02-parallel/*.bats; do
+            count=$(grep -c "^@test" "$f" 2>/dev/null || echo 0)
+            FILE_TESTS["$f"]=$count
+            TOTAL_TESTS=$((TOTAL_TESTS + count))
+          done
+
+          # Calculate number of chunks (min 1, max MAX_CHUNKS)
+          NUM_CHUNKS=$(( (TOTAL_TESTS + TESTS_PER_CHUNK - 1) / TESTS_PER_CHUNK ))
+          NUM_CHUNKS=$(( NUM_CHUNKS < 1 ? 1 : NUM_CHUNKS ))
+          NUM_CHUNKS=$(( NUM_CHUNKS > MAX_CHUNKS ? MAX_CHUNKS : NUM_CHUNKS ))
+
+          # Sort files by test count descending for better distribution
+          mapfile -t SORTED_FILES < <(
+            for f in "${!FILE_TESTS[@]}"; do
+              echo "${FILE_TESTS[$f]} $f"
+            done | sort -rn | cut -d' ' -f2
+          )
+
+          echo "Found ${#SORTED_FILES[@]} files with $TOTAL_TESTS total tests"
+          echo "Creating $NUM_CHUNKS chunks (~$TESTS_PER_CHUNK tests each)"
+
+          # Initialize chunk arrays and test counts
+          declare -a CHUNK_FILES
+          declare -a CHUNK_COUNTS
+          for ((i=0; i<NUM_CHUNKS; i++)); do
+            CHUNK_FILES[$i]=""
+            CHUNK_COUNTS[$i]=0
+          done
+
+          # Distribute files using greedy load balancing (assign to least loaded chunk)
+          for f in "${SORTED_FILES[@]}"; do
+            tests=${FILE_TESTS[$f]}
+
+            # Find chunk with minimum tests
+            min_chunk=0
+            min_count=${CHUNK_COUNTS[0]}
+            for ((i=1; i<NUM_CHUNKS; i++)); do
+              if [ ${CHUNK_COUNTS[$i]} -lt $min_count ]; then
+                min_chunk=$i
+                min_count=${CHUNK_COUNTS[$i]}
+              fi
+            done
+
+            # Add file to that chunk
+            if [ -n "${CHUNK_FILES[$min_chunk]}" ]; then
+              CHUNK_FILES[$min_chunk]="${CHUNK_FILES[$min_chunk]} $f"
+            else
+              CHUNK_FILES[$min_chunk]="$f"
+            fi
+            CHUNK_COUNTS[$min_chunk]=$((CHUNK_COUNTS[$min_chunk] + tests))
+          done
+
+          # Build JSON array
+          CHUNKS="["
+          for ((i=0; i<NUM_CHUNKS; i++)); do
+            if [ $i -gt 0 ]; then
+              CHUNKS="$CHUNKS,"
+            fi
+            files="${CHUNK_FILES[$i]}"
+            file_count=$(echo $files | wc -w)
+            CHUNKS="$CHUNKS{\"index\":$((i+1)),\"files\":\"$files\"}"
+            echo "Chunk $((i+1)): $file_count files, ${CHUNK_COUNTS[$i]} tests"
+          done
+          CHUNKS="$CHUNKS]"
+
+          echo "matrix=$CHUNKS" >> $GITHUB_OUTPUT
+
   file-size-check:
     runs-on: ubuntu-latest
+    # Skip for release-please commits (only version bumps and changelogs)
+    if: "${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release') }}"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -122,38 +204,67 @@ jobs:
           # Check file sizes
           ./scripts/check-file-size.sh $FILTERED_FILES
 
-  lint:
+  # Lint jobs - split into 4 parallel jobs for faster CI
+  lint-eslint:
+    runs-on: ubuntu-latest
+    # Skip for release-please commits (only version bumps and changelogs)
+    if: "${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release') }}"
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
+      - name: Build Core Package
+        working-directory: turbo
+        run: pnpm turbo run build --filter=@vm0/core
+      - name: Lint
+        working-directory: turbo
+        run: pnpm lint
+
+  lint-types:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
-
-      # Run lint, check-types, prettier and knip directly (not via lefthook)
-      # lefthook's turbo filter uses git diff which doesn't work in CI
       - name: Build Core Package
         working-directory: turbo
         run: pnpm turbo run build --filter=@vm0/core
-
-      - name: Lint
-        working-directory: turbo
-        run: pnpm lint
-
       - name: Type Check
         working-directory: turbo
         run: pnpm check-types
 
+  lint-format:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
       - name: Prettier
         working-directory: turbo
         run: pnpm prettier --check .
 
+  lint-knip:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
+      - name: Build Core Package
+        working-directory: turbo
+        run: pnpm turbo run build --filter=@vm0/core
       - name: Knip
         working-directory: turbo
         run: pnpm knip
 
-  test:
+  # Test jobs - split into 4 parallel jobs by project
+  test-web:
     runs-on: ubuntu-latest
+    # Skip for release-please commits (only version bumps and changelogs)
+    if: "${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release') }}"
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     services:
@@ -166,22 +277,18 @@ jobs:
           --health-retries 5
         env:
           POSTGRES_HOST_AUTH_METHOD: trust
-
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
-
       - name: Build Core Package
         working-directory: turbo
         run: pnpm turbo run build --filter=@vm0/core
-
       - name: Run Database Migrations
         working-directory: turbo
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
         run: pnpm --filter web db:migrate
-
-      - name: Test
+      - name: Test Web
         working-directory: turbo
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
@@ -195,7 +302,51 @@ jobs:
           R2_USER_STORAGES_BUCKET_NAME: ${{ secrets.CI_R2_USER_STORAGES_BUCKET_NAME }}
           SECRETS_ENCRYPTION_KEY: ${{ secrets.CI_SECRETS_ENCRYPTION_KEY }}
           AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
-        run: pnpm test
+        run: pnpm vitest run --project=web
+
+  test-cli:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
+      - name: Build Core Package
+        working-directory: turbo
+        run: pnpm turbo run build --filter=@vm0/core
+      - name: Test CLI
+        working-directory: turbo
+        run: pnpm vitest run --project=@vm0/cli
+
+  test-platform:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
+      - name: Build Core Package
+        working-directory: turbo
+        run: pnpm turbo run build --filter=@vm0/core
+      - name: Test Platform
+        working-directory: turbo
+        run: pnpm vitest run --project=@vm0/platform
+
+  test-other:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
+      - name: Build Core Package
+        working-directory: turbo
+        run: pnpm turbo run build --filter=@vm0/core
+      - name: Build vsock-agent (for runner tests)
+        run: cargo build --manifest-path crates/Cargo.toml -p vsock-agent
+      - name: Test Other Packages
+        working-directory: turbo
+        run: pnpm vitest run --project=@vm0/runner --project=@vm0/core --project=@vm0/ui --project=site
 
   # Deploy web application with database
   deploy-web:
@@ -203,8 +354,9 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare]
-    # Deploy if job-ref is set (PR or main) and web, CLI, runner, site, or platform changed
+    # Deploy if job-ref is set (PR or main), not a release-please commit, and web, CLI, runner, site, or platform changed
     if: |
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
@@ -271,8 +423,8 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare]
-    # Deploy if job-ref is set (PR or main) and docs changed
-    if: needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.docs-changed == 'true'
+    # Deploy if job-ref is set (PR or main), not a release-please commit, and docs changed
+    if: "${{ (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) && needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.docs-changed == 'true' }}"
     permissions:
       contents: read
       pull-requests: write
@@ -299,8 +451,8 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare, deploy-web]
-    # Deploy if job-ref is set (PR or main) and site changed
-    if: needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.site-changed == 'true'
+    # Deploy if job-ref is set (PR or main), not a release-please commit, and site changed
+    if: "${{ (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) && needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.site-changed == 'true' }}"
     permissions:
       contents: read
       pull-requests: write
@@ -331,8 +483,8 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare, deploy-web]
-    # Deploy if job-ref is set (PR or main) and platform changed
-    if: needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.platform-changed == 'true'
+    # Deploy if job-ref is set (PR or main), not a release-please commit, and platform changed
+    if: "${{ (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) && needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.platform-changed == 'true' }}"
     permissions:
       contents: read
       pull-requests: write
@@ -363,6 +515,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare, deploy-web]
     if: |
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
@@ -417,7 +570,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare, e2e-auth, deploy-web]
-    if: needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.web-changed == 'true'
+    if: "${{ (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) && needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.web-changed == 'true' }}"
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -444,8 +597,9 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260129
-    needs: [prepare, e2e-auth, deploy-web, lint, test]
+    needs: [prepare, e2e-auth, deploy-web, lint-eslint, lint-types, lint-format, lint-knip, test-web, test-cli, test-platform, test-other]
     if: |
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
@@ -509,18 +663,24 @@ jobs:
           fi
 
   # Run CLI E2E tests - Phase 2: Parallel tests (does NOT need runner)
+  # Uses dynamic matrix to split test files into chunks for parallel execution
   cli-e2e-02-parallel:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     needs: [prepare, cli-e2e-01-serial, deploy-web]
     if: |
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
         needs.prepare.outputs.runner-changed == 'true'
       )
-    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.prepare.outputs.cli-e2e-parallel-matrix) }}
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
@@ -562,11 +722,12 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
-      - name: Run Parallel E2E Tests
+      - name: Run Parallel E2E Tests (Chunk ${{ matrix.index }})
         run: |
-          echo "=== Running Parallel E2E Tests ==="
-          BATS_TEST_TIMEOUT=60 ./e2e/test/libs/bats/bin/bats -T -j 10 --no-parallelize-within-files ./e2e/tests/02-parallel/*.bats
-          echo "✅ Parallel tests passed"
+          echo "=== Running Parallel E2E Tests (Chunk ${{ matrix.index }}) ==="
+          echo "Files: ${{ matrix.files }}"
+          BATS_TEST_TIMEOUT=60 ./e2e/test/libs/bats/bin/bats -T -j 5 --no-parallelize-within-files ${{ matrix.files }}
+          echo "✅ Chunk ${{ matrix.index }} tests passed"
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
@@ -876,7 +1037,7 @@ jobs:
           echo "proxy-port=${PROXY_PORT}" >> $GITHUB_OUTPUT
           echo "Runner prepared at ${RUNNER_DIR} on ${RUNNER_HOST}"
 
-  # Run benchmark command to test VM boot performance (runs after prepare, before start)
+  # Run benchmark command to test VM boot performance (runs after start)
   # Skip on push to main - runner benchmark is only needed for PRs
   deploy-runner-benchmark:
     runs-on: ubuntu-latest
@@ -987,6 +1148,7 @@ jobs:
             -e "ansible_user=${METAL_USER}" \
             -e "runner_base_dir=${RUNNER_DIR}" \
             -e "runner_group=vm0/development-${JOB_REF}" \
+            -e "runner_suffix=${JOB_REF}" \
             -e "pm2_process_name=vm0-runner-${JOB_REF}" \
             -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
             -e "api_url=${PREVIEW_URL}" \

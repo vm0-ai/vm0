@@ -121,21 +121,19 @@ function CategoryPopover({
 }) {
   return (
     <Popover>
-      <PopoverTrigger className="inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded-md text-xs font-medium bg-background border border-border text-muted-foreground hover:bg-muted transition-colors cursor-pointer">
-        <Icon className="h-3.5 w-3.5" />
-        <span>{count}</span>
-        <span>{label}</span>
+      <PopoverTrigger className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+        <Icon className="h-3 w-3" />
+        <span>
+          {count} {label}
+        </span>
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="w-80 max-h-64 overflow-y-auto p-3 bg-card"
+        className="w-80 max-h-64 overflow-y-auto p-3"
       >
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5">
           {items.map((item) => (
-            <span
-              key={item}
-              className="text-xs font-medium text-muted-foreground bg-background border border-border px-1.5 py-0.5 rounded-md"
-            >
+            <span key={item} className="text-xs text-muted-foreground">
               {item}
             </span>
           ))}
@@ -226,47 +224,38 @@ export function ResultEventContent({ eventData }: { eventData: EventData }) {
 
       {/* Model usage breakdown */}
       {modelUsage && Object.keys(modelUsage).length > 0 && (
-        <details className="group">
-          <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
-            Model Usage ({Object.keys(modelUsage).length})
+        <details className="group text-xs">
+          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+            Model Usage
           </summary>
-          <div className="mt-2 space-y-1">
-            {Object.entries(modelUsage).map(([model, usage]) => {
-              if (!usage.inputTokens && !usage.outputTokens) {
-                return null;
-              }
-              return (
-                <div
-                  key={model}
-                  className="flex items-center justify-between gap-4 text-xs bg-background px-3 py-2 rounded-md"
-                >
-                  <span className="font-mono text-muted-foreground truncate min-w-0">
-                    {model}
-                  </span>
-                  <div className="flex gap-3 shrink-0 text-foreground">
-                    {usage.inputTokens !== null &&
-                      usage.inputTokens !== undefined && (
-                        <span>
-                          <span className="text-muted-foreground">In:</span>{" "}
-                          {usage.inputTokens.toLocaleString()}
-                        </span>
-                      )}
-                    {usage.outputTokens !== null &&
-                      usage.outputTokens !== undefined && (
-                        <span>
-                          <span className="text-muted-foreground">Out:</span>{" "}
-                          {usage.outputTokens.toLocaleString()}
-                        </span>
-                      )}
-                    {usage.costUSD !== null && usage.costUSD !== undefined && (
-                      <span className="text-emerald-600 font-medium">
+          <div className="mt-1 space-y-0.5 pl-2">
+            {Object.entries(modelUsage)
+              .filter(
+                ([, usage]) =>
+                  usage.inputTokens || usage.outputTokens || usage.costUSD,
+              )
+              .map(([model, usage]) => (
+                <div key={model} className="text-muted-foreground">
+                  {model}{" "}
+                  <span>
+                    (
+                    {usage.inputTokens
+                      ? `in: ${usage.inputTokens.toLocaleString()}`
+                      : ""}
+                    {usage.inputTokens && usage.outputTokens ? " " : ""}
+                    {usage.outputTokens
+                      ? `out: ${usage.outputTokens.toLocaleString()}`
+                      : ""}
+                    {usage.costUSD ? (
+                      <span className="text-emerald-600">
+                        {" "}
                         {formatCost(usage.costUSD)}
                       </span>
-                    )}
-                  </div>
+                    ) : null}
+                    )
+                  </span>
                 </div>
-              );
-            })}
+              ))}
           </div>
         </details>
       )}
@@ -280,6 +269,7 @@ export function ResultEventContent({ eventData }: { eventData: EventData }) {
             backgroundColor: "transparent",
             fontSize: "0.875rem",
             lineHeight: "1.5",
+            fontFamily: "var(--font-family-sans)",
           }}
         />
       )}

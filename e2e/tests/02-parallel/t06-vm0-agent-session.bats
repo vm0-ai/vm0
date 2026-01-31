@@ -106,8 +106,8 @@ teardown_file() {
         "echo 'agent-created' > agent.txt && echo 200 > counter.txt"
 
     assert_success
-    assert_output --partial "[tool_use] Bash"
-    assert_output --partial "[result]"
+    assert_output --partial "● Bash("
+    assert_output --partial "◆ Claude Code Completed"
     assert_output --partial "Checkpoint:"
     assert_output --partial "Session:"
 
@@ -141,10 +141,10 @@ teardown_file() {
     SESSION_ID=$(cat "$BATS_FILE_TMPDIR/t06-2-session_id")
 
     echo "# Continuing from session (should use latest artifact)..."
-    run $CLI_COMMAND run continue "$SESSION_ID" "ls && cat counter.txt"
+    run $CLI_COMMAND run continue "$SESSION_ID" --verbose "ls && cat counter.txt"
 
     assert_success
-    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "● Bash("
 
     # Verify LATEST version is used (not checkpoint version)
     # Should see external.txt (added after checkpoint)
@@ -247,10 +247,11 @@ teardown_file() {
     run $CLI_COMMAND run "$AGENT_NAME" \
         --vars "testKey=testValue" \
         --artifact-name "$ARTIFACT_NAME" \
+        --verbose \
         "echo 'initial run' && cat testfile.txt"
 
     assert_success
-    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "● Bash("
     assert_output --partial "initial-content"
     assert_output --partial "Session:"
 
@@ -279,10 +280,10 @@ teardown_file() {
     SESSION_ID=$(cat "$BATS_FILE_TMPDIR/t06-4-session_id")
 
     echo "# Continuing from session..."
-    run $CLI_COMMAND run continue "$SESSION_ID" "cat testfile.txt"
+    run $CLI_COMMAND run continue "$SESSION_ID" --verbose "cat testfile.txt"
 
     assert_success
-    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "● Bash("
 
     # Should see updated content (latest artifact version)
     assert_output --partial "updated-content"
@@ -370,7 +371,7 @@ EOF
 
     # Should succeed - the secret was loaded from environment variable
     assert_success
-    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "● Bash("
 
     # Verify the run completed successfully (not failed due to missing secrets)
     refute_output --partial "Missing required secrets"
@@ -457,7 +458,7 @@ EOF
 
     # Should succeed - the secret was loaded from environment variable
     assert_success
-    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "● Bash("
 
     # Verify the run completed successfully (not failed due to missing secrets)
     refute_output --partial "Missing required secrets"

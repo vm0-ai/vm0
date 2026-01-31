@@ -189,8 +189,9 @@ export const statusCommand = new Command()
       printRunConfiguration(schedule);
       printTimeSchedule(schedule);
 
+      const parsed = parseInt(options.limit, 10);
       const limit = Math.min(
-        Math.max(0, parseInt(options.limit, 10) || 5),
+        Math.max(0, Number.isNaN(parsed) ? 5 : parsed),
         100,
       );
       await printRecentRuns(name, composeId, limit);

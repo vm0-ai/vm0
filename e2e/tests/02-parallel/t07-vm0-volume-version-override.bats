@@ -131,10 +131,11 @@ teardown_file() {
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         --volume-version "$VOLUME_ALIAS=$VERSION1" \
+        --verbose \
         "cat /home/user/data/data.txt"
 
     assert_success
-    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "● Bash("
 
     # Should see version-1 content (the overridden version)
     assert_output --partial "version-1"
@@ -218,10 +219,11 @@ teardown_file() {
     echo "# Resuming with --volume-version override..."
     run $CLI_COMMAND run resume "$CHECKPOINT_ID" \
         --volume-version "$VOLUME_ALIAS=$OVERRIDE_VERSION" \
+        --verbose \
         "cat /home/user/data/data.txt"
 
     assert_success
-    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "● Bash("
 
     # Should see override version content (not checkpoint version)
     assert_output --partial "override-version"
@@ -303,10 +305,11 @@ teardown_file() {
     echo "# Continuing session with --volume-version override..."
     run $CLI_COMMAND run continue "$SESSION_ID" \
         --volume-version "$VOLUME_ALIAS=$INITIAL_VERSION" \
+        --verbose \
         "cat /home/user/data/data.txt"
 
     assert_success
-    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "● Bash("
 
     # Should see initial version content (the overridden version)
     assert_output --partial "initial-volume-content"

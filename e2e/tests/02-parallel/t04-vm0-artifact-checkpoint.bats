@@ -94,9 +94,9 @@ teardown_file() {
     assert_success
 
     # Verify mock-claude execution events
-    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "● Bash("
     assert_output --partial "echo 'created by agent'"
-    assert_output --partial "[result]"
+    assert_output --partial "◆ Claude Code Completed"
     assert_output --partial "Checkpoint:"
 
     # Extract and save checkpoint ID for next test
@@ -140,12 +140,13 @@ teardown_file() {
     # Resume from checkpoint - should get checkpoint version, not HEAD (~15s)
     echo "# Resuming from checkpoint: $CHECKPOINT_ID"
     run $CLI_COMMAND run resume "$CHECKPOINT_ID" \
+        --verbose \
         "ls && cat counter.txt"
 
     assert_success
 
     # Verify mock-claude execution events for resume
-    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "● Bash("
     assert_output --partial "ls && cat counter.txt"
 
     # Verify checkpoint version is restored:

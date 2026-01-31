@@ -3,7 +3,7 @@
 # Test VM0 realtime event streaming (--experimental-realtime flag)
 # This test verifies that:
 # 1. Events are streamed in realtime via Ably
-# 2. Output matches polling mode ([init], [text], [tool_use], [tool_result], [result])
+# 2. Output matches polling mode (Claude Code Started, text, tool calls, Completed)
 # 3. Run completes successfully without hanging
 #
 # Related issue: #1429
@@ -88,10 +88,10 @@ teardown() {
     assert_success
 
     # Verify events were streamed (same as polling mode)
-    assert_output --partial "[init]"
-    assert_output --partial "[text]"
-    assert_output --partial "[tool_use]"
-    assert_output --partial "[result]"
+    assert_output --partial "▷ Claude Code Started"
+    assert_output --partial "● "
+    assert_output --partial "● "
+    assert_output --partial "◆ Claude Code Completed"
 
     # Verify run completed
     assert_output --partial "completed successfully"
@@ -123,8 +123,8 @@ teardown() {
     REALTIME_OUTPUT="$output"
 
     # Verify realtime mode shows all event types
-    echo "$REALTIME_OUTPUT" | grep -q "\[init\]" || fail "Missing [init] event in realtime mode"
-    echo "$REALTIME_OUTPUT" | grep -q "\[result\]" || fail "Missing [result] event in realtime mode"
+    echo "$REALTIME_OUTPUT" | grep -q "▷ Claude Code Started" || fail "Missing init event in realtime mode"
+    echo "$REALTIME_OUTPUT" | grep -q "◆ Claude Code Completed" || fail "Missing result event in realtime mode"
 
     echo "# Realtime streaming test passed - events displayed correctly"
 }

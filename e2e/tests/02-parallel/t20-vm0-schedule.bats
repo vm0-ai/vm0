@@ -1,50 +1,72 @@
 #!/usr/bin/env bats
 
-# E2E tests for vm0 schedule commands (agent-centric)
-# Tests: setup, list, status, enable, disable, delete
-# Note: Actual cron execution is NOT tested (time-sensitive)
+# E2E tests for vm0 schedule commands - Happy Path Only
+#
+# These tests verify the complete integration works end-to-end.
+# Error cases, input variations, and edge cases are tested in:
+# - turbo/apps/cli/src/commands/schedule/__tests__/*.test.ts (command-level with MSW)
+# - turbo/apps/web/app/api/agent/schedules/**/__tests__/route.test.ts (API routes)
+#
+# Test Structure:
+# - setup_file: Creates shared agent ONCE for all tests, saves state to BATS_FILE_TMPDIR
+# - teardown_file: Cleans up agent ONCE after all tests
+# - Each @test: Loads state from BATS_FILE_TMPDIR and uses the shared agent
 
 load '../../helpers/setup'
 
-setup() {
-    export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
-    export AGENT_NAME="schedule-test-agent-${UNIQUE_ID}"
-    export TEST_DIR="$(mktemp -d)"
+setup_file() {
+    local UNIQUE_ID="$(date +%s%3N)-$RANDOM"
+    local AGENT_NAME="schedule-e2e-${UNIQUE_ID}"
+    local TEST_DIR="$(mktemp -d)"
 
-    # Create vm0.yaml for the test agent
+    # Save state to persist across tests (required for BATS parallel execution)
+    echo "$UNIQUE_ID" > "$BATS_FILE_TMPDIR/unique_id"
+    echo "$AGENT_NAME" > "$BATS_FILE_TMPDIR/agent_name"
+    echo "$TEST_DIR" > "$BATS_FILE_TMPDIR/test_dir"
+
+    # Create and compose agent ONCE for all tests
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
 agents:
   ${AGENT_NAME}:
-    description: "Test agent for schedule E2E tests"
+    description: "E2E schedule test agent"
     framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
 EOF
 
-    # Push the agent first (required for schedule to work)
     cd "$TEST_DIR"
-    run $CLI_COMMAND compose vm0.yaml
-    assert_success
+    $CLI_COMMAND compose vm0.yaml
 }
 
-teardown() {
-    # Clean up schedule if it exists
-    if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
-        cd "$TEST_DIR" 2>/dev/null || true
+teardown_file() {
+    # Load state from files
+    local AGENT_NAME=$(cat "$BATS_FILE_TMPDIR/agent_name" 2>/dev/null || true)
+    local TEST_DIR=$(cat "$BATS_FILE_TMPDIR/test_dir" 2>/dev/null || true)
+
+    # Clean up schedule and temp directory
+    if [ -n "$AGENT_NAME" ]; then
         $CLI_COMMAND schedule delete "$AGENT_NAME" --force 2>/dev/null || true
+    fi
+    if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"
     fi
 }
 
-# ============================================================
-# Setup tests (non-interactive mode with flags)
-# ============================================================
-
-@test "vm0 schedule setup should create a new schedule" {
+setup() {
+    # Load state from files (required for BATS parallel execution)
+    UNIQUE_ID=$(cat "$BATS_FILE_TMPDIR/unique_id")
+    AGENT_NAME=$(cat "$BATS_FILE_TMPDIR/agent_name")
+    TEST_DIR=$(cat "$BATS_FILE_TMPDIR/test_dir")
     cd "$TEST_DIR"
+}
 
+# ============================================================
+# Happy Path Tests
+# ============================================================
+
+@test "vm0 schedule setup creates a new schedule" {
     run $CLI_COMMAND schedule setup "$AGENT_NAME" \
         --frequency daily \
         --time "09:00" \
@@ -53,30 +75,27 @@ teardown() {
     assert_success
     assert_output --partial "Created schedule"
     assert_output --partial "$AGENT_NAME"
+}
 
-    # Verify via status command
+@test "vm0 schedule list shows created schedules" {
+    run $CLI_COMMAND schedule list
+    assert_success
+    assert_output --partial "$AGENT_NAME"
+    assert_output --partial "AGENT"
+    assert_output --partial "disabled"
+}
+
+@test "vm0 schedule status shows schedule details" {
     run $CLI_COMMAND schedule status "$AGENT_NAME"
     assert_success
     assert_output --partial "Agent:"
     assert_output --partial "$AGENT_NAME"
+    assert_output --partial "Status:"
     assert_output --partial "Trigger:"
     assert_output --partial "0 9 * * *"
-    # Schedules now default to disabled and require explicit enabling
-    assert_output --partial "disabled"
 }
 
-@test "vm0 schedule setup should update existing schedule" {
-    cd "$TEST_DIR"
-
-    # Setup first time
-    run $CLI_COMMAND schedule setup "$AGENT_NAME" \
-        --frequency daily \
-        --time "09:00" \
-        --timezone "UTC" \
-        --prompt "Run scheduled task"
-    assert_success
-
-    # Setup again with different config
+@test "vm0 schedule setup updates existing schedule" {
     run $CLI_COMMAND schedule setup "$AGENT_NAME" \
         --frequency daily \
         --time "10:00" \
@@ -85,261 +104,24 @@ teardown() {
     assert_success
     assert_output --partial "Updated schedule"
 
-    # Verify updated time via status command
+    # Verify update via status
     run $CLI_COMMAND schedule status "$AGENT_NAME"
     assert_success
-    assert_output --partial "Trigger:"
     assert_output --partial "0 10 * * *"
 }
 
-@test "vm0 schedule setup with weekly frequency" {
-    cd "$TEST_DIR"
-
-    run $CLI_COMMAND schedule setup "$AGENT_NAME" \
-        --frequency weekly \
-        --time "09:00" \
-        --day "mon" \
-        --timezone "UTC" \
-        --prompt "Weekly task"
+@test "vm0 schedule enable/disable workflow" {
+    # Enable the schedule
+    run $CLI_COMMAND schedule enable "$AGENT_NAME"
     assert_success
-    assert_output --partial "Created schedule"
+    assert_output --partial "Enabled"
 
-    # Verify weekly cron expression via status (Monday = 1)
-    run $CLI_COMMAND schedule status "$AGENT_NAME"
-    assert_success
-    assert_output --partial "Trigger:"
-    assert_output --partial "0 9 * * 1"
-}
-
-@test "vm0 schedule setup with monthly frequency" {
-    cd "$TEST_DIR"
-
-    run $CLI_COMMAND schedule setup "$AGENT_NAME" \
-        --frequency monthly \
-        --time "09:00" \
-        --day "15" \
-        --timezone "UTC" \
-        --prompt "Monthly task"
-    assert_success
-    assert_output --partial "Created schedule"
-
-    # Verify monthly cron expression via status (15th of month)
-    run $CLI_COMMAND schedule status "$AGENT_NAME"
-    assert_success
-    assert_output --partial "Trigger:"
-    assert_output --partial "0 9 15 * *"
-}
-
-@test "vm0 schedule setup with once frequency" {
-    cd "$TEST_DIR"
-
-    # Calculate a future date (tomorrow)
-    local FUTURE_DATE=$(date -d "+1 day" "+%Y-%m-%d")
-
-    run $CLI_COMMAND schedule setup "$AGENT_NAME" \
-        --frequency once \
-        --time "14:30" \
-        --day "$FUTURE_DATE" \
-        --timezone "UTC" \
-        --prompt "One-time task"
-    assert_success
-    assert_output --partial "Created schedule"
-
-    # Verify one-time schedule via status
-    run $CLI_COMMAND schedule status "$AGENT_NAME"
-    assert_success
-    assert_output --partial "Trigger:"
-    assert_output --partial "(one-time)"
-}
-
-@test "vm0 schedule setup with vars" {
-    cd "$TEST_DIR"
-
-    run $CLI_COMMAND schedule setup "$AGENT_NAME" \
-        --frequency daily \
-        --time "09:00" \
-        --timezone "UTC" \
-        --prompt "Task with vars" \
-        --var "ENV=test" \
-        --var "DEBUG=true"
-    assert_success
-    assert_output --partial "Created schedule"
-
-    # Verify vars in status
-    run $CLI_COMMAND schedule status "$AGENT_NAME"
-    assert_success
-    assert_output --partial "Variables:"
-    assert_output --partial "ENV"
-    assert_output --partial "DEBUG"
-}
-
-@test "vm0 schedule setup with secrets" {
-    cd "$TEST_DIR"
-
-    run $CLI_COMMAND schedule setup "$AGENT_NAME" \
-        --frequency daily \
-        --time "09:00" \
-        --timezone "UTC" \
-        --prompt "Task with secrets" \
-        --secret "API_KEY=my-secret"
-    assert_success
-    assert_output --partial "Created schedule"
-
-    # Verify secrets in status
-    run $CLI_COMMAND schedule status "$AGENT_NAME"
-    assert_success
-    assert_output --partial "Secrets:"
-    assert_output --partial "API_KEY"
-}
-
-@test "vm0 schedule setup with artifact-name" {
-    cd "$TEST_DIR"
-
-    run $CLI_COMMAND schedule setup "$AGENT_NAME" \
-        --frequency daily \
-        --time "09:00" \
-        --timezone "UTC" \
-        --prompt "Task with custom artifact" \
-        --artifact-name "my-artifact"
-    assert_success
-    assert_output --partial "Created schedule"
-
-    # Verify artifact via status command
-    run $CLI_COMMAND schedule status "$AGENT_NAME"
-    assert_success
-    assert_output --partial "Artifact:"
-    assert_output --partial "my-artifact"
-}
-
-# ============================================================
-# List tests
-# ============================================================
-
-@test "vm0 schedule list should show created schedules" {
-    cd "$TEST_DIR"
-
-    # Setup a schedule first
-    run $CLI_COMMAND schedule setup "$AGENT_NAME" \
-        --frequency daily \
-        --time "09:00" \
-        --timezone "UTC" \
-        --prompt "List test task"
-    assert_success
-
-    # List schedules
+    # Verify enabled in list
     run $CLI_COMMAND schedule list
     assert_success
-    assert_output --partial "$AGENT_NAME"
-    assert_output --partial "AGENT"
-    # Schedules now default to disabled and require explicit enabling
-    assert_output --partial "disabled"
-}
+    assert_output --partial "enabled"
 
-@test "vm0 schedule list should show empty message when no schedules" {
-    # Skip setup - test with fresh state
-    # Note: We can't guarantee no schedules exist, so we just check the command works
-    run $CLI_COMMAND schedule list
-    assert_success
-}
-
-# ============================================================
-# Status tests
-# ============================================================
-
-@test "vm0 schedule status should show schedule details" {
-    cd "$TEST_DIR"
-
-    # Setup a schedule first
-    run $CLI_COMMAND schedule setup "$AGENT_NAME" \
-        --frequency daily \
-        --time "09:00" \
-        --timezone "UTC" \
-        --prompt "Status test task"
-    assert_success
-
-    # Get status using agent name
-    run $CLI_COMMAND schedule status "$AGENT_NAME"
-    assert_success
-    assert_output --partial "Agent:"
-    assert_output --partial "$AGENT_NAME"
-    assert_output --partial "Status:"
-    # Schedules now default to disabled and require explicit enabling
-    assert_output --partial "disabled"
-    assert_output --partial "Trigger:"
-    assert_output --partial "0 9 * * *"
-}
-
-@test "vm0 schedule status should accept --limit option" {
-    cd "$TEST_DIR"
-
-    # Setup a schedule first
-    run $CLI_COMMAND schedule setup "$AGENT_NAME" \
-        --frequency daily \
-        --time "09:00" \
-        --timezone "UTC" \
-        --prompt "Limit test task"
-    assert_success
-
-    # Get status with --limit
-    run $CLI_COMMAND schedule status "$AGENT_NAME" --limit 10
-    assert_success
-    assert_output --partial "Agent:"
-    assert_output --partial "$AGENT_NAME"
-}
-
-@test "vm0 schedule status should accept -l shorthand for limit" {
-    cd "$TEST_DIR"
-
-    # Setup a schedule first
-    run $CLI_COMMAND schedule setup "$AGENT_NAME" \
-        --frequency daily \
-        --time "09:00" \
-        --timezone "UTC" \
-        --prompt "Limit shorthand test"
-    assert_success
-
-    # Get status with -l shorthand
-    run $CLI_COMMAND schedule status "$AGENT_NAME" -l 5
-    assert_success
-    assert_output --partial "Agent:"
-    assert_output --partial "$AGENT_NAME"
-}
-
-@test "vm0 schedule status with --limit 0 should hide runs section" {
-    cd "$TEST_DIR"
-
-    # Setup a schedule first
-    run $CLI_COMMAND schedule setup "$AGENT_NAME" \
-        --frequency daily \
-        --time "09:00" \
-        --timezone "UTC" \
-        --prompt "Limit zero test"
-    assert_success
-
-    # Get status with --limit 0
-    run $CLI_COMMAND schedule status "$AGENT_NAME" --limit 0
-    assert_success
-    assert_output --partial "Agent:"
-    assert_output --partial "$AGENT_NAME"
-    # Should not show "Recent Runs" when limit is 0
-    refute_output --partial "Recent Runs:"
-}
-
-# ============================================================
-# Enable/Disable tests
-# ============================================================
-
-@test "vm0 schedule disable should disable a schedule" {
-    cd "$TEST_DIR"
-
-    # Setup and disable
-    run $CLI_COMMAND schedule setup "$AGENT_NAME" \
-        --frequency daily \
-        --time "09:00" \
-        --timezone "UTC" \
-        --prompt "Disable test task"
-    assert_success
-
+    # Disable the schedule
     run $CLI_COMMAND schedule disable "$AGENT_NAME"
     assert_success
     assert_output --partial "Disabled"
@@ -350,43 +132,13 @@ teardown() {
     assert_output --partial "disabled"
 }
 
-@test "vm0 schedule enable should enable a disabled schedule" {
-    cd "$TEST_DIR"
-
-    # Setup, disable, then enable
+@test "vm0 schedule delete removes schedule" {
+    # First create a fresh schedule to delete
     run $CLI_COMMAND schedule setup "$AGENT_NAME" \
         --frequency daily \
-        --time "09:00" \
+        --time "11:00" \
         --timezone "UTC" \
-        --prompt "Enable test task"
-    assert_success
-
-    run $CLI_COMMAND schedule disable "$AGENT_NAME"
-    assert_success
-
-    run $CLI_COMMAND schedule enable "$AGENT_NAME"
-    assert_success
-    assert_output --partial "Enabled"
-
-    # Verify enabled in list
-    run $CLI_COMMAND schedule list
-    assert_success
-    assert_output --partial "enabled"
-}
-
-# ============================================================
-# Delete tests
-# ============================================================
-
-@test "vm0 schedule delete should delete a schedule" {
-    cd "$TEST_DIR"
-
-    # Setup first
-    run $CLI_COMMAND schedule setup "$AGENT_NAME" \
-        --frequency daily \
-        --time "09:00" \
-        --timezone "UTC" \
-        --prompt "Delete test task"
+        --prompt "To be deleted"
     assert_success
 
     # Delete with force flag
@@ -396,373 +148,53 @@ teardown() {
 }
 
 # ============================================================
-# Error handling tests
+# Secrets/Vars Integration Test
+# Uses a separate agent with configuration requirements
 # ============================================================
 
-@test "vm0 schedule status fails for nonexistent agent" {
-    run $CLI_COMMAND schedule status "nonexistent-agent-12345"
-    assert_failure
-    assert_output --partial "No schedule found"
-}
+@test "vm0 schedule setup with secrets and vars integration" {
+    local CONFIG_AGENT_NAME="schedule-config-${UNIQUE_ID}"
+    local CONFIG_TEST_DIR="$(mktemp -d)"
 
-@test "vm0 schedule setup fails for nonexistent agent" {
-    run $CLI_COMMAND schedule setup "nonexistent-agent-12345" \
-        --frequency daily \
-        --time "09:00" \
-        --timezone "UTC" \
-        --prompt "Test"
-    assert_failure
-    assert_output --partial "not found"
-}
-
-# ============================================================
-# Global resolution tests (commands work from any directory)
-# ============================================================
-
-@test "vm0 schedule status should work from any directory (global resolution)" {
-    cd "$TEST_DIR"
-
-    # Setup schedule first
-    run $CLI_COMMAND schedule setup "$AGENT_NAME" \
-        --frequency daily \
-        --time "09:00" \
-        --timezone "UTC" \
-        --prompt "Global resolution test"
-    assert_success
-
-    # Change to a completely different directory (NOT the agent's directory)
-    cd /tmp
-
-    # Status should still work with just the agent name
-    run $CLI_COMMAND schedule status "$AGENT_NAME"
-    assert_success
-    assert_output --partial "Agent:"
-    assert_output --partial "$AGENT_NAME"
-    # Schedules now default to disabled and require explicit enabling
-    assert_output --partial "disabled"
-}
-
-@test "vm0 schedule disable should work from any directory (global resolution)" {
-    cd "$TEST_DIR"
-
-    # Setup schedule first
-    run $CLI_COMMAND schedule setup "$AGENT_NAME" \
-        --frequency daily \
-        --time "09:00" \
-        --timezone "UTC" \
-        --prompt "Global disable test"
-    assert_success
-
-    # Change to a different directory
-    cd /tmp
-
-    # Disable should still work with just the agent name
-    run $CLI_COMMAND schedule disable "$AGENT_NAME"
-    assert_success
-    assert_output --partial "Disabled"
-}
-
-@test "vm0 schedule enable should work from any directory (global resolution)" {
-    cd "$TEST_DIR"
-
-    # Setup and disable schedule first
-    run $CLI_COMMAND schedule setup "$AGENT_NAME" \
-        --frequency daily \
-        --time "09:00" \
-        --timezone "UTC" \
-        --prompt "Global enable test"
-    assert_success
-
-    run $CLI_COMMAND schedule disable "$AGENT_NAME"
-    assert_success
-
-    # Change to a different directory
-    cd /tmp
-
-    # Enable should still work with just the agent name
-    run $CLI_COMMAND schedule enable "$AGENT_NAME"
-    assert_success
-    assert_output --partial "Enabled"
-}
-
-@test "vm0 schedule delete should work from any directory (global resolution)" {
-    cd "$TEST_DIR"
-
-    # Setup schedule first
-    run $CLI_COMMAND schedule setup "$AGENT_NAME" \
-        --frequency daily \
-        --time "09:00" \
-        --timezone "UTC" \
-        --prompt "Global delete test"
-    assert_success
-
-    # Change to a different directory
-    cd /tmp
-
-    # Delete should still work with just the agent name
-    run $CLI_COMMAND schedule delete "$AGENT_NAME" --force
-    assert_success
-    assert_output --partial "Deleted"
-}
-
-# ============================================================
-# Secrets/Vars validation tests
-# ============================================================
-
-@test "vm0 schedule setup fails when required secrets are missing" {
-    local SECRET_AGENT_NAME="secrets-test-agent-${UNIQUE_ID}"
-    local SECRET_TEST_DIR="$(mktemp -d)"
-
-    # Create agent with secrets requirement
-    cat > "$SECRET_TEST_DIR/vm0.yaml" <<EOF
+    # Create agent with secrets and vars requirements
+    cat > "$CONFIG_TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
 agents:
-  ${SECRET_AGENT_NAME}:
-    description: "Test agent with secrets requirement"
+  ${CONFIG_AGENT_NAME}:
+    description: "Test agent with configuration requirements"
     framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:
       API_KEY: "\${{ secrets.API_KEY }}"
-EOF
-
-    cd "$SECRET_TEST_DIR"
-    run $CLI_COMMAND compose vm0.yaml
-    assert_success
-
-    # Try to setup schedule without providing required secret
-    run $CLI_COMMAND schedule setup "$SECRET_AGENT_NAME" \
-        --frequency daily \
-        --time "09:00" \
-        --timezone "UTC" \
-        --prompt "Should fail"
-    assert_failure
-    assert_output --partial "Missing required configuration"
-    assert_output --partial "API_KEY"
-
-    # Clean up
-    $CLI_COMMAND schedule delete "$SECRET_AGENT_NAME" --force 2>/dev/null || true
-    rm -rf "$SECRET_TEST_DIR"
-}
-
-@test "vm0 schedule setup succeeds when required secrets are provided" {
-    local SECRET_AGENT_NAME="secrets-provided-agent-${UNIQUE_ID}"
-    local SECRET_TEST_DIR="$(mktemp -d)"
-
-    # Create agent with secrets requirement
-    cat > "$SECRET_TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  ${SECRET_AGENT_NAME}:
-    description: "Test agent with secrets requirement"
-    framework: claude-code
-    image: "vm0/claude-code:dev"
-    working_dir: /home/user/workspace
-    environment:
-      API_KEY: "\${{ secrets.API_KEY }}"
-EOF
-
-    cd "$SECRET_TEST_DIR"
-    run $CLI_COMMAND compose vm0.yaml
-    assert_success
-
-    # Setup schedule with required secret provided
-    run $CLI_COMMAND schedule setup "$SECRET_AGENT_NAME" \
-        --frequency daily \
-        --time "09:00" \
-        --timezone "UTC" \
-        --prompt "Should succeed" \
-        --secret "API_KEY=test-secret-value"
-    assert_success
-    assert_output --partial "Created schedule"
-
-    # Verify secret is shown in status
-    run $CLI_COMMAND schedule status "$SECRET_AGENT_NAME"
-    assert_success
-    assert_output --partial "Secrets:"
-    assert_output --partial "API_KEY"
-
-    # Clean up
-    $CLI_COMMAND schedule delete "$SECRET_AGENT_NAME" --force 2>/dev/null || true
-    rm -rf "$SECRET_TEST_DIR"
-}
-
-@test "vm0 schedule setup fails when required vars are missing" {
-    local VAR_AGENT_NAME="vars-test-agent-${UNIQUE_ID}"
-    local VAR_TEST_DIR="$(mktemp -d)"
-
-    # Create agent with vars requirement
-    cat > "$VAR_TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  ${VAR_AGENT_NAME}:
-    description: "Test agent with vars requirement"
-    framework: claude-code
-    image: "vm0/claude-code:dev"
-    working_dir: /home/user/workspace
-    environment:
       API_URL: "\${{ vars.API_URL }}"
 EOF
 
-    cd "$VAR_TEST_DIR"
+    cd "$CONFIG_TEST_DIR"
     run $CLI_COMMAND compose vm0.yaml
     assert_success
 
-    # Try to setup schedule without providing required var
-    run $CLI_COMMAND schedule setup "$VAR_AGENT_NAME" \
+    # Setup schedule with required secrets and vars
+    run $CLI_COMMAND schedule setup "$CONFIG_AGENT_NAME" \
         --frequency daily \
         --time "09:00" \
         --timezone "UTC" \
-        --prompt "Should fail"
-    assert_failure
-    assert_output --partial "Missing required configuration"
-    assert_output --partial "API_URL"
-
-    # Clean up
-    $CLI_COMMAND schedule delete "$VAR_AGENT_NAME" --force 2>/dev/null || true
-    rm -rf "$VAR_TEST_DIR"
-}
-
-@test "vm0 schedule setup succeeds when required vars are provided" {
-    local VAR_AGENT_NAME="vars-provided-agent-${UNIQUE_ID}"
-    local VAR_TEST_DIR="$(mktemp -d)"
-
-    # Create agent with vars requirement
-    cat > "$VAR_TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  ${VAR_AGENT_NAME}:
-    description: "Test agent with vars requirement"
-    framework: claude-code
-    image: "vm0/claude-code:dev"
-    working_dir: /home/user/workspace
-    environment:
-      API_URL: "\${{ vars.API_URL }}"
-EOF
-
-    cd "$VAR_TEST_DIR"
-    run $CLI_COMMAND compose vm0.yaml
-    assert_success
-
-    # Setup schedule with required var provided
-    run $CLI_COMMAND schedule setup "$VAR_AGENT_NAME" \
-        --frequency daily \
-        --time "09:00" \
-        --timezone "UTC" \
-        --prompt "Should succeed" \
+        --prompt "Task with config" \
+        --secret "API_KEY=test-secret-value" \
         --var "API_URL=https://api.example.com"
     assert_success
     assert_output --partial "Created schedule"
 
-    # Verify var is shown in status
-    run $CLI_COMMAND schedule status "$VAR_AGENT_NAME"
-    assert_success
-    assert_output --partial "Variables:"
-    assert_output --partial "API_URL"
-
-    # Clean up
-    $CLI_COMMAND schedule delete "$VAR_AGENT_NAME" --force 2>/dev/null || true
-    rm -rf "$VAR_TEST_DIR"
-}
-
-@test "vm0 schedule setup preserves secrets when updating schedule" {
-    local KEEP_SECRETS_AGENT="keep-secrets-agent-${UNIQUE_ID}"
-    local KEEP_SECRETS_DIR="$(mktemp -d)"
-
-    # Create agent with secrets requirement
-    cat > "$KEEP_SECRETS_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  ${KEEP_SECRETS_AGENT}:
-    description: "Test agent for keep secrets"
-    framework: claude-code
-    image: "vm0/claude-code:dev"
-    working_dir: /home/user/workspace
-    environment:
-      API_KEY: "\${{ secrets.API_KEY }}"
-EOF
-
-    cd "$KEEP_SECRETS_DIR"
-    run $CLI_COMMAND compose vm0.yaml
-    assert_success
-
-    # Create schedule with secret
-    run $CLI_COMMAND schedule setup "$KEEP_SECRETS_AGENT" \
-        --frequency daily \
-        --time "09:00" \
-        --timezone "UTC" \
-        --prompt "Initial prompt" \
-        --secret "API_KEY=test-secret-value"
-    assert_success
-    assert_output --partial "Created schedule"
-
-    # Update schedule without providing secrets (should preserve existing)
-    run $CLI_COMMAND schedule setup "$KEEP_SECRETS_AGENT" \
-        --frequency daily \
-        --time "10:00" \
-        --timezone "UTC" \
-        --prompt "Updated prompt"
-    assert_success
-    assert_output --partial "Updated schedule"
-
-    # Verify secret is still there
-    run $CLI_COMMAND schedule status "$KEEP_SECRETS_AGENT"
+    # Verify configuration in status
+    run $CLI_COMMAND schedule status "$CONFIG_AGENT_NAME"
     assert_success
     assert_output --partial "Secrets:"
     assert_output --partial "API_KEY"
+    assert_output --partial "Variables:"
+    assert_output --partial "API_URL"
 
-    # Clean up
-    $CLI_COMMAND schedule delete "$KEEP_SECRETS_AGENT" --force 2>/dev/null || true
-    rm -rf "$KEEP_SECRETS_DIR"
-}
-
-@test "vm0 schedule setup replaces secrets when new secrets provided" {
-    local REPLACE_SECRETS_AGENT="replace-secrets-agent-${UNIQUE_ID}"
-    local REPLACE_SECRETS_DIR="$(mktemp -d)"
-
-    # Create agent with secrets requirement
-    cat > "$REPLACE_SECRETS_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  ${REPLACE_SECRETS_AGENT}:
-    description: "Test agent for replace secrets"
-    framework: claude-code
-    image: "vm0/claude-code:dev"
-    working_dir: /home/user/workspace
-    environment:
-      API_KEY: "\${{ secrets.API_KEY }}"
-EOF
-
-    cd "$REPLACE_SECRETS_DIR"
-    run $CLI_COMMAND compose vm0.yaml
-    assert_success
-
-    # Create schedule with secret
-    run $CLI_COMMAND schedule setup "$REPLACE_SECRETS_AGENT" \
-        --frequency daily \
-        --time "09:00" \
-        --timezone "UTC" \
-        --prompt "Initial" \
-        --secret "API_KEY=old-value"
-    assert_success
-
-    # Update with new secret value
-    run $CLI_COMMAND schedule setup "$REPLACE_SECRETS_AGENT" \
-        --frequency daily \
-        --time "09:00" \
-        --timezone "UTC" \
-        --prompt "Updated" \
-        --secret "API_KEY=new-value"
-    assert_success
-    assert_output --partial "Updated schedule"
-
-    # Clean up
-    $CLI_COMMAND schedule delete "$REPLACE_SECRETS_AGENT" --force 2>/dev/null || true
-    rm -rf "$REPLACE_SECRETS_DIR"
+    # Clean up this separate agent
+    $CLI_COMMAND schedule delete "$CONFIG_AGENT_NAME" --force 2>/dev/null || true
+    rm -rf "$CONFIG_TEST_DIR"
 }

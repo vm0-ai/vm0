@@ -48,7 +48,7 @@ function Step1InstallSkill() {
     <section>
       <StepHeader
         step={1}
-        title="Install the VM0 builder skill and build with natural language"
+        title="Install the VM0 CLI and build AI agents with natural language"
       />
       <Card className="flex items-center justify-between p-4 font-mono">
         <code className="text-sm overflow-x-auto text-muted-foreground">

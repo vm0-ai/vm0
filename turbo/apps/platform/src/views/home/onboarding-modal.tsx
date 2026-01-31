@@ -27,6 +27,7 @@ import {
 } from "../../signals/onboarding.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { theme$ } from "../../signals/theme.ts";
 import { ClaudeCodeSetupPrompt } from "../settings-page/setup-prompt.tsx";
 
 export function OnboardingModal() {
@@ -39,14 +40,19 @@ export function OnboardingModal() {
   const canSave =
     useGet(canSaveOnboarding$) && actionPromise.state !== "loading";
   const pageSignal = useGet(pageSignal$);
+  const theme = useGet(theme$);
+
+  const backgroundGradient =
+    theme === "dark"
+      ? "linear-gradient(91deg, rgba(255, 200, 176, 0.15) 0%, rgba(166, 222, 255, 0.15) 51%, rgba(255, 231, 162, 0.15) 100%), linear-gradient(90deg, hsl(var(--background)) 0%, hsl(var(--background)) 100%)"
+      : "linear-gradient(91deg, rgba(255, 200, 176, 0.26) 0%, rgba(166, 222, 255, 0.26) 51%, rgba(255, 231, 162, 0.26) 100%), linear-gradient(90deg, hsl(var(--background)) 0%, hsl(var(--background)) 100%)";
 
   return (
     <Dialog open={isOpen}>
       <DialogContent
         className="sm:max-w-[600px] p-6 border-border rounded-[10px]"
         style={{
-          backgroundImage:
-            "linear-gradient(91deg, rgba(255, 200, 176, 0.26) 0%, rgba(166, 222, 255, 0.26) 51%, rgba(255, 231, 162, 0.26) 100%), linear-gradient(90deg, rgb(255, 255, 255) 0%, rgb(255, 255, 255) 100%)",
+          backgroundImage: backgroundGradient,
         }}
       >
         {/* Close button */}
@@ -71,7 +77,11 @@ export function OnboardingModal() {
 
         {/* Logo */}
         <div className="flex items-center justify-center gap-2 mt-[24px]">
-          <img src="/logo_light.svg" alt="VM0" className="h-[40px] w-auto" />
+          <img
+            src={theme === "dark" ? "/logo_dark.svg" : "/logo_light.svg"}
+            alt="VM0"
+            className="h-[40px] w-auto"
+          />
           <span className="text-4xl font-normal text-foreground">Platform</span>
         </div>
 

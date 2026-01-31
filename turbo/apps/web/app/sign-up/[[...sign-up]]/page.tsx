@@ -1,8 +1,9 @@
 "use client";
 
-import { Waitlist } from "@clerk/nextjs";
+import { SignUp } from "@clerk/nextjs";
 import { useTheme } from "../../components/ThemeProvider";
 import Image from "next/image";
+import Link from "next/link";
 
 export default function SignUpPage() {
   const { theme, toggleTheme } = useTheme();
@@ -121,37 +122,118 @@ export default function SignUpPage() {
           color: hsl(var(--muted-foreground)) !important;
         }
 
-        /* Button styles - remove gradients and borders */
+        /* Button styles - remove gradients and borders (exclude social buttons) */
         .cl-formButtonPrimary,
-        .cl-button,
-        button[type="submit"],
+        button[type="submit"]:not(.cl-socialButtonsBlockButton),
         [data-localization-key="formButtonPrimary"],
-        .cl-formButtonPrimary > *,
-        .cl-button > * {
+        .cl-formButtonPrimary > * {
           background-image: none !important;
           background: hsl(var(--primary)) !important;
           border: none !important;
           box-shadow: none !important;
         }
 
-        /* Button hover state */
+        /* Button hover state (exclude social buttons) */
         .cl-formButtonPrimary:hover,
-        .cl-button:hover,
-        button[type="submit"]:hover,
+        button[type="submit"]:not(.cl-socialButtonsBlockButton):hover,
         [data-localization-key="formButtonPrimary"]:hover {
           background-image: none !important;
           background: hsl(var(--primary) / 0.9) !important;
           box-shadow: none !important;
         }
 
-        /* Remove pseudo elements */
+        /* Remove pseudo elements (exclude social buttons) */
         .cl-formButtonPrimary::before,
         .cl-formButtonPrimary::after,
-        .cl-button::before,
-        .cl-button::after,
-        button[type="submit"]::before,
-        button[type="submit"]::after {
+        button[type="submit"]:not(.cl-socialButtonsBlockButton)::before,
+        button[type="submit"]:not(.cl-socialButtonsBlockButton)::after {
           display: none !important;
+          background-image: none !important;
+        }
+
+        /* Social buttons (Google login) - add border and set text color */
+        button[class*="socialButtonsBlockButton"],
+        button[class*="cl-socialButtons"],
+        .cl-socialButtonsBlockButton,
+        div[class*="socialButtons"] button {
+          height: 36px !important;
+          background-color: transparent !important;
+          background-image: none !important;
+          border-width: 1px !important;
+          border-style: solid !important;
+          border-color: var(--color-border) !important;
+          border-radius: 0.5rem !important;
+          color: var(--color-foreground) !important;
+          box-shadow: none !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          gap: 0.5rem !important;
+          transition: background-color 0.2s !important;
+        }
+
+        /* Social buttons hover state */
+        button[class*="socialButtonsBlockButton"]:hover,
+        .cl-socialButtonsBlockButton:hover {
+          background-color: var(--color-muted) !important;
+        }
+
+        /* Force remove all backgrounds from inner elements at all times */
+        button[class*="socialButtonsBlockButton"] *,
+        .cl-socialButtonsBlockButton *,
+        button[class*="socialButtonsBlockButton"] > *,
+        button[class*="socialButtonsBlockButton"] span,
+        button[class*="socialButtonsBlockButton"] div,
+        .cl-socialButtonsBlockButton > *,
+        .cl-socialButtonsBlockButton span,
+        .cl-socialButtonsBlockButton div,
+        [class*="socialButtonsBlockButton"] [class*="internal"],
+        [class*="socialButtonsBlockButton"] [class*="text"],
+        [class*="socialButtonsBlockButton"] [class*="icon"],
+        [class*="socialButtonsBlockButton"] [class*="cl-internal"],
+        button[class*="socialButtonsBlockButton"] [class*="cl-internal"],
+        .cl-internal-2iusy0 {
+          background: none !important;
+          background-color: transparent !important;
+          background-image: none !important;
+          border: none !important;
+        }
+
+        /* Force remove all backgrounds from inner elements on hover */
+        button[class*="socialButtonsBlockButton"]:hover *,
+        .cl-socialButtonsBlockButton:hover *,
+        button[class*="socialButtonsBlockButton"] *:hover,
+        .cl-socialButtonsBlockButton *:hover,
+        button[class*="socialButtonsBlockButton"]:hover > *,
+        button[class*="socialButtonsBlockButton"]:hover span,
+        button[class*="socialButtonsBlockButton"]:hover div,
+        button[class*="socialButtonsBlockButton"] span:hover,
+        button[class*="socialButtonsBlockButton"] div:hover,
+        [class*="socialButtonsBlockButton"]:hover [class*="internal"],
+        [class*="socialButtonsBlockButton"]:hover [class*="text"],
+        [class*="socialButtonsBlockButton"]:hover [class*="icon"],
+        [class*="socialButtonsBlockButton"] [class*="internal"]:hover,
+        [class*="socialButtonsBlockButton"] [class*="text"]:hover,
+        [class*="socialButtonsBlockButton"] [class*="icon"]:hover,
+        [class*="socialButtonsBlockButton"]:hover [class*="cl-internal"],
+        [class*="socialButtonsBlockButton"] [class*="cl-internal"]:hover,
+        button[class*="socialButtonsBlockButton"]:hover [class*="cl-internal"],
+        button[class*="socialButtonsBlockButton"] [class*="cl-internal"]:hover,
+        .cl-internal-2iusy0:hover,
+        button:hover .cl-internal-2iusy0 {
+          background: none !important;
+          background-color: transparent !important;
+          background-image: none !important;
+        }
+
+        /* Social button text color */
+        button[class*="socialButtonsBlockButton"] *,
+        .cl-socialButtonsBlockButton *,
+        .cl-socialButtonsBlockButton span,
+        button[class*="socialButtons"] span {
+          color: var(--color-foreground) !important;
+          background: none !important;
+          background-color: transparent !important;
           background-image: none !important;
         }
 
@@ -179,6 +261,53 @@ export default function SignUpPage() {
         .cl-footerActionLink:hover,
         [class*="footerActionLink"]:hover {
           color: hsl(var(--primary) / 0.9) !important;
+        }
+
+        /* OTP/Verification Code Input Boxes - Match cli-auth style */
+        .cl-otpCodeFieldInput,
+        input[data-input-otp],
+        [data-input-otp] input {
+          height: 36px !important;
+          width: 36px !important;
+          background-color: hsl(var(--input)) !important;
+          border: 1px solid hsl(var(--border)) !important;
+          border-radius: 0.5rem !important;
+          color: hsl(var(--foreground)) !important;
+          font-size: 16px !important;
+          font-weight: 500 !important;
+          text-align: center !important;
+        }
+
+        /* OTP Input Focus State */
+        .cl-otpCodeFieldInput:focus,
+        input[data-input-otp]:focus,
+        [data-input-otp] input:focus {
+          border-color: hsl(var(--primary)) !important;
+          box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1) !important;
+        }
+
+        /* "Didn't receive a code" text color */
+        .cl-formResendCodeLink,
+        [class*="formResendCode"],
+        [class*="resendCode"],
+        .cl-card [class*="alternativeMethodsBlockButton"],
+        button[class*="alternativeMethodsBlockButton"] {
+          color: hsl(var(--muted-foreground)) !important;
+        }
+
+        /* Email address display - use muted foreground */
+        .cl-identityPreviewText,
+        [class*="identityPreview"] [class*="text"],
+        .cl-card [class*="userPreview"],
+        .cl-card [class*="emailAddress"] {
+          color: hsl(var(--muted-foreground)) !important;
+        }
+
+        /* Keep resend link primary color */
+        .cl-formResendCodeLink a,
+        [class*="formResendCode"] a,
+        a[class*="resendCode"] {
+          color: hsl(var(--primary)) !important;
         }
       `}</style>
       <div className="relative flex min-h-screen items-center justify-center bg-background p-6 overflow-hidden">
@@ -243,7 +372,10 @@ export default function SignUpPage() {
         </button>
 
         {/* Logo Header */}
-        <div className="absolute left-6 top-6 flex items-center gap-2">
+        <Link
+          href="/"
+          className="absolute left-6 top-6 flex items-center gap-2"
+        >
           <Image
             src={
               theme === "dark"
@@ -265,10 +397,9 @@ export default function SignUpPage() {
             className="hidden dark:block"
           />
           <span className="text-2xl text-foreground">Platform</span>
-        </div>
+        </Link>
 
-        <Waitlist
-          signInUrl="/sign-in"
+        <SignUp
           appearance={{
             layout: {
               logoImageUrl:
@@ -290,58 +421,18 @@ export default function SignUpPage() {
               headerTitle: "text-foreground font-medium",
               headerSubtitle: "text-muted-foreground",
               socialButtonsBlockButton:
-                "bg-card border border-border text-foreground hover:bg-muted transition-colors",
-              socialButtonsBlockButtonText: "text-foreground font-medium",
-              formButtonPrimary: {
-                backgroundColor: "hsl(var(--primary)) !important",
-                backgroundImage: "none !important",
-                color: "hsl(var(--primary-foreground)) !important",
-                border: "none !important",
-                outline: "none !important",
-                boxShadow: "none !important",
-                fontSize: "0.75rem",
-                fontWeight: "500",
-                height: "2.25rem",
-                borderRadius: "0.375rem",
-                transition: "background-color 0.2s",
-                "&:hover": {
-                  backgroundColor: "hsl(var(--primary) / 0.9) !important",
-                  backgroundImage: "none !important",
-                },
-                "&:focus": {
-                  outline: "none !important",
-                  boxShadow: "none !important",
-                  backgroundImage: "none !important",
-                },
-              },
-              button: {
-                backgroundColor: "hsl(var(--primary)) !important",
-                backgroundImage: "none !important",
-                color: "hsl(var(--primary-foreground)) !important",
-                border: "none !important",
-                outline: "none !important",
-                boxShadow: "none !important",
-                fontSize: "0.75rem",
-                fontWeight: "500",
-                height: "2.25rem",
-                borderRadius: "0.375rem",
-                "&:hover": {
-                  backgroundColor: "hsl(var(--primary) / 0.9) !important",
-                  backgroundImage: "none !important",
-                },
-                "&:focus": {
-                  outline: "none !important",
-                  boxShadow: "none !important",
-                  backgroundImage: "none !important",
-                },
-              },
+                "h-9 bg-transparent border border-border rounded-lg text-foreground flex items-center justify-center gap-2",
+              socialButtonsBlockButtonText: "text-foreground",
+              formButtonPrimary:
+                "bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-xs font-medium h-9 rounded-md",
               formFieldInput: "text-foreground rounded-lg transition-colors",
               formFieldLabel: "text-foreground",
               footerActionLink: "text-primary hover:text-primary/90",
               identityPreviewText: "text-foreground",
               identityPreviewEditButton: "text-muted-foreground",
               formFieldInputShowPasswordButton: "text-muted-foreground",
-              otpCodeFieldInput: "text-foreground rounded-lg",
+              otpCodeFieldInput:
+                "h-9 w-9 bg-input border border-border rounded-lg text-center text-base font-medium uppercase text-foreground focus:border-primary focus:ring-[3px] focus:ring-primary/10",
               formResendCodeLink: "text-primary",
               footer: "hidden",
             },

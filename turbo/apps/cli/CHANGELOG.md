@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.7.1](https://github.com/vm0-ai/vm0/compare/cli-v9.7.0...cli-v9.7.1) (2026-01-31)
+
+
+### Bug Fixes
+
+* **cli:** align todo list output with other tool formats ([#2050](https://github.com/vm0-ai/vm0/issues/2050)) ([b983655](https://github.com/vm0-ai/vm0/commit/b98365578c5516fbc2876591d60ad794d3b73b30))
+
+## [9.7.0](https://github.com/vm0-ai/vm0/compare/cli-v9.6.2...cli-v9.7.0) (2026-01-31)
+
+
+### Features
+
+* **cli:** add grouped tool output and verbose mode for run commands ([#2007](https://github.com/vm0-ai/vm0/issues/2007)) ([4b29edc](https://github.com/vm0-ai/vm0/commit/4b29edc5b7b120ca8244c46439f4e9cf33c900c5))
+
 ## [9.6.2](https://github.com/vm0-ai/vm0/compare/cli-v9.6.1...cli-v9.6.2) (2026-01-31)
 
 

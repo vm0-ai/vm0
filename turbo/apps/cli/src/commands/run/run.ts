@@ -68,6 +68,7 @@ export const mainRunCommand = new Command()
     "--model-provider <type>",
     "Override model provider (e.g., anthropic-api-key)",
   )
+  .option("--verbose", "Show full tool inputs and outputs")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .action(
     async (
@@ -83,6 +84,7 @@ export const mainRunCommand = new Command()
         conversation?: string;
         experimentalRealtime?: boolean;
         modelProvider?: string;
+        verbose?: boolean;
         debugNoMockClaude?: boolean;
       },
     ) => {
@@ -179,8 +181,10 @@ export const mainRunCommand = new Command()
 
         // 6. Poll or stream for events and exit with appropriate code
         const result = options.experimentalRealtime
-          ? await streamRealtimeEvents(response.runId)
-          : await pollEvents(response.runId);
+          ? await streamRealtimeEvents(response.runId, {
+              verbose: options.verbose,
+            })
+          : await pollEvents(response.runId, { verbose: options.verbose });
         if (!result.succeeded) {
           process.exit(1);
         }

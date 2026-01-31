@@ -13,6 +13,7 @@ import {
   initOverlayPool,
   cleanupOverlayPool,
 } from "../firecracker/overlay-pool.js";
+import { initTapPool, cleanupTapPool } from "../firecracker/tap-pool.js";
 import {
   initProxyManager,
   initVMRegistry,
@@ -75,6 +76,15 @@ export async function setupEnvironment(
     size: config.sandbox.max_concurrent + 2,
     replenishThreshold: config.sandbox.max_concurrent,
     poolDir: dataPaths.overlayPool(config.data_dir),
+  });
+
+  // Initialize TAP pool for faster VM boot
+  // Pre-creates TAP devices attached to bridge for instant acquisition
+  logger.log("Initializing TAP pool...");
+  await initTapPool({
+    name: config.name,
+    size: config.sandbox.max_concurrent + 2,
+    replenishThreshold: config.sandbox.max_concurrent,
   });
 
   // Initialize proxy for network security mode
@@ -151,6 +161,15 @@ export async function cleanupEnvironment(
     const error = err instanceof Error ? err : new Error(String(err));
     errors.push(error);
     logger.error(`Failed to cleanup overlay pool: ${error.message}`);
+  }
+
+  // Cleanup TAP pool
+  try {
+    cleanupTapPool();
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    errors.push(error);
+    logger.error(`Failed to cleanup TAP pool: ${error.message}`);
   }
 
   // Release runner lock last

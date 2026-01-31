@@ -119,8 +119,8 @@ teardown() {
     run $CLI_COMMAND logs "$RUN_ID"
 
     assert_success
-    assert_output --partial "[init]"
-    assert_output --partial "[result]"
+    assert_output --partial "▷ Claude Code Started"
+    assert_output --partial "◆ Claude Code Completed"
     echo "# Agent events OK"
 
     # Step 5: Verify --agent option
@@ -128,7 +128,7 @@ teardown() {
     run $CLI_COMMAND logs "$RUN_ID" --agent
 
     assert_success
-    assert_output --partial "[init]"
+    assert_output --partial "▷ Claude Code Started"
     echo "# --agent option OK"
 
     # Step 6: Verify --system option

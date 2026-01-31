@@ -72,6 +72,7 @@ teardown() {
     # Use extended timeout for CI environments which may be slower
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
+        --verbose \
         "ls -la && cat test-file.txt && cat subdir/nested.txt"
 
     assert_success
@@ -84,7 +85,7 @@ teardown() {
     assert_output --partial "nested content"
 
     # Step 4: Verify run completes properly
-    assert_output --partial "[result]"
+    assert_output --partial "◆ Claude Code Completed"
     assert_output --partial "Run completed successfully"
     assert_output --partial "Checkpoint:"
 }
@@ -107,6 +108,6 @@ teardown() {
     assert_success
 
     # Verify run completed successfully
-    assert_output --partial "[result]"
+    assert_output --partial "◆ Claude Code Completed"
     assert_output --partial "Run completed successfully"
 }

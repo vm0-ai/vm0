@@ -17,7 +17,7 @@ const VM0_TMP_PREFIX = "/tmp/vm0";
  * Runtime state paths (/var/run/vm0/)
  * These are shared across runner instances on the same host
  */
-export const paths = {
+export const runtimePaths = {
   /** Runner PID file for single-instance lock */
   runnerPid: path.join(VM0_RUN_DIR, "runner.pid"),
 

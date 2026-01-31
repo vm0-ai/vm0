@@ -10,7 +10,7 @@
 
 import { execSync, exec } from "node:child_process";
 import { promisify } from "node:util";
-import { allocateIP, releaseIP } from "./ip-pool.js";
+import { releaseIP } from "./ip-pool.js";
 import { createLogger } from "../logger.js";
 
 const execAsync = promisify(exec);
@@ -32,7 +32,7 @@ export interface VMNetworkConfig {
  */
 export const BRIDGE_NAME = "vm0br0";
 export const BRIDGE_IP = "172.16.0.1";
-const BRIDGE_NETMASK = "255.255.255.0";
+export const BRIDGE_NETMASK = "255.255.255.0";
 const BRIDGE_CIDR = "172.16.0.0/24";
 
 /**
@@ -213,95 +213,6 @@ async function tapDeviceExists(tapDevice: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-/**
- * Clear any stale iptables rules for a specific IP
- *
- * This is called when a new VM is assigned an IP to ensure no leftover
- * REDIRECT rules from previous VMs interfere with network connectivity.
- */
-async function clearStaleIptablesRulesForIP(ip: string): Promise<void> {
-  try {
-    // Get all PREROUTING rules
-    const { stdout } = await execAsync(
-      "sudo iptables -t nat -S PREROUTING 2>/dev/null || true",
-    );
-
-    // Find any rules that reference this IP
-    const lines = stdout.split("\n");
-    const rulesForIP = lines.filter((line) => line.includes(`-s ${ip}`));
-
-    if (rulesForIP.length === 0) {
-      return;
-    }
-
-    logger.log(
-      `Clearing ${rulesForIP.length} stale iptables rule(s) for IP ${ip}`,
-    );
-
-    // Delete each rule
-    for (const rule of rulesForIP) {
-      // Convert -A to -D for deletion
-      const deleteRule = rule.replace("-A ", "-D ");
-      try {
-        await execCommand(`iptables -t nat ${deleteRule}`);
-      } catch {
-        // Rule might already be gone
-      }
-    }
-  } catch {
-    // Ignore errors - this is defensive cleanup
-  }
-}
-
-/**
- * Create and configure a TAP device for a VM
- * Uses the IP pool manager for race-safe IP allocation
- */
-export async function createTapDevice(vmId: string): Promise<VMNetworkConfig> {
-  // TAP device name limited to 15 chars, use "tap" + first 8 chars of vmId
-  const tapDevice = `tap${vmId.substring(0, 8)}`;
-  const guestMac = generateMacAddress(vmId);
-
-  // Allocate IP from pool (race-safe with file locking)
-  const guestIp = await allocateIP(vmId);
-  logger.log(`[VM ${vmId}] IP allocated: ${guestIp}`);
-
-  // Clear any stale iptables rules for this IP from previous VMs
-  // This prevents leftover REDIRECT rules from interfering with network
-  await clearStaleIptablesRulesForIP(guestIp);
-  logger.log(`[VM ${vmId}] Stale iptables cleared`);
-
-  // Delete existing TAP device if it exists (from previous runs or failed cleanup)
-  if (await tapDeviceExists(tapDevice)) {
-    logger.log(
-      `[VM ${vmId}] TAP device ${tapDevice} already exists, deleting...`,
-    );
-    await deleteTapDevice(tapDevice);
-  }
-
-  // Create TAP device
-  await execCommand(`ip tuntap add ${tapDevice} mode tap`);
-  logger.log(`[VM ${vmId}] TAP device created`);
-
-  // Add TAP to bridge
-  await execCommand(`ip link set ${tapDevice} master ${BRIDGE_NAME}`);
-  logger.log(`[VM ${vmId}] TAP added to bridge`);
-
-  // Bring TAP up
-  await execCommand(`ip link set ${tapDevice} up`);
-  logger.log(
-    `[VM ${vmId}] TAP created: ${tapDevice}, MAC ${guestMac}, IP ${guestIp}`,
-  );
-
-  return {
-    tapDevice,
-    guestMac,
-    guestIp,
-    gatewayIp: BRIDGE_IP,
-    netmask: BRIDGE_NETMASK,
-  };
 }
 
 /**

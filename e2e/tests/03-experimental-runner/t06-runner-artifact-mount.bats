@@ -90,6 +90,7 @@ teardown() {
     echo "# Step 2: Running agent to list files..."
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
+        --verbose \
         "ls -la && cat test-file.txt && cat subdir/nested.txt"
 
     echo "# Output:"

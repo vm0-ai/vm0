@@ -3,6 +3,7 @@
 import { SignIn } from "@clerk/nextjs";
 import { useTheme } from "../../components/ThemeProvider";
 import Image from "next/image";
+import Link from "next/link";
 
 export default function SignInPage() {
   const { theme, toggleTheme } = useTheme();
@@ -324,7 +325,10 @@ export default function SignInPage() {
         </button>
 
         {/* Logo Header */}
-        <div className="absolute left-6 top-6 flex items-center gap-2">
+        <Link
+          href="/"
+          className="absolute left-6 top-6 flex items-center gap-2"
+        >
           <Image
             src={
               theme === "dark"
@@ -346,7 +350,7 @@ export default function SignInPage() {
             className="hidden dark:block"
           />
           <span className="text-2xl text-foreground">Platform</span>
-        </div>
+        </Link>
 
         <SignIn
           appearance={{

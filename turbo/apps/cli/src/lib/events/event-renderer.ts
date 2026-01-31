@@ -12,6 +12,12 @@ import chalk from "chalk";
 import type { ParsedEvent } from "./claude-event-parser";
 import type { RunResult } from "../api";
 import { getFrameworkDisplayName, isSupportedFramework } from "@vm0/core";
+import {
+  formatToolHeader,
+  formatToolResult,
+  type ToolUseData,
+  type ToolResultData,
+} from "./tool-formatters";
 
 /**
  * Info about a started run
@@ -22,14 +28,34 @@ interface RunStartedInfo {
 }
 
 /**
- * Options for rendering events
+ * Options for creating an EventRenderer instance
  */
-interface RenderOptions {
+interface EventRendererOptions {
   /** Whether to show timestamp prefix (useful for historical log viewing) */
   showTimestamp?: boolean;
+  /** Whether to show verbose output (full tool inputs/outputs) */
+  verbose?: boolean;
+  /** Whether to buffer tool_use events and wait for tool_result (default: true for streaming) */
+  buffered?: boolean;
 }
 
+/**
+ * Stateful event renderer that buffers tool_use events
+ * and displays them grouped with their tool_result
+ */
 export class EventRenderer {
+  private pendingToolUse = new Map<
+    string,
+    { toolUse: ToolUseData; prefix: string }
+  >();
+  private options: EventRendererOptions;
+  private lastEventType: string | null = null;
+  private frameworkDisplayName: string = "Agent";
+
+  constructor(options?: EventRendererOptions) {
+    this.options = options ?? {};
+  }
+
   /**
    * Render run started info
    * Called immediately after run is created, before polling events
@@ -54,10 +80,11 @@ export class EventRenderer {
   /**
    * Render a parsed event to console
    */
-  static render(event: ParsedEvent, options?: RenderOptions): void {
-    const timestampPrefix = options?.showTimestamp
-      ? `[${this.formatTimestamp(event.timestamp)}] `
+  render(event: ParsedEvent): void {
+    const timestampPrefix = this.options.showTimestamp
+      ? `[${EventRenderer.formatTimestamp(event.timestamp)}] `
       : "";
+
     switch (event.type) {
       case "init":
         this.renderInit(event, timestampPrefix);
@@ -66,10 +93,10 @@ export class EventRenderer {
         this.renderText(event, timestampPrefix);
         break;
       case "tool_use":
-        this.renderToolUse(event, timestampPrefix);
+        this.handleToolUse(event, timestampPrefix);
         break;
       case "tool_result":
-        this.renderToolResult(event, timestampPrefix);
+        this.handleToolResult(event, timestampPrefix);
         break;
       case "result":
         this.renderResult(event, timestampPrefix);
@@ -95,14 +122,18 @@ export class EventRenderer {
       if (result.artifact && Object.keys(result.artifact).length > 0) {
         console.log(`  Artifact:`);
         for (const [name, version] of Object.entries(result.artifact)) {
-          console.log(`    ${name}: ${chalk.dim(this.formatVersion(version))}`);
+          console.log(
+            `    ${name}: ${chalk.dim(EventRenderer.formatVersion(version))}`,
+          );
         }
       }
 
       if (result.volumes && Object.keys(result.volumes).length > 0) {
         console.log(`  Volumes:`);
         for (const [name, version] of Object.entries(result.volumes)) {
-          console.log(`    ${name}: ${chalk.dim(this.formatVersion(version))}`);
+          console.log(
+            `    ${name}: ${chalk.dim(EventRenderer.formatVersion(version))}`,
+          );
         }
       }
     }
@@ -122,12 +153,116 @@ export class EventRenderer {
     );
   }
 
-  private static renderInit(event: ParsedEvent, prefix: string): void {
+  /**
+   * Handle tool_use event - buffer it for later grouping with result (when buffered)
+   * or render immediately (when not buffered, e.g., historical log viewing)
+   */
+  private handleToolUse(event: ParsedEvent, prefix: string): void {
+    const toolUseId = String(event.data.toolUseId || "");
+    const tool = String(event.data.tool || "");
+    const input = (event.data.input as Record<string, unknown>) || {};
+    const toolUseData: ToolUseData = { tool, input };
+
+    // When buffered (default), store for later grouping
+    // When not buffered, render immediately
+    if (this.options.buffered !== false) {
+      this.pendingToolUse.set(toolUseId, { toolUse: toolUseData, prefix });
+    } else {
+      // Non-buffered: render tool_use header immediately
+      this.renderToolUseOnly(toolUseData, prefix);
+    }
+  }
+
+  /**
+   * Render a tool_use event without waiting for result (for historical log viewing)
+   */
+  private renderToolUseOnly(toolUse: ToolUseData, prefix: string): void {
+    // Add spacing before tool if previous was text
+    if (this.lastEventType === "text") {
+      console.log();
+    }
+
+    const cont = this.getContinuationPrefix();
+    const headerLines = formatToolHeader(toolUse);
+
+    // First line gets the bullet, rest get simple indent
+    for (let i = 0; i < headerLines.length; i++) {
+      if (i === 0) {
+        console.log(prefix + "● " + headerLines[i]);
+      } else {
+        console.log(cont + headerLines[i]);
+      }
+    }
+    console.log(); // Empty line after each tool_use
+    this.lastEventType = "tool";
+  }
+
+  /**
+   * Handle tool_result event - lookup buffered tool_use and render grouped
+   */
+  private handleToolResult(event: ParsedEvent, prefix: string): void {
+    const toolUseId = String(event.data.toolUseId || "");
+    const result = String(event.data.result || "");
+    const isError = Boolean(event.data.isError);
+
+    const pending = this.pendingToolUse.get(toolUseId);
+
+    if (pending) {
+      // Render grouped output
+      this.renderGroupedTool(pending.toolUse, { result, isError }, prefix);
+      this.pendingToolUse.delete(toolUseId);
+    }
+    // Skip orphan tool_results (no matching tool_use in buffer)
+  }
+
+  /**
+   * Get continuation prefix (simple indent, no timestamp alignment)
+   */
+  private getContinuationPrefix(): string {
+    return "  ";
+  }
+
+  /**
+   * Render grouped tool output (tool_use + tool_result together)
+   */
+  private renderGroupedTool(
+    toolUse: ToolUseData,
+    result: ToolResultData,
+    prefix: string,
+  ): void {
+    // Add spacing before tool if previous was text
+    if (this.lastEventType === "text") {
+      console.log();
+    }
+
+    const verbose = this.options.verbose ?? false;
+    const cont = this.getContinuationPrefix();
+
+    const headerLines = formatToolHeader(toolUse);
+    const resultLines = formatToolResult(toolUse, result, verbose);
+
+    // First line gets timestamp + bullet, rest get simple indent
+    for (let i = 0; i < headerLines.length; i++) {
+      if (i === 0) {
+        console.log(prefix + "● " + headerLines[i]);
+      } else {
+        console.log(cont + headerLines[i]);
+      }
+    }
+    for (const line of resultLines) {
+      console.log(cont + line);
+    }
+    console.log(); // Empty line after each group
+    this.lastEventType = "tool";
+  }
+
+  private renderInit(event: ParsedEvent, prefix: string): void {
     const frameworkStr = String(event.data.framework || "claude-code");
     const displayName = isSupportedFramework(frameworkStr)
       ? getFrameworkDisplayName(frameworkStr)
       : frameworkStr;
-    console.log(prefix + `[init] Starting ${displayName} agent`);
+    this.frameworkDisplayName = displayName;
+    console.log(prefix + chalk.bold(`▷ ${displayName} Started`));
     console.log(`  Session: ${chalk.dim(String(event.data.sessionId || ""))}`);
     if (event.data.model) {
       console.log(`  Model: ${chalk.dim(String(event.data.model))}`);
@@ -139,48 +274,28 @@ export class EventRenderer {
           : String(event.data.tools || ""),
       )}`,
     );
+    console.log();
+    this.lastEventType = "init";
   }
 
-  private static renderText(event: ParsedEvent, prefix: string): void {
+  private renderText(event: ParsedEvent, prefix: string): void {
     const text = String(event.data.text || "");
-    console.log(prefix + "[text] " + text);
+    // Text events get a bullet prefix
+    console.log(prefix + "● " + text);
+    this.lastEventType = "text";
   }
 
-  private static renderToolUse(event: ParsedEvent, prefix: string): void {
-    const tool = String(event.data.tool || "");
-    console.log(prefix + "[tool_use] " + tool);
-
-    // Show full input without truncation
-    const input = event.data.input as Record<string, unknown>;
-    if (input && typeof input === "object") {
-      for (const [key, value] of Object.entries(input)) {
-        if (value !== undefined && value !== null) {
-          const displayValue =
-            typeof value === "object"
-              ? JSON.stringify(value, null, 2)
-              : String(value);
-          console.log(`  ${key}: ${chalk.dim(displayValue)}`);
-        }
-      }
-    }
-  }
-
-  private static renderToolResult(event: ParsedEvent, prefix: string): void {
-    const isError = Boolean(event.data.isError);
-    const status = isError ? "Error" : "Completed";
-
-    console.log(prefix + "[tool_result] " + status);
-
-    // Show full result without truncation
-    const result = String(event.data.result || "");
-    console.log(`  ${chalk.dim(result)}`);
-  }
-
-  private static renderResult(event: ParsedEvent, prefix: string): void {
+  private renderResult(event: ParsedEvent, prefix: string): void {
+    console.log(); // Spacing before result
     const success = Boolean(event.data.success);
-    const status = success ? "✓ completed successfully" : "✗ failed";
 
-    console.log(prefix + "[result] " + status);
+    if (success) {
+      console.log(
+        prefix + chalk.bold(`◆ ${this.frameworkDisplayName} Completed`),
+      );
+    } else {
+      console.log(prefix + chalk.bold(`◆ ${this.frameworkDisplayName} Failed`));
+    }
 
     const durationMs = Number(event.data.durationMs || 0);
     const durationSec = (durationMs / 1000).toFixed(1);
@@ -210,6 +325,7 @@ export class EventRenderer {
         )}`,
       );
     }
+    this.lastEventType = "result";
   }
 
   /**
