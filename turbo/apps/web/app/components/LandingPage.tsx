@@ -1683,14 +1683,14 @@ export default function LandingPage() {
                                 <span className="text-[#827d77]">:</span>
                               </p>
                               <p className="m-0">
-                                {" "}
+                                {"  "}
                                 <span className="text-[#3b82f6]">
                                   201-hackernews
                                 </span>
                                 <span className="text-[#827d77]">:</span>
                               </p>
                               <p className="m-0">
-                                {" "}
+                                {"    "}
                                 <span className="text-[#3b82f6]">
                                   framework
                                 </span>
@@ -1700,7 +1700,7 @@ export default function LandingPage() {
                                 </span>
                               </p>
                               <p className="m-0">
-                                {" "}
+                                {"    "}
                                 <span className="text-[#3b82f6]">
                                   instructions
                                 </span>
@@ -1710,12 +1710,12 @@ export default function LandingPage() {
                                 </span>
                               </p>
                               <p className="m-0">
-                                {" "}
+                                {"    "}
                                 <span className="text-[#3b82f6]">skills</span>
                                 <span className="text-[#827d77]">:</span>
                               </p>
                               <p className="m-0">
-                                {" "}
+                                {"      "}
                                 <span className="text-[#827d77]">-</span>{" "}
                                 <span className="text-[#06b6d4]">
                                   https://github.com/vm0-ai/vm0-skills/tree/main/hackernews
@@ -1814,14 +1814,14 @@ export default function LandingPage() {
                               <span className="text-[#827d77]">:</span>
                             </p>
                             <p className="m-0">
-                              {" "}
+                              {"  "}
                               <span className="text-[#3b82f6]">
                                 tiktok-influencer
                               </span>
                               <span className="text-[#827d77]">:</span>
                             </p>
                             <p className="m-0">
-                              {" "}
+                              {"    "}
                               <span className="text-[#3b82f6]">
                                 description
                               </span>
@@ -1832,7 +1832,7 @@ export default function LandingPage() {
                               </span>
                             </p>
                             <p className="m-0">
-                              {" "}
+                              {"    "}
                               <span className="text-[#3b82f6]">framework</span>
                               <span className="text-[#827d77]">:</span>{" "}
                               <span className="text-foreground">
@@ -1840,7 +1840,7 @@ export default function LandingPage() {
                               </span>
                             </p>
                             <p className="m-0">
-                              {" "}
+                              {"    "}
                               <span className="text-[#3b82f6]">
                                 instructions
                               </span>
@@ -1848,33 +1848,33 @@ export default function LandingPage() {
                               <span className="text-foreground">AGENTS.md</span>
                             </p>
                             <p className="m-0">
-                              {" "}
+                              {"    "}
                               <span className="text-[#3b82f6]">skills</span>
                               <span className="text-[#827d77]">:</span>
                             </p>
                             <p className="m-0">
-                              {" "}
+                              {"      "}
                               <span className="text-[#827d77]">-</span>{" "}
                               <span className="text-[#06b6d4]">
                                 https://github.com/vm0-ai/vm0-skills/tree/main/bright-data
                               </span>
                             </p>
                             <p className="m-0">
-                              {" "}
+                              {"      "}
                               <span className="text-[#827d77]">-</span>{" "}
                               <span className="text-[#06b6d4]">
                                 https://github.com/vm0-ai/vm0-skills/tree/main/notion
                               </span>
                             </p>
                             <p className="m-0">
-                              {" "}
+                              {"    "}
                               <span className="text-[#3b82f6]">
                                 environment
                               </span>
                               <span className="text-[#827d77]">:</span>
                             </p>
                             <p className="m-0">
-                              {" "}
+                              {"      "}
                               <span className="text-[#3b82f6]">
                                 BRIGHTDATA_API_KEY
                               </span>
@@ -1892,7 +1892,7 @@ export default function LandingPage() {
                               </span>
                             </p>
                             <p className="m-0">
-                              {" "}
+                              {"      "}
                               <span className="text-[#3b82f6]">
                                 NOTION_API_KEY
                               </span>
@@ -2003,14 +2003,14 @@ export default function LandingPage() {
                               <span className="text-[#827d77]">:</span>
                             </p>
                             <p className="m-0">
-                              {" "}
+                              {"  "}
                               <span className="text-[#3b82f6]">
                                 content-farm
                               </span>
                               <span className="text-[#827d77]">:</span>
                             </p>
                             <p className="m-0">
-                              {" "}
+                              {"    "}
                               <span className="text-[#3b82f6]">
                                 description
                               </span>
@@ -2021,7 +2021,7 @@ export default function LandingPage() {
                               </span>
                             </p>
                             <p className="m-0">
-                              {" "}
+                              {"    "}
                               <span className="text-[#3b82f6]">framework</span>
                               <span className="text-[#827d77]">:</span>{" "}
                               <span className="text-foreground">
@@ -2029,7 +2029,7 @@ export default function LandingPage() {
                               </span>
                             </p>
                             <p className="m-0">
-                              {" "}
+                              {"    "}
                               <span className="text-[#3b82f6]">
                                 instructions
                               </span>
@@ -2037,40 +2037,40 @@ export default function LandingPage() {
                               <span className="text-foreground">AGENTS.md</span>
                             </p>
                             <p className="m-0">
-                              {" "}
+                              {"    "}
                               <span className="text-[#3b82f6]">skills</span>
                               <span className="text-[#827d77]">:</span>
                             </p>
                             <p className="m-0">
-                              {" "}
+                              {"      "}
                               <span className="text-[#827d77]">-</span>{" "}
                               <span className="text-[#06b6d4]">
                                 https://github.com/vm0-ai/vm0-skills/tree/main/rss-fetch
                               </span>
                             </p>
                             <p className="m-0">
-                              {" "}
+                              {"      "}
                               <span className="text-[#827d77]">-</span>{" "}
                               <span className="text-[#06b6d4]">
                                 https://github.com/vm0-ai/vm0-skills/tree/main/fal.ai
                               </span>
                             </p>
                             <p className="m-0">
-                              {" "}
+                              {"      "}
                               <span className="text-[#827d77]">-</span>{" "}
                               <span className="text-[#06b6d4]">
                                 https://github.com/vm0-ai/vm0-skills/tree/main/dev.to
                               </span>
                             </p>
                             <p className="m-0">
-                              {" "}
+                              {"    "}
                               <span className="text-[#3b82f6]">
                                 environment
                               </span>
                               <span className="text-[#827d77]">:</span>
                             </p>
                             <p className="m-0">
-                              {" "}
+                              {"      "}
                               <span className="text-[#3b82f6]">FAL_KEY</span>
                               <span className="text-[#827d77]">:</span>{" "}
                               <span className="text-foreground">$</span>
@@ -2086,7 +2086,7 @@ export default function LandingPage() {
                               </span>
                             </p>
                             <p className="m-0">
-                              {" "}
+                              {"      "}
                               <span className="text-[#3b82f6]">
                                 DEVTO_API_KEY
                               </span>
@@ -2197,14 +2197,14 @@ export default function LandingPage() {
                                 <span className="text-[#827d77]">:</span>
                               </p>
                               <p className="m-0">
-                                {" "}
+                                {"  "}
                                 <span className="text-[#3b82f6]">
                                   daily-data-report
                                 </span>
                                 <span className="text-[#827d77]">:</span>
                               </p>
                               <p className="m-0">
-                                {" "}
+                                {"    "}
                                 <span className="text-[#3b82f6]">
                                   description
                                 </span>
@@ -2216,7 +2216,7 @@ export default function LandingPage() {
                                 </span>
                               </p>
                               <p className="m-0">
-                                {" "}
+                                {"    "}
                                 <span className="text-[#3b82f6]">
                                   framework
                                 </span>
@@ -2226,7 +2226,7 @@ export default function LandingPage() {
                                 </span>
                               </p>
                               <p className="m-0">
-                                {" "}
+                                {"    "}
                                 <span className="text-[#3b82f6]">
                                   instructions
                                 </span>
@@ -2236,47 +2236,47 @@ export default function LandingPage() {
                                 </span>
                               </p>
                               <p className="m-0">
-                                {" "}
+                                {"    "}
                                 <span className="text-[#3b82f6]">skills</span>
                                 <span className="text-[#827d77]">:</span>
                               </p>
                               <p className="m-0">
-                                {" "}
+                                {"      "}
                                 <span className="text-[#827d77]">-</span>{" "}
                                 <span className="text-[#06b6d4]">
                                   https://github.com/vm0-ai/vm0-skills/tree/main/github
                                 </span>
                               </p>
                               <p className="m-0">
-                                {" "}
+                                {"      "}
                                 <span className="text-[#827d77]">-</span>{" "}
                                 <span className="text-[#06b6d4]">
                                   https://github.com/vm0-ai/vm0-skills/tree/main/plausible
                                 </span>
                               </p>
                               <p className="m-0">
-                                {" "}
+                                {"      "}
                                 <span className="text-[#827d77]">-</span>{" "}
                                 <span className="text-[#06b6d4]">
                                   https://github.com/vm0-ai/vm0-skills/tree/main/notion
                                 </span>
                               </p>
                               <p className="m-0">
-                                {" "}
+                                {"      "}
                                 <span className="text-[#827d77]">-</span>{" "}
                                 <span className="text-[#06b6d4]">
                                   https://github.com/vm0-ai/vm0-skills/tree/main/slack
                                 </span>
                               </p>
                               <p className="m-0">
-                                {" "}
+                                {"    "}
                                 <span className="text-[#3b82f6]">
                                   environment
                                 </span>
                                 <span className="text-[#827d77]">:</span>
                               </p>
                               <p className="m-0">
-                                {" "}
+                                {"      "}
                                 <span className="text-[#3b82f6]">
                                   GITHUB_TOKEN
                                 </span>
@@ -2294,7 +2294,7 @@ export default function LandingPage() {
                                 </span>
                               </p>
                               <p className="m-0">
-                                {" "}
+                                {"      "}
                                 <span className="text-[#3b82f6]">
                                   PLAUSIBLE_API_KEY
                                 </span>
@@ -2312,7 +2312,7 @@ export default function LandingPage() {
                                 </span>
                               </p>
                               <p className="m-0">
-                                {" "}
+                                {"      "}
                                 <span className="text-[#3b82f6]">
                                   PLAUSIBLE_SITE_ID
                                 </span>
@@ -2330,7 +2330,7 @@ export default function LandingPage() {
                                 </span>
                               </p>
                               <p className="m-0">
-                                {" "}
+                                {"      "}
                                 <span className="text-[#3b82f6]">
                                   NOTION_API_KEY
                                 </span>
@@ -2348,7 +2348,7 @@ export default function LandingPage() {
                                 </span>
                               </p>
                               <p className="m-0">
-                                {" "}
+                                {"      "}
                                 <span className="text-[#3b82f6]">
                                   SLACK_BOT_TOKEN
                                 </span>
@@ -2366,7 +2366,7 @@ export default function LandingPage() {
                                 </span>
                               </p>
                               <p className="m-0">
-                                {" "}
+                                {"      "}
                                 <span className="text-[#3b82f6]">
                                   SLACK_CHANNEL_ID
                                 </span>
@@ -2384,7 +2384,7 @@ export default function LandingPage() {
                                 </span>
                               </p>
                               <p className="m-0">
-                                {" "}
+                                {"      "}
                                 <span className="text-[#3b82f6]">
                                   CLERK_SECRET_KEY
                                 </span>
@@ -3945,7 +3945,10 @@ export default function LandingPage() {
                 >
                   Get started
                 </Link>
-                <button
+                <a
+                  href="https://github.com/vm0-ai/vm0"
+                  target="_blank"
+                  rel="noreferrer"
                   className="bg-[rgba(255,255,255,0.6)] dark:bg-[rgba(25,25,27,0.6)] border border-[#ed4e01] dark:border-[#ff6a1f] hover:bg-white dark:hover:bg-[#292a2e] text-[#ed4e01] dark:text-[#ff6a1f] px-[24px] py-[12px] rounded-[10px] font-medium text-[16px] sm:text-[18px] leading-[28px] w-full sm:w-[160px] flex items-center justify-center gap-[10px] transition-colors"
                   style={{ fontFamily: "var(--font-noto-sans)" }}
                 >
@@ -3956,7 +3959,7 @@ export default function LandingPage() {
                     height="24"
                   />
                   GitHub
-                </button>
+                </a>
               </div>
             </div>
           </div>
