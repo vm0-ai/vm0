@@ -386,6 +386,27 @@
       "when": 1767900000000,
       "tag": "0054_add_model_providers",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1768000000000,
+      "tag": "0055_drop_scope_display_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1768100000000,
+      "tag": "0056_remove_openai_api_key_providers",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1768200000000,
+      "tag": "0057_add_schedule_retry_started_at",
+      "breakpoints": true
     }
   ]
 }
