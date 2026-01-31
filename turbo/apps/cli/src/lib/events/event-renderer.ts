@@ -208,10 +208,8 @@ export class EventRenderer {
       // Render grouped output
       this.renderGroupedTool(toolUse, { result, isError }, prefix);
       this.pendingToolUse.delete(toolUseId);
-    } else {
-      // Fallback: tool_result without matching tool_use
-      this.renderOrphanToolResult({ result, isError }, prefix);
     }
+    // Skip orphan tool_results (no matching tool_use in buffer)
   }
 
   /**
@@ -245,25 +243,6 @@ export class EventRenderer {
     }
     console.log(); // Empty line after each group
     this.lastEventType = "tool";
-  }
-
-  /**
-   * Render a tool_result that has no matching tool_use (edge case)
-   */
-  private renderOrphanToolResult(result: ToolResultData, prefix: string): void {
-    const statusIcon = result.isError ? chalk.red("✗") : chalk.green("✓");
-    console.log(
-      prefix +
-        `[tool_result] ${statusIcon} ${result.isError ? "Error" : "Completed"}`,
-    );
-
-    if (this.options.verbose && result.result) {
-      const lines = result.result.split("\n");
-      for (const line of lines) {
-        console.log(`  ${chalk.dim(line)}`);
-      }
-    }
-    console.log();
   }
 
   private renderInit(event: ParsedEvent, prefix: string): void {
