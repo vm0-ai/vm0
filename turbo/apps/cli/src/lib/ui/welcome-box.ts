@@ -1,23 +1,39 @@
 import chalk from "chalk";
 
-// Orange gradient colors (light to dark, top to bottom)
+// Orange gradient colors (light to dark, top to bottom) - 8 colors for 8 lines
 const gradientColors = [
-  chalk.hex("#FFAB5E"), // Line 1 - lightest
-  chalk.hex("#FF9642"), // Line 2
-  chalk.hex("#FF8228"), // Line 3
-  chalk.hex("#FF6D0A"), // Line 4
-  chalk.hex("#E85D00"), // Line 5
-  chalk.hex("#CC4E00"), // Line 6 - darkest
+  chalk.hex("#FFBF7A"), // Line 1 - lightest
+  chalk.hex("#FFAB5E"), // Line 2
+  chalk.hex("#FF9642"), // Line 3
+  chalk.hex("#FF8228"), // Line 4
+  chalk.hex("#FF6D0A"), // Line 5
+  chalk.hex("#E85D00"), // Line 6
+  chalk.hex("#CC4E00"), // Line 7
+  chalk.hex("#B34400"), // Line 8 - darkest
 ];
 
 /**
- * VM0 ASCII art logo lines
+ * VM0 icon
  */
-const vm0LogoLines = [
+const vm0IconLines = [
+  "     @@@@     ",
+  "  @@@@@@@@@@  ",
+  "#@@@@@@@@@@@@*",
+  "#####@@@@  / *",
+  "#######   /  *",
+  "#######  /  **",
+  "  ##### /***  ",
+  "     ##**     ",
+];
+
+/**
+ * VM0 ASCII art text lines
+ */
+const vm0TextLines = [
   "██╗   ██╗███╗   ███╗ ██████╗ ",
-  "██║   ██║████╗ ████║██╔═══██╗",
-  "██║   ██║██╔████╔██║██║   ██║",
-  "╚██╗ ██╔╝██║╚██╔╝██║██║   ██║",
+  "██║   ██║████╗ ████║██╔═████╗",
+  "██║   ██║██╔████╔██║██║██╔██║",
+  "╚██╗ ██╔╝██║╚██╔╝██║████╔╝██║",
   " ╚████╔╝ ██║ ╚═╝ ██║╚██████╔╝",
   "  ╚═══╝  ╚═╝     ╚═╝ ╚═════╝ ",
 ];
@@ -27,10 +43,13 @@ const vm0LogoLines = [
  */
 function renderVm0Banner(): void {
   console.log();
-  for (let i = 0; i < vm0LogoLines.length; i++) {
+  for (let i = 0; i < vm0IconLines.length; i++) {
     const color =
       gradientColors[i] ?? gradientColors[gradientColors.length - 1];
-    console.log(`  ${color?.(vm0LogoLines[i])}`);
+    const icon = vm0IconLines[i];
+    // Text lines are offset by 1 (centered vertically with icon)
+    const text = vm0TextLines[i - 1] ?? "";
+    console.log(`  ${color?.(icon)}   ${text ? color?.(text) : ""}`);
   }
   console.log();
 }
