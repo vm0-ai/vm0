@@ -1,4 +1,4 @@
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useLoadable, useSet } from "ccstate-react";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,7 @@ import {
   setTokenValue$,
   saveOnboardingConfig$,
   canSaveOnboarding$,
+  actionPromise$,
 } from "../../signals/onboarding.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -33,7 +34,9 @@ export function OnboardingModal() {
   const tokenValue = useGet(tokenValue$);
   const setTokenValue = useSet(setTokenValue$);
   const saveConfig = useSet(saveOnboardingConfig$);
-  const canSave = useGet(canSaveOnboarding$);
+  const actionPromise = useLoadable(actionPromise$);
+  const canSave =
+    useGet(canSaveOnboarding$) && actionPromise.state !== "loading";
   const pageSignal = useGet(pageSignal$);
 
   return (

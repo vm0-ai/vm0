@@ -130,30 +130,43 @@ export const closeOnboardingModal$ = command(
  */
 export const saveOnboardingConfig$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    // Get token value
-    const tokenValue = get(internalTokenValue$);
-    if (!tokenValue.trim()) {
-      return;
-    }
+    const promise = (async () => {
+      // Get token value
+      const tokenValue = get(internalTokenValue$);
+      if (!tokenValue.trim()) {
+        return;
+      }
 
-    // Create scope if it doesn't exist
-    const scopeExists = await get(hasScope$);
-    signal.throwIfAborted();
-
-    if (!scopeExists) {
-      await set(initScope$, signal);
+      // Create scope if it doesn't exist
+      const scopeExists = await get(hasScope$);
       signal.throwIfAborted();
-    }
 
-    // Create model provider with OAuth token
-    await set(createModelProvider$, {
-      type: "claude-code-oauth-token",
-      credential: tokenValue.trim(),
-    });
+      if (!scopeExists) {
+        await set(initScope$, signal);
+        signal.throwIfAborted();
+      }
+
+      // Create model provider with OAuth token
+      await set(createModelProvider$, {
+        type: "claude-code-oauth-token",
+        credential: tokenValue.trim(),
+      });
+      signal.throwIfAborted();
+
+      // Clear token and close modal
+      set(internalTokenValue$, "");
+      set(internalShowOnboardingModal$, false);
+    })();
+
+    set(internalActionPromise$, promise);
+
+    await promise;
     signal.throwIfAborted();
-
-    // Clear token and close modal
-    set(internalTokenValue$, "");
-    set(internalShowOnboardingModal$, false);
   },
 );
+
+const internalActionPromise$ = state<Promise<unknown> | null>(null);
+
+export const actionPromise$ = computed((get) => {
+  return get(internalActionPromise$);
+});
