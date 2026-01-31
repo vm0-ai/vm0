@@ -161,9 +161,7 @@ export class IPRegistry {
         try {
           const pidStr = fs.readFileSync(this.config.lockPath, "utf-8");
           const pid = parseInt(pidStr, 10);
-          try {
-            process.kill(pid, 0);
-          } catch {
+          if (!isProcessRunning(pid)) {
             fs.unlinkSync(this.config.lockPath);
             continue;
           }
