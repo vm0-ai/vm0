@@ -14,7 +14,7 @@ import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import * as fs from "node:fs";
 import { createLogger } from "../logger.js";
-import { VM0_RUN_DIR, paths } from "../paths.js";
+import { VM0_RUN_DIR, runtimePaths } from "../paths.js";
 
 const execAsync = promisify(exec);
 const logger = createLogger("IP Pool");
@@ -22,7 +22,7 @@ const logger = createLogger("IP Pool");
 /**
  * Configuration constants
  */
-const REGISTRY_FILE_PATH = paths.ipRegistry;
+const REGISTRY_FILE_PATH = runtimePaths.ipRegistry;
 const BRIDGE_NAME = "vm0br0";
 
 /**
@@ -88,7 +88,7 @@ async function ensureRunDir(): Promise<void> {
 async function withLock<T>(fn: () => Promise<T>): Promise<T> {
   await ensureRunDir();
 
-  const lockMarker = paths.ipPoolLock;
+  const lockMarker = runtimePaths.ipPoolLock;
   const startTime = Date.now();
   let lockAcquired = false;
 
