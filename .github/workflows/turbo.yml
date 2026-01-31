@@ -122,37 +122,62 @@ jobs:
           # Check file sizes
           ./scripts/check-file-size.sh $FILTERED_FILES
 
-  lint:
+  # Lint jobs - split into 4 parallel jobs for faster CI
+  lint-eslint:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260129
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
-
-      # Run lint, check-types, prettier and knip directly (not via lefthook)
-      # lefthook's turbo filter uses git diff which doesn't work in CI
       - name: Build Core Package
         working-directory: turbo
         run: pnpm turbo run build --filter=@vm0/core
-
       - name: Lint
         working-directory: turbo
         run: pnpm lint
 
+  lint-types:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
+      - name: Build Core Package
+        working-directory: turbo
+        run: pnpm turbo run build --filter=@vm0/core
       - name: Type Check
         working-directory: turbo
         run: pnpm check-types
 
+  lint-format:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
       - name: Prettier
         working-directory: turbo
         run: pnpm prettier --check .
 
+  lint-knip:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
+      - name: Build Core Package
+        working-directory: turbo
+        run: pnpm turbo run build --filter=@vm0/core
       - name: Knip
         working-directory: turbo
         run: pnpm knip
 
-  test:
+  # Test jobs - split into 4 parallel jobs by project
+  test-web:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260129
@@ -166,22 +191,18 @@ jobs:
           --health-retries 5
         env:
           POSTGRES_HOST_AUTH_METHOD: trust
-
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
-
       - name: Build Core Package
         working-directory: turbo
         run: pnpm turbo run build --filter=@vm0/core
-
       - name: Run Database Migrations
         working-directory: turbo
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
         run: pnpm --filter web db:migrate
-
-      - name: Test
+      - name: Test Web
         working-directory: turbo
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
@@ -195,7 +216,51 @@ jobs:
           R2_USER_STORAGES_BUCKET_NAME: ${{ secrets.CI_R2_USER_STORAGES_BUCKET_NAME }}
           SECRETS_ENCRYPTION_KEY: ${{ secrets.CI_SECRETS_ENCRYPTION_KEY }}
           AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
-        run: pnpm test
+        run: pnpm vitest run --project=web
+
+  test-cli:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
+      - name: Build Core Package
+        working-directory: turbo
+        run: pnpm turbo run build --filter=@vm0/core
+      - name: Test CLI
+        working-directory: turbo
+        run: pnpm vitest run --project=@vm0/cli
+
+  test-platform:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
+      - name: Build Core Package
+        working-directory: turbo
+        run: pnpm turbo run build --filter=@vm0/core
+      - name: Test Platform
+        working-directory: turbo
+        run: pnpm vitest run --project=@vm0/platform
+
+  test-other:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260129
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
+      - name: Build Core Package
+        working-directory: turbo
+        run: pnpm turbo run build --filter=@vm0/core
+      - name: Build vsock-agent (for runner tests)
+        run: cargo build --manifest-path crates/Cargo.toml -p vsock-agent
+      - name: Test Other Packages
+        working-directory: turbo
+        run: pnpm vitest run --project=@vm0/runner --project=@vm0/core --project=@vm0/ui --project=site
 
   # Deploy web application with database
   deploy-web:
@@ -444,7 +509,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260129
-    needs: [prepare, e2e-auth, deploy-web, lint, test]
+    needs: [prepare, e2e-auth, deploy-web, lint-eslint, lint-types, lint-format, lint-knip, test-web, test-cli, test-platform, test-other]
     if: |
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
