@@ -248,7 +248,7 @@ function getToolResultSummary(
 
     case "WebFetch": {
       const lineCount = countLines(result);
-      return `Fetched ${lineCount} ${pluralize(lineCount, "line", "lines")}`;
+      return `${lineCount} ${pluralize(lineCount, "line", "lines")}`;
     }
 
     case "WebSearch": {
