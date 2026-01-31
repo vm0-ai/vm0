@@ -138,7 +138,7 @@ export function formatToolResult(
       const remaining = resultLines.length - previewCount;
       if (remaining > 0) {
         lines.push(
-          `  ${chalk.dim(`+${remaining} ${pluralize(remaining, "line", "lines")} (--verbose to expand)`)}`,
+          `  ${chalk.dim(`… +${remaining} ${pluralize(remaining, "line", "lines")} (--verbose to see all)`)}`,
         );
       }
     }
