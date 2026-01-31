@@ -9,7 +9,7 @@ description: Complete reference for all VM0 CLI commands
 | ------- | ----------- | ------- |
 | `vm0 info` | Display environment information | - |
 | `vm0 init` | Initialize a new VM0 project with `vm0.yaml` | `-f, --force`, `-n, --name <name>` |
-| `vm0 onboard` | Guided setup for new VM0 users | `-y, --yes`, `--method <claude\|manual>` |
+| `vm0 onboard` | Guided setup for new VM0 users | `-y, --yes`, `--name <name>` |
 | `vm0 setup-claude` | Install vm0-cli skill for Claude | - |
 
 ## Authentication
@@ -85,6 +85,8 @@ Scopes are namespaces for organizing agents.
 | `vm0 run <agent-name> <prompt>` | Run an agent | See options table below |
 | `vm0 run continue <session-id> <prompt>` | Continue from session (uses latest artifact) | `--env-file`, `--vars`, `--secrets`, `--volume-version`, `--model-provider` |
 | `vm0 run resume <checkpoint-id> <prompt>` | Resume from checkpoint (uses snapshot data) | `--env-file`, `--vars`, `--secrets`, `--volume-version`, `--model-provider` |
+| `vm0 run list` | List active runs (pending and running) | Alias: `ls` |
+| `vm0 run kill <run-id>` | Kill (cancel) a pending or running run | - |
 | `vm0 cook [prompt]` | Prepare and execute agent from `vm0.yaml` | `--env-file <path>`, `-y, --yes` |
 | `vm0 cook logs` | View logs from the last cook run | Same as `vm0 logs` options |
 | `vm0 cook continue <prompt>` | Continue from last session | `--env-file <path>` |
