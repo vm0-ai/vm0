@@ -26,7 +26,7 @@
     "oxlint": "^1.14.0",
     "tsx": "^4.20.6",
     "typescript": "5.9.2",
-    "vitest": "^3.2.4"
+    "vitest": "^4.0.18"
   },
   "dependencies": {
     "@ts-rest/core": "3.53.0-rc.1",
