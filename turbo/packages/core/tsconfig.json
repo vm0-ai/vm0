@@ -4,6 +4,11 @@
     "lib": ["ES2022"],
     "types": ["vitest/globals"]
   },
-  "include": ["src/**/*", "scripts/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src/**/*"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/sandbox/scripts/src",
+    "src/sandbox/scripts/__tests__"
+  ]
 }

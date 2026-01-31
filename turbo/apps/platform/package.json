@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "lint": "oxlint && eslint .",
-    "check-types": "tsc --noEmit"
+    "check-types": "tsc --noEmit && tsc --noEmit -p custom-eslint/tsconfig.json"
   },
   "dependencies": {
     "@clerk/clerk-js": "^5.92.1",
@@ -46,6 +46,6 @@
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.54.0",
     "vite": "^6.3.5",
-    "vitest": "^4.0.18"
+    "vitest": "^3.2.4"
   }
 }
