@@ -223,16 +223,9 @@ export const logsCommand = new Command()
         );
         const order: "asc" | "desc" = isHead ? "asc" : "desc";
 
-        // Build platform URL (fail fast if invalid)
+        // Build platform URL for agent logs
         const apiUrl = await getApiUrl();
-        let platformUrl: string;
-        try {
-          platformUrl = buildPlatformLogsUrl(apiUrl, runId);
-        } catch {
-          console.error(chalk.red("Failed to build platform URL"));
-          console.error(chalk.dim(`  API URL: ${apiUrl}`));
-          process.exit(1);
-        }
+        const platformUrl = buildPlatformLogsUrl(apiUrl, runId);
 
         switch (logType) {
           case "agent":
