@@ -3,7 +3,7 @@ title: Overview
 description: Configure different model providers for your agents
 ---
 
-VM0 supports two agent frameworks: **Claude Code** and **Codex**. You can also use alternative model providers with Claude Code.
+VM0 uses **Claude Code** as the primary agent framework. You can also use alternative model providers with Claude Code.
 
 ## Quick Start with Model Provider
 
@@ -57,7 +57,7 @@ When you run an agent:
 
 ## Framework Selection
 
-VM0 supports two agent frameworks. If you've configured a model provider above, authentication is handled automatically.
+Claude Code is the default and recommended agent framework. If you've configured a model provider above, authentication is handled automatically.
 
 ### Claude Code (Default)
 
@@ -71,30 +71,10 @@ agents:
     framework: claude-code # [!code highlight]
 ```
 
-### Codex
-
-Codex uses OpenAI's models:
-
-```yaml title="vm0.yaml"
-version: "1.0"
-
-agents:
-  my-agent:
-    framework: codex # [!code highlight]
-    environment:
-      OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}" # [!code highlight]
-```
-
-Run with your API key:
-
-```bash
-vm0 run my-agent "your prompt" --secrets OPENAI_API_KEY=sk-xxx
-```
-
-## Alternative Model Providers (Claude Code only)
+## Alternative Model Providers
 
 <Callout type="warning">
-Alternative model providers require manual configuration and are only supported with Claude Code.
+Alternative model providers require manual configuration.
 </Callout>
 
 If you need to use providers other than Anthropic directly (like OpenRouter or DeepSeek), configure them manually in your `vm0.yaml`:

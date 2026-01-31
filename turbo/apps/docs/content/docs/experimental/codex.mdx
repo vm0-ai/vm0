@@ -1,0 +1,60 @@
+---
+title: Codex Framework
+description: Use OpenAI's Codex as your agent framework
+---
+
+<Callout type="warning">
+  This is an experimental feature. The configuration and behavior may change in future releases.
+</Callout>
+
+Codex is an experimental agent framework that uses OpenAI's models. Unlike Claude Code, Codex requires manual API key configuration and does not support the model provider system.
+
+## Configuration
+
+To use Codex, set the `framework` field to `codex` and provide your OpenAI API key:
+
+```yaml title="vm0.yaml"
+version: "1.0"
+
+agents:
+  my-agent:
+    framework: codex # [!code highlight]
+    instructions: AGENTS.md
+    environment:
+      OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}" # [!code highlight]
+```
+
+## Running Your Agent
+
+Run with your API key passed as a secret:
+
+```bash
+vm0 run my-agent "your prompt" --secrets OPENAI_API_KEY=sk-xxx
+```
+
+## Instructions
+
+Codex loads instructions from a different location than Claude Code:
+
+| Framework | Instructions Path |
+|-----------|------------------|
+| Claude Code | `~/.claude/CLAUDE.md` |
+| Codex | `~/.codex/AGENTS.md` |
+
+When you specify an `instructions` file in your `vm0.yaml`, VM0 automatically mounts it to the correct location based on your framework.
+
+## Limitations
+
+Codex has some limitations compared to Claude Code:
+
+- **No model provider support** - You cannot use `vm0 model-provider setup` with Codex. You must pass the API key manually.
+- **Manual secret passing** - The `OPENAI_API_KEY` must be provided via the `--secrets` flag on every run.
+- **Experimental status** - The feature may have breaking changes in future releases.
+
+## Getting an API Key
+
+To use Codex, you need an OpenAI API key:
+
+1. Go to [OpenAI Platform](https://platform.openai.com/api-keys)
+2. Create a new API key
+3. Use it with the `--secrets` flag when running your agent

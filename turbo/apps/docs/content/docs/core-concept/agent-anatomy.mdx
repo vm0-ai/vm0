@@ -30,13 +30,13 @@ This scenario has many parallels with a VM0 Agent:
 
 `} />
 
-The **Agent Provider** (Claude Code or Codex) is a capable worker, and **Skills** give the agent specialized expertise in specific domains, just like the finance expertise Joseph has. The **Sandbox** is like Joseph's computer with pre-installed software. And **Instruction** is the work plan that tells the agent what to do.
+The **Agent Provider** (Claude Code) is a capable worker, and **Skills** give the agent specialized expertise in specific domains, just like the finance expertise Joseph has. The **Sandbox** is like Joseph's computer with pre-installed software. And **Instruction** is the work plan that tells the agent what to do.
 
 ## Sandbox
 
 The Sandbox provides the runtime environment for your agent. It includes:
 
-- The Agent Provider (Claude Code or Codex)
+- The Agent Provider (Claude Code)
 - System tools and dependencies
 - Base configuration
 
@@ -44,7 +44,7 @@ VM0 prepares your sandbox with the appropriate runtime environment for your prov
 
 ## Skills & Instructions
 
-When you run an agent, VM0 packages your skills and instructions and mounts them into the sandbox at the appropriate location for the agent provider (`~/.claude` for Claude Code, `~/.codex` for Codex).
+When you run an agent, VM0 packages your skills and instructions and mounts them into the sandbox at `~/.claude`.
 
 - **[Instruction](/docs/core-concept/instructions)** - Defines what the agent should do (via `AGENTS.md` or `CLAUDE.md`)
 - **[Skills](/docs/core-concept/skills)** - Reusable packages that add domain-specific capabilities, like [Firecrawl](/docs/agent-skills/firecrawl), [Notion](/docs/agent-skills/notion), or [Create Slides](https://github.com/anthropics/skills/tree/main/skills/pptx)
