@@ -60,7 +60,7 @@ teardown() {
     run $CLI_COMMAND run "$AGENT_NAME" "echo 'hello world' && pwd"
 
     assert_success
-    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "● Bash("
     assert_output --partial "hello world"
     assert_output --partial "[result]"
 
@@ -139,7 +139,7 @@ teardown() {
     run $CLI_COMMAND run continue "$SESSION_ID" "echo 'continued from session'"
 
     assert_success
-    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "● Bash("
     assert_output --partial "continued from session"
 
     echo "# Verified: Continue works from session without artifact"

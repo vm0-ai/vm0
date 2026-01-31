@@ -106,7 +106,7 @@ teardown_file() {
         "echo 'agent-created' > agent.txt && echo 200 > counter.txt"
 
     assert_success
-    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "● Bash("
     assert_output --partial "[result]"
     assert_output --partial "Checkpoint:"
     assert_output --partial "Session:"
@@ -144,7 +144,7 @@ teardown_file() {
     run $CLI_COMMAND run continue "$SESSION_ID" "ls && cat counter.txt"
 
     assert_success
-    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "● Bash("
 
     # Verify LATEST version is used (not checkpoint version)
     # Should see external.txt (added after checkpoint)
@@ -250,7 +250,7 @@ teardown_file() {
         "echo 'initial run' && cat testfile.txt"
 
     assert_success
-    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "● Bash("
     assert_output --partial "initial-content"
     assert_output --partial "Session:"
 
@@ -282,7 +282,7 @@ teardown_file() {
     run $CLI_COMMAND run continue "$SESSION_ID" "cat testfile.txt"
 
     assert_success
-    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "● Bash("
 
     # Should see updated content (latest artifact version)
     assert_output --partial "updated-content"
@@ -370,7 +370,7 @@ EOF
 
     # Should succeed - the secret was loaded from environment variable
     assert_success
-    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "● Bash("
 
     # Verify the run completed successfully (not failed due to missing secrets)
     refute_output --partial "Missing required secrets"
@@ -457,7 +457,7 @@ EOF
 
     # Should succeed - the secret was loaded from environment variable
     assert_success
-    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "● Bash("
 
     # Verify the run completed successfully (not failed due to missing secrets)
     refute_output --partial "Missing required secrets"

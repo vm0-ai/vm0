@@ -134,7 +134,7 @@ teardown_file() {
         "cat /home/user/data/data.txt"
 
     assert_success
-    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "● Bash("
 
     # Should see version-1 content (the overridden version)
     assert_output --partial "version-1"
@@ -221,7 +221,7 @@ teardown_file() {
         "cat /home/user/data/data.txt"
 
     assert_success
-    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "● Bash("
 
     # Should see override version content (not checkpoint version)
     assert_output --partial "override-version"
@@ -306,7 +306,7 @@ teardown_file() {
         "cat /home/user/data/data.txt"
 
     assert_success
-    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "● Bash("
 
     # Should see initial version content (the overridden version)
     assert_output --partial "initial-volume-content"

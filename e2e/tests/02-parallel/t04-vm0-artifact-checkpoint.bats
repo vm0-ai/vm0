@@ -94,7 +94,7 @@ teardown_file() {
     assert_success
 
     # Verify mock-claude execution events
-    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "● Bash("
     assert_output --partial "echo 'created by agent'"
     assert_output --partial "[result]"
     assert_output --partial "Checkpoint:"
@@ -145,7 +145,7 @@ teardown_file() {
     assert_success
 
     # Verify mock-claude execution events for resume
-    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "● Bash("
     assert_output --partial "ls && cat counter.txt"
 
     # Verify checkpoint version is restored:

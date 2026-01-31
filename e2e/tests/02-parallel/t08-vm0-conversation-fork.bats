@@ -183,7 +183,7 @@ teardown_file() {
         "cat version.txt && cat counter.txt && ls"
 
     assert_success
-    assert_output --partial "[tool_use] Bash"
+    assert_output --partial "● Bash("
 
     # Should see v2 (from new artifact), not v1 (from original conversation)
     assert_output --partial "v2"

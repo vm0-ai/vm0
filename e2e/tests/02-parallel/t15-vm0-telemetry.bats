@@ -103,8 +103,8 @@ teardown() {
     assert_success
 
     # Default output shows agent events - verify event type markers are present
-    # Mock-claude produces: [init], [text], [tool_use], [tool_result], [result]
-    assert_output --partial "[init]"
+    # Mock-claude produces: Claude Code Started, text, tool calls, Completed
+    assert_output --partial "Claude Code Started"
     assert_output --partial "[result]"
     echo "# Agent events contain expected event types"
 
@@ -113,7 +113,7 @@ teardown() {
     run $CLI_COMMAND logs "$RUN_ID" --agent
 
     assert_success
-    assert_output --partial "[init]"
+    assert_output --partial "Claude Code Started"
     echo "# --agent option works correctly"
 
     # Step 6: Verify --system option shows system logs
