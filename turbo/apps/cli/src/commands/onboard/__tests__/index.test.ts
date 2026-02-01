@@ -189,7 +189,9 @@ describe("onboard command", () => {
       await onboardCommand.parseAsync(["node", "cli", "-y"]);
 
       const logCalls = vi.mocked(console.log).mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Welcome to VM0!");
+      expect(logCalls).toContain(
+        "Build agentic workflows using natural language.",
+      );
     });
   });
 
