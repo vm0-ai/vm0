@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.9.1](https://github.com/vm0-ai/vm0/compare/runner-v3.9.0...runner-v3.9.1) (2026-02-01)
+
+
+### Bug Fixes
+
+* **runner:** ensure proper cleanup and metrics collection ([#2088](https://github.com/vm0-ai/vm0/issues/2088)) ([a2c825e](https://github.com/vm0-ai/vm0/commit/a2c825e2bf76e4226c4428778617d5bd54a1936f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.6.1
+
 ## [3.9.0](https://github.com/vm0-ai/vm0/compare/runner-v3.8.1...runner-v3.9.0) (2026-02-01)
 
 

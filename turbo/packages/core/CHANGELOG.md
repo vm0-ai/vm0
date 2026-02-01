@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.6.1](https://github.com/vm0-ai/vm0/compare/core-v7.6.0...core-v7.6.1) (2026-02-01)
+
+
+### Bug Fixes
+
+* **runner:** ensure proper cleanup and metrics collection ([#2088](https://github.com/vm0-ai/vm0/issues/2088)) ([a2c825e](https://github.com/vm0-ai/vm0/commit/a2c825e2bf76e4226c4428778617d5bd54a1936f))
+
 ## [7.6.0](https://github.com/vm0-ai/vm0/compare/core-v7.5.0...core-v7.6.0) (2026-02-01)
 
 

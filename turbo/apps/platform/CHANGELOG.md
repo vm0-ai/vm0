@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.36.1](https://github.com/vm0-ai/vm0/compare/platform-v0.36.0...platform-v0.36.1) (2026-02-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.6.1
+
 ## [0.36.0](https://github.com/vm0-ai/vm0/compare/platform-v0.35.0...platform-v0.36.0) (2026-02-01)
 
 
