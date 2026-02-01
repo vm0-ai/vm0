@@ -1188,9 +1188,20 @@ jobs:
             # Use pm2 stop first to send SIGTERM and allow cleanup (TAP/IP release)
             # --kill-timeout gives the process 10s to cleanup before SIGKILL
             ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "pm2 stop ${PM2_NAME} --kill-timeout 10000 2>/dev/null || true"
+            # Wait for process to fully exit (pm2 stop is async) (pm2 stop is async)
+            echo "Waiting for runner to exit..."
+            for i in $(seq 1 15); do
+              pid=$(ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "pm2 pid ${PM2_NAME} 2>/dev/null" || true)
+              if [ -z "$pid" ]; then
+                echo "Runner exited"
+                break
+              fi
+              echo "  Still running (pid: $pid), waiting..."
+              sleep 1
+            done
             # Remove from pm2 process list
             ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "pm2 delete ${PM2_NAME} 2>/dev/null || true"
-            echo "Runner stopped"
+            echo "Runner stopped and removed from pm2"
           fi
 
           # Release the host lock
