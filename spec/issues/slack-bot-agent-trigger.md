@@ -2,7 +2,7 @@
 
 ## Summary
 
-Enable users to trigger VM0 agent runs and continues through @bot mentions in Slack. Users connect their Slack workspace via OAuth, then create bots that bind to their agents.
+Enable users to trigger VM0 agent runs and continues through @bot mentions in Slack. Users connect their Slack workspace via OAuth, then bind multiple agents to the workspace. An LLM Router automatically selects the appropriate agent based on the user's message.
 
 ## Motivation
 
@@ -11,10 +11,12 @@ Users want to interact with their VM0 agents directly from Slack without leaving
 ## User Stories
 
 1. As a user, I want to connect my Slack workspace to VM0 with a simple OAuth flow
-2. As a user, I want to create a Slack bot that binds to one of my agents
-3. As a user, I want to @bot in a Slack channel to start a new agent run
-4. As a user, I want to continue a conversation by replying in a Slack thread
-5. As a user, I want to see the agent's result as a reply in the thread
+2. As a user, I want to bind multiple agents to my Slack workspace
+3. As a user, I want to @VM0 in Slack and have the system auto-select the right agent
+4. As a user, I want to explicitly specify an agent with `@VM0 <agent-name> <prompt>`
+5. As a user, I want to continue a conversation by replying in a Slack thread
+6. As a user, I want to see the agent's result as a reply in the thread
+7. As a user, I want to use `/vm0 list` to see my bound agents
 
 ## Detailed Design
 
@@ -45,28 +47,43 @@ Waiting for authorization.....
   Workspace ID: T12345ABC
 ```
 
-#### Step 2: Create Bot from Agent
+#### Step 2: Bind Agents to Workspace
 
 ```bash
-$ vm0 slack bot create my-agent
+$ vm0 slack agent add my-coder
 
-Creating Slack bot for agent "my-agent"...
+Adding agent "my-coder" to Slack workspace...
 
 ? Select workspace: Acme Corp (T12345ABC)
+? Description (for auto-routing): Writes and reviews code, fixes bugs
 
 Agent requires the following secrets:
 ? OPENAI_API_KEY: sk-...
 
-✓ Slack bot created!
-  You can now @VM0 in Acme Corp to trigger "my-agent"
+✓ Agent "my-coder" bound to Acme Corp
+```
+
+```bash
+$ vm0 slack agent add my-analyst
+
+Adding agent "my-analyst" to Slack workspace...
+
+? Select workspace: Acme Corp (T12345ABC)
+? Description (for auto-routing): Analyzes data, creates reports and charts
+
+Agent requires the following secrets:
+? OPENAI_API_KEY: sk-...
+
+✓ Agent "my-analyst" bound to Acme Corp
 ```
 
 #### Step 3: Use in Slack
 
+**Auto-routing (LLM selects agent):**
 ```
 User: @VM0 analyze this quarter's sales data
 
-VM0: [thinking...]
+VM0: [Using my-analyst...]
 
 VM0: Based on my analysis of Q4 sales data:
      - Revenue increased 15% QoQ
@@ -74,12 +91,72 @@ VM0: Based on my analysis of Q4 sales data:
      ...
 ```
 
+**Explicit agent selection:**
+```
+User: @VM0 my-coder fix the bug in auth.ts
+
+VM0: [Using my-coder...]
+
+VM0: I've identified and fixed the authentication bug...
+```
+
+**Continue in thread (same agent):**
+```
+User (in thread): @VM0 also check the login page
+
+VM0: [Continuing with my-coder...]
+
+VM0: I've reviewed the login page as well...
+```
+
+**List bound agents:**
+```
+User: /vm0 list
+
+VM0: Your agents in this workspace:
+     • my-coder - Writes and reviews code, fixes bugs
+     • my-analyst - Analyzes data, creates reports and charts
+```
+
 ### Core Concepts
 
+#### Multi-Agent Routing
+
+Each workspace can have multiple agents bound. When a user @mentions VM0, the system routes to the appropriate agent:
+
+```
+@VM0 <message>
+    │
+    ├─► 1. Existing thread session? → Use same agent (continue)
+    │
+    ├─► 2. Message starts with agent name? (@VM0 my-coder ...) → Use specified agent
+    │
+    ├─► 3. LLM Router selection
+    │       ├─► Match found → Use selected agent
+    │       └─► No match → Prompt user
+    │
+    └─► 4. Prompt: "I have multiple agents available: [list]. Please specify: @VM0 <agent-name> <prompt>"
+```
+
+**LLM Router**: Uses agent descriptions to match user intent. Lightweight LLM call that returns the best-matching agent name or "none".
+
+**Routing Input**:
+```json
+{
+  "user_message": "fix the bug in auth.ts",
+  "agents": [
+    { "name": "my-coder", "description": "Writes and reviews code, fixes bugs" },
+    { "name": "my-analyst", "description": "Analyzes data, creates reports" }
+  ]
+}
+```
+
+**Routing Output**: `"my-coder"` or `"none"`
+
 #### Thread-to-Session Mapping
-- Main message @bot → Creates new VM0 session
-- Thread reply @bot → Continues existing session
-- Use Slack's `thread_ts` to distinguish between new runs and continues
+- Main message @VM0 → Creates new VM0 session with routed agent
+- Thread reply @VM0 → Continues existing session (uses same agent)
+- Use Slack's `thread_ts` to track which agent owns the thread
 
 #### Permission Model (MVP: Creator-Only)
 
@@ -133,6 +210,9 @@ CREATE TABLE slack_bots (
   user_id TEXT NOT NULL,
   workspace_connection_id UUID NOT NULL REFERENCES slack_workspace_connections(id) ON DELETE CASCADE,
   compose_id UUID NOT NULL REFERENCES agent_composes(id) ON DELETE CASCADE,
+
+  -- For LLM Router
+  description TEXT,                           -- User-provided description for auto-routing
 
   -- Agent runtime configuration
   encrypted_secrets TEXT,
@@ -205,19 +285,21 @@ CREATE TABLE slack_oauth_sessions (
 | GET | `/api/agent/slack/workspaces` | List connected workspaces |
 | DELETE | `/api/agent/slack/workspaces/[id]` | Disconnect workspace |
 
-#### Slack Bot Management
+#### Slack Agent Binding
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/agent/slack/bots` | Create bot |
-| GET | `/api/agent/slack/bots` | List bots |
-| DELETE | `/api/agent/slack/bots/[id]` | Delete bot |
+| POST | `/api/agent/slack/bots` | Bind agent to workspace |
+| GET | `/api/agent/slack/bots` | List bound agents |
+| PATCH | `/api/agent/slack/bots/[id]` | Update agent binding |
+| DELETE | `/api/agent/slack/bots/[id]` | Remove agent from workspace |
 
-#### Slack Webhook (from Slack)
+#### Slack Webhooks (from Slack)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/webhooks/slack/events` | Receive Slack events |
+| POST | `/api/webhooks/slack/events` | Receive Slack events (app_mention) |
+| POST | `/api/webhooks/slack/commands` | Receive slash commands (/vm0) |
 
 ### CLI Commands
 
@@ -231,14 +313,17 @@ vm0 slack workspaces
 # Disconnect workspace
 vm0 slack disconnect <workspace-name>
 
-# Create bot from agent
-vm0 slack bot create <agent-name> [--workspace <name>] [--secrets KEY=value]
+# Bind agent to workspace
+vm0 slack agent add <agent-name> [--workspace <name>] [--description <desc>] [--secrets KEY=value]
 
-# List bots
-vm0 slack bot list
+# List bound agents
+vm0 slack agent list [--workspace <name>]
 
-# Delete bot
-vm0 slack bot delete <agent-name> [--workspace <name>]
+# Update agent binding (secrets, description)
+vm0 slack agent update <agent-name> [--workspace <name>] [--description <desc>] [--secrets KEY=value]
+
+# Remove agent from workspace
+vm0 slack agent remove <agent-name> [--workspace <name>]
 ```
 
 ### OAuth Flow Detail
@@ -282,17 +367,21 @@ CLI                          VM0 Server                    Slack
 1. POST /api/webhooks/slack/events
    {
      "team_id": "T12345",
-     "event": { "type": "app_mention", "user": "U67890", ... }
+     "event": { "type": "app_mention", "user": "U67890", "text": "@VM0 ...", "thread_ts": ... }
    }
    ↓
 2. Respond HTTP 200 immediately (Slack 3-second requirement)
    ↓
 3. Async processing:
    a. Find workspace_connection by team_id
-   b. Find slack_bot by workspace_connection_id
-   c. Verify trigger permission:
+   b. Verify trigger permission:
       - event.user == workspace_connection.slack_installer_user_id?
-   d. Check thread_ts for new vs continue
+   c. Route to agent:
+      ┌─ Has thread_ts with existing session? → Use session's agent (continue)
+      ├─ Message starts with agent name? → Use specified agent
+      ├─ LLM Router matches? → Use matched agent
+      └─ No match → Reply with agent list, abort
+   d. Find slack_bot for selected agent
    ↓
 4. Create/continue run with bot's secrets
    ↓
@@ -301,13 +390,28 @@ CLI                          VM0 Server                    Slack
 6. Post result to Slack thread via chat.postMessage
 ```
 
+### Slash Command Processing
+
+```
+/vm0 list
+   ↓
+1. Find workspace_connection by team_id
+   ↓
+2. Verify user permission
+   ↓
+3. List all slack_bots for this workspace
+   ↓
+4. Reply with agent list (ephemeral message)
+```
+
 ## Technical Constraints
 
 ### Slack API Requirements
 
 1. **3-second response**: Must acknowledge webhook within 3 seconds
-2. **OAuth scopes needed**: `app_mentions:read`, `chat:write`
+2. **OAuth scopes needed**: `app_mentions:read`, `chat:write`, `commands`
 3. **Event subscription**: `app_mention` event
+4. **Slash command**: `/vm0` with subcommands (`list`)
 
 ### VM0 Slack App Setup (One-time)
 
@@ -315,17 +419,19 @@ VM0 needs to register a Slack App at api.slack.com:
 
 | Setting | Value |
 |---------|-------|
-| App Name | VM0 Agent |
+| App Name | VM0 |
 | OAuth Redirect URL | `https://api.vm0.ai/api/slack/oauth/callback` |
-| Bot Token Scopes | `app_mentions:read`, `chat:write` |
+| Bot Token Scopes | `app_mentions:read`, `chat:write`, `commands` |
 | Event Request URL | `https://api.vm0.ai/api/webhooks/slack/events` |
 | Subscribe to events | `app_mention` |
+| Slash Commands | `/vm0` → `https://api.vm0.ai/api/webhooks/slack/commands` |
 
 ### Multi-tenant Considerations
 
 - Single Slack App serves all VM0 users
-- Events routed by `team_id` to correct user's bot
-- All bots appear as "@VM0 Agent" in Slack (single app identity)
+- Events routed by `team_id` to correct user's workspace
+- LLM Router selects appropriate agent within user's bound agents
+- All responses appear as "@VM0" in Slack (single app identity)
 
 ## Security Considerations
 
@@ -339,8 +445,8 @@ VM0 needs to register a Slack App at api.slack.com:
 1. Allowlist-based trigger permissions
 2. VM0 account linking for Slack users
 3. Per-user secrets
-4. Custom bot names per workspace
-5. Streaming responses to Slack
+4. Streaming responses to Slack
+5. Multiple slash command subcommands (only `/vm0 list` for MVP)
 
 ## Dependencies
 
@@ -349,6 +455,7 @@ VM0 needs to register a Slack App at api.slack.com:
 - Existing: `run-service.ts` for run orchestration
 - Existing: CLI auth device code pattern for OAuth polling
 - New: Slack Web API client for posting messages
+- New: LLM Router service for agent selection (lightweight model call)
 
 ## References
 
