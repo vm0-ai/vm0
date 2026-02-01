@@ -1,5 +1,19 @@
 # Changelog
 
+## [11.14.0](https://github.com/vm0-ai/vm0/compare/web-v11.13.0...web-v11.14.0) (2026-02-01)
+
+
+### Features
+
+* **cli:** release onboard banner update ([#2084](https://github.com/vm0-ai/vm0/issues/2084)) ([402820c](https://github.com/vm0-ai/vm0/commit/402820cbeabed134c3a757d4c8400037fce4c427))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.6.0
+
 ## [11.13.0](https://github.com/vm0-ai/vm0/compare/web-v11.12.1...web-v11.13.0) (2026-02-01)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.0](https://github.com/vm0-ai/vm0/compare/site-v1.9.0...site-v1.10.0) (2026-02-01)
+
+
+### Features
+
+* **cli:** release onboard banner update ([#2084](https://github.com/vm0-ai/vm0/issues/2084)) ([402820c](https://github.com/vm0-ai/vm0/commit/402820cbeabed134c3a757d4c8400037fce4c427))
+
 ## [1.9.0](https://github.com/vm0-ai/vm0/compare/site-v1.8.0...site-v1.9.0) (2026-01-31)
 
 
