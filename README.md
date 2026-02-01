@@ -2,7 +2,7 @@
   <a href="https://vm0.ai"><img src="https://github.com/vm0-ai/vm0/blob/main/turbo/apps/web/public/assets/Logo_VM0_combo_black_bg.svg" alt="VM0 Logo" width="500"></a>
   <br>
   <br>
-  Skill workflows, while you sleep
+  Natural language Agent, 24/7 in cloud sandbox
   <br>
   <br>
   <p>
