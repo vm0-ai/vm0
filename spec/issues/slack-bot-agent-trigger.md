@@ -2,7 +2,7 @@
 
 ## Summary
 
-Enable users to trigger VM0 agent runs and continues through @bot mentions in Slack. Each Slack user links their VM0 account and binds their own agents to the workspace. When a user @VM0, they trigger their own agents (not someone else's). An LLM Router automatically selects the appropriate agent based on the user's message.
+Enable users to trigger VM0 agent runs and continues through @bot mentions in Slack. Each Slack user links their VM0 account and creates bindings (agent + secrets) in the workspace. When a user @VM0, they use their own bindings with their own secrets. An LLM Router automatically selects the appropriate agent based on the user's message.
 
 ## Motivation
 
@@ -146,25 +146,35 @@ Each user can bind multiple agents to a workspace. When @VM0 is triggered, the s
 - Thread reply @VM0 → Continues existing session (uses same agent)
 - Use Slack's `thread_ts` to track which agent owns the thread
 
-#### Permission Model: User Triggers Own Agents
+#### Permission Model: Binding Ownership
 
-**Security Principle**: When a user @VM0, they trigger their OWN agents enabled on VM0.
+**Key Distinction**:
+- **Agent** = Definition only, does not hold secrets. May be public in the future (like GitHub repos).
+- **Binding** = User's instance of an agent with their secrets. Similar to Schedule. Belongs to a scope.
+
+When a user binds an agent to Slack (their own or a public agent), they create a **binding entity** that:
+- Stores their secrets (encrypted)
+- Belongs to their scope
+- Is only accessible by them
 
 ```
 Slack Workspace "Acme Corp"
-├── Alice (linked to VM0 account alice@acme.com)
-│   └── Enabled agents: my-coder, my-analyst (with Alice's secrets)
+├── Alice (linked to VM0 account)
+│   └── Bindings:
+│       • my-coder (Alice's agent + Alice's secrets)
+│       • public/data-analyst (public agent + Alice's secrets)
 │
-├── Bob (linked to VM0 account bob@acme.com)
-│   └── Enabled agents: research-bot (with Bob's secrets)
+├── Bob (linked to VM0 account)
+│   └── Bindings:
+│       • research-bot (Bob's agent + Bob's secrets)
 │
 └── Carol (NOT linked to VM0)
     └── @VM0 → "Please link your VM0 account first"
 ```
 
 **Security Properties**:
-- No one can use another user's secrets
-- No one can trigger another user's agents
+- No one can use another user's secrets (secrets belong to binding, not agent)
+- No one can use another user's bindings
 - Clear ownership and billing attribution
 - Per-user audit trail
 
@@ -178,16 +188,18 @@ Follow the Schedule pattern:
 
 ## Security Considerations
 
-1. **User isolation**: Each user triggers their own agents with their own secrets
-2. **No cross-user access**: Users cannot see or trigger other users' agents
+1. **Binding isolation**: Secrets belong to bindings (not agents). Each user's bindings are isolated.
+2. **No cross-user secret access**: Users cannot access another user's bindings or secrets
 3. **Account linking required**: Unlinked Slack users cannot use @VM0
+4. **Public agents supported**: Users can bind public agents but use their own secrets
 
 ## Out of Scope (Future)
 
-1. Team/shared agents (all users see same agents)
-2. Streaming responses to Slack
-3. Multiple slash command subcommands (only `/vm0 list` for MVP)
-4. Cross-workspace agent sharing
+1. Public agents (users can share agent definitions)
+2. Team/shared bindings (all users see same bindings)
+3. Streaming responses to Slack
+4. Multiple slash command subcommands (only `/vm0 list` for MVP)
+5. Cross-workspace binding sharing
 
 ## References
 
