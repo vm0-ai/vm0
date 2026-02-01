@@ -3,14 +3,14 @@ import { GET } from "../route";
 import {
   createTestRequest,
   createTestCompose,
+  createTestRun,
   createTestSchedule,
   enableTestSchedule,
   getTestSchedule,
   getTestScheduleRuns,
-  setScheduleRetryStartedAt,
+  completeTestRun,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
-import { concurrentRunLimit } from "../../../../../src/lib/errors";
 
 vi.mock("@clerk/nextjs/server");
 vi.mock("@e2b/code-interpreter");
@@ -22,10 +22,12 @@ const context = testContext();
 
 describe("GET /api/cron/execute-schedules", () => {
   let testComposeId: string;
+  let testUserId: string;
 
   beforeEach(async () => {
     context.setupMocks();
-    await context.setupUser();
+    const user = await context.setupUser();
+    testUserId = user.userId;
 
     const { composeId } = await createTestCompose(
       `cron-test-agent-${Date.now()}`,
@@ -250,7 +252,7 @@ describe("GET /api/cron/execute-schedules", () => {
 
   describe("Concurrency Retry", () => {
     it("should retry schedule when blocked by concurrency limit", async () => {
-      // 1. Mock time to 8:00 AM UTC
+      // 1. Set time to 8:00 AM
       context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:00Z"));
 
       // 2. Create and enable schedule for 9 AM
@@ -261,211 +263,180 @@ describe("GET /api/cron/execute-schedules", () => {
       });
       await enableTestSchedule(testComposeId, "retry-test");
 
-      // 3. Advance time to 9:01 AM (schedule is due)
+      // 3. Create a pending run to block concurrency (default limit is 1)
+      await createTestRun(testComposeId, "Blocking run");
+
+      // 4. Advance time to 9:01 AM (schedule is due)
       context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
 
-      // 4. Mock checkRunConcurrencyLimit to throw ConcurrentRunLimitError
-      const runService = await import("../../../../../src/lib/run/run-service");
-      const checkSpy = vi
-        .spyOn(runService, "checkRunConcurrencyLimit")
-        .mockRejectedValueOnce(
-          concurrentRunLimit("Concurrent run limit reached"),
-        );
+      // 5. Execute cron - should fail due to concurrency limit
+      const request = createTestRequest(
+        "http://localhost:3000/api/cron/execute-schedules",
+      );
+      const response = await GET(request);
+      expect(response.status).toBe(200);
 
-      try {
-        // 5. Execute cron
-        const request = createTestRequest(
-          "http://localhost:3000/api/cron/execute-schedules",
-        );
-        const response = await GET(request);
-        expect(response.status).toBe(200);
+      // 6. Verify schedule entered retry state
+      const schedule = await getTestSchedule(testComposeId, "retry-test");
+      expect(schedule.retryStartedAt).not.toBeNull();
+      // nextRunAt should be 5 minutes later, not tomorrow 9 AM
+      const nextRunAt = new Date(schedule.nextRunAt!);
+      const expectedRetryAt = new Date("2025-01-15T09:06:00Z");
+      expect(nextRunAt.getTime()).toBe(expectedRetryAt.getTime());
 
-        // 6. Verify schedule was NOT advanced to tomorrow but retries in 5 minutes
-        const schedule = await getTestSchedule(testComposeId, "retry-test");
-        expect(schedule.retryStartedAt).not.toBeNull();
-        // nextRunAt should be ~5 minutes from now, not tomorrow 9 AM
-        const nextRunAt = new Date(schedule.nextRunAt!);
-        const expectedRetryAt = new Date("2025-01-15T09:06:00Z");
-        expect(nextRunAt.getTime()).toBe(expectedRetryAt.getTime());
-
-        // 7. Verify a failed run was created
-        const { runs } = await getTestScheduleRuns(
-          testComposeId,
-          "retry-test",
-          1,
-        );
-        expect(runs.length).toBe(1);
-        expect(runs[0]?.status).toBe("failed");
-        expect(runs[0]?.error).toContain("Concurrent run limit");
-      } finally {
-        checkSpy.mockRestore();
-      }
+      // 7. Verify a failed run was created
+      const { runs } = await getTestScheduleRuns(
+        testComposeId,
+        "retry-test",
+        1,
+      );
+      expect(runs.length).toBe(1);
+      expect(runs[0]?.status).toBe("failed");
+      expect(runs[0]?.error).toContain("concurrent");
     });
 
     it("should preserve retryStartedAt on subsequent retries", async () => {
-      // 1. Mock time to 9:01 AM
-      context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
+      // 1. Set time to 8:00 AM
+      context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:00Z"));
 
-      // 2. Create schedule and enable it
+      // 2. Create and enable schedule for 9 AM
       await createTestSchedule(testComposeId, "retry-preserve-test", {
         cronExpression: "0 9 * * *",
         prompt: "Daily task",
         timezone: "UTC",
       });
-      const schedule = await enableTestSchedule(
+      await enableTestSchedule(testComposeId, "retry-preserve-test");
+
+      // 3. Create a blocking run
+      await createTestRun(testComposeId, "Blocking run");
+
+      // 4. Advance to 9:01 AM and trigger first retry
+      context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
+      await GET(
+        createTestRequest("http://localhost:3000/api/cron/execute-schedules"),
+      );
+
+      // 5. Record the initial retryStartedAt
+      const firstSchedule = await getTestSchedule(
         testComposeId,
         "retry-preserve-test",
       );
+      const initialRetryStartedAt = firstSchedule.retryStartedAt;
+      expect(initialRetryStartedAt).not.toBeNull();
 
-      // 3. Set retryStartedAt to 10 minutes ago (simulating we're already in retry)
-      const retryStart = new Date("2025-01-15T08:51:00Z");
-      await setScheduleRetryStartedAt(schedule.id, retryStart);
+      // 6. Advance to 9:06 AM (5 minutes later - retry time)
+      context.mocks.date.setSystemTime(new Date("2025-01-15T09:06:00Z"));
 
-      // 4. Set nextRunAt to now (simulating a retry attempt)
-      const { agentSchedules } = await import(
-        "../../../../../src/db/schema/agent-schedule"
+      // 7. Execute cron again (second retry attempt)
+      await GET(
+        createTestRequest("http://localhost:3000/api/cron/execute-schedules"),
       );
-      const { eq } = await import("drizzle-orm");
-      await globalThis.services.db
-        .update(agentSchedules)
-        .set({ nextRunAt: new Date("2025-01-15T09:01:00Z") })
-        .where(eq(agentSchedules.id, schedule.id));
 
-      // 5. Mock concurrency limit failure again
-      const runService = await import("../../../../../src/lib/run/run-service");
-      const checkSpy = vi
-        .spyOn(runService, "checkRunConcurrencyLimit")
-        .mockRejectedValueOnce(
-          concurrentRunLimit("Concurrent run limit reached"),
-        );
-
-      try {
-        // 6. Execute cron
-        const request = createTestRequest(
-          "http://localhost:3000/api/cron/execute-schedules",
-        );
-        await GET(request);
-
-        // 7. Verify retryStartedAt was preserved (not reset to now)
-        const updatedSchedule = await getTestSchedule(
-          testComposeId,
-          "retry-preserve-test",
-        );
-        expect(new Date(updatedSchedule.retryStartedAt!).getTime()).toBe(
-          retryStart.getTime(),
-        );
-      } finally {
-        checkSpy.mockRestore();
-      }
+      // 8. Verify retryStartedAt was preserved
+      const secondSchedule = await getTestSchedule(
+        testComposeId,
+        "retry-preserve-test",
+      );
+      expect(secondSchedule.retryStartedAt).toBe(initialRetryStartedAt);
     });
 
     it("should advance to next occurrence when retry window expires", async () => {
-      // 1. Mock time to 9:01 AM
-      context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
+      // 1. Set time to 8:00 AM
+      context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:00Z"));
 
-      // 2. Create and enable schedule
+      // 2. Create and enable schedule for 9 AM
       await createTestSchedule(testComposeId, "retry-expire-test", {
         cronExpression: "0 9 * * *",
         prompt: "Daily task",
         timezone: "UTC",
       });
-      const schedule = await enableTestSchedule(
+      await enableTestSchedule(testComposeId, "retry-expire-test");
+
+      // 3. Create a blocking run
+      await createTestRun(testComposeId, "Blocking run");
+
+      // 4. Advance to 9:01 AM and trigger first retry
+      context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
+      await GET(
+        createTestRequest("http://localhost:3000/api/cron/execute-schedules"),
+      );
+
+      // Verify we're in retry state
+      const midSchedule = await getTestSchedule(
         testComposeId,
         "retry-expire-test",
       );
+      expect(midSchedule.retryStartedAt).not.toBeNull();
 
-      // 3. Set retryStartedAt to 35 minutes ago (past the 30-min window)
-      const retryStart = new Date("2025-01-15T08:26:00Z");
-      await setScheduleRetryStartedAt(schedule.id, retryStart);
+      // 5. Advance to 9:36 AM (35 minutes later - past 30-min retry window)
+      context.mocks.date.setSystemTime(new Date("2025-01-15T09:36:00Z"));
 
-      // 4. Set nextRunAt to now
-      const { agentSchedules } = await import(
-        "../../../../../src/db/schema/agent-schedule"
+      // 6. Execute cron - retry window should expire
+      await GET(
+        createTestRequest("http://localhost:3000/api/cron/execute-schedules"),
       );
-      const { eq } = await import("drizzle-orm");
-      await globalThis.services.db
-        .update(agentSchedules)
-        .set({ nextRunAt: new Date("2025-01-15T09:01:00Z") })
-        .where(eq(agentSchedules.id, schedule.id));
 
-      // 5. Mock concurrency limit failure
-      const runService = await import("../../../../../src/lib/run/run-service");
-      const checkSpy = vi
-        .spyOn(runService, "checkRunConcurrencyLimit")
-        .mockRejectedValueOnce(
-          concurrentRunLimit("Concurrent run limit reached"),
-        );
-
-      try {
-        // 6. Execute cron
-        const request = createTestRequest(
-          "http://localhost:3000/api/cron/execute-schedules",
-        );
-        await GET(request);
-
-        // 7. Verify schedule advanced to next day (tomorrow 9 AM)
-        const updatedSchedule = await getTestSchedule(
-          testComposeId,
-          "retry-expire-test",
-        );
-        // retryStartedAt should be cleared
-        expect(updatedSchedule.retryStartedAt).toBeNull();
-        // nextRunAt should be tomorrow 9 AM
-        const nextRunAt = new Date(updatedSchedule.nextRunAt!);
-        expect(nextRunAt.toISOString()).toBe("2025-01-16T09:00:00.000Z");
-      } finally {
-        checkSpy.mockRestore();
-      }
+      // 7. Verify schedule advanced to next day (tomorrow 9 AM)
+      const finalSchedule = await getTestSchedule(
+        testComposeId,
+        "retry-expire-test",
+      );
+      expect(finalSchedule.retryStartedAt).toBeNull();
+      const nextRunAt = new Date(finalSchedule.nextRunAt!);
+      expect(nextRunAt.toISOString()).toBe("2025-01-16T09:00:00.000Z");
     });
 
     it("should clear retryStartedAt on successful execution", async () => {
-      // 1. Mock time to 9:01 AM
-      context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
+      // 1. Set time to 8:00 AM
+      context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:00Z"));
 
-      // 2. Create and enable schedule
+      // 2. Create and enable schedule for 9 AM
       await createTestSchedule(testComposeId, "retry-clear-test", {
         cronExpression: "0 9 * * *",
         prompt: "Daily task",
         timezone: "UTC",
       });
-      const schedule = await enableTestSchedule(
+      await enableTestSchedule(testComposeId, "retry-clear-test");
+
+      // 3. Create a blocking run
+      const { runId: blockingRunId } = await createTestRun(
+        testComposeId,
+        "Blocking run",
+      );
+
+      // 4. Advance to 9:01 AM and trigger first retry
+      context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
+      await GET(
+        createTestRequest("http://localhost:3000/api/cron/execute-schedules"),
+      );
+
+      // Verify we're in retry state
+      const midSchedule = await getTestSchedule(
         testComposeId,
         "retry-clear-test",
       );
+      expect(midSchedule.retryStartedAt).not.toBeNull();
 
-      // 3. Set retryStartedAt (simulating previous failed attempt)
-      await setScheduleRetryStartedAt(
-        schedule.id,
-        new Date("2025-01-15T08:51:00Z"),
+      // 5. Complete the blocking run to free up concurrency
+      await completeTestRun(testUserId, blockingRunId);
+
+      // 6. Advance to 9:06 AM (retry time) and execute
+      context.mocks.date.setSystemTime(new Date("2025-01-15T09:06:00Z"));
+      await GET(
+        createTestRequest("http://localhost:3000/api/cron/execute-schedules"),
       );
 
-      // 4. Set nextRunAt to now
-      const { agentSchedules } = await import(
-        "../../../../../src/db/schema/agent-schedule"
-      );
-      const { eq } = await import("drizzle-orm");
-      await globalThis.services.db
-        .update(agentSchedules)
-        .set({ nextRunAt: new Date("2025-01-15T09:01:00Z") })
-        .where(eq(agentSchedules.id, schedule.id));
-
-      // 5. Execute cron (no mock = success)
-      const request = createTestRequest(
-        "http://localhost:3000/api/cron/execute-schedules",
-      );
-      await GET(request);
-
-      // 6. Verify retryStartedAt was cleared
-      const updatedSchedule = await getTestSchedule(
+      // 7. Verify retryStartedAt was cleared and execution succeeded
+      const finalSchedule = await getTestSchedule(
         testComposeId,
         "retry-clear-test",
       );
-      expect(updatedSchedule.retryStartedAt).toBeNull();
-      expect(updatedSchedule.lastRunAt).not.toBeNull();
+      expect(finalSchedule.retryStartedAt).toBeNull();
+      expect(finalSchedule.lastRunAt).not.toBeNull();
     });
 
     it("should disable one-time schedule after retry window expires", async () => {
-      // 1. Mock time to 8:00 AM (before the schedule time)
+      // 1. Set time to 8:00 AM
       context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:00Z"));
 
       // 2. Create and enable one-time schedule for 9:00 AM
@@ -474,56 +445,41 @@ describe("GET /api/cron/execute-schedules", () => {
         prompt: "One-time task",
         timezone: "UTC",
       });
-      const schedule = await enableTestSchedule(
+      await enableTestSchedule(testComposeId, "onetime-retry-expire");
+
+      // 3. Create a blocking run
+      await createTestRun(testComposeId, "Blocking run");
+
+      // 4. Advance to 9:01 AM and trigger first retry
+      context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
+      await GET(
+        createTestRequest("http://localhost:3000/api/cron/execute-schedules"),
+      );
+
+      // Verify we're in retry state
+      const midSchedule = await getTestSchedule(
         testComposeId,
         "onetime-retry-expire",
       );
+      expect(midSchedule.retryStartedAt).not.toBeNull();
+      expect(midSchedule.enabled).toBe(true);
 
-      // 3. Advance time to 9:01 AM (schedule is due)
-      context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
+      // 5. Advance to 9:36 AM (35 minutes later - past 30-min retry window)
+      context.mocks.date.setSystemTime(new Date("2025-01-15T09:36:00Z"));
 
-      // 4. Set retryStartedAt to 35 minutes ago (past the 30-min window)
-      await setScheduleRetryStartedAt(
-        schedule.id,
-        new Date("2025-01-15T08:26:00Z"),
+      // 6. Execute cron - retry window should expire
+      await GET(
+        createTestRequest("http://localhost:3000/api/cron/execute-schedules"),
       );
 
-      // 5. Set nextRunAt to now (simulating a retry attempt)
-      const { agentSchedules } = await import(
-        "../../../../../src/db/schema/agent-schedule"
+      // 7. Verify one-time schedule was disabled
+      const finalSchedule = await getTestSchedule(
+        testComposeId,
+        "onetime-retry-expire",
       );
-      const { eq } = await import("drizzle-orm");
-      await globalThis.services.db
-        .update(agentSchedules)
-        .set({ nextRunAt: new Date("2025-01-15T09:01:00Z") })
-        .where(eq(agentSchedules.id, schedule.id));
-
-      // 6. Mock concurrency limit failure
-      const runService = await import("../../../../../src/lib/run/run-service");
-      const checkSpy = vi
-        .spyOn(runService, "checkRunConcurrencyLimit")
-        .mockRejectedValueOnce(
-          concurrentRunLimit("Concurrent run limit reached"),
-        );
-
-      try {
-        // 7. Execute cron
-        const request = createTestRequest(
-          "http://localhost:3000/api/cron/execute-schedules",
-        );
-        await GET(request);
-
-        // 8. Verify one-time schedule was disabled
-        const updatedSchedule = await getTestSchedule(
-          testComposeId,
-          "onetime-retry-expire",
-        );
-        expect(updatedSchedule.enabled).toBe(false);
-        expect(updatedSchedule.nextRunAt).toBeNull();
-        expect(updatedSchedule.retryStartedAt).toBeNull();
-      } finally {
-        checkSpy.mockRestore();
-      }
+      expect(finalSchedule.enabled).toBe(false);
+      expect(finalSchedule.nextRunAt).toBeNull();
+      expect(finalSchedule.retryStartedAt).toBeNull();
     });
   });
 });

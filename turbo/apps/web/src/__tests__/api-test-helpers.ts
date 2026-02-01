@@ -797,23 +797,3 @@ export async function createTestVolume(
 }> {
   return createTestStorage(name, { ...options, type: "volume" });
 }
-
-/**
- * Set the retryStartedAt timestamp for a schedule.
- * This is a direct database operation for testing retry scenarios.
- *
- * @param scheduleId - The schedule ID
- * @param retryStartedAt - The retry start time (null to clear)
- */
-export async function setScheduleRetryStartedAt(
-  scheduleId: string,
-  retryStartedAt: Date | null,
-): Promise<void> {
-  const { agentSchedules } = await import("../db/schema/agent-schedule");
-  const { eq } = await import("drizzle-orm");
-
-  await globalThis.services.db
-    .update(agentSchedules)
-    .set({ retryStartedAt })
-    .where(eq(agentSchedules.id, scheduleId));
-}
