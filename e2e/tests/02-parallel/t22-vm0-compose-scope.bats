@@ -1,13 +1,13 @@
 #!/usr/bin/env bats
 
-# Test VM0 compose with scope support
+# Test VM0 compose with scope support (E2E happy path only)
 # Tests the scope/name:version naming convention for agent composes
 #
 # This test covers issue #757: Add scope support to agent compose
 #
-# Note: Error handling tests (non-existent scope/agent/version, cross-scope isolation)
-# have been moved to unit tests at turbo/apps/cli/src/__tests__/compose-scope.test.ts
-# for faster feedback and better test performance.
+# Note: Identifier format parsing and error handling (scope/name, scope/name:version, name:version,
+# backward compat, scope errors) are tested via CLI Command Integration Tests
+# (see run/__tests__/index.test.ts, "scope error handling" section).
 
 load '../../helpers/setup'
 
@@ -28,7 +28,7 @@ teardown() {
 # vm0 compose displays scope/name format
 # ============================================
 
-@test "vm0 compose shows scope/name:version in run instructions" {
+@test "t22-1: vm0 compose shows scope/name:version in run instructions" {
     echo "# Creating config file..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -59,10 +59,14 @@ EOF
 }
 
 # ============================================
-# vm0 run with scope/name format
+# vm0 run with scope/name format (E2E happy path)
 # ============================================
 
-@test "vm0 run with scope/name format resolves agent correctly" {
+@test "t22-2: vm0 run with scope/name format resolves agent correctly" {
+    # This test verifies the end-to-end happy path for scope/name format.
+    # Other identifier formats (scope/name:version, name:version, backward compat)
+    # are tested via CLI Command Integration Tests in run/__tests__/index.test.ts.
+
     echo "# Step 1: Creating agent config..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -102,129 +106,6 @@ EOF
         --artifact-name "$ARTIFACT_NAME" \
         "echo hello from scope test"
     assert_success
-}
-
-@test "vm0 run with scope/name:version format works correctly" {
-    echo "# Step 1: Creating agent config..."
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Test agent for scope/name:version run"
-    framework: claude-code
-    image: "vm0/claude-code:dev"
-    working_dir: /home/user/workspace
-EOF
-
-    echo "# Step 2: Composing agent..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    # Extract scope from compose output (avoids race condition with parallel tests)
-    USER_SCOPE=$(echo "$output" | grep -oP '(created|exists): \K[a-z0-9-]+(?=/)' | head -1)
-    echo "# Scope from compose output: $USER_SCOPE"
-
-    # Extract version ID from compose output
-    VERSION_ID=$(echo "$output" | grep -oP 'Version:\s+\K[0-9a-f]+')
-    echo "# Version ID: $VERSION_ID"
-
-    [ -n "$USER_SCOPE" ] || {
-        echo "# Failed to extract scope from compose output"
-        echo "# Output was: $output"
-        return 1
-    }
-
-    [ -n "$VERSION_ID" ] || {
-        echo "# Failed to extract version ID from output:"
-        echo "$output"
-        return 1
-    }
-
-    echo "# Step 3: Setting up artifact..."
-    mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
-    cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
-    run $CLI_COMMAND artifact push
-    assert_success
-
-    echo "# Step 4: Running with scope/name:version format..."
-    run $CLI_COMMAND run "$USER_SCOPE/$AGENT_NAME:$VERSION_ID" \
-        --artifact-name "$ARTIFACT_NAME" \
-        "echo hello from versioned scope test"
-    assert_success
-}
-
-# ============================================
-# Backward compatibility tests
-# ============================================
-
-@test "vm0 run without scope prefix still works (backward compatible)" {
-    echo "# Step 1: Creating agent config..."
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Test agent for backward compatibility"
-    framework: claude-code
-    image: "vm0/claude-code:dev"
-    working_dir: /home/user/workspace
-EOF
-
-    echo "# Step 2: Composing agent..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    echo "# Step 3: Setting up artifact..."
-    mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
-    cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
-    run $CLI_COMMAND artifact push
-    assert_success
-
-    echo "# Step 4: Running without scope prefix (should use user's default scope)..."
-    run $CLI_COMMAND run "$AGENT_NAME" \
-        --artifact-name "$ARTIFACT_NAME" \
-        "echo hello from backward compat test"
-    assert_success
-}
-
-@test "vm0 run with name:version (no scope) still works" {
-    echo "# Step 1: Creating agent config..."
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Test agent for name:version format"
-    framework: claude-code
-    image: "vm0/claude-code:dev"
-    working_dir: /home/user/workspace
-EOF
-
-    echo "# Step 2: Composing agent..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    # Extract version ID
-    VERSION_ID=$(echo "$output" | grep -oP 'Version:\s+\K[0-9a-f]+')
-    echo "# Version ID: $VERSION_ID"
-    [ -n "$VERSION_ID" ] || {
-        echo "# Failed to extract version ID"
-        return 1
-    }
-
-    echo "# Step 3: Setting up artifact..."
-    mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
-    cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
-    run $CLI_COMMAND artifact push
-    assert_success
-
-    echo "# Step 4: Running with name:version format (no scope prefix)..."
-    run $CLI_COMMAND run "$AGENT_NAME:$VERSION_ID" \
-        --artifact-name "$ARTIFACT_NAME" \
-        "echo hello from name:version test"
-    assert_success
+    assert_output --partial "● Bash("
+    assert_output --partial "hello from scope test"
 }
