@@ -2,7 +2,7 @@
 
 ## Summary
 
-Enable users to trigger VM0 agent runs and continues through @bot mentions in Slack. Users connect their Slack workspace via OAuth, then bind multiple agents to the workspace. An LLM Router automatically selects the appropriate agent based on the user's message.
+Enable users to trigger VM0 agent runs and continues through @bot mentions in Slack. Each Slack user links their VM0 account and binds their own agents to the workspace. When a user @VM0, they trigger their own agents (not someone else's). An LLM Router automatically selects the appropriate agent based on the user's message.
 
 ## Motivation
 
@@ -10,9 +10,9 @@ Users want to interact with their VM0 agents directly from Slack without leaving
 
 ## User Stories
 
-1. As a user, I want to connect my Slack workspace to VM0 with a simple OAuth flow
-2. As a user, I want to bind multiple agents to my Slack workspace
-3. As a user, I want to @VM0 in Slack and have the system auto-select the right agent
+1. As a user, I want to link my Slack account to my VM0 account
+2. As a user, I want to bind my agents to my Slack workspace
+3. As a user, I want to @VM0 in Slack and have the system auto-select the right agent from MY enabled agents
 4. As a user, I want to explicitly specify an agent with `@VM0 <agent-name> <prompt>`
 5. As a user, I want to continue a conversation by replying in a Slack thread
 6. As a user, I want to see the agent's result as a reply in the thread
@@ -22,32 +22,46 @@ Users want to interact with their VM0 agents directly from Slack without leaving
 
 ### Architecture: VM0-Hosted Slack App
 
-VM0 hosts a single Slack App that all users install to their workspaces. This eliminates the need for users to create and configure their own Slack Apps.
+VM0 hosts a single Slack App that serves all workspaces. Each Slack user links their VM0 account and binds their own agents.
 
 **Key characteristics**:
-- Users do OAuth authorization, not Slack App creation
-- VM0 receives events for all connected workspaces (multi-tenant)
-- Events are routed to the correct user's bot based on workspace ID
+- Single @VM0 bot identity across all workspaces
+- Each Slack user links to their VM0 account
+- Each user binds their own agents with their own secrets
+- When User A @VM0, only User A's agents are available
+- No cross-user secret exposure
 
 ### User Flow
 
-#### Step 1: Connect Slack Workspace
+#### Step 1: Link Slack Account to VM0
 
 ```bash
-$ vm0 slack connect
+$ vm0 slack link
 
-Connecting to Slack...
-Opening browser for authorization...
+Linking Slack account to VM0...
+Opening browser for Slack authorization...
 
-Please authorize VM0 in your Slack workspace.
+Please sign in to Slack and authorize VM0.
 
 Waiting for authorization.....
 
-✓ Slack workspace connected: "Acme Corp"
-  Workspace ID: T12345ABC
+✓ Slack account linked!
+  Workspace: Acme Corp (T12345ABC)
+  Slack User: @alice (U12345)
 ```
 
-#### Step 2: Bind Agents to Workspace
+Or in Slack (first-time @VM0):
+```
+Alice: @VM0 hello
+
+VM0: Hi Alice! Please link your VM0 account first: https://vm0.ai/slack/link?token=xxx
+
+[Alice clicks link, completes OAuth]
+
+VM0: ✓ Account linked! You can now bind agents with `vm0 slack agent add <agent-name>`
+```
+
+#### Step 2: Bind Your Agents to Workspace
 
 ```bash
 $ vm0 slack agent add my-coder
@@ -158,18 +172,29 @@ Each workspace can have multiple agents bound. When a user @mentions VM0, the sy
 - Thread reply @VM0 → Continues existing session (uses same agent)
 - Use Slack's `thread_ts` to track which agent owns the thread
 
-#### Permission Model (MVP: Creator-Only)
+#### Permission Model: User Triggers Own Agents
 
-**Security Constraint**: Only the user who connected the workspace can trigger the bot.
+**Security Principle**: When a user @VM0, they trigger their OWN agents enabled on VM0.
 
-Rationale:
-- VM0-hosted app means VM0 controls who triggers
-- Allowing anyone would expose creator's secrets
-- Check Slack user ID against workspace connection owner
+```
+Slack Workspace "Acme Corp"
+├── Alice (linked to VM0 account alice@acme.com)
+│   └── Enabled agents: my-coder, my-analyst (with Alice's secrets)
+│
+├── Bob (linked to VM0 account bob@acme.com)
+│   └── Enabled agents: research-bot (with Bob's secrets)
+│
+└── Carol (NOT linked to VM0)
+    └── @VM0 → "Please link your VM0 account first"
+```
 
-Future expansion options:
-- Allowlist: Configure additional Slack user IDs
-- VM0 account linking: Slack users link their VM0 accounts
+**Security Properties**:
+- ✅ No one can use another user's secrets
+- ✅ No one can trigger another user's agents
+- ✅ Clear ownership and billing attribution
+- ✅ Per-user audit trail
+
+**Requirement**: Slack users must link their VM0 accounts before using @VM0.
 
 #### Secrets Management
 
@@ -180,39 +205,52 @@ Follow the Schedule pattern:
 
 ### Data Model
 
-#### New Table: `slack_workspace_connections`
+#### New Table: `slack_workspaces`
 
-Stores OAuth tokens for connected Slack workspaces.
+Stores workspace-level OAuth tokens (one per workspace).
 
 ```sql
-CREATE TABLE slack_workspace_connections (
+CREATE TABLE slack_workspaces (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id TEXT NOT NULL,                      -- VM0 user (Clerk ID)
-  slack_workspace_id VARCHAR(64) NOT NULL,    -- Slack team_id
+  slack_workspace_id VARCHAR(64) NOT NULL UNIQUE,  -- Slack team_id
   slack_workspace_name VARCHAR(255),
-  slack_bot_token TEXT NOT NULL,              -- Encrypted xoxb-* token
-  slack_bot_user_id VARCHAR(64),              -- Bot's user ID in Slack
-  slack_installer_user_id VARCHAR(64),        -- Slack user who installed
+  slack_bot_token TEXT NOT NULL,                    -- Encrypted xoxb-* token
+  slack_bot_user_id VARCHAR(64),                    -- Bot's user ID in Slack
+  installed_by_vm0_user_id TEXT NOT NULL,           -- Who first installed
   created_at TIMESTAMP DEFAULT NOW() NOT NULL,
-  updated_at TIMESTAMP DEFAULT NOW() NOT NULL,
-
-  UNIQUE(user_id, slack_workspace_id)
+  updated_at TIMESTAMP DEFAULT NOW() NOT NULL
 );
 ```
 
-#### New Table: `slack_bots`
+#### New Table: `slack_user_links`
 
-Links agents to Slack workspaces with runtime configuration.
+Maps Slack users to VM0 accounts.
 
 ```sql
-CREATE TABLE slack_bots (
+CREATE TABLE slack_user_links (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id TEXT NOT NULL,
-  workspace_connection_id UUID NOT NULL REFERENCES slack_workspace_connections(id) ON DELETE CASCADE,
+  slack_workspace_id VARCHAR(64) NOT NULL,
+  slack_user_id VARCHAR(64) NOT NULL,
+  vm0_user_id TEXT NOT NULL,                        -- Clerk user ID
+  linked_at TIMESTAMP DEFAULT NOW() NOT NULL,
+
+  UNIQUE(slack_workspace_id, slack_user_id)
+);
+```
+
+#### New Table: `slack_agent_bindings`
+
+Each user's agent bindings to a workspace.
+
+```sql
+CREATE TABLE slack_agent_bindings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slack_workspace_id VARCHAR(64) NOT NULL,
+  vm0_user_id TEXT NOT NULL,                         -- Owner
   compose_id UUID NOT NULL REFERENCES agent_composes(id) ON DELETE CASCADE,
 
   -- For LLM Router
-  description TEXT,                           -- User-provided description for auto-routing
+  description TEXT,                                  -- User-provided description for auto-routing
 
   -- Agent runtime configuration
   encrypted_secrets TEXT,
@@ -227,8 +265,8 @@ CREATE TABLE slack_bots (
   created_at TIMESTAMP DEFAULT NOW() NOT NULL,
   updated_at TIMESTAMP DEFAULT NOW() NOT NULL,
 
-  -- One bot per agent per workspace
-  UNIQUE(workspace_connection_id, compose_id)
+  -- One binding per (workspace, user, agent)
+  UNIQUE(slack_workspace_id, vm0_user_id, compose_id)
 );
 ```
 
@@ -239,30 +277,30 @@ Maps Slack threads to VM0 sessions for continue operations.
 ```sql
 CREATE TABLE slack_thread_sessions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  slack_bot_id UUID NOT NULL REFERENCES slack_bots(id) ON DELETE CASCADE,
+  slack_workspace_id VARCHAR(64) NOT NULL,
   slack_channel_id VARCHAR(64) NOT NULL,
   slack_thread_ts VARCHAR(64) NOT NULL,
+  slack_user_id VARCHAR(64) NOT NULL,                -- Slack user who started thread
+  agent_binding_id UUID NOT NULL REFERENCES slack_agent_bindings(id) ON DELETE CASCADE,
   agent_session_id UUID NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,
   created_at TIMESTAMP DEFAULT NOW() NOT NULL,
 
-  UNIQUE(slack_bot_id, slack_channel_id, slack_thread_ts)
+  UNIQUE(slack_workspace_id, slack_channel_id, slack_thread_ts)
 );
 ```
 
-#### New Table: `slack_oauth_sessions`
+#### New Table: `slack_link_sessions`
 
-Temporary storage for OAuth flow (like device_codes for CLI auth).
+Temporary storage for account linking flow.
 
 ```sql
-CREATE TABLE slack_oauth_sessions (
+CREATE TABLE slack_link_sessions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  session_token VARCHAR(255) NOT NULL UNIQUE,  -- Random token for CLI polling
-  user_id TEXT NOT NULL,                        -- VM0 user initiating OAuth
-  status VARCHAR(32) DEFAULT 'pending',         -- pending | completed | failed
-  slack_workspace_id VARCHAR(64),               -- Filled after OAuth
-  slack_workspace_name VARCHAR(255),
-  slack_bot_token TEXT,                         -- Encrypted, filled after OAuth
-  error TEXT,
+  link_token VARCHAR(255) NOT NULL UNIQUE,      -- Token in link URL
+  slack_workspace_id VARCHAR(64) NOT NULL,
+  slack_user_id VARCHAR(64) NOT NULL,
+  vm0_user_id TEXT,                              -- Filled after VM0 OAuth
+  status VARCHAR(32) DEFAULT 'pending',          -- pending | completed | expired
   expires_at TIMESTAMP NOT NULL,
   created_at TIMESTAMP DEFAULT NOW() NOT NULL
 );
@@ -270,29 +308,29 @@ CREATE TABLE slack_oauth_sessions (
 
 ### API Endpoints
 
-#### Slack OAuth (CLI Flow)
+#### Account Linking (CLI Flow)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/cli/slack/connect` | Initiate OAuth, return auth_url + session_token |
-| GET | `/api/cli/slack/connect/status` | Poll for OAuth completion |
-| GET | `/api/slack/oauth/callback` | Slack OAuth redirect handler |
+| POST | `/api/cli/slack/link` | Initiate linking, return auth_url + link_token |
+| GET | `/api/cli/slack/link/status` | Poll for linking completion |
+| GET | `/api/slack/link/callback` | VM0 OAuth callback for linking |
 
-#### Slack Workspace Management
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/agent/slack/workspaces` | List connected workspaces |
-| DELETE | `/api/agent/slack/workspaces/[id]` | Disconnect workspace |
-
-#### Slack Agent Binding
+#### Account Linking (Slack-initiated)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/agent/slack/bots` | Bind agent to workspace |
-| GET | `/api/agent/slack/bots` | List bound agents |
-| PATCH | `/api/agent/slack/bots/[id]` | Update agent binding |
-| DELETE | `/api/agent/slack/bots/[id]` | Remove agent from workspace |
+| GET | `/api/slack/link` | Landing page for link URL from Slack |
+| POST | `/api/slack/link/complete` | Complete linking after VM0 OAuth |
+
+#### Agent Binding
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/agent/slack/bindings` | Bind agent to workspace |
+| GET | `/api/agent/slack/bindings` | List my bound agents |
+| PATCH | `/api/agent/slack/bindings/[id]` | Update agent binding |
+| DELETE | `/api/agent/slack/bindings/[id]` | Remove agent from workspace |
 
 #### Slack Webhooks (from Slack)
 
@@ -304,19 +342,19 @@ CREATE TABLE slack_oauth_sessions (
 ### CLI Commands
 
 ```bash
-# Connect Slack workspace (opens browser for OAuth)
-vm0 slack connect
+# Link Slack account to VM0 (opens browser for Slack OAuth)
+vm0 slack link
 
-# List connected workspaces
-vm0 slack workspaces
+# Check link status
+vm0 slack status
 
-# Disconnect workspace
-vm0 slack disconnect <workspace-name>
+# Unlink Slack account
+vm0 slack unlink [--workspace <name>]
 
 # Bind agent to workspace
 vm0 slack agent add <agent-name> [--workspace <name>] [--description <desc>] [--secrets KEY=value]
 
-# List bound agents
+# List my bound agents
 vm0 slack agent list [--workspace <name>]
 
 # Update agent binding (secrets, description)
@@ -326,39 +364,60 @@ vm0 slack agent update <agent-name> [--workspace <name>] [--description <desc>] 
 vm0 slack agent remove <agent-name> [--workspace <name>]
 ```
 
-### OAuth Flow Detail
+### Account Linking Flow (CLI-initiated)
 
 ```
 CLI                          VM0 Server                    Slack
  │                               │                           │
- │ POST /api/cli/slack/connect   │                           │
+ │ POST /api/cli/slack/link      │                           │
  │ ─────────────────────────────►│                           │
  │                               │                           │
- │ { session_token, auth_url }   │                           │
+ │ { link_token, auth_url }      │                           │
  │ ◄─────────────────────────────│                           │
  │                               │                           │
  │ [Open browser to auth_url]    │                           │
  │ ═══════════════════════════════════════════════════════► │
  │                               │                           │
- │                               │    User clicks "Allow"    │
+ │                               │  User signs in to Slack   │
  │                               │ ◄═══════════════════════ │
  │                               │                           │
- │                               │ GET /callback?code=xxx    │
+ │                               │ GET /callback (identity)  │
  │                               │ ◄═════════════════════════│
  │                               │                           │
- │                               │ POST oauth.v2.access      │
- │                               │ ═════════════════════════►│
+ │                               │ [Create user link:        │
+ │                               │  slack_user ↔ vm0_user]   │
  │                               │                           │
- │                               │ { bot_token, team_id }    │
- │                               │ ◄═════════════════════════│
- │                               │                           │
- │                               │ [Store in oauth_sessions] │
- │                               │                           │
- │ GET /api/cli/slack/connect/status                         │
+ │ GET /api/cli/slack/link/status                            │
  │ ─────────────────────────────►│                           │
  │                               │                           │
- │ { status: "completed", workspace_name }                   │
+ │ { status: "completed", workspace: "Acme Corp" }           │
  │ ◄─────────────────────────────│                           │
+```
+
+### Account Linking Flow (Slack-initiated)
+
+```
+Slack                        VM0 Server                    Browser
+ │                               │                           │
+ │ User @VM0 (not linked)        │                           │
+ │ ─────────────────────────────►│                           │
+ │                               │                           │
+ │ Reply: "Link account: [url]"  │                           │
+ │ ◄─────────────────────────────│                           │
+ │                               │                           │
+ │                               │ User clicks link          │
+ │                               │ ◄═════════════════════════│
+ │                               │                           │
+ │                               │ GET /api/slack/link?token=│
+ │                               │ [Show VM0 login page]     │
+ │                               │ ═════════════════════════►│
+ │                               │                           │
+ │                               │ [User logs in to VM0]     │
+ │                               │ ◄═════════════════════════│
+ │                               │                           │
+ │                               │ [Create user link]        │
+ │                               │ [Show success page]       │
+ │                               │ ═════════════════════════►│
 ```
 
 ### Webhook Processing Flow
@@ -373,17 +432,17 @@ CLI                          VM0 Server                    Slack
 2. Respond HTTP 200 immediately (Slack 3-second requirement)
    ↓
 3. Async processing:
-   a. Find workspace_connection by team_id
-   b. Verify trigger permission:
-      - event.user == workspace_connection.slack_installer_user_id?
-   c. Route to agent:
+   a. Find slack_user_link by (team_id, event.user)
+      ├─ Not found → Reply "Please link your VM0 account: [link]", abort
+      └─ Found → Get vm0_user_id
+   b. Route to agent (using THIS USER's agents only):
       ┌─ Has thread_ts with existing session? → Use session's agent (continue)
       ├─ Message starts with agent name? → Use specified agent
-      ├─ LLM Router matches? → Use matched agent
-      └─ No match → Reply with agent list, abort
-   d. Find slack_bot for selected agent
+      ├─ LLM Router on user's agents → Use matched agent
+      └─ No match → Reply with user's agent list, abort
+   c. Find slack_agent_binding for selected agent
    ↓
-4. Create/continue run with bot's secrets
+4. Create/continue run with user's binding secrets
    ↓
 5. Wait for completion
    ↓
@@ -395,13 +454,13 @@ CLI                          VM0 Server                    Slack
 ```
 /vm0 list
    ↓
-1. Find workspace_connection by team_id
+1. Find slack_user_link by (team_id, user_id)
+   ├─ Not found → "Please link your VM0 account first"
+   └─ Found → Get vm0_user_id
    ↓
-2. Verify user permission
+2. List slack_agent_bindings for (workspace, vm0_user_id)
    ↓
-3. List all slack_bots for this workspace
-   ↓
-4. Reply with agent list (ephemeral message)
+3. Reply with THIS USER's agent list (ephemeral message)
 ```
 
 ## Technical Constraints
@@ -428,25 +487,25 @@ VM0 needs to register a Slack App at api.slack.com:
 
 ### Multi-tenant Considerations
 
-- Single Slack App serves all VM0 users
-- Events routed by `team_id` to correct user's workspace
-- LLM Router selects appropriate agent within user's bound agents
+- Single Slack App serves all workspaces
+- Events routed by `(team_id, slack_user_id)` to correct VM0 user
+- Each user's agents are isolated - LLM Router only sees that user's agents
 - All responses appear as "@VM0" in Slack (single app identity)
 
 ## Security Considerations
 
-1. **Trigger permission**: Only workspace connection owner can @bot (MVP)
-2. **Secret storage**: AES-256-GCM encryption for bot tokens and agent secrets
-3. **OAuth state**: Use session_token as state parameter to prevent CSRF
-4. **Token refresh**: Handle token expiration (Slack tokens generally don't expire)
+1. **User isolation**: Each user triggers their own agents with their own secrets
+2. **No cross-user access**: Users cannot see or trigger other users' agents
+3. **Account linking required**: Unlinked Slack users cannot use @VM0
+4. **Secret storage**: AES-256-GCM encryption for bot tokens and agent secrets
+5. **OAuth state**: Use link_token as state parameter to prevent CSRF
 
 ## Out of Scope (Future)
 
-1. Allowlist-based trigger permissions
-2. VM0 account linking for Slack users
-3. Per-user secrets
-4. Streaming responses to Slack
-5. Multiple slash command subcommands (only `/vm0 list` for MVP)
+1. Team/shared agents (all users see same agents)
+2. Streaming responses to Slack
+3. Multiple slash command subcommands (only `/vm0 list` for MVP)
+4. Cross-workspace agent sharing
 
 ## Dependencies
 
