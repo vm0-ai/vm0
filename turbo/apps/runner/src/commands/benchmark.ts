@@ -124,7 +124,7 @@ export const benchmarkCommand = new Command("benchmark")
       );
     } finally {
       if (poolsInitialized) {
-        cleanupTapPool();
+        await cleanupTapPool();
         cleanupOverlayPool();
       }
     }

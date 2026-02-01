@@ -458,31 +458,38 @@ export class TapPool {
   /**
    * Clean up the TAP pool
    *
-   * Note: This is a sync function for compatibility with process cleanup.
-   * Resources are cleaned up asynchronously (fire-and-forget).
-   * Any remaining resources will be cleaned up by init() on next startup.
+   * Releases all IPs and deletes all TAPs. Waits for all operations to complete
+   * to ensure registry is properly updated before process exits.
    */
-  cleanup(): void {
+  async cleanup(): Promise<void> {
     if (!this.initialized) {
       return;
     }
 
     logger.log(`Cleaning up TAP pool (${this.queue.length} pairs)...`);
 
-    // Release all IPs and delete all TAPs (fire-and-forget)
+    // Release all IPs and delete all TAPs in parallel, wait for completion
+    const cleanupPromises: Promise<void>[] = [];
     for (const { tapDevice, guestIp } of this.queue) {
-      releaseIP(guestIp).catch(() => {});
-      this.config.deleteTap(tapDevice).catch((err) => {
-        logger.log(
-          `Failed to delete ${tapDevice}: ${err instanceof Error ? err.message : "Unknown"}`,
-        );
-      });
+      cleanupPromises.push(
+        releaseIP(guestIp).catch(() => {
+          // Ignore errors - IP may already be released
+        }),
+      );
+      cleanupPromises.push(
+        this.config.deleteTap(tapDevice).catch((err) => {
+          logger.log(
+            `Failed to delete ${tapDevice}: ${err instanceof Error ? err.message : "Unknown"}`,
+          );
+        }),
+      );
     }
+    await Promise.all(cleanupPromises);
     this.queue = [];
 
     this.initialized = false;
     this.replenishing = false;
-    logger.log("TAP pool cleanup initiated");
+    logger.log("TAP pool cleanup complete");
   }
 }
 
@@ -495,7 +502,7 @@ let tapPool: TapPool | null = null;
  */
 export async function initTapPool(config: TapPoolConfig): Promise<TapPool> {
   if (tapPool) {
-    tapPool.cleanup();
+    await tapPool.cleanup();
   }
   tapPool = new TapPool(config);
   await tapPool.init();
@@ -532,9 +539,9 @@ export async function releaseTap(
 /**
  * Clean up the global TAP pool
  */
-export function cleanupTapPool(): void {
+export async function cleanupTapPool(): Promise<void> {
   if (tapPool) {
-    tapPool.cleanup();
+    await tapPool.cleanup();
     tapPool = null;
   }
 }

@@ -159,7 +159,7 @@ export async function cleanupEnvironment(
 
   // Cleanup TAP pool
   try {
-    cleanupTapPool();
+    await cleanupTapPool();
   } catch (err) {
     const error = err instanceof Error ? err : new Error(String(err));
     errors.push(error);

@@ -70,10 +70,10 @@ describe("TapPool", () => {
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     // Cleanup all pools to terminate any pending async operations (e.g., replenish)
     for (const pool of activePools) {
-      pool.cleanup();
+      await pool.cleanup();
     }
     vi.restoreAllMocks();
     resetIPRegistry();
@@ -361,7 +361,7 @@ describe("TapPool", () => {
       await pool.init();
       const config = await pool.acquire("vm1");
 
-      pool.cleanup();
+      await pool.cleanup();
       deleteTapCalls = [];
 
       await pool.release(config.tapDevice, config.guestIp, "vm1");
@@ -635,7 +635,7 @@ describe("TapPool", () => {
       );
 
       // Cleanup while replenish is blocked on createTap
-      pool.cleanup();
+      await pool.cleanup();
 
       // Unblock the createTap - replenish should detect shutdown
       for (const resolve of resolvers) {
@@ -643,7 +643,7 @@ describe("TapPool", () => {
       }
 
       // Wait for ALL delete operations to complete:
-      // 1. cleanup() fire-and-forget deletes pool pair (index 1)
+      // 1. cleanup() deletes pool pair (index 1)
       // 2. replenish cleanup deletes in-flight pair (index 2)
       await vi.waitFor(
         () => {
