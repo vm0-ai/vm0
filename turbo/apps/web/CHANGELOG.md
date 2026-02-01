@@ -1,5 +1,12 @@
 # Changelog
 
+## [11.13.0](https://github.com/vm0-ai/vm0/compare/web-v11.12.1...web-v11.13.0) (2026-02-01)
+
+
+### Features
+
+* **web:** optimize landing page responsive design and styling ([#2063](https://github.com/vm0-ai/vm0/issues/2063)) ([ce3c6de](https://github.com/vm0-ai/vm0/commit/ce3c6de1541871667d71587f1bc0ef06e8ea8499))
+
 ## [11.12.1](https://github.com/vm0-ai/vm0/compare/web-v11.12.0...web-v11.12.1) (2026-01-31)
 
 
