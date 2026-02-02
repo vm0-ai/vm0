@@ -407,6 +407,13 @@
       "when": 1768200000000,
       "tag": "0057_add_schedule_retry_started_at",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1768300000000,
+      "tag": "0058_add_selected_model_to_model_providers",
+      "breakpoints": true
     }
   ]
 }
