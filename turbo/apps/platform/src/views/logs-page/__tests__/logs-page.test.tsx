@@ -193,7 +193,7 @@ describe("logs page", () => {
     const dataRow = rows[1];
     expect(dataRow).toBeDefined();
     // Should have 2 dashes (for sessionId and framework columns)
-    expect(within(dataRow!).getAllByText("-").length).toBe(2);
+    expect(within(dataRow!).getAllByText("-")).toHaveLength(2);
   });
 
   it("should handle API error gracefully", async () => {
