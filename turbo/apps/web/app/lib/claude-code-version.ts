@@ -1,9 +1,10 @@
-const CLAUDE_CODE_VERSION_URL =
-  process.env.CLAUDE_CODE_VERSION_URL ??
-  "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/latest";
-
 export async function fetchClaudeCodeVersion(): Promise<string | undefined> {
-  const res = await fetch(CLAUDE_CODE_VERSION_URL, {
+  const url = process.env.CLAUDE_CODE_VERSION_URL;
+  if (!url) {
+    throw new Error("CLAUDE_CODE_VERSION_URL environment variable is required");
+  }
+
+  const res = await fetch(url, {
     next: { revalidate: 3600 }, // 1 hour cache
   });
 

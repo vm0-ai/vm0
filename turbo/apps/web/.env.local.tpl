@@ -17,3 +17,6 @@ AXIOM_TOKEN=op://Development/vm0-env-local/axiom_token
 AXIOM_DATASET_SUFFIX=dev
 
 SECRETS_ENCRYPTION_KEY=op://Development/vm0-env-local/SECRETS_ENCRYPTION_KEY
+
+# Required: Claude Code Version URL
+CLAUDE_CODE_VERSION_URL=https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/latest
