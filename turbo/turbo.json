@@ -36,7 +36,8 @@
     "CONCURRENT_RUN_LIMIT",
     "SLACK_CLIENT_ID",
     "SLACK_CLIENT_SECRET",
-    "SLACK_SIGNING_SECRET"
+    "SLACK_SIGNING_SECRET",
+    "CLAUDE_CODE_VERSION_URL"
   ],
   "tasks": {
     "build": {

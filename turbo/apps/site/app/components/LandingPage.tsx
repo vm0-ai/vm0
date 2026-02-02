@@ -15,12 +15,8 @@ const RUN_TYPED_TEXT = {
   "daily-report": "Generate daily report for the team",
 };
 
-interface LandingPageProps {
-  claudeCodeVersion?: string;
-}
-
 // eslint-disable-next-line complexity
-export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
+export default function LandingPage() {
   const [activeTab, setActiveTab] = useState<"agents" | "yaml">("agents");
   const [selectedAgent, setSelectedAgent] = useState<
     "hackernews" | "tiktok" | "blog" | "daily-report"
@@ -519,8 +515,8 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
                           </div>
                           <div className="text-[11px]">
                             <p className="m-0">
-                              <span className="font-bold">Claude Code</span>
-                              {claudeCodeVersion && ` ${claudeCodeVersion}`}
+                              <span className="font-bold">Claude Code</span>{" "}
+                              v2.0.76
                             </p>
                             <p className="m-0 text-[#827d77]">
                               Sonnet 4.5 · Claude API
@@ -2542,8 +2538,8 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
                         </div>
                         <div className="text-[11px]">
                           <p className="m-0">
-                            <span className="font-bold">Claude Code</span>
-                            {claudeCodeVersion && ` ${claudeCodeVersion}`}
+                            <span className="font-bold">Claude Code</span>{" "}
+                            v2.0.76
                           </p>
                           <p className="m-0 text-[#827d77]">
                             Sonnet 4.5 · Claude API
