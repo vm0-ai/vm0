@@ -560,7 +560,7 @@ describe("model-provider setup command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should list valid models including Claude, Kimi, DeepSeek when invalid model provided", async () => {
+    it("should list valid models when invalid model provided", async () => {
       await expect(async () => {
         await setupCommand.parseAsync([
           "node",
@@ -574,15 +574,15 @@ describe("model-provider setup command", () => {
         ]);
       }).rejects.toThrow("process.exit called");
 
-      // Should show models from different providers
+      // Should show available Anthropic models
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("anthropic/claude-sonnet-4.5"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("moonshotai/kimi-k2.5"),
+        expect.stringContaining("anthropic/claude-opus-4.5"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("deepseek/deepseek-v3.2"),
+        expect.stringContaining("anthropic/claude-haiku-4.5"),
       );
     });
   });
