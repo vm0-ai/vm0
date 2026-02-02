@@ -128,7 +128,8 @@ Create the issue:
 gh issue create \
   --title "[type]: [clear, descriptive description]" \
   --body "[Synthesized content]" \
-  --label "[appropriate-labels]"
+  --label "[appropriate-labels]" \
+  --assignee @me
 ```
 
 ### Step 5: Return Result
@@ -218,7 +219,8 @@ Create the issue directly with:
 gh issue create \
   --title "bug: [concise description]" \
   --body "[Organized content]" \
-  --label "bug"
+  --label "bug" \
+  --assignee @me
 ```
 
 **Title format:** Use Conventional Commit style with `bug:` prefix followed by lowercase description (no period at end).
@@ -300,7 +302,8 @@ Create the issue directly with:
 gh issue create \
   --title "feat: [clear, concise description]" \
   --body "[Organized content]" \
-  --label "enhancement"
+  --label "enhancement" \
+  --assignee @me
 ```
 
 **Title format:** Use Conventional Commit style with `feat:` prefix followed by lowercase description (no period at end).
