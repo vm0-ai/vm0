@@ -1,11 +1,12 @@
 "use client";
 
+import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { useTheme } from "../../components/ThemeProvider";
 import { IconCheck } from "@tabler/icons-react";
 
-export default function SlackSuccessPage(): React.JSX.Element {
+function SlackSuccessContent(): React.JSX.Element {
   const searchParams = useSearchParams();
   const { theme, toggleTheme } = useTheme();
 
@@ -135,5 +136,24 @@ export default function SlackSuccessPage(): React.JSX.Element {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SlackSuccessPage(): React.JSX.Element {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-background p-6">
+          <div className="w-full max-w-[400px] min-h-[380px] overflow-hidden rounded-xl border border-border bg-card">
+            <div className="flex flex-col items-center p-10">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <p className="mt-4 text-sm text-muted-foreground">Loading...</p>
+            </div>
+          </div>
+        </div>
+      }
+    >
+      <SlackSuccessContent />
+    </Suspense>
   );
 }

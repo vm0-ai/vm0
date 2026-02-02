@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { useTheme } from "../../components/ThemeProvider";
 import { linkSlackAccount, checkLinkStatus } from "./actions";
 
-export default function SlackLinkPage(): React.JSX.Element {
+function SlackLinkContent(): React.JSX.Element {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(true);
@@ -236,5 +236,24 @@ export default function SlackLinkPage(): React.JSX.Element {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SlackLinkPage(): React.JSX.Element {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-background p-6">
+          <div className="w-full max-w-[400px] overflow-hidden rounded-xl border border-border bg-card">
+            <div className="flex flex-col items-center gap-6 p-10">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <p className="text-sm text-muted-foreground">Loading...</p>
+            </div>
+          </div>
+        </div>
+      }
+    >
+      <SlackLinkContent />
+    </Suspense>
   );
 }
