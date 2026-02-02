@@ -14,6 +14,7 @@ import { loadConfig } from "../lib/config.js";
 import { runnerPaths } from "../lib/paths.js";
 import { findProcessByVmId, killProcess } from "../lib/firecracker/process.js";
 import { getIPForVm } from "../lib/firecracker/ip-registry.js";
+import { type VmId, createVmId } from "../lib/firecracker/vm-id.js";
 
 interface RunnerStatus {
   mode: string;
@@ -189,10 +190,10 @@ export const killCommand = new Command("kill")
 function resolveRunId(
   input: string,
   statusFilePath: string,
-): { vmId: string; runId: string | null } {
+): { vmId: VmId; runId: string | null } {
   if (input.includes("-")) {
-    const vmId = input.split("-")[0];
-    return { vmId: vmId ?? input, runId: input };
+    // Full UUID provided, extract vmId
+    return { vmId: createVmId(input), runId: input };
   }
 
   if (existsSync(statusFilePath)) {
@@ -204,14 +205,15 @@ function resolveRunId(
         id.startsWith(input),
       );
       if (match) {
-        return { vmId: input, runId: match };
+        return { vmId: createVmId(match), runId: match };
       }
     } catch {
       // Ignore parsing errors
     }
   }
 
-  return { vmId: input, runId: null };
+  // Short vmId provided directly
+  return { vmId: createVmId(input), runId: null };
 }
 
 async function confirm(message: string): Promise<boolean> {

@@ -33,6 +33,7 @@ import {
   clearVmIdFromIP,
   scanTapDevices,
 } from "./ip-registry.js";
+import { type VmId } from "./vm-id.js";
 
 const execAsync = promisify(exec);
 const logger = createLogger("TapPool");
@@ -294,7 +295,7 @@ export class TapPool {
    * Returns VMNetworkConfig with TAP device, IP, and MAC.
    * Falls back to on-demand creation if pool is exhausted.
    */
-  async acquire(vmId: string): Promise<VMNetworkConfig> {
+  async acquire(vmId: VmId): Promise<VMNetworkConfig> {
     let resource: PooledResource;
     let fromPool: boolean;
 
@@ -376,11 +377,7 @@ export class TapPool {
    * Release a {TAP, IP} pair back to the pool
    * @param vmId The VM ID that is releasing this pair (for registry cleanup)
    */
-  async release(
-    tapDevice: string,
-    guestIp: string,
-    vmId: string,
-  ): Promise<void> {
+  async release(tapDevice: string, guestIp: string, vmId: VmId): Promise<void> {
     // Clear ARP entry
     await clearArpEntry(guestIp);
 
@@ -498,7 +495,7 @@ export async function initTapPool(config: TapPoolConfig): Promise<TapPool> {
  * Acquire a {TAP, IP} pair from the global pool
  * @throws Error if pool was not initialized with initTapPool
  */
-export async function acquireTap(vmId: string): Promise<VMNetworkConfig> {
+export async function acquireTap(vmId: VmId): Promise<VMNetworkConfig> {
   if (!tapPool) {
     throw new Error("TAP pool not initialized. Call initTapPool() first.");
   }
@@ -513,7 +510,7 @@ export async function acquireTap(vmId: string): Promise<VMNetworkConfig> {
 export async function releaseTap(
   tapDevice: string,
   guestIp: string,
-  vmId: string,
+  vmId: VmId,
 ): Promise<void> {
   if (!tapPool) {
     throw new Error("TAP pool not initialized. Call initTapPool() first.");

@@ -12,6 +12,7 @@
  */
 
 import { FirecrackerVM, type VMConfig } from "./firecracker/vm.js";
+import { createVmId } from "./firecracker/vm-id.js";
 import type { GuestClient } from "./firecracker/guest.js";
 import { VsockClient } from "./firecracker/vsock.js";
 import type { ExecutionContext } from "./api.js";
@@ -34,16 +35,6 @@ import { downloadStorages, restoreSessionHistory } from "./vm-setup/index.js";
 import { createLogger } from "./logger.js";
 
 const logger = createLogger("Executor");
-
-/**
- * Extract short VM ID from runId (UUID)
- * Uses first 8 characters of UUID for unique identification
- */
-function getVmIdFromRunId(runId: string): string {
-  // runId is a UUID like "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-  // Extract first 8 chars (before first hyphen) for a unique short ID
-  return runId.split("-")[0] || runId.substring(0, 8);
-}
 
 /**
  * Execute a job in a Firecracker VM
@@ -72,7 +63,7 @@ export async function executeJob(
 
   // Use runId (UUID) to derive unique VM identifier
   // This ensures no conflicts even across process restarts
-  const vmId = getVmIdFromRunId(context.runId);
+  const vmId = createVmId(context.runId);
   let vm: FirecrackerVM | null = null;
   let guestIp: string | null = null;
   let vsockClient: VsockClient | null = null;

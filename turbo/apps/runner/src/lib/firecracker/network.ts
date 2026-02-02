@@ -11,6 +11,7 @@
 import { execSync, exec } from "node:child_process";
 import { promisify } from "node:util";
 import { createLogger } from "../logger.js";
+import { type VmId, vmIdValue } from "./vm-id.js";
 
 const execAsync = promisify(exec);
 const logger = createLogger("Network");
@@ -52,10 +53,10 @@ function hashString(str: string): number {
  * Generate a MAC address for a VM
  * Uses the vm0 OUI prefix (locally administered) with hashed VM ID
  */
-export function generateMacAddress(vmId: string): string {
+export function generateMacAddress(vmId: VmId): string {
   // Locally administered MAC: 02:xx:xx:xx:xx:xx
   // Use hash of vmId for last 3 bytes to ensure uniqueness
-  const hash = hashString(vmId);
+  const hash = hashString(vmIdValue(vmId));
   const b1 = (hash >> 16) & 0xff;
   const b2 = (hash >> 8) & 0xff;
   const b3 = hash & 0xff;

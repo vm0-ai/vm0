@@ -7,6 +7,7 @@ import {
   findMitmproxyProcess,
   findProcessByVmId,
 } from "../process.js";
+import { createVmId as vmId } from "../vm-id.js";
 
 // Use memfs for filesystem simulation
 vi.mock("fs", async () => {
@@ -253,7 +254,7 @@ describe("process discovery", () => {
         ),
       });
 
-      const result = findProcessByVmId("bbbbbbbb");
+      const result = findProcessByVmId(vmId("bbbbbbbb"));
 
       expect(result).toEqual({
         pid: 200,
@@ -271,7 +272,7 @@ describe("process discovery", () => {
         ),
       });
 
-      const result = findProcessByVmId("notfound");
+      const result = findProcessByVmId(vmId("notfound"));
 
       expect(result).toBeNull();
     });

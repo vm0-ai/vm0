@@ -6,6 +6,7 @@
  */
 
 import path from "node:path";
+import { type VmId, createVmId } from "./firecracker/vm-id.js";
 
 /**
  * Base directories
@@ -40,7 +41,7 @@ export const runnerPaths = {
   workspacesDir: (baseDir: string) => path.join(baseDir, "workspaces"),
 
   /** VM work directory */
-  vmWorkDir: (baseDir: string, vmId: string) =>
+  vmWorkDir: (baseDir: string, vmId: VmId) =>
     path.join(baseDir, "workspaces", `${VM_WORKSPACE_PREFIX}${vmId}`),
 
   /** Runner status file */
@@ -50,7 +51,8 @@ export const runnerPaths = {
   isVmWorkspace: (dirname: string) => dirname.startsWith(VM_WORKSPACE_PREFIX),
 
   /** Extract vmId from workspace directory name */
-  extractVmId: (dirname: string) => dirname.replace(VM_WORKSPACE_PREFIX, ""),
+  extractVmId: (dirname: string): VmId =>
+    createVmId(dirname.replace(VM_WORKSPACE_PREFIX, "")),
 };
 
 /**

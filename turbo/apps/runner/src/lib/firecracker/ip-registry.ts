@@ -14,6 +14,7 @@ import path from "node:path";
 import { createLogger } from "../logger.js";
 import { runtimePaths } from "../paths.js";
 import { withFileLock } from "../utils/file-lock.js";
+import { type VmId, vmIdValue } from "./vm-id.js";
 
 const execAsync = promisify(exec);
 const logger = createLogger("IPRegistry");
@@ -333,11 +334,11 @@ export class IPRegistry {
   /**
    * Assign a vmId to an IP allocation (called when VM acquires the pair)
    */
-  async assignVmIdToIP(ip: string, vmId: string): Promise<void> {
+  async assignVmIdToIP(ip: string, vmId: VmId): Promise<void> {
     return this.withIPLock(async () => {
       const registry = this.readRegistry();
       if (registry.allocations[ip]) {
-        registry.allocations[ip].vmId = vmId;
+        registry.allocations[ip].vmId = vmIdValue(vmId);
         this.writeRegistry(registry);
       }
     });
@@ -348,12 +349,12 @@ export class IPRegistry {
    * Only clears if the current vmId matches expectedVmId to prevent race conditions
    * where a new VM's vmId could be cleared by the previous VM's release.
    */
-  async clearVmIdFromIP(ip: string, expectedVmId: string): Promise<void> {
+  async clearVmIdFromIP(ip: string, expectedVmId: VmId): Promise<void> {
     return this.withIPLock(async () => {
       const registry = this.readRegistry();
       if (
         registry.allocations[ip] &&
-        registry.allocations[ip].vmId === expectedVmId
+        registry.allocations[ip].vmId === vmIdValue(expectedVmId)
       ) {
         registry.allocations[ip].vmId = null;
         this.writeRegistry(registry);
@@ -378,10 +379,11 @@ export class IPRegistry {
   /**
    * Get IP allocation for a specific VM ID (for diagnostic purposes)
    */
-  getIPForVm(vmId: string): string | undefined {
+  getIPForVm(vmId: VmId): string | undefined {
     const registry = this.readRegistry();
+    const vmIdStr = vmIdValue(vmId);
     for (const [ip, allocation] of Object.entries(registry.allocations)) {
-      if (allocation.vmId === vmId) {
+      if (allocation.vmId === vmIdStr) {
         return ip;
       }
     }
@@ -442,7 +444,7 @@ export async function cleanupOrphanedIPs(): Promise<string[]> {
 /**
  * Assign a vmId to an IP allocation
  */
-export async function assignVmIdToIP(ip: string, vmId: string): Promise<void> {
+export async function assignVmIdToIP(ip: string, vmId: VmId): Promise<void> {
   return getRegistry().assignVmIdToIP(ip, vmId);
 }
 
@@ -451,7 +453,7 @@ export async function assignVmIdToIP(ip: string, vmId: string): Promise<void> {
  */
 export async function clearVmIdFromIP(
   ip: string,
-  expectedVmId: string,
+  expectedVmId: VmId,
 ): Promise<void> {
   return getRegistry().clearVmIdFromIP(ip, expectedVmId);
 }
@@ -469,6 +471,6 @@ export function getAllocations(): Map<
 /**
  * Get IP allocation for a specific VM ID (for diagnostic purposes)
  */
-export function getIPForVm(vmId: string): string | undefined {
+export function getIPForVm(vmId: VmId): string | undefined {
   return getRegistry().getIPForVm(vmId);
 }

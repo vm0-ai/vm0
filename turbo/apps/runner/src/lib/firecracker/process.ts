@@ -7,10 +7,11 @@
 
 import { readdirSync, readFileSync, existsSync } from "fs";
 import path from "path";
+import { type VmId, createVmId, vmIdValue } from "./vm-id.js";
 
 interface FirecrackerProcess {
   pid: number;
-  vmId: string;
+  vmId: VmId;
   socketPath: string;
 }
 
@@ -20,7 +21,7 @@ interface FirecrackerProcess {
  */
 export function parseFirecrackerCmdline(
   cmdline: string,
-): { vmId: string; socketPath: string } | null {
+): { vmId: VmId; socketPath: string } | null {
   const args = cmdline.split("\0");
 
   if (!args[0]?.includes("firecracker")) return null;
@@ -32,7 +33,7 @@ export function parseFirecrackerCmdline(
   const match = socketPath.match(/vm0-([a-f0-9]+)\/firecracker\.sock$/);
   if (!match?.[1]) return null;
 
-  return { vmId: match[1], socketPath };
+  return { vmId: createVmId(match[1]), socketPath };
 }
 
 /**
@@ -93,9 +94,10 @@ export function findFirecrackerProcesses(): FirecrackerProcess[] {
 /**
  * Find a specific Firecracker process by vmId
  */
-export function findProcessByVmId(vmId: string): FirecrackerProcess | null {
+export function findProcessByVmId(vmId: VmId): FirecrackerProcess | null {
   const processes = findFirecrackerProcesses();
-  return processes.find((p) => p.vmId === vmId) || null;
+  const vmIdStr = vmIdValue(vmId);
+  return processes.find((p) => vmIdValue(p.vmId) === vmIdStr) || null;
 }
 
 /**
