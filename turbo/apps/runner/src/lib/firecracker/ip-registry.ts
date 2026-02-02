@@ -10,9 +10,8 @@
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import * as fs from "node:fs";
-import path from "node:path";
 import { createLogger } from "../logger.js";
-import { VM0_RUN_DIR } from "../paths.js";
+import { VM0_RUN_DIR, runtimePaths } from "../paths.js";
 import { withFileLock } from "../utils/file-lock.js";
 
 const execAsync = promisify(exec);
@@ -127,8 +126,7 @@ export class IPRegistry {
     const runDir = config.runDir ?? VM0_RUN_DIR;
     this.config = {
       runDir,
-      registryPath:
-        config.registryPath ?? path.join(runDir, "ip-registry.json"),
+      registryPath: config.registryPath ?? runtimePaths.ipRegistry,
       ensureRunDir: config.ensureRunDir ?? (() => defaultEnsureRunDir(runDir)),
       scanTapDevices: config.scanTapDevices ?? defaultScanTapDevices,
       checkTapExists: config.checkTapExists ?? defaultCheckTapExists,
