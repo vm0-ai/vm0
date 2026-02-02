@@ -1,5 +1,17 @@
 # Changelog
 
+## [9.10.0](https://github.com/vm0-ai/vm0/compare/cli-v9.9.2...cli-v9.10.0) (2026-02-02)
+
+
+### Features
+
+* **cli:** update marketplace when setup-claude runs on existing install ([#2117](https://github.com/vm0-ai/vm0/issues/2117)) ([a1c1810](https://github.com/vm0-ai/vm0/commit/a1c1810fc4edf214f00e1704d6aa969510bf4856)), closes [#2113](https://github.com/vm0-ai/vm0/issues/2113)
+
+
+### Bug Fixes
+
+* **cli:** show helpful hints when concurrent run limit is reached ([#2122](https://github.com/vm0-ai/vm0/issues/2122)) ([47c7dfa](https://github.com/vm0-ai/vm0/commit/47c7dfa4996ea615b0e14b0a22fd909774ccde87))
+
 ## [9.9.2](https://github.com/vm0-ai/vm0/compare/cli-v9.9.1...cli-v9.9.2) (2026-02-02)
 
 

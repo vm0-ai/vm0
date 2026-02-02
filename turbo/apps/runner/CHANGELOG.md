@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.9.3](https://github.com/vm0-ai/vm0/compare/runner-v3.9.2...runner-v3.9.3) (2026-02-02)
+
+
+### Performance Improvements
+
+* **runner:** parallelize firecracker vm configuration api calls ([#2096](https://github.com/vm0-ai/vm0/issues/2096)) ([9935af0](https://github.com/vm0-ai/vm0/commit/9935af0ea5e0afb2faa4da14f8d2eaa9e682ca9f)), closes [#1810](https://github.com/vm0-ai/vm0/issues/1810)
+
 ## [3.9.2](https://github.com/vm0-ai/vm0/compare/runner-v3.9.1...runner-v3.9.2) (2026-02-02)
 
 

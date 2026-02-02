@@ -1,5 +1,12 @@
 # Changelog
 
+## [11.15.1](https://github.com/vm0-ai/vm0/compare/web-v11.15.0...web-v11.15.1) (2026-02-02)
+
+
+### Bug Fixes
+
+* **cli:** show helpful hints when concurrent run limit is reached ([#2122](https://github.com/vm0-ai/vm0/issues/2122)) ([47c7dfa](https://github.com/vm0-ai/vm0/commit/47c7dfa4996ea615b0e14b0a22fd909774ccde87))
+
 ## [11.15.0](https://github.com/vm0-ai/vm0/compare/web-v11.14.1...web-v11.15.0) (2026-02-02)
 
 

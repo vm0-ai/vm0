@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.36.3](https://github.com/vm0-ai/vm0/compare/platform-v0.36.2...platform-v0.36.3) (2026-02-02)
+
+
+### Bug Fixes
+
+* **platform:** polish responsive design for logs page ([#2108](https://github.com/vm0-ai/vm0/issues/2108)) ([fcdbcd2](https://github.com/vm0-ai/vm0/commit/fcdbcd2b355fbba44454897b8287325ba634d470))
+
 ## [0.36.2](https://github.com/vm0-ai/vm0/compare/platform-v0.36.1...platform-v0.36.2) (2026-02-02)
 
 
