@@ -141,12 +141,16 @@ teardown() {
     echo "# System log OK"
 
     # Step 7: Verify --metrics option (with retry for eventual consistency)
-    # Axiom is eventually consistent - metrics may not be immediately queryable
+    # Axiom is eventually consistent - metrics may take 10-20s to be queryable
     echo "# Step 7: Testing --metrics option..."
 
+    # Initial delay to allow Axiom to index the data
+    echo "# Waiting 5s for Axiom to index metrics..."
+    sleep 5
+
     local attempt=1
-    local max_attempts=5
-    local delay=2
+    local max_attempts=8
+    local delay=3
 
     while [[ $attempt -le $max_attempts ]]; do
         run $CLI_COMMAND logs "$RUN_ID" --metrics --tail 100
