@@ -5,6 +5,7 @@ import { POST as cancelRun } from "../[id]/cancel/route";
 import { GET as getRunLogs } from "../[id]/logs/route";
 import { GET as getRunMetrics } from "../[id]/metrics/route";
 import { randomUUID } from "crypto";
+import { Sandbox } from "@e2b/code-interpreter";
 import {
   createTestRequest,
   createTestCompose,
@@ -474,6 +475,116 @@ describe("Public API v1 - Runs Endpoints", () => {
       expect(response.status).toBe(202);
       expect(data.id).toBeDefined();
       expect(data.status).toBeDefined();
+    });
+
+    it("should pass ANTHROPIC_API_KEY env var for anthropic-api-key provider", async () => {
+      vi.mocked(Sandbox.create).mockClear();
+
+      await createTestModelProvider("anthropic-api-key", "sk-ant-test-key");
+
+      const { composeId } = await createTestCompose(
+        `anthropic-mp-${Date.now()}`,
+        {
+          skipDefaultApiKey: true,
+          overrides: { framework: "claude-code" },
+        },
+      );
+
+      const request = createTestRequest("http://localhost:3000/v1/runs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: composeId,
+          prompt: "Test anthropic env vars",
+        }),
+      });
+
+      const response = await createRun(request);
+      expect(response.status).toBe(202);
+
+      // Verify Sandbox.create was called with correct env vars
+      expect(Sandbox.create).toHaveBeenCalled();
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
+
+      expect(envs?.ANTHROPIC_API_KEY).toBe("sk-ant-test-key");
+    });
+
+    it("should pass mapped env vars for moonshot-api-key provider with selected model", async () => {
+      vi.mocked(Sandbox.create).mockClear();
+
+      await createTestModelProvider(
+        "moonshot-api-key",
+        "sk-moonshot-test-key",
+        "kimi-k2.5",
+      );
+
+      const { composeId } = await createTestCompose(
+        `moonshot-mp-${Date.now()}`,
+        {
+          skipDefaultApiKey: true,
+          overrides: { framework: "claude-code" },
+        },
+      );
+
+      const request = createTestRequest("http://localhost:3000/v1/runs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: composeId,
+          prompt: "Test moonshot env vars",
+        }),
+      });
+
+      const response = await createRun(request);
+      expect(response.status).toBe(202);
+
+      // Verify Sandbox.create was called with mapped env vars
+      expect(Sandbox.create).toHaveBeenCalled();
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
+
+      // Moonshot provider maps to ANTHROPIC_* env vars
+      expect(envs?.ANTHROPIC_AUTH_TOKEN).toBe("sk-moonshot-test-key");
+      expect(envs?.ANTHROPIC_BASE_URL).toBe(
+        "https://api.moonshot.ai/anthropic",
+      );
+      expect(envs?.ANTHROPIC_MODEL).toBe("kimi-k2.5");
+    });
+
+    it("should use default model when selectedModel is not provided for moonshot provider", async () => {
+      vi.mocked(Sandbox.create).mockClear();
+
+      // Create moonshot provider without selectedModel
+      await createTestModelProvider("moonshot-api-key", "sk-moonshot-key");
+
+      const { composeId } = await createTestCompose(
+        `moonshot-default-${Date.now()}`,
+        {
+          skipDefaultApiKey: true,
+          overrides: { framework: "claude-code" },
+        },
+      );
+
+      const request = createTestRequest("http://localhost:3000/v1/runs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: composeId,
+          prompt: "Test moonshot default model",
+        }),
+      });
+
+      const response = await createRun(request);
+      expect(response.status).toBe(202);
+
+      // Verify default model is used
+      expect(Sandbox.create).toHaveBeenCalled();
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
+
+      // Default model for moonshot is kimi-k2.5
+      expect(envs?.ANTHROPIC_MODEL).toBe("kimi-k2.5");
     });
   });
 });

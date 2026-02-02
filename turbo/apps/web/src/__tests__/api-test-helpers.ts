@@ -218,18 +218,24 @@ export async function createTestCompose(
  *
  * @param type - The provider type
  * @param credentialValue - The credential value
+ * @param selectedModel - Optional selected model for providers with model selection
  * @returns The created provider with id and type
  */
 export async function createTestModelProvider(
   type: string,
   credentialValue: string,
-): Promise<{ id: string; type: string }> {
+  selectedModel?: string,
+): Promise<{ id: string; type: string; selectedModel: string | null }> {
   const request = createTestRequest(
     "http://localhost:3000/api/model-providers",
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type, credential: credentialValue }),
+      body: JSON.stringify({
+        type,
+        credential: credentialValue,
+        selectedModel,
+      }),
     },
   );
   const response = await upsertModelProviderRoute(request);
