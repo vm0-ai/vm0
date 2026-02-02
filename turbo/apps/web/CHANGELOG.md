@@ -1,5 +1,13 @@
 # Changelog
 
+## [11.17.0](https://github.com/vm0-ai/vm0/compare/web-v11.16.0...web-v11.17.0) (2026-02-02)
+
+
+### Features
+
+* **slack:** add foundation for slack bot integration ([#2114](https://github.com/vm0-ai/vm0/issues/2114)) ([22ee223](https://github.com/vm0-ai/vm0/commit/22ee223c2e94a3cdf2ff72ed81306f9aae054cf1))
+* **web:** redirect get started button to platform for signed-in users ([#2132](https://github.com/vm0-ai/vm0/issues/2132)) ([725f7ea](https://github.com/vm0-ai/vm0/commit/725f7ea8624aa5689f6e0604bcd538d0702a38f7))
+
 ## [11.16.0](https://github.com/vm0-ai/vm0/compare/web-v11.15.1...web-v11.16.0) (2026-02-02)
 
 
