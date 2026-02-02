@@ -58,8 +58,8 @@ export const runnerPaths = {
  * These are file names inside each VM's work directory
  */
 export const vmPaths = {
-  /** Firecracker API socket */
-  socket: (workDir: string) => path.join(workDir, "firecracker.sock"),
+  /** Firecracker config file (used with --config-file --no-api) */
+  config: (workDir: string) => path.join(workDir, "config.json"),
 
   /** Vsock UDS for host-guest communication */
   vsock: (workDir: string) => path.join(workDir, "vsock.sock"),

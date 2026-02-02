@@ -3,20 +3,52 @@
  *
  * Manages the complete lifecycle of a Firecracker microVM:
  * - Process management (spawn, terminate)
- * - Configuration via API
+ * - Configuration via JSON config file (--config-file)
  * - Network setup
  * - Boot and shutdown
+ *
+ * Uses Firecracker's static configuration mode (--config-file --no-api)
+ * for faster startup by eliminating API polling and HTTP request overhead.
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import readline from "node:readline";
-import { FirecrackerClient } from "./client.js";
 import { generateNetworkBootArgs, type VMNetworkConfig } from "./network.js";
 import { acquireOverlay } from "./overlay-pool.js";
 import { acquireTap, releaseTap } from "./tap-pool.js";
 import { createLogger } from "../logger.js";
 import { vmPaths } from "../paths.js";
+
+/**
+ * Firecracker static configuration format
+ * See: https://github.com/firecracker-microvm/firecracker/blob/main/docs/getting-started.md
+ */
+interface FirecrackerConfig {
+  "boot-source": {
+    kernel_image_path: string;
+    boot_args: string;
+  };
+  drives: Array<{
+    drive_id: string;
+    path_on_host: string;
+    is_root_device: boolean;
+    is_read_only: boolean;
+  }>;
+  "machine-config": {
+    vcpu_count: number;
+    mem_size_mib: number;
+  };
+  "network-interfaces": Array<{
+    iface_id: string;
+    guest_mac: string;
+    host_dev_name: string;
+  }>;
+  vsock: {
+    guest_cid: number;
+    uds_path: string;
+  };
+}
 
 const logger = createLogger("VM");
 
@@ -50,19 +82,18 @@ type VMState =
 export class FirecrackerVM {
   private config: VMConfig;
   private process: ChildProcess | null = null;
-  private client: FirecrackerClient | null = null;
   private networkConfig: VMNetworkConfig | null = null;
   private state: VMState = "created";
   private workDir: string;
-  private socketPath: string;
   private vmOverlayPath: string | null = null; // Set during start()
   private vsockPath: string; // Vsock UDS path for host-guest communication
+  private configPath: string; // Firecracker config file path
 
   constructor(config: VMConfig) {
     this.config = config;
     this.workDir = config.workDir;
-    this.socketPath = vmPaths.socket(this.workDir);
     this.vsockPath = vmPaths.vsock(this.workDir);
+    this.configPath = vmPaths.config(this.workDir);
   }
 
   /**
@@ -87,13 +118,6 @@ export class FirecrackerVM {
   }
 
   /**
-   * Get the socket path for Firecracker API
-   */
-  getSocketPath(): string {
-    return this.socketPath;
-  }
-
-  /**
    * Get the vsock UDS path for host-guest communication
    */
   getVsockPath(): string {
@@ -102,7 +126,8 @@ export class FirecrackerVM {
 
   /**
    * Start the VM
-   * This spawns Firecracker, configures it via API, and boots the VM
+   * Uses Firecracker's static configuration mode (--config-file --no-api)
+   * for faster startup by eliminating API polling and HTTP request overhead.
    */
   async start(): Promise<void> {
     if (this.state !== "created") {
@@ -112,11 +137,6 @@ export class FirecrackerVM {
     try {
       // Create working directory
       fs.mkdirSync(this.workDir, { recursive: true });
-
-      // Clean up any existing socket from previous runs
-      if (fs.existsSync(this.socketPath)) {
-        fs.unlinkSync(this.socketPath);
-      }
 
       // Acquire overlay and TAP sequentially to ensure proper cleanup on failure
       // If overlay acquisition fails, TAP won't be acquired (no leak)
@@ -135,11 +155,29 @@ export class FirecrackerVM {
       this.networkConfig = await acquireTap(this.config.vmId);
       logger.log(`[VM ${this.config.vmId}] TAP+IP acquired`);
 
-      // Spawn Firecracker process
+      // Build and write Firecracker config file
+      const config = this.buildConfig();
+      fs.writeFileSync(this.configPath, JSON.stringify(config, null, 2));
+
+      // Log configuration summary
+      logger.log(
+        `[VM ${this.config.vmId}] Configuring: ${this.config.vcpus} vCPUs, ${this.config.memoryMb}MB RAM`,
+      );
+      logger.log(
+        `[VM ${this.config.vmId}] Base rootfs: ${this.config.rootfsPath}`,
+      );
+      logger.log(`[VM ${this.config.vmId}] Overlay: ${this.vmOverlayPath}`);
+      logger.log(
+        `[VM ${this.config.vmId}] Network: ${this.networkConfig.tapDevice}`,
+      );
+      logger.log(`[VM ${this.config.vmId}] Vsock: ${this.vsockPath}`);
+
+      // Spawn Firecracker with config file (no API needed)
+      // This eliminates API polling and HTTP request overhead
       logger.log(`[VM ${this.config.vmId}] Starting Firecracker...`);
       this.process = spawn(
         this.config.firecrackerBinary,
-        ["--api-sock", this.socketPath],
+        ["--config-file", this.configPath, "--no-api"],
         {
           cwd: this.workDir,
           stdio: ["ignore", "pipe", "pipe"],
@@ -185,18 +223,7 @@ export class FirecrackerVM {
         });
       }
 
-      // Wait for API to become ready
-      this.client = new FirecrackerClient(this.socketPath);
-      logger.log(`[VM ${this.config.vmId}] Waiting for API...`);
-      await this.client.waitUntilReady(10000, 100);
-
-      // Configure the VM
-      this.state = "configuring";
-      await this.configure();
-
-      // Boot the VM
-      logger.log(`[VM ${this.config.vmId}] Booting...`);
-      await this.client.start();
+      // VM boots automatically from config file - no API polling or InstanceStart needed
       this.state = "running";
 
       logger.log(
@@ -211,91 +238,87 @@ export class FirecrackerVM {
   }
 
   /**
-   * Configure the VM via Firecracker API
+   * Build Firecracker configuration object
    *
-   * All configuration endpoints are independent and can be called in parallel
-   * before InstanceStart. This saves ~10-15ms of Node.js async/await overhead.
-   * See: https://github.com/firecracker-microvm/firecracker/blob/main/docs/api_requests.md
+   * Creates the JSON configuration for Firecracker's --config-file option.
+   * Boot args:
+   *   - console=ttyS0: serial console output
+   *   - reboot=k: use keyboard controller for reboot
+   *   - panic=1: reboot after 1 second on kernel panic
+   *   - pci=off: disable PCI bus (not needed in microVM)
+   *   - nomodules: skip module loading (not needed in microVM)
+   *   - random.trust_cpu=on: trust CPU RNG, skip entropy wait
+   *   - quiet loglevel=0: minimize kernel log output
+   *   - nokaslr: disable kernel address space randomization
+   *   - audit=0: disable kernel auditing
+   *   - numa=off: disable NUMA (single node)
+   *   - mitigations=off: disable CPU vulnerability mitigations
+   *   - noresume: skip hibernation resume check
+   *   - init=/sbin/vm-init: use vm-init (Rust binary) for filesystem setup and vsock-agent
+   *   - ip=...: network configuration (guest IP, gateway, netmask)
    */
-  private async configure(): Promise<void> {
-    if (!this.client || !this.networkConfig || !this.vmOverlayPath) {
+  private buildConfig(): FirecrackerConfig {
+    if (!this.networkConfig || !this.vmOverlayPath) {
       throw new Error("VM not properly initialized");
     }
 
-    // Prepare boot args
-    // Boot args:
-    //   - console=ttyS0: serial console output
-    //   - reboot=k: use keyboard controller for reboot
-    //   - panic=1: reboot after 1 second on kernel panic
-    //   - pci=off: disable PCI bus (not needed in microVM)
-    //   - nomodules: skip module loading (not needed in microVM)
-    //   - random.trust_cpu=on: trust CPU RNG, skip entropy wait
-    //   - quiet loglevel=0: minimize kernel log output
-    //   - nokaslr: disable kernel address space randomization
-    //   - audit=0: disable kernel auditing
-    //   - numa=off: disable NUMA (single node)
-    //   - mitigations=off: disable CPU vulnerability mitigations
-    //   - noresume: skip hibernation resume check
-    //   - init=/sbin/vm-init: use vm-init (Rust binary) for filesystem setup and vsock-agent
-    //   - ip=...: network configuration (guest IP, gateway, netmask)
     const networkBootArgs = generateNetworkBootArgs(this.networkConfig);
     const bootArgs = `console=ttyS0 reboot=k panic=1 pci=off nomodules random.trust_cpu=on quiet loglevel=0 nokaslr audit=0 numa=off mitigations=off noresume init=/sbin/vm-init ${networkBootArgs}`;
 
-    // Log configuration
-    logger.log(
-      `[VM ${this.config.vmId}] Configuring: ${this.config.vcpus} vCPUs, ${this.config.memoryMb}MB RAM, rootfs=${this.config.rootfsPath}, overlay=${this.vmOverlayPath}, network=${this.networkConfig.tapDevice}, vsock=${this.vsockPath}`,
-    );
     logger.log(`[VM ${this.config.vmId}] Boot args: ${bootArgs}`);
 
-    // Execute all configuration API calls in parallel
-    logger.log(`[VM ${this.config.vmId}] Sending config API calls...`);
-    await Promise.all([
-      // Machine config (vCPUs, memory)
-      this.client.setMachineConfig({
-        vcpu_count: this.config.vcpus,
-        mem_size_mib: this.config.memoryMb,
-      }),
-      // Boot source (kernel)
-      this.client.setBootSource({
+    return {
+      "boot-source": {
         kernel_image_path: this.config.kernelPath,
         boot_args: bootArgs,
-      }),
-      // Base drive (squashfs, read-only, shared across VMs)
-      // Mounted as /dev/vda inside the VM
-      this.client.setDrive({
-        drive_id: "rootfs",
-        path_on_host: this.config.rootfsPath,
-        is_root_device: true,
-        is_read_only: true,
-      }),
-      // Overlay drive (ext4, read-write, per-VM)
-      // Mounted as /dev/vdb inside the VM
-      // The vm-init script combines these using overlayfs
-      this.client.setDrive({
-        drive_id: "overlay",
-        path_on_host: this.vmOverlayPath,
-        is_root_device: false,
-        is_read_only: false,
-      }),
-      // Network interface
-      this.client.setNetworkInterface({
-        iface_id: "eth0",
-        guest_mac: this.networkConfig.guestMac,
-        host_dev_name: this.networkConfig.tapDevice,
-      }),
-      // Vsock for host-guest communication
+      },
+      drives: [
+        // Base drive (squashfs, read-only, shared across VMs)
+        // Mounted as /dev/vda inside the VM
+        {
+          drive_id: "rootfs",
+          path_on_host: this.config.rootfsPath,
+          is_root_device: true,
+          is_read_only: true,
+        },
+        // Overlay drive (ext4, read-write, per-VM)
+        // Mounted as /dev/vdb inside the VM
+        // The vm-init script combines these using overlayfs
+        {
+          drive_id: "overlay",
+          path_on_host: this.vmOverlayPath,
+          is_root_device: false,
+          is_read_only: false,
+        },
+      ],
+      "machine-config": {
+        vcpu_count: this.config.vcpus,
+        mem_size_mib: this.config.memoryMb,
+      },
+      "network-interfaces": [
+        {
+          iface_id: "eth0",
+          guest_mac: this.networkConfig.guestMac,
+          host_dev_name: this.networkConfig.tapDevice,
+        },
+      ],
       // Guest CID 3 is the standard guest identifier (CID 0=hypervisor, 1=local, 2=host)
-      this.client.setVsock({
-        vsock_id: "vsock0",
+      vsock: {
         guest_cid: 3,
         uds_path: this.vsockPath,
-      }),
-    ]);
-    logger.log(`[VM ${this.config.vmId}] Config API calls completed`);
+      },
+    };
   }
 
   /**
-   * Stop the VM gracefully
+   * Stop the VM
+   *
+   * Note: With --no-api mode, we can only force kill the process.
+   * The VM doesn't have an API endpoint for graceful shutdown.
+   *
+   * TODO(#2118): Implement graceful shutdown via vsock command to guest agent.
+   * This would allow the guest to clean up before termination without
+   * adding the startup latency of API mode.
    */
   async stop(): Promise<void> {
     if (this.state !== "running") {
@@ -306,19 +329,9 @@ export class FirecrackerVM {
     this.state = "stopping";
     logger.log(`[VM ${this.config.vmId}] Stopping...`);
 
-    try {
-      // Send graceful shutdown signal
-      if (this.client) {
-        await this.client.sendCtrlAltDel().catch((error: unknown) => {
-          // Expected: API may fail if VM is already stopping
-          logger.log(
-            `[VM ${this.config.vmId}] Graceful shutdown signal failed (VM may already be stopping): ${error instanceof Error ? error.message : error}`,
-          );
-        });
-      }
-    } finally {
-      await this.cleanup();
-    }
+    // With --no-api mode, we can only force kill the process
+    // The VM doesn't have an API endpoint for graceful shutdown
+    await this.cleanup();
   }
 
   /**
@@ -368,7 +381,6 @@ export class FirecrackerVM {
       fs.rmSync(this.workDir, { recursive: true, force: true });
     }
 
-    this.client = null;
     this.state = "stopped";
     logger.log(`[VM ${this.config.vmId}] Stopped`);
   }
