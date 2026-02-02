@@ -1,6 +1,5 @@
 import {
   IconClock,
-  IconCurrencyDollar,
   IconArrowRight,
   IconTool,
   IconRobot,
@@ -99,13 +98,6 @@ export function formatDuration(ms: number): string {
   return `${minutes}m ${remainingSeconds.toFixed(0)}s`;
 }
 
-function formatCost(usd: number): string {
-  if (usd < 0.01) {
-    return `$${usd.toFixed(4)}`;
-  }
-  return `$${usd.toFixed(2)}`;
-}
-
 // ============ SYSTEM EVENT (Init) ============
 
 function CategoryPopover({
@@ -190,7 +182,6 @@ export function SystemInitContent({ eventData }: { eventData: EventData }) {
 
 // Exported for use in GroupedMessageCard
 export function ResultEventContent({ eventData }: { eventData: EventData }) {
-  const totalCost = eventData.total_cost_usd;
   const durationMs = eventData.duration_ms;
   const numTurns = eventData.num_turns;
   const modelUsage = eventData.modelUsage;
@@ -206,12 +197,6 @@ export function ResultEventContent({ eventData }: { eventData: EventData }) {
             <span className="text-foreground">
               {formatDuration(durationMs)}
             </span>
-          </div>
-        )}
-        {totalCost !== null && totalCost !== undefined && (
-          <div className="flex items-center gap-1.5">
-            <IconCurrencyDollar className="h-4 w-4 text-muted-foreground" />
-            <span className="text-foreground">{formatCost(totalCost)}</span>
           </div>
         )}
         {numTurns !== null && numTurns !== undefined && (
@@ -230,10 +215,7 @@ export function ResultEventContent({ eventData }: { eventData: EventData }) {
           </summary>
           <div className="mt-1 space-y-0.5 pl-2">
             {Object.entries(modelUsage)
-              .filter(
-                ([, usage]) =>
-                  usage.inputTokens || usage.outputTokens || usage.costUSD,
-              )
+              .filter(([, usage]) => usage.inputTokens || usage.outputTokens)
               .map(([model, usage]) => (
                 <div key={model} className="text-muted-foreground">
                   {model}{" "}
@@ -246,12 +228,6 @@ export function ResultEventContent({ eventData }: { eventData: EventData }) {
                     {usage.outputTokens
                       ? `out: ${usage.outputTokens.toLocaleString()}`
                       : ""}
-                    {usage.costUSD ? (
-                      <span className="text-emerald-600">
-                        {" "}
-                        {formatCost(usage.costUSD)}
-                      </span>
-                    ) : null}
                     )
                   </span>
                 </div>
