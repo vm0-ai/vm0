@@ -22,6 +22,10 @@ function initEnv() {
       OFFICIAL_RUNNER_SECRET: z.string().length(64).optional(), // 32-byte hex key for official runner auth
       AXIOM_TOKEN: z.string().min(1).optional(),
       AXIOM_DATASET_SUFFIX: z.enum(["dev", "prod"]).optional(), // Explicit control for Axiom dataset suffix
+      // Slack integration
+      SLACK_CLIENT_ID: z.string().min(1).optional(),
+      SLACK_CLIENT_SECRET: z.string().min(1).optional(),
+      SLACK_SIGNING_SECRET: z.string().min(1).optional(),
     },
     client: {
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1),
@@ -43,6 +47,9 @@ function initEnv() {
       OFFICIAL_RUNNER_SECRET: process.env.OFFICIAL_RUNNER_SECRET,
       AXIOM_TOKEN: process.env.AXIOM_TOKEN,
       AXIOM_DATASET_SUFFIX: process.env.AXIOM_DATASET_SUFFIX,
+      SLACK_CLIENT_ID: process.env.SLACK_CLIENT_ID,
+      SLACK_CLIENT_SECRET: process.env.SLACK_CLIENT_SECRET,
+      SLACK_SIGNING_SECRET: process.env.SLACK_SIGNING_SECRET,
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
         process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
     },

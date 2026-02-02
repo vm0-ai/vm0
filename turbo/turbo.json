@@ -33,7 +33,10 @@
     "AXIOM_DATASET_SUFFIX",
     "WEB_APP_URL",
     "ABLY_API_KEY",
-    "CONCURRENT_RUN_LIMIT"
+    "CONCURRENT_RUN_LIMIT",
+    "SLACK_CLIENT_ID",
+    "SLACK_CLIENT_SECRET",
+    "SLACK_SIGNING_SECRET"
   ],
   "tasks": {
     "build": {
