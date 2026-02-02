@@ -24,6 +24,9 @@ export const runtimePaths = {
 
   /** IP allocation registry */
   ipRegistry: path.join(VM0_RUN_DIR, "ip-registry.json"),
+
+  /** Network namespace registry for multi-runner coordination */
+  netnsRegistry: path.join(VM0_RUN_DIR, "netns-registry.json"),
 } as const;
 
 /** Prefix for VM workspace directories */

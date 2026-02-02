@@ -129,6 +129,8 @@
     "apps/runner/src/lib/firecracker/index.ts",
     "apps/runner/src/lib/firecracker/guest.ts",
     "apps/runner/src/lib/firecracker/network.ts",
+    "apps/runner/src/lib/firecracker/netns-pool.ts",
+    "apps/runner/src/lib/firecracker/client.ts",
     "apps/web/src/test/setup.ts",
     "apps/web/src/lib/schedule/schedule-service.ts",
     "apps/web/src/lib/model-provider/model-provider-service.ts",
