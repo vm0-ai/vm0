@@ -17,7 +17,6 @@ import { generateNetworkBootArgs, type VMNetworkConfig } from "./network.js";
 import { acquireOverlay } from "./overlay-pool.js";
 import { acquireTap, releaseTap } from "./tap-pool.js";
 import { createLogger } from "../logger.js";
-import { tempPaths } from "../paths.js";
 
 const logger = createLogger("VM");
 
@@ -31,7 +30,7 @@ export interface VMConfig {
   kernelPath: string;
   rootfsPath: string;
   firecrackerBinary: string;
-  workDir?: string; // Working directory for VM files (default: /tmp/vm0-vm-{vmId})
+  workDir: string; // Working directory for VM files
 }
 
 /**
@@ -61,7 +60,7 @@ export class FirecrackerVM {
 
   constructor(config: VMConfig) {
     this.config = config;
-    this.workDir = config.workDir || tempPaths.vmWorkDir(config.vmId);
+    this.workDir = config.workDir;
     this.socketPath = path.join(this.workDir, "firecracker.sock");
     this.vsockPath = path.join(this.workDir, "vsock.sock");
   }

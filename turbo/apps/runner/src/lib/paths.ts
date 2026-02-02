@@ -55,7 +55,7 @@ export const runnerPaths = {
 
 /**
  * Temporary file paths (/tmp/vm0-*)
- * These use runId or vmId for isolation
+ * These use runId for isolation
  */
 export const tempPaths = {
   /** Default proxy CA directory */
@@ -63,9 +63,6 @@ export const tempPaths = {
 
   /** VM registry for proxy */
   vmRegistry: `${VM0_TMP_PREFIX}-vm-registry.json`,
-
-  /** VM work directory (fallback when not using workspaces) */
-  vmWorkDir: (vmId: string) => `${VM0_TMP_PREFIX}-vm-${vmId}`,
 
   /** Network log file for a run */
   networkLog: (runId: string) => `${VM0_TMP_PREFIX}-network-${runId}.jsonl`,
