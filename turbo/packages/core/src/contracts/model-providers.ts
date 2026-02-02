@@ -64,6 +64,10 @@ export const MODEL_PROVIDER_TYPES = {
       ANTHROPIC_BASE_URL: "https://openrouter.ai/api",
       ANTHROPIC_API_KEY: "",
       ANTHROPIC_MODEL: "$model",
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "$model",
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "$model",
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
+      CLAUDE_CODE_SUBAGENT_MODEL: "$model",
     } as Record<string, string>,
     models: [
       // Claude series
