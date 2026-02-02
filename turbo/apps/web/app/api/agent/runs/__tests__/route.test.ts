@@ -150,10 +150,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       );
 
       // Try to create run WITHOUT providing required secrets
-      const data = await createTestRun(
-        secretComposeId,
-        "Test without secrets",
-      );
+      const data = await createTestRun(secretComposeId, "Test without secrets");
 
       // Route creates run first, then fails during preparation
       expect(data.status).toBe("failed");
