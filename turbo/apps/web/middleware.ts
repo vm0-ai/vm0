@@ -1,9 +1,8 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import createIntlMiddleware from "next-intl/middleware";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { handleCors } from "./middleware.cors";
 import { locales, defaultLocale } from "./i18n";
-import { getPlatformUrl } from "./src/lib/platform-url";
 
 const isPublicRoute = createRouteMatcher([
   "/",
@@ -20,9 +19,6 @@ const isPublicRoute = createRouteMatcher([
   "/robots.txt",
   "/sitemap.xml",
 ]);
-
-// Routes that should redirect authenticated users to platform
-const isLandingRoute = createRouteMatcher(["/", "/:locale"]);
 
 // Create the i18n middleware
 const intlMiddleware = createIntlMiddleware({
@@ -70,22 +66,6 @@ export default clerkMiddleware(async (auth, request: NextRequest) => {
 
     // Return undefined to continue with default Next.js handling
     return undefined;
-  }
-
-  // Redirect authenticated users on landing pages to platform
-  if (isLandingRoute(request)) {
-    try {
-      const { userId } = await auth();
-      if (userId) {
-        const host = request.headers.get("host");
-        if (host) {
-          const platformUrl = getPlatformUrl(host);
-          return NextResponse.redirect(platformUrl);
-        }
-      }
-    } catch {
-      // Auth check failed, continue to show landing page (fail open)
-    }
   }
 
   // Apply i18n middleware for non-API routes
