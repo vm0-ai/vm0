@@ -219,6 +219,103 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       // Should succeed (running, not failed)
       expect(data.status).toBe("running");
     });
+
+    it("should reject request when required vars are not provided", async () => {
+      // Create compose that requires vars in environment
+      const { composeId: varsComposeId } = await createTestCompose(
+        `vars-required-${Date.now()}`,
+        {
+          overrides: {
+            environment: {
+              ANTHROPIC_API_KEY: "test-key",
+              MY_VAR: "${{ vars.MY_VAR }}",
+            },
+          },
+        },
+      );
+
+      // Try to create run WITHOUT providing required vars
+      // Template vars are validated at route level BEFORE run creation
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: varsComposeId,
+            prompt: "Test without vars",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error.message).toContain("MY_VAR");
+    });
+
+    it("should reject request when only some vars are provided", async () => {
+      // Create compose that requires multiple vars
+      const { composeId: multiVarsComposeId } = await createTestCompose(
+        `multi-vars-${Date.now()}`,
+        {
+          overrides: {
+            environment: {
+              ANTHROPIC_API_KEY: "test-key",
+              VAR_A: "${{ vars.VAR_A }}",
+              VAR_B: "${{ vars.VAR_B }}",
+            },
+          },
+        },
+      );
+
+      // Try to create run with only one var
+      // Template vars are validated at route level BEFORE run creation
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: multiVarsComposeId,
+            prompt: "Test with partial vars",
+            vars: { VAR_A: "value-a" }, // Missing VAR_B
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error.message).toContain("VAR_B");
+      // VAR_A should NOT be in the error (it was provided)
+      expect(data.error.message).not.toContain("VAR_A");
+    });
+
+    it("should succeed when all required vars are provided", async () => {
+      // Create compose that requires vars
+      const { composeId: varsComposeId } = await createTestCompose(
+        `vars-success-${Date.now()}`,
+        {
+          overrides: {
+            environment: {
+              ANTHROPIC_API_KEY: "test-key",
+              MY_VAR: "${{ vars.MY_VAR }}",
+            },
+          },
+        },
+      );
+
+      // Create run WITH required vars
+      const data = await createTestRun(varsComposeId, "Test with vars", {
+        vars: { MY_VAR: "var-value" },
+      });
+
+      // Should succeed (running, not failed)
+      expect(data.status).toBe("running");
+    });
   });
 
   describe("Authorization", () => {
@@ -868,9 +965,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.error.message).toMatch(/session/i);
     });
 
-    // Note: "Missing required secrets" validation for session continue is tested via
-    // unit tests in expand-environment.test.ts which validates the error is thrown
-    // with correct message when secrets are not provided.
+    // Note: "Missing required secrets" validation is tested in the Validation
+    // describe block above (lines 138-197).
   });
 
   describe("Checkpoint Resume", () => {
@@ -1000,9 +1096,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(writePath).toMatch(/\.jsonl$/);
     });
 
-    // Note: "Missing required secrets" validation for checkpoint resume is tested via
-    // unit tests in expand-environment.test.ts which validates the error is thrown
-    // with correct message when secrets are not provided.
+    // Note: "Missing required secrets" validation is tested in the Validation
+    // describe block above (lines 138-197).
   });
 
   describe("Volume Resolution", () => {
