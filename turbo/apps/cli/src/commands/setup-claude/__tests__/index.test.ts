@@ -192,4 +192,71 @@ describe("setup-claude command", () => {
       );
     });
   });
+
+  describe("marketplace management", () => {
+    it("should update marketplace when already installed", async () => {
+      // Default mock: marketplace is installed
+      await setupClaudeCommand.parseAsync(["node", "cli"]);
+
+      expect(spawn).toHaveBeenCalledWith(
+        "claude",
+        ["plugin", "marketplace", "update", "vm0-skills"],
+        expect.any(Object),
+      );
+    });
+
+    it("should add marketplace when not installed", async () => {
+      vi.mocked(spawn).mockImplementation((cmd, args) => {
+        const argsArray = args as string[];
+        if (argsArray.includes("list")) {
+          // Empty marketplace list
+          return createMockChildProcess(0, "[]") as ReturnType<typeof spawn>;
+        }
+        return createMockChildProcess(0, "Success") as ReturnType<typeof spawn>;
+      });
+
+      await setupClaudeCommand.parseAsync(["node", "cli"]);
+
+      expect(spawn).toHaveBeenCalledWith(
+        "claude",
+        ["plugin", "marketplace", "add", "vm0-ai/vm0-skills"],
+        expect.any(Object),
+      );
+    });
+
+    it("should continue with install even if marketplace update fails", async () => {
+      vi.mocked(spawn).mockImplementation((cmd, args) => {
+        const argsArray = args as string[];
+        if (argsArray.includes("list")) {
+          const output = JSON.stringify([
+            { name: "vm0-skills", source: "github", repo: "vm0-ai/vm0-skills" },
+          ]);
+          return createMockChildProcess(0, output) as ReturnType<typeof spawn>;
+        }
+        if (argsArray.includes("update")) {
+          // Marketplace update fails
+          return createMockChildProcess(1, "", "Network error") as ReturnType<
+            typeof spawn
+          >;
+        }
+        // Plugin install succeeds
+        return createMockChildProcess(0, "Success") as ReturnType<typeof spawn>;
+      });
+
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      await setupClaudeCommand.parseAsync(["node", "cli"]);
+
+      // Should warn but not fail
+      expect(console.warn).toHaveBeenCalledWith(
+        expect.stringContaining("Could not update marketplace"),
+      );
+      // Should still install plugin
+      expect(spawn).toHaveBeenCalledWith(
+        "claude",
+        ["plugin", "install", "vm0@vm0-skills", "--scope", "project"],
+        expect.any(Object),
+      );
+    });
+  });
 });
