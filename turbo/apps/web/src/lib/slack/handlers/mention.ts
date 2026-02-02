@@ -1,0 +1,295 @@
+import { eq, and } from "drizzle-orm";
+import { slackInstallations } from "../../../db/schema/slack-installation";
+import { slackUserLinks } from "../../../db/schema/slack-user-link";
+import { slackBindings } from "../../../db/schema/slack-binding";
+import { slackThreadSessions } from "../../../db/schema/slack-thread-session";
+import { agentSessions } from "../../../db/schema/agent-session";
+import { decryptCredentialValue } from "../../crypto/secrets-encryption";
+import { env } from "../../../env";
+import {
+  createSlackClient,
+  postMessage,
+  extractMessageContent,
+  fetchThreadContext,
+  formatContextForAgent,
+  parseExplicitAgentSelection,
+  buildLinkAccountMessage,
+  buildErrorMessage,
+} from "../index";
+import { routeToAgent } from "../router";
+import { runAgentForSlack } from "./run-agent";
+
+interface MentionContext {
+  workspaceId: string;
+  channelId: string;
+  userId: string;
+  messageText: string;
+  messageTs: string;
+  threadTs?: string;
+}
+
+/**
+ * Handle an app_mention event from Slack
+ *
+ * Flow:
+ * 1. Get workspace installation and decrypt bot token
+ * 2. Check if user is linked
+ * 3. If not linked, post link message
+ * 4. Get user's bindings
+ * 5. If no bindings, prompt to add agent
+ * 6. Route to agent (explicit or LLM)
+ * 7. Fetch thread context
+ * 8. Find or create thread session
+ * 9. Execute agent
+ * 10. Post response to Slack thread
+ */
+export async function handleAppMention(context: MentionContext): Promise<void> {
+  const { SECRETS_ENCRYPTION_KEY } = env();
+
+  try {
+    // 1. Get workspace installation
+    const [installation] = await globalThis.services.db
+      .select()
+      .from(slackInstallations)
+      .where(eq(slackInstallations.slackWorkspaceId, context.workspaceId))
+      .limit(1);
+
+    if (!installation) {
+      console.error(
+        `Slack installation not found for workspace: ${context.workspaceId}`,
+      );
+      return;
+    }
+
+    // Decrypt bot token
+    const botToken = decryptCredentialValue(
+      installation.encryptedBotToken,
+      SECRETS_ENCRYPTION_KEY,
+    );
+    const client = createSlackClient(botToken);
+    const botUserId = installation.botUserId;
+
+    // Thread timestamp for replies (use existing thread or start new one)
+    const threadTs = context.threadTs ?? context.messageTs;
+
+    // 2. Check if user is linked
+    const [userLink] = await globalThis.services.db
+      .select()
+      .from(slackUserLinks)
+      .where(
+        and(
+          eq(slackUserLinks.slackUserId, context.userId),
+          eq(slackUserLinks.slackWorkspaceId, context.workspaceId),
+        ),
+      )
+      .limit(1);
+
+    if (!userLink) {
+      // 3. User not linked - post link message
+      const linkUrl = buildLinkUrl(context.workspaceId, context.userId);
+      await postMessage(client, context.channelId, "Please link your account", {
+        threadTs,
+        blocks: buildLinkAccountMessage(linkUrl),
+      });
+      return;
+    }
+
+    // 4. Get user's bindings
+    const bindings = await globalThis.services.db
+      .select({
+        id: slackBindings.id,
+        agentName: slackBindings.agentName,
+        description: slackBindings.description,
+        composeId: slackBindings.composeId,
+        encryptedSecrets: slackBindings.encryptedSecrets,
+        enabled: slackBindings.enabled,
+      })
+      .from(slackBindings)
+      .where(
+        and(
+          eq(slackBindings.slackUserLinkId, userLink.id),
+          eq(slackBindings.enabled, true),
+        ),
+      );
+
+    if (bindings.length === 0) {
+      // 5. No bindings - prompt to add agent
+      await postMessage(
+        client,
+        context.channelId,
+        "You don't have any agents configured. Use `/vm0 agent add` to add one.",
+        { threadTs },
+      );
+      return;
+    }
+
+    // Extract message content (remove bot mention)
+    const messageContent = extractMessageContent(
+      context.messageText,
+      botUserId,
+    );
+
+    // 6. Route to agent
+    const explicitSelection = parseExplicitAgentSelection(messageContent);
+    let selectedAgentName: string | null = null;
+    let promptText = messageContent;
+
+    if (explicitSelection) {
+      // Explicit agent selection: "use <agent> <message>"
+      selectedAgentName = explicitSelection.agentName;
+      promptText = explicitSelection.remainingMessage || messageContent;
+
+      // Verify the agent exists
+      const matchingBinding = bindings.find(
+        (b) => b.agentName.toLowerCase() === selectedAgentName!.toLowerCase(),
+      );
+      if (!matchingBinding) {
+        await postMessage(
+          client,
+          context.channelId,
+          `Agent "${selectedAgentName}" not found. Available agents: ${bindings.map((b) => b.agentName).join(", ")}`,
+          {
+            threadTs,
+            blocks: buildErrorMessage(`Agent "${selectedAgentName}" not found`),
+          },
+        );
+        return;
+      }
+      selectedAgentName = matchingBinding.agentName;
+    } else if (bindings.length === 1 && bindings[0]) {
+      // Only one binding - use it directly
+      selectedAgentName = bindings[0].agentName;
+    } else {
+      // Multiple bindings - use LLM router
+      selectedAgentName = await routeToAgent(
+        messageContent,
+        bindings.map((b) => ({
+          agentName: b.agentName,
+          description: b.description,
+        })),
+      );
+
+      if (!selectedAgentName) {
+        // Couldn't determine which agent to use
+        const agentList = bindings
+          .map(
+            (b) => `• \`${b.agentName}\`: ${b.description ?? "No description"}`,
+          )
+          .join("\n");
+        await postMessage(
+          client,
+          context.channelId,
+          `I couldn't determine which agent to use. Please specify: \`@VM0 use <agent> <message>\`\n\nAvailable agents:\n${agentList}`,
+          { threadTs },
+        );
+        return;
+      }
+    }
+
+    // Get the selected binding
+    const selectedBinding = bindings.find(
+      (b) => b.agentName === selectedAgentName,
+    )!;
+
+    // 7. Fetch thread context
+    let formattedContext = "";
+    if (context.threadTs) {
+      const messages = await fetchThreadContext(
+        client,
+        context.channelId,
+        context.threadTs,
+      );
+      formattedContext = formatContextForAgent(messages, botUserId);
+    }
+
+    // 8. Find or create thread session
+    const session = await findOrCreateThreadSession(
+      selectedBinding.id,
+      selectedBinding.composeId,
+      context.channelId,
+      threadTs,
+      userLink.vm0UserId,
+    );
+
+    // 9. Execute agent
+    const agentResponse = await runAgentForSlack({
+      binding: selectedBinding,
+      sessionId: session.agentSessionId,
+      prompt: promptText,
+      threadContext: formattedContext,
+      userId: userLink.vm0UserId,
+      encryptionKey: SECRETS_ENCRYPTION_KEY,
+    });
+
+    // 10. Post response to Slack thread
+    await postMessage(client, context.channelId, agentResponse, { threadTs });
+  } catch (error) {
+    console.error("Error handling app_mention:", error);
+    // Don't throw - we don't want to retry
+  }
+}
+
+/**
+ * Build the account linking URL
+ */
+function buildLinkUrl(workspaceId: string, slackUserId: string): string {
+  // Use SLACK_REDIRECT_BASE_URL if set, otherwise fallback to production URL
+  const { SLACK_REDIRECT_BASE_URL } = env();
+  const baseUrl = SLACK_REDIRECT_BASE_URL ?? "https://www.vm0.ai";
+  const params = new URLSearchParams({
+    w: workspaceId,
+    u: slackUserId,
+  });
+  return `${baseUrl}/slack/link?${params.toString()}`;
+}
+
+/**
+ * Find or create a thread session for maintaining conversation context
+ */
+async function findOrCreateThreadSession(
+  bindingId: string,
+  composeId: string,
+  channelId: string,
+  threadTs: string,
+  userId: string,
+): Promise<{ agentSessionId: string }> {
+  // Try to find existing session for this thread
+  const [existingSession] = await globalThis.services.db
+    .select()
+    .from(slackThreadSessions)
+    .where(
+      and(
+        eq(slackThreadSessions.slackBindingId, bindingId),
+        eq(slackThreadSessions.slackChannelId, channelId),
+        eq(slackThreadSessions.slackThreadTs, threadTs),
+      ),
+    )
+    .limit(1);
+
+  if (existingSession) {
+    return { agentSessionId: existingSession.agentSessionId };
+  }
+
+  // Create new agent session
+  const [newAgentSession] = await globalThis.services.db
+    .insert(agentSessions)
+    .values({
+      userId,
+      agentComposeId: composeId,
+    })
+    .returning({ id: agentSessions.id });
+
+  if (!newAgentSession) {
+    throw new Error("Failed to create agent session");
+  }
+
+  // Create thread session mapping
+  await globalThis.services.db.insert(slackThreadSessions).values({
+    slackBindingId: bindingId,
+    slackChannelId: channelId,
+    slackThreadTs: threadTs,
+    agentSessionId: newAgentSession.id,
+  });
+
+  return { agentSessionId: newAgentSession.id };
+}
