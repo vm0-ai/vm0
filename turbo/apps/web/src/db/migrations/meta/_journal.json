@@ -414,6 +414,13 @@
       "when": 1768300000000,
       "tag": "0058_add_selected_model_to_model_providers",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1768400000000,
+      "tag": "0059_add_slack_integration",
+      "breakpoints": true
     }
   ]
 }

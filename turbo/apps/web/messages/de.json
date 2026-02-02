@@ -95,6 +95,7 @@
     "tagline": "Die moderne Laufzeitumgebung für agentenbasierte Entwicklung",
     "copyright": "© 2026 VM0.ai Alle Rechte vorbehalten.",
     "language": "Sprache",
+    "status": "Status",
     "termsOfUse": "Nutzungsbedingungen",
     "privacyPolicy": "Datenschutzrichtlinie"
   },

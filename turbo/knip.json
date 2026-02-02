@@ -115,7 +115,6 @@
     "coverage/**",
     "**/drizzle.config.ts",
     "**/custom-eslint/**",
-    "apps/docs/src/components/plausible-tracker.tsx",
     "apps/platform/src/mocks/browser.ts",
     "apps/platform/src/signals/test-utils.ts",
     "apps/platform/src/signals/__tests__/test-helpers.ts",
