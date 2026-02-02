@@ -22,12 +22,12 @@
     "VM0_API_URL": "https://www.vm7.ai:8443"
   },
   "mounts": [
-    "source=claude-downloads,target=/home/vscode/.claude/downloads",
     "source=config,target=/home/vscode/.config",
     "source=cache,target=/home/vscode/.cache",
     "source=vercel,target=/home/vscode/.local/share/com.vercel.cli",
     "source=pnpm,target=/home/vscode/.local/share/pnpm",
     "source=mkcert,target=/home/vscode/.local/share/mkcert",
+    "source=claude,target=/home/vscode/.local/share/claude",
     "source=codex,target=/home/vscode/.codex",
     "source=pki,target=/home/vscode/.pki"
   ],
