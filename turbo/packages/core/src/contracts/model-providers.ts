@@ -30,29 +30,6 @@ export const MODEL_PROVIDER_TYPES = {
     helpText:
       "Get your API key at: https://console.anthropic.com/settings/keys",
   },
-  "moonshot-api-key": {
-    framework: "claude-code" as const,
-    credentialName: "MOONSHOT_API_KEY",
-    label: "Moonshot API Key (Kimi)",
-    credentialLabel: "API key",
-    helpText:
-      "Get your API key at: https://platform.moonshot.ai/console/api-keys",
-    environmentMapping: {
-      ANTHROPIC_AUTH_TOKEN: "$credential",
-      ANTHROPIC_BASE_URL: "https://api.moonshot.ai/anthropic",
-      ANTHROPIC_MODEL: "$model",
-      ANTHROPIC_DEFAULT_OPUS_MODEL: "$model",
-      ANTHROPIC_DEFAULT_SONNET_MODEL: "$model",
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
-      CLAUDE_CODE_SUBAGENT_MODEL: "$model",
-    } as Record<string, string>,
-    models: [
-      "kimi-k2.5",
-      "kimi-k2-thinking-turbo",
-      "kimi-k2-thinking",
-    ] as string[],
-    defaultModel: "kimi-k2.5",
-  },
   "openrouter-api-key": {
     framework: "claude-code" as const,
     credentialName: "OPENROUTER_API_KEY",
@@ -96,6 +73,29 @@ export const MODEL_PROVIDER_TYPES = {
     ] as string[],
     defaultModel: "",
   },
+  "moonshot-api-key": {
+    framework: "claude-code" as const,
+    credentialName: "MOONSHOT_API_KEY",
+    label: "Moonshot API Key (Kimi)",
+    credentialLabel: "API key",
+    helpText:
+      "Get your API key at: https://platform.moonshot.ai/console/api-keys",
+    environmentMapping: {
+      ANTHROPIC_AUTH_TOKEN: "$credential",
+      ANTHROPIC_BASE_URL: "https://api.moonshot.ai/anthropic",
+      ANTHROPIC_MODEL: "$model",
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "$model",
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "$model",
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
+      CLAUDE_CODE_SUBAGENT_MODEL: "$model",
+    } as Record<string, string>,
+    models: [
+      "kimi-k2.5",
+      "kimi-k2-thinking-turbo",
+      "kimi-k2-thinking",
+    ] as string[],
+    defaultModel: "kimi-k2.5",
+  },
 } as const;
 
 export type ModelProviderType = keyof typeof MODEL_PROVIDER_TYPES;
@@ -104,8 +104,8 @@ export type ModelProviderFramework = "claude-code" | "codex";
 export const modelProviderTypeSchema = z.enum([
   "claude-code-oauth-token",
   "anthropic-api-key",
-  "moonshot-api-key",
   "openrouter-api-key",
+  "moonshot-api-key",
 ]);
 
 export const modelProviderFrameworkSchema = z.enum(["claude-code", "codex"]);
