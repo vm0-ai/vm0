@@ -596,10 +596,10 @@ jobs:
           REPO: ${{ github.repository }}
           CACHE_KEY: e2e-token-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
-          DELAYS=(0 2 4 8)
+          DELAYS=(0 5 10 15 20 30)
           for i in "${!DELAYS[@]}"; do
             if [ "${DELAYS[$i]}" -gt 0 ]; then
-              echo "Cache not found, waiting ${DELAYS[$i]}s before retry $((i))/3..."
+              echo "Cache not found, waiting ${DELAYS[$i]}s before retry $((i))/5..."
               sleep "${DELAYS[$i]}"
             fi
 
@@ -613,7 +613,7 @@ jobs:
               echo "Cache '$CACHE_KEY' is available"
               exit 0
             fi
-            echo "Cache not yet available (attempt $((i+1))/4)"
+            echo "Cache not yet available (attempt $((i+1))/6)"
           done
           echo "Cache not available after retries, proceeding anyway..."
 
@@ -676,10 +676,10 @@ jobs:
           REPO: ${{ github.repository }}
           CACHE_KEY: e2e-token-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
-          DELAYS=(0 2 4 8)
+          DELAYS=(0 5 10 15 20 30)
           for i in "${!DELAYS[@]}"; do
             if [ "${DELAYS[$i]}" -gt 0 ]; then
-              echo "Cache not found, waiting ${DELAYS[$i]}s before retry $((i))/3..."
+              echo "Cache not found, waiting ${DELAYS[$i]}s before retry $((i))/5..."
               sleep "${DELAYS[$i]}"
             fi
 
@@ -693,7 +693,7 @@ jobs:
               echo "Cache '$CACHE_KEY' is available"
               exit 0
             fi
-            echo "Cache not yet available (attempt $((i+1))/4)"
+            echo "Cache not yet available (attempt $((i+1))/6)"
           done
           echo "Cache not available after retries, proceeding anyway..."
 
