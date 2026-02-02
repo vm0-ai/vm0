@@ -158,5 +158,21 @@ RUN groupadd -f --gid 1000 vscode \
 # Install rust-src for rust-analyzer (IDE support for standard library)
 RUN rustup component add rust-src
 
+# Install Caddy web server (matches devcontainers-extra/features/caddy)
+RUN ARCH=$(dpkg --print-architecture) \
+    && CADDY_VERSION=$(curl -s https://api.github.com/repos/caddyserver/caddy/releases/latest | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/') \
+    && curl -fsSL "https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_linux_${ARCH}.tar.gz" -o /tmp/caddy.tar.gz \
+    && tar -xzf /tmp/caddy.tar.gz -C /usr/local/bin caddy \
+    && chmod +x /usr/local/bin/caddy \
+    && rm /tmp/caddy.tar.gz
+
+# Install Cloudflared tunnel client via apt (matches joedmck/devcontainer-features/cloudflared)
+RUN mkdir -p /usr/share/keyrings \
+    && curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg -o /usr/share/keyrings/cloudflare-main.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/cloudflared.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends cloudflared \
+    && rm -rf /var/lib/apt/lists/*
+
 # Default command
 CMD ["/usr/bin/zsh"]
