@@ -1004,4 +1004,149 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     // unit tests in expand-environment.test.ts which validates the error is thrown
     // with correct message when secrets are not provided.
   });
+
+  describe("Volume Resolution", () => {
+    it("should fail run when volume references non-existent storage", async () => {
+      // Create compose with volume that references a storage that doesn't exist
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/composes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: {
+              version: "1.0",
+              agents: {
+                "test-agent": {
+                  image: "vm0/claude-code:dev",
+                  framework: "claude-code",
+                  working_dir: "/home/user/workspace",
+                  environment: { ANTHROPIC_API_KEY: "test-key" },
+                  volumes: ["data:/mnt/data"],
+                },
+              },
+              volumes: {
+                data: {
+                  name: `nonexistent-storage-${Date.now()}`,
+                  version: "latest",
+                },
+              },
+            },
+          }),
+        },
+      );
+      const createComposeRoute = (await import("../../composes/route")).POST;
+      const composeResponse = await createComposeRoute(request);
+      const compose = await composeResponse.json();
+
+      // Create run - should fail during storage resolution
+      const data = await createTestRun(
+        compose.composeId,
+        "Test with missing storage",
+      );
+
+      expect(data.status).toBe("failed");
+
+      // Verify error via API
+      const run = await getTestRun(data.runId);
+      expect(run.error).toContain("not found");
+    });
+
+    it("should reject request when volume has missing template variable", async () => {
+      // Create compose with volume that uses a template variable
+      const composeRequest = createTestRequest(
+        "http://localhost:3000/api/agent/composes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: {
+              version: "1.0",
+              agents: {
+                "test-agent": {
+                  image: "vm0/claude-code:dev",
+                  framework: "claude-code",
+                  working_dir: "/home/user/workspace",
+                  environment: { ANTHROPIC_API_KEY: "test-key" },
+                  volumes: ["data:/mnt/data"],
+                },
+              },
+              volumes: {
+                data: {
+                  name: "user-${{ vars.userId }}-storage",
+                  version: "latest",
+                },
+              },
+            },
+          }),
+        },
+      );
+      const createComposeRoute = (await import("../../composes/route")).POST;
+      const composeResponse = await createComposeRoute(composeRequest);
+      const compose = await composeResponse.json();
+
+      // Create run WITHOUT providing required vars
+      // This should return 400 because template vars are validated before run creation
+      const runRequest = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: compose.composeId,
+            prompt: "Test missing var",
+          }),
+        },
+      );
+
+      const response = await POST(runRequest);
+      const data = await response.json();
+
+      // API validates template variables before creating run
+      expect(response.status).toBe(400);
+      expect(data.error.message).toContain("userId");
+    });
+
+    it("should fail run when volume definition is missing", async () => {
+      // Create compose with volume that references an undefined volume
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/composes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: {
+              version: "1.0",
+              agents: {
+                "test-agent": {
+                  image: "vm0/claude-code:dev",
+                  framework: "claude-code",
+                  working_dir: "/home/user/workspace",
+                  environment: { ANTHROPIC_API_KEY: "test-key" },
+                  volumes: ["undefined-vol:/mnt/data"],
+                },
+              },
+              // No volumes section - undefined-vol is not defined
+            },
+          }),
+        },
+      );
+      const createComposeRoute = (await import("../../composes/route")).POST;
+      const composeResponse = await createComposeRoute(request);
+      const compose = await composeResponse.json();
+
+      // Create run - should fail during volume resolution
+      const data = await createTestRun(
+        compose.composeId,
+        "Test missing volume definition",
+      );
+
+      expect(data.status).toBe("failed");
+
+      // Verify error mentions missing volume definition
+      const run = await getTestRun(data.runId);
+      expect(run.error).toMatch(/volume resolution failed/i);
+      expect(run.error).toContain("undefined-vol");
+    });
+  });
 });
