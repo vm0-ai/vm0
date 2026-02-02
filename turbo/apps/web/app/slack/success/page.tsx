@@ -3,17 +3,15 @@
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { useTheme } from "../../components/ThemeProvider";
-import { IconCheck, IconX } from "@tabler/icons-react";
+import { IconCheck } from "@tabler/icons-react";
 
 export default function SlackSuccessPage(): React.JSX.Element {
   const searchParams = useSearchParams();
   const { theme, toggleTheme } = useTheme();
 
-  const error = searchParams.get("error");
   const workspace = searchParams.get("workspace");
   const linked = searchParams.get("linked");
 
-  const isError = !!error;
   const isLinked = linked === "true";
 
   return (
@@ -93,26 +91,11 @@ export default function SlackSuccessPage(): React.JSX.Element {
           {/* Content */}
           <div className="mt-4 flex flex-col items-center gap-4">
             {/* Icon */}
-            {isError ? (
-              <IconX size={40} className="text-destructive" stroke={1} />
-            ) : (
-              <IconCheck size={40} className="text-lime-600" stroke={1} />
-            )}
+            <IconCheck size={40} className="text-lime-600" stroke={1} />
 
             {/* Title and Description */}
             <div className="flex flex-col items-center gap-2 text-center">
-              {isError ? (
-                <>
-                  <h1 className="text-lg font-medium leading-7 text-foreground">
-                    Installation Failed
-                  </h1>
-                  <p className="text-sm leading-5 text-muted-foreground">
-                    {error === "access_denied"
-                      ? "You cancelled the Slack app installation."
-                      : `An error occurred: ${error}`}
-                  </p>
-                </>
-              ) : isLinked ? (
+              {isLinked ? (
                 <>
                   <h1 className="text-lg font-medium leading-7 text-foreground">
                     Account Linked Successfully
@@ -138,18 +121,16 @@ export default function SlackSuccessPage(): React.JSX.Element {
             </div>
 
             {/* Instructions */}
-            {!isError && (
-              <div className="mt-4 w-full rounded-lg bg-muted/50 p-4">
-                <p className="text-xs text-muted-foreground">
-                  <strong className="text-foreground">Next steps:</strong>
-                </p>
-                <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
-                  <li>1. Go to any Slack channel</li>
-                  <li>2. Mention @VM0 with your question</li>
-                  <li>3. The bot will respond using your configured agents</li>
-                </ul>
-              </div>
-            )}
+            <div className="mt-4 w-full rounded-lg bg-muted/50 p-4">
+              <p className="text-xs text-muted-foreground">
+                <strong className="text-foreground">Next steps:</strong>
+              </p>
+              <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                <li>1. Go to any Slack channel</li>
+                <li>2. Mention @VM0 with your question</li>
+                <li>3. The bot will respond using your configured agents</li>
+              </ul>
+            </div>
           </div>
         </div>
       </div>

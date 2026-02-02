@@ -24,7 +24,7 @@ const BOT_SCOPES = [
 ].join(",");
 
 export async function GET(request: Request) {
-  const { SLACK_CLIENT_ID } = env();
+  const { SLACK_CLIENT_ID, SLACK_REDIRECT_BASE_URL } = env();
 
   if (!SLACK_CLIENT_ID) {
     return NextResponse.json(
@@ -35,7 +35,7 @@ export async function GET(request: Request) {
 
   // Get the base URL for the redirect URI
   const url = new URL(request.url);
-  const baseUrl = `${url.protocol}//${url.host}`;
+  const baseUrl = SLACK_REDIRECT_BASE_URL ?? `${url.protocol}//${url.host}`;
   const redirectUri = `${baseUrl}/api/slack/oauth/callback`;
 
   // Build the Slack OAuth URL

@@ -18,6 +18,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/cli/auth/token",
   "/api/slack/oauth/(.*)", // Slack OAuth endpoints (install, callback)
   "/slack/success", // Slack success page (shows result after OAuth)
+  "/slack/failed", // Slack failed page (shows error after OAuth)
   "/robots.txt",
   "/sitemap.xml",
 ]);

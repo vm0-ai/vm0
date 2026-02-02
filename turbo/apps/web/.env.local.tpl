@@ -17,3 +17,9 @@ AXIOM_TOKEN=op://Development/vm0-env-local/axiom_token
 AXIOM_DATASET_SUFFIX=dev
 
 SECRETS_ENCRYPTION_KEY=op://Development/vm0-env-local/SECRETS_ENCRYPTION_KEY
+
+# Optional: Slack Integration
+SLACK_CLIENT_ID=op://Development/vm0-env-local/slack_client_id
+SLACK_CLIENT_SECRET=op://Development/vm0-env-local/slack_client_secret
+SLACK_SIGNING_SECRET=op://Development/vm0-env-local/slack_signing_secret
+SLACK_REDIRECT_BASE_URL=https://www.vm7.ai:8443
