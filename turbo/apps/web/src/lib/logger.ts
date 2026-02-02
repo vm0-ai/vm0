@@ -195,13 +195,6 @@ export function logger(name: string): Logger {
   return newLogger;
 }
 
-export function clearLoggerCache(): void {
-  loggerCache.clear();
-  // Also reset Axiom logger state to allow re-initialization
-  axiomLogger = null;
-  axiomInitialized = false;
-}
-
 /**
  * Flush all pending logs to Axiom.
  * MUST be called before serverless function terminates to ensure log delivery.
