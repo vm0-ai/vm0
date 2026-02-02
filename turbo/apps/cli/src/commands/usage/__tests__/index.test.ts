@@ -442,7 +442,7 @@ describe("usage command", () => {
 
       await usageCommand.parseAsync(["node", "cli"]);
 
-      expect(mockConsoleLog).toHaveBeenCalled();
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("-"));
     });
   });
 
