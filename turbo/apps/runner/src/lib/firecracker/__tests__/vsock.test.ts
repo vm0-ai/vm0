@@ -832,9 +832,11 @@ describe("VsockClient Integration Tests", () => {
       // Kill the agent so it can't respond
       if (agent && !agent.killed) {
         agent.kill("SIGKILL");
+        // Wait for process to actually exit (more robust than fixed delay)
+        await new Promise<void>((resolve) => {
+          agent!.on("exit", resolve);
+        });
       }
-      // Wait a bit for the kill to take effect
-      await new Promise((r) => setTimeout(r, 100));
 
       const result = await client!.shutdown(100);
       expect(result).toBe(false);
