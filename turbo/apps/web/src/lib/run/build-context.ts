@@ -42,6 +42,7 @@ const MODEL_PROVIDER_ENV_VARS = [
   "ANTHROPIC_BASE_URL",
   "OPENAI_API_KEY",
   "MOONSHOT_API_KEY",
+  "OPENROUTER_API_KEY",
   // Alternative auth methods (not model-provider supported yet)
   "ANTHROPIC_AUTH_TOKEN",
   "CLAUDE_CODE_USE_BEDROCK",

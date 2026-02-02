@@ -89,4 +89,44 @@ describe("resolveEnvironmentMapping", () => {
       });
     });
   });
+
+  describe("openrouter-api-key provider", () => {
+    it("does not set ANTHROPIC_MODEL in auto mode (empty/undefined selectedModel)", () => {
+      const result = resolveEnvironmentMapping(
+        "openrouter-api-key",
+        "sk-or-xxx",
+        undefined,
+      );
+
+      expect(result.ANTHROPIC_AUTH_TOKEN).toBe("sk-or-xxx");
+      expect(result.ANTHROPIC_BASE_URL).toBe("https://openrouter.ai/api");
+      expect(result.ANTHROPIC_API_KEY).toBe("");
+      // ANTHROPIC_MODEL should NOT be set in auto mode
+      expect(result.ANTHROPIC_MODEL).toBeUndefined();
+    });
+
+    it("sets ANTHROPIC_MODEL when explicit model is selected", () => {
+      const result = resolveEnvironmentMapping(
+        "openrouter-api-key",
+        "sk-or-xxx",
+        "anthropic/claude-sonnet-4.5",
+      );
+
+      expect(result.ANTHROPIC_AUTH_TOKEN).toBe("sk-or-xxx");
+      expect(result.ANTHROPIC_BASE_URL).toBe("https://openrouter.ai/api");
+      expect(result.ANTHROPIC_API_KEY).toBe("");
+      expect(result.ANTHROPIC_MODEL).toBe("anthropic/claude-sonnet-4.5");
+    });
+
+    it("sets ANTHROPIC_API_KEY to empty string (required for OpenRouter)", () => {
+      const result = resolveEnvironmentMapping(
+        "openrouter-api-key",
+        "sk-or-xxx",
+        "moonshotai/kimi-k2.5",
+      );
+
+      // ANTHROPIC_API_KEY must be explicitly empty to prevent Anthropic fallback
+      expect(result.ANTHROPIC_API_KEY).toBe("");
+    });
+  });
 });

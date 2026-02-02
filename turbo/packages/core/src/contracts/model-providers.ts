@@ -53,6 +53,45 @@ export const MODEL_PROVIDER_TYPES = {
     ] as string[],
     defaultModel: "kimi-k2.5",
   },
+  "openrouter-api-key": {
+    framework: "claude-code" as const,
+    credentialName: "OPENROUTER_API_KEY",
+    label: "OpenRouter API Key",
+    credentialLabel: "API key",
+    helpText: "Get your API key at: https://openrouter.ai/settings/keys",
+    environmentMapping: {
+      ANTHROPIC_AUTH_TOKEN: "$credential",
+      ANTHROPIC_BASE_URL: "https://openrouter.ai/api",
+      ANTHROPIC_API_KEY: "",
+      ANTHROPIC_MODEL: "$model",
+    } as Record<string, string>,
+    models: [
+      // Claude series
+      "anthropic/claude-sonnet-4.5",
+      "anthropic/claude-opus-4.5",
+      "anthropic/claude-haiku-4.5",
+      // Kimi series
+      "moonshotai/kimi-k2.5",
+      "moonshotai/kimi-k2",
+      "moonshotai/kimi-k2-thinking",
+      // DeepSeek series
+      "deepseek/deepseek-v3.2",
+      "deepseek/deepseek-chat-v3.1",
+      "deepseek/deepseek-r1",
+      // GLM series
+      "z-ai/glm-4.7",
+      "z-ai/glm-4.7-flash",
+      "z-ai/glm-4.6",
+      // MiniMax series
+      "minimax/minimax-m2.1",
+      "minimax/minimax-m2",
+      // Qwen series
+      "qwen/qwen3-coder-plus",
+      "qwen/qwen3-max",
+      "qwen/qwen3-coder",
+    ] as string[],
+    defaultModel: "",
+  },
 } as const;
 
 export type ModelProviderType = keyof typeof MODEL_PROVIDER_TYPES;
@@ -62,6 +101,7 @@ export const modelProviderTypeSchema = z.enum([
   "claude-code-oauth-token",
   "anthropic-api-key",
   "moonshot-api-key",
+  "openrouter-api-key",
 ]);
 
 export const modelProviderFrameworkSchema = z.enum(["claude-code", "codex"]);

@@ -130,5 +130,56 @@ describe("model-providers helpers", () => {
       expect(moonshot.credentialLabel).toBe("API key");
       expect(moonshot.helpText).toContain("moonshot.ai");
     });
+
+    it("has openrouter-api-key provider with correct structure", () => {
+      const openrouter = MODEL_PROVIDER_TYPES["openrouter-api-key"];
+      expect(openrouter.framework).toBe("claude-code");
+      expect(openrouter.credentialName).toBe("OPENROUTER_API_KEY");
+      expect(openrouter.label).toBe("OpenRouter API Key");
+      expect(openrouter.credentialLabel).toBe("API key");
+      expect(openrouter.helpText).toContain("openrouter.ai");
+    });
+  });
+
+  describe("openrouter-api-key provider", () => {
+    it("accepts openrouter-api-key as valid type", () => {
+      expect(
+        modelProviderTypeSchema.safeParse("openrouter-api-key").success,
+      ).toBe(true);
+    });
+
+    it("returns claude-code framework", () => {
+      expect(getFrameworkForType("openrouter-api-key")).toBe("claude-code");
+    });
+
+    it("returns OPENROUTER_API_KEY as credential name", () => {
+      expect(getCredentialNameForType("openrouter-api-key")).toBe(
+        "OPENROUTER_API_KEY",
+      );
+    });
+
+    it("returns environment mapping with ANTHROPIC_API_KEY empty", () => {
+      const mapping = getEnvironmentMapping("openrouter-api-key");
+      expect(mapping).toBeDefined();
+      expect(mapping?.ANTHROPIC_AUTH_TOKEN).toBe("$credential");
+      expect(mapping?.ANTHROPIC_BASE_URL).toBe("https://openrouter.ai/api");
+      expect(mapping?.ANTHROPIC_API_KEY).toBe("");
+      expect(mapping?.ANTHROPIC_MODEL).toBe("$model");
+    });
+
+    it("returns empty string as default model (auto mode)", () => {
+      expect(getDefaultModel("openrouter-api-key")).toBe("");
+    });
+
+    it("has model selection with verified models", () => {
+      expect(hasModelSelection("openrouter-api-key")).toBe(true);
+      const models = getModels("openrouter-api-key");
+      expect(models).toContain("anthropic/claude-sonnet-4.5");
+      expect(models).toContain("moonshotai/kimi-k2.5");
+      expect(models).toContain("deepseek/deepseek-v3.2");
+      expect(models).toContain("z-ai/glm-4.7");
+      expect(models).toContain("minimax/minimax-m2.1");
+      expect(models).toContain("qwen/qwen3-coder-plus");
+    });
   });
 });
