@@ -13,6 +13,7 @@ const isPublicRoute = createRouteMatcher([
   "/:locale/pricing",
   "/:locale/terms-of-use",
   "/:locale/privacy-policy",
+  "/:locale/design-system",
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/api/cli/auth/device",
