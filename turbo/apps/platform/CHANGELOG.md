@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.36.2](https://github.com/vm0-ai/vm0/compare/platform-v0.36.1...platform-v0.36.2) (2026-02-02)
+
+
+### Bug Fixes
+
+* **platform:** improve responsive layout for logs page and sidebar ([#2094](https://github.com/vm0-ai/vm0/issues/2094)) ([3ffc218](https://github.com/vm0-ai/vm0/commit/3ffc218dc21dbb7f9c9a0ab9895a89367767884e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.7.0
+
 ## [0.36.1](https://github.com/vm0-ai/vm0/compare/platform-v0.36.0...platform-v0.36.1) (2026-02-01)
 
 

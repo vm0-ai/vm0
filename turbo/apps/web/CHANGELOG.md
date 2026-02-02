@@ -1,5 +1,19 @@
 # Changelog
 
+## [11.15.0](https://github.com/vm0-ai/vm0/compare/web-v11.14.1...web-v11.15.0) (2026-02-02)
+
+
+### Features
+
+* **schedule:** retry scheduled runs on concurrency limit ([#2008](https://github.com/vm0-ai/vm0/issues/2008)) ([0f86346](https://github.com/vm0-ai/vm0/commit/0f8634676633bd9f1f6ab061b122cd5e1e39a065))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.7.0
+
 ## [11.14.1](https://github.com/vm0-ai/vm0/compare/web-v11.14.0...web-v11.14.1) (2026-02-01)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.7.0](https://github.com/vm0-ai/vm0/compare/core-v7.6.1...core-v7.7.0) (2026-02-02)
+
+
+### Features
+
+* **schedule:** retry scheduled runs on concurrency limit ([#2008](https://github.com/vm0-ai/vm0/issues/2008)) ([0f86346](https://github.com/vm0-ai/vm0/commit/0f8634676633bd9f1f6ab061b122cd5e1e39a065))
+
 ## [7.6.1](https://github.com/vm0-ai/vm0/compare/core-v7.6.0...core-v7.6.1) (2026-02-01)
 
 
