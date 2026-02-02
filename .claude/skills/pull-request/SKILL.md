@@ -103,7 +103,7 @@ git push -u origin <branch-name>  # -u for new branches
 ### Step 6: Create Pull Request
 
 ```bash
-gh pr create --title "<type>: <description>" --body "<brief description>"
+gh pr create --title "<type>: <description>" --body "<brief description>" --assignee @me
 gh pr view --json url -q .url
 ```
 
