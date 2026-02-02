@@ -37,7 +37,7 @@ export function generateDefaultScopeSlug(clerkUserId: string): string {
 /**
  * Validate scope slug format
  */
-export function validateScopeSlug(slug: string): void {
+function validateScopeSlug(slug: string): void {
   if (slug.length < 3 || slug.length > 64) {
     throw badRequest("Scope slug must be between 3 and 64 characters");
   }

@@ -103,32 +103,114 @@ describe("/api/scope", () => {
       expect(data.error.message).toContain("already have a scope");
     });
 
-    it("should reject invalid slug format", async () => {
-      mockClerk({ userId: `invalid-slug-user-${Date.now()}` });
+    describe("slug validation", () => {
+      it("should reject slugs that are too short", async () => {
+        mockClerk({ userId: `invalid-slug-user-${Date.now()}` });
 
-      const request = createTestRequest("http://localhost:3000/api/scope", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug: "AB" }), // Too short
+        const request = createTestRequest("http://localhost:3000/api/scope", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slug: "ab" }),
+        });
+        const response = await POST(request);
+
+        expect(response.status).toBe(400);
       });
-      const response = await POST(request);
 
-      expect(response.status).toBe(400);
-    });
+      it("should reject slugs that are too long", async () => {
+        mockClerk({ userId: `long-slug-user-${Date.now()}` });
 
-    it("should reject reserved slugs", async () => {
-      mockClerk({ userId: `reserved-slug-user-${Date.now()}` });
+        const request = createTestRequest("http://localhost:3000/api/scope", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slug: "a".repeat(65) }),
+        });
+        const response = await POST(request);
 
-      const request = createTestRequest("http://localhost:3000/api/scope", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug: "vm0" }),
+        expect(response.status).toBe(400);
       });
-      const response = await POST(request);
-      const data = await response.json();
 
-      expect(response.status).toBe(400);
-      expect(data.error.message).toContain("reserved");
+      it("should reject slugs with uppercase letters", async () => {
+        mockClerk({ userId: `uppercase-slug-user-${Date.now()}` });
+
+        const request = createTestRequest("http://localhost:3000/api/scope", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slug: "MySlug" }),
+        });
+        const response = await POST(request);
+
+        expect(response.status).toBe(400);
+      });
+
+      it("should reject slugs with invalid characters", async () => {
+        mockClerk({ userId: `invalid-char-user-${Date.now()}` });
+
+        const request = createTestRequest("http://localhost:3000/api/scope", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slug: "my_slug" }),
+        });
+        const response = await POST(request);
+
+        expect(response.status).toBe(400);
+      });
+
+      it("should reject slugs starting with hyphen", async () => {
+        mockClerk({ userId: `hyphen-start-user-${Date.now()}` });
+
+        const request = createTestRequest("http://localhost:3000/api/scope", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slug: "-myslug" }),
+        });
+        const response = await POST(request);
+
+        expect(response.status).toBe(400);
+      });
+
+      it("should reject slugs ending with hyphen", async () => {
+        mockClerk({ userId: `hyphen-end-user-${Date.now()}` });
+
+        const request = createTestRequest("http://localhost:3000/api/scope", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slug: "myslug-" }),
+        });
+        const response = await POST(request);
+
+        expect(response.status).toBe(400);
+      });
+
+      it("should reject reserved slugs", async () => {
+        mockClerk({ userId: `reserved-slug-user-${Date.now()}` });
+
+        const request = createTestRequest("http://localhost:3000/api/scope", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slug: "vm0" }),
+        });
+        const response = await POST(request);
+        const data = await response.json();
+
+        expect(response.status).toBe(400);
+        expect(data.error.message).toContain("reserved");
+      });
+
+      it("should reject slugs starting with vm0", async () => {
+        mockClerk({ userId: `vm0-prefix-user-${Date.now()}` });
+
+        const request = createTestRequest("http://localhost:3000/api/scope", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slug: "vm0-custom" }),
+        });
+        const response = await POST(request);
+        const data = await response.json();
+
+        expect(response.status).toBe(400);
+        expect(data.error.message).toContain("reserved");
+      });
     });
   });
 
