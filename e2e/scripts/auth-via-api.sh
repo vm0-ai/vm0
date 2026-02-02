@@ -65,7 +65,9 @@ if [[ -z "$DEVICE_CODE" ]]; then
   exit 1
 fi
 
-echo "Got device code: $DEVICE_CODE"
+# Mask device code in logs (show first 2 and last 2 chars only)
+MASKED_CODE="${DEVICE_CODE:0:2}**-**${DEVICE_CODE: -2}"
+echo "Got device code: $MASKED_CODE"
 
 # Build curl headers
 CURL_HEADERS=(-H "Content-Type: application/json")
