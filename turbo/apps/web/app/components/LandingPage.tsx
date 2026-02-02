@@ -4,8 +4,11 @@ import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { IconChevronDown, IconFile } from "@tabler/icons-react";
+import { useUser } from "@clerk/nextjs";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
+
+const PLATFORM_URL = "https://platform.vm0.ai";
 
 const TYPED_TEXT = "Help me build an agent for tech news aggregation";
 const RUN_TYPED_TEXT = {
@@ -17,6 +20,7 @@ const RUN_TYPED_TEXT = {
 
 // eslint-disable-next-line complexity
 export default function LandingPage() {
+  const { isSignedIn } = useUser();
   const [activeTab, setActiveTab] = useState<"agents" | "yaml">("agents");
   const [selectedAgent, setSelectedAgent] = useState<
     "hackernews" | "tiktok" | "blog" | "daily-report"
@@ -407,14 +411,27 @@ export default function LandingPage() {
 
                 {/* CTA Button */}
                 <div className="w-full max-w-[566px]">
-                  <Link
-                    href="/sign-up"
-                    className="bg-[#ed4e01] hover:bg-[#ff6a1f] !text-white w-full px-[24px] py-[12px] rounded-[10px] flex items-center justify-center transition-colors"
-                  >
-                    <span className="font-medium leading-[28px] text-[18px] tracking-normal !text-white">
-                      Get started
-                    </span>
-                  </Link>
+                  {isSignedIn ? (
+                    <a
+                      href={PLATFORM_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-[#ed4e01] hover:bg-[#ff6a1f] !text-white w-full px-[24px] py-[12px] rounded-[10px] flex items-center justify-center transition-colors"
+                    >
+                      <span className="font-medium leading-[28px] text-[18px] tracking-normal !text-white">
+                        Get started
+                      </span>
+                    </a>
+                  ) : (
+                    <Link
+                      href="/sign-up"
+                      className="bg-[#ed4e01] hover:bg-[#ff6a1f] !text-white w-full px-[24px] py-[12px] rounded-[10px] flex items-center justify-center transition-colors"
+                    >
+                      <span className="font-medium leading-[28px] text-[18px] tracking-normal !text-white">
+                        Get started
+                      </span>
+                    </Link>
+                  )}
                 </div>
               </div>
             </div>
@@ -3961,13 +3978,25 @@ export default function LandingPage() {
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-[12px] sm:gap-[20px]">
-                  <Link
-                    href="/sign-up"
-                    className="bg-[#ed4e01] hover:bg-[#ff6a1f] !text-white px-[24px] py-[12px] rounded-[10px] font-medium text-[18px] leading-[28px] w-full sm:w-[160px] transition-colors flex items-center justify-center"
-                    style={{ fontFamily: "var(--font-noto-sans)" }}
-                  >
-                    Get started
-                  </Link>
+                  {isSignedIn ? (
+                    <a
+                      href={PLATFORM_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-[#ed4e01] hover:bg-[#ff6a1f] !text-white px-[24px] py-[12px] rounded-[10px] font-medium text-[18px] leading-[28px] w-full sm:w-[160px] transition-colors flex items-center justify-center"
+                      style={{ fontFamily: "var(--font-noto-sans)" }}
+                    >
+                      Get started
+                    </a>
+                  ) : (
+                    <Link
+                      href="/sign-up"
+                      className="bg-[#ed4e01] hover:bg-[#ff6a1f] !text-white px-[24px] py-[12px] rounded-[10px] font-medium text-[18px] leading-[28px] w-full sm:w-[160px] transition-colors flex items-center justify-center"
+                      style={{ fontFamily: "var(--font-noto-sans)" }}
+                    >
+                      Get started
+                    </Link>
+                  )}
                   <a
                     href="https://github.com/vm0-ai/vm0"
                     target="_blank"
