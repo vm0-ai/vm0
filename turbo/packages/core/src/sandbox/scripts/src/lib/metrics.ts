@@ -153,29 +153,13 @@ export function collectMetrics(): Metrics {
 }
 
 /**
- * Start the metrics collector as a background process.
- * Uses setInterval internally, no explicit thread management needed.
- *
- * The first metrics collection happens synchronously to ensure at least one
- * data point is captured even for very short-running agents.
+ * Background loop that collects metrics every METRICS_INTERVAL seconds.
+ * Writes metrics as JSONL to METRICS_LOG_FILE.
  */
-export function startMetricsCollector(): void {
-  shutdownRequested = false;
+function metricsCollectorLoop(): void {
   logInfo(`Metrics collector started, writing to ${METRICS_LOG_FILE}`);
 
-  // Collect first metrics synchronously to ensure data exists for short-running agents
-  try {
-    const metrics = collectMetrics();
-    fs.appendFileSync(METRICS_LOG_FILE, JSON.stringify(metrics) + "\n");
-    logDebug(
-      `Initial metrics collected: cpu=${metrics.cpu}%, mem=${metrics.mem_used}/${metrics.mem_total}`,
-    );
-  } catch (error) {
-    logError(`Failed to collect initial metrics: ${error}`);
-  }
-
-  // Continue collecting in background
-  const scheduleNext = (): void => {
+  const writeMetrics = (): void => {
     if (shutdownRequested) {
       logInfo("Metrics collector stopped");
       return;
@@ -191,10 +175,22 @@ export function startMetricsCollector(): void {
       logError(`Failed to collect/write metrics: ${error}`);
     }
 
-    setTimeout(scheduleNext, METRICS_INTERVAL * 1000);
+    // Schedule next collection
+    setTimeout(writeMetrics, METRICS_INTERVAL * 1000);
   };
 
-  setTimeout(scheduleNext, METRICS_INTERVAL * 1000);
+  // Start collecting immediately
+  writeMetrics();
+}
+
+/**
+ * Start the metrics collector as a background process.
+ * Uses setTimeout chain internally, no explicit thread management needed.
+ */
+export function startMetricsCollector(): void {
+  shutdownRequested = false;
+  // Run in background using setTimeout chain
+  setTimeout(metricsCollectorLoop, 0);
 }
 
 /**
