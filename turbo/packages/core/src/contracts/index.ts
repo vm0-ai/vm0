@@ -191,6 +191,7 @@ export {
   modelProvidersByTypeContract,
   modelProvidersConvertContract,
   modelProvidersSetDefaultContract,
+  modelProvidersUpdateModelContract,
   modelProviderTypeSchema,
   modelProviderFrameworkSchema,
   modelProviderResponseSchema,
@@ -198,6 +199,7 @@ export {
   upsertModelProviderRequestSchema,
   upsertModelProviderResponseSchema,
   checkCredentialResponseSchema,
+  updateModelRequestSchema,
   MODEL_PROVIDER_TYPES,
   getFrameworkForType,
   getCredentialNameForType,
@@ -210,6 +212,7 @@ export {
   type ModelProvidersByTypeContract,
   type ModelProvidersConvertContract,
   type ModelProvidersSetDefaultContract,
+  type ModelProvidersUpdateModelContract,
   type ModelProviderType,
   type ModelProviderFramework,
   type ModelProviderResponse,
@@ -217,6 +220,7 @@ export {
   type UpsertModelProviderRequest,
   type UpsertModelProviderResponse,
   type CheckCredentialResponse,
+  type UpdateModelRequest,
 } from "./model-providers";
 export {
   sessionsByIdContract,

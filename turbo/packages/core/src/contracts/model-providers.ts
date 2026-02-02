@@ -360,3 +360,37 @@ export const modelProvidersSetDefaultContract = c.router({
 
 export type ModelProvidersSetDefaultContract =
   typeof modelProvidersSetDefaultContract;
+
+/**
+ * Update model request schema
+ */
+export const updateModelRequestSchema = z.object({
+  selectedModel: z.string().optional(),
+});
+
+export type UpdateModelRequest = z.infer<typeof updateModelRequestSchema>;
+
+/**
+ * Update model contract for /api/model-providers/[type]/model
+ */
+export const modelProvidersUpdateModelContract = c.router({
+  updateModel: {
+    method: "PATCH",
+    path: "/api/model-providers/:type/model",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      type: modelProviderTypeSchema,
+    }),
+    body: updateModelRequestSchema,
+    responses: {
+      200: modelProviderResponseSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Update model selection for an existing provider",
+  },
+});
+
+export type ModelProvidersUpdateModelContract =
+  typeof modelProvidersUpdateModelContract;

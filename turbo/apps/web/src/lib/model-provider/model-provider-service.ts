@@ -532,6 +532,62 @@ export async function setModelProviderDefault(
 }
 
 /**
+ * Update model selection for an existing provider (keeps credential unchanged)
+ */
+export async function updateModelProviderModel(
+  clerkUserId: string,
+  type: ModelProviderType,
+  selectedModel?: string,
+): Promise<ModelProviderInfo> {
+  const scope = await getUserScopeByClerkId(clerkUserId);
+  if (!scope) {
+    throw notFound("Model provider not found");
+  }
+
+  const framework = getFrameworkForType(type);
+  const credentialName = getCredentialNameForType(type);
+
+  // Find the model provider
+  const [provider] = await globalThis.services.db
+    .select()
+    .from(modelProviders)
+    .where(
+      and(eq(modelProviders.scopeId, scope.id), eq(modelProviders.type, type)),
+    )
+    .limit(1);
+
+  if (!provider) {
+    throw notFound(`Model provider "${type}" not found`);
+  }
+
+  // Update only the model selection
+  await globalThis.services.db
+    .update(modelProviders)
+    .set({
+      selectedModel: selectedModel ?? null,
+      updatedAt: new Date(),
+    })
+    .where(eq(modelProviders.id, provider.id));
+
+  log.debug("model provider model updated", {
+    providerId: provider.id,
+    type,
+    selectedModel,
+  });
+
+  return {
+    id: provider.id,
+    type,
+    framework,
+    credentialName,
+    isDefault: provider.isDefault,
+    selectedModel: selectedModel ?? null,
+    createdAt: provider.createdAt,
+    updatedAt: new Date(),
+  };
+}
+
+/**
  * Get the default model provider for a framework
  */
 export async function getDefaultModelProvider(

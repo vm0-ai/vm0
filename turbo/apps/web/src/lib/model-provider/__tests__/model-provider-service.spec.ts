@@ -17,6 +17,7 @@ import {
   convertCredentialToModelProvider,
   deleteModelProvider,
   setModelProviderDefault,
+  updateModelProviderModel,
 } from "../model-provider-service";
 import { initServices } from "../../init-services";
 import { modelProviders } from "../../../db/schema/model-provider";
@@ -425,6 +426,75 @@ describe("Model Provider Service", () => {
       const provider = await setModelProviderDefault(
         testUserId,
         "anthropic-api-key",
+      );
+
+      expect(provider.isDefault).toBe(true);
+    });
+  });
+
+  describe("updateModelProviderModel", () => {
+    it("should update model selection without changing credential", async () => {
+      // Create a provider with initial model
+      await upsertModelProvider(
+        testUserId,
+        "moonshot-api-key",
+        "test-moonshot-key",
+        false,
+        "kimi-k2.5",
+      );
+
+      // Update only the model
+      const provider = await updateModelProviderModel(
+        testUserId,
+        "moonshot-api-key",
+        "kimi-k2-thinking-turbo",
+      );
+
+      expect(provider.type).toBe("moonshot-api-key");
+      expect(provider.selectedModel).toBe("kimi-k2-thinking-turbo");
+    });
+
+    it("should set model to null when not provided", async () => {
+      // Create a provider with a model
+      await upsertModelProvider(
+        testUserId,
+        "moonshot-api-key",
+        "test-moonshot-key",
+        false,
+        "kimi-k2.5",
+      );
+
+      // Update without model (sets to null)
+      const provider = await updateModelProviderModel(
+        testUserId,
+        "moonshot-api-key",
+        undefined,
+      );
+
+      expect(provider.selectedModel).toBeNull();
+    });
+
+    it("should throw NotFoundError for nonexistent provider", async () => {
+      await expect(
+        updateModelProviderModel(testUserId, "anthropic-api-key", "model"),
+      ).rejects.toMatchObject({ name: "NotFoundError" });
+    });
+
+    it("should preserve isDefault flag", async () => {
+      // Create a default provider
+      await upsertModelProvider(
+        testUserId,
+        "moonshot-api-key",
+        "test-moonshot-key",
+        false,
+        "kimi-k2.5",
+      );
+
+      // Update model
+      const provider = await updateModelProviderModel(
+        testUserId,
+        "moonshot-api-key",
+        "kimi-k2-thinking-turbo",
       );
 
       expect(provider.isDefault).toBe(true);

@@ -5,6 +5,8 @@ import {
   upsertModelProvider,
   checkModelProviderCredential,
   convertModelProviderCredential,
+  listModelProviders,
+  updateModelProviderModel,
 } from "../../lib/api";
 import {
   MODEL_PROVIDER_TYPES,
@@ -15,17 +17,11 @@ import {
 } from "@vm0/core";
 import { isInteractive } from "../../lib/utils/prompt-utils";
 
-const providerChoices = Object.entries(MODEL_PROVIDER_TYPES).map(
-  ([type, config]) => ({
-    title: config.label,
-    value: type as ModelProviderType,
-  }),
-);
-
 interface SetupInput {
   type: ModelProviderType;
-  credential: string;
+  credential?: string;
   selectedModel?: string;
+  keepExistingCredential?: boolean;
 }
 
 function validateProviderType(typeStr: string): ModelProviderType {
@@ -127,12 +123,26 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
     process.exit(1);
   }
 
+  // Fetch configured providers to annotate choices
+  const { modelProviders: configuredProviders } = await listModelProviders();
+  const configuredTypes = new Set(configuredProviders.map((p) => p.type));
+
+  // Build provider choices with configuration status
+  const annotatedChoices = Object.entries(MODEL_PROVIDER_TYPES).map(
+    ([type, config]) => ({
+      title: configuredTypes.has(type as ModelProviderType)
+        ? `${config.label} ✓`
+        : config.label,
+      value: type as ModelProviderType,
+    }),
+  );
+
   const typeResponse = await prompts(
     {
       type: "select",
       name: "type",
       message: "Select provider type:",
-      choices: providerChoices,
+      choices: annotatedChoices,
     },
     { onCancel: () => process.exit(0) },
   );
@@ -142,6 +152,7 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
   // Check if credential already exists
   const checkResult = await checkModelProviderCredential(type);
 
+  // Handle user credential conversion
   if (checkResult.exists && checkResult.currentType === "user") {
     const convertResponse = await prompts(
       {
@@ -167,6 +178,33 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
     }
     console.log(chalk.dim("Aborted"));
     process.exit(0);
+  }
+
+  // Handle existing model-provider credential
+  if (checkResult.exists && checkResult.currentType === "model-provider") {
+    console.log();
+    console.log(`"${type}" is already configured.`);
+    console.log();
+
+    const actionResponse = await prompts(
+      {
+        type: "select",
+        name: "action",
+        message: "",
+        choices: [
+          { title: "Keep existing credential", value: "keep" },
+          { title: "Update credential", value: "update" },
+        ],
+      },
+      { onCancel: () => process.exit(0) },
+    );
+
+    if (actionResponse.action === "keep") {
+      // Keep existing credential - only prompt for model if applicable
+      const selectedModel = await promptForModelSelection(type);
+      return { type, keepExistingCredential: true, selectedModel };
+    }
+    // Fall through to credential prompt for "update"
   }
 
   const config = MODEL_PROVIDER_TYPES[type];
@@ -250,9 +288,39 @@ export const setupCommand = new Command()
           input = result;
         }
 
+        // Handle "keep existing credential" flow
+        if (input.keepExistingCredential) {
+          const provider = await updateModelProviderModel(
+            input.type,
+            input.selectedModel,
+          );
+
+          const defaultNote = provider.isDefault
+            ? ` (default for ${provider.framework})`
+            : "";
+          const modelNote = provider.selectedModel
+            ? ` with model: ${provider.selectedModel}`
+            : "";
+
+          // If no model selection, show "unchanged" message
+          if (!hasModelSelection(input.type)) {
+            console.log(
+              chalk.green(`✓ Model provider "${input.type}" unchanged`),
+            );
+          } else {
+            console.log(
+              chalk.green(
+                `✓ Model provider "${input.type}" updated${defaultNote}${modelNote}`,
+              ),
+            );
+          }
+          return;
+        }
+
+        // Standard upsert flow with credential
         const { provider, created } = await upsertModelProvider({
           type: input.type,
-          credential: input.credential,
+          credential: input.credential!,
           convert: shouldConvert,
           selectedModel: input.selectedModel,
         });

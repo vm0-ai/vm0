@@ -59,6 +59,7 @@ export {
   deleteModelProvider,
   convertModelProviderCredential,
   setModelProviderDefault,
+  updateModelProviderModel,
 } from "./domains/model-providers";
 
 // Domain modules - Usage
