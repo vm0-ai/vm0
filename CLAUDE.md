@@ -114,6 +114,7 @@ export async function GET() {
 #### Core Rules:
 - **Integration Tests Only** - Test at entry points (CLI commands, API routes), not internal functions
 - **No Unit Tests** - Integration tests already exercise all internal logic
+- **E2E Tests for Happy Path** - E2E tests only cover happy path; error cases go in integration tests
 - **Only Mock External Dependencies** - If `vi.mock()` path starts with `../../`, it's wrong
 - **Use Real Infrastructure** - Real database, real filesystem (temp dirs), MSW for HTTP
 
