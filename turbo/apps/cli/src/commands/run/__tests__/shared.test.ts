@@ -188,19 +188,17 @@ describe("handleGenericRunError", () => {
 
     handleGenericRunError(error, "Run");
 
-    // Check that the error message is shown
+    // Check that the error message and hints are shown together
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       expect.stringContaining("Run failed"),
     );
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       expect.stringContaining("concurrent agent run limit"),
     );
-
-    // Check that the hints are shown
-    expect(consoleLogSpy).toHaveBeenCalledWith(
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
       expect.stringContaining("vm0 run list"),
     );
-    expect(consoleLogSpy).toHaveBeenCalledWith(
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
       expect.stringContaining("vm0 run kill"),
     );
   });

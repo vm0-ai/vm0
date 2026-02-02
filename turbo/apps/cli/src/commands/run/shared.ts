@@ -340,12 +340,11 @@ export function handleGenericRunError(
     error.code === "concurrent_run_limit_exceeded"
   ) {
     console.error(chalk.red(`✗ ${commandLabel} failed`));
-    console.error(chalk.dim(`  ${error.message}`));
-    console.log();
-    console.log("  To view active runs:");
-    console.log(chalk.cyan("    vm0 run list"));
-    console.log("  To cancel a run:");
-    console.log(chalk.cyan("    vm0 run kill <run-id>"));
+    console.error(
+      chalk.dim(
+        `  ${error.message} Use 'vm0 run list' to view runs, 'vm0 run kill <id>' to cancel.`,
+      ),
+    );
   } else {
     console.error(chalk.red(`✗ ${commandLabel} failed`));
     console.error(chalk.dim(`  ${error.message}`));

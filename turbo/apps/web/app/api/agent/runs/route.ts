@@ -3,11 +3,7 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../src/lib/ts-rest-handler";
-import {
-  runsMainContract,
-  createErrorResponse,
-  type RunStatus,
-} from "@vm0/core";
+import { runsMainContract, type RunStatus } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   agentComposes,
@@ -139,7 +135,15 @@ const router = tsr.router(runsMainContract, {
       await checkRunConcurrencyLimit(userId);
     } catch (error) {
       if (isConcurrentRunLimit(error)) {
-        return createErrorResponse("TOO_MANY_REQUESTS", error.message);
+        return {
+          status: 429 as const,
+          body: {
+            error: {
+              message: error.message,
+              code: "concurrent_run_limit_exceeded",
+            },
+          },
+        };
       }
       throw error;
     }
