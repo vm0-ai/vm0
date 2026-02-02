@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import type { ModalView } from "@slack/web-api";
+import type {
+  InputBlock,
+  ModalView,
+  SectionBlock,
+  StaticSelect,
+} from "@slack/web-api";
 import {
   buildAgentAddModal,
   buildAgentListMessage,
@@ -37,10 +42,11 @@ describe("buildAgentAddModal", () => {
     );
 
     expect(agentSelectBlock).toBeDefined();
-    // @ts-expect-error - type narrowing
-    const options = agentSelectBlock?.element?.options;
+    const inputBlock = agentSelectBlock as InputBlock;
+    const selectElement = inputBlock.element as StaticSelect;
+    const options = selectElement.options;
     expect(options).toHaveLength(2);
-    expect(options[0]).toEqual({
+    expect(options?.[0]).toEqual({
       text: { type: "plain_text", text: "My Coder" },
       value: "agent-1",
     });
@@ -85,8 +91,9 @@ describe("buildAgentListMessage", () => {
         b.text.text.includes("my-coder"),
     );
     expect(firstAgentBlock).toBeDefined();
-    // @ts-expect-error - type narrowing
-    expect(firstAgentBlock?.text?.text).toContain(":white_check_mark:");
+    expect((firstAgentBlock as SectionBlock).text?.text).toContain(
+      ":white_check_mark:",
+    );
 
     // Check second agent has X (disabled)
     const secondAgentBlock = blocks.find(
@@ -97,8 +104,7 @@ describe("buildAgentListMessage", () => {
         b.text.text.includes("my-analyst"),
     );
     expect(secondAgentBlock).toBeDefined();
-    // @ts-expect-error - type narrowing
-    expect(secondAgentBlock?.text?.text).toContain(":x:");
+    expect((secondAgentBlock as SectionBlock).text?.text).toContain(":x:");
   });
 });
 
@@ -114,8 +120,7 @@ describe("buildErrorMessage", () => {
         text: expect.stringContaining("Something went wrong"),
       },
     });
-    // @ts-expect-error - type narrowing
-    expect(blocks[0]?.text?.text).toContain(":x:");
+    expect((blocks[0] as SectionBlock).text?.text).toContain(":x:");
   });
 });
 
@@ -182,7 +187,8 @@ describe("buildSuccessMessage", () => {
         text: expect.stringContaining("Agent added successfully"),
       },
     });
-    // @ts-expect-error - type narrowing
-    expect(blocks[0]?.text?.text).toContain(":white_check_mark:");
+    expect((blocks[0] as SectionBlock).text?.text).toContain(
+      ":white_check_mark:",
+    );
   });
 });
