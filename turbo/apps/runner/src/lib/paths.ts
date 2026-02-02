@@ -10,7 +10,7 @@ import path from "node:path";
 /**
  * Base directories
  */
-export const VM0_RUN_DIR = "/var/run/vm0";
+const VM0_RUN_DIR = "/var/run/vm0";
 const VM0_TMP_PREFIX = "/tmp/vm0";
 
 /**

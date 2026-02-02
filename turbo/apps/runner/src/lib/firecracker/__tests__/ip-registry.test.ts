@@ -19,7 +19,7 @@ describe("IPRegistry", () => {
   const mockCheckTapExists = vi.fn(async (tap: string) =>
     mockTapDevices.has(tap),
   );
-  const mockEnsureRunDir = vi.fn(async () => {});
+  const mockEnsureRegistryDir = vi.fn(async () => {});
 
   beforeEach(() => {
     // Create a unique temp directory for each test
@@ -31,9 +31,8 @@ describe("IPRegistry", () => {
 
     // Create registry with test config
     registry = new IPRegistry({
-      runDir: testDir,
       registryPath: path.join(testDir, "ip-registry.json"),
-      ensureRunDir: mockEnsureRunDir,
+      ensureRegistryDir: mockEnsureRegistryDir,
       scanTapDevices: mockScanTapDevices,
       checkTapExists: mockCheckTapExists,
     });
@@ -417,16 +416,16 @@ describe("IPRegistry", () => {
   describe("global instance", () => {
     it("should return same instance from initIPRegistry when called twice", () => {
       const instance1 = initIPRegistry({
-        runDir: testDir,
-        ensureRunDir: mockEnsureRunDir,
+        registryPath: path.join(testDir, "ip-registry.json"),
+        ensureRegistryDir: mockEnsureRegistryDir,
         scanTapDevices: mockScanTapDevices,
         checkTapExists: mockCheckTapExists,
       });
 
       // Second call should return new instance (replaces previous)
       const instance2 = initIPRegistry({
-        runDir: testDir,
-        ensureRunDir: mockEnsureRunDir,
+        registryPath: path.join(testDir, "ip-registry.json"),
+        ensureRegistryDir: mockEnsureRegistryDir,
         scanTapDevices: mockScanTapDevices,
         checkTapExists: mockCheckTapExists,
       });
@@ -437,8 +436,8 @@ describe("IPRegistry", () => {
 
     it("should create new instance after reset", () => {
       const config: IPRegistryConfig = {
-        runDir: testDir,
-        ensureRunDir: mockEnsureRunDir,
+        registryPath: path.join(testDir, "ip-registry.json"),
+        ensureRegistryDir: mockEnsureRegistryDir,
         scanTapDevices: mockScanTapDevices,
         checkTapExists: mockCheckTapExists,
       };

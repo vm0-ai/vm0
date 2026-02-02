@@ -31,7 +31,7 @@ describe("TapPool", () => {
   const mockCheckTapExists = vi.fn(async (tap: string) =>
     mockTapDevices.has(tap),
   );
-  const mockEnsureRunDir = vi.fn(async () => {});
+  const mockEnsureRegistryDir = vi.fn(async () => {});
 
   /** Helper to read IP registry and get allocation count */
   function getIPAllocationCount(): number {
@@ -61,9 +61,8 @@ describe("TapPool", () => {
     // Create temp directory and initialize global IPRegistry
     testDir = fs.mkdtempSync(path.join(os.tmpdir(), "tap-pool-test-"));
     initIPRegistry({
-      runDir: testDir,
       registryPath: path.join(testDir, "ip-registry.json"),
-      ensureRunDir: mockEnsureRunDir,
+      ensureRegistryDir: mockEnsureRegistryDir,
       scanTapDevices: mockScanTapDevices,
       checkTapExists: mockCheckTapExists,
     });

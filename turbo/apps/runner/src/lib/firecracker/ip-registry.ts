@@ -10,8 +10,9 @@
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import * as fs from "node:fs";
+import path from "node:path";
 import { createLogger } from "../logger.js";
-import { VM0_RUN_DIR, runtimePaths } from "../paths.js";
+import { runtimePaths } from "../paths.js";
 import { withFileLock } from "../utils/file-lock.js";
 
 const execAsync = promisify(exec);
@@ -45,12 +46,10 @@ interface IPRegistryData {
  * IP Registry configuration
  */
 export interface IPRegistryConfig {
-  /** Runtime directory (default: /var/run/vm0) */
-  runDir?: string;
-  /** Registry file path (default: runDir/ip-registry.json) */
+  /** Registry file path (default: /var/run/vm0/ip-registry.json) */
   registryPath?: string;
-  /** Function to ensure run directory exists */
-  ensureRunDir?: () => Promise<void>;
+  /** Function to ensure registry directory exists */
+  ensureRegistryDir?: () => Promise<void>;
   /** Function to scan all TAP devices on system */
   scanTapDevices?: () => Promise<Set<string>>;
   /** Function to check if a TAP device exists */
@@ -59,10 +58,11 @@ export interface IPRegistryConfig {
 
 // ============ Default Functions ============
 
-async function defaultEnsureRunDir(runDir: string): Promise<void> {
-  if (!fs.existsSync(runDir)) {
-    await execAsync(`sudo mkdir -p ${runDir}`);
-    await execAsync(`sudo chmod 777 ${runDir}`);
+async function defaultEnsureRegistryDir(registryPath: string): Promise<void> {
+  const dir = path.dirname(registryPath);
+  if (!fs.existsSync(dir)) {
+    await execAsync(`sudo mkdir -p ${dir}`);
+    await execAsync(`sudo chmod 777 ${dir}`);
   }
 }
 
@@ -123,11 +123,12 @@ export class IPRegistry {
   private readonly config: Required<IPRegistryConfig>;
 
   constructor(config: IPRegistryConfig = {}) {
-    const runDir = config.runDir ?? VM0_RUN_DIR;
+    const registryPath = config.registryPath ?? runtimePaths.ipRegistry;
     this.config = {
-      runDir,
-      registryPath: config.registryPath ?? runtimePaths.ipRegistry,
-      ensureRunDir: config.ensureRunDir ?? (() => defaultEnsureRunDir(runDir)),
+      registryPath,
+      ensureRegistryDir:
+        config.ensureRegistryDir ??
+        (() => defaultEnsureRegistryDir(registryPath)),
       scanTapDevices: config.scanTapDevices ?? defaultScanTapDevices,
       checkTapExists: config.checkTapExists ?? defaultCheckTapExists,
     };
@@ -139,7 +140,7 @@ export class IPRegistry {
    * Execute a function while holding an exclusive lock on the IP pool
    */
   private async withIPLock<T>(fn: () => Promise<T>): Promise<T> {
-    await this.config.ensureRunDir();
+    await this.config.ensureRegistryDir();
 
     // Ensure registry file exists (proper-lockfile requires file to exist)
     // Check first to avoid unnecessary syscall on every lock operation
