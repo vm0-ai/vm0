@@ -301,6 +301,7 @@ describe("model-provider setup command", () => {
               framework: "claude-code",
               credentialName: "ANTHROPIC_API_KEY",
               isDefault: false,
+              selectedModel: null,
               createdAt: "2024-01-01T00:00:00Z",
               updatedAt: "2024-01-01T00:00:00Z",
             },
@@ -321,6 +322,133 @@ describe("model-provider setup command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain('Model provider "anthropic-api-key" created');
       expect(logCalls).not.toContain("default for");
+    });
+  });
+
+  describe("model selection (moonshot-api-key)", () => {
+    it("should create provider with specified model", async () => {
+      server.use(
+        http.put(
+          "http://localhost:3000/api/model-providers",
+          async ({ request }) => {
+            const body = (await request.json()) as { selectedModel?: string };
+            return HttpResponse.json({
+              provider: {
+                id: "mp-moonshot",
+                type: "moonshot-api-key",
+                framework: "claude-code",
+                credentialName: "MOONSHOT_API_KEY",
+                isDefault: true,
+                selectedModel: body.selectedModel,
+                createdAt: "2024-01-01T00:00:00Z",
+                updatedAt: "2024-01-01T00:00:00Z",
+              },
+              created: true,
+            });
+          },
+        ),
+      );
+
+      await setupCommand.parseAsync([
+        "node",
+        "cli",
+        "--type",
+        "moonshot-api-key",
+        "--credential",
+        "sk-moonshot-key",
+        "--model",
+        "kimi-k2.5",
+      ]);
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("with model: kimi-k2.5"),
+      );
+    });
+
+    it("should reject invalid model for moonshot-api-key", async () => {
+      await expect(async () => {
+        await setupCommand.parseAsync([
+          "node",
+          "cli",
+          "--type",
+          "moonshot-api-key",
+          "--credential",
+          "sk-moonshot-key",
+          "--model",
+          "invalid-model",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining('Invalid model "invalid-model"'),
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Valid models:"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should use default model when --model not provided for moonshot-api-key", async () => {
+      let capturedBody: { selectedModel?: string } | null = null;
+      server.use(
+        http.put(
+          "http://localhost:3000/api/model-providers",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as { selectedModel?: string };
+            return HttpResponse.json({
+              provider: {
+                id: "mp-moonshot",
+                type: "moonshot-api-key",
+                framework: "claude-code",
+                credentialName: "MOONSHOT_API_KEY",
+                isDefault: true,
+                selectedModel: capturedBody.selectedModel,
+                createdAt: "2024-01-01T00:00:00Z",
+                updatedAt: "2024-01-01T00:00:00Z",
+              },
+              created: true,
+            });
+          },
+        ),
+      );
+
+      await setupCommand.parseAsync([
+        "node",
+        "cli",
+        "--type",
+        "moonshot-api-key",
+        "--credential",
+        "sk-moonshot-key",
+      ]);
+
+      // Should use default model (kimi-k2.5)
+      expect(capturedBody?.selectedModel).toBe("kimi-k2.5");
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('Model provider "moonshot-api-key" created'),
+      );
+    });
+
+    it("should list valid models when invalid model is provided", async () => {
+      await expect(async () => {
+        await setupCommand.parseAsync([
+          "node",
+          "cli",
+          "--type",
+          "moonshot-api-key",
+          "--credential",
+          "sk-moonshot-key",
+          "--model",
+          "not-a-valid-model",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      // Should show valid models
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("kimi-k2.5"),
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("kimi-k2-thinking-turbo"),
+      );
     });
   });
 });
