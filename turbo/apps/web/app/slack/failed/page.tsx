@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { useTheme } from "../../components/ThemeProvider";
 import { IconAlertCircle, IconChevronDown } from "@tabler/icons-react";
 
-export default function SlackFailedPage(): React.JSX.Element {
+function SlackFailedContent(): React.JSX.Element {
   const searchParams = useSearchParams();
   const { theme, toggleTheme } = useTheme();
   const [showDetails, setShowDetails] = useState(false);
@@ -191,5 +191,23 @@ export default function SlackFailedPage(): React.JSX.Element {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SlackFailedPage(): React.JSX.Element {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-background p-6">
+          <div className="w-full max-w-[400px] overflow-hidden rounded-xl border border-border bg-card">
+            <div className="flex flex-col items-center p-10">
+              <div className="animate-pulse">Loading...</div>
+            </div>
+          </div>
+        </div>
+      }
+    >
+      <SlackFailedContent />
+    </Suspense>
   );
 }
