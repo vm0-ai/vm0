@@ -15,7 +15,7 @@ set -euo pipefail
 
 # Configuration
 TIMEOUT_SECONDS=30
-POLL_INTERVAL=0.5
+POLL_INTERVAL=1
 
 echo "=== CLI Authentication via API ==="
 
@@ -47,12 +47,13 @@ ELAPSED=0
 while [[ -z "$DEVICE_CODE" && $ELAPSED -lt $TIMEOUT_SECONDS ]]; do
   if [[ -f "$AUTH_OUTPUT" ]]; then
     # Extract device code from output (format: "enter this code: XXXX-XXXX")
-    DEVICE_CODE=$(grep -oP 'enter this code:\s*\K[A-Z0-9]{4}-[A-Z0-9]{4}' "$AUTH_OUTPUT" 2>/dev/null || true)
+    # Use grep -o with extended regex for portability (no Perl regex)
+    DEVICE_CODE=$(grep -oE '[A-Z0-9]{4}-[A-Z0-9]{4}' "$AUTH_OUTPUT" 2>/dev/null | head -1 || true)
   fi
 
   if [[ -z "$DEVICE_CODE" ]]; then
     sleep $POLL_INTERVAL
-    ELAPSED=$(echo "$ELAPSED + $POLL_INTERVAL" | bc)
+    ELAPSED=$((ELAPSED + POLL_INTERVAL))
   fi
 done
 
