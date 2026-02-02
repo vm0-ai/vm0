@@ -331,10 +331,7 @@ export function showNextSteps(result: PollResult): void {
  * Handle generic run errors with special case for concurrent run limit
  * This replaces the final `else` clause to avoid adding complexity
  */
-export function handleGenericRunError(
-  error: Error,
-  commandLabel: string,
-): void {
+function handleGenericRunError(error: Error, commandLabel: string): void {
   if (
     error instanceof ApiRequestError &&
     error.code === "concurrent_run_limit_exceeded"

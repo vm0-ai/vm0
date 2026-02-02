@@ -199,9 +199,13 @@ describe("setup-claude command", () => {
         const argsArray = args as string[];
         if (argsArray.includes("list")) {
           // Empty marketplace list
-          return createMockChildProcess(0, "[]") as ReturnType<typeof spawn>;
+          return createMockChildProcessWithOutput(0, "[]") as ReturnType<
+            typeof spawn
+          >;
         }
-        return createMockChildProcess(0, "Success") as ReturnType<typeof spawn>;
+        return createMockChildProcessWithOutput(0, "Success") as ReturnType<
+          typeof spawn
+        >;
       });
 
       await setupClaudeCommand.parseAsync(["node", "cli"]);
@@ -220,16 +224,22 @@ describe("setup-claude command", () => {
           const output = JSON.stringify([
             { name: "vm0-skills", source: "github", repo: "vm0-ai/vm0-skills" },
           ]);
-          return createMockChildProcess(0, output) as ReturnType<typeof spawn>;
-        }
-        if (argsArray.includes("update")) {
-          // Marketplace update fails
-          return createMockChildProcess(1, "", "Network error") as ReturnType<
+          return createMockChildProcessWithOutput(0, output) as ReturnType<
             typeof spawn
           >;
         }
+        if (argsArray.includes("update")) {
+          // Marketplace update fails
+          return createMockChildProcessWithOutput(
+            1,
+            "",
+            "Network error",
+          ) as ReturnType<typeof spawn>;
+        }
         // Plugin install succeeds
-        return createMockChildProcess(0, "Success") as ReturnType<typeof spawn>;
+        return createMockChildProcessWithOutput(0, "Success") as ReturnType<
+          typeof spawn
+        >;
       });
 
       vi.spyOn(console, "warn").mockImplementation(() => {});
