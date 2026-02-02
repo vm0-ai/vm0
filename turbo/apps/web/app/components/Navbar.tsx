@@ -6,8 +6,11 @@ import { Link } from "../../navigation";
 import { useTranslations } from "next-intl";
 import { useTheme } from "./ThemeProvider";
 import { useUser, useClerk } from "@clerk/nextjs";
+import { IconArrowRight } from "@tabler/icons-react";
 import ThemeToggle from "./ThemeToggle";
 import LanguageSwitcher from "./LanguageSwitcher";
+
+const PLATFORM_URL = "https://platform.vm0.ai";
 
 export default function Navbar() {
   const { theme } = useTheme();
@@ -115,12 +118,23 @@ export default function Navbar() {
               </>
             )}
             {isSignedIn && (
-              <button
-                onClick={handleSignOut}
-                className="btn-try-demo nav-desktop"
-              >
-                Sign out
-              </button>
+              <>
+                <a
+                  href={PLATFORM_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-get-access nav-desktop"
+                >
+                  <span>Platform</span>
+                  <IconArrowRight size={16} />
+                </a>
+                <button
+                  onClick={handleSignOut}
+                  className="btn-try-demo nav-desktop"
+                >
+                  Sign out
+                </button>
+              </>
             )}
 
             {/* Hamburger Menu Button */}
@@ -197,16 +211,29 @@ export default function Navbar() {
               {t("contact")}
             </a>
             {isSignedIn && (
-              <button
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  handleSignOut();
-                }}
-                className="mobile-menu-link"
-                style={{ textAlign: "left", width: "100%" }}
-              >
-                Sign out
-              </button>
+              <>
+                <a
+                  href={PLATFORM_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mobile-menu-link"
+                  onClick={() => setMobileMenuOpen(false)}
+                  style={{ display: "flex", alignItems: "center", gap: "8px" }}
+                >
+                  <span>Platform</span>
+                  <IconArrowRight size={16} />
+                </a>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    handleSignOut();
+                  }}
+                  className="mobile-menu-link"
+                  style={{ textAlign: "left", width: "100%" }}
+                >
+                  Sign out
+                </button>
+              </>
             )}
           </div>
           <div className="mobile-menu-controls">
