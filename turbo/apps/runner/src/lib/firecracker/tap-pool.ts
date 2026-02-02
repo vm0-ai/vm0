@@ -31,6 +31,7 @@ import {
   cleanupOrphanedIPs,
   assignVmIdToIP,
   clearVmIdFromIP,
+  scanTapDevices,
 } from "./ip-registry.js";
 
 const execAsync = promisify(exec);
@@ -243,23 +244,8 @@ export class TapPool {
    * Scan for orphaned TAP devices from previous runs (matching this pool's prefix)
    */
   private async scanOrphanedTaps(): Promise<string[]> {
-    try {
-      const { stdout } = await execAsync(
-        `ip -o link show type tuntap 2>/dev/null || true`,
-      );
-
-      const orphaned: string[] = [];
-      const lines = stdout.split("\n");
-      for (const line of lines) {
-        const match = line.match(/^\d+:\s+([a-z0-9]+):/);
-        if (match && match[1] && this.isOwnTap(match[1])) {
-          orphaned.push(match[1]);
-        }
-      }
-      return orphaned;
-    } catch {
-      return [];
-    }
+    const allTaps = await scanTapDevices();
+    return Array.from(allTaps).filter((tap) => this.isOwnTap(tap));
   }
 
   /**

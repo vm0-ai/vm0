@@ -66,15 +66,19 @@ async function defaultEnsureRegistryDir(registryPath: string): Promise<void> {
   }
 }
 
-async function defaultScanTapDevices(): Promise<Set<string>> {
+/**
+ * Scan all TAP devices on the system with vm0 prefix
+ * Uses `ip link show` instead of `ip -o link show type tuntap`
+ * because the latter is unreliable on some Linux environments
+ */
+export async function scanTapDevices(): Promise<Set<string>> {
   const tapDevices = new Set<string>();
   try {
-    const { stdout } = await execAsync(
-      `ip -o link show type tuntap 2>/dev/null || true`,
-    );
+    const { stdout } = await execAsync(`ip link show 2>/dev/null || true`);
     const lines = stdout.split("\n");
     for (const line of lines) {
-      const match = line.match(/^\d+:\s+([a-z0-9]+):/);
+      // Match TAP devices with vm0 prefix (e.g., "3: vm0d29b740c000:")
+      const match = line.match(/^\d+:\s+(vm0[a-z0-9]+):/);
       if (match && match[1]) {
         tapDevices.add(match[1]);
       }
@@ -129,7 +133,7 @@ export class IPRegistry {
       ensureRegistryDir:
         config.ensureRegistryDir ??
         (() => defaultEnsureRegistryDir(registryPath)),
-      scanTapDevices: config.scanTapDevices ?? defaultScanTapDevices,
+      scanTapDevices: config.scanTapDevices ?? scanTapDevices,
       checkTapExists: config.checkTapExists ?? defaultCheckTapExists,
     };
   }
