@@ -195,7 +195,7 @@ function SystemMessageCard({
           {subtype === "init" ? "Initialize" : subtype}
         </span>
         <span className="flex-1" />
-        <span className="text-xs text-muted-foreground shrink-0 ml-4">
+        <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap">
           {formatEventTime(message.createdAt)}
         </span>
       </div>
@@ -229,7 +229,7 @@ function ResultMessageCard({
       >
         <ResultEventContent eventData={eventData} />
       </div>
-      <span className="text-xs text-muted-foreground shrink-0 w-[84px] text-right">
+      <span className="text-xs text-muted-foreground shrink-0 whitespace-nowrap text-right">
         {formatEventTime(message.createdAt)}
       </span>
     </div>
@@ -298,7 +298,7 @@ function TodoCard({
           </span>
         )}
         <span className="flex-1" />
-        <span className="text-xs text-muted-foreground shrink-0 ml-4">
+        <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap">
           {formatEventTime(message.createdAt)}
         </span>
       </summary>
@@ -368,7 +368,7 @@ function AssistantMessageCard({
             matchStartIndex={currentOffset}
           />
         </div>
-        <span className="text-xs text-muted-foreground shrink-0 ml-4">
+        <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap">
           {formatEventTime(message.createdAt)}
         </span>
       </div>,

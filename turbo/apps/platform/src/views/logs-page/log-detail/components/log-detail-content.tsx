@@ -2,12 +2,18 @@ import type { ReactNode } from "react";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { IconClock } from "@tabler/icons-react";
 import { CopyButton } from "@vm0/ui";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@vm0/ui/components/ui/tooltip";
 import { logDetailSearchTerm$ } from "../../../../signals/logs-page/log-detail-state.ts";
 import { getOrCreateLogDetail$ } from "../../../../signals/logs-page/logs-signals.ts";
 import { StatusBadge } from "../../status-badge.tsx";
 import { ArtifactDownloadButton } from "./artifact-download-button.tsx";
 import { AgentEventsCard } from "./agent-events-card.tsx";
-import { formatTime, formatDuration } from "../utils.ts";
+import { formatTime, formatTimeShort, formatDuration } from "../utils.ts";
 
 export function LogDetailContent({ logId }: { logId: string }) {
   const getOrCreateLogDetail = useSet(getOrCreateLogDetail$);
@@ -101,9 +107,18 @@ export function LogDetailContent({ logId }: { logId: string }) {
         </InfoItem>
 
         <InfoItem label="Created">
-          <span className="text-foreground">
-            {formatTime(detail.createdAt)}
-          </span>
+          <TooltipProvider delayDuration={100}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="text-foreground whitespace-nowrap text-xs cursor-default">
+                  {formatTimeShort(detail.createdAt)}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="text-xs">{formatTime(detail.createdAt)}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </InfoItem>
 
         <InfoItem label="Run ID">

@@ -35,7 +35,6 @@ function ToolSummaryHeader({
   keyParam,
   isError,
   hasResult,
-  durationText,
   timestamp,
 }: {
   toolName: string;
@@ -43,7 +42,6 @@ function ToolSummaryHeader({
   keyParam: string;
   isError: boolean;
   hasResult: boolean;
-  durationText: string | null;
   timestamp?: string;
 }) {
   // Determine status dot variant based on result state
@@ -72,13 +70,8 @@ function ToolSummaryHeader({
         </code>
       )}
       {!keyParam && <span className="flex-1" />}
-      {durationText && (
-        <span className="text-xs text-muted-foreground shrink-0">
-          {durationText}
-        </span>
-      )}
       {timestamp && (
-        <span className="text-xs text-muted-foreground shrink-0 ml-4">
+        <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap">
           {timestamp}
         </span>
       )}
@@ -124,13 +117,18 @@ export function ToolSummary({
         keyParam={keyParam}
         isError={isError}
         hasResult={Boolean(result)}
-        durationText={durationText}
         timestamp={timestamp}
       />
 
       <div className="mt-1 flex items-start gap-1.5 ml-[18px] mr-[100px]">
         <span className="text-muted-foreground text-xs shrink-0">└</span>
         <div className="flex-1 min-w-0 space-y-1">
+          {durationText && (
+            <div className="text-xs text-muted-foreground">
+              Duration: {durationText}
+            </div>
+          )}
+
           {input && Object.keys(input).length > 0 && (
             <ToolInputDetails input={input} toolName={toolName} />
           )}
