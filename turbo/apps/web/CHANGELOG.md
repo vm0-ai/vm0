@@ -1,5 +1,12 @@
 # Changelog
 
+## [11.19.0](https://github.com/vm0-ai/vm0/compare/web-v11.18.0...web-v11.19.0) (2026-02-02)
+
+
+### Features
+
+* **slack:** add oauth flow and user account linking ([#2145](https://github.com/vm0-ai/vm0/issues/2145)) ([90f5950](https://github.com/vm0-ai/vm0/commit/90f59509f8195ad270181c7534fce8d224c98676))
+
 ## [11.18.0](https://github.com/vm0-ai/vm0/compare/web-v11.17.0...web-v11.18.0) (2026-02-02)
 
 
