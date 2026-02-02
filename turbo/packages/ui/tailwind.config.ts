@@ -7,7 +7,7 @@ const config: Config = {
     extend: {
       fontFamily: {
         sans: ["var(--font-noto-sans)", "system-ui", "sans-serif"],
-        mono: ["var(--font-fira-code)", "monospace"],
+        mono: ["var(--font-jetbrains-mono)", "monospace"],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -81,6 +81,7 @@ const config: Config = {
           accent: "hsl(var(--sidebar-accent))",
         },
         "semantic-foreground": "hsl(var(--semantic-foreground))",
+        "on-filled": "hsl(var(--on-filled))",
       },
       borderRadius: {
         lg: "var(--radius)",

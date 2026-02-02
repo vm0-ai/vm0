@@ -17,7 +17,7 @@ const bypassAuth = process.env.BYPASS_AUTH === "true";
 
 const notoSans = Noto_Sans({
   subsets: ["latin"],
-  weight: ["400", "700"],
+  weight: ["400", "500", "700"],
   variable: "--font-noto-sans",
   display: "swap",
   preload: true,

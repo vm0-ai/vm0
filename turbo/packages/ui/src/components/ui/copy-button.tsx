@@ -47,7 +47,7 @@ const CopyButton = React.forwardRef<HTMLButtonElement, CopyButtonProps>(
               ref={ref}
               onClick={handleCopy}
               className={cn(
-                "p-2 hover:bg-muted rounded-md transition-colors shrink-0",
+                "p-2 hover:bg-muted rounded-md transition-colors shrink-0 group",
                 className,
               )}
               aria-label={copied ? "Copied" : "Copy to clipboard"}
@@ -56,7 +56,7 @@ const CopyButton = React.forwardRef<HTMLButtonElement, CopyButtonProps>(
               {copied ? (
                 <IconCheck className="h-4 w-4 text-green-500" />
               ) : (
-                <IconCopy className="h-4 w-4 text-muted-foreground" />
+                <IconCopy className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
               )}
             </button>
           </TooltipTrigger>
