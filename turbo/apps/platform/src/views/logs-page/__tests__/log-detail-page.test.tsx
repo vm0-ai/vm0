@@ -94,13 +94,15 @@ describe("log detail page", () => {
     });
 
     // Wait for detail to load - all info is now inline in the info card
+    // Note: Both desktop and mobile info cards are rendered (CSS controls visibility)
+    // so we use getAllByText to handle multiple matches
     await waitFor(() => {
-      expect(screen.getByText("My Test Agent")).toBeInTheDocument();
+      expect(screen.getAllByText("My Test Agent").length).toBeGreaterThan(0);
     });
-    expect(screen.getByText("Done")).toBeInTheDocument(); // Status badge
-    expect(screen.getByText("openai")).toBeInTheDocument(); // Framework
-    expect(screen.getByText("Run:")).toBeInTheDocument(); // Run label
-    expect(screen.getByText("Session:")).toBeInTheDocument(); // Session label
+    expect(screen.getAllByText("Done").length).toBeGreaterThan(0); // Status badge
+    expect(screen.getAllByText("openai").length).toBeGreaterThan(0); // Framework
+    expect(screen.getByText("Run:")).toBeInTheDocument(); // Run label (desktop only)
+    expect(screen.getByText("Session:")).toBeInTheDocument(); // Session label (desktop only)
   });
 
   it("should display duration correctly", async () => {
@@ -130,8 +132,9 @@ describe("log detail page", () => {
       path: "/logs/run-duration-test",
     });
 
+    // Both desktop and mobile info cards show duration
     await waitFor(() => {
-      expect(screen.getByText("1m 30s")).toBeInTheDocument();
+      expect(screen.getAllByText("1m 30s").length).toBeGreaterThan(0);
     });
   });
 
@@ -162,8 +165,9 @@ describe("log detail page", () => {
       path: "/logs/run-no-session",
     });
 
+    // Both desktop and mobile info cards show agent name
     await waitFor(() => {
-      expect(screen.getByText("No Session Agent")).toBeInTheDocument();
+      expect(screen.getAllByText("No Session Agent").length).toBeGreaterThan(0);
     });
 
     // Session label should not be shown when sessionId is null
@@ -197,8 +201,9 @@ describe("log detail page", () => {
       path: "/logs/run-failed",
     });
 
+    // Both desktop and mobile info cards show status badge
     await waitFor(() => {
-      expect(screen.getByText("Failed")).toBeInTheDocument();
+      expect(screen.getAllByText("Failed").length).toBeGreaterThan(0);
     });
     expect(
       screen.getByText("Connection timeout after 30 seconds"),
@@ -309,9 +314,9 @@ describe("log detail page", () => {
       path: "/logs/run-back-test",
     });
 
-    // Wait for page to load - check for agent name
+    // Wait for page to load - both desktop and mobile info cards show agent name
     await waitFor(() => {
-      expect(screen.getByText("Back Test Agent")).toBeInTheDocument();
+      expect(screen.getAllByText("Back Test Agent").length).toBeGreaterThan(0);
     });
 
     // Click Logs link in breadcrumb (use within to scope to nav element)
