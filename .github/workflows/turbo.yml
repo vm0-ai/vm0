@@ -590,6 +590,7 @@ jobs:
           submodules: recursive # For BATS test framework
 
       - name: Wait for cache availability with exponential backoff
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -669,6 +670,7 @@ jobs:
         run: cd turbo/apps/cli && pnpm link --global
 
       - name: Wait for cache availability with exponential backoff
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
