@@ -3,16 +3,8 @@ import { getPlatformUrl } from "../url";
 
 describe("url", () => {
   describe("getPlatformUrl", () => {
-    const originalWindow = global.window;
-
     afterEach(() => {
-      // Restore original window
-      if (originalWindow) {
-        global.window = originalWindow;
-      } else {
-        // @ts-expect-error - deliberately setting window to undefined for SSR test
-        delete global.window;
-      }
+      vi.unstubAllGlobals();
       vi.restoreAllMocks();
     });
 
@@ -60,8 +52,7 @@ describe("url", () => {
     });
 
     it("returns fallback URL when window is undefined (SSR)", () => {
-      // @ts-expect-error - deliberately setting window to undefined for SSR test
-      delete global.window;
+      vi.stubGlobal("window", undefined);
 
       expect(getPlatformUrl()).toBe("https://platform.vm0.ai");
     });
