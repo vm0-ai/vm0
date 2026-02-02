@@ -729,10 +729,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         },
       );
 
-      const data = await createTestRun(
-        composeId,
-        "Test openrouter auto mode",
-      );
+      const data = await createTestRun(composeId, "Test openrouter auto mode");
       expect(data.status).toBe("running");
 
       // Verify ANTHROPIC_MODEL is not set in auto mode
