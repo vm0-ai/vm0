@@ -307,6 +307,83 @@ describe("Model Provider Service", () => {
     });
   });
 
+  describe("upsertModelProvider with selectedModel", () => {
+    it("should create provider with selectedModel", async () => {
+      const { provider, created } = await upsertModelProvider(
+        testUserId,
+        "moonshot-api-key",
+        "test-moonshot-key",
+        false,
+        "kimi-k2.5",
+      );
+
+      expect(created).toBe(true);
+      expect(provider.type).toBe("moonshot-api-key");
+      expect(provider.selectedModel).toBe("kimi-k2.5");
+    });
+
+    it("should update selectedModel when updating provider", async () => {
+      // Create initial provider with one model
+      await upsertModelProvider(
+        testUserId,
+        "moonshot-api-key",
+        "test-moonshot-key",
+        false,
+        "kimi-k2-thinking-turbo",
+      );
+
+      // Update with different model
+      const { provider, created } = await upsertModelProvider(
+        testUserId,
+        "moonshot-api-key",
+        "test-moonshot-key",
+        false,
+        "kimi-k2.5",
+      );
+
+      expect(created).toBe(false);
+      expect(provider.selectedModel).toBe("kimi-k2.5");
+    });
+
+    it("should set selectedModel to null when not provided", async () => {
+      const { provider } = await upsertModelProvider(
+        testUserId,
+        "moonshot-api-key",
+        "test-moonshot-key",
+        false,
+        undefined, // no model selected
+      );
+
+      expect(provider.selectedModel).toBeNull();
+    });
+  });
+
+  describe("listModelProviders with selectedModel", () => {
+    it("should return selectedModel in provider list", async () => {
+      await upsertModelProvider(
+        testUserId,
+        "moonshot-api-key",
+        "test-moonshot-key",
+        false,
+        "kimi-k2.5",
+      );
+
+      const result = await listModelProviders(testUserId);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.selectedModel).toBe("kimi-k2.5");
+    });
+
+    it("should return null selectedModel for providers without model", async () => {
+      await upsertModelProvider(testUserId, "anthropic-api-key", "test-key");
+
+      const result = await listModelProviders(testUserId);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.selectedModel).toBeNull();
+    });
+  });
+
   describe("setModelProviderDefault", () => {
     it("should set provider as default", async () => {
       // Create two providers for same framework

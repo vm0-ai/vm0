@@ -21,6 +21,7 @@ interface ModelProviderInfo {
   framework: ModelProviderFramework;
   credentialName: string;
   isDefault: boolean;
+  selectedModel: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -41,6 +42,7 @@ export async function listModelProviders(
       id: modelProviders.id,
       type: modelProviders.type,
       isDefault: modelProviders.isDefault,
+      selectedModel: modelProviders.selectedModel,
       credentialName: credentials.name,
       createdAt: modelProviders.createdAt,
       updatedAt: modelProviders.updatedAt,
@@ -94,12 +96,14 @@ export async function checkCredentialExists(
 /**
  * Create or update a model provider
  * @param convertExisting If true, convert existing 'user' credential to 'model-provider'
+ * @param selectedModel For providers with model selection, the chosen model
  */
 export async function upsertModelProvider(
   clerkUserId: string,
   type: ModelProviderType,
   credential: string,
   convertExisting: boolean = false,
+  selectedModel?: string,
 ): Promise<{ provider: ModelProviderInfo; created: boolean }> {
   const scope = await getUserScopeByClerkId(clerkUserId);
   if (!scope) {
@@ -137,12 +141,16 @@ export async function upsertModelProvider(
 
     await globalThis.services.db
       .update(modelProviders)
-      .set({ updatedAt: new Date() })
+      .set({
+        selectedModel: selectedModel ?? null,
+        updatedAt: new Date(),
+      })
       .where(eq(modelProviders.id, existingProvider.id));
 
     log.debug("model provider updated", {
       providerId: existingProvider.id,
       type,
+      selectedModel,
     });
 
     return {
@@ -152,6 +160,7 @@ export async function upsertModelProvider(
         framework,
         credentialName,
         isDefault: existingProvider.isDefault,
+        selectedModel: selectedModel ?? null,
         createdAt: existingProvider.createdAt,
         updatedAt: new Date(),
       },
@@ -203,6 +212,7 @@ export async function upsertModelProvider(
         type,
         credentialId: existingCredential.id,
         isDefault: !hasProviderForFramework,
+        selectedModel: selectedModel ?? null,
       })
       .returning();
 
@@ -213,6 +223,7 @@ export async function upsertModelProvider(
     log.debug("model provider created from existing credential", {
       providerId: created.id,
       type,
+      selectedModel,
       converted: existingCredential.type === "user",
     });
 
@@ -223,6 +234,7 @@ export async function upsertModelProvider(
         framework,
         credentialName,
         isDefault: created.isDefault,
+        selectedModel: created.selectedModel,
         createdAt: created.createdAt,
         updatedAt: created.updatedAt,
       },
@@ -259,6 +271,7 @@ export async function upsertModelProvider(
       type,
       credentialId: newCredential.id,
       isDefault: !hasProviderForFramework,
+      selectedModel: selectedModel ?? null,
     })
     .returning();
 
@@ -270,6 +283,7 @@ export async function upsertModelProvider(
     providerId: newProvider.id,
     credentialId: newCredential.id,
     type,
+    selectedModel,
     isDefault: newProvider.isDefault,
   });
 
@@ -280,6 +294,7 @@ export async function upsertModelProvider(
       framework,
       credentialName,
       isDefault: newProvider.isDefault,
+      selectedModel: newProvider.selectedModel,
       createdAt: newProvider.createdAt,
       updatedAt: newProvider.updatedAt,
     },
@@ -363,6 +378,7 @@ export async function convertCredentialToModelProvider(
     framework,
     credentialName,
     isDefault: newProvider.isDefault,
+    selectedModel: newProvider.selectedModel,
     createdAt: newProvider.createdAt,
     updatedAt: newProvider.updatedAt,
   };
@@ -466,6 +482,7 @@ export async function setModelProviderDefault(
       framework,
       credentialName,
       isDefault: true,
+      selectedModel: target.selectedModel,
       createdAt: target.createdAt,
       updatedAt: target.updatedAt,
     };
@@ -508,6 +525,7 @@ export async function setModelProviderDefault(
     framework,
     credentialName,
     isDefault: true,
+    selectedModel: target.selectedModel,
     createdAt: target.createdAt,
     updatedAt: new Date(),
   };
@@ -525,6 +543,7 @@ export async function getDefaultModelProvider(
       id: modelProviders.id,
       type: modelProviders.type,
       isDefault: modelProviders.isDefault,
+      selectedModel: modelProviders.selectedModel,
       credentialName: credentials.name,
       createdAt: modelProviders.createdAt,
       updatedAt: modelProviders.updatedAt,

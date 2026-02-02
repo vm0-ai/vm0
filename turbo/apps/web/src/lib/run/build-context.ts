@@ -4,6 +4,8 @@ import {
   groupVariablesBySource,
   getFrameworkForType,
   getCredentialNameForType,
+  getEnvironmentMapping,
+  getDefaultModel,
   MODEL_PROVIDER_TYPES,
   type ModelProviderType,
   type ModelProviderFramework,
@@ -39,6 +41,7 @@ const MODEL_PROVIDER_ENV_VARS = [
   "ANTHROPIC_API_KEY",
   "ANTHROPIC_BASE_URL",
   "OPENAI_API_KEY",
+  "MOONSHOT_API_KEY",
   // Alternative auth methods (not model-provider supported yet)
   "ANTHROPIC_AUTH_TOKEN",
   "CLAUDE_CODE_USE_BEDROCK",
@@ -77,16 +80,59 @@ async function resolveProviderType(
 }
 
 /**
+ * Resolve environment mapping for a provider type
+ * Substitutes $credential and $model placeholders with actual values
+ *
+ * For providers without mapping, returns a single credential entry
+ * For providers with mapping (e.g., moonshot), returns multiple env vars
+ */
+export function resolveEnvironmentMapping(
+  providerType: ModelProviderType,
+  credentialValue: string,
+  selectedModel: string | undefined,
+): Record<string, string> {
+  const mapping = getEnvironmentMapping(providerType);
+
+  if (!mapping) {
+    // No mapping - return credential directly under its natural name
+    const credentialName = getCredentialNameForType(providerType);
+    return { [credentialName]: credentialValue };
+  }
+
+  // Resolve model: use selected or fall back to default
+  const model = selectedModel || getDefaultModel(providerType);
+
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(mapping)) {
+    if (value === "$credential") {
+      result[key] = credentialValue;
+    } else if (value === "$model") {
+      if (model) {
+        result[key] = model;
+      }
+    } else {
+      // Literal value (e.g., base URL)
+      result[key] = value;
+    }
+  }
+
+  return result;
+}
+
+/**
  * Result of model provider credential resolution
  */
 interface ModelProviderCredentialResult {
   credentials: Record<string, string> | undefined;
-  credentialName: string | undefined;
+  /** Environment variables to inject (may be multiple for providers with mapping) */
+  injectedEnvVars: Record<string, string> | undefined;
 }
 
 /**
  * Resolve and inject model provider credential if needed
  * Only injects if no explicit model provider config in compose environment
+ *
+ * For providers with environment mapping (e.g., moonshot), resolves all env vars
  */
 async function resolveModelProviderCredential(
   userId: string,
@@ -102,12 +148,12 @@ async function resolveModelProviderCredential(
     hasExplicitModelProviderConfig ||
     (framework !== "claude-code" && framework !== "codex")
   ) {
-    return { credentials, credentialName: undefined };
+    return { credentials, injectedEnvVars: undefined };
   }
 
   const userScope = await getUserScopeByClerkId(userId);
   if (!userScope) {
-    return { credentials, credentialName: undefined };
+    return { credentials, injectedEnvVars: undefined };
   }
 
   // Resolve model provider type (explicit or default)
@@ -126,20 +172,40 @@ async function resolveModelProviderCredential(
     );
   }
 
-  // Get credential and inject
+  // Get credential value
   const credentialName = getCredentialNameForType(providerType);
   const credentialValue = await getCredentialValue(
     userScope.id,
     credentialName,
   );
 
-  if (credentialValue) {
-    credentials = credentials || {};
-    credentials[credentialName] = credentialValue;
-    log.debug(`Injected model provider credential: ${credentialName}`);
+  if (!credentialValue) {
+    return { credentials, injectedEnvVars: undefined };
   }
 
-  return { credentials, credentialName };
+  // Store credential in credentials map for masking
+  credentials = credentials || {};
+  credentials[credentialName] = credentialValue;
+
+  // Get selected model from default provider if available
+  const defaultProvider = await getDefaultModelProvider(
+    userScope.id,
+    framework as ModelProviderFramework,
+  );
+  const selectedModel = defaultProvider?.selectedModel ?? undefined;
+
+  // Resolve environment mapping (handles $credential and $model substitution)
+  const injectedEnvVars = resolveEnvironmentMapping(
+    providerType,
+    credentialValue,
+    selectedModel,
+  );
+
+  log.debug(
+    `Resolved model provider env vars: ${Object.keys(injectedEnvVars).join(", ")}`,
+  );
+
+  return { credentials, injectedEnvVars };
 }
 
 /**
@@ -177,28 +243,36 @@ async function fetchReferencedCredentials(
 }
 
 /**
- * Auto-inject model provider credential into environment
+ * Auto-inject model provider environment variables into environment
  * Returns the potentially modified environment
+ *
+ * Only injects variables not already set (user-defined environment takes precedence)
  */
-function autoInjectCredentialToEnvironment(
+function autoInjectEnvVarsToEnvironment(
   environment: Record<string, string> | undefined,
-  credentialName: string | undefined,
-  credentials: Record<string, string> | undefined,
+  injectedEnvVars: Record<string, string> | undefined,
 ): Record<string, string> | undefined {
-  if (!credentialName || !credentials?.[credentialName]) {
+  if (!injectedEnvVars || Object.keys(injectedEnvVars).length === 0) {
     return environment;
   }
 
-  // Only inject if not already set (user-defined environment takes precedence)
-  if (environment?.[credentialName]) {
-    return environment;
+  const result = environment ? { ...environment } : {};
+  const injectedKeys: string[] = [];
+
+  for (const [key, value] of Object.entries(injectedEnvVars)) {
+    // Only inject if not already set (user-defined environment takes precedence)
+    if (!(key in result)) {
+      result[key] = value;
+      injectedKeys.push(key);
+    }
   }
 
-  const result = environment || {};
-  result[credentialName] = credentials[credentialName]!;
-  log.debug(
-    `Auto-injected model provider credential to environment: ${credentialName}`,
-  );
+  if (injectedKeys.length > 0) {
+    log.debug(
+      `Auto-injected model provider env vars to environment: ${injectedKeys.join(", ")}`,
+    );
+  }
+
   return result;
 }
 
@@ -405,7 +479,7 @@ export async function buildExecutionContext(
     params.modelProvider,
   );
   credentials = modelProviderResult.credentials;
-  const modelProviderCredentialName = modelProviderResult.credentialName;
+  const injectedEnvVars = modelProviderResult.injectedEnvVars;
 
   // Step 5: Expand environment variables from compose config using vars, secrets, and credentials
   // When experimental_firewall.experimental_seal_secrets is enabled, secrets are encrypted
@@ -418,11 +492,10 @@ export async function buildExecutionContext(
     params.runId,
   );
 
-  // Step 5b: Auto-inject model provider credential into environment
-  const environment = autoInjectCredentialToEnvironment(
+  // Step 5b: Auto-inject model provider env vars into environment
+  const environment = autoInjectEnvVarsToEnvironment(
     expandedEnvironment,
-    modelProviderCredentialName,
-    credentials,
+    injectedEnvVars,
   );
 
   // Step 6: Merge credentials into secrets for client-side log masking

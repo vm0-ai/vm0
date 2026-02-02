@@ -36,6 +36,7 @@ export async function upsertModelProvider(body: {
   type: ModelProviderType;
   credential: string;
   convert?: boolean;
+  selectedModel?: string;
 }): Promise<UpsertModelProviderResponse> {
   const config = await getClientConfig();
   const client = initClient(modelProvidersMainContract, config);

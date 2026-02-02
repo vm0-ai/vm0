@@ -42,6 +42,7 @@ const router = tsr.router(modelProvidersMainContract, {
           framework: p.framework,
           credentialName: p.credentialName,
           isDefault: p.isDefault,
+          selectedModel: p.selectedModel,
           createdAt: p.createdAt.toISOString(),
           updatedAt: p.updatedAt.toISOString(),
         })),
@@ -60,9 +61,9 @@ const router = tsr.router(modelProvidersMainContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const { type, credential, convert } = body;
+    const { type, credential, convert, selectedModel } = body;
 
-    log.debug("upserting model provider", { userId, type });
+    log.debug("upserting model provider", { userId, type, selectedModel });
 
     try {
       const { provider, created } = await upsertModelProvider(
@@ -70,6 +71,7 @@ const router = tsr.router(modelProvidersMainContract, {
         type,
         credential,
         convert,
+        selectedModel,
       );
 
       return {
@@ -81,6 +83,7 @@ const router = tsr.router(modelProvidersMainContract, {
             framework: provider.framework,
             credentialName: provider.credentialName,
             isDefault: provider.isDefault,
+            selectedModel: provider.selectedModel,
             createdAt: provider.createdAt.toISOString(),
             updatedAt: provider.updatedAt.toISOString(),
           },
