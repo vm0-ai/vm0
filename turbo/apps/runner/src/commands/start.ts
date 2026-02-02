@@ -1,6 +1,6 @@
 import { Command } from "commander";
-import { dirname, join } from "path";
 import { loadConfig, validateFirecrackerPaths } from "../lib/config.js";
+import { runnerPaths } from "../lib/paths.js";
 import { Runner } from "../lib/runner/index.js";
 
 export const startCommand = new Command("start")
@@ -12,7 +12,7 @@ export const startCommand = new Command("start")
       validateFirecrackerPaths(config.firecracker);
       console.log("Config valid");
 
-      const statusFilePath = join(dirname(options.config), "status.json");
+      const statusFilePath = runnerPaths.statusFile(config.base_dir);
       const runner = new Runner(config, statusFilePath);
       await runner.start();
     } catch (error) {

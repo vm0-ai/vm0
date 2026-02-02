@@ -10,8 +10,8 @@
 
 import { Command } from "commander";
 import { existsSync, readFileSync, readdirSync } from "fs";
-import { dirname, join } from "path";
 import { loadConfig } from "../lib/config.js";
+import { runnerPaths } from "../lib/paths.js";
 import { pollForJob } from "../lib/api.js";
 import {
   findFirecrackerProcesses,
@@ -54,9 +54,8 @@ export const doctorCommand = new Command("doctor")
     async (options: { config: string }): Promise<void> => {
       try {
         const config = loadConfig(options.config);
-        const configDir = dirname(options.config);
-        const statusFilePath = join(configDir, "status.json");
-        const workspacesDir = join(configDir, "workspaces");
+        const statusFilePath = runnerPaths.statusFile(config.base_dir);
+        const workspacesDir = runnerPaths.workspacesDir(config.base_dir);
 
         // Runner info
         console.log(`Runner: ${config.name}`);
@@ -141,7 +140,7 @@ export const doctorCommand = new Command("doctor")
         // Scan resources first to get active VM IPs
         const processes = findFirecrackerProcesses();
         const workspaces = existsSync(workspacesDir)
-          ? readdirSync(workspacesDir).filter((d) => d.startsWith("vm0-"))
+          ? readdirSync(workspacesDir).filter(runnerPaths.isVmWorkspace)
           : [];
 
         // Build job info with IP addresses
@@ -244,7 +243,7 @@ export const doctorCommand = new Command("doctor")
 
         // Orphan workspaces
         for (const ws of workspaces) {
-          const vmId = ws.replace("vm0-", "");
+          const vmId = runnerPaths.extractVmId(ws);
           if (!processVmIds.has(vmId) && !statusVmIds.has(vmId)) {
             warnings.push({
               message: `Orphan workspace: ${ws} (no matching job or process)`,

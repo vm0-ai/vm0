@@ -11,12 +11,12 @@
  * - Supporting checkpoint/resume functionality
  */
 
-import path from "path";
 import { FirecrackerVM, type VMConfig } from "./firecracker/vm.js";
 import type { GuestClient } from "./firecracker/guest.js";
 import { VsockClient } from "./firecracker/vsock.js";
 import type { ExecutionContext } from "./api.js";
 import type { RunnerConfig } from "./config.js";
+import { runnerPaths } from "./paths.js";
 import { ENV_LOADER_PATH } from "./scripts/index.js";
 import { getVMRegistry } from "./proxy/index.js";
 import {
@@ -80,9 +80,8 @@ export async function executeJob(
 
   try {
     // Create VM configuration
-    // Use workspaces directory under runner's working directory for easy cleanup
-    // When runner is stopped, the entire PR directory can be deleted
-    const workspacesDir = path.join(process.cwd(), "workspaces");
+    // Use workspaces directory under runner's base_dir for easy cleanup
+    // When runner is stopped, the entire base directory can be deleted
     const vmConfig: VMConfig = {
       vmId,
       vcpus: config.sandbox.vcpu,
@@ -90,7 +89,7 @@ export async function executeJob(
       kernelPath: config.firecracker.kernel,
       rootfsPath: config.firecracker.rootfs,
       firecrackerBinary: config.firecracker.binary,
-      workDir: path.join(workspacesDir, `vm0-${vmId}`),
+      workDir: runnerPaths.vmWorkDir(config.base_dir, vmId),
     };
 
     // Create and start VM

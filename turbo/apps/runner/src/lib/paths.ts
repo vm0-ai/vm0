@@ -25,13 +25,32 @@ export const runtimePaths = {
   ipRegistry: path.join(VM0_RUN_DIR, "ip-registry.json"),
 } as const;
 
+/** Prefix for VM workspace directories */
+const VM_WORKSPACE_PREFIX = "vm0-";
+
 /**
- * Per-runner data paths (config.data_dir)
- * Each runner instance has its own data directory
+ * Per-runner paths derived from config.base_dir
+ * Each runner instance has its own base directory
  */
-export const dataPaths = {
+export const runnerPaths = {
   /** Overlay pool directory for pre-warmed VM overlays */
-  overlayPool: (dataDir: string) => path.join(dataDir, "overlay-pool"),
+  overlayPool: (baseDir: string) => path.join(baseDir, "overlay-pool"),
+
+  /** Workspaces directory for VM work directories */
+  workspacesDir: (baseDir: string) => path.join(baseDir, "workspaces"),
+
+  /** VM work directory */
+  vmWorkDir: (baseDir: string, vmId: string) =>
+    path.join(baseDir, "workspaces", `${VM_WORKSPACE_PREFIX}${vmId}`),
+
+  /** Runner status file */
+  statusFile: (baseDir: string) => path.join(baseDir, "status.json"),
+
+  /** Check if a directory name is a VM workspace */
+  isVmWorkspace: (dirname: string) => dirname.startsWith(VM_WORKSPACE_PREFIX),
+
+  /** Extract vmId from workspace directory name */
+  extractVmId: (dirname: string) => dirname.replace(VM_WORKSPACE_PREFIX, ""),
 };
 
 /**

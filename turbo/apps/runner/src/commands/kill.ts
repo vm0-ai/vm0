@@ -9,9 +9,9 @@
 
 import { Command } from "commander";
 import { existsSync, readFileSync, writeFileSync, rmSync } from "fs";
-import { dirname, join } from "path";
 import * as readline from "readline";
 import { loadConfig } from "../lib/config.js";
+import { runnerPaths } from "../lib/paths.js";
 import { findProcessByVmId, killProcess } from "../lib/firecracker/process.js";
 import { getIPForVm } from "../lib/firecracker/ip-registry.js";
 
@@ -41,10 +41,8 @@ export const killCommand = new Command("kill")
       options: { config: string; force?: boolean },
     ): Promise<void> => {
       try {
-        loadConfig(options.config); // Validate config exists
-        const configDir = dirname(options.config);
-        const statusFilePath = join(configDir, "status.json");
-        const workspacesDir = join(configDir, "workspaces");
+        const config = loadConfig(options.config);
+        const statusFilePath = runnerPaths.statusFile(config.base_dir);
 
         // Resolve run ID
         const { vmId, runId } = resolveRunId(runIdArg, statusFilePath);
@@ -54,7 +52,7 @@ export const killCommand = new Command("kill")
         // Find resources
         const proc = findProcessByVmId(vmId);
         const guestIp = getIPForVm(vmId);
-        const workspaceDir = join(workspacesDir, `vm0-${vmId}`);
+        const workspaceDir = runnerPaths.vmWorkDir(config.base_dir, vmId);
 
         // Show what will be cleaned up
         console.log("");

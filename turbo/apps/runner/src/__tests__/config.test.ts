@@ -13,7 +13,7 @@ describe("RunnerConfig Schema", () => {
     const config = {
       name: "test-runner",
       group: "test/e2e",
-      data_dir: "/opt/runner/data",
+      base_dir: "/opt/runner",
       server: {
         url: "https://example.com",
         token: "test-token",
@@ -47,7 +47,7 @@ describe("RunnerConfig Schema", () => {
     const config = {
       name: "test",
       group: "scope/name",
-      data_dir: "/opt/runner/data",
+      base_dir: "/opt/runner",
       server: {
         url: "https://example.com",
         token: "test-token",
@@ -237,7 +237,7 @@ describe("loadConfig", () => {
     const yamlContent = `
 name: test-runner
 group: e2e/test
-data_dir: /opt/runner/data
+base_dir: /opt/runner
 server:
   url: https://example.com
   token: test-token

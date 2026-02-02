@@ -1076,7 +1076,7 @@ jobs:
 
           # Create benchmark config with proxy settings (firewall + mitm enabled by default)
           ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "
-            echo 'data_dir: ${RUNNER_DIR}/benchmark-data' > ${RUNNER_DIR}/benchmark.yaml
+            echo 'base_dir: ${RUNNER_DIR}/benchmark' > ${RUNNER_DIR}/benchmark.yaml
             echo 'firecracker:' >> ${RUNNER_DIR}/benchmark.yaml
             echo '  binary: /usr/local/bin/firecracker' >> ${RUNNER_DIR}/benchmark.yaml
             echo '  kernel: /opt/firecracker/vmlinux' >> ${RUNNER_DIR}/benchmark.yaml

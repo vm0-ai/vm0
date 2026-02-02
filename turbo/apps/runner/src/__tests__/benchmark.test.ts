@@ -4,7 +4,7 @@ import { debugConfigSchema } from "../lib/config.js";
 describe("debugConfigSchema", () => {
   it("should parse minimal config with only firecracker paths", () => {
     const config = {
-      data_dir: "/tmp/vm0-data",
+      base_dir: "/tmp/vm0",
       firecracker: {
         binary: "/usr/bin/firecracker",
         kernel: "/opt/vmlinux",
@@ -27,7 +27,7 @@ describe("debugConfigSchema", () => {
 
   it("should allow custom sandbox settings", () => {
     const config = {
-      data_dir: "/tmp/vm0-data",
+      base_dir: "/tmp/vm0",
       firecracker: {
         binary: "/usr/bin/firecracker",
         kernel: "/opt/vmlinux",
@@ -51,7 +51,7 @@ describe("debugConfigSchema", () => {
 
   it("should allow custom server settings", () => {
     const config = {
-      data_dir: "/tmp/vm0-data",
+      base_dir: "/tmp/vm0",
       firecracker: {
         binary: "/usr/bin/firecracker",
         kernel: "/opt/vmlinux",

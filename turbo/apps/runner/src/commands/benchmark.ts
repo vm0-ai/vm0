@@ -14,7 +14,7 @@ import {
 import { initTapPool, cleanupTapPool } from "../lib/firecracker/tap-pool.js";
 import { Timer } from "../lib/timing.js";
 import { setGlobalLogger } from "../lib/logger.js";
-import { dataPaths } from "../lib/paths.js";
+import { runnerPaths } from "../lib/paths.js";
 
 interface BenchmarkOptions {
   config: string;
@@ -96,7 +96,7 @@ export const benchmarkCommand = new Command("benchmark")
       await initOverlayPool({
         size: 2,
         replenishThreshold: 1,
-        poolDir: dataPaths.overlayPool(config.data_dir),
+        poolDir: runnerPaths.overlayPool(config.base_dir),
       });
       await initTapPool({ name: config.name, size: 2, replenishThreshold: 1 });
       poolsInitialized = true;
