@@ -311,7 +311,7 @@ export const composeCommand = new Command()
   .action(
     async (
       configFile: string,
-      options: { yes?: boolean; noAutoUpdate?: boolean },
+      options: { yes?: boolean; autoUpdate?: boolean },
     ) => {
       try {
         // 1. Load and validate config
@@ -366,7 +366,7 @@ export const composeCommand = new Command()
         );
 
         // Silent upgrade after successful command completion
-        if (!options.noAutoUpdate) {
+        if (options.autoUpdate !== false) {
           await silentUpgradeAfterCommand(__CLI_VERSION__);
         }
       } catch (error) {

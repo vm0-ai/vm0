@@ -90,7 +90,7 @@ export const mainRunCommand = new Command()
         modelProvider?: string;
         verbose?: boolean;
         debugNoMockClaude?: boolean;
-        noAutoUpdate?: boolean;
+        autoUpdate?: boolean;
       },
     ) => {
       try {
@@ -196,7 +196,7 @@ export const mainRunCommand = new Command()
         showNextSteps(result);
 
         // Silent upgrade after successful command completion
-        if (!options.noAutoUpdate) {
+        if (options.autoUpdate !== false) {
           await silentUpgradeAfterCommand(__CLI_VERSION__);
         }
       } catch (error) {

@@ -241,11 +241,6 @@ export async function checkAndUpgrade(
 export async function silentUpgradeAfterCommand(
   currentVersion: string,
 ): Promise<void> {
-  // Skip in test environment
-  if (process.env.VITEST) {
-    return;
-  }
-
   // Check for new version
   const latestVersion = await getLatestVersion();
 
