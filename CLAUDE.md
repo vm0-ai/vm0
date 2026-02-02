@@ -108,6 +108,17 @@ export async function GET() {
 - Address TypeScript errors properly, don't ignore them
 - Unused variables should be removed, not ignored
 
+### Testing Guidelines
+**"Write tests. Not too many. Mostly integration."** — Kent C. Dodds
+
+#### Core Rules:
+- **Integration Tests Only** - Test at entry points (CLI commands, API routes), not internal functions
+- **No Unit Tests** - Integration tests already exercise all internal logic
+- **Only Mock External Dependencies** - If `vi.mock()` path starts with `../../`, it's wrong
+- **Use Real Infrastructure** - Real database, real filesystem (temp dirs), MSW for HTTP
+
+For detailed patterns and examples, use `/testing`.
+
 ## Commit Message Guidelines
 
 **All commit messages must follow Conventional Commits format.** This ensures consistent commit history and enables automated versioning.
