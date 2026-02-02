@@ -84,9 +84,9 @@ describe("model-providers helpers", () => {
   describe("getModels", () => {
     it("returns models array for moonshot-api-key", () => {
       expect(getModels("moonshot-api-key")).toEqual([
+        "kimi-k2.5",
         "kimi-k2-thinking-turbo",
         "kimi-k2-thinking",
-        "kimi-k2.5",
       ]);
     });
 
@@ -98,9 +98,7 @@ describe("model-providers helpers", () => {
 
   describe("getDefaultModel", () => {
     it("returns default model for moonshot-api-key", () => {
-      expect(getDefaultModel("moonshot-api-key")).toBe(
-        "kimi-k2-thinking-turbo",
-      );
+      expect(getDefaultModel("moonshot-api-key")).toBe("kimi-k2.5");
     });
 
     it("returns undefined for providers without models", () => {

@@ -31,7 +31,7 @@ describe("resolveEnvironmentMapping", () => {
         undefined,
       );
 
-      expect(result.ANTHROPIC_MODEL).toBe("kimi-k2-thinking-turbo");
+      expect(result.ANTHROPIC_MODEL).toBe("kimi-k2.5");
       expect(result.ANTHROPIC_AUTH_TOKEN).toBe("sk-moonshot-key-123");
       expect(result.ANTHROPIC_BASE_URL).toBe(
         "https://api.moonshot.ai/anthropic",
