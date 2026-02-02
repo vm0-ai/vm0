@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { EventEmitter } from "events";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
+import { createMockChildProcess } from "../../../mocks/spawn-helpers";
 import { runCommand } from "../index";
 import { collectVolumeVersions } from "../shared";
 import chalk from "chalk";
@@ -17,14 +17,6 @@ vi.mock("child_process", async (importOriginal) => {
 
 import { spawn } from "child_process";
 const mockSpawn = vi.mocked(spawn);
-
-function createMockChildProcess(exitCode: number, delay = 0): EventEmitter {
-  const child = new EventEmitter();
-  setTimeout(() => {
-    child.emit("close", exitCode);
-  }, delay);
-  return child;
-}
 
 /**
  * CLI Command Integration Tests for --volume-version option

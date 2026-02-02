@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
+import { createMockChildProcess } from "../../../mocks/spawn-helpers";
 import { composeCommand, getSecretsFromComposeContent } from "../index";
 import * as fs from "fs/promises";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "fs";
@@ -8,7 +9,6 @@ import * as path from "path";
 import * as os from "os";
 import * as yaml from "yaml";
 import chalk from "chalk";
-import { EventEmitter } from "events";
 
 // Mock downloadGitHubSkill since it uses git commands (external system call)
 // This is the actual external boundary - git sparse-checkout via child_process.exec
@@ -36,17 +36,6 @@ const mockDownloadGitHubSkill = vi.mocked(downloadGitHubSkill);
 
 import { spawn } from "child_process";
 const mockSpawn = vi.mocked(spawn);
-
-/**
- * Helper to create a mock child process that emits close event with given code.
- */
-function createMockChildProcess(exitCode: number, delay = 0): EventEmitter {
-  const child = new EventEmitter();
-  setTimeout(() => {
-    child.emit("close", exitCode);
-  }, delay);
-  return child;
-}
 
 /**
  * Helper to create a mock skill directory with SKILL.md frontmatter.
