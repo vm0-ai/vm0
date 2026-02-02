@@ -18,8 +18,11 @@ import {
   pollEvents,
   streamRealtimeEvents,
   showNextSteps,
-  handleGenericRunError,
+  handleRunError,
 } from "./shared";
+import { silentUpgradeAfterCommand } from "../../lib/utils/update-checker";
+
+declare const __CLI_VERSION__: string;
 
 export const mainRunCommand = new Command()
   .name("run")
@@ -70,6 +73,7 @@ export const mainRunCommand = new Command()
   )
   .option("--verbose", "Show full tool inputs and outputs")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
+  .addOption(new Option("--no-auto-update").hideHelp())
   .action(
     async (
       identifier: string,
@@ -86,6 +90,7 @@ export const mainRunCommand = new Command()
         modelProvider?: string;
         verbose?: boolean;
         debugNoMockClaude?: boolean;
+        autoUpdate?: boolean;
       },
     ) => {
       try {
@@ -189,37 +194,13 @@ export const mainRunCommand = new Command()
           process.exit(1);
         }
         showNextSteps(result);
-      } catch (error) {
-        if (error instanceof Error) {
-          if (error.message.includes("Not authenticated")) {
-            console.error(
-              chalk.red("✗ Not authenticated. Run: vm0 auth login"),
-            );
-          } else if (error.message.includes("Realtime connection failed")) {
-            console.error(chalk.red("✗ Realtime streaming failed"));
-            console.error(chalk.dim(`  ${error.message}`));
-            console.error(
-              chalk.dim("  Try running without --experimental-realtime"),
-            );
-          } else if (error.message.startsWith("Version not found:")) {
-            console.error(chalk.red(`✗ ${error.message}`));
-            console.error(chalk.dim("  Make sure the version hash is correct"));
-          } else if (error.message.startsWith("Environment file not found:")) {
-            console.error(chalk.red(`✗ ${error.message}`));
-          } else if (error.message.includes("not found")) {
-            console.error(chalk.red(`✗ Agent not found: ${identifier}`));
-            console.error(
-              chalk.dim(
-                "  Make sure you've composed the agent with: vm0 compose",
-              ),
-            );
-          } else {
-            handleGenericRunError(error, "Run");
-          }
-        } else {
-          console.error(chalk.red("✗ An unexpected error occurred"));
+
+        // Silent upgrade after successful command completion
+        if (options.autoUpdate !== false) {
+          await silentUpgradeAfterCommand(__CLI_VERSION__);
         }
-        process.exit(1);
+      } catch (error) {
+        handleRunError(error, identifier);
       }
     },
   );

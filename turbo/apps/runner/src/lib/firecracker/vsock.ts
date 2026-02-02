@@ -28,6 +28,8 @@
  *   0x07 spawn_watch    H→G  [4-byte timeout_ms][4-byte cmd_len][command]
  *   0x08 spawn_watch_result G→H [4-byte pid]
  *   0x09 process_exit   G→H  [4-byte pid][4-byte exit_code][4-byte stdout_len][stdout][4-byte stderr_len][stderr]
+ *   0x0A shutdown       H→G  (empty)
+ *   0x0B shutdown_ack   G→H  (empty)
  *   0xFF error          G→H  [2-byte error_len][error]
  */
 
@@ -54,6 +56,8 @@ const MSG_WRITE_FILE = 0x05;
 const MSG_SPAWN_WATCH = 0x07;
 const MSG_SPAWN_WATCH_RESULT = 0x08;
 const MSG_PROCESS_EXIT = 0x09;
+const MSG_SHUTDOWN = 0x0a;
+const MSG_SHUTDOWN_ACK = 0x0b;
 const MSG_ERROR = 0xff;
 
 // Write file flags
@@ -758,6 +762,32 @@ export class VsockClient implements GuestClient {
    */
   getVsockPath(): string {
     return this.vsockPath;
+  }
+
+  /**
+   * Request graceful shutdown from guest
+   *
+   * Sends shutdown command to guest agent, which syncs filesystems
+   * and returns acknowledgment. Falls back gracefully on timeout.
+   *
+   * @param timeoutMs Maximum time to wait for acknowledgment (default: 2000ms)
+   * @returns true if guest acknowledged, false on timeout/error
+   */
+  async shutdown(timeoutMs: number = 2000): Promise<boolean> {
+    if (!this.connected || !this.socket) {
+      return false;
+    }
+
+    try {
+      const response = await this.request(
+        MSG_SHUTDOWN,
+        Buffer.alloc(0),
+        timeoutMs,
+      );
+      return response.type === MSG_SHUTDOWN_ACK;
+    } catch {
+      return false;
+    }
   }
 
   /**

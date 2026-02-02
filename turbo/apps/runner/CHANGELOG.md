@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.10.0](https://github.com/vm0-ai/vm0/compare/runner-v3.9.4...runner-v3.10.0) (2026-02-02)
+
+
+### Features
+
+* **runner:** implement graceful vm shutdown via vsock ([#2136](https://github.com/vm0-ai/vm0/issues/2136)) ([d7d3778](https://github.com/vm0-ai/vm0/commit/d7d3778473db24b03e0b19626a279c59c52a86e6))
+
+
+### Performance Improvements
+
+* **runner:** optimize post-boot setup by parallelizing operations ([#2143](https://github.com/vm0-ai/vm0/issues/2143)) ([1a0992b](https://github.com/vm0-ai/vm0/commit/1a0992b6f5fe6668c91aed57ef00d3535abd54c8)), closes [#2140](https://github.com/vm0-ai/vm0/issues/2140)
+* **runner:** parallelize tap acquire operations ([#2141](https://github.com/vm0-ai/vm0/issues/2141)) ([7b30112](https://github.com/vm0-ai/vm0/commit/7b301125fcbed50d4c263f353f2cfa7f0e7d629a)), closes [#2137](https://github.com/vm0-ai/vm0/issues/2137)
+
 ## [3.9.4](https://github.com/vm0-ai/vm0/compare/runner-v3.9.3...runner-v3.9.4) (2026-02-02)
 
 

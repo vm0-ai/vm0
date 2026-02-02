@@ -1,9 +1,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
+import { createMockChildProcess } from "../../../mocks/spawn-helpers";
 import { runCommand } from "../index";
 import { collectVolumeVersions } from "../shared";
 import chalk from "chalk";
+
+// Mock child_process.spawn since it's an external system call boundary
+vi.mock("child_process", async (importOriginal) => {
+  const original = await importOriginal<typeof import("child_process")>();
+  return {
+    ...original,
+    spawn: vi.fn(),
+  };
+});
+
+import { spawn } from "child_process";
+const mockSpawn = vi.mocked(spawn);
 
 /**
  * CLI Command Integration Tests for --volume-version option
@@ -115,7 +128,14 @@ describe("--volume-version option", () => {
       http.get("http://localhost:3000/api/agent/checkpoints/:id", () => {
         return HttpResponse.json(defaultCheckpointResponse);
       }),
+      // Default npm registry handler - return same version to skip upgrade
+      http.get("https://registry.npmjs.org/*/latest", () => {
+        return HttpResponse.json({ version: "0.0.0-test" });
+      }),
     );
+
+    // Default spawn mock - succeeds immediately
+    mockSpawn.mockImplementation(() => createMockChildProcess(0) as never);
   });
 
   afterEach(() => {

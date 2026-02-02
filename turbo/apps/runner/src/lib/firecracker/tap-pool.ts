@@ -332,13 +332,17 @@ export class TapPool {
     // Set MAC address based on vmId
     const guestMac = generateMacAddress(vmId);
     try {
-      await this.config.setMac(resource.tapDevice, guestMac);
+      // Parallelize setMac and clearArpEntry - no dependencies between them
+      await Promise.all([
+        this.config.setMac(resource.tapDevice, guestMac),
+        clearArpEntry(resource.guestIp),
+      ]);
     } catch (err) {
       // Return pair to pool or cleanup on failure
       if (fromPool) {
         this.queue.push(resource);
         logger.log(
-          `Returned pair to pool after MAC set failure: ${resource.tapDevice}`,
+          `Returned pair to pool after MAC/ARP failure: ${resource.tapDevice}`,
         );
       } else {
         await releaseIP(resource.guestIp).catch(() => {});
@@ -347,18 +351,13 @@ export class TapPool {
       throw err;
     }
 
-    // Clear any stale ARP entry
-    await clearArpEntry(resource.guestIp);
-
     // Update registry with vmId for diagnostic purposes
-    // This is non-critical - failure should not prevent VM from starting
-    try {
-      await assignVmIdToIP(resource.guestIp, vmId);
-    } catch (err) {
+    // Non-blocking - failure should not prevent VM from starting
+    assignVmIdToIP(resource.guestIp, vmId).catch((err) => {
       logger.error(
         `Failed to assign vmId to IP registry: ${err instanceof Error ? err.message : "Unknown"}`,
       );
-    }
+    });
 
     logger.log(
       `Acquired: TAP ${resource.tapDevice}, MAC ${guestMac}, IP ${resource.guestIp}`,

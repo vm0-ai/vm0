@@ -37,7 +37,7 @@ export function generateDefaultScopeSlug(clerkUserId: string): string {
 /**
  * Validate scope slug format
  */
-export function validateScopeSlug(slug: string): void {
+function validateScopeSlug(slug: string): void {
   if (slug.length < 3 || slug.length > 64) {
     throw badRequest("Scope slug must be between 3 and 64 characters");
   }
@@ -69,7 +69,7 @@ export async function getScopeBySlug(slug: string) {
 /**
  * Get a scope by its ID
  */
-export async function getScopeById(scopeId: string) {
+async function getScopeById(scopeId: string) {
   const result = await globalThis.services.db
     .select()
     .from(scopes)
@@ -82,11 +82,7 @@ export async function getScopeById(scopeId: string) {
 /**
  * Create a new scope
  */
-export async function createScope(
-  slug: string,
-  type: ScopeType,
-  ownerId?: string,
-) {
+async function createScope(slug: string, type: ScopeType, ownerId?: string) {
   validateScopeSlug(slug);
 
   // Check if slug already exists

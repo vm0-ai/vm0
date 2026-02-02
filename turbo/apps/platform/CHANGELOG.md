@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.38.0](https://github.com/vm0-ai/vm0/compare/platform-v0.37.0...platform-v0.38.0) (2026-02-02)
+
+
+### Features
+
+* **platform:** add plausible analytics integration ([#2150](https://github.com/vm0-ai/vm0/issues/2150)) ([10dae9b](https://github.com/vm0-ai/vm0/commit/10dae9bc2b3e7ec9e8d0544c3b87b05092768920))
+
 ## [0.37.0](https://github.com/vm0-ai/vm0/compare/platform-v0.36.3...platform-v0.37.0) (2026-02-02)
 
 

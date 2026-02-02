@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "fs";
 import * as path from "path";
 import * as os from "os";
 import { EventEmitter } from "events";
+import { createMockChildProcessWithOutput } from "../../../mocks/spawn-helpers";
 import { setupClaudeCommand } from "../index";
 
 // Mock child_process for Claude CLI commands
@@ -11,28 +12,6 @@ vi.mock("child_process", () => ({
 }));
 
 import { spawn } from "child_process";
-
-// Helper to create a mock child process
-function createMockChildProcess(exitCode: number, stdout = "", stderr = "") {
-  const mockProcess = new EventEmitter() as EventEmitter & {
-    stdout: EventEmitter;
-    stderr: EventEmitter;
-  };
-  mockProcess.stdout = new EventEmitter();
-  mockProcess.stderr = new EventEmitter();
-
-  setImmediate(() => {
-    if (stdout) {
-      mockProcess.stdout.emit("data", Buffer.from(stdout));
-    }
-    if (stderr) {
-      mockProcess.stderr.emit("data", Buffer.from(stderr));
-    }
-    mockProcess.emit("close", exitCode);
-  });
-
-  return mockProcess;
-}
 
 describe("setup-claude command", () => {
   let tempDir: string;
@@ -63,9 +42,13 @@ describe("setup-claude command", () => {
         const output = JSON.stringify([
           { name: "vm0-skills", source: "github", repo: "vm0-ai/vm0-skills" },
         ]);
-        return createMockChildProcess(0, output) as ReturnType<typeof spawn>;
+        return createMockChildProcessWithOutput(0, output) as ReturnType<
+          typeof spawn
+        >;
       }
-      return createMockChildProcess(0, "Success") as ReturnType<typeof spawn>;
+      return createMockChildProcessWithOutput(0, "Success") as ReturnType<
+        typeof spawn
+      >;
     });
   });
 
@@ -146,14 +129,20 @@ describe("setup-claude command", () => {
           const output = JSON.stringify([
             { name: "vm0-skills", source: "github", repo: "vm0-ai/vm0-skills" },
           ]);
-          return createMockChildProcess(0, output) as ReturnType<typeof spawn>;
-        }
-        if (argsArray.includes("install")) {
-          return createMockChildProcess(1, "", "Install failed") as ReturnType<
+          return createMockChildProcessWithOutput(0, output) as ReturnType<
             typeof spawn
           >;
         }
-        return createMockChildProcess(0, "Success") as ReturnType<typeof spawn>;
+        if (argsArray.includes("install")) {
+          return createMockChildProcessWithOutput(
+            1,
+            "",
+            "Install failed",
+          ) as ReturnType<typeof spawn>;
+        }
+        return createMockChildProcessWithOutput(0, "Success") as ReturnType<
+          typeof spawn
+        >;
       });
 
       await expect(
@@ -210,9 +199,13 @@ describe("setup-claude command", () => {
         const argsArray = args as string[];
         if (argsArray.includes("list")) {
           // Empty marketplace list
-          return createMockChildProcess(0, "[]") as ReturnType<typeof spawn>;
+          return createMockChildProcessWithOutput(0, "[]") as ReturnType<
+            typeof spawn
+          >;
         }
-        return createMockChildProcess(0, "Success") as ReturnType<typeof spawn>;
+        return createMockChildProcessWithOutput(0, "Success") as ReturnType<
+          typeof spawn
+        >;
       });
 
       await setupClaudeCommand.parseAsync(["node", "cli"]);
@@ -231,16 +224,22 @@ describe("setup-claude command", () => {
           const output = JSON.stringify([
             { name: "vm0-skills", source: "github", repo: "vm0-ai/vm0-skills" },
           ]);
-          return createMockChildProcess(0, output) as ReturnType<typeof spawn>;
-        }
-        if (argsArray.includes("update")) {
-          // Marketplace update fails
-          return createMockChildProcess(1, "", "Network error") as ReturnType<
+          return createMockChildProcessWithOutput(0, output) as ReturnType<
             typeof spawn
           >;
         }
+        if (argsArray.includes("update")) {
+          // Marketplace update fails
+          return createMockChildProcessWithOutput(
+            1,
+            "",
+            "Network error",
+          ) as ReturnType<typeof spawn>;
+        }
         // Plugin install succeeds
-        return createMockChildProcess(0, "Success") as ReturnType<typeof spawn>;
+        return createMockChildProcessWithOutput(0, "Success") as ReturnType<
+          typeof spawn
+        >;
       });
 
       vi.spyOn(console, "warn").mockImplementation(() => {});

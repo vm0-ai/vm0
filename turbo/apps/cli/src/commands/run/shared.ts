@@ -331,10 +331,7 @@ export function showNextSteps(result: PollResult): void {
  * Handle generic run errors with special case for concurrent run limit
  * This replaces the final `else` clause to avoid adding complexity
  */
-export function handleGenericRunError(
-  error: Error,
-  commandLabel: string,
-): void {
+function handleGenericRunError(error: Error, commandLabel: string): void {
   if (
     error instanceof ApiRequestError &&
     error.code === "concurrent_run_limit_exceeded"
@@ -349,6 +346,37 @@ export function handleGenericRunError(
     console.error(chalk.red(`✗ ${commandLabel} failed`));
     console.error(chalk.dim(`  ${error.message}`));
   }
+}
+
+/**
+ * Common error handler for the main run command
+ * Handles all standard error cases and calls process.exit(1)
+ */
+export function handleRunError(error: unknown, identifier: string): void {
+  if (error instanceof Error) {
+    if (error.message.includes("Not authenticated")) {
+      console.error(chalk.red("✗ Not authenticated. Run: vm0 auth login"));
+    } else if (error.message.includes("Realtime connection failed")) {
+      console.error(chalk.red("✗ Realtime streaming failed"));
+      console.error(chalk.dim(`  ${error.message}`));
+      console.error(chalk.dim("  Try running without --experimental-realtime"));
+    } else if (error.message.startsWith("Version not found:")) {
+      console.error(chalk.red(`✗ ${error.message}`));
+      console.error(chalk.dim("  Make sure the version hash is correct"));
+    } else if (error.message.startsWith("Environment file not found:")) {
+      console.error(chalk.red(`✗ ${error.message}`));
+    } else if (error.message.includes("not found")) {
+      console.error(chalk.red(`✗ Agent not found: ${identifier}`));
+      console.error(
+        chalk.dim("  Make sure you've composed the agent with: vm0 compose"),
+      );
+    } else {
+      handleGenericRunError(error, "Run");
+    }
+  } else {
+    console.error(chalk.red("✗ An unexpected error occurred"));
+  }
+  process.exit(1);
 }
 
 /**

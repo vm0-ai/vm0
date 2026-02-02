@@ -37,7 +37,8 @@
     "SLACK_CLIENT_ID",
     "SLACK_CLIENT_SECRET",
     "SLACK_SIGNING_SECRET",
-    "SLACK_REDIRECT_BASE_URL"
+    "SLACK_REDIRECT_BASE_URL",
+    "CLAUDE_CODE_VERSION_URL"
   ],
   "tasks": {
     "build": {
