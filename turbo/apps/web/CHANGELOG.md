@@ -1,5 +1,12 @@
 # Changelog
 
+## [11.18.0](https://github.com/vm0-ai/vm0/compare/web-v11.17.0...web-v11.18.0) (2026-02-02)
+
+
+### Features
+
+* add status page link to landing page footer ([#2149](https://github.com/vm0-ai/vm0/issues/2149)) ([e5073a5](https://github.com/vm0-ai/vm0/commit/e5073a5bd6c4df4ee244c8c47385f2fa18df5589)), closes [#2139](https://github.com/vm0-ai/vm0/issues/2139)
+
 ## [11.17.0](https://github.com/vm0-ai/vm0/compare/web-v11.16.0...web-v11.17.0) (2026-02-02)
 
 
