@@ -842,6 +842,39 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(envs?.ANTHROPIC_MODEL).toBeUndefined();
     });
 
+    it("should pass mapped env vars for minimax-api-key provider", async () => {
+      vi.mocked(Sandbox.create).mockClear();
+
+      await createTestModelProvider(
+        "minimax-api-key",
+        "sk-minimax-test-key",
+        "MiniMax-M2.1",
+      );
+
+      const { composeId } = await createTestCompose(
+        `minimax-mp-env-${Date.now()}`,
+        {
+          skipDefaultApiKey: true,
+          overrides: { framework: "claude-code" },
+        },
+      );
+
+      const data = await createTestRun(composeId, "Test minimax env vars");
+      expect(data.status).toBe("running");
+
+      // Verify Sandbox.create was called with mapped env vars
+      expect(Sandbox.create).toHaveBeenCalled();
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
+
+      // MiniMax provider maps to ANTHROPIC_* env vars plus MiniMax-specific settings
+      expect(envs?.ANTHROPIC_AUTH_TOKEN).toBe("sk-minimax-test-key");
+      expect(envs?.ANTHROPIC_BASE_URL).toBe("https://api.minimax.io/anthropic");
+      expect(envs?.ANTHROPIC_MODEL).toBe("MiniMax-M2.1");
+      expect(envs?.API_TIMEOUT_MS).toBe("3000000");
+      expect(envs?.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe("1");
+    });
+
     it("should pass CLAUDE_CODE_OAUTH_TOKEN env var for oauth-token provider", async () => {
       vi.mocked(Sandbox.create).mockClear();
 
