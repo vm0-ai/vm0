@@ -62,7 +62,6 @@ describe("TapPool", () => {
     testDir = fs.mkdtempSync(path.join(os.tmpdir(), "tap-pool-test-"));
     initIPRegistry({
       runDir: testDir,
-      lockPath: path.join(testDir, "ip-pool.lock"),
       registryPath: path.join(testDir, "ip-registry.json"),
       ensureRunDir: mockEnsureRunDir,
       scanTapDevices: mockScanTapDevices,

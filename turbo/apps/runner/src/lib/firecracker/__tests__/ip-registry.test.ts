@@ -32,7 +32,6 @@ describe("IPRegistry", () => {
     // Create registry with test config
     registry = new IPRegistry({
       runDir: testDir,
-      lockPath: path.join(testDir, "ip-pool.lock"),
       registryPath: path.join(testDir, "ip-registry.json"),
       ensureRunDir: mockEnsureRunDir,
       scanTapDevices: mockScanTapDevices,
@@ -376,8 +375,10 @@ describe("IPRegistry", () => {
     it("should acquire and release lock", async () => {
       await registry.allocateIP("tap000");
 
-      // Lock file should not exist after operation completes
-      expect(fs.existsSync(path.join(testDir, "ip-pool.lock"))).toBe(false);
+      // proper-lockfile creates .lock directory, should not exist after operation completes
+      expect(fs.existsSync(path.join(testDir, "ip-registry.json.lock"))).toBe(
+        false,
+      );
     });
 
     it("should handle concurrent operations", async () => {

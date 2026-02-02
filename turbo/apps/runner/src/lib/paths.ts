@@ -21,9 +21,6 @@ export const runtimePaths = {
   /** Runner PID file for single-instance lock */
   runnerPid: path.join(VM0_RUN_DIR, "runner.pid"),
 
-  /** IP pool lock file */
-  ipPoolLock: path.join(VM0_RUN_DIR, "ip-pool.lock.active"),
-
   /** IP allocation registry */
   ipRegistry: path.join(VM0_RUN_DIR, "ip-registry.json"),
 } as const;

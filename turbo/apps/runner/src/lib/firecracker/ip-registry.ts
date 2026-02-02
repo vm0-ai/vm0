@@ -13,6 +13,7 @@ import * as fs from "node:fs";
 import path from "node:path";
 import { createLogger } from "../logger.js";
 import { VM0_RUN_DIR } from "../paths.js";
+import { withFileLock } from "../utils/file-lock.js";
 
 const execAsync = promisify(exec);
 const logger = createLogger("IPRegistry");
@@ -22,8 +23,6 @@ const logger = createLogger("IPRegistry");
 const IP_PREFIX = "172.16.0.";
 const IP_START = 2;
 const IP_END = 254;
-const LOCK_TIMEOUT_MS = 10000;
-const LOCK_RETRY_INTERVAL_MS = 100;
 
 // ============ Types ============
 
@@ -49,8 +48,6 @@ interface IPRegistryData {
 export interface IPRegistryConfig {
   /** Runtime directory (default: /var/run/vm0) */
   runDir?: string;
-  /** Lock file path (default: runDir/ip-pool.lock.active) */
-  lockPath?: string;
   /** Registry file path (default: runDir/ip-registry.json) */
   registryPath?: string;
   /** Function to ensure run directory exists */
@@ -130,7 +127,6 @@ export class IPRegistry {
     const runDir = config.runDir ?? VM0_RUN_DIR;
     this.config = {
       runDir,
-      lockPath: config.lockPath ?? path.join(runDir, "ip-pool.lock.active"),
       registryPath:
         config.registryPath ?? path.join(runDir, "ip-registry.json"),
       ensureRunDir: config.ensureRunDir ?? (() => defaultEnsureRunDir(runDir)),
@@ -147,48 +143,26 @@ export class IPRegistry {
   private async withIPLock<T>(fn: () => Promise<T>): Promise<T> {
     await this.config.ensureRunDir();
 
-    const startTime = Date.now();
-    let lockAcquired = false;
-
-    while (Date.now() - startTime < LOCK_TIMEOUT_MS) {
+    // Ensure registry file exists (proper-lockfile requires file to exist)
+    // Check first to avoid unnecessary syscall on every lock operation
+    if (!fs.existsSync(this.config.registryPath)) {
+      // Use 'wx' flag for atomic creation - handles race where multiple
+      // processes see file missing simultaneously
       try {
-        fs.writeFileSync(this.config.lockPath, process.pid.toString(), {
-          flag: "wx",
-        });
-        lockAcquired = true;
-        break;
-      } catch {
-        try {
-          const pidStr = fs.readFileSync(this.config.lockPath, "utf-8");
-          const pid = parseInt(pidStr, 10);
-          if (!isProcessRunning(pid)) {
-            fs.unlinkSync(this.config.lockPath);
-            continue;
-          }
-        } catch {
-          // Can't read lock file, retry
-        }
-        await new Promise((resolve) =>
-          setTimeout(resolve, LOCK_RETRY_INTERVAL_MS),
+        fs.writeFileSync(
+          this.config.registryPath,
+          JSON.stringify({ allocations: {} }, null, 2),
+          { flag: "wx" },
         );
+      } catch (err) {
+        // EEXIST means another process created it first - that's fine
+        if ((err as NodeJS.ErrnoException).code !== "EEXIST") {
+          throw err;
+        }
       }
     }
 
-    if (!lockAcquired) {
-      throw new Error(
-        `Failed to acquire IP pool lock after ${LOCK_TIMEOUT_MS}ms`,
-      );
-    }
-
-    try {
-      return await fn();
-    } finally {
-      try {
-        fs.unlinkSync(this.config.lockPath);
-      } catch {
-        // Ignore errors on unlock
-      }
-    }
+    return withFileLock(this.config.registryPath, fn);
   }
 
   // ============ Registry CRUD ============
