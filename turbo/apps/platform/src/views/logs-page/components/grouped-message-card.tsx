@@ -1,9 +1,4 @@
-import {
-  IconCheck,
-  IconCircle,
-  IconLoader,
-  IconListCheck,
-} from "@tabler/icons-react";
+import { IconCheck, IconCircle, IconLoader } from "@tabler/icons-react";
 import MarkdownPreview from "@uiw/react-markdown-preview";
 import type { GroupedMessage } from "../log-detail/utils.ts";
 import { ToolSummary } from "./tool-summary.tsx";
@@ -209,7 +204,6 @@ function SystemMessageCard({
 }
 
 function ResultMessageCard({
-  message,
   eventData,
 }: {
   message: GroupedMessage;
@@ -217,21 +211,14 @@ function ResultMessageCard({
 }) {
   const subtype = eventData.subtype;
   const isError = eventData.is_error === true || subtype === "error";
-  const statusVariant = isError ? "error" : "success";
   const borderColor = isError ? "border-red-500/30" : "border-lime-500/30";
   const bgColor = isError ? "bg-red-500/5" : "bg-lime-500/5";
 
   return (
-    <div className="py-2 flex gap-2 items-start">
-      <StatusDot variant={statusVariant} />
-      <div
-        className={`flex-1 min-w-0 p-3 rounded-lg border ${borderColor} ${bgColor}`}
-      >
+    <div className="py-2">
+      <div className={`p-3 rounded-lg border ${borderColor} ${bgColor}`}>
         <ResultEventContent eventData={eventData} />
       </div>
-      <span className="text-xs text-muted-foreground shrink-0 whitespace-nowrap text-right">
-        {formatEventTime(message.createdAt)}
-      </span>
     </div>
   );
 }
@@ -254,6 +241,15 @@ function getTodoStatusIcon(status: string) {
  * Standalone todo card that shows current task status as a single line.
  * Displays in-progress task with expandable full list.
  */
+/**
+ * Check if a todo item is a subtask (indented or prefixed with bullet).
+ * Subtasks typically start with whitespace or bullet markers after whitespace.
+ */
+function isSubtask(content: string): boolean {
+  // Matches items that start with whitespace, or start with bullet/dash after optional whitespace
+  return /^\s{2,}|^\s*[-*]\s/.test(content);
+}
+
 function TodoCard({
   message,
   searchTerm,
@@ -262,11 +258,13 @@ function TodoCard({
   searchTerm?: string;
 }) {
   const todoItems = message.todoState ?? [];
-  const inProgressTask = todoItems.find((t) => t.status === "in_progress");
-  const completedCount = todoItems.filter(
+  // Filter out subtasks for count - only count top-level tasks
+  const topLevelTodos = todoItems.filter((t) => !isSubtask(t.content));
+  const inProgressTask = topLevelTodos.find((t) => t.status === "in_progress");
+  const completedCount = topLevelTodos.filter(
     (t) => t.status === "completed",
   ).length;
-  const totalCount = todoItems.length;
+  const totalCount = topLevelTodos.length;
 
   // Check if any todo item matches search
   const hasSearchMatch = Boolean(
@@ -281,9 +279,8 @@ function TodoCard({
     <details className="py-2 group" open={hasSearchMatch}>
       <summary className="flex gap-2 items-center cursor-pointer list-none">
         <StatusDot variant="todo" />
-        <IconListCheck className="h-4 w-4 text-cyan-500 shrink-0" />
-        <span className="text-sm text-muted-foreground shrink-0">
-          {completedCount}/{totalCount}
+        <span className="font-semibold text-sm text-foreground shrink-0">
+          Todo
         </span>
         {inProgressTask ? (
           <span
@@ -297,6 +294,9 @@ function TodoCard({
             All tasks completed
           </span>
         )}
+        <span className="text-sm text-muted-foreground shrink-0">
+          [{completedCount}/{totalCount}]
+        </span>
         <span className="flex-1" />
         <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap">
           {formatEventTime(message.createdAt)}

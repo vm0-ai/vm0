@@ -141,7 +141,7 @@ export function AgentEventsCard({
           </span>
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
-          <div className="relative flex h-9 flex-1 sm:flex-none items-center rounded-md border border-border bg-card">
+          <div className="relative flex h-9 flex-1 sm:flex-none items-center rounded-md border border-border bg-card focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background">
             <div className="pl-2">
               <IconSearch className="h-4 w-4 text-muted-foreground" />
             </div>
@@ -169,7 +169,11 @@ export function AgentEventsCard({
         </div>
       </div>
 
-      <div id={EVENTS_CONTAINER_ID} className="flex-1 min-h-0 overflow-y-auto">
+      <div
+        id={EVENTS_CONTAINER_ID}
+        className="flex-1 min-h-0 overflow-y-auto"
+        style={{ scrollbarGutter: "stable" }}
+      >
         {!isCodex && viewMode === "formatted" ? (
           <FormattedEventsView
             events={events}
