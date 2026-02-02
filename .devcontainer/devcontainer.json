@@ -18,10 +18,11 @@
     "DATABASE_URL": "postgresql://postgres:postgres@localhost:5432/postgres",
     "NODE_EXTRA_CA_CERTS": "${containerWorkspaceFolder}/.certs/rootCA.pem",
     "CARGO_HOME": "/home/vscode/.cache/cargo",
-    "PATH": "/home/vscode/.cache/cargo/bin:${containerWorkspaceFolder}/bin:${containerEnv:PATH}",
+    "PATH": "/home/vscode/.cache/cargo/bin:/home/vscode/.local/bin:${containerWorkspaceFolder}/bin:${containerEnv:PATH}",
     "VM0_API_URL": "https://www.vm7.ai:8443"
   },
   "mounts": [
+    "source=claude-downloads,target=/home/vscode/.claude/downloads",
     "source=config,target=/home/vscode/.config",
     "source=cache,target=/home/vscode/.cache",
     "source=vercel,target=/home/vscode/.local/share/com.vercel.cli",
