@@ -75,6 +75,7 @@ export async function executeJob(
   const vmId = getVmIdFromRunId(context.runId);
   let vm: FirecrackerVM | null = null;
   let guestIp: string | null = null;
+  let vsockClient: VsockClient | null = null;
 
   logger.log(`Starting job ${context.runId} in VM ${vmId}`);
 
@@ -106,7 +107,8 @@ export async function executeJob(
 
     // Create vsock guest client
     const vsockPath = vm.getVsockPath();
-    const guest: GuestClient = new VsockClient(vsockPath);
+    vsockClient = new VsockClient(vsockPath);
+    const guest: GuestClient = vsockClient;
     logger.log(`Using vsock for guest communication: ${vsockPath}`);
 
     // Wait for guest to connect (zero-latency: guest notifies host when ready)
@@ -304,6 +306,16 @@ export async function executeJob(
 
     // Always cleanup VM - let errors propagate (fail-fast principle)
     if (vm) {
+      // Request graceful shutdown via vsock (best-effort, timeout after 2s)
+      if (vsockClient) {
+        const acked = await vsockClient.shutdown(2000);
+        if (acked) {
+          logger.log(`Guest acknowledged shutdown`);
+        } else {
+          logger.log(`Guest shutdown timeout, proceeding with SIGKILL`);
+        }
+        vsockClient.close();
+      }
       logger.log(`Cleaning up VM ${vmId}...`);
       await withSandboxTiming("cleanup", () => vm!.kill());
     }
