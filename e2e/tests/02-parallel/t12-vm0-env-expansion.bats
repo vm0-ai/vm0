@@ -91,22 +91,24 @@ setup_artifact() {
     refute_output --partial "SECRET=${SECRET_VALUE}"
 }
 
-# Note: The following tests have been moved to other test layers:
+# Note: The following tests have been moved to Route Integration tests
+# (apps/web/app/api/agent/runs/__tests__/route.test.ts):
 #
-# 1. Unit tests (apps/web/src/lib/run/environment/__tests__/expand-environment.test.ts):
-#    - Missing required secrets validation
-#    - Partial secrets validation
-#    - Usage hints (--secrets, --env-file)
-#    - Missing required vars validation
+# Validation section:
+#    - "should fail run when required secrets are not provided"
+#    - "should fail run when only some secrets are provided"
+#    - "should succeed when all required secrets are provided"
 #
-# 2. Route Integration tests (apps/web/app/api/agent/runs/__tests__/route.test.ts):
-#    - Session Continue: 404 not found, 404 different user (security)
-#    - Checkpoint Resume: 404 not found, 404 different user (security)
+# Session Continue section:
+#    - 404 not found, 404 different user (security)
 #
-# Removed E2E tests (covered by tests above):
+# Checkpoint Resume section:
+#    - 404 not found, 404 different user (security)
+#
+# Removed E2E tests (covered by route integration tests):
 #    - "vm0 run with multiple --secrets flags" - validates same code path as Test 1
-#    - "vm0 run continue requires secrets to be re-provided" - unit tests cover validation
-#    - "vm0 run resume requires secrets to be re-provided" - unit tests cover validation
+#    - "vm0 run continue requires secrets to be re-provided"
+#    - "vm0 run resume requires secrets to be re-provided"
 #
-# This E2E test (1 vm0 run) validates the happy path end-to-end, while unit
-# and integration tests cover error cases with faster feedback.
+# This E2E test (1 vm0 run) validates the happy path end-to-end, while route
+# integration tests cover error cases with faster feedback.

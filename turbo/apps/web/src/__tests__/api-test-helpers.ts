@@ -78,7 +78,9 @@ export function createDefaultComposeConfig(
   // Support both old signature (overrides only) and new signature (options object)
   const opts: ComposeConfigOptions =
     options &&
-    ("skipDefaultApiKey" in options || "noEnvironmentBlock" in options)
+    ("skipDefaultApiKey" in options ||
+      "noEnvironmentBlock" in options ||
+      "overrides" in options)
       ? options
       : { overrides: options as Partial<AgentComposeYaml["agents"][string]> };
 

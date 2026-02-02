@@ -135,9 +135,93 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.error.message).toContain("both checkpointId and sessionId");
     });
 
-    // Note: Secrets validation (missing secrets, partial secrets, success cases) is tested
-    // via unit tests in expand-environment.test.ts which directly validates the
-    // expandEnvironmentFromCompose function with comprehensive test cases.
+    it("should fail run when required secrets are not provided", async () => {
+      // Create compose that requires secrets
+      const { composeId: secretComposeId } = await createTestCompose(
+        `secret-required-${Date.now()}`,
+        {
+          overrides: {
+            environment: {
+              ANTHROPIC_API_KEY: "test-key",
+              MY_SECRET: "${{ secrets.MY_SECRET }}",
+            },
+          },
+        },
+      );
+
+      // Try to create run WITHOUT providing required secrets
+      const data = await createTestRun(
+        secretComposeId,
+        "Test without secrets",
+      );
+
+      // Route creates run first, then fails during preparation
+      expect(data.status).toBe("failed");
+
+      // Verify error via API
+      const run = await getTestRun(data.runId);
+
+      expect(run.error).toMatch(/Missing required secrets/i);
+      expect(run.error).toContain("MY_SECRET");
+      expect(run.error).toContain("--secrets");
+    });
+
+    it("should fail run when only some secrets are provided", async () => {
+      // Create compose that requires multiple secrets
+      const { composeId: multiSecretComposeId } = await createTestCompose(
+        `multi-secret-${Date.now()}`,
+        {
+          overrides: {
+            environment: {
+              ANTHROPIC_API_KEY: "test-key",
+              SECRET_A: "${{ secrets.SECRET_A }}",
+              SECRET_B: "${{ secrets.SECRET_B }}",
+            },
+          },
+        },
+      );
+
+      // Try to create run with only one secret
+      const data = await createTestRun(
+        multiSecretComposeId,
+        "Test with partial secrets",
+        { secrets: { SECRET_A: "value-a" } }, // Missing SECRET_B
+      );
+
+      // Route creates run first, then fails during preparation
+      expect(data.status).toBe("failed");
+
+      // Verify error via API
+      const run = await getTestRun(data.runId);
+
+      expect(run.error).toMatch(/Missing required secrets/i);
+      expect(run.error).toContain("SECRET_B");
+      // SECRET_A should NOT be in the error (it was provided)
+      expect(run.error).not.toContain("SECRET_A");
+    });
+
+    it("should succeed when all required secrets are provided", async () => {
+      // Create compose that requires secrets
+      const { composeId: secretComposeId } = await createTestCompose(
+        `secret-success-${Date.now()}`,
+        {
+          overrides: {
+            environment: {
+              ANTHROPIC_API_KEY: "test-key",
+              MY_SECRET: "${{ secrets.MY_SECRET }}",
+            },
+          },
+        },
+      );
+
+      // Create run WITH required secrets
+      const data = await createTestRun(secretComposeId, "Test with secrets", {
+        secrets: { MY_SECRET: "secret-value" },
+      });
+
+      // Should succeed (running, not failed)
+      expect(data.status).toBe("running");
+    });
   });
 
   describe("Authorization", () => {
