@@ -47,29 +47,9 @@ export const MODEL_PROVIDER_TYPES = {
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
     } as Record<string, string>,
     models: [
-      // Claude series
       "anthropic/claude-sonnet-4.5",
       "anthropic/claude-opus-4.5",
       "anthropic/claude-haiku-4.5",
-      // Kimi series
-      "moonshotai/kimi-k2.5",
-      "moonshotai/kimi-k2",
-      "moonshotai/kimi-k2-thinking",
-      // DeepSeek series
-      "deepseek/deepseek-v3.2",
-      "deepseek/deepseek-chat-v3.1",
-      "deepseek/deepseek-r1",
-      // GLM series
-      "z-ai/glm-4.7",
-      "z-ai/glm-4.7-flash",
-      "z-ai/glm-4.6",
-      // MiniMax series
-      "minimax/minimax-m2.1",
-      "minimax/minimax-m2",
-      // Qwen series
-      "qwen/qwen3-coder-plus",
-      "qwen/qwen3-max",
-      "qwen/qwen3-coder",
     ] as string[],
     defaultModel: "",
   },

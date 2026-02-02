@@ -171,15 +171,13 @@ describe("model-providers helpers", () => {
       expect(getDefaultModel("openrouter-api-key")).toBe("");
     });
 
-    it("has model selection with verified models", () => {
+    it("has model selection with Claude models only", () => {
       expect(hasModelSelection("openrouter-api-key")).toBe(true);
       const models = getModels("openrouter-api-key");
       expect(models).toContain("anthropic/claude-sonnet-4.5");
-      expect(models).toContain("moonshotai/kimi-k2.5");
-      expect(models).toContain("deepseek/deepseek-v3.2");
-      expect(models).toContain("z-ai/glm-4.7");
-      expect(models).toContain("minimax/minimax-m2.1");
-      expect(models).toContain("qwen/qwen3-coder-plus");
+      expect(models).toContain("anthropic/claude-opus-4.5");
+      expect(models).toContain("anthropic/claude-haiku-4.5");
+      expect(models).toHaveLength(3);
     });
   });
 });
