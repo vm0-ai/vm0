@@ -69,7 +69,7 @@ export async function getScopeBySlug(slug: string) {
 /**
  * Get a scope by its ID
  */
-export async function getScopeById(scopeId: string) {
+async function getScopeById(scopeId: string) {
   const result = await globalThis.services.db
     .select()
     .from(scopes)
@@ -82,11 +82,7 @@ export async function getScopeById(scopeId: string) {
 /**
  * Create a new scope
  */
-export async function createScope(
-  slug: string,
-  type: ScopeType,
-  ownerId?: string,
-) {
+async function createScope(slug: string, type: ScopeType, ownerId?: string) {
   validateScopeSlug(slug);
 
   // Check if slug already exists
