@@ -273,8 +273,9 @@ export async function silentUpgradeAfterCommand(
       windowsHide: true,
     });
 
-    // Set up timeout
+    // Set up timeout - kill child process to prevent orphaned processes
     const timeoutId = setTimeout(() => {
+      child.kill();
       resolve(false); // Timeout = failure
     }, TIMEOUT_MS);
 
