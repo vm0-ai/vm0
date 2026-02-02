@@ -50,10 +50,10 @@ export function Pagination({
   };
 
   return (
-    <div className="flex items-center justify-end gap-8">
+    <div className="flex flex-wrap items-center justify-end gap-4 sm:gap-8">
       {/* Rows per page selector */}
       <div className="flex items-center gap-2">
-        <span className="pr-2 text-sm font-medium text-foreground">
+        <span className="pr-2 text-sm font-medium text-foreground whitespace-nowrap">
           Rows per page
         </span>
         <Select
@@ -74,7 +74,7 @@ export function Pagination({
       </div>
 
       {/* Page indicator */}
-      <span className="pr-2 text-sm font-medium text-foreground">
+      <span className="pr-2 text-sm font-medium text-foreground whitespace-nowrap">
         Page {currentPage}
         {totalPages !== undefined ? ` of ${totalPages}` : ""}
       </span>

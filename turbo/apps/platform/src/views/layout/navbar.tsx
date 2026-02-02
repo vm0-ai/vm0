@@ -8,7 +8,7 @@ import {
 } from "@vm0/ui/components/ui/tooltip";
 import { ThemeToggle } from "../components/theme-toggle.tsx";
 import { navigateInReact$ } from "../../signals/route.ts";
-import { toggleSidebar$ } from "../../signals/sidebar.ts";
+import { toggleSidebar$, toggleMobileSidebar$ } from "../../signals/sidebar.ts";
 import type { RoutePath } from "../../types/route.ts";
 
 export interface BreadcrumbItem {
@@ -23,6 +23,16 @@ interface NavbarProps {
 export function Navbar({ breadcrumb }: NavbarProps) {
   const navigate = useSet(navigateInReact$);
   const toggleSidebar = useSet(toggleSidebar$);
+  const toggleMobileSidebar = useSet(toggleMobileSidebar$);
+
+  const handleToggle = () => {
+    // Check if we're on mobile (< md breakpoint)
+    if (window.innerWidth < 768) {
+      toggleMobileSidebar();
+    } else {
+      toggleSidebar();
+    }
+  };
 
   return (
     <header className="h-[49px] flex items-center border-b border-divider bg-background">
@@ -36,7 +46,7 @@ export function Navbar({ breadcrumb }: NavbarProps) {
                 <button
                   className="icon-button"
                   aria-label="Toggle sidebar"
-                  onClick={toggleSidebar}
+                  onClick={handleToggle}
                 >
                   <IconLayoutSidebar
                     size={16}

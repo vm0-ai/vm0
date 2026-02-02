@@ -35,7 +35,7 @@ export function AppShell({
   return (
     <div className="flex h-screen">
       <Sidebar />
-      <div className="flex flex-1 flex-col">
+      <div className="flex flex-1 flex-col min-w-0">
         <Navbar breadcrumb={normalizedBreadcrumb} />
         <main
           className={`flex-1 overflow-auto ${gradientBackground ? "bg-background" : ""}`}
