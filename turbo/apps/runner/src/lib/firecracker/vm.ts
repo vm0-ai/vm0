@@ -10,13 +10,13 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
-import path from "node:path";
 import readline from "node:readline";
 import { FirecrackerClient } from "./client.js";
 import { generateNetworkBootArgs, type VMNetworkConfig } from "./network.js";
 import { acquireOverlay } from "./overlay-pool.js";
 import { acquireTap, releaseTap } from "./tap-pool.js";
 import { createLogger } from "../logger.js";
+import { vmPaths } from "../paths.js";
 
 const logger = createLogger("VM");
 
@@ -61,8 +61,8 @@ export class FirecrackerVM {
   constructor(config: VMConfig) {
     this.config = config;
     this.workDir = config.workDir;
-    this.socketPath = path.join(this.workDir, "firecracker.sock");
-    this.vsockPath = path.join(this.workDir, "vsock.sock");
+    this.socketPath = vmPaths.socket(this.workDir);
+    this.vsockPath = vmPaths.vsock(this.workDir);
   }
 
   /**

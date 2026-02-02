@@ -54,6 +54,18 @@ export const runnerPaths = {
 };
 
 /**
+ * VM internal paths (within workDir)
+ * These are file names inside each VM's work directory
+ */
+export const vmPaths = {
+  /** Firecracker API socket */
+  socket: (workDir: string) => path.join(workDir, "firecracker.sock"),
+
+  /** Vsock UDS for host-guest communication */
+  vsock: (workDir: string) => path.join(workDir, "vsock.sock"),
+};
+
+/**
  * Temporary file paths (/tmp/vm0-*)
  * These use runId for isolation
  */
