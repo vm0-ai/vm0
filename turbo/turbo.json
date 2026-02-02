@@ -33,7 +33,8 @@
     "AXIOM_DATASET_SUFFIX",
     "WEB_APP_URL",
     "ABLY_API_KEY",
-    "CONCURRENT_RUN_LIMIT"
+    "CONCURRENT_RUN_LIMIT",
+    "VITEST"
   ],
   "tasks": {
     "build": {

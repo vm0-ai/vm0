@@ -5,6 +5,7 @@ import {
   getLatestVersion,
   checkAndUpgrade,
   detectPackageManager,
+  silentUpgradeAfterCommand,
 } from "../update-checker";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
@@ -204,9 +205,9 @@ describe("update-checker", () => {
       const result = await checkAndUpgrade("4.10.0", "test prompt");
 
       expect(result).toBe(false);
-      // Should not log EA notice
+      // Should not log beta notice
       expect(consoleSpy).not.toHaveBeenCalledWith(
-        expect.stringContaining("Early Access"),
+        expect.stringContaining("beta"),
       );
     });
 
@@ -276,5 +277,124 @@ describe("update-checker", () => {
         );
       });
     });
+  });
+
+  describe("silentUpgradeAfterCommand", () => {
+    let consoleSpy: ReturnType<typeof vi.spyOn>;
+    const originalArgv = process.argv;
+    const originalVitest = process.env.VITEST;
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+      consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      // Unset VITEST to allow silentUpgradeAfterCommand to run
+      delete process.env.VITEST;
+    });
+
+    afterEach(() => {
+      consoleSpy.mockRestore();
+      process.argv = originalArgv;
+      // Restore VITEST
+      if (originalVitest !== undefined) {
+        process.env.VITEST = originalVitest;
+      }
+    });
+
+    it("should return silently when already on latest version", async () => {
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          return HttpResponse.json({ version: "4.10.0" });
+        }),
+      );
+
+      await silentUpgradeAfterCommand("4.10.0");
+
+      // No console output expected
+      expect(consoleSpy).not.toHaveBeenCalled();
+    });
+
+    it("should return silently when version check fails", async () => {
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          return HttpResponse.error();
+        }),
+      );
+
+      await silentUpgradeAfterCommand("4.10.0");
+
+      // No console output expected (silent failure)
+      expect(consoleSpy).not.toHaveBeenCalled();
+    });
+
+    it("should return silently for unsupported package managers (bun)", async () => {
+      process.argv = ["/usr/bin/node", "/home/user/.bun/bin/vm0"];
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          return HttpResponse.json({ version: "5.0.0" });
+        }),
+      );
+
+      await silentUpgradeAfterCommand("4.10.0");
+
+      // No whisper for unsupported PM - just silently skip
+      expect(consoleSpy).not.toHaveBeenCalled();
+    });
+
+    it("should return silently for unsupported package managers (yarn)", async () => {
+      process.argv = ["/usr/bin/node", "/home/user/.yarn/bin/vm0"];
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          return HttpResponse.json({ version: "5.0.0" });
+        }),
+      );
+
+      await silentUpgradeAfterCommand("4.10.0");
+
+      // No whisper for unsupported PM - just silently skip
+      expect(consoleSpy).not.toHaveBeenCalled();
+    });
+
+    it("should return silently for unknown package manager", async () => {
+      process.argv = ["/usr/bin/node", "/some/random/path/vm0"];
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          return HttpResponse.json({ version: "5.0.0" });
+        }),
+      );
+
+      await silentUpgradeAfterCommand("4.10.0");
+
+      // No whisper for unknown PM - just silently skip
+      expect(consoleSpy).not.toHaveBeenCalled();
+    });
+
+    // Note: Testing actual spawn behavior with mocking is complex in ESM.
+    // These tests verify the function can be called and handles the timeout.
+    // The upgrade failure case is implicitly tested by the timeout scenario
+    // since the spawn command fails/times out in the test environment.
+    it(
+      "should show whisper on upgrade failure (timeout scenario)",
+      async () => {
+        process.argv = ["/usr/bin/node", "/usr/local/bin/vm0"];
+        server.use(
+          http.get("https://registry.npmjs.org/*/latest", () => {
+            return HttpResponse.json({ version: "5.0.0" });
+          }),
+        );
+
+        // This test will trigger a real spawn that will fail/timeout
+        // The 5s timeout in silentUpgradeAfterCommand will trigger the whisper
+        await silentUpgradeAfterCommand("4.10.0");
+
+        // Should show whisper message since npm install will fail in test environment
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining("⚠ vm0 auto upgrade failed"),
+        );
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining("npm install -g @vm0/cli@latest"),
+        );
+      },
+      { timeout: 10000 },
+    );
   });
 });
