@@ -56,24 +56,31 @@ function ToolSummaryHeader({
   };
 
   return (
-    <summary className="flex cursor-pointer list-none items-center gap-2 w-full text-left">
-      <StatusDot variant={getStatusVariant()} />
-      <span className="font-semibold text-sm text-foreground shrink-0">
-        {toolName}
-      </span>
-      {keyParam && (
-        <code
-          className="text-xs text-muted-foreground font-mono truncate min-w-0 flex-1 mt-px"
-          title={keyParam}
-        >
-          {keyParamElement}
-        </code>
-      )}
-      {!keyParam && <span className="flex-1" />}
-      {timestamp && (
-        <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap">
-          {timestamp}
+    <summary className="cursor-pointer list-none w-full text-left">
+      <div className="flex items-center gap-2">
+        <StatusDot variant={getStatusVariant()} />
+        <span className="font-semibold text-sm text-foreground shrink-0">
+          {toolName}
         </span>
+        {keyParam && (
+          <code
+            className="text-xs text-muted-foreground font-mono truncate min-w-0 flex-1 mt-px"
+            title={keyParam}
+          >
+            {keyParamElement}
+          </code>
+        )}
+        {!keyParam && <span className="flex-1" />}
+        {timestamp && (
+          <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
+            {timestamp}
+          </span>
+        )}
+      </div>
+      {timestamp && (
+        <div className="text-xs text-muted-foreground pl-5 mt-1 sm:hidden">
+          {timestamp}
+        </div>
       )}
     </summary>
   );
