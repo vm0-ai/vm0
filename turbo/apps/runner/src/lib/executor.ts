@@ -111,17 +111,13 @@ export async function executeJob(
     const guest: GuestClient = vsockClient;
     logger.log(`Using vsock for guest communication: ${vsockPath}`);
 
-    // Wait for guest to connect (zero-latency: guest notifies host when ready)
-    logger.log(`Waiting for guest connection...`);
-    await withSandboxTiming("guest_wait", () =>
-      guest.waitForGuestConnection(30000),
+    // Pre-build env JSON before waiting for guest (sync, no guest dependency)
+    const envJson = JSON.stringify(
+      buildEnvironmentVariables(context, config.server.url),
     );
 
-    logger.log(`Guest client ready`);
-
-    // Handle network security with experimental_firewall
+    // Handle network security before guest wait (sync, no guest dependency)
     const firewallConfig = context.experimentalFirewall;
-
     if (firewallConfig?.enabled) {
       const mitmEnabled = firewallConfig.experimental_mitm ?? false;
       const sealSecretsEnabled =
@@ -131,24 +127,24 @@ export async function executeJob(
         `Setting up network security for VM ${guestIp} (mitm=${mitmEnabled}, sealSecrets=${sealSecretsEnabled})`,
       );
 
-      await withSandboxTiming("network_setup", async () => {
-        // Register VM in the proxy registry with firewall rules
-        // Note: CIDR-based iptables rules are set up at runner startup (setup.ts)
-        // so we don't need per-VM iptables rules here
-        getVMRegistry().register(
-          guestIp!,
-          context.runId,
-          context.sandboxToken,
-          {
-            firewallRules: firewallConfig?.rules,
-            mitmEnabled,
-            sealSecretsEnabled,
-          },
-        );
-        // Note: Proxy CA certificate is pre-baked into rootfs (see build-rootfs.sh)
-        // No runtime installation needed
+      // Register VM in the proxy registry with firewall rules
+      // Note: CIDR-based iptables rules are set up at runner startup (setup.ts)
+      // so we don't need per-VM iptables rules here
+      getVMRegistry().register(guestIp!, context.runId, context.sandboxToken, {
+        firewallRules: firewallConfig?.rules,
+        mitmEnabled,
+        sealSecretsEnabled,
       });
+      // Note: Proxy CA certificate is pre-baked into rootfs (see build-rootfs.sh)
+      // No runtime installation needed
     }
+
+    // Wait for guest to connect (blocks during kernel boot ~335ms)
+    logger.log(`Waiting for guest connection...`);
+    await withSandboxTiming("guest_wait", () =>
+      guest.waitForGuestConnection(30000),
+    );
+    logger.log(`Guest client ready`);
 
     // Download storages if manifest provided
     if (context.storageManifest) {
@@ -169,11 +165,8 @@ export async function executeJob(
       );
     }
 
-    // Build environment variables and write as JSON file in VM
+    // Write pre-built env JSON to VM
     // Using JSON avoids shell escaping issues entirely - Python loads it directly
-    // API URL comes from runner config, not from claim response
-    const envVars = buildEnvironmentVariables(context, config.server.url);
-    const envJson = JSON.stringify(envVars);
     logger.log(
       `Writing env JSON (${envJson.length} bytes) to ${ENV_JSON_PATH}`,
     );
