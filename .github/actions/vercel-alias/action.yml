@@ -1,0 +1,53 @@
+name: "Vercel Alias"
+description: "Create a predictable alias URL for a Vercel deployment"
+
+inputs:
+  vercel-token:
+    description: "Vercel authentication token"
+    required: true
+  vercel-org-id:
+    description: "Vercel team/org ID (for --scope)"
+    required: true
+  deployment-url:
+    description: "Vercel deployment URL to alias"
+    required: true
+  app-name:
+    description: "App identifier (web, platform, site, docs)"
+    required: true
+  commit-sha:
+    description: "Full commit SHA (truncated to 7 chars in action)"
+    required: true
+  preview-domain:
+    description: "Preview domain (e.g., vm6.ai)"
+    required: true
+
+outputs:
+  url:
+    description: "The aliased URL"
+    value: ${{ steps.alias.outputs.url }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Create Vercel alias
+      id: alias
+      shell: bash
+      run: |
+        # Truncate commit SHA to 7 characters
+        SHORT_SHA="${{ inputs.commit-sha }}"
+        SHORT_SHA="${SHORT_SHA:0:7}"
+
+        # Build alias URL
+        ALIAS_URL="${{ inputs.app-name }}-${SHORT_SHA}.${{ inputs.preview-domain }}"
+
+        echo "Creating alias: ${ALIAS_URL} -> ${{ inputs.deployment-url }}"
+
+        # Set the alias using Vercel CLI
+        vercel alias set "${{ inputs.deployment-url }}" "${ALIAS_URL}" \
+          --token="${{ inputs.vercel-token }}" \
+          --scope="${{ inputs.vercel-org-id }}"
+
+        # Output the full URL
+        FULL_URL="https://${ALIAS_URL}"
+        echo "url=${FULL_URL}" >> $GITHUB_OUTPUT
+        echo "Alias created: ${FULL_URL}"

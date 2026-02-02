@@ -11,15 +11,47 @@ This repository is configured to automatically create preview deployments for pu
    - Creates a new Neon database branch named `preview-pr-{PR_NUMBER}`
    - Runs database migrations on the branch
    - Deploys to Vercel with the branch database URL
+   - Creates stable alias URLs (if `PREVIEW_DOMAIN` is configured)
    - Comments on the PR with deployment links
 3. **PR Updates**: On new commits, the deployment is updated
 4. **PR Closes**: When merged or closed, the Neon branch is automatically deleted
+
+## Stable Preview URLs
+
+When the `PREVIEW_DOMAIN` variable is configured, preview deployments get predictable alias URLs:
+
+| App      | Preview URL Pattern                |
+| -------- | ---------------------------------- |
+| Web      | `web-{sha7}.{PREVIEW_DOMAIN}`      |
+| Platform | `platform-{sha7}.{PREVIEW_DOMAIN}` |
+| Site     | `site-{sha7}.{PREVIEW_DOMAIN}`     |
+| Docs     | `docs-{sha7}.{PREVIEW_DOMAIN}`     |
+
+Where `{sha7}` is the 7-character commit SHA.
+
+### Prerequisites for Stable Preview URLs
+
+1. **DNS Configuration**: Add wildcard CNAME record pointing to Vercel:
+   | Type | Name | Value |
+   |------|------|-------|
+   | CNAME | `*` | `cname.vercel-dns.com` |
+
+2. **Vercel Domain Configuration**:
+   - Go to Vercel Dashboard → Team Settings → Domains
+   - Add `*.{PREVIEW_DOMAIN}` as a wildcard domain
+   - Verify domain ownership
+
+3. **GitHub Repository Variable**:
+   | Name | Value |
+   |------|-------|
+   | `PREVIEW_DOMAIN` | Your preview domain (e.g., `vm6.ai`) |
 
 ## Required GitHub Secrets and Variables
 
 Configure these in your GitHub repository settings (Settings → Secrets and variables → Actions):
 
 ### Secrets (Store as Secrets)
+
 - `VERCEL_TOKEN`: Your Vercel personal access token
   - Generate at: https://vercel.com/account/tokens
 - `NEON_API_KEY`: Your Neon API key (Optional but Recommended)
@@ -32,6 +64,7 @@ Configure these in your GitHub repository settings (Settings → Secrets and var
   - Generate by running `cd turbo && pnpm e2b:build`
 
 ### Variables (Store as Repository Variables)
+
 - `VERCEL_TEAM_ID`: Your Vercel team/organization ID
   - Find in Vercel project settings → General → Team ID
 - `VERCEL_PROJECT_ID_WEB`: Your Vercel project ID for web app
@@ -42,6 +75,9 @@ Configure these in your GitHub repository settings (Settings → Secrets and var
   - Find in Neon console → Project Settings → General
 - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`: Your Clerk publishable key (Required)
   - Get from: https://dashboard.clerk.com
+- `PREVIEW_DOMAIN`: Domain for stable preview URLs (Optional)
+  - Example: `vm6.ai`
+  - Requires wildcard DNS and Vercel domain configuration (see "Stable Preview URLs" section)
 
 **Note**: If Neon secrets are not configured, the deployment will still work but without database branching.
 
@@ -63,6 +99,7 @@ Configure these in your GitHub repository settings (Settings → Secrets and var
 ## Database Schema Push
 
 The workflow automatically pushes database schema to preview branches using:
+
 ```bash
 pnpm db:push
 ```
@@ -72,19 +109,24 @@ This uses Drizzle Kit to push your schema defined in `turbo/apps/web/src/db/sche
 ## Environment Variables Details
 
 ### Required Variables
+
 These must be configured for the application to work:
+
 - **CLERK_SECRET_KEY**: Required for user authentication
 - **NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY**: Required for Clerk client-side SDK
 - **DATABASE_URL**: Automatically injected by the workflow from Neon
 
 ### Optional E2B Configuration
+
 For running agent code in sandboxes:
+
 - **E2B_API_KEY**: Your E2B API key for creating sandboxes
 - **E2B_TEMPLATE_NAME**: Custom template with Claude Code CLI pre-installed
   - Build template: `cd turbo && pnpm e2b:build`
   - Without this, the default E2B image is used (Claude Code must be manually installed)
 
 ### Anthropic-Compatible API Configuration
+
 To use Anthropic-compatible model providers (e.g., Anthropic, Minimax, or custom providers), configure environment variables in your Agent Compose YAML using user secrets:
 
 ```yaml
@@ -97,6 +139,7 @@ environment:
 ```
 
 Set up secrets using the VM0 CLI:
+
 ```bash
 vm0 secret set ANTHROPIC_BASE_URL "https://your-api-endpoint.com"
 vm0 secret set ANTHROPIC_API_KEY "your-api-key"

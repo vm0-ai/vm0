@@ -365,7 +365,7 @@ jobs:
         needs.prepare.outputs.platform-changed == 'true'
       )
     outputs:
-      preview-url: ${{ steps.deploy.outputs.url }}
+      preview-url: ${{ steps.alias.outputs.url || steps.deploy.outputs.url }}
     permissions:
       contents: read
       pull-requests: write
@@ -418,11 +418,24 @@ jobs:
           meta-branch: ${{ github.head_ref || github.ref_name }}
           meta-pr: ${{ needs.prepare.outputs.job-ref }}
 
-      # Step 3: Generate test token for E2E tests (runs in parallel with e2e-auth)
+      # Step 3: Create stable preview URL alias (only for PRs with PREVIEW_DOMAIN configured)
+      - name: Create Vercel Alias
+        id: alias
+        if: github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != ''
+        uses: ./.github/actions/vercel-alias
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          deployment-url: ${{ steps.deploy.outputs.url }}
+          app-name: web
+          commit-sha: ${{ github.event.pull_request.head.sha }}
+          preview-domain: ${{ vars.PREVIEW_DOMAIN }}
+
+      # Step 4: Generate test token for E2E tests (runs in parallel with e2e-auth)
       - name: Generate E2E test token
         run: e2e/scripts/generate-test-token.sh
         env:
-          VM0_API_URL: ${{ steps.deploy.outputs.url }}
+          VM0_API_URL: ${{ steps.alias.outputs.url || steps.deploy.outputs.url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
       - name: Save test token to cache
@@ -459,6 +472,17 @@ jobs:
           meta-branch: ${{ github.head_ref || github.ref_name }}
           meta-pr: ${{ needs.prepare.outputs.job-ref }}
 
+      - name: Create Vercel Alias
+        if: github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != ''
+        uses: ./.github/actions/vercel-alias
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          deployment-url: ${{ steps.deploy.outputs.url }}
+          app-name: docs
+          commit-sha: ${{ github.event.pull_request.head.sha }}
+          preview-domain: ${{ vars.PREVIEW_DOMAIN }}
+
   # Deploy site application (SEO landing pages)
   deploy-site:
     runs-on: ubuntu-latest
@@ -491,6 +515,17 @@ jobs:
           meta-branch: ${{ github.head_ref || github.ref_name }}
           meta-pr: ${{ needs.prepare.outputs.job-ref }}
 
+      - name: Create Vercel Alias
+        if: github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != ''
+        uses: ./.github/actions/vercel-alias
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          deployment-url: ${{ steps.deploy.outputs.url }}
+          app-name: site
+          commit-sha: ${{ github.event.pull_request.head.sha }}
+          preview-domain: ${{ vars.PREVIEW_DOMAIN }}
+
   # Deploy platform (Vite SPA)
   deploy-platform:
     runs-on: ubuntu-latest
@@ -521,6 +556,17 @@ jobs:
             VITE_API_URL=${{ needs.deploy-web.outputs.preview-url }}
           meta-branch: ${{ github.head_ref || github.ref_name }}
           meta-pr: ${{ needs.prepare.outputs.job-ref }}
+
+      - name: Create Vercel Alias
+        if: github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != ''
+        uses: ./.github/actions/vercel-alias
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          deployment-url: ${{ steps.deploy.outputs.url }}
+          app-name: platform
+          commit-sha: ${{ github.event.pull_request.head.sha }}
+          preview-domain: ${{ vars.PREVIEW_DOMAIN }}
 
   # Verify device flow authentication works end-to-end (uses Playwright)
   # This job runs in parallel with E2E tests - it does NOT block them
@@ -607,7 +653,19 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260202
-    needs: [prepare, deploy-web, lint-eslint, lint-types, lint-format, lint-knip, test-web, test-cli, test-platform, test-other]
+    needs:
+      [
+        prepare,
+        deploy-web,
+        lint-eslint,
+        lint-types,
+        lint-format,
+        lint-knip,
+        test-web,
+        test-cli,
+        test-platform,
+        test-other,
+      ]
     if: |
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
@@ -758,7 +816,14 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260202
-    needs: [prepare, cli-e2e-01-serial, deploy-web, deploy-runner-start, deploy-runner-benchmark]
+    needs:
+      [
+        prepare,
+        cli-e2e-01-serial,
+        deploy-web,
+        deploy-runner-start,
+        deploy-runner-benchmark,
+      ]
     if: |
       contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
       github.event_name != 'push' &&
