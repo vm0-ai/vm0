@@ -9,8 +9,7 @@ import { useUser, useClerk } from "@clerk/nextjs";
 import { IconArrowRight } from "@tabler/icons-react";
 import ThemeToggle from "./ThemeToggle";
 import LanguageSwitcher from "./LanguageSwitcher";
-
-const PLATFORM_URL = "https://platform.vm0.ai";
+import { getPlatformUrl } from "../../src/lib/url";
 
 export default function Navbar() {
   const { theme } = useTheme();
@@ -126,7 +125,7 @@ export default function Navbar() {
                   Sign out
                 </button>
                 <a
-                  href={PLATFORM_URL}
+                  href={getPlatformUrl()}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="btn-get-access nav-desktop group"
@@ -226,7 +225,7 @@ export default function Navbar() {
                   Sign out
                 </button>
                 <a
-                  href={PLATFORM_URL}
+                  href={getPlatformUrl()}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="mobile-menu-link group"
