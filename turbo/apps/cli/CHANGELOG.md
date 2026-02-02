@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.11.0](https://github.com/vm0-ai/vm0/compare/cli-v9.10.0...cli-v9.11.0) (2026-02-02)
+
+
+### Features
+
+* add moonshot-api-key provider with credential mapping and model selection ([#2110](https://github.com/vm0-ai/vm0/issues/2110)) ([88f8f9d](https://github.com/vm0-ai/vm0/commit/88f8f9d369529752eac68eec426153d8b82ab5fc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.8.0
+
 ## [9.10.0](https://github.com/vm0-ai/vm0/compare/cli-v9.9.2...cli-v9.10.0) (2026-02-02)
 
 

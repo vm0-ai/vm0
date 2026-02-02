@@ -1,5 +1,24 @@
 # Changelog
 
+## [3.9.4](https://github.com/vm0-ai/vm0/compare/runner-v3.9.3...runner-v3.9.4) (2026-02-02)
+
+
+### Bug Fixes
+
+* **runner:** use reliable tap device scanning method ([#2126](https://github.com/vm0-ai/vm0/issues/2126)) ([7df129a](https://github.com/vm0-ai/vm0/commit/7df129a9ae565dc394cafd5a16b321a44e348fb4))
+
+
+### Performance Improvements
+
+* **runner:** use --config-file to eliminate firecracker api polling ([#2119](https://github.com/vm0-ai/vm0/issues/2119)) ([9a5c5a0](https://github.com/vm0-ai/vm0/commit/9a5c5a06ade6d8de3315c4ffd3a9fed5a9c9c970)), closes [#1811](https://github.com/vm0-ai/vm0/issues/1811)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.8.0
+
 ## [3.9.3](https://github.com/vm0-ai/vm0/compare/runner-v3.9.2...runner-v3.9.3) (2026-02-02)
 
 

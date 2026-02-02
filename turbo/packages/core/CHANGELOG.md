@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.8.0](https://github.com/vm0-ai/vm0/compare/core-v7.7.0...core-v7.8.0) (2026-02-02)
+
+
+### Features
+
+* add moonshot-api-key provider with credential mapping and model selection ([#2110](https://github.com/vm0-ai/vm0/issues/2110)) ([88f8f9d](https://github.com/vm0-ai/vm0/commit/88f8f9d369529752eac68eec426153d8b82ab5fc))
+
 ## [7.7.0](https://github.com/vm0-ai/vm0/compare/core-v7.6.1...core-v7.7.0) (2026-02-02)
 
 
