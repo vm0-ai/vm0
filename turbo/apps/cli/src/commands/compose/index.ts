@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import chalk from "chalk";
 import { readFile } from "fs/promises";
 import { existsSync } from "fs";
@@ -21,6 +21,9 @@ import {
   type SkillUploadResult,
 } from "../../lib/storage/system-storage";
 import { isInteractive, promptConfirm } from "../../lib/utils/prompt-utils";
+import { silentUpgradeAfterCommand } from "../../lib/utils/update-checker";
+
+declare const __CLI_VERSION__: string;
 
 /**
  * Extract secret names from compose content using variable references.
@@ -304,69 +307,82 @@ export const composeCommand = new Command()
   .description("Create or update agent compose (e.g., vm0.yaml)")
   .argument("<agent-yaml>", "Path to agent YAML file")
   .option("-y, --yes", "Skip confirmation prompts for skill requirements")
-  .action(async (configFile: string, options: { yes?: boolean }) => {
-    try {
-      // 1. Load and validate config
-      const { config, agentName, agent, basePath } =
-        await loadAndValidateConfig(configFile);
+  .addOption(new Option("--no-auto-update").hideHelp())
+  .action(
+    async (
+      configFile: string,
+      options: { yes?: boolean; autoUpdate?: boolean },
+    ) => {
+      try {
+        // 1. Load and validate config
+        const { config, agentName, agent, basePath } =
+          await loadAndValidateConfig(configFile);
 
-      // 2. Check for legacy image format
-      checkLegacyImageFormat(config);
+        // 2. Check for legacy image format
+        checkLegacyImageFormat(config);
 
-      // 3. Upload instructions and skills
-      const skillResults = await uploadAssets(agentName, agent, basePath);
+        // 3. Upload instructions and skills
+        const skillResults = await uploadAssets(agentName, agent, basePath);
 
-      // 4. Collect and process skill variables
-      const environment = agent.environment || {};
-      const variables = await collectSkillVariables(
-        skillResults,
-        environment,
-        agentName,
-      );
+        // 4. Collect and process skill variables
+        const environment = agent.environment || {};
+        const variables = await collectSkillVariables(
+          skillResults,
+          environment,
+          agentName,
+        );
 
-      // 5. Display variables and confirm with user
-      const confirmed = await displayAndConfirmVariables(variables, options);
-      if (!confirmed) {
-        process.exit(0);
-      }
-
-      // 6. Merge skill variables into environment
-      mergeSkillVariables(agent, variables);
-
-      // 7. Call API
-      console.log("Uploading compose...");
-      const response = await createOrUpdateCompose({ content: config });
-
-      // 8. Display result
-      const scopeResponse = await getScope();
-      const shortVersionId = response.versionId.slice(0, 8);
-      const displayName = `${scopeResponse.slug}/${response.name}`;
-
-      if (response.action === "created") {
-        console.log(chalk.green(`✓ Compose created: ${displayName}`));
-      } else {
-        console.log(chalk.green(`✓ Compose version exists: ${displayName}`));
-      }
-
-      console.log(chalk.dim(`  Version: ${shortVersionId}`));
-      console.log();
-      console.log("  Run your agent:");
-      console.log(
-        chalk.cyan(
-          `    vm0 run ${displayName}:${shortVersionId} --artifact-name <artifact> "your prompt"`,
-        ),
-      );
-    } catch (error) {
-      if (error instanceof Error) {
-        if (error.message.includes("Not authenticated")) {
-          console.error(chalk.red("✗ Not authenticated. Run: vm0 auth login"));
-        } else {
-          console.error(chalk.red("✗ Failed to create compose"));
-          console.error(chalk.dim(`  ${error.message}`));
+        // 5. Display variables and confirm with user
+        const confirmed = await displayAndConfirmVariables(variables, options);
+        if (!confirmed) {
+          process.exit(0);
         }
-      } else {
-        console.error(chalk.red("✗ An unexpected error occurred"));
+
+        // 6. Merge skill variables into environment
+        mergeSkillVariables(agent, variables);
+
+        // 7. Call API
+        console.log("Uploading compose...");
+        const response = await createOrUpdateCompose({ content: config });
+
+        // 8. Display result
+        const scopeResponse = await getScope();
+        const shortVersionId = response.versionId.slice(0, 8);
+        const displayName = `${scopeResponse.slug}/${response.name}`;
+
+        if (response.action === "created") {
+          console.log(chalk.green(`✓ Compose created: ${displayName}`));
+        } else {
+          console.log(chalk.green(`✓ Compose version exists: ${displayName}`));
+        }
+
+        console.log(chalk.dim(`  Version: ${shortVersionId}`));
+        console.log();
+        console.log("  Run your agent:");
+        console.log(
+          chalk.cyan(
+            `    vm0 run ${displayName}:${shortVersionId} --artifact-name <artifact> "your prompt"`,
+          ),
+        );
+
+        // Silent upgrade after successful command completion
+        if (options.autoUpdate !== false) {
+          await silentUpgradeAfterCommand(__CLI_VERSION__);
+        }
+      } catch (error) {
+        if (error instanceof Error) {
+          if (error.message.includes("Not authenticated")) {
+            console.error(
+              chalk.red("✗ Not authenticated. Run: vm0 auth login"),
+            );
+          } else {
+            console.error(chalk.red("✗ Failed to create compose"));
+            console.error(chalk.dim(`  ${error.message}`));
+          }
+        } else {
+          console.error(chalk.red("✗ An unexpected error occurred"));
+        }
+        process.exit(1);
       }
-      process.exit(1);
-    }
-  });
+    },
+  );

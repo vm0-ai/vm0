@@ -313,12 +313,9 @@ export class FirecrackerVM {
   /**
    * Stop the VM
    *
-   * Note: With --no-api mode, we can only force kill the process.
-   * The VM doesn't have an API endpoint for graceful shutdown.
-   *
-   * TODO(#2118): Implement graceful shutdown via vsock command to guest agent.
-   * This would allow the guest to clean up before termination without
-   * adding the startup latency of API mode.
+   * Note: With --no-api mode, we force kill the Firecracker process.
+   * Graceful shutdown (filesystem sync) should be done via vsock
+   * before calling this method.
    */
   async stop(): Promise<void> {
     if (this.state !== "running") {
@@ -328,9 +325,6 @@ export class FirecrackerVM {
 
     this.state = "stopping";
     logger.log(`[VM ${this.config.vmId}] Stopping...`);
-
-    // With --no-api mode, we can only force kill the process
-    // The VM doesn't have an API endpoint for graceful shutdown
     await this.cleanup();
   }
 

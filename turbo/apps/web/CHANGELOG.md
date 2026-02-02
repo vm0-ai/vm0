@@ -1,5 +1,27 @@
 # Changelog
 
+## [11.19.0](https://github.com/vm0-ai/vm0/compare/web-v11.18.0...web-v11.19.0) (2026-02-02)
+
+
+### Features
+
+* **slack:** add oauth flow and user account linking ([#2145](https://github.com/vm0-ai/vm0/issues/2145)) ([90f5950](https://github.com/vm0-ai/vm0/commit/90f59509f8195ad270181c7534fce8d224c98676))
+
+## [11.18.0](https://github.com/vm0-ai/vm0/compare/web-v11.17.0...web-v11.18.0) (2026-02-02)
+
+
+### Features
+
+* add status page link to landing page footer ([#2149](https://github.com/vm0-ai/vm0/issues/2149)) ([e5073a5](https://github.com/vm0-ai/vm0/commit/e5073a5bd6c4df4ee244c8c47385f2fa18df5589)), closes [#2139](https://github.com/vm0-ai/vm0/issues/2139)
+
+## [11.17.0](https://github.com/vm0-ai/vm0/compare/web-v11.16.0...web-v11.17.0) (2026-02-02)
+
+
+### Features
+
+* **slack:** add foundation for slack bot integration ([#2114](https://github.com/vm0-ai/vm0/issues/2114)) ([22ee223](https://github.com/vm0-ai/vm0/commit/22ee223c2e94a3cdf2ff72ed81306f9aae054cf1))
+* **web:** redirect get started button to platform for signed-in users ([#2132](https://github.com/vm0-ai/vm0/issues/2132)) ([725f7ea](https://github.com/vm0-ai/vm0/commit/725f7ea8624aa5689f6e0604bcd538d0702a38f7))
+
 ## [11.16.0](https://github.com/vm0-ai/vm0/compare/web-v11.15.1...web-v11.16.0) (2026-02-02)
 
 

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
+import { createMockChildProcess } from "../../../mocks/spawn-helpers";
 import { composeCommand, getSecretsFromComposeContent } from "../index";
 import * as fs from "fs/promises";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "fs";
@@ -20,8 +21,21 @@ vi.mock("../../../lib/domain/github-skills", async (importOriginal) => {
   };
 });
 
+// Mock child_process.spawn since it's an external system call boundary
+// Used by silentUpgradeAfterCommand to run npm/pnpm install
+vi.mock("child_process", async (importOriginal) => {
+  const original = await importOriginal<typeof import("child_process")>();
+  return {
+    ...original,
+    spawn: vi.fn(),
+  };
+});
+
 import { downloadGitHubSkill } from "../../../lib/domain/github-skills";
 const mockDownloadGitHubSkill = vi.mocked(downloadGitHubSkill);
+
+import { spawn } from "child_process";
+const mockSpawn = vi.mocked(spawn);
 
 /**
  * Helper to create a mock skill directory with SKILL.md frontmatter.
@@ -89,6 +103,18 @@ describe("compose command", () => {
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
     chalk.level = 0;
+
+    // Default npm registry handler - return same version to skip upgrade
+    // This prevents silentUpgradeAfterCommand from attempting real upgrades
+    server.use(
+      http.get("https://registry.npmjs.org/*/latest", () => {
+        return HttpResponse.json({ version: "0.0.0-test" });
+      }),
+    );
+
+    // Default spawn mock - succeeds immediately
+    // This is needed because silentUpgradeAfterCommand uses spawn
+    mockSpawn.mockImplementation(() => createMockChildProcess(0) as never);
   });
 
   afterEach(() => {
@@ -1226,6 +1252,200 @@ agents:
           .filter((log): log is string => typeof log === "string");
         expect(allLogs.some((log) => log.includes("Compose"))).toBe(true);
       });
+    });
+  });
+
+  describe("silent auto-upgrade after successful compose", () => {
+    const originalArgv = process.argv;
+
+    beforeEach(async () => {
+      // Set up npm path to enable auto-upgrade
+      process.argv = ["/usr/bin/node", "/usr/local/bin/vm0"];
+
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        `version: "1.0"
+agents:
+  test-agent:
+    framework: claude-code`,
+      );
+
+      server.use(
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            composeId: "cmp-123",
+            name: "test-agent",
+            versionId: "a".repeat(64),
+            action: "created",
+          });
+        }),
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(scopeResponse);
+        }),
+      );
+    });
+
+    afterEach(() => {
+      process.argv = originalArgv;
+      mockSpawn.mockReset();
+    });
+
+    it("should not attempt upgrade with --no-auto-update flag", async () => {
+      // Mock npm registry returns newer version
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          return HttpResponse.json({ version: "99.0.0" });
+        }),
+      );
+
+      // Mock spawn - use mockImplementation to create fresh EventEmitter each call
+      mockSpawn.mockImplementation(() => createMockChildProcess(0) as never);
+
+      await composeCommand.parseAsync([
+        "node",
+        "cli",
+        "vm0.yaml",
+        "--no-auto-update",
+      ]);
+
+      // With --no-auto-update, spawn should not be called
+      expect(mockSpawn).not.toHaveBeenCalled();
+    });
+
+    it("should call spawn with npm install when auto-upgrade enabled", async () => {
+      // Mock npm registry returns newer version
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          return HttpResponse.json({ version: "99.0.0" });
+        }),
+      );
+
+      // Mock spawn - use mockImplementation to create fresh EventEmitter each call
+      mockSpawn.mockImplementation(() => createMockChildProcess(0) as never);
+
+      await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
+
+      // spawn should be called with npm install
+      expect(mockSpawn).toHaveBeenCalledWith(
+        "npm",
+        ["install", "-g", "@vm0/cli@latest"],
+        expect.objectContaining({
+          stdio: "pipe",
+        }),
+      );
+    });
+
+    it("should not show whisper when upgrade succeeds", async () => {
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          return HttpResponse.json({ version: "99.0.0" });
+        }),
+      );
+
+      // Mock spawn to return success (exit code 0)
+      // Use mockImplementation to create fresh EventEmitter each call
+      mockSpawn.mockImplementation(() => createMockChildProcess(0) as never);
+
+      await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
+
+      // No whisper message should appear
+      const allLogs = mockConsoleLog.mock.calls
+        .map((call) => call[0])
+        .filter((log): log is string => typeof log === "string");
+      expect(allLogs.some((log) => log.includes("auto upgrade failed"))).toBe(
+        false,
+      );
+    });
+
+    it("should show whisper when upgrade fails", async () => {
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          return HttpResponse.json({ version: "99.0.0" });
+        }),
+      );
+
+      // Mock spawn to return failure (exit code 1)
+      // Use mockImplementation to create fresh EventEmitter each call
+      mockSpawn.mockImplementation(() => createMockChildProcess(1) as never);
+
+      await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
+
+      // Whisper message should appear
+      const allLogs = mockConsoleLog.mock.calls
+        .map((call) => call[0])
+        .filter((log): log is string => typeof log === "string");
+      expect(allLogs.some((log) => log.includes("auto upgrade failed"))).toBe(
+        true,
+      );
+      expect(
+        allLogs.some((log) => log.includes("npm install -g @vm0/cli@latest")),
+      ).toBe(true);
+    });
+
+    it("should not attempt upgrade when already on latest version", async () => {
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          // Return same version as current (simulated by CLI_VERSION)
+          return HttpResponse.json({ version: "0.0.0-test" });
+        }),
+      );
+
+      mockSpawn.mockImplementation(() => createMockChildProcess(0) as never);
+
+      await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
+
+      // spawn should not be called when already on latest
+      expect(mockSpawn).not.toHaveBeenCalled();
+    });
+
+    it("should not attempt upgrade for unsupported package manager (bun)", async () => {
+      // Set bun path
+      process.argv = ["/usr/bin/node", "/home/user/.bun/bin/vm0"];
+
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          return HttpResponse.json({ version: "99.0.0" });
+        }),
+      );
+
+      mockSpawn.mockImplementation(() => createMockChildProcess(0) as never);
+
+      await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
+
+      // spawn should not be called for bun
+      expect(mockSpawn).not.toHaveBeenCalled();
+
+      // No whisper for unsupported PM
+      const allLogs = mockConsoleLog.mock.calls
+        .map((call) => call[0])
+        .filter((log): log is string => typeof log === "string");
+      expect(allLogs.some((log) => log.includes("auto upgrade failed"))).toBe(
+        false,
+      );
+    });
+
+    it("should use pnpm when installed via pnpm", async () => {
+      // Set pnpm path
+      process.argv = ["/usr/bin/node", "/home/user/.local/share/pnpm/vm0"];
+
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          return HttpResponse.json({ version: "99.0.0" });
+        }),
+      );
+
+      mockSpawn.mockImplementation(() => createMockChildProcess(0) as never);
+
+      await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
+
+      // spawn should be called with pnpm add
+      expect(mockSpawn).toHaveBeenCalledWith(
+        "pnpm",
+        ["add", "-g", "@vm0/cli@latest"],
+        expect.objectContaining({
+          stdio: "pipe",
+        }),
+      );
     });
   });
 });

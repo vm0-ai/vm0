@@ -20,7 +20,8 @@
         "@vm0/ui",
         "e2b",
         "@testing-library/react",
-        "@types/tar"
+        "@types/tar",
+        "@slack/web-api"
       ],
       "next": {
         "entry": ["next.config.{js,ts,mjs}"]
@@ -114,7 +115,6 @@
     "coverage/**",
     "**/drizzle.config.ts",
     "**/custom-eslint/**",
-    "apps/docs/src/components/plausible-tracker.tsx",
     "apps/platform/src/mocks/browser.ts",
     "apps/platform/src/signals/test-utils.ts",
     "apps/platform/src/signals/__tests__/test-helpers.ts",
@@ -134,7 +134,8 @@
     "apps/web/src/lib/model-provider/model-provider-service.ts",
     "apps/cli/src/lib/api/api-client.ts",
     "apps/cli/src/commands/cook/cook.ts",
-    "packages/core/src/contracts/public/agents.ts"
+    "packages/core/src/contracts/public/agents.ts",
+    "apps/web/src/lib/slack/**"
   ],
   "ignoreDependencies": ["@commitlint/cli"],
   "ignoreWorkspaces": [],

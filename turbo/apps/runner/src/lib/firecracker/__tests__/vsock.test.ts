@@ -815,4 +815,55 @@ describe("VsockClient Integration Tests", () => {
       expect(result.stderr).toContain("Connection closed");
     });
   });
+
+  describe("shutdown", () => {
+    it("should send shutdown request and receive acknowledgment", async () => {
+      const result = await client!.shutdown(5000);
+      expect(result).toBe(true);
+    });
+
+    it("should return false when not connected", async () => {
+      client!.close();
+      const result = await client!.shutdown(1000);
+      expect(result).toBe(false);
+    });
+
+    it("should return false on timeout if agent does not respond", async () => {
+      // Kill the agent so it can't respond
+      if (agent && !agent.killed) {
+        agent.kill("SIGKILL");
+        // Wait for process to actually exit (more robust than fixed delay)
+        await new Promise<void>((resolve) => {
+          agent!.on("exit", resolve);
+        });
+      }
+
+      const result = await client!.shutdown(100);
+      expect(result).toBe(false);
+    });
+
+    it("should handle multiple shutdown calls", async () => {
+      // First shutdown should succeed
+      const result1 = await client!.shutdown(5000);
+      expect(result1).toBe(true);
+
+      // Second shutdown should also succeed (agent still running)
+      const result2 = await client!.shutdown(5000);
+      expect(result2).toBe(true);
+    });
+
+    it("should not interfere with concurrent exec", async () => {
+      // Start a slow exec
+      const execPromise = client!.exec("sleep 0.2 && echo done", 5000);
+
+      // Call shutdown while exec is in progress
+      const shutdownResult = await client!.shutdown(5000);
+      expect(shutdownResult).toBe(true);
+
+      // Exec should still complete normally
+      const execResult = await execPromise;
+      expect(execResult.exitCode).toBe(0);
+      expect(execResult.stdout.trim()).toBe("done");
+    });
+  });
 });

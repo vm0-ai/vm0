@@ -204,9 +204,9 @@ describe("update-checker", () => {
       const result = await checkAndUpgrade("4.10.0", "test prompt");
 
       expect(result).toBe(false);
-      // Should not log EA notice
+      // Should not log beta notice
       expect(consoleSpy).not.toHaveBeenCalledWith(
-        expect.stringContaining("Early Access"),
+        expect.stringContaining("beta"),
       );
     });
 

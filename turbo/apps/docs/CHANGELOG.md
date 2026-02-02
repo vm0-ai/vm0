@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.6.0](https://github.com/vm0-ai/vm0/compare/docs-v2.5.0...docs-v2.6.0) (2026-02-02)
+
+
+### Features
+
+* **platform:** add plausible analytics integration ([#2150](https://github.com/vm0-ai/vm0/issues/2150)) ([10dae9b](https://github.com/vm0-ai/vm0/commit/10dae9bc2b3e7ec9e8d0544c3b87b05092768920))
+
 ## [2.5.0](https://github.com/vm0-ai/vm0/compare/docs-v2.4.0...docs-v2.5.0) (2026-02-01)
 
 

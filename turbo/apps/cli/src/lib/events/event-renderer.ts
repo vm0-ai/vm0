@@ -301,9 +301,6 @@ export class EventRenderer {
     const durationSec = (durationMs / 1000).toFixed(1);
     console.log(`  Duration: ${chalk.dim(durationSec + "s")}`);
 
-    const cost = Number(event.data.cost || 0);
-    console.log(`  Cost: ${chalk.dim("$" + cost.toFixed(4))}`);
-
     const numTurns = Number(event.data.numTurns || 0);
     console.log(`  Turns: ${chalk.dim(String(numTurns))}`);
 

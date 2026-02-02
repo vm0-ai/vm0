@@ -1,11 +1,24 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
+import { createMockChildProcess } from "../../../mocks/spawn-helpers";
 import { runCommand } from "../index";
 import chalk from "chalk";
 import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import * as path from "path";
 import * as os from "os";
+
+// Mock child_process.spawn since it's an external system call boundary
+vi.mock("child_process", async (importOriginal) => {
+  const original = await importOriginal<typeof import("child_process")>();
+  return {
+    ...original,
+    spawn: vi.fn(),
+  };
+});
+
+import { spawn } from "child_process";
+const mockSpawn = vi.mocked(spawn);
 
 describe("run command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -86,7 +99,14 @@ describe("run command", () => {
       http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
         return HttpResponse.json(defaultEventsResponse);
       }),
+      // Default npm registry handler - return same version to skip upgrade
+      http.get("https://registry.npmjs.org/*/latest", () => {
+        return HttpResponse.json({ version: "0.0.0-test" });
+      }),
     );
+
+    // Default spawn mock - succeeds immediately
+    mockSpawn.mockImplementation(() => createMockChildProcess(0) as never);
   });
 
   afterEach(() => {

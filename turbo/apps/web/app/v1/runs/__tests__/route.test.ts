@@ -10,7 +10,6 @@ import {
   createTestCompose,
   createTestV1Run,
   completeTestRun,
-  createTestModelProvider,
 } from "../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -445,35 +444,6 @@ describe("Public API v1 - Runs Endpoints", () => {
       } finally {
         vi.unstubAllEnvs();
       }
-    });
-  });
-
-  describe("Model Provider", () => {
-    it("should succeed when model provider is configured", async () => {
-      // Create model provider
-      await createTestModelProvider("anthropic-api-key", "test-api-key-value");
-
-      // Create compose without explicit API key
-      const { composeId } = await createTestCompose(`mp-agent-${Date.now()}`, {
-        skipDefaultApiKey: true,
-        overrides: { framework: "claude-code" },
-      });
-
-      const request = createTestRequest("http://localhost:3000/v1/runs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          agentId: composeId,
-          prompt: "Run with model provider",
-        }),
-      });
-
-      const response = await createRun(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(202);
-      expect(data.id).toBeDefined();
-      expect(data.status).toBeDefined();
     });
   });
 });

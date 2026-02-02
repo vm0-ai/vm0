@@ -1,12 +1,4 @@
 /**
- * S3 URI components
- */
-export interface S3Uri {
-  bucket: string;
-  prefix: string;
-}
-
-/**
  * S3 object metadata
  */
 export interface S3Object {
@@ -98,15 +90,4 @@ export interface S3StorageManifest {
   fileCount: number;
   /** Array of files with their paths, hashes, and sizes */
   files: FileEntryWithHash[];
-}
-
-/**
- * Result of uploading directory with manifest and archive
- */
-export interface UploadWithManifestResult {
-  s3Prefix: string;
-  filesUploaded: number;
-  totalBytes: number;
-  /** The generated storage manifest */
-  manifest: S3StorageManifest;
 }

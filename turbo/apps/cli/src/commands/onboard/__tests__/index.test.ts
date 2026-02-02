@@ -13,9 +13,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { existsSync, mkdtempSync, rmSync } from "fs";
 import * as path from "path";
 import * as os from "os";
-import { EventEmitter } from "events";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.js";
+import { createMockChildProcessWithOutput } from "../../../mocks/spawn-helpers";
 
 // Mock os.homedir to isolate config files in temp directory
 // This is acceptable per CLI testing patterns (similar to auth tests)
@@ -35,28 +35,6 @@ vi.mock("child_process", () => ({
 import { spawn } from "child_process";
 import prompts from "prompts";
 import { onboardCommand } from "../index";
-
-// Helper to create a mock child process
-function createMockChildProcess(exitCode: number, stdout = "", stderr = "") {
-  const mockProcess = new EventEmitter() as EventEmitter & {
-    stdout: EventEmitter;
-    stderr: EventEmitter;
-  };
-  mockProcess.stdout = new EventEmitter();
-  mockProcess.stderr = new EventEmitter();
-
-  setImmediate(() => {
-    if (stdout) {
-      mockProcess.stdout.emit("data", Buffer.from(stdout));
-    }
-    if (stderr) {
-      mockProcess.stderr.emit("data", Buffer.from(stderr));
-    }
-    mockProcess.emit("close", exitCode);
-  });
-
-  return mockProcess;
-}
 
 describe("onboard command", () => {
   let tempDir: string;
@@ -90,9 +68,13 @@ describe("onboard command", () => {
         const output = JSON.stringify([
           { name: "vm0-skills", source: "github", repo: "vm0-ai/vm0-skills" },
         ]);
-        return createMockChildProcess(0, output) as ReturnType<typeof spawn>;
+        return createMockChildProcessWithOutput(0, output) as ReturnType<
+          typeof spawn
+        >;
       }
-      return createMockChildProcess(0, "Success") as ReturnType<typeof spawn>;
+      return createMockChildProcessWithOutput(0, "Success") as ReturnType<
+        typeof spawn
+      >;
     });
 
     // Mock homedir to return temp directory for config isolation

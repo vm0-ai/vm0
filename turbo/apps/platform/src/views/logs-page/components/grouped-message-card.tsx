@@ -1,9 +1,4 @@
-import {
-  IconCheck,
-  IconCircle,
-  IconLoader,
-  IconListCheck,
-} from "@tabler/icons-react";
+import { IconCheck, IconCircle, IconLoader } from "@tabler/icons-react";
 import MarkdownPreview from "@uiw/react-markdown-preview";
 import type { GroupedMessage } from "../log-detail/utils.ts";
 import { ToolSummary } from "./tool-summary.tsx";
@@ -187,6 +182,7 @@ function SystemMessageCard({
   eventData: EventData;
 }) {
   const subtype = eventData.subtype;
+  const timestamp = formatEventTime(message.createdAt);
   return (
     <div className="py-2">
       <div className="flex gap-2 items-center">
@@ -195,9 +191,12 @@ function SystemMessageCard({
           {subtype === "init" ? "Initialize" : subtype}
         </span>
         <span className="flex-1" />
-        <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap">
-          {formatEventTime(message.createdAt)}
+        <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
+          {timestamp}
         </span>
+      </div>
+      <div className="text-xs text-muted-foreground pl-5 mt-1 sm:hidden">
+        {timestamp}
       </div>
       {subtype === "init" && (
         <div className="pl-5 mt-2">
@@ -209,7 +208,6 @@ function SystemMessageCard({
 }
 
 function ResultMessageCard({
-  message,
   eventData,
 }: {
   message: GroupedMessage;
@@ -217,21 +215,14 @@ function ResultMessageCard({
 }) {
   const subtype = eventData.subtype;
   const isError = eventData.is_error === true || subtype === "error";
-  const statusVariant = isError ? "error" : "success";
   const borderColor = isError ? "border-red-500/30" : "border-lime-500/30";
   const bgColor = isError ? "bg-red-500/5" : "bg-lime-500/5";
 
   return (
-    <div className="py-2 flex gap-2 items-start">
-      <StatusDot variant={statusVariant} />
-      <div
-        className={`flex-1 min-w-0 p-3 rounded-lg border ${borderColor} ${bgColor}`}
-      >
+    <div className="py-2">
+      <div className={`p-3 rounded-lg border ${borderColor} ${bgColor}`}>
         <ResultEventContent eventData={eventData} />
       </div>
-      <span className="text-xs text-muted-foreground shrink-0 whitespace-nowrap text-right">
-        {formatEventTime(message.createdAt)}
-      </span>
     </div>
   );
 }
@@ -254,6 +245,15 @@ function getTodoStatusIcon(status: string) {
  * Standalone todo card that shows current task status as a single line.
  * Displays in-progress task with expandable full list.
  */
+/**
+ * Check if a todo item is a subtask (indented or prefixed with bullet).
+ * Subtasks typically start with whitespace or bullet markers after whitespace.
+ */
+function isSubtask(content: string): boolean {
+  // Matches items that start with whitespace, or start with bullet/dash after optional whitespace
+  return /^\s{2,}|^\s*[-*]\s/.test(content);
+}
+
 function TodoCard({
   message,
   searchTerm,
@@ -262,11 +262,13 @@ function TodoCard({
   searchTerm?: string;
 }) {
   const todoItems = message.todoState ?? [];
-  const inProgressTask = todoItems.find((t) => t.status === "in_progress");
-  const completedCount = todoItems.filter(
+  // Filter out subtasks for count - only count top-level tasks
+  const topLevelTodos = todoItems.filter((t) => !isSubtask(t.content));
+  const inProgressTask = topLevelTodos.find((t) => t.status === "in_progress");
+  const completedCount = topLevelTodos.filter(
     (t) => t.status === "completed",
   ).length;
-  const totalCount = todoItems.length;
+  const totalCount = topLevelTodos.length;
 
   // Check if any todo item matches search
   const hasSearchMatch = Boolean(
@@ -277,30 +279,38 @@ function TodoCard({
       ),
   );
 
+  const timestamp = formatEventTime(message.createdAt);
   return (
     <details className="py-2 group" open={hasSearchMatch}>
-      <summary className="flex gap-2 items-center cursor-pointer list-none">
-        <StatusDot variant="todo" />
-        <IconListCheck className="h-4 w-4 text-cyan-500 shrink-0" />
-        <span className="text-sm text-muted-foreground shrink-0">
-          {completedCount}/{totalCount}
-        </span>
-        {inProgressTask ? (
-          <span
-            className="text-sm text-foreground truncate"
-            title={inProgressTask.content}
-          >
-            {inProgressTask.content}
+      <summary className="cursor-pointer list-none">
+        <div className="flex gap-2 items-center">
+          <StatusDot variant="todo" />
+          <span className="font-semibold text-sm text-foreground shrink-0">
+            Todo
           </span>
-        ) : (
-          <span className="text-sm text-muted-foreground">
-            All tasks completed
+          {inProgressTask ? (
+            <span
+              className="text-sm text-foreground truncate"
+              title={inProgressTask.content}
+            >
+              {inProgressTask.content}
+            </span>
+          ) : (
+            <span className="text-sm text-muted-foreground">
+              All tasks completed
+            </span>
+          )}
+          <span className="text-sm text-muted-foreground shrink-0">
+            [{completedCount}/{totalCount}]
           </span>
-        )}
-        <span className="flex-1" />
-        <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap">
-          {formatEventTime(message.createdAt)}
-        </span>
+          <span className="flex-1" />
+          <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
+            {timestamp}
+          </span>
+        </div>
+        <div className="text-xs text-muted-foreground pl-5 mt-1 sm:hidden">
+          {timestamp}
+        </div>
       </summary>
       <div className="mt-2 space-y-1.5 ml-[18px]">
         {todoItems.map((item, index) => (
@@ -356,21 +366,27 @@ function AssistantMessageCard({
   const elements: React.ReactNode[] = [];
 
   // Text before tools with timestamp
+  const timestamp = formatEventTime(message.createdAt);
   if (textBefore) {
     elements.push(
-      <div key="text-before" className="py-2 flex gap-2 items-start">
-        <StatusDot variant="neutral" className="mt-1.5" />
-        <div className="flex-1 min-w-0">
-          <CollapsibleMarkdown
-            text={textBefore}
-            searchTerm={searchTerm}
-            currentMatchIndex={currentMatchIndex}
-            matchStartIndex={currentOffset}
-          />
+      <div key="text-before" className="py-2">
+        <div className="flex gap-2 items-start">
+          <StatusDot variant="neutral" className="mt-1.5" />
+          <div className="flex-1 min-w-0">
+            <CollapsibleMarkdown
+              text={textBefore}
+              searchTerm={searchTerm}
+              currentMatchIndex={currentMatchIndex}
+              matchStartIndex={currentOffset}
+            />
+          </div>
+          <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
+            {timestamp}
+          </span>
         </div>
-        <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap">
-          {formatEventTime(message.createdAt)}
-        </span>
+        <div className="text-xs text-muted-foreground pl-5 mt-1 sm:hidden">
+          {timestamp}
+        </div>
       </div>,
     );
   }

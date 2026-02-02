@@ -16,6 +16,9 @@ const isPublicRoute = createRouteMatcher([
   "/sign-up(.*)",
   "/api/cli/auth/device",
   "/api/cli/auth/token",
+  "/api/slack/oauth/(.*)", // Slack OAuth endpoints (install, callback)
+  "/slack/success", // Slack success page (shows result after OAuth)
+  "/slack/failed", // Slack failed page (shows error after OAuth)
   "/robots.txt",
   "/sitemap.xml",
 ]);
@@ -29,12 +32,13 @@ const intlMiddleware = createIntlMiddleware({
 });
 
 export default clerkMiddleware(async (auth, request: NextRequest) => {
-  // Skip i18n for API routes (including /v1), static files, CLI auth, sign-in, sign-up, and Next.js internals
+  // Skip i18n for API routes (including /v1), static files, CLI auth, Slack pages, sign-in, sign-up, and Next.js internals
   if (
     request.nextUrl.pathname.startsWith("/api/") ||
     request.nextUrl.pathname.startsWith("/v1/") ||
     request.nextUrl.pathname.startsWith("/_next/") ||
     request.nextUrl.pathname.startsWith("/cli-auth") ||
+    request.nextUrl.pathname.startsWith("/slack/") ||
     request.nextUrl.pathname.startsWith("/sign-in") ||
     request.nextUrl.pathname.startsWith("/sign-up") ||
     request.nextUrl.pathname.includes("/assets/") ||
@@ -61,6 +65,11 @@ export default clerkMiddleware(async (auth, request: NextRequest) => {
 
     // Handle Clerk auth for CLI auth pages (requires login)
     if (request.nextUrl.pathname.startsWith("/cli-auth")) {
+      await auth.protect();
+    }
+
+    // Handle Clerk auth for Slack link page (requires login)
+    if (request.nextUrl.pathname.startsWith("/slack/link")) {
       await auth.protect();
     }
 

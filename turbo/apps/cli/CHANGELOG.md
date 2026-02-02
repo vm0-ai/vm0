@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.12.0](https://github.com/vm0-ai/vm0/compare/cli-v9.11.0...cli-v9.12.0) (2026-02-02)
+
+
+### Features
+
+* **cli:** add silent auto-upgrade for compose and run commands ([#2120](https://github.com/vm0-ai/vm0/issues/2120)) ([891a7c4](https://github.com/vm0-ai/vm0/commit/891a7c4aa3f231af67ad5a6cbe8065ff481e6b87))
+
 ## [9.11.0](https://github.com/vm0-ai/vm0/compare/cli-v9.10.0...cli-v9.11.0) (2026-02-02)
 
 
