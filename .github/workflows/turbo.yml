@@ -542,20 +542,10 @@ jobs:
       - name: Setup CLI globally
         run: cd turbo/apps/cli && pnpm link --global
 
-      - name: Install E2E dependencies
-        run: cd e2e && npm install
-
-      - name: Install Playwright browsers
-        run: cd e2e && npx playwright install chromium
-
       - name: Authenticate CLI
-        run: |
-          echo "Authenticating CLI with ${{ needs.deploy-web.outputs.preview-url }}"
-          cd e2e && npm run auth
+        run: e2e/scripts/auth-via-api.sh
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
       - name: Save auth config to cache
