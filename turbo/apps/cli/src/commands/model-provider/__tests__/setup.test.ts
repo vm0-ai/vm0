@@ -389,12 +389,13 @@ describe("model-provider setup command", () => {
     });
 
     it("should use default model when --model not provided for moonshot-api-key", async () => {
-      let capturedBody: { selectedModel?: string } | null = null;
+      let capturedSelectedModel: string | undefined;
       server.use(
         http.put(
           "http://localhost:3000/api/model-providers",
           async ({ request }) => {
-            capturedBody = (await request.json()) as { selectedModel?: string };
+            const body = (await request.json()) as { selectedModel?: string };
+            capturedSelectedModel = body.selectedModel;
             return HttpResponse.json({
               provider: {
                 id: "mp-moonshot",
@@ -402,7 +403,7 @@ describe("model-provider setup command", () => {
                 framework: "claude-code",
                 credentialName: "MOONSHOT_API_KEY",
                 isDefault: true,
-                selectedModel: capturedBody.selectedModel,
+                selectedModel: body.selectedModel,
                 createdAt: "2024-01-01T00:00:00Z",
                 updatedAt: "2024-01-01T00:00:00Z",
               },
@@ -422,7 +423,7 @@ describe("model-provider setup command", () => {
       ]);
 
       // Should use default model (kimi-k2.5)
-      expect(capturedBody?.selectedModel).toBe("kimi-k2.5");
+      expect(capturedSelectedModel).toBe("kimi-k2.5");
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining('Model provider "moonshot-api-key" created'),
       );
