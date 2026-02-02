@@ -70,6 +70,7 @@ interface S3Mocks {
   verifyS3FilesExist: MockInstance<
     (bucket: string, s3Key: string, fileCount: number) => Promise<boolean>
   >;
+  downloadBlob: MockInstance<(bucket: string, hash: string) => Promise<Buffer>>;
 }
 
 /**
@@ -183,7 +184,34 @@ export function testContext(): TestContext {
       mockSandbox as unknown as Sandbox,
     );
 
-    // S3 mocks
+    // S3 mocks with in-memory blob storage for testing session history
+    // Tracks blob uploads so downloads can return the correct content
+    const blobStorage = new Map<string, Buffer>();
+
+    const uploadS3BufferMock = vi
+      .spyOn(s3Client, "uploadS3Buffer")
+      .mockImplementation(
+        async (_bucket: string, key: string, data: Buffer) => {
+          // Store blob data for later retrieval in tests
+          blobStorage.set(key, data);
+        },
+      );
+
+    const downloadBlobMock = vi
+      .spyOn(s3Client, "downloadBlob")
+      .mockImplementation(async (_bucket: string, hash: string) => {
+        // Look up blob data that was previously uploaded
+        const key = `blobs/${hash}.blob`;
+        const data = blobStorage.get(key);
+        if (data) {
+          return data;
+        }
+        // Fallback: return standard test session history content
+        // This handles cases where the blob exists in DB (deduplication)
+        // but was uploaded in a different test instance
+        return Buffer.from(JSON.stringify([{ role: "user", content: "test" }]));
+      });
+
     const s3Mocks: S3Mocks = {
       generatePresignedUrl: vi
         .spyOn(s3Client, "generatePresignedUrl")
@@ -192,15 +220,14 @@ export function testContext(): TestContext {
         .spyOn(s3Client, "generatePresignedPutUrl")
         .mockResolvedValue("https://mock-presigned-put-url"),
       listS3Objects: vi.spyOn(s3Client, "listS3Objects").mockResolvedValue([]),
-      uploadS3Buffer: vi
-        .spyOn(s3Client, "uploadS3Buffer")
-        .mockResolvedValue(undefined),
+      uploadS3Buffer: uploadS3BufferMock,
       s3ObjectExists: vi
         .spyOn(s3Client, "s3ObjectExists")
         .mockResolvedValue(true),
       verifyS3FilesExist: vi
         .spyOn(s3Client, "verifyS3FilesExist")
         .mockResolvedValue(true),
+      downloadBlob: downloadBlobMock,
     };
 
     // Axiom mocks - only set up if Axiom is mocked (vi.mock at module level in test file)

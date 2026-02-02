@@ -86,7 +86,7 @@ async function resolveProviderType(
  * For providers without mapping, returns a single credential entry
  * For providers with mapping (e.g., moonshot), returns multiple env vars
  */
-export function resolveEnvironmentMapping(
+function resolveEnvironmentMapping(
   providerType: ModelProviderType,
   credentialValue: string,
   selectedModel: string | undefined,

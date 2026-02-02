@@ -10,6 +10,7 @@ import {
   createTestRequest,
   createTestCompose,
   createTestV1Run,
+  createTestRun,
   completeTestRun,
   createTestModelProvider,
 } from "../../../../src/__tests__/api-test-helpers";
@@ -585,6 +586,151 @@ describe("Public API v1 - Runs Endpoints", () => {
 
       // Default model for moonshot is kimi-k2.5
       expect(envs?.ANTHROPIC_MODEL).toBe("kimi-k2.5");
+    });
+
+    it("should pass CLAUDE_CODE_OAUTH_TOKEN env var for oauth-token provider", async () => {
+      vi.mocked(Sandbox.create).mockClear();
+
+      await createTestModelProvider(
+        "claude-code-oauth-token",
+        "oauth-test-token-123",
+      );
+
+      const { composeId } = await createTestCompose(`oauth-mp-${Date.now()}`, {
+        skipDefaultApiKey: true,
+        overrides: { framework: "claude-code" },
+      });
+
+      const request = createTestRequest("http://localhost:3000/v1/runs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: composeId,
+          prompt: "Test oauth env vars",
+        }),
+      });
+
+      const response = await createRun(request);
+      expect(response.status).toBe(202);
+
+      // Verify CLAUDE_CODE_OAUTH_TOKEN is set
+      expect(Sandbox.create).toHaveBeenCalled();
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
+
+      expect(envs?.CLAUDE_CODE_OAUTH_TOKEN).toBe("oauth-test-token-123");
+    });
+
+    it("should not include model env vars for providers without environment mapping", async () => {
+      vi.mocked(Sandbox.create).mockClear();
+
+      // Create anthropic provider with selectedModel (should be ignored)
+      await createTestModelProvider(
+        "anthropic-api-key",
+        "sk-ant-key",
+        "some-model-that-should-be-ignored",
+      );
+
+      const { composeId } = await createTestCompose(
+        `anthropic-no-model-${Date.now()}`,
+        {
+          skipDefaultApiKey: true,
+          overrides: { framework: "claude-code" },
+        },
+      );
+
+      const request = createTestRequest("http://localhost:3000/v1/runs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: composeId,
+          prompt: "Test anthropic without model mapping",
+        }),
+      });
+
+      const response = await createRun(request);
+      expect(response.status).toBe(202);
+
+      // Verify only ANTHROPIC_API_KEY is set, no model env vars
+      expect(Sandbox.create).toHaveBeenCalled();
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
+
+      expect(envs?.ANTHROPIC_API_KEY).toBe("sk-ant-key");
+      // These should NOT be set for anthropic-api-key provider
+      expect(envs?.ANTHROPIC_MODEL).toBeUndefined();
+      expect(envs?.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+      expect(envs?.ANTHROPIC_BASE_URL).toBeUndefined();
+    });
+  });
+
+  describe("Session History Path (Resume)", () => {
+    it("should write session history to claude-code path format for claude-code framework", async () => {
+      // Create and complete a run to get a checkpoint
+      const { composeId } = await createTestCompose(
+        `claude-code-resume-${Date.now()}`,
+        { overrides: { framework: "claude-code" } },
+      );
+
+      const { runId: initialRunId } = await createTestRun(
+        composeId,
+        "Initial run",
+      );
+      const { checkpointId } = await completeTestRun(user.userId, initialRunId);
+
+      // Clear mocks before resume run
+      context.mocks.e2b.sandbox.files.write.mockClear();
+
+      // Create a resume run using checkpointId
+      await createTestRun(composeId, "Resume run", { checkpointId });
+
+      // Find the session history write call (ends with .jsonl)
+      const writeCalls = context.mocks.e2b.sandbox.files.write.mock.calls;
+      const sessionHistoryCall = writeCalls.find((call) => {
+        const path = call?.[0] as string;
+        return path?.endsWith(".jsonl");
+      });
+
+      expect(sessionHistoryCall).toBeDefined();
+      const writePath = sessionHistoryCall?.[0] as string;
+
+      // Claude-code path format: /home/user/.claude/projects/-{workingDir}/session-id.jsonl
+      expect(writePath).toMatch(/^\/home\/user\/\.claude\/projects\/-/);
+      expect(writePath).toMatch(/\.jsonl$/);
+    });
+
+    it("should write session history to codex path format for codex framework", async () => {
+      // Create and complete a run to get a checkpoint
+      const { composeId } = await createTestCompose(
+        `codex-resume-${Date.now()}`,
+        { overrides: { framework: "codex" } },
+      );
+
+      const { runId: initialRunId } = await createTestRun(
+        composeId,
+        "Initial run",
+      );
+      const { checkpointId } = await completeTestRun(user.userId, initialRunId);
+
+      // Clear mocks before resume run
+      context.mocks.e2b.sandbox.files.write.mockClear();
+
+      // Create a resume run using checkpointId
+      await createTestRun(composeId, "Resume run", { checkpointId });
+
+      // Find the session history write call (ends with .jsonl)
+      const writeCalls = context.mocks.e2b.sandbox.files.write.mock.calls;
+      const sessionHistoryCall = writeCalls.find((call) => {
+        const path = call?.[0] as string;
+        return path?.endsWith(".jsonl");
+      });
+
+      expect(sessionHistoryCall).toBeDefined();
+      const writePath = sessionHistoryCall?.[0] as string;
+
+      // Codex path format: /home/user/.codex/sessions/session-id.jsonl
+      expect(writePath).toMatch(/^\/home\/user\/\.codex\/sessions\//);
+      expect(writePath).toMatch(/\.jsonl$/);
     });
   });
 });
