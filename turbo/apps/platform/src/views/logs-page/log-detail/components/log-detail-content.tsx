@@ -182,10 +182,10 @@ function InfoItem({ label, children }: { label: string; children: ReactNode }) {
 
 function CopyableId({ label, value }: { label?: string; value: string }) {
   return (
-    <span className="inline-flex items-center gap-1 text-muted-foreground">
+    <span className="inline-flex items-baseline gap-1 text-muted-foreground">
       {label && <span>{label}:</span>}
       <span className="font-mono text-xs">{value.slice(0, 8)}</span>
-      <CopyButton text={value} className="h-4 w-4 p-0" />
+      <CopyButton text={value} className="h-4 w-4 p-0 self-center" />
     </span>
   );
 }

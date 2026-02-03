@@ -156,10 +156,8 @@ export function AgentEventsCard({
 
   if (eventsLoadable.state === "loading") {
     return (
-      <div className="px-4 sm:px-8">
-        <div className="flex items-center justify-center p-8">
-          <IconLoader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        </div>
+      <div className="flex items-center justify-center p-8">
+        <IconLoader2 className="h-5 w-5 animate-spin text-muted-foreground" />
       </div>
     );
   }

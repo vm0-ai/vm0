@@ -230,7 +230,7 @@ function ToolInputDetails({
     const content = input.content as string | undefined;
     if (content) {
       return (
-        <pre className="font-mono text-xs text-muted-foreground whitespace-pre-wrap break-all max-h-60 overflow-y-auto">
+        <pre className="font-mono text-xs text-muted-foreground whitespace-pre-wrap break-all">
           {content}
         </pre>
       );
@@ -247,7 +247,7 @@ function ToolInputDetails({
           {oldString && (
             <div className="flex items-start gap-2">
               <span className="text-red-500 shrink-0">-</span>
-              <pre className="font-mono text-xs text-red-500/70 whitespace-pre-wrap break-all max-h-40 overflow-y-auto">
+              <pre className="font-mono text-xs text-red-500/70 whitespace-pre-wrap break-all">
                 {oldString}
               </pre>
             </div>
@@ -255,7 +255,7 @@ function ToolInputDetails({
           {newString && (
             <div className="flex items-start gap-2">
               <span className="text-lime-500 shrink-0">+</span>
-              <pre className="font-mono text-xs text-lime-500/70 whitespace-pre-wrap break-all max-h-40 overflow-y-auto">
+              <pre className="font-mono text-xs text-lime-500/70 whitespace-pre-wrap break-all">
                 {newString}
               </pre>
             </div>
@@ -340,7 +340,7 @@ function ToolResultDetails({
 
   if (isError) {
     return (
-      <pre className="text-xs text-red-500 whitespace-pre-wrap max-h-40 overflow-y-auto break-all">
+      <pre className="text-xs text-red-500 whitespace-pre-wrap break-all">
         {contentElement}
       </pre>
     );
@@ -360,7 +360,7 @@ function ToolResultDetails({
             +{remainingLines} lines
             {bytes ? ` (${(bytes / 1024).toFixed(1)} KB)` : ""}
           </summary>
-          <pre className="text-xs text-foreground whitespace-pre-wrap max-h-60 overflow-y-auto break-all">
+          <pre className="text-xs text-foreground whitespace-pre-wrap break-all">
             {lines.slice(3).join("\n")}
           </pre>
         </details>
@@ -369,7 +369,7 @@ function ToolResultDetails({
   }
 
   return (
-    <pre className="text-xs text-foreground whitespace-pre-wrap max-h-40 overflow-y-auto break-all">
+    <pre className="text-xs text-foreground whitespace-pre-wrap break-all">
       {contentElement}
     </pre>
   );
