@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { TapPool } from "../tap-pool.js";
 import { initIPRegistry, resetIPRegistry } from "../ip-registry.js";
+import { createVmId as vmId } from "../vm-id.js";
 
 describe("TapPool", () => {
   let testDir: string;
@@ -131,7 +132,7 @@ describe("TapPool", () => {
 
       await pool.init();
 
-      const config = await pool.acquire("test-vm-1");
+      const config = await pool.acquire(vmId("test-vm-1"));
 
       expect(config.tapDevice).toBe("vm078f6669b000");
       expect(config.guestIp).toBe("172.16.0.2");
@@ -154,7 +155,7 @@ describe("TapPool", () => {
 
       await pool.init();
 
-      await pool.acquire("abc12345");
+      await pool.acquire(vmId("abc12345"));
 
       expect(setMacCalls).toHaveLength(1);
       expect(setMacCalls[0]?.tap).toBe("vm078f6669b000");
@@ -174,10 +175,10 @@ describe("TapPool", () => {
       createTapCalls = [];
 
       // First acquire uses pool
-      await pool.acquire("vm1");
+      await pool.acquire(vmId("vm1"));
 
       // Second acquire should create on-demand
-      const config = await pool.acquire("vm2");
+      const config = await pool.acquire(vmId("vm2"));
 
       expect(createTapCalls).toHaveLength(1);
       expect(config.tapDevice).toBe("vm078f6669b001");
@@ -197,10 +198,10 @@ describe("TapPool", () => {
       createTapCalls = [];
 
       // Acquire one - pool goes from 3 to 2, at threshold
-      await pool.acquire("vm1");
+      await pool.acquire(vmId("vm1"));
 
       // Acquire another - pool goes from 2 to 1, below threshold
-      await pool.acquire("vm2");
+      await pool.acquire(vmId("vm2"));
 
       // Wait for background replenishment to complete
       await vi.waitFor(() => {
@@ -223,8 +224,8 @@ describe("TapPool", () => {
       await pool.init();
       const initialCount = getIPAllocationCount();
 
-      const config = await pool.acquire("test-vm");
-      await pool.release(config.tapDevice, config.guestIp, "test-vm");
+      const config = await pool.acquire(vmId("test-vm"));
+      await pool.release(config.tapDevice, config.guestIp, vmId("test-vm"));
 
       // Pair is returned to pool, IP should still be allocated
       expect(getIPAllocationCount()).toBe(initialCount);
@@ -243,12 +244,12 @@ describe("TapPool", () => {
       await pool.init();
 
       // Acquire and release
-      const config1 = await pool.acquire("vm1");
-      await pool.release(config1.tapDevice, config1.guestIp, "vm1");
+      const config1 = await pool.acquire(vmId("vm1"));
+      await pool.release(config1.tapDevice, config1.guestIp, vmId("vm1"));
 
       // Reset counters
       createTapCalls = [];
-      const config2 = await pool.acquire("vm2");
+      const config2 = await pool.acquire(vmId("vm2"));
 
       // Should reuse the pair (no new TAP created)
       expect(createTapCalls).toHaveLength(0);
@@ -268,15 +269,15 @@ describe("TapPool", () => {
 
       await pool.init();
 
-      const config = await pool.acquire("test-vm");
+      const config = await pool.acquire(vmId("test-vm"));
 
       // Release the same pair twice
-      await pool.release(config.tapDevice, config.guestIp, "test-vm");
-      await pool.release(config.tapDevice, config.guestIp, "test-vm");
+      await pool.release(config.tapDevice, config.guestIp, vmId("test-vm"));
+      await pool.release(config.tapDevice, config.guestIp, vmId("test-vm"));
 
       // Acquire twice - should get two different pairs (not the same one twice)
-      const config1 = await pool.acquire("vm1");
-      const config2 = await pool.acquire("vm2");
+      const config1 = await pool.acquire(vmId("vm1"));
+      const config2 = await pool.acquire(vmId("vm2"));
 
       expect(config1.tapDevice).not.toBe(config2.tapDevice);
       expect(config1.guestIp).not.toBe(config2.guestIp);
@@ -295,7 +296,7 @@ describe("TapPool", () => {
       await pool.init();
 
       // Release a non-pooled TAP (doesn't match pool prefix)
-      await pool.release("tap-legacy", "172.16.0.99", "legacy-vm");
+      await pool.release("tap-legacy", "172.16.0.99", vmId("legacy-vm"));
 
       expect(deleteTapCalls).toContain("tap-legacy");
     });
@@ -357,12 +358,12 @@ describe("TapPool", () => {
       });
 
       await pool.init();
-      const config = await pool.acquire("vm1");
+      const config = await pool.acquire(vmId("vm1"));
 
       await pool.cleanup();
       deleteTapCalls = [];
 
-      await pool.release(config.tapDevice, config.guestIp, "vm1");
+      await pool.release(config.tapDevice, config.guestIp, vmId("vm1"));
 
       expect(deleteTapCalls).toContain(config.tapDevice);
     });
@@ -404,10 +405,10 @@ describe("TapPool", () => {
       expect(createTapCalls).toEqual(["vm078f6669b000"]);
 
       // Exhaust pool
-      await pool.acquire("vm1");
+      await pool.acquire(vmId("vm1"));
 
       // On-demand should use next index
-      await pool.acquire("vm2");
+      await pool.acquire(vmId("vm2"));
       expect(createTapCalls).toContain("vm078f6669b001");
     });
 
@@ -424,8 +425,16 @@ describe("TapPool", () => {
       await pool.init();
 
       // Release TAPs with high index - should be recognized as pooled
-      await pool.release("vm078f6669b1000", "172.16.0.5", "high-index-vm1");
-      await pool.release("vm078f6669b12345", "172.16.0.6", "high-index-vm2");
+      await pool.release(
+        "vm078f6669b1000",
+        "172.16.0.5",
+        vmId("high-index-vm1"),
+      );
+      await pool.release(
+        "vm078f6669b12345",
+        "172.16.0.6",
+        vmId("high-index-vm2"),
+      );
 
       // High index TAPs should NOT be deleted (they're pooled)
       expect(deleteTapCalls).not.toContain("vm078f6669b1000");
@@ -448,9 +457,9 @@ describe("TapPool", () => {
 
       // Acquire 3 concurrently
       const results = await Promise.all([
-        pool.acquire("vm1"),
-        pool.acquire("vm2"),
-        pool.acquire("vm3"),
+        pool.acquire(vmId("vm1")),
+        pool.acquire(vmId("vm2")),
+        pool.acquire(vmId("vm3")),
       ]);
 
       // All should get unique TAPs
@@ -488,9 +497,9 @@ describe("TapPool", () => {
 
       // Acquire all 3 pairs
       const configs = await Promise.all([
-        pool.acquire("vm1"),
-        pool.acquire("vm2"),
-        pool.acquire("vm3"),
+        pool.acquire(vmId("vm1")),
+        pool.acquire(vmId("vm2")),
+        pool.acquire(vmId("vm3")),
       ]);
 
       // Reset counters and add delay
@@ -498,10 +507,10 @@ describe("TapPool", () => {
       createPairDelay = 50;
 
       // Acquire one more (on-demand), which triggers replenish
-      await pool.acquire("vm4");
+      await pool.acquire(vmId("vm4"));
 
       // Release pairs back while replenish is running
-      const vmIds = ["vm1", "vm2", "vm3"];
+      const vmIds = [vmId("vm1"), vmId("vm2"), vmId("vm3")];
       for (let i = 0; i < configs.length; i++) {
         const config = configs[i]!;
         await pool.release(config.tapDevice, config.guestIp, vmIds[i]!);
@@ -543,15 +552,15 @@ describe("TapPool", () => {
       expect(createTapCalls).toHaveLength(2);
 
       // Exhaust the pool completely
-      await pool.acquire("vm1");
-      await pool.acquire("vm2");
+      await pool.acquire(vmId("vm1"));
+      await pool.acquire(vmId("vm2"));
 
       // Reset counters - now pool is empty
       createTapCalls = [];
 
       // This acquire is on-demand (pool empty)
       // With threshold > 0, it should also trigger replenish
-      await pool.acquire("vm3");
+      await pool.acquire(vmId("vm3"));
 
       // Wait for background replenishment
       await vi.waitFor(
@@ -577,10 +586,10 @@ describe("TapPool", () => {
       createTapCalls = [];
 
       // Exhaust pool
-      await pool.acquire("vm1");
+      await pool.acquire(vmId("vm1"));
 
       // On-demand acquire
-      await pool.acquire("vm2");
+      await pool.acquire(vmId("vm2"));
 
       // Only 1 on-demand creation, no replenish
       expect(createTapCalls).toHaveLength(1);
@@ -622,7 +631,7 @@ describe("TapPool", () => {
       deleteTapCalls = [];
 
       // Acquire triggers replenish (pool goes from 2 to 1, below threshold 2)
-      await pool.acquire("vm1");
+      await pool.acquire(vmId("vm1"));
 
       // Wait for replenish to start and block
       await vi.waitFor(
@@ -670,7 +679,7 @@ describe("TapPool", () => {
       await pool.init();
 
       // Acquire should fail at MAC setting
-      await expect(pool.acquire("vm1")).rejects.toThrow("MAC failed");
+      await expect(pool.acquire(vmId("vm1"))).rejects.toThrow("MAC failed");
 
       // Pair should be returned to pool (not deleted)
       expect(deleteTapCalls).toHaveLength(0);
@@ -678,7 +687,7 @@ describe("TapPool", () => {
       // Next acquire should work (pair was returned to pool)
       failingSetMac.mockResolvedValueOnce(undefined);
       createTapCalls = [];
-      const config = await pool.acquire("vm2");
+      const config = await pool.acquire(vmId("vm2"));
 
       expect(createTapCalls).toHaveLength(0);
       expect(config.tapDevice).toBe("vm078f6669b000");
@@ -705,11 +714,11 @@ describe("TapPool", () => {
       await pool.init();
 
       // First acquire succeeds
-      await pool.acquire("vm1");
+      await pool.acquire(vmId("vm1"));
       deleteTapCalls = [];
 
       // Second (on-demand) acquire fails at MAC
-      await expect(pool.acquire("vm2")).rejects.toThrow("MAC failed");
+      await expect(pool.acquire(vmId("vm2"))).rejects.toThrow("MAC failed");
 
       // On-demand TAP should be deleted
       expect(deleteTapCalls).toContain("vm078f6669b001");

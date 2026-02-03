@@ -8,6 +8,7 @@ import {
   resetIPRegistry,
   type IPRegistryConfig,
 } from "../ip-registry.js";
+import { createVmId as vmId } from "../vm-id.js";
 
 describe("IPRegistry", () => {
   let testDir: string;
@@ -118,18 +119,18 @@ describe("IPRegistry", () => {
   describe("vmId tracking", () => {
     it("should assign vmId to IP allocation", async () => {
       const ip = await registry.allocateIP("tap000");
-      await registry.assignVmIdToIP(ip, "test-vm-123");
+      await registry.assignVmIdToIP(ip, vmId("test-vm-123"));
 
       const data = JSON.parse(
         fs.readFileSync(path.join(testDir, "ip-registry.json"), "utf-8"),
       );
-      expect(data.allocations[ip].vmId).toBe("test-vm-123");
+      expect(data.allocations[ip].vmId).toBe(vmId("test-vm-123"));
     });
 
     it("should clear vmId from IP allocation when vmId matches", async () => {
       const ip = await registry.allocateIP("tap000");
-      await registry.assignVmIdToIP(ip, "test-vm-123");
-      await registry.clearVmIdFromIP(ip, "test-vm-123");
+      await registry.assignVmIdToIP(ip, vmId("test-vm-123"));
+      await registry.clearVmIdFromIP(ip, vmId("test-vm-123"));
 
       const data = JSON.parse(
         fs.readFileSync(path.join(testDir, "ip-registry.json"), "utf-8"),
@@ -139,23 +140,23 @@ describe("IPRegistry", () => {
 
     it("should not clear vmId when expectedVmId does not match", async () => {
       const ip = await registry.allocateIP("tap000");
-      await registry.assignVmIdToIP(ip, "new-vm-456");
+      await registry.assignVmIdToIP(ip, vmId("new-vm-456"));
 
       // Try to clear with old vmId
-      await registry.clearVmIdFromIP(ip, "old-vm-123");
+      await registry.clearVmIdFromIP(ip, vmId("old-vm-123"));
 
       // vmId should still be new-vm-456
       const data = JSON.parse(
         fs.readFileSync(path.join(testDir, "ip-registry.json"), "utf-8"),
       );
-      expect(data.allocations[ip].vmId).toBe("new-vm-456");
+      expect(data.allocations[ip].vmId).toBe("new-vm-4");
     });
   });
 
   describe("diagnostic functions", () => {
     it("getAllocations should return all allocations as Map", async () => {
       await registry.allocateIP("tap000");
-      await registry.assignVmIdToIP("172.16.0.2", "vm1");
+      await registry.assignVmIdToIP("172.16.0.2", vmId("vm1"));
       await registry.allocateIP("tap001");
 
       const allocations = registry.getAllocations();
@@ -164,20 +165,20 @@ describe("IPRegistry", () => {
       expect(allocations.size).toBe(2);
       expect(allocations.get("172.16.0.2")).toMatchObject({
         tapDevice: "tap000",
-        vmId: "vm1",
+        vmId: "00000vm1",
       });
       expect(allocations.get("172.16.0.2")?.runnerPid).toBe(process.pid);
     });
 
     it("getIPForVm should find IP by vmId", async () => {
       await registry.allocateIP("tap000");
-      await registry.assignVmIdToIP("172.16.0.2", "vm1");
+      await registry.assignVmIdToIP("172.16.0.2", vmId("vm1"));
       await registry.allocateIP("tap001");
-      await registry.assignVmIdToIP("172.16.0.3", "vm2");
+      await registry.assignVmIdToIP("172.16.0.3", vmId("vm2"));
 
-      expect(registry.getIPForVm("vm1")).toBe("172.16.0.2");
-      expect(registry.getIPForVm("vm2")).toBe("172.16.0.3");
-      expect(registry.getIPForVm("vm-not-found")).toBeUndefined();
+      expect(registry.getIPForVm(vmId("vm1"))).toBe("172.16.0.2");
+      expect(registry.getIPForVm(vmId("vm2"))).toBe("172.16.0.3");
+      expect(registry.getIPForVm(vmId("vm-not-found"))).toBeUndefined();
     });
   });
 

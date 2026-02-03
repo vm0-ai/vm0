@@ -128,7 +128,7 @@ function LogsTableData({ pageComputed }: LogsTableDataProps) {
         <LogsTableHeader />
         <TableBody>
           {dataLoadable.data.data.map((entry) => (
-            <LogsTableRow key={entry.id} logId={entry.id} />
+            <LogsTableRow key={entry.id} entry={entry} />
           ))}
         </TableBody>
       </Table>

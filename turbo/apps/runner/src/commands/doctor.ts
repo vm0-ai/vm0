@@ -25,6 +25,7 @@ import {
   BRIDGE_NAME,
 } from "../lib/firecracker/network.js";
 import { getIPForVm, getAllocations } from "../lib/firecracker/ip-registry.js";
+import { type VmId, createVmId } from "../lib/firecracker/vm-id.js";
 
 interface RunnerStatus {
   mode: string;
@@ -36,7 +37,7 @@ interface RunnerStatus {
 
 interface JobInfo {
   runId: string;
-  vmId: string;
+  vmId: VmId;
   ip: string;
   hasProcess: boolean;
   pid?: number;
@@ -145,14 +146,13 @@ export const doctorCommand = new Command("doctor")
 
         // Build job info with IP addresses
         const jobs: JobInfo[] = [];
-        const statusVmIds = new Set<string>();
+        const statusVmIds = new Set<VmId>();
         // IP allocations include vmId for diagnostic purposes
         const allocations = getAllocations();
 
         if (status?.active_run_ids) {
           for (const runId of status.active_run_ids) {
-            const vmId = runId.split("-")[0];
-            if (!vmId) continue;
+            const vmId = createVmId(runId);
             statusVmIds.add(vmId);
             const proc = processes.find((p) => p.vmId === vmId);
             // Look up IP from the registry

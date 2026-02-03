@@ -211,4 +211,161 @@ describe("POST /api/storages/prepare", () => {
       "https://mock-presigned-put-url",
     );
   });
+
+  describe("content hash behavior", () => {
+    it("should produce same version ID regardless of file order", async () => {
+      const storageName = `order-independent-${Date.now()}`;
+
+      // Files in order A, B
+      const filesOrderAB = [
+        { path: "a.txt", hash: "1".repeat(64), size: 100 },
+        { path: "b.txt", hash: "2".repeat(64), size: 200 },
+      ];
+
+      // Same files in order B, A
+      const filesOrderBA = [
+        { path: "b.txt", hash: "2".repeat(64), size: 200 },
+        { path: "a.txt", hash: "1".repeat(64), size: 100 },
+      ];
+
+      // Request with files in order A, B
+      const request1 = createTestRequest(
+        "http://localhost:3000/api/storages/prepare",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            storageName,
+            storageType: "artifact",
+            files: filesOrderAB,
+          }),
+        },
+      );
+
+      const response1 = await POST(request1);
+      const json1 = await response1.json();
+
+      // Request with files in order B, A
+      const request2 = createTestRequest(
+        "http://localhost:3000/api/storages/prepare",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            storageName,
+            storageType: "artifact",
+            files: filesOrderBA,
+          }),
+        },
+      );
+
+      const response2 = await POST(request2);
+      const json2 = await response2.json();
+
+      // Version IDs should be identical regardless of file order
+      expect(json1.versionId).toBe(json2.versionId);
+    });
+
+    it("should produce different version ID when file content changes", async () => {
+      const storageName = `content-change-${Date.now()}`;
+
+      // Original file content
+      const filesOriginal = [
+        { path: "data.txt", hash: "a".repeat(64), size: 100 },
+      ];
+
+      // Modified file content (same path, different hash)
+      const filesModified = [
+        { path: "data.txt", hash: "b".repeat(64), size: 100 },
+      ];
+
+      // Request with original content
+      const request1 = createTestRequest(
+        "http://localhost:3000/api/storages/prepare",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            storageName,
+            storageType: "artifact",
+            files: filesOriginal,
+          }),
+        },
+      );
+
+      const response1 = await POST(request1);
+      const json1 = await response1.json();
+
+      // Request with modified content
+      const request2 = createTestRequest(
+        "http://localhost:3000/api/storages/prepare",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            storageName,
+            storageType: "artifact",
+            files: filesModified,
+          }),
+        },
+      );
+
+      const response2 = await POST(request2);
+      const json2 = await response2.json();
+
+      // Version IDs should be different when content changes
+      expect(json1.versionId).not.toBe(json2.versionId);
+    });
+
+    it("should produce different version ID when file path changes", async () => {
+      const storageName = `path-change-${Date.now()}`;
+
+      // File with original path
+      const filesOriginalPath = [
+        { path: "old-name.txt", hash: "x".repeat(64), size: 50 },
+      ];
+
+      // Same content with different path
+      const filesNewPath = [
+        { path: "new-name.txt", hash: "x".repeat(64), size: 50 },
+      ];
+
+      // Request with original path
+      const request1 = createTestRequest(
+        "http://localhost:3000/api/storages/prepare",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            storageName,
+            storageType: "artifact",
+            files: filesOriginalPath,
+          }),
+        },
+      );
+
+      const response1 = await POST(request1);
+      const json1 = await response1.json();
+
+      // Request with new path
+      const request2 = createTestRequest(
+        "http://localhost:3000/api/storages/prepare",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            storageName,
+            storageType: "artifact",
+            files: filesNewPath,
+          }),
+        },
+      );
+
+      const response2 = await POST(request2);
+      const json2 = await response2.json();
+
+      // Version IDs should be different when path changes
+      expect(json1.versionId).not.toBe(json2.versionId);
+    });
+  });
 });

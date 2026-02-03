@@ -1,9 +1,9 @@
-import { useSet, useLoadable } from "ccstate-react";
+import { useSet } from "ccstate-react";
 import { IconChevronRight } from "@tabler/icons-react";
-import { getOrCreateLogDetail$ } from "../../signals/logs-page/logs-signals.ts";
 import { navigateInReact$ } from "../../signals/route.ts";
 import { TableRow, TableCell } from "@vm0/ui";
 import { StatusBadge } from "./status-badge.tsx";
+import type { LogEntry } from "../../signals/logs-page/types.ts";
 
 function formatTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -19,45 +19,15 @@ function formatTime(dateStr: string): string {
 }
 
 interface LogsTableRowProps {
-  logId: string;
+  entry: LogEntry;
 }
 
-export function LogsTableRow({ logId }: LogsTableRowProps) {
-  // Get or create the log detail computed (command is idempotent due to caching)
-  const getOrCreateLogDetail = useSet(getOrCreateLogDetail$);
+export function LogsTableRow({ entry }: LogsTableRowProps) {
   const navigate = useSet(navigateInReact$);
-  const detail$ = getOrCreateLogDetail(logId);
-  const loadable = useLoadable(detail$);
 
   const handleRowClick = () => {
-    navigate("/logs/:id", { pathParams: { id: logId } });
+    navigate("/logs/:id", { pathParams: { id: entry.id } });
   };
-
-  if (loadable.state === "loading") {
-    return (
-      <TableRow>
-        <td colSpan={7} className="p-2 text-center text-muted-foreground">
-          Loading...
-        </td>
-      </TableRow>
-    );
-  }
-
-  if (loadable.state === "hasError") {
-    const errorMessage =
-      loadable.error instanceof Error
-        ? loadable.error.message
-        : "Failed to load details";
-    return (
-      <TableRow>
-        <td colSpan={7} className="p-2 text-center text-destructive">
-          Error: {errorMessage}
-        </td>
-      </TableRow>
-    );
-  }
-
-  const detail = loadable.data;
 
   return (
     <TableRow
@@ -65,22 +35,22 @@ export function LogsTableRow({ logId }: LogsTableRowProps) {
       onClick={handleRowClick}
     >
       <TableCell className="max-w-[180px] px-3 py-2 text-sm font-medium">
-        <span className="block truncate">{detail.id}</span>
+        <span className="block truncate">{entry.id}</span>
       </TableCell>
       <TableCell className="max-w-[180px] px-3 py-2 text-sm font-medium">
-        <span className="block truncate">{detail.sessionId ?? "-"}</span>
+        <span className="block truncate">-</span>
       </TableCell>
       <TableCell className="w-[120px] truncate px-3 py-2 text-sm font-medium">
-        {detail.agentName}
+        {entry.agentName}
       </TableCell>
       <TableCell className="w-[180px] truncate px-3 py-2 text-sm font-medium">
-        {detail.framework}
+        -
       </TableCell>
       <TableCell className="w-[100px] px-3 py-2">
-        <StatusBadge status={detail.status} />
+        <StatusBadge status={entry.status} />
       </TableCell>
       <TableCell className="px-3 py-2 text-sm font-medium">
-        {formatTime(detail.createdAt)}
+        {formatTime(entry.createdAt)}
       </TableCell>
       <TableCell className="w-[50px] px-2 py-2">
         <div className="flex size-8 items-center justify-center">

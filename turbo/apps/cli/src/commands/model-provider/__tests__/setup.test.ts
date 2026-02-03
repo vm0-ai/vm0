@@ -452,4 +452,138 @@ describe("model-provider setup command", () => {
       );
     });
   });
+
+  describe("openrouter-api-key (auto mode)", () => {
+    it("should accept --type openrouter-api-key without --model (auto mode)", async () => {
+      let capturedSelectedModel: string | undefined;
+      server.use(
+        http.put(
+          "http://localhost:3000/api/model-providers",
+          async ({ request }) => {
+            const body = (await request.json()) as { selectedModel?: string };
+            capturedSelectedModel = body.selectedModel;
+            return HttpResponse.json({
+              provider: {
+                id: "mp-openrouter",
+                type: "openrouter-api-key",
+                framework: "claude-code",
+                credentialName: "OPENROUTER_API_KEY",
+                isDefault: true,
+                selectedModel: null,
+                createdAt: "2024-01-01T00:00:00Z",
+                updatedAt: "2024-01-01T00:00:00Z",
+              },
+              created: true,
+            });
+          },
+        ),
+      );
+
+      await setupCommand.parseAsync([
+        "node",
+        "cli",
+        "--type",
+        "openrouter-api-key",
+        "--credential",
+        "sk-or-xxx",
+      ]);
+
+      // In auto mode, selectedModel should be undefined (not sent to API)
+      expect(capturedSelectedModel).toBeUndefined();
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('Model provider "openrouter-api-key" created'),
+      );
+    });
+
+    it("should accept explicit model selection", async () => {
+      let capturedSelectedModel: string | undefined;
+      server.use(
+        http.put(
+          "http://localhost:3000/api/model-providers",
+          async ({ request }) => {
+            const body = (await request.json()) as { selectedModel?: string };
+            capturedSelectedModel = body.selectedModel;
+            return HttpResponse.json({
+              provider: {
+                id: "mp-openrouter",
+                type: "openrouter-api-key",
+                framework: "claude-code",
+                credentialName: "OPENROUTER_API_KEY",
+                isDefault: true,
+                selectedModel: body.selectedModel,
+                createdAt: "2024-01-01T00:00:00Z",
+                updatedAt: "2024-01-01T00:00:00Z",
+              },
+              created: true,
+            });
+          },
+        ),
+      );
+
+      await setupCommand.parseAsync([
+        "node",
+        "cli",
+        "--type",
+        "openrouter-api-key",
+        "--credential",
+        "sk-or-xxx",
+        "--model",
+        "anthropic/claude-sonnet-4.5",
+      ]);
+
+      expect(capturedSelectedModel).toBe("anthropic/claude-sonnet-4.5");
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("with model: anthropic/claude-sonnet-4.5"),
+      );
+    });
+
+    it("should reject invalid model for openrouter-api-key", async () => {
+      await expect(async () => {
+        await setupCommand.parseAsync([
+          "node",
+          "cli",
+          "--type",
+          "openrouter-api-key",
+          "--credential",
+          "sk-or-xxx",
+          "--model",
+          "invalid/model",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining('Invalid model "invalid/model"'),
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Valid models:"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should list valid models when invalid model provided", async () => {
+      await expect(async () => {
+        await setupCommand.parseAsync([
+          "node",
+          "cli",
+          "--type",
+          "openrouter-api-key",
+          "--credential",
+          "sk-or-xxx",
+          "--model",
+          "not-valid",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      // Should show available Anthropic models
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("anthropic/claude-sonnet-4.5"),
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("anthropic/claude-opus-4.5"),
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("anthropic/claude-haiku-4.5"),
+      );
+    });
+  });
 });

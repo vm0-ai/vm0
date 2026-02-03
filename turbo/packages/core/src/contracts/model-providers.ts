@@ -30,6 +30,29 @@ export const MODEL_PROVIDER_TYPES = {
     helpText:
       "Get your API key at: https://console.anthropic.com/settings/keys",
   },
+  "openrouter-api-key": {
+    framework: "claude-code" as const,
+    credentialName: "OPENROUTER_API_KEY",
+    label: "OpenRouter API Key",
+    credentialLabel: "API key",
+    helpText: "Get your API key at: https://openrouter.ai/settings/keys",
+    environmentMapping: {
+      ANTHROPIC_AUTH_TOKEN: "$credential",
+      ANTHROPIC_BASE_URL: "https://openrouter.ai/api",
+      ANTHROPIC_API_KEY: "",
+      ANTHROPIC_MODEL: "$model",
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "$model",
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "$model",
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
+      CLAUDE_CODE_SUBAGENT_MODEL: "$model",
+    } as Record<string, string>,
+    models: [
+      "anthropic/claude-sonnet-4.5",
+      "anthropic/claude-opus-4.5",
+      "anthropic/claude-haiku-4.5",
+    ] as string[],
+    defaultModel: "",
+  },
   "moonshot-api-key": {
     framework: "claude-code" as const,
     credentialName: "MOONSHOT_API_KEY",
@@ -53,6 +76,27 @@ export const MODEL_PROVIDER_TYPES = {
     ] as string[],
     defaultModel: "kimi-k2.5",
   },
+  "minimax-api-key": {
+    framework: "claude-code" as const,
+    credentialName: "MINIMAX_API_KEY",
+    label: "MiniMax API Key",
+    credentialLabel: "API key",
+    helpText:
+      "Get your API key at: https://platform.minimax.io/user-center/basic-information/interface-key",
+    environmentMapping: {
+      ANTHROPIC_AUTH_TOKEN: "$credential",
+      ANTHROPIC_BASE_URL: "https://api.minimax.io/anthropic",
+      ANTHROPIC_MODEL: "$model",
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "$model",
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "$model",
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
+      CLAUDE_CODE_SUBAGENT_MODEL: "$model",
+      API_TIMEOUT_MS: "3000000",
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+    } as Record<string, string>,
+    models: ["MiniMax-M2.1"] as string[],
+    defaultModel: "MiniMax-M2.1",
+  },
 } as const;
 
 export type ModelProviderType = keyof typeof MODEL_PROVIDER_TYPES;
@@ -61,7 +105,9 @@ export type ModelProviderFramework = "claude-code" | "codex";
 export const modelProviderTypeSchema = z.enum([
   "claude-code-oauth-token",
   "anthropic-api-key",
+  "openrouter-api-key",
   "moonshot-api-key",
+  "minimax-api-key",
 ]);
 
 export const modelProviderFrameworkSchema = z.enum(["claude-code", "codex"]);

@@ -139,6 +139,12 @@ export async function prepareStorageManifest(
       )
     : { volumes: [], artifact: null, errors: [] };
 
+  // Check for volume resolution errors (missing variables, invalid config, etc.)
+  if (volumeResult.errors.length > 0) {
+    const messages = volumeResult.errors.map((e) => e.message).join("; ");
+    throw new Error(`Volume resolution failed: ${messages}`);
+  }
+
   // Process all volumes and artifact in parallel
   const volumePromises = volumeResult.volumes.map(async (volume) => {
     const { versionId, s3Key } = await resolveVersion(

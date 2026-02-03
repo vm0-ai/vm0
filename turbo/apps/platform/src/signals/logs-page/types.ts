@@ -1,8 +1,20 @@
 // API response types (matching platform API contracts)
 
-// List response - only contains IDs for efficiency
-interface LogEntry {
+// Run status enum for logs
+export type LogStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "timeout"
+  | "cancelled";
+
+// List response - contains basic fields for list display
+export interface LogEntry {
   id: string;
+  agentName: string;
+  status: LogStatus;
+  createdAt: string;
 }
 
 export interface LogsListResponse {
@@ -15,14 +27,6 @@ export interface LogsListResponse {
 }
 
 // Detail response - full log information
-export type LogStatus =
-  | "pending"
-  | "running"
-  | "completed"
-  | "failed"
-  | "timeout"
-  | "cancelled";
-
 interface Artifact {
   name: string | null;
   version: string | null;

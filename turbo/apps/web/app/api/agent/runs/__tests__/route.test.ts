@@ -219,6 +219,103 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       // Should succeed (running, not failed)
       expect(data.status).toBe("running");
     });
+
+    it("should reject request when required vars are not provided", async () => {
+      // Create compose that requires vars in environment
+      const { composeId: varsComposeId } = await createTestCompose(
+        `vars-required-${Date.now()}`,
+        {
+          overrides: {
+            environment: {
+              ANTHROPIC_API_KEY: "test-key",
+              MY_VAR: "${{ vars.MY_VAR }}",
+            },
+          },
+        },
+      );
+
+      // Try to create run WITHOUT providing required vars
+      // Template vars are validated at route level BEFORE run creation
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: varsComposeId,
+            prompt: "Test without vars",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error.message).toContain("MY_VAR");
+    });
+
+    it("should reject request when only some vars are provided", async () => {
+      // Create compose that requires multiple vars
+      const { composeId: multiVarsComposeId } = await createTestCompose(
+        `multi-vars-${Date.now()}`,
+        {
+          overrides: {
+            environment: {
+              ANTHROPIC_API_KEY: "test-key",
+              VAR_A: "${{ vars.VAR_A }}",
+              VAR_B: "${{ vars.VAR_B }}",
+            },
+          },
+        },
+      );
+
+      // Try to create run with only one var
+      // Template vars are validated at route level BEFORE run creation
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: multiVarsComposeId,
+            prompt: "Test with partial vars",
+            vars: { VAR_A: "value-a" }, // Missing VAR_B
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error.message).toContain("VAR_B");
+      // VAR_A should NOT be in the error (it was provided)
+      expect(data.error.message).not.toContain("VAR_A");
+    });
+
+    it("should succeed when all required vars are provided", async () => {
+      // Create compose that requires vars
+      const { composeId: varsComposeId } = await createTestCompose(
+        `vars-success-${Date.now()}`,
+        {
+          overrides: {
+            environment: {
+              ANTHROPIC_API_KEY: "test-key",
+              MY_VAR: "${{ vars.MY_VAR }}",
+            },
+          },
+        },
+      );
+
+      // Create run WITH required vars
+      const data = await createTestRun(varsComposeId, "Test with vars", {
+        vars: { MY_VAR: "var-value" },
+      });
+
+      // Should succeed (running, not failed)
+      expect(data.status).toBe("running");
+    });
   });
 
   describe("Authorization", () => {
@@ -683,6 +780,101 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(envs?.ANTHROPIC_MODEL).toBe("kimi-k2.5");
     });
 
+    it("should pass mapped env vars for openrouter-api-key provider with selected model", async () => {
+      vi.mocked(Sandbox.create).mockClear();
+
+      await createTestModelProvider(
+        "openrouter-api-key",
+        "sk-or-test-key",
+        "anthropic/claude-sonnet-4.5",
+      );
+
+      const { composeId } = await createTestCompose(
+        `openrouter-mp-env-${Date.now()}`,
+        {
+          skipDefaultApiKey: true,
+          overrides: { framework: "claude-code" },
+        },
+      );
+
+      const data = await createTestRun(composeId, "Test openrouter env vars");
+      expect(data.status).toBe("running");
+
+      // Verify Sandbox.create was called with mapped env vars
+      expect(Sandbox.create).toHaveBeenCalled();
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
+
+      // OpenRouter provider maps to ANTHROPIC_* env vars
+      expect(envs?.ANTHROPIC_AUTH_TOKEN).toBe("sk-or-test-key");
+      expect(envs?.ANTHROPIC_BASE_URL).toBe("https://openrouter.ai/api");
+      expect(envs?.ANTHROPIC_API_KEY).toBe("");
+      expect(envs?.ANTHROPIC_MODEL).toBe("anthropic/claude-sonnet-4.5");
+    });
+
+    it("should not set ANTHROPIC_MODEL when openrouter provider uses auto mode (empty defaultModel)", async () => {
+      vi.mocked(Sandbox.create).mockClear();
+
+      // Create openrouter provider without selectedModel (auto mode)
+      await createTestModelProvider("openrouter-api-key", "sk-or-key");
+
+      const { composeId } = await createTestCompose(
+        `openrouter-auto-env-${Date.now()}`,
+        {
+          skipDefaultApiKey: true,
+          overrides: { framework: "claude-code" },
+        },
+      );
+
+      const data = await createTestRun(composeId, "Test openrouter auto mode");
+      expect(data.status).toBe("running");
+
+      // Verify ANTHROPIC_MODEL is not set in auto mode
+      expect(Sandbox.create).toHaveBeenCalled();
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
+
+      // These should be set
+      expect(envs?.ANTHROPIC_AUTH_TOKEN).toBe("sk-or-key");
+      expect(envs?.ANTHROPIC_BASE_URL).toBe("https://openrouter.ai/api");
+      expect(envs?.ANTHROPIC_API_KEY).toBe("");
+      // ANTHROPIC_MODEL should NOT be set in auto mode (empty defaultModel)
+      expect(envs?.ANTHROPIC_MODEL).toBeUndefined();
+    });
+
+    it("should pass mapped env vars for minimax-api-key provider", async () => {
+      vi.mocked(Sandbox.create).mockClear();
+
+      await createTestModelProvider(
+        "minimax-api-key",
+        "sk-minimax-test-key",
+        "MiniMax-M2.1",
+      );
+
+      const { composeId } = await createTestCompose(
+        `minimax-mp-env-${Date.now()}`,
+        {
+          skipDefaultApiKey: true,
+          overrides: { framework: "claude-code" },
+        },
+      );
+
+      const data = await createTestRun(composeId, "Test minimax env vars");
+      expect(data.status).toBe("running");
+
+      // Verify Sandbox.create was called with mapped env vars
+      expect(Sandbox.create).toHaveBeenCalled();
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
+
+      // MiniMax provider maps to ANTHROPIC_* env vars plus MiniMax-specific settings
+      expect(envs?.ANTHROPIC_AUTH_TOKEN).toBe("sk-minimax-test-key");
+      expect(envs?.ANTHROPIC_BASE_URL).toBe("https://api.minimax.io/anthropic");
+      expect(envs?.ANTHROPIC_MODEL).toBe("MiniMax-M2.1");
+      expect(envs?.API_TIMEOUT_MS).toBe("3000000");
+      expect(envs?.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe("1");
+    });
+
     it("should pass CLAUDE_CODE_OAUTH_TOKEN env var for oauth-token provider", async () => {
       vi.mocked(Sandbox.create).mockClear();
 
@@ -806,9 +998,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.error.message).toMatch(/session/i);
     });
 
-    // Note: "Missing required secrets" validation for session continue is tested via
-    // unit tests in expand-environment.test.ts which validates the error is thrown
-    // with correct message when secrets are not provided.
+    // Note: "Missing required secrets" validation is tested in the Validation
+    // describe block above (lines 138-197).
   });
 
   describe("Checkpoint Resume", () => {
@@ -938,8 +1129,152 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(writePath).toMatch(/\.jsonl$/);
     });
 
-    // Note: "Missing required secrets" validation for checkpoint resume is tested via
-    // unit tests in expand-environment.test.ts which validates the error is thrown
-    // with correct message when secrets are not provided.
+    // Note: "Missing required secrets" validation is tested in the Validation
+    // describe block above (lines 138-197).
+  });
+
+  describe("Volume Resolution", () => {
+    it("should fail run when volume references non-existent storage", async () => {
+      // Create compose with volume that references a storage that doesn't exist
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/composes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: {
+              version: "1.0",
+              agents: {
+                "test-agent": {
+                  image: "vm0/claude-code:dev",
+                  framework: "claude-code",
+                  working_dir: "/home/user/workspace",
+                  environment: { ANTHROPIC_API_KEY: "test-key" },
+                  volumes: ["data:/mnt/data"],
+                },
+              },
+              volumes: {
+                data: {
+                  name: `nonexistent-storage-${Date.now()}`,
+                  version: "latest",
+                },
+              },
+            },
+          }),
+        },
+      );
+      const createComposeRoute = (await import("../../composes/route")).POST;
+      const composeResponse = await createComposeRoute(request);
+      const compose = await composeResponse.json();
+
+      // Create run - should fail during storage resolution
+      const data = await createTestRun(
+        compose.composeId,
+        "Test with missing storage",
+      );
+
+      expect(data.status).toBe("failed");
+
+      // Verify error via API
+      const run = await getTestRun(data.runId);
+      expect(run.error).toContain("not found");
+    });
+
+    it("should reject request when volume has missing template variable", async () => {
+      // Create compose with volume that uses a template variable
+      const composeRequest = createTestRequest(
+        "http://localhost:3000/api/agent/composes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: {
+              version: "1.0",
+              agents: {
+                "test-agent": {
+                  image: "vm0/claude-code:dev",
+                  framework: "claude-code",
+                  working_dir: "/home/user/workspace",
+                  environment: { ANTHROPIC_API_KEY: "test-key" },
+                  volumes: ["data:/mnt/data"],
+                },
+              },
+              volumes: {
+                data: {
+                  name: "user-${{ vars.userId }}-storage",
+                  version: "latest",
+                },
+              },
+            },
+          }),
+        },
+      );
+      const createComposeRoute = (await import("../../composes/route")).POST;
+      const composeResponse = await createComposeRoute(composeRequest);
+      const compose = await composeResponse.json();
+
+      // Create run WITHOUT providing required vars
+      // This should return 400 because template vars are validated before run creation
+      const runRequest = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: compose.composeId,
+            prompt: "Test missing var",
+          }),
+        },
+      );
+
+      const response = await POST(runRequest);
+      const data = await response.json();
+
+      // API validates template variables before creating run
+      expect(response.status).toBe(400);
+      expect(data.error.message).toContain("userId");
+    });
+
+    it("should fail run when volume definition is missing", async () => {
+      // Create compose with volume that references an undefined volume
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/composes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: {
+              version: "1.0",
+              agents: {
+                "test-agent": {
+                  image: "vm0/claude-code:dev",
+                  framework: "claude-code",
+                  working_dir: "/home/user/workspace",
+                  environment: { ANTHROPIC_API_KEY: "test-key" },
+                  volumes: ["undefined-vol:/mnt/data"],
+                },
+              },
+              // No volumes section - undefined-vol is not defined
+            },
+          }),
+        },
+      );
+      const createComposeRoute = (await import("../../composes/route")).POST;
+      const composeResponse = await createComposeRoute(request);
+      const compose = await composeResponse.json();
+
+      // Create run - should fail during volume resolution
+      const data = await createTestRun(
+        compose.composeId,
+        "Test missing volume definition",
+      );
+
+      expect(data.status).toBe("failed");
+
+      // Verify error mentions missing volume definition
+      const run = await getTestRun(data.runId);
+      expect(run.error).toMatch(/volume resolution failed/i);
+      expect(run.error).toContain("undefined-vol");
+    });
   });
 });

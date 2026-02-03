@@ -47,11 +47,10 @@ describe("logs page", () => {
       expect(screen.getByText("Test Agent")).toBeInTheDocument();
     });
 
-    // Verify mock data is displayed
-    expect(screen.getByText("session_1")).toBeInTheDocument();
-    // Multiple rows can have claude-code
-    const frameworkCells = screen.getAllByText("claude-code");
-    expect(frameworkCells.length).toBeGreaterThan(0);
+    // Verify basic fields from list response are displayed
+    // Note: sessionId and framework are no longer in list response
+    // They show "-" placeholder in list view
+    expect(screen.getAllByText("-").length).toBeGreaterThan(0);
   });
 
   it("should show empty state when no logs exist", async () => {
@@ -83,29 +82,27 @@ describe("logs page", () => {
 
         if (!cursor) {
           return HttpResponse.json({
-            data: [{ id: "run_1" }],
+            data: [
+              {
+                id: "run_1",
+                agentName: "Agent run_1",
+                status: "completed",
+                createdAt: "2024-01-01T00:00:00Z",
+              },
+            ],
             pagination: { hasMore: true, nextCursor: "run_1" },
           });
         }
         return HttpResponse.json({
-          data: [{ id: "run_2" }],
+          data: [
+            {
+              id: "run_2",
+              agentName: "Agent run_2",
+              status: "completed",
+              createdAt: "2024-01-02T00:00:00Z",
+            },
+          ],
           pagination: { hasMore: false, nextCursor: null },
-        });
-      }),
-      http.get("*/api/platform/logs/:id", ({ params }) => {
-        const { id } = params;
-        return HttpResponse.json({
-          id,
-          sessionId: `session_${id}`,
-          agentName: `Agent ${id}`,
-          framework: "claude-code",
-          status: "completed",
-          prompt: "Test",
-          error: null,
-          createdAt: "2024-01-01T00:00:00Z",
-          startedAt: "2024-01-01T00:00:01Z",
-          completedAt: "2024-01-01T00:00:10Z",
-          artifact: { name: null, version: null },
         });
       }),
     );
@@ -126,24 +123,15 @@ describe("logs page", () => {
     server.use(
       http.get("*/api/platform/logs", () => {
         return HttpResponse.json({
-          data: [{ id: "run_first" }],
+          data: [
+            {
+              id: "run_first",
+              agentName: "Agent run_first",
+              status: "completed",
+              createdAt: "2024-01-01T00:00:00Z",
+            },
+          ],
           pagination: { hasMore: true, nextCursor: "run_first" },
-        });
-      }),
-      http.get("*/api/platform/logs/:id", ({ params }) => {
-        const { id } = params;
-        return HttpResponse.json({
-          id,
-          sessionId: `session_${id}`,
-          agentName: `Agent ${id}`,
-          framework: "claude-code",
-          status: "completed",
-          prompt: "Test",
-          error: null,
-          createdAt: "2024-01-01T00:00:00Z",
-          startedAt: null,
-          completedAt: null,
-          artifact: { name: null, version: null },
         });
       }),
     );
@@ -170,27 +158,19 @@ describe("logs page", () => {
     expect(nextButton).not.toHaveAttribute("disabled");
   });
 
-  it("should display dash when sessionId is null", async () => {
+  it("should display dash for sessionId and framework columns", async () => {
     server.use(
       http.get("*/api/platform/logs", () => {
         return HttpResponse.json({
-          data: [{ id: "run_no_session" }],
+          data: [
+            {
+              id: "run_no_session",
+              agentName: "Test Agent",
+              status: "pending",
+              createdAt: "2024-01-01T00:00:00Z",
+            },
+          ],
           pagination: { hasMore: false, nextCursor: null },
-        });
-      }),
-      http.get("*/api/platform/logs/:id", () => {
-        return HttpResponse.json({
-          id: "run_no_session",
-          sessionId: null,
-          agentName: "Test Agent",
-          framework: "claude-code",
-          status: "pending",
-          prompt: "Test",
-          error: null,
-          createdAt: "2024-01-01T00:00:00Z",
-          startedAt: null,
-          completedAt: null,
-          artifact: { name: null, version: null },
         });
       }),
     );
@@ -205,13 +185,15 @@ describe("logs page", () => {
       expect(screen.getByText("Test Agent")).toBeInTheDocument();
     });
 
-    // Find the table row and check for dash in session column
+    // Find the table row and check for dash in session and framework columns
+    // (These fields are not included in the list response)
     const table = screen.getByRole("table");
     const rows = within(table).getAllByRole("row");
     // First row is header, second is data row
     const dataRow = rows[1];
     expect(dataRow).toBeDefined();
-    expect(within(dataRow!).getByText("-")).toBeInTheDocument();
+    // Should have 2 dashes (for sessionId and framework columns)
+    expect(within(dataRow!).getAllByText("-")).toHaveLength(2);
   });
 
   it("should handle API error gracefully", async () => {

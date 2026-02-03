@@ -19,6 +19,7 @@ import { acquireOverlay } from "./overlay-pool.js";
 import { acquireTap, releaseTap } from "./tap-pool.js";
 import { createLogger } from "../logger.js";
 import { vmPaths } from "../paths.js";
+import type { VmId } from "./vm-id.js";
 
 /**
  * Firecracker static configuration format
@@ -56,7 +57,7 @@ const logger = createLogger("VM");
  * VM configuration options
  */
 export interface VMConfig {
-  vmId: string; // Unique identifier (e.g., first 8 chars of runId UUID)
+  vmId: VmId;
   vcpus: number;
   memoryMb: number;
   kernelPath: string;

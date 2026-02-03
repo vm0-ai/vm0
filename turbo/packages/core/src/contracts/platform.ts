@@ -27,10 +27,13 @@ const platformLogStatusSchema = z.enum([
 ]);
 
 /**
- * Log entry in list response - only includes id for efficiency
+ * Log entry in list response - includes basic fields for list display
  */
 const platformLogEntrySchema = z.object({
   id: z.string().uuid(),
+  agentName: z.string(),
+  status: platformLogStatusSchema,
+  createdAt: z.string(),
 });
 
 /**

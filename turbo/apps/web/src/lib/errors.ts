@@ -23,7 +23,7 @@ interface NotFoundError extends ApiErrorBase {
   readonly code: "NOT_FOUND";
 }
 
-export interface BadRequestError extends ApiErrorBase {
+interface BadRequestError extends ApiErrorBase {
   readonly name: "BadRequestError";
   readonly statusCode: 400;
   readonly code: "BAD_REQUEST";

@@ -582,6 +582,8 @@ jobs:
     needs: [prepare, deploy-web]
     if: "${{ (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) && needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.web-changed == 'true' }}"
     timeout-minutes: 5
+    permissions:
+      actions: read  # Required to query cache API
     steps:
       - uses: actions/checkout@v4
         with:
@@ -616,6 +618,8 @@ jobs:
         needs.prepare.outputs.runner-changed == 'true'
       )
     timeout-minutes: 5
+    permissions:
+      actions: read  # Required to query cache API
     steps:
       - uses: actions/checkout@v4
         with:

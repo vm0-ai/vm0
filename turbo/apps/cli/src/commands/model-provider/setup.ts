@@ -69,7 +69,9 @@ function handleNonInteractiveMode(options: {
   if (options.model) {
     selectedModel = validateModel(type, options.model);
   } else if (hasModelSelection(type)) {
-    selectedModel = getDefaultModel(type);
+    const defaultModel = getDefaultModel(type);
+    // Empty defaultModel means "auto" mode - don't set selectedModel
+    selectedModel = defaultModel || undefined;
   }
 
   return { type, credential: options.credential, selectedModel };
@@ -85,10 +87,17 @@ async function promptForModelSelection(
   const models = getModels(type) ?? [];
   const defaultModel = getDefaultModel(type);
 
-  const modelChoices = models.map((model) => ({
-    title: model === defaultModel ? `${model} (Recommended)` : model,
-    value: model,
-  }));
+  // Build choices - add "auto" option if defaultModel is empty
+  const modelChoices =
+    defaultModel === ""
+      ? [
+          { title: "auto (Recommended)", value: "" },
+          ...models.map((model) => ({ title: model, value: model })),
+        ]
+      : models.map((model) => ({
+          title: model === defaultModel ? `${model} (Recommended)` : model,
+          value: model,
+        }));
 
   const modelResponse = await prompts(
     {
@@ -100,7 +109,9 @@ async function promptForModelSelection(
     { onCancel: () => process.exit(0) },
   );
 
-  return modelResponse.model as string;
+  // Return undefined for auto mode (empty string)
+  const selected = modelResponse.model as string;
+  return selected === "" ? undefined : selected;
 }
 
 async function handleInteractiveMode(): Promise<SetupInput | null> {
