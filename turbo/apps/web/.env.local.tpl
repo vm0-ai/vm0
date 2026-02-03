@@ -26,3 +26,6 @@ SLACK_REDIRECT_BASE_URL=
 
 # Required: Claude Code Version URL
 CLAUDE_CODE_VERSION_URL=https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/latest
+
+# Optional: LLM API (OpenRouter)
+OPENROUTER_API_KEY=op://Development/vm0-env-local/openrouter_api_key
