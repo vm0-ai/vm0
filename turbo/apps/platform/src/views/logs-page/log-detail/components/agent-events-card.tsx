@@ -156,12 +156,7 @@ export function AgentEventsCard({
 
   if (eventsLoadable.state === "loading") {
     return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-3">
-          <span className="text-base font-medium text-foreground">
-            Agent events
-          </span>
-        </div>
+      <div className="px-4 sm:px-8">
         <div className="flex items-center justify-center p-8">
           <IconLoader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
@@ -250,7 +245,6 @@ export function AgentEventsCard({
       <div
         id={EVENTS_CONTAINER_ID}
         className="flex-1 min-h-0 overflow-y-auto px-4 pb-4 sm:px-8 sm:pb-8"
-        style={{ scrollbarGutter: "stable" }}
       >
         {!isCodex && viewMode === "formatted" ? (
           <FormattedEventsView
