@@ -37,10 +37,13 @@ ENV RUSTUP_HOME=/usr/local/rustup \
 RUN apt-get update && apt-get install -y \
     musl-tools \
     gcc-aarch64-linux-gnu \
-    && rm -rf /var/lib/apt/lists/* \
-    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* \
+    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal \
     && rustup target add aarch64-unknown-linux-musl \
     && rustup component add rustfmt clippy \
+    && rm -rf /usr/local/rustup/toolchains/*/share/doc \
+    && rm -rf /usr/local/rustup/toolchains/*/share/man \
     && rustc --version && cargo --version
 
 # Stage 3: Development environment with additional tools
