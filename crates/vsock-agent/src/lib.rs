@@ -669,21 +669,86 @@ pub fn handle_connection(stream: UnixStream) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Run the vsock agent with the given options
+/// Maximum reconnection attempts before giving up
+const MAX_RECONNECT_ATTEMPTS: u32 = 50;
+/// Delay between reconnection attempts (100ms)
+const RECONNECT_DELAY_MS: u64 = 100;
+
+/// Run the vsock agent with the given options.
+/// Includes reconnection logic for snapshot restore scenarios where
+/// the connection is lost when VM is paused and resumed.
 pub fn run(unix_socket: Option<&str>) -> std::io::Result<()> {
     log("INFO", "Starting vsock agent...");
 
-    if let Some(path) = unix_socket {
-        log("INFO", &format!("Connecting to Unix socket: {}...", path));
-        connect_unix(path).and_then(|stream| {
-            log("INFO", "Connected");
-            handle_connection(stream)
-        })
-    } else {
-        log("INFO", "Connecting to host (CID=2)...");
-        connect_vsock().and_then(|stream| {
-            log("INFO", "Connected");
-            handle_connection(stream)
-        })
+    let mut attempts = 0u32;
+
+    loop {
+        let result = if let Some(path) = unix_socket {
+            log("INFO", &format!("Connecting to Unix socket: {}...", path));
+            connect_unix(path).and_then(|stream| {
+                log("INFO", "Connected");
+                // Reset attempts on successful connection
+                attempts = 0;
+                handle_connection(stream)
+            })
+        } else {
+            log("INFO", "Connecting to host (CID=2)...");
+            connect_vsock().and_then(|stream| {
+                log("INFO", "Connected");
+                // Reset attempts on successful connection
+                attempts = 0;
+                handle_connection(stream)
+            })
+        };
+
+        attempts += 1;
+
+        match result {
+            Ok(()) => {
+                // Connection closed gracefully, try to reconnect
+                if attempts >= MAX_RECONNECT_ATTEMPTS {
+                    log(
+                        "ERROR",
+                        &format!(
+                            "Max reconnect attempts ({}) reached",
+                            MAX_RECONNECT_ATTEMPTS
+                        ),
+                    );
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::ConnectionReset,
+                        "Max reconnect attempts reached",
+                    ));
+                }
+                log(
+                    "INFO",
+                    &format!(
+                        "Connection closed, reconnecting ({}/{})...",
+                        attempts, MAX_RECONNECT_ATTEMPTS
+                    ),
+                );
+                std::thread::sleep(std::time::Duration::from_millis(RECONNECT_DELAY_MS));
+            }
+            Err(e) => {
+                // Connection error, try to reconnect
+                if attempts >= MAX_RECONNECT_ATTEMPTS {
+                    log(
+                        "ERROR",
+                        &format!(
+                            "Max reconnect attempts ({}) reached: {}",
+                            MAX_RECONNECT_ATTEMPTS, e
+                        ),
+                    );
+                    return Err(e);
+                }
+                log(
+                    "WARN",
+                    &format!(
+                        "Connection error: {}, reconnecting ({}/{})...",
+                        e, attempts, MAX_RECONNECT_ATTEMPTS
+                    ),
+                );
+                std::thread::sleep(std::time::Duration::from_millis(RECONNECT_DELAY_MS));
+            }
+        }
     }
 }

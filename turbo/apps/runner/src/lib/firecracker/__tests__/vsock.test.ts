@@ -816,6 +816,41 @@ describe("VsockClient Integration Tests", () => {
     });
   });
 
+  describe("reconnection", () => {
+    it("should reconnect after host closes connection", async () => {
+      // Close host connection (simulating snapshot pause scenario)
+      client!.close();
+
+      // Wait for agent to detect disconnect
+      await new Promise((r) => setTimeout(r, 200));
+
+      // Create new client with new socket path
+      const newSocketPath = createSocketPath();
+      const newClient = new VsockClient(newSocketPath);
+      const listenerPath = `${newSocketPath}_${VSOCK_PORT}`;
+
+      // Stop current agent and start new one connecting to new socket
+      await stopAgent(agent, socketPath);
+
+      // Start listening and then start agent
+      const connectionPromise = newClient.waitForGuestConnection(5000);
+      agent = startAgent(listenerPath);
+
+      // Wait for agent to reconnect
+      await connectionPromise;
+
+      // Verify agent is functional after reconnect
+      const result = await newClient.exec("echo reconnected");
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe("reconnected");
+
+      // Cleanup - update socketPath for afterEach
+      newClient.close();
+      socketPath = newSocketPath;
+      client = null;
+    });
+  });
+
   describe("shutdown", () => {
     it("should send shutdown request and receive acknowledgment", async () => {
       const result = await client!.shutdown(5000);
