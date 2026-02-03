@@ -31,7 +31,12 @@ export const NAVIGATION_CONFIG = [
   {
     label: "CLI Reference",
     items: [
-      { id: "agent-cli", label: "Agent", icon: "Bot", path: "/agents" },
+      {
+        id: "agent-cli",
+        label: "Agent",
+        icon: "LayoutDashboard",
+        path: "/agents",
+      },
       {
         id: "schedule-cli",
         label: "Schedule",
