@@ -118,7 +118,7 @@ export function buildAgentAddModal(
   return {
     type: "modal",
     callback_id: "agent_add_modal",
-    private_metadata: JSON.stringify({ agents, channelId }),
+    private_metadata: JSON.stringify({ channelId }),
     title: {
       type: "plain_text",
       text: "Add Agent",
@@ -255,7 +255,7 @@ export function buildAgentUpdateModal(
   return {
     type: "modal",
     callback_id: "agent_update_modal",
-    private_metadata: JSON.stringify({ agents, channelId }),
+    private_metadata: JSON.stringify({ channelId }),
     title: {
       type: "plain_text",
       text: "Update Agent",

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { eq, and, inArray } from "drizzle-orm";
+import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
 import {
@@ -9,7 +10,10 @@ import {
 import { slackInstallations } from "../../../../src/db/schema/slack-installation";
 import { slackUserLinks } from "../../../../src/db/schema/slack-user-link";
 import { slackBindings } from "../../../../src/db/schema/slack-binding";
-import { agentComposes } from "../../../../src/db/schema/agent-compose";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "../../../../src/db/schema/agent-compose";
 import {
   buildAgentAddModal,
   buildAgentUpdateModal,
@@ -138,6 +142,140 @@ export async function POST(request: Request) {
 }
 
 /**
+ * Fetch available agents for add modal from database
+ */
+async function fetchAvailableAgents(
+  vm0UserId: string,
+  userLinkId: string,
+): Promise<Array<{ id: string; name: string; requiredSecrets: string[] }>> {
+  // Fetch user's available agents with their head version
+  const composes = await globalThis.services.db
+    .select({
+      id: agentComposes.id,
+      name: agentComposes.name,
+      headVersionId: agentComposes.headVersionId,
+    })
+    .from(agentComposes)
+    .where(eq(agentComposes.userId, vm0UserId));
+
+  if (composes.length === 0) {
+    return [];
+  }
+
+  // Get already bound agent names
+  const existingBindings = await globalThis.services.db
+    .select({ agentName: slackBindings.agentName })
+    .from(slackBindings)
+    .where(eq(slackBindings.slackUserLinkId, userLinkId));
+
+  const boundNames = new Set(existingBindings.map((b) => b.agentName));
+
+  // Filter out already bound agents
+  const availableComposes = composes.filter(
+    (c) => !boundNames.has(c.name.toLowerCase()),
+  );
+
+  if (availableComposes.length === 0) {
+    return [];
+  }
+
+  // Get compose versions to extract required secrets
+  const versionIds = availableComposes
+    .map((c) => c.headVersionId)
+    .filter((id): id is string => id !== null);
+
+  const versions =
+    versionIds.length > 0
+      ? await globalThis.services.db
+          .select({
+            id: agentComposeVersions.id,
+            content: agentComposeVersions.content,
+          })
+          .from(agentComposeVersions)
+          .where(inArray(agentComposeVersions.id, versionIds))
+      : [];
+
+  // Build map of compose ID to required secrets
+  const versionMap = new Map(versions.map((v) => [v.id, v.content]));
+  return availableComposes.map((c) => {
+    const content = c.headVersionId ? versionMap.get(c.headVersionId) : null;
+    const refs = content ? extractVariableReferences(content) : [];
+    const grouped = groupVariablesBySource(refs);
+    return {
+      id: c.id,
+      name: c.name,
+      requiredSecrets: grouped.secrets.map((s) => s.name),
+    };
+  });
+}
+
+/**
+ * Fetch bound agents for update modal from database
+ */
+async function fetchBoundAgents(
+  vm0UserId: string,
+  userLinkId: string,
+): Promise<Array<{ id: string; name: string; requiredSecrets: string[] }>> {
+  // Get user's bound agents with their compose IDs
+  const bindings = await globalThis.services.db
+    .select({
+      id: slackBindings.id,
+      agentName: slackBindings.agentName,
+      composeId: slackBindings.composeId,
+    })
+    .from(slackBindings)
+    .where(eq(slackBindings.slackUserLinkId, userLinkId));
+
+  if (bindings.length === 0) {
+    return [];
+  }
+
+  // Get compose versions to extract required secrets
+  const composeIds = bindings.map((b) => b.composeId);
+  const composes = await globalThis.services.db
+    .select({
+      id: agentComposes.id,
+      headVersionId: agentComposes.headVersionId,
+    })
+    .from(agentComposes)
+    .where(inArray(agentComposes.id, composeIds));
+
+  const versionIds = composes
+    .map((c) => c.headVersionId)
+    .filter((id): id is string => id !== null);
+
+  const versions =
+    versionIds.length > 0
+      ? await globalThis.services.db
+          .select({
+            id: agentComposeVersions.id,
+            composeId: agentComposeVersions.composeId,
+            content: agentComposeVersions.content,
+          })
+          .from(agentComposeVersions)
+          .where(inArray(agentComposeVersions.id, versionIds))
+      : [];
+
+  // Build map of compose ID to required secrets
+  const composeToVersion = new Map(
+    composes.map((c) => [c.id, c.headVersionId]),
+  );
+  const versionMap = new Map(versions.map((v) => [v.id, v.content]));
+
+  return bindings.map((b) => {
+    const versionId = composeToVersion.get(b.composeId);
+    const content = versionId ? versionMap.get(versionId) : null;
+    const refs = content ? extractVariableReferences(content) : [];
+    const grouped = groupVariablesBySource(refs);
+    return {
+      id: b.id,
+      name: b.agentName,
+      requiredSecrets: grouped.secrets.map((s) => s.name),
+    };
+  });
+}
+
+/**
  * Handle block actions (e.g., agent selection change)
  */
 async function handleBlockActions(
@@ -151,30 +289,43 @@ async function handleBlockActions(
     const selectedAgentId = action.selected_option?.value;
     const privateMetadata = payload.view.private_metadata;
 
-    if (selectedAgentId && privateMetadata) {
-      try {
-        const { agents, channelId } = JSON.parse(privateMetadata) as {
-          agents: Array<{
-            id: string;
-            name: string;
-            requiredSecrets: string[];
-          }>;
-          channelId?: string;
-        };
+    if (selectedAgentId) {
+      const { channelId } = privateMetadata
+        ? (JSON.parse(privateMetadata) as { channelId?: string })
+        : { channelId: undefined };
 
-        // Get bot token from installation
-        const [installation] = await globalThis.services.db
+      // Get bot token and user link from installation
+      const [installation] = await globalThis.services.db
+        .select()
+        .from(slackInstallations)
+        .where(eq(slackInstallations.slackWorkspaceId, payload.team.id))
+        .limit(1);
+
+      if (installation) {
+        // Get user link to find VM0 user ID
+        const [userLink] = await globalThis.services.db
           .select()
-          .from(slackInstallations)
-          .where(eq(slackInstallations.slackWorkspaceId, payload.team.id))
+          .from(slackUserLinks)
+          .where(
+            and(
+              eq(slackUserLinks.slackUserId, payload.user.id),
+              eq(slackUserLinks.slackWorkspaceId, payload.team.id),
+            ),
+          )
           .limit(1);
 
-        if (installation) {
+        if (userLink) {
           const botToken = decryptCredentialValue(
             installation.encryptedBotToken,
             SECRETS_ENCRYPTION_KEY,
           );
           const client = createSlackClient(botToken);
+
+          // Fetch agents from database
+          const agents = await fetchAvailableAgents(
+            userLink.vm0UserId,
+            userLink.id,
+          );
 
           // Update the modal with secrets fields for selected agent
           const updatedModal = buildAgentAddModal(
@@ -187,8 +338,6 @@ async function handleBlockActions(
             view: updatedModal,
           });
         }
-      } catch {
-        // Ignore parsing errors
       }
     }
   }
@@ -198,30 +347,43 @@ async function handleBlockActions(
     const selectedAgentId = action.selected_option?.value;
     const privateMetadata = payload.view.private_metadata;
 
-    if (selectedAgentId && privateMetadata) {
-      try {
-        const { agents, channelId } = JSON.parse(privateMetadata) as {
-          agents: Array<{
-            id: string;
-            name: string;
-            requiredSecrets: string[];
-          }>;
-          channelId?: string;
-        };
+    if (selectedAgentId) {
+      const { channelId } = privateMetadata
+        ? (JSON.parse(privateMetadata) as { channelId?: string })
+        : { channelId: undefined };
 
-        // Get bot token from installation
-        const [installation] = await globalThis.services.db
+      // Get bot token and user link from installation
+      const [installation] = await globalThis.services.db
+        .select()
+        .from(slackInstallations)
+        .where(eq(slackInstallations.slackWorkspaceId, payload.team.id))
+        .limit(1);
+
+      if (installation) {
+        // Get user link to find VM0 user ID
+        const [userLink] = await globalThis.services.db
           .select()
-          .from(slackInstallations)
-          .where(eq(slackInstallations.slackWorkspaceId, payload.team.id))
+          .from(slackUserLinks)
+          .where(
+            and(
+              eq(slackUserLinks.slackUserId, payload.user.id),
+              eq(slackUserLinks.slackWorkspaceId, payload.team.id),
+            ),
+          )
           .limit(1);
 
-        if (installation) {
+        if (userLink) {
           const botToken = decryptCredentialValue(
             installation.encryptedBotToken,
             SECRETS_ENCRYPTION_KEY,
           );
           const client = createSlackClient(botToken);
+
+          // Fetch bound agents from database
+          const agents = await fetchBoundAgents(
+            userLink.vm0UserId,
+            userLink.id,
+          );
 
           // Update the modal with secrets fields for selected agent
           const updatedModal = buildAgentUpdateModal(
@@ -234,8 +396,6 @@ async function handleBlockActions(
             view: updatedModal,
           });
         }
-      } catch {
-        // Ignore parsing errors
       }
     }
   }
