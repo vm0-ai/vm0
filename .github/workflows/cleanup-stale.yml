@@ -20,6 +20,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260202
     steps:
       - name: Cleanup Stale Neon Branches
+        shell: bash
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
