@@ -317,6 +317,7 @@ jobs:
           R2_USER_STORAGES_BUCKET_NAME: ${{ secrets.R2_USER_STORAGES_BUCKET_NAME }}
           SECRETS_ENCRYPTION_KEY: ${{ secrets.SECRETS_ENCRYPTION_KEY }}
           AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: pnpm vitest run --project=web
 
   test-cli:
@@ -430,6 +431,7 @@ jobs:
             CONCURRENT_RUN_LIMIT=0
             VM0_DEBUG=*
             CLAUDE_CODE_VERSION_URL=${{ vars.CLAUDE_CODE_VERSION_URL }}
+            OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
           meta-branch: ${{ github.head_ref || github.ref_name }}
           meta-pr: ${{ needs.prepare.outputs.job-ref }}
           skip-finish: ${{ github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '' }}
