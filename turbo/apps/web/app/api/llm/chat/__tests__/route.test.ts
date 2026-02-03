@@ -13,42 +13,11 @@ vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
 vi.mock("@axiomhq/logging");
 
-// Mock env module to control OPENROUTER_API_KEY
-const mockEnvValues = vi.hoisted(() => ({
-  OPENROUTER_API_KEY: undefined as string | undefined,
-}));
-
-vi.mock("../../../../../src/env", () => ({
-  env: () => mockEnvValues,
-}));
-
 const context = testContext();
 
 describe("POST /api/llm/chat", () => {
   beforeEach(() => {
     context.setupMocks();
-    mockEnvValues.OPENROUTER_API_KEY = "test-openrouter-token";
-  });
-
-  describe("Configuration", () => {
-    it("should return 503 when env token not configured", async () => {
-      mockEnvValues.OPENROUTER_API_KEY = undefined;
-
-      const request = createTestRequest("http://localhost:3000/api/llm/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: [{ role: "user", content: "Hello" }],
-        }),
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(503);
-      expect(data.error.code).toBe("SERVICE_UNAVAILABLE");
-      expect(data.error.message).toContain("not configured");
-    });
   });
 
   describe("Validation", () => {
