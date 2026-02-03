@@ -11,6 +11,8 @@ import { setupHomePage$ } from "./home/home-page.ts";
 import { setupLogsPage$ } from "./logs-page/logs-page.ts";
 import { setupLogDetailPage$ } from "./logs-page/log-detail-page.ts";
 import { setupSettingsPage$ } from "./settings-page/settings-page.ts";
+import { setupAgentsPage$ } from "./agents-page/agents-page.ts";
+import { setupSchedulesPage$ } from "./schedules-page/schedules-page.ts";
 import { hasScope$ } from "./scope.ts";
 import { logger } from "./log.ts";
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
@@ -35,6 +37,14 @@ const ROUTE_CONFIG = [
   {
     path: "/settings",
     setup: setupScopeRequiredPageWrapper(setupSettingsPage$),
+  },
+  {
+    path: "/agents",
+    setup: setupAuthPageWrapper(setupAgentsPage$),
+  },
+  {
+    path: "/schedules",
+    setup: setupAuthPageWrapper(setupSchedulesPage$),
   },
   {
     path: "/_playground",

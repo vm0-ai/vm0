@@ -3,6 +3,7 @@ import type { RoutePath } from "./route.ts";
 type NavIconName =
   | "Bot"
   | "CircleDot"
+  | "Clock"
   | "FileBarChart"
   | "List"
   | "KeyRound"

@@ -29,6 +29,18 @@ export const NAVIGATION_CONFIG = [
     items: [{ id: "logs", label: "Logs", icon: "List", path: "/logs" }],
   },
   {
+    label: "CLI Reference",
+    items: [
+      { id: "agent-cli", label: "Agent", icon: "Bot", path: "/agents" },
+      {
+        id: "schedule-cli",
+        label: "Schedule",
+        icon: "Clock",
+        path: "/schedules",
+      },
+    ],
+  },
+  {
     label: "Developers",
     items: [
       { id: "api-keys", label: "API keys", icon: "SquareKey", path: "/" },

@@ -2,6 +2,7 @@ import { useSet } from "ccstate-react";
 import {
   IconRobot,
   IconCircleDotFilled,
+  IconClock,
   IconChartBar,
   IconList,
   IconKey,
@@ -29,6 +30,7 @@ import { navigateInReact$ } from "../../signals/route.ts";
 const ICON_MAP = {
   Bot: IconRobot,
   CircleDot: IconCircleDotFilled,
+  Clock: IconClock,
   FileBarChart: IconChartBar,
   List: IconList,
   KeyRound: IconKey,
