@@ -49,20 +49,20 @@
     ) !important; /* sidebar color (gray-50) */
     border-bottom: 1px solid hsl(var(--gray-200)) !important; /* border token (gray-200) */
   }
+}
 
-  /* Markdown preview spacing overrides */
-  .wmde-markdown li > p {
-    margin-top: 4px !important;
-  }
+/* Markdown preview spacing overrides - outside @layer for higher specificity */
+.wmde-markdown li > p {
+  margin-top: 6px;
+}
 
-  .wmde-markdown p,
-  .wmde-markdown blockquote,
-  .wmde-markdown ul,
-  .wmde-markdown ol,
-  .wmde-markdown dl,
-  .wmde-markdown table,
-  .wmde-markdown pre,
-  .wmde-markdown details {
-    margin-bottom: 4px !important;
-  }
+.wmde-markdown p,
+.wmde-markdown blockquote,
+.wmde-markdown ul,
+.wmde-markdown ol,
+.wmde-markdown dl,
+.wmde-markdown table,
+.wmde-markdown pre,
+.wmde-markdown details {
+  margin-bottom: 6px;
 }

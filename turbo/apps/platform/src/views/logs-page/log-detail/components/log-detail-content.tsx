@@ -25,7 +25,9 @@ export function LogDetailContent({ logId }: { logId: string }) {
 
   if (loadable.state === "loading") {
     return (
-      <div className="p-8 text-center text-muted-foreground">Loading...</div>
+      <div className="p-4 sm:p-8">
+        <div className="p-8 text-center text-muted-foreground">Loading...</div>
+      </div>
     );
   }
 
@@ -35,8 +37,10 @@ export function LogDetailContent({ logId }: { logId: string }) {
         ? loadable.error.message
         : "Failed to load details";
     return (
-      <div className="p-8 text-center text-destructive">
-        Error: {errorMessage}
+      <div className="p-4 sm:p-8">
+        <div className="p-8 text-center text-destructive">
+          Error: {errorMessage}
+        </div>
       </div>
     );
   }
@@ -47,98 +51,102 @@ export function LogDetailContent({ logId }: { logId: string }) {
     <div className="flex flex-col gap-4 h-full min-h-0">
       {/* Info Card - Desktop: single row, Mobile: 2-column grid */}
       {/* Desktop version */}
-      <div className="shrink-0 hidden lg:flex flex-wrap items-center gap-x-4 gap-y-2 text-sm px-4 py-3 bg-muted/30 rounded-lg border border-border">
-        <StatusBadge status={detail.status} />
-        <span className="font-medium text-foreground">{detail.agentName}</span>
-        {detail.framework && (
-          <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-            {detail.framework}
-          </span>
-        )}
-        <Separator />
-        <span className="flex items-center gap-1 text-muted-foreground">
-          <IconClock className="h-3.5 w-3.5" />
-          {formatDuration(detail.startedAt, detail.completedAt)}
-        </span>
-        <span className="text-muted-foreground">
-          {formatTime(detail.createdAt)}
-        </span>
-        <Separator />
-        <CopyableId label="Run" value={detail.id} />
-        {detail.sessionId && (
-          <CopyableId label="Session" value={detail.sessionId} />
-        )}
-        {detail.artifact.name && detail.artifact.version && (
-          <>
-            <Separator />
-            <ArtifactDownloadButton
-              name={detail.artifact.name}
-              version={detail.artifact.version}
-            />
-          </>
-        )}
-      </div>
-
-      {/* Mobile version */}
-      <div className="shrink-0 lg:hidden grid grid-cols-3 gap-x-4 gap-y-3 text-sm px-4 py-3 bg-muted/30 rounded-lg border border-border">
-        <InfoItem label="Status">
+      <div className="p-4 pb-0 sm:p-8 sm:pb-0">
+        <div className="shrink-0 hidden lg:flex flex-wrap items-center gap-x-4 gap-y-2 text-sm px-4 py-3 bg-muted/30 rounded-lg border border-border">
           <StatusBadge status={detail.status} />
-        </InfoItem>
-
-        <InfoItem label="Agent">
           <span className="font-medium text-foreground">
             {detail.agentName}
           </span>
-        </InfoItem>
-
-        {detail.framework && (
-          <InfoItem label="Framework">
+          {detail.framework && (
             <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
               {detail.framework}
             </span>
-          </InfoItem>
-        )}
-
-        <InfoItem label="Duration">
-          <span className="flex items-center gap-1 text-foreground">
-            <IconClock className="h-3.5 w-3.5 text-muted-foreground" />
+          )}
+          <Separator />
+          <span className="flex items-center gap-1 text-muted-foreground">
+            <IconClock className="h-3.5 w-3.5" />
             {formatDuration(detail.startedAt, detail.completedAt)}
           </span>
-        </InfoItem>
+          <span className="text-muted-foreground">
+            {formatTime(detail.createdAt)}
+          </span>
+          <Separator />
+          <CopyableId label="Run" value={detail.id} />
+          {detail.sessionId && (
+            <CopyableId label="Session" value={detail.sessionId} />
+          )}
+          {detail.artifact.name && detail.artifact.version && (
+            <>
+              <Separator />
+              <ArtifactDownloadButton
+                name={detail.artifact.name}
+                version={detail.artifact.version}
+              />
+            </>
+          )}
+        </div>
 
-        <InfoItem label="Created">
-          <TooltipProvider delayDuration={100}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="text-foreground whitespace-nowrap text-xs cursor-default">
-                  {formatTimeShort(detail.createdAt)}
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className="text-xs">{formatTime(detail.createdAt)}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </InfoItem>
-
-        <InfoItem label="Run ID">
-          <CopyableId value={detail.id} />
-        </InfoItem>
-
-        {detail.sessionId && (
-          <InfoItem label="Session ID">
-            <CopyableId value={detail.sessionId} />
+        {/* Mobile version */}
+        <div className="shrink-0 lg:hidden grid grid-cols-3 gap-x-4 gap-y-3 text-sm px-4 py-3 bg-muted/30 rounded-lg border border-border">
+          <InfoItem label="Status">
+            <StatusBadge status={detail.status} />
           </InfoItem>
-        )}
 
-        {detail.artifact.name && detail.artifact.version && (
-          <InfoItem label="Artifact">
-            <ArtifactDownloadButton
-              name={detail.artifact.name}
-              version={detail.artifact.version}
-            />
+          <InfoItem label="Agent">
+            <span className="font-medium text-foreground">
+              {detail.agentName}
+            </span>
           </InfoItem>
-        )}
+
+          {detail.framework && (
+            <InfoItem label="Framework">
+              <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                {detail.framework}
+              </span>
+            </InfoItem>
+          )}
+
+          <InfoItem label="Duration">
+            <span className="flex items-center gap-1 text-foreground">
+              <IconClock className="h-3.5 w-3.5 text-muted-foreground" />
+              {formatDuration(detail.startedAt, detail.completedAt)}
+            </span>
+          </InfoItem>
+
+          <InfoItem label="Created">
+            <TooltipProvider delayDuration={100}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="text-foreground whitespace-nowrap text-xs cursor-default">
+                    {formatTimeShort(detail.createdAt)}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="text-xs">{formatTime(detail.createdAt)}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </InfoItem>
+
+          <InfoItem label="Run ID">
+            <CopyableId value={detail.id} />
+          </InfoItem>
+
+          {detail.sessionId && (
+            <InfoItem label="Session ID">
+              <CopyableId value={detail.sessionId} />
+            </InfoItem>
+          )}
+
+          {detail.artifact.name && detail.artifact.version && (
+            <InfoItem label="Artifact">
+              <ArtifactDownloadButton
+                name={detail.artifact.name}
+                version={detail.artifact.version}
+              />
+            </InfoItem>
+          )}
+        </div>
       </div>
 
       {/* Error Banner */}
@@ -154,7 +162,6 @@ export function LogDetailContent({ logId }: { logId: string }) {
         framework={detail.framework}
         searchTerm={searchTerm}
         setSearchTerm={setSearchTerm}
-        className="flex-1 min-h-0"
       />
     </div>
   );

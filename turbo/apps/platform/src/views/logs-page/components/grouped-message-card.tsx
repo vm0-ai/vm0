@@ -18,6 +18,9 @@ interface GroupedMessageCardProps {
   matchStartIndex?: number;
 }
 
+// Layout constants
+const MESSAGE_SPACING = "py-2";
+
 // Auto-collapse thresholds
 const TEXT_COLLAPSE_CHARS = 500;
 const TEXT_COLLAPSE_LINES = 8;
@@ -184,7 +187,7 @@ function SystemMessageCard({
   const subtype = eventData.subtype;
   const timestamp = formatEventTime(message.createdAt);
   return (
-    <div className="py-2">
+    <div className={MESSAGE_SPACING}>
       <div className="flex gap-2 items-center">
         <StatusDot variant="neutral" />
         <span className="font-semibold text-sm text-foreground">
@@ -216,7 +219,7 @@ function ResultMessageCard({
   const bgColor = isError ? "bg-red-500/5" : "bg-lime-500/5";
 
   return (
-    <div className="py-2">
+    <div className={MESSAGE_SPACING}>
       <div className={`p-3 rounded-lg border ${borderColor} ${bgColor}`}>
         <ResultEventContent eventData={eventData} />
       </div>
@@ -278,7 +281,7 @@ function TodoCard({
 
   const timestamp = formatEventTime(message.createdAt);
   return (
-    <details className="py-2 group" open={hasSearchMatch}>
+    <details className={`${MESSAGE_SPACING} group`} open={hasSearchMatch}>
       <summary className="cursor-pointer list-none">
         <div className="flex gap-2 items-center">
           <StatusDot variant="todo" />
@@ -366,7 +369,7 @@ function AssistantMessageCard({
   const timestamp = formatEventTime(message.createdAt);
   if (textBefore) {
     elements.push(
-      <div key="text-before" className="py-2">
+      <div key="text-before" className={MESSAGE_SPACING}>
         <div className="flex gap-2 items-start">
           <StatusDot variant="neutral" className="mt-1.5" />
           <div className="flex-1 min-w-0">
@@ -393,7 +396,7 @@ function AssistantMessageCard({
     for (const op of toolOperations) {
       const toolMatchStart = currentOffset + textBeforeMatches;
       elements.push(
-        <div key={op.toolUseId} className="py-2">
+        <div key={op.toolUseId} className={MESSAGE_SPACING}>
           <ToolSummary
             operation={op}
             searchTerm={searchTerm}
@@ -409,7 +412,10 @@ function AssistantMessageCard({
   // Text after tools
   if (textAfter) {
     elements.push(
-      <div key="text-after" className="py-2 flex gap-2 items-start">
+      <div
+        key="text-after"
+        className={`${MESSAGE_SPACING} flex gap-2 items-start`}
+      >
         <StatusDot variant="neutral" className="mt-1.5" />
         <div className="flex-1 min-w-0">
           <CollapsibleMarkdown

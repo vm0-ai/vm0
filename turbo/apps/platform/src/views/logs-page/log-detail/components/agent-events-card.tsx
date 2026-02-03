@@ -202,49 +202,54 @@ export function AgentEventsCard({
 
   return (
     <div className={`flex flex-col gap-4 ${className ?? ""}`}>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0">
-        <div className="flex items-center gap-3">
-          <span className="text-base font-medium text-foreground whitespace-nowrap">
-            Agent events
-          </span>
-          <span className="text-sm text-muted-foreground whitespace-nowrap">
-            {searchTerm.trim()
-              ? `(${matchingCount}/${events.length} matched)`
-              : `${totalCountDisplay} total`}
-          </span>
-        </div>
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className="relative flex h-9 flex-1 sm:flex-none items-center rounded-md border border-border bg-card focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background">
-            <div className="pl-2">
-              <IconSearch className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <Input
-              placeholder="Search logs"
-              value={searchTerm}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              onKeyDown={handleKeyDown}
-              className="h-full w-full sm:w-44 border-0 text-sm focus-visible:ring-0 focus-visible:ring-offset-0 pl-2 pr-20"
-            />
-            <SearchNavigation
-              currentIndex={currentMatchIdx}
-              totalCount={totalMatches}
-              onNext={handleNext}
-              onPrevious={handlePrevious}
-              hasSearchTerm={searchTerm.trim().length > 0}
-            />
+      <div className="px-4 sm:px-8">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-3">
+            <span className="text-base font-medium text-foreground whitespace-nowrap">
+              Agent events
+            </span>
+            <span className="text-sm text-muted-foreground whitespace-nowrap">
+              {searchTerm.trim()
+                ? `(${matchingCount}/${events.length} matched)`
+                : `${totalCountDisplay} total`}
+            </span>
           </div>
-          {!isCodex && (
-            <>
-              <div className="h-5 w-px bg-border hidden sm:block" />
-              <ViewModeToggle mode={viewMode} setMode={handleViewModeChange} />
-            </>
-          )}
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="relative flex h-9 flex-1 sm:flex-none items-center rounded-md border border-border bg-card focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background">
+              <div className="pl-2">
+                <IconSearch className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <Input
+                placeholder="Search logs"
+                value={searchTerm}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                onKeyDown={handleKeyDown}
+                className="h-full w-full sm:w-44 border-0 text-sm focus-visible:ring-0 focus-visible:ring-offset-0 pl-2 pr-20"
+              />
+              <SearchNavigation
+                currentIndex={currentMatchIdx}
+                totalCount={totalMatches}
+                onNext={handleNext}
+                onPrevious={handlePrevious}
+                hasSearchTerm={searchTerm.trim().length > 0}
+              />
+            </div>
+            {!isCodex && (
+              <>
+                <div className="h-5 w-px bg-border hidden sm:block" />
+                <ViewModeToggle
+                  mode={viewMode}
+                  setMode={handleViewModeChange}
+                />
+              </>
+            )}
+          </div>
         </div>
       </div>
 
       <div
         id={EVENTS_CONTAINER_ID}
-        className="flex-1 min-h-0 overflow-y-auto"
+        className="flex-1 min-h-0 overflow-y-auto px-4 pb-4 sm:px-8 sm:pb-8"
         style={{ scrollbarGutter: "stable" }}
       >
         {!isCodex && viewMode === "formatted" ? (
