@@ -104,6 +104,34 @@ jobs:
               per_page: 100
             });
 
+            // Group main/staging deployments by environment to keep only latest
+            const mainStagingByEnv = new Map();
+
+            // Helper to delete a deployment
+            async function deleteDeployment(deployment, reason) {
+              if (dryRun) {
+                console.log(`[DRY-RUN] Would delete deployment ${deployment.id} (${deployment.environment}) - ${reason}`);
+              } else {
+                // Mark as inactive first (required by GitHub API)
+                await github.rest.repos.createDeploymentStatus({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  deployment_id: deployment.id,
+                  state: 'inactive',
+                  description: reason
+                });
+
+                await github.rest.repos.deleteDeployment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  deployment_id: deployment.id
+                });
+
+                console.log(`Deleted deployment ${deployment.id} (${deployment.environment}) - ${reason}`);
+              }
+              deleted++;
+            }
+
             for (const deployment of deployments) {
               const env = deployment.environment || '';
 
@@ -118,9 +146,12 @@ jobs:
 
               const identifier = match[1];
 
-              // Skip main branch deployments (main, staging)
+              // Handle main/staging deployments - collect for later processing
               if (identifier === 'main' || identifier === 'staging') {
-                skipped++;
+                if (!mainStagingByEnv.has(env)) {
+                  mainStagingByEnv.set(env, []);
+                }
+                mainStagingByEnv.get(env).push(deployment);
                 continue;
               }
 
@@ -148,27 +179,22 @@ jobs:
                 continue;
               }
 
-              if (dryRun) {
-                console.log(`[DRY-RUN] Would delete deployment ${deployment.id} (${env}) - ${reason}`);
-              } else {
-                // Mark as inactive first (required by GitHub API)
-                await github.rest.repos.createDeploymentStatus({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  deployment_id: deployment.id,
-                  state: 'inactive',
-                  description: 'Stale cleanup - PR closed'
-                });
+              await deleteDeployment(deployment, `Stale cleanup - ${reason}`);
+            }
 
-                await github.rest.repos.deleteDeployment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  deployment_id: deployment.id
-                });
+            // Process main/staging deployments - keep only the latest per environment
+            for (const [env, envDeployments] of mainStagingByEnv) {
+              // Sort by created_at descending (newest first)
+              envDeployments.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-                console.log(`Deleted deployment ${deployment.id} (${env}) - ${reason}`);
+              // Keep the first (newest), delete the rest
+              const [newest, ...older] = envDeployments;
+              console.log(`Keeping latest ${env} deployment: ${newest.id} (created: ${newest.created_at})`);
+              skipped++;
+
+              for (const oldDeployment of older) {
+                await deleteDeployment(oldDeployment, `Stale cleanup - older ${env} deployment`);
               }
-              deleted++;
             }
 
             console.log('');
