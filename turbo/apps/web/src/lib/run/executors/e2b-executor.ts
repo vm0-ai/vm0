@@ -83,8 +83,12 @@ export async function executeE2bRun(
   let sandbox: Sandbox | null = null;
   const agentComposeYaml = context.agentCompose as AgentComposeYaml | undefined;
 
+  // Track current execution step for better error diagnostics
+  let currentStep = "init";
+
   try {
     // Update run status to "running" before starting execution
+    currentStep = "update_run_status";
     await globalThis.services.db
       .update(agentRuns)
       .set({
@@ -113,6 +117,7 @@ export async function executeE2bRun(
     const sandboxEnvVars = buildSandboxEnvVars(context, artifactForCommand);
 
     // Create sandbox
+    currentStep = "vm_create";
     sandbox = await withSandboxMetrics("vm_create", () =>
       createSandbox(sandboxEnvVars, agentComposeYaml, context.userId),
     );
@@ -120,6 +125,7 @@ export async function executeE2bRun(
 
     // Update sandboxId in database immediately after creation
     // This MUST happen BEFORE startAgentExecution() to avoid race condition
+    currentStep = "persist_sandbox_id";
     await globalThis.services.db
       .update(agentRuns)
       .set({ sandboxId: sandbox.sandboxId })
@@ -129,12 +135,14 @@ export async function executeE2bRun(
     );
 
     // Upload all scripts to sandbox
+    currentStep = "script_upload";
     log.debug(`[${context.runId}] Uploading scripts to sandbox...`);
     await withSandboxMetrics("script_upload", () => uploadAllScripts(sandbox!));
     log.debug(`[${context.runId}] Scripts uploaded successfully`);
 
     // Download storages directly to sandbox
     if (storageManifest) {
+      currentStep = "storage_download";
       log.debug(`[${context.runId}] Downloading storages to sandbox...`);
       await withSandboxMetrics("storage_download", () =>
         downloadStoragesDirectly(sandbox!, storageManifest),
@@ -144,6 +152,7 @@ export async function executeE2bRun(
 
     // Restore session history for resume
     if (context.resumeSession) {
+      currentStep = "session_restore";
       await withSandboxMetrics("session_restore", () =>
         restoreSessionHistory(
           sandbox!,
@@ -156,6 +165,7 @@ export async function executeE2bRun(
     }
 
     // Start agent execution (fire-and-forget)
+    currentStep = "agent_start";
     log.debug(`[${context.runId}] Starting agent execution...`);
     await withSandboxMetrics("agent_start", () =>
       startAgentExecution(sandbox!, context.runId),
@@ -180,10 +190,14 @@ export async function executeE2bRun(
     const errorWithResult = error as { result?: { stderr?: string } };
     if (errorWithResult.result?.stderr) {
       errorMessage = errorWithResult.result.stderr;
-      log.error(`Run ${context.runId} failed with stderr:`, errorMessage);
-    } else {
-      log.error(`Run ${context.runId} failed:`, error);
     }
+
+    // Include the execution step in error message for better diagnostics
+    const fullErrorMessage = `[${currentStep}] ${errorMessage}`;
+    log.error(
+      `Run ${context.runId} failed at step '${currentStep}':`,
+      errorMessage,
+    );
 
     // Update run status to failed
     try {
@@ -192,7 +206,7 @@ export async function executeE2bRun(
         .set({
           status: "failed",
           completedAt: new Date(),
-          error: errorMessage,
+          error: fullErrorMessage,
         })
         .where(eq(agentRuns.id, context.runId));
     } catch (e) {
@@ -204,8 +218,15 @@ export async function executeE2bRun(
       await cleanupSandbox(sandbox);
     }
 
-    // Re-throw error for caller to handle
-    throw error;
+    // Re-throw error with step information for caller to handle
+    // Preserve original error structure but add step prefix to message
+    const enhancedError = new Error(fullErrorMessage);
+    if (errorWithResult.result) {
+      (enhancedError as { result?: { stderr?: string } }).result = {
+        stderr: fullErrorMessage,
+      };
+    }
+    throw enhancedError;
   }
 }
 
