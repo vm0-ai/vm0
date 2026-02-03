@@ -20,14 +20,14 @@ This repository is configured to automatically create preview deployments for pu
 
 When the `PREVIEW_DOMAIN` variable is configured, preview deployments get predictable alias URLs:
 
-| App      | Preview URL Pattern                |
-| -------- | ---------------------------------- |
-| Web      | `web-{sha7}.{PREVIEW_DOMAIN}`      |
-| Platform | `platform-{sha7}.{PREVIEW_DOMAIN}` |
-| Site     | `site-{sha7}.{PREVIEW_DOMAIN}`     |
-| Docs     | `docs-{sha7}.{PREVIEW_DOMAIN}`     |
+| App      | Preview URL Pattern                   |
+| -------- | ------------------------------------- |
+| Web      | `{job-ref}-web.{PREVIEW_DOMAIN}`      |
+| Platform | `{job-ref}-platform.{PREVIEW_DOMAIN}` |
+| Site     | `{job-ref}-site.{PREVIEW_DOMAIN}`     |
+| Docs     | `{job-ref}-docs.{PREVIEW_DOMAIN}`     |
 
-Where `{sha7}` is the 7-character commit SHA.
+Where `{job-ref}` is `pr-{number}` for pull requests (e.g., `pr-123-web.vm6.ai`).
 
 ### Prerequisites for Stable Preview URLs
 

@@ -14,8 +14,8 @@ inputs:
   app-name:
     description: "App identifier (web, platform, site, docs)"
     required: true
-  commit-sha:
-    description: "Full commit SHA (truncated to 7 chars in action)"
+  job-ref:
+    description: "Job reference (e.g., pr-123 or staging)"
     required: true
   preview-domain:
     description: "Preview domain (e.g., vm6.ai)"
@@ -41,12 +41,8 @@ runs:
       id: alias
       shell: bash
       run: |
-        # Truncate commit SHA to 7 characters
-        SHORT_SHA="${{ inputs.commit-sha }}"
-        SHORT_SHA="${SHORT_SHA:0:7}"
-
-        # Build alias URL
-        ALIAS_URL="${{ inputs.app-name }}-${SHORT_SHA}.${{ inputs.preview-domain }}"
+        # Build alias URL: {job-ref}-{app}.{domain}
+        ALIAS_URL="${{ inputs.job-ref }}-${{ inputs.app-name }}.${{ inputs.preview-domain }}"
 
         echo "Creating alias: ${ALIAS_URL} -> ${{ inputs.deployment-url }}"
 

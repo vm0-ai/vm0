@@ -429,7 +429,7 @@ jobs:
           vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
           deployment-url: ${{ steps.deploy.outputs.url }}
           app-name: web
-          commit-sha: ${{ github.event.pull_request.head.sha }}
+          job-ref: ${{ needs.prepare.outputs.job-ref }}
           preview-domain: ${{ vars.PREVIEW_DOMAIN }}
           deployment-id: ${{ steps.deploy.outputs.deployment-id }}
           deployment-env: ${{ steps.deploy.outputs.deployment-env }}
@@ -484,7 +484,7 @@ jobs:
           vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
           deployment-url: ${{ steps.deploy.outputs.url }}
           app-name: docs
-          commit-sha: ${{ github.event.pull_request.head.sha }}
+          job-ref: ${{ needs.prepare.outputs.job-ref }}
           preview-domain: ${{ vars.PREVIEW_DOMAIN }}
           deployment-id: ${{ steps.deploy.outputs.deployment-id }}
           deployment-env: ${{ steps.deploy.outputs.deployment-env }}
@@ -530,7 +530,7 @@ jobs:
           vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
           deployment-url: ${{ steps.deploy.outputs.url }}
           app-name: site
-          commit-sha: ${{ github.event.pull_request.head.sha }}
+          job-ref: ${{ needs.prepare.outputs.job-ref }}
           preview-domain: ${{ vars.PREVIEW_DOMAIN }}
           deployment-id: ${{ steps.deploy.outputs.deployment-id }}
           deployment-env: ${{ steps.deploy.outputs.deployment-env }}
@@ -575,7 +575,7 @@ jobs:
           vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
           deployment-url: ${{ steps.deploy.outputs.url }}
           app-name: platform
-          commit-sha: ${{ github.event.pull_request.head.sha }}
+          job-ref: ${{ needs.prepare.outputs.job-ref }}
           preview-domain: ${{ vars.PREVIEW_DOMAIN }}
           deployment-id: ${{ steps.deploy.outputs.deployment-id }}
           deployment-env: ${{ steps.deploy.outputs.deployment-env }}
