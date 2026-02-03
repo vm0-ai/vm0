@@ -1,6 +1,6 @@
 {
   "name": "@vm0/platform",
-  "version": "0.43.1",
+  "version": "0.44.0",
   "private": true,
   "type": "module",
   "scripts": {

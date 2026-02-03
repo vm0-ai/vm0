@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.44.0](https://github.com/vm0-ai/vm0/compare/platform-v0.43.1...platform-v0.44.0) (2026-02-03)
+
+
+### Features
+
+* **platform:** simplify agents page to focus on Claude Code setup ([#2259](https://github.com/vm0-ai/vm0/issues/2259)) ([25f3e45](https://github.com/vm0-ai/vm0/commit/25f3e4597b0ae4b786b0051da5c76eafd1400d88))
+
 ## [0.43.1](https://github.com/vm0-ai/vm0/compare/platform-v0.43.0...platform-v0.43.1) (2026-02-03)
 
 
