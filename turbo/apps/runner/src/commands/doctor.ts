@@ -18,7 +18,7 @@ import {
   findMitmproxyProcess,
 } from "../lib/firecracker/process.js";
 import { isPortInUse } from "../lib/firecracker/network.js";
-import { SNAPSHOT_NETWORK } from "../lib/firecracker/netns-pool.js";
+import { SNAPSHOT_NETWORK } from "../lib/firecracker/netns.js";
 import { type VmId, createVmId } from "../lib/firecracker/vm-id.js";
 
 interface RunnerStatus {

@@ -15,13 +15,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import readline from "node:readline";
-import {
-  SNAPSHOT_NETWORK,
-  generateSnapshotNetworkBootArgs,
-  acquireNetns,
-  releaseNetns,
-  type PooledNetns,
-} from "./netns-pool.js";
+import { acquireNetns, releaseNetns, type PooledNetns } from "./netns-pool.js";
+import { SNAPSHOT_NETWORK, generateSnapshotNetworkBootArgs } from "./netns.js";
 import { acquireOverlay } from "./overlay-pool.js";
 import { FirecrackerClient } from "./client.js";
 import { createLogger } from "../logger.js";
@@ -162,8 +157,9 @@ export class FirecrackerVM {
     }
 
     try {
-      // Create working directory
+      // Create working directory and vsock subdirectory
       fs.mkdirSync(this.workDir, { recursive: true });
+      fs.mkdirSync(vmPaths.vsockDir(this.workDir), { recursive: true });
 
       // Acquire overlay and namespace in parallel for faster startup
       // Both pools are pre-warmed, so acquisition should be near-instant

@@ -36,57 +36,22 @@
  * - Multi-runner coordination via file-based registry with PID tracking
  */
 
-import { exec } from "node:child_process";
 import path from "node:path";
-import { promisify } from "node:util";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { z } from "zod";
 import { createLogger } from "../logger.js";
 import { withFileLock } from "../utils/file-lock.js";
 import { runtimePaths } from "../paths.js";
+import { execCommand } from "../utils/exec.js";
+import { createNetnsWithTap, SNAPSHOT_NETWORK } from "./netns.js";
 
-const execAsync = promisify(exec);
 const logger = createLogger("NetnsPool");
-
-// ============ Constants ============
-
-/**
- * Fixed network configuration for snapshot VMs.
- * These values are baked into the base snapshot and must match
- * the namespace TAP device configuration.
- *
- * Since each VM runs in an isolated namespace, we can use fixed values
- * for all VMs - no conflicts possible.
- */
-export const SNAPSHOT_NETWORK = {
-  /** TAP device name inside namespace (must match Firecracker config) */
-  tapName: "vm0-tap",
-  /** Guest MAC address (locally administered, fixed for all snapshots) */
-  guestMac: "02:00:00:00:00:01",
-  /** Guest IP inside the VM (baked into snapshot) */
-  guestIp: "192.168.241.2",
-  /** Gateway IP (TAP device in namespace) */
-  gatewayIp: "192.168.241.1",
-  /** Netmask for /29 subnet (dotted decimal for kernel boot args) */
-  netmask: "255.255.255.248",
-  /** CIDR prefix length (for ip commands) */
-  prefixLen: 29,
-} as const;
 
 /** Internal constants for namespace/veth naming and IP allocation */
 const VETH_NS = "veth0";
 const NS_PREFIX = "vm0-ns-";
 const VETH_PREFIX = "vm0-ve-";
 const VETH_IP_PREFIX = "10.200";
-
-/**
- * Generate kernel boot args for creating base snapshot.
- * Only used when creating the initial snapshot, not when restoring.
- */
-export function generateSnapshotNetworkBootArgs(): string {
-  const { guestIp, gatewayIp, netmask } = SNAPSHOT_NETWORK;
-  return `ip=${guestIp}::${gatewayIp}:${netmask}:vm0-guest:eth0:off`;
-}
 
 /**
  * Capacity limits:
@@ -215,19 +180,6 @@ export interface NetnsPoolConfig {
 }
 
 // ============ Helper Functions ============
-
-async function execCommand(cmd: string, sudo: boolean = true): Promise<string> {
-  const fullCmd = sudo ? `sudo ${cmd}` : cmd;
-  try {
-    const { stdout } = await execAsync(fullCmd);
-    return stdout.trim();
-  } catch (error) {
-    const execError = error as { stderr?: string; message?: string };
-    throw new Error(
-      `Command failed: ${fullCmd}\n${execError.stderr || execError.message}`,
-    );
-  }
-}
 
 async function getDefaultInterface(): Promise<string> {
   const result = await execCommand("ip route get 8.8.8.8", false);
@@ -511,16 +463,13 @@ export class NetnsPool {
     logger.log(`Creating namespace ${name}...`);
 
     try {
-      await execCommand(`ip netns add ${name}`);
-      await execCommand(
-        `ip netns exec ${name} ip tuntap add ${SNAPSHOT_NETWORK.tapName} mode tap`,
-      );
-      await execCommand(
-        `ip netns exec ${name} ip addr add ${SNAPSHOT_NETWORK.gatewayIp}/${SNAPSHOT_NETWORK.prefixLen} dev ${SNAPSHOT_NETWORK.tapName}`,
-      );
-      await execCommand(
-        `ip netns exec ${name} ip link set ${SNAPSHOT_NETWORK.tapName} up`,
-      );
+      // Create namespace with TAP device (shared with snapshot command)
+      await createNetnsWithTap(name, {
+        tapName: SNAPSHOT_NETWORK.tapName,
+        gatewayIpWithPrefix: `${SNAPSHOT_NETWORK.gatewayIp}/${SNAPSHOT_NETWORK.prefixLen}`,
+      });
+
+      // Add veth pair for external connectivity
       await execCommand(
         `ip link add ${vethHost} type veth peer name ${VETH_NS} netns ${name}`,
       );
@@ -528,9 +477,10 @@ export class NetnsPool {
         `ip netns exec ${name} ip addr add ${vethNsIp}/30 dev ${VETH_NS}`,
       );
       await execCommand(`ip netns exec ${name} ip link set ${VETH_NS} up`);
-      await execCommand(`ip netns exec ${name} ip link set lo up`);
       await execCommand(`ip addr add ${vethHostIp}/30 dev ${vethHost}`);
       await execCommand(`ip link set ${vethHost} up`);
+
+      // Configure routing and NAT
       await execCommand(
         `ip netns exec ${name} ip route add default via ${vethHostIp}`,
       );

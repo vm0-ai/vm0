@@ -76,6 +76,40 @@ export interface DriveConfig {
 }
 
 /**
+ * Machine configuration
+ */
+export interface MachineConfig {
+  vcpu_count: number;
+  mem_size_mib: number;
+  track_dirty_pages?: boolean;
+}
+
+/**
+ * Boot source configuration
+ */
+export interface BootSourceConfig {
+  kernel_image_path: string;
+  boot_args?: string;
+}
+
+/**
+ * Network interface configuration
+ */
+export interface NetworkInterfaceConfig {
+  iface_id: string;
+  guest_mac?: string;
+  host_dev_name: string;
+}
+
+/**
+ * Vsock device configuration
+ */
+export interface VsockConfig {
+  guest_cid: number;
+  uds_path: string;
+}
+
+/**
  * API error response from Firecracker
  */
 export interface ApiError {
@@ -97,15 +131,52 @@ export class FirecrackerApiError extends Error {
 }
 
 /**
- * Minimal Firecracker HTTP API Client
+ * Firecracker HTTP API Client
  *
- * Implements only the APIs needed for snapshot support:
- * - pause/resume (PATCH /vm)
- * - createSnapshot (PUT /snapshot/create)
- * - loadSnapshot (PUT /snapshot/load)
+ * Implements APIs needed for VM configuration and snapshot support:
+ * - VM configuration (machine, boot-source, drives, network, vsock)
+ * - VM lifecycle (start, pause, resume)
+ * - Snapshots (create, load)
  */
 export class FirecrackerClient {
   constructor(private readonly socketPath: string) {}
+
+  /**
+   * Configure machine settings (vCPUs, memory)
+   */
+  async configureMachine(config: MachineConfig): Promise<void> {
+    await this.put("/machine-config", config);
+  }
+
+  /**
+   * Configure boot source (kernel, boot args)
+   */
+  async configureBootSource(config: BootSourceConfig): Promise<void> {
+    await this.put("/boot-source", config);
+  }
+
+  /**
+   * Configure network interface
+   */
+  async configureNetworkInterface(
+    config: NetworkInterfaceConfig,
+  ): Promise<void> {
+    await this.put(`/network-interfaces/${config.iface_id}`, config);
+  }
+
+  /**
+   * Configure vsock device
+   */
+  async configureVsock(config: VsockConfig): Promise<void> {
+    await this.put("/vsock", config);
+  }
+
+  /**
+   * Start the VM instance
+   */
+  async startInstance(): Promise<void> {
+    await this.put("/actions", { action_type: "InstanceStart" });
+  }
 
   /**
    * Pause the VM
@@ -226,18 +297,33 @@ export class FirecrackerClient {
     timeoutMs: number = 30000,
   ): Promise<string> {
     return new Promise((resolve, reject) => {
-      const options: http.RequestOptions = {
-        socketPath: this.socketPath,
-        path: `http://localhost${path}`,
-        method,
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        timeout: timeoutMs,
+      // Serialize body first to calculate Content-Length
+      const bodyStr = body !== undefined ? JSON.stringify(body) : undefined;
+
+      const headers: http.OutgoingHttpHeaders = {
+        Accept: "application/json",
+        // Disable keep-alive to prevent pipelining issues
+        Connection: "close",
       };
 
-      logger.log(`${method} ${path}${body ? " " + JSON.stringify(body) : ""}`);
+      // Set Content-Type and Content-Length only for requests with body
+      if (bodyStr !== undefined) {
+        headers["Content-Type"] = "application/json";
+        headers["Content-Length"] = Buffer.byteLength(bodyStr);
+      }
+
+      const options: http.RequestOptions = {
+        socketPath: this.socketPath,
+        path,
+        method,
+        headers,
+        timeout: timeoutMs,
+        // Disable agent to ensure fresh connection for each request
+        // Firecracker's single-threaded API can have issues with pipelined requests
+        agent: false,
+      };
+
+      logger.log(`${method} ${path}${bodyStr ? " " + bodyStr : ""}`);
 
       const req = http.request(options, (res) => {
         let data = "";
@@ -274,8 +360,8 @@ export class FirecrackerClient {
         reject(err);
       });
 
-      if (body) {
-        req.write(JSON.stringify(body));
+      if (bodyStr !== undefined) {
+        req.write(bodyStr);
       }
 
       req.end();

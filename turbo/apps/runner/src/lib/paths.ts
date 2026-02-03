@@ -34,6 +34,9 @@ const VM_WORKSPACE_PREFIX = "vm0-";
  * Each runner instance has its own base directory
  */
 export const runnerPaths = {
+  /** Base directory used for snapshot generation (baseDir + /snapshot-gen) */
+  snapshotBaseDir: (baseDir: string) => path.join(baseDir, "snapshot-gen"),
+
   /** Overlay pool directory for pre-warmed VM overlays */
   overlayPool: (baseDir: string) => path.join(baseDir, "overlay-pool"),
 
@@ -46,6 +49,10 @@ export const runnerPaths = {
 
   /** Runner status file */
   statusFile: (baseDir: string) => path.join(baseDir, "status.json"),
+
+  /** Snapshot generation work directory */
+  snapshotWorkDir: (baseDir: string) =>
+    path.join(baseDir, "workspaces", ".snapshot-work"),
 
   /** Check if a directory name is a VM workspace */
   isVmWorkspace: (dirname: string) => dirname.startsWith(VM_WORKSPACE_PREFIX),
@@ -60,11 +67,20 @@ export const runnerPaths = {
  * These are file names inside each VM's work directory
  */
 export const vmPaths = {
-  /** Firecracker config file (used with --config-file --no-api) */
+  /** Firecracker config file (used with --config-file) */
   config: (workDir: string) => path.join(workDir, "config.json"),
 
-  /** Vsock UDS for host-guest communication */
-  vsock: (workDir: string) => path.join(workDir, "vsock.sock"),
+  /** Vsock directory for host-guest communication */
+  vsockDir: (workDir: string) => path.join(workDir, "vsock"),
+
+  /** Vsock UDS path for host-guest communication */
+  vsock: (workDir: string) => path.join(workDir, "vsock", "vsock.sock"),
+
+  /** Firecracker API socket (used with --api-sock) */
+  apiSock: (workDir: string) => path.join(workDir, "api.sock"),
+
+  /** Overlay filesystem for VM writes */
+  overlay: (workDir: string) => path.join(workDir, "overlay.ext4"),
 };
 
 /**
