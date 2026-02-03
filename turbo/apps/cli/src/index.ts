@@ -1,4 +1,4 @@
-// CLI entry point
+// VM0 CLI entry point
 import { Command } from "commander";
 import { authCommand } from "./commands/auth";
 import { infoCommand } from "./commands/info";
