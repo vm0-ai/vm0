@@ -479,12 +479,21 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
 
   // Build provider choices with configuration status
   const annotatedChoices = Object.entries(MODEL_PROVIDER_TYPES).map(
-    ([type, config]) => ({
-      title: configuredTypes.has(type as ModelProviderType)
-        ? `${config.label} ✓`
-        : config.label,
-      value: type as ModelProviderType,
-    }),
+    ([type, config]) => {
+      const isConfigured = configuredTypes.has(type as ModelProviderType);
+      const isExperimental = hasAuthMethods(type as ModelProviderType);
+      let title: string = config.label;
+      if (isConfigured) {
+        title = `${title} ✓`;
+      }
+      if (isExperimental) {
+        title = `${title} ${chalk.dim("(experimental)")}`;
+      }
+      return {
+        title,
+        value: type as ModelProviderType,
+      };
+    },
   );
 
   const typeResponse = await prompts(
