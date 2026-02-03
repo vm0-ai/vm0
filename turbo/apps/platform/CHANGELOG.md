@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.43.0](https://github.com/vm0-ai/vm0/compare/platform-v0.42.0...platform-v0.43.0) (2026-02-03)
+
+
+### Features
+
+* **platform:** add agent and schedule cli reference navigation ([#2244](https://github.com/vm0-ai/vm0/issues/2244)) ([164d46b](https://github.com/vm0-ai/vm0/commit/164d46b0511ddd4e12827eb032c815073035437e))
+
 ## [0.42.0](https://github.com/vm0-ai/vm0/compare/platform-v0.41.1...platform-v0.42.0) (2026-02-03)
 
 
