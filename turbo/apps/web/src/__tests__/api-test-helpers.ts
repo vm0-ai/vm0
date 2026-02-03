@@ -250,6 +250,51 @@ export async function createTestModelProvider(
 }
 
 /**
+ * Create a test multi-auth model provider via API route handler.
+ *
+ * @param type - The provider type (e.g., "aws-bedrock")
+ * @param authMethod - The auth method (e.g., "api-key", "access-keys")
+ * @param credentials - Map of credential names to values
+ * @param selectedModel - Optional selected model
+ * @returns The created provider with id and type
+ */
+export async function createTestMultiAuthModelProvider(
+  type: string,
+  authMethod: string,
+  credentials: Record<string, string>,
+  selectedModel?: string,
+): Promise<{
+  id: string;
+  type: string;
+  authMethod: string | null;
+  credentialNames: string[] | null;
+  selectedModel: string | null;
+}> {
+  const request = createTestRequest(
+    "http://localhost:3000/api/model-providers",
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type,
+        authMethod,
+        credentials,
+        selectedModel,
+      }),
+    },
+  );
+  const response = await upsertModelProviderRoute(request);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `Failed to create multi-auth model provider: ${error.error?.message || response.status}`,
+    );
+  }
+  const data = await response.json();
+  return data.provider;
+}
+
+/**
  * Create a test run via internal API route handler.
  *
  * @param agentComposeId - The compose ID to run

@@ -8,6 +8,7 @@ import {
   createTestCliToken,
   deleteTestCliToken,
   createTestModelProvider,
+  createTestMultiAuthModelProvider,
   createTestRun,
   getTestRun,
   completeTestRun,
@@ -934,6 +935,115 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(envs?.ANTHROPIC_MODEL).toBeUndefined();
       expect(envs?.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
       expect(envs?.ANTHROPIC_BASE_URL).toBeUndefined();
+    });
+
+    it("should pass mapped env vars for aws-bedrock provider with api-key auth method", async () => {
+      vi.mocked(Sandbox.create).mockClear();
+
+      // Create aws-bedrock provider with api-key auth method
+      await createTestMultiAuthModelProvider(
+        "aws-bedrock",
+        "api-key",
+        {
+          AWS_BEARER_TOKEN_BEDROCK: "bedrock-test-token",
+          AWS_REGION: "us-west-2",
+        },
+        "anthropic.claude-sonnet-4-20250514-v1:0",
+      );
+
+      const { composeId } = await createTestCompose(
+        `bedrock-api-key-env-${Date.now()}`,
+        {
+          skipDefaultApiKey: true,
+          overrides: { framework: "claude-code" },
+        },
+      );
+
+      const data = await createTestRun(
+        composeId,
+        "Test bedrock api-key env vars",
+      );
+      expect(data.status).toBe("running");
+
+      // Verify Sandbox.create was called with correct env vars
+      expect(Sandbox.create).toHaveBeenCalled();
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
+
+      // AWS Bedrock env vars should be set
+      expect(envs?.CLAUDE_CODE_USE_BEDROCK).toBe("1");
+      expect(envs?.AWS_REGION).toBe("us-west-2");
+      expect(envs?.AWS_BEARER_TOKEN_BEDROCK).toBe("bedrock-test-token");
+      expect(envs?.ANTHROPIC_MODEL).toBe(
+        "anthropic.claude-sonnet-4-20250514-v1:0",
+      );
+    });
+
+    it("should pass mapped env vars for aws-bedrock provider with access-keys auth method", async () => {
+      vi.mocked(Sandbox.create).mockClear();
+
+      // Create aws-bedrock provider with access-keys auth method
+      await createTestMultiAuthModelProvider(
+        "aws-bedrock",
+        "access-keys",
+        {
+          AWS_ACCESS_KEY_ID: "AKIA1234567890",
+          AWS_SECRET_ACCESS_KEY: "secret-access-key-test",
+          AWS_SESSION_TOKEN: "session-token-test",
+          AWS_REGION: "eu-west-1",
+        },
+        "anthropic.claude-opus-4-20250514-v1:0",
+      );
+
+      const { composeId } = await createTestCompose(
+        `bedrock-access-keys-env-${Date.now()}`,
+        {
+          skipDefaultApiKey: true,
+          overrides: { framework: "claude-code" },
+        },
+      );
+
+      const data = await createTestRun(
+        composeId,
+        "Test bedrock access-keys env vars",
+      );
+      expect(data.status).toBe("running");
+
+      // Verify Sandbox.create was called with correct env vars
+      expect(Sandbox.create).toHaveBeenCalled();
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
+
+      // AWS Bedrock env vars should be set
+      expect(envs?.CLAUDE_CODE_USE_BEDROCK).toBe("1");
+      expect(envs?.AWS_REGION).toBe("eu-west-1");
+      expect(envs?.AWS_ACCESS_KEY_ID).toBe("AKIA1234567890");
+      expect(envs?.AWS_SECRET_ACCESS_KEY).toBe("secret-access-key-test");
+      expect(envs?.AWS_SESSION_TOKEN).toBe("session-token-test");
+      expect(envs?.ANTHROPIC_MODEL).toBe(
+        "anthropic.claude-opus-4-20250514-v1:0",
+      );
+    });
+
+    it("should succeed when aws-bedrock provider is configured and no API key in compose", async () => {
+      // Create aws-bedrock provider
+      await createTestMultiAuthModelProvider("aws-bedrock", "api-key", {
+        AWS_BEARER_TOKEN_BEDROCK: "bedrock-token",
+        AWS_REGION: "us-east-1",
+      });
+
+      // Create compose without API key
+      const { composeId } = await createTestCompose(
+        `bedrock-success-${randomUUID().slice(0, 8)}`,
+        {
+          skipDefaultApiKey: true,
+        },
+      );
+
+      const data = await createTestRun(composeId, "Test with bedrock provider");
+
+      // Should succeed (not fail due to missing model provider)
+      expect(data.status).toBe("running");
     });
   });
 

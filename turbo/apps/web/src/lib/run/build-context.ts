@@ -7,6 +7,7 @@ import {
   getEnvironmentMapping,
   getDefaultModel,
   hasAuthMethods,
+  getCredentialNamesForAuthMethod,
   MODEL_PROVIDER_TYPES,
   type ModelProviderType,
   type ModelProviderFramework,
@@ -200,16 +201,74 @@ async function resolveModelProviderCredential(
     );
   }
 
-  // Multi-auth providers (like aws-bedrock) are not yet supported for auto-injection
-  // They need separate handling with authMethod and multiple credentials
+  // Get selected model from default provider if available
+  const defaultProvider = await getDefaultModelProvider(
+    userScope.id,
+    framework as ModelProviderFramework,
+  );
+  const selectedModel = defaultProvider?.selectedModel ?? undefined;
+
+  // Handle multi-auth providers (like aws-bedrock)
   if (hasAuthMethods(providerType)) {
-    log.debug(
-      `Skipping auto-injection for multi-auth provider ${providerType}`,
+    const authMethod = defaultProvider?.authMethod;
+    if (!authMethod) {
+      log.debug(
+        `Multi-auth provider ${providerType} has no auth method configured`,
+      );
+      return { credentials, injectedEnvVars: undefined };
+    }
+
+    // Get credential names for this auth method
+    const credentialNames = getCredentialNamesForAuthMethod(
+      providerType,
+      authMethod,
     );
-    return { credentials, injectedEnvVars: undefined };
+    if (!credentialNames || credentialNames.length === 0) {
+      log.debug(`No credential names found for ${providerType}/${authMethod}`);
+      return { credentials, injectedEnvVars: undefined };
+    }
+
+    // Fetch all credentials by name
+    const allCredentialValues = await getCredentialValues(userScope.id);
+    const credentialsMap: Record<string, string> = {};
+    let hasAllRequired = true;
+
+    for (const name of credentialNames) {
+      const value = allCredentialValues[name];
+      if (value) {
+        credentialsMap[name] = value;
+      } else {
+        log.debug(
+          `Missing credential ${name} for ${providerType}/${authMethod}`,
+        );
+        hasAllRequired = false;
+      }
+    }
+
+    if (!hasAllRequired) {
+      return { credentials, injectedEnvVars: undefined };
+    }
+
+    // Store credentials for masking
+    credentials = credentials || {};
+    Object.assign(credentials, credentialsMap);
+
+    // Resolve environment mapping with credentials map
+    const injectedEnvVars = resolveEnvironmentMapping(
+      providerType,
+      undefined, // No single credential for multi-auth
+      selectedModel,
+      credentialsMap,
+    );
+
+    log.debug(
+      `Resolved multi-auth model provider env vars: ${Object.keys(injectedEnvVars).join(", ")}`,
+    );
+
+    return { credentials, injectedEnvVars };
   }
 
-  // Get credential value (legacy single-credential providers)
+  // Handle legacy single-credential providers
   const credentialName = getCredentialNameForType(providerType);
   if (!credentialName) {
     return { credentials, injectedEnvVars: undefined };
@@ -227,13 +286,6 @@ async function resolveModelProviderCredential(
   // Store credential in credentials map for masking
   credentials = credentials || {};
   credentials[credentialName] = credentialValue;
-
-  // Get selected model from default provider if available
-  const defaultProvider = await getDefaultModelProvider(
-    userScope.id,
-    framework as ModelProviderFramework,
-  );
-  const selectedModel = defaultProvider?.selectedModel ?? undefined;
 
   // Resolve environment mapping (handles $credential and $model substitution)
   const injectedEnvVars = resolveEnvironmentMapping(

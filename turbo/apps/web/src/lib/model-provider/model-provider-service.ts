@@ -877,23 +877,26 @@ export async function updateModelProviderModel(
 
 /**
  * Get the default model provider for a framework
+ * Supports both legacy single-credential and multi-auth providers
  */
 export async function getDefaultModelProvider(
   scopeId: string,
   framework: ModelProviderFramework,
 ): Promise<ModelProviderInfo | null> {
+  // Use leftJoin to include multi-auth providers that don't have credentialId
   const allProviders = await globalThis.services.db
     .select({
       id: modelProviders.id,
       type: modelProviders.type,
       isDefault: modelProviders.isDefault,
       selectedModel: modelProviders.selectedModel,
+      authMethod: modelProviders.authMethod,
       credentialName: credentials.name,
       createdAt: modelProviders.createdAt,
       updatedAt: modelProviders.updatedAt,
     })
     .from(modelProviders)
-    .innerJoin(credentials, eq(modelProviders.credentialId, credentials.id))
+    .leftJoin(credentials, eq(modelProviders.credentialId, credentials.id))
     .where(eq(modelProviders.scopeId, scopeId));
 
   const defaultProvider = allProviders.find(
@@ -906,9 +909,28 @@ export async function getDefaultModelProvider(
     return null;
   }
 
+  const providerType = defaultProvider.type as ModelProviderType;
+  const isMultiAuth = hasAuthMethods(providerType);
+
+  // For multi-auth providers, get credential names from config
+  let credentialNames: string[] | undefined;
+  if (isMultiAuth && defaultProvider.authMethod) {
+    credentialNames = getCredentialNamesForAuthMethod(
+      providerType,
+      defaultProvider.authMethod,
+    );
+  }
+
   return {
-    ...defaultProvider,
-    type: defaultProvider.type as ModelProviderType,
+    id: defaultProvider.id,
+    type: providerType,
     framework,
+    credentialName: defaultProvider.credentialName,
+    authMethod: defaultProvider.authMethod ?? null,
+    credentialNames: credentialNames ?? null,
+    isDefault: defaultProvider.isDefault,
+    selectedModel: defaultProvider.selectedModel,
+    createdAt: defaultProvider.createdAt,
+    updatedAt: defaultProvider.updatedAt,
   };
 }
