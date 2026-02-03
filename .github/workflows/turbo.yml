@@ -108,8 +108,8 @@ jobs:
         shell: bash
         run: |
           # Scan test files and distribute them across chunks using load balancing
-          # Dynamic chunk count: ~25 tests per chunk, max 10 chunks
-          TESTS_PER_CHUNK=25
+          # Dynamic chunk count: ~15 tests per chunk, max 10 chunks
+          TESTS_PER_CHUNK=15
           MAX_CHUNKS=10
 
           # Count tests per file
