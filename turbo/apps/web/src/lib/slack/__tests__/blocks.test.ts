@@ -17,23 +17,39 @@ import {
 describe("buildAgentAddModal", () => {
   it("should create a valid modal structure", () => {
     const agents = [
-      { id: "agent-1", name: "My Coder" },
-      { id: "agent-2", name: "My Analyst" },
+      { id: "agent-1", name: "My Coder", requiredSecrets: [] },
+      { id: "agent-2", name: "My Analyst", requiredSecrets: [] },
     ];
 
-    const modal = buildAgentAddModal(agents) as ModalView;
+    // Without selected agent, submit button is not shown
+    const modalWithoutSelection = buildAgentAddModal(agents) as ModalView;
+    expect(modalWithoutSelection.type).toBe("modal");
+    expect(modalWithoutSelection.callback_id).toBe("agent_add_modal");
+    expect(modalWithoutSelection.title).toEqual({
+      type: "plain_text",
+      text: "Add Agent",
+    });
+    expect(modalWithoutSelection.submit).toBeUndefined();
+    expect(modalWithoutSelection.close).toEqual({
+      type: "plain_text",
+      text: "Cancel",
+    });
 
-    expect(modal.type).toBe("modal");
-    expect(modal.callback_id).toBe("agent_add_modal");
-    expect(modal.title).toEqual({ type: "plain_text", text: "Add Agent" });
-    expect(modal.submit).toEqual({ type: "plain_text", text: "Add" });
-    expect(modal.close).toEqual({ type: "plain_text", text: "Cancel" });
+    // With selected agent, submit button is shown
+    const modalWithSelection = buildAgentAddModal(
+      agents,
+      "agent-1",
+    ) as ModalView;
+    expect(modalWithSelection.submit).toEqual({
+      type: "plain_text",
+      text: "Add",
+    });
   });
 
   it("should include agent options in select", () => {
     const agents = [
-      { id: "agent-1", name: "My Coder" },
-      { id: "agent-2", name: "My Analyst" },
+      { id: "agent-1", name: "My Coder", requiredSecrets: [] },
+      { id: "agent-2", name: "My Analyst", requiredSecrets: [] },
     ];
 
     const modal = buildAgentAddModal(agents);

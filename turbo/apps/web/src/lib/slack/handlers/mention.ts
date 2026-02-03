@@ -2,8 +2,6 @@ import { eq, and } from "drizzle-orm";
 import { slackInstallations } from "../../../db/schema/slack-installation";
 import { slackUserLinks } from "../../../db/schema/slack-user-link";
 import { slackBindings } from "../../../db/schema/slack-binding";
-import { slackThreadSessions } from "../../../db/schema/slack-thread-session";
-import { agentSessions } from "../../../db/schema/agent-session";
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
 import {
@@ -11,10 +9,12 @@ import {
   postMessage,
   extractMessageContent,
   fetchThreadContext,
+  fetchChannelContext,
   formatContextForAgent,
   parseExplicitAgentSelection,
   buildLinkAccountMessage,
   buildErrorMessage,
+  buildMarkdownMessage,
 } from "../index";
 import { routeToAgent } from "../router";
 import { runAgentForSlack } from "./run-agent";
@@ -191,38 +191,95 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       (b) => b.agentName === selectedAgentName,
     )!;
 
-    // 7. Fetch thread context
+    // 7. Fetch context (thread messages or recent channel messages)
     let formattedContext = "";
     if (context.threadTs) {
+      // In a thread - fetch thread replies
       const messages = await fetchThreadContext(
         client,
         context.channelId,
         context.threadTs,
       );
-      formattedContext = formatContextForAgent(messages, botUserId);
+      formattedContext = formatContextForAgent(messages, botUserId, "thread");
+    } else {
+      // Not in a thread - fetch recent channel messages
+      const messages = await fetchChannelContext(client, context.channelId, 10);
+      formattedContext = formatContextForAgent(messages, botUserId, "channel");
     }
 
-    // 8. Find or create thread session
-    const session = await findOrCreateThreadSession(
-      selectedBinding.id,
-      selectedBinding.composeId,
+    // 8. Add thinking reaction to user's message (non-critical, ignore errors)
+    const reactionAdded = await client.reactions
+      .add({
+        channel: context.channelId,
+        timestamp: context.messageTs,
+        name: "hourglass_flowing_sand",
+      })
+      .then(() => true)
+      .catch(() => false);
+
+    // 9. Post thinking message (will be updated with response)
+    const thinkingTs = await postMessage(
+      client,
       context.channelId,
-      threadTs,
-      userLink.vm0UserId,
+      "Thinking...",
+      {
+        threadTs,
+        blocks: [
+          {
+            type: "context",
+            elements: [
+              {
+                type: "mrkdwn",
+                text: `:hourglass_flowing_sand: *Thinking...* (using \`${selectedAgentName}\`)`,
+              },
+            ],
+          },
+        ],
+      },
     );
 
-    // 9. Execute agent
-    const agentResponse = await runAgentForSlack({
-      binding: selectedBinding,
-      sessionId: session.agentSessionId,
-      prompt: promptText,
-      threadContext: formattedContext,
-      userId: userLink.vm0UserId,
-      encryptionKey: SECRETS_ENCRYPTION_KEY,
-    });
+    try {
+      // 10. Execute agent
+      // Don't use session continuation - rely on Slack thread context instead
+      // This avoids complexity of syncing Slack threads with agent sessions
+      const agentResponse = await runAgentForSlack({
+        binding: selectedBinding,
+        sessionId: undefined,
+        prompt: promptText,
+        threadContext: formattedContext,
+        userId: userLink.vm0UserId,
+        encryptionKey: SECRETS_ENCRYPTION_KEY,
+      });
 
-    // 10. Post response to Slack thread
-    await postMessage(client, context.channelId, agentResponse, { threadTs });
+      // 11. Update thinking message with actual response
+      if (thinkingTs) {
+        await client.chat.update({
+          channel: context.channelId,
+          ts: thinkingTs,
+          text: agentResponse,
+          blocks: buildMarkdownMessage(agentResponse),
+        });
+      } else {
+        // Fallback: post new message if we don't have the thinking message ts
+        await postMessage(client, context.channelId, agentResponse, {
+          threadTs,
+          blocks: buildMarkdownMessage(agentResponse),
+        });
+      }
+    } finally {
+      // 12. Remove thinking reaction (only if it was added)
+      if (reactionAdded) {
+        await client.reactions
+          .remove({
+            channel: context.channelId,
+            timestamp: context.messageTs,
+            name: "hourglass_flowing_sand",
+          })
+          .catch(() => {
+            // Ignore errors when removing reaction
+          });
+      }
+    }
   } catch (error) {
     console.error("Error handling app_mention:", error);
     // Don't throw - we don't want to retry
@@ -241,55 +298,4 @@ function buildLinkUrl(workspaceId: string, slackUserId: string): string {
     u: slackUserId,
   });
   return `${baseUrl}/slack/link?${params.toString()}`;
-}
-
-/**
- * Find or create a thread session for maintaining conversation context
- */
-async function findOrCreateThreadSession(
-  bindingId: string,
-  composeId: string,
-  channelId: string,
-  threadTs: string,
-  userId: string,
-): Promise<{ agentSessionId: string }> {
-  // Try to find existing session for this thread
-  const [existingSession] = await globalThis.services.db
-    .select()
-    .from(slackThreadSessions)
-    .where(
-      and(
-        eq(slackThreadSessions.slackBindingId, bindingId),
-        eq(slackThreadSessions.slackChannelId, channelId),
-        eq(slackThreadSessions.slackThreadTs, threadTs),
-      ),
-    )
-    .limit(1);
-
-  if (existingSession) {
-    return { agentSessionId: existingSession.agentSessionId };
-  }
-
-  // Create new agent session
-  const [newAgentSession] = await globalThis.services.db
-    .insert(agentSessions)
-    .values({
-      userId,
-      agentComposeId: composeId,
-    })
-    .returning({ id: agentSessions.id });
-
-  if (!newAgentSession) {
-    throw new Error("Failed to create agent session");
-  }
-
-  // Create thread session mapping
-  await globalThis.services.db.insert(slackThreadSessions).values({
-    slackBindingId: bindingId,
-    slackChannelId: channelId,
-    slackThreadTs: threadTs,
-    agentSessionId: newAgentSession.id,
-  });
-
-  return { agentSessionId: newAgentSession.id };
 }

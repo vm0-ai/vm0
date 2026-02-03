@@ -1,8 +1,9 @@
-import type { Block, KnownBlock, View } from "@slack/web-api";
+import type { Block, KnownBlock, View, SectionBlock } from "@slack/web-api";
 
 interface AgentOption {
   id: string;
   name: string;
+  requiredSecrets: string[];
 }
 
 interface BindingInfo {
@@ -15,19 +16,286 @@ interface BindingInfo {
  * Build the "Add Agent" modal view
  *
  * @param agents - List of available agents
+ * @param selectedAgentId - Currently selected agent ID
+ * @param channelId - Channel ID to send confirmation message to
  * @returns Modal view definition
  */
-export function buildAgentAddModal(agents: AgentOption[]): View {
+export function buildAgentAddModal(
+  agents: AgentOption[],
+  selectedAgentId?: string,
+  channelId?: string,
+): View {
+  // Find selected agent or default to first
+  const selectedAgent = selectedAgentId
+    ? agents.find((a) => a.id === selectedAgentId)
+    : undefined;
+
+  const blocks: (Block | KnownBlock)[] = [
+    {
+      type: "input",
+      block_id: "agent_select",
+      dispatch_action: true,
+      element: {
+        type: "static_select",
+        action_id: "agent_select_action",
+        placeholder: {
+          type: "plain_text",
+          text: "Select an agent",
+        },
+        options: agents.map((agent) => ({
+          text: {
+            type: "plain_text" as const,
+            text: agent.name,
+          },
+          value: agent.id,
+        })),
+        ...(selectedAgentId && {
+          initial_option: {
+            text: {
+              type: "plain_text" as const,
+              text: selectedAgent?.name ?? "",
+            },
+            value: selectedAgentId,
+          },
+        }),
+      },
+      label: {
+        type: "plain_text",
+        text: "Agent",
+      },
+    },
+  ];
+
+  // Add secrets fields if agent is selected and has required secrets
+  if (selectedAgent && selectedAgent.requiredSecrets.length > 0) {
+    blocks.push({
+      type: "divider",
+    });
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "*Required Secrets*",
+      },
+    });
+
+    for (const secretName of selectedAgent.requiredSecrets) {
+      blocks.push({
+        type: "input",
+        block_id: `secret_${secretName}`,
+        element: {
+          type: "plain_text_input",
+          action_id: "value",
+          placeholder: {
+            type: "plain_text",
+            text: `Enter value for ${secretName}`,
+          },
+        },
+        label: {
+          type: "plain_text",
+          text: secretName,
+        },
+      });
+    }
+  } else if (selectedAgent && selectedAgent.requiredSecrets.length === 0) {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "_This agent doesn't require any secrets._",
+      },
+    });
+  } else {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "_Select an agent to see required secrets._",
+      },
+    });
+  }
+
   return {
     type: "modal",
     callback_id: "agent_add_modal",
+    private_metadata: JSON.stringify({ agents, channelId }),
     title: {
       type: "plain_text",
       text: "Add Agent",
     },
+    submit: selectedAgent
+      ? {
+          type: "plain_text",
+          text: "Add",
+        }
+      : undefined,
+    close: {
+      type: "plain_text",
+      text: "Cancel",
+    },
+    blocks,
+  };
+}
+
+interface AgentBinding {
+  id: string;
+  agentName: string;
+}
+
+interface AgentUpdateOption {
+  id: string;
+  name: string;
+  requiredSecrets: string[];
+}
+
+/**
+ * Build the "Update Agent" modal view
+ *
+ * @param agents - List of bound agents with their required secrets
+ * @param selectedAgentId - Currently selected agent ID
+ * @param channelId - Channel ID to send confirmation message to
+ * @returns Modal view definition
+ */
+export function buildAgentUpdateModal(
+  agents: AgentUpdateOption[],
+  selectedAgentId?: string,
+  channelId?: string,
+): View {
+  // Find selected agent or default to first
+  const selectedAgent = selectedAgentId
+    ? agents.find((a) => a.id === selectedAgentId)
+    : undefined;
+
+  const blocks: (Block | KnownBlock)[] = [
+    {
+      type: "input",
+      block_id: "agent_select",
+      dispatch_action: true,
+      element: {
+        type: "static_select",
+        action_id: "agent_update_select_action",
+        placeholder: {
+          type: "plain_text",
+          text: "Select an agent to update",
+        },
+        options: agents.map((agent) => ({
+          text: {
+            type: "plain_text" as const,
+            text: agent.name,
+          },
+          value: agent.id,
+        })),
+        ...(selectedAgentId && {
+          initial_option: {
+            text: {
+              type: "plain_text" as const,
+              text: selectedAgent?.name ?? "",
+            },
+            value: selectedAgentId,
+          },
+        }),
+      },
+      label: {
+        type: "plain_text",
+        text: "Agent",
+      },
+    },
+  ];
+
+  // Add secrets fields if agent is selected and has required secrets
+  if (selectedAgent && selectedAgent.requiredSecrets.length > 0) {
+    blocks.push({
+      type: "divider",
+    });
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "*Update Secrets*\n_Leave empty to keep current value_",
+      },
+    });
+
+    for (const secretName of selectedAgent.requiredSecrets) {
+      blocks.push({
+        type: "input",
+        block_id: `secret_${secretName}`,
+        optional: true,
+        element: {
+          type: "plain_text_input",
+          action_id: "value",
+          placeholder: {
+            type: "plain_text",
+            text: `Enter new value for ${secretName}`,
+          },
+        },
+        label: {
+          type: "plain_text",
+          text: secretName,
+        },
+      });
+    }
+  } else if (selectedAgent && selectedAgent.requiredSecrets.length === 0) {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "_This agent doesn't have any secrets to update._",
+      },
+    });
+  } else {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "_Select an agent to update its secrets._",
+      },
+    });
+  }
+
+  return {
+    type: "modal",
+    callback_id: "agent_update_modal",
+    private_metadata: JSON.stringify({ agents, channelId }),
+    title: {
+      type: "plain_text",
+      text: "Update Agent",
+    },
+    submit: selectedAgent
+      ? {
+          type: "plain_text",
+          text: "Update",
+        }
+      : undefined,
+    close: {
+      type: "plain_text",
+      text: "Cancel",
+    },
+    blocks,
+  };
+}
+
+/**
+ * Build the "Remove Agent" modal view with multi-select
+ *
+ * @param agents - List of bound agents
+ * @param channelId - Channel ID to send confirmation message to
+ * @returns Modal view definition
+ */
+export function buildAgentRemoveModal(
+  agents: AgentBinding[],
+  channelId?: string,
+): View {
+  return {
+    type: "modal",
+    callback_id: "agent_remove_modal",
+    private_metadata: JSON.stringify({ channelId }),
+    title: {
+      type: "plain_text",
+      text: "Remove Agents",
+    },
     submit: {
       type: "plain_text",
-      text: "Add",
+      text: "Remove",
     },
     close: {
       type: "plain_text",
@@ -36,88 +304,35 @@ export function buildAgentAddModal(agents: AgentOption[]): View {
     blocks: [
       {
         type: "input",
-        block_id: "agent_select",
+        block_id: "agents_select",
         element: {
-          type: "static_select",
-          action_id: "agent",
+          type: "multi_static_select",
+          action_id: "agents_select_action",
           placeholder: {
             type: "plain_text",
-            text: "Select an agent",
+            text: "Select agents to remove",
           },
           options: agents.map((agent) => ({
             text: {
               type: "plain_text" as const,
-              text: agent.name,
+              text: agent.agentName,
             },
             value: agent.id,
           })),
         },
         label: {
           type: "plain_text",
-          text: "Agent",
+          text: "Select agents to remove",
         },
       },
       {
-        type: "input",
-        block_id: "agent_name",
-        element: {
-          type: "plain_text_input",
-          action_id: "name",
-          placeholder: {
-            type: "plain_text",
-            text: "e.g., my-coder",
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: ":warning: This action cannot be undone.",
           },
-        },
-        label: {
-          type: "plain_text",
-          text: "Name (for @VM0 use <name>)",
-        },
-      },
-      {
-        type: "input",
-        block_id: "description",
-        optional: true,
-        element: {
-          type: "plain_text_input",
-          action_id: "description",
-          multiline: true,
-          placeholder: {
-            type: "plain_text",
-            text: "Describe what this agent does (helps with auto-routing)",
-          },
-        },
-        label: {
-          type: "plain_text",
-          text: "Description",
-        },
-      },
-      {
-        type: "divider",
-      },
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: "*Secrets* (optional)\nEnter any secrets this agent needs. Format: `KEY=value`, one per line.",
-        },
-      },
-      {
-        type: "input",
-        block_id: "secrets",
-        optional: true,
-        element: {
-          type: "plain_text_input",
-          action_id: "secrets",
-          multiline: true,
-          placeholder: {
-            type: "plain_text",
-            text: "GITHUB_TOKEN=ghp_xxx\nOPENAI_API_KEY=sk-xxx",
-          },
-        },
-        label: {
-          type: "plain_text",
-          text: "Secrets",
-        },
+        ],
       },
     ],
   };
@@ -247,7 +462,14 @@ export function buildHelpMessage(): (Block | KnownBlock)[] {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "*Commands*\n• `/vm0 agent add` - Add a new agent\n• `/vm0 agent list` - List your agents\n• `/vm0 agent remove <name>` - Remove an agent\n• `/vm0 help` - Show this help message",
+        text: "*Account*\n• `/vm0 login` - Link your VM0 account\n• `/vm0 logout` - Unlink your account",
+      },
+    },
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "*Agents*\n• `/vm0 agent add` - Add a new agent\n• `/vm0 agent list` - List your agents\n• `/vm0 agent update` - Update agent secrets\n• `/vm0 agent remove` - Remove agents",
       },
     },
     {
@@ -274,6 +496,113 @@ export function buildSuccessMessage(message: string): (Block | KnownBlock)[] {
         type: "mrkdwn",
         text: `:white_check_mark: ${message}`,
       },
+    },
+  ];
+}
+
+/**
+ * Build markdown message blocks
+ * Splits long content into multiple section blocks (Slack limit: 3000 chars per block)
+ *
+ * @param content - Markdown content
+ * @returns Block Kit blocks
+ */
+/**
+ * Convert standard Markdown to Slack mrkdwn format
+ */
+function convertToSlackMarkdown(content: string): string {
+  let result = content;
+
+  // Convert headers (## Header -> *Header*)
+  result = result.replace(/^#{1,6}\s+(.+)$/gm, "*$1*");
+
+  // Convert bold (**text** -> *text*)
+  result = result.replace(/\*\*([^*]+)\*\*/g, "*$1*");
+
+  // Convert links [text](url) -> <url|text>
+  result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, "<$2|$1>");
+
+  // Convert inline code (already works in Slack)
+  // `code` stays as `code`
+
+  // Convert horizontal rules (--- or ***) to divider-like text
+  result = result.replace(/^[-*]{3,}$/gm, "───────────────");
+
+  return result;
+}
+
+export function buildMarkdownMessage(content: string): (Block | KnownBlock)[] {
+  const MAX_BLOCK_LENGTH = 2900; // Leave some margin below 3000
+  const blocks: SectionBlock[] = [];
+
+  // Convert standard Markdown to Slack mrkdwn
+  const slackContent = convertToSlackMarkdown(content);
+
+  // Split content into chunks if too long
+  let remaining = slackContent;
+  while (remaining.length > 0) {
+    if (remaining.length <= MAX_BLOCK_LENGTH) {
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: remaining,
+        },
+      });
+      break;
+    }
+
+    // Find a good split point (newline or space)
+    let splitIndex = remaining.lastIndexOf("\n", MAX_BLOCK_LENGTH);
+    if (splitIndex === -1 || splitIndex < MAX_BLOCK_LENGTH / 2) {
+      splitIndex = remaining.lastIndexOf(" ", MAX_BLOCK_LENGTH);
+    }
+    if (splitIndex === -1 || splitIndex < MAX_BLOCK_LENGTH / 2) {
+      splitIndex = MAX_BLOCK_LENGTH;
+    }
+
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: remaining.substring(0, splitIndex),
+      },
+    });
+    remaining = remaining.substring(splitIndex).trimStart();
+  }
+
+  return blocks;
+}
+
+/**
+ * Build a message prompting user to login
+ *
+ * @param loginUrl - URL to the OAuth login page
+ * @returns Block Kit blocks
+ */
+export function buildLoginMessage(loginUrl: string): (Block | KnownBlock)[] {
+  return [
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "Please login to use VM0 in this workspace.",
+      },
+    },
+    {
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          text: {
+            type: "plain_text",
+            text: "Login",
+          },
+          url: loginUrl,
+          action_id: "login",
+          style: "primary",
+        },
+      ],
     },
   ];
 }

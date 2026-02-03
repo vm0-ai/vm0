@@ -3,8 +3,11 @@
 import { auth } from "@clerk/nextjs/server";
 import { eq, and } from "drizzle-orm";
 import { initServices } from "../../../src/lib/init-services";
+import { env } from "../../../src/env";
 import { slackUserLinks } from "../../../src/db/schema/slack-user-link";
 import { slackInstallations } from "../../../src/db/schema/slack-installation";
+import { decryptCredentialValue } from "../../../src/lib/crypto/secrets-encryption";
+import { createSlackClient } from "../../../src/lib/slack";
 
 interface LinkResult {
   success: boolean;
@@ -67,6 +70,7 @@ export async function checkLinkStatus(
 export async function linkSlackAccount(
   slackUserId: string,
   workspaceId: string,
+  channelId?: string | null,
 ): Promise<LinkResult> {
   const { userId } = await auth();
 
@@ -119,5 +123,46 @@ export async function linkSlackAccount(
     vm0UserId: userId,
   });
 
+  // Send success message to the Slack channel
+  if (channelId) {
+    sendSuccessMessage(
+      installation.encryptedBotToken,
+      channelId,
+      slackUserId,
+    ).catch((error) => {
+      console.error("Error sending Slack message:", error);
+    });
+  }
+
   return { success: true };
+}
+
+/**
+ * Send success message to the Slack channel
+ */
+async function sendSuccessMessage(
+  encryptedBotToken: string,
+  channelId: string,
+  slackUserId: string,
+): Promise<void> {
+  const { SECRETS_ENCRYPTION_KEY } = env();
+  const botToken = decryptCredentialValue(
+    encryptedBotToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+  const client = createSlackClient(botToken);
+
+  await client.chat.postMessage({
+    channel: channelId,
+    text: `<@${slackUserId}> successfully logged in to VM0!`,
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `:white_check_mark: <@${slackUserId}> *successfully logged in to VM0!*\n\nYou can now:\n• Use \`/vm0 agent add\` to add an agent\n• Mention \`@VM0\` to interact with your agents`,
+        },
+      },
+    ],
+  });
 }

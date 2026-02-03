@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
+import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
 import {
@@ -9,7 +10,10 @@ import {
 import { slackInstallations } from "../../../../src/db/schema/slack-installation";
 import { slackUserLinks } from "../../../../src/db/schema/slack-user-link";
 import { slackBindings } from "../../../../src/db/schema/slack-binding";
-import { agentComposes } from "../../../../src/db/schema/agent-compose";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "../../../../src/db/schema/agent-compose";
 import { decryptCredentialValue } from "../../../../src/lib/crypto/secrets-encryption";
 import { createSlackClient } from "../../../../src/lib/slack";
 import {
@@ -18,7 +22,9 @@ import {
   buildHelpMessage,
   buildErrorMessage,
   buildSuccessMessage,
-  buildLinkAccountMessage,
+  buildLoginMessage,
+  buildAgentRemoveModal,
+  buildAgentUpdateModal,
 } from "../../../../src/lib/slack/blocks";
 
 /**
@@ -112,32 +118,97 @@ async function handleAgentCommand(
 ): Promise<NextResponse> {
   switch (action) {
     case "add":
-      return handleAgentAdd(client, payload, vm0UserId);
+      return handleAgentAdd(client, payload, vm0UserId, userLinkId);
 
     case "list":
       return handleAgentList(userLinkId);
 
-    case "remove": {
-      const agentName = args[2];
-      if (!agentName) {
-        return NextResponse.json({
-          response_type: "ephemeral",
-          blocks: buildErrorMessage(
-            "Please specify an agent name: `/vm0 agent remove <name>`",
-          ),
-        });
-      }
-      return handleAgentRemove(userLinkId, agentName);
-    }
+    case "remove":
+      return handleAgentRemove(client, payload, userLinkId);
+
+    case "update":
+      return handleAgentUpdate(client, payload, vm0UserId, userLinkId);
 
     default:
       return NextResponse.json({
         response_type: "ephemeral",
         blocks: buildErrorMessage(
-          `Unknown agent command: \`${action}\`\n\nAvailable commands:\n• \`/vm0 agent add\`\n• \`/vm0 agent list\`\n• \`/vm0 agent remove <name>\``,
+          `Unknown agent command: \`${action}\`\n\nAvailable commands:\n• \`/vm0 agent add\`\n• \`/vm0 agent list\`\n• \`/vm0 agent update\`\n• \`/vm0 agent remove\``,
         ),
       });
   }
+}
+
+/**
+ * Handle /vm0 login command
+ */
+function handleLoginCommand(
+  payload: SlackCommandPayload,
+  installation: { encryptedBotToken: string } | undefined,
+  userLink: { id: string; vm0UserId: string } | undefined,
+): NextResponse {
+  // Already logged in
+  if (userLink) {
+    return NextResponse.json({
+      response_type: "ephemeral",
+      blocks: buildSuccessMessage(
+        "You are already logged in.\n\nUse `/vm0 agent add` to add an agent or `/vm0 help` for more commands.",
+      ),
+    });
+  }
+
+  const { SLACK_REDIRECT_BASE_URL } = env();
+  const baseUrl = SLACK_REDIRECT_BASE_URL ?? "https://www.vm0.ai";
+
+  if (installation) {
+    // Workspace already installed, go directly to link page
+    const linkUrl = `${baseUrl}/slack/link?w=${encodeURIComponent(payload.team_id)}&u=${encodeURIComponent(payload.user_id)}&c=${encodeURIComponent(payload.channel_id)}`;
+    return NextResponse.json({
+      response_type: "ephemeral",
+      blocks: buildLoginMessage(linkUrl),
+    });
+  }
+
+  // Workspace not installed, need OAuth flow
+  const installUrl = `${baseUrl}/api/slack/oauth/install?w=${encodeURIComponent(payload.team_id)}&u=${encodeURIComponent(payload.user_id)}&c=${encodeURIComponent(payload.channel_id)}`;
+  return NextResponse.json({
+    response_type: "ephemeral",
+    blocks: buildLoginMessage(installUrl),
+  });
+}
+
+/**
+ * Handle /vm0 logout command
+ */
+async function handleLogoutCommand(
+  userLink: { id: string } | undefined,
+): Promise<NextResponse> {
+  if (!userLink) {
+    return NextResponse.json({
+      response_type: "ephemeral",
+      blocks: buildErrorMessage("You are not logged in."),
+    });
+  }
+  // Delete user link and associated bindings
+  await globalThis.services.db
+    .delete(slackBindings)
+    .where(eq(slackBindings.slackUserLinkId, userLink.id));
+  await globalThis.services.db
+    .delete(slackUserLinks)
+    .where(eq(slackUserLinks.id, userLink.id));
+  return NextResponse.json({
+    response_type: "ephemeral",
+    blocks: buildSuccessMessage("You have been logged out successfully."),
+  });
+}
+
+/**
+ * Build login URL for unauthenticated users
+ */
+function buildLoginUrl(payload: SlackCommandPayload): string {
+  const { SLACK_REDIRECT_BASE_URL } = env();
+  const baseUrl = SLACK_REDIRECT_BASE_URL ?? "https://www.vm0.ai";
+  return `${baseUrl}/api/slack/oauth/install?w=${encodeURIComponent(payload.team_id)}&u=${encodeURIComponent(payload.user_id)}`;
 }
 
 export async function POST(request: Request) {
@@ -161,6 +232,19 @@ export async function POST(request: Request) {
 
   initServices();
 
+  // Parse command text first (before checking installation)
+  const args = payload.text.trim().split(/\s+/);
+  const subCommand = args[0]?.toLowerCase() ?? "";
+  const action = args[1]?.toLowerCase() ?? "";
+
+  // Handle help command (doesn't require installation or linking)
+  if (subCommand === "help" || subCommand === "") {
+    return NextResponse.json({
+      response_type: "ephemeral",
+      blocks: buildHelpMessage(),
+    });
+  }
+
   // Get workspace installation
   const [installation] = await globalThis.services.db
     .select()
@@ -168,10 +252,30 @@ export async function POST(request: Request) {
     .where(eq(slackInstallations.slackWorkspaceId, payload.team_id))
     .limit(1);
 
+  // Check if user is already linked
+  const [userLink] = installation
+    ? await globalThis.services.db
+        .select()
+        .from(slackUserLinks)
+        .where(
+          and(
+            eq(slackUserLinks.slackUserId, payload.user_id),
+            eq(slackUserLinks.slackWorkspaceId, payload.team_id),
+          ),
+        )
+        .limit(1)
+    : [];
+
+  // Handle login command
+  if (subCommand === "login") {
+    return handleLoginCommand(payload, installation, userLink);
+  }
+
+  // Check installation for other commands
   if (!installation) {
     return NextResponse.json({
       response_type: "ephemeral",
-      text: "VM0 is not installed in this workspace.",
+      blocks: buildLoginMessage(buildLoginUrl(payload)),
     });
   }
 
@@ -181,40 +285,16 @@ export async function POST(request: Request) {
   );
   const client = createSlackClient(botToken);
 
-  // Check if user is linked
-  const [userLink] = await globalThis.services.db
-    .select()
-    .from(slackUserLinks)
-    .where(
-      and(
-        eq(slackUserLinks.slackUserId, payload.user_id),
-        eq(slackUserLinks.slackWorkspaceId, payload.team_id),
-      ),
-    )
-    .limit(1);
-
-  // Parse command text
-  const args = payload.text.trim().split(/\s+/);
-  const subCommand = args[0]?.toLowerCase() ?? "";
-  const action = args[1]?.toLowerCase() ?? "";
-
-  // Handle help command (doesn't require linking)
-  if (subCommand === "help" || subCommand === "") {
-    return NextResponse.json({
-      response_type: "ephemeral",
-      blocks: buildHelpMessage(),
-    });
+  // Handle logout command
+  if (subCommand === "logout") {
+    return handleLogoutCommand(userLink);
   }
 
   // Check if user needs to link account
   if (!userLink) {
-    const { SLACK_REDIRECT_BASE_URL } = env();
-    const baseUrl = SLACK_REDIRECT_BASE_URL ?? "https://www.vm0.ai";
-    const linkUrl = `${baseUrl}/slack/link?w=${payload.team_id}&u=${payload.user_id}`;
-
     return NextResponse.json({
       response_type: "ephemeral",
-      blocks: buildLinkAccountMessage(linkUrl),
+      blocks: buildLoginMessage(buildLoginUrl(payload)),
     });
   }
 
@@ -244,12 +324,14 @@ async function handleAgentAdd(
   client: ReturnType<typeof createSlackClient>,
   payload: SlackCommandPayload,
   vm0UserId: string,
+  userLinkId: string,
 ): Promise<NextResponse> {
-  // Fetch user's available agents
+  // Fetch user's available agents with their head version
   const composes = await globalThis.services.db
     .select({
       id: agentComposes.id,
       name: agentComposes.name,
+      headVersionId: agentComposes.headVersionId,
     })
     .from(agentComposes)
     .where(eq(agentComposes.userId, vm0UserId));
@@ -263,9 +345,62 @@ async function handleAgentAdd(
     });
   }
 
-  // Open modal
+  // Get already bound agent names
+  const existingBindings = await globalThis.services.db
+    .select({ agentName: slackBindings.agentName })
+    .from(slackBindings)
+    .where(eq(slackBindings.slackUserLinkId, userLinkId));
+
+  const boundNames = new Set(existingBindings.map((b) => b.agentName));
+
+  // Filter out already bound agents
+  const availableComposes = composes.filter(
+    (c) => !boundNames.has(c.name.toLowerCase()),
+  );
+
+  if (availableComposes.length === 0) {
+    return NextResponse.json({
+      response_type: "ephemeral",
+      blocks: buildErrorMessage(
+        "All your agents are already added.\n\nUse `/vm0 agent list` to see them or `/vm0 agent remove <name>` to remove one.",
+      ),
+    });
+  }
+
+  // Get compose versions to extract required secrets
+  const versionIds = availableComposes
+    .map((c) => c.headVersionId)
+    .filter((id): id is string => id !== null);
+
+  const versions =
+    versionIds.length > 0
+      ? await globalThis.services.db
+          .select({
+            id: agentComposeVersions.id,
+            content: agentComposeVersions.content,
+          })
+          .from(agentComposeVersions)
+          .where(inArray(agentComposeVersions.id, versionIds))
+      : [];
+
+  // Build map of compose ID to required secrets
+  const versionMap = new Map(versions.map((v) => [v.id, v.content]));
+  const agentsWithSecrets = availableComposes.map((c) => {
+    const content = c.headVersionId ? versionMap.get(c.headVersionId) : null;
+    const refs = content ? extractVariableReferences(content) : [];
+    const grouped = groupVariablesBySource(refs);
+    return {
+      id: c.id,
+      name: c.name,
+      requiredSecrets: grouped.secrets.map((s) => s.name),
+    };
+  });
+
+  // Open modal with channel_id for confirmation message
   const modal = buildAgentAddModal(
-    composes.map((c) => ({ id: c.id, name: c.name })),
+    agentsWithSecrets,
+    undefined,
+    payload.channel_id,
   );
 
   await client.views.open({
@@ -274,7 +409,7 @@ async function handleAgentAdd(
   });
 
   // Return empty response (Slack expects this when opening modal)
-  return NextResponse.json({});
+  return new NextResponse(null, { status: 200 });
 }
 
 /**
@@ -297,40 +432,127 @@ async function handleAgentList(userLinkId: string): Promise<NextResponse> {
 }
 
 /**
- * Handle /vm0 agent remove - Remove agent binding
+ * Handle /vm0 agent remove - Open modal to select agents to remove
  */
 async function handleAgentRemove(
+  client: ReturnType<typeof createSlackClient>,
+  payload: SlackCommandPayload,
   userLinkId: string,
-  agentName: string,
 ): Promise<NextResponse> {
-  // Find binding
-  const [binding] = await globalThis.services.db
-    .select()
+  // Get user's bound agents
+  const bindings = await globalThis.services.db
+    .select({
+      id: slackBindings.id,
+      agentName: slackBindings.agentName,
+    })
     .from(slackBindings)
-    .where(
-      and(
-        eq(slackBindings.slackUserLinkId, userLinkId),
-        eq(slackBindings.agentName, agentName.toLowerCase()),
-      ),
-    )
-    .limit(1);
+    .where(eq(slackBindings.slackUserLinkId, userLinkId));
 
-  if (!binding) {
+  if (bindings.length === 0) {
     return NextResponse.json({
       response_type: "ephemeral",
       blocks: buildErrorMessage(
-        `Agent "${agentName}" not found.\n\nUse \`/vm0 agent list\` to see your agents.`,
+        "You don't have any agents to remove.\n\nUse `/vm0 agent add` to add one first.",
       ),
     });
   }
 
-  // Delete binding
-  await globalThis.services.db
-    .delete(slackBindings)
-    .where(eq(slackBindings.id, binding.id));
+  // Open modal with multi-select
+  const modal = buildAgentRemoveModal(bindings, payload.channel_id);
 
-  return NextResponse.json({
-    response_type: "ephemeral",
-    blocks: buildSuccessMessage(`Agent "${agentName}" has been removed.`),
+  await client.views.open({
+    trigger_id: payload.trigger_id,
+    view: modal,
   });
+
+  // Return empty response (Slack expects this when opening modal)
+  return new NextResponse(null, { status: 200 });
+}
+
+/**
+ * Handle /vm0 agent update - Open modal to update agent secrets
+ */
+async function handleAgentUpdate(
+  client: ReturnType<typeof createSlackClient>,
+  payload: SlackCommandPayload,
+  vm0UserId: string,
+  userLinkId: string,
+): Promise<NextResponse> {
+  // Get user's bound agents with their compose IDs
+  const bindings = await globalThis.services.db
+    .select({
+      id: slackBindings.id,
+      agentName: slackBindings.agentName,
+      composeId: slackBindings.composeId,
+    })
+    .from(slackBindings)
+    .where(eq(slackBindings.slackUserLinkId, userLinkId));
+
+  if (bindings.length === 0) {
+    return NextResponse.json({
+      response_type: "ephemeral",
+      blocks: buildErrorMessage(
+        "You don't have any agents to update.\n\nUse `/vm0 agent add` to add one first.",
+      ),
+    });
+  }
+
+  // Get compose versions to extract required secrets
+  const composeIds = bindings.map((b) => b.composeId);
+  const composes = await globalThis.services.db
+    .select({
+      id: agentComposes.id,
+      headVersionId: agentComposes.headVersionId,
+    })
+    .from(agentComposes)
+    .where(inArray(agentComposes.id, composeIds));
+
+  const versionIds = composes
+    .map((c) => c.headVersionId)
+    .filter((id): id is string => id !== null);
+
+  const versions =
+    versionIds.length > 0
+      ? await globalThis.services.db
+          .select({
+            id: agentComposeVersions.id,
+            composeId: agentComposeVersions.composeId,
+            content: agentComposeVersions.content,
+          })
+          .from(agentComposeVersions)
+          .where(inArray(agentComposeVersions.id, versionIds))
+      : [];
+
+  // Build map of compose ID to required secrets
+  const composeToVersion = new Map(
+    composes.map((c) => [c.id, c.headVersionId]),
+  );
+  const versionMap = new Map(versions.map((v) => [v.id, v.content]));
+
+  const agentsWithSecrets = bindings.map((b) => {
+    const versionId = composeToVersion.get(b.composeId);
+    const content = versionId ? versionMap.get(versionId) : null;
+    const refs = content ? extractVariableReferences(content) : [];
+    const grouped = groupVariablesBySource(refs);
+    return {
+      id: b.id,
+      name: b.agentName,
+      requiredSecrets: grouped.secrets.map((s) => s.name),
+    };
+  });
+
+  // Open modal
+  const modal = buildAgentUpdateModal(
+    agentsWithSecrets,
+    undefined,
+    payload.channel_id,
+  );
+
+  await client.views.open({
+    trigger_id: payload.trigger_id,
+    view: modal,
+  });
+
+  // Return empty response (Slack expects this when opening modal)
+  return new NextResponse(null, { status: 200 });
 }

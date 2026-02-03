@@ -18,7 +18,7 @@ interface RunAgentParams {
     composeId: string;
     encryptedSecrets: string | null;
   };
-  sessionId: string;
+  sessionId: string | undefined;
   prompt: string;
   threadContext: string;
   userId: string;

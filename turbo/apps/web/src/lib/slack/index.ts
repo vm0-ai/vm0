@@ -20,11 +20,13 @@ export {
   buildLinkAccountMessage,
   buildHelpMessage,
   buildSuccessMessage,
+  buildMarkdownMessage,
 } from "./blocks";
 
 // Thread context
 export {
   fetchThreadContext,
+  fetchChannelContext,
   formatContextForAgent,
   extractMessageContent,
   parseExplicitAgentSelection,

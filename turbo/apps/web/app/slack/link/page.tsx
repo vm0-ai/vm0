@@ -18,6 +18,7 @@ function SlackLinkContent(): React.JSX.Element {
 
   const slackUserId = searchParams.get("u");
   const workspaceId = searchParams.get("w");
+  const channelId = searchParams.get("c");
 
   useEffect(() => {
     if (!slackUserId || !workspaceId) {
@@ -47,12 +48,13 @@ function SlackLinkContent(): React.JSX.Element {
     setLoading(true);
     setError("");
 
-    const result = await linkSlackAccount(slackUserId, workspaceId);
+    const result = await linkSlackAccount(slackUserId, workspaceId, channelId);
 
     if (result.success) {
-      router.push(
-        `/slack/success?linked=true${workspaceId ? `&workspace_id=${workspaceId}` : ""}`,
-      );
+      const params = new URLSearchParams({ linked: "true" });
+      if (workspaceId) params.set("workspace_id", workspaceId);
+      if (channelId) params.set("channel_id", channelId);
+      router.push(`/slack/success?${params.toString()}`);
     } else {
       setError(result.error ?? "Failed to link account");
       setLoading(false);
@@ -190,7 +192,12 @@ function SlackLinkContent(): React.JSX.Element {
                 </p>
               </div>
               <button
-                onClick={() => router.push("/slack/success?linked=true")}
+                onClick={() => {
+                  const params = new URLSearchParams({ linked: "true" });
+                  if (workspaceId) params.set("workspace_id", workspaceId);
+                  if (channelId) params.set("channel_id", channelId);
+                  router.push(`/slack/success?${params.toString()}`);
+                }}
                 className="mt-2 h-9 w-full rounded-md bg-primary text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
               >
                 Continue

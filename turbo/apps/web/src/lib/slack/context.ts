@@ -32,19 +32,43 @@ export async function fetchThreadContext(
 }
 
 /**
- * Format thread messages into context for agent prompt
+ * Fetch recent channel messages from Slack
+ *
+ * @param client - Slack WebClient
+ * @param channel - Channel ID
+ * @param limit - Maximum number of messages to fetch (default: 10)
+ * @returns Array of messages
+ */
+export async function fetchChannelContext(
+  client: WebClient,
+  channel: string,
+  limit = 10,
+): Promise<SlackMessage[]> {
+  const result = await client.conversations.history({
+    channel,
+    limit,
+  });
+
+  // Reverse to get chronological order (oldest first)
+  return ((result.messages ?? []) as SlackMessage[]).reverse();
+}
+
+/**
+ * Format messages into context for agent prompt
  *
  * @param messages - Array of Slack messages
  * @param botUserId - Bot user ID to filter out bot messages (optional)
+ * @param contextType - Type of context: "thread" or "channel"
  * @returns Formatted context string
  */
 export function formatContextForAgent(
   messages: SlackMessage[],
   botUserId?: string,
+  contextType: "thread" | "channel" = "thread",
 ): string {
   const formattedMessages = messages
     // Filter out bot's own messages if botUserId is provided
-    .filter((msg) => !botUserId || msg.bot_id !== botUserId)
+    .filter((msg) => !botUserId || msg.user !== botUserId)
     // Format each message
     .map((msg) => {
       const user = msg.user ?? "unknown";
@@ -56,7 +80,12 @@ export function formatContextForAgent(
     return "";
   }
 
-  return `## Slack Thread Context\n\n${formattedMessages.join("\n\n")}`;
+  const header =
+    contextType === "thread"
+      ? "## Slack Thread Context"
+      : "## Recent Channel Messages";
+
+  return `${header}\n\n${formattedMessages.join("\n\n")}`;
 }
 
 /**

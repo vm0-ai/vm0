@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
 import {
@@ -9,6 +9,11 @@ import {
 import { slackInstallations } from "../../../../src/db/schema/slack-installation";
 import { slackUserLinks } from "../../../../src/db/schema/slack-user-link";
 import { slackBindings } from "../../../../src/db/schema/slack-binding";
+import { agentComposes } from "../../../../src/db/schema/agent-compose";
+import {
+  buildAgentAddModal,
+  buildAgentUpdateModal,
+} from "../../../../src/lib/slack/blocks";
 import {
   decryptCredentialValue,
   encryptCredentialValue,
@@ -49,6 +54,7 @@ interface SlackInteractivePayload {
             type: string;
             value?: string;
             selected_option?: { value: string };
+            selected_options?: Array<{ value: string }>;
           }
         >
       >;
@@ -124,12 +130,117 @@ export async function POST(request: Request) {
       return handleViewSubmission(payload, SECRETS_ENCRYPTION_KEY);
 
     case "block_actions":
-      // Block actions typically don't need a response
-      return new Response("", { status: 200 });
+      return handleBlockActions(payload);
 
     default:
       return new Response("", { status: 200 });
   }
+}
+
+/**
+ * Handle block actions (e.g., agent selection change)
+ */
+async function handleBlockActions(
+  payload: SlackInteractivePayload,
+): Promise<Response> {
+  const { SECRETS_ENCRYPTION_KEY } = env();
+  const action = payload.actions?.[0];
+
+  // Handle agent selection in add modal
+  if (action?.action_id === "agent_select_action" && payload.view) {
+    const selectedAgentId = action.selected_option?.value;
+    const privateMetadata = payload.view.private_metadata;
+
+    if (selectedAgentId && privateMetadata) {
+      try {
+        const { agents, channelId } = JSON.parse(privateMetadata) as {
+          agents: Array<{
+            id: string;
+            name: string;
+            requiredSecrets: string[];
+          }>;
+          channelId?: string;
+        };
+
+        // Get bot token from installation
+        const [installation] = await globalThis.services.db
+          .select()
+          .from(slackInstallations)
+          .where(eq(slackInstallations.slackWorkspaceId, payload.team.id))
+          .limit(1);
+
+        if (installation) {
+          const botToken = decryptCredentialValue(
+            installation.encryptedBotToken,
+            SECRETS_ENCRYPTION_KEY,
+          );
+          const client = createSlackClient(botToken);
+
+          // Update the modal with secrets fields for selected agent
+          const updatedModal = buildAgentAddModal(
+            agents,
+            selectedAgentId,
+            channelId,
+          );
+          await client.views.update({
+            view_id: payload.view.id,
+            view: updatedModal,
+          });
+        }
+      } catch {
+        // Ignore parsing errors
+      }
+    }
+  }
+
+  // Handle agent selection in update modal
+  if (action?.action_id === "agent_update_select_action" && payload.view) {
+    const selectedAgentId = action.selected_option?.value;
+    const privateMetadata = payload.view.private_metadata;
+
+    if (selectedAgentId && privateMetadata) {
+      try {
+        const { agents, channelId } = JSON.parse(privateMetadata) as {
+          agents: Array<{
+            id: string;
+            name: string;
+            requiredSecrets: string[];
+          }>;
+          channelId?: string;
+        };
+
+        // Get bot token from installation
+        const [installation] = await globalThis.services.db
+          .select()
+          .from(slackInstallations)
+          .where(eq(slackInstallations.slackWorkspaceId, payload.team.id))
+          .limit(1);
+
+        if (installation) {
+          const botToken = decryptCredentialValue(
+            installation.encryptedBotToken,
+            SECRETS_ENCRYPTION_KEY,
+          );
+          const client = createSlackClient(botToken);
+
+          // Update the modal with secrets fields for selected agent
+          const updatedModal = buildAgentUpdateModal(
+            agents,
+            selectedAgentId,
+            channelId,
+          );
+          await client.views.update({
+            view_id: payload.view.id,
+            view: updatedModal,
+          });
+        }
+      } catch {
+        // Ignore parsing errors
+      }
+    }
+  }
+
+  return new Response("", { status: 200 });
 }
 
 /**
@@ -145,23 +256,27 @@ async function handleViewSubmission(
     return handleAgentAddSubmission(payload, encryptionKey);
   }
 
+  if (callbackId === "agent_remove_modal") {
+    return handleAgentRemoveSubmission(payload, encryptionKey);
+  }
+
+  if (callbackId === "agent_update_modal") {
+    return handleAgentUpdateSubmission(payload, encryptionKey);
+  }
+
   // Unknown callback - just acknowledge
   return new Response("", { status: 200 });
 }
 
 interface AgentAddFormValues {
   composeId: string | undefined;
-  agentName: string | undefined;
-  description: string | null;
-  secretsText: string | null;
+  secrets: Record<string, string>;
 }
 
 /** Validated form values with required fields guaranteed */
 interface ValidatedAgentAddForm {
   composeId: string;
-  agentName: string;
-  description: string | null;
-  secretsText: string | null;
+  secrets: Record<string, string>;
 }
 
 type ModalStateValues = NonNullable<
@@ -172,11 +287,21 @@ type ModalStateValues = NonNullable<
  * Extract form values from the modal submission
  */
 function extractFormValues(values: ModalStateValues): AgentAddFormValues {
+  // Extract secrets from individual secret_* blocks
+  const secrets: Record<string, string> = {};
+  for (const [blockId, block] of Object.entries(values)) {
+    if (blockId.startsWith("secret_")) {
+      const secretName = blockId.replace("secret_", "");
+      const value = block?.value?.value?.trim();
+      if (value) {
+        secrets[secretName] = value;
+      }
+    }
+  }
+
   return {
-    composeId: values.agent_select?.agent?.selected_option?.value,
-    agentName: values.agent_name?.name?.value?.trim().toLowerCase(),
-    description: values.description?.description?.value?.trim() || null,
-    secretsText: values.secrets?.secrets?.value?.trim() || null,
+    composeId: values.agent_select?.agent_select_action?.selected_option?.value,
+    secrets,
   };
 }
 
@@ -194,39 +319,37 @@ function validateAgentAddForm(
     });
   }
 
-  if (!formValues.agentName) {
-    return NextResponse.json({
-      response_action: "errors",
-      errors: { agent_name: "Please enter a name" },
-    });
-  }
-
-  if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(formValues.agentName)) {
-    return NextResponse.json({
-      response_action: "errors",
-      errors: {
-        agent_name:
-          "Name must be lowercase letters, numbers, and hyphens. Must start and end with letter or number.",
-      },
-    });
-  }
-
   // Return validated form with narrowed types
   return {
     composeId: formValues.composeId,
-    agentName: formValues.agentName,
-    description: formValues.description,
-    secretsText: formValues.secretsText,
+    secrets: formValues.secrets,
   };
 }
 
 /**
- * Send confirmation DM to user after agent is added
+ * Extract channelId from modal private_metadata
  */
-async function sendConfirmationDM(
+function extractChannelIdFromMetadata(
+  privateMetadata: string | undefined,
+): string | undefined {
+  if (!privateMetadata) {
+    return undefined;
+  }
+  try {
+    const metadata = JSON.parse(privateMetadata) as { channelId?: string };
+    return metadata.channelId;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Send confirmation message to channel after agent is added
+ */
+async function sendConfirmationMessage(
   workspaceId: string,
-  userId: string,
   agentName: string,
+  channelId: string,
   encryptionKey: string,
 ): Promise<void> {
   const [installation] = await globalThis.services.db
@@ -245,15 +368,18 @@ async function sendConfirmationDM(
   );
   const client = createSlackClient(botToken);
 
-  const dmResult = await client.conversations.open({ users: userId });
-
-  if (dmResult.ok && dmResult.channel?.id) {
-    await postMessage(
-      client,
-      dmResult.channel.id,
-      `Agent "${agentName}" has been added successfully!\n\nYou can now use it by mentioning me: \`@VM0 use ${agentName} <message>\``,
-    );
-  }
+  const text = `Agent "${agentName}" has been added successfully!`;
+  await postMessage(client, channelId, text, {
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `:white_check_mark: *Agent \`${agentName}\` has been added successfully!*\n\nYou can now use it by mentioning \`@VM0 use ${agentName} <message>\``,
+        },
+      },
+    ],
+  });
 }
 
 /**
@@ -272,6 +398,11 @@ async function handleAgentAddSubmission(
     });
   }
 
+  // Extract channelId from private_metadata
+  const channelId = extractChannelIdFromMetadata(
+    payload.view?.private_metadata,
+  );
+
   const rawFormValues = extractFormValues(values);
 
   const validationResult = validateAgentAddForm(rawFormValues);
@@ -281,6 +412,22 @@ async function handleAgentAddSubmission(
   }
   // Otherwise, we have validated form values with narrowed types
   const formValues = validationResult;
+
+  // Get the compose to use its name
+  const [compose] = await globalThis.services.db
+    .select({ name: agentComposes.name })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, formValues.composeId))
+    .limit(1);
+
+  if (!compose) {
+    return NextResponse.json({
+      response_action: "errors",
+      errors: { agent_select: "Selected agent not found" },
+    });
+  }
+
+  const agentName = compose.name.toLowerCase();
 
   // Get user link
   const [userLink] = await globalThis.services.db
@@ -304,14 +451,14 @@ async function handleAgentAddSubmission(
     });
   }
 
-  // Check if agent name already exists for this user
+  // Check if agent already exists for this user
   const [existingBinding] = await globalThis.services.db
     .select()
     .from(slackBindings)
     .where(
       and(
         eq(slackBindings.slackUserLinkId, userLink.id),
-        eq(slackBindings.agentName, formValues.agentName),
+        eq(slackBindings.agentName, agentName),
       ),
     )
     .limit(1);
@@ -320,41 +467,346 @@ async function handleAgentAddSubmission(
     return NextResponse.json({
       response_action: "errors",
       errors: {
-        agent_name: `An agent named "${formValues.agentName}" already exists. Use a different name or remove the existing one first.`,
+        agent_select: `Agent "${agentName}" is already added. Remove it first if you want to reconfigure.`,
       },
     });
   }
 
   // Encrypt secrets if provided
   let encryptedSecrets: string | null = null;
-  if (formValues.secretsText) {
-    encryptedSecrets = encryptCredentialValue(
-      formValues.secretsText,
-      encryptionKey,
-    );
+  if (Object.keys(formValues.secrets).length > 0) {
+    // Convert secrets record to KEY=value format
+    const secretsText = Object.entries(formValues.secrets)
+      .map(([key, value]) => `${key}=${value}`)
+      .join("\n");
+    encryptedSecrets = encryptCredentialValue(secretsText, encryptionKey);
   }
 
   // Create binding
   await globalThis.services.db.insert(slackBindings).values({
     slackUserLinkId: userLink.id,
     composeId: formValues.composeId,
-    agentName: formValues.agentName,
-    description: formValues.description,
+    agentName,
     encryptedSecrets,
     enabled: true,
   });
 
-  // Fire-and-forget: DM confirmation is non-critical, failure should not
+  // Fire-and-forget: confirmation message is non-critical, failure should not
   // affect the binding creation. Log errors for debugging but don't propagate.
-  sendConfirmationDM(
-    payload.team.id,
-    payload.user.id,
-    formValues.agentName,
-    encryptionKey,
-  ).catch((error) => {
-    console.error("Error sending confirmation DM:", error);
-  });
+  if (channelId) {
+    sendConfirmationMessage(
+      payload.team.id,
+      agentName,
+      channelId,
+      encryptionKey,
+    ).catch((error) => {
+      console.error("Error sending confirmation message:", error);
+    });
+  }
 
   // Close modal
   return new Response("", { status: 200 });
+}
+
+/**
+ * Handle agent remove modal submission
+ */
+async function handleAgentRemoveSubmission(
+  payload: SlackInteractivePayload,
+  encryptionKey: string,
+): Promise<Response> {
+  const values = payload.view?.state?.values;
+
+  if (!values) {
+    return NextResponse.json({
+      response_action: "errors",
+      errors: { agents_select: "Missing form values" },
+    });
+  }
+
+  // Extract selected agent IDs
+  const selectedAgentIds =
+    values.agents_select?.agents_select_action?.selected_options?.map(
+      (opt: { value: string }) => opt.value,
+    ) ?? [];
+
+  if (selectedAgentIds.length === 0) {
+    return NextResponse.json({
+      response_action: "errors",
+      errors: { agents_select: "Please select at least one agent to remove" },
+    });
+  }
+
+  // Extract channelId from private_metadata
+  const channelId = extractChannelIdFromMetadata(
+    payload.view?.private_metadata,
+  );
+
+  // Get agent names before deleting (for confirmation message)
+  const agentsToRemove = await globalThis.services.db
+    .select({ id: slackBindings.id, agentName: slackBindings.agentName })
+    .from(slackBindings)
+    .where(inArray(slackBindings.id, selectedAgentIds));
+
+  const agentNames = agentsToRemove.map((a) => a.agentName);
+
+  // Delete selected bindings
+  await globalThis.services.db
+    .delete(slackBindings)
+    .where(inArray(slackBindings.id, selectedAgentIds));
+
+  // Send confirmation message to channel
+  if (channelId && agentNames.length > 0) {
+    sendRemovalConfirmationMessage(
+      payload.team.id,
+      agentNames,
+      channelId,
+      encryptionKey,
+    ).catch((error) => {
+      console.error("Error sending removal confirmation message:", error);
+    });
+  }
+
+  // Close modal
+  return new Response("", { status: 200 });
+}
+
+/**
+ * Send confirmation message to channel after agents are removed
+ */
+async function sendRemovalConfirmationMessage(
+  workspaceId: string,
+  agentNames: string[],
+  channelId: string,
+  encryptionKey: string,
+): Promise<void> {
+  const [installation] = await globalThis.services.db
+    .select()
+    .from(slackInstallations)
+    .where(eq(slackInstallations.slackWorkspaceId, workspaceId))
+    .limit(1);
+
+  if (!installation) {
+    return;
+  }
+
+  const botToken = decryptCredentialValue(
+    installation.encryptedBotToken,
+    encryptionKey,
+  );
+  const client = createSlackClient(botToken);
+
+  const agentList = agentNames.map((n) => `\`${n}\``).join(", ");
+  const plural = agentNames.length > 1 ? "s" : "";
+  const verb = agentNames.length > 1 ? "have" : "has";
+
+  const text = `Agent${plural} ${agentList} ${verb} been removed.`;
+  await postMessage(client, channelId, text, {
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `:white_check_mark: *Agent${plural} ${agentList} ${verb} been removed.*`,
+        },
+      },
+    ],
+  });
+}
+
+/**
+ * Extract secrets from form values (only non-empty values)
+ */
+function extractSecretsFromFormValues(
+  values: ModalStateValues,
+): Record<string, string> {
+  const secrets: Record<string, string> = {};
+  for (const [blockId, block] of Object.entries(values)) {
+    if (blockId.startsWith("secret_")) {
+      const secretName = blockId.replace("secret_", "");
+      const value = block?.value?.value?.trim();
+      if (value) {
+        secrets[secretName] = value;
+      }
+    }
+  }
+  return secrets;
+}
+
+/**
+ * Merge and encrypt secrets for agent binding update
+ */
+function mergeAndEncryptSecrets(
+  existingEncrypted: string | null,
+  newSecrets: Record<string, string>,
+  encryptionKey: string,
+): string {
+  // Decrypt existing secrets if any
+  let existingSecrets: Record<string, string> = {};
+  if (existingEncrypted) {
+    const decrypted = decryptCredentialValue(existingEncrypted, encryptionKey);
+    existingSecrets = parseSecretsFromString(decrypted);
+  }
+
+  // Merge new secrets with existing (new values override)
+  const mergedSecrets = { ...existingSecrets, ...newSecrets };
+
+  // Convert merged secrets to KEY=value format and encrypt
+  const secretsText = Object.entries(mergedSecrets)
+    .map(([key, value]) => `${key}=${value}`)
+    .join("\n");
+
+  return encryptCredentialValue(secretsText, encryptionKey);
+}
+
+/**
+ * Handle agent update modal submission
+ */
+async function handleAgentUpdateSubmission(
+  payload: SlackInteractivePayload,
+  encryptionKey: string,
+): Promise<Response> {
+  const values = payload.view?.state?.values;
+
+  if (!values) {
+    return NextResponse.json({
+      response_action: "errors",
+      errors: { agent_select: "Missing form values" },
+    });
+  }
+
+  // Extract channelId from private_metadata
+  const channelId = extractChannelIdFromMetadata(
+    payload.view?.private_metadata,
+  );
+
+  // Get selected binding ID
+  const bindingId =
+    values.agent_select?.agent_update_select_action?.selected_option?.value;
+
+  if (!bindingId) {
+    return NextResponse.json({
+      response_action: "errors",
+      errors: { agent_select: "Please select an agent" },
+    });
+  }
+
+  // Get the binding to verify it exists and get current secrets
+  const [binding] = await globalThis.services.db
+    .select()
+    .from(slackBindings)
+    .where(eq(slackBindings.id, bindingId))
+    .limit(1);
+
+  if (!binding) {
+    return NextResponse.json({
+      response_action: "errors",
+      errors: { agent_select: "Agent binding not found" },
+    });
+  }
+
+  // Extract new secrets from form (only non-empty values)
+  const newSecrets = extractSecretsFromFormValues(values);
+
+  // If no new secrets provided, nothing to update
+  if (Object.keys(newSecrets).length === 0) {
+    return NextResponse.json({
+      response_action: "errors",
+      errors: { agent_select: "No secrets provided to update" },
+    });
+  }
+
+  // Merge and encrypt secrets
+  const encryptedSecrets = mergeAndEncryptSecrets(
+    binding.encryptedSecrets,
+    newSecrets,
+    encryptionKey,
+  );
+
+  // Update the binding
+  await globalThis.services.db
+    .update(slackBindings)
+    .set({ encryptedSecrets })
+    .where(eq(slackBindings.id, bindingId));
+
+  // Send confirmation message
+  if (channelId) {
+    sendUpdateConfirmationMessage(
+      payload.team.id,
+      binding.agentName,
+      Object.keys(newSecrets),
+      channelId,
+      encryptionKey,
+    ).catch((error) => {
+      console.error("Error sending update confirmation message:", error);
+    });
+  }
+
+  // Close modal
+  return new Response("", { status: 200 });
+}
+
+/**
+ * Parse secrets from KEY=value format string
+ */
+function parseSecretsFromString(secretsStr: string): Record<string, string> {
+  const secrets: Record<string, string> = {};
+  const lines = secretsStr.split("\n");
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    const eqIndex = trimmed.indexOf("=");
+    if (eqIndex > 0) {
+      const key = trimmed.substring(0, eqIndex).trim();
+      const value = trimmed.substring(eqIndex + 1).trim();
+      secrets[key] = value;
+    }
+  }
+
+  return secrets;
+}
+
+/**
+ * Send confirmation message to channel after agent secrets are updated
+ */
+async function sendUpdateConfirmationMessage(
+  workspaceId: string,
+  agentName: string,
+  updatedSecretNames: string[],
+  channelId: string,
+  encryptionKey: string,
+): Promise<void> {
+  const [installation] = await globalThis.services.db
+    .select()
+    .from(slackInstallations)
+    .where(eq(slackInstallations.slackWorkspaceId, workspaceId))
+    .limit(1);
+
+  if (!installation) {
+    return;
+  }
+
+  const botToken = decryptCredentialValue(
+    installation.encryptedBotToken,
+    encryptionKey,
+  );
+  const client = createSlackClient(botToken);
+
+  const secretList = updatedSecretNames.map((n) => `\`${n}\``).join(", ");
+  const plural = updatedSecretNames.length > 1 ? "s" : "";
+
+  const text = `Agent "${agentName}" secret${plural} updated: ${secretList}`;
+  await postMessage(client, channelId, text, {
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `:white_check_mark: *Agent \`${agentName}\` secret${plural} updated:* ${secretList}`,
+        },
+      },
+    ],
+  });
 }

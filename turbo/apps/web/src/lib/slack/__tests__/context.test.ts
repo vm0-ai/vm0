@@ -22,7 +22,7 @@ describe("formatContextForAgent", () => {
     const botUserId = "BBOT123";
     const messages = [
       { user: "U123", text: "Hello" },
-      { bot_id: "BBOT123", text: "Bot response" },
+      { user: "BBOT123", text: "Bot response" },
       { user: "U456", text: "Thanks" },
     ];
 
