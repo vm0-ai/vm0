@@ -1,5 +1,12 @@
 # Changelog
 
+## [11.21.0](https://github.com/vm0-ai/vm0/compare/web-v11.20.0...web-v11.21.0) (2026-02-03)
+
+
+### Features
+
+* enhance design system with improved components ([#2190](https://github.com/vm0-ai/vm0/issues/2190)) ([b6fc9c4](https://github.com/vm0-ai/vm0/commit/b6fc9c4131b223be1f45e5d17951e5c3243ffb6d))
+
 ## [11.20.0](https://github.com/vm0-ai/vm0/compare/web-v11.19.0...web-v11.20.0) (2026-02-03)
 
 

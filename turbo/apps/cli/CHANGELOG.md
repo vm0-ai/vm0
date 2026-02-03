@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.13.1](https://github.com/vm0-ai/vm0/compare/cli-v9.13.0...cli-v9.13.1) (2026-02-03)
+
+
+### Bug Fixes
+
+* **cli:** add auto option in onboard model selection for openrouter ([#2189](https://github.com/vm0-ai/vm0/issues/2189)) ([c783333](https://github.com/vm0-ai/vm0/commit/c783333ff063b79aa3b62a577b46daf7326f5068))
+
 ## [9.13.0](https://github.com/vm0-ai/vm0/compare/cli-v9.12.0...cli-v9.13.0) (2026-02-03)
 
 
