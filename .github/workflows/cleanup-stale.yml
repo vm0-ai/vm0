@@ -1,0 +1,246 @@
+name: Cleanup Stale Resources
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # Daily at 3:00 AM UTC
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'Dry-run mode (no actual deletions)'
+        type: boolean
+        default: false
+
+env:
+  DRY_RUN: ${{ inputs.dry-run || false }}
+
+jobs:
+  cleanup-neon-branches:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260202
+    steps:
+      - name: Cleanup Stale Neon Branches
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -eu
+
+          DELETED=0
+          SKIPPED=0
+
+          # Get all preview branches
+          BRANCHES=$(neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -r '.[] | select(.name | startswith("preview/")) | .name')
+
+          for branch in $BRANCHES; do
+            # Skip staging (main branch deployment)
+            if [ "$branch" = "preview/staging" ]; then
+              echo "Skipping $branch (staging)"
+              SKIPPED=$((SKIPPED + 1))
+              continue
+            fi
+
+            # Extract PR number from preview/pr-{number}
+            if [[ "$branch" =~ ^preview/pr-([0-9]+)$ ]]; then
+              PR_NUMBER="${BASH_REMATCH[1]}"
+
+              # Check PR state via GitHub API
+              PR_STATE=$(curl -sf -H "Authorization: token $GH_TOKEN" \
+                "https://api.github.com/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" | jq -r '.state')
+
+              if [ "$PR_STATE" = "open" ]; then
+                echo "Keeping $branch - PR #$PR_NUMBER is open"
+                SKIPPED=$((SKIPPED + 1))
+              else
+                if [ "$DRY_RUN" = "true" ]; then
+                  echo "[DRY-RUN] Would delete $branch (PR #$PR_NUMBER state: $PR_STATE)"
+                else
+                  echo "Deleting $branch (PR #$PR_NUMBER state: $PR_STATE)"
+                  neonctl branches delete "$branch" --project-id "$NEON_PROJECT_ID"
+                fi
+                DELETED=$((DELETED + 1))
+              fi
+            else
+              echo "Skipping $branch (unknown format)"
+              SKIPPED=$((SKIPPED + 1))
+            fi
+          done
+
+          echo ""
+          echo "=== Neon Cleanup Summary ==="
+          echo "Deleted: $DELETED"
+          echo "Skipped: $SKIPPED"
+
+  cleanup-github-deployments:
+    runs-on: ubuntu-latest
+    permissions:
+      deployments: write
+      pull-requests: read
+    steps:
+      - name: Cleanup Stale Deployments
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const dryRun = '${{ env.DRY_RUN }}' === 'true';
+            let deleted = 0, skipped = 0;
+
+            // Get all open PRs (for lookup)
+            const openPRs = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100
+            });
+            const openPRNumbers = new Set(openPRs.map(pr => pr.number));
+            const openBranches = new Set(openPRs.map(pr => pr.head.ref));
+
+            // Get all deployments
+            const deployments = await github.paginate(github.rest.repos.listDeployments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            });
+
+            for (const deployment of deployments) {
+              const env = deployment.environment || '';
+
+              // Only process preview deployments
+              if (!env.includes('/preview/')) {
+                continue;
+              }
+
+              // Extract info from environment name
+              const match = env.match(/\/preview\/(.+)$/);
+              if (!match) continue;
+
+              const identifier = match[1];
+              let shouldDelete = false;
+              let reason = '';
+
+              // Check if it's a PR-based deployment (pr-123 format)
+              const prMatch = identifier.match(/^pr-(\d+)$/);
+              if (prMatch) {
+                const prNumber = parseInt(prMatch[1]);
+                if (!openPRNumbers.has(prNumber)) {
+                  shouldDelete = true;
+                  reason = `PR #${prNumber} is not open`;
+                }
+              } else {
+                // Branch-based deployment
+                if (!openBranches.has(identifier)) {
+                  shouldDelete = true;
+                  reason = `branch ${identifier} has no open PR`;
+                }
+              }
+
+              if (!shouldDelete) {
+                skipped++;
+                continue;
+              }
+
+              if (dryRun) {
+                console.log(`[DRY-RUN] Would delete deployment ${deployment.id} (${env}) - ${reason}`);
+              } else {
+                // Mark as inactive first (required by GitHub API)
+                await github.rest.repos.createDeploymentStatus({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  deployment_id: deployment.id,
+                  state: 'inactive',
+                  description: 'Stale cleanup - PR closed'
+                });
+
+                await github.rest.repos.deleteDeployment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  deployment_id: deployment.id
+                });
+
+                console.log(`Deleted deployment ${deployment.id} (${env}) - ${reason}`);
+              }
+              deleted++;
+            }
+
+            console.log('');
+            console.log('=== Deployment Cleanup Summary ===');
+            console.log(`Deleted: ${deleted}`);
+            console.log(`Skipped: ${skipped}`);
+
+  cleanup-git-branches:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - name: Cleanup Stale Git Branches
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const dryRun = '${{ env.DRY_RUN }}' === 'true';
+            let deleted = 0, skipped = 0;
+
+            // Get all branches
+            const branches = await github.paginate(github.rest.repos.listBranches, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            });
+
+            for (const branch of branches) {
+              const branchName = branch.name;
+
+              // Skip protected branch
+              if (branchName === 'main') {
+                continue;
+              }
+
+              // Check for open PRs with this branch as head
+              const openPRs = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                head: `${context.repo.owner}:${branchName}`,
+                state: 'open',
+                per_page: 1
+              });
+
+              if (openPRs.data.length > 0) {
+                skipped++;
+                continue;
+              }
+
+              // Check for closed PRs (only delete if a closed PR exists)
+              const closedPRs = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                head: `${context.repo.owner}:${branchName}`,
+                state: 'closed',
+                per_page: 1
+              });
+
+              if (closedPRs.data.length === 0) {
+                // No PR exists - skip (might be a direct push)
+                skipped++;
+                continue;
+              }
+
+              const closedPR = closedPRs.data[0];
+
+              if (dryRun) {
+                console.log(`[DRY-RUN] Would delete branch ${branchName} (closed PR #${closedPR.number})`);
+              } else {
+                await github.rest.git.deleteRef({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: `heads/${branchName}`
+                });
+                console.log(`Deleted branch ${branchName} (closed PR #${closedPR.number})`);
+              }
+              deleted++;
+            }
+
+            console.log('');
+            console.log('=== Git Branch Cleanup Summary ===');
+            console.log(`Deleted: ${deleted}`);
+            console.log(`Skipped: ${skipped}`);
