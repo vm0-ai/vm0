@@ -8,26 +8,7 @@ import * as tar from "tar";
 import { stringify as yamlStringify } from "yaml";
 import { getComposeByName, getStorageDownload } from "../../lib/api";
 import { getInstructionsStorageName } from "@vm0/core";
-
-interface AgentDefinition {
-  description?: string;
-  framework: string;
-  apps?: string[];
-  volumes?: string[];
-  environment?: Record<string, string>;
-  instructions?: string;
-  skills?: string[];
-  experimental_runner?: { group: string };
-  experimental_firewall?: unknown;
-  image?: string; // deprecated
-  working_dir?: string; // deprecated
-}
-
-interface AgentComposeContent {
-  version: string;
-  agents: Record<string, AgentDefinition>;
-  volumes?: Record<string, { name: string; version: string }>;
-}
+import type { AgentComposeContent } from "../../lib/domain/compose-types";
 
 /**
  * Remove deprecated fields from compose content

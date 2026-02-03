@@ -5,41 +5,11 @@ import {
   deriveComposeVariableSources,
   type AgentVariableSources,
 } from "../../lib/domain/source-derivation";
-
-/**
- * Agent definition from compose content
- */
-interface AgentDefinition {
-  description?: string;
-  image?: string;
-  framework: string;
-  apps?: string[];
-  volumes?: string[];
-  working_dir?: string;
-  environment?: Record<string, string>;
-  instructions?: string;
-  skills?: string[];
-  experimental_runner?: {
-    group: string;
-  };
-}
-
-/**
- * Volume configuration from compose content
- */
-interface VolumeConfig {
-  name: string;
-  version: string;
-}
-
-/**
- * Agent compose content structure
- */
-interface AgentComposeContent {
-  version: string;
-  agents: Record<string, AgentDefinition>;
-  volumes?: Record<string, VolumeConfig>;
-}
+import type {
+  AgentComposeContent,
+  AgentDefinition,
+  VolumeConfig,
+} from "../../lib/domain/compose-types";
 
 /**
  * Format a list section with label and items
