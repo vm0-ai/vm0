@@ -70,14 +70,14 @@ Create a new issue body that:
 
 ### Step 5: Update Issue Body
 
-Use `gh issue edit {issue-id} --body "..."` to update with the synthesized content.
+Write the synthesized content to a temporary file, then use `--body-file` to update the issue:
 
-Use HEREDOC for the body to preserve formatting:
 ```bash
-gh issue edit {issue-id} --body "$(cat <<'EOF'
-[synthesized content here]
-EOF
-)"
+# Write synthesized content to temp file
+# (use Write tool to create /tmp/issue-{issue-id}-compact.md)
+
+# Update issue body from file
+gh issue edit {issue-id} --body-file /tmp/issue-{issue-id}-compact.md
 ```
 
 ### Step 6: Delete All Comments

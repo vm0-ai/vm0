@@ -534,7 +534,7 @@ If total content is under GitHub issue size limit (~65K characters):
 ```bash
 gh issue create \
   --title "[Tech Debt] Codebase Quality Scan - $(date +%Y-%m-%d)" \
-  --body "$(cat /tmp/tech-debt-{date}/github-issue-body.md)" \
+  --body-file /tmp/tech-debt-{date}/github-issue-body.md \
   --label "tech-debt,quality,refactoring"
 ```
 
@@ -546,26 +546,26 @@ If content exceeds size limit, create issue with summary and post detailed secti
 # 1. Create issue with executive summary
 ISSUE_URL=$(gh issue create \
   --title "[Tech Debt] Codebase Quality Scan - $(date +%Y-%m-%d)" \
-  --body "$(cat /tmp/tech-debt-{date}/github-issue-summary.md)" \
+  --body-file /tmp/tech-debt-{date}/github-issue-summary.md \
   --label "tech-debt,quality,refactoring")
 
 ISSUE_NUMBER=$(echo $ISSUE_URL | grep -oP '\d+$')
 
 # 2. Post critical issues as comment
 gh issue comment $ISSUE_NUMBER \
-  --body "$(cat /tmp/tech-debt-{date}/github-comment-critical.md)"
+  --body-file /tmp/tech-debt-{date}/github-comment-critical.md
 
 # 3. Post high priority issues as comment
 gh issue comment $ISSUE_NUMBER \
-  --body "$(cat /tmp/tech-debt-{date}/github-comment-high.md)"
+  --body-file /tmp/tech-debt-{date}/github-comment-high.md
 
 # 4. Post medium priority issues as comment
 gh issue comment $ISSUE_NUMBER \
-  --body "$(cat /tmp/tech-debt-{date}/github-comment-medium.md)"
+  --body-file /tmp/tech-debt-{date}/github-comment-medium.md
 
 # 5. Post action plan as comment
 gh issue comment $ISSUE_NUMBER \
-  --body "$(cat /tmp/tech-debt-{date}/github-comment-action-plan.md)"
+  --body-file /tmp/tech-debt-{date}/github-comment-action-plan.md
 ```
 
 **Comment Size Limits:**

@@ -83,15 +83,7 @@ For each missing phase, execute in order, then post comments to the issue:
 
 2. **Post research comment to issue**:
    ```bash
-   gh issue comment {issue-id} --body "$(cat <<'EOF'
-   ## Research Phase
-
-   [Contents of research.md]
-
-   ---
-   *Phase 1/3 of deep-dive workflow*
-   EOF
-   )"
+   gh issue comment {issue-id} --body-file /tmp/deep-dive/{task-name}/research.md
    ```
    - **Update todo:** Mark "Post research comment to issue" as completed
 
@@ -106,15 +98,7 @@ For each missing phase, execute in order, then post comments to the issue:
 
 2. **Post innovation comment to issue**:
    ```bash
-   gh issue comment {issue-id} --body "$(cat <<'EOF'
-   ## Innovation Phase
-
-   [Contents of innovate.md]
-
-   ---
-   *Phase 2/3 of deep-dive workflow*
-   EOF
-   )"
+   gh issue comment {issue-id} --body-file /tmp/deep-dive/{task-name}/innovate.md
    ```
    - **Update todo:** Mark "Post innovate comment to issue" as completed
 
@@ -130,15 +114,7 @@ For each missing phase, execute in order, then post comments to the issue:
 
 2. **Post plan comment to issue**:
    ```bash
-   gh issue comment {issue-id} --body "$(cat <<'EOF'
-   ## Plan Phase
-
-   [Contents of plan.md]
-
-   ---
-   *Phase 3/3 - Ready for approval*
-   EOF
-   )"
+   gh issue comment {issue-id} --body-file /tmp/deep-dive/{task-name}/plan.md
    ```
    - **Update todo:** Mark "Post plan comment to issue" as completed
 
