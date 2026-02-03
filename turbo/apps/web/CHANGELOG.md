@@ -1,5 +1,19 @@
 # Changelog
 
+## [11.24.1](https://github.com/vm0-ai/vm0/compare/web-v11.24.0...web-v11.24.1) (2026-02-03)
+
+
+### Bug Fixes
+
+* **web:** make slack login success message ephemeral and update wording ([#2253](https://github.com/vm0-ai/vm0/issues/2253)) ([a485b33](https://github.com/vm0-ai/vm0/commit/a485b33de3f7848e39450d1e4a8d907c87a3173a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.13.0
+
 ## [11.24.0](https://github.com/vm0-ai/vm0/compare/web-v11.23.0...web-v11.24.0) (2026-02-03)
 
 

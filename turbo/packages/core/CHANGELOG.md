@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.13.0](https://github.com/vm0-ai/vm0/compare/core-v7.12.0...core-v7.13.0) (2026-02-03)
+
+
+### Features
+
+* **core:** enable platform agents feature switch by default ([#2256](https://github.com/vm0-ai/vm0/issues/2256)) ([8a4ada4](https://github.com/vm0-ai/vm0/commit/8a4ada42ae4bf965cb626bd87cbd4e4bb0d99e61))
+
 ## [7.12.0](https://github.com/vm0-ai/vm0/compare/core-v7.11.0...core-v7.12.0) (2026-02-03)
 
 
