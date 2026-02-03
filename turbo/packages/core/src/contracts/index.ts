@@ -207,6 +207,8 @@ export {
   getModels,
   getDefaultModel,
   hasModelSelection,
+  allowsCustomModel,
+  getCustomModelPlaceholder,
   // Multi-auth provider support
   hasAuthMethods,
   getAuthMethodsForType,

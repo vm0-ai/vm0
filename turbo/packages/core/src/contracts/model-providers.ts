@@ -180,7 +180,12 @@ export const MODEL_PROVIDER_TYPES = {
       AWS_ACCESS_KEY_ID: "$credentials.AWS_ACCESS_KEY_ID",
       AWS_SECRET_ACCESS_KEY: "$credentials.AWS_SECRET_ACCESS_KEY",
       AWS_SESSION_TOKEN: "$credentials.AWS_SESSION_TOKEN",
+      ANTHROPIC_MODEL: "$model",
     } as Record<string, string>,
+    models: [] as string[],
+    defaultModel: "",
+    allowCustomModel: true,
+    customModelPlaceholder: "anthropic.claude-sonnet-4-20250514-v1:0",
   },
 } as const;
 
@@ -313,7 +318,31 @@ export function getDefaultModel(type: ModelProviderType): string | undefined {
  */
 export function hasModelSelection(type: ModelProviderType): boolean {
   const config = MODEL_PROVIDER_TYPES[type];
-  return "models" in config && config.models.length > 0;
+  // Has predefined models OR allows custom model input
+  return (
+    ("models" in config && config.models.length > 0) ||
+    ("allowCustomModel" in config && config.allowCustomModel === true)
+  );
+}
+
+/**
+ * Check if a model provider allows custom model input
+ */
+export function allowsCustomModel(type: ModelProviderType): boolean {
+  const config = MODEL_PROVIDER_TYPES[type];
+  return "allowCustomModel" in config && config.allowCustomModel === true;
+}
+
+/**
+ * Get custom model placeholder for a model provider type
+ */
+export function getCustomModelPlaceholder(
+  type: ModelProviderType,
+): string | undefined {
+  const config = MODEL_PROVIDER_TYPES[type];
+  return "customModelPlaceholder" in config
+    ? config.customModelPlaceholder
+    : undefined;
 }
 
 /**

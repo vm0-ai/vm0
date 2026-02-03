@@ -14,6 +14,8 @@ import {
   getModels,
   getDefaultModel,
   hasModelSelection,
+  allowsCustomModel,
+  getCustomModelPlaceholder,
   hasAuthMethods,
   getAuthMethodsForType,
   getDefaultAuthMethod,
@@ -51,6 +53,12 @@ function validateModel(
   modelStr: string,
 ): string | never {
   const models = getModels(type);
+
+  // Allow any model if provider supports custom models
+  if (allowsCustomModel(type)) {
+    return modelStr;
+  }
+
   if (models && !models.includes(modelStr)) {
     console.error(chalk.red(`✗ Invalid model "${modelStr}"`));
     console.log();
@@ -294,18 +302,28 @@ async function promptForModelSelection(
 
   const models = getModels(type) ?? [];
   const defaultModel = getDefaultModel(type);
+  const supportsCustomModel = allowsCustomModel(type);
 
-  // Build choices - add "auto" option if defaultModel is empty
-  const modelChoices =
-    defaultModel === ""
-      ? [
-          { title: "auto (Recommended)", value: "" },
-          ...models.map((model) => ({ title: model, value: model })),
-        ]
-      : models.map((model) => ({
-          title: model === defaultModel ? `${model} (Recommended)` : model,
-          value: model,
-        }));
+  // Build choices
+  const modelChoices: { title: string; value: string }[] = [];
+
+  // Add auto option if defaultModel is empty string
+  if (defaultModel === "") {
+    modelChoices.push({ title: "auto (Recommended)", value: "" });
+  }
+
+  // Add predefined models
+  for (const model of models) {
+    modelChoices.push({
+      title: model === defaultModel ? `${model} (Recommended)` : model,
+      value: model,
+    });
+  }
+
+  // Add custom model option if supported
+  if (supportsCustomModel) {
+    modelChoices.push({ title: "Custom model ID", value: "__custom__" });
+  }
 
   const modelResponse = await prompts(
     {
@@ -317,8 +335,27 @@ async function promptForModelSelection(
     { onCancel: () => process.exit(0) },
   );
 
-  // Return undefined for auto mode (empty string)
   const selected = modelResponse.model as string;
+
+  // Handle custom model input
+  if (selected === "__custom__") {
+    const placeholder = getCustomModelPlaceholder(type);
+    if (placeholder) {
+      console.log(chalk.dim(`Example: ${placeholder}`));
+    }
+    const customResponse = await prompts(
+      {
+        type: "text",
+        name: "customModel",
+        message: "Enter model ID:",
+        validate: (value: string) => value.length > 0 || "Model ID is required",
+      },
+      { onCancel: () => process.exit(0) },
+    );
+    return customResponse.customModel as string;
+  }
+
+  // Return undefined for auto mode (empty string)
   return selected === "" ? undefined : selected;
 }
 
