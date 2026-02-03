@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { randomUUID } from "crypto";
 import { GET } from "../route";
 import {
   createTestRequest,
@@ -60,7 +61,9 @@ describe("GET /api/platform/logs", () => {
 
     beforeEach(async () => {
       // Create compose and multiple runs
-      const { composeId } = await createTestCompose(`logs-test-${Date.now()}`);
+      const { composeId } = await createTestCompose(
+        `logs-test-${randomUUID().slice(0, 8)}`,
+      );
       testComposeId = composeId;
 
       // Create 3 runs - order will be newest first due to createdAt
@@ -132,10 +135,10 @@ describe("GET /api/platform/logs", () => {
     beforeEach(async () => {
       // Create composes with different names
       const { composeId: compose1 } = await createTestCompose(
-        `search-alpha-${Date.now()}`,
+        `search-alpha-${randomUUID().slice(0, 8)}`,
       );
       const { composeId: compose2 } = await createTestCompose(
-        `search-beta-${Date.now()}`,
+        `search-beta-${randomUUID().slice(0, 8)}`,
       );
 
       // Create runs for each compose
@@ -184,7 +187,7 @@ describe("GET /api/platform/logs", () => {
   it("should not return runs from other users", async () => {
     // Create run for current user
     const { composeId } = await createTestCompose(
-      `isolation-test-${Date.now()}`,
+      `isolation-test-${randomUUID().slice(0, 8)}`,
     );
     const { runId: myRunId } = await createTestRun(composeId, "My prompt");
     await completeTestRun(user.userId, myRunId);
@@ -192,7 +195,7 @@ describe("GET /api/platform/logs", () => {
     // Create another user with different prefix to avoid caching
     const otherUser = await context.setupUser({ prefix: "other-user" });
     const { composeId: otherComposeId } = await createTestCompose(
-      `other-agent-${Date.now()}`,
+      `other-agent-${randomUUID().slice(0, 8)}`,
     );
     const { runId: otherRunId } = await createTestRun(
       otherComposeId,

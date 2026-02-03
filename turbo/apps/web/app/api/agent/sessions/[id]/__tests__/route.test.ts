@@ -29,7 +29,9 @@ describe("GET /api/agent/sessions/:id", () => {
     context.setupMocks();
     user = await context.setupUser();
 
-    const { composeId } = await createTestCompose(`session-${Date.now()}`);
+    const { composeId } = await createTestCompose(
+      `session-${randomUUID().slice(0, 8)}`,
+    );
     testComposeId = composeId;
   });
 

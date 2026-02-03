@@ -30,7 +30,9 @@ describe("GET /api/agent/checkpoints/:id", () => {
     user = await context.setupUser();
 
     // Create test compose
-    const { composeId } = await createTestCompose(`checkpoint-${Date.now()}`);
+    const { composeId } = await createTestCompose(
+      `checkpoint-${randomUUID().slice(0, 8)}`,
+    );
     testComposeId = composeId;
   });
 

@@ -34,7 +34,9 @@ describe("POST /api/webhooks/agent/complete", () => {
     user = await context.setupUser();
 
     // Create compose for test runs
-    const { composeId } = await createTestCompose(`complete-${Date.now()}`);
+    const { composeId } = await createTestCompose(
+      `complete-${randomUUID().slice(0, 8)}`,
+    );
     testComposeId = composeId;
 
     // Create a running run

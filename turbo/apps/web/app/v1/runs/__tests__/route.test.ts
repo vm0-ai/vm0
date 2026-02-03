@@ -38,8 +38,8 @@ describe("Public API v1 - Runs Endpoints", () => {
     // Create unique user for this test
     user = await context.setupUser();
 
-    // Create test agent with compose
-    testAgentName = `agent-${Date.now()}`;
+    // Create test agent with compose (use UUID to avoid name conflicts between tests)
+    testAgentName = `agent-${randomUUID().slice(0, 8)}`;
     const { composeId } = await createTestCompose(testAgentName);
     testAgentId = composeId;
 
@@ -141,7 +141,7 @@ describe("Public API v1 - Runs Endpoints", () => {
       // Create another user and their run
       const otherUser = await context.setupUser({ prefix: "other-user" });
       const { composeId: otherComposeId } = await createTestCompose(
-        `other-agent-${Date.now()}`,
+        `other-agent-${randomUUID().slice(0, 8)}`,
       );
 
       // Create run as other user

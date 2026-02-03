@@ -43,7 +43,9 @@ describe("POST /api/webhooks/agent/events", () => {
     user = await context.setupUser();
 
     // Create test compose via API
-    const { composeId } = await createTestCompose(`agent-events-${Date.now()}`);
+    const { composeId } = await createTestCompose(
+      `agent-events-${randomUUID().slice(0, 8)}`,
+    );
     testComposeId = composeId;
 
     // Create test run via API (status automatically set to running)

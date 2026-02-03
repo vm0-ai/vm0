@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "../route";
 import {
@@ -28,7 +29,9 @@ describe("GET /api/usage", () => {
     context.setupMocks();
     user = await context.setupUser();
 
-    const { composeId } = await createTestCompose(`usage-${Date.now()}`);
+    const { composeId } = await createTestCompose(
+      `usage-${randomUUID().slice(0, 8)}`,
+    );
     testComposeId = composeId;
   });
 

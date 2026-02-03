@@ -30,7 +30,9 @@ describe("GET /api/platform/logs/[id]", () => {
     user = await context.setupUser();
 
     // Create test compose
-    const { composeId } = await createTestCompose(`logs-detail-${Date.now()}`);
+    const { composeId } = await createTestCompose(
+      `logs-detail-${randomUUID().slice(0, 8)}`,
+    );
     testComposeId = composeId;
   });
 

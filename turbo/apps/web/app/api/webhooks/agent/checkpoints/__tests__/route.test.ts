@@ -32,7 +32,9 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
     user = await context.setupUser();
 
     // Create compose for test runs
-    const { composeId } = await createTestCompose(`checkpoint-${Date.now()}`);
+    const { composeId } = await createTestCompose(
+      `checkpoint-${randomUUID().slice(0, 8)}`,
+    );
     testComposeId = composeId;
 
     // Create a running run

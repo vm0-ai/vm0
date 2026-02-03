@@ -27,7 +27,9 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
     context.setupMocks();
     user = await context.setupUser();
 
-    const { composeId } = await createTestCompose(`agent-${Date.now()}`);
+    const { composeId } = await createTestCompose(
+      `agent-${randomUUID().slice(0, 8)}`,
+    );
     testComposeId = composeId;
   });
 

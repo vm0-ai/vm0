@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "../route";
 import {
@@ -138,7 +139,7 @@ describe("GET /api/agent/composes/list", () => {
     const otherUser = await context.setupUser({ prefix: "forbidden-user" });
 
     // Create a compose for the other user
-    await createTestCompose(`forbidden-compose-${Date.now()}`);
+    await createTestCompose(`forbidden-compose-${randomUUID().slice(0, 8)}`);
 
     // Derive the other user's scope slug from their userId
     // userId format: {prefix}-{timestamp}-{uuid}

@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "../route";
 import { POST } from "../../route";
@@ -214,7 +215,9 @@ describe("GET /api/agent/composes/versions", () => {
   it("should resolve version with full hash for cross-compose scenario", async () => {
     // Similar test - create second compose and test full hash resolution
     const { composeId: thirdComposeId, versionId: thirdVersionId } =
-      await createTestCompose(`test-version-agent-c-${Date.now()}`);
+      await createTestCompose(
+        `test-version-agent-c-${randomUUID().slice(0, 8)}`,
+      );
 
     // Test with full 64-char hash
     const request = createTestRequest(

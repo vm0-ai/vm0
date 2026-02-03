@@ -34,8 +34,10 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     context.setupMocks();
     user = await context.setupUser();
 
-    // Create test compose
-    const { composeId } = await createTestCompose(`agent-${Date.now()}`);
+    // Create test compose with unique name to avoid conflicts between parallel tests
+    const { composeId } = await createTestCompose(
+      `agent-${randomUUID().slice(0, 8)}`,
+    );
     testComposeId = composeId;
   });
 
@@ -561,9 +563,12 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       await createTestModelProvider("anthropic-api-key", "test-api-key");
 
       // Create compose without API key
-      const { composeId } = await createTestCompose(`mp-agent-${Date.now()}`, {
-        skipDefaultApiKey: true,
-      });
+      const { composeId } = await createTestCompose(
+        `mp-agent-${randomUUID().slice(0, 8)}`,
+        {
+          skipDefaultApiKey: true,
+        },
+      );
 
       const data = await createTestRun(composeId, "Test with model provider");
 
@@ -572,9 +577,12 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
     it("should fail run when no model provider and no API key in compose", async () => {
       // Create compose without API key and no environment block
-      const { composeId } = await createTestCompose(`no-mp-${Date.now()}`, {
-        noEnvironmentBlock: true,
-      });
+      const { composeId } = await createTestCompose(
+        `no-mp-${randomUUID().slice(0, 8)}`,
+        {
+          noEnvironmentBlock: true,
+        },
+      );
 
       const data = await createTestRun(
         composeId,
@@ -602,9 +610,12 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       await createTestModelProvider("anthropic-api-key", "test-api-key");
 
       // Create compose without API key
-      const { composeId } = await createTestCompose(`mp-select-${Date.now()}`, {
-        skipDefaultApiKey: true,
-      });
+      const { composeId } = await createTestCompose(
+        `mp-select-${randomUUID().slice(0, 8)}`,
+        {
+          skipDefaultApiKey: true,
+        },
+      );
 
       const data = await createTestRun(
         composeId,
@@ -619,12 +630,15 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
     it("should skip injection when compose has explicit OPENAI_API_KEY (codex)", async () => {
       // Create compose with OPENAI_API_KEY for codex framework
-      const { composeId } = await createTestCompose(`codex-${Date.now()}`, {
-        overrides: {
-          framework: "codex",
-          environment: { OPENAI_API_KEY: "explicit-openai-key" },
+      const { composeId } = await createTestCompose(
+        `codex-${randomUUID().slice(0, 8)}`,
+        {
+          overrides: {
+            framework: "codex",
+            environment: { OPENAI_API_KEY: "explicit-openai-key" },
+          },
         },
-      });
+      );
 
       const data = await createTestRun(composeId, "Test codex with key");
 
@@ -633,12 +647,15 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
     it("should skip injection when compose has CLAUDE_CODE_USE_FOUNDRY", async () => {
       // Create compose with alternative auth method
-      const { composeId } = await createTestCompose(`foundry-${Date.now()}`, {
-        overrides: {
-          framework: "claude-code",
-          environment: { CLAUDE_CODE_USE_FOUNDRY: "1" },
+      const { composeId } = await createTestCompose(
+        `foundry-${randomUUID().slice(0, 8)}`,
+        {
+          overrides: {
+            framework: "claude-code",
+            environment: { CLAUDE_CODE_USE_FOUNDRY: "1" },
+          },
         },
-      });
+      );
 
       const data = await createTestRun(composeId, "Test with Foundry auth");
 
@@ -648,7 +665,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     it("should fail when specified model provider type is invalid", async () => {
       // Create compose without API key
       const { composeId } = await createTestCompose(
-        `invalid-mp-${Date.now()}`,
+        `invalid-mp-${randomUUID().slice(0, 8)}`,
         {
           skipDefaultApiKey: true,
         },

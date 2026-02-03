@@ -62,7 +62,9 @@ describe("GET /api/agent/runs/:id/telemetry/network", () => {
     user = await context.setupUser();
 
     // Create test compose and run
-    const { composeId } = await createTestCompose(`network-${Date.now()}`);
+    const { composeId } = await createTestCompose(
+      `network-${randomUUID().slice(0, 8)}`,
+    );
 
     const { runId } = await createTestRun(composeId, "Test prompt");
     testRunId = runId;
