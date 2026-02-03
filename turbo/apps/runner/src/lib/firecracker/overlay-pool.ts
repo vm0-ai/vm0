@@ -42,10 +42,9 @@ interface OverlayPoolConfig {
 }
 
 /**
- * Default overlay file creator
- * Creates a sparse ext4 file
+ * Create a sparse ext4 overlay file
  */
-async function defaultCreateFile(filePath: string): Promise<void> {
+async function createOverlayFile(filePath: string): Promise<void> {
   const fd = fs.openSync(filePath, "w");
   fs.ftruncateSync(fd, OVERLAY_SIZE);
   fs.closeSync(fd);
@@ -68,7 +67,7 @@ export class OverlayPool {
       size: config.size,
       replenishThreshold: config.replenishThreshold,
       poolDir: config.poolDir,
-      createFile: config.createFile ?? defaultCreateFile,
+      createFile: config.createFile ?? createOverlayFile,
     };
   }
 
@@ -77,20 +76,6 @@ export class OverlayPool {
    */
   private generateFileName(): string {
     return `overlay-${randomUUID()}.ext4`;
-  }
-
-  /**
-   * Ensure the pool directory exists
-   */
-  private async ensurePoolDir(): Promise<void> {
-    const parentDir = path.dirname(this.config.poolDir);
-    if (!fs.existsSync(parentDir)) {
-      await execAsync(`sudo mkdir -p ${parentDir}`);
-      await execAsync(`sudo chmod 777 ${parentDir}`);
-    }
-    if (!fs.existsSync(this.config.poolDir)) {
-      fs.mkdirSync(this.config.poolDir, { recursive: true });
-    }
   }
 
   /**
@@ -156,7 +141,7 @@ export class OverlayPool {
       `Initializing overlay pool (size=${this.config.size}, threshold=${this.config.replenishThreshold})...`,
     );
 
-    await this.ensurePoolDir();
+    fs.mkdirSync(this.config.poolDir, { recursive: true });
 
     // Clean up stale files from previous runs
     const existing = this.scanPoolDir();

@@ -22,8 +22,8 @@ describe("runner-lock", () => {
   });
 
   describe("acquireRunnerLock", () => {
-    it("should create PID file with current PID", async () => {
-      await acquireRunnerLock({ pidFile, skipSudo: true });
+    it("should create PID file with current PID", () => {
+      acquireRunnerLock({ pidFile });
 
       expect(fs.existsSync(pidFile)).toBe(true);
       const content = fs.readFileSync(pidFile, "utf-8");
@@ -32,11 +32,11 @@ describe("runner-lock", () => {
       releaseRunnerLock();
     });
 
-    it("should clean up stale PID file from non-existent process", async () => {
+    it("should clean up stale PID file from non-existent process", () => {
       // Write a fake PID that doesn't exist (very high number)
       fs.writeFileSync(pidFile, "999999999");
 
-      await acquireRunnerLock({ pidFile, skipSudo: true });
+      acquireRunnerLock({ pidFile });
 
       // Should have replaced with current PID
       const content = fs.readFileSync(pidFile, "utf-8");
@@ -45,11 +45,11 @@ describe("runner-lock", () => {
       releaseRunnerLock();
     });
 
-    it("should clean up invalid PID file with non-numeric content", async () => {
+    it("should clean up invalid PID file with non-numeric content", () => {
       // Write invalid content
       fs.writeFileSync(pidFile, "not-a-number");
 
-      await acquireRunnerLock({ pidFile, skipSudo: true });
+      acquireRunnerLock({ pidFile });
 
       // Should have replaced with current PID
       const content = fs.readFileSync(pidFile, "utf-8");
@@ -58,7 +58,7 @@ describe("runner-lock", () => {
       releaseRunnerLock();
     });
 
-    it("should exit if another runner is running", async () => {
+    it("should exit if another runner is running", () => {
       // Write current process's parent PID (known to be running)
       const parentPid = process.ppid;
       fs.writeFileSync(pidFile, parentPid.toString());
@@ -70,7 +70,7 @@ describe("runner-lock", () => {
         .spyOn(console, "error")
         .mockImplementation(() => undefined);
 
-      await acquireRunnerLock({ pidFile, skipSudo: true });
+      acquireRunnerLock({ pidFile });
 
       expect(exitSpy).toHaveBeenCalledWith(1);
       expect(errorSpy).toHaveBeenCalledWith(
@@ -81,7 +81,7 @@ describe("runner-lock", () => {
       fs.unlinkSync(pidFile);
     });
 
-    it("should exit if process exists but we lack permission (EPERM)", async () => {
+    it("should exit if process exists but we lack permission (EPERM)", () => {
       // Write PID 1 (init/systemd - typically can't signal)
       fs.writeFileSync(pidFile, "1");
 
@@ -96,7 +96,7 @@ describe("runner-lock", () => {
         .mockImplementation(() => undefined as never);
       vi.spyOn(console, "error").mockImplementation(() => undefined);
 
-      await acquireRunnerLock({ pidFile, skipSudo: true });
+      acquireRunnerLock({ pidFile });
 
       // EPERM means process exists, so should exit
       expect(exitSpy).toHaveBeenCalledWith(1);
@@ -107,8 +107,8 @@ describe("runner-lock", () => {
   });
 
   describe("releaseRunnerLock", () => {
-    it("should remove PID file", async () => {
-      await acquireRunnerLock({ pidFile, skipSudo: true });
+    it("should remove PID file", () => {
+      acquireRunnerLock({ pidFile });
       expect(fs.existsSync(pidFile)).toBe(true);
 
       releaseRunnerLock();

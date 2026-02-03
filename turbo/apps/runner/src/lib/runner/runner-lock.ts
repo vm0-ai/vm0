@@ -5,15 +5,12 @@
  * from running on the same device.
  */
 
-import { exec } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { promisify } from "node:util";
 
 import { createLogger } from "../logger.js";
 import { runtimePaths } from "../paths.js";
 
-const execAsync = promisify(exec);
 const logger = createLogger("RunnerLock");
 
 const DEFAULT_PID_FILE = runtimePaths.runnerPid;
@@ -24,22 +21,6 @@ let currentPidFile: string | null = null;
 interface RunnerLockOptions {
   /** Custom PID file path (for testing). Defaults to /var/run/vm0/runner.pid */
   pidFile?: string;
-  /** Skip sudo for directory creation (for testing). Defaults to false */
-  skipSudo?: boolean;
-}
-
-/**
- * Ensure the directory for PID file exists
- */
-async function ensureRunDir(dirPath: string, skipSudo: boolean): Promise<void> {
-  if (!fs.existsSync(dirPath)) {
-    if (skipSudo) {
-      fs.mkdirSync(dirPath, { recursive: true });
-    } else {
-      await execAsync(`sudo mkdir -p ${dirPath}`);
-      await execAsync(`sudo chmod 777 ${dirPath}`);
-    }
-  }
 }
 
 /**
@@ -67,14 +48,10 @@ function isProcessRunning(pid: number): boolean {
 /**
  * Acquire runner lock - exits if another runner is running
  */
-export async function acquireRunnerLock(
-  options: RunnerLockOptions = {},
-): Promise<void> {
+export function acquireRunnerLock(options: RunnerLockOptions = {}): void {
   const pidFile = options.pidFile ?? DEFAULT_PID_FILE;
-  const skipSudo = options.skipSudo ?? false;
   const runDir = path.dirname(pidFile);
-
-  await ensureRunDir(runDir, skipSudo);
+  fs.mkdirSync(runDir, { recursive: true });
 
   if (fs.existsSync(pidFile)) {
     const pidStr = fs.readFileSync(pidFile, "utf-8").trim();
