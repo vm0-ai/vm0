@@ -3,15 +3,15 @@ import crypto from "crypto";
 import { loadDebugConfig, validateFirecrackerPaths } from "../lib/config.js";
 import { executeJob } from "../lib/executor.js";
 import type { ExecutionContext } from "../lib/api.js";
-import {
-  checkNetworkPrerequisites,
-  setupBridge,
-} from "../lib/firecracker/network.js";
+import { checkNetworkPrerequisites } from "../lib/firecracker/network.js";
 import {
   initOverlayPool,
   cleanupOverlayPool,
 } from "../lib/firecracker/overlay-pool.js";
-import { initTapPool, cleanupTapPool } from "../lib/firecracker/tap-pool.js";
+import {
+  initNetnsPool,
+  cleanupNetnsPool,
+} from "../lib/firecracker/netns-pool.js";
 import { Timer } from "../lib/timing.js";
 import { setGlobalLogger } from "../lib/logger.js";
 import { runnerPaths } from "../lib/paths.js";
@@ -87,10 +87,6 @@ export const benchmarkCommand = new Command("benchmark")
         process.exit(1);
       }
 
-      // Set up bridge network
-      timer.log("Setting up network bridge...");
-      await setupBridge();
-
       // Initialize pools for VM resources
       timer.log("Initializing pools...");
       await initOverlayPool({
@@ -98,7 +94,7 @@ export const benchmarkCommand = new Command("benchmark")
         replenishThreshold: 1,
         poolDir: runnerPaths.overlayPool(config.base_dir),
       });
-      await initTapPool({ name: config.name, size: 2, replenishThreshold: 1 });
+      await initNetnsPool({ name: config.name, size: 2 });
       poolsInitialized = true;
 
       // Create benchmark execution context
@@ -124,7 +120,7 @@ export const benchmarkCommand = new Command("benchmark")
       );
     } finally {
       if (poolsInitialized) {
-        await cleanupTapPool();
+        await cleanupNetnsPool();
         cleanupOverlayPool();
       }
     }

@@ -541,25 +541,22 @@ export class NetnsPool {
         `ip netns exec ${name} sysctl -w net.ipv4.ip_forward=1`,
       );
 
+      // Host iptables rules can be executed in parallel (independent of each other)
       const defaultIface = await this.getDefaultInterface();
-      await execCommand(
+      const iptablesRules = [
         `iptables -t nat -A POSTROUTING -s ${vethNsIp}/30 -o ${defaultIface} -j MASQUERADE -m comment --comment "${name}"`,
-      );
-      await execCommand(
         `iptables -A FORWARD -i ${vethHost} -o ${defaultIface} -j ACCEPT -m comment --comment "${name}"`,
-      );
-      await execCommand(
         `iptables -A FORWARD -i ${defaultIface} -o ${vethHost} -m state --state RELATED,ESTABLISHED -j ACCEPT -m comment --comment "${name}"`,
-      );
+      ];
 
       if (this.proxyPort) {
-        await execCommand(
+        iptablesRules.push(
           `iptables -t nat -A PREROUTING -s ${vethNsIp}/30 -p tcp --dport 80 -j REDIRECT --to-port ${this.proxyPort} -m comment --comment "${name}"`,
-        );
-        await execCommand(
           `iptables -t nat -A PREROUTING -s ${vethNsIp}/30 -p tcp --dport 443 -j REDIRECT --to-port ${this.proxyPort} -m comment --comment "${name}"`,
         );
       }
+
+      await Promise.all(iptablesRules.map((rule) => execCommand(rule)));
 
       logger.log(`Namespace ${name} created`);
 

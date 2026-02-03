@@ -1,18 +1,11 @@
 import type { RunnerConfig } from "../config.js";
 import { runnerPaths } from "../paths.js";
-import {
-  checkNetworkPrerequisites,
-  setupBridge,
-  cleanupOrphanedProxyRules,
-  flushBridgeArpCache,
-  setupCIDRProxyRules,
-  cleanupCIDRProxyRules,
-} from "../firecracker/network.js";
+import { checkNetworkPrerequisites } from "../firecracker/network.js";
 import {
   initOverlayPool,
   cleanupOverlayPool,
 } from "../firecracker/overlay-pool.js";
-import { initTapPool, cleanupTapPool } from "../firecracker/tap-pool.js";
+import { initNetnsPool, cleanupNetnsPool } from "../firecracker/netns-pool.js";
 import {
   initProxyManager,
   initVMRegistry,
@@ -49,40 +42,9 @@ export async function setupEnvironment(
     process.exit(1);
   }
 
-  // Set up bridge network
-  logger.log("Setting up network bridge...");
-  await setupBridge();
-
-  // Flush bridge ARP cache to clear stale entries from previous runs
-  // This prevents routing issues when IPs are reused with different MACs
-  logger.log("Flushing bridge ARP cache...");
-  await flushBridgeArpCache();
-
-  // Clean up orphaned proxy rules from previous runs
-  // This handles rules left behind after crashes or SIGKILL
-  logger.log("Cleaning up orphaned proxy rules...");
-  await cleanupOrphanedProxyRules(config.name);
-
-  // Initialize overlay pool for faster VM boot
-  // Pre-creates sparse ext4 overlay files that can be acquired instantly
-  logger.log("Initializing overlay pool...");
-  await initOverlayPool({
-    size: config.sandbox.max_concurrent + 2,
-    replenishThreshold: config.sandbox.max_concurrent,
-    poolDir: runnerPaths.overlayPool(config.base_dir),
-  });
-
-  // Initialize TAP pool for faster VM boot
-  // Pre-creates TAP devices attached to bridge for instant acquisition
-  logger.log("Initializing TAP pool...");
-  await initTapPool({
-    name: config.name,
-    size: config.sandbox.max_concurrent + 2,
-    replenishThreshold: config.sandbox.max_concurrent,
-  });
-
   // Initialize proxy for network security mode
   // The proxy is always started but only used when experimentalFirewall is enabled
+  // Must initialize BEFORE netns pool so we know the proxy port
   logger.log("Initializing network proxy...");
   initVMRegistry();
   const proxyManager = initProxyManager({
@@ -97,12 +59,6 @@ export async function setupEnvironment(
     await proxyManager.start();
     proxyEnabled = true;
     logger.log("Network proxy initialized successfully");
-
-    // Set up CIDR-based proxy rules for all VMs
-    // This redirects all VM traffic (172.16.0.0/24) to the proxy at startup
-    // The proxy handles unregistered VMs by passing traffic through
-    logger.log("Setting up CIDR proxy rules...");
-    await setupCIDRProxyRules(config.proxy.port);
   } catch (err) {
     logger.log(
       `Network proxy not available: ${err instanceof Error ? err.message : "Unknown error"}`,
@@ -112,29 +68,36 @@ export async function setupEnvironment(
     );
   }
 
+  // Initialize overlay pool for faster VM boot
+  // Pre-creates sparse ext4 overlay files that can be acquired instantly
+  logger.log("Initializing overlay pool...");
+  await initOverlayPool({
+    size: config.sandbox.max_concurrent + 2,
+    replenishThreshold: config.sandbox.max_concurrent,
+    poolDir: runnerPaths.overlayPool(config.base_dir),
+  });
+
+  // Initialize network namespace pool for faster VM boot
+  // Pre-creates isolated namespaces with TAP devices and routing
+  // Proxy rules are set up per-namespace if proxyPort is provided
+  logger.log("Initializing namespace pool...");
+  await initNetnsPool({
+    name: config.name,
+    size: config.sandbox.max_concurrent + 2,
+    proxyPort: proxyEnabled ? config.proxy.port : undefined,
+  });
+
   return { proxyEnabled, proxyPort: config.proxy.port };
 }
 
 /**
- * Clean up runner resources: proxy and CIDR rules
+ * Clean up runner resources: proxy, pools, and lock
  * Each step is isolated so failures don't prevent subsequent cleanup
  */
 export async function cleanupEnvironment(
   resources: RunnerResources,
 ): Promise<void> {
   const errors: Error[] = [];
-
-  // Cleanup CIDR proxy rules first
-  if (resources.proxyEnabled) {
-    try {
-      logger.log("Cleaning up CIDR proxy rules...");
-      await cleanupCIDRProxyRules(resources.proxyPort);
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
-      errors.push(error);
-      logger.error(`Failed to cleanup CIDR proxy rules: ${error.message}`);
-    }
-  }
 
   // Cleanup proxy
   if (resources.proxyEnabled) {
@@ -148,6 +111,16 @@ export async function cleanupEnvironment(
     }
   }
 
+  // Cleanup namespace pool (includes iptables rules cleanup)
+  try {
+    logger.log("Cleaning up namespace pool...");
+    await cleanupNetnsPool();
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    errors.push(error);
+    logger.error(`Failed to cleanup namespace pool: ${error.message}`);
+  }
+
   // Cleanup overlay pool
   try {
     cleanupOverlayPool();
@@ -155,15 +128,6 @@ export async function cleanupEnvironment(
     const error = err instanceof Error ? err : new Error(String(err));
     errors.push(error);
     logger.error(`Failed to cleanup overlay pool: ${error.message}`);
-  }
-
-  // Cleanup TAP pool
-  try {
-    await cleanupTapPool();
-  } catch (err) {
-    const error = err instanceof Error ? err : new Error(String(err));
-    errors.push(error);
-    logger.error(`Failed to cleanup TAP pool: ${error.message}`);
   }
 
   // Release runner lock last

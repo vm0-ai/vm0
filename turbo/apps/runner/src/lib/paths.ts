@@ -22,9 +22,6 @@ export const runtimePaths = {
   /** Runner PID file for single-instance lock */
   runnerPid: path.join(VM0_RUN_DIR, "runner.pid"),
 
-  /** IP allocation registry */
-  ipRegistry: path.join(VM0_RUN_DIR, "ip-registry.json"),
-
   /** Network namespace registry for multi-runner coordination */
   netnsRegistry: path.join(VM0_RUN_DIR, "netns-registry.json"),
 } as const;

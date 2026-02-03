@@ -3,9 +3,9 @@
  *
  * Comprehensive health check for the runner, including:
  * - API connectivity
- * - Network status (bridge, proxy)
- * - Active jobs with IP allocation
- * - Warning detection (orphan resources, IP conflicts, iptables issues)
+ * - Network status (proxy)
+ * - Active jobs
+ * - Warning detection (orphan resources)
  */
 
 import { Command } from "commander";
@@ -17,14 +17,8 @@ import {
   findFirecrackerProcesses,
   findMitmproxyProcess,
 } from "../lib/firecracker/process.js";
-import {
-  checkBridgeStatus,
-  isPortInUse,
-  listIptablesNatRules,
-  findOrphanedIptablesRules,
-  BRIDGE_NAME,
-} from "../lib/firecracker/network.js";
-import { getIPForVm, getAllocations } from "../lib/firecracker/ip-registry.js";
+import { isPortInUse } from "../lib/firecracker/network.js";
+import { SNAPSHOT_NETWORK } from "../lib/firecracker/netns-pool.js";
 import { type VmId, createVmId } from "../lib/firecracker/vm-id.js";
 
 interface RunnerStatus {
@@ -38,7 +32,6 @@ interface RunnerStatus {
 interface JobInfo {
   runId: string;
   vmId: VmId;
-  ip: string;
   hasProcess: boolean;
   pid?: number;
 }
@@ -104,17 +97,6 @@ export const doctorCommand = new Command("doctor")
         console.log("Network:");
         const warnings: Warning[] = [];
 
-        // Check bridge
-        const bridgeStatus = await checkBridgeStatus();
-        if (bridgeStatus.exists) {
-          console.log(`  ✓ Bridge ${BRIDGE_NAME} (${bridgeStatus.ip})`);
-        } else {
-          console.log(`  ✗ Bridge ${BRIDGE_NAME} not found`);
-          warnings.push({
-            message: `Network bridge ${BRIDGE_NAME} does not exist`,
-          });
-        }
-
         // Check mitmproxy
         const proxyPort = config.proxy.port;
         const mitmProc = findMitmproxyProcess();
@@ -136,45 +118,35 @@ export const doctorCommand = new Command("doctor")
           warnings.push({ message: "Proxy mitmproxy is not running" });
         }
 
+        // Network namespace info
+        console.log(
+          `  ℹ Namespaces: each VM runs in isolated namespace with IP ${SNAPSHOT_NETWORK.guestIp}`,
+        );
+
         console.log("");
 
-        // Scan resources first to get active VM IPs
+        // Scan resources
         const processes = findFirecrackerProcesses();
         const workspaces = existsSync(workspacesDir)
           ? readdirSync(workspacesDir).filter(runnerPaths.isVmWorkspace)
           : [];
 
-        // Build job info with IP addresses
+        // Build job info
         const jobs: JobInfo[] = [];
         const statusVmIds = new Set<VmId>();
-        // IP allocations include vmId for diagnostic purposes
-        const allocations = getAllocations();
 
         if (status?.active_run_ids) {
           for (const runId of status.active_run_ids) {
             const vmId = createVmId(runId);
             statusVmIds.add(vmId);
             const proc = processes.find((p) => p.vmId === vmId);
-            // Look up IP from the registry
-            const ip = getIPForVm(vmId) ?? "not allocated";
 
             jobs.push({
               runId,
               vmId,
-              ip,
               hasProcess: !!proc,
               pid: proc?.pid,
             });
-          }
-        }
-
-        // Check for any stale allocations in registry (IPs allocated but no active job)
-        const ipToVmIds = new Map<string, string[]>();
-        for (const [ip, allocation] of allocations) {
-          if (allocation.vmId) {
-            const existing = ipToVmIds.get(ip) ?? [];
-            existing.push(allocation.vmId);
-            ipToVmIds.set(ip, existing);
           }
         }
 
@@ -186,23 +158,14 @@ export const doctorCommand = new Command("doctor")
           console.log("  No active runs");
         } else {
           console.log(
-            "  Run ID                                VM ID       IP              Status",
+            "  Run ID                                VM ID       Status",
           );
           for (const job of jobs) {
-            const ipConflict = (ipToVmIds.get(job.ip)?.length ?? 0) > 1;
-            let statusText: string;
+            const statusText = job.hasProcess
+              ? `✓ Running (PID ${job.pid})`
+              : "⚠️ No process";
 
-            if (ipConflict) {
-              statusText = "⚠️ IP conflict!";
-            } else if (job.hasProcess) {
-              statusText = `✓ Running (PID ${job.pid})`;
-            } else {
-              statusText = "⚠️ No process";
-            }
-
-            console.log(
-              `  ${job.runId}  ${job.vmId}    ${job.ip.padEnd(15)} ${statusText}`,
-            );
+            console.log(`  ${job.runId}  ${job.vmId}    ${statusText}`);
           }
         }
 
@@ -219,15 +182,6 @@ export const doctorCommand = new Command("doctor")
           }
         }
 
-        // IP conflicts
-        for (const [ip, vmIds] of ipToVmIds) {
-          if (vmIds.length > 1) {
-            warnings.push({
-              message: `IP conflict: ${ip} assigned to ${vmIds.join(", ")}`,
-            });
-          }
-        }
-
         // Orphan processes
         const processVmIds = new Set(processes.map((p) => p.vmId));
         for (const proc of processes) {
@@ -238,8 +192,8 @@ export const doctorCommand = new Command("doctor")
           }
         }
 
-        // Note: TAP devices are managed by TapPool, which handles orphan cleanup
-        // during init(). No need to check for orphan TAPs here.
+        // Note: Network namespaces are managed by NetnsPool, which handles orphan cleanup
+        // during init(). No need to check for orphan namespaces here.
 
         // Orphan workspaces
         for (const ws of workspaces) {
@@ -249,21 +203,6 @@ export const doctorCommand = new Command("doctor")
               message: `Orphan workspace: ${ws} (no matching job or process)`,
             });
           }
-        }
-
-        // Orphan iptables rules
-        const activeVmIps = new Set(jobs.map((j) => j.ip));
-        const iptablesRules = await listIptablesNatRules();
-        const orphanedIptables = await findOrphanedIptablesRules(
-          iptablesRules,
-          activeVmIps,
-          proxyPort,
-        );
-
-        for (const rule of orphanedIptables) {
-          warnings.push({
-            message: `Orphan iptables rule: redirect ${rule.sourceIp}:${rule.destPort} -> :${rule.redirectPort}`,
-          });
         }
 
         // Display warnings

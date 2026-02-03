@@ -61,6 +61,21 @@ export interface SnapshotLoadConfig {
 }
 
 /**
+ * Drive configuration for snapshot restoration
+ * Must be configured before loading snapshot if paths differ from original
+ */
+export interface DriveConfig {
+  /** Drive identifier (e.g., "rootfs", "overlay") */
+  drive_id: string;
+  /** Path to the drive file on host */
+  path_on_host: string;
+  /** Whether this is the root device */
+  is_root_device: boolean;
+  /** Whether the drive is read-only */
+  is_read_only: boolean;
+}
+
+/**
  * API error response from Firecracker
  */
 export interface ApiError {
@@ -132,6 +147,17 @@ export class FirecrackerClient {
   }
 
   /**
+   * Configure a drive
+   *
+   * Used before loading snapshot to update drive paths.
+   * When restoring from snapshot, if drive paths differ from original,
+   * they must be configured before calling loadSnapshot.
+   */
+  async configureDrive(config: DriveConfig): Promise<void> {
+    await this.put(`/drives/${config.drive_id}`, config);
+  }
+
+  /**
    * Wait for the API socket to become ready
    *
    * Polls until the socket exists and responds to requests.
@@ -190,11 +216,14 @@ export class FirecrackerClient {
 
   /**
    * Make an HTTP request to Firecracker API
+   *
+   * @param timeoutMs Request timeout in milliseconds (default: 30000ms)
    */
   private request(
     method: string,
     path: string,
     body?: unknown,
+    timeoutMs: number = 30000,
   ): Promise<string> {
     return new Promise((resolve, reject) => {
       const options: http.RequestOptions = {
@@ -205,6 +234,7 @@ export class FirecrackerClient {
           "Content-Type": "application/json",
           Accept: "application/json",
         },
+        timeout: timeoutMs,
       };
 
       logger.log(`${method} ${path}${body ? " " + JSON.stringify(body) : ""}`);
@@ -231,6 +261,13 @@ export class FirecrackerClient {
             reject(new FirecrackerApiError(statusCode, path, faultMessage));
           }
         });
+      });
+
+      req.on("timeout", () => {
+        req.destroy();
+        reject(
+          new Error(`Request timeout after ${timeoutMs}ms: ${method} ${path}`),
+        );
       });
 
       req.on("error", (err) => {

@@ -2,7 +2,7 @@
  * Runner Kill Command
  *
  * Force terminate a specific job and clean up resources:
- * - Kill Firecracker process (TAP/IP released automatically by runner)
+ * - Kill Firecracker process (namespace released automatically by runner)
  * - Remove workspace directory
  * - Update status.json
  */
@@ -13,7 +13,6 @@ import * as readline from "readline";
 import { loadConfig } from "../lib/config.js";
 import { runnerPaths } from "../lib/paths.js";
 import { findProcessByVmId, killProcess } from "../lib/firecracker/process.js";
-import { getIPForVm } from "../lib/firecracker/ip-registry.js";
 import { type VmId, createVmId } from "../lib/firecracker/vm-id.js";
 
 interface RunnerStatus {
@@ -36,7 +35,6 @@ export const killCommand = new Command("kill")
   .option("--config <path>", "Config file path", "./runner.yaml")
   .option("--force", "Skip confirmation prompt")
   .action(
-    // eslint-disable-next-line complexity -- TODO: refactor complex function
     async (
       runIdArg: string,
       options: { config: string; force?: boolean },
@@ -52,7 +50,6 @@ export const killCommand = new Command("kill")
 
         // Find resources
         const proc = findProcessByVmId(vmId);
-        const guestIp = getIPForVm(vmId);
         const workspaceDir = runnerPaths.vmWorkDir(config.base_dir, vmId);
 
         // Show what will be cleaned up
@@ -63,9 +60,7 @@ export const killCommand = new Command("kill")
         } else {
           console.log("  - Firecracker process: not found");
         }
-        if (guestIp) {
-          console.log(`  - IP address: ${guestIp} (TAP/IP released by runner)`);
-        }
+        console.log(`  - Namespace: released by runner on process exit`);
         console.log(`  - Workspace: ${workspaceDir}`);
         if (runId) {
           console.log(`  - status.json entry: ${runId.substring(0, 12)}...`);
@@ -103,8 +98,8 @@ export const killCommand = new Command("kill")
         }
 
         // 2. Remove workspace
-        // Note: TAP device and IP are released by the runner process when it
-        // detects the VM exit. We don't release them here to avoid conflicts.
+        // Note: Network namespace is released by the runner process when it
+        // detects the VM exit. We don't release it here to avoid conflicts.
         if (existsSync(workspaceDir)) {
           try {
             rmSync(workspaceDir, { recursive: true, force: true });
