@@ -66,7 +66,7 @@ export async function executeJob(
   const vmId = createVmId(context.runId);
   let vm: FirecrackerVM | null = null;
   let guestIp: string | null = null;
-  let proxyIp: string | null = null; // veth namespace IP for proxy/VMRegistry
+  let vethNsIp: string | null = null; // veth namespace IP for VMRegistry key
   let vsockClient: VsockClient | null = null;
 
   logger.log(`Starting job ${context.runId} in VM ${vmId}`);
@@ -92,12 +92,12 @@ export async function executeJob(
 
     // Get VM IPs for logging and network security
     guestIp = vm.getGuestIp();
-    proxyIp = vm.getNetns()?.vethNsIp ?? null;
-    if (!guestIp || !proxyIp) {
+    vethNsIp = vm.getNetns()?.vethNsIp ?? null;
+    if (!guestIp || !vethNsIp) {
       throw new Error("VM started but network not properly configured");
     }
     logger.log(
-      `VM ${vmId} started, guest IP: ${guestIp}, proxy IP: ${proxyIp}`,
+      `VM ${vmId} started, guest IP: ${guestIp}, veth NS IP: ${vethNsIp}`,
     );
 
     // Create vsock guest client
@@ -119,13 +119,13 @@ export async function executeJob(
         firewallConfig.experimental_seal_secrets ?? false;
 
       logger.log(
-        `Setting up network security for VM ${proxyIp} (mitm=${mitmEnabled}, sealSecrets=${sealSecretsEnabled})`,
+        `Setting up network security for VM ${vethNsIp} (mitm=${mitmEnabled}, sealSecrets=${sealSecretsEnabled})`,
       );
 
       // Register VM in the proxy registry with firewall rules
-      // Use proxyIp (veth namespace IP) as the key since that's what the proxy sees
+      // vethNsIp is the key since that's what the proxy sees after NAT
       // Note: Per-namespace iptables rules redirect traffic to proxy
-      getVMRegistry().register(proxyIp!, context.runId, context.sandboxToken, {
+      getVMRegistry().register(vethNsIp!, context.runId, context.sandboxToken, {
         firewallRules: firewallConfig?.rules,
         mitmEnabled,
         sealSecretsEnabled,
@@ -268,11 +268,11 @@ export async function executeJob(
     };
   } finally {
     // Clean up network security if firewall was enabled
-    if (context.experimentalFirewall?.enabled && proxyIp) {
-      logger.log(`Cleaning up network security for VM ${proxyIp}`);
+    if (context.experimentalFirewall?.enabled && vethNsIp) {
+      logger.log(`Cleaning up network security for VM ${vethNsIp}`);
 
       // Unregister from proxy registry (keyed by veth namespace IP)
-      getVMRegistry().unregister(proxyIp);
+      getVMRegistry().unregister(vethNsIp);
 
       // Upload network logs to telemetry endpoint (skip in devMode)
       if (!options.benchmarkMode) {
