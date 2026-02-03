@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-# Test VM0 scope commands
+# Test VM0 scope commands (Happy Path Only)
 # Tests the CLI for managing user scopes/namespaces
 #
 # This test covers issue #628: scope/namespace system
@@ -9,6 +9,12 @@
 # are covered by unit tests in:
 # - turbo/apps/web/src/lib/scope/__tests__/scope-service.spec.ts
 # - turbo/apps/cli/src/commands/scope/__tests__/set.test.ts
+#
+# Error handling tests have been moved to CLI integration tests:
+# - turbo/apps/cli/src/commands/run/__tests__/index.test.ts
+#   - "should show error when scope does not exist" (scope not found)
+# - turbo/apps/cli/src/commands/scope/__tests__/set.test.ts
+#   - "should require --force to update existing scope"
 
 load '../../helpers/setup'
 
@@ -91,25 +97,6 @@ EOF
     rm -rf "$TEST_DIR"
 }
 
-@test "vm0 run with scope/name shows appropriate error for missing scope" {
-    TEST_DIR="$(mktemp -d)"
-    mkdir -p "$TEST_DIR/artifact"
-    cd "$TEST_DIR/artifact"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null 2>&1 || true
-    $CLI_COMMAND artifact push >/dev/null 2>&1 || true
-
-    # Try to run with a non-existent scope
-    run $CLI_COMMAND run "nonexistent-scope/test-image" \
-        --artifact-name "e2e-scope-test-$(date +%s%3N)-$RANDOM" \
-        "echo hello"
-
-    # Should fail with scope not found
-    assert_failure
-    assert_output --partial "not found"
-
-    rm -rf "$TEST_DIR"
-}
-
 # ============================================
 # Scope Creation and Update Tests (CI has isolated DB)
 # ============================================
@@ -141,20 +128,6 @@ EOF
     assert_success
     assert_output --partial "Scope Information"
     assert_output --partial "Slug:"
-}
-
-@test "vm0 scope set requires --force to update existing scope" {
-    # Ensure scope exists
-    run $CLI_COMMAND scope status
-    if [[ $status -ne 0 ]]; then
-        $CLI_COMMAND scope set "$TEST_SLUG" >/dev/null 2>&1
-    fi
-
-    # Try to update without --force (should fail)
-    NEW_SLUG="e2e-update-$(date +%s%3N)-$RANDOM"
-    run $CLI_COMMAND scope set "$NEW_SLUG"
-    assert_failure
-    assert_output --partial "--force"
 }
 
 @test "vm0 scope set updates scope with --force flag" {
