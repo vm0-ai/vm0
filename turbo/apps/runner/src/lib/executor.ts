@@ -11,13 +11,14 @@
  * - Supporting checkpoint/resume functionality
  */
 
+import fs from "node:fs";
 import { FirecrackerVM, type VMConfig } from "./firecracker/vm.js";
 import { createVmId } from "./firecracker/vm-id.js";
 import type { GuestClient } from "./firecracker/guest.js";
 import { VsockClient } from "./firecracker/vsock.js";
 import type { ExecutionContext } from "./api.js";
 import type { RunnerConfig } from "./config.js";
-import { runnerPaths } from "./paths.js";
+import { runnerPaths, vmPaths } from "./paths.js";
 import { ENV_LOADER_PATH } from "./scripts/index.js";
 import { getVMRegistry } from "./proxy/index.js";
 import {
@@ -85,6 +86,18 @@ export async function executeJob(
       workDir: runnerPaths.vmWorkDir(config.base_dir, vmId),
     };
 
+    // Create workDir and vsock subdir before VM so vsock listener can be started before vm.start()
+    fs.mkdirSync(vmConfig.workDir, { recursive: true });
+    fs.mkdirSync(vmPaths.vsockDir(vmConfig.workDir), { recursive: true });
+
+    // Start vsock listener BEFORE VM starts to avoid race condition
+    // Guest's vsock-agent connects immediately after boot/resume
+    const vsockPath = vmPaths.vsock(vmConfig.workDir);
+    vsockClient = new VsockClient(vsockPath);
+    const guest: GuestClient = vsockClient;
+    logger.log(`Starting vsock listener: ${vsockPath}`);
+    const guestConnectionPromise = guest.waitForGuestConnection(30000);
+
     // Create and start VM
     logger.log(`Creating VM ${vmId}...`);
     vm = new FirecrackerVM(vmConfig);
@@ -99,12 +112,6 @@ export async function executeJob(
     logger.log(
       `VM ${vmId} started, guest IP: ${guestIp}, veth NS IP: ${vethNsIp}`,
     );
-
-    // Create vsock guest client
-    const vsockPath = vm.getVsockPath();
-    vsockClient = new VsockClient(vsockPath);
-    const guest: GuestClient = vsockClient;
-    logger.log(`Using vsock for guest communication: ${vsockPath}`);
 
     // Pre-build env JSON before waiting for guest (sync, no guest dependency)
     const envJson = JSON.stringify(
@@ -134,11 +141,9 @@ export async function executeJob(
       // No runtime installation needed
     }
 
-    // Wait for guest to connect (blocks during kernel boot ~335ms)
+    // Wait for guest to connect (vsock listener was started before VM)
     logger.log(`Waiting for guest connection...`);
-    await withSandboxTiming("guest_wait", () =>
-      guest.waitForGuestConnection(30000),
-    );
+    await withSandboxTiming("guest_wait", () => guestConnectionPromise);
     logger.log(`Guest client ready`);
 
     // Download storages if manifest provided

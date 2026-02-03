@@ -157,10 +157,6 @@ export class FirecrackerVM {
     }
 
     try {
-      // Create working directory and vsock subdirectory
-      fs.mkdirSync(this.workDir, { recursive: true });
-      fs.mkdirSync(vmPaths.vsockDir(this.workDir), { recursive: true });
-
       // Acquire overlay and namespace in parallel for faster startup
       // Both pools are pre-warmed, so acquisition should be near-instant
       // Use allSettled to handle partial failures and avoid resource leaks
