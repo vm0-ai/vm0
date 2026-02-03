@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { env } from "../../../../../src/env";
+import { getSlackRedirectBaseUrl } from "../../../../../src/lib/slack";
 
 /**
  * Slack OAuth Install Endpoint
@@ -26,7 +27,7 @@ const BOT_SCOPES = [
 ].join(",");
 
 export async function GET(request: Request) {
-  const { SLACK_CLIENT_ID, SLACK_REDIRECT_BASE_URL } = env();
+  const { SLACK_CLIENT_ID } = env();
 
   if (!SLACK_CLIENT_ID) {
     return NextResponse.json(
@@ -37,7 +38,7 @@ export async function GET(request: Request) {
 
   // Get the base URL for the redirect URI
   const url = new URL(request.url);
-  const baseUrl = SLACK_REDIRECT_BASE_URL ?? `${url.protocol}//${url.host}`;
+  const baseUrl = getSlackRedirectBaseUrl(request.url);
   const redirectUri = `${baseUrl}/api/slack/oauth/callback`;
 
   // Get optional Slack user info from query params (for combined install + link flow)

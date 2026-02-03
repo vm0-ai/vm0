@@ -15,7 +15,10 @@ import {
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { decryptCredentialValue } from "../../../../src/lib/crypto/secrets-encryption";
-import { createSlackClient } from "../../../../src/lib/slack";
+import {
+  createSlackClient,
+  getSlackRedirectBaseUrl,
+} from "../../../../src/lib/slack";
 import {
   buildAgentAddModal,
   buildAgentListMessage,
@@ -146,6 +149,7 @@ function handleLoginCommand(
   payload: SlackCommandPayload,
   installation: { encryptedBotToken: string } | undefined,
   userLink: { id: string; vm0UserId: string } | undefined,
+  requestUrl: string,
 ): NextResponse {
   // Already logged in
   if (userLink) {
@@ -157,8 +161,7 @@ function handleLoginCommand(
     });
   }
 
-  const { SLACK_REDIRECT_BASE_URL } = env();
-  const baseUrl = SLACK_REDIRECT_BASE_URL ?? "https://www.vm0.ai";
+  const baseUrl = getSlackRedirectBaseUrl(requestUrl);
 
   if (installation) {
     // Workspace already installed, go directly to link page
@@ -205,9 +208,11 @@ async function handleLogoutCommand(
 /**
  * Build login URL for unauthenticated users
  */
-function buildLoginUrl(payload: SlackCommandPayload): string {
-  const { SLACK_REDIRECT_BASE_URL } = env();
-  const baseUrl = SLACK_REDIRECT_BASE_URL ?? "https://www.vm0.ai";
+function buildLoginUrl(
+  payload: SlackCommandPayload,
+  requestUrl: string,
+): string {
+  const baseUrl = getSlackRedirectBaseUrl(requestUrl);
   return `${baseUrl}/api/slack/oauth/install?w=${encodeURIComponent(payload.team_id)}&u=${encodeURIComponent(payload.user_id)}`;
 }
 
@@ -268,14 +273,14 @@ export async function POST(request: Request) {
 
   // Handle login command
   if (subCommand === "login") {
-    return handleLoginCommand(payload, installation, userLink);
+    return handleLoginCommand(payload, installation, userLink, request.url);
   }
 
   // Check installation for other commands
   if (!installation) {
     return NextResponse.json({
       response_type: "ephemeral",
-      blocks: buildLoginMessage(buildLoginUrl(payload)),
+      blocks: buildLoginMessage(buildLoginUrl(payload, request.url)),
     });
   }
 
@@ -294,7 +299,7 @@ export async function POST(request: Request) {
   if (!userLink) {
     return NextResponse.json({
       response_type: "ephemeral",
-      blocks: buildLoginMessage(buildLoginUrl(payload)),
+      blocks: buildLoginMessage(buildLoginUrl(payload, request.url)),
     });
   }
 

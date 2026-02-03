@@ -15,6 +15,7 @@ import {
   buildLinkAccountMessage,
   buildErrorMessage,
   buildMarkdownMessage,
+  getSlackRedirectBaseUrl,
 } from "../index";
 import { routeToAgent } from "../router";
 import { runAgentForSlack } from "./run-agent";
@@ -290,9 +291,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
  * Build the account linking URL
  */
 function buildLinkUrl(workspaceId: string, slackUserId: string): string {
-  // Use SLACK_REDIRECT_BASE_URL if set, otherwise fallback to production URL
-  const { SLACK_REDIRECT_BASE_URL } = env();
-  const baseUrl = SLACK_REDIRECT_BASE_URL ?? "https://www.vm0.ai";
+  const baseUrl = getSlackRedirectBaseUrl();
   const params = new URLSearchParams({
     w: workspaceId,
     u: slackUserId,
