@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.7.0](https://github.com/vm0-ai/vm0/compare/docs-v2.6.0...docs-v2.7.0) (2026-02-03)
+
+
+### Features
+
+* **docs:** add vibe coder quick start guide ([#2264](https://github.com/vm0-ai/vm0/issues/2264)) ([6cd2131](https://github.com/vm0-ai/vm0/commit/6cd21319aed6424e3888320a9c94aa4dcb28fdc3))
+
 ## [2.6.0](https://github.com/vm0-ai/vm0/compare/docs-v2.5.0...docs-v2.6.0) (2026-02-02)
 
 
