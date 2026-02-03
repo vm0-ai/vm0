@@ -7,12 +7,14 @@ import {
   modelProvidersMainContract,
   createErrorResponse,
   getCredentialNameForType,
+  hasAuthMethods,
 } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
 import { getUserId } from "../../../src/lib/auth/get-user-id";
 import {
   listModelProviders,
   upsertModelProvider,
+  upsertMultiAuthModelProvider,
 } from "../../../src/lib/model-provider/model-provider-service";
 import { logger } from "../../../src/lib/logger";
 import { isBadRequest, isConflict } from "../../../src/lib/errors";
@@ -63,18 +65,59 @@ const router = tsr.router(modelProvidersMainContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const { type, credential, convert, selectedModel } = body;
+    const {
+      type,
+      credential,
+      authMethod,
+      credentials,
+      convert,
+      selectedModel,
+    } = body;
 
     log.debug("upserting model provider", { userId, type, selectedModel });
 
     try {
-      const { provider, created } = await upsertModelProvider(
-        userId,
-        type,
-        credential,
-        convert,
-        selectedModel,
-      );
+      // Determine if this is a multi-auth provider or legacy provider
+      const isMultiAuth = hasAuthMethods(type);
+
+      let provider;
+      let created: boolean;
+
+      if (isMultiAuth) {
+        // Multi-auth provider (e.g., aws-bedrock)
+        if (!authMethod || !credentials) {
+          return createErrorResponse(
+            "BAD_REQUEST",
+            `Provider "${type}" requires authMethod and credentials`,
+          );
+        }
+        const result = await upsertMultiAuthModelProvider(
+          userId,
+          type,
+          authMethod,
+          credentials,
+          selectedModel,
+        );
+        provider = result.provider;
+        created = result.created;
+      } else {
+        // Legacy single-credential provider
+        if (!credential) {
+          return createErrorResponse(
+            "BAD_REQUEST",
+            `Provider "${type}" requires a credential`,
+          );
+        }
+        const result = await upsertModelProvider(
+          userId,
+          type,
+          credential,
+          convert,
+          selectedModel,
+        );
+        provider = result.provider;
+        created = result.created;
+      }
 
       return {
         status: (created ? 201 : 200) as 200 | 201,
