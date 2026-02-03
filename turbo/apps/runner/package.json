@@ -1,6 +1,6 @@
 {
   "name": "@vm0/runner",
-  "version": "3.10.3",
+  "version": "3.11.0",
   "private": true,
   "description": "Self-hosted runner for VM0 agents",
   "repository": {

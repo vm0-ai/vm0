@@ -1,5 +1,24 @@
 # Changelog
 
+## [3.11.0](https://github.com/vm0-ai/vm0/compare/runner-v3.10.3...runner-v3.11.0) (2026-02-03)
+
+
+### Features
+
+* **vsock-agent:** add reconnection logic for snapshot restore ([#2243](https://github.com/vm0-ai/vm0/issues/2243)) ([0df7b9b](https://github.com/vm0-ai/vm0/commit/0df7b9bf6e9a8aba383660c88a4fef0d5cc9d80b))
+
+
+### Bug Fixes
+
+* **test:** correctly test vsock-agent reconnection with same agent process ([#2246](https://github.com/vm0-ai/vm0/issues/2246)) ([9975f06](https://github.com/vm0-ai/vm0/commit/9975f065c20867bd4da238244d588f1070f606a9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.12.0
+
 ## [3.10.3](https://github.com/vm0-ai/vm0/compare/runner-v3.10.2...runner-v3.10.3) (2026-02-03)
 
 

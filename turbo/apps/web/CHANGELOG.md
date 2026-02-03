@@ -1,5 +1,19 @@
 # Changelog
 
+## [11.24.0](https://github.com/vm0-ai/vm0/compare/web-v11.23.0...web-v11.24.0) (2026-02-03)
+
+
+### Features
+
+* **model-provider:** add aws bedrock support with multi-auth provider architecture ([#2214](https://github.com/vm0-ai/vm0/issues/2214)) ([8009acf](https://github.com/vm0-ai/vm0/commit/8009acf84785e70aaf63f47e23358184d6058c22))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.12.0
+
 ## [11.23.0](https://github.com/vm0-ai/vm0/compare/web-v11.22.0...web-v11.23.0) (2026-02-03)
 
 

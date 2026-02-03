@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.12.0](https://github.com/vm0-ai/vm0/compare/core-v7.11.0...core-v7.12.0) (2026-02-03)
+
+
+### Features
+
+* **model-provider:** add aws bedrock support with multi-auth provider architecture ([#2214](https://github.com/vm0-ai/vm0/issues/2214)) ([8009acf](https://github.com/vm0-ai/vm0/commit/8009acf84785e70aaf63f47e23358184d6058c22))
+
 ## [7.11.0](https://github.com/vm0-ai/vm0/compare/core-v7.10.0...core-v7.11.0) (2026-02-03)
 
 
