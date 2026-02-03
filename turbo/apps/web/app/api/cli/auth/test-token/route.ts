@@ -11,17 +11,46 @@ import {
 import { isBadRequest } from "../../../../../src/lib/errors";
 
 /**
+ * Check if test-token endpoint is allowed based on environment.
+ * Follows deny-by-default security principle.
+ *
+ * Access rules:
+ * - Local development (no VERCEL_ENV, NODE_ENV=development): Allow
+ * - Vercel preview (VERCEL_ENV=preview): Requires bypass secret header
+ * - All other environments: Deny
+ */
+function isTestTokenAllowed(request: Request): boolean {
+  const vercelEnv = process.env.VERCEL_ENV;
+  const nodeEnv = process.env.NODE_ENV;
+
+  // Local development: VERCEL_ENV undefined AND NODE_ENV is development
+  if (!vercelEnv && nodeEnv === "development") {
+    return true;
+  }
+
+  // Preview: Requires bypass secret
+  if (vercelEnv === "preview") {
+    const bypassHeader = request.headers.get("x-vercel-protection-bypass");
+    const expectedSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+    return !!expectedSecret && bypassHeader === expectedSecret;
+  }
+
+  // Default: Deny (includes production and any unknown environment)
+  return false;
+}
+
+/**
  * Test-only endpoint to directly generate a CLI token for the test user.
- * Only available when USE_MOCK_CLAUDE is set to "true" (CI/test environments).
+ * Only available in local development or Vercel preview with bypass secret.
  *
  * This endpoint bypasses the device flow entirely and directly creates a token,
  * allowing E2E tests to run without waiting for device flow authentication.
  *
  * The device flow is still tested separately by the e2e-auth job using Playwright.
  */
-export async function POST() {
-  // Only enabled in test environment
-  if (process.env.USE_MOCK_CLAUDE !== "true") {
+export async function POST(request: Request) {
+  // Environment-based access control (deny by default)
+  if (!isTestTokenAllowed(request)) {
     return new NextResponse("Not found", { status: 404 });
   }
 
