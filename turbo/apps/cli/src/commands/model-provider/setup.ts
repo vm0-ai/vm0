@@ -14,6 +14,7 @@ import {
   getModels,
   getDefaultModel,
   hasModelSelection,
+  hasAuthMethods,
   type ModelProviderType,
 } from "@vm0/core";
 import { isInteractive } from "../../lib/utils/prompt-utils";
@@ -62,6 +63,18 @@ function handleNonInteractiveMode(options: {
   model?: string;
 }): SetupInput {
   const type = validateProviderType(options.type);
+
+  // Multi-auth providers require different handling (not yet implemented in CLI)
+  if (hasAuthMethods(type)) {
+    console.error(
+      chalk.red(
+        `✗ Provider "${type}" requires multi-auth setup which is not yet supported in the CLI.`,
+      ),
+    );
+    console.log("Please use the web interface to configure this provider.");
+    process.exit(1);
+  }
+
   let selectedModel: string | undefined;
 
   if (options.model) {
@@ -135,14 +148,15 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
   const configuredTypes = new Set(configuredProviders.map((p) => p.type));
 
   // Build provider choices with configuration status
-  const annotatedChoices = Object.entries(MODEL_PROVIDER_TYPES).map(
-    ([type, config]) => ({
+  // Filter out multi-auth providers (like aws-bedrock) until CLI support is added
+  const annotatedChoices = Object.entries(MODEL_PROVIDER_TYPES)
+    .filter(([type]) => !hasAuthMethods(type as ModelProviderType))
+    .map(([type, config]) => ({
       title: configuredTypes.has(type as ModelProviderType)
         ? `${config.label} ✓`
         : config.label,
       value: type as ModelProviderType,
-    }),
-  );
+    }));
 
   const typeResponse = await prompts(
     {
@@ -222,6 +236,20 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
 
   const config = MODEL_PROVIDER_TYPES[type];
 
+  // Multi-auth providers require different handling (not yet implemented in CLI)
+  if (hasAuthMethods(type)) {
+    console.error(
+      chalk.red(
+        `✗ Provider "${type}" requires multi-auth setup which is not yet supported in the CLI.`,
+      ),
+    );
+    console.log("Please use the web interface to configure this provider.");
+    process.exit(1);
+  }
+
+  const credentialLabel =
+    "credentialLabel" in config ? config.credentialLabel : "credential";
+
   console.log();
   console.log(chalk.dim(config.helpText));
   console.log();
@@ -230,9 +258,9 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
     {
       type: "password",
       name: "credential",
-      message: `Enter your ${config.credentialLabel}:`,
+      message: `Enter your ${credentialLabel}:`,
       validate: (value: string) =>
-        value.length > 0 || `${config.credentialLabel} is required`,
+        value.length > 0 || `${credentialLabel} is required`,
     },
     { onCancel: () => process.exit(0) },
   );

@@ -3,6 +3,10 @@ import {
   MODEL_PROVIDER_TYPES,
   getFrameworkForType,
   getCredentialNameForType,
+  hasAuthMethods,
+  getAuthMethodsForType,
+  getCredentialsForAuthMethod,
+  getCredentialNamesForAuthMethod,
   type ModelProviderType,
   type ModelProviderFramework,
 } from "@vm0/core";
@@ -19,7 +23,9 @@ interface ModelProviderInfo {
   id: string;
   type: ModelProviderType;
   framework: ModelProviderFramework;
-  credentialName: string;
+  credentialName: string | null;
+  authMethod?: string | null;
+  credentialNames?: string[] | null;
   isDefault: boolean;
   selectedModel: string | null;
   createdAt: Date;
@@ -37,30 +43,54 @@ export async function listModelProviders(
     return [];
   }
 
+  // Use leftJoin to include multi-auth providers that don't have credentialId
   const result = await globalThis.services.db
     .select({
       id: modelProviders.id,
       type: modelProviders.type,
       isDefault: modelProviders.isDefault,
       selectedModel: modelProviders.selectedModel,
+      authMethod: modelProviders.authMethod,
       credentialName: credentials.name,
       createdAt: modelProviders.createdAt,
       updatedAt: modelProviders.updatedAt,
     })
     .from(modelProviders)
-    .innerJoin(credentials, eq(modelProviders.credentialId, credentials.id))
+    .leftJoin(credentials, eq(modelProviders.credentialId, credentials.id))
     .where(eq(modelProviders.scopeId, scope.id))
     .orderBy(modelProviders.type);
 
-  return result.map((row) => ({
-    ...row,
-    type: row.type as ModelProviderType,
-    framework: getFrameworkForType(row.type as ModelProviderType),
-  }));
+  return result.map((row) => {
+    const providerType = row.type as ModelProviderType;
+    const isMultiAuth = hasAuthMethods(providerType);
+
+    // For multi-auth providers, get credential names from config
+    let credentialNames: string[] | undefined;
+    if (isMultiAuth && row.authMethod) {
+      credentialNames = getCredentialNamesForAuthMethod(
+        providerType,
+        row.authMethod,
+      );
+    }
+
+    return {
+      id: row.id,
+      type: providerType,
+      framework: getFrameworkForType(providerType),
+      credentialName: row.credentialName,
+      authMethod: row.authMethod,
+      credentialNames: credentialNames ?? null,
+      isDefault: row.isDefault,
+      selectedModel: row.selectedModel,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  });
 }
 
 /**
  * Check if credential exists for a model provider type
+ * Note: Multi-auth providers (like aws-bedrock) are not supported by this function
  */
 export async function checkCredentialExists(
   clerkUserId: string,
@@ -71,7 +101,16 @@ export async function checkCredentialExists(
     return { exists: false };
   }
 
+  // Multi-auth providers don't have a single credentialName
+  if (hasAuthMethods(type)) {
+    return { exists: false };
+  }
+
   const credentialName = getCredentialNameForType(type);
+  if (!credentialName) {
+    return { exists: false };
+  }
+
   const [existing] = await globalThis.services.db
     .select({ type: credentials.type })
     .from(credentials)
@@ -94,9 +133,11 @@ export async function checkCredentialExists(
 }
 
 /**
- * Create or update a model provider
+ * Create or update a model provider (legacy single-credential)
  * @param convertExisting If true, convert existing 'user' credential to 'model-provider'
  * @param selectedModel For providers with model selection, the chosen model
+ *
+ * Note: Multi-auth providers (like aws-bedrock) should use upsertMultiAuthModelProvider instead
  */
 export async function upsertModelProvider(
   clerkUserId: string,
@@ -112,7 +153,17 @@ export async function upsertModelProvider(
     );
   }
 
+  // Multi-auth providers need different handling
+  if (hasAuthMethods(type)) {
+    throw badRequest(
+      `Provider "${type}" requires multiple credentials. Use the multi-auth API instead.`,
+    );
+  }
+
   const credentialName = getCredentialNameForType(type);
+  if (!credentialName) {
+    throw badRequest(`Provider "${type}" does not have a credential name`);
+  }
   const framework = getFrameworkForType(type);
   const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
   const encryptedValue = encryptCredentialValue(credential, encryptionKey);
@@ -133,6 +184,13 @@ export async function upsertModelProvider(
     .limit(1);
 
   if (existingProvider) {
+    // Legacy providers should have credentialId
+    if (!existingProvider.credentialId) {
+      throw badRequest(
+        `Provider "${type}" is missing credential reference. This is an invalid state.`,
+      );
+    }
+
     // Update existing credential value
     await globalThis.services.db
       .update(credentials)
@@ -303,7 +361,197 @@ export async function upsertModelProvider(
 }
 
 /**
- * Convert existing user credential to model provider
+ * Create or update a multi-auth model provider (like aws-bedrock)
+ * @param authMethod The auth method to use (e.g., "api-key", "access-keys")
+ * @param credentialValues Map of credential names to their values
+ * @param selectedModel Optional selected model
+ */
+export async function upsertMultiAuthModelProvider(
+  clerkUserId: string,
+  type: ModelProviderType,
+  authMethod: string,
+  credentialValues: Record<string, string>,
+  selectedModel?: string,
+): Promise<{ provider: ModelProviderInfo; created: boolean }> {
+  const scope = await getUserScopeByClerkId(clerkUserId);
+  if (!scope) {
+    throw badRequest(
+      "You need to configure a scope first. Run `vm0 scope create` to set up your scope.",
+    );
+  }
+
+  // Verify this is a multi-auth provider
+  if (!hasAuthMethods(type)) {
+    throw badRequest(
+      `Provider "${type}" is a legacy single-credential provider. Use the standard upsert API.`,
+    );
+  }
+
+  // Validate auth method
+  const authMethods = getAuthMethodsForType(type);
+  if (!authMethods || !(authMethod in authMethods)) {
+    const validMethods = authMethods ? Object.keys(authMethods).join(", ") : "";
+    throw badRequest(
+      `Invalid auth method "${authMethod}" for provider "${type}". Valid methods: ${validMethods}`,
+    );
+  }
+
+  // Validate required credentials
+  const credentialsConfig = getCredentialsForAuthMethod(type, authMethod);
+  if (!credentialsConfig) {
+    throw badRequest(
+      `No credentials config found for auth method "${authMethod}"`,
+    );
+  }
+
+  const missingRequired: string[] = [];
+  for (const [name, config] of Object.entries(credentialsConfig)) {
+    if (config.required && !credentialValues[name]) {
+      missingRequired.push(name);
+    }
+  }
+
+  if (missingRequired.length > 0) {
+    throw badRequest(
+      `Missing required credentials for ${authMethod}: ${missingRequired.join(", ")}`,
+    );
+  }
+
+  const framework = getFrameworkForType(type);
+  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
+
+  log.debug("upserting multi-auth model provider", {
+    scopeId: scope.id,
+    type,
+    authMethod,
+    credentialNames: Object.keys(credentialValues),
+  });
+
+  // Check if model provider already exists
+  const [existingProvider] = await globalThis.services.db
+    .select()
+    .from(modelProviders)
+    .where(
+      and(eq(modelProviders.scopeId, scope.id), eq(modelProviders.type, type)),
+    )
+    .limit(1);
+
+  // Store/update all credentials
+  const credentialNames = Object.keys(credentialValues);
+  for (const [name, value] of Object.entries(credentialValues)) {
+    const encryptedValue = encryptCredentialValue(value, encryptionKey);
+
+    // Check if credential exists
+    const [existingCredential] = await globalThis.services.db
+      .select()
+      .from(credentials)
+      .where(and(eq(credentials.scopeId, scope.id), eq(credentials.name, name)))
+      .limit(1);
+
+    if (existingCredential) {
+      // Update existing
+      await globalThis.services.db
+        .update(credentials)
+        .set({ encryptedValue, type: "model-provider", updatedAt: new Date() })
+        .where(eq(credentials.id, existingCredential.id));
+    } else {
+      // Create new
+      await globalThis.services.db.insert(credentials).values({
+        scopeId: scope.id,
+        name,
+        encryptedValue,
+        type: "model-provider",
+        description: `${MODEL_PROVIDER_TYPES[type].label} credential (${authMethod})`,
+      });
+    }
+  }
+
+  if (existingProvider) {
+    // Update existing provider
+    await globalThis.services.db
+      .update(modelProviders)
+      .set({
+        authMethod,
+        selectedModel: selectedModel ?? null,
+        updatedAt: new Date(),
+      })
+      .where(eq(modelProviders.id, existingProvider.id));
+
+    log.debug("multi-auth model provider updated", {
+      providerId: existingProvider.id,
+      type,
+      authMethod,
+      selectedModel,
+    });
+
+    return {
+      provider: {
+        id: existingProvider.id,
+        type,
+        framework,
+        credentialName: null,
+        authMethod,
+        credentialNames,
+        isDefault: existingProvider.isDefault,
+        selectedModel: selectedModel ?? null,
+        createdAt: existingProvider.createdAt,
+        updatedAt: new Date(),
+      },
+      created: false,
+    };
+  }
+
+  // Check if first for framework (for default assignment)
+  const allProviders = await listModelProviders(clerkUserId);
+  const hasProviderForFramework = allProviders.some(
+    (p) => p.framework === framework,
+  );
+
+  // Create new provider (no credentialId for multi-auth)
+  const [newProvider] = await globalThis.services.db
+    .insert(modelProviders)
+    .values({
+      scopeId: scope.id,
+      type,
+      authMethod,
+      isDefault: !hasProviderForFramework,
+      selectedModel: selectedModel ?? null,
+    })
+    .returning();
+
+  if (!newProvider) {
+    throw new Error("Failed to create model provider");
+  }
+
+  log.debug("multi-auth model provider created", {
+    providerId: newProvider.id,
+    type,
+    authMethod,
+    selectedModel,
+    isDefault: newProvider.isDefault,
+  });
+
+  return {
+    provider: {
+      id: newProvider.id,
+      type,
+      framework,
+      credentialName: null,
+      authMethod,
+      credentialNames,
+      isDefault: newProvider.isDefault,
+      selectedModel: newProvider.selectedModel,
+      createdAt: newProvider.createdAt,
+      updatedAt: newProvider.updatedAt,
+    },
+    created: true,
+  };
+}
+
+/**
+ * Convert existing user credential to model provider (legacy single-credential)
+ *
+ * Note: Multi-auth providers (like aws-bedrock) don't support conversion
  */
 export async function convertCredentialToModelProvider(
   clerkUserId: string,
@@ -314,7 +562,17 @@ export async function convertCredentialToModelProvider(
     throw notFound("Credential not found");
   }
 
+  // Multi-auth providers don't support conversion
+  if (hasAuthMethods(type)) {
+    throw badRequest(
+      `Provider "${type}" requires multiple credentials and does not support conversion.`,
+    );
+  }
+
   const credentialName = getCredentialNameForType(type);
+  if (!credentialName) {
+    throw badRequest(`Provider "${type}" does not have a credential name`);
+  }
   const framework = getFrameworkForType(type);
 
   // Find the credential
@@ -414,10 +672,18 @@ export async function deleteModelProvider(
   const wasDefault = provider.isDefault;
   const credentialId = provider.credentialId;
 
-  // Delete credential (cascades to model_provider)
-  await globalThis.services.db
-    .delete(credentials)
-    .where(eq(credentials.id, credentialId));
+  // Delete credential (cascades to model_provider) - only for legacy providers
+  if (credentialId) {
+    await globalThis.services.db
+      .delete(credentials)
+      .where(eq(credentials.id, credentialId));
+  } else {
+    // Multi-auth providers: delete model_provider directly
+    // TODO: Also delete associated credentials when multi-auth is fully implemented
+    await globalThis.services.db
+      .delete(modelProviders)
+      .where(eq(modelProviders.id, provider.id));
+  }
 
   log.debug("model provider deleted", { scopeId: scope.id, type });
 
@@ -460,7 +726,8 @@ export async function setModelProviderDefault(
   }
 
   const framework = getFrameworkForType(type);
-  const credentialName = getCredentialNameForType(type);
+  // For multi-auth providers, credentialName will be null in response
+  const credentialName = getCredentialNameForType(type) ?? null;
 
   // Find the target provider
   const [target] = await globalThis.services.db
@@ -545,7 +812,8 @@ export async function updateModelProviderModel(
   }
 
   const framework = getFrameworkForType(type);
-  const credentialName = getCredentialNameForType(type);
+  // For multi-auth providers, credentialName will be null in response
+  const credentialName = getCredentialNameForType(type) ?? null;
 
   // Find the model provider
   const [provider] = await globalThis.services.db

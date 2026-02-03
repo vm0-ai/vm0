@@ -15,6 +15,8 @@ const DUMMY_MODEL_PROVIDER: ModelProviderResponse = {
   type: "claude-code-oauth-token",
   framework: "claude-code",
   credentialName: "CLAUDE_CODE_OAUTH_TOKEN",
+  authMethod: null,
+  credentialNames: null,
   isDefault: false,
   selectedModel: null,
   createdAt: new Date().toISOString(),
@@ -60,6 +62,8 @@ export const apiModelProvidersHandlers = [
         body.type === "claude-code-oauth-token"
           ? "CLAUDE_CODE_OAUTH_TOKEN"
           : "ANTHROPIC_API_KEY",
+      authMethod: null,
+      credentialNames: null,
       isDefault:
         mockModelProviders.length === 0 || existing?.isDefault || false,
       selectedModel: null,

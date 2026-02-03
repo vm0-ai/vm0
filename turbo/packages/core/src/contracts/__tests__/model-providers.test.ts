@@ -8,6 +8,11 @@ import {
   getModels,
   getDefaultModel,
   hasModelSelection,
+  hasAuthMethods,
+  getAuthMethodsForType,
+  getDefaultAuthMethod,
+  getCredentialsForAuthMethod,
+  getCredentialNamesForAuthMethod,
 } from "../model-providers";
 
 describe("model-providers helpers", () => {
@@ -232,6 +237,145 @@ describe("model-providers helpers", () => {
       expect(minimax.label).toBe("MiniMax API Key");
       expect(minimax.credentialLabel).toBe("API key");
       expect(minimax.helpText).toContain("minimax.io");
+    });
+  });
+
+  describe("aws-bedrock provider (multi-auth)", () => {
+    it("accepts aws-bedrock as valid type", () => {
+      expect(modelProviderTypeSchema.safeParse("aws-bedrock").success).toBe(
+        true,
+      );
+    });
+
+    it("returns claude-code framework", () => {
+      expect(getFrameworkForType("aws-bedrock")).toBe("claude-code");
+    });
+
+    it("returns undefined for credentialName (multi-auth provider)", () => {
+      expect(getCredentialNameForType("aws-bedrock")).toBeUndefined();
+    });
+
+    it("has authMethods", () => {
+      expect(hasAuthMethods("aws-bedrock")).toBe(true);
+    });
+
+    it("returns auth methods config", () => {
+      const authMethods = getAuthMethodsForType("aws-bedrock");
+      expect(authMethods).toBeDefined();
+      expect(Object.keys(authMethods!)).toEqual(["api-key", "access-keys"]);
+    });
+
+    it("returns default auth method", () => {
+      expect(getDefaultAuthMethod("aws-bedrock")).toBe("api-key");
+    });
+
+    it("returns credentials for api-key auth method", () => {
+      const creds = getCredentialsForAuthMethod("aws-bedrock", "api-key");
+      expect(creds).toBeDefined();
+      expect(Object.keys(creds!)).toEqual([
+        "AWS_BEARER_TOKEN_BEDROCK",
+        "AWS_REGION",
+      ]);
+      const bearerToken = creds!["AWS_BEARER_TOKEN_BEDROCK"];
+      const region = creds!["AWS_REGION"];
+      expect(bearerToken?.required).toBe(true);
+      expect(region?.required).toBe(true);
+    });
+
+    it("returns credentials for access-keys auth method", () => {
+      const creds = getCredentialsForAuthMethod("aws-bedrock", "access-keys");
+      expect(creds).toBeDefined();
+      expect(Object.keys(creds!)).toEqual([
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+        "AWS_REGION",
+      ]);
+      const accessKeyId = creds!["AWS_ACCESS_KEY_ID"];
+      const secretAccessKey = creds!["AWS_SECRET_ACCESS_KEY"];
+      const sessionToken = creds!["AWS_SESSION_TOKEN"];
+      const region = creds!["AWS_REGION"];
+      expect(accessKeyId?.required).toBe(true);
+      expect(secretAccessKey?.required).toBe(true);
+      expect(sessionToken?.required).toBe(false);
+      expect(region?.required).toBe(true);
+    });
+
+    it("returns credential names for api-key auth method", () => {
+      const names = getCredentialNamesForAuthMethod("aws-bedrock", "api-key");
+      expect(names).toEqual(["AWS_BEARER_TOKEN_BEDROCK", "AWS_REGION"]);
+    });
+
+    it("returns credential names for access-keys auth method", () => {
+      const names = getCredentialNamesForAuthMethod(
+        "aws-bedrock",
+        "access-keys",
+      );
+      expect(names).toEqual([
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+        "AWS_REGION",
+      ]);
+    });
+
+    it("returns undefined for invalid auth method", () => {
+      expect(
+        getCredentialsForAuthMethod("aws-bedrock", "invalid"),
+      ).toBeUndefined();
+      expect(
+        getCredentialNamesForAuthMethod("aws-bedrock", "invalid"),
+      ).toBeUndefined();
+    });
+
+    it("returns environment mapping with $credentials placeholders", () => {
+      const mapping = getEnvironmentMapping("aws-bedrock");
+      expect(mapping).toBeDefined();
+      expect(mapping?.CLAUDE_CODE_USE_BEDROCK).toBe("1");
+      expect(mapping?.AWS_REGION).toBe("$credentials.AWS_REGION");
+      expect(mapping?.AWS_BEARER_TOKEN_BEDROCK).toBe(
+        "$credentials.AWS_BEARER_TOKEN_BEDROCK",
+      );
+      expect(mapping?.AWS_ACCESS_KEY_ID).toBe("$credentials.AWS_ACCESS_KEY_ID");
+      expect(mapping?.AWS_SECRET_ACCESS_KEY).toBe(
+        "$credentials.AWS_SECRET_ACCESS_KEY",
+      );
+      expect(mapping?.AWS_SESSION_TOKEN).toBe("$credentials.AWS_SESSION_TOKEN");
+    });
+
+    it("has correct provider structure", () => {
+      const bedrock = MODEL_PROVIDER_TYPES["aws-bedrock"];
+      expect(bedrock.framework).toBe("claude-code");
+      expect(bedrock.label).toBe("AWS Bedrock");
+      expect(bedrock.helpText).toContain("AWS Bedrock");
+      expect("authMethods" in bedrock).toBe(true);
+      expect("defaultAuthMethod" in bedrock).toBe(true);
+      expect("credentialName" in bedrock).toBe(false);
+    });
+  });
+
+  describe("multi-auth helper functions with legacy providers", () => {
+    it("hasAuthMethods returns false for legacy providers", () => {
+      expect(hasAuthMethods("anthropic-api-key")).toBe(false);
+      expect(hasAuthMethods("moonshot-api-key")).toBe(false);
+      expect(hasAuthMethods("minimax-api-key")).toBe(false);
+      expect(hasAuthMethods("openrouter-api-key")).toBe(false);
+    });
+
+    it("getAuthMethodsForType returns undefined for legacy providers", () => {
+      expect(getAuthMethodsForType("anthropic-api-key")).toBeUndefined();
+      expect(getAuthMethodsForType("moonshot-api-key")).toBeUndefined();
+    });
+
+    it("getDefaultAuthMethod returns undefined for legacy providers", () => {
+      expect(getDefaultAuthMethod("anthropic-api-key")).toBeUndefined();
+      expect(getDefaultAuthMethod("moonshot-api-key")).toBeUndefined();
+    });
+
+    it("getCredentialsForAuthMethod returns undefined for legacy providers", () => {
+      expect(
+        getCredentialsForAuthMethod("anthropic-api-key", "any"),
+      ).toBeUndefined();
     });
   });
 });

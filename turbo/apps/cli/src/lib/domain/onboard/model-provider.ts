@@ -2,6 +2,7 @@ import {
   MODEL_PROVIDER_TYPES,
   getModels,
   getDefaultModel,
+  hasAuthMethods,
   type ModelProviderType,
   type ModelProviderResponse,
   type UpsertModelProviderResponse,
@@ -45,18 +46,23 @@ export async function checkModelProviderStatus(): Promise<ModelProviderStatus> {
 
 /**
  * Get available provider types as choices for selection
+ * Note: Multi-auth providers (like aws-bedrock) are excluded until CLI support is added
  */
 export function getProviderChoices(): ProviderChoice[] {
-  return (Object.keys(MODEL_PROVIDER_TYPES) as ModelProviderType[]).map(
-    (type) => ({
-      type,
-      label: MODEL_PROVIDER_TYPES[type].label,
-      helpText: MODEL_PROVIDER_TYPES[type].helpText,
-      credentialLabel: MODEL_PROVIDER_TYPES[type].credentialLabel,
-      models: getModels(type),
-      defaultModel: getDefaultModel(type),
-    }),
-  );
+  return (Object.keys(MODEL_PROVIDER_TYPES) as ModelProviderType[])
+    .filter((type) => !hasAuthMethods(type)) // Exclude multi-auth providers for now
+    .map((type) => {
+      const config = MODEL_PROVIDER_TYPES[type];
+      return {
+        type,
+        label: config.label,
+        helpText: config.helpText,
+        credentialLabel:
+          "credentialLabel" in config ? config.credentialLabel : "",
+        models: getModels(type),
+        defaultModel: getDefaultModel(type),
+      };
+    });
 }
 
 /**
