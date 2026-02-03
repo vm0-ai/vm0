@@ -16,8 +16,13 @@ export const NAVIGATION_CONFIG = [
   {
     label: "Your agents",
     items: [
-      { id: "agents", label: "Agents", icon: "Bot", path: "/" },
-      { id: "secrets", label: "Secrets", icon: "Lock", path: "/" },
+      {
+        id: "agents",
+        label: "Agents",
+        icon: "LayoutDashboard",
+        path: "/agents",
+      },
+      { id: "schedules", label: "Schedule", icon: "Clock", path: "/schedules" },
     ],
   },
   {
@@ -27,23 +32,6 @@ export const NAVIGATION_CONFIG = [
   {
     label: "Observation",
     items: [{ id: "logs", label: "Logs", icon: "List", path: "/logs" }],
-  },
-  {
-    label: "CLI Reference",
-    items: [
-      {
-        id: "agent-cli",
-        label: "Agent",
-        icon: "LayoutDashboard",
-        path: "/agents",
-      },
-      {
-        id: "schedule-cli",
-        label: "Schedule",
-        icon: "Clock",
-        path: "/schedules",
-      },
-    ],
   },
   {
     label: "Developers",
