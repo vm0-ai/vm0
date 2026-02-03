@@ -283,8 +283,12 @@ async function promptSetAsDefault(
       await setModelProviderDefault(type);
       console.log(chalk.green(`✓ Default for ${framework} set to "${type}"`));
     } catch (error) {
+      // Don't exit on error - the provider was already created successfully.
+      // User can manually run `vm0 model-provider set-default` later.
       if (error instanceof Error) {
         console.error(chalk.red(`✗ Failed to set default: ${error.message}`));
+      } else {
+        console.error(chalk.red("✗ Failed to set default: An unexpected error occurred"));
       }
     }
   }
