@@ -7,8 +7,8 @@ import { AppShell } from "../layout/app-shell.tsx";
 export function AgentsPage() {
   return (
     <AppShell
-      breadcrumb={["CLI Reference", "Agent"]}
-      title="Agent CLI Commands"
+      breadcrumb={["Your agents", "Agents"]}
+      title="Manage Agents"
       subtitle="Commonly used commands for managing your agents."
     >
       <div className="flex flex-col gap-8 px-8 pb-8 max-w-3xl">

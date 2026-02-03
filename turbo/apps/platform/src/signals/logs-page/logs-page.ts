@@ -5,9 +5,7 @@ import { updatePage$ } from "../react-router.ts";
 import { initLogs$ } from "./logs-signals.ts";
 
 export const setupLogsPage$ = command(({ set }, signal: AbortSignal) => {
-  // Initialize logs (clears and loads first batch)
-  set(initLogs$, signal);
-
-  // Render page
   set(updatePage$, createElement(LogsPage));
+
+  set(initLogs$, signal);
 });
