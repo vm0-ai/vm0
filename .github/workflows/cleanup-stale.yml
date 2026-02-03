@@ -117,6 +117,13 @@ jobs:
               if (!match) continue;
 
               const identifier = match[1];
+
+              // Skip main branch deployments (main, staging)
+              if (identifier === 'main' || identifier === 'staging') {
+                skipped++;
+                continue;
+              }
+
               let shouldDelete = false;
               let reason = '';
 
