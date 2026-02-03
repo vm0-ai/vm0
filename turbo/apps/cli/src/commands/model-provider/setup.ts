@@ -288,7 +288,9 @@ async function promptSetAsDefault(
       if (error instanceof Error) {
         console.error(chalk.red(`✗ Failed to set default: ${error.message}`));
       } else {
-        console.error(chalk.red("✗ Failed to set default: An unexpected error occurred"));
+        console.error(
+          chalk.red("✗ Failed to set default: An unexpected error occurred"),
+        );
       }
     }
   }
