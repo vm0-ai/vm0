@@ -328,5 +328,20 @@ export {
   type ArtifactDownloadResponse,
 } from "./platform";
 
+export {
+  llmChatContract,
+  llmChatRequestSchema,
+  llmChatResponseSchema,
+  llmHeadersSchema,
+  chatMessageSchema,
+  messageRoleSchema,
+  tokenUsageSchema,
+  type LlmChatContract,
+  type LlmChatRequest,
+  type LlmChatResponse,
+  type ChatMessage,
+  type TokenUsage,
+} from "./llm";
+
 // Public API v1 contracts (developer-friendly external API)
 export * from "./public";
