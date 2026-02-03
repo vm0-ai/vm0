@@ -818,36 +818,31 @@ describe("VsockClient Integration Tests", () => {
 
   describe("reconnection", () => {
     it("should reconnect after host closes connection", async () => {
+      // Verify initial connection works
+      const beforeResult = await client!.exec("echo connected");
+      expect(beforeResult.exitCode).toBe(0);
+      expect(beforeResult.stdout.trim()).toBe("connected");
+
       // Close host connection (simulating snapshot pause scenario)
+      // The same agent process should automatically reconnect
       client!.close();
+      client = null;
 
-      // Wait for agent to detect disconnect
-      await new Promise((r) => setTimeout(r, 200));
-
-      // Create new client with new socket path
-      const newSocketPath = createSocketPath();
-      const newClient = new VsockClient(newSocketPath);
-      const listenerPath = `${newSocketPath}_${VSOCK_PORT}`;
-
-      // Stop current agent and start new one connecting to new socket
-      await stopAgent(agent, socketPath);
-
-      // Start listening and then start agent
+      // Create new client on the SAME socket path
+      // Agent will reconnect to this listener (retry loop with 100ms delay)
+      const newClient = new VsockClient(socketPath);
       const connectionPromise = newClient.waitForGuestConnection(5000);
-      agent = startAgent(listenerPath);
 
-      // Wait for agent to reconnect
+      // Wait for agent to reconnect (agent retries every 100ms)
       await connectionPromise;
 
       // Verify agent is functional after reconnect
-      const result = await newClient.exec("echo reconnected");
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout.trim()).toBe("reconnected");
+      const afterResult = await newClient.exec("echo reconnected");
+      expect(afterResult.exitCode).toBe(0);
+      expect(afterResult.stdout.trim()).toBe("reconnected");
 
-      // Cleanup - update socketPath for afterEach
-      newClient.close();
-      socketPath = newSocketPath;
-      client = null;
+      // Update client for afterEach cleanup
+      client = newClient;
     });
   });
 
