@@ -1,24 +1,24 @@
 /**
- * Lightweight structured logging system with DEBUG environment variable support.
+ * Lightweight structured logging system with VM0_DEBUG environment variable support.
  *
  * Usage:
  *   const log = logger('service:e2b')
- *   log.debug('sandbox created', { id: '123' })  // Only when DEBUG matches
+ *   log.debug('sandbox created', { id: '123' })  // Only when VM0_DEBUG matches
  *   log.warn('slow response')                     // Always output
  *   log.error('failed', error)                    // Always output
  *
  * Environment:
- *   DEBUG=service:e2b     - Enable specific logger
- *   DEBUG=service:*       - Enable all service loggers (wildcard)
- *   DEBUG=*               - Enable all debug output
- *   DEBUG=a,b,c           - Enable multiple loggers
+ *   VM0_DEBUG=service:e2b     - Enable specific logger
+ *   VM0_DEBUG=service:*       - Enable all service loggers (wildcard)
+ *   VM0_DEBUG=*               - Enable all debug output
+ *   VM0_DEBUG=a,b,c           - Enable multiple loggers
  *
  * Auto-enabled:
- *   - Local development (NODE_ENV=development) automatically enables DEBUG=*
+ *   - Local development (NODE_ENV=development) automatically enables VM0_DEBUG=*
  *
  * Production/Preview:
- *   - DEBUG must be explicitly set via environment variables
- *   - Preview deployments: DEBUG=* is set via GitHub Actions workflow
+ *   - VM0_DEBUG must be explicitly set via environment variables
+ *   - Preview deployments: VM0_DEBUG=* is set via GitHub Actions workflow
  *
  * Axiom Integration:
  *   - When AXIOM_TOKEN is configured, logs are also sent to Axiom
@@ -105,9 +105,9 @@ function isAutoDebugEnabled(): boolean {
 }
 
 function getDebugPatterns(): string[] {
-  const debug = process.env.DEBUG;
+  const debug = process.env.VM0_DEBUG;
 
-  // If DEBUG is explicitly set, use it
+  // If VM0_DEBUG is explicitly set, use it
   if (debug) {
     return debug.split(",").map((p) => p.trim());
   }

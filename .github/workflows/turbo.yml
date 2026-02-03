@@ -428,7 +428,7 @@ jobs:
             CRON_SECRET=${{ secrets.CRON_SECRET }}
             ABLY_API_KEY=${{ secrets.ABLY_API_KEY }}
             CONCURRENT_RUN_LIMIT=0
-            DEBUG=*
+            VM0_DEBUG=*
             CLAUDE_CODE_VERSION_URL=${{ vars.CLAUDE_CODE_VERSION_URL }}
           meta-branch: ${{ github.head_ref || github.ref_name }}
           meta-pr: ${{ needs.prepare.outputs.job-ref }}
