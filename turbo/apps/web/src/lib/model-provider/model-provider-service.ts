@@ -367,6 +367,82 @@ export async function upsertModelProvider(
 }
 
 /**
+ * Upsert a single credential for a multi-auth provider
+ */
+async function upsertMultiAuthCredential(
+  scopeId: string,
+  name: string,
+  value: string,
+  description: string,
+  encryptionKey: string,
+): Promise<void> {
+  const encryptedValue = encryptCredentialValue(value, encryptionKey);
+
+  const [existingCredential] = await globalThis.services.db
+    .select()
+    .from(credentials)
+    .where(and(eq(credentials.scopeId, scopeId), eq(credentials.name, name)))
+    .limit(1);
+
+  if (existingCredential) {
+    await globalThis.services.db
+      .update(credentials)
+      .set({
+        encryptedValue,
+        type: "model-provider",
+        description,
+        updatedAt: new Date(),
+      })
+      .where(eq(credentials.id, existingCredential.id));
+  } else {
+    await globalThis.services.db.insert(credentials).values({
+      scopeId,
+      name,
+      encryptedValue,
+      type: "model-provider",
+      description,
+    });
+  }
+}
+
+/**
+ * Clean up old credentials when switching auth methods
+ */
+async function cleanupOldAuthMethodCredentials(
+  scopeId: string,
+  type: ModelProviderType,
+  oldAuthMethod: string,
+  newCredentialNames: string[],
+): Promise<void> {
+  const oldCredentialNames = getCredentialNamesForAuthMethod(
+    type,
+    oldAuthMethod,
+  );
+
+  // Find credentials that exist in old auth method but not in new
+  const credentialsToDelete = oldCredentialNames?.filter(
+    (name) => !newCredentialNames.includes(name),
+  );
+
+  if (credentialsToDelete && credentialsToDelete.length > 0) {
+    await globalThis.services.db
+      .delete(credentials)
+      .where(
+        and(
+          eq(credentials.scopeId, scopeId),
+          inArray(credentials.name, credentialsToDelete),
+        ),
+      );
+    log.debug("old auth method credentials cleaned up", {
+      scopeId,
+      type,
+      oldAuthMethod,
+      deletedCredentials: credentialsToDelete,
+    });
+  }
+}
+
+/**
  * Create or update a multi-auth model provider (like aws-bedrock)
  * @param authMethod The auth method to use (e.g., "api-key", "access-keys")
  * @param credentialValues Map of credential names to their values
@@ -442,34 +518,28 @@ export async function upsertMultiAuthModelProvider(
     )
     .limit(1);
 
+  // If switching auth methods, clean up old credentials that are no longer used
+  if (existingProvider && existingProvider.authMethod !== authMethod) {
+    await cleanupOldAuthMethodCredentials(
+      scope.id,
+      type,
+      existingProvider.authMethod ?? "",
+      Object.keys(credentialValues),
+    );
+  }
+
   // Store/update all credentials
   const credentialNames = Object.keys(credentialValues);
+  const credentialDescription = `${MODEL_PROVIDER_TYPES[type].label} credential (${authMethod})`;
+
   for (const [name, value] of Object.entries(credentialValues)) {
-    const encryptedValue = encryptCredentialValue(value, encryptionKey);
-
-    // Check if credential exists
-    const [existingCredential] = await globalThis.services.db
-      .select()
-      .from(credentials)
-      .where(and(eq(credentials.scopeId, scope.id), eq(credentials.name, name)))
-      .limit(1);
-
-    if (existingCredential) {
-      // Update existing
-      await globalThis.services.db
-        .update(credentials)
-        .set({ encryptedValue, type: "model-provider", updatedAt: new Date() })
-        .where(eq(credentials.id, existingCredential.id));
-    } else {
-      // Create new
-      await globalThis.services.db.insert(credentials).values({
-        scopeId: scope.id,
-        name,
-        encryptedValue,
-        type: "model-provider",
-        description: `${MODEL_PROVIDER_TYPES[type].label} credential (${authMethod})`,
-      });
-    }
+    await upsertMultiAuthCredential(
+      scope.id,
+      name,
+      value,
+      credentialDescription,
+      encryptionKey,
+    );
   }
 
   if (existingProvider) {
@@ -686,8 +756,29 @@ export async function deleteModelProvider(
       .delete(credentials)
       .where(eq(credentials.id, credentialId));
   } else {
-    // Multi-auth providers: delete model_provider directly
-    // TODO: Also delete associated credentials when multi-auth is fully implemented
+    // Multi-auth providers: delete all associated credentials
+    if (provider.authMethod) {
+      const credentialNames = getCredentialNamesForAuthMethod(
+        type,
+        provider.authMethod,
+      );
+      if (credentialNames && credentialNames.length > 0) {
+        await globalThis.services.db
+          .delete(credentials)
+          .where(
+            and(
+              eq(credentials.scopeId, scope.id),
+              inArray(credentials.name, credentialNames),
+            ),
+          );
+        log.debug("multi-auth credentials deleted", {
+          scopeId: scope.id,
+          type,
+          credentialNames,
+        });
+      }
+    }
+    // Delete the model_provider
     await globalThis.services.db
       .delete(modelProviders)
       .where(eq(modelProviders.id, provider.id));

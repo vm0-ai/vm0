@@ -1,6 +1,12 @@
-import { eq, and } from "drizzle-orm";
-import type { CredentialType } from "@vm0/core";
+import { eq, and, inArray } from "drizzle-orm";
+import {
+  type CredentialType,
+  type ModelProviderType,
+  getCredentialNamesForAuthMethod,
+  getFrameworkForType,
+} from "@vm0/core";
 import { credentials } from "../../db/schema/credential";
+import { modelProviders } from "../../db/schema/model-provider";
 import { encryptCredentialValue, decryptCredentialValue } from "../crypto";
 import { badRequest, notFound } from "../errors";
 import { logger } from "../logger";
@@ -241,6 +247,10 @@ export async function setCredential(
 
 /**
  * Delete a credential by name
+ *
+ * For multi-auth provider credentials, this will also delete:
+ * - The associated model provider
+ * - All other credentials for that provider's auth method
  */
 export async function deleteCredential(
   clerkUserId: string,
@@ -251,14 +261,95 @@ export async function deleteCredential(
     throw notFound("Credential not found");
   }
 
-  const result = await globalThis.services.db
-    .delete(credentials)
+  // Check if this credential exists
+  const [credential] = await globalThis.services.db
+    .select()
+    .from(credentials)
     .where(and(eq(credentials.scopeId, scope.id), eq(credentials.name, name)))
-    .returning({ id: credentials.id });
+    .limit(1);
 
-  if (result.length === 0) {
+  if (!credential) {
     throw notFound(`Credential "${name}" not found`);
   }
+
+  // Check if this credential belongs to a multi-auth provider
+  // Multi-auth provider credentials have type "model-provider" and
+  // there's a model provider with authMethod set (not credentialId)
+  if (credential.type === "model-provider") {
+    // Find any multi-auth provider that uses this credential
+    const allProviders = await globalThis.services.db
+      .select()
+      .from(modelProviders)
+      .where(eq(modelProviders.scopeId, scope.id));
+
+    for (const provider of allProviders) {
+      if (provider.authMethod && !provider.credentialId) {
+        // This is a multi-auth provider
+        const credentialNames = getCredentialNamesForAuthMethod(
+          provider.type as ModelProviderType,
+          provider.authMethod,
+        );
+
+        if (credentialNames && credentialNames.includes(name)) {
+          // This credential belongs to this multi-auth provider
+          // Delete all credentials for this auth method
+          await globalThis.services.db
+            .delete(credentials)
+            .where(
+              and(
+                eq(credentials.scopeId, scope.id),
+                inArray(credentials.name, credentialNames),
+              ),
+            );
+
+          // Delete the model provider
+          const wasDefault = provider.isDefault;
+          const framework = getFrameworkForType(
+            provider.type as ModelProviderType,
+          );
+
+          await globalThis.services.db
+            .delete(modelProviders)
+            .where(eq(modelProviders.id, provider.id));
+
+          log.debug("multi-auth provider and credentials deleted", {
+            scopeId: scope.id,
+            type: provider.type,
+            authMethod: provider.authMethod,
+            credentialNames,
+          });
+
+          // If it was default, assign new default for framework
+          if (wasDefault) {
+            const remaining = await globalThis.services.db
+              .select({ id: modelProviders.id, type: modelProviders.type })
+              .from(modelProviders)
+              .where(eq(modelProviders.scopeId, scope.id))
+              .orderBy(modelProviders.createdAt);
+
+            const nextDefault = remaining.find(
+              (p) =>
+                getFrameworkForType(p.type as ModelProviderType) === framework,
+            );
+
+            if (nextDefault) {
+              await globalThis.services.db
+                .update(modelProviders)
+                .set({ isDefault: true, updatedAt: new Date() })
+                .where(eq(modelProviders.id, nextDefault.id));
+            }
+          }
+
+          return;
+        }
+      }
+    }
+  }
+
+  // Not a multi-auth provider credential, delete normally
+  await globalThis.services.db
+    .delete(credentials)
+    .where(eq(credentials.id, credential.id));
 
   log.debug("credential deleted", { scopeId: scope.id, name });
 }

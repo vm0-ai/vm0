@@ -34,6 +34,10 @@ import { GET as getScheduleRunsRoute } from "../../app/api/agent/schedules/[name
 import type { ScheduleResponse } from "../lib/schedule/schedule-service";
 import { POST as storagePrepareRoute } from "../../app/api/storages/prepare/route";
 import { POST as storageCommitRoute } from "../../app/api/storages/commit/route";
+import { DELETE as deleteModelProviderRoute } from "../../app/api/model-providers/[type]/route";
+import { GET as listModelProvidersRoute } from "../../app/api/model-providers/route";
+import { GET as listCredentialsRoute } from "../../app/api/credentials/route";
+import { DELETE as deleteCredentialRoute } from "../../app/api/credentials/[name]/route";
 
 /**
  * Helper to create a NextRequest for testing.
@@ -849,4 +853,108 @@ export async function createTestVolume(
   fileCount: number;
 }> {
   return createTestStorage(name, { ...options, type: "volume" });
+}
+
+// ============================================================================
+// Model Provider Test Helpers
+// ============================================================================
+
+/**
+ * Delete a model provider via API route handler.
+ *
+ * @param type - The provider type to delete
+ */
+export async function deleteTestModelProvider(type: string): Promise<void> {
+  const request = createTestRequest(
+    `http://localhost:3000/api/model-providers/${type}`,
+    { method: "DELETE" },
+  );
+  const response = await deleteModelProviderRoute(request);
+  if (!response.ok && response.status !== 204) {
+    const error = await response.json();
+    throw new Error(
+      `Failed to delete model provider: ${error.error?.message || response.status}`,
+    );
+  }
+}
+
+/**
+ * List all model providers via API route handler.
+ *
+ * @returns Array of model provider info
+ */
+export async function listTestModelProviders(): Promise<
+  Array<{
+    id: string;
+    type: string;
+    framework: string;
+    credentialName: string | null;
+    authMethod: string | null;
+    credentialNames: string[] | null;
+    isDefault: boolean;
+    selectedModel: string | null;
+  }>
+> {
+  const request = createTestRequest(
+    "http://localhost:3000/api/model-providers",
+  );
+  const response = await listModelProvidersRoute(request);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `Failed to list model providers: ${error.error?.message || response.status}`,
+    );
+  }
+  const data = await response.json();
+  return data.modelProviders;
+}
+
+// ============================================================================
+// Credential Test Helpers
+// ============================================================================
+
+/**
+ * List all credentials via API route handler.
+ *
+ * @returns Array of credential info
+ */
+export async function listTestCredentials(): Promise<
+  Array<{
+    id: string;
+    name: string;
+    description: string | null;
+    type: string;
+    createdAt: string;
+    updatedAt: string;
+  }>
+> {
+  const request = createTestRequest("http://localhost:3000/api/credentials");
+  const response = await listCredentialsRoute(request);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `Failed to list credentials: ${error.error?.message || response.status}`,
+    );
+  }
+  const data = await response.json();
+  return data.credentials;
+}
+
+/**
+ * Delete a credential via API route handler.
+ *
+ * @param name - The credential name to delete
+ */
+export async function deleteTestCredential(name: string): Promise<void> {
+  const request = createTestRequest(
+    `http://localhost:3000/api/credentials/${name}`,
+    { method: "DELETE" },
+  );
+  const response = await deleteCredentialRoute(request);
+  if (!response.ok && response.status !== 204) {
+    const error = await response.json();
+    throw new Error(
+      `Failed to delete credential: ${error.error?.message || response.status}`,
+    );
+  }
 }
