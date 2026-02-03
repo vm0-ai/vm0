@@ -55,6 +55,7 @@ interface RegistryData {
 /**
  * Default path for the registry file
  * This path is read by the mitmproxy addon
+ * TODO: Should use runnerPaths instead of tempPaths for proper isolation
  */
 export const DEFAULT_REGISTRY_PATH = tempPaths.vmRegistry;
 

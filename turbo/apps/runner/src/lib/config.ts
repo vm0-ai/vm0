@@ -57,6 +57,7 @@ export const runnerConfigSchema = z.object({
     rootfs: z.string().min(1, "Rootfs path is required"),
   }),
   proxy: z.object({
+    // TODO: Allow 0 to auto-find available port
     port: z.number().int().min(1024).max(65535).default(PROXY_DEFAULTS.port),
     ca_dir: z.string().min(1, "Proxy CA directory is required"),
   }),
