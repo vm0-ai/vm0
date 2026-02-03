@@ -17,8 +17,11 @@ jobs:
   cleanup-neon-branches:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260202
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     steps:
+      - name: Install neonctl
+        run: npm install -g neonctl@2.15.0
+
       - name: Cleanup Stale Neon Branches
         shell: bash
         env:

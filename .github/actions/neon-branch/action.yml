@@ -35,6 +35,15 @@ outputs:
 runs:
   using: "composite"
   steps:
+    - name: Install neonctl
+      shell: bash
+      run: |
+        if ! command -v neonctl &> /dev/null; then
+          echo "Installing neonctl..."
+          npm install -g neonctl@2.15.0
+        fi
+        neonctl --version
+
     - name: Start deployment
       id: deployment
       if: inputs.action == 'create'

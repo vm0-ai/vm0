@@ -16,7 +16,7 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260202
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     outputs:
       job-ref: ${{ steps.set-job-ref.outputs.job-ref }}
       web-preview-url: ${{ steps.preview-urls.outputs.web-url }}
@@ -225,7 +225,7 @@ jobs:
     # Skip for release-please commits (only version bumps and changelogs)
     if: "${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release') }}"
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260202
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
@@ -239,7 +239,7 @@ jobs:
   lint-types:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260202
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
@@ -253,7 +253,7 @@ jobs:
   lint-format:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260202
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
@@ -264,7 +264,7 @@ jobs:
   lint-knip:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260202
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
@@ -281,7 +281,7 @@ jobs:
     # Skip for release-please commits (only version bumps and changelogs)
     if: "${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release') }}"
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260202
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     services:
       postgres:
         image: postgres:17-alpine
@@ -322,7 +322,7 @@ jobs:
   test-cli:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260202
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
@@ -336,7 +336,7 @@ jobs:
   test-platform:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260202
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
@@ -350,7 +350,7 @@ jobs:
   test-other:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260202
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260203
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
@@ -367,7 +367,7 @@ jobs:
   deploy-web:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260202
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     needs: [prepare]
     # Deploy if job-ref is set (PR or main), not a release-please commit, and web, CLI, runner, site, or platform changed
     if: |
@@ -466,7 +466,7 @@ jobs:
   deploy-docs:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260202
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     needs: [prepare]
     # Deploy if job-ref is set (PR or main), not a release-please commit, and docs changed
     if: "${{ (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) && needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.docs-changed == 'true' }}"
@@ -508,7 +508,7 @@ jobs:
   deploy-site:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260202
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     needs: [prepare]
     # Deploy if job-ref is set (PR or main), not a release-please commit, and site changed
     if: "${{ (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) && needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.site-changed == 'true' }}"
@@ -554,7 +554,7 @@ jobs:
   deploy-platform:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260202
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     needs: [prepare]
     # Deploy if job-ref is set (PR or main), not a release-please commit, and platform changed
     if: "${{ (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) && needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.platform-changed == 'true' }}"
@@ -601,7 +601,7 @@ jobs:
   e2e-auth:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260202
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     needs: [prepare, deploy-web]
     if: |
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
@@ -634,6 +634,9 @@ jobs:
       - name: Install E2E dependencies
         run: cd e2e && npm install
 
+      - name: Install Playwright system dependencies
+        run: npx playwright install-deps chromium
+
       - name: Install Playwright browsers
         run: cd e2e && npx playwright install chromium
 
@@ -651,7 +654,7 @@ jobs:
   api-e2e-test:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260202
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     needs: [prepare, deploy-web]
     if: "${{ (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) && needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.web-changed == 'true' }}"
     timeout-minutes: 5
@@ -681,7 +684,7 @@ jobs:
   cli-e2e-01-serial:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260202
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     needs:
       [
         prepare,
@@ -766,7 +769,7 @@ jobs:
   cli-e2e-02-parallel:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260202
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     needs: [prepare, cli-e2e-01-serial, deploy-web]
     if: |
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
@@ -846,7 +849,7 @@ jobs:
   cli-e2e-03-runner:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260202
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     needs:
       [
         prepare,
@@ -930,7 +933,7 @@ jobs:
   deploy-runner-prepare:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260202
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260203
     needs: [prepare]
     if: |
       contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
@@ -1105,6 +1108,9 @@ jobs:
           tar -czf /tmp/vm0-runner-bundle.tar.gz -C /tmp vm0-runner-bundle
           echo "Bundle created: $(ls -lh /tmp/vm0-runner-bundle.tar.gz)"
 
+      - name: Install Ansible
+        run: pip3 install ansible
+
       - name: Prepare runner (deploy bundle, install deps)
         id: prepare
         env:
@@ -1148,7 +1154,7 @@ jobs:
   deploy-runner-benchmark:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260202
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     needs: [prepare, deploy-runner-prepare, deploy-runner-start]
     if: |
       contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&
@@ -1207,7 +1213,7 @@ jobs:
   deploy-runner-start:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260202
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     needs: [prepare, deploy-web, deploy-runner-prepare]
     if: |
       contains(github.event.pull_request.labels.*.name, 'needs-runner-pipeline') &&

@@ -12,7 +12,7 @@ jobs:
   cleanup-runner:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260202
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     steps:
       - uses: actions/checkout@v4
 
@@ -70,6 +70,11 @@ jobs:
             if [ "$lock_pr" = "$PR_NUMBER" ] || [ "$runner_exists" = "yes" ]; then
               echo "Found PR $PR_NUMBER on $host, cleaning up..."
 
+              # Install Ansible if not present
+              if ! command -v ansible-playbook &> /dev/null; then
+                pip3 install ansible
+              fi
+
               # Run Ansible cleanup
               cd ansible
               ansible-playbook \
@@ -99,7 +104,7 @@ jobs:
   cleanup-database:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260202
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     steps:
       - uses: actions/checkout@v4
 
