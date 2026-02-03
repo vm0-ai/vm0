@@ -10,8 +10,8 @@
 
 import { execSync, exec } from "node:child_process";
 import { promisify } from "node:util";
-import { releaseIP } from "./ip-pool.js";
 import { createLogger } from "../logger.js";
+import { type VmId, vmIdValue } from "./vm-id.js";
 
 const execAsync = promisify(exec);
 const logger = createLogger("Network");
@@ -53,10 +53,10 @@ function hashString(str: string): number {
  * Generate a MAC address for a VM
  * Uses the vm0 OUI prefix (locally administered) with hashed VM ID
  */
-export function generateMacAddress(vmId: string): string {
+export function generateMacAddress(vmId: VmId): string {
   // Locally administered MAC: 02:xx:xx:xx:xx:xx
   // Use hash of vmId for last 3 bytes to ensure uniqueness
-  const hash = hashString(vmId);
+  const hash = hashString(vmIdValue(vmId));
   const b1 = (hash >> 16) & 0xff;
   const b2 = (hash >> 8) & 0xff;
   const b3 = hash & 0xff;
@@ -204,54 +204,6 @@ export async function setupBridge(): Promise<void> {
 }
 
 /**
- * Check if a TAP device exists
- */
-async function tapDeviceExists(tapDevice: string): Promise<boolean> {
-  try {
-    await execCommand(`ip link show ${tapDevice}`, true);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Delete a TAP device and optionally release its IP back to the pool
- *
- * @param tapDevice The TAP device name to delete
- * @param guestIp Optional IP address to release back to the pool
- */
-export async function deleteTapDevice(
-  tapDevice: string,
-  guestIp?: string,
-): Promise<void> {
-  // Only attempt delete if device exists
-  if (!(await tapDeviceExists(tapDevice))) {
-    logger.log(`TAP device ${tapDevice} does not exist, skipping delete`);
-  } else {
-    await execCommand(`ip link delete ${tapDevice}`);
-    logger.log(`TAP device ${tapDevice} deleted`);
-  }
-
-  // Clear ARP cache entry for the VM's IP to prevent stale MAC associations
-  // This ensures that when the same IP is reused by a new VM with a different MAC,
-  // the host will properly learn the new MAC via ARP instead of using cached entries
-  if (guestIp) {
-    try {
-      await execCommand(`ip neigh del ${guestIp} dev ${BRIDGE_NAME}`, true);
-      logger.log(`ARP entry cleared for ${guestIp}`);
-    } catch {
-      // ARP entry might not exist, that's fine
-    }
-  }
-
-  // Release IP back to the pool if provided
-  if (guestIp) {
-    await releaseIP(guestIp);
-  }
-}
-
-/**
  * Generate kernel boot arguments for network configuration
  * These configure the guest's network interface at boot time
  */
@@ -365,28 +317,6 @@ export async function cleanupCIDRProxyRules(proxyPort: number): Promise<void> {
     logger.log("CIDR proxy rule for port 443 removed");
   } catch {
     // Rule doesn't exist, that's fine
-  }
-}
-
-/**
- * List all TAP devices that match our naming pattern (tap + 8 hex chars)
- */
-export async function listTapDevices(): Promise<string[]> {
-  try {
-    const result = await execCommand("ip -o link show type tuntap", false);
-    const devices: string[] = [];
-
-    const lines = result.split("\n");
-    for (const line of lines) {
-      const match = line.match(/^\d+:\s+(tap[a-f0-9]{8}):/);
-      if (match && match[1]) {
-        devices.push(match[1]);
-      }
-    }
-
-    return devices;
-  } catch {
-    return [];
   }
 }
 

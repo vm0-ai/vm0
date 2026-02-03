@@ -1,5 +1,33 @@
 # Changelog
 
+## [7.8.0](https://github.com/vm0-ai/vm0/compare/core-v7.7.0...core-v7.8.0) (2026-02-02)
+
+
+### Features
+
+* add moonshot-api-key provider with credential mapping and model selection ([#2110](https://github.com/vm0-ai/vm0/issues/2110)) ([88f8f9d](https://github.com/vm0-ai/vm0/commit/88f8f9d369529752eac68eec426153d8b82ab5fc))
+
+## [7.7.0](https://github.com/vm0-ai/vm0/compare/core-v7.6.1...core-v7.7.0) (2026-02-02)
+
+
+### Features
+
+* **schedule:** retry scheduled runs on concurrency limit ([#2008](https://github.com/vm0-ai/vm0/issues/2008)) ([0f86346](https://github.com/vm0-ai/vm0/commit/0f8634676633bd9f1f6ab061b122cd5e1e39a065))
+
+## [7.6.1](https://github.com/vm0-ai/vm0/compare/core-v7.6.0...core-v7.6.1) (2026-02-01)
+
+
+### Bug Fixes
+
+* **runner:** ensure proper cleanup and metrics collection ([#2088](https://github.com/vm0-ai/vm0/issues/2088)) ([a2c825e](https://github.com/vm0-ai/vm0/commit/a2c825e2bf76e4226c4428778617d5bd54a1936f))
+
+## [7.6.0](https://github.com/vm0-ai/vm0/compare/core-v7.5.0...core-v7.6.0) (2026-02-01)
+
+
+### Features
+
+* **cli:** release onboard banner update ([#2084](https://github.com/vm0-ai/vm0/issues/2084)) ([402820c](https://github.com/vm0-ai/vm0/commit/402820cbeabed134c3a757d4c8400037fce4c427))
+
 ## [7.5.0](https://github.com/vm0-ai/vm0/compare/core-v7.4.2...core-v7.5.0) (2026-01-31)
 
 

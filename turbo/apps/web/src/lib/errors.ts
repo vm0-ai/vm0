@@ -23,7 +23,7 @@ interface NotFoundError extends ApiErrorBase {
   readonly code: "NOT_FOUND";
 }
 
-export interface BadRequestError extends ApiErrorBase {
+interface BadRequestError extends ApiErrorBase {
   readonly name: "BadRequestError";
   readonly statusCode: 400;
   readonly code: "BAD_REQUEST";
@@ -47,7 +47,7 @@ interface SchedulePastError extends ApiErrorBase {
   readonly code: "SCHEDULE_PAST";
 }
 
-interface ConcurrentRunLimitError extends ApiErrorBase {
+export interface ConcurrentRunLimitError extends ApiErrorBase {
   readonly name: "ConcurrentRunLimitError";
   readonly statusCode: 429;
   readonly code: "TOO_MANY_REQUESTS";

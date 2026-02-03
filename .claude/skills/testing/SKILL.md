@@ -23,6 +23,59 @@ This skill provides:
 
 ---
 
+## Testing Strategy
+
+We follow Kent C. Dodds' philosophy: **"Write tests. Not too many. Mostly integration."**
+
+```
+        ┌─────┐
+        │ E2E │           ← Few tests, happy path only
+       ┌┴─────┴┐
+       │ Integ │          ← Primary tests, full coverage
+      ┌┴───────┴┐
+      │  Static │         ← TypeScript, ESLint
+      └─────────┘
+```
+
+### Integration Tests (Primary)
+
+Test at system entry points with external dependencies mocked. These are our **primary tests** covering all scenarios: success, errors, edge cases, variations.
+
+| Type | Entry Point | Mock Boundary | Location |
+|------|-------------|---------------|----------|
+| **CLI Command Integration Tests** | `command.parseAsync()` | Web API (MSW) | `src/commands/**/__tests__/` |
+| **Web Route Integration Tests** | Route handlers (GET/POST) | External services (Clerk, S3, E2B) | `app/api/**/__tests__/` |
+
+**Why integration tests give the best ROI:**
+- Exercise all internal code: validators, formatters, domain logic
+- Fast: MSW mocks external HTTP, no real network calls
+- Reliable: No flaky external dependencies
+- Comprehensive: Cover all code paths including error handling
+
+### E2E Tests (Verification)
+
+Happy path only. Verify systems work together end-to-end.
+
+**Why E2E tests are expensive:**
+- Each `vm0 run` takes ~15 seconds
+- Network issues, API rate limits, external service availability
+- Hard to reliably test error conditions
+
+### No Unit Tests
+
+We don't write unit tests. Integration tests at entry points already exercise all internal logic. Testing internal functions separately adds maintenance burden without additional confidence.
+
+### Reference Documentation
+
+| Topic | Reference |
+|-------|-----------|
+| CLI Command Integration Tests | [cli-testing.md](./reference/cli-testing.md) |
+| CLI E2E Tests (BATS) | [cli-e2e-testing.md](./reference/cli-e2e-testing.md) |
+| Web Route Integration Tests | [web-testing.md](./reference/web-testing.md) |
+| Platform Integration Tests | [platform-testing.md](./reference/platform-testing.md) |
+
+---
+
 ## Core Testing Principles
 
 ### The Golden Rules
@@ -320,10 +373,9 @@ Based on systematic review of 70+ test files, tests should **only mock third-par
 - `@axiomhq/js` - Logging SaaS (external service)
 - Other third-party packages that require API keys or external infrastructure
 
-✅ **Node.js built-ins**:
-- `fs` - File system operations (when testing file I/O logic)
+✅ **Node.js built-ins** (sparingly):
 - `child_process` - Process spawning
-- Other Node.js core modules
+- Other Node.js core modules (except `fs` - see AP-3)
 
 **BEFORE (❌ Wrong):**
 ```typescript
@@ -404,7 +456,8 @@ it("should create a run with real service integration", async () => {
 | `@aws-sdk/client-s3` | ✅ Yes | Third-party cloud, requires credentials |
 | `@e2b/code-interpreter` | ✅ Yes | Third-party SaaS, requires API key |
 | `@anthropic-ai/sdk` | ✅ Yes | Third-party API, requires API key |
-| `fs`, `child_process` | ✅ Yes | Node.js built-ins for I/O operations |
+| `child_process` | ✅ Yes | Node.js built-in for process spawning |
+| `fs` | ❌ No | Use real filesystem with temp directories (AP-3) |
 | `globalThis.services.db` | ❌ No | Project database, use real connection |
 | `../../blob/blob-service` | ❌ No | Internal service, use real implementation |
 | `../../storage/*` | ❌ No | Internal service, use real implementation |
@@ -848,65 +901,20 @@ afterEach(async () => {
 
 ---
 
-### Pattern 2: Service Tests
+### Pattern 2: Pure Function Tests (Rare Exception)
 
-**When to use**: Testing internal service modules (e.g., `blob-service.ts`, `run-service.ts`)
+**When to use**: Only for **security-critical** or **extremely complex algorithmic** pure functions. This is a rare exception - avoid unit tests whenever possible.
 
-**Template**:
+**Allowed cases**:
+- Security-critical functions (cryptographic operations, token validation, permission checks)
+- Extremely complex algorithms where bugs would have severe consequences
 
-```typescript
-import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
-import { initServices } from "../init-services";
+**NOT allowed** (test via integration tests instead):
+- Validators, parsers, formatters
+- Simple utility functions
+- Any function that can be exercised through route/command integration tests
 
-// ========== MOCKS ==========
-// Only mock external third-party packages
-vi.mock("@aws-sdk/client-s3");
-
-import { S3Client } from "@aws-sdk/client-s3";
-const mockS3Client = vi.mocked(S3Client);
-
-// ========== SETUP ==========
-beforeAll(() => {
-  initServices(); // Real database
-});
-
-beforeEach(async () => {
-  vi.clearAllMocks();
-
-  // Mock external S3 operations
-  mockS3Client.prototype.send = vi.fn().mockResolvedValue({});
-
-  // Clean test data with real database
-  await globalThis.services.db
-    .delete(blobs)
-    .where(like(blobs.hash, "test_%"));
-});
-
-it("should use real service with mock external dependency", async () => {
-  const blobService = new BlobService();
-
-  // Use real service implementation
-  const result = await blobService.uploadBlobs(files);
-
-  // Verify with real database
-  const dbBlobs = await globalThis.services.db
-    .select()
-    .from(blobs)
-    .where(eq(blobs.hash, result.hashes.get("file.txt")));
-
-  expect(dbBlobs).toHaveLength(1);
-  expect(dbBlobs[0]!.refCount).toBe(1);
-
-  // Verify external S3 was called
-  expect(mockS3Client.prototype.send).toHaveBeenCalled();
-});
-```
-
----
-
-### Pattern 3: Pure Function Tests
-
-**When to use**: Testing utility functions with no I/O dependencies
+**Note**: Default to integration tests. Only create unit tests when there's a strong security or complexity justification.
 
 **Template**:
 
@@ -935,7 +943,7 @@ describe("calculateTotal", () => {
 
 ---
 
-### Pattern 4: MSW HTTP Mocking
+### Pattern 3: MSW HTTP Mocking
 
 **When to use**: Mocking external HTTP APIs in tests
 
@@ -1016,7 +1024,7 @@ it("should handle API errors", async () => {
 
 ---
 
-### Pattern 5: Real Filesystem Testing
+### Pattern 4: Real Filesystem Testing
 
 **When to use**: Testing code that reads/writes files
 
@@ -1068,7 +1076,7 @@ it("should read existing config", () => {
 
 ---
 
-### Pattern 6: Mock Helpers (Reusable Utilities)
+### Pattern 5: Mock Helpers (Reusable Utilities)
 
 **When to use**: Common mock patterns used across multiple test files
 
@@ -1138,7 +1146,7 @@ beforeEach(() => {
 
 ---
 
-### Pattern 7: Environment Variable Stubbing
+### Pattern 6: Environment Variable Stubbing
 
 **When to use**: Tests that need to set environment variables
 
@@ -1196,7 +1204,7 @@ afterEach(() => {
 
 ---
 
-### Pattern 8: Platform Component Tests (apps/platform)
+### Pattern 7: Platform Component Tests (apps/platform)
 
 **When to use**: Testing React components and signals in the platform app (`apps/platform`)
 
@@ -1625,7 +1633,7 @@ For web app testing patterns specific to `turbo/apps/web`, see:
 - [Web Testing Patterns](./reference/web-testing.md)
 
 Key topics:
-- Route-level testing only (no service-level tests)
+- Web Route Integration Tests only (no service-level tests)
 - `testContext()` and `setupUser()` for user isolation
 - API test helpers (`createTestCompose`, `createTestRun`, etc.)
 - State transitions via webhook helpers
@@ -1637,12 +1645,23 @@ For CLI app testing patterns specific to `turbo/apps/cli`, see:
 - [CLI Testing Patterns](./reference/cli-testing.md)
 
 Key topics:
-- Command-level testing only via `command.parseAsync()`
+- CLI Command Integration Tests via `command.parseAsync()`
 - MSW for Web API mocking (external boundary)
 - `vi.stubEnv()` for config (not mocking config module)
 - Real filesystem with temp directories
 - Console output and exit codes as valid assertions
-- Non-interactive mode testing only
+
+### CLI E2E Testing (`/testing cli-e2e`)
+
+For CLI E2E testing with BATS, see:
+- [CLI E2E Testing Patterns](./reference/cli-e2e-testing.md)
+
+Key topics:
+- Happy path only (error cases → CLI Command Integration Tests)
+- BATS parallelization model (`-j 10 --no-parallelize-within-files`)
+- State sharing via `$BATS_FILE_TMPDIR`
+- `setup_file()` for expensive one-time setup
+- Max ONE `vm0 run` per test case (timeout safety)
 
 ### Platform Testing (`/testing platform`)
 

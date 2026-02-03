@@ -40,7 +40,10 @@ export const listCommand = new Command()
           const defaultTag = provider.isDefault
             ? chalk.green(" (default)")
             : "";
-          console.log(`    ${provider.type}${defaultTag}`);
+          const modelTag = provider.selectedModel
+            ? chalk.dim(` [${provider.selectedModel}]`)
+            : "";
+          console.log(`    ${provider.type}${defaultTag}${modelTag}`);
           console.log(
             chalk.dim(
               `      Updated: ${new Date(provider.updatedAt).toLocaleString()}`,

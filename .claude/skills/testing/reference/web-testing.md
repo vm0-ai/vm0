@@ -2,7 +2,7 @@
 
 ## Principle
 
-In the web app (`turbo/apps/web`), only write `route.test.ts` files - test API endpoints only.
+In the web app (`turbo/apps/web`), only write **Web Route Integration Tests** (`route.test.ts` files) - test API endpoints only.
 
 ## File Location
 
@@ -292,12 +292,12 @@ expect(data.status).toBe("failed");
 
 ## Test Target
 
-Only test route-level and pure functions:
+Only test route-level integration tests (primary) and pure functions (exception only):
 
 | Type            | Location                | Examples                                    |
 | --------------- | ----------------------- | ------------------------------------------- |
-| Route tests     | `app/.../route.test.ts` | Validation, authorization, business logic   |
-| Pure function tests | `lib/.../xxx.test.ts`   | Side-effect-free utility functions          |
+| **Web Route Integration Tests** | `app/.../route.test.ts` | Validation, authorization, business logic   |
+| Pure function tests (exception) | `lib/.../xxx.test.ts`   | Extremely complex algorithmic functions only |
 
 ```typescript
 // Route-level test
@@ -321,9 +321,15 @@ describe("calculateSessionHistoryPath", () => {
 
 ---
 
-## Pure Function Test Guidelines
+## Pure Function Test Guidelines (Rare Exception)
 
-Pure function tests should be simple and isolated - no mocks, no database operations, no external dependencies.
+Pure function tests are a **rare exception**, reserved only for:
+- **Security-critical functions** (cryptographic operations, token validation, permission checks)
+- **Extremely complex algorithms** where bugs would have severe consequences
+
+**NOT allowed** (test via Web Route Integration Tests instead): validators, parsers, formatters, simple utilities.
+
+These tests should be simple and isolated - no mocks, no database operations, no external dependencies.
 
 **Bad Case**
 

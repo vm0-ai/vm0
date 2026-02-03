@@ -91,153 +91,24 @@ setup_artifact() {
     refute_output --partial "SECRET=${SECRET_VALUE}"
 }
 
-# Note: The following tests have been moved to unit tests in variable-expander.spec.ts:
-# - "vm0 run loads secrets from environment variables"
-# - "vm0 run loads vars from environment variables"
-# - "vm0 run loads secrets from .env file"
-# - "vm0 run --secrets flag takes priority over env vars"
-# - "vm0 run fails when required secret is missing"
-# - "vm0 run fails when required vars are missing"
-
-@test "vm0 run with multiple --secrets flags" {
-    echo "# Step 1: Create config with multiple secrets"
-    local MULTI_SECRET_CONFIG="$(mktemp)"
-    cat > "$MULTI_SECRET_CONFIG" <<EOF
-version: "1.0"
-
-agents:
-  multi-secrets:
-    description: "Test agent with multiple secrets"
-    framework: claude-code
-    image: "vm0/claude-code:dev"
-    working_dir: /home/user/workspace
-    environment:
-      SECRET_A: "\${{ secrets.SECRET_A }}"
-      SECRET_B: "\${{ secrets.SECRET_B }}"
-    volumes:
-      - claude-files:/home/user/.config/claude
-
-volumes:
-  claude-files:
-    name: $VOLUME_NAME
-    version: latest
-EOF
-
-    echo "# Step 2: Create and push artifact"
-    setup_artifact
-
-    echo "# Step 3: Build the compose"
-    run $CLI_COMMAND compose "$MULTI_SECRET_CONFIG"
-    assert_success
-
-    echo "# Step 4: Run with multiple --secrets flags"
-    local SECRET_A_VALUE="secret-a-${UNIQUE_ID}"
-    local SECRET_B_VALUE="secret-b-${UNIQUE_ID}"
-
-    run $CLI_COMMAND run multi-secrets \
-        --secrets "SECRET_A=${SECRET_A_VALUE}" \
-        --secrets "SECRET_B=${SECRET_B_VALUE}" \
-        --artifact-name "$ARTIFACT_NAME" \
-        --verbose \
-        "echo A=\$SECRET_A && echo B=\$SECRET_B"
-    assert_success
-
-    echo "# Step 5: Verify both secrets are masked"
-    assert_output --partial "A=***"
-    assert_output --partial "B=***"
-    refute_output --partial "secret-a-"
-    refute_output --partial "secret-b-"
-
-    # Cleanup
-    rm -f "$MULTI_SECRET_CONFIG"
-}
-
-@test "vm0 run continue requires secrets to be re-provided" {
-    echo "# Step 1: Create and push artifact"
-    setup_artifact
-
-    echo "# Step 2: Build the compose"
-    run $CLI_COMMAND compose "$TEST_CONFIG"
-    assert_success
-
-    echo "# Step 3: Run initial session with secrets"
-    run $CLI_COMMAND run "$AGENT_NAME" \
-        --vars "testVar=${VAR_VALUE}" \
-        --secrets "TEST_SECRET=${SECRET_VALUE}" \
-        --artifact-name "$ARTIFACT_NAME" \
-        --verbose \
-        "echo INITIAL && echo SECRET=\$TEST_SECRET"
-    assert_success
-    assert_output --partial "INITIAL"
-    assert_output --partial "SECRET=***"
-
-    echo "# Step 4: Extract session ID"
-    SESSION_ID=$(echo "$output" | grep -oP 'Session:\s*\K[a-f0-9-]{36}' | head -1)
-    [ -n "$SESSION_ID" ] || {
-        echo "# Failed to extract session ID from output:"
-        echo "$output"
-        return 1
-    }
-    echo "# Extracted session ID: $SESSION_ID"
-
-    echo "# Step 5: Continue WITHOUT secrets fails with helpful message"
-    # Secrets are never persisted - must be provided on every run
-    run $CLI_COMMAND run continue "$SESSION_ID" \
-        "echo CONTINUED"
-    assert_failure
-    assert_output --partial "Missing required secrets: TEST_SECRET"
-    assert_output --partial "--secrets TEST_SECRET=<value>"
-
-    echo "# Step 6: Continue WITH secrets succeeds"
-    run $CLI_COMMAND run continue "$SESSION_ID" \
-        --secrets "TEST_SECRET=${SECRET_VALUE}" \
-        --verbose \
-        "echo CONTINUED && echo SECRET=\$TEST_SECRET"
-    assert_success
-    assert_output --partial "CONTINUED"
-    assert_output --partial "SECRET=***"
-}
-
-@test "vm0 run resume requires secrets to be re-provided" {
-    echo "# Step 1: Create and push artifact"
-    setup_artifact
-
-    echo "# Step 2: Build the compose"
-    run $CLI_COMMAND compose "$TEST_CONFIG"
-    assert_success
-
-    echo "# Step 3: Run initial session with secrets"
-    run $CLI_COMMAND run "$AGENT_NAME" \
-        --vars "testVar=${VAR_VALUE}" \
-        --secrets "TEST_SECRET=${SECRET_VALUE}" \
-        --artifact-name "$ARTIFACT_NAME" \
-        --verbose \
-        "echo INITIAL && echo SECRET=\$TEST_SECRET"
-    assert_success
-
-    echo "# Step 4: Extract checkpoint ID"
-    CHECKPOINT_ID=$(echo "$output" | grep -oP 'Checkpoint:\s*\K[a-f0-9-]{36}' | head -1)
-    [ -n "$CHECKPOINT_ID" ] || {
-        echo "# Failed to extract checkpoint ID from output:"
-        echo "$output"
-        return 1
-    }
-    echo "# Extracted checkpoint ID: $CHECKPOINT_ID"
-
-    echo "# Step 5: Resume WITHOUT secrets fails with helpful message"
-    # Secrets are never persisted - must be provided on every run
-    run $CLI_COMMAND run resume "$CHECKPOINT_ID" \
-        "echo RESUMED"
-    assert_failure
-    assert_output --partial "Missing required secrets: TEST_SECRET"
-    assert_output --partial "--secrets TEST_SECRET=<value>"
-
-    echo "# Step 6: Resume WITH secrets succeeds"
-    run $CLI_COMMAND run resume "$CHECKPOINT_ID" \
-        --secrets "TEST_SECRET=${SECRET_VALUE}" \
-        --verbose \
-        "echo RESUMED && echo SECRET=\$TEST_SECRET"
-    assert_success
-    assert_output --partial "RESUMED"
-    assert_output --partial "SECRET=***"
-}
+# Note: The following tests have been moved to Route Integration tests
+# (apps/web/app/api/agent/runs/__tests__/route.test.ts):
+#
+# Validation section:
+#    - "should fail run when required secrets are not provided"
+#    - "should fail run when only some secrets are provided"
+#    - "should succeed when all required secrets are provided"
+#
+# Session Continue section:
+#    - 404 not found, 404 different user (security)
+#
+# Checkpoint Resume section:
+#    - 404 not found, 404 different user (security)
+#
+# Removed E2E tests (covered by route integration tests):
+#    - "vm0 run with multiple --secrets flags" - validates same code path as Test 1
+#    - "vm0 run continue requires secrets to be re-provided"
+#    - "vm0 run resume requires secrets to be re-provided"
+#
+# This E2E test (1 vm0 run) validates the happy path end-to-end, while route
+# integration tests cover error cases with faster feedback.

@@ -1,5 +1,77 @@
 # Changelog
 
+## [9.12.0](https://github.com/vm0-ai/vm0/compare/cli-v9.11.0...cli-v9.12.0) (2026-02-02)
+
+
+### Features
+
+* **cli:** add silent auto-upgrade for compose and run commands ([#2120](https://github.com/vm0-ai/vm0/issues/2120)) ([891a7c4](https://github.com/vm0-ai/vm0/commit/891a7c4aa3f231af67ad5a6cbe8065ff481e6b87))
+
+## [9.11.0](https://github.com/vm0-ai/vm0/compare/cli-v9.10.0...cli-v9.11.0) (2026-02-02)
+
+
+### Features
+
+* add moonshot-api-key provider with credential mapping and model selection ([#2110](https://github.com/vm0-ai/vm0/issues/2110)) ([88f8f9d](https://github.com/vm0-ai/vm0/commit/88f8f9d369529752eac68eec426153d8b82ab5fc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.8.0
+
+## [9.10.0](https://github.com/vm0-ai/vm0/compare/cli-v9.9.2...cli-v9.10.0) (2026-02-02)
+
+
+### Features
+
+* **cli:** update marketplace when setup-claude runs on existing install ([#2117](https://github.com/vm0-ai/vm0/issues/2117)) ([a1c1810](https://github.com/vm0-ai/vm0/commit/a1c1810fc4edf214f00e1704d6aa969510bf4856)), closes [#2113](https://github.com/vm0-ai/vm0/issues/2113)
+
+
+### Bug Fixes
+
+* **cli:** show helpful hints when concurrent run limit is reached ([#2122](https://github.com/vm0-ai/vm0/issues/2122)) ([47c7dfa](https://github.com/vm0-ai/vm0/commit/47c7dfa4996ea615b0e14b0a22fd909774ccde87))
+
+## [9.9.2](https://github.com/vm0-ai/vm0/compare/cli-v9.9.1...cli-v9.9.2) (2026-02-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.7.0
+
+## [9.9.1](https://github.com/vm0-ai/vm0/compare/cli-v9.9.0...cli-v9.9.1) (2026-02-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.6.1
+
+## [9.9.0](https://github.com/vm0-ai/vm0/compare/cli-v9.8.0...cli-v9.9.0) (2026-02-01)
+
+
+### Features
+
+* **cli:** release onboard banner update ([#2084](https://github.com/vm0-ai/vm0/issues/2084)) ([402820c](https://github.com/vm0-ai/vm0/commit/402820cbeabed134c3a757d4c8400037fce4c427))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.6.0
+
+## [9.8.0](https://github.com/vm0-ai/vm0/compare/cli-v9.7.1...cli-v9.8.0) (2026-01-31)
+
+
+### Features
+
+* **cli:** add platform url output to logs command ([#2064](https://github.com/vm0-ai/vm0/issues/2064)) ([de6e1cb](https://github.com/vm0-ai/vm0/commit/de6e1cb4c24c7b3ea0788b4c41e0d0f20b8bbffd))
+
 ## [9.7.1](https://github.com/vm0-ai/vm0/compare/cli-v9.7.0...cli-v9.7.1) (2026-01-31)
 
 

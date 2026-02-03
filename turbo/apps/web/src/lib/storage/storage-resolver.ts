@@ -26,7 +26,7 @@ import {
  * @returns The mount path for instructions
  * @throws Error if framework is defined but not supported
  */
-export function getInstructionsMountPath(framework?: string): string {
+function getInstructionsMountPath(framework?: string): string {
   const validatedFramework = getValidatedFramework(framework);
   if (validatedFramework === "codex") {
     return "/home/user/.codex";
@@ -45,7 +45,7 @@ export function getInstructionsMountPath(framework?: string): string {
  * @returns The base path for skills
  * @throws Error if framework is defined but not supported
  */
-export function getSkillsBasePath(framework?: string): string {
+function getSkillsBasePath(framework?: string): string {
   const validatedFramework = getValidatedFramework(framework);
   if (validatedFramework === "codex") {
     return "/home/user/.codex/skills";
@@ -58,7 +58,7 @@ export function getSkillsBasePath(framework?: string): string {
  * @param declaration - Volume declaration in format "volume-name:/mount/path"
  * @returns Parsed volume name and mount path
  */
-export function parseMountPath(declaration: string): {
+function parseMountPath(declaration: string): {
   volumeName: string;
   mountPath: string;
 } {
@@ -82,7 +82,7 @@ export function parseMountPath(declaration: string): {
  * @param vars - Variable values (from --vars CLI option)
  * @returns String with variables replaced and list of missing vars
  */
-export function replaceTemplateVars(
+function replaceTemplateVars(
   str: string,
   vars: Record<string, string>,
 ): { result: string; missingVars: string[] } {

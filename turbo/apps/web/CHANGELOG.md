@@ -1,5 +1,92 @@
 # Changelog
 
+## [11.19.0](https://github.com/vm0-ai/vm0/compare/web-v11.18.0...web-v11.19.0) (2026-02-02)
+
+
+### Features
+
+* **slack:** add oauth flow and user account linking ([#2145](https://github.com/vm0-ai/vm0/issues/2145)) ([90f5950](https://github.com/vm0-ai/vm0/commit/90f59509f8195ad270181c7534fce8d224c98676))
+
+## [11.18.0](https://github.com/vm0-ai/vm0/compare/web-v11.17.0...web-v11.18.0) (2026-02-02)
+
+
+### Features
+
+* add status page link to landing page footer ([#2149](https://github.com/vm0-ai/vm0/issues/2149)) ([e5073a5](https://github.com/vm0-ai/vm0/commit/e5073a5bd6c4df4ee244c8c47385f2fa18df5589)), closes [#2139](https://github.com/vm0-ai/vm0/issues/2139)
+
+## [11.17.0](https://github.com/vm0-ai/vm0/compare/web-v11.16.0...web-v11.17.0) (2026-02-02)
+
+
+### Features
+
+* **slack:** add foundation for slack bot integration ([#2114](https://github.com/vm0-ai/vm0/issues/2114)) ([22ee223](https://github.com/vm0-ai/vm0/commit/22ee223c2e94a3cdf2ff72ed81306f9aae054cf1))
+* **web:** redirect get started button to platform for signed-in users ([#2132](https://github.com/vm0-ai/vm0/issues/2132)) ([725f7ea](https://github.com/vm0-ai/vm0/commit/725f7ea8624aa5689f6e0604bcd538d0702a38f7))
+
+## [11.16.0](https://github.com/vm0-ai/vm0/compare/web-v11.15.1...web-v11.16.0) (2026-02-02)
+
+
+### Features
+
+* add moonshot-api-key provider with credential mapping and model selection ([#2110](https://github.com/vm0-ai/vm0/issues/2110)) ([88f8f9d](https://github.com/vm0-ai/vm0/commit/88f8f9d369529752eac68eec426153d8b82ab5fc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.8.0
+
+## [11.15.1](https://github.com/vm0-ai/vm0/compare/web-v11.15.0...web-v11.15.1) (2026-02-02)
+
+
+### Bug Fixes
+
+* **cli:** show helpful hints when concurrent run limit is reached ([#2122](https://github.com/vm0-ai/vm0/issues/2122)) ([47c7dfa](https://github.com/vm0-ai/vm0/commit/47c7dfa4996ea615b0e14b0a22fd909774ccde87))
+
+## [11.15.0](https://github.com/vm0-ai/vm0/compare/web-v11.14.1...web-v11.15.0) (2026-02-02)
+
+
+### Features
+
+* **schedule:** retry scheduled runs on concurrency limit ([#2008](https://github.com/vm0-ai/vm0/issues/2008)) ([0f86346](https://github.com/vm0-ai/vm0/commit/0f8634676633bd9f1f6ab061b122cd5e1e39a065))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.7.0
+
+## [11.14.1](https://github.com/vm0-ai/vm0/compare/web-v11.14.0...web-v11.14.1) (2026-02-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.6.1
+
+## [11.14.0](https://github.com/vm0-ai/vm0/compare/web-v11.13.0...web-v11.14.0) (2026-02-01)
+
+
+### Features
+
+* **cli:** release onboard banner update ([#2084](https://github.com/vm0-ai/vm0/issues/2084)) ([402820c](https://github.com/vm0-ai/vm0/commit/402820cbeabed134c3a757d4c8400037fce4c427))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.6.0
+
+## [11.13.0](https://github.com/vm0-ai/vm0/compare/web-v11.12.1...web-v11.13.0) (2026-02-01)
+
+
+### Features
+
+* **web:** optimize landing page responsive design and styling ([#2063](https://github.com/vm0-ai/vm0/issues/2063)) ([ce3c6de](https://github.com/vm0-ai/vm0/commit/ce3c6de1541871667d71587f1bc0ef06e8ea8499))
+
 ## [11.12.1](https://github.com/vm0-ai/vm0/compare/web-v11.12.0...web-v11.12.1) (2026-01-31)
 
 

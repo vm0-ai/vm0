@@ -2,7 +2,7 @@
   <a href="https://vm0.ai"><img src="https://github.com/vm0-ai/vm0/blob/main/turbo/apps/web/public/assets/Logo_VM0_combo_black_bg.svg" alt="VM0 Logo" width="500"></a>
   <br>
   <br>
-  Skill workflows, while you sleep
+  Natural language Agent, 24/7 in cloud sandbox
   <br>
   <br>
   <p>
@@ -61,6 +61,10 @@ For user-facing guides and tutorials, visit [docs.vm0.ai](https://docs.vm0.ai).
 </a></p>
 
 ![Alt](https://repobeats.axiom.co/api/embed/ef46db5e11f5146fcc8af07077a79d789efdfbe5.svg "Repobeats analytics image")
+
+## ⭐ Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=vm0-ai/vm0&type=date&legend=top-left)](https://www.star-history.com/#vm0-ai/vm0&type=date&legend=top-left)
 
 ## 📃 License
 

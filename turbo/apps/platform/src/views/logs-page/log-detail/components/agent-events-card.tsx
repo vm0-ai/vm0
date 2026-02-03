@@ -1,5 +1,5 @@
 import { useGet, useSet, useLoadable } from "ccstate-react";
-import { IconSearch } from "@tabler/icons-react";
+import { IconSearch, IconLoader2 } from "@tabler/icons-react";
 import { Input } from "@vm0/ui";
 import {
   viewMode$,
@@ -7,7 +7,14 @@ import {
   totalMatchCount$,
   type ViewMode,
 } from "../../../../signals/logs-page/log-detail-state.ts";
-import { getOrCreateAgentEvents$ } from "../../../../signals/logs-page/logs-signals.ts";
+import {
+  getOrCreateAgentEvents$,
+  loadMoreAgentEvents$,
+  agentEventsAccumulated$,
+  agentEventsHasMore$,
+  agentEventsIsLoadingMore$,
+  initAccumulatedEvents$,
+} from "../../../../signals/logs-page/logs-signals.ts";
 import { SearchNavigation } from "../../components/search-navigation.tsx";
 import { ViewModeToggle } from "./view-mode-toggle.tsx";
 import { RawJsonView } from "./raw-json-view.tsx";
@@ -17,6 +24,7 @@ import {
   scrollToMatch,
   EVENTS_CONTAINER_ID,
 } from "../utils.ts";
+import { detach, Reason } from "../../../../signals/utils.ts";
 
 export function AgentEventsCard({
   logId,
@@ -33,8 +41,15 @@ export function AgentEventsCard({
 }) {
   const isCodex = framework === "codex";
   const getOrCreateAgentEvents = useSet(getOrCreateAgentEvents$);
+  const loadMoreAgentEvents = useSet(loadMoreAgentEvents$);
+  const initAccumulatedEvents = useSet(initAccumulatedEvents$);
   const events$ = getOrCreateAgentEvents(logId);
   const eventsLoadable = useLoadable(events$);
+
+  // Get accumulated events state
+  const accumulatedEvents = useGet(agentEventsAccumulated$);
+  const hasMore = useGet(agentEventsHasMore$);
+  const isLoadingMore = useGet(agentEventsIsLoadingMore$);
 
   const viewMode = useGet(viewMode$);
   const setViewMode = useSet(viewMode$);
@@ -43,6 +58,19 @@ export function AgentEventsCard({
   const setCurrentMatchIdx = useSet(currentMatchIndex$);
   const totalMatches = useGet(totalMatchCount$);
   const setTotalMatches = useSet(totalMatchCount$);
+
+  // Initialize accumulated events when initial data loads
+  // This is safe to call during render as initAccumulatedEvents$ is idempotent
+  if (
+    eventsLoadable.state === "hasData" &&
+    accumulatedEvents.length === 0 &&
+    eventsLoadable.data.events.length > 0
+  ) {
+    initAccumulatedEvents({
+      events: eventsLoadable.data.events,
+      hasMore: eventsLoadable.data.hasMore,
+    });
+  }
 
   const scrollToMatchByIndex = (matchIndex: number) => {
     const container = document.getElementById(EVENTS_CONTAINER_ID);
@@ -91,6 +119,41 @@ export function AgentEventsCard({
     setCurrentMatchIdx(0);
   };
 
+  // Ref callback for infinite scroll sentinel with cleanup (React 19 feature)
+  // Uses key={events.length} to ensure fresh closure values after each load
+  const sentinelRef = (node: HTMLDivElement | null): (() => void) | void => {
+    if (!node) {
+      return;
+    }
+
+    // Create observer with current closure values
+    // The key-based remount ensures we always have fresh values
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !isLoadingMore) {
+          if (accumulatedEvents.length > 0) {
+            const lastEvent = accumulatedEvents[accumulatedEvents.length - 1];
+            detach(
+              loadMoreAgentEvents({
+                runId: logId,
+                since: lastEvent.createdAt,
+              }),
+              Reason.DomCallback,
+            );
+          }
+        }
+      },
+      { threshold: 0.1 },
+    );
+
+    observer.observe(node);
+
+    // Return cleanup function - called when element is unmounted (React 19)
+    return () => {
+      observer.disconnect();
+    };
+  };
+
   if (eventsLoadable.state === "loading") {
     return (
       <div className="space-y-4">
@@ -99,8 +162,8 @@ export function AgentEventsCard({
             Agent events
           </span>
         </div>
-        <div className="p-8 text-center text-muted-foreground">
-          Loading events...
+        <div className="flex items-center justify-center p-8">
+          <IconLoader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
       </div>
     );
@@ -121,27 +184,37 @@ export function AgentEventsCard({
     );
   }
 
-  const { events } = eventsLoadable.data;
+  // Use accumulated events for rendering (or initial if not yet accumulated)
+  const events =
+    accumulatedEvents.length > 0
+      ? accumulatedEvents
+      : eventsLoadable.data.events;
+  const showHasMore =
+    accumulatedEvents.length > 0 ? hasMore : eventsLoadable.data.hasMore;
 
   const matchingCount = searchTerm.trim()
     ? events.filter((e) => eventMatchesSearch(e, searchTerm)).length
     : events.length;
 
+  const totalCountDisplay = showHasMore
+    ? `${events.length}+`
+    : `${events.length}`;
+
   return (
     <div className={`flex flex-col gap-4 ${className ?? ""}`}>
-      <div className="flex items-center justify-between shrink-0">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0">
         <div className="flex items-center gap-3">
-          <span className="text-base font-medium text-foreground">
+          <span className="text-base font-medium text-foreground whitespace-nowrap">
             Agent events
           </span>
-          <span className="text-sm text-muted-foreground">
+          <span className="text-sm text-muted-foreground whitespace-nowrap">
             {searchTerm.trim()
               ? `(${matchingCount}/${events.length} matched)`
-              : `${events.length} total`}
+              : `${totalCountDisplay} total`}
           </span>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative flex h-9 items-center rounded-md border border-border bg-card">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="relative flex h-9 flex-1 sm:flex-none items-center rounded-md border border-border bg-card focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background">
             <div className="pl-2">
               <IconSearch className="h-4 w-4 text-muted-foreground" />
             </div>
@@ -150,7 +223,7 @@ export function AgentEventsCard({
               value={searchTerm}
               onChange={(e) => handleSearchChange(e.target.value)}
               onKeyDown={handleKeyDown}
-              className="h-full w-44 border-0 text-sm focus-visible:ring-0 focus-visible:ring-offset-0 pl-2 pr-20"
+              className="h-full w-full sm:w-44 border-0 text-sm focus-visible:ring-0 focus-visible:ring-offset-0 pl-2 pr-20"
             />
             <SearchNavigation
               currentIndex={currentMatchIdx}
@@ -162,14 +235,18 @@ export function AgentEventsCard({
           </div>
           {!isCodex && (
             <>
-              <div className="h-5 w-px bg-border" />
+              <div className="h-5 w-px bg-border hidden sm:block" />
               <ViewModeToggle mode={viewMode} setMode={handleViewModeChange} />
             </>
           )}
         </div>
       </div>
 
-      <div id={EVENTS_CONTAINER_ID} className="flex-1 min-h-0 overflow-y-auto">
+      <div
+        id={EVENTS_CONTAINER_ID}
+        className="flex-1 min-h-0 overflow-y-auto"
+        style={{ scrollbarGutter: "stable" }}
+      >
         {!isCodex && viewMode === "formatted" ? (
           <FormattedEventsView
             events={events}
@@ -184,6 +261,15 @@ export function AgentEventsCard({
             currentMatchIndex={currentMatchIdx}
             setTotalMatches={setTotalMatches}
           />
+        )}
+        {showHasMore && (
+          <div
+            key={`sentinel-${events.length}`}
+            ref={sentinelRef}
+            className="flex items-center justify-center py-4"
+          >
+            <IconLoader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
         )}
       </div>
     </div>

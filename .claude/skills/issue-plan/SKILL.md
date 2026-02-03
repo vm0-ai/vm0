@@ -34,6 +34,7 @@ If no issue ID is provided in args, ask the user: "Which issue would you like to
 - Follow software engineering best practices: create independent feature branches (git checkout -b feature/issue-{id}-xxx)
 - Commit messages must follow Conventional Commits specification (feat / fix / docs / refactor / test / chore)
 - Follow the small iteration principle: implement small, focused changes with corresponding test cases
+- **Include test strategy in the plan following `/testing` conventions**
 - After each change, run relevant tests to verify functionality before proceeding
 - When fixing bugs: reproduce via tests first, then fix, then verify tests pass
 - In regression testing: fix failed tests one at a time, verify each individually

@@ -94,6 +94,8 @@ const scheduleResponseSchema = z.object({
   volumeVersions: z.record(z.string(), z.string()).nullable(),
   enabled: z.boolean(),
   nextRunAt: z.string().nullable(),
+  lastRunAt: z.string().nullable(),
+  retryStartedAt: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

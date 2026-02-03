@@ -14,6 +14,11 @@ import {
   rowsPerPageValue$,
   searchQueryValue$,
   currentPageNumber$,
+  initAccumulatedEvents$,
+  loadMoreAgentEvents$,
+  agentEventsAccumulated$,
+  agentEventsHasMore$,
+  agentEventsIsLoadingMore$,
 } from "../logs-signals.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { mockLocation, mockPushState } from "../../location.ts";
@@ -392,6 +397,317 @@ describe("logs-signals", () => {
       store.set(initLogs$, signal);
 
       expect(store.get(hasPrevPage$)).toBeFalsy();
+    });
+  });
+
+  describe("agent events pagination", () => {
+    describe("initAccumulatedEvents$", () => {
+      it("should initialize accumulated events with provided data", () => {
+        const { store, signal } = context;
+
+        store.set(initLogs$, signal);
+
+        const events = [
+          {
+            sequenceNumber: 1,
+            eventType: "test-event",
+            eventData: { foo: "bar" },
+            createdAt: "2024-01-01T00:00:00.000Z",
+          },
+          {
+            sequenceNumber: 2,
+            eventType: "test-event-2",
+            eventData: { baz: "qux" },
+            createdAt: "2024-01-01T00:00:01.000Z",
+          },
+        ];
+
+        store.set(initAccumulatedEvents$, {
+          events,
+          hasMore: true,
+        });
+
+        expect(store.get(agentEventsAccumulated$)).toStrictEqual(events);
+        expect(store.get(agentEventsHasMore$)).toBeTruthy();
+      });
+
+      it("should set hasMore to false when no more events", () => {
+        const { store, signal } = context;
+
+        store.set(initLogs$, signal);
+
+        store.set(initAccumulatedEvents$, {
+          events: [],
+          hasMore: false,
+        });
+
+        expect(store.get(agentEventsAccumulated$)).toStrictEqual([]);
+        expect(store.get(agentEventsHasMore$)).toBeFalsy();
+      });
+    });
+
+    describe("loadMoreAgentEvents$", () => {
+      it("should append new events to accumulated state", async () => {
+        const { store, signal } = context;
+
+        // Initialize with some events
+        store.set(initLogs$, signal);
+
+        const initialEvents = [
+          {
+            sequenceNumber: 1,
+            eventType: "initial",
+            eventData: {},
+            createdAt: "2024-01-01T00:00:00.000Z",
+          },
+        ];
+
+        store.set(initAccumulatedEvents$, {
+          events: initialEvents,
+          hasMore: true,
+        });
+
+        // Mock API for load more
+        const moreEvents = [
+          {
+            sequenceNumber: 2,
+            eventType: "more",
+            eventData: {},
+            createdAt: "2024-01-01T00:00:01.000Z",
+          },
+          {
+            sequenceNumber: 3,
+            eventType: "more-2",
+            eventData: {},
+            createdAt: "2024-01-01T00:00:02.000Z",
+          },
+        ];
+
+        server.use(
+          http.get("*/api/agent/runs/:runId/telemetry/agent", () => {
+            return HttpResponse.json({
+              events: moreEvents,
+              hasMore: false,
+            });
+          }),
+        );
+
+        await store.set(loadMoreAgentEvents$, {
+          runId: "test-run-id",
+          since: "2024-01-01T00:00:00.000Z",
+        });
+
+        const accumulated = store.get(agentEventsAccumulated$);
+        expect(accumulated).toHaveLength(3);
+        expect(accumulated[0]).toStrictEqual(initialEvents[0]);
+        expect(accumulated[1]).toStrictEqual(moreEvents[0]);
+        expect(accumulated[2]).toStrictEqual(moreEvents[1]);
+        expect(store.get(agentEventsHasMore$)).toBeFalsy();
+      });
+
+      it("should set loading state during fetch", async () => {
+        const { store, signal } = context;
+
+        store.set(initLogs$, signal);
+        store.set(initAccumulatedEvents$, {
+          events: [
+            {
+              sequenceNumber: 1,
+              eventType: "initial",
+              eventData: {},
+              createdAt: "2024-01-01T00:00:00.000Z",
+            },
+          ],
+          hasMore: true,
+        });
+
+        let resolveRequest: (() => void) | null = null;
+        const requestPromise = new Promise<void>((resolve) => {
+          resolveRequest = resolve;
+        });
+
+        server.use(
+          http.get("*/api/agent/runs/:runId/telemetry/agent", async () => {
+            await requestPromise;
+            return HttpResponse.json({
+              events: [],
+              hasMore: false,
+            });
+          }),
+        );
+
+        // Start loading (don't await)
+        const loadPromise = store.set(loadMoreAgentEvents$, {
+          runId: "test-run-id",
+          since: "2024-01-01T00:00:00.000Z",
+        });
+
+        // Check loading state is true during fetch
+        expect(store.get(agentEventsIsLoadingMore$)).toBeTruthy();
+
+        // Resolve the request
+        resolveRequest!();
+        await loadPromise;
+
+        // Loading state should be false after completion
+        expect(store.get(agentEventsIsLoadingMore$)).toBeFalsy();
+      });
+
+      it("should pass correct parameters to API", async () => {
+        const { store, signal } = context;
+
+        store.set(initLogs$, signal);
+        store.set(initAccumulatedEvents$, {
+          events: [
+            {
+              sequenceNumber: 1,
+              eventType: "initial",
+              eventData: {},
+              createdAt: "2024-01-01T00:00:00.000Z",
+            },
+          ],
+          hasMore: true,
+        });
+
+        let capturedRunId: string | null = null;
+        let capturedSince: string | null = null;
+        let capturedLimit: string | null = null;
+        let capturedOrder: string | null = null;
+
+        server.use(
+          http.get(
+            "*/api/agent/runs/:runId/telemetry/agent",
+            ({ request, params }) => {
+              capturedRunId = params.runId as string;
+              const url = new URL(request.url);
+              capturedSince = url.searchParams.get("since");
+              capturedLimit = url.searchParams.get("limit");
+              capturedOrder = url.searchParams.get("order");
+              return HttpResponse.json({
+                events: [],
+                hasMore: false,
+              });
+            },
+          ),
+        );
+
+        const sinceDate = "2024-01-15T12:30:00.000Z";
+        await store.set(loadMoreAgentEvents$, {
+          runId: "my-test-run-123",
+          since: sinceDate,
+        });
+
+        expect(capturedRunId).toBe("my-test-run-123");
+        expect(capturedSince).toBe(String(new Date(sinceDate).getTime()));
+        expect(capturedLimit).toBe("30");
+        expect(capturedOrder).toBe("asc");
+      });
+
+      it("should update hasMore based on API response", async () => {
+        const { store, signal } = context;
+
+        store.set(initLogs$, signal);
+        store.set(initAccumulatedEvents$, {
+          events: [
+            {
+              sequenceNumber: 1,
+              eventType: "initial",
+              eventData: {},
+              createdAt: "2024-01-01T00:00:00.000Z",
+            },
+          ],
+          hasMore: true,
+        });
+
+        server.use(
+          http.get("*/api/agent/runs/:runId/telemetry/agent", () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 2,
+                  eventType: "more",
+                  eventData: {},
+                  createdAt: "2024-01-01T00:00:01.000Z",
+                },
+              ],
+              hasMore: true,
+            });
+          }),
+        );
+
+        await store.set(loadMoreAgentEvents$, {
+          runId: "test-run-id",
+          since: "2024-01-01T00:00:00.000Z",
+        });
+
+        expect(store.get(agentEventsHasMore$)).toBeTruthy();
+      });
+
+      it("should reset loading state on error", async () => {
+        const { store, signal } = context;
+
+        store.set(initLogs$, signal);
+        store.set(initAccumulatedEvents$, {
+          events: [
+            {
+              sequenceNumber: 1,
+              eventType: "initial",
+              eventData: {},
+              createdAt: "2024-01-01T00:00:00.000Z",
+            },
+          ],
+          hasMore: true,
+        });
+
+        server.use(
+          http.get("*/api/agent/runs/:runId/telemetry/agent", () => {
+            return HttpResponse.json(
+              { error: "Internal Server Error" },
+              { status: 500 },
+            );
+          }),
+        );
+
+        await expect(
+          store.set(loadMoreAgentEvents$, {
+            runId: "test-run-id",
+            since: "2024-01-01T00:00:00.000Z",
+          }),
+        ).rejects.toThrow("Failed to fetch more agent events");
+
+        // Loading state should be reset even on error
+        expect(store.get(agentEventsIsLoadingMore$)).toBeFalsy();
+      });
+    });
+
+    describe("initLogs$ resets accumulated events", () => {
+      it("should reset accumulated events state on init", () => {
+        const { store, signal } = context;
+
+        // First set some accumulated events
+        store.set(initLogs$, signal);
+        store.set(initAccumulatedEvents$, {
+          events: [
+            {
+              sequenceNumber: 1,
+              eventType: "test",
+              eventData: {},
+              createdAt: "2024-01-01T00:00:00.000Z",
+            },
+          ],
+          hasMore: true,
+        });
+
+        expect(store.get(agentEventsAccumulated$)).toHaveLength(1);
+        expect(store.get(agentEventsHasMore$)).toBeTruthy();
+
+        // Re-init logs should reset accumulated events
+        store.set(initLogs$, signal);
+
+        expect(store.get(agentEventsAccumulated$)).toStrictEqual([]);
+        expect(store.get(agentEventsHasMore$)).toBeFalsy();
+        expect(store.get(agentEventsIsLoadingMore$)).toBeFalsy();
+      });
     });
   });
 });

@@ -27,6 +27,8 @@
 //! - `0x07` spawn_watch (H→G): Spawn process and monitor for exit
 //! - `0x08` spawn_watch_result (G→H): Acknowledgment with PID
 //! - `0x09` process_exit (G→H): Unsolicited notification when process exits
+//! - `0x0A` shutdown (H→G): Request graceful shutdown
+//! - `0x0B` shutdown_ack (G→H): Acknowledge shutdown after sync
 //! - `0xFF` error (G→H): Error message
 
 use std::io::{Read, Write};
@@ -57,6 +59,8 @@ const MSG_WRITE_FILE_RESULT: u8 = 0x06;
 const MSG_SPAWN_WATCH: u8 = 0x07;
 const MSG_SPAWN_WATCH_RESULT: u8 = 0x08;
 const MSG_PROCESS_EXIT: u8 = 0x09;
+const MSG_SHUTDOWN: u8 = 0x0A;
+const MSG_SHUTDOWN_ACK: u8 = 0x0B;
 const MSG_ERROR: u8 = 0xFF;
 
 /// Exit code returned when command times out (same as bash/Python)
@@ -375,6 +379,16 @@ fn handle_write_file(payload: &[u8]) -> (bool, String) {
     }
 }
 
+/// Handle shutdown message - sync filesystems and acknowledge
+fn handle_shutdown(seq: u32) -> Vec<u8> {
+    log("INFO", "Shutdown requested, syncing filesystems...");
+    unsafe {
+        libc::sync();
+    }
+    log("INFO", "Sync complete");
+    encode(MSG_SHUTDOWN_ACK, seq, &[])
+}
+
 /// Handle spawn_watch message - spawn process and monitor in background
 /// Returns immediate acknowledgment with PID, then sends process_exit when done
 fn handle_spawn_watch(payload: &[u8], seq: u32, writer: Arc<Mutex<UnixStream>>) -> Vec<u8> {
@@ -502,6 +516,7 @@ fn handle_message(msg_type: u8, seq: u32, payload: &[u8]) -> Option<Vec<u8>> {
             let (success, error) = handle_write_file(payload);
             Some(encode_write_file_result(seq, success, &error))
         }
+        MSG_SHUTDOWN => Some(handle_shutdown(seq)),
         _ => Some(encode_error(
             seq,
             &format!("Unknown message type: 0x{:02X}", msg_type),

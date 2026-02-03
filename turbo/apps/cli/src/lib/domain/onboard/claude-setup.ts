@@ -125,13 +125,36 @@ async function addMarketplace(): Promise<void> {
 }
 
 /**
- * Ensure the VM0 skills marketplace is available
- * Adds it if not already installed
+ * Update the VM0 skills marketplace to get latest plugins
+ * Logs warning on failure but does not throw - allows installation to proceed
+ */
+async function updateMarketplace(): Promise<void> {
+  const result = await runClaudeCommand([
+    "plugin",
+    "marketplace",
+    "update",
+    MARKETPLACE_NAME,
+  ]);
+
+  if (!result.success) {
+    console.warn(
+      chalk.yellow(
+        `Warning: Could not update marketplace: ${result.error ?? "unknown error"}`,
+      ),
+    );
+  }
+}
+
+/**
+ * Ensure the VM0 skills marketplace is available and up-to-date
+ * Adds it if not installed, updates it if already present
  */
 async function ensureMarketplace(): Promise<void> {
   const installed = await isMarketplaceInstalled();
   if (!installed) {
     await addMarketplace();
+  } else {
+    await updateMarketplace();
   }
 }
 

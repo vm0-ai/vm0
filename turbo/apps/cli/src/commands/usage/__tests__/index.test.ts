@@ -442,7 +442,218 @@ describe("usage command", () => {
 
       await usageCommand.parseAsync(["node", "cli"]);
 
-      expect(mockConsoleLog).toHaveBeenCalled();
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("-"));
+    });
+  });
+
+  describe("duration formatting in output", () => {
+    it("should format hours, minutes, and seconds (2h 53m 22s)", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/usage", () => {
+          return HttpResponse.json({
+            period: {
+              start: "2026-01-12T00:00:00.000Z",
+              end: "2026-01-19T00:00:00.000Z",
+            },
+            summary: { total_runs: 1, total_run_time_ms: 10402000 },
+            daily: [],
+          });
+        }),
+      );
+      await usageCommand.parseAsync(["node", "cli"]);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("2h 53m 22s"),
+      );
+    });
+
+    it("should format hours and minutes without seconds (2h 30m)", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/usage", () => {
+          return HttpResponse.json({
+            period: {
+              start: "2026-01-12T00:00:00.000Z",
+              end: "2026-01-19T00:00:00.000Z",
+            },
+            summary: { total_runs: 1, total_run_time_ms: 9000000 },
+            daily: [],
+          });
+        }),
+      );
+      await usageCommand.parseAsync(["node", "cli"]);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("2h 30m"),
+      );
+    });
+
+    it("should format hours and seconds without minutes (1h 30s)", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/usage", () => {
+          return HttpResponse.json({
+            period: {
+              start: "2026-01-12T00:00:00.000Z",
+              end: "2026-01-19T00:00:00.000Z",
+            },
+            summary: { total_runs: 1, total_run_time_ms: 3630000 },
+            daily: [],
+          });
+        }),
+      );
+      await usageCommand.parseAsync(["node", "cli"]);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("1h 30s"),
+      );
+    });
+
+    it("should format hours only (2h)", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/usage", () => {
+          return HttpResponse.json({
+            period: {
+              start: "2026-01-12T00:00:00.000Z",
+              end: "2026-01-19T00:00:00.000Z",
+            },
+            summary: { total_runs: 1, total_run_time_ms: 7200000 },
+            daily: [],
+          });
+        }),
+      );
+      await usageCommand.parseAsync(["node", "cli"]);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("2h"),
+      );
+    });
+
+    it("should format minutes and seconds (45m 32s)", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/usage", () => {
+          return HttpResponse.json({
+            period: {
+              start: "2026-01-12T00:00:00.000Z",
+              end: "2026-01-19T00:00:00.000Z",
+            },
+            summary: { total_runs: 1, total_run_time_ms: 2732000 },
+            daily: [],
+          });
+        }),
+      );
+      await usageCommand.parseAsync(["node", "cli"]);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("45m 32s"),
+      );
+    });
+
+    it("should format minutes only (15m)", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/usage", () => {
+          return HttpResponse.json({
+            period: {
+              start: "2026-01-12T00:00:00.000Z",
+              end: "2026-01-19T00:00:00.000Z",
+            },
+            summary: { total_runs: 1, total_run_time_ms: 900000 },
+            daily: [],
+          });
+        }),
+      );
+      await usageCommand.parseAsync(["node", "cli"]);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("15m"),
+      );
+    });
+
+    it("should format seconds only (32s)", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/usage", () => {
+          return HttpResponse.json({
+            period: {
+              start: "2026-01-12T00:00:00.000Z",
+              end: "2026-01-19T00:00:00.000Z",
+            },
+            summary: { total_runs: 1, total_run_time_ms: 32000 },
+            daily: [],
+          });
+        }),
+      );
+      await usageCommand.parseAsync(["node", "cli"]);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("32s"),
+      );
+    });
+
+    it("should display '< 1s' for sub-second durations", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/usage", () => {
+          return HttpResponse.json({
+            period: {
+              start: "2026-01-12T00:00:00.000Z",
+              end: "2026-01-19T00:00:00.000Z",
+            },
+            summary: { total_runs: 1, total_run_time_ms: 500 },
+            daily: [],
+          });
+        }),
+      );
+      await usageCommand.parseAsync(["node", "cli"]);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("< 1s"),
+      );
+    });
+
+    it("should format exactly 1 second (1s)", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/usage", () => {
+          return HttpResponse.json({
+            period: {
+              start: "2026-01-12T00:00:00.000Z",
+              end: "2026-01-19T00:00:00.000Z",
+            },
+            summary: { total_runs: 1, total_run_time_ms: 1000 },
+            daily: [],
+          });
+        }),
+      );
+      await usageCommand.parseAsync(["node", "cli"]);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("1s"),
+      );
+    });
+
+    it("should format exactly 1 minute (1m)", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/usage", () => {
+          return HttpResponse.json({
+            period: {
+              start: "2026-01-12T00:00:00.000Z",
+              end: "2026-01-19T00:00:00.000Z",
+            },
+            summary: { total_runs: 1, total_run_time_ms: 60000 },
+            daily: [],
+          });
+        }),
+      );
+      await usageCommand.parseAsync(["node", "cli"]);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("1m"),
+      );
+    });
+
+    it("should format exactly 1 hour (1h)", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/usage", () => {
+          return HttpResponse.json({
+            period: {
+              start: "2026-01-12T00:00:00.000Z",
+              end: "2026-01-19T00:00:00.000Z",
+            },
+            summary: { total_runs: 1, total_run_time_ms: 3600000 },
+            daily: [],
+          });
+        }),
+      );
+      await usageCommand.parseAsync(["node", "cli"]);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("1h"),
+      );
     });
   });
 });

@@ -16,6 +16,10 @@ import * as runnerSchema from "./schema/runner-job-queue";
 import * as agentScheduleSchema from "./schema/agent-schedule";
 import * as credentialSchema from "./schema/credential";
 import * as modelProviderSchema from "./schema/model-provider";
+import * as slackInstallationSchema from "./schema/slack-installation";
+import * as slackUserLinkSchema from "./schema/slack-user-link";
+import * as slackBindingSchema from "./schema/slack-binding";
+import * as slackThreadSessionSchema from "./schema/slack-thread-session";
 
 export const schema = {
   ...userSchema,
@@ -36,4 +40,8 @@ export const schema = {
   ...agentScheduleSchema,
   ...credentialSchema,
   ...modelProviderSchema,
+  ...slackInstallationSchema,
+  ...slackUserLinkSchema,
+  ...slackBindingSchema,
+  ...slackThreadSessionSchema,
 };

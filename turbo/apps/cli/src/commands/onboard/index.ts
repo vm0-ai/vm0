@@ -128,10 +128,37 @@ async function handleModelProvider(ctx: OnboardContext): Promise<void> {
       process.exit(0);
     }
 
-    const result = await setupModelProvider(providerType, credential);
+    // Prompt for model selection if provider has models
+    let selectedModel: string | undefined;
+    if (selectedChoice?.models && selectedChoice.models.length > 0) {
+      selectedModel = await step.prompt(() =>
+        promptSelect<string>(
+          "Select model:",
+          selectedChoice.models!.map((model) => ({
+            title:
+              model === selectedChoice.defaultModel
+                ? `${model} (Recommended)`
+                : model,
+            value: model,
+          })),
+        ),
+      );
+
+      if (!selectedModel) {
+        console.log(chalk.dim("Cancelled"));
+        process.exit(0);
+      }
+    }
+
+    const result = await setupModelProvider(providerType, credential, {
+      selectedModel,
+    });
+    const modelNote = result.provider.selectedModel
+      ? ` with model: ${result.provider.selectedModel}`
+      : "";
     step.detail(
       chalk.green(
-        `${providerType} ${result.created ? "created" : "updated"}${result.isDefault ? ` (default for ${result.framework})` : ""}`,
+        `${providerType} ${result.created ? "created" : "updated"}${result.isDefault ? ` (default for ${result.framework})` : ""}${modelNote}`,
       ),
     );
   });

@@ -1,8 +1,24 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
+import { createMockChildProcess } from "../../../mocks/spawn-helpers";
 import { runCommand } from "../index";
 import chalk from "chalk";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import * as path from "path";
+import * as os from "os";
+
+// Mock child_process.spawn since it's an external system call boundary
+vi.mock("child_process", async (importOriginal) => {
+  const original = await importOriginal<typeof import("child_process")>();
+  return {
+    ...original,
+    spawn: vi.fn(),
+  };
+});
+
+import { spawn } from "child_process";
+const mockSpawn = vi.mocked(spawn);
 
 describe("run command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -83,7 +99,14 @@ describe("run command", () => {
       http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
         return HttpResponse.json(defaultEventsResponse);
       }),
+      // Default npm registry handler - return same version to skip upgrade
+      http.get("https://registry.npmjs.org/*/latest", () => {
+        return HttpResponse.json({ version: "0.0.0-test" });
+      }),
     );
+
+    // Default spawn mock - succeeds immediately
+    mockSpawn.mockImplementation(() => createMockChildProcess(0) as never);
   });
 
   afterEach(() => {
@@ -1537,6 +1560,353 @@ describe("run command", () => {
           "Environment file not found: /nonexistent/path/.env",
         ),
       );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+  });
+
+  describe("--vars and --secrets priority with --env-file", () => {
+    let tempDir: string;
+
+    // Compose that references vars and secrets
+    const composeWithVarsAndSecrets = {
+      id: "550e8400-e29b-41d4-a716-446655440000",
+      name: "test-agent",
+      headVersionId: "version-123",
+      content: {
+        version: "1",
+        agents: {
+          "test-agent": {
+            provider: "claude",
+            environment: {
+              API_URL: "${{ vars.API_URL }}",
+              API_KEY: "${{ secrets.API_KEY }}",
+            },
+          },
+        },
+      },
+      createdAt: "2025-01-01T00:00:00Z",
+      updatedAt: "2025-01-01T00:00:00Z",
+    };
+
+    beforeEach(() => {
+      tempDir = mkdtempSync(path.join(os.tmpdir(), "test-run-env-"));
+    });
+
+    afterEach(() => {
+      rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    it("should prioritize CLI --vars over --env-file", async () => {
+      // Create env file with API_URL
+      const envFilePath = path.join(tempDir, ".env");
+      writeFileSync(envFilePath, "API_URL=from-file\nAPI_KEY=secret-from-file");
+
+      let capturedBody: Record<string, unknown> | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes/:id", () => {
+          return HttpResponse.json(composeWithVarsAndSecrets);
+        }),
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
+
+      await runCommand.parseAsync([
+        "node",
+        "cli",
+        testUuid,
+        "test prompt",
+        "--vars",
+        "API_URL=from-cli",
+        "--env-file",
+        envFilePath,
+        "--artifact-name",
+        "test-artifact",
+      ]);
+
+      // CLI --vars should take priority over --env-file
+      expect(capturedBody?.vars).toEqual({ API_URL: "from-cli" });
+      // secrets from env file should still be loaded
+      expect(capturedBody?.secrets).toEqual({ API_KEY: "secret-from-file" });
+    });
+
+    it("should load vars from --env-file when not provided via CLI", async () => {
+      const envFilePath = path.join(tempDir, ".env");
+      writeFileSync(envFilePath, "API_URL=from-file\nAPI_KEY=secret-from-file");
+
+      let capturedBody: Record<string, unknown> | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes/:id", () => {
+          return HttpResponse.json(composeWithVarsAndSecrets);
+        }),
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
+
+      await runCommand.parseAsync([
+        "node",
+        "cli",
+        testUuid,
+        "test prompt",
+        "--env-file",
+        envFilePath,
+        "--artifact-name",
+        "test-artifact",
+      ]);
+
+      // Both vars and secrets should be loaded from env file
+      expect(capturedBody?.vars).toEqual({ API_URL: "from-file" });
+      expect(capturedBody?.secrets).toEqual({ API_KEY: "secret-from-file" });
+    });
+
+    it("should load vars from environment when no --env-file provided", async () => {
+      // Stub environment variables
+      vi.stubEnv("API_URL", "from-env");
+      vi.stubEnv("API_KEY", "secret-from-env");
+
+      let capturedBody: Record<string, unknown> | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes/:id", () => {
+          return HttpResponse.json(composeWithVarsAndSecrets);
+        }),
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
+
+      await runCommand.parseAsync([
+        "node",
+        "cli",
+        testUuid,
+        "test prompt",
+        "--artifact-name",
+        "test-artifact",
+      ]);
+
+      // Both vars and secrets should be loaded from environment
+      expect(capturedBody?.vars).toEqual({ API_URL: "from-env" });
+      expect(capturedBody?.secrets).toEqual({ API_KEY: "secret-from-env" });
+    });
+
+    it("should prioritize --env-file over environment variables", async () => {
+      // Stub environment variables
+      vi.stubEnv("API_URL", "from-env");
+      vi.stubEnv("API_KEY", "secret-from-env");
+
+      // Create env file with different values
+      const envFilePath = path.join(tempDir, ".env");
+      writeFileSync(envFilePath, "API_URL=from-file\nAPI_KEY=secret-from-file");
+
+      let capturedBody: Record<string, unknown> | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes/:id", () => {
+          return HttpResponse.json(composeWithVarsAndSecrets);
+        }),
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
+
+      await runCommand.parseAsync([
+        "node",
+        "cli",
+        testUuid,
+        "test prompt",
+        "--env-file",
+        envFilePath,
+        "--artifact-name",
+        "test-artifact",
+      ]);
+
+      // --env-file should override environment variables
+      expect(capturedBody?.vars).toEqual({ API_URL: "from-file" });
+      expect(capturedBody?.secrets).toEqual({ API_KEY: "secret-from-file" });
+    });
+
+    it("should use env fallback for keys not in --env-file", async () => {
+      // Stub environment variable for API_KEY only
+      vi.stubEnv("API_KEY", "secret-from-env");
+
+      // Create env file with API_URL only (missing API_KEY)
+      const envFilePath = path.join(tempDir, ".env");
+      writeFileSync(envFilePath, "API_URL=from-file");
+
+      let capturedBody: Record<string, unknown> | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes/:id", () => {
+          return HttpResponse.json(composeWithVarsAndSecrets);
+        }),
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
+
+      await runCommand.parseAsync([
+        "node",
+        "cli",
+        testUuid,
+        "test prompt",
+        "--env-file",
+        envFilePath,
+        "--artifact-name",
+        "test-artifact",
+      ]);
+
+      // API_URL from file, API_KEY from environment
+      expect(capturedBody?.vars).toEqual({ API_URL: "from-file" });
+      expect(capturedBody?.secrets).toEqual({ API_KEY: "secret-from-env" });
+    });
+
+    it("should handle mixed priority: CLI > file > env", async () => {
+      // Stub environment variables
+      vi.stubEnv("API_URL", "from-env");
+      vi.stubEnv("API_KEY", "secret-from-env");
+
+      // Create env file
+      const envFilePath = path.join(tempDir, ".env");
+      writeFileSync(envFilePath, "API_URL=from-file\nAPI_KEY=secret-from-file");
+
+      let capturedBody: Record<string, unknown> | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes/:id", () => {
+          return HttpResponse.json(composeWithVarsAndSecrets);
+        }),
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
+
+      // CLI provides only API_URL, file has both, env has both
+      await runCommand.parseAsync([
+        "node",
+        "cli",
+        testUuid,
+        "test prompt",
+        "--vars",
+        "API_URL=from-cli",
+        "--env-file",
+        envFilePath,
+        "--artifact-name",
+        "test-artifact",
+      ]);
+
+      // API_URL from CLI (highest priority), API_KEY from file (medium priority)
+      expect(capturedBody?.vars).toEqual({ API_URL: "from-cli" });
+      expect(capturedBody?.secrets).toEqual({ API_KEY: "secret-from-file" });
+    });
+  });
+
+  describe("concurrent run limit error handling", () => {
+    it("should show run list/kill hints when concurrent limit exceeded", async () => {
+      server.use(
+        http.post("http://localhost:3000/api/agent/runs", () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message: "You have reached the concurrent agent run limit.",
+                code: "concurrent_run_limit_exceeded",
+              },
+            },
+            { status: 429 },
+          );
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync([
+          "node",
+          "cli",
+          testUuid,
+          "test prompt",
+          "--artifact-name",
+          "test-artifact",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      // Verify error message is shown
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Run failed"),
+      );
+
+      // Verify hints are shown inline in the error message
+      const allErrors = mockConsoleError.mock.calls
+        .map((call) => call[0])
+        .filter((err): err is string => typeof err === "string");
+
+      expect(
+        allErrors.some((err) => err.includes("concurrent agent run limit")),
+      ).toBe(true);
+      expect(allErrors.some((err) => err.includes("vm0 run list"))).toBe(true);
+      expect(allErrors.some((err) => err.includes("vm0 run kill"))).toBe(true);
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should not show run list/kill hints for other API errors", async () => {
+      server.use(
+        http.post("http://localhost:3000/api/agent/runs", () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message: "Some other server error",
+                code: "SERVER_ERROR",
+              },
+            },
+            { status: 500 },
+          );
+        }),
+      );
+
+      await expect(async () => {
+        await runCommand.parseAsync([
+          "node",
+          "cli",
+          testUuid,
+          "test prompt",
+          "--artifact-name",
+          "test-artifact",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      // Verify error message is shown
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Run failed"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Some other server error"),
+      );
+
+      // Verify run list/kill hints are NOT shown in any output
+      const allErrors = mockConsoleError.mock.calls
+        .map((call) => call[0])
+        .filter((err): err is string => typeof err === "string");
+
+      expect(allErrors.some((err) => err.includes("vm0 run list"))).toBe(false);
+      expect(allErrors.some((err) => err.includes("vm0 run kill"))).toBe(false);
       expect(mockExit).toHaveBeenCalledWith(1);
     });
   });

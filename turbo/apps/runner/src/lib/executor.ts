@@ -11,12 +11,13 @@
  * - Supporting checkpoint/resume functionality
  */
 
-import path from "path";
 import { FirecrackerVM, type VMConfig } from "./firecracker/vm.js";
+import { createVmId } from "./firecracker/vm-id.js";
 import type { GuestClient } from "./firecracker/guest.js";
 import { VsockClient } from "./firecracker/vsock.js";
 import type { ExecutionContext } from "./api.js";
 import type { RunnerConfig } from "./config.js";
+import { runnerPaths } from "./paths.js";
 import { ENV_LOADER_PATH } from "./scripts/index.js";
 import { getVMRegistry } from "./proxy/index.js";
 import {
@@ -34,16 +35,6 @@ import { downloadStorages, restoreSessionHistory } from "./vm-setup/index.js";
 import { createLogger } from "./logger.js";
 
 const logger = createLogger("Executor");
-
-/**
- * Extract short VM ID from runId (UUID)
- * Uses first 8 characters of UUID for unique identification
- */
-function getVmIdFromRunId(runId: string): string {
-  // runId is a UUID like "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-  // Extract first 8 chars (before first hyphen) for a unique short ID
-  return runId.split("-")[0] || runId.substring(0, 8);
-}
 
 /**
  * Execute a job in a Firecracker VM
@@ -72,17 +63,17 @@ export async function executeJob(
 
   // Use runId (UUID) to derive unique VM identifier
   // This ensures no conflicts even across process restarts
-  const vmId = getVmIdFromRunId(context.runId);
+  const vmId = createVmId(context.runId);
   let vm: FirecrackerVM | null = null;
   let guestIp: string | null = null;
+  let vsockClient: VsockClient | null = null;
 
   logger.log(`Starting job ${context.runId} in VM ${vmId}`);
 
   try {
     // Create VM configuration
-    // Use workspaces directory under runner's working directory for easy cleanup
-    // When runner is stopped, the entire PR directory can be deleted
-    const workspacesDir = path.join(process.cwd(), "workspaces");
+    // Use workspaces directory under runner's base_dir for easy cleanup
+    // When runner is stopped, the entire base directory can be deleted
     const vmConfig: VMConfig = {
       vmId,
       vcpus: config.sandbox.vcpu,
@@ -90,7 +81,7 @@ export async function executeJob(
       kernelPath: config.firecracker.kernel,
       rootfsPath: config.firecracker.rootfs,
       firecrackerBinary: config.firecracker.binary,
-      workDir: path.join(workspacesDir, `vm0-${vmId}`),
+      workDir: runnerPaths.vmWorkDir(config.base_dir, vmId),
     };
 
     // Create and start VM
@@ -107,20 +98,17 @@ export async function executeJob(
 
     // Create vsock guest client
     const vsockPath = vm.getVsockPath();
-    const guest: GuestClient = new VsockClient(vsockPath);
+    vsockClient = new VsockClient(vsockPath);
+    const guest: GuestClient = vsockClient;
     logger.log(`Using vsock for guest communication: ${vsockPath}`);
 
-    // Wait for guest to connect (zero-latency: guest notifies host when ready)
-    logger.log(`Waiting for guest connection...`);
-    await withSandboxTiming("guest_wait", () =>
-      guest.waitForGuestConnection(30000),
+    // Pre-build env JSON before waiting for guest (sync, no guest dependency)
+    const envJson = JSON.stringify(
+      buildEnvironmentVariables(context, config.server.url),
     );
 
-    logger.log(`Guest client ready`);
-
-    // Handle network security with experimental_firewall
+    // Handle network security before guest wait (sync, no guest dependency)
     const firewallConfig = context.experimentalFirewall;
-
     if (firewallConfig?.enabled) {
       const mitmEnabled = firewallConfig.experimental_mitm ?? false;
       const sealSecretsEnabled =
@@ -130,24 +118,24 @@ export async function executeJob(
         `Setting up network security for VM ${guestIp} (mitm=${mitmEnabled}, sealSecrets=${sealSecretsEnabled})`,
       );
 
-      await withSandboxTiming("network_setup", async () => {
-        // Register VM in the proxy registry with firewall rules
-        // Note: CIDR-based iptables rules are set up at runner startup (setup.ts)
-        // so we don't need per-VM iptables rules here
-        getVMRegistry().register(
-          guestIp!,
-          context.runId,
-          context.sandboxToken,
-          {
-            firewallRules: firewallConfig?.rules,
-            mitmEnabled,
-            sealSecretsEnabled,
-          },
-        );
-        // Note: Proxy CA certificate is pre-baked into rootfs (see build-rootfs.sh)
-        // No runtime installation needed
+      // Register VM in the proxy registry with firewall rules
+      // Note: CIDR-based iptables rules are set up at runner startup (setup.ts)
+      // so we don't need per-VM iptables rules here
+      getVMRegistry().register(guestIp!, context.runId, context.sandboxToken, {
+        firewallRules: firewallConfig?.rules,
+        mitmEnabled,
+        sealSecretsEnabled,
       });
+      // Note: Proxy CA certificate is pre-baked into rootfs (see build-rootfs.sh)
+      // No runtime installation needed
     }
+
+    // Wait for guest to connect (blocks during kernel boot ~335ms)
+    logger.log(`Waiting for guest connection...`);
+    await withSandboxTiming("guest_wait", () =>
+      guest.waitForGuestConnection(30000),
+    );
+    logger.log(`Guest client ready`);
 
     // Download storages if manifest provided
     if (context.storageManifest) {
@@ -168,11 +156,8 @@ export async function executeJob(
       );
     }
 
-    // Build environment variables and write as JSON file in VM
+    // Write pre-built env JSON to VM
     // Using JSON avoids shell escaping issues entirely - Python loads it directly
-    // API URL comes from runner config, not from claim response
-    const envVars = buildEnvironmentVariables(context, config.server.url);
-    const envJson = JSON.stringify(envVars);
     logger.log(
       `Writing env JSON (${envJson.length} bytes) to ${ENV_JSON_PATH}`,
     );
@@ -305,6 +290,16 @@ export async function executeJob(
 
     // Always cleanup VM - let errors propagate (fail-fast principle)
     if (vm) {
+      // Request graceful shutdown via vsock (best-effort, timeout after 2s)
+      if (vsockClient) {
+        const acked = await vsockClient.shutdown(2000);
+        if (acked) {
+          logger.log(`Guest acknowledged shutdown`);
+        } else {
+          logger.log(`Guest shutdown timeout, proceeding with SIGKILL`);
+        }
+        vsockClient.close();
+      }
       logger.log(`Cleaning up VM ${vmId}...`);
       await withSandboxTiming("cleanup", () => vm!.kill());
     }

@@ -8,7 +8,7 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../src/lib/ts-rest-handler";
-import { platformLogsListContract } from "@vm0/core";
+import { platformLogsListContract, type PlatformLogStatus } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import {
@@ -62,6 +62,7 @@ const router = tsr.router(platformLogsListContract, {
     let queryBuilder = globalThis.services.db
       .select({
         id: agentRuns.id,
+        status: agentRuns.status,
         createdAt: agentRuns.createdAt,
         composeName: agentComposes.name,
       })
@@ -83,6 +84,7 @@ const router = tsr.router(platformLogsListContract, {
       queryBuilder = globalThis.services.db
         .select({
           id: agentRuns.id,
+          status: agentRuns.status,
           createdAt: agentRuns.createdAt,
           composeName: agentComposes.name,
         })
@@ -150,6 +152,9 @@ const router = tsr.router(platformLogsListContract, {
       body: {
         data: data.map((run) => ({
           id: run.id,
+          agentName: run.composeName ?? "unknown",
+          status: run.status as PlatformLogStatus,
+          createdAt: run.createdAt.toISOString(),
         })),
         pagination: {
           hasMore: hasMore,

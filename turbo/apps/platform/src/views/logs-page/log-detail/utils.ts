@@ -194,6 +194,18 @@ export function formatTime(dateStr: string): string {
   return date.toLocaleString("en-US", options);
 }
 
+export function formatTimeShort(dateStr: string): string {
+  const date = new Date(dateStr);
+  const options: Intl.DateTimeFormatOptions = {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  };
+  return date.toLocaleString("en-US", options);
+}
+
 export function formatDuration(
   startedAt: string | null,
   completedAt: string | null,

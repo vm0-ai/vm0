@@ -1,5 +1,7 @@
 import {
   MODEL_PROVIDER_TYPES,
+  getModels,
+  getDefaultModel,
   type ModelProviderType,
   type ModelProviderResponse,
   type UpsertModelProviderResponse,
@@ -19,6 +21,8 @@ interface ProviderChoice {
   label: string;
   helpText: string;
   credentialLabel: string;
+  models?: string[];
+  defaultModel?: string;
 }
 
 interface SetupResult {
@@ -49,6 +53,8 @@ export function getProviderChoices(): ProviderChoice[] {
       label: MODEL_PROVIDER_TYPES[type].label,
       helpText: MODEL_PROVIDER_TYPES[type].helpText,
       credentialLabel: MODEL_PROVIDER_TYPES[type].credentialLabel,
+      models: getModels(type),
+      defaultModel: getDefaultModel(type),
     }),
   );
 }
@@ -59,12 +65,13 @@ export function getProviderChoices(): ProviderChoice[] {
 export async function setupModelProvider(
   type: ModelProviderType,
   credential: string,
-  options?: { convert?: boolean },
+  options?: { convert?: boolean; selectedModel?: string },
 ): Promise<SetupResult> {
   const response: UpsertModelProviderResponse = await upsertModelProvider({
     type,
     credential,
     convert: options?.convert,
+    selectedModel: options?.selectedModel,
   });
 
   return {

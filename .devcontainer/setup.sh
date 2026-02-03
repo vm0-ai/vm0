@@ -33,6 +33,13 @@ if [ ! -L "$HOME/.claude" ]; then
   echo "✓ Linked ~/.claude to ~/.config/claude"
 fi
 
+if [ ! -L "$HOME/.claude/downloads" ]; then
+  rm -rf "$HOME/.claude/downloads"
+  mkdir -p "$HOME/.cache/claude"
+  ln -s "$HOME/.cache/claude" "$HOME/.claude/downloads"
+  echo "✓ Linked ~/.claude/downloads to ~/.cache/claude"
+fi
+
 # Install host mkcert CA if certificates exist
 # The rootCA.pem is generated on the host machine and shared via .certs/
 if [ -f "$WORKSPACE_DIR/.certs/rootCA.pem" ]; then

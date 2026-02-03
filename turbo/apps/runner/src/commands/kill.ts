@@ -1,20 +1,20 @@
 /**
  * Runner Kill Command
  *
- * Force terminate a specific job and clean up all related resources:
- * - Kill Firecracker process
- * - Delete TAP device
+ * Force terminate a specific job and clean up resources:
+ * - Kill Firecracker process (TAP/IP released automatically by runner)
  * - Remove workspace directory
  * - Update status.json
  */
 
 import { Command } from "commander";
 import { existsSync, readFileSync, writeFileSync, rmSync } from "fs";
-import { dirname, join } from "path";
 import * as readline from "readline";
 import { loadConfig } from "../lib/config.js";
+import { runnerPaths } from "../lib/paths.js";
 import { findProcessByVmId, killProcess } from "../lib/firecracker/process.js";
-import { deleteTapDevice } from "../lib/firecracker/network.js";
+import { getIPForVm } from "../lib/firecracker/ip-registry.js";
+import { type VmId, createVmId } from "../lib/firecracker/vm-id.js";
 
 interface RunnerStatus {
   mode: string;
@@ -42,10 +42,8 @@ export const killCommand = new Command("kill")
       options: { config: string; force?: boolean },
     ): Promise<void> => {
       try {
-        loadConfig(options.config); // Validate config exists
-        const configDir = dirname(options.config);
-        const statusFilePath = join(configDir, "status.json");
-        const workspacesDir = join(configDir, "workspaces");
+        const config = loadConfig(options.config);
+        const statusFilePath = runnerPaths.statusFile(config.base_dir);
 
         // Resolve run ID
         const { vmId, runId } = resolveRunId(runIdArg, statusFilePath);
@@ -54,8 +52,8 @@ export const killCommand = new Command("kill")
 
         // Find resources
         const proc = findProcessByVmId(vmId);
-        const tapDevice = `tap${vmId}`;
-        const workspaceDir = join(workspacesDir, `vm0-${vmId}`);
+        const guestIp = getIPForVm(vmId);
+        const workspaceDir = runnerPaths.vmWorkDir(config.base_dir, vmId);
 
         // Show what will be cleaned up
         console.log("");
@@ -65,7 +63,9 @@ export const killCommand = new Command("kill")
         } else {
           console.log("  - Firecracker process: not found");
         }
-        console.log(`  - TAP device: ${tapDevice}`);
+        if (guestIp) {
+          console.log(`  - IP address: ${guestIp} (TAP/IP released by runner)`);
+        }
         console.log(`  - Workspace: ${workspaceDir}`);
         if (runId) {
           console.log(`  - status.json entry: ${runId.substring(0, 12)}...`);
@@ -102,23 +102,9 @@ export const killCommand = new Command("kill")
           });
         }
 
-        // 2. Delete TAP device
-        try {
-          await deleteTapDevice(tapDevice);
-          results.push({
-            step: "TAP device",
-            success: true,
-            message: `${tapDevice} deleted`,
-          });
-        } catch (error) {
-          results.push({
-            step: "TAP device",
-            success: false,
-            message: error instanceof Error ? error.message : "Unknown error",
-          });
-        }
-
-        // 3. Remove workspace
+        // 2. Remove workspace
+        // Note: TAP device and IP are released by the runner process when it
+        // detects the VM exit. We don't release them here to avoid conflicts.
         if (existsSync(workspaceDir)) {
           try {
             rmSync(workspaceDir, { recursive: true, force: true });
@@ -142,7 +128,7 @@ export const killCommand = new Command("kill")
           });
         }
 
-        // 4. Update status.json
+        // 3. Update status.json
         if (runId && existsSync(statusFilePath)) {
           try {
             const status: RunnerStatus = JSON.parse(
@@ -204,10 +190,10 @@ export const killCommand = new Command("kill")
 function resolveRunId(
   input: string,
   statusFilePath: string,
-): { vmId: string; runId: string | null } {
+): { vmId: VmId; runId: string | null } {
   if (input.includes("-")) {
-    const vmId = input.split("-")[0];
-    return { vmId: vmId ?? input, runId: input };
+    // Full UUID provided, extract vmId
+    return { vmId: createVmId(input), runId: input };
   }
 
   if (existsSync(statusFilePath)) {
@@ -219,14 +205,15 @@ function resolveRunId(
         id.startsWith(input),
       );
       if (match) {
-        return { vmId: input, runId: match };
+        return { vmId: createVmId(match), runId: match };
       }
     } catch {
       // Ignore parsing errors
     }
   }
 
-  return { vmId: input, runId: null };
+  // Short vmId provided directly
+  return { vmId: createVmId(input), runId: null };
 }
 
 async function confirm(message: string): Promise<boolean> {

@@ -52,6 +52,8 @@ export const agentSchedules = pgTable(
     nextRunAt: timestamp("next_run_at"),
     lastRunAt: timestamp("last_run_at"),
     lastRunId: uuid("last_run_id").references(() => agentRuns.id),
+    // Tracks when retry cycle started for concurrency failures (null = not retrying)
+    retryStartedAt: timestamp("retry_started_at"),
 
     // Timestamps
     createdAt: timestamp("created_at").defaultNow().notNull(),

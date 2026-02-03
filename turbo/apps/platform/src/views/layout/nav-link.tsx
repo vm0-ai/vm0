@@ -1,4 +1,4 @@
-import { useGet, useSet } from "ccstate-react";
+import { useSet } from "ccstate-react";
 import {
   IconRobot,
   IconCircleDotFilled,
@@ -24,7 +24,6 @@ import {
 } from "@vm0/ui/components/ui/tooltip";
 import type { NavItem } from "../../types/navigation.ts";
 import { navigateInReact$ } from "../../signals/route.ts";
-import { sidebarCollapsed$ } from "../../signals/sidebar.ts";
 
 // eslint-disable-next-line ccstate/no-package-variable -- static readonly icon mapping
 const ICON_MAP = {
@@ -47,11 +46,11 @@ const ICON_MAP = {
 interface NavLinkProps {
   item: NavItem;
   isActive: boolean;
+  collapsed: boolean;
 }
 
-export function NavLink({ item, isActive }: NavLinkProps) {
+export function NavLink({ item, isActive, collapsed }: NavLinkProps) {
   const navigate = useSet(navigateInReact$);
-  const collapsed = useGet(sidebarCollapsed$);
   const IconComponent = ICON_MAP[item.icon];
 
   const handleClick = () => {

@@ -1,16 +1,14 @@
 {
   "name": "VM0 Development",
-  "image": "ghcr.io/vm0-ai/vm0-dev:20260129",
+  "image": "ghcr.io/vm0-ai/vm0-dev:20260202",
   "features": {
     "ghcr.io/itsmechlark/features/postgresql:1": {
       "version": "17"
-    },
-    "ghcr.io/devcontainers-extra/features/caddy:1": {},
-    "ghcr.io/joedmck/devcontainer-features/cloudflared:1": {}
+    }
   },
   "remoteUser": "vscode",
   "forwardPorts": [8443],
-  "runArgs": ["-p", "8443"],
+  "runArgs": ["-p", "8443", "--hostname", "${localWorkspaceFolderBasename}"],
   "remoteEnv": {
     "CLAUDE_CONFIG_DIR": "/home/vscode/.config/claude",
     "CRUSH_GLOBAL_CONFIG": "/home/vscode/.config/crush",
@@ -18,7 +16,7 @@
     "DATABASE_URL": "postgresql://postgres:postgres@localhost:5432/postgres",
     "NODE_EXTRA_CA_CERTS": "${containerWorkspaceFolder}/.certs/rootCA.pem",
     "CARGO_HOME": "/home/vscode/.cache/cargo",
-    "PATH": "/home/vscode/.cache/cargo/bin:${containerWorkspaceFolder}/bin:${containerEnv:PATH}",
+    "PATH": "/home/vscode/.cache/cargo/bin:/home/vscode/.local/bin:${containerWorkspaceFolder}/bin:${containerEnv:PATH}",
     "VM0_API_URL": "https://www.vm7.ai:8443"
   },
   "mounts": [
@@ -27,6 +25,7 @@
     "source=vercel,target=/home/vscode/.local/share/com.vercel.cli",
     "source=pnpm,target=/home/vscode/.local/share/pnpm",
     "source=mkcert,target=/home/vscode/.local/share/mkcert",
+    "source=claude,target=/home/vscode/.local/share/claude",
     "source=codex,target=/home/vscode/.codex",
     "source=pki,target=/home/vscode/.pki"
   ],

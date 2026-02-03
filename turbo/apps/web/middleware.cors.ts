@@ -32,15 +32,15 @@ function isOriginAllowed(origin: string | null): boolean {
   // Always allow *.vm0.ai subdomains
   if (hostname.endsWith(".vm0.ai")) return true;
 
-  // Preview environment: additionally allow *.vercel.app
+  // Preview environment: additionally allow *.vm6.ai
   if (env().VERCEL_ENV === "preview") {
-    if (hostname.endsWith(".vercel.app")) return true;
+    if (hostname.endsWith(".vm6.ai")) return true;
   }
 
-  // Development environment: additionally allow localhost and *.vercel.app
+  // Development environment: additionally allow localhost and *.vm6.ai
   if (env().NODE_ENV === "development") {
     if (hostname === "localhost") return true;
-    if (hostname.endsWith(".vercel.app")) return true;
+    if (hostname.endsWith(".vm6.ai")) return true;
     if (hostname.endsWith(".vm7.ai")) return true;
   }
 

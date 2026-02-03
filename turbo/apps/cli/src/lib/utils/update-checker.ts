@@ -172,8 +172,8 @@ export async function checkAndUpgrade(
     return false;
   }
 
-  // New version available - show EA notice
-  console.log(chalk.yellow("vm0 is currently in Early Access (EA)."));
+  // New version available - show beta notice
+  console.log(chalk.yellow("vm0 is currently in beta."));
   console.log(
     chalk.yellow(
       `Current version: ${currentVersion} -> Latest version: ${latestVersion}`,
@@ -226,4 +226,76 @@ export async function checkAndUpgrade(
   console.log("Then re-run:");
   console.log(chalk.cyan(`  ${buildRerunCommand(prompt)}`));
   return true;
+}
+
+/**
+ * Perform silent upgrade after command completion.
+ * - Checks for new version
+ * - Spawns upgrade process
+ * - Waits up to 5s for result
+ * - Shows whisper message only on failure
+ *
+ * @param currentVersion - Current CLI version
+ * @returns Promise that resolves when upgrade check/attempt is complete
+ */
+export async function silentUpgradeAfterCommand(
+  currentVersion: string,
+): Promise<void> {
+  // Check for new version
+  const latestVersion = await getLatestVersion();
+
+  // If check failed or already on latest, return silently
+  if (latestVersion === null || latestVersion === currentVersion) {
+    return;
+  }
+
+  // Check package manager
+  const packageManager = detectPackageManager();
+
+  // For unsupported package managers, return silently (no whisper)
+  if (!isAutoUpgradeSupported(packageManager)) {
+    return;
+  }
+
+  // Spawn upgrade process and wait for result with timeout
+  const isWindows = process.platform === "win32";
+  const command = isWindows ? `${packageManager}.cmd` : packageManager;
+  const args =
+    packageManager === "pnpm"
+      ? ["add", "-g", `${PACKAGE_NAME}@latest`]
+      : ["install", "-g", `${PACKAGE_NAME}@latest`];
+
+  const upgradeResult = await new Promise<boolean>((resolve) => {
+    const child = spawn(command, args, {
+      stdio: "pipe", // Capture output instead of inheriting
+      shell: isWindows,
+      detached: !isWindows, // Detach on non-Windows
+      windowsHide: true,
+    });
+
+    // Set up timeout - kill child process to prevent orphaned processes
+    const timeoutId = setTimeout(() => {
+      child.kill();
+      resolve(false); // Timeout = failure
+    }, TIMEOUT_MS);
+
+    child.on("close", (code) => {
+      clearTimeout(timeoutId);
+      resolve(code === 0);
+    });
+
+    child.on("error", () => {
+      clearTimeout(timeoutId);
+      resolve(false);
+    });
+  });
+
+  // Show whisper message only on failure
+  if (!upgradeResult) {
+    console.log(
+      chalk.yellow(
+        `\n⚠ vm0 auto upgrade failed. Please run: ${getManualUpgradeCommand(packageManager)}`,
+      ),
+    );
+  }
 }

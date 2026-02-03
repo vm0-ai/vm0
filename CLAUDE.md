@@ -108,6 +108,18 @@ export async function GET() {
 - Address TypeScript errors properly, don't ignore them
 - Unused variables should be removed, not ignored
 
+### Testing Guidelines
+**"Write tests. Not too many. Mostly integration."** — Kent C. Dodds
+
+#### Core Rules:
+- **Integration Tests Only** - Test at entry points (CLI commands, API routes), not internal functions
+- **No Unit Tests** - Integration tests already exercise all internal logic
+- **E2E Tests for Happy Path** - E2E tests only cover happy path; error cases go in integration tests
+- **Only Mock External Dependencies** - If `vi.mock()` path starts with `../../`, it's wrong
+- **Use Real Infrastructure** - Real database, real filesystem (temp dirs), MSW for HTTP
+
+For detailed patterns and examples, use `/testing`.
+
 ## Commit Message Guidelines
 
 **All commit messages must follow Conventional Commits format.** This ensures consistent commit history and enables automated versioning.
@@ -211,7 +223,7 @@ If tests timeout, investigate why:
 
 ### CLI E2E Timeout
 
-The `cli-e2e` jobs have a **maximum 8-minute timeout** (5 minutes for serial tests, 8 minutes for parallel/runner tests). If tests exceed this limit, GitHub Actions will **cancel** the job (not fail). **Cancelled status is NOT acceptable for merge** - treat it as a failure and investigate the cause.
+The `cli-e2e` jobs have a **maximum timeout** (5 minutes for serial/parallel tests, 8 minutes for runner tests). If tests exceed this limit, GitHub Actions will **cancel** the job (not fail). **Cancelled status is NOT acceptable for merge** - treat it as a failure and investigate the cause.
 
 ### Merge Requirements
 

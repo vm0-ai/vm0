@@ -27,6 +27,7 @@ export const modelProviders = pgTable(
       .references(() => credentials.id, { onDelete: "cascade" })
       .notNull(),
     isDefault: boolean("is_default").notNull().default(false),
+    selectedModel: varchar("selected_model", { length: 255 }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

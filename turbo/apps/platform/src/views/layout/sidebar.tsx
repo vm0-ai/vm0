@@ -11,7 +11,11 @@ import { NavLink } from "./nav-link.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import { VM0SubscriptionDetailsButton } from "../clerk/subscription-detail.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { sidebarCollapsed$ } from "../../signals/sidebar.ts";
+import {
+  sidebarCollapsed$,
+  mobileSidebarOpen$,
+  closeMobileSidebar$,
+} from "../../signals/sidebar.ts";
 import { theme$ } from "../../signals/theme.ts";
 import {
   userMenuOpen$,
@@ -25,21 +29,16 @@ import {
   TooltipTrigger,
 } from "@vm0/ui/components/ui/tooltip";
 
-export function Sidebar() {
+function SidebarContent({ collapsed }: { collapsed: boolean }) {
   const activeItem = useGet(activeNavItem$);
   const theme = useGet(theme$);
-  const collapsed = useGet(sidebarCollapsed$);
   const featureSwitches = useLastResolved(featureSwitch$);
   if (!featureSwitches) {
     return null;
   }
 
   return (
-    <aside
-      className={`hidden md:flex flex-col border-r border-sidebar-border bg-sidebar transition-all duration-300 ${
-        collapsed ? "w-16" : "w-[255px]"
-      }`}
-    >
+    <>
       <div className="h-[49px] flex flex-col justify-center p-2 border-b border-divider">
         <div
           className={`flex items-center h-8 ${collapsed ? "justify-center" : "gap-2.5 p-1.5"}`}
@@ -70,6 +69,7 @@ export function Sidebar() {
             <NavLink
               item={GET_STARTED_ITEM}
               isActive={activeItem === GET_STARTED_ITEM.id}
+              collapsed={collapsed}
             />
           </div>
         </div>
@@ -112,6 +112,7 @@ export function Sidebar() {
                     key={item.id}
                     item={item}
                     isActive={activeItem === item.id}
+                    collapsed={collapsed}
                   />
                 ))}
               </div>
@@ -128,20 +129,56 @@ export function Sidebar() {
               key={item.id}
               item={item}
               isActive={activeItem === item.id}
+              collapsed={collapsed}
             />
           ))}
         </div>
       </div>
 
-      <UserProfile />
-    </aside>
+      <UserProfile collapsed={collapsed} />
+    </>
   );
 }
 
-function UserProfile() {
+export function Sidebar() {
+  const collapsed = useGet(sidebarCollapsed$);
+  const mobileOpen = useGet(mobileSidebarOpen$);
+  const closeMobile = useSet(closeMobileSidebar$);
+
+  return (
+    <>
+      {/* Desktop sidebar */}
+      <aside
+        className={`hidden md:flex flex-col border-r border-sidebar-border bg-sidebar transition-all duration-300 ${
+          collapsed ? "w-16" : "w-[255px]"
+        }`}
+      >
+        <SidebarContent collapsed={collapsed} />
+      </aside>
+
+      {/* Mobile sidebar overlay */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-40 md:hidden" onClick={closeMobile}>
+          <div className="absolute inset-0 bg-black/50" />
+          <aside
+            className="absolute left-0 top-0 h-full w-[255px] flex flex-col border-r border-sidebar-border bg-sidebar"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <SidebarContent collapsed={false} />
+          </aside>
+        </div>
+      )}
+    </>
+  );
+}
+
+interface UserProfileProps {
+  collapsed: boolean;
+}
+
+function UserProfile({ collapsed }: UserProfileProps) {
   const clerkLoadable = useLoadable(clerk$);
   const userLoadable = useLoadable(user$);
-  const collapsed = useGet(sidebarCollapsed$);
   const isMenuOpen = useGet(userMenuOpen$);
   const toggleMenu = useSet(toggleUserMenu$);
   const closeMenu = useSet(closeUserMenu$);

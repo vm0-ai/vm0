@@ -1,22 +1,23 @@
 /**
- * TAP Device Pool for pre-warmed VM network interfaces
+ * TAP Device Pool for Firecracker VMs
  *
- * Pre-creates TAP devices attached to the bridge to reduce VM boot time.
- * Instead of creating TAP devices on-demand (~9ms), we acquire
- * pre-created devices from a pool (~2ms for MAC change + ARP flush).
+ * Manages pre-warmed {TAP, IP} pairs to reduce VM boot time.
+ * Instead of creating TAP devices and allocating IPs on-demand,
+ * we acquire pre-created pairs from a pool.
  *
  * Design:
- * - Pool maintains a queue of pre-created TAP device names
- * - acquire() returns a TAP with dynamically set MAC and allocated IP
- * - release() returns the TAP to the pool (instead of deleting it)
+ * - Pool maintains a queue of pre-created {TAP, IP} pairs
+ * - acquire() returns a pair with dynamically set MAC
+ * - release() returns the pair to the pool
  * - Pool replenishes in background when below threshold
+ *
+ * TAP naming: vm0{hash8}{index3} (e.g., vm078f6669b000)
  */
 
 import { createHash } from "node:crypto";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { createLogger } from "../logger.js";
-import { allocateIP, releaseIP } from "./ip-pool.js";
 import {
   generateMacAddress,
   BRIDGE_NAME,
@@ -24,9 +25,28 @@ import {
   BRIDGE_NETMASK,
   type VMNetworkConfig,
 } from "./network.js";
+import {
+  allocateIP,
+  releaseIP,
+  cleanupOrphanedIPs,
+  assignVmIdToIP,
+  clearVmIdFromIP,
+  scanTapDevices,
+} from "./ip-registry.js";
+import { type VmId } from "./vm-id.js";
 
 const execAsync = promisify(exec);
 const logger = createLogger("TapPool");
+
+// ============ Types ============
+
+/**
+ * Pooled resource: {TAP, IP} pair
+ */
+interface PooledResource {
+  tapDevice: string;
+  guestIp: string;
+}
 
 /**
  * Pool configuration
@@ -34,7 +54,7 @@ const logger = createLogger("TapPool");
 interface TapPoolConfig {
   /** Runner name for generating unique TAP prefix */
   name: string;
-  /** Number of TAP devices to maintain in pool */
+  /** Number of {TAP, IP} pairs to maintain in pool */
   size: number;
   /** Start replenishing when pool drops below this count */
   replenishThreshold: number;
@@ -45,6 +65,8 @@ interface TapPoolConfig {
   /** Custom MAC setter function (optional, for testing) */
   setMac?: (tap: string, mac: string) => Promise<void>;
 }
+
+// ============ Helper Functions ============
 
 /**
  * Generate TAP prefix from runner name
@@ -98,14 +120,16 @@ async function clearArpEntry(ip: string): Promise<void> {
   }
 }
 
+// ============ TapPool Class ============
+
 /**
  * TAP Pool class
  *
- * Manages a pool of pre-created TAP devices for fast VM boot.
+ * Manages a pool of pre-created {TAP, IP} pairs for fast VM boot.
  */
 export class TapPool {
   private initialized = false;
-  private queue: string[] = [];
+  private queue: PooledResource[] = [];
   private replenishing = false;
   private nextIndex = 0;
   private readonly prefix: string;
@@ -139,6 +163,28 @@ export class TapPool {
   }
 
   /**
+   * Create a {TAP, IP} pair
+   */
+  private async createPair(): Promise<PooledResource> {
+    const tapDevice = this.generateTapName(this.nextIndex++);
+
+    // Create TAP device
+    await this.config.createTap(tapDevice);
+
+    // Allocate IP
+    let guestIp: string;
+    try {
+      guestIp = await allocateIP(tapDevice);
+    } catch (err) {
+      // Rollback: delete TAP if IP allocation fails
+      await this.config.deleteTap(tapDevice).catch(() => {});
+      throw err;
+    }
+
+    return { tapDevice, guestIp };
+  }
+
+  /**
    * Replenish the pool in background
    */
   private async replenish(): Promise<void> {
@@ -152,24 +198,44 @@ export class TapPool {
     }
 
     this.replenishing = true;
-    logger.log(`Replenishing pool: creating ${needed} TAP(s)...`);
+    logger.log(`Replenishing pool: creating up to ${needed} pair(s)...`);
 
     try {
-      const promises = [];
       for (let i = 0; i < needed; i++) {
-        const tapName = this.generateTapName(this.nextIndex++);
-        promises.push(
-          this.config.createTap(tapName).then(() => {
-            this.queue.push(tapName);
-          }),
-        );
+        // Check if pool was shutdown during replenish
+        if (!this.initialized) {
+          logger.log("Pool shutdown detected, stopping replenish");
+          break;
+        }
+
+        // Re-check if pool still needs more pairs
+        // (release() may have returned pairs during async createPair())
+        if (this.queue.length >= this.config.size) {
+          break;
+        }
+
+        try {
+          const pair = await this.createPair();
+
+          // Double-check initialized after async createPair()
+          // to avoid pushing to a cleaned-up queue
+          if (!this.initialized) {
+            // Pool was shutdown while creating pair - cleanup the pair
+            await releaseIP(pair.guestIp).catch(() => {});
+            await this.config.deleteTap(pair.tapDevice).catch(() => {});
+            logger.log("Pool shutdown detected, cleaned up in-flight pair");
+            break;
+          }
+
+          this.queue.push(pair);
+        } catch (err) {
+          logger.error(
+            `Failed to create pair: ${err instanceof Error ? err.message : "Unknown"}`,
+          );
+          // Continue creating remaining pairs
+        }
       }
-      await Promise.all(promises);
       logger.log(`Pool replenished: ${this.queue.length} available`);
-    } catch (err) {
-      logger.error(
-        `Replenish failed: ${err instanceof Error ? err.message : "Unknown"}`,
-      );
     } finally {
       this.replenishing = false;
     }
@@ -179,24 +245,8 @@ export class TapPool {
    * Scan for orphaned TAP devices from previous runs (matching this pool's prefix)
    */
   private async scanOrphanedTaps(): Promise<string[]> {
-    try {
-      const { stdout } = await execAsync(
-        `ip -o link show type tuntap 2>/dev/null || true`,
-      );
-
-      const orphaned: string[] = [];
-      const lines = stdout.split("\n");
-      for (const line of lines) {
-        // Match TAP devices with our prefix
-        const match = line.match(/^\d+:\s+([a-z0-9]+):/);
-        if (match && match[1] && this.isOwnTap(match[1])) {
-          orphaned.push(match[1]);
-        }
-      }
-      return orphaned;
-    } catch {
-      return [];
-    }
+    const allTaps = await scanTapDevices();
+    return Array.from(allTaps).filter((tap) => this.isOwnTap(tap));
   }
 
   /**
@@ -211,15 +261,26 @@ export class TapPool {
     );
 
     // Clean up orphaned TAPs from previous runs
-    const orphaned = await this.scanOrphanedTaps();
-    if (orphaned.length > 0) {
-      logger.log(`Cleaning up ${orphaned.length} orphaned TAP(s)`);
-      for (const tap of orphaned) {
+    const orphanedTaps = await this.scanOrphanedTaps();
+    if (orphanedTaps.length > 0) {
+      logger.log(`Cleaning up ${orphanedTaps.length} orphaned TAP(s)`);
+      for (const tap of orphanedTaps) {
         try {
           await execCommand(`ip link delete ${tap}`);
         } catch {
           // Device might already be gone
         }
+      }
+    }
+
+    // Clean up orphaned IPs and get list of orphaned TAPs to delete
+    const orphanedTapsFromRegistry = await cleanupOrphanedIPs();
+    for (const tap of orphanedTapsFromRegistry) {
+      try {
+        await execCommand(`ip link delete ${tap}`);
+        logger.log(`Deleted orphaned TAP ${tap} (runner dead)`);
+      } catch {
+        // Device might already be gone
       }
     }
 
@@ -229,20 +290,20 @@ export class TapPool {
   }
 
   /**
-   * Acquire a TAP device from the pool
+   * Acquire a {TAP, IP} pair from the pool
    *
    * Returns VMNetworkConfig with TAP device, IP, and MAC.
    * Falls back to on-demand creation if pool is exhausted.
    */
-  async acquire(vmId: string): Promise<VMNetworkConfig> {
-    const pooledTap = this.queue.shift();
-    let tapDevice: string;
+  async acquire(vmId: VmId): Promise<VMNetworkConfig> {
+    let resource: PooledResource;
     let fromPool: boolean;
 
-    if (pooledTap) {
-      tapDevice = pooledTap;
+    const pooled = this.queue.shift();
+    if (pooled) {
+      resource = pooled;
       fromPool = true;
-      logger.log(`Acquired TAP from pool (${this.queue.length} remaining)`);
+      logger.log(`Acquired pair from pool (${this.queue.length} remaining)`);
 
       // Trigger background replenishment if below threshold
       if (this.queue.length < this.config.replenishThreshold) {
@@ -254,74 +315,78 @@ export class TapPool {
       }
     } else {
       // Pool exhausted - create on demand
-      logger.log("Pool exhausted, creating TAP on-demand");
-      tapDevice = this.generateTapName(this.nextIndex++);
+      logger.log("Pool exhausted, creating pair on-demand");
+      resource = await this.createPair();
       fromPool = false;
-      await this.config.createTap(tapDevice);
-    }
 
-    // Allocate IP from pool
-    let guestIp: string;
-    try {
-      guestIp = await allocateIP(vmId);
-    } catch (err) {
-      // Return TAP to pool or delete on-demand TAP on failure
-      if (fromPool) {
-        this.queue.push(tapDevice);
-        logger.log(
-          `Returned TAP ${tapDevice} to pool after IP allocation failure`,
-        );
-      } else {
-        this.config.deleteTap(tapDevice).catch(() => {});
+      // Trigger replenish to refill the pool for future acquires
+      // Only if replenishThreshold > 0 (i.e., auto-replenish is enabled)
+      if (this.config.replenishThreshold > 0) {
+        this.replenish().catch((err) => {
+          logger.error(
+            `Background replenish failed: ${err instanceof Error ? err.message : "Unknown"}`,
+          );
+        });
       }
-      throw err;
     }
 
     // Set MAC address based on vmId
     const guestMac = generateMacAddress(vmId);
     try {
-      await this.config.setMac(tapDevice, guestMac);
+      // Parallelize setMac and clearArpEntry - no dependencies between them
+      await Promise.all([
+        this.config.setMac(resource.tapDevice, guestMac),
+        clearArpEntry(resource.guestIp),
+      ]);
     } catch (err) {
-      // Release IP and return TAP to pool or delete on failure
-      await releaseIP(guestIp);
+      // Return pair to pool or cleanup on failure
       if (fromPool) {
-        this.queue.push(tapDevice);
-        logger.log(`Returned TAP ${tapDevice} to pool after MAC set failure`);
+        this.queue.push(resource);
+        logger.log(
+          `Returned pair to pool after MAC/ARP failure: ${resource.tapDevice}`,
+        );
       } else {
-        this.config.deleteTap(tapDevice).catch(() => {});
+        await releaseIP(resource.guestIp).catch(() => {});
+        await this.config.deleteTap(resource.tapDevice).catch(() => {});
       }
       throw err;
     }
 
-    // Clear any stale ARP entry
-    await clearArpEntry(guestIp);
+    // Update registry with vmId for diagnostic purposes
+    // Non-blocking - failure should not prevent VM from starting
+    assignVmIdToIP(resource.guestIp, vmId).catch((err) => {
+      logger.error(
+        `Failed to assign vmId to IP registry: ${err instanceof Error ? err.message : "Unknown"}`,
+      );
+    });
 
-    logger.log(`TAP acquired: ${tapDevice}, MAC ${guestMac}, IP ${guestIp}`);
+    logger.log(
+      `Acquired: TAP ${resource.tapDevice}, MAC ${guestMac}, IP ${resource.guestIp}`,
+    );
 
     return {
-      tapDevice,
+      tapDevice: resource.tapDevice,
       guestMac,
-      guestIp,
+      guestIp: resource.guestIp,
       gatewayIp: BRIDGE_IP,
       netmask: BRIDGE_NETMASK,
     };
   }
 
   /**
-   * Release a TAP device back to the pool
+   * Release a {TAP, IP} pair back to the pool
+   * @param vmId The VM ID that is releasing this pair (for registry cleanup)
    */
-  async release(tapDevice: string, guestIp: string): Promise<void> {
-    // Release IP back to the pool
-    await releaseIP(guestIp);
-
+  async release(tapDevice: string, guestIp: string, vmId: VmId): Promise<void> {
     // Clear ARP entry
     await clearArpEntry(guestIp);
 
-    // If pool is not initialized (e.g., during shutdown), delete the TAP
+    // If pool is not initialized (e.g., during shutdown), cleanup resources
     if (!this.initialized) {
+      await releaseIP(guestIp).catch(() => {});
       try {
         await this.config.deleteTap(tapDevice);
-        logger.log(`TAP deleted (pool shutdown): ${tapDevice}`);
+        logger.log(`Pair deleted (pool shutdown): ${tapDevice}, ${guestIp}`);
       } catch (err) {
         logger.log(
           `Failed to delete TAP ${tapDevice}: ${err instanceof Error ? err.message : "Unknown"}`,
@@ -330,17 +395,40 @@ export class TapPool {
       return;
     }
 
-    // Return TAP to queue if it belongs to this pool
+    // Return pair to queue if TAP belongs to this pool
     if (this.isOwnTap(tapDevice)) {
-      this.queue.push(tapDevice);
+      // Check for duplicate release (caller error, but prevent IP conflict)
+      const alreadyInQueue = this.queue.some((r) => r.tapDevice === tapDevice);
+      if (alreadyInQueue) {
+        logger.log(
+          `Pair ${tapDevice} already in pool, ignoring duplicate release`,
+        );
+        return;
+      }
+
+      // Push to queue BEFORE async operation to prevent race condition
+      // where concurrent release() calls both pass the duplicate check
+      this.queue.push({ tapDevice, guestIp });
       logger.log(
-        `TAP released: ${tapDevice}, IP ${guestIp} (${this.queue.length} available)`,
+        `Pair released: ${tapDevice}, ${guestIp} (${this.queue.length} available)`,
       );
+
+      // Clear vmId from registry since pair is returning to pool
+      // Only clears if vmId matches to prevent race condition where new VM's vmId is cleared
+      // This is non-critical - failure should not prevent pair from being recycled
+      try {
+        await clearVmIdFromIP(guestIp, vmId);
+      } catch (err) {
+        logger.error(
+          `Failed to clear vmId from IP registry: ${err instanceof Error ? err.message : "Unknown"}`,
+        );
+      }
     } else {
-      // TAP from different pool or before pooling was enabled, delete it
+      // TAP from different pool, cleanup
+      await releaseIP(guestIp).catch(() => {});
       try {
         await this.config.deleteTap(tapDevice);
-        logger.log(`Non-pooled TAP deleted: ${tapDevice}`);
+        logger.log(`Non-pooled pair deleted: ${tapDevice}, ${guestIp}`);
       } catch (err) {
         logger.log(
           `Failed to delete non-pooled TAP ${tapDevice}: ${err instanceof Error ? err.message : "Unknown"}`,
@@ -352,36 +440,43 @@ export class TapPool {
   /**
    * Clean up the TAP pool
    *
-   * Note: This is a sync function for compatibility with process cleanup.
-   * TAP devices are deleted asynchronously (fire-and-forget).
-   * Any remaining TAPs will be cleaned up by init() on next startup.
+   * Releases all IPs and deletes all TAPs. Waits for all operations to complete
+   * to ensure registry is properly updated before process exits.
    */
-  cleanup(): void {
+  async cleanup(): Promise<void> {
     if (!this.initialized) {
       return;
     }
 
-    logger.log(`Cleaning up TAP pool (${this.queue.length} devices)...`);
+    logger.log(`Cleaning up TAP pool (${this.queue.length} pairs)...`);
 
-    // Delete all TAPs in queue (fire-and-forget)
-    for (const tap of this.queue) {
-      execAsync(`sudo ip link delete ${tap}`).catch((err) => {
-        logger.log(
-          `Failed to delete ${tap}: ${err instanceof Error ? err.message : "Unknown"}`,
-        );
-      });
+    // Release all IPs and delete all TAPs in parallel, wait for completion
+    const cleanupPromises: Promise<void>[] = [];
+    for (const { tapDevice, guestIp } of this.queue) {
+      cleanupPromises.push(
+        releaseIP(guestIp).catch(() => {
+          // Ignore errors - IP may already be released
+        }),
+      );
+      cleanupPromises.push(
+        this.config.deleteTap(tapDevice).catch((err) => {
+          logger.log(
+            `Failed to delete ${tapDevice}: ${err instanceof Error ? err.message : "Unknown"}`,
+          );
+        }),
+      );
     }
+    await Promise.all(cleanupPromises);
     this.queue = [];
 
     this.initialized = false;
     this.replenishing = false;
-    logger.log("TAP pool cleanup initiated");
+    logger.log("TAP pool cleanup complete");
   }
 }
 
-/**
- * Global TAP pool instance
- */
+// ============ Global TAP Pool Instance ============
+
 let tapPool: TapPool | null = null;
 
 /**
@@ -389,7 +484,7 @@ let tapPool: TapPool | null = null;
  */
 export async function initTapPool(config: TapPoolConfig): Promise<TapPool> {
   if (tapPool) {
-    tapPool.cleanup();
+    await tapPool.cleanup();
   }
   tapPool = new TapPool(config);
   await tapPool.init();
@@ -397,10 +492,10 @@ export async function initTapPool(config: TapPoolConfig): Promise<TapPool> {
 }
 
 /**
- * Acquire a TAP device from the global pool
+ * Acquire a {TAP, IP} pair from the global pool
  * @throws Error if pool was not initialized with initTapPool
  */
-export async function acquireTap(vmId: string): Promise<VMNetworkConfig> {
+export async function acquireTap(vmId: VmId): Promise<VMNetworkConfig> {
   if (!tapPool) {
     throw new Error("TAP pool not initialized. Call initTapPool() first.");
   }
@@ -408,25 +503,27 @@ export async function acquireTap(vmId: string): Promise<VMNetworkConfig> {
 }
 
 /**
- * Release a TAP device back to the global pool
+ * Release a {TAP, IP} pair back to the global pool
+ * @param vmId The VM ID that is releasing this pair (for registry cleanup)
  * @throws Error if pool was not initialized with initTapPool
  */
 export async function releaseTap(
   tapDevice: string,
   guestIp: string,
+  vmId: VmId,
 ): Promise<void> {
   if (!tapPool) {
     throw new Error("TAP pool not initialized. Call initTapPool() first.");
   }
-  return tapPool.release(tapDevice, guestIp);
+  return tapPool.release(tapDevice, guestIp, vmId);
 }
 
 /**
  * Clean up the global TAP pool
  */
-export function cleanupTapPool(): void {
+export async function cleanupTapPool(): Promise<void> {
   if (tapPool) {
-    tapPool.cleanup();
+    await tapPool.cleanup();
     tapPool = null;
   }
 }

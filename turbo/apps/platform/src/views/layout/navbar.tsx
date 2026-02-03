@@ -8,7 +8,7 @@ import {
 } from "@vm0/ui/components/ui/tooltip";
 import { ThemeToggle } from "../components/theme-toggle.tsx";
 import { navigateInReact$ } from "../../signals/route.ts";
-import { toggleSidebar$ } from "../../signals/sidebar.ts";
+import { toggleSidebar$, toggleMobileSidebar$ } from "../../signals/sidebar.ts";
 import type { RoutePath } from "../../types/route.ts";
 
 export interface BreadcrumbItem {
@@ -23,6 +23,16 @@ interface NavbarProps {
 export function Navbar({ breadcrumb }: NavbarProps) {
   const navigate = useSet(navigateInReact$);
   const toggleSidebar = useSet(toggleSidebar$);
+  const toggleMobileSidebar = useSet(toggleMobileSidebar$);
+
+  const handleToggle = () => {
+    // Check if we're on mobile (< md breakpoint)
+    if (window.innerWidth < 768) {
+      toggleMobileSidebar();
+    } else {
+      toggleSidebar();
+    }
+  };
 
   return (
     <header className="h-[49px] flex items-center border-b border-divider bg-background">
@@ -36,7 +46,7 @@ export function Navbar({ breadcrumb }: NavbarProps) {
                 <button
                   className="icon-button"
                   aria-label="Toggle sidebar"
-                  onClick={toggleSidebar}
+                  onClick={handleToggle}
                 >
                   <IconLayoutSidebar
                     size={16}
@@ -55,30 +65,39 @@ export function Navbar({ breadcrumb }: NavbarProps) {
         </div>
 
         {/* Breadcrumb */}
-        <nav className="flex items-center gap-1.5">
+        <nav className="flex items-center gap-1.5 min-w-0">
           {breadcrumb.map((item, index) => {
             const isLast = index === breadcrumb.length - 1;
             return (
               <div
                 key={`${item.label}-${index}`}
-                className="flex items-center gap-1.5"
+                className="flex items-center gap-1.5 min-w-0"
               >
                 {index > 0 && (
-                  <span className="text-muted-foreground/50">/</span>
+                  <span className="text-muted-foreground/50 shrink-0">/</span>
                 )}
                 {item.path ? (
                   <button
                     onClick={() => navigate(item.path!)}
-                    className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                    className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap"
                   >
                     {item.label}
                   </button>
                 ) : (
-                  <span
-                    className={`text-sm font-medium ${isLast ? "text-foreground" : "text-muted-foreground"}`}
-                  >
-                    {item.label}
-                  </span>
+                  <TooltipProvider delayDuration={300}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span
+                          className={`text-sm font-medium truncate max-w-[200px] sm:max-w-[400px] lg:max-w-[600px] ${isLast ? "text-foreground" : "text-muted-foreground"}`}
+                        >
+                          {item.label}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="text-xs">{item.label}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 )}
               </div>
             );

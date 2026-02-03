@@ -2,7 +2,7 @@
 
 ## Principle
 
-In the CLI app (`turbo/apps/cli`), only write command-level integration tests. Test commands via `command.parseAsync()` with MSW mocking the Web API.
+In the CLI app (`turbo/apps/cli`), only write **CLI Command Integration Tests**. Test commands via `command.parseAsync()` with MSW mocking the Web API.
 
 **Integration boundary:**
 - **Entry point**: Commander.js command action (`command.parseAsync()`)
@@ -330,7 +330,7 @@ beforeEach(() => {
 
 ## Test Targets
 
-Only test at command level. Do not write separate unit tests for internal modules.
+Only test at command integration level. Do not write separate unit tests for internal modules.
 
 **Bad Case**
 
@@ -344,7 +344,7 @@ Only test at command level. Do not write separate unit tests for internal module
 **Good Case**
 
 ```typescript
-// Command-level tests that exercise internal modules
+// CLI Command Integration Tests that exercise internal modules
 describe("compose command", () => {
   it("should reject invalid YAML", async () => {
     await fs.writeFile(path.join(tempDir, "vm0.yaml"), "invalid: yaml: content:");
@@ -412,6 +412,110 @@ it("should handle API error", async () => {
   expect(mockConsoleError).toHaveBeenCalledWith(
     expect.stringContaining("Invalid compose"),
   );
+});
+```
+
+---
+
+## MSW Handler Organization
+
+When testing commands that call multiple API endpoints, organize handlers in dedicated files.
+
+### Directory Structure
+
+```
+src/mocks/
+├── server.ts           # MSW server setup
+├── handlers/
+│   ├── index.ts        # Exports all handler arrays
+│   ├── api-handlers.ts # General API handlers
+│   ├── schedule-handlers.ts  # Schedule-specific handlers
+│   └── npm-registry-handlers.ts
+```
+
+### Creating Reusable Handlers
+
+```typescript
+// src/mocks/handlers/schedule-handlers.ts
+import { http, HttpResponse } from "msw";
+
+/**
+ * Default MSW handlers for schedule API endpoints.
+ * Individual tests can override using server.use().
+ */
+export const scheduleHandlers = [
+  // GET /api/agent/schedules
+  http.get("http://localhost:3000/api/agent/schedules", () => {
+    return HttpResponse.json({ schedules: [] });
+  }),
+
+  // POST /api/agent/schedules
+  http.post("http://localhost:3000/api/agent/schedules", () => {
+    return HttpResponse.json({
+      created: true,
+      schedule: { id: "schedule-123", name: "test-schedule" },
+    }, { status: 201 });
+  }),
+
+  // DELETE /api/agent/schedules/:name
+  http.delete("http://localhost:3000/api/agent/schedules/:name", () => {
+    return new HttpResponse(null, { status: 204 });
+  }),
+];
+```
+
+### Registering Handlers
+
+```typescript
+// src/mocks/handlers/index.ts
+import { apiHandlers } from "./api-handlers";
+import { scheduleHandlers } from "./schedule-handlers";
+
+export const handlers = [...apiHandlers, ...scheduleHandlers];
+```
+
+### Overriding in Tests
+
+Default handlers provide baseline responses. Override for specific test scenarios:
+
+```typescript
+// Test-specific override
+it("should handle schedule not found", async () => {
+  server.use(
+    http.get("http://localhost:3000/api/agent/schedules", () => {
+      return HttpResponse.json({ schedules: [] }); // Empty list
+    }),
+  );
+  // ... test assertions
+});
+```
+
+### Helper Functions for Tests
+
+Create helper functions to generate consistent mock data:
+
+```typescript
+// In test file
+function createMockSchedule(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "schedule-1",
+    composeName: "test-agent",
+    name: "test-agent-schedule",
+    cronExpression: "0 9 * * *",
+    enabled: true,
+    ...overrides,
+  };
+}
+
+it("should display schedule details", async () => {
+  const schedule = createMockSchedule({ timezone: "America/New_York" });
+
+  server.use(
+    http.get("http://localhost:3000/api/agent/schedules", () => {
+      return HttpResponse.json({ schedules: [schedule] });
+    }),
+  );
+  // ...
 });
 ```
 

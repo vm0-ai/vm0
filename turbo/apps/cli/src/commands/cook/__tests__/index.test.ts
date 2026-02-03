@@ -12,7 +12,7 @@ import * as fs from "fs/promises";
 import { existsSync, mkdtempSync, rmSync } from "fs";
 import * as path from "path";
 import * as os from "os";
-import { EventEmitter } from "events";
+import { createMockChildProcessWithOutput } from "../../../mocks/spawn-helpers";
 
 // Mock child_process for pnpm/vm0 CLI commands (external tools)
 vi.mock("child_process", () => ({
@@ -26,28 +26,6 @@ vi.mock("../../../lib/utils/update-checker", () => ({
 
 import { spawn } from "child_process";
 import { cookCommand } from "../index";
-
-// Helper to create a mock child process
-function createMockChildProcess(exitCode: number, stdout = "", stderr = "") {
-  const mockProcess = new EventEmitter() as EventEmitter & {
-    stdout: EventEmitter;
-    stderr: EventEmitter;
-  };
-  mockProcess.stdout = new EventEmitter();
-  mockProcess.stderr = new EventEmitter();
-
-  setImmediate(() => {
-    if (stdout) {
-      mockProcess.stdout.emit("data", Buffer.from(stdout));
-    }
-    if (stderr) {
-      mockProcess.stderr.emit("data", Buffer.from(stderr));
-    }
-    mockProcess.emit("close", exitCode);
-  });
-
-  return mockProcess;
-}
 
 // Mock os.homedir to isolate config files in temp directory
 // This is acceptable per CLI testing patterns (similar to auth tests)
@@ -86,7 +64,9 @@ describe("cook command", () => {
     // Mock spawn for pnpm/vm0 commands (external tools)
     // All commands succeed quickly so tests don't timeout
     vi.mocked(spawn).mockImplementation(() => {
-      return createMockChildProcess(0, "Success") as ReturnType<typeof spawn>;
+      return createMockChildProcessWithOutput(0, "Success") as ReturnType<
+        typeof spawn
+      >;
     });
 
     // Ensure clean config state
@@ -368,7 +348,7 @@ agents:
 
       // Mock spawn to return success for logs command
       vi.mocked(spawn).mockImplementation(() => {
-        return createMockChildProcess(0, "Logs output") as ReturnType<
+        return createMockChildProcessWithOutput(0, "Logs output") as ReturnType<
           typeof spawn
         >;
       });
@@ -405,7 +385,7 @@ agents:
 
       // Mock spawn to return success
       vi.mocked(spawn).mockImplementation(() => {
-        return createMockChildProcess(
+        return createMockChildProcessWithOutput(
           0,
           "Run ID: run-new\nSession ID: session-new",
         ) as ReturnType<typeof spawn>;
@@ -451,7 +431,7 @@ agents:
 
       // Mock spawn to return success
       vi.mocked(spawn).mockImplementation(() => {
-        return createMockChildProcess(
+        return createMockChildProcessWithOutput(
           0,
           "Run ID: run-new\nCheckpoint ID: checkpoint-new",
         ) as ReturnType<typeof spawn>;
@@ -510,7 +490,7 @@ agents:
 
       // Mock spawn to return success for logs command
       vi.mocked(spawn).mockImplementation(() => {
-        return createMockChildProcess(0, "Logs output") as ReturnType<
+        return createMockChildProcessWithOutput(0, "Logs output") as ReturnType<
           typeof spawn
         >;
       });

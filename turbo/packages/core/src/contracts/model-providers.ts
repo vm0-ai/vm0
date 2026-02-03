@@ -7,6 +7,11 @@ const c = initContract();
 /**
  * Model Provider type configuration
  * Maps type to framework, credential name, and display info
+ *
+ * For providers with `environmentMapping`, the credential is mapped to framework variables:
+ * - `$credential` → the stored credential value
+ * - `$model` → the selected model (or default)
+ * - Other values are passed through as literals
  */
 export const MODEL_PROVIDER_TYPES = {
   "claude-code-oauth-token": {
@@ -25,6 +30,73 @@ export const MODEL_PROVIDER_TYPES = {
     helpText:
       "Get your API key at: https://console.anthropic.com/settings/keys",
   },
+  "openrouter-api-key": {
+    framework: "claude-code" as const,
+    credentialName: "OPENROUTER_API_KEY",
+    label: "OpenRouter API Key",
+    credentialLabel: "API key",
+    helpText: "Get your API key at: https://openrouter.ai/settings/keys",
+    environmentMapping: {
+      ANTHROPIC_AUTH_TOKEN: "$credential",
+      ANTHROPIC_BASE_URL: "https://openrouter.ai/api",
+      ANTHROPIC_API_KEY: "",
+      ANTHROPIC_MODEL: "$model",
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "$model",
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "$model",
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
+      CLAUDE_CODE_SUBAGENT_MODEL: "$model",
+    } as Record<string, string>,
+    models: [
+      "anthropic/claude-sonnet-4.5",
+      "anthropic/claude-opus-4.5",
+      "anthropic/claude-haiku-4.5",
+    ] as string[],
+    defaultModel: "",
+  },
+  "moonshot-api-key": {
+    framework: "claude-code" as const,
+    credentialName: "MOONSHOT_API_KEY",
+    label: "Moonshot API Key (Kimi)",
+    credentialLabel: "API key",
+    helpText:
+      "Get your API key at: https://platform.moonshot.ai/console/api-keys",
+    environmentMapping: {
+      ANTHROPIC_AUTH_TOKEN: "$credential",
+      ANTHROPIC_BASE_URL: "https://api.moonshot.ai/anthropic",
+      ANTHROPIC_MODEL: "$model",
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "$model",
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "$model",
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
+      CLAUDE_CODE_SUBAGENT_MODEL: "$model",
+    } as Record<string, string>,
+    models: [
+      "kimi-k2.5",
+      "kimi-k2-thinking-turbo",
+      "kimi-k2-thinking",
+    ] as string[],
+    defaultModel: "kimi-k2.5",
+  },
+  "minimax-api-key": {
+    framework: "claude-code" as const,
+    credentialName: "MINIMAX_API_KEY",
+    label: "MiniMax API Key",
+    credentialLabel: "API key",
+    helpText:
+      "Get your API key at: https://platform.minimax.io/user-center/basic-information/interface-key",
+    environmentMapping: {
+      ANTHROPIC_AUTH_TOKEN: "$credential",
+      ANTHROPIC_BASE_URL: "https://api.minimax.io/anthropic",
+      ANTHROPIC_MODEL: "$model",
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "$model",
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "$model",
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
+      CLAUDE_CODE_SUBAGENT_MODEL: "$model",
+      API_TIMEOUT_MS: "3000000",
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+    } as Record<string, string>,
+    models: ["MiniMax-M2.1"] as string[],
+    defaultModel: "MiniMax-M2.1",
+  },
 } as const;
 
 export type ModelProviderType = keyof typeof MODEL_PROVIDER_TYPES;
@@ -33,6 +105,9 @@ export type ModelProviderFramework = "claude-code" | "codex";
 export const modelProviderTypeSchema = z.enum([
   "claude-code-oauth-token",
   "anthropic-api-key",
+  "openrouter-api-key",
+  "moonshot-api-key",
+  "minimax-api-key",
 ]);
 
 export const modelProviderFrameworkSchema = z.enum(["claude-code", "codex"]);
@@ -54,6 +129,43 @@ export function getCredentialNameForType(type: ModelProviderType): string {
 }
 
 /**
+ * Get environment mapping for a model provider type
+ * Returns undefined for providers without mapping (use credential directly)
+ */
+export function getEnvironmentMapping(
+  type: ModelProviderType,
+): Record<string, string> | undefined {
+  const config = MODEL_PROVIDER_TYPES[type];
+  return "environmentMapping" in config ? config.environmentMapping : undefined;
+}
+
+/**
+ * Get available models for a model provider type
+ * Returns undefined for providers without model selection
+ */
+export function getModels(type: ModelProviderType): string[] | undefined {
+  const config = MODEL_PROVIDER_TYPES[type];
+  return "models" in config ? config.models : undefined;
+}
+
+/**
+ * Get default model for a model provider type
+ * Returns undefined for providers without model selection
+ */
+export function getDefaultModel(type: ModelProviderType): string | undefined {
+  const config = MODEL_PROVIDER_TYPES[type];
+  return "defaultModel" in config ? config.defaultModel : undefined;
+}
+
+/**
+ * Check if a model provider type supports model selection
+ */
+export function hasModelSelection(type: ModelProviderType): boolean {
+  const config = MODEL_PROVIDER_TYPES[type];
+  return "models" in config && config.models.length > 0;
+}
+
+/**
  * Model provider response
  */
 export const modelProviderResponseSchema = z.object({
@@ -62,6 +174,7 @@ export const modelProviderResponseSchema = z.object({
   framework: modelProviderFrameworkSchema,
   credentialName: z.string(),
   isDefault: z.boolean(),
+  selectedModel: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -86,6 +199,7 @@ export const upsertModelProviderRequestSchema = z.object({
   type: modelProviderTypeSchema,
   credential: z.string().min(1, "Credential is required"),
   convert: z.boolean().optional(),
+  selectedModel: z.string().optional(),
 });
 
 export type UpsertModelProviderRequest = z.infer<
@@ -246,3 +360,37 @@ export const modelProvidersSetDefaultContract = c.router({
 
 export type ModelProvidersSetDefaultContract =
   typeof modelProvidersSetDefaultContract;
+
+/**
+ * Update model request schema
+ */
+export const updateModelRequestSchema = z.object({
+  selectedModel: z.string().optional(),
+});
+
+export type UpdateModelRequest = z.infer<typeof updateModelRequestSchema>;
+
+/**
+ * Update model contract for /api/model-providers/[type]/model
+ */
+export const modelProvidersUpdateModelContract = c.router({
+  updateModel: {
+    method: "PATCH",
+    path: "/api/model-providers/:type/model",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      type: modelProviderTypeSchema,
+    }),
+    body: updateModelRequestSchema,
+    responses: {
+      200: modelProviderResponseSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Update model selection for an existing provider",
+  },
+});
+
+export type ModelProvidersUpdateModelContract =
+  typeof modelProvidersUpdateModelContract;

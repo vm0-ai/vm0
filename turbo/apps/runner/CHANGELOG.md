@@ -1,5 +1,95 @@
 # Changelog
 
+## [3.10.0](https://github.com/vm0-ai/vm0/compare/runner-v3.9.4...runner-v3.10.0) (2026-02-02)
+
+
+### Features
+
+* **runner:** implement graceful vm shutdown via vsock ([#2136](https://github.com/vm0-ai/vm0/issues/2136)) ([d7d3778](https://github.com/vm0-ai/vm0/commit/d7d3778473db24b03e0b19626a279c59c52a86e6))
+
+
+### Performance Improvements
+
+* **runner:** optimize post-boot setup by parallelizing operations ([#2143](https://github.com/vm0-ai/vm0/issues/2143)) ([1a0992b](https://github.com/vm0-ai/vm0/commit/1a0992b6f5fe6668c91aed57ef00d3535abd54c8)), closes [#2140](https://github.com/vm0-ai/vm0/issues/2140)
+* **runner:** parallelize tap acquire operations ([#2141](https://github.com/vm0-ai/vm0/issues/2141)) ([7b30112](https://github.com/vm0-ai/vm0/commit/7b301125fcbed50d4c263f353f2cfa7f0e7d629a)), closes [#2137](https://github.com/vm0-ai/vm0/issues/2137)
+
+## [3.9.4](https://github.com/vm0-ai/vm0/compare/runner-v3.9.3...runner-v3.9.4) (2026-02-02)
+
+
+### Bug Fixes
+
+* **runner:** use reliable tap device scanning method ([#2126](https://github.com/vm0-ai/vm0/issues/2126)) ([7df129a](https://github.com/vm0-ai/vm0/commit/7df129a9ae565dc394cafd5a16b321a44e348fb4))
+
+
+### Performance Improvements
+
+* **runner:** use --config-file to eliminate firecracker api polling ([#2119](https://github.com/vm0-ai/vm0/issues/2119)) ([9a5c5a0](https://github.com/vm0-ai/vm0/commit/9a5c5a06ade6d8de3315c4ffd3a9fed5a9c9c970)), closes [#1811](https://github.com/vm0-ai/vm0/issues/1811)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.8.0
+
+## [3.9.3](https://github.com/vm0-ai/vm0/compare/runner-v3.9.2...runner-v3.9.3) (2026-02-02)
+
+
+### Performance Improvements
+
+* **runner:** parallelize firecracker vm configuration api calls ([#2096](https://github.com/vm0-ai/vm0/issues/2096)) ([9935af0](https://github.com/vm0-ai/vm0/commit/9935af0ea5e0afb2faa4da14f8d2eaa9e682ca9f)), closes [#1810](https://github.com/vm0-ai/vm0/issues/1810)
+
+## [3.9.2](https://github.com/vm0-ai/vm0/compare/runner-v3.9.1...runner-v3.9.2) (2026-02-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.7.0
+
+## [3.9.1](https://github.com/vm0-ai/vm0/compare/runner-v3.9.0...runner-v3.9.1) (2026-02-01)
+
+
+### Bug Fixes
+
+* **runner:** ensure proper cleanup and metrics collection ([#2088](https://github.com/vm0-ai/vm0/issues/2088)) ([a2c825e](https://github.com/vm0-ai/vm0/commit/a2c825e2bf76e4226c4428778617d5bd54a1936f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.6.1
+
+## [3.9.0](https://github.com/vm0-ai/vm0/compare/runner-v3.8.1...runner-v3.9.0) (2026-02-01)
+
+
+### Features
+
+* **cli:** release onboard banner update ([#2084](https://github.com/vm0-ai/vm0/issues/2084)) ([402820c](https://github.com/vm0-ai/vm0/commit/402820cbeabed134c3a757d4c8400037fce4c427))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.6.0
+
+## [3.8.1](https://github.com/vm0-ai/vm0/compare/runner-v3.8.0...runner-v3.8.1) (2026-01-31)
+
+
+### Bug Fixes
+
+* **ci:** use graceful shutdown for runner to prevent resource leaks ([#2067](https://github.com/vm0-ai/vm0/issues/2067)) ([5a2aba9](https://github.com/vm0-ai/vm0/commit/5a2aba9d1e8d1936e361e0f8cdb09ef83c507347))
+* **runner:** track runner pid in ip registry for orphan cleanup ([#2068](https://github.com/vm0-ai/vm0/issues/2068)) ([c76d898](https://github.com/vm0-ai/vm0/commit/c76d89815830e96d9cd707eef81ad979803e7fc9))
+
+
+### Performance Improvements
+
+* **runner:** pre-allocate TAP and IP as pairs in network resource pool ([#2066](https://github.com/vm0-ai/vm0/issues/2066)) ([8bd3db4](https://github.com/vm0-ai/vm0/commit/8bd3db4d4b11b154b5b7d33e815548cb07db39b9))
+* **runner:** pre-warm tap device pool for faster vm boot ([#1997](https://github.com/vm0-ai/vm0/issues/1997)) ([294b22b](https://github.com/vm0-ai/vm0/commit/294b22bdc9bc80542a3a04620bb17a0aaa36f2be))
+
 ## [3.8.0](https://github.com/vm0-ai/vm0/compare/runner-v3.7.3...runner-v3.8.0) (2026-01-31)
 
 

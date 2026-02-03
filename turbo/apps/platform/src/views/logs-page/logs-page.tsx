@@ -10,7 +10,7 @@ export function LogsPage() {
       title="Logs"
       subtitle="View all agent runs and execution history."
     >
-      <div className="flex flex-col gap-6 px-6 mb-8">
+      <div className="flex flex-col gap-6 px-4 sm:px-6 mb-8">
         {/* Search */}
         <LogsSearch />
 

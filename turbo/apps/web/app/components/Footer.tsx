@@ -35,6 +35,15 @@ export default function Footer() {
           <div className="footer-left">
             <p className="footer-copyright">{t("copyright")}</p>
             <div className="footer-legal-links">
+              <a
+                href="https://status.vm0.ai"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="footer-legal-link"
+              >
+                {t("status")}
+              </a>
+              <span className="footer-legal-separator">•</span>
               <Link href="/terms-of-use" className="footer-legal-link">
                 {t("termsOfUse")}
               </Link>

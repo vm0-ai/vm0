@@ -1,5 +1,5 @@
 import type { RunnerConfig } from "../config.js";
-import { dataPaths } from "../paths.js";
+import { runnerPaths } from "../paths.js";
 import {
   checkNetworkPrerequisites,
   setupBridge,
@@ -8,7 +8,6 @@ import {
   setupCIDRProxyRules,
   cleanupCIDRProxyRules,
 } from "../firecracker/network.js";
-import { cleanupOrphanedAllocations } from "../firecracker/ip-pool.js";
 import {
   initOverlayPool,
   cleanupOverlayPool,
@@ -64,18 +63,13 @@ export async function setupEnvironment(
   logger.log("Cleaning up orphaned proxy rules...");
   await cleanupOrphanedProxyRules(config.name);
 
-  // Clean up orphaned IP allocations from previous runs
-  // This reconciles the IP registry with actual TAP devices
-  logger.log("Cleaning up orphaned IP allocations...");
-  await cleanupOrphanedAllocations();
-
   // Initialize overlay pool for faster VM boot
   // Pre-creates sparse ext4 overlay files that can be acquired instantly
   logger.log("Initializing overlay pool...");
   await initOverlayPool({
     size: config.sandbox.max_concurrent + 2,
     replenishThreshold: config.sandbox.max_concurrent,
-    poolDir: dataPaths.overlayPool(config.data_dir),
+    poolDir: runnerPaths.overlayPool(config.base_dir),
   });
 
   // Initialize TAP pool for faster VM boot
@@ -165,7 +159,7 @@ export async function cleanupEnvironment(
 
   // Cleanup TAP pool
   try {
-    cleanupTapPool();
+    await cleanupTapPool();
   } catch (err) {
     const error = err instanceof Error ? err : new Error(String(err));
     errors.push(error);

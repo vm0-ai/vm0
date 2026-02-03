@@ -73,10 +73,8 @@ Apply these thinking approaches during planning:
    - Acceptance criteria
 
 3. **Define test requirements:**
-   - **Unit tests**: Test individual functions, components, or modules in isolation
-   - **E2E tests**: Test user-facing workflows and critical paths through the system
-   - Specify which type of test is needed for each task
-   - Include test file locations and key test scenarios
+   - Include test strategy following `/testing` conventions
+   - Specify test file locations and key test scenarios
 
 4. **Identify risks and blockers:**
    - Technical challenges

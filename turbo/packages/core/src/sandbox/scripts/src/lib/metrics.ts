@@ -179,13 +179,13 @@ function metricsCollectorLoop(): void {
     setTimeout(writeMetrics, METRICS_INTERVAL * 1000);
   };
 
-  // Start collecting
+  // Start collecting immediately
   writeMetrics();
 }
 
 /**
  * Start the metrics collector as a background process.
- * Uses setInterval internally, no explicit thread management needed.
+ * Uses setTimeout chain internally, no explicit thread management needed.
  */
 export function startMetricsCollector(): void {
   shutdownRequested = false;

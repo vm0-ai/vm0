@@ -47,7 +47,7 @@ const mockLogDetails: LogDetail[] = [
 ];
 
 export const platformLogsHandlers = [
-  // GET /api/platform/logs - List logs (returns only IDs)
+  // GET /api/platform/logs - List logs with basic fields
   http.get("*/api/platform/logs", ({ request }) => {
     const url = new URL(request.url);
     const cursor = url.searchParams.get("cursor");
@@ -63,7 +63,12 @@ export const platformLogsHandlers = [
     const totalPages = Math.max(1, Math.ceil(mockLogDetails.length / limit));
 
     const response: LogsListResponse = {
-      data: data.map((log) => ({ id: log.id })),
+      data: data.map((log) => ({
+        id: log.id,
+        agentName: log.agentName,
+        status: log.status,
+        createdAt: log.createdAt,
+      })),
       pagination: {
         hasMore,
         nextCursor,

@@ -1,5 +1,5 @@
 import { useSet, useLoadable } from "ccstate-react";
-import { IconFolder } from "@tabler/icons-react";
+import { IconDownload } from "@tabler/icons-react";
 import {
   downloadArtifact$,
   artifactDownloadPromise$,
@@ -35,9 +35,10 @@ export function ArtifactDownloadButton({
         onClick={handleDownload}
         disabled={isLoading}
         className="inline-flex items-center gap-1.5 text-sm text-foreground hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+        title="Download artifact"
       >
-        <IconFolder className="h-4 w-4 text-muted-foreground" />
-        My artifact folders
+        <span className="whitespace-nowrap">Download</span>
+        <IconDownload className="h-4 w-4 text-muted-foreground" />
       </button>
       {errorMessage && (
         <span className="text-xs text-destructive">{errorMessage}</span>

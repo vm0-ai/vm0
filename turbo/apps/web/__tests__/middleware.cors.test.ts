@@ -137,29 +137,29 @@ describe("handleCors", () => {
       );
     });
 
-    it("should accept *.vercel.app origin: https://vm0-platform-abc123.vercel.app", async () => {
+    it("should accept *.vm6.ai origin: https://vm0-platform-abc123.vm6.ai", async () => {
       const handleCors = await getHandleCors("preview");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
-        headers: { origin: "https://vm0-platform-abc123.vercel.app" },
+        headers: { origin: "https://vm0-platform-abc123.vm6.ai" },
       });
 
       const response = handleCors(request);
 
       expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-        "https://vm0-platform-abc123.vercel.app",
+        "https://vm0-platform-abc123.vm6.ai",
       );
     });
 
-    it("should accept any *.vercel.app subdomain", async () => {
+    it("should accept any *.vm6.ai subdomain", async () => {
       const handleCors = await getHandleCors("preview");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
-        headers: { origin: "https://any-app-xyz.vercel.app" },
+        headers: { origin: "https://any-app-xyz.vm6.ai" },
       });
 
       const response = handleCors(request);
 
       expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-        "https://any-app-xyz.vercel.app",
+        "https://any-app-xyz.vm6.ai",
       );
     });
 
@@ -252,16 +252,16 @@ describe("handleCors", () => {
       );
     });
 
-    it("should accept *.vercel.app origin", async () => {
+    it("should accept *.vm6.ai origin", async () => {
       const handleCors = await getHandleCors("development");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
-        headers: { origin: "https://vm0-platform-abc.vercel.app" },
+        headers: { origin: "https://vm0-platform-abc.vm6.ai" },
       });
 
       const response = handleCors(request);
 
       expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-        "https://vm0-platform-abc.vercel.app",
+        "https://vm0-platform-abc.vm6.ai",
       );
     });
 
@@ -278,16 +278,16 @@ describe("handleCors", () => {
   });
 
   describe("Undefined Environment (VERCEL_ENV=undefined, treats as development)", () => {
-    it("should accept *.vercel.app origin", async () => {
+    it("should accept *.vm6.ai origin", async () => {
       const handleCors = await getHandleCors("preview");
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
-        headers: { origin: "https://test-app.vercel.app" },
+        headers: { origin: "https://test-app.vm6.ai" },
       });
 
       const response = handleCors(request);
 
       expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-        "https://test-app.vercel.app",
+        "https://test-app.vm6.ai",
       );
     });
 
@@ -363,18 +363,18 @@ describe("handleCors", () => {
       );
     });
 
-    it("should handle case sensitivity in hostname (lowercase vercel.app)", async () => {
+    it("should handle case sensitivity in hostname (lowercase vm6.ai)", async () => {
       const handleCors = await getHandleCors("preview");
 
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
-        headers: { origin: "https://test-app.VERCEL.APP" },
+        headers: { origin: "https://test-app.VM6.AI" },
       });
 
       const response = handleCors(request);
 
       // URL hostname is automatically lowercased by URL constructor
       expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-        "https://test-app.VERCEL.APP",
+        "https://test-app.VM6.AI",
       );
     });
   });
@@ -410,14 +410,14 @@ describe("handleCors", () => {
 
       const request = new NextRequest("https://api.vm0.ai/v1/runs", {
         method: "OPTIONS",
-        headers: { origin: "https://test-app.vercel.app" },
+        headers: { origin: "https://test-app.vm6.ai" },
       });
 
       const response = handleCors(request);
 
       expect(response.status).toBe(200);
       expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-        "https://test-app.vercel.app",
+        "https://test-app.vm6.ai",
       );
     });
 

@@ -35,7 +35,6 @@ function ToolSummaryHeader({
   keyParam,
   isError,
   hasResult,
-  durationText,
   timestamp,
 }: {
   toolName: string;
@@ -43,7 +42,6 @@ function ToolSummaryHeader({
   keyParam: string;
   isError: boolean;
   hasResult: boolean;
-  durationText: string | null;
   timestamp?: string;
 }) {
   // Determine status dot variant based on result state
@@ -58,29 +56,31 @@ function ToolSummaryHeader({
   };
 
   return (
-    <summary className="flex cursor-pointer list-none items-center gap-2 w-full text-left">
-      <StatusDot variant={getStatusVariant()} />
-      <span className="font-semibold text-sm text-foreground shrink-0">
-        {toolName}
-      </span>
-      {keyParam && (
-        <code
-          className="text-xs text-muted-foreground font-mono truncate min-w-0 flex-1 mt-px"
-          title={keyParam}
-        >
-          {keyParamElement}
-        </code>
-      )}
-      {!keyParam && <span className="flex-1" />}
-      {durationText && (
-        <span className="text-xs text-muted-foreground shrink-0">
-          {durationText}
+    <summary className="cursor-pointer list-none w-full text-left">
+      <div className="flex items-center gap-2">
+        <StatusDot variant={getStatusVariant()} />
+        <span className="font-semibold text-sm text-foreground shrink-0">
+          {toolName}
         </span>
-      )}
+        {keyParam && (
+          <code
+            className="text-xs text-muted-foreground font-mono truncate min-w-0 flex-1 mt-px"
+            title={keyParam}
+          >
+            {keyParamElement}
+          </code>
+        )}
+        {!keyParam && <span className="flex-1" />}
+        {timestamp && (
+          <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
+            {timestamp}
+          </span>
+        )}
+      </div>
       {timestamp && (
-        <span className="text-xs text-muted-foreground shrink-0 ml-4">
+        <div className="text-xs text-muted-foreground pl-5 mt-1 sm:hidden">
           {timestamp}
-        </span>
+        </div>
       )}
     </summary>
   );
@@ -124,13 +124,18 @@ export function ToolSummary({
         keyParam={keyParam}
         isError={isError}
         hasResult={Boolean(result)}
-        durationText={durationText}
         timestamp={timestamp}
       />
 
       <div className="mt-1 flex items-start gap-1.5 ml-[18px] mr-[100px]">
         <span className="text-muted-foreground text-xs shrink-0">└</span>
         <div className="flex-1 min-w-0 space-y-1">
+          {durationText && (
+            <div className="text-xs text-muted-foreground">
+              Duration: {durationText}
+            </div>
+          )}
+
           {input && Object.keys(input).length > 0 && (
             <ToolInputDetails input={input} toolName={toolName} />
           )}

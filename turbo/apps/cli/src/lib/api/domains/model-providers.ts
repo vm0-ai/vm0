@@ -5,6 +5,7 @@ import {
   modelProvidersByTypeContract,
   modelProvidersConvertContract,
   modelProvidersSetDefaultContract,
+  modelProvidersUpdateModelContract,
   type ModelProviderType,
   type ModelProviderListResponse,
   type ModelProviderResponse,
@@ -36,6 +37,7 @@ export async function upsertModelProvider(body: {
   type: ModelProviderType;
   credential: string;
   convert?: boolean;
+  selectedModel?: string;
 }): Promise<UpsertModelProviderResponse> {
   const config = await getClientConfig();
   const client = initClient(modelProvidersMainContract, config);
@@ -127,4 +129,26 @@ export async function setModelProviderDefault(
   }
 
   handleError(result, "Failed to set default model provider");
+}
+
+/**
+ * Update model selection for an existing provider (keeps credential unchanged)
+ */
+export async function updateModelProviderModel(
+  type: ModelProviderType,
+  selectedModel?: string,
+): Promise<ModelProviderResponse> {
+  const config = await getClientConfig();
+  const client = initClient(modelProvidersUpdateModelContract, config);
+
+  const result = await client.updateModel({
+    params: { type },
+    body: { selectedModel },
+  });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to update model provider");
 }

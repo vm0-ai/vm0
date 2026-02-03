@@ -4,6 +4,7 @@ import type {
   LogDetail,
   AgentEventsResponse,
   ArtifactDownloadResponse,
+  AgentEvent,
 } from "./types.ts";
 import { fetch$ } from "../fetch.ts";
 import { searchParams$, updateSearchParams$ } from "../route.ts";
@@ -73,10 +74,46 @@ const logDetailCache$ = state<Map<string, Computed<Promise<LogDetail>>>>(
   new Map(),
 );
 
+// Agent events pagination constants
+const AGENT_EVENTS_INITIAL_LIMIT = 30;
+const AGENT_EVENTS_LOAD_MORE_LIMIT = 30;
+
 // State for agent events cache (id -> computed events)
 const agentEventsCache$ = state<
   Map<string, Computed<Promise<AgentEventsResponse>>>
 >(new Map());
+
+// Accumulated events state for infinite scroll
+const internalAgentEventsAccumulated$ = state<AgentEvent[]>([]);
+const internalAgentEventsHasMore$ = state<boolean>(false);
+const internalAgentEventsIsLoadingMore$ = state<boolean>(false);
+
+// Exported computed for accumulated events
+export const agentEventsAccumulated$ = computed((get) =>
+  get(internalAgentEventsAccumulated$),
+);
+export const agentEventsHasMore$ = computed((get) =>
+  get(internalAgentEventsHasMore$),
+);
+export const agentEventsIsLoadingMore$ = computed((get) =>
+  get(internalAgentEventsIsLoadingMore$),
+);
+
+/**
+ * Command to initialize accumulated events from initial load.
+ * This command is idempotent - it only sets state if not already initialized.
+ */
+export const initAccumulatedEvents$ = command(
+  ({ get, set }, params: { events: AgentEvent[]; hasMore: boolean }) => {
+    // Skip if already initialized to prevent race conditions during render
+    const current = get(internalAgentEventsAccumulated$);
+    if (current.length > 0) {
+      return;
+    }
+    set(internalAgentEventsAccumulated$, params.events);
+    set(internalAgentEventsHasMore$, params.hasMore);
+  },
+);
 
 /**
  * Create a computed for fetching log detail by ID.
@@ -115,7 +152,7 @@ export const getOrCreateLogDetail$ = command(
 );
 
 /**
- * Create a computed for fetching agent events by run ID.
+ * Create a computed for fetching initial agent events by run ID.
  */
 function createAgentEventsComputed(
   runId: string,
@@ -123,7 +160,7 @@ function createAgentEventsComputed(
   return computed(async (get) => {
     const fetchFn = get(fetch$);
     const params = new URLSearchParams({
-      limit: "100",
+      limit: String(AGENT_EVENTS_INITIAL_LIMIT),
       order: "asc",
     });
     const response = await fetchFn(
@@ -155,6 +192,47 @@ export const getOrCreateAgentEvents$ = command(
       return newCache;
     });
     return events$;
+  },
+);
+
+/**
+ * Command to load more agent events for a run.
+ * Updates accumulated state with the additional events.
+ */
+export const loadMoreAgentEvents$ = command(
+  async (
+    { get, set },
+    params: { runId: string; since: string },
+  ): Promise<void> => {
+    const { runId, since } = params;
+
+    // Set loading state
+    set(internalAgentEventsIsLoadingMore$, true);
+
+    try {
+      const fetchFn = get(fetch$);
+      const sinceMs = new Date(since).getTime();
+      const urlParams = new URLSearchParams({
+        limit: String(AGENT_EVENTS_LOAD_MORE_LIMIT),
+        order: "asc",
+        since: String(sinceMs),
+      });
+      const response = await fetchFn(
+        `/api/agent/runs/${runId}/telemetry/agent?${urlParams.toString()}`,
+      );
+      if (!response.ok) {
+        throw new Error(
+          `Failed to fetch more agent events: ${response.statusText}`,
+        );
+      }
+      const data = (await response.json()) as AgentEventsResponse;
+
+      // Append new events to accumulated state
+      set(internalAgentEventsAccumulated$, (prev) => [...prev, ...data.events]);
+      set(internalAgentEventsHasMore$, data.hasMore);
+    } finally {
+      set(internalAgentEventsIsLoadingMore$, false);
+    }
   },
 );
 
@@ -203,6 +281,11 @@ export const initLogs$ = command(({ get, set }, signal: AbortSignal) => {
   // Clear caches
   set(logDetailCache$, new Map());
   set(agentEventsCache$, new Map());
+
+  // Reset accumulated events state
+  set(internalAgentEventsAccumulated$, []);
+  set(internalAgentEventsHasMore$, false);
+  set(internalAgentEventsIsLoadingMore$, false);
 
   // Read initial values from URL searchParams
   const params = get(searchParams$);

@@ -43,6 +43,7 @@ const router = tsr.router(modelProvidersSetDefaultContract, {
           framework: provider.framework,
           credentialName: provider.credentialName,
           isDefault: provider.isDefault,
+          selectedModel: provider.selectedModel,
           createdAt: provider.createdAt.toISOString(),
           updatedAt: provider.updatedAt.toISOString(),
         },
