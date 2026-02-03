@@ -101,9 +101,15 @@ export const agentEventsIsLoadingMore$ = computed((get) =>
 
 /**
  * Command to initialize accumulated events from initial load.
+ * This command is idempotent - it only sets state if not already initialized.
  */
 export const initAccumulatedEvents$ = command(
-  ({ set }, params: { events: AgentEvent[]; hasMore: boolean }) => {
+  ({ get, set }, params: { events: AgentEvent[]; hasMore: boolean }) => {
+    // Skip if already initialized to prevent race conditions during render
+    const current = get(internalAgentEventsAccumulated$);
+    if (current.length > 0) {
+      return;
+    }
     set(internalAgentEventsAccumulated$, params.events);
     set(internalAgentEventsHasMore$, params.hasMore);
   },

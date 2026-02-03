@@ -26,11 +26,6 @@ import {
 } from "../utils.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 
-// Type for DOM node with observer attached
-type NodeWithObserver = HTMLDivElement & {
-  _observer?: IntersectionObserver;
-};
-
 export function AgentEventsCard({
   logId,
   framework,
@@ -124,9 +119,9 @@ export function AgentEventsCard({
     setCurrentMatchIdx(0);
   };
 
-  // Ref callback for infinite scroll sentinel
+  // Ref callback for infinite scroll sentinel with cleanup (React 19 feature)
   // Uses key={events.length} to ensure fresh closure values after each load
-  const sentinelRef = (node: HTMLDivElement | null) => {
+  const sentinelRef = (node: HTMLDivElement | null): (() => void) | void => {
     if (!node) {
       return;
     }
@@ -152,7 +147,11 @@ export function AgentEventsCard({
     );
 
     observer.observe(node);
-    (node as NodeWithObserver)._observer = observer;
+
+    // Return cleanup function - called when element is unmounted (React 19)
+    return () => {
+      observer.disconnect();
+    };
   };
 
   if (eventsLoadable.state === "loading") {
