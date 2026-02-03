@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.13.0](https://github.com/vm0-ai/vm0/compare/cli-v9.12.0...cli-v9.13.0) (2026-02-03)
+
+
+### Features
+
+* **cli:** improve model-provider setup ux with configuration status ([#2182](https://github.com/vm0-ai/vm0/issues/2182)) ([6c6617d](https://github.com/vm0-ai/vm0/commit/6c6617d5014ae86861df99488e64b577ee94ef26))
+* **core:** add openrouter-api-key model provider with auto routing ([#2151](https://github.com/vm0-ai/vm0/issues/2151)) ([861d7dc](https://github.com/vm0-ai/vm0/commit/861d7dcee779d4d0082e3b9f7deed67e1d429c02))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.9.0
+
 ## [9.12.0](https://github.com/vm0-ai/vm0/compare/cli-v9.11.0...cli-v9.12.0) (2026-02-02)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [7.9.0](https://github.com/vm0-ai/vm0/compare/core-v7.8.0...core-v7.9.0) (2026-02-03)
+
+
+### Features
+
+* add minimax-api-key model provider ([#2178](https://github.com/vm0-ai/vm0/issues/2178)) ([4176dbc](https://github.com/vm0-ai/vm0/commit/4176dbc3af4a1836cc4758d58d51e29e2f8feccc))
+* **cli:** improve model-provider setup ux with configuration status ([#2182](https://github.com/vm0-ai/vm0/issues/2182)) ([6c6617d](https://github.com/vm0-ai/vm0/commit/6c6617d5014ae86861df99488e64b577ee94ef26))
+* **core:** add openrouter-api-key model provider with auto routing ([#2151](https://github.com/vm0-ai/vm0/issues/2151)) ([861d7dc](https://github.com/vm0-ai/vm0/commit/861d7dcee779d4d0082e3b9f7deed67e1d429c02))
+
+
+### Performance Improvements
+
+* **platform:** include basic log info in logs list API response ([#2165](https://github.com/vm0-ai/vm0/issues/2165)) ([1a4d4c5](https://github.com/vm0-ai/vm0/commit/1a4d4c51171bf1f08df6d305dd9dce488d8c652f))
+
 ## [7.8.0](https://github.com/vm0-ai/vm0/compare/core-v7.7.0...core-v7.8.0) (2026-02-02)
 
 

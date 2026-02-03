@@ -1,5 +1,34 @@
 # Changelog
 
+## [11.20.0](https://github.com/vm0-ai/vm0/compare/web-v11.19.0...web-v11.20.0) (2026-02-03)
+
+
+### Features
+
+* add minimax-api-key model provider ([#2178](https://github.com/vm0-ai/vm0/issues/2178)) ([4176dbc](https://github.com/vm0-ai/vm0/commit/4176dbc3af4a1836cc4758d58d51e29e2f8feccc))
+* **ci:** replace playwright browser auth with API-based test-approve endpoint ([#2155](https://github.com/vm0-ai/vm0/issues/2155)) ([d0abf6b](https://github.com/vm0-ai/vm0/commit/d0abf6b6dcb23213bbdf3a7a37e67dbad842276a))
+* **cli:** improve model-provider setup ux with configuration status ([#2182](https://github.com/vm0-ai/vm0/issues/2182)) ([6c6617d](https://github.com/vm0-ai/vm0/commit/6c6617d5014ae86861df99488e64b577ee94ef26))
+* **core:** add openrouter-api-key model provider with auto routing ([#2151](https://github.com/vm0-ai/vm0/issues/2151)) ([861d7dc](https://github.com/vm0-ai/vm0/commit/861d7dcee779d4d0082e3b9f7deed67e1d429c02))
+* **slack:** add event handling for [@mentions](https://github.com/mentions) ([#2163](https://github.com/vm0-ai/vm0/issues/2163)) ([4781d2d](https://github.com/vm0-ai/vm0/commit/4781d2d556f0149d33fdaa75fe61fc3fd0c43fff))
+* **slack:** add slash commands and interactive endpoints ([#2173](https://github.com/vm0-ai/vm0/issues/2173)) ([aeb778a](https://github.com/vm0-ai/vm0/commit/aeb778a642520b01aed1ce9b8417759af9caf618))
+
+
+### Bug Fixes
+
+* **web:** surface volume resolution errors to users ([#2175](https://github.com/vm0-ai/vm0/issues/2175)) ([66b8b64](https://github.com/vm0-ai/vm0/commit/66b8b644196392644c79f817c8ac8d564f3d990a))
+
+
+### Performance Improvements
+
+* **platform:** include basic log info in logs list API response ([#2165](https://github.com/vm0-ai/vm0/issues/2165)) ([1a4d4c5](https://github.com/vm0-ai/vm0/commit/1a4d4c51171bf1f08df6d305dd9dce488d8c652f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.9.0
+
 ## [11.19.0](https://github.com/vm0-ai/vm0/compare/web-v11.18.0...web-v11.19.0) (2026-02-02)
 
 

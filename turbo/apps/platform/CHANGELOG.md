@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.39.0](https://github.com/vm0-ai/vm0/compare/platform-v0.38.1...platform-v0.39.0) (2026-02-03)
+
+
+### Features
+
+* **platform:** add infinite scroll pagination for agent events ([#2171](https://github.com/vm0-ai/vm0/issues/2171)) ([7c965ae](https://github.com/vm0-ai/vm0/commit/7c965ae49fd206ed6a6f6b90b02ba87d02ef9645))
+
+
+### Performance Improvements
+
+* **platform:** include basic log info in logs list API response ([#2165](https://github.com/vm0-ai/vm0/issues/2165)) ([1a4d4c5](https://github.com/vm0-ai/vm0/commit/1a4d4c51171bf1f08df6d305dd9dce488d8c652f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.9.0
+
 ## [0.38.1](https://github.com/vm0-ai/vm0/compare/platform-v0.38.0...platform-v0.38.1) (2026-02-02)
 
 
