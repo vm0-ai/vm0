@@ -5,6 +5,12 @@ outputs:
   url:
     description: "The deployment URL"
     value: ${{ steps.deploy.outputs.url }}
+  deployment-id:
+    description: "The GitHub deployment ID (for finishing deployment later)"
+    value: ${{ steps.deployment.outputs.deployment_id }}
+  deployment-env:
+    description: "The GitHub deployment environment name"
+    value: ${{ steps.deployment.outputs.env }}
 
 inputs:
   vercel-token:
@@ -35,6 +41,10 @@ inputs:
   deployment-env:
     description: "Deployment environment name (e.g., web, docs)"
     required: true
+  skip-finish:
+    description: "Skip finishing the deployment (use when you need to set a custom env_url later)"
+    required: false
+    default: "false"
 
 runs:
   using: "composite"
@@ -105,7 +115,7 @@ runs:
 
     - name: Finish deployment
       uses: bobheadxi/deployments@v1
-      if: always()
+      if: always() && inputs.skip-finish != 'true'
       with:
         step: finish
         token: ${{ github.token }}

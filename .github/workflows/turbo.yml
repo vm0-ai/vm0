@@ -417,6 +417,7 @@ jobs:
             CLAUDE_CODE_VERSION_URL=${{ vars.CLAUDE_CODE_VERSION_URL }}
           meta-branch: ${{ github.head_ref || github.ref_name }}
           meta-pr: ${{ needs.prepare.outputs.job-ref }}
+          skip-finish: ${{ github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '' }}
 
       # Step 3: Create stable preview URL alias (only for PRs with PREVIEW_DOMAIN configured)
       - name: Create Vercel Alias
@@ -430,6 +431,8 @@ jobs:
           app-name: web
           commit-sha: ${{ github.event.pull_request.head.sha }}
           preview-domain: ${{ vars.PREVIEW_DOMAIN }}
+          deployment-id: ${{ steps.deploy.outputs.deployment-id }}
+          deployment-env: ${{ steps.deploy.outputs.deployment-env }}
 
       # Step 4: Generate test token for E2E tests (runs in parallel with e2e-auth)
       - name: Generate E2E test token
@@ -471,6 +474,7 @@ jobs:
           deployment-env: docs
           meta-branch: ${{ github.head_ref || github.ref_name }}
           meta-pr: ${{ needs.prepare.outputs.job-ref }}
+          skip-finish: ${{ github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '' }}
 
       - name: Create Vercel Alias
         if: github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != ''
@@ -482,6 +486,8 @@ jobs:
           app-name: docs
           commit-sha: ${{ github.event.pull_request.head.sha }}
           preview-domain: ${{ vars.PREVIEW_DOMAIN }}
+          deployment-id: ${{ steps.deploy.outputs.deployment-id }}
+          deployment-env: ${{ steps.deploy.outputs.deployment-env }}
 
   # Deploy site application (SEO landing pages)
   deploy-site:
@@ -514,6 +520,7 @@ jobs:
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
           meta-branch: ${{ github.head_ref || github.ref_name }}
           meta-pr: ${{ needs.prepare.outputs.job-ref }}
+          skip-finish: ${{ github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '' }}
 
       - name: Create Vercel Alias
         if: github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != ''
@@ -525,6 +532,8 @@ jobs:
           app-name: site
           commit-sha: ${{ github.event.pull_request.head.sha }}
           preview-domain: ${{ vars.PREVIEW_DOMAIN }}
+          deployment-id: ${{ steps.deploy.outputs.deployment-id }}
+          deployment-env: ${{ steps.deploy.outputs.deployment-env }}
 
   # Deploy platform (Vite SPA)
   deploy-platform:
@@ -556,6 +565,7 @@ jobs:
             VITE_API_URL=${{ needs.deploy-web.outputs.preview-url }}
           meta-branch: ${{ github.head_ref || github.ref_name }}
           meta-pr: ${{ needs.prepare.outputs.job-ref }}
+          skip-finish: ${{ github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '' }}
 
       - name: Create Vercel Alias
         if: github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != ''
@@ -567,6 +577,8 @@ jobs:
           app-name: platform
           commit-sha: ${{ github.event.pull_request.head.sha }}
           preview-domain: ${{ vars.PREVIEW_DOMAIN }}
+          deployment-id: ${{ steps.deploy.outputs.deployment-id }}
+          deployment-env: ${{ steps.deploy.outputs.deployment-env }}
 
   # Verify device flow authentication works end-to-end (uses Playwright)
   # This job runs in parallel with E2E tests - it does NOT block them

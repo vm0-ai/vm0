@@ -1,5 +1,5 @@
 name: "Vercel Alias"
-description: "Create a predictable alias URL for a Vercel deployment"
+description: "Create a predictable alias URL for a Vercel deployment and optionally finish GitHub deployment"
 
 inputs:
   vercel-token:
@@ -20,6 +20,14 @@ inputs:
   preview-domain:
     description: "Preview domain (e.g., vm6.ai)"
     required: true
+  deployment-id:
+    description: "GitHub deployment ID (if provided, will finish the deployment with alias URL)"
+    required: false
+    default: ""
+  deployment-env:
+    description: "GitHub deployment environment name (required if deployment-id is provided)"
+    required: false
+    default: ""
 
 outputs:
   url:
@@ -51,3 +59,14 @@ runs:
         FULL_URL="https://${ALIAS_URL}"
         echo "url=${FULL_URL}" >> $GITHUB_OUTPUT
         echo "Alias created: ${FULL_URL}"
+
+    - name: Finish GitHub deployment
+      if: inputs.deployment-id != ''
+      uses: bobheadxi/deployments@v1
+      with:
+        step: finish
+        token: ${{ github.token }}
+        status: success
+        env: ${{ inputs.deployment-env }}
+        env_url: ${{ steps.alias.outputs.url }}
+        deployment_id: ${{ inputs.deployment-id }}
