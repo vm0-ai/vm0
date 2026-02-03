@@ -76,23 +76,9 @@ function SidebarContent({ collapsed }: { collapsed: boolean }) {
 
         {NAVIGATION_CONFIG.map((group) => {
           if (
-            group.label === "Content" &&
-            !featureSwitches?.platformArtifacts
-          ) {
-            return null;
-          }
-
-          if (
             group.label === "Your agents" &&
             !featureSwitches?.platformAgents &&
             !featureSwitches?.platformSecrets
-          ) {
-            return null;
-          }
-
-          if (
-            group.label === "Developers" &&
-            !featureSwitches?.platformApiKeys
           ) {
             return null;
           }

@@ -26,18 +26,8 @@ export const NAVIGATION_CONFIG = [
     ],
   },
   {
-    label: "Content",
-    items: [{ id: "artifacts", label: "Artificats", icon: "Files", path: "/" }],
-  },
-  {
     label: "Observation",
     items: [{ id: "logs", label: "Logs", icon: "List", path: "/logs" }],
-  },
-  {
-    label: "Developers",
-    items: [
-      { id: "api-keys", label: "API keys", icon: "SquareKey", path: "/" },
-    ],
   },
 ] as const satisfies readonly NavGroup[];
 
