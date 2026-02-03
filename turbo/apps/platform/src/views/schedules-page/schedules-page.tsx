@@ -12,6 +12,7 @@ export function SchedulesPage() {
       subtitle="Commonly used commands for managing scheduled agent runs."
     >
       <div className="flex flex-col gap-8 px-8 pb-8 max-w-3xl">
+        <ClaudeCodeSection />
         <ListSchedulesSection />
         <ScheduleStatusSection />
         <DocsLink />
@@ -43,6 +44,22 @@ function CommandSection({
         <CopyButton text={commandText} />
       </Card>
     </section>
+  );
+}
+
+function ClaudeCodeSection() {
+  return (
+    <CommandSection
+      title="Manage with Claude Code"
+      description="You can manage VM0 agent schedules entirely through Claude Code. First, install the VM0 skills plugin:"
+      commands={[
+        "/plugin marketplace add vm0-ai/vm0-skills",
+        "/plugin install vm0@vm0-skills",
+        "",
+        "# After restarting Claude Code, run:",
+        "/vm0-agent manage my agent schedule",
+      ]}
+    />
   );
 }
 
