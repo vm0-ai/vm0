@@ -6,10 +6,10 @@
  * pre-created files from a pool (~0ms).
  *
  * Design:
- * - Pool maintains a queue of pre-created overlay file paths
+ * - Pool creates fixed number of overlays at init (parallel)
  * - acquire() returns a path from the pool (VM owns the file)
  * - VM deletes the file when done
- * - Pool replenishes in background when below threshold
+ * - Falls back to on-demand creation if pool is exhausted
  */
 
 import { exec } from "node:child_process";
@@ -31,10 +31,8 @@ const OVERLAY_SIZE = 2 * 1024 * 1024 * 1024; // 2GB sparse file
  * Pool configuration
  */
 interface OverlayPoolConfig {
-  /** Number of overlay files to maintain in pool */
+  /** Number of overlay files to pre-create */
   size: number;
-  /** Start replenishing when pool drops below this count */
-  replenishThreshold: number;
   /** Pool directory for overlay files */
   poolDir: string;
   /** Custom file creator function (optional, for testing) */
@@ -42,10 +40,9 @@ interface OverlayPoolConfig {
 }
 
 /**
- * Default overlay file creator
- * Creates a sparse ext4 file
+ * Create a sparse ext4 overlay file
  */
-async function defaultCreateFile(filePath: string): Promise<void> {
+async function createOverlayFile(filePath: string): Promise<void> {
   const fd = fs.openSync(filePath, "w");
   fs.ftruncateSync(fd, OVERLAY_SIZE);
   fs.closeSync(fd);
@@ -60,15 +57,13 @@ async function defaultCreateFile(filePath: string): Promise<void> {
 export class OverlayPool {
   private initialized = false;
   private queue: string[] = [];
-  private replenishing = false;
   private readonly config: Required<OverlayPoolConfig>;
 
   constructor(config: OverlayPoolConfig) {
     this.config = {
       size: config.size,
-      replenishThreshold: config.replenishThreshold,
       poolDir: config.poolDir,
-      createFile: config.createFile ?? defaultCreateFile,
+      createFile: config.createFile ?? createOverlayFile,
     };
   }
 
@@ -107,54 +102,12 @@ export class OverlayPool {
   }
 
   /**
-   * Replenish the pool in background
-   */
-  private async replenish(): Promise<void> {
-    if (this.replenishing || !this.initialized) {
-      return;
-    }
-
-    const needed = this.config.size - this.queue.length;
-    if (needed <= 0) {
-      return;
-    }
-
-    this.replenishing = true;
-    logger.log(`Replenishing pool: creating ${needed} overlay(s)...`);
-
-    try {
-      const promises = [];
-      for (let i = 0; i < needed; i++) {
-        const filePath = path.join(
-          this.config.poolDir,
-          this.generateFileName(),
-        );
-        promises.push(
-          this.config.createFile(filePath).then(() => {
-            this.queue.push(filePath);
-          }),
-        );
-      }
-      await Promise.all(promises);
-      logger.log(`Pool replenished: ${this.queue.length} available`);
-    } catch (err) {
-      logger.error(
-        `Replenish failed: ${err instanceof Error ? err.message : "Unknown"}`,
-      );
-    } finally {
-      this.replenishing = false;
-    }
-  }
-
-  /**
    * Initialize the overlay pool
    */
   async init(): Promise<void> {
     this.queue = [];
 
-    logger.log(
-      `Initializing overlay pool (size=${this.config.size}, threshold=${this.config.replenishThreshold})...`,
-    );
+    logger.log(`Initializing overlay pool (size=${this.config.size})...`);
 
     await this.ensurePoolDir();
 
@@ -168,8 +121,30 @@ export class OverlayPool {
     }
 
     this.initialized = true;
-    await this.replenish();
-    logger.log("Overlay pool initialized");
+
+    // Create all overlays in parallel
+    if (this.config.size > 0) {
+      const results = await Promise.all(
+        Array.from({ length: this.config.size }, async () => {
+          const filePath = path.join(
+            this.config.poolDir,
+            this.generateFileName(),
+          );
+          try {
+            await this.config.createFile(filePath);
+            return filePath;
+          } catch (err) {
+            logger.error(
+              `Failed to create overlay: ${err instanceof Error ? err.message : "Unknown"}`,
+            );
+            return null;
+          }
+        }),
+      );
+      this.queue = results.filter((f): f is string => f !== null);
+    }
+
+    logger.log(`Overlay pool initialized: ${this.queue.length} available`);
   }
 
   /**
@@ -187,16 +162,6 @@ export class OverlayPool {
 
     if (filePath) {
       logger.log(`Acquired overlay from pool (${this.queue.length} remaining)`);
-
-      // Trigger background replenishment if below threshold
-      if (this.queue.length < this.config.replenishThreshold) {
-        this.replenish().catch((err) => {
-          logger.error(
-            `Background replenish failed: ${err instanceof Error ? err.message : "Unknown"}`,
-          );
-        });
-      }
-
       return filePath;
     }
 
@@ -205,6 +170,13 @@ export class OverlayPool {
     const newPath = path.join(this.config.poolDir, this.generateFileName());
     await this.config.createFile(newPath);
     return newPath;
+  }
+
+  /**
+   * Get the number of available overlays in the pool
+   */
+  getAvailableCount(): number {
+    return this.queue.length;
   }
 
   /**
@@ -241,7 +213,6 @@ export class OverlayPool {
     }
 
     this.initialized = false;
-    this.replenishing = false;
     logger.log("Overlay pool cleaned up");
   }
 }

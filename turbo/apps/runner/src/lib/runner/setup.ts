@@ -73,7 +73,6 @@ export async function setupEnvironment(
   logger.log("Initializing overlay pool...");
   await initOverlayPool({
     size: config.sandbox.max_concurrent + 2,
-    replenishThreshold: config.sandbox.max_concurrent,
     poolDir: runnerPaths.overlayPool(config.base_dir),
   });
 

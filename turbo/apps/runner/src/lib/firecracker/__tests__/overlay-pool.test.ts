@@ -28,7 +28,6 @@ describe("OverlayPool", () => {
       const pool = new OverlayPool({
         poolDir,
         size: 3,
-        replenishThreshold: 1,
         createFile: testCreateFile,
       });
 
@@ -55,7 +54,6 @@ describe("OverlayPool", () => {
       const pool = new OverlayPool({
         poolDir,
         size: 2,
-        replenishThreshold: 1,
         createFile: testCreateFile,
       });
       await pool.init();
@@ -70,6 +68,31 @@ describe("OverlayPool", () => {
 
       pool.cleanup();
     });
+
+    it("handles creation failures gracefully", async () => {
+      const poolDir = path.join(tempDir, "pool");
+      let callCount = 0;
+      const failingCreateFile = async (filePath: string): Promise<void> => {
+        callCount++;
+        if (callCount === 2) {
+          throw new Error("Creation failed");
+        }
+        fs.writeFileSync(filePath, "test-overlay");
+      };
+
+      const pool = new OverlayPool({
+        poolDir,
+        size: 3,
+        createFile: failingCreateFile,
+      });
+
+      await pool.init();
+
+      // Should have 2 files (one failed)
+      expect(pool.getAvailableCount()).toBe(2);
+
+      pool.cleanup();
+    });
   });
 
   describe("acquire", () => {
@@ -78,7 +101,6 @@ describe("OverlayPool", () => {
       const pool = new OverlayPool({
         poolDir,
         size: 2,
-        replenishThreshold: 1,
         createFile: testCreateFile,
       });
 
@@ -92,7 +114,6 @@ describe("OverlayPool", () => {
       const pool = new OverlayPool({
         poolDir,
         size: 2,
-        replenishThreshold: 1,
         createFile: testCreateFile,
       });
       await pool.init();
@@ -110,13 +131,16 @@ describe("OverlayPool", () => {
 
     it("creates on-demand when pool exhausted", async () => {
       const poolDir = path.join(tempDir, "pool");
+      const createFileSpy = vi.fn(testCreateFile);
       const pool = new OverlayPool({
         poolDir,
         size: 1,
-        replenishThreshold: 0,
-        createFile: testCreateFile,
+        createFile: createFileSpy,
       });
       await pool.init();
+
+      // Initial creation: 1 file
+      expect(createFileSpy).toHaveBeenCalledTimes(1);
 
       // Acquire the only pre-warmed file
       const file1 = await pool.acquire();
@@ -126,34 +150,7 @@ describe("OverlayPool", () => {
       const file2 = await pool.acquire();
       expect(file2).not.toBe(file1);
       expect(fs.existsSync(file2)).toBe(true);
-
-      pool.cleanup();
-    });
-
-    it("triggers background replenishment when below threshold", async () => {
-      const poolDir = path.join(tempDir, "pool");
-      const createFileSpy = vi.fn(testCreateFile);
-      const pool = new OverlayPool({
-        poolDir,
-        size: 3,
-        replenishThreshold: 2,
-        createFile: createFileSpy,
-      });
-      await pool.init();
-
-      // Initial creation: 3 files
-      expect(createFileSpy).toHaveBeenCalledTimes(3);
-
-      // Acquire one, drops to 2 (at threshold, no replenish yet)
-      await pool.acquire();
-
-      // Acquire another, drops to 1 (below threshold, triggers replenish)
-      await pool.acquire();
-
-      // Wait for background replenishment
-      await vi.waitFor(() => {
-        expect(createFileSpy.mock.calls.length).toBeGreaterThan(3);
-      });
+      expect(createFileSpy).toHaveBeenCalledTimes(2);
 
       pool.cleanup();
     });
@@ -165,7 +162,6 @@ describe("OverlayPool", () => {
       const pool = new OverlayPool({
         poolDir,
         size: 3,
-        replenishThreshold: 1,
         createFile: testCreateFile,
       });
       await pool.init();
@@ -183,7 +179,6 @@ describe("OverlayPool", () => {
       const pool = new OverlayPool({
         poolDir,
         size: 2,
-        replenishThreshold: 1,
         createFile: testCreateFile,
       });
       await pool.init();
@@ -201,12 +196,33 @@ describe("OverlayPool", () => {
       const pool = new OverlayPool({
         poolDir,
         size: 2,
-        replenishThreshold: 1,
         createFile: testCreateFile,
       });
 
       // Should not throw
       expect(() => pool.cleanup()).not.toThrow();
+    });
+  });
+
+  describe("getAvailableCount", () => {
+    it("returns correct count", async () => {
+      const poolDir = path.join(tempDir, "pool");
+      const pool = new OverlayPool({
+        poolDir,
+        size: 3,
+        createFile: testCreateFile,
+      });
+      await pool.init();
+
+      expect(pool.getAvailableCount()).toBe(3);
+
+      await pool.acquire();
+      expect(pool.getAvailableCount()).toBe(2);
+
+      await pool.acquire();
+      expect(pool.getAvailableCount()).toBe(1);
+
+      pool.cleanup();
     });
   });
 });

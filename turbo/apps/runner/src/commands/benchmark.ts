@@ -91,7 +91,6 @@ export const benchmarkCommand = new Command("benchmark")
       timer.log("Initializing pools...");
       await initOverlayPool({
         size: 2,
-        replenishThreshold: 1,
         poolDir: runnerPaths.overlayPool(config.base_dir),
       });
       await initNetnsPool({ name: config.name, size: 2 });
