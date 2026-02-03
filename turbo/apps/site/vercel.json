@@ -1,5 +1,11 @@
 {
   "buildCommand": "cd ../.. && pnpm run build --filter=site",
   "installCommand": "cd ../.. && pnpm install",
-  "outputDirectory": ".next"
+  "outputDirectory": ".next",
+  "rewrites": [
+    {
+      "source": "/_next/static/:path*",
+      "destination": "$WEB_APP_URL/_next/static/:path*"
+    }
+  ]
 }
