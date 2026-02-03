@@ -84,6 +84,21 @@ export const vmPaths = {
 };
 
 /**
+ * Snapshot output paths (within output directory)
+ * These are the final snapshot artifacts
+ */
+export const snapshotOutputPaths = {
+  /** VM state snapshot */
+  snapshot: (outputDir: string) => path.join(outputDir, "snapshot.bin"),
+
+  /** VM memory snapshot */
+  memory: (outputDir: string) => path.join(outputDir, "memory.bin"),
+
+  /** Golden overlay with guest state */
+  overlay: (outputDir: string) => path.join(outputDir, "overlay.ext4"),
+};
+
+/**
  * Temporary file paths (/tmp/vm0-*)
  * These use runId for isolation
  */

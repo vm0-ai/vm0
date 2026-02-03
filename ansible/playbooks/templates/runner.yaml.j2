@@ -11,15 +11,21 @@ server:
 
 sandbox:
   max_concurrent: {{ max_concurrent | default(8) }}
-  vcpu: {{ vcpu | default(2) }}
-  memory_mb: {{ memory_mb | default(1024) }}
+  vcpu: {{ vcpu }}
+  memory_mb: {{ memory_mb }}
   poll_interval_ms: {{ poll_interval_ms | default(30000) }}
 
 firecracker:
   binary: /usr/local/bin/firecracker
   kernel: /opt/firecracker/vmlinux
-  rootfs: {{ rootfs_path | default('/opt/firecracker/rootfs.squashfs') }}
+  rootfs: {{ rootfs_path }}
+{% if enable_snapshot %}
+  snapshot:
+    snapshot: {{ snapshot_path }}/snapshot.bin
+    memory: {{ snapshot_path }}/memory.bin
+    overlay: {{ snapshot_path }}/overlay.ext4
+{% endif %}
 
 proxy:
-  port: {{ proxy_port | default(8080) }}
+  port: {{ proxy_port }}
   ca_dir: {{ runner_base_dir }}/proxy

@@ -14,6 +14,8 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import readline from "node:readline";
 import { acquireNetns, releaseNetns, type PooledNetns } from "./netns-pool.js";
 import { SNAPSHOT_NETWORK } from "./netns.js";
@@ -31,9 +33,13 @@ const logger = createLogger("VM");
  */
 export interface SnapshotPaths {
   /** Path to the snapshot state file */
-  snapshotPath: string;
+  snapshot: string;
   /** Path to the memory file */
-  memoryPath: string;
+  memory: string;
+  /** Path to the overlay file recorded in snapshot (for bind mount) */
+  snapshotOverlay: string;
+  /** Path to the vsock directory recorded in snapshot (for bind mount) */
+  snapshotVsockDir: string;
 }
 
 /**
@@ -79,7 +85,7 @@ export class FirecrackerVM {
     this.workDir = config.workDir;
     this.vsockPath = vmPaths.vsock(this.workDir);
     this.configPath = vmPaths.config(this.workDir);
-    this.apiSocketPath = `${this.workDir}/api.sock`;
+    this.apiSocketPath = vmPaths.apiSock(this.workDir);
   }
 
   /**
@@ -203,7 +209,9 @@ export class FirecrackerVM {
 
     logger.log(`[VM ${this.config.vmId}] Starting Firecracker (fresh boot)...`);
 
-    // Run Firecracker inside the network namespace
+    // Use sudo to enter netns, but run Firecracker as current user
+    // This ensures created files (sockets) are owned by current user, not root
+    const currentUser = os.userInfo().username;
     this.process = spawn(
       "sudo",
       [
@@ -211,6 +219,9 @@ export class FirecrackerVM {
         "netns",
         "exec",
         this.netns!.name,
+        "sudo",
+        "-u",
+        currentUser,
         this.config.firecrackerBinary,
         "--config-file",
         this.configPath,
@@ -230,27 +241,72 @@ export class FirecrackerVM {
    * Start VM from snapshot
    * Uses --api-sock to load snapshot via API
    *
-   * Drive configuration must be done before loading snapshot
-   * because our overlay path differs from the snapshot's original path.
+   * Snapshot contains original absolute paths for drives. We use mount namespace
+   * isolation to bind mount our actual overlay file to the path expected by the snapshot.
+   * This allows concurrent VMs to each have their own overlay while restoring from
+   * the same snapshot.
    */
   private async startFromSnapshot(snapshot: SnapshotPaths): Promise<void> {
     logger.log(
       `[VM ${this.config.vmId}] Starting Firecracker (snapshot restore)...`,
     );
-    logger.log(`[VM ${this.config.vmId}] Snapshot: ${snapshot.snapshotPath}`);
-    logger.log(`[VM ${this.config.vmId}] Memory: ${snapshot.memoryPath}`);
+    logger.log(`[VM ${this.config.vmId}] Snapshot: ${snapshot.snapshot}`);
+    logger.log(`[VM ${this.config.vmId}] Memory: ${snapshot.memory}`);
 
-    // Run Firecracker with API socket inside the network namespace
+    // Snapshot records absolute paths for overlay and vsock
+    // We use bind mounts to redirect these to the actual VM paths:
+    // - Vsock dir: for vsock UDS (Firecracker connects to {uds_path}_{port})
+    // - Overlay: for block device
+    const actualVsockDir = vmPaths.vsockDir(this.workDir);
+    logger.log(
+      `[VM ${this.config.vmId}] Snapshot vsock: ${snapshot.snapshotVsockDir}`,
+    );
+    logger.log(
+      `[VM ${this.config.vmId}] Snapshot overlay: ${snapshot.snapshotOverlay}`,
+    );
+    logger.log(`[VM ${this.config.vmId}] Actual vsock: ${actualVsockDir}`);
+    logger.log(
+      `[VM ${this.config.vmId}] Actual overlay: ${this.vmOverlayPath}`,
+    );
+
+    // Ensure snapshot directories exist for bind mount targets
+    fs.mkdirSync(snapshot.snapshotVsockDir, { recursive: true });
+    fs.mkdirSync(path.dirname(snapshot.snapshotOverlay), {
+      recursive: true,
+    });
+
+    // Create empty file as bind mount target for overlay
+    if (!fs.existsSync(snapshot.snapshotOverlay)) {
+      fs.writeFileSync(snapshot.snapshotOverlay, "");
+    }
+
+    // Use unshare to create isolated mount namespace, then bind mount:
+    // 1. Vsock dir: actual vsock dir -> snapshot vsock dir
+    // 2. Overlay: actual overlay from pool -> snapshot overlay path
+    const currentUser = os.userInfo().username;
+    const bindMountVsock = `mount --bind "${actualVsockDir}" "${snapshot.snapshotVsockDir}"`;
+    const bindMountOverlay = `mount --bind "${this.vmOverlayPath}" "${snapshot.snapshotOverlay}"`;
+    const firecrackerCmd = [
+      "ip",
+      "netns",
+      "exec",
+      this.netns!.name,
+      "sudo",
+      "-u",
+      currentUser,
+      this.config.firecrackerBinary,
+      "--api-sock",
+      this.apiSocketPath,
+    ].join(" ");
+
     this.process = spawn(
       "sudo",
       [
-        "ip",
-        "netns",
-        "exec",
-        this.netns!.name,
-        this.config.firecrackerBinary,
-        "--api-sock",
-        this.apiSocketPath,
+        "unshare",
+        "--mount",
+        "bash",
+        "-c",
+        `${bindMountVsock} && ${bindMountOverlay} && ${firecrackerCmd}`,
       ],
       {
         cwd: this.workDir,
@@ -265,30 +321,12 @@ export class FirecrackerVM {
     const client = new FirecrackerClient(this.apiSocketPath);
     await this.waitForApiReady(client);
 
-    // Configure drives before loading snapshot (parallel for performance)
-    // Paths differ from snapshot's original paths, so we must reconfigure
-    logger.log(`[VM ${this.config.vmId}] Configuring drives...`);
-    await Promise.all([
-      client.configureDrive({
-        drive_id: "rootfs",
-        path_on_host: this.config.rootfsPath,
-        is_root_device: true,
-        is_read_only: true,
-      }),
-      client.configureDrive({
-        drive_id: "overlay",
-        path_on_host: this.vmOverlayPath!,
-        is_root_device: false,
-        is_read_only: false,
-      }),
-    ]);
-
-    // Load snapshot and resume
+    // Load snapshot and resume (drives are configured from snapshot state)
     logger.log(`[VM ${this.config.vmId}] Loading snapshot...`);
     await client.loadSnapshot({
-      snapshot_path: snapshot.snapshotPath,
+      snapshot_path: snapshot.snapshot,
       mem_backend: {
-        backend_path: snapshot.memoryPath,
+        backend_path: snapshot.memory,
         backend_type: "File",
       },
       resume_vm: true,

@@ -1144,6 +1144,7 @@ jobs:
             -e "pm2_process_name=vm0-runner-${JOB_REF}" \
             -e "runner_bundle_path=/tmp/vm0-runner-bundle.tar.gz" \
             -e "rootfs_path=${RUNNER_DIR}/rootfs.squashfs" \
+            -e "snapshot_path=${RUNNER_DIR}/snapshot" \
             -e "force_rebuild_rootfs=true" \
             -e "proxy_port=${PROXY_PORT}" \
             -e '{"enable_drain": true, "drain_timeout": 300}' \
@@ -1190,13 +1191,17 @@ jobs:
           echo "Proxy port: ${PROXY_PORT}"
           echo ""
 
-          # Create benchmark config with proxy settings (firewall + mitm enabled by default)
+          # Create benchmark config with proxy settings and snapshot (firewall + mitm enabled by default)
           ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "
             echo 'base_dir: ${RUNNER_DIR}/benchmark' > ${RUNNER_DIR}/benchmark.yaml
             echo 'firecracker:' >> ${RUNNER_DIR}/benchmark.yaml
             echo '  binary: /usr/local/bin/firecracker' >> ${RUNNER_DIR}/benchmark.yaml
             echo '  kernel: /opt/firecracker/vmlinux' >> ${RUNNER_DIR}/benchmark.yaml
             echo '  rootfs: ${RUNNER_DIR}/rootfs.squashfs' >> ${RUNNER_DIR}/benchmark.yaml
+            echo '  snapshot:' >> ${RUNNER_DIR}/benchmark.yaml
+            echo '    snapshot: ${RUNNER_DIR}/snapshot/snapshot.bin' >> ${RUNNER_DIR}/benchmark.yaml
+            echo '    memory: ${RUNNER_DIR}/snapshot/memory.bin' >> ${RUNNER_DIR}/benchmark.yaml
+            echo '    overlay: ${RUNNER_DIR}/snapshot/overlay.ext4' >> ${RUNNER_DIR}/benchmark.yaml
             echo 'proxy:' >> ${RUNNER_DIR}/benchmark.yaml
             echo '  port: ${PROXY_PORT}' >> ${RUNNER_DIR}/benchmark.yaml
             echo '  ca_dir: ${RUNNER_DIR}/proxy' >> ${RUNNER_DIR}/benchmark.yaml
@@ -1274,6 +1279,7 @@ jobs:
             -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
             -e "api_url=${PREVIEW_URL}" \
             -e "rootfs_path=${RUNNER_DIR}/rootfs.squashfs" \
+            -e "snapshot_path=${RUNNER_DIR}/snapshot" \
             -e "proxy_port=${PROXY_PORT}" \
             -e '{"extra_env": {"VERCEL_AUTOMATION_BYPASS_SECRET": "'"${VERCEL_BYPASS}"'", "USE_MOCK_CLAUDE": "true", "AXIOM_TOKEN": "'"${AXIOM_TOKEN}"'", "AXIOM_DATASET_SUFFIX": "dev"}}' \
             -v

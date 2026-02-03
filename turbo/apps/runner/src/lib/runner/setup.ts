@@ -1,6 +1,7 @@
 import type { RunnerConfig } from "../config.js";
 import { runnerPaths } from "../paths.js";
 import { checkNetworkPrerequisites } from "../firecracker/network.js";
+import { execCommand } from "../utils/exec.js";
 import {
   initOverlayPool,
   cleanupOverlayPool,
@@ -30,7 +31,7 @@ export async function setupEnvironment(
   const { config } = options;
 
   // Acquire runner lock first - ensures only one runner per device
-  await acquireRunnerLock();
+  acquireRunnerLock();
 
   // Check network prerequisites
   const networkCheck = checkNetworkPrerequisites();
@@ -69,12 +70,22 @@ export async function setupEnvironment(
   }
 
   // Initialize overlay pool for faster VM boot
-  // Pre-creates sparse ext4 overlay files that can be acquired instantly
+  // Pre-creates overlay files that can be acquired instantly
+  // - With snapshot: copies golden overlay (preserves snapshot disk state)
+  // - Without snapshot: creates empty ext4 files
   logger.log("Initializing overlay pool...");
+  const snapshotConfig = config.firecracker.snapshot;
   await initOverlayPool({
     size: config.sandbox.max_concurrent + 2,
     replenishThreshold: config.sandbox.max_concurrent,
     poolDir: runnerPaths.overlayPool(config.base_dir),
+    createFile: snapshotConfig
+      ? (filePath) =>
+          execCommand(
+            `cp --sparse=always "${snapshotConfig.overlay}" "${filePath}"`,
+            false,
+          ).then(() => {})
+      : undefined,
   });
 
   // Initialize network namespace pool for faster VM boot

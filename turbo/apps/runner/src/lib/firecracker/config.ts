@@ -67,7 +67,7 @@ interface FirecrackerConfigParams {
  *   - init=/sbin/vm-init: use vm-init (Rust binary) for filesystem setup and vsock-agent
  *   - ip=...: network configuration (fixed IPs from SNAPSHOT_NETWORK)
  */
-function buildBootArgs(): string {
+export function buildBootArgs(): string {
   const networkBootArgs = generateSnapshotNetworkBootArgs();
   return `console=ttyS0 reboot=k panic=1 pci=off nomodules random.trust_cpu=on quiet loglevel=0 nokaslr audit=0 numa=off mitigations=off noresume init=/sbin/vm-init ${networkBootArgs}`;
 }

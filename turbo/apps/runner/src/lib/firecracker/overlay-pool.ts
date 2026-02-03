@@ -43,8 +43,9 @@ interface OverlayPoolConfig {
 
 /**
  * Create a sparse ext4 overlay file
+ * Exported for use by snapshot command
  */
-async function createOverlayFile(filePath: string): Promise<void> {
+export async function createOverlayFile(filePath: string): Promise<void> {
   const fd = fs.openSync(filePath, "w");
   fs.ftruncateSync(fd, OVERLAY_SIZE);
   fs.closeSync(fd);

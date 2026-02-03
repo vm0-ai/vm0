@@ -15,6 +15,7 @@ import {
 import { Timer } from "../lib/timing.js";
 import { setGlobalLogger } from "../lib/logger.js";
 import { runnerPaths } from "../lib/paths.js";
+import { execCommand } from "../lib/utils/exec.js";
 
 interface BenchmarkOptions {
   config: string;
@@ -88,11 +89,21 @@ export const benchmarkCommand = new Command("benchmark")
       }
 
       // Initialize pools for VM resources
+      // - With snapshot: copies golden overlay (preserves snapshot disk state)
+      // - Without snapshot: creates empty ext4 files
       timer.log("Initializing pools...");
+      const snapshotConfig = config.firecracker.snapshot;
       await initOverlayPool({
         size: 2,
         replenishThreshold: 1,
         poolDir: runnerPaths.overlayPool(config.base_dir),
+        createFile: snapshotConfig
+          ? (filePath) =>
+              execCommand(
+                `cp --sparse=always "${snapshotConfig.overlay}" "${filePath}"`,
+                false,
+              ).then(() => {})
+          : undefined,
       });
       await initNetnsPool({ name: config.name, size: 2 });
       poolsInitialized = true;

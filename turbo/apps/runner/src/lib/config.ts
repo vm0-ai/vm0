@@ -55,6 +55,13 @@ export const runnerConfigSchema = z.object({
     binary: z.string().min(1, "Firecracker binary path is required"),
     kernel: z.string().min(1, "Kernel path is required"),
     rootfs: z.string().min(1, "Rootfs path is required"),
+    snapshot: z
+      .object({
+        snapshot: z.string().min(1, "Snapshot state file path is required"),
+        memory: z.string().min(1, "Snapshot memory file path is required"),
+        overlay: z.string().min(1, "Snapshot overlay file path is required"),
+      })
+      .optional(),
   }),
   proxy: z.object({
     // TODO: Allow 0 to auto-find available port
@@ -104,6 +111,13 @@ export const debugConfigSchema = z.object({
     binary: z.string().min(1, "Firecracker binary path is required"),
     kernel: z.string().min(1, "Kernel path is required"),
     rootfs: z.string().min(1, "Rootfs path is required"),
+    snapshot: z
+      .object({
+        snapshot: z.string().min(1, "Snapshot state file path is required"),
+        memory: z.string().min(1, "Snapshot memory file path is required"),
+        overlay: z.string().min(1, "Snapshot overlay file path is required"),
+      })
+      .optional(),
   }),
   proxy: z
     .object({
@@ -171,6 +185,15 @@ export function validateFirecrackerPaths(
     { path: config.kernel, name: "Kernel" },
     { path: config.rootfs, name: "Rootfs" },
   ];
+
+  // Add snapshot paths if configured
+  if (config.snapshot) {
+    checks.push(
+      { path: config.snapshot.snapshot, name: "Snapshot state file" },
+      { path: config.snapshot.memory, name: "Snapshot memory file" },
+      { path: config.snapshot.overlay, name: "Snapshot overlay file" },
+    );
+  }
 
   for (const check of checks) {
     if (!fs.existsSync(check.path)) {

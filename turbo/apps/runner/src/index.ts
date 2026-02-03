@@ -7,6 +7,7 @@ import { startCommand } from "./commands/start.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { killCommand } from "./commands/kill.js";
 import { benchmarkCommand } from "./commands/benchmark.js";
+import { snapshotCommand } from "./commands/snapshot.js";
 
 // Version is injected at build time by tsup
 declare const __RUNNER_VERSION__: string;
@@ -22,5 +23,6 @@ program.addCommand(startCommand);
 program.addCommand(doctorCommand);
 program.addCommand(killCommand);
 program.addCommand(benchmarkCommand);
+program.addCommand(snapshotCommand);
 
 program.parse();

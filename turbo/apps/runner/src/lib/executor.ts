@@ -12,6 +12,7 @@
  */
 
 import fs from "node:fs";
+import path from "node:path";
 import { FirecrackerVM, type VMConfig } from "./firecracker/vm.js";
 import { createVmId } from "./firecracker/vm-id.js";
 import type { GuestClient } from "./firecracker/guest.js";
@@ -85,7 +86,6 @@ export async function executeJob(
       firecrackerBinary: config.firecracker.binary,
       workDir: runnerPaths.vmWorkDir(config.base_dir, vmId),
     };
-
     // Create workDir and vsock subdir before VM so vsock listener can be started before vm.start()
     fs.mkdirSync(vmConfig.workDir, { recursive: true });
     fs.mkdirSync(vmPaths.vsockDir(vmConfig.workDir), { recursive: true });
@@ -98,10 +98,33 @@ export async function executeJob(
     logger.log(`Starting vsock listener: ${vsockPath}`);
     const guestConnectionPromise = guest.waitForGuestConnection(30000);
 
-    // Create and start VM
+    // Create VM and start
+    // - With snapshot config: restore from snapshot (fast boot ~50ms)
+    // - Without snapshot: fresh boot (~362ms)
     logger.log(`Creating VM ${vmId}...`);
     vm = new FirecrackerVM(vmConfig);
-    await withSandboxTiming("vm_create", () => vm!.start());
+
+    // Start VM (Firecracker process begins, guest will connect to vsock)
+    // Derive snapshot workdir from snapshot config path:
+    // - Snapshot is at {original_base_dir}/snapshot/snapshot.bin
+    // - Snapshot was generated with workdir at {original_base_dir}/snapshot-gen/workspaces/.snapshot-work
+    // - Paths recorded in snapshot use that workdir
+    const snapshotConfig = config.firecracker.snapshot;
+    let snapshotPaths: Parameters<typeof vm.start>[0];
+    if (snapshotConfig) {
+      // Extract original base_dir from snapshot path (go up 2 levels: /snapshot/snapshot.bin)
+      const snapshotDir = path.dirname(snapshotConfig.snapshot);
+      const originalBaseDir = path.dirname(snapshotDir);
+      const snapshotBaseDir = runnerPaths.snapshotBaseDir(originalBaseDir);
+      const snapshotWorkDir = runnerPaths.snapshotWorkDir(snapshotBaseDir);
+      snapshotPaths = {
+        snapshot: snapshotConfig.snapshot,
+        memory: snapshotConfig.memory,
+        snapshotOverlay: vmPaths.overlay(snapshotWorkDir),
+        snapshotVsockDir: vmPaths.vsockDir(snapshotWorkDir),
+      };
+    }
+    await withSandboxTiming("vm_create", () => vm!.start(snapshotPaths));
 
     // Get VM IPs for logging and network security
     guestIp = vm.getGuestIp();

@@ -80,3 +80,12 @@ export async function createNetnsWithTap(
   // Bring up loopback
   await execCommand(`ip netns exec ${nsName} ip link set lo up`);
 }
+
+/**
+ * Delete a network namespace
+ *
+ * Silently ignores errors (namespace may not exist).
+ */
+export async function deleteNetns(nsName: string): Promise<void> {
+  await execCommand(`ip netns del ${nsName}`).catch(() => {});
+}

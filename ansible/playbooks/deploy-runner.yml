@@ -68,9 +68,15 @@
     enable_drain: true
     drain_timeout: 7200  # 2 hours
     extra_env: {}
-    # Rootfs configuration - CI should override for per-PR isolation
+    # Rootfs and snapshot configuration - CI should override for per-PR isolation
     rootfs_path: /opt/firecracker/rootfs.squashfs
+    snapshot_path: /opt/firecracker/snapshot
     force_rebuild_rootfs: false
+    force_rebuild_snapshot: false
+    enable_snapshot: true
+    # VM resource configuration
+    vcpu: 2
+    memory_mb: 1024
     # Proxy port - CI should override for per-PR isolation (8080 + PR_NUMBER % 1000)
     proxy_port: 8080
 
@@ -402,6 +408,110 @@
       become: no
       ignore_errors: yes
       when: kvm_group_result.changed
+      tags: [prepare]
+
+    # ========================================
+    # Phase 4.5: Generate Snapshot (optional)
+    # ========================================
+    - name: Ensure snapshot directory exists
+      file:
+        path: "{{ snapshot_path }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+      when: enable_snapshot
+      tags: [prepare]
+
+    - name: Check if snapshot files exist
+      shell: |
+        test -f "{{ snapshot_path }}/snapshot.bin" && \
+        test -f "{{ snapshot_path }}/memory.bin" && \
+        test -f "{{ snapshot_path }}/overlay.ext4"
+      register: snapshot_files_check
+      ignore_errors: yes
+      changed_when: false
+      when: enable_snapshot
+      tags: [prepare]
+
+    # Calculate hash of files that affect snapshot (rootfs + kernel + firecracker + runner + config)
+    - name: Calculate snapshot inputs hash
+      shell: |
+        (cat "{{ rootfs_path }}" /opt/firecracker/vmlinux /usr/local/bin/firecracker \
+             "{{ runner_base_dir }}/index.js" && \
+         echo "vcpu={{ vcpu }} memory_mb={{ memory_mb }}") 2>/dev/null | sha256sum | cut -d' ' -f1
+      args:
+        executable: /bin/bash
+      register: snapshot_inputs_hash
+      changed_when: false
+      when: enable_snapshot
+      tags: [prepare]
+
+    - name: Read stored snapshot hash
+      slurp:
+        src: "{{ snapshot_path }}/inputs.sha256"
+      register: stored_snapshot_hash
+      ignore_errors: yes
+      when: enable_snapshot
+      tags: [prepare]
+
+    - name: Determine if snapshot rebuild is needed
+      set_fact:
+        snapshot_needs_rebuild: >-
+          {{
+            (snapshot_files_check.rc | default(1)) != 0 or
+            force_rebuild_snapshot or
+            rootfs_needs_rebuild | default(false) or
+            stored_snapshot_hash.failed or
+            (stored_snapshot_hash.content | default('') | b64decode | trim) != snapshot_inputs_hash.stdout
+          }}
+      when: enable_snapshot
+      tags: [prepare]
+
+    - name: Create snapshot generation config
+      copy:
+        content: |
+          base_dir: {{ runner_base_dir }}/snapshot-gen
+          firecracker:
+            binary: /usr/local/bin/firecracker
+            kernel: /opt/firecracker/vmlinux
+            rootfs: {{ rootfs_path }}
+          sandbox:
+            vcpu: {{ vcpu }}
+            memory_mb: {{ memory_mb }}
+        dest: "{{ runner_base_dir }}/snapshot-gen.yaml"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+      when: enable_snapshot and snapshot_needs_rebuild
+      tags: [prepare]
+
+    - name: Generate snapshot for fast VM boot
+      command: >
+        node index.js snapshot {{ snapshot_path }}
+        --config {{ runner_base_dir }}/snapshot-gen.yaml
+      args:
+        chdir: "{{ runner_base_dir }}"
+      become: no
+      when: enable_snapshot and snapshot_needs_rebuild
+      tags: [prepare]
+
+    - name: Store snapshot inputs hash
+      copy:
+        content: "{{ snapshot_inputs_hash.stdout }}\n"
+        dest: "{{ snapshot_path }}/inputs.sha256"
+        mode: '0644'
+      when: enable_snapshot and snapshot_needs_rebuild
+      tags: [prepare]
+
+    - name: Clean up snapshot generation files
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ runner_base_dir }}/snapshot-gen.yaml"
+        - "{{ runner_base_dir }}/snapshot-gen"
+      when: enable_snapshot and snapshot_needs_rebuild
       tags: [prepare]
 
     # ========================================
