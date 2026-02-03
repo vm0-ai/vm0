@@ -7,9 +7,6 @@
 
 import { FeatureSwitchKey } from "./feature-switch-key";
 
-/**
- * Feature switch definition
- */
 export interface FeatureSwitch {
   readonly maintainer: string;
   readonly enabled: boolean;
