@@ -4,7 +4,10 @@
  * Covers:
  * - Config validation (no config, wrong type)
  * - Successful pull scenarios (normal, empty artifact, specific version)
- * - Error handling (not found, API errors)
+ * - Error handling (artifact not found, version not found, API errors)
+ *
+ * Note: "version not found" test migrated from E2E (t03-artifacts.bats)
+ * per testing guidelines - error cases belong in integration tests
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -358,6 +361,34 @@ describe("artifact pull", () => {
 
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Pull failed"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should fail if version not found", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/storages/download", () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message: 'Version "00000000" not found',
+                code: "NOT_FOUND",
+              },
+            },
+            { status: 404 },
+          );
+        }),
+      );
+
+      await expect(async () => {
+        await pullCommand.parseAsync(["node", "cli", "00000000"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Pull failed"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("not found"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
