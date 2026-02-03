@@ -4,14 +4,8 @@ import { NextResponse } from "next/server";
 import { locales, defaultLocale } from "./i18n";
 
 // Routes that site handles locally (everything else proxies to web)
-const SITE_LOCAL_ROUTES = [
-  "/glossary",
-  "/pricing",
-  "/privacy-policy",
-  "/terms-of-use",
-  "/skills",
-  "/blog",
-];
+// Start empty - add routes here as pages are migrated from web to site
+const SITE_LOCAL_ROUTES: string[] = [];
 
 // Create the i18n middleware
 const intlMiddleware = createIntlMiddleware({
