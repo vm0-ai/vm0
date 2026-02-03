@@ -314,8 +314,8 @@ jobs:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_USER_STORAGES_BUCKET_NAME: ${{ secrets.CI_R2_USER_STORAGES_BUCKET_NAME }}
-          SECRETS_ENCRYPTION_KEY: ${{ secrets.CI_SECRETS_ENCRYPTION_KEY }}
+          R2_USER_STORAGES_BUCKET_NAME: ${{ secrets.R2_USER_STORAGES_BUCKET_NAME }}
+          SECRETS_ENCRYPTION_KEY: ${{ secrets.SECRETS_ENCRYPTION_KEY }}
           AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
         run: pnpm vitest run --project=web
 
@@ -419,14 +419,14 @@ jobs:
             R2_ACCOUNT_ID=${{ secrets.R2_ACCOUNT_ID }}
             R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }}
             R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}
-            R2_USER_STORAGES_BUCKET_NAME=${{ secrets.CI_R2_USER_STORAGES_BUCKET_NAME }}
-            SECRETS_ENCRYPTION_KEY=${{ secrets.CI_SECRETS_ENCRYPTION_KEY }}
+            R2_USER_STORAGES_BUCKET_NAME=${{ secrets.R2_USER_STORAGES_BUCKET_NAME }}
+            SECRETS_ENCRYPTION_KEY=${{ secrets.SECRETS_ENCRYPTION_KEY }}
             OFFICIAL_RUNNER_SECRET=${{ secrets.OFFICIAL_RUNNER_SECRET }}
             AXIOM_TOKEN=${{ secrets.AXIOM_TOKEN }}
             AXIOM_DATASET_SUFFIX=dev
             USE_MOCK_CLAUDE=true
             CRON_SECRET=${{ secrets.CRON_SECRET }}
-            ABLY_API_KEY=${{ secrets.CI_ABLY_API_KEY }}
+            ABLY_API_KEY=${{ secrets.ABLY_API_KEY }}
             CONCURRENT_RUN_LIMIT=0
             DEBUG=*
             CLAUDE_CODE_VERSION_URL=${{ vars.CLAUDE_CODE_VERSION_URL }}
@@ -953,9 +953,9 @@ jobs:
         shell: bash
         env:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-          METAL_HOSTS: ${{ secrets.CI_AWS_METAL_RUNNER_HOSTS }}
-          METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
-          SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_USER: ${{ secrets.AWS_METAL_RUNNER_USER }}
+          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
         run: |
           # Parse hosts into array
           IFS=',' read -ra HOSTS <<< "$METAL_HOSTS"
@@ -1109,9 +1109,9 @@ jobs:
         id: prepare
         env:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-          METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
+          METAL_USER: ${{ secrets.AWS_METAL_RUNNER_USER }}
           RUNNER_HOST: ${{ steps.lock.outputs.host }}
-          SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
+          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
         run: |
           RUNNER_DIR="/opt/vm0-runner/${JOB_REF}"
           # Use numeric hash of job-ref for proxy port to ensure consistency
@@ -1163,11 +1163,11 @@ jobs:
 
       - name: Run benchmark command for VM performance testing
         env:
-          METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
+          METAL_USER: ${{ secrets.AWS_METAL_RUNNER_USER }}
           RUNNER_HOST: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
           RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
           PROXY_PORT: ${{ needs.deploy-runner-prepare.outputs.proxy-port }}
-          SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
+          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
         run: |
           mkdir -p "$HOME/.ssh"
           echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
@@ -1229,11 +1229,11 @@ jobs:
         id: start
         env:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-          METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
+          METAL_USER: ${{ secrets.AWS_METAL_RUNNER_USER }}
           RUNNER_HOST: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
           RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
           PROXY_PORT: ${{ needs.deploy-runner-prepare.outputs.proxy-port }}
-          SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
+          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
@@ -1278,8 +1278,8 @@ jobs:
         env:
           RUNNER_HOST: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
           RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
-          METAL_USER: ${{ secrets.CI_AWS_METAL_RUNNER_USER }}
-          SSH_KEY: ${{ secrets.CI_AWS_METAL_RUNNER_SSH_KEY }}
+          METAL_USER: ${{ secrets.AWS_METAL_RUNNER_USER }}
+          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
         run: |
           mkdir -p "$HOME/.ssh"
           echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
