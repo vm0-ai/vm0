@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.11.0](https://github.com/vm0-ai/vm0/compare/core-v7.10.0...core-v7.11.0) (2026-02-03)
+
+
+### Features
+
+* **web:** add llm chat api using openrouter sdk ([#2195](https://github.com/vm0-ai/vm0/issues/2195)) ([d0368a2](https://github.com/vm0-ai/vm0/commit/d0368a28c662fbc4894704a733c05f778c502aac))
+
 ## [7.10.0](https://github.com/vm0-ai/vm0/compare/core-v7.9.0...core-v7.10.0) (2026-02-03)
 
 

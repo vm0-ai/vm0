@@ -1,5 +1,25 @@
 # Changelog
 
+## [11.23.0](https://github.com/vm0-ai/vm0/compare/web-v11.22.0...web-v11.23.0) (2026-02-03)
+
+
+### Features
+
+* **web:** add llm chat api using openrouter sdk ([#2195](https://github.com/vm0-ai/vm0/issues/2195)) ([d0368a2](https://github.com/vm0-ai/vm0/commit/d0368a28c662fbc4894704a733c05f778c502aac))
+* **web:** enhance slack agent management with dynamic modals ([#2238](https://github.com/vm0-ai/vm0/issues/2238)) ([e319427](https://github.com/vm0-ai/vm0/commit/e319427e65b75e90954b567c63497caa7bf0436d))
+
+
+### Bug Fixes
+
+* **web:** add execution step tracking to E2B executor for better error diagnostics ([#2230](https://github.com/vm0-ai/vm0/issues/2230)) ([1484cb1](https://github.com/vm0-ai/vm0/commit/1484cb167fa147846a21135a98726b11bc16accf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.11.0
+
 ## [11.22.0](https://github.com/vm0-ai/vm0/compare/web-v11.21.0...web-v11.22.0) (2026-02-03)
 
 
