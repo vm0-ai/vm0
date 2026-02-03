@@ -20,23 +20,15 @@
         "@vm0/ui",
         "e2b",
         "@testing-library/react",
-        "@types/tar",
-        "@slack/web-api"
+        "@types/tar"
       ],
       "next": {
         "entry": ["next.config.{js,ts,mjs}"]
       }
     },
     "apps/site": {
-      "entry": [
-        "app/**/page.{ts,tsx}",
-        "app/**/layout.{ts,tsx}",
-        "middleware.{ts,tsx}",
-        "i18n.ts",
-        "navigation.ts"
-      ],
+      "entry": ["app/**/layout.{ts,tsx}", "middleware.{ts,tsx}"],
       "project": ["**/*.{ts,tsx}"],
-      "ignoreDependencies": ["@vm0/ui"],
       "next": {
         "entry": ["next.config.{js,ts,mjs}"]
       }
@@ -61,11 +53,7 @@
       "entry": ["src/main.ts", "**/*.{test,spec}.ts?(x)"],
       "project": ["**/*.{ts,tsx}"],
       "ignore": ["custom-eslint/**"],
-      "ignoreDependencies": [
-        "tailwindcss",
-        "typescript-eslint",
-        "@clerk/clerk-react"
-      ]
+      "ignoreDependencies": ["tailwindcss", "typescript-eslint"]
     },
     "apps/runner": {
       "entry": [
