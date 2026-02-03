@@ -30,7 +30,7 @@ const router = tsr.router(modelProvidersCheckContract, {
       status: 200 as const,
       body: {
         exists: result.exists,
-        credentialName: getCredentialNameForType(params.type),
+        credentialName: getCredentialNameForType(params.type) ?? "",
         currentType: result.currentType,
       },
     };

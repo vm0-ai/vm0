@@ -421,6 +421,13 @@
       "when": 1768400000000,
       "tag": "0059_add_slack_integration",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1768500000000,
+      "tag": "0060_add_auth_method_to_model_providers",
+      "breakpoints": true
     }
   ]
 }

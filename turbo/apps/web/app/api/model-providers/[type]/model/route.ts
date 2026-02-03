@@ -47,6 +47,8 @@ const router = tsr.router(modelProvidersUpdateModelContract, {
           type: provider.type,
           framework: provider.framework,
           credentialName: provider.credentialName,
+          authMethod: provider.authMethod ?? null,
+          credentialNames: provider.credentialNames ?? null,
           isDefault: provider.isDefault,
           selectedModel: provider.selectedModel,
           createdAt: provider.createdAt.toISOString(),

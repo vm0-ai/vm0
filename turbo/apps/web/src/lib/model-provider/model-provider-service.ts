@@ -217,6 +217,8 @@ export async function upsertModelProvider(
         type,
         framework,
         credentialName,
+        authMethod: null, // Legacy single-credential provider
+        credentialNames: null,
         isDefault: existingProvider.isDefault,
         selectedModel: selectedModel ?? null,
         createdAt: existingProvider.createdAt,
@@ -291,6 +293,8 @@ export async function upsertModelProvider(
         type,
         framework,
         credentialName,
+        authMethod: null, // Legacy single-credential provider
+        credentialNames: null,
         isDefault: created.isDefault,
         selectedModel: created.selectedModel,
         createdAt: created.createdAt,
@@ -351,6 +355,8 @@ export async function upsertModelProvider(
       type,
       framework,
       credentialName,
+      authMethod: null, // Legacy single-credential provider
+      credentialNames: null,
       isDefault: newProvider.isDefault,
       selectedModel: newProvider.selectedModel,
       createdAt: newProvider.createdAt,
@@ -635,6 +641,8 @@ export async function convertCredentialToModelProvider(
     type,
     framework,
     credentialName,
+    authMethod: null, // Legacy single-credential provider
+    credentialNames: null,
     isDefault: newProvider.isDefault,
     selectedModel: newProvider.selectedModel,
     createdAt: newProvider.createdAt,
@@ -748,6 +756,10 @@ export async function setModelProviderDefault(
       type,
       framework,
       credentialName,
+      authMethod: target.authMethod ?? null,
+      credentialNames: target.authMethod
+        ? (getCredentialNamesForAuthMethod(type, target.authMethod) ?? null)
+        : null,
       isDefault: true,
       selectedModel: target.selectedModel,
       createdAt: target.createdAt,
@@ -791,6 +803,10 @@ export async function setModelProviderDefault(
     type,
     framework,
     credentialName,
+    authMethod: target.authMethod ?? null,
+    credentialNames: target.authMethod
+      ? (getCredentialNamesForAuthMethod(type, target.authMethod) ?? null)
+      : null,
     isDefault: true,
     selectedModel: target.selectedModel,
     createdAt: target.createdAt,
@@ -848,6 +864,10 @@ export async function updateModelProviderModel(
     type,
     framework,
     credentialName,
+    authMethod: provider.authMethod ?? null,
+    credentialNames: provider.authMethod
+      ? (getCredentialNamesForAuthMethod(type, provider.authMethod) ?? null)
+      : null,
     isDefault: provider.isDefault,
     selectedModel: selectedModel ?? null,
     createdAt: provider.createdAt,
