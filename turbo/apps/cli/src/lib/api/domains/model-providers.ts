@@ -35,7 +35,12 @@ export async function listModelProviders(): Promise<ModelProviderListResponse> {
  */
 export async function upsertModelProvider(body: {
   type: ModelProviderType;
-  credential: string;
+  // Legacy single credential
+  credential?: string;
+  // Multi-auth support
+  authMethod?: string;
+  credentials?: Record<string, string>;
+  // Common options
   convert?: boolean;
   selectedModel?: string;
 }): Promise<UpsertModelProviderResponse> {

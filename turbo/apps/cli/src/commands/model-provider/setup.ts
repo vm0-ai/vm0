@@ -15,6 +15,9 @@ import {
   getDefaultModel,
   hasModelSelection,
   hasAuthMethods,
+  getAuthMethodsForType,
+  getDefaultAuthMethod,
+  getCredentialsForAuthMethod,
   type ModelProviderType,
 } from "@vm0/core";
 import { isInteractive } from "../../lib/utils/prompt-utils";
@@ -22,6 +25,9 @@ import { isInteractive } from "../../lib/utils/prompt-utils";
 interface SetupInput {
   type: ModelProviderType;
   credential?: string;
+  // Multi-auth support
+  authMethod?: string;
+  credentials?: Record<string, string>;
   selectedModel?: string;
   keepExistingCredential?: boolean;
   isInteractiveMode?: boolean;
@@ -57,23 +63,137 @@ function validateModel(
   return modelStr;
 }
 
+function validateAuthMethod(
+  type: ModelProviderType,
+  authMethodStr: string,
+): string | never {
+  const authMethods = getAuthMethodsForType(type);
+  if (!authMethods || !(authMethodStr in authMethods)) {
+    console.error(chalk.red(`✗ Invalid auth method "${authMethodStr}"`));
+    console.log();
+    console.log("Valid auth methods:");
+    if (authMethods) {
+      for (const [method, config] of Object.entries(authMethods)) {
+        console.log(`  ${chalk.cyan(method)} - ${config.label}`);
+      }
+    }
+    process.exit(1);
+  }
+  return authMethodStr;
+}
+
+/**
+ * Parse credential arguments into a credentials object.
+ * Supports two formats:
+ * - Single value (e.g., "sk-xxx") - auto-mapped to the provider's credential name
+ * - KEY=VALUE format (e.g., "AWS_REGION=us-east-1") - explicit mapping
+ */
+function parseCredentials(
+  type: ModelProviderType,
+  authMethod: string,
+  credentialArgs: string[],
+): Record<string, string> {
+  const credentialsConfig = getCredentialsForAuthMethod(type, authMethod);
+  if (!credentialsConfig) {
+    console.error(chalk.red(`✗ Invalid auth method "${authMethod}"`));
+    process.exit(1);
+  }
+
+  const credentialNames = Object.keys(credentialsConfig);
+
+  // Single value without = sign: only allowed for single-credential auth methods
+  const firstArg = credentialArgs[0];
+  if (credentialArgs.length === 1 && firstArg && !firstArg.includes("=")) {
+    if (credentialNames.length !== 1) {
+      console.error(
+        chalk.red(
+          "✗ Must use KEY=VALUE format for multi-credential auth methods",
+        ),
+      );
+      console.log();
+      console.log("Required credentials:");
+      for (const [name, fieldConfig] of Object.entries(credentialsConfig)) {
+        const requiredNote = fieldConfig.required ? " (required)" : "";
+        console.log(`  ${chalk.cyan(name)}${requiredNote}`);
+      }
+      process.exit(1);
+    }
+    const firstCredentialName = credentialNames[0];
+    if (!firstCredentialName) {
+      console.error(chalk.red("✗ No credentials defined for this auth method"));
+      process.exit(1);
+    }
+    return { [firstCredentialName]: firstArg };
+  }
+
+  // KEY=VALUE format
+  const credentials: Record<string, string> = {};
+  for (const arg of credentialArgs) {
+    const eqIndex = arg.indexOf("=");
+    if (eqIndex === -1) {
+      console.error(chalk.red(`✗ Invalid credential format "${arg}"`));
+      console.log();
+      console.log("Use KEY=VALUE format (e.g., AWS_REGION=us-east-1)");
+      process.exit(1);
+    }
+    const key = arg.slice(0, eqIndex);
+    const value = arg.slice(eqIndex + 1);
+    credentials[key] = value;
+  }
+  return credentials;
+}
+
+/**
+ * Validate credentials against the auth method config.
+ */
+function validateCredentials(
+  type: ModelProviderType,
+  authMethod: string,
+  credentials: Record<string, string>,
+): void {
+  const credentialsConfig = getCredentialsForAuthMethod(type, authMethod);
+  if (!credentialsConfig) {
+    console.error(chalk.red(`✗ Invalid auth method "${authMethod}"`));
+    process.exit(1);
+  }
+
+  // Check required fields
+  for (const [name, fieldConfig] of Object.entries(credentialsConfig)) {
+    if (fieldConfig.required && !credentials[name]) {
+      console.error(chalk.red(`✗ Missing required credential: ${name}`));
+      console.log();
+      console.log("Required credentials:");
+      for (const [n, fc] of Object.entries(credentialsConfig)) {
+        if (fc.required) {
+          console.log(`  ${chalk.cyan(n)} - ${fc.label}`);
+        }
+      }
+      process.exit(1);
+    }
+  }
+
+  // Check for unknown fields
+  for (const name of Object.keys(credentials)) {
+    if (!(name in credentialsConfig)) {
+      console.error(chalk.red(`✗ Unknown credential: ${name}`));
+      console.log();
+      console.log("Valid credentials:");
+      for (const [n, fc] of Object.entries(credentialsConfig)) {
+        const requiredNote = fc.required ? " (required)" : " (optional)";
+        console.log(`  ${chalk.cyan(n)}${requiredNote}`);
+      }
+      process.exit(1);
+    }
+  }
+}
+
 function handleNonInteractiveMode(options: {
   type: string;
-  credential: string;
+  credential: string[];
+  authMethod?: string;
   model?: string;
 }): SetupInput {
   const type = validateProviderType(options.type);
-
-  // Multi-auth providers require different handling (not yet implemented in CLI)
-  if (hasAuthMethods(type)) {
-    console.error(
-      chalk.red(
-        `✗ Provider "${type}" requires multi-auth setup which is not yet supported in the CLI.`,
-      ),
-    );
-    console.log("Please use the web interface to configure this provider.");
-    process.exit(1);
-  }
 
   let selectedModel: string | undefined;
 
@@ -85,9 +205,81 @@ function handleNonInteractiveMode(options: {
     selectedModel = defaultModel || undefined;
   }
 
+  // Handle multi-auth providers
+  if (hasAuthMethods(type)) {
+    // Determine auth method
+    let authMethod: string;
+    if (options.authMethod) {
+      authMethod = validateAuthMethod(type, options.authMethod);
+    } else {
+      const defaultAuthMethod = getDefaultAuthMethod(type);
+      const authMethods = getAuthMethodsForType(type);
+      if (!defaultAuthMethod || !authMethods) {
+        console.error(chalk.red(`✗ Provider "${type}" requires --auth-method`));
+        process.exit(1);
+      }
+      // If there's only one auth method, use it; otherwise require explicit selection
+      const authMethodNames = Object.keys(authMethods);
+      if (authMethodNames.length === 1) {
+        authMethod = authMethodNames[0]!;
+      } else {
+        console.error(
+          chalk.red(
+            `✗ --auth-method is required for "${type}" (multiple auth methods available)`,
+          ),
+        );
+        console.log();
+        console.log("Available auth methods:");
+        for (const [method, config] of Object.entries(authMethods)) {
+          const defaultNote = method === defaultAuthMethod ? " (default)" : "";
+          console.log(
+            `  ${chalk.cyan(method)} - ${config.label}${defaultNote}`,
+          );
+        }
+        console.log();
+        console.log("Example:");
+        console.log(
+          chalk.cyan(
+            `  vm0 model-provider setup --type ${type} --auth-method ${authMethodNames[0]} --credential KEY=VALUE`,
+          ),
+        );
+        process.exit(1);
+      }
+    }
+
+    // Parse and validate credentials
+    const credentials = parseCredentials(type, authMethod, options.credential);
+    validateCredentials(type, authMethod, credentials);
+
+    return {
+      type,
+      authMethod,
+      credentials,
+      selectedModel,
+      isInteractiveMode: false,
+    };
+  }
+
+  // Single-credential provider (legacy)
+  // Accept single value or KEY=VALUE format
+  const credentialArgs = options.credential;
+  const firstArg = credentialArgs[0];
+  if (!firstArg) {
+    console.error(chalk.red("✗ Credential is required"));
+    process.exit(1);
+  }
+
+  // If KEY=VALUE format, extract the value
+  let credential: string;
+  if (firstArg.includes("=")) {
+    credential = firstArg.slice(firstArg.indexOf("=") + 1);
+  } else {
+    credential = firstArg;
+  }
+
   return {
     type,
-    credential: options.credential,
+    credential,
     selectedModel,
     isInteractiveMode: false,
   };
@@ -130,6 +322,91 @@ async function promptForModelSelection(
   return selected === "" ? undefined : selected;
 }
 
+/**
+ * Prompt for auth method selection (only for multi-auth providers)
+ */
+async function promptForAuthMethod(type: ModelProviderType): Promise<string> {
+  const authMethods = getAuthMethodsForType(type);
+  const defaultAuthMethod = getDefaultAuthMethod(type);
+
+  if (!authMethods) {
+    return "default";
+  }
+
+  const choices = Object.entries(authMethods).map(([method, config]) => ({
+    title:
+      method === defaultAuthMethod
+        ? `${config.label} (Recommended)`
+        : config.label,
+    value: method,
+  }));
+
+  const response = await prompts(
+    {
+      type: "select",
+      name: "authMethod",
+      message: "Select authentication method:",
+      choices,
+    },
+    { onCancel: () => process.exit(0) },
+  );
+
+  return response.authMethod as string;
+}
+
+/**
+ * Prompt for credentials based on auth method configuration
+ */
+async function promptForCredentials(
+  type: ModelProviderType,
+  authMethod: string,
+): Promise<Record<string, string>> {
+  const credentialsConfig = getCredentialsForAuthMethod(type, authMethod);
+
+  if (!credentialsConfig) {
+    console.error(chalk.red(`✗ Invalid auth method "${authMethod}"`));
+    process.exit(1);
+  }
+
+  const credentials: Record<string, string> = {};
+
+  for (const [name, fieldConfig] of Object.entries(credentialsConfig)) {
+    if (fieldConfig.helpText) {
+      console.log(chalk.dim(fieldConfig.helpText));
+    }
+
+    if (fieldConfig.required) {
+      const response = await prompts(
+        {
+          type: "password",
+          name: "value",
+          message: `Enter ${fieldConfig.label}:`,
+          validate: (value: string) =>
+            value.length > 0 || `${fieldConfig.label} is required`,
+        },
+        { onCancel: () => process.exit(0) },
+      );
+      credentials[name] = response.value as string;
+    } else {
+      // Optional field
+      const response = await prompts(
+        {
+          type: "text",
+          name: "value",
+          message: `Enter ${fieldConfig.label} (optional, press Enter to skip):`,
+        },
+        { onCancel: () => process.exit(0) },
+      );
+      const value = response.value as string;
+      if (value && value.trim()) {
+        credentials[name] = value.trim();
+      }
+    }
+  }
+
+  return credentials;
+}
+
 async function handleInteractiveMode(): Promise<SetupInput | null> {
   if (!isInteractive()) {
     console.error(chalk.red("✗ Interactive mode requires a TTY"));
@@ -148,15 +425,14 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
   const configuredTypes = new Set(configuredProviders.map((p) => p.type));
 
   // Build provider choices with configuration status
-  // Filter out multi-auth providers (like aws-bedrock) until CLI support is added
-  const annotatedChoices = Object.entries(MODEL_PROVIDER_TYPES)
-    .filter(([type]) => !hasAuthMethods(type as ModelProviderType))
-    .map(([type, config]) => ({
+  const annotatedChoices = Object.entries(MODEL_PROVIDER_TYPES).map(
+    ([type, config]) => ({
       title: configuredTypes.has(type as ModelProviderType)
         ? `${config.label} ✓`
         : config.label,
       value: type as ModelProviderType,
-    }));
+    }),
+  );
 
   const typeResponse = await prompts(
     {
@@ -236,23 +512,28 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
 
   const config = MODEL_PROVIDER_TYPES[type];
 
-  // Multi-auth providers require different handling (not yet implemented in CLI)
-  if (hasAuthMethods(type)) {
-    console.error(
-      chalk.red(
-        `✗ Provider "${type}" requires multi-auth setup which is not yet supported in the CLI.`,
-      ),
-    );
-    console.log("Please use the web interface to configure this provider.");
-    process.exit(1);
-  }
-
-  const credentialLabel =
-    "credentialLabel" in config ? config.credentialLabel : "credential";
-
   console.log();
   console.log(chalk.dim(config.helpText));
   console.log();
+
+  // Handle multi-auth providers
+  if (hasAuthMethods(type)) {
+    const authMethod = await promptForAuthMethod(type);
+    const credentials = await promptForCredentials(type, authMethod);
+    const selectedModel = await promptForModelSelection(type);
+
+    return {
+      type,
+      authMethod,
+      credentials,
+      selectedModel,
+      isInteractiveMode: true,
+    };
+  }
+
+  // Single-credential provider (legacy)
+  const credentialLabel =
+    "credentialLabel" in config ? config.credentialLabel : "credential";
 
   const credentialResponse = await prompts(
     {
@@ -312,34 +593,50 @@ async function promptSetAsDefault(
   }
 }
 
+/**
+ * Collect credential values from repeatable --credential option
+ */
+function collectCredentials(value: string, previous: string[]): string[] {
+  return previous.concat([value]);
+}
+
 export const setupCommand = new Command()
   .name("setup")
   .description("Configure a model provider")
   .option("-t, --type <type>", "Provider type (for non-interactive mode)")
   .option(
-    "-c, --credential <credential>",
-    "Credential value (for non-interactive mode)",
+    "-c, --credential <value>",
+    "Credential value (can be used multiple times, supports VALUE or KEY=VALUE format)",
+    collectCredentials,
+    [],
+  )
+  .option(
+    "-a, --auth-method <method>",
+    "Auth method (required for multi-auth providers like aws-bedrock)",
   )
   .option("-m, --model <model>", "Model selection (for non-interactive mode)")
   .option("--convert", "Convert existing user credential to model provider")
   .action(
     async (options: {
       type?: string;
-      credential?: string;
+      credential?: string[];
+      authMethod?: string;
       model?: string;
       convert?: boolean;
     }) => {
       try {
         let input: SetupInput;
         const shouldConvert = options.convert ?? false;
+        const credentialArgs = options.credential ?? [];
 
-        if (options.type && options.credential) {
+        if (options.type && credentialArgs.length > 0) {
           input = handleNonInteractiveMode({
             type: options.type,
-            credential: options.credential,
+            credential: credentialArgs,
+            authMethod: options.authMethod,
             model: options.model,
           });
-        } else if (options.type || options.credential) {
+        } else if (options.type || credentialArgs.length > 0) {
           console.error(
             chalk.red("✗ Both --type and --credential are required"),
           );
@@ -391,7 +688,9 @@ export const setupCommand = new Command()
         // Standard upsert flow with credential
         const { provider, created } = await upsertModelProvider({
           type: input.type,
-          credential: input.credential!,
+          credential: input.credential,
+          authMethod: input.authMethod,
+          credentials: input.credentials,
           convert: shouldConvert,
           selectedModel: input.selectedModel,
         });
