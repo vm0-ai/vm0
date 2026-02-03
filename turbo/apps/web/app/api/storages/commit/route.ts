@@ -9,6 +9,7 @@ import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { storages, storageVersions } from "../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getUserScopeByClerkId } from "../../../../src/lib/scope/scope-service";
 import {
   s3ObjectExists,
   verifyS3FilesExist,
@@ -30,6 +31,20 @@ const router = tsr.router(storagesCommitContract, {
         status: 401 as const,
         body: {
           error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        },
+      };
+    }
+
+    // Resolve user's scope
+    const userScope = await getUserScopeByClerkId(userId);
+    if (!userScope) {
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message: "User scope not found. Please run: vm0 auth login",
+            code: "BAD_REQUEST",
+          },
         },
       };
     }
@@ -64,7 +79,7 @@ const router = tsr.router(storagesCommitContract, {
       .from(storages)
       .where(
         and(
-          eq(storages.userId, userId),
+          eq(storages.scopeId, userScope.id),
           eq(storages.name, storageName),
           eq(storages.type, storageType),
         ),
@@ -190,7 +205,7 @@ const router = tsr.router(storagesCommitContract, {
     // Verify required S3 objects exist
     // For empty artifacts (fileCount === 0), only manifest is required
     // since there's no archive to extract
-    const s3Key = `${userId}/${storageType}/${storageName}/${versionId}`;
+    const s3Key = `${userScope.slug}/${storageType}/${storageName}/${versionId}`;
     const manifestKey = `${s3Key}/manifest.json`;
     const archiveKey = `${s3Key}/archive.tar.gz`;
     const fileCount = files.length;

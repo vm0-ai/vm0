@@ -8,6 +8,7 @@ import type { PreparedContext } from "../executors/types";
 import { prepareStorageManifest } from "../../storage/storage-service";
 import { badRequest } from "../../errors";
 import { logger } from "../../logger";
+import { getUserScopeByClerkId } from "../../scope/scope-service";
 import type { ExperimentalFirewall as CoreExperimentalFirewall } from "@vm0/core";
 
 const log = logger("context:preparer");
@@ -186,12 +187,18 @@ export async function prepareForExecution(
     `Extracted config: workingDir=${workingDir}, cliAgentType=${cliAgentType}, runnerGroup=${runnerGroup}, firewall=${experimentalFirewall ? "enabled" : "disabled"}`,
   );
 
+  // Resolve user's scope for storage access
+  const userScope = await getUserScopeByClerkId(context.userId || "");
+  if (!userScope) {
+    throw badRequest("User scope not found");
+  }
+
   // Prepare storage manifest with presigned URLs
   // This is done ONCE here, not in each executor
   const storageManifest = await prepareStorageManifest(
     context.agentCompose as AgentComposeYaml,
     context.vars || {},
-    context.userId || "",
+    userScope.id,
     context.artifactName,
     context.artifactVersion,
     context.volumeVersions,

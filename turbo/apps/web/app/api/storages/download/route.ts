@@ -8,6 +8,7 @@ import { initServices } from "../../../../src/lib/init-services";
 import { storages, storageVersions } from "../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getUserScopeByClerkId } from "../../../../src/lib/scope/scope-service";
 import { generatePresignedUrl } from "../../../../src/lib/s3/s3-client";
 import { env } from "../../../../src/env";
 import { resolveVersionByPrefix } from "../../../../src/lib/storage/version-resolver";
@@ -30,19 +31,33 @@ const router = tsr.router(storagesDownloadContract, {
       };
     }
 
+    // Resolve user's scope
+    const userScope = await getUserScopeByClerkId(userId);
+    if (!userScope) {
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message: "User scope not found. Please run: vm0 auth login",
+            code: "BAD_REQUEST",
+          },
+        },
+      };
+    }
+
     const { name: storageName, type: storageType, version: versionId } = query;
 
     log.debug(
-      `Getting download URL for "${storageName}" (type: ${storageType})${versionId ? ` version ${versionId}` : ""} for user ${userId}`,
+      `Getting download URL for "${storageName}" (type: ${storageType})${versionId ? ` version ${versionId}` : ""} for scope ${userScope.slug}`,
     );
 
-    // Check if storage exists and belongs to user
+    // Check if storage exists and belongs to user's scope
     const [storage] = await globalThis.services.db
       .select()
       .from(storages)
       .where(
         and(
-          eq(storages.userId, userId),
+          eq(storages.scopeId, userScope.id),
           eq(storages.name, storageName),
           eq(storages.type, storageType),
         ),

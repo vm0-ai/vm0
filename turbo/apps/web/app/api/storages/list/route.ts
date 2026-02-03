@@ -8,6 +8,7 @@ import { initServices } from "../../../../src/lib/init-services";
 import { storages } from "../../../../src/db/schema/storage";
 import { eq, and, desc } from "drizzle-orm";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getUserScopeByClerkId } from "../../../../src/lib/scope/scope-service";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("api:storages:list");
@@ -29,9 +30,23 @@ const router = tsr.router(storagesListContract, {
 
     const { type: storageType } = query;
 
-    log.debug(`Listing ${storageType}s for user ${userId}`);
+    // Resolve user's scope
+    const userScope = await getUserScopeByClerkId(userId);
+    if (!userScope) {
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message: "User scope not found. Please run: vm0 auth login",
+            code: "BAD_REQUEST",
+          },
+        },
+      };
+    }
 
-    // Query storages filtered by user and type
+    log.debug(`Listing ${storageType}s for scope ${userScope.slug}`);
+
+    // Query storages filtered by scope and type
     const results = await globalThis.services.db
       .select({
         name: storages.name,
@@ -40,7 +55,9 @@ const router = tsr.router(storagesListContract, {
         updatedAt: storages.updatedAt,
       })
       .from(storages)
-      .where(and(eq(storages.userId, userId), eq(storages.type, storageType)))
+      .where(
+        and(eq(storages.scopeId, userScope.id), eq(storages.type, storageType)),
+      )
       .orderBy(desc(storages.updatedAt));
 
     log.debug(`Found ${results.length} ${storageType}s`);

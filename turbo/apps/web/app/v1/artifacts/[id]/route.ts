@@ -13,6 +13,7 @@ import {
   authenticatePublicApi,
   isAuthSuccess,
 } from "../../../../src/lib/public-api/auth";
+import { getUserScopeByClerkId } from "../../../../src/lib/scope/scope-service";
 import { storages, storageVersions } from "../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 
@@ -36,6 +37,22 @@ const router = tsr.router(publicArtifactByIdContract, {
       };
     }
 
+    // Get user's scope
+    const userScope = await getUserScopeByClerkId(auth.userId);
+    if (!userScope) {
+      return {
+        status: 401 as const,
+        body: {
+          error: {
+            type: "authentication_error" as const,
+            code: "invalid_api_key",
+            message:
+              "Please set up your scope first. Login again with: vm0 login",
+          },
+        },
+      };
+    }
+
     // Find artifact by ID
     const [artifact] = await globalThis.services.db
       .select()
@@ -43,7 +60,7 @@ const router = tsr.router(publicArtifactByIdContract, {
       .where(
         and(
           eq(storages.id, params.id),
-          eq(storages.userId, auth.userId),
+          eq(storages.scopeId, userScope.id),
           eq(storages.type, STORAGE_TYPE),
         ),
       )

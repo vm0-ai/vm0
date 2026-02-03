@@ -53,9 +53,9 @@ const router = tsr.router(publicArtifactsListContract, {
       };
     }
 
-    // Build query conditions - filter by user and type
+    // Build query conditions - filter by scope and type
     const conditions = [
-      eq(storages.userId, auth.userId),
+      eq(storages.scopeId, userScope.id),
       eq(storages.type, STORAGE_TYPE),
     ];
 

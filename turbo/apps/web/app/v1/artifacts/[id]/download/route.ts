@@ -9,6 +9,7 @@ import {
   authenticatePublicApi,
   isAuthSuccess,
 } from "../../../../../src/lib/public-api/auth";
+import { getUserScopeByClerkId } from "../../../../../src/lib/scope/scope-service";
 import {
   storages,
   storageVersions,
@@ -47,14 +48,30 @@ export async function GET(
     );
   }
 
-  // Verify artifact exists and belongs to user
+  // Get user's scope
+  const userScope = await getUserScopeByClerkId(auth.userId);
+  if (!userScope) {
+    return NextResponse.json(
+      {
+        error: {
+          type: "authentication_error",
+          code: "invalid_api_key",
+          message:
+            "Please set up your scope first. Login again with: vm0 login",
+        },
+      },
+      { status: 401 },
+    );
+  }
+
+  // Verify artifact exists and belongs to user's scope
   const [artifact] = await globalThis.services.db
     .select()
     .from(storages)
     .where(
       and(
         eq(storages.id, id),
-        eq(storages.userId, auth.userId),
+        eq(storages.scopeId, userScope.id),
         eq(storages.type, STORAGE_TYPE),
       ),
     )

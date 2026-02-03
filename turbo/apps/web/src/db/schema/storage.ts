@@ -7,7 +7,9 @@ import {
   integer,
   timestamp,
   uniqueIndex,
+  index,
 } from "drizzle-orm/pg-core";
+import { scopes } from "./scope";
 
 /**
  * Storage type:
@@ -18,13 +20,16 @@ export type StorageTypeEnum = "volume" | "artifact";
 
 /**
  * Storages table
- * Main table for user storage with HEAD pointer to current version
+ * Main table for scope-level storage with HEAD pointer to current version
  */
 export const storages = pgTable(
   "storages",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    userId: text("user_id").notNull(),
+    userId: text("user_id").notNull(), // Creator (who uploaded)
+    scopeId: uuid("scope_id")
+      .notNull()
+      .references(() => scopes.id), // Namespace (who owns)
     name: varchar("name", { length: 256 }).notNull(),
     type: varchar("type", { length: 16 }).notNull().default("volume"),
     s3Prefix: text("s3_prefix").notNull(),
@@ -35,11 +40,12 @@ export const storages = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => ({
-    userNameTypeIdx: uniqueIndex("idx_storages_user_name_type").on(
-      table.userId,
+    scopeNameTypeIdx: uniqueIndex("idx_storages_scope_name_type").on(
+      table.scopeId,
       table.name,
       table.type,
     ),
+    scopeIdx: index("idx_storages_scope").on(table.scopeId),
   }),
 );
 

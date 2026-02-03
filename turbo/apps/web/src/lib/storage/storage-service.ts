@@ -17,14 +17,14 @@ const log = logger("storage");
 
 /**
  * Resolve version ID from version string
- * @param userId - User ID for storage access
+ * @param scopeId - Scope ID for storage access
  * @param storageName - Storage name
  * @param storageType - Storage type ("volume" or "artifact")
  * @param version - Version string ("latest" or specific hash)
  * @returns Version ID and S3 key
  */
 async function resolveVersion(
-  userId: string,
+  scopeId: string,
   storageName: string,
   storageType: "volume" | "artifact",
   version: string,
@@ -36,7 +36,7 @@ async function resolveVersion(
     .from(storages)
     .where(
       and(
-        eq(storages.userId, userId),
+        eq(storages.scopeId, scopeId),
         eq(storages.name, storageName),
         eq(storages.type, storageType),
       ),
@@ -93,7 +93,7 @@ async function resolveVersion(
  *
  * @param agentConfig - Agent configuration containing volume definitions
  * @param vars - Template variables for placeholder replacement
- * @param userId - User ID for storage access
+ * @param scopeId - Scope ID for storage access
  * @param artifactName - Artifact storage name
  * @param artifactVersion - Artifact version (defaults to "latest")
  * @param volumeVersionOverrides - Optional volume version overrides
@@ -104,7 +104,7 @@ async function resolveVersion(
 export async function prepareStorageManifest(
   agentConfig: AgentVolumeConfig | undefined,
   vars: Record<string, string>,
-  userId: string,
+  scopeId: string,
   artifactName?: string,
   artifactVersion?: string,
   volumeVersionOverrides?: Record<string, string>,
@@ -148,7 +148,7 @@ export async function prepareStorageManifest(
   // Process all volumes and artifact in parallel
   const volumePromises = volumeResult.volumes.map(async (volume) => {
     const { versionId, s3Key } = await resolveVersion(
-      userId,
+      scopeId,
       volume.vasStorageName,
       "volume",
       volume.vasVersion,
@@ -196,7 +196,7 @@ export async function prepareStorageManifest(
   const artifactPromise = artifactSource
     ? (async () => {
         const { versionId, s3Key } = await resolveVersion(
-          userId,
+          scopeId,
           artifactSource.vasStorageName,
           "artifact",
           artifactSource.vasVersion,

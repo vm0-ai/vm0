@@ -9,6 +9,7 @@ import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { storages, storageVersions } from "../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getUserScopeByClerkId } from "../../../../src/lib/scope/scope-service";
 import {
   generatePresignedPutUrl,
   downloadManifest,
@@ -19,6 +20,67 @@ import { env } from "../../../../src/env";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("api:storages:prepare");
+
+/**
+ * Handle incremental upload - merge files with base version
+ */
+async function mergeWithBaseVersion(
+  storageId: string,
+  files: Array<{ path: string; hash: string; size: number }>,
+  baseVersion: string,
+  changes: { deleted?: string[] },
+): Promise<Array<{ path: string; hash: string; size: number }>> {
+  const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
+  if (!bucketName) {
+    throw new Error("R2_USER_STORAGES_BUCKET_NAME not configured");
+  }
+
+  // Get base version
+  const [baseVersionRecord] = await globalThis.services.db
+    .select()
+    .from(storageVersions)
+    .where(
+      and(
+        eq(storageVersions.storageId, storageId),
+        eq(storageVersions.id, baseVersion),
+      ),
+    )
+    .limit(1);
+
+  if (!baseVersionRecord) {
+    return files;
+  }
+
+  // Download base manifest
+  const baseManifest = await downloadManifest(
+    bucketName,
+    baseVersionRecord.s3Key,
+  );
+
+  // Create map of current files from client
+  const currentFilesMap = new Map(files.map((f) => [f.path, f]));
+
+  // Start with base manifest files, excluding deleted ones
+  const deletedSet = new Set(changes.deleted || []);
+  const baseFilesMap = new Map<
+    string,
+    { path: string; hash: string; size: number }
+  >();
+
+  for (const file of baseManifest.files) {
+    if (!deletedSet.has(file.path) && !currentFilesMap.has(file.path)) {
+      baseFilesMap.set(file.path, file);
+    }
+  }
+
+  // Merge: base files + current files (current overwrites base)
+  const mergedFiles = [...baseFilesMap.values(), ...files];
+  log.debug(
+    `Merged files: ${baseManifest.files.length} base + ${files.length} current - ${deletedSet.size} deleted = ${mergedFiles.length} total`,
+  );
+
+  return mergedFiles;
+}
 
 const router = tsr.router(storagesPrepareContract, {
   prepare: async ({ body, headers }) => {
@@ -31,6 +93,20 @@ const router = tsr.router(storagesPrepareContract, {
         status: 401 as const,
         body: {
           error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        },
+      };
+    }
+
+    // Resolve user's scope
+    const userScope = await getUserScopeByClerkId(userId);
+    if (!userScope) {
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message: "User scope not found. Please run: vm0 auth login",
+            code: "BAD_REQUEST",
+          },
         },
       };
     }
@@ -73,7 +149,7 @@ const router = tsr.router(storagesPrepareContract, {
       .from(storages)
       .where(
         and(
-          eq(storages.userId, userId),
+          eq(storages.scopeId, userScope.id),
           eq(storages.name, storageName),
           eq(storages.type, storageType),
         ),
@@ -86,9 +162,10 @@ const router = tsr.router(storagesPrepareContract, {
         .insert(storages)
         .values({
           userId,
+          scopeId: userScope.id,
           name: storageName,
           type: storageType,
-          s3Prefix: `${userId}/${storageType}/${storageName}`,
+          s3Prefix: `${userScope.slug}/${storageType}/${storageName}`,
           size: 0,
           fileCount: 0,
         })
@@ -113,57 +190,12 @@ const router = tsr.router(storagesPrepareContract, {
     let mergedFiles = files;
     if (baseVersion && changes) {
       try {
-        const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
-        if (!bucketName) {
-          throw new Error("R2_USER_STORAGES_BUCKET_NAME not configured");
-        }
-
-        // Get base version
-        const [baseVersionRecord] = await globalThis.services.db
-          .select()
-          .from(storageVersions)
-          .where(
-            and(
-              eq(storageVersions.storageId, storage.id),
-              eq(storageVersions.id, baseVersion),
-            ),
-          )
-          .limit(1);
-
-        if (baseVersionRecord) {
-          // Download base manifest
-          const baseManifest = await downloadManifest(
-            bucketName,
-            baseVersionRecord.s3Key,
-          );
-
-          // Create map of current files from client
-          const currentFilesMap = new Map(
-            files.map((f: { path: string; hash: string; size: number }) => [
-              f.path,
-              f,
-            ]),
-          );
-
-          // Start with base manifest files, excluding deleted ones
-          const deletedSet = new Set(changes.deleted || []);
-          const baseFilesMap = new Map<
-            string,
-            { path: string; hash: string; size: number }
-          >();
-
-          for (const file of baseManifest.files) {
-            if (!deletedSet.has(file.path) && !currentFilesMap.has(file.path)) {
-              baseFilesMap.set(file.path, file);
-            }
-          }
-
-          // Merge: base files + current files (current overwrites base)
-          mergedFiles = [...baseFilesMap.values(), ...files];
-          log.debug(
-            `Merged files: ${baseManifest.files.length} base + ${files.length} current - ${deletedSet.size} deleted = ${mergedFiles.length} total`,
-          );
-        }
+        mergedFiles = await mergeWithBaseVersion(
+          storage.id,
+          files,
+          baseVersion,
+          changes,
+        );
       } catch (err) {
         log.warn(
           `Failed to process incremental upload, using full files: ${err}`,
@@ -237,7 +269,7 @@ const router = tsr.router(storagesPrepareContract, {
     }
 
     // Generate presigned URLs for archive and manifest
-    const s3Key = `${userId}/${storageType}/${storageName}/${versionId}`;
+    const s3Key = `${userScope.slug}/${storageType}/${storageName}/${versionId}`;
     const archiveKey = `${s3Key}/archive.tar.gz`;
     const manifestKey = `${s3Key}/manifest.json`;
 
