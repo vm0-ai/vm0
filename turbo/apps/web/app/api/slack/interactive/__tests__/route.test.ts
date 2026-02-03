@@ -197,8 +197,7 @@ describe("POST /api/slack/interactive", () => {
           callback_id: "agent_add_modal",
           state: {
             values: {
-              agent_select: { agent: {} },
-              agent_name: { name: { value: "my-agent" } },
+              agent_select: { agent_select_action: {} },
             },
           },
         },
@@ -213,7 +212,8 @@ describe("POST /api/slack/interactive", () => {
       expect(data.errors.agent_select).toBe("Please select an agent");
     });
 
-    it("returns error when agent name is empty", async () => {
+    it("returns error when agent is not found in database", async () => {
+      // Use a valid UUID that doesn't exist in the database
       const body = buildInteractiveBody({
         type: "view_submission",
         user: { id: "U123", username: "testuser", team_id: "T123" },
@@ -224,9 +224,12 @@ describe("POST /api/slack/interactive", () => {
           state: {
             values: {
               agent_select: {
-                agent: { selected_option: { value: "compose123" } },
+                agent_select_action: {
+                  selected_option: {
+                    value: "00000000-0000-0000-0000-000000000000",
+                  },
+                },
               },
-              agent_name: { name: { value: "" } },
             },
           },
         },
@@ -238,38 +241,18 @@ describe("POST /api/slack/interactive", () => {
 
       expect(response.status).toBe(200);
       expect(data.response_action).toBe("errors");
-      expect(data.errors.agent_name).toBe("Please enter a name");
-    });
-
-    it("returns error when agent name has invalid format", async () => {
-      const body = buildInteractiveBody({
-        type: "view_submission",
-        user: { id: "U123", username: "testuser", team_id: "T123" },
-        team: { id: "T123", domain: "test" },
-        view: {
-          id: "V123",
-          callback_id: "agent_add_modal",
-          state: {
-            values: {
-              agent_select: {
-                agent: { selected_option: { value: "compose123" } },
-              },
-              agent_name: { name: { value: "Invalid Name!" } },
-            },
-          },
-        },
-      });
-      const request = createSignedSlackRequest(body);
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.response_action).toBe("errors");
-      expect(data.errors.agent_name).toContain("lowercase letters");
+      expect(data.errors.agent_select).toContain("not found");
     });
 
     it("returns error when user is not linked", async () => {
+      // Create a compose first so we can reference it
+      const { composeId } = await context.createSlackBinding(
+        // Create a user link first just to get a compose
+        (await context.createSlackInstallation({ withUserLink: true })).userLink
+          .id,
+        { agentName: "temp-agent" },
+      );
+
       const body = buildInteractiveBody({
         type: "view_submission",
         user: { id: "U-unlinked", username: "testuser", team_id: "T-test" },
@@ -280,9 +263,8 @@ describe("POST /api/slack/interactive", () => {
           state: {
             values: {
               agent_select: {
-                agent: { selected_option: { value: "compose123" } },
+                agent_select_action: { selected_option: { value: composeId } },
               },
-              agent_name: { name: { value: "valid-name" } },
             },
           },
         },
@@ -297,13 +279,34 @@ describe("POST /api/slack/interactive", () => {
       expect(data.errors.agent_select).toContain("not linked");
     });
 
-    it("returns error when agent name already exists", async () => {
+    it("returns error when agent is already added", async () => {
       const { installation, userLink } = await context.createSlackInstallation({
         withUserLink: true,
       });
-      await context.createSlackBinding(userLink.id, {
-        agentName: "existing-agent",
-      });
+      // Create a binding - this creates a compose with name "compose-existing-agent"
+      // and a binding with agentName "existing-agent"
+      const { composeId, agentName } = await context.createSlackBinding(
+        userLink.id,
+        {
+          agentName: "existing-agent",
+        },
+      );
+
+      // Update the binding's agentName to match the compose name (compose-existing-agent)
+      // since the implementation uses compose.name as the agentName
+      await globalThis.services.db
+        .update(
+          (await import("../../../../../src/db/schema/slack-binding"))
+            .slackBindings,
+        )
+        .set({ agentName: `compose-${agentName}` })
+        .where(
+          (await import("drizzle-orm")).eq(
+            (await import("../../../../../src/db/schema/slack-binding"))
+              .slackBindings.slackUserLinkId,
+            userLink.id,
+          ),
+        );
 
       const body = buildInteractiveBody({
         type: "view_submission",
@@ -319,9 +322,8 @@ describe("POST /api/slack/interactive", () => {
           state: {
             values: {
               agent_select: {
-                agent: { selected_option: { value: "compose123" } },
+                agent_select_action: { selected_option: { value: composeId } },
               },
-              agent_name: { name: { value: "existing-agent" } },
             },
           },
         },
@@ -333,17 +335,30 @@ describe("POST /api/slack/interactive", () => {
 
       expect(response.status).toBe(200);
       expect(data.response_action).toBe("errors");
-      expect(data.errors.agent_name).toContain("already exists");
+      expect(data.errors.agent_select).toContain("already added");
     });
 
     it("creates binding successfully", async () => {
       const { installation, userLink } = await context.createSlackInstallation({
         withUserLink: true,
       });
-      // Create a compose to bind to (we'll use its compose ID)
+      // Create a compose (via binding helper) to get a compose ID, then delete the binding
       const { composeId } = await context.createSlackBinding(userLink.id, {
-        agentName: "temp-agent",
+        agentName: "temp-to-delete",
       });
+      // Delete this binding so we can create a new one
+      await globalThis.services.db
+        .delete(
+          (await import("../../../../../src/db/schema/slack-binding"))
+            .slackBindings,
+        )
+        .where(
+          (await import("drizzle-orm")).eq(
+            (await import("../../../../../src/db/schema/slack-binding"))
+              .slackBindings.slackUserLinkId,
+            userLink.id,
+          ),
+        );
 
       const body = buildInteractiveBody({
         type: "view_submission",
@@ -359,10 +374,8 @@ describe("POST /api/slack/interactive", () => {
           state: {
             values: {
               agent_select: {
-                agent: { selected_option: { value: composeId } },
+                agent_select_action: { selected_option: { value: composeId } },
               },
-              agent_name: { name: { value: "new-agent" } },
-              description: { description: { value: "A new agent" } },
             },
           },
         },

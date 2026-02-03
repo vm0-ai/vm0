@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createHmac } from "crypto";
+import { http, HttpResponse } from "msw";
 import { POST } from "../route";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../src/env";
@@ -175,7 +176,7 @@ describe("POST /api/slack/commands", () => {
   });
 
   describe("Workspace Validation", () => {
-    it("returns error when workspace is not installed", async () => {
+    it("returns login prompt when workspace is not installed", async () => {
       // Don't create installation - use a random workspace ID
       const body = buildCommandBody("agent list", "T-nonexistent", "U123");
       const request = createSignedSlackRequest(body);
@@ -185,12 +186,14 @@ describe("POST /api/slack/commands", () => {
 
       expect(response.status).toBe(200);
       expect(data.response_type).toBe("ephemeral");
-      expect(data.text).toContain("not installed");
+      // Should contain login URL with oauth/install path
+      const blockStr = JSON.stringify(data.blocks);
+      expect(blockStr).toContain("oauth/install");
     });
   });
 
   describe("User Link Validation", () => {
-    it("returns link account message when user is not linked", async () => {
+    it("returns login prompt when user is not linked", async () => {
       const { installation } = await context.createSlackInstallation();
       // Don't create user link
 
@@ -207,9 +210,9 @@ describe("POST /api/slack/commands", () => {
       expect(response.status).toBe(200);
       expect(data.response_type).toBe("ephemeral");
       expect(data.blocks).toBeDefined();
-      // Should contain link URL
+      // Should contain login URL with oauth/install path
       const blockStr = JSON.stringify(data.blocks);
-      expect(blockStr).toContain("slack/link");
+      expect(blockStr).toContain("oauth/install");
     });
   });
 
@@ -261,7 +264,7 @@ describe("POST /api/slack/commands", () => {
   });
 
   describe("Agent Remove Command", () => {
-    it("returns error when agent name is not provided", async () => {
+    it("returns error when user has no agents", async () => {
       const { installation, userLink } = await context.createSlackInstallation({
         withUserLink: true,
       });
@@ -279,50 +282,35 @@ describe("POST /api/slack/commands", () => {
       expect(response.status).toBe(200);
       expect(data.response_type).toBe("ephemeral");
       const blockStr = JSON.stringify(data.blocks);
-      expect(blockStr).toContain("specify an agent name");
+      expect(blockStr).toContain("don't have any agents");
     });
 
-    it("returns error when agent does not exist", async () => {
-      const { installation, userLink } = await context.createSlackInstallation({
-        withUserLink: true,
-      });
-
-      const body = buildCommandBody(
-        "agent remove nonexistent",
-        installation.slackWorkspaceId,
-        userLink.slackUserId,
+    it("opens modal when user has agents", async () => {
+      // Mock Slack views.open API
+      server.use(
+        http.post("https://slack.com/api/views.open", () => {
+          return HttpResponse.json({ ok: true, view: { id: "V123" } });
+        }),
       );
-      const request = createSignedSlackRequest(body);
 
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.response_type).toBe("ephemeral");
-      const blockStr = JSON.stringify(data.blocks);
-      expect(blockStr).toContain("not found");
-    });
-
-    it("removes agent successfully", async () => {
       const { installation, userLink } = await context.createSlackInstallation({
         withUserLink: true,
       });
       await context.createSlackBinding(userLink.id, { agentName: "to-remove" });
 
       const body = buildCommandBody(
-        "agent remove to-remove",
+        "agent remove",
         installation.slackWorkspaceId,
         userLink.slackUserId,
       );
       const request = createSignedSlackRequest(body);
 
       const response = await POST(request);
-      const data = await response.json();
 
+      // When opening a modal, Slack expects empty 200 response
       expect(response.status).toBe(200);
-      expect(data.response_type).toBe("ephemeral");
-      const blockStr = JSON.stringify(data.blocks);
-      expect(blockStr).toContain("has been removed");
+      const text = await response.text();
+      expect(text).toBe("");
     });
   });
 
