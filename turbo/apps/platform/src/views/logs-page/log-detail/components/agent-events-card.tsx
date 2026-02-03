@@ -24,6 +24,12 @@ import {
   scrollToMatch,
   EVENTS_CONTAINER_ID,
 } from "../utils.ts";
+import { detach, Reason } from "../../../../signals/utils.ts";
+
+// Type for DOM node with observer attached
+type NodeWithObserver = HTMLDivElement & {
+  _observer?: IntersectionObserver;
+};
 
 export function AgentEventsCard({
   logId,
@@ -59,6 +65,7 @@ export function AgentEventsCard({
   const setTotalMatches = useSet(totalMatchCount$);
 
   // Initialize accumulated events when initial data loads
+  // This is safe to call during render as initAccumulatedEvents$ is idempotent
   if (
     eventsLoadable.state === "hasData" &&
     accumulatedEvents.length === 0 &&
@@ -67,7 +74,6 @@ export function AgentEventsCard({
     initAccumulatedEvents({
       events: eventsLoadable.data.events,
       hasMore: eventsLoadable.data.hasMore,
-      framework: eventsLoadable.data.framework,
     });
   }
 
@@ -118,41 +124,35 @@ export function AgentEventsCard({
     setCurrentMatchIdx(0);
   };
 
-  const handleLoadMore = () => {
-    if (accumulatedEvents.length > 0 && !isLoadingMore) {
-      const lastEvent = accumulatedEvents[accumulatedEvents.length - 1];
-      loadMoreAgentEvents({
-        runId: logId,
-        since: lastEvent.createdAt,
-      }).catch(() => {
-        // Error handled in command
-      });
-    }
-  };
-
   // Ref callback for infinite scroll sentinel
+  // Uses key={events.length} to ensure fresh closure values after each load
   const sentinelRef = (node: HTMLDivElement | null) => {
     if (!node) {
       return;
     }
 
+    // Create observer with current closure values
+    // The key-based remount ensures we always have fresh values
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting) {
-          handleLoadMore();
+        if (entries[0].isIntersecting && !isLoadingMore) {
+          if (accumulatedEvents.length > 0) {
+            const lastEvent = accumulatedEvents[accumulatedEvents.length - 1];
+            detach(
+              loadMoreAgentEvents({
+                runId: logId,
+                since: lastEvent.createdAt,
+              }),
+              Reason.DomCallback,
+            );
+          }
         }
       },
       { threshold: 0.1 },
     );
 
     observer.observe(node);
-
-    // Cleanup on unmount - store observer on node for cleanup
-    (
-      node as HTMLDivElement & { _observer?: IntersectionObserver }
-    )._observer?.disconnect();
-    (node as HTMLDivElement & { _observer?: IntersectionObserver })._observer =
-      observer;
+    (node as NodeWithObserver)._observer = observer;
   };
 
   if (eventsLoadable.state === "loading") {
@@ -265,6 +265,7 @@ export function AgentEventsCard({
         )}
         {showHasMore && (
           <div
+            key={`sentinel-${events.length}`}
             ref={sentinelRef}
             className="flex items-center justify-center py-4"
           >

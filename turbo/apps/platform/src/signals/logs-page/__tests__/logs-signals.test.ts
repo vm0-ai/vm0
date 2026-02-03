@@ -425,7 +425,6 @@ describe("logs-signals", () => {
         store.set(initAccumulatedEvents$, {
           events,
           hasMore: true,
-          framework: "claude-code",
         });
 
         expect(store.get(agentEventsAccumulated$)).toStrictEqual(events);
@@ -440,7 +439,6 @@ describe("logs-signals", () => {
         store.set(initAccumulatedEvents$, {
           events: [],
           hasMore: false,
-          framework: "claude-code",
         });
 
         expect(store.get(agentEventsAccumulated$)).toStrictEqual([]);
@@ -467,7 +465,6 @@ describe("logs-signals", () => {
         store.set(initAccumulatedEvents$, {
           events: initialEvents,
           hasMore: true,
-          framework: "claude-code",
         });
 
         // Mock API for load more
@@ -491,7 +488,6 @@ describe("logs-signals", () => {
             return HttpResponse.json({
               events: moreEvents,
               hasMore: false,
-              framework: "claude-code",
             });
           }),
         );
@@ -523,7 +519,6 @@ describe("logs-signals", () => {
             },
           ],
           hasMore: true,
-          framework: "claude-code",
         });
 
         let resolveRequest: (() => void) | null = null;
@@ -537,7 +532,6 @@ describe("logs-signals", () => {
             return HttpResponse.json({
               events: [],
               hasMore: false,
-              framework: "claude-code",
             });
           }),
         );
@@ -573,7 +567,6 @@ describe("logs-signals", () => {
             },
           ],
           hasMore: true,
-          framework: "claude-code",
         });
 
         let capturedRunId: string | null = null;
@@ -593,7 +586,6 @@ describe("logs-signals", () => {
               return HttpResponse.json({
                 events: [],
                 hasMore: false,
-                framework: "claude-code",
               });
             },
           ),
@@ -625,7 +617,6 @@ describe("logs-signals", () => {
             },
           ],
           hasMore: true,
-          framework: "claude-code",
         });
 
         server.use(
@@ -640,7 +631,6 @@ describe("logs-signals", () => {
                 },
               ],
               hasMore: true,
-              framework: "claude-code",
             });
           }),
         );
@@ -667,7 +657,6 @@ describe("logs-signals", () => {
             },
           ],
           hasMore: true,
-          framework: "claude-code",
         });
 
         server.use(
@@ -707,7 +696,6 @@ describe("logs-signals", () => {
             },
           ],
           hasMore: true,
-          framework: "claude-code",
         });
 
         expect(store.get(agentEventsAccumulated$)).toHaveLength(1);

@@ -87,7 +87,6 @@ const agentEventsCache$ = state<
 const internalAgentEventsAccumulated$ = state<AgentEvent[]>([]);
 const internalAgentEventsHasMore$ = state<boolean>(false);
 const internalAgentEventsIsLoadingMore$ = state<boolean>(false);
-const internalAgentEventsFramework$ = state<string>("");
 
 // Exported computed for accumulated events
 export const agentEventsAccumulated$ = computed((get) =>
@@ -104,13 +103,9 @@ export const agentEventsIsLoadingMore$ = computed((get) =>
  * Command to initialize accumulated events from initial load.
  */
 export const initAccumulatedEvents$ = command(
-  (
-    { set },
-    params: { events: AgentEvent[]; hasMore: boolean; framework: string },
-  ) => {
+  ({ set }, params: { events: AgentEvent[]; hasMore: boolean }) => {
     set(internalAgentEventsAccumulated$, params.events);
     set(internalAgentEventsHasMore$, params.hasMore);
-    set(internalAgentEventsFramework$, params.framework);
   },
 );
 
@@ -285,7 +280,6 @@ export const initLogs$ = command(({ get, set }, signal: AbortSignal) => {
   set(internalAgentEventsAccumulated$, []);
   set(internalAgentEventsHasMore$, false);
   set(internalAgentEventsIsLoadingMore$, false);
-  set(internalAgentEventsFramework$, "");
 
   // Read initial values from URL searchParams
   const params = get(searchParams$);
