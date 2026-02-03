@@ -63,6 +63,24 @@ jobs:
             org.opencontainers.image.source=${{ github.event.repository.html_url }}
             org.opencontainers.image.revision=${{ github.sha }}
 
+      - name: Build and push toolchain-rust image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./.docker/toolchain
+          file: ./.docker/toolchain/Dockerfile
+          target: toolchain-rust
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/vm0-ai/vm0-toolchain-rust:latest
+            ${{ env.REGISTRY }}/vm0-ai/vm0-toolchain-rust:${{ steps.meta.outputs.sha_short }}
+            ${{ env.REGISTRY }}/vm0-ai/vm0-toolchain-rust:${{ steps.meta.outputs.date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          labels: |
+            org.opencontainers.image.source=${{ github.event.repository.html_url }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
       - name: Build and push development image
         uses: docker/build-push-action@v6
         with:

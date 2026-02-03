@@ -34,6 +34,17 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build toolchain-rust image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./.docker/toolchain
+          file: ./.docker/toolchain/Dockerfile
+          target: toolchain-rust
+          push: false
+          tags: vm0-toolchain-rust:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Build development image
         uses: docker/build-push-action@v6
         with:

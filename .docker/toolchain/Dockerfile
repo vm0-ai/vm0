@@ -4,7 +4,7 @@ FROM ubuntu:22.04 AS toolchain
 # Avoid prompts from apt
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install base dependencies
+# Install base dependencies and jq
 RUN apt-get update && apt-get install -y \
     curl \
     git \
@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     lsb-release \
     ca-certificates \
     wget \
+    jq \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 22
@@ -21,19 +22,12 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
 
 RUN node --version
 
-# Install jq for JSON processing
-RUN curl -sL https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux-amd64 -o /usr/local/bin/jq \
-    && chmod +x /usr/local/bin/jq
-
 # Install global npm packages for CI/CD
-RUN npm install -g pnpm@10.15.0 lefthook@1.12.3 vercel@48.11.0 neonctl@2.15.0
+# Note: vercel and neonctl are installed in jobs that need them
+RUN npm install -g pnpm@10.15.0 lefthook@1.12.3
 
-# Install Ansible for runner deployment
-# Using pip3 to ensure all ansible commands (ansible, ansible-playbook, etc.) are available
-RUN apt-get update && apt-get install -y \
-    python3-pip \
-    && rm -rf /var/lib/apt/lists/* \
-    && pip3 install ansible
+# Stage 2: Toolchain with Rust for cross-compilation
+FROM toolchain AS toolchain-rust
 
 # Install Rust toolchain with ARM64 cross-compilation support
 # Used for building vm-init for Firecracker VMs (ARM64 metal runners)
@@ -49,12 +43,8 @@ RUN apt-get update && apt-get install -y \
     && rustup component add rustfmt clippy \
     && rustc --version && cargo --version
 
-# Install Playwright system dependencies for Chromium
-# This is needed for e2e tests in CI
-RUN npx playwright install-deps chromium
-
-# Stage 2: Development environment with additional tools
-FROM toolchain AS development
+# Stage 3: Development environment with additional tools
+FROM toolchain-rust AS development
 
 # Install development tools and user requirements
 RUN apt-get update && apt-get install -y \
@@ -63,6 +53,9 @@ RUN apt-get update && apt-get install -y \
     vim \
     ripgrep \
     && rm -rf /var/lib/apt/lists/*
+
+# Install vercel and neonctl for development
+RUN npm install -g vercel@48.11.0 neonctl@2.15.0
 
 # Install Playwright dependencies
 # These are required for running browser automation tests
