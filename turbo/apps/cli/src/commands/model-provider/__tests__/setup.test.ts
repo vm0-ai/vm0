@@ -586,4 +586,76 @@ describe("model-provider setup command", () => {
       );
     });
   });
+
+  describe("set as default prompt (non-interactive mode)", () => {
+    it("should NOT prompt to set as default in non-interactive mode when isDefault is false", async () => {
+      server.use(
+        http.put("http://localhost:3000/api/model-providers", () => {
+          return HttpResponse.json({
+            provider: {
+              id: "mp-456",
+              type: "anthropic-api-key",
+              framework: "claude-code",
+              credentialName: "ANTHROPIC_API_KEY",
+              isDefault: false,
+              selectedModel: null,
+              createdAt: "2024-01-01T00:00:00Z",
+              updatedAt: "2024-01-01T00:00:00Z",
+            },
+            created: true,
+          });
+        }),
+      );
+
+      await setupCommand.parseAsync([
+        "node",
+        "cli",
+        "--type",
+        "anthropic-api-key",
+        "--credential",
+        "sk-ant-test-key",
+      ]);
+
+      // Should show success message
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain('Model provider "anthropic-api-key" created');
+      // Should NOT contain the "Set this provider as default?" prompt or its result
+      // (in non-interactive mode, prompts would throw/hang, but we just verify no default message)
+      expect(logCalls).not.toContain("Default for claude-code set to");
+    });
+
+    it("should complete without prompt when isDefault is true in non-interactive mode", async () => {
+      server.use(
+        http.put("http://localhost:3000/api/model-providers", () => {
+          return HttpResponse.json({
+            provider: {
+              id: "mp-123",
+              type: "anthropic-api-key",
+              framework: "claude-code",
+              credentialName: "ANTHROPIC_API_KEY",
+              isDefault: true,
+              selectedModel: null,
+              createdAt: "2024-01-01T00:00:00Z",
+              updatedAt: "2024-01-01T00:00:00Z",
+            },
+            created: true,
+          });
+        }),
+      );
+
+      await setupCommand.parseAsync([
+        "node",
+        "cli",
+        "--type",
+        "anthropic-api-key",
+        "--credential",
+        "sk-ant-test-key",
+      ]);
+
+      // Should show success message with default note
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain('Model provider "anthropic-api-key" created');
+      expect(logCalls).toContain("default for claude-code");
+    });
+  });
 });

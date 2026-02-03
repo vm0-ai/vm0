@@ -7,6 +7,7 @@ import {
   convertModelProviderCredential,
   listModelProviders,
   updateModelProviderModel,
+  setModelProviderDefault,
 } from "../../lib/api";
 import {
   MODEL_PROVIDER_TYPES,
@@ -22,6 +23,7 @@ interface SetupInput {
   credential?: string;
   selectedModel?: string;
   keepExistingCredential?: boolean;
+  isInteractiveMode?: boolean;
 }
 
 function validateProviderType(typeStr: string): ModelProviderType {
@@ -70,7 +72,12 @@ function handleNonInteractiveMode(options: {
     selectedModel = defaultModel || undefined;
   }
 
-  return { type, credential: options.credential, selectedModel };
+  return {
+    type,
+    credential: options.credential,
+    selectedModel,
+    isInteractiveMode: false,
+  };
 }
 
 async function promptForModelSelection(
@@ -174,6 +181,7 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
           `✓ Converted "${checkResult.credentialName}" to model provider${defaultNote}`,
         ),
       );
+      await promptSetAsDefault(type, provider.framework, provider.isDefault);
       return null; // Signal that conversion was done
     }
     console.log(chalk.dim("Aborted"));
@@ -202,7 +210,12 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
     if (actionResponse.action === "keep") {
       // Keep existing credential - only prompt for model if applicable
       const selectedModel = await promptForModelSelection(type);
-      return { type, keepExistingCredential: true, selectedModel };
+      return {
+        type,
+        keepExistingCredential: true,
+        selectedModel,
+        isInteractiveMode: true,
+      };
     }
     // Fall through to credential prompt for "update"
   }
@@ -227,7 +240,7 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
   const credential = credentialResponse.credential as string;
   const selectedModel = await promptForModelSelection(type);
 
-  return { type, credential, selectedModel };
+  return { type, credential, selectedModel, isInteractiveMode: true };
 }
 
 function handleSetupError(error: unknown): never {
@@ -246,6 +259,35 @@ function handleSetupError(error: unknown): never {
     console.error(chalk.red("✗ An unexpected error occurred"));
   }
   process.exit(1);
+}
+
+async function promptSetAsDefault(
+  type: ModelProviderType,
+  framework: string,
+  isDefault: boolean,
+): Promise<void> {
+  if (isDefault) return;
+
+  const response = await prompts(
+    {
+      type: "confirm",
+      name: "setDefault",
+      message: "Set this provider as default?",
+      initial: false,
+    },
+    { onCancel: () => process.exit(0) },
+  );
+
+  if (response.setDefault) {
+    try {
+      await setModelProviderDefault(type);
+      console.log(chalk.green(`✓ Default for ${framework} set to "${type}"`));
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error(chalk.red(`✗ Failed to set default: ${error.message}`));
+      }
+    }
+  }
 }
 
 export const setupCommand = new Command()
@@ -314,6 +356,13 @@ export const setupCommand = new Command()
               ),
             );
           }
+          if (input.isInteractiveMode) {
+            await promptSetAsDefault(
+              input.type,
+              provider.framework,
+              provider.isDefault,
+            );
+          }
           return;
         }
 
@@ -337,6 +386,13 @@ export const setupCommand = new Command()
             `✓ Model provider "${input.type}" ${action}${defaultNote}${modelNote}`,
           ),
         );
+        if (input.isInteractiveMode) {
+          await promptSetAsDefault(
+            input.type,
+            provider.framework,
+            provider.isDefault,
+          );
+        }
       } catch (error) {
         handleSetupError(error);
       }
