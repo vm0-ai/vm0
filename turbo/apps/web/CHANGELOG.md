@@ -1,5 +1,20 @@
 # Changelog
 
+## [11.22.0](https://github.com/vm0-ai/vm0/compare/web-v11.21.0...web-v11.22.0) (2026-02-03)
+
+
+### Features
+
+* **auth:** environment-based access control for test-token endpoint ([#2216](https://github.com/vm0-ai/vm0/issues/2216)) ([aff841a](https://github.com/vm0-ai/vm0/commit/aff841ab747bb08e2df8f584bfb232d6d516c1c4)), closes [#2211](https://github.com/vm0-ai/vm0/issues/2211)
+* **platform:** add session id and framework fields to logs list response ([#2208](https://github.com/vm0-ai/vm0/issues/2208)) ([8a55eca](https://github.com/vm0-ai/vm0/commit/8a55eca92e46080d248160cbba8eebdf40769750))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.10.0
+
 ## [11.21.0](https://github.com/vm0-ai/vm0/compare/web-v11.20.0...web-v11.21.0) (2026-02-03)
 
 

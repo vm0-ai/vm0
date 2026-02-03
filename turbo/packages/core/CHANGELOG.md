@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.10.0](https://github.com/vm0-ai/vm0/compare/core-v7.9.0...core-v7.10.0) (2026-02-03)
+
+
+### Features
+
+* **platform:** add session id and framework fields to logs list response ([#2208](https://github.com/vm0-ai/vm0/issues/2208)) ([8a55eca](https://github.com/vm0-ai/vm0/commit/8a55eca92e46080d248160cbba8eebdf40769750))
+
 ## [7.9.0](https://github.com/vm0-ai/vm0/compare/core-v7.8.0...core-v7.9.0) (2026-02-03)
 
 

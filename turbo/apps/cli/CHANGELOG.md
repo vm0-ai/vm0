@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.14.0](https://github.com/vm0-ai/vm0/compare/cli-v9.13.1...cli-v9.14.0) (2026-02-03)
+
+
+### Features
+
+* **cli:** add agent clone command to download compose configuration ([#2209](https://github.com/vm0-ai/vm0/issues/2209)) ([14da2a5](https://github.com/vm0-ai/vm0/commit/14da2a57097a41ceb87724625033f4f18289fc8f))
+* **cli:** add prompt to set model provider as default after setup ([#2203](https://github.com/vm0-ai/vm0/issues/2203)) ([87d260f](https://github.com/vm0-ai/vm0/commit/87d260fcae6389a4ddfffb3c391eeb5bce52990b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.10.0
+
 ## [9.13.1](https://github.com/vm0-ai/vm0/compare/cli-v9.13.0...cli-v9.13.1) (2026-02-03)
 
 

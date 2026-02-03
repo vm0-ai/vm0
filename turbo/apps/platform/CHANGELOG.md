@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.41.0](https://github.com/vm0-ai/vm0/compare/platform-v0.40.0...platform-v0.41.0) (2026-02-03)
+
+
+### Features
+
+* **platform:** add session id and framework fields to logs list response ([#2208](https://github.com/vm0-ai/vm0/issues/2208)) ([8a55eca](https://github.com/vm0-ai/vm0/commit/8a55eca92e46080d248160cbba8eebdf40769750))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.10.0
+
 ## [0.40.0](https://github.com/vm0-ai/vm0/compare/platform-v0.39.0...platform-v0.40.0) (2026-02-03)
 
 
