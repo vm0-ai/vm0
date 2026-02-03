@@ -428,7 +428,7 @@ jobs:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
           deployment-url: ${{ steps.deploy.outputs.url }}
-          app-name: web
+          app-name: www
           job-ref: ${{ needs.prepare.outputs.job-ref }}
           preview-domain: ${{ vars.PREVIEW_DOMAIN }}
           deployment-id: ${{ steps.deploy.outputs.deployment-id }}

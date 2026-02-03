@@ -22,12 +22,12 @@ When the `PREVIEW_DOMAIN` variable is configured, preview deployments get predic
 
 | App      | Preview URL Pattern                   |
 | -------- | ------------------------------------- |
-| Web      | `{job-ref}-web.{PREVIEW_DOMAIN}`      |
+| Web      | `{job-ref}-www.{PREVIEW_DOMAIN}`      |
 | Platform | `{job-ref}-platform.{PREVIEW_DOMAIN}` |
 | Site     | `{job-ref}-site.{PREVIEW_DOMAIN}`     |
 | Docs     | `{job-ref}-docs.{PREVIEW_DOMAIN}`     |
 
-Where `{job-ref}` is `pr-{number}` for pull requests (e.g., `pr-123-web.vm6.ai`).
+Where `{job-ref}` is `pr-{number}` for pull requests (e.g., `pr-123-www.vm6.ai`).
 
 ### Prerequisites for Stable Preview URLs
 
