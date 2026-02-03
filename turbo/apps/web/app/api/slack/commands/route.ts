@@ -268,21 +268,13 @@ async function handleAgentAdd(
     composes.map((c) => ({ id: c.id, name: c.name })),
   );
 
-  try {
-    await client.views.open({
-      trigger_id: payload.trigger_id,
-      view: modal,
-    });
+  await client.views.open({
+    trigger_id: payload.trigger_id,
+    view: modal,
+  });
 
-    // Return empty response (Slack expects this when opening modal)
-    return NextResponse.json({});
-  } catch (error) {
-    console.error("Error opening modal:", error);
-    return NextResponse.json({
-      response_type: "ephemeral",
-      blocks: buildErrorMessage("Failed to open the add agent dialog."),
-    });
-  }
+  // Return empty response (Slack expects this when opening modal)
+  return NextResponse.json({});
 }
 
 /**

@@ -156,6 +156,14 @@ interface AgentAddFormValues {
   secretsText: string | null;
 }
 
+/** Validated form values with required fields guaranteed */
+interface ValidatedAgentAddForm {
+  composeId: string;
+  agentName: string;
+  description: string | null;
+  secretsText: string | null;
+}
+
 type ModalStateValues = NonNullable<
   SlackInteractivePayload["view"]
 >["state"]["values"];
@@ -173,9 +181,12 @@ function extractFormValues(values: ModalStateValues): AgentAddFormValues {
 }
 
 /**
- * Validate the agent add form values
+ * Validate the agent add form values.
+ * Returns validated form with narrowed types on success, or error Response on failure.
  */
-function validateAgentAddForm(formValues: AgentAddFormValues): Response | null {
+function validateAgentAddForm(
+  formValues: AgentAddFormValues,
+): ValidatedAgentAddForm | Response {
   if (!formValues.composeId) {
     return NextResponse.json({
       response_action: "errors",
@@ -200,7 +211,13 @@ function validateAgentAddForm(formValues: AgentAddFormValues): Response | null {
     });
   }
 
-  return null;
+  // Return validated form with narrowed types
+  return {
+    composeId: formValues.composeId,
+    agentName: formValues.agentName,
+    description: formValues.description,
+    secretsText: formValues.secretsText,
+  };
 }
 
 /**
@@ -255,12 +272,15 @@ async function handleAgentAddSubmission(
     });
   }
 
-  const formValues = extractFormValues(values);
+  const rawFormValues = extractFormValues(values);
 
-  const validationError = validateAgentAddForm(formValues);
-  if (validationError) {
-    return validationError;
+  const validationResult = validateAgentAddForm(rawFormValues);
+  // If validation returns a Response, it's an error
+  if (validationResult instanceof Response) {
+    return validationResult;
   }
+  // Otherwise, we have validated form values with narrowed types
+  const formValues = validationResult;
 
   // Get user link
   const [userLink] = await globalThis.services.db
@@ -291,7 +311,7 @@ async function handleAgentAddSubmission(
     .where(
       and(
         eq(slackBindings.slackUserLinkId, userLink.id),
-        eq(slackBindings.agentName, formValues.agentName!),
+        eq(slackBindings.agentName, formValues.agentName),
       ),
     )
     .limit(1);
@@ -317,18 +337,19 @@ async function handleAgentAddSubmission(
   // Create binding
   await globalThis.services.db.insert(slackBindings).values({
     slackUserLinkId: userLink.id,
-    composeId: formValues.composeId!,
-    agentName: formValues.agentName!,
+    composeId: formValues.composeId,
+    agentName: formValues.agentName,
     description: formValues.description,
     encryptedSecrets,
     enabled: true,
   });
 
-  // Send confirmation message via DM (fire-and-forget)
+  // Fire-and-forget: DM confirmation is non-critical, failure should not
+  // affect the binding creation. Log errors for debugging but don't propagate.
   sendConfirmationDM(
     payload.team.id,
     payload.user.id,
-    formValues.agentName!,
+    formValues.agentName,
     encryptionKey,
   ).catch((error) => {
     console.error("Error sending confirmation DM:", error);
