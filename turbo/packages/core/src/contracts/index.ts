@@ -207,6 +207,9 @@ export {
   getModels,
   getDefaultModel,
   hasModelSelection,
+  hasAuthMethods,
+  getNormalizedAuthConfig,
+  requiresAuthMethodSelection,
   type ModelProvidersMainContract,
   type ModelProvidersCheckContract,
   type ModelProvidersByTypeContract,
@@ -221,6 +224,7 @@ export {
   type UpsertModelProviderResponse,
   type CheckCredentialResponse,
   type UpdateModelRequest,
+  type AuthMethodConfig,
 } from "./model-providers";
 export {
   sessionsByIdContract,

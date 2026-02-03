@@ -658,4 +658,116 @@ describe("model-provider setup command", () => {
       expect(logCalls).toContain("default for claude-code");
     });
   });
+
+  describe("unified credential handling", () => {
+    describe("single-credential providers", () => {
+      it("should accept --credential VALUE format for anthropic-api-key", async () => {
+        server.use(
+          http.put("http://localhost:3000/api/model-providers", () => {
+            return HttpResponse.json({
+              provider: {
+                id: "mp-123",
+                type: "anthropic-api-key",
+                framework: "claude-code",
+                credentialName: "ANTHROPIC_API_KEY",
+                isDefault: true,
+                selectedModel: null,
+                createdAt: "2024-01-01T00:00:00Z",
+                updatedAt: "2024-01-01T00:00:00Z",
+              },
+              created: true,
+            });
+          }),
+        );
+
+        await setupCommand.parseAsync([
+          "node",
+          "cli",
+          "--type",
+          "anthropic-api-key",
+          "--credential",
+          "sk-ant-test-key",
+        ]);
+
+        expect(mockConsoleLog).toHaveBeenCalledWith(
+          expect.stringContaining('Model provider "anthropic-api-key" created'),
+        );
+      });
+
+      it("should accept --credential KEY=VALUE format for anthropic-api-key", async () => {
+        server.use(
+          http.put("http://localhost:3000/api/model-providers", () => {
+            return HttpResponse.json({
+              provider: {
+                id: "mp-123",
+                type: "anthropic-api-key",
+                framework: "claude-code",
+                credentialName: "ANTHROPIC_API_KEY",
+                isDefault: true,
+                selectedModel: null,
+                createdAt: "2024-01-01T00:00:00Z",
+                updatedAt: "2024-01-01T00:00:00Z",
+              },
+              created: true,
+            });
+          }),
+        );
+
+        await setupCommand.parseAsync([
+          "node",
+          "cli",
+          "--type",
+          "anthropic-api-key",
+          "--credential",
+          "ANTHROPIC_API_KEY=sk-ant-test-key",
+        ]);
+
+        expect(mockConsoleLog).toHaveBeenCalledWith(
+          expect.stringContaining('Model provider "anthropic-api-key" created'),
+        );
+      });
+
+      it("should reject unknown credential name for single-credential provider", async () => {
+        // When using an incorrect key name, the required credential is missing
+        // so we get "Missing required credential" error
+        await expect(async () => {
+          await setupCommand.parseAsync([
+            "node",
+            "cli",
+            "--type",
+            "anthropic-api-key",
+            "--credential",
+            "UNKNOWN_KEY=sk-ant-test-key",
+          ]);
+        }).rejects.toThrow("process.exit called");
+
+        expect(mockConsoleError).toHaveBeenCalledWith(
+          expect.stringContaining(
+            "Missing required credential: ANTHROPIC_API_KEY",
+          ),
+        );
+        expect(mockExit).toHaveBeenCalledWith(1);
+      });
+    });
+
+    describe("credential validation", () => {
+      it("should reject empty credential value", async () => {
+        await expect(async () => {
+          await setupCommand.parseAsync([
+            "node",
+            "cli",
+            "--type",
+            "anthropic-api-key",
+            "--credential",
+            "ANTHROPIC_API_KEY=",
+          ]);
+        }).rejects.toThrow("process.exit called");
+
+        expect(mockConsoleError).toHaveBeenCalledWith(
+          expect.stringContaining("Missing required credential"),
+        );
+        expect(mockExit).toHaveBeenCalledWith(1);
+      });
+    });
+  });
 });

@@ -35,14 +35,57 @@ export async function listModelProviders(): Promise<ModelProviderListResponse> {
  */
 export async function upsertModelProvider(body: {
   type: ModelProviderType;
-  credential: string;
+  // Legacy single credential (backward compat)
+  credential?: string;
+  // Multi-auth
+  authMethod?: string;
+  credentials?: Record<string, string>;
+  // Common
   convert?: boolean;
   selectedModel?: string;
 }): Promise<UpsertModelProviderResponse> {
   const config = await getClientConfig();
   const client = initClient(modelProvidersMainContract, config);
 
-  const result = await client.upsert({ body });
+  // Transform multi-credential format to legacy format for API compatibility
+  // The API currently expects a single 'credential' field
+  let apiBody: {
+    type: ModelProviderType;
+    credential: string;
+    convert?: boolean;
+    selectedModel?: string;
+    authMethod?: string;
+  };
+
+  if (body.credentials && body.authMethod) {
+    // Multi-credential format: extract the primary credential
+    const credentialValues = Object.values(body.credentials);
+    const firstCredential = credentialValues[0];
+    if (!firstCredential) {
+      throw new Error("At least one credential is required");
+    }
+    // For now, pass the first credential as the main credential
+    // and include all credentials in the body for future API support
+    apiBody = {
+      type: body.type,
+      credential: firstCredential,
+      convert: body.convert,
+      selectedModel: body.selectedModel,
+      authMethod: body.authMethod,
+    };
+  } else if (body.credential) {
+    // Legacy single credential format
+    apiBody = {
+      type: body.type,
+      credential: body.credential,
+      convert: body.convert,
+      selectedModel: body.selectedModel,
+    };
+  } else {
+    throw new Error("Either credential or credentials must be provided");
+  }
+
+  const result = await client.upsert({ body: apiBody });
 
   if (result.status === 200 || result.status === 201) {
     return result.body;

@@ -13,6 +13,20 @@ const c = initContract();
  * - `$model` → the selected model (or default)
  * - Other values are passed through as literals
  */
+/**
+ * Auth method configuration for multi-credential providers
+ */
+export interface AuthMethodConfig {
+  label: string;
+  credentials: Record<
+    string,
+    {
+      label: string;
+      required: boolean;
+    }
+  >;
+}
+
 export const MODEL_PROVIDER_TYPES = {
   "claude-code-oauth-token": {
     framework: "claude-code" as const,
@@ -163,6 +177,65 @@ export function getDefaultModel(type: ModelProviderType): string | undefined {
 export function hasModelSelection(type: ModelProviderType): boolean {
   const config = MODEL_PROVIDER_TYPES[type];
   return "models" in config && config.models.length > 0;
+}
+
+/**
+ * Check if a model provider type has multiple auth methods
+ */
+export function hasAuthMethods(type: ModelProviderType): boolean {
+  const config = MODEL_PROVIDER_TYPES[type];
+  return "authMethods" in config && config.authMethods !== undefined;
+}
+
+/**
+ * Get normalized auth config for any provider type.
+ * Single-credential providers return a synthetic "default" auth method.
+ */
+export function getNormalizedAuthConfig(type: ModelProviderType): {
+  authMethods: Record<string, AuthMethodConfig>;
+  defaultAuthMethod: string;
+} {
+  const config = MODEL_PROVIDER_TYPES[type];
+
+  // Check if this provider has multi-auth configuration
+  if (
+    "authMethods" in config &&
+    "defaultAuthMethod" in config &&
+    config.authMethods !== undefined &&
+    config.defaultAuthMethod !== undefined
+  ) {
+    // Multi-auth provider - return as-is
+    return {
+      authMethods: config.authMethods as Record<string, AuthMethodConfig>,
+      defaultAuthMethod: config.defaultAuthMethod as string,
+    };
+  }
+
+  // Single-credential provider - synthesize auth config
+  const credentialName = config.credentialName;
+  return {
+    authMethods: {
+      default: {
+        label: config.credentialLabel || "API Key",
+        credentials: {
+          [credentialName]: {
+            label: config.credentialLabel || "API Key",
+            required: true,
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "default",
+  };
+}
+
+/**
+ * Check if provider requires auth method selection (has multiple auth methods)
+ */
+export function requiresAuthMethodSelection(type: ModelProviderType): boolean {
+  const config = MODEL_PROVIDER_TYPES[type];
+  if (!("authMethods" in config) || !config.authMethods) return false;
+  return Object.keys(config.authMethods).length > 1;
 }
 
 /**
