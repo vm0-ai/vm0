@@ -83,31 +83,25 @@ function ClaudeCodeSection() {
           Manage with Claude Code
         </h2>
         <p className="text-sm text-muted-foreground mb-3">
-          You can manage VM0 agents entirely through Claude Code. First, install
-          the VM0 skills plugin:
-        </p>
-        <Card className="flex items-start justify-between p-4 font-mono">
-          <code className="text-sm overflow-x-auto text-muted-foreground whitespace-pre-wrap">
-            <div>/plugin marketplace add vm0-ai/vm0-skills</div>
-            <div>/plugin install vm0@vm0-skills</div>
-          </code>
-          <CopyButton
-            text={
-              "/plugin marketplace add vm0-ai/vm0-skills\n/plugin install vm0@vm0-skills"
-            }
-          />
-        </Card>
-      </div>
-      <div>
-        <p className="text-sm text-muted-foreground mb-3">
-          After restarting Claude Code, enter the following command in Claude
-          Code to manage your agents:
+          You can manage VM0 agents in Claude Code. Just enter this command:
         </p>
         <Card className="flex items-start justify-between p-4 font-mono">
           <code className="text-sm overflow-x-auto text-muted-foreground">
             /vm0-agent manage my agents
           </code>
           <CopyButton text="/vm0-agent manage my agents" />
+        </Card>
+      </div>
+      <div>
+        <p className="text-sm text-muted-foreground mb-3">
+          If you encounter any issues, run the following command before entering
+          Claude Code to initialize the vm0-agent skill:
+        </p>
+        <Card className="flex items-start justify-between p-4 font-mono">
+          <code className="text-sm overflow-x-auto text-muted-foreground">
+            vm0 setup-claude
+          </code>
+          <CopyButton text="vm0 setup-claude" />
         </Card>
       </div>
     </section>
