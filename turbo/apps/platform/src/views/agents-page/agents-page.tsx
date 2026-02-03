@@ -1,7 +1,7 @@
 import { Card } from "@vm0/ui/components/ui/card";
 import { CopyButton } from "@vm0/ui/components/ui/copy-button";
 import { Button } from "@vm0/ui/components/ui/button";
-import { IconSparkles, IconExternalLink } from "@tabler/icons-react";
+import { IconExternalLink } from "@tabler/icons-react";
 import { AppShell } from "../layout/app-shell.tsx";
 
 export function AgentsPage() {
@@ -12,10 +12,10 @@ export function AgentsPage() {
       subtitle="Commonly used commands for managing your agents."
     >
       <div className="flex flex-col gap-8 px-8 pb-8 max-w-3xl">
+        <ClaudeCodeSection />
         <ListAgentsSection />
         <AgentStatusSection />
         <CloneAgentSection />
-        <ProTip />
         <DocsLink />
       </div>
     </AppShell>
@@ -75,27 +75,42 @@ function CloneAgentSection() {
   );
 }
 
-function ProTip() {
+function ClaudeCodeSection() {
   return (
-    <Card className="bg-muted/50 border-dashed p-4">
-      <div className="flex items-start gap-3">
-        <IconSparkles className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-        <div>
-          <p className="font-medium text-sm">Pro Tip</p>
-          <p className="text-sm text-muted-foreground mt-1">
-            Install{" "}
-            <code className="bg-muted px-1 py-0.5 rounded text-xs">
-              vm0-ai/vm0-skills
-            </code>{" "}
-            from the Claude marketplace to use{" "}
-            <code className="bg-muted px-1 py-0.5 rounded text-xs">
-              /vm0-agent
-            </code>{" "}
-            for viewing and modifying agents directly in Claude.
-          </p>
-        </div>
+    <section className="flex flex-col gap-6">
+      <div>
+        <h2 className="text-base font-medium text-foreground mb-2">
+          Manage with Claude Code
+        </h2>
+        <p className="text-sm text-muted-foreground mb-3">
+          You can manage VM0 agents entirely through Claude Code. First, install
+          the VM0 skills plugin:
+        </p>
+        <Card className="flex items-start justify-between p-4 font-mono">
+          <code className="text-sm overflow-x-auto text-muted-foreground whitespace-pre-wrap">
+            <div>/plugin marketplace add vm0-ai/vm0-skills</div>
+            <div>/plugin install vm0@vm0-skills</div>
+          </code>
+          <CopyButton
+            text={
+              "/plugin marketplace add vm0-ai/vm0-skills\n/plugin install vm0@vm0-skills"
+            }
+          />
+        </Card>
       </div>
-    </Card>
+      <div>
+        <p className="text-sm text-muted-foreground mb-3">
+          After restarting Claude Code, enter the following command in Claude
+          Code to manage your agents:
+        </p>
+        <Card className="flex items-start justify-between p-4 font-mono">
+          <code className="text-sm overflow-x-auto text-muted-foreground">
+            /vm0-agent manage my agents
+          </code>
+          <CopyButton text="/vm0-agent manage my agents" />
+        </Card>
+      </div>
+    </section>
   );
 }
 
