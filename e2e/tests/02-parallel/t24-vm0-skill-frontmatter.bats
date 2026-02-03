@@ -1,5 +1,14 @@
 #!/usr/bin/env bats
 
+# E2E Tests for Skill Frontmatter (Happy Path Only)
+#
+# Tests skill URL handling, frontmatter parsing, and --yes flag behavior.
+#
+# Error handling tests have been moved to CLI integration tests:
+# turbo/apps/cli/src/commands/compose/__tests__/index.test.ts
+#   - "should require --yes flag in non-interactive mode when new secrets detected"
+#   - "should not require confirmation when no new secrets (all exist in HEAD)"
+
 load '../../helpers/setup'
 
 setup() {
@@ -194,67 +203,8 @@ EOF
 
 # ============================================
 # Smart secret confirmation tests
-# Note: Secret state comparison logic (re-compose with same secrets skips confirmation,
-# new marker detection) is tested in unit tests at:
-# turbo/apps/cli/src/__tests__/skill-frontmatter.test.ts
+# Note: Secret confirmation error cases (non-TTY without --yes) are tested in CLI integration tests:
+# turbo/apps/cli/src/commands/compose/__tests__/index.test.ts
+#   - "should require --yes flag in non-interactive mode when new secrets detected"
+#   - "should not require confirmation when no new secrets (all exist in HEAD)"
 # ============================================
-
-@test "vm0 compose fails in non-TTY with new secrets without --yes" {
-    echo "# Step 1: Create config with first skill"
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Test agent with secrets"
-    framework: claude-code
-    skills:
-      - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs
-EOF
-
-    echo "# Step 2: First compose with --yes"
-    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    echo "# Step 3: Add second skill with new secret"
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Test agent with secrets"
-    framework: claude-code
-    skills:
-      - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs
-      - https://github.com/vm0-ai/vm0-skills/tree/main/resend
-EOF
-
-    echo "# Step 4: Compose in non-TTY without --yes (should fail)"
-    run bash -c "echo '' | $CLI_COMMAND compose '$TEST_DIR/vm0.yaml'"
-    assert_failure
-    # Should show error about new secrets
-    assert_output --partial "New secrets detected"
-    assert_output --partial "RESEND_API_KEY"
-    assert_output --partial "--yes"
-}
-
-@test "vm0 compose first-time with secrets in non-TTY requires --yes" {
-    echo "# Step 1: Create config with skill that has vm0_secrets"
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Test agent with secrets"
-    framework: claude-code
-    skills:
-      - https://github.com/vm0-ai/vm0-skills/tree/main/elevenlabs
-EOF
-
-    echo "# Step 2: First-time compose in non-TTY without --yes (should fail)"
-    run bash -c "echo '' | $CLI_COMMAND compose '$TEST_DIR/vm0.yaml'"
-    assert_failure
-    # Should show error about new secrets (all secrets are new on first compose)
-    assert_output --partial "New secrets detected"
-    assert_output --partial "ELEVENLABS_API_KEY"
-}
