@@ -1,4 +1,3 @@
-import { randomUUID } from "crypto";
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { GET } from "../route";
 import {
@@ -9,6 +8,7 @@ import {
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
+  uniqueId,
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
 
@@ -33,9 +33,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     vi.stubEnv("CRON_SECRET", cronSecret);
 
     // Create test compose
-    const { composeId } = await createTestCompose(
-      `cleanup-${randomUUID().slice(0, 8)}`,
-    );
+    const { composeId } = await createTestCompose(uniqueId("cleanup"));
     testComposeId = composeId;
   });
 

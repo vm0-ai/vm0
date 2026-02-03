@@ -9,6 +9,7 @@ import {
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
+  uniqueId,
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
@@ -403,9 +404,7 @@ describe("GET /api/agent/schedules - List Schedules", () => {
 
   it("should return list of user's schedules", async () => {
     // Create compose and schedule
-    const { composeId } = await createTestCompose(
-      `list-agent-${randomUUID().slice(0, 8)}`,
-    );
+    const { composeId } = await createTestCompose(uniqueId("list-agent"));
     await createTestSchedule(composeId, "list-test-schedule", {
       cronExpression: "0 9 * * *",
       prompt: "Test prompt",
@@ -421,9 +420,7 @@ describe("GET /api/agent/schedules - List Schedules", () => {
 
   it("should not return other users' schedules", async () => {
     // Create compose and schedule as current user
-    const { composeId } = await createTestCompose(
-      `my-agent-${randomUUID().slice(0, 8)}`,
-    );
+    const { composeId } = await createTestCompose(uniqueId("my-agent"));
     await createTestSchedule(composeId, "my-schedule", {
       cronExpression: "0 9 * * *",
       prompt: "My prompt",

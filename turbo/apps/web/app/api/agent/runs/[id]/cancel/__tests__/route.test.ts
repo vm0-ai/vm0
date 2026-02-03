@@ -8,6 +8,7 @@ import {
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
+  uniqueId,
   type UserContext,
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
@@ -27,9 +28,7 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
     context.setupMocks();
     user = await context.setupUser();
 
-    const { composeId } = await createTestCompose(
-      `agent-${randomUUID().slice(0, 8)}`,
-    );
+    const { composeId } = await createTestCompose(uniqueId("agent"));
     testComposeId = composeId;
   });
 

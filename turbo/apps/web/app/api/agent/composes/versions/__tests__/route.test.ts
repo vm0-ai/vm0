@@ -1,4 +1,3 @@
-import { randomUUID } from "crypto";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "../route";
 import { POST } from "../../route";
@@ -9,6 +8,7 @@ import {
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
+  uniqueId,
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
@@ -215,9 +215,7 @@ describe("GET /api/agent/composes/versions", () => {
   it("should resolve version with full hash for cross-compose scenario", async () => {
     // Similar test - create second compose and test full hash resolution
     const { composeId: thirdComposeId, versionId: thirdVersionId } =
-      await createTestCompose(
-        `test-version-agent-c-${randomUUID().slice(0, 8)}`,
-      );
+      await createTestCompose(uniqueId("test-version-agent-c"));
 
     // Test with full 64-char hash
     const request = createTestRequest(

@@ -8,6 +8,7 @@ import {
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
+  uniqueId,
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
@@ -29,9 +30,7 @@ describe("GET /api/agent/sessions/:id", () => {
     context.setupMocks();
     user = await context.setupUser();
 
-    const { composeId } = await createTestCompose(
-      `session-${randomUUID().slice(0, 8)}`,
-    );
+    const { composeId } = await createTestCompose(uniqueId("session"));
     testComposeId = composeId;
   });
 

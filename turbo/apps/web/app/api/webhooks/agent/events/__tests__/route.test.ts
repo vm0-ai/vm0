@@ -15,6 +15,7 @@ import {
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
+  uniqueId,
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
@@ -43,9 +44,7 @@ describe("POST /api/webhooks/agent/events", () => {
     user = await context.setupUser();
 
     // Create test compose via API
-    const { composeId } = await createTestCompose(
-      `agent-events-${randomUUID().slice(0, 8)}`,
-    );
+    const { composeId } = await createTestCompose(uniqueId("agent-events"));
     testComposeId = composeId;
 
     // Create test run via API (status automatically set to running)

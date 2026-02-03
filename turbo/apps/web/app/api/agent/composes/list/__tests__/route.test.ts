@@ -1,4 +1,3 @@
-import { randomUUID } from "crypto";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "../route";
 import {
@@ -7,6 +6,7 @@ import {
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
+  uniqueId,
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
@@ -139,7 +139,7 @@ describe("GET /api/agent/composes/list", () => {
     const otherUser = await context.setupUser({ prefix: "forbidden-user" });
 
     // Create a compose for the other user
-    await createTestCompose(`forbidden-compose-${randomUUID().slice(0, 8)}`);
+    await createTestCompose(uniqueId("forbidden-compose"));
 
     // Derive the other user's scope slug from their userId
     // userId format: {prefix}-{timestamp}-{uuid}

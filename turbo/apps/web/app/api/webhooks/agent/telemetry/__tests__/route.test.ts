@@ -434,7 +434,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
 
   describe("Sandbox type detection", () => {
     it("should detect E2B sandbox type when run has sandboxId", async () => {
-      // E2B runs have sandboxId set by E2B executor (mock returns test-sandbox-123)
+      // E2B runs have sandboxId set by E2B executor (mock returns unique sandboxId per test)
       const { runId } = await createRunForWebhook(
         testComposeId,
         "Test E2B run",

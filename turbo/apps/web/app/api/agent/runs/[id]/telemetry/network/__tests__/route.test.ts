@@ -7,6 +7,7 @@ import {
 } from "../../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
+  uniqueId,
   type UserContext,
 } from "../../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../../src/__tests__/clerk-mock";
@@ -62,9 +63,7 @@ describe("GET /api/agent/runs/:id/telemetry/network", () => {
     user = await context.setupUser();
 
     // Create test compose and run
-    const { composeId } = await createTestCompose(
-      `network-${randomUUID().slice(0, 8)}`,
-    );
+    const { composeId } = await createTestCompose(uniqueId("network"));
 
     const { runId } = await createTestRun(composeId, "Test prompt");
     testRunId = runId;

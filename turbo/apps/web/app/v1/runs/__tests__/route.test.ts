@@ -13,6 +13,7 @@ import {
 } from "../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
+  uniqueId,
   type UserContext,
 } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
@@ -39,7 +40,7 @@ describe("Public API v1 - Runs Endpoints", () => {
     user = await context.setupUser();
 
     // Create test agent with compose (use UUID to avoid name conflicts between tests)
-    testAgentName = `agent-${randomUUID().slice(0, 8)}`;
+    testAgentName = uniqueId("agent");
     const { composeId } = await createTestCompose(testAgentName);
     testAgentId = composeId;
 
@@ -141,7 +142,7 @@ describe("Public API v1 - Runs Endpoints", () => {
       // Create another user and their run
       const otherUser = await context.setupUser({ prefix: "other-user" });
       const { composeId: otherComposeId } = await createTestCompose(
-        `other-agent-${randomUUID().slice(0, 8)}`,
+        uniqueId("other-agent"),
       );
 
       // Create run as other user

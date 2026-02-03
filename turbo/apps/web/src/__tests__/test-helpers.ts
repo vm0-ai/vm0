@@ -17,6 +17,24 @@
  */
 import { vi, afterEach, type Mock, type MockInstance } from "vitest";
 import { randomUUID } from "crypto";
+
+/**
+ * Generate a unique 8-character suffix for test isolation.
+ * Internal helper used by uniqueId and other helpers.
+ * @returns An 8-character random suffix
+ */
+function uniqueSuffix(): string {
+  return randomUUID().slice(0, 8);
+}
+
+/**
+ * Generate a unique ID with a prefix for test isolation.
+ * @param prefix - The prefix for the ID (e.g., "test-user", "test-sandbox")
+ * @returns A unique ID in the format `${prefix}-${8-char-uuid}`
+ */
+export function uniqueId(prefix: string): string {
+  return `${prefix}-${uniqueSuffix()}`;
+}
 import { eq } from "drizzle-orm";
 import { Sandbox } from "@e2b/code-interpreter";
 import { Axiom } from "@axiomhq/js";
@@ -205,9 +223,9 @@ export function testContext(): TestContext {
   function createMocks(): MockHelpers {
     if (mockHelpers) return mockHelpers;
 
-    // E2B sandbox mock
+    // E2B sandbox mock - use unique sandboxId per test to avoid state pollution
     const mockSandbox = {
-      sandboxId: "test-sandbox-123",
+      sandboxId: uniqueId("test-sandbox"),
       getHostname: vi.fn().mockReturnValue("test-sandbox.e2b.dev"),
       files: {
         write: vi.fn().mockResolvedValue(undefined),
@@ -389,15 +407,16 @@ export function testContext(): TestContext {
     const userPromise = (async () => {
       initServices();
 
-      // Generate unique user ID
-      const uniqueSuffix = `${Date.now()}-${randomUUID().slice(0, 8)}`;
-      const userId = `${prefix}-${uniqueSuffix}`;
+      // Generate unique suffix shared between userId and scope
+      // This allows tests to derive scope slug from userId if needed
+      const suffix = uniqueSuffix();
+      const userId = `${prefix}-${suffix}`;
 
       // Mock Clerk for this user
       mockClerk({ userId });
 
-      // Create scope via API
-      const scopeData = await createTestScope(`scope-${uniqueSuffix}`);
+      // Create scope via API (uses same suffix for derivability)
+      const scopeData = await createTestScope(`scope-${suffix}`);
       controller.signal.throwIfAborted();
 
       return {
@@ -422,11 +441,11 @@ export function testContext(): TestContext {
     options: SlackInstallationOptions = {},
   ): Promise<SlackInstallationResult> {
     // Generate unique workspace ID per test to avoid constraint violations
-    const uniqueSuffix = randomUUID().slice(0, 8);
+    const suffix = uniqueSuffix();
     const {
       withUserLink = false,
-      workspaceId = `T${uniqueSuffix}`,
-      slackUserId = `U${uniqueSuffix}`,
+      workspaceId = `T${suffix}`,
+      slackUserId = `U${suffix}`,
     } = options;
 
     initServices();
@@ -462,7 +481,7 @@ export function testContext(): TestContext {
     };
 
     if (withUserLink) {
-      const vm0UserId = `test-user-${randomUUID().slice(0, 8)}`;
+      const vm0UserId = uniqueId("test-user");
 
       const [createdLink] = await globalThis.services.db
         .insert(slackUserLinks)
@@ -497,7 +516,7 @@ export function testContext(): TestContext {
     options: SlackBindingOptions = {},
   ): Promise<{ id: string; agentName: string; composeId: string }> {
     const {
-      agentName = `test-agent-${randomUUID().slice(0, 8)}`,
+      agentName = uniqueId("test-agent"),
       description = null,
       enabled = true,
     } = options;
@@ -516,7 +535,7 @@ export function testContext(): TestContext {
     }
 
     // Create a scope directly in the database (bypass API to avoid Clerk auth)
-    const scopeSlug = `scope-${randomUUID().slice(0, 8)}`;
+    const scopeSlug = uniqueId("scope");
     const [scopeData] = await globalThis.services.db
       .insert(scopes)
       .values({

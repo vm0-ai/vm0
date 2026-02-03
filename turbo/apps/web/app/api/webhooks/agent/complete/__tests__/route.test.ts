@@ -9,6 +9,7 @@ import {
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
+  uniqueId,
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
@@ -34,9 +35,7 @@ describe("POST /api/webhooks/agent/complete", () => {
     user = await context.setupUser();
 
     // Create compose for test runs
-    const { composeId } = await createTestCompose(
-      `complete-${randomUUID().slice(0, 8)}`,
-    );
+    const { composeId } = await createTestCompose(uniqueId("complete"));
     testComposeId = composeId;
 
     // Create a running run
