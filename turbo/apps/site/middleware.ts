@@ -70,6 +70,6 @@ export default clerkMiddleware(async (_auth, request) => {
 });
 
 export const config = {
-  // Match ALL routes including _next/static for full proxy
-  matcher: ["/(.*)", "/_next/static/:path*"],
+  // Match all routes (except _next/static which is handled by next.config.js rewrites)
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

@@ -38,6 +38,20 @@ const nextConfig = {
   experimental: {
     optimizePackageImports: ["next-intl"],
   },
+  // Proxy _next/static to web app (middleware can't intercept these paths)
+  async rewrites() {
+    const webUrl = process.env.WEB_APP_URL;
+    if (!webUrl) return [];
+
+    return {
+      beforeFiles: [
+        {
+          source: "/_next/static/:path*",
+          destination: `${webUrl}/_next/static/:path*`,
+        },
+      ],
+    };
+  },
 };
 
 export default withNextIntl(nextConfig);
