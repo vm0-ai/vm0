@@ -26,7 +26,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.PlatformAgents]: {
     maintainer: "ethan@vm0.ai",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.PlatformSecrets]: {
     maintainer: "ethan@vm0.ai",
