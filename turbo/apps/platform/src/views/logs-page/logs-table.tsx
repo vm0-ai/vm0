@@ -36,18 +36,16 @@ function LogsTableHeader() {
 
 function LoadingTable() {
   return (
-    <div className="overflow-hidden rounded-md border border-border bg-card">
-      <Table>
-        <LogsTableHeader />
-        <TableBody>
-          <TableRow>
-            <td colSpan={7} className="p-4 text-center">
-              Loading...
-            </td>
-          </TableRow>
-        </TableBody>
-      </Table>
-    </div>
+    <Table>
+      <LogsTableHeader />
+      <TableBody>
+        <TableRow>
+          <td colSpan={7} className="p-4 text-center">
+            Loading...
+          </td>
+        </TableRow>
+      </TableBody>
+    </Table>
   );
 }
 
@@ -64,18 +62,16 @@ export function LogsTable() {
         ? currentPage.error.message
         : "Failed to load logs";
     return (
-      <div className="overflow-hidden rounded-md border border-border bg-card">
-        <Table>
-          <LogsTableHeader />
-          <TableBody>
-            <TableRow>
-              <td colSpan={7} className="p-4 text-center text-destructive">
-                Error: {errorMessage}
-              </td>
-            </TableRow>
-          </TableBody>
-        </Table>
-      </div>
+      <Table>
+        <LogsTableHeader />
+        <TableBody>
+          <TableRow>
+            <td colSpan={7} className="p-4 text-center text-destructive">
+              Error: {errorMessage}
+            </td>
+          </TableRow>
+        </TableBody>
+      </Table>
     );
   }
 
@@ -103,18 +99,16 @@ function LogsTableData({ pageComputed }: LogsTableDataProps) {
         ? dataLoadable.error.message
         : "Failed to load logs";
     return (
-      <div className="overflow-hidden rounded-md border border-border bg-card">
-        <Table>
-          <LogsTableHeader />
-          <TableBody>
-            <TableRow>
-              <td colSpan={7} className="p-4 text-center text-destructive">
-                Error: {errorMessage}
-              </td>
-            </TableRow>
-          </TableBody>
-        </Table>
-      </div>
+      <Table>
+        <LogsTableHeader />
+        <TableBody>
+          <TableRow>
+            <td colSpan={7} className="p-4 text-center text-destructive">
+              Error: {errorMessage}
+            </td>
+          </TableRow>
+        </TableBody>
+      </Table>
     );
   }
 
@@ -123,15 +117,13 @@ function LogsTableData({ pageComputed }: LogsTableDataProps) {
   }
 
   return (
-    <div className="overflow-hidden rounded-md border border-border bg-card">
-      <Table>
-        <LogsTableHeader />
-        <TableBody>
-          {dataLoadable.data.data.map((entry) => (
-            <LogsTableRow key={entry.id} logId={entry.id} />
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+    <Table>
+      <LogsTableHeader />
+      <TableBody>
+        {dataLoadable.data.data.map((entry) => (
+          <LogsTableRow key={entry.id} logId={entry.id} />
+        ))}
+      </TableBody>
+    </Table>
   );
 }
