@@ -15,7 +15,7 @@
   </p>
 </h2>
 
-[Documentation](https://docs.vm0.ai) / [Website](https://www.vm0.ai) / [Join Waitlist](https://www.vm0.ai/sign-up) / [Discord](https://discord.gg/WMpAmHFfp6)
+[Documentation](https://docs.vm0.ai) / [Website](https://www.vm0.ai) / [Discord](https://discord.gg/WMpAmHFfp6)
 
 `VM0` runs natural language-described workflows automatically on schedule in remote sandbox environments.
 
