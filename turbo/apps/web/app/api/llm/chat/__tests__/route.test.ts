@@ -1,8 +1,10 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { POST } from "../route";
 import { createTestRequest } from "../../../../../src/__tests__/api-test-helpers";
 import { server } from "../../../../../src/mocks/server";
+import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import { testContext } from "../../../../../src/__tests__/test-helpers";
 
 // Mock external dependencies
 vi.mock("@clerk/nextjs/server");
@@ -12,9 +14,28 @@ vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
 vi.mock("@axiomhq/logging");
 
+// Mock env module to control OPENROUTER_API_KEY
+// Use vi.hoisted() to ensure mockEnvValues is defined before vi.mock runs
+const mockEnvValues = vi.hoisted(() => ({
+  OPENROUTER_API_KEY: undefined as string | undefined,
+}));
+
+vi.mock("../../../../../src/env", () => ({
+  env: () => mockEnvValues,
+}));
+
+const context = testContext();
+
 describe("POST /api/llm/chat", () => {
+  beforeEach(() => {
+    context.setupMocks();
+    // Default: user not logged in, no env token
+    mockClerk({ userId: null });
+    mockEnvValues.OPENROUTER_API_KEY = undefined;
+  });
+
   describe("Authentication", () => {
-    it("should return 401 when x-openrouter-token header is missing", async () => {
+    it("should return 401 when not logged in and no header token", async () => {
       const request = createTestRequest("http://localhost:3000/api/llm/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -30,6 +51,119 @@ describe("POST /api/llm/chat", () => {
       expect(response.status).toBe(401);
       expect(data.error.code).toBe("UNAUTHORIZED");
       expect(data.error.message).toContain("x-openrouter-token");
+    });
+
+    it("should use env token when user is logged in", async () => {
+      mockClerk({ userId: "user-123" });
+      mockEnvValues.OPENROUTER_API_KEY = "env-openrouter-token";
+
+      server.use(
+        http.post("https://openrouter.ai/api/v1/chat/completions", () => {
+          return HttpResponse.json({
+            id: "gen-123",
+            object: "chat.completion",
+            created: Math.floor(Date.now() / 1000),
+            model: "anthropic/claude-sonnet-4",
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: "assistant",
+                  content: "Hello from env token!",
+                },
+                finish_reason: "stop",
+              },
+            ],
+            usage: {
+              prompt_tokens: 10,
+              completion_tokens: 15,
+              total_tokens: 25,
+            },
+          });
+        }),
+      );
+
+      const request = createTestRequest("http://localhost:3000/api/llm/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "anthropic/claude-sonnet-4",
+          messages: [{ role: "user", content: "Hello" }],
+        }),
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.content).toBe("Hello from env token!");
+    });
+
+    it("should return 503 when logged in but env token not configured", async () => {
+      mockClerk({ userId: "user-123" });
+      mockEnvValues.OPENROUTER_API_KEY = undefined;
+
+      const request = createTestRequest("http://localhost:3000/api/llm/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "anthropic/claude-sonnet-4",
+          messages: [{ role: "user", content: "Hello" }],
+        }),
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(503);
+      expect(data.error.code).toBe("SERVICE_UNAVAILABLE");
+      expect(data.error.message).toContain("not configured");
+    });
+
+    it("should use header token when not logged in", async () => {
+      server.use(
+        http.post("https://openrouter.ai/api/v1/chat/completions", () => {
+          return HttpResponse.json({
+            id: "gen-123",
+            object: "chat.completion",
+            created: Math.floor(Date.now() / 1000),
+            model: "anthropic/claude-sonnet-4",
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: "assistant",
+                  content: "Hello from header token!",
+                },
+                finish_reason: "stop",
+              },
+            ],
+            usage: {
+              prompt_tokens: 10,
+              completion_tokens: 15,
+              total_tokens: 25,
+            },
+          });
+        }),
+      );
+
+      const request = createTestRequest("http://localhost:3000/api/llm/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-openrouter-token": "header-token",
+        },
+        body: JSON.stringify({
+          model: "anthropic/claude-sonnet-4",
+          messages: [{ role: "user", content: "Hello" }],
+        }),
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.content).toBe("Hello from header token!");
     });
   });
 

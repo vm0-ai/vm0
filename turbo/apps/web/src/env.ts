@@ -27,6 +27,8 @@ function initEnv() {
       SLACK_CLIENT_SECRET: z.string().min(1).optional(),
       SLACK_SIGNING_SECRET: z.string().min(1).optional(),
       SLACK_REDIRECT_BASE_URL: z.string().url().optional(), // Override base URL for OAuth redirects (e.g., tunnel URL)
+      // LLM API
+      OPENROUTER_API_KEY: z.string().min(1).optional(), // OpenRouter API key for logged-in users
     },
     client: {
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1),
@@ -52,6 +54,7 @@ function initEnv() {
       SLACK_CLIENT_SECRET: process.env.SLACK_CLIENT_SECRET,
       SLACK_SIGNING_SECRET: process.env.SLACK_SIGNING_SECRET,
       SLACK_REDIRECT_BASE_URL: process.env.SLACK_REDIRECT_BASE_URL,
+      OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
         process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
     },

@@ -3,14 +3,18 @@ import { llmChatRequestSchema, type LlmChatRequest } from "@vm0/core";
 import { chat, chatStream } from "../../../../src/lib/llm/llm-service";
 import { logger } from "../../../../src/lib/logger";
 import { flushLogs } from "../../../../src/lib/logger";
+import { initServices } from "../../../../src/lib/init-services";
+import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { env } from "../../../../src/env";
 
 const log = logger("api:llm:chat");
 
 /**
  * POST /api/llm/chat - Send a chat completion request to OpenRouter
  *
- * Headers:
- *   x-openrouter-token: string (required)
+ * Authentication:
+ *   - If logged in: Uses OPENROUTER_API_KEY from environment
+ *   - If not logged in: Requires x-openrouter-token header
  *
  * Body:
  *   model: string
@@ -24,18 +28,48 @@ const log = logger("api:llm:chat");
  *   SSE stream of { content: string } chunks, ending with [DONE]
  */
 export async function POST(request: NextRequest) {
-  const token = request.headers.get("x-openrouter-token");
-  if (!token) {
-    await flushLogs();
-    return NextResponse.json(
-      {
-        error: {
-          message: "Missing x-openrouter-token header",
-          code: "UNAUTHORIZED",
+  initServices();
+
+  // Determine token: logged-in users use env token, others need header
+  const userId = await getUserId(
+    request.headers.get("authorization") ?? undefined,
+  );
+  let token: string;
+
+  if (userId) {
+    // User is logged in - use environment token
+    const envToken = env().OPENROUTER_API_KEY;
+    if (!envToken) {
+      await flushLogs();
+      return NextResponse.json(
+        {
+          error: {
+            message: "OpenRouter API key not configured",
+            code: "SERVICE_UNAVAILABLE",
+          },
         },
-      },
-      { status: 401 },
-    );
+        { status: 503 },
+      );
+    }
+    token = envToken;
+    log.debug("using environment token for logged-in user", { userId });
+  } else {
+    // Not logged in - require header token
+    const headerToken = request.headers.get("x-openrouter-token");
+    if (!headerToken) {
+      await flushLogs();
+      return NextResponse.json(
+        {
+          error: {
+            message:
+              "Authentication required. Either log in or provide x-openrouter-token header.",
+            code: "UNAUTHORIZED",
+          },
+        },
+        { status: 401 },
+      );
+    }
+    token = headerToken;
   }
 
   const rawBody: unknown = await request.json();
