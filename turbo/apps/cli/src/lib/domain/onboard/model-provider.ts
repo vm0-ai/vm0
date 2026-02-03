@@ -2,11 +2,23 @@ import {
   MODEL_PROVIDER_TYPES,
   getModels,
   getDefaultModel,
-  hasAuthMethods,
   type ModelProviderType,
   type ModelProviderResponse,
   type UpsertModelProviderResponse,
 } from "@vm0/core";
+
+/**
+ * Provider types available in onboard flow.
+ * This is an explicit allowlist - new providers must be added here to appear in onboard.
+ * For advanced providers (e.g., aws-bedrock), users should use `vm0 model-provider setup`.
+ */
+const ONBOARD_PROVIDER_TYPES: ModelProviderType[] = [
+  "claude-code-oauth-token",
+  "anthropic-api-key",
+  "openrouter-api-key",
+  "moonshot-api-key",
+  "minimax-api-key",
+];
 import {
   listModelProviders,
   upsertModelProvider,
@@ -45,24 +57,23 @@ export async function checkModelProviderStatus(): Promise<ModelProviderStatus> {
 }
 
 /**
- * Get available provider types as choices for selection
- * Note: Multi-auth providers (like aws-bedrock) are excluded until CLI support is added
+ * Get available provider types as choices for onboard selection.
+ * Only providers in ONBOARD_PROVIDER_TYPES are shown.
+ * For advanced providers, use `vm0 model-provider setup`.
  */
 export function getProviderChoices(): ProviderChoice[] {
-  return (Object.keys(MODEL_PROVIDER_TYPES) as ModelProviderType[])
-    .filter((type) => !hasAuthMethods(type)) // Exclude multi-auth providers for now
-    .map((type) => {
-      const config = MODEL_PROVIDER_TYPES[type];
-      return {
-        type,
-        label: config.label,
-        helpText: config.helpText,
-        credentialLabel:
-          "credentialLabel" in config ? config.credentialLabel : "",
-        models: getModels(type),
-        defaultModel: getDefaultModel(type),
-      };
-    });
+  return ONBOARD_PROVIDER_TYPES.map((type) => {
+    const config = MODEL_PROVIDER_TYPES[type];
+    return {
+      type,
+      label: config.label,
+      helpText: config.helpText,
+      credentialLabel:
+        "credentialLabel" in config ? config.credentialLabel : "",
+      models: getModels(type),
+      defaultModel: getDefaultModel(type),
+    };
+  });
 }
 
 /**
