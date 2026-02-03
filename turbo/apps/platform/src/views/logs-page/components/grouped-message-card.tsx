@@ -190,7 +190,9 @@ function SystemMessageCard({
         <span className="font-semibold text-sm text-foreground">
           {subtype === "init" ? "Initialize" : subtype}
         </span>
-        <span className="flex-1" />
+        <span className="flex-1">
+          {subtype === "init" && <SystemInitContent eventData={eventData} />}
+        </span>
         <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
           {timestamp}
         </span>
@@ -198,11 +200,6 @@ function SystemMessageCard({
       <div className="text-xs text-muted-foreground pl-5 mt-1 sm:hidden">
         {timestamp}
       </div>
-      {subtype === "init" && (
-        <div className="pl-5 mt-2">
-          <SystemInitContent eventData={eventData} />
-        </div>
-      )}
     </div>
   );
 }

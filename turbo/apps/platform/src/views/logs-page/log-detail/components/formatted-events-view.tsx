@@ -70,7 +70,7 @@ export function FormattedEventsView({
   let matchOffset = 0;
 
   return (
-    <div ref={containerRef} className="space-y-3">
+    <div ref={containerRef}>
       {visibleMessages.map((message) => {
         const messageMatchStart = matchOffset;
         const visibleText = getVisibleGroupedMessageText(message);
