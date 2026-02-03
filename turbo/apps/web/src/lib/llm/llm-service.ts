@@ -60,24 +60,26 @@ export async function chat(
           .map((item) => item.text)
           .join("");
 
-  const usage = response.usage ?? {
-    promptTokens: 0,
-    completionTokens: 0,
-    totalTokens: 0,
-  };
+  if (!response.usage) {
+    throw new Error("No usage data in OpenRouter response");
+  }
+
+  if (!response.model) {
+    throw new Error("No model in OpenRouter response");
+  }
 
   log.debug("chat request completed", {
     model: response.model,
-    totalTokens: usage.totalTokens,
+    totalTokens: response.usage.totalTokens,
   });
 
   return {
     content,
-    model: response.model ?? options.model,
+    model: response.model,
     usage: {
-      promptTokens: usage.promptTokens,
-      completionTokens: usage.completionTokens,
-      totalTokens: usage.totalTokens,
+      promptTokens: response.usage.promptTokens,
+      completionTokens: response.usage.completionTokens,
+      totalTokens: response.usage.totalTokens,
     },
   };
 }

@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { http, HttpResponse } from "msw";
-import { setupServer } from "msw/node";
 import { POST } from "../route";
 import { createTestRequest } from "../../../../../src/__tests__/api-test-helpers";
+import { server } from "../../../../../src/mocks/server";
 
 // Mock external dependencies
 vi.mock("@clerk/nextjs/server");
@@ -11,17 +11,6 @@ vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
 vi.mock("@axiomhq/logging");
-
-// MSW server for mocking OpenRouter API
-const server = setupServer();
-
-beforeEach(() => {
-  server.listen({ onUnhandledRequest: "bypass" });
-});
-
-afterEach(() => {
-  server.resetHandlers();
-});
 
 describe("POST /api/llm/chat", () => {
   describe("Authentication", () => {
@@ -160,7 +149,7 @@ describe("POST /api/llm/chat", () => {
       });
     });
 
-    it("should handle OpenRouter API errors", async () => {
+    it("should propagate OpenRouter API errors", async () => {
       server.use(
         http.post("https://openrouter.ai/api/v1/chat/completions", () => {
           return HttpResponse.json(
@@ -182,26 +171,55 @@ describe("POST /api/llm/chat", () => {
         }),
       });
 
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(500);
-      expect(data.error.code).toBe("INTERNAL_SERVER_ERROR");
+      // Error propagates without catch-all handler
+      await expect(POST(request)).rejects.toThrow();
     });
   });
 
   describe("Streaming chat", () => {
-    it("should return SSE stream for streaming requests", async () => {
-      // Mock streaming response
+    it("should return SSE stream with content for streaming requests", async () => {
+      // Mock streaming response with proper OpenRouter chunk format
       server.use(
         http.post("https://openrouter.ai/api/v1/chat/completions", () => {
           const encoder = new TextEncoder();
+          const now = Math.floor(Date.now() / 1000);
           const stream = new ReadableStream({
             start(controller) {
-              // Send chunks
+              // Send chunks with full OpenRouter format
               const chunks = [
-                { choices: [{ delta: { content: "Hello" }, index: 0 }] },
-                { choices: [{ delta: { content: " there!" }, index: 0 }] },
+                {
+                  id: "gen-123",
+                  object: "chat.completion.chunk",
+                  created: now,
+                  model: "anthropic/claude-sonnet-4",
+                  choices: [
+                    {
+                      delta: { content: "Hello" },
+                      index: 0,
+                      finish_reason: null,
+                    },
+                  ],
+                },
+                {
+                  id: "gen-123",
+                  object: "chat.completion.chunk",
+                  created: now,
+                  model: "anthropic/claude-sonnet-4",
+                  choices: [
+                    {
+                      delta: { content: " there!" },
+                      index: 0,
+                      finish_reason: null,
+                    },
+                  ],
+                },
+                {
+                  id: "gen-123",
+                  object: "chat.completion.chunk",
+                  created: now,
+                  model: "anthropic/claude-sonnet-4",
+                  choices: [{ delta: {}, index: 0, finish_reason: "stop" }],
+                },
               ];
               for (const chunk of chunks) {
                 controller.enqueue(
@@ -238,6 +256,22 @@ describe("POST /api/llm/chat", () => {
 
       expect(response.status).toBe(200);
       expect(response.headers.get("Content-Type")).toBe("text/event-stream");
+
+      // Verify stream content
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let fullContent = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        fullContent += decoder.decode(value, { stream: true });
+      }
+
+      // Verify we received content chunks
+      expect(fullContent).toContain('data: {"content":"Hello"}');
+      expect(fullContent).toContain('data: {"content":" there!"}');
+      expect(fullContent).toContain("data: [DONE]");
     });
   });
 
