@@ -1110,8 +1110,10 @@ jobs:
           tar -czf /tmp/vm0-runner-bundle.tar.gz -C /tmp vm0-runner-bundle
           echo "Bundle created: $(ls -lh /tmp/vm0-runner-bundle.tar.gz)"
 
-      - name: Install Ansible
-        run: pip3 install ansible
+      - name: Install Python3 and Ansible
+        run: |
+          apt-get update && apt-get install -y python3 python3-pip
+          pip3 install ansible
 
       - name: Prepare runner (deploy bundle, install deps)
         id: prepare
@@ -1232,6 +1234,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
+
+      - name: Install Python3 and Ansible
+        run: |
+          apt-get update && apt-get install -y python3 python3-pip
+          pip3 install ansible
 
       - name: Start runner (configure and launch)
         id: start

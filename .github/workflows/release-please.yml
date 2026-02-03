@@ -525,8 +525,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
 
-      - name: Install Ansible
-        run: pip3 install ansible
+      - name: Install Python3 and Ansible
+        run: |
+          apt-get update && apt-get install -y python3 python3-pip
+          pip3 install ansible
 
       - name: Notify Slack - Starting
         id: slack-start
