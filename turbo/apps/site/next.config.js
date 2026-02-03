@@ -38,16 +38,26 @@ const nextConfig = {
   experimental: {
     optimizePackageImports: ["next-intl"],
   },
-  // Proxy _next/static to web app (middleware can't intercept these paths)
+  // Proxy all unmatched routes to web app
   async rewrites() {
     const webUrl = process.env.WEB_APP_URL;
     if (!webUrl) return [];
 
     return {
+      // beforeFiles: checked before pages/public files
       beforeFiles: [
+        // Proxy _next/static (build assets from web)
         {
           source: "/_next/static/:path*",
           destination: `${webUrl}/_next/static/:path*`,
+        },
+      ],
+      // fallback: checked after pages/public files (404 would go here)
+      fallback: [
+        // Proxy everything else to web
+        {
+          source: "/:path*",
+          destination: `${webUrl}/:path*`,
         },
       ],
     };
