@@ -357,6 +357,17 @@ async function promptForAuthMethod(type: ModelProviderType): Promise<string> {
 /**
  * Prompt for credentials based on auth method configuration
  */
+/**
+ * Determine if a credential should be masked (password type)
+ * Non-secret values like region should be visible
+ */
+function isSecretCredential(name: string): boolean {
+  const nonSecretPatterns = ["REGION", "ENDPOINT", "URL"];
+  return !nonSecretPatterns.some((pattern) =>
+    name.toUpperCase().includes(pattern),
+  );
+}
+
 async function promptForCredentials(
   type: ModelProviderType,
   authMethod: string,
@@ -375,12 +386,17 @@ async function promptForCredentials(
       console.log(chalk.dim(fieldConfig.helpText));
     }
 
+    const isSecret = isSecretCredential(name);
+    const placeholder =
+      "placeholder" in fieldConfig ? (fieldConfig.placeholder as string) : "";
+
     if (fieldConfig.required) {
       const response = await prompts(
         {
-          type: "password",
+          type: isSecret ? "password" : "text",
           name: "value",
-          message: `Enter ${fieldConfig.label}:`,
+          message: `${fieldConfig.label}:`,
+          initial: placeholder ? "" : undefined,
           validate: (value: string) =>
             value.length > 0 || `${fieldConfig.label} is required`,
         },
@@ -391,9 +407,9 @@ async function promptForCredentials(
       // Optional field
       const response = await prompts(
         {
-          type: "text",
+          type: isSecret ? "password" : "text",
           name: "value",
-          message: `Enter ${fieldConfig.label} (optional, press Enter to skip):`,
+          message: `${fieldConfig.label} (optional):`,
         },
         { onCancel: () => process.exit(0) },
       );

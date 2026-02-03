@@ -124,22 +124,23 @@ export const MODEL_PROVIDER_TYPES = {
   "aws-bedrock": {
     framework: "claude-code" as const,
     label: "AWS Bedrock",
-    helpText: "Run Claude on AWS Bedrock",
+    helpText:
+      "Run Claude on AWS Bedrock.\nSetup guide: https://docs.anthropic.com/en/docs/claude-code/bedrock",
     authMethods: {
       "api-key": {
         label: "Bedrock API Key",
         helpText: "Use a Bedrock API key for authentication",
         credentials: {
           AWS_BEARER_TOKEN_BEDROCK: {
-            label: "Bedrock API Key",
+            label: "AWS_BEARER_TOKEN_BEDROCK",
             required: true,
-            helpText: "Get your API key from AWS Bedrock console",
+            helpText: "Bedrock API key from AWS console",
           },
           AWS_REGION: {
-            label: "AWS Region",
+            label: "AWS_REGION",
             required: true,
             placeholder: "us-east-1",
-            helpText: "AWS region where Bedrock is enabled",
+            helpText: "e.g., us-east-1, us-west-2",
           },
         },
       },
@@ -148,23 +149,25 @@ export const MODEL_PROVIDER_TYPES = {
         helpText: "Use IAM access key credentials",
         credentials: {
           AWS_ACCESS_KEY_ID: {
-            label: "Access Key ID",
+            label: "AWS_ACCESS_KEY_ID",
             required: true,
+            helpText: "IAM access key ID",
           },
           AWS_SECRET_ACCESS_KEY: {
-            label: "Secret Access Key",
+            label: "AWS_SECRET_ACCESS_KEY",
             required: true,
+            helpText: "IAM secret access key",
           },
           AWS_SESSION_TOKEN: {
-            label: "Session Token",
+            label: "AWS_SESSION_TOKEN",
             required: false,
             helpText: "Optional, for temporary credentials",
           },
           AWS_REGION: {
-            label: "AWS Region",
+            label: "AWS_REGION",
             required: true,
             placeholder: "us-east-1",
-            helpText: "AWS region where Bedrock is enabled",
+            helpText: "e.g., us-east-1, us-west-2",
           },
         },
       },
