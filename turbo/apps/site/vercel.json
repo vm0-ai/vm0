@@ -6,6 +6,10 @@
     {
       "source": "/_next/static/:path*",
       "destination": "$WEB_APP_URL/_next/static/:path*"
+    },
+    {
+      "source": "/:path*",
+      "destination": "$WEB_APP_URL/:path*"
     }
   ]
 }
