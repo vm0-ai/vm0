@@ -4,20 +4,17 @@ import { chat, chatStream } from "../../../../src/lib/llm/llm-service";
 import { logger } from "../../../../src/lib/logger";
 import { flushLogs } from "../../../../src/lib/logger";
 import { initServices } from "../../../../src/lib/init-services";
-import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { env } from "../../../../src/env";
 
 const log = logger("api:llm:chat");
 
+// Use a fast free model
+const MODEL = "google/gemma-3-4b-it:free";
+
 /**
  * POST /api/llm/chat - Send a chat completion request to OpenRouter
  *
- * Authentication:
- *   - If logged in: Uses OPENROUTER_API_KEY from environment
- *   - If not logged in: Requires x-openrouter-token header
- *
  * Body:
- *   model: string
  *   messages: Array<{ role: "user" | "assistant" | "system", content: string }>
  *   stream?: boolean (default: false)
  *
@@ -30,46 +27,18 @@ const log = logger("api:llm:chat");
 export async function POST(request: NextRequest) {
   initServices();
 
-  // Determine token: logged-in users use env token, others need header
-  const userId = await getUserId(
-    request.headers.get("authorization") ?? undefined,
-  );
-  let token: string;
-
-  if (userId) {
-    // User is logged in - use environment token
-    const envToken = env().OPENROUTER_API_KEY;
-    if (!envToken) {
-      await flushLogs();
-      return NextResponse.json(
-        {
-          error: {
-            message: "OpenRouter API key not configured",
-            code: "SERVICE_UNAVAILABLE",
-          },
+  const token = env().OPENROUTER_API_KEY;
+  if (!token) {
+    await flushLogs();
+    return NextResponse.json(
+      {
+        error: {
+          message: "OpenRouter API key not configured",
+          code: "SERVICE_UNAVAILABLE",
         },
-        { status: 503 },
-      );
-    }
-    token = envToken;
-    log.debug("using environment token for logged-in user", { userId });
-  } else {
-    // Not logged in - require header token
-    const headerToken = request.headers.get("x-openrouter-token");
-    if (!headerToken) {
-      await flushLogs();
-      return NextResponse.json(
-        {
-          error: {
-            message:
-              "Authentication required. Either log in or provide x-openrouter-token header.",
-            code: "UNAUTHORIZED",
-          },
-        },
-        { status: 401 },
-      );
-    }
-    token = headerToken;
+      },
+      { status: 503 },
+    );
   }
 
   const rawBody: unknown = await request.json();
@@ -90,10 +59,10 @@ export async function POST(request: NextRequest) {
   }
 
   const body: LlmChatRequest = parseResult.data;
-  const { model, messages, stream } = body;
+  const { messages, stream } = body;
 
   log.debug("chat request received", {
-    model,
+    model: MODEL,
     stream,
     messageCount: messages.length,
   });
@@ -106,7 +75,10 @@ export async function POST(request: NextRequest) {
       async start(controller) {
         const encoder = new TextEncoder();
         try {
-          for await (const chunk of chatStream(token, { model, messages })) {
+          for await (const chunk of chatStream(token, {
+            model: MODEL,
+            messages,
+          })) {
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({ content: chunk })}\n\n`),
             );
@@ -144,7 +116,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Non-streaming response
-  const result = await chat(token, { model, messages });
+  const result = await chat(token, { model: MODEL, messages });
 
   await flushLogs();
   return NextResponse.json({

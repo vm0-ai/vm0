@@ -32,9 +32,11 @@ export type TokenUsage = z.infer<typeof tokenUsageSchema>;
 
 /**
  * LLM chat request schema
+ * Note: model is optional at the HTTP layer (uses a default free model),
+ * but required at the service layer
  */
 export const llmChatRequestSchema = z.object({
-  model: z.string().min(1, "Model is required"),
+  model: z.string().min(1).optional(),
   messages: z
     .array(chatMessageSchema)
     .min(1, "At least one message is required"),
@@ -55,27 +57,19 @@ export const llmChatResponseSchema = z.object({
 export type LlmChatResponse = z.infer<typeof llmChatResponseSchema>;
 
 /**
- * Headers schema for LLM endpoints
- * Requires x-openrouter-token for authentication
- */
-export const llmHeadersSchema = z.object({
-  "x-openrouter-token": z.string().optional(),
-});
-
-/**
  * LLM chat contract for /api/llm/chat
+ * No authentication required - uses server-side API key
  */
 export const llmChatContract = c.router({
   chat: {
     method: "POST",
     path: "/api/llm/chat",
-    headers: llmHeadersSchema,
     body: llmChatRequestSchema,
     responses: {
       200: llmChatResponseSchema,
       400: apiErrorSchema,
-      401: apiErrorSchema,
       500: apiErrorSchema,
+      503: apiErrorSchema,
     },
     summary: "Send a chat completion request to OpenRouter",
   },

@@ -3,7 +3,6 @@ import { http, HttpResponse } from "msw";
 import { POST } from "../route";
 import { createTestRequest } from "../../../../../src/__tests__/api-test-helpers";
 import { server } from "../../../../../src/mocks/server";
-import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 
 // Mock external dependencies
@@ -15,7 +14,6 @@ vi.mock("@axiomhq/js");
 vi.mock("@axiomhq/logging");
 
 // Mock env module to control OPENROUTER_API_KEY
-// Use vi.hoisted() to ensure mockEnvValues is defined before vi.mock runs
 const mockEnvValues = vi.hoisted(() => ({
   OPENROUTER_API_KEY: undefined as string | undefined,
 }));
@@ -29,85 +27,17 @@ const context = testContext();
 describe("POST /api/llm/chat", () => {
   beforeEach(() => {
     context.setupMocks();
-    // Default: user not logged in, no env token
-    mockClerk({ userId: null });
-    mockEnvValues.OPENROUTER_API_KEY = undefined;
+    mockEnvValues.OPENROUTER_API_KEY = "test-openrouter-token";
   });
 
-  describe("Authentication", () => {
-    it("should return 401 when not logged in and no header token", async () => {
-      const request = createTestRequest("http://localhost:3000/api/llm/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "anthropic/claude-sonnet-4",
-          messages: [{ role: "user", content: "Hello" }],
-        }),
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(401);
-      expect(data.error.code).toBe("UNAUTHORIZED");
-      expect(data.error.message).toContain("x-openrouter-token");
-    });
-
-    it("should use env token when user is logged in", async () => {
-      mockClerk({ userId: "user-123" });
-      mockEnvValues.OPENROUTER_API_KEY = "env-openrouter-token";
-
-      server.use(
-        http.post("https://openrouter.ai/api/v1/chat/completions", () => {
-          return HttpResponse.json({
-            id: "gen-123",
-            object: "chat.completion",
-            created: Math.floor(Date.now() / 1000),
-            model: "anthropic/claude-sonnet-4",
-            choices: [
-              {
-                index: 0,
-                message: {
-                  role: "assistant",
-                  content: "Hello from env token!",
-                },
-                finish_reason: "stop",
-              },
-            ],
-            usage: {
-              prompt_tokens: 10,
-              completion_tokens: 15,
-              total_tokens: 25,
-            },
-          });
-        }),
-      );
-
-      const request = createTestRequest("http://localhost:3000/api/llm/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "anthropic/claude-sonnet-4",
-          messages: [{ role: "user", content: "Hello" }],
-        }),
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.content).toBe("Hello from env token!");
-    });
-
-    it("should return 503 when logged in but env token not configured", async () => {
-      mockClerk({ userId: "user-123" });
+  describe("Configuration", () => {
+    it("should return 503 when env token not configured", async () => {
       mockEnvValues.OPENROUTER_API_KEY = undefined;
 
       const request = createTestRequest("http://localhost:3000/api/llm/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "anthropic/claude-sonnet-4",
           messages: [{ role: "user", content: "Hello" }],
         }),
       });
@@ -119,83 +49,14 @@ describe("POST /api/llm/chat", () => {
       expect(data.error.code).toBe("SERVICE_UNAVAILABLE");
       expect(data.error.message).toContain("not configured");
     });
-
-    it("should use header token when not logged in", async () => {
-      server.use(
-        http.post("https://openrouter.ai/api/v1/chat/completions", () => {
-          return HttpResponse.json({
-            id: "gen-123",
-            object: "chat.completion",
-            created: Math.floor(Date.now() / 1000),
-            model: "anthropic/claude-sonnet-4",
-            choices: [
-              {
-                index: 0,
-                message: {
-                  role: "assistant",
-                  content: "Hello from header token!",
-                },
-                finish_reason: "stop",
-              },
-            ],
-            usage: {
-              prompt_tokens: 10,
-              completion_tokens: 15,
-              total_tokens: 25,
-            },
-          });
-        }),
-      );
-
-      const request = createTestRequest("http://localhost:3000/api/llm/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-openrouter-token": "header-token",
-        },
-        body: JSON.stringify({
-          model: "anthropic/claude-sonnet-4",
-          messages: [{ role: "user", content: "Hello" }],
-        }),
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.content).toBe("Hello from header token!");
-    });
   });
 
   describe("Validation", () => {
-    it("should return 400 when model is missing", async () => {
-      const request = createTestRequest("http://localhost:3000/api/llm/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-openrouter-token": "test-token",
-        },
-        body: JSON.stringify({
-          messages: [{ role: "user", content: "Hello" }],
-        }),
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data.error.code).toBe("BAD_REQUEST");
-    });
-
     it("should return 400 when messages is empty", async () => {
       const request = createTestRequest("http://localhost:3000/api/llm/chat", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-openrouter-token": "test-token",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "anthropic/claude-sonnet-4",
           messages: [],
         }),
       });
@@ -210,12 +71,8 @@ describe("POST /api/llm/chat", () => {
     it("should return 400 when message role is invalid", async () => {
       const request = createTestRequest("http://localhost:3000/api/llm/chat", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-openrouter-token": "test-token",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "anthropic/claude-sonnet-4",
           messages: [{ role: "invalid", content: "Hello" }],
         }),
       });
@@ -230,14 +87,13 @@ describe("POST /api/llm/chat", () => {
 
   describe("Non-streaming chat", () => {
     it("should return chat completion successfully", async () => {
-      // Mock OpenRouter API response
       server.use(
         http.post("https://openrouter.ai/api/v1/chat/completions", () => {
           return HttpResponse.json({
             id: "gen-123",
             object: "chat.completion",
             created: Math.floor(Date.now() / 1000),
-            model: "anthropic/claude-sonnet-4",
+            model: "google/gemma-3-4b-it:free",
             choices: [
               {
                 index: 0,
@@ -259,12 +115,8 @@ describe("POST /api/llm/chat", () => {
 
       const request = createTestRequest("http://localhost:3000/api/llm/chat", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-openrouter-token": "test-token",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "anthropic/claude-sonnet-4",
           messages: [{ role: "user", content: "Hello" }],
           stream: false,
         }),
@@ -275,7 +127,7 @@ describe("POST /api/llm/chat", () => {
 
       expect(response.status).toBe(200);
       expect(data.content).toBe("Hello! How can I help you today?");
-      expect(data.model).toBe("anthropic/claude-sonnet-4");
+      expect(data.model).toBe("google/gemma-3-4b-it:free");
       expect(data.usage).toEqual({
         promptTokens: 10,
         completionTokens: 15,
@@ -287,45 +139,38 @@ describe("POST /api/llm/chat", () => {
       server.use(
         http.post("https://openrouter.ai/api/v1/chat/completions", () => {
           return HttpResponse.json(
-            { error: { message: "Invalid API key" } },
-            { status: 401 },
+            { error: { message: "Rate limit exceeded" } },
+            { status: 429 },
           );
         }),
       );
 
       const request = createTestRequest("http://localhost:3000/api/llm/chat", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-openrouter-token": "invalid-token",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "anthropic/claude-sonnet-4",
           messages: [{ role: "user", content: "Hello" }],
         }),
       });
 
-      // Error propagates without catch-all handler
       await expect(POST(request)).rejects.toThrow();
     });
   });
 
   describe("Streaming chat", () => {
     it("should return SSE stream with content for streaming requests", async () => {
-      // Mock streaming response with proper OpenRouter chunk format
       server.use(
         http.post("https://openrouter.ai/api/v1/chat/completions", () => {
           const encoder = new TextEncoder();
           const now = Math.floor(Date.now() / 1000);
           const stream = new ReadableStream({
             start(controller) {
-              // Send chunks with full OpenRouter format
               const chunks = [
                 {
                   id: "gen-123",
                   object: "chat.completion.chunk",
                   created: now,
-                  model: "anthropic/claude-sonnet-4",
+                  model: "google/gemma-3-4b-it:free",
                   choices: [
                     {
                       delta: { content: "Hello" },
@@ -338,7 +183,7 @@ describe("POST /api/llm/chat", () => {
                   id: "gen-123",
                   object: "chat.completion.chunk",
                   created: now,
-                  model: "anthropic/claude-sonnet-4",
+                  model: "google/gemma-3-4b-it:free",
                   choices: [
                     {
                       delta: { content: " there!" },
@@ -351,7 +196,7 @@ describe("POST /api/llm/chat", () => {
                   id: "gen-123",
                   object: "chat.completion.chunk",
                   created: now,
-                  model: "anthropic/claude-sonnet-4",
+                  model: "google/gemma-3-4b-it:free",
                   choices: [{ delta: {}, index: 0, finish_reason: "stop" }],
                 },
               ];
@@ -366,21 +211,15 @@ describe("POST /api/llm/chat", () => {
           });
 
           return new HttpResponse(stream, {
-            headers: {
-              "Content-Type": "text/event-stream",
-            },
+            headers: { "Content-Type": "text/event-stream" },
           });
         }),
       );
 
       const request = createTestRequest("http://localhost:3000/api/llm/chat", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-openrouter-token": "test-token",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "anthropic/claude-sonnet-4",
           messages: [{ role: "user", content: "Hello" }],
           stream: true,
         }),
@@ -391,7 +230,6 @@ describe("POST /api/llm/chat", () => {
       expect(response.status).toBe(200);
       expect(response.headers.get("Content-Type")).toBe("text/event-stream");
 
-      // Verify stream content
       const reader = response.body!.getReader();
       const decoder = new TextDecoder();
       let fullContent = "";
@@ -402,7 +240,6 @@ describe("POST /api/llm/chat", () => {
         fullContent += decoder.decode(value, { stream: true });
       }
 
-      // Verify we received content chunks
       expect(fullContent).toContain('data: {"content":"Hello"}');
       expect(fullContent).toContain('data: {"content":" there!"}');
       expect(fullContent).toContain("data: [DONE]");
@@ -417,7 +254,7 @@ describe("POST /api/llm/chat", () => {
             id: "gen-123",
             object: "chat.completion",
             created: Math.floor(Date.now() / 1000),
-            model: "anthropic/claude-sonnet-4",
+            model: "google/gemma-3-4b-it:free",
             choices: [
               {
                 index: 0,
@@ -439,12 +276,8 @@ describe("POST /api/llm/chat", () => {
 
       const request = createTestRequest("http://localhost:3000/api/llm/chat", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-openrouter-token": "test-token",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "anthropic/claude-sonnet-4",
           messages: [
             { role: "system", content: "You are a helpful assistant" },
             { role: "user", content: "Hello" },

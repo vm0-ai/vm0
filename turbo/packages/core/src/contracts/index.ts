@@ -332,7 +332,6 @@ export {
   llmChatContract,
   llmChatRequestSchema,
   llmChatResponseSchema,
-  llmHeadersSchema,
   chatMessageSchema,
   messageRoleSchema,
   tokenUsageSchema,
