@@ -47,10 +47,9 @@ describe("logs page", () => {
       expect(screen.getByText("Test Agent")).toBeInTheDocument();
     });
 
-    // Verify basic fields from list response are displayed
-    // Note: sessionId and framework are no longer in list response
-    // They show "-" placeholder in list view
-    expect(screen.getAllByText("-").length).toBeGreaterThan(0);
+    // Verify sessionId and framework fields from list response are displayed
+    expect(screen.getByText("session_1")).toBeInTheDocument();
+    expect(screen.getAllByText("claude-code").length).toBeGreaterThan(0);
   });
 
   it("should show empty state when no logs exist", async () => {
@@ -85,7 +84,9 @@ describe("logs page", () => {
             data: [
               {
                 id: "run_1",
+                sessionId: null,
                 agentName: "Agent run_1",
+                framework: null,
                 status: "completed",
                 createdAt: "2024-01-01T00:00:00Z",
               },
@@ -97,7 +98,9 @@ describe("logs page", () => {
           data: [
             {
               id: "run_2",
+              sessionId: null,
               agentName: "Agent run_2",
+              framework: null,
               status: "completed",
               createdAt: "2024-01-02T00:00:00Z",
             },
@@ -126,7 +129,9 @@ describe("logs page", () => {
           data: [
             {
               id: "run_first",
+              sessionId: null,
               agentName: "Agent run_first",
+              framework: null,
               status: "completed",
               createdAt: "2024-01-01T00:00:00Z",
             },
@@ -165,7 +170,9 @@ describe("logs page", () => {
           data: [
             {
               id: "run_no_session",
+              sessionId: null,
               agentName: "Test Agent",
+              framework: null,
               status: "pending",
               createdAt: "2024-01-01T00:00:00Z",
             },

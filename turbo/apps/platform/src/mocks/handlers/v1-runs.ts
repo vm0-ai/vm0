@@ -65,7 +65,9 @@ export const platformLogsHandlers = [
     const response: LogsListResponse = {
       data: data.map((log) => ({
         id: log.id,
+        sessionId: log.sessionId,
         agentName: log.agentName,
+        framework: log.framework,
         status: log.status,
         createdAt: log.createdAt,
       })),

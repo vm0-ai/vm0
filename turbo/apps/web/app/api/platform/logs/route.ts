@@ -15,8 +15,14 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
+import { conversations } from "../../../../src/db/schema/conversation";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { eq, and, desc, lt, or, ilike, count } from "drizzle-orm";
+
+// Minimal type for extracting framework from compose content
+interface AgentComposeContent {
+  agents: Record<string, { framework: string }>;
+}
 
 const router = tsr.router(platformLogsListContract, {
   list: async ({ query }) => {
@@ -65,6 +71,8 @@ const router = tsr.router(platformLogsListContract, {
         status: agentRuns.status,
         createdAt: agentRuns.createdAt,
         composeName: agentComposes.name,
+        sessionId: conversations.cliAgentSessionId,
+        composeContent: agentComposeVersions.content,
       })
       .from(agentRuns)
       .leftJoin(
@@ -75,6 +83,7 @@ const router = tsr.router(platformLogsListContract, {
         agentComposes,
         eq(agentComposeVersions.composeId, agentComposes.id),
       )
+      .leftJoin(conversations, eq(agentRuns.id, conversations.runId))
       .where(and(...conditions))
       .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id))
       .limit(limit + 1);
@@ -87,6 +96,8 @@ const router = tsr.router(platformLogsListContract, {
           status: agentRuns.status,
           createdAt: agentRuns.createdAt,
           composeName: agentComposes.name,
+          sessionId: conversations.cliAgentSessionId,
+          composeContent: agentComposeVersions.content,
         })
         .from(agentRuns)
         .leftJoin(
@@ -97,6 +108,7 @@ const router = tsr.router(platformLogsListContract, {
           agentComposes,
           eq(agentComposeVersions.composeId, agentComposes.id),
         )
+        .leftJoin(conversations, eq(agentRuns.id, conversations.runId))
         .where(
           and(...conditions, ilike(agentComposes.name, `%${query.search}%`)),
         )
@@ -150,12 +162,23 @@ const router = tsr.router(platformLogsListContract, {
     return {
       status: 200 as const,
       body: {
-        data: data.map((run) => ({
-          id: run.id,
-          agentName: run.composeName ?? "unknown",
-          status: run.status as PlatformLogStatus,
-          createdAt: run.createdAt.toISOString(),
-        })),
+        data: data.map((run) => {
+          // Extract framework from compose content (first agent definition)
+          const content = run.composeContent as AgentComposeContent | null;
+          const agentNames = content?.agents ? Object.keys(content.agents) : [];
+          const firstAgent =
+            agentNames.length > 0 ? content?.agents[agentNames[0]!] : null;
+          const framework = firstAgent?.framework ?? null;
+
+          return {
+            id: run.id,
+            sessionId: run.sessionId ?? null,
+            agentName: run.composeName ?? "unknown",
+            framework,
+            status: run.status as PlatformLogStatus,
+            createdAt: run.createdAt.toISOString(),
+          };
+        }),
         pagination: {
           hasMore: hasMore,
           nextCursor: nextCursor,

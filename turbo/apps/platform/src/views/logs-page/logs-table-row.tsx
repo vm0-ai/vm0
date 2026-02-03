@@ -38,13 +38,13 @@ export function LogsTableRow({ entry }: LogsTableRowProps) {
         <span className="block truncate">{entry.id}</span>
       </TableCell>
       <TableCell className="max-w-[180px] px-3 py-2 text-sm font-medium">
-        <span className="block truncate">-</span>
+        <span className="block truncate">{entry.sessionId ?? "-"}</span>
       </TableCell>
       <TableCell className="w-[120px] truncate px-3 py-2 text-sm font-medium">
         {entry.agentName}
       </TableCell>
       <TableCell className="w-[180px] truncate px-3 py-2 text-sm font-medium">
-        -
+        {entry.framework ?? "-"}
       </TableCell>
       <TableCell className="w-[100px] px-3 py-2">
         <StatusBadge status={entry.status} />

@@ -12,7 +12,9 @@ export type LogStatus =
 // List response - contains basic fields for list display
 export interface LogEntry {
   id: string;
+  sessionId: string | null;
   agentName: string;
+  framework: string | null;
   status: LogStatus;
   createdAt: string;
 }

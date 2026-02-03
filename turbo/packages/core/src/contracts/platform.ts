@@ -31,7 +31,9 @@ const platformLogStatusSchema = z.enum([
  */
 const platformLogEntrySchema = z.object({
   id: z.string().uuid(),
+  sessionId: z.string().nullable(),
   agentName: z.string(),
+  framework: z.string().nullable(),
   status: platformLogStatusSchema,
   createdAt: z.string(),
 });
