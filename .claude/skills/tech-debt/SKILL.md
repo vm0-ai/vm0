@@ -133,7 +133,7 @@ For each file identified in Phase 1, perform detailed analysis:
 4. **Identify specific violations** with line numbers
 5. **Suggest remediation** strategies
 
-**Analysis Criteria** (reference from `specs/bad-smell.md` and `.claude/skills/testing/SKILL.md`):
+**Analysis Criteria** (reference from `docs/bad-smell.md` and `docs/testing.md`):
 
 **Testing Anti-Patterns:**
 - AP-1: Testing Mock Calls Instead of Behavior
@@ -521,8 +521,8 @@ This issue tracks technical debt identified through automated codebase scanning.
 - Total violations: {count}
 
 **References:**
-- Bad Smell Documentation: `/specs/bad-smell.md`
-- Testing Guidelines: `/.claude/skills/testing/SKILL.md`
+- Bad Smell Documentation: `/docs/bad-smell.md`
+- Testing Guidelines: `/docs/testing.md`
 ```
 
 #### Step 3: Create GitHub Issue
@@ -729,7 +729,7 @@ args: "issue"
 
 ## References
 
-- Bad smell documentation: `/specs/bad-smell.md`
-- Testing anti-patterns: `/.claude/skills/testing/SKILL.md`
+- Bad smell documentation: `/docs/bad-smell.md`
+- Testing anti-patterns: `/docs/testing.md`
 - Code quality skill: `/.claude/skills/code-quality/SKILL.md`
 - Project principles: `/CLAUDE.md`

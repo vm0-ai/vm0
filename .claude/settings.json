@@ -1,10 +1,5 @@
 {
   "enabledPlugins": {
-    "pr-review-toolkit@claude-plugins-official": false,
-    "code-simplifier@claude-plugins-official": false,
-    "frontend-design@claude-plugins-official": true,
-    "code-review@claude-plugins-official": false,
-    "security-guidance@claude-plugins-official": false,
-    "typescript-lsp@claude-plugins-official": false
+    "deep-dive@team-skills": true
   }
 }
