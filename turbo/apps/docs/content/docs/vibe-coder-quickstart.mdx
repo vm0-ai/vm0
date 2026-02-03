@@ -1,0 +1,58 @@
+---
+title: Vibe Coder Quick Start
+description: Get started with VM0 using Claude Code in minutes
+---
+
+If you use Claude Code and prefer a vibe-first approach to building agents, this guide is for you.
+
+## Step 1: Initial Setup
+
+Get started with a single guided command in your terminal (not Claude Code):
+
+```bash
+npm install -g @vm0/cli && vm0 onboard
+```
+
+The `vm0 onboard` command provides a complete interactive setup that:
+1. Authenticates you with vm0.ai
+2. Configures your model provider
+3. Creates a new agent project directory
+4. Installs the VM0 skill for Claude Code
+
+## Step 2: Build Your First Agent
+
+After onboarding completes, you can build agents directly in Claude Code:
+
+```bash
+cd my-vm0-agent && claude "/vm0-agent let's build an agent"
+```
+
+Continue the conversation in natural language and you'll complete creating and running your first agent.
+
+## Step 3: Creating More Agents - Manage My Agents
+
+After your initial onboarding, when you want to create a new agent or modify existing ones, you don't need to run `vm0 onboard` again. Simply install the VM0 skill in your project directory:
+
+```bash
+vm0 setup-claude
+```
+
+This enables the `/vm0-agent` and `/vm0-cli` commands in Claude Code, allowing you to build and manage agents directly.
+
+By default, it installs at project scope (current directory only). Use `--scope user` to install globally for all your Claude Code projects.
+
+**Examples of using the VM0 skill in Claude Code:**
+```
+/vm0-agent let's create another agent
+/vm0-agent update my agent
+/vm0-agent manage my schedule
+```
+
+## Next Steps
+
+<Cards>
+  <Card title="Agent Skills" href="/docs/agent-skills" />
+  <Card title="Instructions" href="/docs/core-concept/instructions" />
+  <Card title="Scheduling Agents" href="/docs/usage/schedule-agent" />
+  <Card title="CLI Reference" href="/docs/reference/cli" />
+</Cards>
