@@ -19,6 +19,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260202
     outputs:
       job-ref: ${{ steps.set-job-ref.outputs.job-ref }}
+      web-preview-url: ${{ steps.preview-urls.outputs.web-url }}
       web-changed: ${{ steps.detect.outputs.web-changed }}
       site-changed: ${{ steps.detect.outputs.site-changed }}
       docs-changed: ${{ steps.detect.outputs.docs-changed }}
@@ -86,6 +87,20 @@ jobs:
           else
             echo "job-ref=staging" >> $GITHUB_OUTPUT
             echo "Job ref set to: staging"
+          fi
+
+      - name: Set preview URLs
+        id: preview-urls
+        run: |
+          JOB_REF="${{ steps.set-job-ref.outputs.job-ref }}"
+          PREVIEW_DOMAIN="${{ vars.PREVIEW_DOMAIN }}"
+
+          if [ -n "$PREVIEW_DOMAIN" ] && [ -n "$JOB_REF" ]; then
+            echo "web-url=https://${JOB_REF}-www.${PREVIEW_DOMAIN}" >> $GITHUB_OUTPUT
+            echo "Preview URL set to: https://${JOB_REF}-www.${PREVIEW_DOMAIN}"
+          else
+            echo "web-url=" >> $GITHUB_OUTPUT
+            echo "Preview URL not set (PREVIEW_DOMAIN or job-ref is empty)"
           fi
 
       - name: Generate CLI E2E parallel test matrix
@@ -419,10 +434,10 @@ jobs:
           meta-pr: ${{ needs.prepare.outputs.job-ref }}
           skip-finish: ${{ github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '' }}
 
-      # Step 3: Create stable preview URL alias (only for PRs with PREVIEW_DOMAIN configured)
+      # Step 3: Create stable preview URL alias (when PREVIEW_DOMAIN is configured)
       - name: Create Vercel Alias
         id: alias
-        if: github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != ''
+        if: vars.PREVIEW_DOMAIN != ''
         uses: ./.github/actions/vercel-alias
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
@@ -477,7 +492,7 @@ jobs:
           skip-finish: ${{ github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '' }}
 
       - name: Create Vercel Alias
-        if: github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != ''
+        if: vars.PREVIEW_DOMAIN != ''
         uses: ./.github/actions/vercel-alias
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
@@ -494,7 +509,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260202
-    needs: [prepare, deploy-web]
+    needs: [prepare]
     # Deploy if job-ref is set (PR or main), not a release-please commit, and site changed
     if: "${{ (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) && needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.site-changed == 'true' }}"
     permissions:
@@ -515,7 +530,7 @@ jobs:
           environment: preview
           deployment-env: site
           environment-variables: |
-            WEB_APP_URL=${{ needs.deploy-web.outputs.preview-url }}
+            WEB_APP_URL=${{ needs.prepare.outputs.web-preview-url }}
             NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
           meta-branch: ${{ github.head_ref || github.ref_name }}
@@ -523,7 +538,7 @@ jobs:
           skip-finish: ${{ github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '' }}
 
       - name: Create Vercel Alias
-        if: github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != ''
+        if: vars.PREVIEW_DOMAIN != ''
         uses: ./.github/actions/vercel-alias
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
@@ -540,7 +555,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260202
-    needs: [prepare, deploy-web]
+    needs: [prepare]
     # Deploy if job-ref is set (PR or main), not a release-please commit, and platform changed
     if: "${{ (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) && needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.platform-changed == 'true' }}"
     permissions:
@@ -562,13 +577,13 @@ jobs:
           deployment-env: platform
           environment-variables: |
             VITE_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-            VITE_API_URL=${{ needs.deploy-web.outputs.preview-url }}
+            VITE_API_URL=${{ needs.prepare.outputs.web-preview-url }}
           meta-branch: ${{ github.head_ref || github.ref_name }}
           meta-pr: ${{ needs.prepare.outputs.job-ref }}
           skip-finish: ${{ github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '' }}
 
       - name: Create Vercel Alias
-        if: github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != ''
+        if: vars.PREVIEW_DOMAIN != ''
         uses: ./.github/actions/vercel-alias
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}

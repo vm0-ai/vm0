@@ -15,7 +15,7 @@ inputs:
     description: "App identifier (web, platform, site, docs)"
     required: true
   job-ref:
-    description: "Job reference (e.g., pr-123 or staging)"
+    description: "Job reference identifier (e.g., pr-123, staging)"
     required: true
   preview-domain:
     description: "Preview domain (e.g., vm6.ai)"
@@ -41,7 +41,7 @@ runs:
       id: alias
       shell: bash
       run: |
-        # Build alias URL: {job-ref}-{app}.{domain}
+        # Build alias URL: {job-ref}-{app}.{preview-domain}
         ALIAS_URL="${{ inputs.job-ref }}-${{ inputs.app-name }}.${{ inputs.preview-domain }}"
 
         echo "Creating alias: ${ALIAS_URL} -> ${{ inputs.deployment-url }}"
