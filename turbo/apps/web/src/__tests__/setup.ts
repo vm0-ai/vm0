@@ -38,6 +38,8 @@ vi.hoisted(() => {
     "OFFICIAL_RUNNER_SECRET",
     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   );
+  // OpenRouter API key for LLM chat
+  vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-api-key");
 });
 
 // Mock server-only package (no-op in tests)

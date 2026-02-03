@@ -1,19 +1,21 @@
 #!/usr/bin/env bats
 
-# E2E Integration Tests for Artifact Commands
+# E2E Integration Tests for Artifact Commands (Happy Path Only)
 #
 # These tests verify end-to-end artifact workflows that require real API interaction.
-# Unit tests for validation, error messages, and configuration are in:
-#   turbo/apps/cli/src/__tests__/artifact-command.test.ts
-#   turbo/apps/cli/src/commands/__tests__/artifact-status.test.ts
+# Error handling and validation tests are in CLI integration tests:
+#   turbo/apps/cli/src/commands/artifact/__tests__/pull.test.ts
+#   turbo/apps/cli/src/commands/artifact/__tests__/push.test.ts
 #
 # Tests in this file:
 # - Push artifact with files (core integration)
 # - Multiple pushes create different versions (versioning)
 # - Pull artifact gets HEAD version (core pull)
 # - Pull specific version by versionId (versioning)
-# - Pull non-existent version fails (API error handling)
 # - Status shows version info after push (full workflow)
+#
+# Migrated to CLI integration tests:
+# - Pull non-existent version fails → pull.test.ts "should fail if version not found"
 
 load '../../helpers/setup'
 
@@ -148,32 +150,6 @@ EOF
     [ -f "data.txt" ]
     run cat data.txt
     assert_output "content from version 1"
-
-    rm -rf "$NEW_DIR"
-}
-
-@test "Pull non-existent version fails with error" {
-    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
-
-    echo "some content" > data.txt
-    $CLI_COMMAND artifact push >/dev/null
-
-    # Try to pull a non-existent version
-    NEW_DIR="$(mktemp -d)"
-    cd "$NEW_DIR"
-    mkdir -p .vm0
-    cat > .vm0/storage.yaml <<EOF
-name: $ARTIFACT_NAME
-type: artifact
-EOF
-
-    # Use a valid-looking SHA-256 hash that doesn't exist (minimum 8 chars for short version)
-    FAKE_VERSION="00000000"
-    run $CLI_COMMAND artifact pull "$FAKE_VERSION"
-    assert_failure
-    assert_output --partial "not found"
 
     rm -rf "$NEW_DIR"
 }
