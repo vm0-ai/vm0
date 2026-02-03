@@ -183,11 +183,8 @@ teardown() {
     assert_success
     echo "# Tail option OK"
 
-    # Step 9: Verify mutually exclusive options
-    echo "# Step 9: Testing mutually exclusive options..."
-    run $CLI_COMMAND logs "$RUN_ID" --agent --system
-
-    assert_failure
-    assert_output --partial "mutually exclusive"
-    echo "# Mutually exclusive OK"
+    # Note: Mutually exclusive options validation (--agent, --system, etc.)
+    # is tested in CLI integration tests:
+    # turbo/apps/cli/src/commands/logs/__tests__/index.test.ts
+    #   - "should exit with error when multiple log types specified"
 }
