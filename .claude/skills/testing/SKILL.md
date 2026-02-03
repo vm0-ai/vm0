@@ -6,32 +6,25 @@ context: fork
 
 # Testing Skill
 
-## When to Use This Skill
-
-Use this skill when:
-- Writing new test files
-- Reviewing test code in pull requests
-- Refactoring existing tests to improve quality
-- Investigating test failures or flaky tests
-- Ensuring tests follow project standards
+Use this skill when writing tests, reviewing test code, or investigating test failures.
 
 ## Documentation
 
-All testing patterns, anti-patterns, and reference documentation are maintained in the docs directory:
+Read the testing guide and relevant reference based on context:
 
-- **Main documentation**: [docs/testing.md](../../../docs/testing.md)
-- **CLI testing**: [docs/testing/cli-testing.md](../../../docs/testing/cli-testing.md)
-- **CLI E2E testing**: [docs/testing/cli-e2e-testing.md](../../../docs/testing/cli-e2e-testing.md)
-- **Web testing**: [docs/testing/web-testing.md](../../../docs/testing/web-testing.md)
-- **Platform testing**: [docs/testing/platform-testing.md](../../../docs/testing/platform-testing.md)
+| Context | Primary | Reference |
+|---------|---------|-----------|
+| General | [docs/testing.md](../../../docs/testing.md) | — |
+| Anti-patterns | [docs/testing.md](../../../docs/testing.md) | [anti-patterns.md](../../../docs/testing/anti-patterns.md) |
+| Patterns | [docs/testing.md](../../../docs/testing.md) | [patterns.md](../../../docs/testing/patterns.md) |
+| CLI (`turbo/apps/cli`) | [docs/testing.md](../../../docs/testing.md) | [cli-testing.md](../../../docs/testing/cli-testing.md) |
+| CLI E2E (`e2e/tests/`) | [docs/testing.md](../../../docs/testing.md) | [cli-e2e-testing.md](../../../docs/testing/cli-e2e-testing.md) |
+| Web (`turbo/apps/web`) | [docs/testing.md](../../../docs/testing.md) | [web-testing.md](../../../docs/testing/web-testing.md) |
+| Platform (`turbo/apps/platform`) | [docs/testing.md](../../../docs/testing.md) | [platform-testing.md](../../../docs/testing/platform-testing.md) |
 
-## Quick Reference
+## Key Principles
 
-When invoked, read the full documentation from `docs/testing.md` and the relevant reference files based on the context:
-
-| Context | Read |
-|---------|------|
-| CLI commands (`turbo/apps/cli`) | `docs/testing.md` + `docs/testing/cli-testing.md` |
-| CLI E2E (`e2e/tests/`) | `docs/testing.md` + `docs/testing/cli-e2e-testing.md` |
-| Web routes (`turbo/apps/web`) | `docs/testing.md` + `docs/testing/web-testing.md` |
-| Platform (`turbo/apps/platform`) | `docs/testing.md` + `docs/testing/platform-testing.md` |
+1. **Integration tests are primary** — test at system entry points
+2. **Mock at the boundary** — only mock external services, not internal code
+3. **Use real infrastructure** — real database, real filesystem (temp dirs)
+4. **Test behavior, not implementation** — verify outcomes, not mock calls
