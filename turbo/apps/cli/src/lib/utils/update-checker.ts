@@ -12,7 +12,7 @@ type PackageManager = "npm" | "pnpm" | "bun" | "yarn" | "unknown";
  * by checking the executable path for known package manager patterns.
  * Returns "unknown" if no known pattern is matched.
  */
-export function detectPackageManager(): PackageManager {
+function detectPackageManager(): PackageManager {
   const execPath = process.argv[1] ?? "";
 
   // Check for pnpm (supported for auto-upgrade)
@@ -79,14 +79,14 @@ function getManualUpgradeCommand(pm: PackageManager): string {
  * Escape a string for use in shell command display
  * Uses double quotes and escapes internal double quotes
  */
-export function escapeForShell(str: string): string {
+function escapeForShell(str: string): string {
   return `"${str.replace(/"/g, '\\"')}"`;
 }
 
 /**
  * Build the re-run command string
  */
-export function buildRerunCommand(prompt: string | undefined): string {
+function buildRerunCommand(prompt: string | undefined): string {
   if (prompt) {
     return `vm0 cook ${escapeForShell(prompt)}`;
   }
@@ -97,7 +97,7 @@ export function buildRerunCommand(prompt: string | undefined): string {
  * Fetch the latest version of the package from npm registry
  * Returns null if the request fails or times out
  */
-export async function getLatestVersion(): Promise<string | null> {
+async function getLatestVersion(): Promise<string | null> {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);

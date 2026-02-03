@@ -364,11 +364,12 @@ export const cookAction = new Command()
         yes?: boolean;
         verbose?: boolean;
         debugNoMockClaude?: boolean;
-        noAutoUpdate?: boolean;
+        autoUpdate?: boolean;
       },
     ) => {
       // Step 0: Check for updates and auto-upgrade if needed
-      if (!options.noAutoUpdate) {
+      // Note: --no-auto-update sets autoUpdate to false
+      if (options.autoUpdate !== false) {
         const shouldExit = await checkAndUpgrade(__CLI_VERSION__, prompt);
         if (shouldExit) {
           process.exit(0);

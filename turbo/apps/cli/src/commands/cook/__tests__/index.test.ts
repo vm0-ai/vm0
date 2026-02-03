@@ -12,16 +12,16 @@ import * as fs from "fs/promises";
 import { existsSync, mkdtempSync, rmSync } from "fs";
 import * as path from "path";
 import * as os from "os";
-import { createMockChildProcessWithOutput } from "../../../mocks/spawn-helpers";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server";
+import {
+  createMockChildProcess,
+  createMockChildProcessWithOutput,
+} from "../../../mocks/spawn-helpers";
 
 // Mock child_process for pnpm/vm0 CLI commands (external tools)
 vi.mock("child_process", () => ({
   spawn: vi.fn(),
-}));
-
-// Mock update-checker to skip upgrade checks in tests (external npm registry)
-vi.mock("../../../lib/utils/update-checker", () => ({
-  checkAndUpgrade: vi.fn().mockResolvedValue(false),
 }));
 
 import { spawn } from "child_process";
@@ -60,6 +60,14 @@ describe("cook command", () => {
 
     // Mock homedir to return test home directory
     vi.mocked(os.homedir).mockReturnValue(testHome);
+
+    // Default npm registry handler - return same version to skip upgrade
+    // This prevents checkAndUpgrade from attempting real upgrades
+    server.use(
+      http.get("https://registry.npmjs.org/*/latest", () => {
+        return HttpResponse.json({ version: "0.0.0-test" });
+      }),
+    );
 
     // Mock spawn for pnpm/vm0 commands (external tools)
     // All commands succeed quickly so tests don't timeout
@@ -504,6 +512,308 @@ agents:
         expect.arrayContaining(["logs", "run-old-format"]),
         expect.anything(),
       );
+    });
+  });
+
+  describe("interactive auto-upgrade before cook", () => {
+    const originalArgv = process.argv;
+
+    beforeEach(async () => {
+      // Set npm path by default
+      process.argv = ["/usr/bin/node", "/usr/local/bin/vm0"];
+
+      // Create valid vm0.yaml
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code`,
+      );
+    });
+
+    afterEach(() => {
+      process.argv = originalArgv;
+    });
+
+    it("should call spawn with npm install when upgrade available", async () => {
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          return HttpResponse.json({ version: "99.0.0" });
+        }),
+      );
+      vi.mocked(spawn).mockImplementation(
+        () => createMockChildProcess(0) as never,
+      );
+
+      // checkAndUpgrade returns true when upgrade happens, causing process.exit
+      await expect(async () => {
+        await cookCommand.parseAsync(["node", "cli", "test prompt"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(spawn).toHaveBeenCalledWith(
+        "npm",
+        ["install", "-g", "@vm0/cli@latest"],
+        expect.objectContaining({ stdio: "inherit" }),
+      );
+    });
+
+    it("should call spawn with pnpm add when installed via pnpm", async () => {
+      process.argv = [
+        "/usr/bin/node",
+        "/home/user/.local/share/pnpm/global/5/node_modules/.bin/vm0",
+      ];
+
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          return HttpResponse.json({ version: "99.0.0" });
+        }),
+      );
+      vi.mocked(spawn).mockImplementation(
+        () => createMockChildProcess(0) as never,
+      );
+
+      await expect(async () => {
+        await cookCommand.parseAsync(["node", "cli", "test prompt"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(spawn).toHaveBeenCalledWith(
+        "pnpm",
+        ["add", "-g", "@vm0/cli@latest"],
+        expect.objectContaining({ stdio: "inherit" }),
+      );
+    });
+
+    it("should show manual instructions when upgrade fails", async () => {
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          return HttpResponse.json({ version: "99.0.0" });
+        }),
+      );
+      // Mock spawn to return exit code 1 (failure)
+      vi.mocked(spawn).mockImplementation(
+        () => createMockChildProcess(1) as never,
+      );
+
+      await expect(async () => {
+        await cookCommand.parseAsync(["node", "cli", "test prompt"]);
+      }).rejects.toThrow("process.exit called");
+
+      const allLogs = mockConsoleLog.mock.calls
+        .map((call) => call[0])
+        .filter((log): log is string => typeof log === "string");
+
+      // Should show upgrade failed message
+      expect(allLogs.some((log) => log.includes("Upgrade failed"))).toBe(true);
+      // Should show manual command
+      expect(
+        allLogs.some((log) => log.includes("npm install -g @vm0/cli@latest")),
+      ).toBe(true);
+      // Should show re-run command
+      expect(allLogs.some((log) => log.includes("vm0 cook"))).toBe(true);
+    });
+
+    it("should escape special characters in rerun command", async () => {
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          return HttpResponse.json({ version: "99.0.0" });
+        }),
+      );
+      vi.mocked(spawn).mockImplementation(
+        () => createMockChildProcess(0) as never,
+      );
+
+      await expect(async () => {
+        await cookCommand.parseAsync(["node", "cli", 'say "hello"']);
+      }).rejects.toThrow("process.exit called");
+
+      const allLogs = mockConsoleLog.mock.calls
+        .map((call) => call[0])
+        .filter((log): log is string => typeof log === "string");
+
+      // Should show escaped rerun command
+      expect(
+        allLogs.some((log) => log.includes('vm0 cook "say \\"hello\\""')),
+      ).toBe(true);
+    });
+
+    it("should show manual instructions for bun without spawning", async () => {
+      process.argv = ["/usr/bin/node", "/home/user/.bun/bin/vm0"];
+
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          return HttpResponse.json({ version: "99.0.0" });
+        }),
+      );
+      vi.mocked(spawn).mockImplementation(() => {
+        return createMockChildProcessWithOutput(0, "Success") as ReturnType<
+          typeof spawn
+        >;
+      });
+
+      // With bun, cook should continue (no process.exit from upgrade)
+      await cookCommand.parseAsync(["node", "cli", "test prompt"]);
+
+      const allLogs = mockConsoleLog.mock.calls
+        .map((call) => call[0])
+        .filter((log): log is string => typeof log === "string");
+
+      // Should show unsupported message
+      expect(
+        allLogs.some((log) =>
+          log.includes("Auto-upgrade is not supported for bun"),
+        ),
+      ).toBe(true);
+      // Should show manual command
+      expect(
+        allLogs.some((log) => log.includes("bun add -g @vm0/cli@latest")),
+      ).toBe(true);
+      // spawn should only be called for the actual cook run, not for upgrade
+      const upgradeCalls = vi
+        .mocked(spawn)
+        .mock.calls.filter(
+          (call) =>
+            Array.isArray(call[1]) &&
+            (call[1].includes("install") || call[1].includes("add")),
+        );
+      expect(upgradeCalls.length).toBe(0);
+    });
+
+    it("should show manual instructions for yarn without spawning", async () => {
+      process.argv = ["/usr/bin/node", "/home/user/.yarn/bin/vm0"];
+
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          return HttpResponse.json({ version: "99.0.0" });
+        }),
+      );
+      vi.mocked(spawn).mockImplementation(() => {
+        return createMockChildProcessWithOutput(0, "Success") as ReturnType<
+          typeof spawn
+        >;
+      });
+
+      await cookCommand.parseAsync(["node", "cli", "test prompt"]);
+
+      const allLogs = mockConsoleLog.mock.calls
+        .map((call) => call[0])
+        .filter((log): log is string => typeof log === "string");
+
+      expect(
+        allLogs.some((log) =>
+          log.includes("Auto-upgrade is not supported for yarn"),
+        ),
+      ).toBe(true);
+      expect(
+        allLogs.some((log) => log.includes("yarn global add @vm0/cli@latest")),
+      ).toBe(true);
+    });
+
+    it("should show fallback npm command for unknown package manager", async () => {
+      process.argv = ["/usr/bin/node", "/some/random/path/vm0"];
+
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          return HttpResponse.json({ version: "99.0.0" });
+        }),
+      );
+      vi.mocked(spawn).mockImplementation(() => {
+        return createMockChildProcessWithOutput(0, "Success") as ReturnType<
+          typeof spawn
+        >;
+      });
+
+      await cookCommand.parseAsync(["node", "cli", "test prompt"]);
+
+      const allLogs = mockConsoleLog.mock.calls
+        .map((call) => call[0])
+        .filter((log): log is string => typeof log === "string");
+
+      expect(
+        allLogs.some((log) =>
+          log.includes("Could not detect your package manager"),
+        ),
+      ).toBe(true);
+      // Should show npm as fallback
+      expect(
+        allLogs.some((log) => log.includes("npm install -g @vm0/cli@latest")),
+      ).toBe(true);
+    });
+
+    it("should warn and continue when version check fails", async () => {
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          return HttpResponse.error();
+        }),
+      );
+      vi.mocked(spawn).mockImplementation(() => {
+        return createMockChildProcessWithOutput(0, "Success") as ReturnType<
+          typeof spawn
+        >;
+      });
+
+      // Should continue cooking (not exit)
+      await cookCommand.parseAsync(["node", "cli", "test prompt"]);
+
+      const allLogs = mockConsoleLog.mock.calls
+        .map((call) => call[0])
+        .filter((log): log is string => typeof log === "string");
+
+      expect(
+        allLogs.some((log) =>
+          log.includes("Warning: Could not check for updates"),
+        ),
+      ).toBe(true);
+    });
+
+    it("should not show upgrade message when already on latest version", async () => {
+      // Default handler returns "0.0.0-test" which matches CLI_VERSION
+      vi.mocked(spawn).mockImplementation(() => {
+        return createMockChildProcessWithOutput(0, "Success") as ReturnType<
+          typeof spawn
+        >;
+      });
+
+      await cookCommand.parseAsync(["node", "cli", "test prompt"]);
+
+      const allLogs = mockConsoleLog.mock.calls
+        .map((call) => call[0])
+        .filter((log): log is string => typeof log === "string");
+
+      // Should not show beta notice or upgrade messages
+      expect(
+        allLogs.some((log) => log.includes("vm0 is currently in beta")),
+      ).toBe(false);
+      expect(allLogs.some((log) => log.includes("Upgrading via"))).toBe(false);
+    });
+
+    it("should skip upgrade check with --no-auto-update flag", async () => {
+      // Use a version that would trigger upgrade if checked
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          return HttpResponse.json({ version: "99.0.0" });
+        }),
+      );
+      vi.mocked(spawn).mockImplementation(() => {
+        return createMockChildProcessWithOutput(0, "Success") as ReturnType<
+          typeof spawn
+        >;
+      });
+
+      // Cook will proceed with the run (skipping upgrade check)
+      await cookCommand.parseAsync([
+        "node",
+        "cli",
+        "test prompt",
+        "--no-auto-update",
+      ]);
+
+      const allLogs = mockConsoleLog.mock.calls
+        .map((call) => call[0])
+        .filter((log): log is string => typeof log === "string");
+
+      // Should not show upgrade messages (beta notice appears when upgrade is available)
+      expect(
+        allLogs.some((log) => log.includes("vm0 is currently in beta")),
+      ).toBe(false);
+      expect(allLogs.some((log) => log.includes("Upgrading via"))).toBe(false);
     });
   });
 });
