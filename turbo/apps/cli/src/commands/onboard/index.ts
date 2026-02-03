@@ -131,23 +131,35 @@ async function handleModelProvider(ctx: OnboardContext): Promise<void> {
     // Prompt for model selection if provider has models
     let selectedModel: string | undefined;
     if (selectedChoice?.models && selectedChoice.models.length > 0) {
-      selectedModel = await step.prompt(() =>
-        promptSelect<string>(
-          "Select model:",
-          selectedChoice.models!.map((model) => ({
-            title:
-              model === selectedChoice.defaultModel
-                ? `${model} (Recommended)`
-                : model,
-            value: model,
-          })),
-        ),
+      // Build choices - add "auto" option if defaultModel is empty (like openrouter)
+      const modelChoices =
+        selectedChoice.defaultModel === ""
+          ? [
+              { title: "auto (Recommended)", value: "" },
+              ...selectedChoice.models.map((model) => ({
+                title: model,
+                value: model,
+              })),
+            ]
+          : selectedChoice.models.map((model) => ({
+              title:
+                model === selectedChoice.defaultModel
+                  ? `${model} (Recommended)`
+                  : model,
+              value: model,
+            }));
+
+      const modelSelection = await step.prompt(() =>
+        promptSelect<string>("Select model:", modelChoices),
       );
 
-      if (!selectedModel) {
+      if (modelSelection === undefined) {
         console.log(chalk.dim("Cancelled"));
         process.exit(0);
       }
+
+      // Empty string means "auto" mode - don't set selectedModel
+      selectedModel = modelSelection === "" ? undefined : modelSelection;
     }
 
     const result = await setupModelProvider(providerType, credential, {
