@@ -1,7 +1,7 @@
 import { Card } from "@vm0/ui/components/ui/card";
 import { CopyButton } from "@vm0/ui/components/ui/copy-button";
 import { Button } from "@vm0/ui/components/ui/button";
-import { IconFileText, IconChevronRight } from "@tabler/icons-react";
+import { IconBook, IconChevronRight } from "@tabler/icons-react";
 import { AppShell } from "../layout/app-shell.tsx";
 import { OnboardingModal } from "./onboarding-modal.tsx";
 import { useGet } from "ccstate-react";
@@ -224,11 +224,18 @@ function UsefulReferences({ theme }: { theme: string }) {
           href="https://github.com/vm0-ai/vm0"
         />
         <ReferenceCard
-          title="VM0 Professional Doc"
-          description="Professional docs and guides"
-          icon={<IconFileText className="h-8 w-8 text-primary" stroke={1.5} />}
+          title="Documentation for Developers"
+          description="Complete guides and CLI reference"
+          icon={<IconBook className="h-8 w-8 text-primary" stroke={1.5} />}
           iconBg=""
           href="https://docs.vm0.ai"
+        />
+        <ReferenceCard
+          title="Vibe Coder Quick Start"
+          description="Build agents with Claude Code"
+          icon={<IconBook className="h-8 w-8 text-primary" stroke={1.5} />}
+          iconBg=""
+          href="https://docs.vm0.ai/docs/vibe-coder-quickstart"
         />
       </div>
     </section>
