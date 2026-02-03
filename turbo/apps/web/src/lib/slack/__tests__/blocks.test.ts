@@ -9,7 +9,7 @@ import {
   buildAgentAddModal,
   buildAgentListMessage,
   buildErrorMessage,
-  buildLinkAccountMessage,
+  buildLoginPromptMessage,
   buildHelpMessage,
   buildSuccessMessage,
 } from "../blocks";
@@ -140,17 +140,17 @@ describe("buildErrorMessage", () => {
   });
 });
 
-describe("buildLinkAccountMessage", () => {
-  it("should create link account message with button", () => {
-    const linkUrl = "https://vm0.ai/slack/link?u=U123&w=T456";
-    const blocks = buildLinkAccountMessage(linkUrl);
+describe("buildLoginPromptMessage", () => {
+  it("should create login message with button", () => {
+    const loginUrl = "https://vm0.ai/slack/link?u=U123&w=T456";
+    const blocks = buildLoginPromptMessage(loginUrl);
 
     expect(blocks).toHaveLength(2);
     expect(blocks[0]).toMatchObject({
       type: "section",
       text: {
         type: "mrkdwn",
-        text: expect.stringContaining("link your account"),
+        text: expect.stringContaining("login"),
       },
     });
     expect(blocks[1]).toMatchObject({
@@ -158,8 +158,8 @@ describe("buildLinkAccountMessage", () => {
       elements: [
         {
           type: "button",
-          text: { type: "plain_text", text: "Link Account" },
-          url: linkUrl,
+          text: { type: "plain_text", text: "Login" },
+          url: loginUrl,
           style: "primary",
         },
       ],

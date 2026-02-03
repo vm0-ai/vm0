@@ -44,7 +44,7 @@ export {
   buildAgentAddModal,
   buildAgentListMessage,
   buildErrorMessage,
-  buildLinkAccountMessage,
+  buildLoginPromptMessage,
   buildHelpMessage,
   buildSuccessMessage,
   buildMarkdownMessage,

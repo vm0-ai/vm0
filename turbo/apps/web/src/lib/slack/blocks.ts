@@ -407,20 +407,20 @@ export function buildErrorMessage(error: string): (Block | KnownBlock)[] {
 }
 
 /**
- * Build a message prompting user to link their account
+ * Build a message prompting user to login
  *
- * @param linkUrl - URL to the linking page
+ * @param loginUrl - URL to the login page
  * @returns Block Kit blocks
  */
-export function buildLinkAccountMessage(
-  linkUrl: string,
+export function buildLoginPromptMessage(
+  loginUrl: string,
 ): (Block | KnownBlock)[] {
   return [
     {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "To use VM0 in Slack, please link your account first.",
+        text: "To use VM0 in Slack, please login first.",
       },
     },
     {
@@ -430,10 +430,10 @@ export function buildLinkAccountMessage(
           type: "button",
           text: {
             type: "plain_text",
-            text: "Link Account",
+            text: "Login",
           },
-          url: linkUrl,
-          action_id: "link_account",
+          url: loginUrl,
+          action_id: "login_prompt",
           style: "primary",
         },
       ],

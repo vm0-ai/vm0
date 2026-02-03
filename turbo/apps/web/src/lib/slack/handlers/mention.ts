@@ -12,7 +12,7 @@ import {
   fetchChannelContext,
   formatContextForAgent,
   parseExplicitAgentSelection,
-  buildLinkAccountMessage,
+  buildLoginPromptMessage,
   buildErrorMessage,
   buildMarkdownMessage,
   getSlackRedirectBaseUrl,
@@ -86,11 +86,11 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       .limit(1);
 
     if (!userLink) {
-      // 3. User not linked - post link message
-      const linkUrl = buildLinkUrl(context.workspaceId, context.userId);
-      await postMessage(client, context.channelId, "Please link your account", {
+      // 3. User not logged in - post login message
+      const loginUrl = buildLoginUrl(context.workspaceId, context.userId);
+      await postMessage(client, context.channelId, "Please login first", {
         threadTs,
-        blocks: buildLinkAccountMessage(linkUrl),
+        blocks: buildLoginPromptMessage(loginUrl),
       });
       return;
     }
@@ -288,9 +288,9 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
 }
 
 /**
- * Build the account linking URL
+ * Build the login URL
  */
-function buildLinkUrl(workspaceId: string, slackUserId: string): string {
+function buildLoginUrl(workspaceId: string, slackUserId: string): string {
   const baseUrl = getSlackRedirectBaseUrl();
   const params = new URLSearchParams({
     w: workspaceId,

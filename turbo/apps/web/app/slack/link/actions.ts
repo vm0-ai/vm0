@@ -138,7 +138,7 @@ export async function linkSlackAccount(
 }
 
 /**
- * Send success message to the Slack channel
+ * Send success message to the Slack channel (ephemeral - only visible to the user)
  */
 async function sendSuccessMessage(
   encryptedBotToken: string,
@@ -152,15 +152,16 @@ async function sendSuccessMessage(
   );
   const client = createSlackClient(botToken);
 
-  await client.chat.postMessage({
+  await client.chat.postEphemeral({
     channel: channelId,
-    text: `<@${slackUserId}> successfully logged in to VM0!`,
+    user: slackUserId,
+    text: `Successfully logged in to VM0!`,
     blocks: [
       {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `:white_check_mark: <@${slackUserId}> *successfully logged in to VM0!*\n\nYou can now:\n• Use \`/vm0 agent add\` to add an agent\n• Mention \`@VM0\` to interact with your agents`,
+          text: `:white_check_mark: *Successfully logged in to VM0!*\n\nYou can now:\n• Use \`/vm0 agent add\` to add an agent\n• Mention \`@VM0\` to interact with your agents`,
         },
       },
     ],
