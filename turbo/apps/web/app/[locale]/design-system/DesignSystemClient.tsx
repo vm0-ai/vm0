@@ -3,13 +3,7 @@
 import { useState } from "react";
 import { useTheme } from "../../components/ThemeProvider";
 import { Button } from "@vm0/ui/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@vm0/ui/components/ui/card";
+import { Card, CardContent } from "@vm0/ui/components/ui/card";
 import { Input } from "@vm0/ui/components/ui/input";
 import { CopyButton } from "@vm0/ui/components/ui/copy-button";
 import {
@@ -76,197 +70,7 @@ type Section =
   | "components-copy-button"
   | "components-icons";
 
-// Helper component for design specs display
-function DesignSpecs({
-  specs,
-}: {
-  specs: Array<{ label: string; value: string }>;
-}) {
-  // Helper to render value with code-styled tokens
-  const renderValue = (value: string) => {
-    // Custom design tokens (defined in globals.css @theme section)
-    const customTokens = [
-      // Primary color scale
-      "primary-0",
-      "primary-50",
-      "primary-100",
-      "primary-200",
-      "primary-300",
-      "primary-400",
-      "primary-500",
-      "primary-600",
-      "primary-700",
-      "primary-800",
-      "primary-900",
-      "primary-950",
-      // Gray color scale
-      "gray-0",
-      "gray-50",
-      "gray-100",
-      "gray-200",
-      "gray-300",
-      "gray-400",
-      "gray-500",
-      "gray-600",
-      "gray-700",
-      "gray-800",
-      "gray-900",
-      "gray-950",
-      // Semantic colors
-      "primary",
-      "primary-foreground",
-      "secondary",
-      "secondary-foreground",
-      "background",
-      "foreground",
-      "muted",
-      "muted-foreground",
-      "accent",
-      "accent-foreground",
-      "destructive",
-      "destructive-foreground",
-      "border",
-      "input",
-      "ring",
-      "card",
-      "card-foreground",
-      "popover",
-      "popover-foreground",
-      "sidebar",
-      "sidebar-foreground",
-      "sidebar-primary",
-      "sidebar-primary-foreground",
-      "sidebar-accent",
-      "semantic-foreground",
-      "on-filled",
-      "background-50",
-      // Other custom tokens
-      "divider",
-      "white",
-      "black",
-      "button-hover",
-      // Custom aliases (not in globals.css but used in design system)
-      "tooltip-bg",
-      "check-green",
-      "drop-shadow",
-    ];
-
-    // CSS property names that should NOT be styled as tokens
-    const cssProperties = [
-      "font-size",
-      "font-weight",
-      "padding",
-      "margin",
-      "width",
-      "height",
-      "border-radius",
-      "line-height",
-      "letter-spacing",
-      "opacity",
-      "padding-top",
-      "padding-bottom",
-      "padding-left",
-      "padding-right",
-      "max-width",
-      "min-width",
-      "cursor",
-      "bg",
-      "text",
-      "rounded",
-      "color",
-    ];
-
-    // Match words with optional hyphens and content in parentheses
-    const tokenPattern = /\b([a-z]+(?:-[a-z0-9]+)*)\b|\(([^)]+)\)/g;
-
-    const parts: React.ReactNode[] = [];
-    let lastIndex = 0;
-    let match;
-
-    while ((match = tokenPattern.exec(value)) !== null) {
-      // Add text before the match
-      if (match.index > lastIndex) {
-        parts.push(
-          <span key={`text-${lastIndex}`}>
-            {value.substring(lastIndex, match.index)}
-          </span>,
-        );
-      }
-
-      // Get the matched token (either outside or inside parentheses)
-      const token = match[1] || match[2];
-      const hasParens = !!match[2];
-
-      if (token) {
-        const isCustomToken = customTokens.includes(token);
-        const isCssProperty = cssProperties.includes(token);
-
-        // Check if this token is immediately followed by a colon (CSS property)
-        const nextChar = value[match.index + match[0].length];
-        const isPropertyName = nextChar === ":";
-
-        // Don't render as code if it's a CSS property name (followed by colon)
-        if (isPropertyName) {
-          parts.push(<span key={`text-${match.index}`}>{match[0]}</span>);
-        } else {
-          // Only render as code if:
-          // 1. It's a custom token (design system token)
-          // 2. OR it has a hyphen AND is not a CSS property (likely a Tailwind utility)
-          const shouldRenderAsCode =
-            isCustomToken || (token.includes("-") && !isCssProperty);
-
-          if (shouldRenderAsCode) {
-            parts.push(
-              <span key={`token-${match.index}`}>
-                {hasParens && "("}
-                <code
-                  className={
-                    isCustomToken
-                      ? "rounded bg-primary-50 px-1.5 py-0.5 font-mono text-xs text-primary-700 border border-primary-200"
-                      : "rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground"
-                  }
-                >
-                  {token}
-                </code>
-                {hasParens && ")"}
-              </span>,
-            );
-          } else {
-            // Not a token (CSS property or regular word), render as plain text
-            parts.push(<span key={`text-${match.index}`}>{match[0]}</span>);
-          }
-        }
-      }
-
-      lastIndex = match.index + match[0].length;
-    }
-
-    // Add remaining text
-    if (lastIndex < value.length) {
-      parts.push(<span key={`text-end`}>{value.substring(lastIndex)}</span>);
-    }
-
-    return parts.length > 0 ? <>{parts}</> : value;
-  };
-
-  return (
-    <div className="rounded-lg border border-border bg-background-50 p-4">
-      <div className="space-y-3">
-        {specs.map((spec, index) => (
-          <div key={index} className="flex items-start gap-4">
-            <div className="w-32 text-sm font-medium text-foreground">
-              {spec.label}:
-            </div>
-            <div className="flex-1 text-sm text-muted-foreground">
-              {renderValue(spec.value)}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
+// eslint-disable-next-line complexity
 export default function DesignSystemClient() {
   const [activeSection, setActiveSection] = useState<Section>("overview");
   const [componentsExpanded, setComponentsExpanded] = useState(true);
@@ -1637,7 +1441,18 @@ function ButtonComponentPage() {
                 <h4 className="text-sm font-semibold text-foreground mb-4">
                   {item.name}
                 </h4>
-                <Button variant={item.variant as any} className="w-full mb-4">
+                <Button
+                  variant={
+                    item.variant as
+                      | "default"
+                      | "destructive"
+                      | "outline"
+                      | "secondary"
+                      | "ghost"
+                      | "link"
+                  }
+                  className="w-full mb-4"
+                >
                   Hover & Click Me
                 </Button>
                 <div className="space-y-1.5 text-xs text-muted-foreground">
@@ -2076,7 +1891,7 @@ function InputComponentPage() {
               disabled: false,
               description: "Input with existing text content",
             },
-          ].map((item, index) => (
+          ].map((item) => (
             <div
               key={item.name}
               className="rounded-xl border border-border bg-card p-6"
@@ -2178,7 +1993,7 @@ function InputComponentPage() {
               </label>
               <Input type="email" placeholder="email@example.com" />
               <p className="text-xs text-muted-foreground">
-                We'll never share your email with anyone else.
+                We&apos;ll never share your email with anyone else.
               </p>
             </div>
             <div className="space-y-2">
