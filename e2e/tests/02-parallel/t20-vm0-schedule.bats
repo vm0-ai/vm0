@@ -175,13 +175,16 @@ EOF
     run $CLI_COMMAND compose vm0.yaml
     assert_success
 
-    # Setup schedule with required secrets and vars
+    # Create the required secret via platform (secrets are now managed via vm0 secret set)
+    run $CLI_COMMAND secret set "API_KEY" "test-secret-value"
+    assert_success
+
+    # Setup schedule with vars only (secrets are resolved from platform)
     run $CLI_COMMAND schedule setup "$CONFIG_AGENT_NAME" \
         --frequency daily \
         --time "09:00" \
         --timezone "UTC" \
         --prompt "Task with config" \
-        --secret "API_KEY=test-secret-value" \
         --var "API_URL=https://api.example.com"
     assert_success
     assert_output --partial "Created schedule"
@@ -189,12 +192,11 @@ EOF
     # Verify configuration in status
     run $CLI_COMMAND schedule status "$CONFIG_AGENT_NAME"
     assert_success
-    assert_output --partial "Secrets:"
-    assert_output --partial "API_KEY"
     assert_output --partial "Variables:"
     assert_output --partial "API_URL"
 
-    # Clean up this separate agent
+    # Clean up this separate agent and secret
     $CLI_COMMAND schedule delete "$CONFIG_AGENT_NAME" --force 2>/dev/null || true
+    $CLI_COMMAND secret delete -y "API_KEY" 2>/dev/null || true
     rm -rf "$CONFIG_TEST_DIR"
 }
