@@ -49,6 +49,10 @@ export function killProcessTree(pid: number): void {
     // Kill this process
     process.kill(pid, "SIGKILL");
   } catch {
-    // Process may already be dead, ignore errors
+    // Errors are expected during cleanup:
+    // - ESRCH: Process already dead (race condition with natural exit)
+    // - EPERM: Permission denied (process owned by different user)
+    // - pgrep failure: Command not available or other system issues
+    // All cases are safe to ignore since we're just cleaning up
   }
 }
