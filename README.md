@@ -25,6 +25,7 @@
 
 ## 🔥 What you GET
 
+- **Just Claude Code**, zero abstraction, nothing new to learn
 - **Cloud sandbox**, run Claude Code in isolated claude sandbox 24/7
 - **Skill Native**, Compatible with 35,738+ skills in [skills.sh](https://skills.sh), and 70+ high quality SaaS integration skill like GitHub, Slack, Notion, Firecrawl, and [more](https://github.com/vm0-ai/vm0-skills), 
 - **Persistence**, continue chat, resume, fork, and version your workflow sessions
