@@ -9,6 +9,8 @@ import { generateSandboxToken } from "../../auth/sandbox-token";
 import { buildExecutionContext, prepareAndDispatchRun } from "../../run";
 import { queryAxiom, getDatasetName, DATASETS } from "../../axiom";
 import { logger } from "../../logger";
+import { getUserScopeByClerkId } from "../../scope/scope-service";
+import { getSecretValues } from "../../secret/secret-service";
 
 const log = logger("slack:run-agent");
 
@@ -80,9 +82,11 @@ export async function runAgentForSlack(
       versionId = latestVersion.id;
     }
 
-    // Note: encryptedSecrets column has been removed from slack_bindings
-    // Secrets are no longer stored per-binding; they will be resolved from the user's scope
-    const secrets: Record<string, string> = {};
+    // Load secrets from user's scope
+    const scope = await getUserScopeByClerkId(userId);
+    const secrets: Record<string, string> = scope
+      ? await getSecretValues(scope.id)
+      : {};
 
     // Build the full prompt with thread context
     const fullPrompt = threadContext
