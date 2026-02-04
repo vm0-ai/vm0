@@ -226,7 +226,11 @@ fn wait_with_timeout(child: Child, timeout_ms: u32) -> (i32, Vec<u8>, Vec<u8>) {
             if killed_by_timeout.load(Ordering::SeqCst) {
                 return (EXIT_CODE_TIMEOUT, output.stdout, b"Timeout".to_vec());
             }
-            (extract_exit_code(output.status), output.stdout, output.stderr)
+            (
+                extract_exit_code(output.status),
+                output.stdout,
+                output.stderr,
+            )
         }
         Err(e) => (1, Vec::new(), format!("Failed to wait: {}", e).into_bytes()),
     }
@@ -252,7 +256,11 @@ fn handle_exec(payload: &[u8]) -> (i32, Vec<u8>, Vec<u8>) {
 
     log(
         "INFO",
-        &format!("exec: {} (timeout={}ms)", truncate_preview(command), timeout_ms),
+        &format!(
+            "exec: {} (timeout={}ms)",
+            truncate_preview(command),
+            timeout_ms
+        ),
     );
 
     // Create new process group so we can kill the entire tree on timeout
@@ -426,7 +434,11 @@ fn handle_spawn_watch(payload: &[u8], seq: u32, writer: Arc<Mutex<UnixStream>>) 
 
     log(
         "INFO",
-        &format!("spawn_watch: {} (timeout={}ms)", truncate_preview(&command), timeout_ms),
+        &format!(
+            "spawn_watch: {} (timeout={}ms)",
+            truncate_preview(&command),
+            timeout_ms
+        ),
     );
 
     // Create new process group so we can kill the entire tree on timeout
@@ -461,9 +473,11 @@ fn handle_spawn_watch(payload: &[u8], seq: u32, writer: Arc<Mutex<UnixStream>>) 
                 } else {
                     // No timeout - wait indefinitely
                     match child.wait_with_output() {
-                        Ok(output) => {
-                            (extract_exit_code(output.status), output.stdout, output.stderr)
-                        }
+                        Ok(output) => (
+                            extract_exit_code(output.status),
+                            output.stdout,
+                            output.stderr,
+                        ),
                         Err(e) => (1, Vec::new(), format!("Failed to wait: {}", e).into_bytes()),
                     }
                 };
