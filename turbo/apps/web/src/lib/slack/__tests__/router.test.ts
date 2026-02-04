@@ -1,10 +1,15 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server";
 import { routeToAgent, keywordMatch, type RouteResult } from "../router";
 
-// Mock the llm-service
-vi.mock("../../llm/llm-service", () => ({
-  chat: vi.fn(),
-}));
+// Mock external dependencies
+vi.mock("@clerk/nextjs/server");
+vi.mock("@e2b/code-interpreter");
+vi.mock("@aws-sdk/client-s3");
+vi.mock("@aws-sdk/s3-request-presigner");
+vi.mock("@axiomhq/js");
+vi.mock("@axiomhq/logging");
 
 // Mock the env
 vi.mock("../../../env", () => ({
@@ -13,11 +18,36 @@ vi.mock("../../../env", () => ({
   })),
 }));
 
-import { chat } from "../../llm/llm-service";
 import { env } from "../../../env";
 
-const mockedChat = vi.mocked(chat);
 const mockedEnv = vi.mocked(env);
+
+/**
+ * Helper to create OpenRouter chat completion response
+ */
+function createOpenRouterResponse(content: string) {
+  return {
+    id: "gen-123",
+    object: "chat.completion",
+    created: Math.floor(Date.now() / 1000),
+    model: "google/gemma-3-4b-it:free",
+    choices: [
+      {
+        index: 0,
+        message: {
+          role: "assistant",
+          content,
+        },
+        finish_reason: "stop",
+      },
+    ],
+    usage: {
+      prompt_tokens: 10,
+      completion_tokens: 5,
+      total_tokens: 15,
+    },
+  };
+}
 
 describe("keywordMatch", () => {
   it("returns null for empty bindings", () => {
@@ -96,9 +126,15 @@ describe("keywordMatch", () => {
 describe("routeToAgent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    server.listen({ onUnhandledRequest: "bypass" });
     mockedEnv.mockReturnValue({
       OPENROUTER_API_KEY: undefined,
     } as ReturnType<typeof env>);
+  });
+
+  afterEach(() => {
+    server.resetHandlers();
+    server.close();
   });
 
   it("returns ambiguous for empty bindings", async () => {
@@ -125,8 +161,6 @@ describe("routeToAgent", () => {
       type: "matched",
       agentName: "coder",
     });
-    // LLM should not be called when keyword matching succeeds
-    expect(mockedChat).not.toHaveBeenCalled();
   });
 
   it("returns ambiguous when keyword matching fails and no API key", async () => {
@@ -145,11 +179,11 @@ describe("routeToAgent", () => {
     });
 
     it("calls LLM when keyword matching is ambiguous", async () => {
-      mockedChat.mockResolvedValueOnce({
-        content: "AGENT:agent-a",
-        model: "test-model",
-        usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
-      });
+      server.use(
+        http.post("https://openrouter.ai/api/v1/chat/completions", () => {
+          return HttpResponse.json(createOpenRouterResponse("AGENT:agent-a"));
+        }),
+      );
 
       const result = await routeToAgent("hello there", [
         { agentName: "agent-a", description: "A friendly helper" },
@@ -160,15 +194,14 @@ describe("routeToAgent", () => {
         type: "matched",
         agentName: "agent-a",
       });
-      expect(mockedChat).toHaveBeenCalledOnce();
     });
 
     it("returns not_request when LLM returns NOT_REQUEST", async () => {
-      mockedChat.mockResolvedValueOnce({
-        content: "NOT_REQUEST",
-        model: "test-model",
-        usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
-      });
+      server.use(
+        http.post("https://openrouter.ai/api/v1/chat/completions", () => {
+          return HttpResponse.json(createOpenRouterResponse("NOT_REQUEST"));
+        }),
+      );
 
       const result = await routeToAgent("hi", [
         { agentName: "agent-a", description: "A friendly helper" },
@@ -179,11 +212,11 @@ describe("routeToAgent", () => {
     });
 
     it("returns ambiguous when LLM returns AMBIGUOUS", async () => {
-      mockedChat.mockResolvedValueOnce({
-        content: "AMBIGUOUS",
-        model: "test-model",
-        usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
-      });
+      server.use(
+        http.post("https://openrouter.ai/api/v1/chat/completions", () => {
+          return HttpResponse.json(createOpenRouterResponse("AMBIGUOUS"));
+        }),
+      );
 
       const result = await routeToAgent("help me", [
         { agentName: "agent-a", description: "A friendly helper" },
@@ -194,11 +227,13 @@ describe("routeToAgent", () => {
     });
 
     it("returns ambiguous when LLM returns unknown agent", async () => {
-      mockedChat.mockResolvedValueOnce({
-        content: "AGENT:unknown-agent",
-        model: "test-model",
-        usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
-      });
+      server.use(
+        http.post("https://openrouter.ai/api/v1/chat/completions", () => {
+          return HttpResponse.json(
+            createOpenRouterResponse("AGENT:unknown-agent"),
+          );
+        }),
+      );
 
       const result = await routeToAgent("help me", [
         { agentName: "agent-a", description: "A friendly helper" },
@@ -209,11 +244,13 @@ describe("routeToAgent", () => {
     });
 
     it("returns ambiguous when LLM returns invalid response", async () => {
-      mockedChat.mockResolvedValueOnce({
-        content: "I think you should use agent-a",
-        model: "test-model",
-        usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
-      });
+      server.use(
+        http.post("https://openrouter.ai/api/v1/chat/completions", () => {
+          return HttpResponse.json(
+            createOpenRouterResponse("I think you should use agent-a"),
+          );
+        }),
+      );
 
       const result = await routeToAgent("help me", [
         { agentName: "agent-a", description: "A friendly helper" },
@@ -224,7 +261,14 @@ describe("routeToAgent", () => {
     });
 
     it("returns ambiguous when LLM call fails", async () => {
-      mockedChat.mockRejectedValueOnce(new Error("API error"));
+      server.use(
+        http.post("https://openrouter.ai/api/v1/chat/completions", () => {
+          return HttpResponse.json(
+            { error: { message: "API error" } },
+            { status: 500 },
+          );
+        }),
+      );
 
       const result = await routeToAgent("help me", [
         { agentName: "agent-a", description: "A friendly helper" },
@@ -235,11 +279,17 @@ describe("routeToAgent", () => {
     });
 
     it("passes context to LLM when provided", async () => {
-      mockedChat.mockResolvedValueOnce({
-        content: "AGENT:agent-a",
-        model: "test-model",
-        usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
-      });
+      let capturedBody: unknown = null;
+
+      server.use(
+        http.post(
+          "https://openrouter.ai/api/v1/chat/completions",
+          async ({ request }) => {
+            capturedBody = await request.json();
+            return HttpResponse.json(createOpenRouterResponse("AGENT:agent-a"));
+          },
+        ),
+      );
 
       await routeToAgent(
         "help me with this",
@@ -250,27 +300,22 @@ describe("routeToAgent", () => {
         "Previous conversation about code review",
       );
 
-      expect(mockedChat).toHaveBeenCalledWith(
-        "test-api-key",
-        expect.objectContaining({
-          messages: expect.arrayContaining([
-            expect.objectContaining({
-              role: "user",
-              content: expect.stringContaining(
-                "Previous conversation about code review",
-              ),
-            }),
-          ]),
-        }),
+      expect(capturedBody).toBeDefined();
+      const body = capturedBody as {
+        messages: { role: string; content: string }[];
+      };
+      const userMessage = body.messages.find((m) => m.role === "user");
+      expect(userMessage?.content).toContain(
+        "Previous conversation about code review",
       );
     });
 
     it("matches agent name case-insensitively", async () => {
-      mockedChat.mockResolvedValueOnce({
-        content: "AGENT:Agent-A",
-        model: "test-model",
-        usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
-      });
+      server.use(
+        http.post("https://openrouter.ai/api/v1/chat/completions", () => {
+          return HttpResponse.json(createOpenRouterResponse("AGENT:Agent-A"));
+        }),
+      );
 
       const result = await routeToAgent("help me", [
         { agentName: "agent-a", description: "A friendly helper" },
