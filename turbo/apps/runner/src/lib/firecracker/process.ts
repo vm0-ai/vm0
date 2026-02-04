@@ -8,6 +8,7 @@
 import { readdirSync, readFileSync, existsSync } from "fs";
 import path from "path";
 import { type VmId, createVmId, vmIdValue } from "./vm-id.js";
+import { isProcessRunning } from "../utils/process.js";
 
 interface FirecrackerProcess {
   pid: number;
@@ -113,18 +114,6 @@ export function findProcessByVmId(vmId: VmId): FirecrackerProcess | null {
   const processes = findFirecrackerProcesses();
   const vmIdStr = vmIdValue(vmId);
   return processes.find((p) => vmIdValue(p.vmId) === vmIdStr) || null;
-}
-
-/**
- * Check if a process is still running
- */
-function isProcessRunning(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /**
