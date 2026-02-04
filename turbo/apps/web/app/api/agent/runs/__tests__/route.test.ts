@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { POST } from "../route";
 import { PUT as putSecret } from "../../../secrets/route";
+import { PUT as setVariableRoute } from "../../../variables/route";
 import { randomUUID } from "crypto";
 import { Sandbox } from "@e2b/code-interpreter";
 import {
@@ -1458,6 +1459,110 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const run = await getTestRun(data.runId);
       expect(run.error).toMatch(/volume resolution failed/i);
       expect(run.error).toContain("undefined-vol");
+    });
+  });
+
+  describe("Server-Stored Variables", () => {
+    /**
+     * Helper to create a server-stored variable
+     */
+    async function createVariable(name: string, value: string): Promise<void> {
+      const request = createTestRequest("http://localhost:3000/api/variables", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, value }),
+      });
+      const response = await setVariableRoute(request);
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(`Failed to create variable: ${error.error?.message}`);
+      }
+    }
+
+    it("should succeed when required vars are stored on server (not provided via CLI)", async () => {
+      // Create compose that requires a template variable
+      const { composeId } = await createTestCompose(uniqueId("server-var"), {
+        overrides: {
+          environment: {
+            ANTHROPIC_API_KEY: "test-key",
+            MY_VAR: "${{ vars.MY_VAR }}",
+          },
+        },
+      });
+
+      // Create server-stored variable (simulating: vm0 variable set MY_VAR my-value)
+      await createVariable("MY_VAR", "server-stored-value");
+
+      // Create run WITHOUT providing the variable via CLI --vars
+      // This should succeed because server-stored variables are fetched and merged
+      const data = await createTestRun(
+        composeId,
+        "Test with server-stored var",
+      );
+
+      expect(data.status).toBe("running");
+    });
+
+    it("should use CLI vars over server-stored vars when both exist", async () => {
+      vi.mocked(Sandbox.create).mockClear();
+
+      // Create compose that requires a template variable
+      const { composeId } = await createTestCompose(uniqueId("cli-override"), {
+        overrides: {
+          environment: {
+            ANTHROPIC_API_KEY: "test-key",
+            MY_VAR: "${{ vars.MY_VAR }}",
+          },
+        },
+      });
+
+      // Create server-stored variable
+      await createVariable("MY_VAR", "server-value");
+
+      // Create run WITH CLI --vars (should override server value)
+      const data = await createTestRun(composeId, "Test CLI override", {
+        vars: { MY_VAR: "cli-value" },
+      });
+
+      expect(data.status).toBe("running");
+
+      // Verify Sandbox.create was called with CLI value (not server value)
+      expect(Sandbox.create).toHaveBeenCalled();
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
+
+      expect(envs?.MY_VAR).toBe("cli-value");
+    });
+
+    it("should still fail when required var is neither on server nor CLI", async () => {
+      // Create compose that requires a variable that doesn't exist
+      const { composeId } = await createTestCompose(uniqueId("missing-var"), {
+        overrides: {
+          environment: {
+            ANTHROPIC_API_KEY: "test-key",
+            MISSING_VAR: "${{ vars.MISSING_VAR }}",
+          },
+        },
+      });
+
+      // Try to create run without providing the variable
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: composeId,
+            prompt: "Test without var",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error.message).toContain("MISSING_VAR");
     });
   });
 });
