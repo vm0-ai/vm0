@@ -21,7 +21,6 @@ import {
 } from "../lib/firecracker/process.js";
 import { withFileLock } from "../lib/utils/file-lock.js";
 import { isProcessRunning } from "../lib/utils/process.js";
-import { isPortInUse } from "../lib/firecracker/network.js";
 import { SNAPSHOT_NETWORK } from "../lib/firecracker/netns.js";
 import { NS_PREFIX, RegistrySchema } from "../lib/firecracker/netns-pool.js";
 import { type VmId, createVmId } from "../lib/firecracker/vm-id.js";
@@ -93,26 +92,16 @@ async function checkApiConnectivity(
 /**
  * Check network status (proxy)
  */
-async function checkNetwork(
-  config: RunnerConfig,
-  warnings: Warning[],
-): Promise<void> {
+function checkNetwork(config: RunnerConfig, warnings: Warning[]): void {
   console.log("Network:");
 
-  const proxyPort = config.proxy.port;
   const mitmProcesses = findMitmproxyProcesses();
   const mitmProc = mitmProcesses.find((p) => p.baseDir === config.base_dir);
-  const portInUse = await isPortInUse(proxyPort);
 
   if (mitmProc) {
-    console.log(`  ✓ Proxy mitmproxy (PID ${mitmProc.pid}) on :${proxyPort}`);
-  } else if (portInUse) {
     console.log(
-      `  ⚠️ Proxy port :${proxyPort} in use but mitmproxy process not found`,
+      `  ✓ Proxy mitmproxy (PID ${mitmProc.pid}) on :${config.proxy.port}`,
     );
-    warnings.push({
-      message: `Port ${proxyPort} is in use but mitmproxy process not detected`,
-    });
   } else {
     console.log(`  ✗ Proxy mitmproxy not running`);
     warnings.push({ message: "Proxy mitmproxy is not running" });
@@ -339,7 +328,7 @@ export const doctorCommand = new Command("doctor")
       console.log("");
 
       // Network status
-      await checkNetwork(config, warnings);
+      checkNetwork(config, warnings);
       console.log("");
 
       // Scan resources
