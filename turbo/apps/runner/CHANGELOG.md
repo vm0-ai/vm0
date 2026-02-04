@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.11.2](https://github.com/vm0-ai/vm0/compare/runner-v3.11.1...runner-v3.11.2) (2026-02-04)
+
+
+### Bug Fixes
+
+* **vsock-agent:** don't reconnect after shutdown, reduce reconnect delay ([#2279](https://github.com/vm0-ai/vm0/issues/2279)) ([8ae44de](https://github.com/vm0-ai/vm0/commit/8ae44de5a56f68f994b0e6ebf7a91bed6745d6d1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.14.0
+
 ## [3.11.1](https://github.com/vm0-ai/vm0/compare/runner-v3.11.0...runner-v3.11.1) (2026-02-03)
 
 

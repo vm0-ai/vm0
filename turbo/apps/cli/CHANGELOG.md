@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.16.0](https://github.com/vm0-ai/vm0/compare/cli-v9.15.2...cli-v9.16.0) (2026-02-04)
+
+
+### Features
+
+* **model-provider:** add deepseek api key support and simplify provider labels ([#2276](https://github.com/vm0-ai/vm0/issues/2276)) ([1fcd190](https://github.com/vm0-ai/vm0/commit/1fcd190fe8d95dc141001f911442b8f2b592c7d0)), closes [#2262](https://github.com/vm0-ai/vm0/issues/2262)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.14.0
+
 ## [9.15.2](https://github.com/vm0-ai/vm0/compare/cli-v9.15.1...cli-v9.15.2) (2026-02-04)
 
 

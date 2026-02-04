@@ -1,5 +1,25 @@
 # Changelog
 
+## [11.25.0](https://github.com/vm0-ai/vm0/compare/web-v11.24.1...web-v11.25.0) (2026-02-04)
+
+
+### Features
+
+* **model-provider:** add deepseek api key support and simplify provider labels ([#2276](https://github.com/vm0-ai/vm0/issues/2276)) ([1fcd190](https://github.com/vm0-ai/vm0/commit/1fcd190fe8d95dc141001f911442b8f2b592c7d0)), closes [#2262](https://github.com/vm0-ai/vm0/issues/2262)
+* **storage:** migrate storages from user-level to scope-level ownership ([#2263](https://github.com/vm0-ai/vm0/issues/2263)) ([698d021](https://github.com/vm0-ai/vm0/commit/698d0218258387ace372cfc3f69e0132a7b33f14)), closes [#2252](https://github.com/vm0-ai/vm0/issues/2252)
+
+
+### Bug Fixes
+
+* **web:** handle invalid slack auth errors with auto-cleanup ([#2281](https://github.com/vm0-ai/vm0/issues/2281)) ([02bd5de](https://github.com/vm0-ai/vm0/commit/02bd5de14088e8afb83ca7d9a4ace59372876571))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.14.0
+
 ## [11.24.1](https://github.com/vm0-ai/vm0/compare/web-v11.24.0...web-v11.24.1) (2026-02-03)
 
 

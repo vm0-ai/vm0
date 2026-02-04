@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.14.0](https://github.com/vm0-ai/vm0/compare/core-v7.13.0...core-v7.14.0) (2026-02-04)
+
+
+### Features
+
+* **model-provider:** add deepseek api key support and simplify provider labels ([#2276](https://github.com/vm0-ai/vm0/issues/2276)) ([1fcd190](https://github.com/vm0-ai/vm0/commit/1fcd190fe8d95dc141001f911442b8f2b592c7d0)), closes [#2262](https://github.com/vm0-ai/vm0/issues/2262)
+
 ## [7.13.0](https://github.com/vm0-ai/vm0/compare/core-v7.12.0...core-v7.13.0) (2026-02-03)
 
 
