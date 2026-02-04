@@ -62,7 +62,7 @@ async function removeThinkingReaction(
     .remove({
       channel: channelId,
       timestamp: messageTs,
-      name: "hourglass_flowing_sand",
+      name: "thought_balloon",
     })
     .catch(() => {
       // Ignore errors when removing reaction
@@ -251,7 +251,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       .add({
         channel: context.channelId,
         timestamp: context.messageTs,
-        name: "hourglass_flowing_sand",
+        name: "thought_balloon",
       })
       .then(() => true)
       .catch(() => false);

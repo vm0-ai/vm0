@@ -211,7 +211,7 @@ describe("Feature: App Mention Handling", () => {
       );
       expect(reactionAddCalls).toHaveLength(1);
       expect((reactionAddCalls[0]!.body as { name?: string }).name).toBe(
-        "hourglass_flowing_sand",
+        "thought_balloon",
       );
 
       // 2. Thinking message should be posted
