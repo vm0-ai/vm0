@@ -278,14 +278,10 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
 
     if (routeResult.type === "not_request") {
       // User is not requesting agent assistance (greeting, casual chat)
-      if (thinkingTs) {
-        await client.chat.update({
-          channel: context.channelId,
-          ts: thinkingTs,
-          text: "Welcome to VM0!",
-          blocks: buildWelcomeMessage(bindings),
-        });
-      }
+      await postMessage(client, context.channelId, "Welcome to VM0!", {
+        threadTs,
+        blocks: buildWelcomeMessage(bindings),
+      });
       if (reactionAdded) {
         await removeThinkingReaction(
           client,
@@ -297,15 +293,11 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
     }
 
     if (routeResult.type === "failure") {
-      // Update thinking message with error and cleanup
-      if (thinkingTs) {
-        await client.chat.update({
-          channel: context.channelId,
-          ts: thinkingTs,
-          text: routeResult.error,
-          blocks: buildErrorMessage(routeResult.error),
-        });
-      }
+      // Post error message
+      await postMessage(client, context.channelId, routeResult.error, {
+        threadTs,
+        blocks: buildErrorMessage(routeResult.error),
+      });
       if (reactionAdded) {
         await removeThinkingReaction(
           client,
