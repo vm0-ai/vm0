@@ -4,5 +4,4 @@ export type RoutePath =
   | "/logs/:id"
   | "/settings"
   | "/agents"
-  | "/schedules"
   | `/projects/${string}`;

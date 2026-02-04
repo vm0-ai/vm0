@@ -22,7 +22,6 @@ export const NAVIGATION_CONFIG = [
         icon: "LayoutDashboard",
         path: "/agents",
       },
-      { id: "schedules", label: "Schedule", icon: "Clock", path: "/schedules" },
     ],
   },
   {
