@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.8.0](https://github.com/vm0-ai/vm0/compare/docs-v2.7.0...docs-v2.8.0) (2026-02-04)
+
+
+### Features
+
+* **docs:** rewrite model provider documentation ([#2348](https://github.com/vm0-ai/vm0/issues/2348)) ([32d1517](https://github.com/vm0-ai/vm0/commit/32d1517e3ada7ffb873c92caaafefb59a10d7cca))
+
 ## [2.7.0](https://github.com/vm0-ai/vm0/compare/docs-v2.6.0...docs-v2.7.0) (2026-02-03)
 
 

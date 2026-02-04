@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.1](https://github.com/vm0-ai/vm0/compare/site-v1.10.0...site-v1.10.1) (2026-02-04)
+
+
+### Bug Fixes
+
+* **site,web,platform:** replace favicon with vm0 logo ([#2347](https://github.com/vm0-ai/vm0/issues/2347)) ([b380a1e](https://github.com/vm0-ai/vm0/commit/b380a1edb42e485d6392e9861a62064761fcbede))
+
 ## [1.10.0](https://github.com/vm0-ai/vm0/compare/site-v1.9.0...site-v1.10.0) (2026-02-01)
 
 

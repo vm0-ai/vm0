@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.1.1](https://github.com/vm0-ai/vm0/compare/web-v12.1.0...web-v12.1.1) (2026-02-04)
+
+
+### Bug Fixes
+
+* **site,web,platform:** replace favicon with vm0 logo ([#2347](https://github.com/vm0-ai/vm0/issues/2347)) ([b380a1e](https://github.com/vm0-ai/vm0/commit/b380a1edb42e485d6392e9861a62064761fcbede))
+
 ## [12.1.0](https://github.com/vm0-ai/vm0/compare/web-v12.0.0...web-v12.1.0) (2026-02-04)
 
 
