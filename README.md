@@ -41,7 +41,11 @@ npm install -g @vm0/cli && vm0 onboard
 
 ## 📕 Showcase
 
-<img src="https://raw.githubusercontent.com/vm0-ai/vm0-cookbooks/main/tapes/welcome/welcome.gif" alt="VM0 CLI Quickstart Demo" width="500">
+### Onboard
+<img src="./docs/vhs/onboard.gif" alt="VM0 CLI Onboard Demo" width="600">
+
+### Agent Build
+<img src="./docs/vhs/agent-build.gif" alt="VM0 Agent Build Demo" width="600">
 
 ## 📚 Architecture
 
