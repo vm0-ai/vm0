@@ -134,7 +134,11 @@ gh issue create \
 
 ### Step 5: Return Result
 
-Show issue URL and ID. Keep response simple.
+The `gh issue create` command outputs the issue URL upon success. **You MUST display this URL to the user** so they can easily access the created issue. Example response:
+
+```
+Issue created: https://github.com/owner/repo/issues/123
+```
 
 ## Flexibility
 
@@ -227,7 +231,11 @@ gh issue create \
 
 ### Step 4: Return Result
 
-Show issue URL and ID. Keep response simple.
+The `gh issue create` command outputs the issue URL upon success. **You MUST display this URL to the user** so they can easily access the created issue. Example response:
+
+```
+Issue created: https://github.com/owner/repo/issues/123
+```
 
 ## Flexibility
 
@@ -310,7 +318,11 @@ gh issue create \
 
 ### Step 4: Return Result
 
-Show issue URL and ID. Keep response simple.
+The `gh issue create` command outputs the issue URL upon success. **You MUST display this URL to the user** so they can easily access the created issue. Example response:
+
+```
+Issue created: https://github.com/owner/repo/issues/123
+```
 
 ## Flexibility
 
