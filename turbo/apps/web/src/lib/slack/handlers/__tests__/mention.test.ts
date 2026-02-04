@@ -229,12 +229,14 @@ describe("Feature: App Mention Handling", () => {
         }),
       );
 
-      // 4. Thinking message should be updated with response
+      // 4. Thinking message should be updated (first with agent name, then with response)
       const updateCalls = slackApiCalls.filter(
         (c) => c.method === "chat.update",
       );
-      expect(updateCalls).toHaveLength(1);
-      expect((updateCalls[0]!.body as { text?: string }).text).toBe(
+      // Two updates: first adds agent name, second adds final response
+      expect(updateCalls).toHaveLength(2);
+      // Final update should contain the response
+      expect((updateCalls[1]!.body as { text?: string }).text).toBe(
         "Here is my helpful response!",
       );
 
@@ -304,11 +306,12 @@ describe("Feature: App Mention Handling", () => {
       });
 
       // Then I should see list of available agents
-      const postCalls = slackApiCalls.filter(
-        (c) => c.method === "chat.postMessage",
+      // Note: The new flow posts "Thinking..." first, then updates it with the error
+      const updateCalls = slackApiCalls.filter(
+        (c) => c.method === "chat.update",
       );
-      expect(postCalls).toHaveLength(1);
-      const text = (postCalls[0]!.body as { text?: string }).text ?? "";
+      expect(updateCalls).toHaveLength(1);
+      const text = (updateCalls[0]!.body as { text?: string }).text ?? "";
       expect(text).toContain("couldn't determine which agent");
       expect(text).toContain("agent-a");
       expect(text).toContain("agent-b");
@@ -334,11 +337,12 @@ describe("Feature: App Mention Handling", () => {
       });
 
       // Then I should see error that "writer" not found
-      const postCalls = slackApiCalls.filter(
-        (c) => c.method === "chat.postMessage",
+      // Note: The new flow posts "Thinking..." first, then updates it with the error
+      const updateCalls = slackApiCalls.filter(
+        (c) => c.method === "chat.update",
       );
-      expect(postCalls).toHaveLength(1);
-      const text = (postCalls[0]!.body as { text?: string }).text ?? "";
+      expect(updateCalls).toHaveLength(1);
+      const text = (updateCalls[0]!.body as { text?: string }).text ?? "";
       expect(text).toContain('"writer" not found');
       // And I should see list of available agents
       expect(text).toContain("coder");

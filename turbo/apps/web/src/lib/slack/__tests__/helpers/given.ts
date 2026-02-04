@@ -19,6 +19,8 @@ import { encryptCredentialValue } from "../../../../lib/crypto/secrets-encryptio
 import { env } from "../../../../env";
 import { uniqueId } from "../../../../__tests__/test-helpers";
 
+// Note: encryptCredentialValue and env are still used for encrypting bot tokens
+
 /**
  * Result from givenSlackWorkspaceInstalled
  */
@@ -83,7 +85,6 @@ export interface AgentBindingOptions {
   agentName?: string;
   description?: string | null;
   enabled?: boolean;
-  secrets?: string | null;
 }
 
 /**
@@ -185,11 +186,9 @@ export async function givenUserHasAgent(
     agentName = uniqueId("agent"),
     description = null,
     enabled = true,
-    secrets = null,
   } = options;
 
   initServices();
-  const { SECRETS_ENCRYPTION_KEY } = env();
 
   // Get user link to find vm0UserId and workspaceId
   const [link] = await globalThis.services.db
@@ -266,11 +265,6 @@ export async function givenUserHasAgent(
     .set({ headVersionId: version.id })
     .where(eq(agentComposes.id, compose.id));
 
-  // Encrypt secrets if provided
-  const encryptedSecrets = secrets
-    ? encryptCredentialValue(secrets, SECRETS_ENCRYPTION_KEY)
-    : null;
-
   // Create binding
   const [binding] = await globalThis.services.db
     .insert(slackBindings)
@@ -282,7 +276,6 @@ export async function givenUserHasAgent(
       agentName,
       description,
       enabled,
-      encryptedSecrets,
     })
     .returning();
 
