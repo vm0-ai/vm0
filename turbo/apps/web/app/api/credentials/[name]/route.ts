@@ -1,3 +1,4 @@
+import { NextRequest } from "next/server";
 import {
   createHandler,
   tsr,
@@ -111,8 +112,24 @@ function errorHandler(err: unknown): TsRestResponse | void {
   return undefined;
 }
 
-const handler = createHandler(credentialsByNameContract, router, {
+const baseHandler = createHandler(credentialsByNameContract, router, {
   errorHandler,
 });
 
-export { handler as GET, handler as DELETE };
+/**
+ * Deprecation warning for /api/credentials endpoints
+ */
+const DEPRECATION_WARNING =
+  "This endpoint is deprecated. Please upgrade your CLI and use /api/secrets instead.";
+
+function addDeprecationHeader(response: Response): Response {
+  response.headers.set("X-Deprecation-Warning", DEPRECATION_WARNING);
+  return response;
+}
+
+async function deprecatedHandler(request: NextRequest): Promise<Response> {
+  const response = await baseHandler(request);
+  return addDeprecationHeader(response);
+}
+
+export { deprecatedHandler as GET, deprecatedHandler as DELETE };
