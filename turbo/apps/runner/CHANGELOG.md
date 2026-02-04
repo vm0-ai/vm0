@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.12.0](https://github.com/vm0-ai/vm0/compare/runner-v3.11.3...runner-v3.12.0) (2026-02-04)
+
+
+### Features
+
+* **runner:** add snapshot command for fast vm startup ([#2215](https://github.com/vm0-ai/vm0/issues/2215)) ([84fd435](https://github.com/vm0-ai/vm0/commit/84fd4354bff07797ecbd36736c47cd1136d38d14))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.0.0
+
 ## [3.11.3](https://github.com/vm0-ai/vm0/compare/runner-v3.11.2...runner-v3.11.3) (2026-02-04)
 
 

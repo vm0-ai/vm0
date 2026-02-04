@@ -1,5 +1,29 @@
 # Changelog
 
+## [12.0.0](https://github.com/vm0-ai/vm0/compare/web-v11.26.0...web-v12.0.0) (2026-02-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* **e2b:** The :dev tag is no longer supported for system images. Use vm0/claude-code or vm0/codex without tag (defaults to :latest).
+
+### Bug Fixes
+
+* **slack:** resolve connection timeout in [@mention](https://github.com/mention) handler ([#2309](https://github.com/vm0-ai/vm0/issues/2309)) ([c2bddb0](https://github.com/vm0-ai/vm0/commit/c2bddb0e4c2ab0a72b3d912e1ce7f9eb2bb240e4))
+* **web:** improve e2b config documentation ([#2313](https://github.com/vm0-ai/vm0/issues/2313)) ([b1a86a9](https://github.com/vm0-ai/vm0/commit/b1a86a9e5b6360cb23f4db6ee1e893c4ec6bcd34))
+
+
+### Code Refactoring
+
+* **e2b:** remove -dev suffix and hardcode template names ([#2306](https://github.com/vm0-ai/vm0/issues/2306)) ([f2aaf5b](https://github.com/vm0-ai/vm0/commit/f2aaf5b734c6799e841c596bdcaa18c86e3cbb0d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.0.0
+
 ## [11.26.0](https://github.com/vm0-ai/vm0/compare/web-v11.25.0...web-v11.26.0) (2026-02-04)
 
 

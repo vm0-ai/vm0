@@ -1,5 +1,16 @@
 # Changelog
 
+## [8.0.0](https://github.com/vm0-ai/vm0/compare/core-v7.15.0...core-v8.0.0) (2026-02-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* **e2b:** The :dev tag is no longer supported for system images. Use vm0/claude-code or vm0/codex without tag (defaults to :latest).
+
+### Code Refactoring
+
+* **e2b:** remove -dev suffix and hardcode template names ([#2306](https://github.com/vm0-ai/vm0/issues/2306)) ([f2aaf5b](https://github.com/vm0-ai/vm0/commit/f2aaf5b734c6799e841c596bdcaa18c86e3cbb0d))
+
 ## [7.15.0](https://github.com/vm0-ai/vm0/compare/core-v7.14.0...core-v7.15.0) (2026-02-04)
 
 
