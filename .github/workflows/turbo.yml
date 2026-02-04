@@ -696,6 +696,8 @@ jobs:
         with:
           path: ~/.vm0
           key: e2e-token-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            e2e-token-${{ github.run_id }}-
           fail-on-cache-miss: true
 
       - name: Run API E2E Tests
@@ -760,6 +762,8 @@ jobs:
         with:
           path: ~/.vm0
           key: e2e-token-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            e2e-token-${{ github.run_id }}-
           fail-on-cache-miss: true
 
       - name: Start Cron Simulator
@@ -838,6 +842,8 @@ jobs:
         with:
           path: ~/.vm0
           key: e2e-token-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            e2e-token-${{ github.run_id }}-
           fail-on-cache-miss: true
 
       - name: Start Cron Simulator
@@ -922,6 +928,8 @@ jobs:
         with:
           path: ~/.vm0
           key: e2e-token-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            e2e-token-${{ github.run_id }}-
           fail-on-cache-miss: true
 
       - name: Start Cron Simulator
