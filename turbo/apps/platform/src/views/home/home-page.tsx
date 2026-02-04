@@ -231,7 +231,7 @@ function UsefulReferences({ theme }: { theme: string }) {
           href="https://docs.vm0.ai"
         />
         <ReferenceCard
-          title="Vibe Coder Quick Start"
+          title="Vibe Coding Quick Start"
           description="Build agents with Claude Code"
           icon={<IconBook className="h-8 w-8 text-primary" stroke={1.5} />}
           iconBg=""
