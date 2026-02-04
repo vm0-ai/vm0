@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.2.0](https://github.com/vm0-ai/vm0/compare/web-v12.1.1...web-v12.2.0) (2026-02-04)
+
+
+### Features
+
+* **cli:** add vm0 variable command for server-side variable storage ([#2344](https://github.com/vm0-ai/vm0/issues/2344)) ([6831866](https://github.com/vm0-ai/vm0/commit/6831866c271e5b711fa979c1deef56c1ab9bd2a4))
+
+
+### Bug Fixes
+
+* **api:** pass authorization header in /v1/runs/:id/logs endpoint ([#2363](https://github.com/vm0-ai/vm0/issues/2363)) ([a3d3171](https://github.com/vm0-ai/vm0/commit/a3d3171e21f16f5f6128ec9116f68aa97129d880)), closes [#2335](https://github.com/vm0-ai/vm0/issues/2335)
+* auto-fetch secrets from database for secrets.* references ([#2358](https://github.com/vm0-ai/vm0/issues/2358)) ([7197a86](https://github.com/vm0-ai/vm0/commit/7197a865e1d89259599ee0b5c71d6618c3ae221f)), closes [#2355](https://github.com/vm0-ai/vm0/issues/2355)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.2.0
+
 ## [12.1.1](https://github.com/vm0-ai/vm0/compare/web-v12.1.0...web-v12.1.1) (2026-02-04)
 
 

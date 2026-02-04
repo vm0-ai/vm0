@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.2.0](https://github.com/vm0-ai/vm0/compare/core-v8.1.0...core-v8.2.0) (2026-02-04)
+
+
+### Features
+
+* **cli:** add vm0 variable command for server-side variable storage ([#2344](https://github.com/vm0-ai/vm0/issues/2344)) ([6831866](https://github.com/vm0-ai/vm0/commit/6831866c271e5b711fa979c1deef56c1ab9bd2a4))
+
 ## [8.1.0](https://github.com/vm0-ai/vm0/compare/core-v8.0.0...core-v8.1.0) (2026-02-04)
 
 

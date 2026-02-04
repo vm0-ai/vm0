@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.18.0](https://github.com/vm0-ai/vm0/compare/cli-v9.17.2...cli-v9.18.0) (2026-02-04)
+
+
+### Features
+
+* **cli:** add vm0 variable command for server-side variable storage ([#2344](https://github.com/vm0-ai/vm0/issues/2344)) ([6831866](https://github.com/vm0-ai/vm0/commit/6831866c271e5b711fa979c1deef56c1ab9bd2a4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.2.0
+
 ## [9.17.2](https://github.com/vm0-ai/vm0/compare/cli-v9.17.1...cli-v9.17.2) (2026-02-04)
 
 
