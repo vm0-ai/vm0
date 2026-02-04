@@ -14,7 +14,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Check if cleanup needed
         id: check
@@ -107,7 +107,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Delete Neon Branch
         uses: ./.github/actions/neon-branch
@@ -123,7 +123,7 @@ jobs:
       deployments: write
     steps:
       - name: Delete PR Deployments
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const branchName = context.payload.pull_request.head.ref;

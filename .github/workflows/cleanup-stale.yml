@@ -84,7 +84,7 @@ jobs:
       pull-requests: read
     steps:
       - name: Cleanup Stale Deployments
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const dryRun = '${{ env.DRY_RUN }}' === 'true';
@@ -212,7 +212,7 @@ jobs:
       pull-requests: read
     steps:
       - name: Cleanup Stale Git Branches
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const dryRun = '${{ env.DRY_RUN }}' === 'true';

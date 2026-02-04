@@ -46,7 +46,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
       - name: Install neonctl
@@ -114,7 +114,7 @@ jobs:
       deployments: write
     environment: production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
       - name: Install neonctl
@@ -207,7 +207,7 @@ jobs:
       deployments: write
     environment: production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
       - name: Notify Slack - Starting
@@ -265,7 +265,7 @@ jobs:
       deployments: write
     environment: production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
       - name: Notify Slack - Starting
@@ -327,7 +327,7 @@ jobs:
       deployments: write
     environment: production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
       - name: Notify Slack - Starting
@@ -385,7 +385,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Notify Slack - Starting
         id: slack-start
@@ -398,7 +398,7 @@ jobs:
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             text: "*CLI* publishing to npm..."
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: lts/*
           registry-url: 'https://registry.npmjs.org'
@@ -452,7 +452,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Notify Slack - Starting
         id: slack-start
@@ -465,7 +465,7 @@ jobs:
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             text: "*Runner* publishing to npm..."
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: lts/*
           registry-url: 'https://registry.npmjs.org'
@@ -521,7 +521,7 @@ jobs:
       contents: read
     environment: production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
       - name: Install Python3 and Ansible
@@ -632,7 +632,7 @@ jobs:
       contents: read
     environment: production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
       - name: Build E2B templates

@@ -18,7 +18,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260203
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Check formatting
         run: |
