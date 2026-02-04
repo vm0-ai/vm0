@@ -169,6 +169,17 @@ export async function executeJob(
     await withSandboxTiming("guest_wait", () => guestConnectionPromise);
     logger.log(`Guest client ready`);
 
+    // Post-resume handling for snapshot restore
+    // After snapshot restore, guest time continues from snapshot creation time
+    // Entropy pool is handled by random.trust_cpu=on boot arg (CPU HWRNG auto-refills)
+    // ARP cache: not needed since each VM runs in fresh namespace with new TAP device
+    // See: https://github.com/firecracker-microvm/firecracker/blob/main/docs/snapshotting/snapshot-support.md
+    if (config.firecracker.snapshot) {
+      // Use host timestamp directly (faster than hwclock which accesses RTC device)
+      const timestamp = (Date.now() / 1000).toFixed(3);
+      await guest.exec(`date -s "@${timestamp}"`);
+    }
+
     // Download storages if manifest provided
     if (context.storageManifest) {
       await withSandboxTiming("storage_download", () =>
