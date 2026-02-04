@@ -17,7 +17,6 @@ import {
   buildErrorMessage,
   buildAgentResponseMessage,
   buildWelcomeMessage,
-  getSlackRedirectBaseUrl,
 } from "../index";
 import { routeToAgent, type RouteResult } from "../router";
 import { runAgentForSlack } from "./run-agent";
@@ -439,7 +438,7 @@ function buildLoginUrl(
   slackUserId: string,
   channelId: string,
 ): string {
-  const baseUrl = getSlackRedirectBaseUrl();
+  const baseUrl = getPlatformUrl();
   const params = new URLSearchParams({
     w: workspaceId,
     u: slackUserId,
