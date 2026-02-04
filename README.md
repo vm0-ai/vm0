@@ -3,8 +3,7 @@
   <br>
   <br>
   Natural language Agent, 24/7 in cloud sandbox
-  <br>
-  <a href="https://trendshift.io/repositories/19748" target="_blank"><img src="https://trendshift.io/api/badge/repositories/19748" alt="vm0-ai%2Fvm0 | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+  <br
   <br>
   <p>
     <a href="https://deepwiki.com/vm0-ai/vm0"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" /></a>
@@ -14,6 +13,7 @@
     <a href="https://github.com/vm0-ai/vm0/actions/workflows/turbo.yml?query=event%3Apush+branch%3Amain"><img src="https://github.com/vm0-ai/vm0/actions/workflows/turbo.yml/badge.svg?event=push"
     alt="CI" /></a>
   </p>
+  <a href="https://trendshift.io/repositories/19748" target="_blank"><img src="https://trendshift.io/api/badge/repositories/19748" alt="vm0-ai%2Fvm0 | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 </h2>
 
 [Documentation](https://docs.vm0.ai) / [Website](https://www.vm0.ai) / [Discord](https://discord.gg/WMpAmHFfp6)
