@@ -1,3 +1,5 @@
+import { execSync } from "node:child_process";
+
 /**
  * Check if a process is running
  *
@@ -17,5 +19,36 @@ export function isProcessRunning(pid: number): boolean {
     }
     // ESRCH or other errors mean process doesn't exist
     return false;
+  }
+}
+
+/**
+ * Kill a process and all its descendants (children, grandchildren, etc.)
+ *
+ * Uses depth-first traversal to kill children before parents,
+ * preventing orphan processes when killing process trees like:
+ * sudo -> firecracker
+ */
+export function killProcessTree(pid: number): void {
+  try {
+    // Find all child PIDs using pgrep
+    const childPidsStr = execSync(`pgrep -P ${pid} 2>/dev/null || true`, {
+      encoding: "utf-8",
+    }).trim();
+
+    if (childPidsStr) {
+      const childPids = childPidsStr.split("\n").map((p) => parseInt(p, 10));
+      // Recursively kill children first
+      for (const childPid of childPids) {
+        if (!isNaN(childPid)) {
+          killProcessTree(childPid);
+        }
+      }
+    }
+
+    // Kill this process
+    process.kill(pid, "SIGKILL");
+  } catch {
+    // Process may already be dead, ignore errors
   }
 }

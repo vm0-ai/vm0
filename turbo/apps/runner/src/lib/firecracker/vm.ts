@@ -23,6 +23,7 @@ import { acquireOverlay } from "./overlay-pool.js";
 import { FirecrackerClient } from "./client.js";
 import { createLogger } from "../logger.js";
 import { vmPaths } from "../paths.js";
+import { killProcessTree } from "../utils/process.js";
 import type { VmId } from "./vm-id.js";
 import { buildFirecrackerConfig, type FirecrackerConfig } from "./config.js";
 
@@ -435,9 +436,10 @@ export class FirecrackerVM {
    * since we want to clean up as much as possible even if some parts fail.
    */
   private async cleanup(): Promise<void> {
-    // Kill Firecracker process
-    if (this.process && !this.process.killed) {
-      this.process.kill("SIGKILL");
+    // Kill Firecracker process tree (sudo -> firecracker)
+    // Must kill children first, otherwise they become orphan processes
+    if (this.process && !this.process.killed && this.process.pid) {
+      killProcessTree(this.process.pid);
       this.process = null;
     }
 
