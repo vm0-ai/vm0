@@ -9,10 +9,7 @@
  * import {
  *   givenLinkedSlackUser,
  *   givenUserHasAgent,
- *   whenUserMentionsBot,
- *   thenSlackShouldReceiveMessage,
- *   createMockSlackClient,
- * } from "../helpers";
+ * } from "../../__tests__/helpers";
  *
  * describe("Feature: App Mention Handling", () => {
  *   describe("Scenario: Single agent happy path", () => {
@@ -22,21 +19,8 @@
  *       const { binding } = await givenUserHasAgent(userLink.id, {
  *         agentName: "my-agent",
  *       });
- *       const mockClient = createMockSlackClient();
  *
- *       // When
- *       await whenUserMentionsBot({
- *         workspaceId: installation.slackWorkspaceId,
- *         userId: userLink.slackUserId,
- *         channelId: "C123",
- *         messageText: "<@BOT123> help me",
- *         messageTs: "1234567890.123456",
- *       });
- *
- *       // Then
- *       thenSlackShouldReceiveMessage(mockClient, {
- *         channel: "C123",
- *       });
+ *       // When / Then - use handleAppMention directly with MSW for Slack API mocking
  *     });
  *   });
  * });
@@ -49,10 +33,6 @@ export {
   givenLinkedSlackUser,
   givenUserHasAgent,
   givenUserHasMultipleAgents,
-  givenExistingThreadSession,
-  givenOrphanedBindings,
-  givenAgentRunCompleted,
-  givenAgentRunFailed,
   type WorkspaceInstallationResult,
   type LinkedUserResult,
   type AgentBindingResult,
@@ -60,42 +40,3 @@ export {
   type LinkedUserOptions,
   type AgentBindingOptions,
 } from "./given";
-
-// When helpers - Execute actions
-export {
-  whenUserMentionsBot,
-  whenRunAgentForSlack,
-  whenUserLinksAccount,
-  whenCheckLinkStatus,
-  type MentionContext,
-} from "./when";
-
-// Then helpers - Verify outcomes
-export {
-  thenSlackShouldReceiveMessage,
-  thenSlackShouldUpdateMessage,
-  thenReactionShouldBeAdded,
-  thenReactionShouldBeRemoved,
-  thenThreadSessionShouldExist,
-  thenThreadSessionShouldNotExist,
-  thenBindingShouldExist,
-  thenUserLinkShouldExist,
-  thenUserLinkShouldNotExist,
-  thenOrphanedBindingsShouldExist,
-  thenBindingsShouldBeRestored,
-  thenSlackShouldNotReceiveMessage,
-  thenSlackShouldReceiveNMessages,
-  getSlackCalls,
-} from "./then";
-
-// Mock utilities
-export {
-  createMockSlackClient,
-  createMockRunAgentForSlack,
-  setupMockThreadContext,
-  setupMockChannelContext,
-  setupMockSlackApiError,
-  type MockSlackClient,
-  type SlackApiCall,
-  type MockAgentResult,
-} from "./mocks";

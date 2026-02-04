@@ -86,6 +86,7 @@ function setupSlackMswHandlers() {
 
 describe("Feature: App Mention Handling", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     context.setupMocks();
     setupSlackMswHandlers();
     // Set required env var for Slack redirect URL and reload env cache
@@ -182,14 +183,15 @@ describe("Feature: App Mention Handling", () => {
         description: "A helpful assistant",
       });
 
-      // Mock runAgentForSlack
-      // Don't return sessionId to avoid database foreign key issues
-      // (sessionId must be a valid UUID referencing agent_sessions table)
+      // Mock runAgentForSlack at the handler boundary.
+      // This is intentional: runAgentForSlack involves complex async operations
+      // (E2B sandbox, Axiom queries, 30-min polling) that should be tested separately.
+      // This test focuses on handleAppMention's routing and Slack API interactions.
       const mockRunAgent = vi
         .spyOn(runAgentModule, "runAgentForSlack")
         .mockResolvedValue({
           response: "Here is my helpful response!",
-          sessionId: undefined,
+          sessionId: undefined, // Avoid FK constraint on agent_sessions
         });
 
       // When I @mention the VM0 bot
@@ -253,8 +255,7 @@ describe("Feature: App Mention Handling", () => {
         { name: "reviewer", description: "Reviews code" },
       ]);
 
-      // Mock runAgentForSlack
-      // Don't return sessionId to avoid database foreign key issues
+      // Mock runAgentForSlack at handler boundary (see single agent test for rationale)
       const mockRunAgent = vi
         .spyOn(runAgentModule, "runAgentForSlack")
         .mockResolvedValue({

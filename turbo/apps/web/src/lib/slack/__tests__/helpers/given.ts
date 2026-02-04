@@ -5,18 +5,16 @@
  * They follow the "Given" step pattern in BDD tests.
  */
 import { eq } from "drizzle-orm";
+import { createHash } from "crypto";
 import { initServices } from "../../../../lib/init-services";
 import { slackInstallations } from "../../../../db/schema/slack-installation";
 import { slackUserLinks } from "../../../../db/schema/slack-user-link";
 import { slackBindings } from "../../../../db/schema/slack-binding";
-import { slackThreadSessions } from "../../../../db/schema/slack-thread-session";
 import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../db/schema/agent-compose";
-import { agentRuns } from "../../../../db/schema/agent-run";
 import { scopes } from "../../../../db/schema/scope";
-import { createHash } from "crypto";
 import { encryptCredentialValue } from "../../../../lib/crypto/secrets-encryption";
 import { env } from "../../../../env";
 import { uniqueId } from "../../../../__tests__/test-helpers";
@@ -325,144 +323,4 @@ export async function givenUserHasMultipleAgents(
   }
 
   return results;
-}
-
-/**
- * Given an existing thread has a session mapped to it.
- * Creates a thread session record for session continuation testing.
- */
-export async function givenExistingThreadSession(
-  bindingId: string,
-  channelId: string,
-  threadTs: string,
-  sessionId: string,
-): Promise<{ id: string }> {
-  initServices();
-
-  const [session] = await globalThis.services.db
-    .insert(slackThreadSessions)
-    .values({
-      slackBindingId: bindingId,
-      slackChannelId: channelId,
-      slackThreadTs: threadTs,
-      agentSessionId: sessionId,
-    })
-    .returning();
-
-  if (!session) {
-    throw new Error("Failed to create thread session");
-  }
-
-  return { id: session.id };
-}
-
-/**
- * Given user has orphaned bindings (bindings without user link).
- * Used for testing binding restoration on re-login.
- */
-export async function givenOrphanedBindings(
-  vm0UserId: string,
-  workspaceId: string,
-  bindings: Array<{ name: string; description?: string | null }>,
-): Promise<Array<{ id: string; agentName: string; composeId: string }>> {
-  initServices();
-
-  const results: Array<{ id: string; agentName: string; composeId: string }> =
-    [];
-
-  for (const bindingConfig of bindings) {
-    // Create scope
-    const [scopeData] = await globalThis.services.db
-      .insert(scopes)
-      .values({
-        slug: uniqueId("scope"),
-        type: "personal",
-        ownerId: vm0UserId,
-      })
-      .returning();
-
-    if (!scopeData) {
-      throw new Error("Failed to create scope");
-    }
-
-    // Create compose
-    const [compose] = await globalThis.services.db
-      .insert(agentComposes)
-      .values({
-        userId: vm0UserId,
-        scopeId: scopeData.id,
-        name: bindingConfig.name,
-      })
-      .returning();
-
-    if (!compose) {
-      throw new Error("Failed to create compose");
-    }
-
-    // Create binding without userLinkId (orphaned)
-    const [binding] = await globalThis.services.db
-      .insert(slackBindings)
-      .values({
-        slackUserLinkId: null, // Orphaned
-        vm0UserId,
-        slackWorkspaceId: workspaceId,
-        composeId: compose.id,
-        agentName: bindingConfig.name,
-        description: bindingConfig.description ?? null,
-        enabled: true,
-      })
-      .returning();
-
-    if (!binding) {
-      throw new Error("Failed to create binding");
-    }
-
-    results.push({
-      id: binding.id,
-      agentName: binding.agentName,
-      composeId: binding.composeId,
-    });
-  }
-
-  return results;
-}
-
-/**
- * Given an agent run has completed successfully.
- * Sets up the run status in database for testing output retrieval.
- */
-export async function givenAgentRunCompleted(
-  runId: string,
-  output?: string,
-): Promise<void> {
-  initServices();
-
-  await globalThis.services.db
-    .update(agentRuns)
-    .set({
-      status: "completed",
-      result: output ? { output } : null,
-      completedAt: new Date(),
-    })
-    .where(eq(agentRuns.id, runId));
-}
-
-/**
- * Given an agent run has failed.
- * Sets up the run with failed status and error message.
- */
-export async function givenAgentRunFailed(
-  runId: string,
-  errorMessage: string,
-): Promise<void> {
-  initServices();
-
-  await globalThis.services.db
-    .update(agentRuns)
-    .set({
-      status: "failed",
-      error: errorMessage,
-      completedAt: new Date(),
-    })
-    .where(eq(agentRuns.id, runId));
 }
