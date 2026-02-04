@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
+import { testContext } from "../../../__tests__/test-helpers";
 import { routeToAgent, keywordMatch, type RouteResult } from "../router";
 
 // Mock external dependencies
@@ -21,6 +22,7 @@ vi.mock("../../../env", () => ({
 import { env } from "../../../env";
 
 const mockedEnv = vi.mocked(env);
+const context = testContext();
 
 /**
  * Helper to create OpenRouter chat completion response
@@ -126,6 +128,7 @@ describe("keywordMatch", () => {
 describe("routeToAgent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    context.setupMocks();
     server.listen({ onUnhandledRequest: "bypass" });
     mockedEnv.mockReturnValue({
       OPENROUTER_API_KEY: undefined,
