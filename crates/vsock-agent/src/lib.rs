@@ -33,7 +33,7 @@
 
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -88,6 +88,20 @@ fn truncate_preview(s: &str) -> String {
         .map(|(i, c)| i + c.len_utf8())
         .unwrap_or(COMMAND_PREVIEW_MAX_LEN);
     format!("{}...", &s[..end])
+}
+
+/// Extract exit code from ExitStatus, mapping signals to 128 + signal number
+#[cfg(unix)]
+fn extract_exit_code(status: ExitStatus) -> i32 {
+    use std::os::unix::process::ExitStatusExt;
+    status
+        .code()
+        .unwrap_or_else(|| status.signal().map(|sig| 128 + sig).unwrap_or(1))
+}
+
+#[cfg(not(unix))]
+fn extract_exit_code(status: ExitStatus) -> i32 {
+    status.code().unwrap_or(1)
 }
 
 /// Log a message with timestamp
@@ -211,19 +225,7 @@ fn wait_with_timeout(child: Child, timeout_ms: u32) -> (i32, Vec<u8>, Vec<u8>) {
             if killed_by_timeout.load(Ordering::SeqCst) {
                 return (EXIT_CODE_TIMEOUT, output.stdout, b"Timeout".to_vec());
             }
-            // Map exit status like tini does: normal exit returns code,
-            // signal termination returns 128 + signal number
-            #[cfg(unix)]
-            let exit_code = {
-                use std::os::unix::process::ExitStatusExt;
-                output
-                    .status
-                    .code()
-                    .unwrap_or_else(|| output.status.signal().map(|sig| 128 + sig).unwrap_or(1))
-            };
-            #[cfg(not(unix))]
-            let exit_code = output.status.code().unwrap_or(1);
-            (exit_code, output.stdout, output.stderr)
+            (extract_exit_code(output.status), output.stdout, output.stderr)
         }
         Err(e) => (1, Vec::new(), format!("Failed to wait: {}", e).into_bytes()),
     }
@@ -459,16 +461,7 @@ fn handle_spawn_watch(payload: &[u8], seq: u32, writer: Arc<Mutex<UnixStream>>) 
                     // No timeout - wait indefinitely
                     match child.wait_with_output() {
                         Ok(output) => {
-                            #[cfg(unix)]
-                            let exit_code = {
-                                use std::os::unix::process::ExitStatusExt;
-                                output.status.code().unwrap_or_else(|| {
-                                    output.status.signal().map(|sig| 128 + sig).unwrap_or(1)
-                                })
-                            };
-                            #[cfg(not(unix))]
-                            let exit_code = output.status.code().unwrap_or(1);
-                            (exit_code, output.stdout, output.stderr)
+                            (extract_exit_code(output.status), output.stdout, output.stderr)
                         }
                         Err(e) => (1, Vec::new(), format!("Failed to wait: {}", e).into_bytes()),
                     }
