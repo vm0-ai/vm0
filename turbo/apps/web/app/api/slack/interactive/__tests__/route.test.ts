@@ -1,9 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createHmac } from "crypto";
+import { eq } from "drizzle-orm";
 import { POST } from "../route";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../src/env";
 import { server } from "../../../../../src/mocks/server";
+import { slackBindings } from "../../../../../src/db/schema/slack-binding";
+import { listSecrets } from "../../../../../src/lib/secret/secret-service";
 
 // Mock only external dependencies (third-party packages)
 vi.mock("@clerk/nextjs/server");
@@ -295,18 +298,9 @@ describe("POST /api/slack/interactive", () => {
       // Update the binding's agentName to match the compose name (compose-existing-agent)
       // since the implementation uses compose.name as the agentName
       await globalThis.services.db
-        .update(
-          (await import("../../../../../src/db/schema/slack-binding"))
-            .slackBindings,
-        )
+        .update(slackBindings)
         .set({ agentName: `compose-${agentName}` })
-        .where(
-          (await import("drizzle-orm")).eq(
-            (await import("../../../../../src/db/schema/slack-binding"))
-              .slackBindings.slackUserLinkId,
-            userLink.id,
-          ),
-        );
+        .where(eq(slackBindings.slackUserLinkId, userLink.id));
 
       const body = buildInteractiveBody({
         type: "view_submission",
@@ -348,17 +342,8 @@ describe("POST /api/slack/interactive", () => {
       });
       // Delete this binding so we can create a new one
       await globalThis.services.db
-        .delete(
-          (await import("../../../../../src/db/schema/slack-binding"))
-            .slackBindings,
-        )
-        .where(
-          (await import("drizzle-orm")).eq(
-            (await import("../../../../../src/db/schema/slack-binding"))
-              .slackBindings.slackUserLinkId,
-            userLink.id,
-          ),
-        );
+        .delete(slackBindings)
+        .where(eq(slackBindings.slackUserLinkId, userLink.id));
 
       const body = buildInteractiveBody({
         type: "view_submission",
@@ -400,17 +385,8 @@ describe("POST /api/slack/interactive", () => {
       });
       // Delete this binding so we can create a new one
       await globalThis.services.db
-        .delete(
-          (await import("../../../../../src/db/schema/slack-binding"))
-            .slackBindings,
-        )
-        .where(
-          (await import("drizzle-orm")).eq(
-            (await import("../../../../../src/db/schema/slack-binding"))
-              .slackBindings.slackUserLinkId,
-            userLink.id,
-          ),
-        );
+        .delete(slackBindings)
+        .where(eq(slackBindings.slackUserLinkId, userLink.id));
 
       const body = buildInteractiveBody({
         type: "view_submission",
@@ -446,9 +422,6 @@ describe("POST /api/slack/interactive", () => {
       expect(response.status).toBe(200);
 
       // Verify secrets were saved to user's scope
-      const { listSecrets } = await import(
-        "../../../../../src/lib/secret/secret-service"
-      );
       const savedSecrets = await listSecrets(userLink.vm0UserId);
       const secretNames = savedSecrets.map((s) => s.name);
 

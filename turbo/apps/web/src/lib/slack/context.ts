@@ -1,4 +1,7 @@
 import type { WebClient } from "@slack/web-api";
+import { logger } from "../logger";
+
+const log = logger("slack:context");
 
 interface SlackMessage {
   user?: string;
@@ -29,7 +32,7 @@ export async function fetchThreadContext(
   });
 
   const messages = (result.messages ?? []) as SlackMessage[];
-  console.log(`[slack:context] Fetched ${messages.length} thread messages`);
+  log.debug("Fetched thread messages", { count: messages.length });
   return messages;
 }
 
@@ -85,9 +88,11 @@ export function formatContextForAgent(
       : "## Recent Channel Messages";
 
   const result = `${header}\n\n${formattedMessages.join("\n\n")}`;
-  console.log(
-    `[slack:context] Formatted ${formattedMessages.length} messages for ${contextType}, length=${result.length}`,
-  );
+  log.debug("Formatted messages for context", {
+    messageCount: formattedMessages.length,
+    contextType,
+    resultLength: result.length,
+  });
   return result;
 }
 
