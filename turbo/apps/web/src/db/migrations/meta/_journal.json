@@ -449,6 +449,13 @@
       "when": 1768800000000,
       "tag": "0063_slack_bindings_orphan_support",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1768900000000,
+      "tag": "0064_rename_credentials_to_secrets",
+      "breakpoints": true
     }
   ]
 }
