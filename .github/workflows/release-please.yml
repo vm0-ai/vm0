@@ -45,6 +45,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     permissions:
       contents: read
+    environment: production
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain-init
