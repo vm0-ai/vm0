@@ -12,6 +12,7 @@ import {
   initNetnsPool,
   cleanupNetnsPool,
 } from "../lib/firecracker/netns-pool.js";
+import { initVMRegistry } from "../lib/proxy/index.js";
 import { Timer } from "../lib/timing.js";
 import { setGlobalLogger } from "../lib/logger.js";
 import { runnerPaths } from "../lib/paths.js";
@@ -87,6 +88,9 @@ export const benchmarkCommand = new Command("benchmark")
         }
         process.exit(1);
       }
+
+      // Initialize VM registry for proxy IP → run mapping
+      initVMRegistry(runnerPaths.vmRegistry(config.base_dir));
 
       // Initialize pools for VM resources
       // - With snapshot: copies golden overlay (preserves snapshot disk state)
