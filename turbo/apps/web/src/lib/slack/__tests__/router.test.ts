@@ -4,6 +4,11 @@ import { server } from "../../../mocks/server";
 import { testContext } from "../../../__tests__/test-helpers";
 import { routeToAgent, keywordMatch, type RouteResult } from "../router";
 
+// Ensure Axiom logger is disabled in tests by unsetting AXIOM_TOKEN
+vi.hoisted(() => {
+  vi.stubEnv("AXIOM_TOKEN", "");
+});
+
 // Mock external dependencies
 vi.mock("@clerk/nextjs/server");
 vi.mock("@e2b/code-interpreter");
