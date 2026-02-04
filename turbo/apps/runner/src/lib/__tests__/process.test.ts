@@ -3,9 +3,11 @@ import { vol } from "memfs";
 import {
   parseFirecrackerCmdline,
   parseMitmproxyCmdline,
+  parseRunnerCmdline,
   findFirecrackerProcesses,
   findMitmproxyProcesses,
   findProcessByVmId,
+  findRunnerProcesses,
 } from "../process.js";
 import { createVmId as vmId } from "../firecracker/vm-id.js";
 
@@ -146,6 +148,84 @@ describe("process discovery", () => {
 
     it("returns null for empty cmdline", () => {
       expect(parseMitmproxyCmdline("")).toBeNull();
+    });
+  });
+
+  describe("parseRunnerCmdline", () => {
+    it("parses runner start command", () => {
+      const input = cmdline(
+        "node",
+        "/opt/runner/dist/cli.js",
+        "runner",
+        "start",
+        "--config",
+        "/opt/runner/runner.yaml",
+      );
+      expect(parseRunnerCmdline(input)).toEqual({
+        configPath: "/opt/runner/runner.yaml",
+        mode: "start",
+      });
+    });
+
+    it("parses runner benchmark command", () => {
+      const input = cmdline(
+        "node",
+        "/opt/runner/dist/cli.js",
+        "runner",
+        "benchmark",
+        "--config",
+        "/opt/runner/runner.yaml",
+      );
+      expect(parseRunnerCmdline(input)).toEqual({
+        configPath: "/opt/runner/runner.yaml",
+        mode: "benchmark",
+      });
+    });
+
+    it("parses runner command with additional args", () => {
+      const input = cmdline(
+        "node",
+        "/opt/runner/dist/cli.js",
+        "runner",
+        "start",
+        "--config",
+        "/opt/runner/runner.yaml",
+        "--verbose",
+      );
+      expect(parseRunnerCmdline(input)).toEqual({
+        configPath: "/opt/runner/runner.yaml",
+        mode: "start",
+      });
+    });
+
+    it("returns null for non-runner process", () => {
+      const input = cmdline("node", "server.js", "start");
+      expect(parseRunnerCmdline(input)).toBeNull();
+    });
+
+    it("returns null for runner without mode", () => {
+      const input = cmdline(
+        "node",
+        "/opt/runner/dist/cli.js",
+        "runner",
+        "--config",
+        "/opt/runner/runner.yaml",
+      );
+      expect(parseRunnerCmdline(input)).toBeNull();
+    });
+
+    it("returns null for runner without --config", () => {
+      const input = cmdline(
+        "node",
+        "/opt/runner/dist/cli.js",
+        "runner",
+        "start",
+      );
+      expect(parseRunnerCmdline(input)).toBeNull();
+    });
+
+    it("returns null for empty cmdline", () => {
+      expect(parseRunnerCmdline("")).toBeNull();
     });
   });
 
@@ -351,6 +431,62 @@ describe("process discovery", () => {
       });
 
       const result = findMitmproxyProcesses();
+
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe("findRunnerProcesses", () => {
+    it("finds runner processes from /proc", () => {
+      vol.fromJSON({
+        "/proc/1000/cmdline": cmdline(
+          "node",
+          "/opt/runner/dist/cli.js",
+          "runner",
+          "start",
+          "--config",
+          "/opt/runner-a/runner.yaml",
+        ),
+        "/proc/2000/cmdline": cmdline(
+          "node",
+          "/opt/runner/dist/cli.js",
+          "runner",
+          "benchmark",
+          "--config",
+          "/opt/runner-b/runner.yaml",
+        ),
+        "/proc/3000/cmdline": cmdline("nginx", "-c", "/etc/nginx.conf"),
+      });
+
+      const result = findRunnerProcesses();
+
+      expect(result).toHaveLength(2);
+      expect(result).toContainEqual({
+        pid: 1000,
+        configPath: "/opt/runner-a/runner.yaml",
+        mode: "start",
+      });
+      expect(result).toContainEqual({
+        pid: 2000,
+        configPath: "/opt/runner-b/runner.yaml",
+        mode: "benchmark",
+      });
+    });
+
+    it("returns empty array when no runner processes found", () => {
+      vol.fromJSON({
+        "/proc/1000/cmdline": cmdline("nginx", "-c", "/etc/nginx.conf"),
+      });
+
+      const result = findRunnerProcesses();
+
+      expect(result).toEqual([]);
+    });
+
+    it("returns empty array when /proc is empty", () => {
+      vol.fromJSON({ "/proc/.keep": "" });
+
+      const result = findRunnerProcesses();
 
       expect(result).toEqual([]);
     });

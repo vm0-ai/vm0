@@ -134,6 +134,62 @@ interface MitmproxyProcess {
   baseDir: string;
 }
 
+interface RunnerProcess {
+  pid: number;
+  configPath: string;
+  mode: "start" | "benchmark";
+}
+
+/**
+ * Parse /proc/{pid}/cmdline content to extract runner process info.
+ * Pure function for easy testing.
+ *
+ * Parses: node ... runner start --config /path/to/runner.yaml
+ * Parses: node ... runner benchmark --config /path/to/runner.yaml
+ */
+export function parseRunnerCmdline(
+  cmdline: string,
+): { configPath: string; mode: "start" | "benchmark" } | null {
+  const args = cmdline.split("\0");
+
+  // Find "start" or "benchmark" mode
+  const startIdx = args.indexOf("start");
+  const benchmarkIdx = args.indexOf("benchmark");
+
+  let mode: "start" | "benchmark";
+  let modeIdx: number;
+
+  if (startIdx !== -1 && (benchmarkIdx === -1 || startIdx < benchmarkIdx)) {
+    mode = "start";
+    modeIdx = startIdx;
+  } else if (benchmarkIdx !== -1) {
+    mode = "benchmark";
+    modeIdx = benchmarkIdx;
+  } else {
+    return null;
+  }
+
+  // Check that this looks like a runner command (node ... runner start/benchmark)
+  // The arg before mode should be "runner" or end with "/runner"
+  const prevArg = args[modeIdx - 1];
+  if (!prevArg || (!prevArg.endsWith("runner") && prevArg !== "runner")) {
+    return null;
+  }
+
+  // Find --config argument
+  const configIdx = args.indexOf("--config");
+  if (configIdx === -1 || configIdx >= args.length - 1) {
+    return null;
+  }
+
+  const configPath = args[configIdx + 1];
+  if (!configPath) {
+    return null;
+  }
+
+  return { configPath, mode };
+}
+
 /**
  * Find all mitmproxy processes
  */
@@ -161,6 +217,46 @@ export function findMitmproxyProcesses(): MitmproxyProcess[] {
       const baseDir = parseMitmproxyCmdline(cmdline);
       if (baseDir) {
         processes.push({ pid, baseDir });
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return processes;
+}
+
+/**
+ * Find all runner processes
+ */
+export function findRunnerProcesses(): RunnerProcess[] {
+  const processes: RunnerProcess[] = [];
+  const procDir = "/proc";
+
+  let entries: string[];
+  try {
+    entries = readdirSync(procDir);
+  } catch {
+    return [];
+  }
+
+  for (const entry of entries) {
+    if (!/^\d+$/.test(entry)) continue;
+
+    const pid = parseInt(entry, 10);
+    const cmdlinePath = path.join(procDir, entry, "cmdline");
+
+    if (!existsSync(cmdlinePath)) continue;
+
+    try {
+      const cmdline = readFileSync(cmdlinePath, "utf-8");
+      const parsed = parseRunnerCmdline(cmdline);
+      if (parsed) {
+        processes.push({
+          pid,
+          configPath: parsed.configPath,
+          mode: parsed.mode,
+        });
       }
     } catch {
       continue;
