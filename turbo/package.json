@@ -49,5 +49,8 @@
   "packageManager": "pnpm@10.15.0",
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^5.3.4"
   }
 }
