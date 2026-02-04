@@ -93,7 +93,8 @@ async function resolveVersion(
  *
  * @param agentConfig - Agent configuration containing volume definitions
  * @param vars - Template variables for placeholder replacement
- * @param scopeId - Scope ID for storage access
+ * @param volumeScopeId - Scope ID for volume resolution (agent owner's scope)
+ * @param artifactScopeId - Scope ID for artifact resolution (runner's scope)
  * @param artifactName - Artifact storage name
  * @param artifactVersion - Artifact version (defaults to "latest")
  * @param volumeVersionOverrides - Optional volume version overrides
@@ -104,7 +105,8 @@ async function resolveVersion(
 export async function prepareStorageManifest(
   agentConfig: AgentVolumeConfig | undefined,
   vars: Record<string, string>,
-  scopeId: string,
+  volumeScopeId: string,
+  artifactScopeId: string,
   artifactName?: string,
   artifactVersion?: string,
   volumeVersionOverrides?: Record<string, string>,
@@ -148,7 +150,7 @@ export async function prepareStorageManifest(
   // Process all volumes and artifact in parallel
   const volumePromises = volumeResult.volumes.map(async (volume) => {
     const { versionId, s3Key } = await resolveVersion(
-      scopeId,
+      volumeScopeId,
       volume.vasStorageName,
       "volume",
       volume.vasVersion,
@@ -196,7 +198,7 @@ export async function prepareStorageManifest(
   const artifactPromise = artifactSource
     ? (async () => {
         const { versionId, s3Key } = await resolveVersion(
-          scopeId,
+          artifactScopeId,
           artifactSource.vasStorageName,
           "artifact",
           artifactSource.vasVersion,

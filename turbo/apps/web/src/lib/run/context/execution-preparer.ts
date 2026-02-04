@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import type {
   AgentComposeYaml,
   ExperimentalFirewall,
@@ -9,6 +10,10 @@ import { prepareStorageManifest } from "../../storage/storage-service";
 import { badRequest } from "../../errors";
 import { logger } from "../../logger";
 import { getUserScopeByClerkId } from "../../scope/scope-service";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "../../../db/schema/agent-compose";
 import type { ExperimentalFirewall as CoreExperimentalFirewall } from "@vm0/core";
 
 const log = logger("context:preparer");
@@ -187,18 +192,35 @@ export async function prepareForExecution(
     `Extracted config: workingDir=${workingDir}, cliAgentType=${cliAgentType}, runnerGroup=${runnerGroup}, firewall=${experimentalFirewall ? "enabled" : "disabled"}`,
   );
 
-  // Resolve user's scope for storage access
-  const userScope = await getUserScopeByClerkId(context.userId || "");
-  if (!userScope) {
-    throw badRequest("User scope not found");
+  // Resolve runner's scope for artifact access
+  const runnerScope = await getUserScopeByClerkId(context.userId || "");
+  if (!runnerScope) {
+    throw badRequest("Runner scope not found");
   }
 
-  // Prepare storage manifest with presigned URLs
-  // This is done ONCE here, not in each executor
+  // Resolve owner's scope from compose for volume access
+  const [composeInfo] = await globalThis.services.db
+    .select({ scopeId: agentComposes.scopeId })
+    .from(agentComposeVersions)
+    .innerJoin(
+      agentComposes,
+      eq(agentComposeVersions.composeId, agentComposes.id),
+    )
+    .where(eq(agentComposeVersions.id, context.agentComposeVersionId))
+    .limit(1);
+
+  if (!composeInfo) {
+    throw badRequest("Agent compose not found");
+  }
+
+  // Prepare storage manifest with dual scopes
+  // - Volumes: resolved from agent owner's scope
+  // - Artifacts: resolved from runner's scope
   const storageManifest = await prepareStorageManifest(
     context.agentCompose as AgentComposeYaml,
     context.vars || {},
-    userScope.id,
+    composeInfo.scopeId,
+    runnerScope.id,
     context.artifactName,
     context.artifactVersion,
     context.volumeVersions,
@@ -207,7 +229,7 @@ export async function prepareForExecution(
   );
 
   log.debug(
-    `Storage manifest prepared: ${storageManifest.storages.length} storages, ${storageManifest.artifact ? "1 artifact" : "no artifact"}`,
+    `Storage manifest prepared with dual scopes: owner=${composeInfo.scopeId}, runner=${runnerScope.id}, ${storageManifest.storages.length} storages, ${storageManifest.artifact ? "1 artifact" : "no artifact"}`,
   );
 
   // Build PreparedContext
