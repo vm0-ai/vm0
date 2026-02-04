@@ -22,7 +22,10 @@ import {
   decryptCredentialValue,
   encryptCredentialValue,
 } from "../../../../src/lib/crypto/secrets-encryption";
-import { createSlackClient, postMessage } from "../../../../src/lib/slack";
+import {
+  createSlackClient,
+  isSlackInvalidAuthError,
+} from "../../../../src/lib/slack";
 
 /**
  * Slack Interactive Components Endpoint
@@ -276,127 +279,155 @@ async function fetchBoundAgents(
 }
 
 /**
+ * Update modal view with error handling for invalid auth
+ */
+async function updateModalView(
+  client: ReturnType<typeof createSlackClient>,
+  viewId: string,
+  view: ReturnType<typeof buildAgentAddModal>,
+  workspaceId: string,
+): Promise<void> {
+  try {
+    await client.views.update({
+      view_id: viewId,
+      view,
+    });
+  } catch (err) {
+    if (isSlackInvalidAuthError(err)) {
+      // Clear invalid installation - user will need to re-login
+      await globalThis.services.db
+        .delete(slackInstallations)
+        .where(eq(slackInstallations.slackWorkspaceId, workspaceId));
+    }
+    throw err;
+  }
+}
+
+/**
+ * Handle agent selection in add modal
+ */
+async function handleAgentAddSelection(
+  payload: SlackInteractivePayload,
+  selectedAgentId: string,
+): Promise<void> {
+  const { SECRETS_ENCRYPTION_KEY } = env();
+  const privateMetadata = payload.view?.private_metadata;
+  const { channelId } = privateMetadata
+    ? (JSON.parse(privateMetadata) as { channelId?: string })
+    : { channelId: undefined };
+
+  const [installation] = await globalThis.services.db
+    .select()
+    .from(slackInstallations)
+    .where(eq(slackInstallations.slackWorkspaceId, payload.team.id))
+    .limit(1);
+
+  if (!installation) return;
+
+  const [userLink] = await globalThis.services.db
+    .select()
+    .from(slackUserLinks)
+    .where(
+      and(
+        eq(slackUserLinks.slackUserId, payload.user.id),
+        eq(slackUserLinks.slackWorkspaceId, payload.team.id),
+      ),
+    )
+    .limit(1);
+
+  if (!userLink) return;
+
+  const botToken = decryptCredentialValue(
+    installation.encryptedBotToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+  const client = createSlackClient(botToken);
+  const agents = await fetchAvailableAgents(userLink.vm0UserId, userLink.id);
+  const updatedModal = buildAgentAddModal(agents, selectedAgentId, channelId);
+
+  await updateModalView(
+    client,
+    payload.view!.id,
+    updatedModal,
+    payload.team.id,
+  );
+}
+
+/**
+ * Handle agent selection in update modal
+ */
+async function handleAgentUpdateSelection(
+  payload: SlackInteractivePayload,
+  selectedAgentId: string,
+): Promise<void> {
+  const { SECRETS_ENCRYPTION_KEY } = env();
+  const privateMetadata = payload.view?.private_metadata;
+  const { channelId } = privateMetadata
+    ? (JSON.parse(privateMetadata) as { channelId?: string })
+    : { channelId: undefined };
+
+  const [installation] = await globalThis.services.db
+    .select()
+    .from(slackInstallations)
+    .where(eq(slackInstallations.slackWorkspaceId, payload.team.id))
+    .limit(1);
+
+  if (!installation) return;
+
+  const [userLink] = await globalThis.services.db
+    .select()
+    .from(slackUserLinks)
+    .where(
+      and(
+        eq(slackUserLinks.slackUserId, payload.user.id),
+        eq(slackUserLinks.slackWorkspaceId, payload.team.id),
+      ),
+    )
+    .limit(1);
+
+  if (!userLink) return;
+
+  const botToken = decryptCredentialValue(
+    installation.encryptedBotToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+  const client = createSlackClient(botToken);
+  const agents = await fetchBoundAgents(userLink.vm0UserId, userLink.id);
+  const updatedModal = buildAgentUpdateModal(
+    agents,
+    selectedAgentId,
+    channelId,
+  );
+
+  await updateModalView(
+    client,
+    payload.view!.id,
+    updatedModal,
+    payload.team.id,
+  );
+}
+
+/**
  * Handle block actions (e.g., agent selection change)
  */
 async function handleBlockActions(
   payload: SlackInteractivePayload,
 ): Promise<Response> {
-  const { SECRETS_ENCRYPTION_KEY } = env();
   const action = payload.actions?.[0];
 
   // Handle agent selection in add modal
   if (action?.action_id === "agent_select_action" && payload.view) {
     const selectedAgentId = action.selected_option?.value;
-    const privateMetadata = payload.view.private_metadata;
-
     if (selectedAgentId) {
-      const { channelId } = privateMetadata
-        ? (JSON.parse(privateMetadata) as { channelId?: string })
-        : { channelId: undefined };
-
-      // Get bot token and user link from installation
-      const [installation] = await globalThis.services.db
-        .select()
-        .from(slackInstallations)
-        .where(eq(slackInstallations.slackWorkspaceId, payload.team.id))
-        .limit(1);
-
-      if (installation) {
-        // Get user link to find VM0 user ID
-        const [userLink] = await globalThis.services.db
-          .select()
-          .from(slackUserLinks)
-          .where(
-            and(
-              eq(slackUserLinks.slackUserId, payload.user.id),
-              eq(slackUserLinks.slackWorkspaceId, payload.team.id),
-            ),
-          )
-          .limit(1);
-
-        if (userLink) {
-          const botToken = decryptCredentialValue(
-            installation.encryptedBotToken,
-            SECRETS_ENCRYPTION_KEY,
-          );
-          const client = createSlackClient(botToken);
-
-          // Fetch agents from database
-          const agents = await fetchAvailableAgents(
-            userLink.vm0UserId,
-            userLink.id,
-          );
-
-          // Update the modal with secrets fields for selected agent
-          const updatedModal = buildAgentAddModal(
-            agents,
-            selectedAgentId,
-            channelId,
-          );
-          await client.views.update({
-            view_id: payload.view.id,
-            view: updatedModal,
-          });
-        }
-      }
+      await handleAgentAddSelection(payload, selectedAgentId);
     }
   }
 
   // Handle agent selection in update modal
   if (action?.action_id === "agent_update_select_action" && payload.view) {
     const selectedAgentId = action.selected_option?.value;
-    const privateMetadata = payload.view.private_metadata;
-
     if (selectedAgentId) {
-      const { channelId } = privateMetadata
-        ? (JSON.parse(privateMetadata) as { channelId?: string })
-        : { channelId: undefined };
-
-      // Get bot token and user link from installation
-      const [installation] = await globalThis.services.db
-        .select()
-        .from(slackInstallations)
-        .where(eq(slackInstallations.slackWorkspaceId, payload.team.id))
-        .limit(1);
-
-      if (installation) {
-        // Get user link to find VM0 user ID
-        const [userLink] = await globalThis.services.db
-          .select()
-          .from(slackUserLinks)
-          .where(
-            and(
-              eq(slackUserLinks.slackUserId, payload.user.id),
-              eq(slackUserLinks.slackWorkspaceId, payload.team.id),
-            ),
-          )
-          .limit(1);
-
-        if (userLink) {
-          const botToken = decryptCredentialValue(
-            installation.encryptedBotToken,
-            SECRETS_ENCRYPTION_KEY,
-          );
-          const client = createSlackClient(botToken);
-
-          // Fetch bound agents from database
-          const agents = await fetchBoundAgents(
-            userLink.vm0UserId,
-            userLink.id,
-          );
-
-          // Update the modal with secrets fields for selected agent
-          const updatedModal = buildAgentUpdateModal(
-            agents,
-            selectedAgentId,
-            channelId,
-          );
-          await client.views.update({
-            view_id: payload.view.id,
-            view: updatedModal,
-          });
-        }
-      }
+      await handleAgentUpdateSelection(payload, selectedAgentId);
     }
   }
 
@@ -504,12 +535,13 @@ function extractChannelIdFromMetadata(
 }
 
 /**
- * Send confirmation message to channel after agent is added
+ * Send confirmation message to channel after agent is added (ephemeral - only visible to the user)
  */
 async function sendConfirmationMessage(
   workspaceId: string,
   agentName: string,
   channelId: string,
+  slackUserId: string,
   encryptionKey: string,
 ): Promise<void> {
   const [installation] = await globalThis.services.db
@@ -528,8 +560,10 @@ async function sendConfirmationMessage(
   );
   const client = createSlackClient(botToken);
 
-  const text = `Agent "${agentName}" has been added successfully!`;
-  await postMessage(client, channelId, text, {
+  await client.chat.postEphemeral({
+    channel: channelId,
+    user: slackUserId,
+    text: `Agent "${agentName}" has been added successfully!`,
     blocks: [
       {
         type: "section",
@@ -658,6 +692,7 @@ async function handleAgentAddSubmission(
       payload.team.id,
       agentName,
       channelId,
+      payload.user.id,
       encryptionKey,
     ).catch((error) => {
       console.error("Error sending confirmation message:", error);
@@ -721,6 +756,7 @@ async function handleAgentRemoveSubmission(
       payload.team.id,
       agentNames,
       channelId,
+      payload.user.id,
       encryptionKey,
     ).catch((error) => {
       console.error("Error sending removal confirmation message:", error);
@@ -732,12 +768,13 @@ async function handleAgentRemoveSubmission(
 }
 
 /**
- * Send confirmation message to channel after agents are removed
+ * Send confirmation message to channel after agents are removed (ephemeral - only visible to the user)
  */
 async function sendRemovalConfirmationMessage(
   workspaceId: string,
   agentNames: string[],
   channelId: string,
+  slackUserId: string,
   encryptionKey: string,
 ): Promise<void> {
   const [installation] = await globalThis.services.db
@@ -760,8 +797,10 @@ async function sendRemovalConfirmationMessage(
   const plural = agentNames.length > 1 ? "s" : "";
   const verb = agentNames.length > 1 ? "have" : "has";
 
-  const text = `Agent${plural} ${agentList} ${verb} been removed.`;
-  await postMessage(client, channelId, text, {
+  await client.chat.postEphemeral({
+    channel: channelId,
+    user: slackUserId,
+    text: `Agent${plural} ${agentList} ${verb} been removed.`,
     blocks: [
       {
         type: "section",
@@ -896,6 +935,7 @@ async function handleAgentUpdateSubmission(
       binding.agentName,
       Object.keys(newSecrets),
       channelId,
+      payload.user.id,
       encryptionKey,
     ).catch((error) => {
       console.error("Error sending update confirmation message:", error);
@@ -929,13 +969,14 @@ function parseSecretsFromString(secretsStr: string): Record<string, string> {
 }
 
 /**
- * Send confirmation message to channel after agent secrets are updated
+ * Send confirmation message to channel after agent secrets are updated (ephemeral - only visible to the user)
  */
 async function sendUpdateConfirmationMessage(
   workspaceId: string,
   agentName: string,
   updatedSecretNames: string[],
   channelId: string,
+  slackUserId: string,
   encryptionKey: string,
 ): Promise<void> {
   const [installation] = await globalThis.services.db
@@ -957,8 +998,10 @@ async function sendUpdateConfirmationMessage(
   const secretList = updatedSecretNames.map((n) => `\`${n}\``).join(", ");
   const plural = updatedSecretNames.length > 1 ? "s" : "";
 
-  const text = `Agent "${agentName}" secret${plural} updated: ${secretList}`;
-  await postMessage(client, channelId, text, {
+  await client.chat.postEphemeral({
+    channel: channelId,
+    user: slackUserId,
+    text: `Agent "${agentName}" secret${plural} updated: ${secretList}`,
     blocks: [
       {
         type: "section",

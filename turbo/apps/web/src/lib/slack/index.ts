@@ -37,6 +37,7 @@ export {
   openModal,
   updateModal,
   exchangeOAuthCode,
+  isSlackInvalidAuthError,
 } from "./client";
 
 // Block Kit builders

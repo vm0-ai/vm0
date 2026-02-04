@@ -1,5 +1,23 @@
-import { WebClient } from "@slack/web-api";
+import { WebClient, type WebAPICallResult } from "@slack/web-api";
 import type { Block, KnownBlock, View } from "@slack/web-api";
+
+/**
+ * Check if an error is a Slack invalid_auth error
+ * This happens when the bot token is revoked, expired, or invalid
+ */
+export function isSlackInvalidAuthError(error: unknown): boolean {
+  if (
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    error.code === "slack_webapi_platform_error" &&
+    "data" in error
+  ) {
+    const data = error.data as WebAPICallResult;
+    return data.error === "invalid_auth";
+  }
+  return false;
+}
 
 /**
  * Create a Slack Web API client

@@ -18,6 +18,7 @@ import { decryptCredentialValue } from "../../../../src/lib/crypto/secrets-encry
 import {
   createSlackClient,
   getSlackRedirectBaseUrl,
+  isSlackInvalidAuthError,
 } from "../../../../src/lib/slack";
 import {
   buildAgentAddModal,
@@ -213,7 +214,7 @@ function buildLoginUrl(
   requestUrl: string,
 ): string {
   const baseUrl = getSlackRedirectBaseUrl(requestUrl);
-  return `${baseUrl}/api/slack/oauth/install?w=${encodeURIComponent(payload.team_id)}&u=${encodeURIComponent(payload.user_id)}`;
+  return `${baseUrl}/api/slack/oauth/install?w=${encodeURIComponent(payload.team_id)}&u=${encodeURIComponent(payload.user_id)}&c=${encodeURIComponent(payload.channel_id)}`;
 }
 
 export async function POST(request: Request) {
@@ -305,14 +306,31 @@ export async function POST(request: Request) {
 
   // Handle agent commands
   if (subCommand === "agent") {
-    return handleAgentCommand(
-      action,
-      args,
-      client,
-      payload,
-      userLink.id,
-      userLink.vm0UserId,
-    );
+    try {
+      return await handleAgentCommand(
+        action,
+        args,
+        client,
+        payload,
+        userLink.id,
+        userLink.vm0UserId,
+      );
+    } catch (err) {
+      // If bot token is invalid, clear installation and prompt re-login
+      if (isSlackInvalidAuthError(err)) {
+        await globalThis.services.db
+          .delete(slackInstallations)
+          .where(eq(slackInstallations.slackWorkspaceId, payload.team_id));
+
+        return NextResponse.json({
+          response_type: "ephemeral",
+          blocks: buildErrorMessage(
+            "Your Slack app authorization has expired.\n\nPlease use `/vm0 login` to reconnect.",
+          ),
+        });
+      }
+      throw err;
+    }
   }
 
   // Unknown command
