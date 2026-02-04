@@ -20,6 +20,10 @@ ALTER TABLE "slack_bindings" ALTER COLUMN "vm0_user_id" SET NOT NULL;
 ALTER TABLE "slack_bindings" ALTER COLUMN "slack_workspace_id" SET NOT NULL;
 
 -- Drop the existing foreign key constraint
+-- Handle both possible constraint names:
+-- - "slack_bindings_slack_user_link_id_fkey" (PostgreSQL auto-generated from inline REFERENCES)
+-- - "slack_bindings_slack_user_link_id_slack_user_links_id_fk" (Drizzle-style naming)
+ALTER TABLE "slack_bindings" DROP CONSTRAINT IF EXISTS "slack_bindings_slack_user_link_id_fkey";
 ALTER TABLE "slack_bindings" DROP CONSTRAINT IF EXISTS "slack_bindings_slack_user_link_id_slack_user_links_id_fk";
 
 -- Allow slack_user_link_id to be NULL
