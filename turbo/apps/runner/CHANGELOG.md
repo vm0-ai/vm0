@@ -1,5 +1,20 @@
 # Changelog
 
+## [3.12.1](https://github.com/vm0-ai/vm0/compare/runner-v3.12.0...runner-v3.12.1) (2026-02-04)
+
+
+### Bug Fixes
+
+* **runner:** detect firecracker processes in both api-sock and config-file modes ([#2315](https://github.com/vm0-ai/vm0/issues/2315)) ([b4cee88](https://github.com/vm0-ai/vm0/commit/b4cee880a13b01f392145422c1a3e6ccc9dcd94a))
+* **runner:** kill firecracker child process to prevent orphans ([#2333](https://github.com/vm0-ai/vm0/issues/2333)) ([eef9a6b](https://github.com/vm0-ai/vm0/commit/eef9a6bf795c1c0c8f2ef6bf2c16f42edbb40e67))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.1.0
+
 ## [3.12.0](https://github.com/vm0-ai/vm0/compare/runner-v3.11.3...runner-v3.12.0) (2026-02-04)
 
 

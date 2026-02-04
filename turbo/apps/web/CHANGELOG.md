@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.1.0](https://github.com/vm0-ai/vm0/compare/web-v12.0.0...web-v12.1.0) (2026-02-04)
+
+
+### Features
+
+* **slack:** integrate user secrets with agent modals ([#2328](https://github.com/vm0-ai/vm0/issues/2328)) ([8657063](https://github.com/vm0-ai/vm0/commit/865706306fe3be3254ef0699fdf5c5479a9f9262))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.1.0
+
 ## [12.0.0](https://github.com/vm0-ai/vm0/compare/web-v11.26.0...web-v12.0.0) (2026-02-04)
 
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.45.0](https://github.com/vm0-ai/vm0/compare/platform-v0.44.3...platform-v0.45.0) (2026-02-04)
+
+
+### Features
+
+* **platform:** add two documentation cards for developers and vibe coders ([#2267](https://github.com/vm0-ai/vm0/issues/2267)) ([5cd55da](https://github.com/vm0-ai/vm0/commit/5cd55daf8d0cec0ef25e86f4ffdb9d612ff4395d))
+* **platform:** enhance agents page with schedule status and management dialog ([#2314](https://github.com/vm0-ai/vm0/issues/2314)) ([338809d](https://github.com/vm0-ai/vm0/commit/338809d834a20d006341ddb788995d2124692edd))
+* **slack:** integrate user secrets with agent modals ([#2328](https://github.com/vm0-ai/vm0/issues/2328)) ([8657063](https://github.com/vm0-ai/vm0/commit/865706306fe3be3254ef0699fdf5c5479a9f9262))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.1.0
+
 ## [0.44.3](https://github.com/vm0-ai/vm0/compare/platform-v0.44.2...platform-v0.44.3) (2026-02-04)
 
 

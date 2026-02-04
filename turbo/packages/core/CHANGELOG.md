@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.1.0](https://github.com/vm0-ai/vm0/compare/core-v8.0.0...core-v8.1.0) (2026-02-04)
+
+
+### Features
+
+* **model-provider:** add Azure Foundry support ([#2317](https://github.com/vm0-ai/vm0/issues/2317)) ([7926adb](https://github.com/vm0-ai/vm0/commit/7926adb0a34c25277b49c9d0bea263c5737f959d)), closes [#2310](https://github.com/vm0-ai/vm0/issues/2310)
+
 ## [8.0.0](https://github.com/vm0-ai/vm0/compare/core-v7.15.0...core-v8.0.0) (2026-02-04)
 
 
