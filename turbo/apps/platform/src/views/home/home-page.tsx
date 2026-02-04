@@ -224,7 +224,7 @@ function UsefulReferences({ theme }: { theme: string }) {
           href="https://github.com/vm0-ai/vm0"
         />
         <ReferenceCard
-          title="Documentation for Developers"
+          title="Docs for Developers"
           description="Complete guides and CLI reference"
           icon={<IconBook className="h-8 w-8 text-primary" stroke={1.5} />}
           iconBg=""
