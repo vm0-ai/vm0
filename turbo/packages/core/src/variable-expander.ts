@@ -3,9 +3,9 @@
  * Supports ${{ vars.xxx }}, ${{ secrets.xxx }}, and ${{ credentials.xxx }} syntax
  * Note: ${{ env.xxx }} is parsed but not currently used (reserved for future)
  *
- * Migration note: ${{ credentials.X }} is now treated as an alias for ${{ secrets.X }}
- * Both syntaxes resolve from the secrets source. The credentials source is kept for
- * backward compatibility but secrets takes precedence.
+ * Migration note: ${{ credentials.X }} can resolve from either credentials or secrets source.
+ * The credentials source is checked first, then secrets as fallback. This allows existing
+ * credential references to continue working while also enabling migration to secrets.
  */
 
 /**
@@ -115,23 +115,16 @@ export function expandVariablesInString(
 
   const result = value.replace(VARIABLE_PATTERN, (fullMatch, source, name) => {
     const typedSource = source as "env" | "vars" | "secrets" | "credentials";
-    // Alias: credentials resolves from secrets source
-    // Fall back to credentials source for backward compatibility
-    const sourceObj =
-      typedSource === "credentials"
-        ? (sources.secrets ?? sources.credentials)
-        : sources[typedSource];
 
-    if (sourceObj === undefined) {
-      const key = `${typedSource}.${name}`;
-      if (!seenMissing.has(key)) {
-        seenMissing.add(key);
-        missingVars.push({ source: typedSource, name, fullMatch });
-      }
-      return fullMatch;
+    // For credentials, check credentials source first, then fall back to secrets
+    // This allows ${{ credentials.X }} to resolve from either source
+    let resolved: string | undefined;
+    if (typedSource === "credentials") {
+      resolved = sources.credentials?.[name] ?? sources.secrets?.[name];
+    } else {
+      resolved = sources[typedSource]?.[name];
     }
 
-    const resolved = sourceObj[name];
     if (resolved === undefined) {
       const key = `${typedSource}.${name}`;
       if (!seenMissing.has(key)) {
@@ -205,13 +198,14 @@ export function validateRequiredVariables(
   const missing: VariableReference[] = [];
 
   for (const ref of refs) {
-    // Alias: credentials resolves from secrets source
-    // Fall back to credentials source for backward compatibility
-    const sourceObj =
-      ref.source === "credentials"
-        ? (sources.secrets ?? sources.credentials)
-        : sources[ref.source];
-    if (sourceObj === undefined || sourceObj[ref.name] === undefined) {
+    // For credentials, check credentials source first, then fall back to secrets
+    let resolved: string | undefined;
+    if (ref.source === "credentials") {
+      resolved = sources.credentials?.[ref.name] ?? sources.secrets?.[ref.name];
+    } else {
+      resolved = sources[ref.source]?.[ref.name];
+    }
+    if (resolved === undefined) {
       missing.push(ref);
     }
   }
