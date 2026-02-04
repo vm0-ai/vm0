@@ -32,6 +32,10 @@
     },
     {
       "path": "ansible"
+    },
+    {
+      "path": ".",
+      "name": "root"
     }
   ],
   "extensions": {

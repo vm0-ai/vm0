@@ -170,8 +170,8 @@ function ReferenceCard({
   href: string;
 }) {
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer">
-      <Card className="flex items-center gap-3 p-4 hover:bg-muted/50 transition-colors cursor-pointer">
+    <a href={href} target="_blank" rel="noopener noreferrer" className="h-full">
+      <Card className="h-full flex items-center gap-3 p-4 hover:bg-muted/50 transition-colors cursor-pointer">
         <div
           className={`flex h-8 w-8 items-center justify-center rounded-lg ${iconBg}`}
         >
@@ -192,7 +192,7 @@ function UsefulReferences({ theme }: { theme: string }) {
       <h2 className="text-base font-medium text-foreground mb-4">
         Useful reference
       </h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <ReferenceCard
           title="Explore our community"
           description="Join us on Discord"
@@ -224,14 +224,14 @@ function UsefulReferences({ theme }: { theme: string }) {
           href="https://github.com/vm0-ai/vm0"
         />
         <ReferenceCard
-          title="Documentation for Developers"
+          title="Docs for developers"
           description="Complete guides and CLI reference"
           icon={<IconBook className="h-8 w-8 text-primary" stroke={1.5} />}
           iconBg=""
           href="https://docs.vm0.ai"
         />
         <ReferenceCard
-          title="Vibe Coder Quick Start"
+          title="Vibe coding quick start"
           description="Build agents with Claude Code"
           icon={<IconBook className="h-8 w-8 text-primary" stroke={1.5} />}
           iconBg=""

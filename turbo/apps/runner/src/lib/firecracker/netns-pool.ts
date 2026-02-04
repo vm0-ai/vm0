@@ -41,6 +41,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { z } from "zod";
 import { createLogger } from "../logger.js";
 import { withFileLock } from "../utils/file-lock.js";
+import { isProcessRunning } from "../utils/process.js";
 import { runtimePaths } from "../paths.js";
 import { execCommand } from "../utils/exec.js";
 import { createNetnsWithTap, SNAPSHOT_NETWORK } from "./netns.js";
@@ -49,7 +50,7 @@ const logger = createLogger("NetnsPool");
 
 /** Internal constants for namespace/veth naming and IP allocation */
 const VETH_NS = "veth0";
-const NS_PREFIX = "vm0-ns-";
+export const NS_PREFIX = "vm0-ns-";
 const VETH_PREFIX = "vm0-ve-";
 const VETH_IP_PREFIX = "10.200";
 
@@ -82,7 +83,7 @@ const RunnerEntrySchema = z.object({
   namespaces: z.record(z.string(), NamespaceEntrySchema),
 });
 
-const RegistrySchema = z.object({
+export const RegistrySchema = z.object({
   runners: z.record(z.string(), RunnerEntrySchema),
 });
 
@@ -202,15 +203,6 @@ function makeVethName(runnerIdx: string, nsIdx: string): string {
   return `${VETH_PREFIX}${runnerIdx}-${nsIdx}`;
 }
 
-function isPidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 async function deleteIptablesRulesByComment(comment: string): Promise<void> {
   const deleteFromTable = async (table: string) => {
     try {
@@ -310,7 +302,7 @@ export class NetnsPool {
       }[] = [];
 
       for (const [runnerIdx, runner] of Object.entries(data.runners)) {
-        if (!isPidAlive(runner.pid)) {
+        if (!isProcessRunning(runner.pid)) {
           orphaned.push({
             runnerIdx,
             namespaces: Object.entries(runner.namespaces).map(
@@ -351,7 +343,7 @@ export class NetnsPool {
       // Re-check and remove orphaned entries (PID might have been reused)
       for (const { runnerIdx } of orphanedData) {
         const runner = data.runners[runnerIdx];
-        if (runner && !isPidAlive(runner.pid)) {
+        if (runner && !isProcessRunning(runner.pid)) {
           delete data.runners[runnerIdx];
         }
       }

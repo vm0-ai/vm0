@@ -46,7 +46,7 @@ jobs:
         shell: bash
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          METAL_USER: ${{ secrets.AWS_METAL_RUNNER_USER }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
         run: |
           SSH_KEY_FILE="$HOME/.ssh/metal.pem"

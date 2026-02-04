@@ -10,30 +10,26 @@
 
 import { Command } from "commander";
 import { existsSync, readFileSync, readdirSync } from "fs";
+import { execSync } from "child_process";
 import { loadConfig, type RunnerConfig } from "../lib/config.js";
-import { runnerPaths } from "../lib/paths.js";
+import { runnerPaths, runtimePaths } from "../lib/paths.js";
 import { pollForJob } from "../lib/api.js";
 import {
   findFirecrackerProcesses,
   findMitmproxyProcess,
 } from "../lib/firecracker/process.js";
+import { withFileLock } from "../lib/utils/file-lock.js";
+import { isProcessRunning } from "../lib/utils/process.js";
 import { isPortInUse } from "../lib/firecracker/network.js";
 import { SNAPSHOT_NETWORK } from "../lib/firecracker/netns.js";
+import { NS_PREFIX, RegistrySchema } from "../lib/firecracker/netns-pool.js";
 import { type VmId, createVmId } from "../lib/firecracker/vm-id.js";
-
-interface RunnerStatus {
-  mode: string;
-  active_runs: number;
-  active_run_ids: string[];
-  started_at: string;
-  updated_at: string;
-}
+import { type RunnerStatus, RunnerStatusSchema } from "../lib/runner/types.js";
 
 interface JobInfo {
   runId: string;
   vmId: VmId;
-  hasProcess: boolean;
-  pid?: number;
+  firecrackerPid?: number;
 }
 
 interface FirecrackerProcess {
@@ -48,16 +44,19 @@ interface Warning {
 /**
  * Display runner status from status.json
  */
-function displayRunnerStatus(statusFilePath: string): RunnerStatus | null {
+function displayRunnerStatus(
+  statusFilePath: string,
+  warnings: Warning[],
+): RunnerStatus | null {
   if (!existsSync(statusFilePath)) {
     console.log("Mode: unknown (no status.json)");
     return null;
   }
 
   try {
-    const status = JSON.parse(
-      readFileSync(statusFilePath, "utf-8"),
-    ) as RunnerStatus;
+    const status = RunnerStatusSchema.parse(
+      JSON.parse(readFileSync(statusFilePath, "utf-8")),
+    );
     console.log(`Mode: ${status.mode}`);
     if (status.started_at) {
       const started = new Date(status.started_at);
@@ -67,6 +66,7 @@ function displayRunnerStatus(statusFilePath: string): RunnerStatus | null {
     return status;
   } catch {
     console.log("Mode: unknown (status.json unreadable)");
+    warnings.push({ message: "status.json exists but cannot be parsed" });
     return null;
   }
 }
@@ -74,7 +74,10 @@ function displayRunnerStatus(statusFilePath: string): RunnerStatus | null {
 /**
  * Check API connectivity
  */
-async function checkApiConnectivity(config: RunnerConfig): Promise<void> {
+async function checkApiConnectivity(
+  config: RunnerConfig,
+  warnings: Warning[],
+): Promise<void> {
   console.log("API Connectivity:");
   try {
     await pollForJob(config.server, config.group);
@@ -85,6 +88,9 @@ async function checkApiConnectivity(config: RunnerConfig): Promise<void> {
     console.log(
       `    Error: ${error instanceof Error ? error.message : "Unknown error"}`,
     );
+    warnings.push({
+      message: `Cannot connect to API: ${error instanceof Error ? error.message : "Unknown error"}`,
+    });
   }
 }
 
@@ -139,8 +145,7 @@ function buildJobInfo(
       jobs.push({
         runId,
         vmId,
-        hasProcess: !!proc,
-        pid: proc?.pid,
+        firecrackerPid: proc?.pid,
       });
     }
   }
@@ -161,8 +166,8 @@ function displayRuns(jobs: JobInfo[], maxConcurrent: number): void {
 
   console.log("  Run ID                                VM ID       Status");
   for (const job of jobs) {
-    const statusText = job.hasProcess
-      ? `✓ Running (PID ${job.pid})`
+    const statusText = job.firecrackerPid
+      ? `✓ Running (PID ${job.firecrackerPid})`
       : "⚠️ No process";
 
     console.log(`  ${job.runId}  ${job.vmId}    ${statusText}`);
@@ -170,18 +175,85 @@ function displayRuns(jobs: JobInfo[], maxConcurrent: number): void {
 }
 
 /**
+ * Find orphan network namespaces (namespaces whose runner process is no longer running)
+ */
+async function findOrphanNetworkNamespaces(
+  warnings: Warning[],
+): Promise<string[]> {
+  // List all vm0 network namespaces
+  let allNamespaces: string[] = [];
+  try {
+    const output = execSync("ip netns list 2>/dev/null || true", {
+      encoding: "utf-8",
+    });
+    allNamespaces = output
+      .split("\n")
+      .map((line) => line.split(" ")[0] ?? "")
+      .filter((ns) => ns.startsWith(NS_PREFIX));
+  } catch (err) {
+    warnings.push({
+      message: `Failed to list network namespaces: ${err instanceof Error ? err.message : "Unknown error"}`,
+    });
+    return [];
+  }
+
+  if (allNamespaces.length === 0) {
+    return [];
+  }
+
+  // Read netns registry to check runner PIDs
+  const registryPath = runtimePaths.netnsRegistry;
+  if (!existsSync(registryPath)) {
+    // No registry but namespaces exist - all are orphans
+    return allNamespaces;
+  }
+
+  try {
+    return await withFileLock(registryPath, async () => {
+      const registry = RegistrySchema.parse(
+        JSON.parse(readFileSync(registryPath, "utf-8")),
+      );
+
+      // Build set of namespaces belonging to alive runners
+      const aliveNamespaces = new Set<string>();
+      for (const [runnerIdx, runner] of Object.entries(registry.runners)) {
+        if (isProcessRunning(runner.pid)) {
+          for (const nsIdx of Object.keys(runner.namespaces)) {
+            aliveNamespaces.add(`${NS_PREFIX}${runnerIdx}-${nsIdx}`);
+          }
+        }
+      }
+
+      // Find orphans
+      const orphans: string[] = [];
+      for (const ns of allNamespaces) {
+        if (!aliveNamespaces.has(ns)) {
+          orphans.push(ns);
+        }
+      }
+      return orphans;
+    });
+  } catch (err) {
+    warnings.push({
+      message: `Failed to read netns registry: ${err instanceof Error ? err.message : "Unknown error"}`,
+    });
+    return [];
+  }
+}
+
+/**
  * Detect orphan resources and add warnings
  */
-function detectOrphanResources(
+async function detectOrphanResources(
   jobs: JobInfo[],
   processes: FirecrackerProcess[],
   workspaces: string[],
   statusVmIds: Set<VmId>,
   warnings: Warning[],
-): void {
+): Promise<void> {
   // Runs without process
   for (const job of jobs) {
-    if (!job.hasProcess) {
+    if (!job.firecrackerPid) {
       warnings.push({
         message: `Run ${job.vmId} in status.json but no Firecracker process running`,
       });
@@ -198,8 +270,13 @@ function detectOrphanResources(
     }
   }
 
-  // Note: Network namespaces are managed by NetnsPool, which handles orphan cleanup
-  // during init(). No need to check for orphan namespaces here.
+  // Orphan network namespaces
+  const orphanNetns = await findOrphanNetworkNamespaces(warnings);
+  for (const ns of orphanNetns) {
+    warnings.push({
+      message: `Orphan network namespace: ${ns} (runner process not running)`,
+    });
+  }
 
   // Orphan workspaces
   for (const ws of workspaces) {
@@ -253,11 +330,11 @@ export const doctorCommand = new Command("doctor")
 
       // Runner info
       console.log(`Runner: ${config.name}`);
-      const status = displayRunnerStatus(statusFilePath);
+      const status = displayRunnerStatus(statusFilePath, warnings);
       console.log("");
 
       // API Connectivity
-      await checkApiConnectivity(config);
+      await checkApiConnectivity(config, warnings);
       console.log("");
 
       // Network status
@@ -276,7 +353,13 @@ export const doctorCommand = new Command("doctor")
       console.log("");
 
       // Detect warnings
-      detectOrphanResources(jobs, processes, workspaces, statusVmIds, warnings);
+      await detectOrphanResources(
+        jobs,
+        processes,
+        workspaces,
+        statusVmIds,
+        warnings,
+      );
 
       // Display warnings
       displayWarnings(warnings);

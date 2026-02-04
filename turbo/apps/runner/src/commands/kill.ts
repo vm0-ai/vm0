@@ -14,14 +14,7 @@ import { loadConfig } from "../lib/config.js";
 import { runnerPaths } from "../lib/paths.js";
 import { findProcessByVmId, killProcess } from "../lib/firecracker/process.js";
 import { type VmId, createVmId } from "../lib/firecracker/vm-id.js";
-
-interface RunnerStatus {
-  mode: string;
-  active_runs: number;
-  active_run_ids: string[];
-  started_at: string;
-  updated_at: string;
-}
+import { RunnerStatusSchema } from "../lib/runner/types.js";
 
 interface CleanupResult {
   step: string;
@@ -126,9 +119,9 @@ export const killCommand = new Command("kill")
         // 3. Update status.json
         if (runId && existsSync(statusFilePath)) {
           try {
-            const status: RunnerStatus = JSON.parse(
-              readFileSync(statusFilePath, "utf-8"),
-            ) as RunnerStatus;
+            const status = RunnerStatusSchema.parse(
+              JSON.parse(readFileSync(statusFilePath, "utf-8")),
+            );
             const oldCount = status.active_runs;
             status.active_run_ids = status.active_run_ids.filter(
               (id: string) => id !== runId,
@@ -193,9 +186,9 @@ function resolveRunId(
 
   if (existsSync(statusFilePath)) {
     try {
-      const status: RunnerStatus = JSON.parse(
-        readFileSync(statusFilePath, "utf-8"),
-      ) as RunnerStatus;
+      const status = RunnerStatusSchema.parse(
+        JSON.parse(readFileSync(statusFilePath, "utf-8")),
+      );
       const match = status.active_run_ids.find((id: string) =>
         id.startsWith(input),
       );
