@@ -8,7 +8,6 @@ import {
   formatEventTime,
   type EventData,
 } from "./event-card.tsx";
-import { highlightText } from "../utils/highlight-text.tsx";
 import { StatusDot } from "./status-dot.tsx";
 
 interface GroupedMessageCardProps {
@@ -20,22 +19,6 @@ interface GroupedMessageCardProps {
 
 // Layout constants
 const MESSAGE_SPACING = "py-2";
-
-// Auto-collapse thresholds
-const TEXT_COLLAPSE_CHARS = 500;
-const TEXT_COLLAPSE_LINES = 8;
-
-function shouldCollapseText(text: string): boolean {
-  const lines = text.split("\n").length;
-  return text.length > TEXT_COLLAPSE_CHARS || lines > TEXT_COLLAPSE_LINES;
-}
-
-function textContainsSearch(text: string, searchTerm: string): boolean {
-  if (!searchTerm.trim()) {
-    return false;
-  }
-  return text.toLowerCase().includes(searchTerm.toLowerCase());
-}
 
 function MarkdownContent({ text }: { text: string }) {
   return (
@@ -52,92 +35,13 @@ function MarkdownContent({ text }: { text: string }) {
   );
 }
 
-function HighlightedMarkdownContent({
-  text,
-  searchTerm,
-  currentMatchIndex,
-  matchStartIndex,
-}: {
-  text: string;
-  searchTerm: string;
-  currentMatchIndex: number;
-  matchStartIndex: number;
-}) {
-  // For markdown, we highlight the plain text but render as markdown
-  // This is a simplified approach - highlighting inside markdown is complex
-  const hasMatch = textContainsSearch(text, searchTerm);
-
-  if (!hasMatch) {
-    return <MarkdownContent text={text} />;
-  }
-
-  // When there's a match, show highlighted plain text instead of markdown
-  // This ensures the highlighting is visible
-  const result = highlightText(text, {
-    searchTerm,
-    currentMatchIndex,
-    matchStartIndex,
-  });
-
+function CollapsibleText({ text }: { text: string }) {
   return (
-    <div className="text-sm whitespace-pre-wrap break-words">
-      {result.element}
-    </div>
-  );
-}
-
-function CollapsibleMarkdown({
-  text,
-  searchTerm,
-  currentMatchIndex,
-  matchStartIndex,
-}: {
-  text: string;
-  searchTerm?: string;
-  currentMatchIndex?: number;
-  matchStartIndex?: number;
-}) {
-  const shouldCollapse = shouldCollapseText(text);
-  const hasSearch = searchTerm && searchTerm.trim().length > 0;
-  const hasMatch = hasSearch && textContainsSearch(text, searchTerm);
-
-  // If not collapsible or has search match, show full content
-  if (!shouldCollapse || hasMatch) {
-    if (hasSearch) {
-      return (
-        <HighlightedMarkdownContent
-          text={text}
-          searchTerm={searchTerm}
-          currentMatchIndex={currentMatchIndex ?? 0}
-          matchStartIndex={matchStartIndex ?? 0}
-        />
-      );
-    }
-    return <MarkdownContent text={text} />;
-  }
-
-  // Calculate line count for display
-  const lines = text.split("\n");
-  const lineCount = lines.length;
-  const previewLines = lines.slice(0, 3);
-  const previewText = previewLines.join("\n");
-  const remainingLines = lineCount - 3;
-
-  return (
-    <details className="group">
-      <summary className="cursor-pointer list-none">
-        <span className="group-open:hidden">
-          <MarkdownContent text={previewText} />
-          <span className="text-xs text-muted-foreground hover:text-foreground">
-            ... +{remainingLines} lines
-          </span>
-        </span>
-        <span className="hidden group-open:block">
+    <details className="group cursor-pointer">
+      <summary className="list-none">
+        <div className="line-clamp-1 group-open:line-clamp-none">
           <MarkdownContent text={text} />
-          <span className="text-xs text-muted-foreground hover:text-foreground">
-            ... -{remainingLines} lines
-          </span>
-        </span>
+        </div>
       </summary>
     </details>
   );
@@ -373,12 +277,7 @@ function AssistantMessageCard({
         <div className="flex gap-2 items-start">
           <StatusDot variant="neutral" className="mt-1.5" />
           <div className="flex-1 min-w-0">
-            <CollapsibleMarkdown
-              text={textBefore}
-              searchTerm={searchTerm}
-              currentMatchIndex={currentMatchIndex}
-              matchStartIndex={currentOffset}
-            />
+            <CollapsibleText text={textBefore} />
           </div>
           <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
             {timestamp}
@@ -418,12 +317,7 @@ function AssistantMessageCard({
       >
         <StatusDot variant="neutral" className="mt-1.5" />
         <div className="flex-1 min-w-0">
-          <CollapsibleMarkdown
-            text={textAfter}
-            searchTerm={searchTerm}
-            currentMatchIndex={currentMatchIndex}
-            matchStartIndex={currentOffset + textBeforeMatches}
-          />
+          <CollapsibleText text={textAfter} />
         </div>
       </div>,
     );
