@@ -109,3 +109,35 @@ EOF
     assert_output --partial "● Bash("
     assert_output --partial "hello from scope test"
 }
+
+# ============================================
+# vm0 compose default file behavior
+# ============================================
+
+@test "t22-3: vm0 compose uses vm0.yaml by default when no argument provided" {
+    # This test verifies that running `vm0 compose` without arguments
+    # defaults to using vm0.yaml in the current directory (issue #2286)
+
+    echo "# Creating vm0.yaml in test directory..."
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    description: "Test agent for default file behavior"
+    framework: claude-code
+    image: "vm0/claude-code:dev"
+    working_dir: /home/user/workspace
+EOF
+
+    echo "# Running vm0 compose without arguments from test directory..."
+    cd "$TEST_DIR"
+    run $CLI_COMMAND compose
+    cd - >/dev/null
+
+    assert_success
+
+    echo "# Verifying compose succeeded with default vm0.yaml..."
+    assert_output --regexp "Compose (created|version exists): [a-z0-9-]+/$AGENT_NAME"
+    assert_output --partial "Version:"
+}
