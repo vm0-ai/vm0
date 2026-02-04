@@ -1,9 +1,10 @@
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, gte, asc } from "drizzle-orm";
 import {
   agentComposes,
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
 import { agentRuns } from "../../../db/schema/agent-run";
+import { agentSessions } from "../../../db/schema/agent-session";
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { generateSandboxToken } from "../../auth/sandbox-token";
 import { buildExecutionContext, prepareAndDispatchRun } from "../../run";
@@ -36,6 +37,11 @@ interface WaitResult {
   error?: string;
 }
 
+interface RunAgentResult {
+  response: string;
+  sessionId: string | undefined;
+}
+
 /**
  * Execute an agent run for Slack
  *
@@ -43,7 +49,7 @@ interface WaitResult {
  */
 export async function runAgentForSlack(
   params: RunAgentParams,
-): Promise<string> {
+): Promise<RunAgentResult> {
   const { binding, sessionId, prompt, threadContext, userId, encryptionKey } =
     params;
 
@@ -56,7 +62,7 @@ export async function runAgentForSlack(
       .limit(1);
 
     if (!compose) {
-      return "Error: Agent configuration not found.";
+      return { response: "Error: Agent configuration not found.", sessionId };
     }
 
     // Get latest version (using headVersionId if available, otherwise query)
@@ -70,7 +76,10 @@ export async function runAgentForSlack(
         .limit(1);
 
       if (!latestVersion) {
-        return "Error: Agent has no versions configured.";
+        return {
+          response: "Error: Agent has no versions configured.",
+          sessionId,
+        };
       }
       versionId = latestVersion.id;
     }
@@ -105,7 +114,7 @@ export async function runAgentForSlack(
       .returning();
 
     if (!run) {
-      return "Error: Failed to create run.";
+      return { response: "Error: Failed to create run.", sessionId };
     }
 
     log.debug(`Created run ${run.id} for Slack binding ${binding.id}`);
@@ -135,17 +144,47 @@ export async function runAgentForSlack(
       pollIntervalMs: 5000, // 5 second polling interval
     });
 
+    // If no existing session, find the session created for this run
+    // Use run.createdAt to avoid race conditions with concurrent runs
+    let resultSessionId = sessionId;
+    if (!sessionId && result.status === "completed") {
+      const [newSession] = await globalThis.services.db
+        .select({ id: agentSessions.id })
+        .from(agentSessions)
+        .where(
+          and(
+            eq(agentSessions.userId, userId),
+            eq(agentSessions.agentComposeId, binding.composeId),
+            gte(agentSessions.createdAt, run.createdAt),
+          ),
+        )
+        .orderBy(asc(agentSessions.createdAt))
+        .limit(1);
+
+      resultSessionId = newSession?.id;
+    }
+
     if (result.status === "completed") {
-      return result.output ?? "Task completed successfully.";
+      return {
+        response: result.output ?? "Task completed successfully.",
+        sessionId: resultSessionId,
+      };
     } else if (result.status === "failed") {
-      return `Error: ${result.error ?? "Agent execution failed."}`;
+      return {
+        response: `Error: ${result.error ?? "Agent execution failed."}`,
+        sessionId: resultSessionId,
+      };
     } else {
-      return "The agent is still working on your request. Check back later.";
+      return {
+        response:
+          "The agent is still working on your request. Check back later.",
+        sessionId: resultSessionId,
+      };
     }
   } catch (error) {
     log.error("Error running agent for Slack:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
-    return `Error executing agent: ${message}`;
+    return { response: `Error executing agent: ${message}`, sessionId };
   }
 }
 
