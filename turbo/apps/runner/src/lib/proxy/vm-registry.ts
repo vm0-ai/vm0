@@ -9,7 +9,6 @@
  */
 import fs from "fs";
 import { createLogger } from "../logger.js";
-import { tempPaths } from "../paths.js";
 
 const logger = createLogger("VMRegistry");
 
@@ -53,20 +52,13 @@ interface RegistryData {
 }
 
 /**
- * Default path for the registry file
- * This path is read by the mitmproxy addon
- * TODO: Should use runnerPaths instead of tempPaths for proper isolation
- */
-export const DEFAULT_REGISTRY_PATH = tempPaths.vmRegistry;
-
-/**
  * VM Registry class for managing VM IP → RunId mappings
  */
 export class VMRegistry {
   private registryPath: string;
   private data: RegistryData;
 
-  constructor(registryPath: string = DEFAULT_REGISTRY_PATH) {
+  constructor(registryPath: string) {
     this.registryPath = registryPath;
     this.data = this.load();
   }
@@ -178,18 +170,21 @@ let globalRegistry: VMRegistry | null = null;
 
 /**
  * Get the global VM registry instance
+ * @throws Error if registry was not initialized with initVMRegistry
  */
 export function getVMRegistry(): VMRegistry {
   if (!globalRegistry) {
-    globalRegistry = new VMRegistry();
+    throw new Error(
+      "VMRegistry not initialized. Call initVMRegistry(registryPath) first.",
+    );
   }
   return globalRegistry;
 }
 
 /**
- * Initialize the VM registry with a custom path
+ * Initialize the VM registry with a registry path
  */
-export function initVMRegistry(registryPath?: string): VMRegistry {
+export function initVMRegistry(registryPath: string): VMRegistry {
   globalRegistry = new VMRegistry(registryPath);
   return globalRegistry;
 }

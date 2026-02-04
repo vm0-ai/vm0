@@ -9,7 +9,7 @@
 import { spawn, ChildProcess } from "child_process";
 import fs from "fs";
 import path from "path";
-import { getVMRegistry, DEFAULT_REGISTRY_PATH } from "./vm-registry";
+import { getVMRegistry } from "./vm-registry";
 import { RUNNER_MITM_ADDON_SCRIPT } from "./mitm-addon-script";
 import { createLogger } from "../logger.js";
 
@@ -23,6 +23,8 @@ interface RequiredProxyConfig {
   caDir: string;
   /** VM0 API URL for the addon (from runner config server.url) */
   apiUrl: string;
+  /** Path to the VM registry file (per-runner isolation) */
+  registryPath: string;
 }
 
 /**
@@ -31,8 +33,6 @@ interface RequiredProxyConfig {
 interface OptionalProxyConfig {
   /** Port for mitmproxy to listen on */
   port: number;
-  /** Path to the VM registry file */
-  registryPath: string;
 }
 
 /**
@@ -53,7 +53,6 @@ type ProxyConfigInput = RequiredProxyConfig & Partial<OptionalProxyConfig>;
  */
 const DEFAULT_PROXY_OPTIONS: OptionalProxyConfig = {
   port: 8080,
-  registryPath: DEFAULT_REGISTRY_PATH,
 };
 
 /**

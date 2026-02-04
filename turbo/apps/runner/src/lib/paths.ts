@@ -60,6 +60,9 @@ export const runnerPaths = {
   /** Extract vmId from workspace directory name */
   extractVmId: (dirname: string): VmId =>
     createVmId(dirname.replace(VM_WORKSPACE_PREFIX, "")),
+
+  /** VM registry file for proxy IP → run mapping */
+  vmRegistry: (baseDir: string) => path.join(baseDir, "vm-registry.json"),
 };
 
 /**
@@ -105,9 +108,6 @@ export const snapshotOutputPaths = {
 export const tempPaths = {
   /** Default proxy CA directory */
   proxyDir: `${VM0_TMP_PREFIX}-proxy`,
-
-  /** VM registry for proxy */
-  vmRegistry: `${VM0_TMP_PREFIX}-vm-registry.json`,
 
   /** Network log file for a run */
   networkLog: (runId: string) => `${VM0_TMP_PREFIX}-network-${runId}.jsonl`,

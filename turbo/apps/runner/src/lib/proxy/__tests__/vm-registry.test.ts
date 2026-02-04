@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { VMRegistry, DEFAULT_REGISTRY_PATH } from "../vm-registry";
+import { VMRegistry } from "../vm-registry";
 
 describe("VMRegistry", () => {
   let registry: VMRegistry;
@@ -20,12 +20,7 @@ describe("VMRegistry", () => {
   });
 
   describe("constructor", () => {
-    it("should use default path when not specified", () => {
-      const defaultRegistry = new VMRegistry();
-      expect(defaultRegistry["registryPath"]).toBe(DEFAULT_REGISTRY_PATH);
-    });
-
-    it("should use custom path when specified", () => {
+    it("should use the specified path", () => {
       expect(registry["registryPath"]).toBe(testRegistryPath);
     });
   });

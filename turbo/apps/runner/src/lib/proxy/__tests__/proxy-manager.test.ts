@@ -24,6 +24,7 @@ describe("ProxyManager", () => {
       caDir: path.join(tempDir, "proxy"),
       port: 8080,
       apiUrl: "https://test.api.com",
+      registryPath: path.join(tempDir, "vm-registry.json"),
     });
   });
 
@@ -49,6 +50,7 @@ describe("ProxyManager", () => {
         caDir: customDir,
         port: 9090,
         apiUrl: "https://custom.api.com",
+        registryPath: path.join(tempDir, "custom-registry.json"),
       });
 
       const config = customManager.getConfig();
@@ -64,6 +66,7 @@ describe("ProxyManager", () => {
       const minimalManager = new ProxyManager({
         caDir: minimalDir,
         apiUrl: "https://test.api.com",
+        registryPath: path.join(tempDir, "minimal-registry.json"),
       });
 
       const config = minimalManager.getConfig();

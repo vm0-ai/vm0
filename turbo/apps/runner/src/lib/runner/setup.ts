@@ -47,11 +47,13 @@ export async function setupEnvironment(
   // The proxy is always started but only used when experimentalFirewall is enabled
   // Must initialize BEFORE netns pool so we know the proxy port
   logger.log("Initializing network proxy...");
-  initVMRegistry();
+  const registryPath = runnerPaths.vmRegistry(config.base_dir);
+  initVMRegistry(registryPath);
   const proxyManager = initProxyManager({
     apiUrl: config.server.url,
     port: config.proxy.port,
     caDir: config.proxy.ca_dir,
+    registryPath,
   });
 
   // Try to start proxy - if mitmproxy is not installed, continue without it
