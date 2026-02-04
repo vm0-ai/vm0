@@ -3,7 +3,6 @@ import {
   isInteractive as defaultIsInteractive,
   promptText as defaultPromptText,
   promptConfirm as defaultPromptConfirm,
-  promptPassword as defaultPromptPassword,
 } from "../../lib/utils/prompt-utils";
 import type { RequiredConfiguration } from "../../lib/domain/schedule-utils";
 
@@ -11,8 +10,6 @@ import type { RequiredConfiguration } from "../../lib/domain/schedule-utils";
  * Result of gathering configuration for schedule setup
  */
 interface GatherConfigurationResult {
-  /** Secrets to send to the server (may be empty) */
-  secrets: Record<string, string>;
   /** Vars to send to the server (may be empty) */
   vars: Record<string, string>;
   /** If true, send undefined to server to preserve existing secrets */
@@ -32,7 +29,7 @@ interface ExistingScheduleConfig {
  */
 interface GatherConfigurationParams {
   required: RequiredConfiguration;
-  optionSecrets: string[];
+  optionSecrets: string[]; // Kept for backward compat but ignored
   optionVars: string[];
   existingSchedule: ExistingScheduleConfig | undefined;
 }
@@ -46,7 +43,6 @@ interface PromptDeps {
     message: string,
     defaultValue?: boolean,
   ) => Promise<boolean | undefined>;
-  promptPassword: (message: string) => Promise<string | undefined>;
   promptText: (
     message: string,
     defaultValue?: string,
@@ -60,7 +56,6 @@ interface PromptDeps {
 const defaultPromptDeps: PromptDeps = {
   isInteractive: defaultIsInteractive,
   promptConfirm: defaultPromptConfirm,
-  promptPassword: defaultPromptPassword,
   promptText: defaultPromptText,
 };
 
@@ -81,26 +76,14 @@ function parseKeyValuePairs(pairs: string[]): Record<string, string> {
 }
 
 /**
- * Handle secrets from options or existing schedule.
- * Returns the initial secrets and whether to preserve existing.
+ * Handle existing secrets - only preserve, never prompt for new.
+ * Secrets are now managed via platform (vm0 secret set).
  */
-async function handleSecrets(
-  optionSecrets: string[],
+async function handleExistingSecrets(
   existingSecretNames: string[],
   deps: PromptDeps,
-): Promise<{
-  secrets: Record<string, string>;
-  preserveExistingSecrets: boolean;
-}> {
-  // Case 1: Explicit --secret flags provided
-  if (optionSecrets.length > 0) {
-    return {
-      secrets: parseKeyValuePairs(optionSecrets),
-      preserveExistingSecrets: false,
-    };
-  }
-
-  // Case 2: Updating schedule with existing secrets - ask user
+): Promise<boolean> {
+  // If updating schedule with existing secrets - ask user if they want to keep them
   if (existingSecretNames.length > 0 && deps.isInteractive()) {
     const keepSecrets = await deps.promptConfirm(
       `Keep existing secrets? (${existingSecretNames.join(", ")})`,
@@ -108,15 +91,18 @@ async function handleSecrets(
     );
 
     if (keepSecrets) {
-      return { secrets: {}, preserveExistingSecrets: true };
+      return true; // preserveExistingSecrets
     }
 
-    console.log(chalk.dim("  Note: You'll need to provide new secret values"));
-    return { secrets: {}, preserveExistingSecrets: false };
+    console.log(
+      chalk.dim(
+        "  Note: Secrets will be cleared. Use 'vm0 secret set' to add platform secrets.",
+      ),
+    );
+    return false;
   }
 
-  // Case 3: New schedule (no existing secrets)
-  return { secrets: {}, preserveExistingSecrets: false };
+  return false; // No existing secrets to preserve
 }
 
 /**
@@ -154,40 +140,25 @@ function displayMissingRequirements(
   missingSecrets: string[],
   missingVars: string[],
 ): void {
-  console.log(chalk.yellow("\nAgent requires the following configuration:"));
-
   if (missingSecrets.length > 0) {
-    console.log(chalk.dim("  Secrets:"));
+    console.log(chalk.yellow("\nAgent requires the following secrets:"));
     for (const name of missingSecrets) {
-      console.log(chalk.dim(`    ${name}`));
+      console.log(chalk.dim(`  ${name}`));
     }
+    console.log();
+    console.log("Set secrets using the platform:");
+    for (const name of missingSecrets) {
+      console.log(chalk.cyan(`  vm0 secret set ${name} <value>`));
+    }
+    console.log();
   }
 
   if (missingVars.length > 0) {
-    console.log(chalk.dim("  Vars:"));
+    console.log(chalk.yellow("\nAgent requires the following variables:"));
     for (const name of missingVars) {
-      console.log(chalk.dim(`    ${name}`));
+      console.log(chalk.dim(`  ${name}`));
     }
-  }
-
-  console.log("");
-}
-
-/**
- * Prompt for missing secrets interactively
- */
-async function promptForMissingSecrets(
-  missingSecrets: string[],
-  secrets: Record<string, string>,
-  deps: PromptDeps,
-): Promise<void> {
-  for (const name of missingSecrets) {
-    const value = await deps.promptPassword(
-      `Enter value for secret ${chalk.cyan(name)}`,
-    );
-    if (value) {
-      secrets[name] = value;
-    }
+    console.log();
   }
 }
 
@@ -211,19 +182,10 @@ async function promptForMissingVars(
 }
 
 /**
- * Gather all configuration (secrets and vars) for schedule setup.
+ * Gather configuration (vars only) for schedule setup.
  *
- * This function handles:
- * 1. --secret and --var flags (non-interactive)
- * 2. Prompting to keep existing secrets/vars (update scenario)
- * 3. Prompting for missing required secrets/vars (interactive)
- *
- * The key insight is that `preserveExistingSecrets` should ONLY be true when:
- * - There ARE existing secrets on the server, AND
- * - The user explicitly chose to keep them
- *
- * For new schedules (no existing secrets), even if no --secret flag is provided,
- * we should gather secrets interactively and send them to the server.
+ * Secrets are now managed via platform (vm0 secret set), not via schedule CLI.
+ * This function still supports preserving existing secrets for backward compat.
  *
  * @param params - Configuration parameters
  * @param deps - Prompt dependencies (optional, for testing)
@@ -232,17 +194,18 @@ export async function gatherConfiguration(
   params: GatherConfigurationParams,
   deps: PromptDeps = defaultPromptDeps,
 ): Promise<GatherConfigurationResult> {
-  const { required, optionSecrets, optionVars, existingSchedule } = params;
+  const { required, optionVars, existingSchedule } = params;
 
   const existingSecretNames = existingSchedule?.secretNames ?? [];
   const existingVars = existingSchedule?.vars ?? null;
 
-  // Handle secrets and vars from options or existing schedule
-  const { secrets, preserveExistingSecrets } = await handleSecrets(
-    optionSecrets,
+  // Handle existing secrets (preserve or clear, never prompt for new values)
+  const preserveExistingSecrets = await handleExistingSecrets(
     existingSecretNames,
     deps,
   );
+
+  // Handle vars from options or existing schedule
   const vars = await handleVars(optionVars, existingVars, deps);
 
   // Determine which secrets/vars are missing
@@ -250,9 +213,7 @@ export async function gatherConfiguration(
     ? existingSecretNames
     : [];
   const missingSecrets = required.secrets.filter(
-    (name) =>
-      !Object.keys(secrets).includes(name) &&
-      !effectiveExistingSecrets.includes(name),
+    (name) => !effectiveExistingSecrets.includes(name),
   );
   const missingVars = required.vars.filter(
     (name) => !Object.keys(vars).includes(name),
@@ -260,16 +221,15 @@ export async function gatherConfiguration(
 
   // If nothing is missing or non-interactive, return early
   if (missingSecrets.length === 0 && missingVars.length === 0) {
-    return { secrets, vars, preserveExistingSecrets };
+    return { vars, preserveExistingSecrets };
   }
   if (!deps.isInteractive()) {
-    return { secrets, vars, preserveExistingSecrets };
+    return { vars, preserveExistingSecrets };
   }
 
   // Interactive mode: show requirements and prompt for missing values
   displayMissingRequirements(missingSecrets, missingVars);
-  await promptForMissingSecrets(missingSecrets, secrets, deps);
   await promptForMissingVars(missingVars, vars, deps);
 
-  return { secrets, vars, preserveExistingSecrets };
+  return { vars, preserveExistingSecrets };
 }

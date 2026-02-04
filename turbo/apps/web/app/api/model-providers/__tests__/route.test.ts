@@ -3,8 +3,8 @@ import {
   createTestMultiAuthModelProvider,
   deleteTestModelProvider,
   listTestModelProviders,
-  listTestCredentials,
-  deleteTestCredential,
+  listTestSecrets,
+  deleteTestSecret,
 } from "../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../src/__tests__/test-helpers";
 
@@ -24,7 +24,7 @@ describe("Multi-auth provider cascade deletion", () => {
   });
 
   describe("DELETE /api/model-providers/:type", () => {
-    it("should delete all associated credentials when deleting multi-auth provider", async () => {
+    it("should delete all associated secrets when deleting multi-auth provider", async () => {
       // Create multi-auth provider with access-keys auth method
       await createTestMultiAuthModelProvider(
         "aws-bedrock",
@@ -37,14 +37,14 @@ describe("Multi-auth provider cascade deletion", () => {
         "anthropic.claude-3-5-sonnet-20241022-v2:0",
       );
 
-      // Verify credentials were created
-      const credentialsBefore = await listTestCredentials();
-      const awsCredentials = credentialsBefore.filter((c) =>
+      // Verify secrets were created
+      const secretsBefore = await listTestSecrets();
+      const awsSecrets = secretsBefore.filter((c) =>
         ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"].includes(
           c.name,
         ),
       );
-      expect(awsCredentials).toHaveLength(3);
+      expect(awsSecrets).toHaveLength(3);
 
       // Delete the model provider
       await deleteTestModelProvider("aws-bedrock");
@@ -53,17 +53,17 @@ describe("Multi-auth provider cascade deletion", () => {
       const providers = await listTestModelProviders();
       expect(providers.find((p) => p.type === "aws-bedrock")).toBeUndefined();
 
-      // Verify all associated credentials are deleted
-      const credentialsAfter = await listTestCredentials();
-      const remainingAwsCredentials = credentialsAfter.filter((c) =>
+      // Verify all associated secrets are deleted
+      const secretsAfter = await listTestSecrets();
+      const remainingAwsSecrets = secretsAfter.filter((c) =>
         ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"].includes(
           c.name,
         ),
       );
-      expect(remainingAwsCredentials).toHaveLength(0);
+      expect(remainingAwsSecrets).toHaveLength(0);
     });
 
-    it("should delete credentials for api-key auth method when deleting provider", async () => {
+    it("should delete secrets for api-key auth method when deleting provider", async () => {
       // Create multi-auth provider with api-key auth method
       await createTestMultiAuthModelProvider(
         "aws-bedrock",
@@ -75,31 +75,27 @@ describe("Multi-auth provider cascade deletion", () => {
         "anthropic.claude-3-5-sonnet-20241022-v2:0",
       );
 
-      // Verify credentials were created
-      const credentialsBefore = await listTestCredentials();
+      // Verify secrets were created
+      const secretsBefore = await listTestSecrets();
       expect(
-        credentialsBefore.find((c) => c.name === "AWS_BEARER_TOKEN_BEDROCK"),
+        secretsBefore.find((c) => c.name === "AWS_BEARER_TOKEN_BEDROCK"),
       ).toBeDefined();
-      expect(
-        credentialsBefore.find((c) => c.name === "AWS_REGION"),
-      ).toBeDefined();
+      expect(secretsBefore.find((c) => c.name === "AWS_REGION")).toBeDefined();
 
       // Delete the model provider
       await deleteTestModelProvider("aws-bedrock");
 
-      // Verify all associated credentials are deleted
-      const credentialsAfter = await listTestCredentials();
+      // Verify all associated secrets are deleted
+      const secretsAfter = await listTestSecrets();
       expect(
-        credentialsAfter.find((c) => c.name === "AWS_BEARER_TOKEN_BEDROCK"),
+        secretsAfter.find((c) => c.name === "AWS_BEARER_TOKEN_BEDROCK"),
       ).toBeUndefined();
-      expect(
-        credentialsAfter.find((c) => c.name === "AWS_REGION"),
-      ).toBeUndefined();
+      expect(secretsAfter.find((c) => c.name === "AWS_REGION")).toBeUndefined();
     });
   });
 
-  describe("DELETE /api/credentials/:name", () => {
-    it("should delete model provider when deleting a required credential", async () => {
+  describe("DELETE /api/secrets/:name", () => {
+    it("should delete model provider when deleting a required secret", async () => {
       // Create multi-auth provider
       await createTestMultiAuthModelProvider(
         "aws-bedrock",
@@ -118,8 +114,8 @@ describe("Multi-auth provider cascade deletion", () => {
         providersBefore.find((p) => p.type === "aws-bedrock"),
       ).toBeDefined();
 
-      // Delete a required credential (AWS_ACCESS_KEY_ID is required for access-keys)
-      await deleteTestCredential("AWS_ACCESS_KEY_ID");
+      // Delete a required secret (AWS_ACCESS_KEY_ID is required for access-keys)
+      await deleteTestSecret("AWS_ACCESS_KEY_ID");
 
       // Verify model provider is also deleted
       const providersAfter = await listTestModelProviders();
@@ -127,19 +123,17 @@ describe("Multi-auth provider cascade deletion", () => {
         providersAfter.find((p) => p.type === "aws-bedrock"),
       ).toBeUndefined();
 
-      // Verify other credentials are also deleted
-      const credentialsAfter = await listTestCredentials();
+      // Verify other secrets are also deleted
+      const secretsAfter = await listTestSecrets();
       expect(
-        credentialsAfter.find((c) => c.name === "AWS_SECRET_ACCESS_KEY"),
+        secretsAfter.find((c) => c.name === "AWS_SECRET_ACCESS_KEY"),
       ).toBeUndefined();
-      expect(
-        credentialsAfter.find((c) => c.name === "AWS_REGION"),
-      ).toBeUndefined();
+      expect(secretsAfter.find((c) => c.name === "AWS_REGION")).toBeUndefined();
     });
   });
 
   describe("Switching auth methods", () => {
-    it("should clean up old credentials when switching auth methods", async () => {
+    it("should clean up old secrets when switching auth methods", async () => {
       // Create provider with api-key auth method
       await createTestMultiAuthModelProvider(
         "aws-bedrock",
@@ -151,10 +145,10 @@ describe("Multi-auth provider cascade deletion", () => {
         "anthropic.claude-3-5-sonnet-20241022-v2:0",
       );
 
-      // Verify api-key credentials exist
-      const credentialsApiKey = await listTestCredentials();
+      // Verify api-key secrets exist
+      const secretsApiKey = await listTestSecrets();
       expect(
-        credentialsApiKey.find((c) => c.name === "AWS_BEARER_TOKEN_BEDROCK"),
+        secretsApiKey.find((c) => c.name === "AWS_BEARER_TOKEN_BEDROCK"),
       ).toBeDefined();
 
       // Switch to access-keys auth method
@@ -169,34 +163,30 @@ describe("Multi-auth provider cascade deletion", () => {
         "anthropic.claude-3-5-sonnet-20241022-v2:0",
       );
 
-      // Verify old credentials (api-key only) are cleaned up
-      const credentialsAfter = await listTestCredentials();
+      // Verify old secrets (api-key only) are cleaned up
+      const secretsAfter = await listTestSecrets();
       expect(
-        credentialsAfter.find((c) => c.name === "AWS_BEARER_TOKEN_BEDROCK"),
+        secretsAfter.find((c) => c.name === "AWS_BEARER_TOKEN_BEDROCK"),
       ).toBeUndefined();
 
-      // Verify new credentials exist
+      // Verify new secrets exist
       expect(
-        credentialsAfter.find((c) => c.name === "AWS_ACCESS_KEY_ID"),
+        secretsAfter.find((c) => c.name === "AWS_ACCESS_KEY_ID"),
       ).toBeDefined();
       expect(
-        credentialsAfter.find((c) => c.name === "AWS_SECRET_ACCESS_KEY"),
+        secretsAfter.find((c) => c.name === "AWS_SECRET_ACCESS_KEY"),
       ).toBeDefined();
-      expect(
-        credentialsAfter.find((c) => c.name === "AWS_REGION"),
-      ).toBeDefined();
+      expect(secretsAfter.find((c) => c.name === "AWS_REGION")).toBeDefined();
 
-      // Verify all credentials have consistent auth method in description
-      const awsCredentials = credentialsAfter.filter((c) =>
-        c.name.startsWith("AWS_"),
-      );
-      for (const cred of awsCredentials) {
-        expect(cred.description).toContain("(access-keys)");
-        expect(cred.description).not.toContain("(api-key)");
+      // Verify all secrets have consistent auth method in description
+      const awsSecrets = secretsAfter.filter((c) => c.name.startsWith("AWS_"));
+      for (const secret of awsSecrets) {
+        expect(secret.description).toContain("(access-keys)");
+        expect(secret.description).not.toContain("(api-key)");
       }
     });
 
-    it("should update credential description when auth method changes", async () => {
+    it("should update secret description when auth method changes", async () => {
       // Create provider with api-key auth method (includes AWS_REGION)
       await createTestMultiAuthModelProvider(
         "aws-bedrock",
@@ -209,10 +199,8 @@ describe("Multi-auth provider cascade deletion", () => {
       );
 
       // Verify AWS_REGION has api-key description
-      const credentialsBefore = await listTestCredentials();
-      const regionBefore = credentialsBefore.find(
-        (c) => c.name === "AWS_REGION",
-      );
+      const secretsBefore = await listTestSecrets();
+      const regionBefore = secretsBefore.find((c) => c.name === "AWS_REGION");
       expect(regionBefore?.description).toContain("(api-key)");
 
       // Switch to access-keys (also uses AWS_REGION)
@@ -228,8 +216,8 @@ describe("Multi-auth provider cascade deletion", () => {
       );
 
       // Verify AWS_REGION now has access-keys description
-      const credentialsAfter = await listTestCredentials();
-      const regionAfter = credentialsAfter.find((c) => c.name === "AWS_REGION");
+      const secretsAfter = await listTestSecrets();
+      const regionAfter = secretsAfter.find((c) => c.name === "AWS_REGION");
       expect(regionAfter?.description).toContain("(access-keys)");
     });
   });

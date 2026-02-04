@@ -43,13 +43,13 @@ export {
   listScheduleRuns,
 } from "./domains/schedules";
 
-// Domain modules - Credentials
+// Domain modules - Secrets
 export {
-  listCredentials,
-  getCredential,
-  setCredential,
-  deleteCredential,
-} from "./domains/credentials";
+  listSecrets,
+  getSecret,
+  setSecret,
+  deleteSecret,
+} from "./domains/secrets";
 
 // Domain modules - Model Providers
 export {

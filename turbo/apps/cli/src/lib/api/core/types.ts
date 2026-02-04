@@ -11,8 +11,6 @@ import type {
   ScheduleListResponse,
   DeployScheduleResponse,
   ScheduleRunsResponse,
-  CredentialResponse,
-  CredentialListResponse,
 } from "@vm0/core";
 
 // Re-export types with CLI naming conventions for backward compatibility
@@ -30,8 +28,6 @@ export type {
   ScheduleListResponse,
   DeployScheduleResponse,
   ScheduleRunsResponse,
-  CredentialResponse,
-  CredentialListResponse,
 };
 
 // Usage API types

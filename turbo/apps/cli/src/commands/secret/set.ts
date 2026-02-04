@@ -1,27 +1,27 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { setCredential } from "../../lib/api";
+import { setSecret } from "../../lib/api";
 
 export const setCommand = new Command()
   .name("set")
-  .description("Create or update a credential")
-  .argument("<name>", "Credential name (uppercase, e.g., MY_API_KEY)")
-  .argument("<value>", "Credential value")
+  .description("Create or update a secret")
+  .argument("<name>", "Secret name (uppercase, e.g., MY_API_KEY)")
+  .argument("<value>", "Secret value")
   .option("-d, --description <description>", "Optional description")
   .action(
     async (name: string, value: string, options: { description?: string }) => {
       try {
-        const credential = await setCredential({
+        const secret = await setSecret({
           name,
           value,
           description: options.description,
         });
 
-        console.log(chalk.green(`✓ Credential "${credential.name}" saved`));
+        console.log(chalk.green(`✓ Secret "${secret.name}" saved`));
         console.log();
         console.log("Use in vm0.yaml:");
         console.log(chalk.cyan(`  environment:`));
-        console.log(chalk.cyan(`    ${name}: \${{ credentials.${name} }}`));
+        console.log(chalk.cyan(`    ${name}: \${{ secrets.${name} }}`));
       } catch (error) {
         if (error instanceof Error) {
           if (error.message.includes("Not authenticated")) {
@@ -31,7 +31,7 @@ export const setCommand = new Command()
           } else if (error.message.includes("must contain only uppercase")) {
             console.error(chalk.red(`✗ ${error.message}`));
             console.log();
-            console.log("Examples of valid credential names:");
+            console.log("Examples of valid secret names:");
             console.log(chalk.dim("  MY_API_KEY"));
             console.log(chalk.dim("  GITHUB_TOKEN"));
             console.log(chalk.dim("  AWS_ACCESS_KEY_ID"));

@@ -1,20 +1,20 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { getCredential, deleteCredential } from "../../lib/api";
+import { getSecret, deleteSecret } from "../../lib/api";
 import { isInteractive, promptConfirm } from "../../lib/utils/prompt-utils";
 
 export const deleteCommand = new Command()
   .name("delete")
-  .description("Delete a credential")
-  .argument("<name>", "Credential name to delete")
+  .description("Delete a secret")
+  .argument("<name>", "Secret name to delete")
   .option("-y, --yes", "Skip confirmation prompt")
   .action(async (name: string, options: { yes?: boolean }) => {
     try {
-      // Verify credential exists first
+      // Verify secret exists first
       try {
-        await getCredential(name);
+        await getSecret(name);
       } catch {
-        console.error(chalk.red(`✗ Credential "${name}" not found`));
+        console.error(chalk.red(`✗ Secret "${name}" not found`));
         process.exit(1);
       }
 
@@ -28,7 +28,7 @@ export const deleteCommand = new Command()
         }
 
         const confirmed = await promptConfirm(
-          `Are you sure you want to delete credential "${name}"?`,
+          `Are you sure you want to delete secret "${name}"?`,
           false,
         );
 
@@ -38,8 +38,8 @@ export const deleteCommand = new Command()
         }
       }
 
-      await deleteCredential(name);
-      console.log(chalk.green(`✓ Credential "${name}" deleted`));
+      await deleteSecret(name);
+      console.log(chalk.green(`✓ Secret "${name}" deleted`));
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes("Not authenticated")) {

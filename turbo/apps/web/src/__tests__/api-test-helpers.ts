@@ -36,8 +36,8 @@ import { POST as storagePrepareRoute } from "../../app/api/storages/prepare/rout
 import { POST as storageCommitRoute } from "../../app/api/storages/commit/route";
 import { DELETE as deleteModelProviderRoute } from "../../app/api/model-providers/[type]/route";
 import { GET as listModelProvidersRoute } from "../../app/api/model-providers/route";
-import { GET as listCredentialsRoute } from "../../app/api/credentials/route";
-import { DELETE as deleteCredentialRoute } from "../../app/api/credentials/[name]/route";
+import { GET as listSecretsRoute } from "../../app/api/secrets/route";
+import { DELETE as deleteSecretRoute } from "../../app/api/secrets/[name]/route";
 
 /**
  * Helper to create a NextRequest for testing.
@@ -910,15 +910,15 @@ export async function listTestModelProviders(): Promise<
 }
 
 // ============================================================================
-// Credential Test Helpers
+// Secret Test Helpers
 // ============================================================================
 
 /**
- * List all credentials via API route handler.
+ * List all secrets via API route handler.
  *
- * @returns Array of credential info
+ * @returns Array of secret info
  */
-export async function listTestCredentials(): Promise<
+export async function listTestSecrets(): Promise<
   Array<{
     id: string;
     name: string;
@@ -928,33 +928,33 @@ export async function listTestCredentials(): Promise<
     updatedAt: string;
   }>
 > {
-  const request = createTestRequest("http://localhost:3000/api/credentials");
-  const response = await listCredentialsRoute(request);
+  const request = createTestRequest("http://localhost:3000/api/secrets");
+  const response = await listSecretsRoute(request);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(
-      `Failed to list credentials: ${error.error?.message || response.status}`,
+      `Failed to list secrets: ${error.error?.message || response.status}`,
     );
   }
   const data = await response.json();
-  return data.credentials;
+  return data.secrets;
 }
 
 /**
- * Delete a credential via API route handler.
+ * Delete a secret via API route handler.
  *
- * @param name - The credential name to delete
+ * @param name - The secret name to delete
  */
-export async function deleteTestCredential(name: string): Promise<void> {
+export async function deleteTestSecret(name: string): Promise<void> {
   const request = createTestRequest(
-    `http://localhost:3000/api/credentials/${name}`,
+    `http://localhost:3000/api/secrets/${name}`,
     { method: "DELETE" },
   );
-  const response = await deleteCredentialRoute(request);
+  const response = await deleteSecretRoute(request);
   if (!response.ok && response.status !== 204) {
     const error = await response.json();
     throw new Error(
-      `Failed to delete credential: ${error.error?.message || response.status}`,
+      `Failed to delete secret: ${error.error?.message || response.status}`,
     );
   }
 }

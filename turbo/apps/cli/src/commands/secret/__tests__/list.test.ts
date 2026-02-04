@@ -1,5 +1,5 @@
 /**
- * Tests for credential list command
+ * Tests for secret list command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -13,7 +13,7 @@ import { server } from "../../../mocks/server";
 import { listCommand } from "../list";
 import chalk from "chalk";
 
-describe("credential list command", () => {
+describe("secret list command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -50,7 +50,7 @@ describe("credential list command", () => {
 
       const output = mockStdoutWrite.mock.calls.map((call) => call[0]).join("");
 
-      expect(output).toContain("List all credentials");
+      expect(output).toContain("List all secrets");
       expect(output).toContain("ls");
 
       mockStdoutWrite.mockRestore();
@@ -58,20 +58,24 @@ describe("credential list command", () => {
   });
 
   describe("successful list", () => {
-    it("should display credentials in table format", async () => {
+    it("should display secrets in table format", async () => {
       server.use(
-        http.get("http://localhost:3000/api/credentials", () => {
+        http.get("http://localhost:3000/api/secrets", () => {
           return HttpResponse.json({
-            credentials: [
+            secrets: [
               {
+                id: "1",
                 name: "MY_API_KEY",
                 description: "API key for testing",
+                type: "user",
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
               },
               {
+                id: "2",
                 name: "GITHUB_TOKEN",
                 description: "GitHub access token",
+                type: "user",
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
               },
@@ -87,24 +91,24 @@ describe("credential list command", () => {
       expect(logCalls).toContain("GITHUB_TOKEN");
     });
 
-    it("should display empty state message when no credentials", async () => {
+    it("should display empty state message when no secrets", async () => {
       server.use(
-        http.get("http://localhost:3000/api/credentials", () => {
-          return HttpResponse.json({ credentials: [] });
+        http.get("http://localhost:3000/api/secrets", () => {
+          return HttpResponse.json({ secrets: [] });
         }),
       );
 
       await listCommand.parseAsync(["node", "cli"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("No credentials found");
+      expect(logCalls).toContain("No secrets found");
     });
   });
 
   describe("error handling", () => {
     it("should handle authentication error", async () => {
       server.use(
-        http.get("http://localhost:3000/api/credentials", () => {
+        http.get("http://localhost:3000/api/secrets", () => {
           return HttpResponse.json(
             {
               error: {

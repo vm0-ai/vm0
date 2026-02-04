@@ -114,7 +114,6 @@ describe("schedule setup command", () => {
       expect(output).toContain("--timezone");
       expect(output).toContain("--prompt");
       expect(output).toContain("--var");
-      expect(output).toContain("--secret");
       expect(output).toContain("--enable");
 
       mockStdoutWrite.mockRestore();
@@ -307,7 +306,7 @@ describe("schedule setup command", () => {
       expect(logCalls).toContain("Updated schedule");
     });
 
-    it("should pass vars and secrets to API", async () => {
+    it("should pass vars to API", async () => {
       const compose = createMockCompose();
       const schedule = createMockSchedule();
       let deployPayload: Record<string, unknown> | undefined;
@@ -345,8 +344,6 @@ describe("schedule setup command", () => {
         "ENV=production",
         "--var",
         "DEBUG=false",
-        "--secret",
-        "API_KEY=secret-value",
       ]);
 
       expect(deployPayload).toBeDefined();
@@ -354,7 +351,6 @@ describe("schedule setup command", () => {
         ENV: "production",
         DEBUG: "false",
       });
-      expect(deployPayload!.secrets).toEqual({ API_KEY: "secret-value" });
     });
 
     it("should enable schedule with --enable flag", async () => {

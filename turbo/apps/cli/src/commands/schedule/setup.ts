@@ -169,7 +169,6 @@ interface SetupOptions {
   timezone?: string;
   prompt?: string;
   var?: string[];
-  secret?: string[];
   artifactName: string;
   enable?: boolean;
 }
@@ -685,7 +684,6 @@ export const setupCommand = new Command()
   .option("-z, --timezone <tz>", "IANA timezone")
   .option("-p, --prompt <text>", "Prompt to run")
   .option("--var <name=value>", "Variable (can be repeated)", collect, [])
-  .option("--secret <name=value>", "Secret (can be repeated)", collect, [])
   .option("--artifact-name <name>", "Artifact name", "artifact")
   .option("-e, --enable", "Enable schedule immediately after creation")
   .action(async (agentName: string, options: SetupOptions) => {
@@ -748,17 +746,18 @@ export const setupCommand = new Command()
         return;
       }
 
-      // 7. Gather all configuration (secrets and vars)
+      // 7. Gather vars configuration (secrets are now managed via platform)
       const config = await gatherConfiguration({
         required: requiredConfig,
-        optionSecrets: options.secret || [],
+        optionSecrets: [], // Secrets are no longer passed via CLI
         optionVars: options.var || [],
         existingSchedule,
       });
 
       // 8. Build trigger and deploy
-      // If preserveExistingSecrets is true, send undefined to signal server to preserve existing secrets
-      // Otherwise send the gathered secrets (which may be empty if user skipped prompts)
+      // Secrets are managed via platform (vm0 secret set), not via schedule
+      // If preserveExistingSecrets is true, we pass undefined to keep existing secrets
+      // Otherwise we also pass undefined (no new secrets can be added via CLI)
       const deployResult = await buildAndDeploy({
         scheduleName,
         composeId,
@@ -770,11 +769,7 @@ export const setupCommand = new Command()
         timezone,
         prompt: promptText_,
         vars: Object.keys(config.vars).length > 0 ? config.vars : undefined,
-        secrets: config.preserveExistingSecrets
-          ? undefined
-          : Object.keys(config.secrets).length > 0
-            ? config.secrets
-            : undefined,
+        secrets: undefined, // Secrets managed via platform, not schedule
         artifactName: options.artifactName,
       });
 
