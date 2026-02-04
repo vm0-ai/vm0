@@ -186,6 +186,21 @@ export {
   type CredentialType,
 } from "./credentials";
 export {
+  secretsMainContract,
+  secretsByNameContract,
+  secretNameSchema,
+  secretTypeSchema,
+  secretResponseSchema,
+  secretListResponseSchema,
+  setSecretRequestSchema,
+  type SecretsMainContract,
+  type SecretsByNameContract,
+  type SecretResponse,
+  type SecretListResponse,
+  type SetSecretRequest,
+  type SecretType,
+} from "./secrets";
+export {
   modelProvidersMainContract,
   modelProvidersCheckContract,
   modelProvidersByTypeContract,
