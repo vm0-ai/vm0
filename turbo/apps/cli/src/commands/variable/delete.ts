@@ -13,9 +13,17 @@ export const deleteCommand = new Command()
       // Verify variable exists first
       try {
         await getVariable(name);
-      } catch {
-        console.error(chalk.red(`✗ Variable "${name}" not found`));
-        process.exit(1);
+      } catch (error) {
+        // Only show "not found" if it's actually a not found error
+        // Otherwise, re-throw to let the outer catch handle it properly
+        if (
+          error instanceof Error &&
+          error.message.toLowerCase().includes("not found")
+        ) {
+          console.error(chalk.red(`✗ Variable "${name}" not found`));
+          process.exit(1);
+        }
+        throw error;
       }
 
       // Confirm deletion unless --yes is passed
