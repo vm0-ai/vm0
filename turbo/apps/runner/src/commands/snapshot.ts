@@ -264,8 +264,15 @@ export const snapshotCommand = new Command("snapshot")
         // Success
         logger.log("=".repeat(40));
         logger.log("Snapshot generation complete!");
+        logger.log("Files (logical size):");
         const lsOutput = await execCommand(`ls -lh "${options.output}"`, false);
         logger.log(lsOutput);
+        logger.log("Actual disk usage:");
+        const duOutput = await execCommand(
+          `du -h "${options.output}"/*`,
+          false,
+        );
+        logger.log(duOutput);
         logger.log("=".repeat(40));
       } catch (error) {
         logger.error(
