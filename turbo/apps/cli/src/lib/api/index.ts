@@ -51,6 +51,14 @@ export {
   deleteSecret,
 } from "./domains/secrets";
 
+// Domain modules - Variables
+export {
+  listVariables,
+  getVariable,
+  setVariable,
+  deleteVariable,
+} from "./domains/variables";
+
 // Domain modules - Model Providers
 export {
   listModelProviders,

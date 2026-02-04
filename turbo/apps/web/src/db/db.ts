@@ -20,6 +20,7 @@ import * as slackInstallationSchema from "./schema/slack-installation";
 import * as slackUserLinkSchema from "./schema/slack-user-link";
 import * as slackBindingSchema from "./schema/slack-binding";
 import * as slackThreadSessionSchema from "./schema/slack-thread-session";
+import * as variableSchema from "./schema/variable";
 
 export const schema = {
   ...userSchema,
@@ -44,4 +45,5 @@ export const schema = {
   ...slackUserLinkSchema,
   ...slackBindingSchema,
   ...slackThreadSessionSchema,
+  ...variableSchema,
 };

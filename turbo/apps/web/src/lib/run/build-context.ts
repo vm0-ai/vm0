@@ -26,6 +26,7 @@ import {
 import { expandEnvironmentFromCompose } from "./environment";
 import { getUserScopeByClerkId } from "../scope/scope-service";
 import { getSecretValue, getSecretValues } from "../secret/secret-service";
+import { getVariableValues } from "../variable/variable-service";
 import { getDefaultModelProvider } from "../model-provider/model-provider-service";
 
 const log = logger("run:build-context");
@@ -380,6 +381,37 @@ function autoInjectEnvVarsToEnvironment(
 }
 
 /**
+ * Fetch server-stored variables and merge with CLI-provided vars
+ * Priority: CLI vars > server-stored vars
+ *
+ * @param userId Clerk user ID
+ * @param cliVars Variables from CLI --vars flag
+ * @returns Merged variables (CLI takes precedence)
+ */
+async function fetchAndMergeVariables(
+  userId: string,
+  cliVars: Record<string, string> | undefined,
+): Promise<Record<string, string> | undefined> {
+  const userScope = await getUserScopeByClerkId(userId);
+  if (!userScope) {
+    return cliVars;
+  }
+
+  const storedVars = await getVariableValues(userScope.id);
+  if (Object.keys(storedVars).length === 0) {
+    return cliVars;
+  }
+
+  log.debug(
+    `Fetched ${Object.keys(storedVars).length} stored variable(s) from scope ${userScope.slug}`,
+  );
+
+  // Merge: CLI vars override stored vars
+  const merged = { ...storedVars, ...cliVars };
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+/**
  * Parameters for building execution context
  */
 export interface BuildContextParams {
@@ -588,11 +620,15 @@ export async function buildExecutionContext(
   credentials = modelProviderResult.credentials;
   const injectedEnvVars = modelProviderResult.injectedEnvVars;
 
+  // Step 4c: Fetch server-stored variables and merge with CLI vars
+  // Priority: CLI --vars > server-stored variables
+  const mergedVars = await fetchAndMergeVariables(params.userId, vars);
+
   // Step 5: Expand environment variables from compose config using vars, secrets, and credentials
   // When experimental_firewall.experimental_seal_secrets is enabled, secrets are encrypted
   const { environment: expandedEnvironment } = expandEnvironmentFromCompose(
     agentCompose,
-    vars,
+    mergedVars,
     secrets,
     credentials,
     params.userId,
