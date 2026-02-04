@@ -163,6 +163,86 @@ describe("compose command", () => {
       );
       expect(content).toContain("version");
     });
+
+    it("should use vm0.yaml by default when no argument provided", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        `version: "1.0"\nagents:\n  test:\n    framework: claude-code\n    working_dir: /`,
+      );
+      server.use(
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            composeId: "cmp-123",
+            name: "test",
+            versionId:
+              "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
+            action: "created",
+          });
+        }),
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(scopeResponse);
+        }),
+      );
+
+      await composeCommand.parseAsync(["node", "cli"]);
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Compose created"),
+      );
+    });
+
+    it("should show error when vm0.yaml not found and no argument provided", async () => {
+      await expect(async () => {
+        await composeCommand.parseAsync(["node", "cli"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Config file not found: vm0.yaml"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should use explicit file path when provided", async () => {
+      // Create both files to verify explicit takes precedence
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        `version: "1.0"\nagents:\n  default-agent:\n    framework: claude-code\n    working_dir: /`,
+      );
+      await fs.writeFile(
+        path.join(tempDir, "custom.yaml"),
+        `version: "1.0"\nagents:\n  custom-agent:\n    framework: claude-code\n    working_dir: /`,
+      );
+
+      let capturedBody: unknown;
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/composes",
+          async ({ request }) => {
+            capturedBody = await request.json();
+            return HttpResponse.json({
+              composeId: "cmp-123",
+              name: "custom-agent",
+              versionId:
+                "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
+              action: "created",
+            });
+          },
+        ),
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(scopeResponse);
+        }),
+      );
+
+      await composeCommand.parseAsync(["node", "cli", "custom.yaml"]);
+
+      expect(capturedBody).toMatchObject({
+        content: {
+          agents: {
+            "custom-agent": expect.any(Object),
+          },
+        },
+      });
+    });
   });
 
   describe("YAML parsing", () => {

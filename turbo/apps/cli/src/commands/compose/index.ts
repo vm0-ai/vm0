@@ -25,6 +25,8 @@ import { silentUpgradeAfterCommand } from "../../lib/utils/update-checker";
 
 declare const __CLI_VERSION__: string;
 
+const DEFAULT_CONFIG_FILE = "vm0.yaml";
+
 /**
  * Extract secret names from compose content using variable references.
  * Looks for ${{ secrets.XXX }} patterns in the compose.
@@ -305,18 +307,22 @@ function mergeSkillVariables(
 export const composeCommand = new Command()
   .name("compose")
   .description("Create or update agent compose (e.g., vm0.yaml)")
-  .argument("<agent-yaml>", "Path to agent YAML file")
+  .argument(
+    "[agent-yaml]",
+    `Path to agent YAML file (default: ${DEFAULT_CONFIG_FILE})`,
+  )
   .option("-y, --yes", "Skip confirmation prompts for skill requirements")
   .addOption(new Option("--no-auto-update").hideHelp())
   .action(
     async (
-      configFile: string,
+      configFile: string | undefined,
       options: { yes?: boolean; autoUpdate?: boolean },
     ) => {
+      const resolvedConfigFile = configFile ?? DEFAULT_CONFIG_FILE;
       try {
         // 1. Load and validate config
         const { config, agentName, agent, basePath } =
-          await loadAndValidateConfig(configFile);
+          await loadAndValidateConfig(resolvedConfigFile);
 
         // 2. Check for legacy image format
         checkLegacyImageFormat(config);
