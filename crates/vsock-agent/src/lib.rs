@@ -36,8 +36,8 @@ use std::os::unix::net::UnixStream;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::thread;
 use std::time::{Duration, Instant};
-use std::{fs, thread};
 
 /// Flag indicating shutdown was received (don't reconnect after shutdown)
 static SHUTDOWN_RECEIVED: AtomicBool = AtomicBool::new(false);
@@ -73,6 +73,37 @@ const EXIT_CODE_TIMEOUT: i32 = 124;
 
 /// Maximum length for command preview in logs
 const COMMAND_PREVIEW_MAX_LEN: usize = 100;
+
+/// Get the user to execute commands as
+/// - Debug builds: None (run as current user via sh -c)
+/// - Release builds: Some("user") (run as user via su - user -c)
+fn get_exec_user() -> Option<String> {
+    #[cfg(debug_assertions)]
+    {
+        None
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        Some("user".to_string())
+    }
+}
+
+/// Build a Command to execute a shell command as the appropriate user
+fn build_exec_command(command: &str) -> Command {
+    match get_exec_user() {
+        Some(user) => {
+            let mut c = Command::new("su");
+            c.arg("-").arg(user).arg("-c").arg(command);
+            c
+        }
+        None => {
+            let mut c = Command::new("sh");
+            c.arg("-c").arg(command);
+            c
+        }
+    }
+}
 
 static START_TIME: OnceLock<Instant> = OnceLock::new();
 
@@ -267,18 +298,14 @@ fn handle_exec(payload: &[u8]) -> (i32, Vec<u8>, Vec<u8>) {
     #[cfg(unix)]
     let child = {
         use std::os::unix::process::CommandExt;
-        Command::new("sh")
-            .arg("-c")
-            .arg(command)
+        build_exec_command(command)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .process_group(0) // Create new process group (like tini's setpgid(0,0))
+            .process_group(0)
             .spawn()
     };
     #[cfg(not(unix))]
-    let child = Command::new("sh")
-        .arg("-c")
-        .arg(command)
+    let child = build_exec_command(command)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn();
@@ -349,56 +376,60 @@ fn handle_write_file(payload: &[u8]) -> (bool, String) {
         ),
     );
 
-    if use_sudo {
-        // Use sudo tee to write (30s timeout, same as Python)
-        const SUDO_TEE_TIMEOUT_MS: u32 = 30_000;
+    // Execute as 'user' (UID 1000) to match E2B sandbox behavior
+    // Use subprocess instead of direct fs::write to run as user
+    const WRITE_TIMEOUT_MS: u32 = 30_000;
 
-        let mut child = match Command::new("sudo")
-            .arg("tee")
-            .arg(path)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .spawn()
-        {
-            Ok(c) => c,
-            Err(e) => return (false, format!("Failed to spawn sudo tee: {}", e)),
-        };
-
-        // Write content to stdin and close it
-        if let Some(mut stdin) = child.stdin.take()
-            && let Err(e) = stdin.write_all(content)
-        {
-            let _ = child.kill();
-            let _ = child.wait(); // Prevent zombie process
-            return (false, format!("Failed to write to stdin: {}", e));
-        }
-        // stdin is dropped here, closing the pipe
-
-        // Wait with timeout
-        let (exit_code, _, stderr) = wait_with_timeout(child, SUDO_TEE_TIMEOUT_MS);
-        if exit_code == EXIT_CODE_TIMEOUT {
-            return (false, "sudo tee timed out".to_string());
-        }
-        if exit_code != 0 {
-            let stderr_str = String::from_utf8_lossy(&stderr);
-            return (false, format!("sudo tee failed: {}", stderr_str));
-        }
-        (true, String::new())
+    // Build the write command: use sudo tee for privileged writes, cat for normal writes
+    let write_cmd = if use_sudo {
+        format!("sudo tee '{}'", path.replace('\'', "'\\''"))
     } else {
-        // Direct write
-        if let Some(parent) = std::path::Path::new(path).parent()
-            && !parent.as_os_str().is_empty()
-            && let Err(e) = fs::create_dir_all(parent)
-        {
-            return (false, format!("Failed to create directory: {}", e));
+        // Create parent directory if needed, then write
+        if let Some(parent) = std::path::Path::new(path).parent() {
+            if !parent.as_os_str().is_empty() {
+                format!(
+                    "mkdir -p '{}' && cat > '{}'",
+                    parent.display().to_string().replace('\'', "'\\''"),
+                    path.replace('\'', "'\\''")
+                )
+            } else {
+                format!("cat > '{}'", path.replace('\'', "'\\''"))
+            }
+        } else {
+            format!("cat > '{}'", path.replace('\'', "'\\''"))
         }
+    };
 
-        match fs::write(path, content) {
-            Ok(_) => (true, String::new()),
-            Err(e) => (false, format!("Failed to write file: {}", e)),
-        }
+    let mut child = match build_exec_command(&write_cmd)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => return (false, format!("Failed to spawn write command: {}", e)),
+    };
+
+    // Write content to stdin and close it
+    if let Some(mut stdin) = child.stdin.take()
+        && let Err(e) = stdin.write_all(content)
+    {
+        let _ = child.kill();
+        let _ = child.wait(); // Prevent zombie process
+        return (false, format!("Failed to write to stdin: {}", e));
     }
+    // stdin is dropped here, closing the pipe
+
+    // Wait with timeout
+    let (exit_code, _, stderr) = wait_with_timeout(child, WRITE_TIMEOUT_MS);
+    if exit_code == EXIT_CODE_TIMEOUT {
+        return (false, "write timed out".to_string());
+    }
+    if exit_code != 0 {
+        let stderr_str = String::from_utf8_lossy(&stderr);
+        return (false, format!("write failed: {}", stderr_str));
+    }
+    (true, String::new())
 }
 
 /// Handle shutdown message - sync filesystems and acknowledge
@@ -445,18 +476,14 @@ fn handle_spawn_watch(payload: &[u8], seq: u32, writer: Arc<Mutex<UnixStream>>) 
     #[cfg(unix)]
     let child = {
         use std::os::unix::process::CommandExt;
-        Command::new("sh")
-            .arg("-c")
-            .arg(&command)
+        build_exec_command(&command)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .process_group(0)
             .spawn()
     };
     #[cfg(not(unix))]
-    let child = Command::new("sh")
-        .arg("-c")
-        .arg(&command)
+    let child = build_exec_command(&command)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn();
