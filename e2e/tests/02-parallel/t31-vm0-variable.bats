@@ -211,10 +211,10 @@ EOF
     run $CLI_COMMAND compose "$test_config"
     assert_success
 
-    # Step 5: Run agent with CLI --var to override server value
+    # Step 5: Run agent with CLI --vars to override server value
     echo "# Running agent with CLI var override..."
     run $CLI_COMMAND run "$agent_name" \
-        --var "$TEST_VAR_NAME=$cli_value" \
+        --vars "$TEST_VAR_NAME=$cli_value" \
         --artifact-name "$artifact_name" \
         "echo MY_VAR=\$MY_VAR"
 

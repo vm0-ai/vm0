@@ -25,6 +25,8 @@ import { extractTemplateVars } from "../../../../src/lib/config-validator";
 import { assertImageAccess } from "../../../../src/lib/image/image-service";
 import { logger } from "../../../../src/lib/logger";
 import { isConcurrentRunLimit } from "../../../../src/lib/errors";
+import { getVariableValues } from "../../../../src/lib/variable/variable-service";
+import { getUserScopeByClerkId } from "../../../../src/lib/scope/scope-service";
 
 const log = logger("api:runs");
 
@@ -283,11 +285,22 @@ const router = tsr.router(runsMainContract, {
       }
 
       // Validate template variables for new runs
+      // Merge CLI-provided vars with server-stored vars for validation
       if (composeContent) {
         const requiredVars = extractTemplateVars(composeContent);
-        const providedVars = body.vars || {};
+        const cliVars = body.vars || {};
+
+        // Fetch server-stored variables to include in validation
+        let storedVars: Record<string, string> = {};
+        const userScope = await getUserScopeByClerkId(userId);
+        if (userScope) {
+          storedVars = await getVariableValues(userScope.id);
+        }
+
+        // Merge: CLI vars override server-stored vars (same priority as buildExecutionContext)
+        const allVars = { ...storedVars, ...cliVars };
         const missingVars = requiredVars.filter(
-          (varName) => providedVars[varName] === undefined,
+          (varName) => allVars[varName] === undefined,
         );
 
         if (missingVars.length > 0) {
