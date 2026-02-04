@@ -7,6 +7,8 @@
     "moonshot",
     "minimax",
     "deepseek",
-    "zai"
+    "zai",
+    "azure-foundry",
+    "aws-bedrock"
   ]
 }

@@ -1,34 +1,46 @@
 ---
 title: Moonshot (Kimi)
-description: Use Kimi K2 model with VM0
+description: Use Kimi K2 models with VM0
 ---
 
-[Moonshot](https://platform.moonshot.ai/docs/guide/agent-support) provides the Kimi K2 model with strong reasoning capabilities.
+[Moonshot](https://platform.moonshot.ai) provides the Kimi K2 model with strong reasoning capabilities.
+
+## Quick Setup
+
+```bash
+vm0 model-provider setup --type moonshot-api-key
+```
+
+You'll be prompted for your API key and model selection.
 
 ## Get API Key
 
-Visit the [Moonshot Open Platform](https://platform.moonshot.ai/console/api-keys) to create and obtain an API Key.
+Visit the [Moonshot Platform](https://platform.moonshot.ai/console/api-keys) to create and obtain an API key.
 
-## Configuration
+## Available Models
 
-```yaml title="vm0.yaml"
-version: "1.0"
+| Model | Description |
+|-------|-------------|
+| `kimi-k2.5` | Latest Kimi model (default) |
+| `kimi-k2-thinking-turbo` | Fast thinking model |
+| `kimi-k2-thinking` | Standard thinking model |
 
-agents:
-  my-agent:
-    framework: claude-code
-    environment:
-      ANTHROPIC_BASE_URL: "https://api.moonshot.ai/anthropic" # [!code highlight]
-      ANTHROPIC_AUTH_TOKEN: "${{ secrets.MOONSHOT_API_KEY }}" # [!code highlight]
-      ANTHROPIC_MODEL: "kimi-k2-thinking-turbo" # [!code highlight]
-      ANTHROPIC_DEFAULT_OPUS_MODEL: "kimi-k2-thinking-turbo" # [!code highlight]
-      ANTHROPIC_DEFAULT_SONNET_MODEL: "kimi-k2-thinking-turbo" # [!code highlight]
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: "kimi-k2-thinking-turbo" # [!code highlight]
-      CLAUDE_CODE_SUBAGENT_MODEL: "kimi-k2-thinking-turbo" # [!code highlight]
+## Non-Interactive Setup
+
+```bash
+# With default model
+vm0 model-provider setup --type moonshot-api-key --credential "sk-xxx"
+
+# With specific model
+vm0 model-provider setup --type moonshot-api-key --credential "sk-xxx" --model "kimi-k2-thinking-turbo"
 ```
 
 ## Run
 
 ```bash
-vm0 run my-agent "build a todo app" --secrets MOONSHOT_API_KEY=sk-xxx
+vm0 run my-agent "build a todo app"
 ```
+
+## Resources
+
+- [Moonshot Agent Support Documentation](https://platform.moonshot.ai/docs/guide/agent-support)

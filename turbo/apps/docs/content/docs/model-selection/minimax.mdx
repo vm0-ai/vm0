@@ -3,34 +3,38 @@ title: MiniMax
 description: Use MiniMax M2.1 model with VM0
 ---
 
-[MiniMax](https://platform.minimax.io/docs/guides/text-ai-coding-tools) offers the M2.1 model with strong code understanding and multi-turn dialogue capabilities.
+[MiniMax](https://platform.minimax.io) offers the M2.1 model with strong code understanding and multi-turn dialogue capabilities.
+
+## Quick Setup
+
+```bash
+vm0 model-provider setup --type minimax-api-key
+```
+
+You'll be prompted for your API key.
 
 ## Get API Key
 
-Visit the [MiniMax Coding Plan](https://platform.minimax.io/user-center/payment/coding-plan) page to get your Coding Plan API Key.
+Visit the [MiniMax Platform](https://platform.minimax.io/user-center/basic-information/interface-key) to get your API key.
 
-## Configuration
+## Available Models
 
-```yaml title="vm0.yaml"
-version: "1.0"
+| Model | Description |
+|-------|-------------|
+| `MiniMax-M2.1` | Latest MiniMax model (default) |
 
-agents:
-  my-agent:
-    framework: claude-code
-    environment:
-      ANTHROPIC_BASE_URL: "https://api.minimax.io/anthropic" # [!code highlight]
-      ANTHROPIC_AUTH_TOKEN: "${{ secrets.MINIMAX_API_KEY }}" # [!code highlight]
-      API_TIMEOUT_MS: "3000000" # [!code highlight]
-      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" # [!code highlight]
-      ANTHROPIC_MODEL: "MiniMax-M2.1" # [!code highlight]
-      ANTHROPIC_SMALL_FAST_MODEL: "MiniMax-M2.1" # [!code highlight]
-      ANTHROPIC_DEFAULT_SONNET_MODEL: "MiniMax-M2.1" # [!code highlight]
-      ANTHROPIC_DEFAULT_OPUS_MODEL: "MiniMax-M2.1" # [!code highlight]
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: "MiniMax-M2.1" # [!code highlight]
+## Non-Interactive Setup
+
+```bash
+vm0 model-provider setup --type minimax-api-key --credential "xxx"
 ```
 
 ## Run
 
 ```bash
-vm0 run my-agent "build a todo app" --secrets MINIMAX_API_KEY=xxx
+vm0 run my-agent "build a todo app"
 ```
+
+## Resources
+
+- [MiniMax AI Coding Tools Documentation](https://platform.minimax.io/docs/guides/text-ai-coding-tools)

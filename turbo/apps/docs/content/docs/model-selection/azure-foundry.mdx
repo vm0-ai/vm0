@@ -1,0 +1,56 @@
+---
+title: Azure Foundry
+description: Run Claude on Microsoft Azure Foundry
+---
+
+<Callout type="warning">
+Azure Foundry support is experimental and may change in future releases.
+</Callout>
+
+[Azure Foundry](https://azure.microsoft.com/en-us/products/ai-foundry) allows you to run Claude models on Microsoft Azure infrastructure.
+
+## Quick Setup
+
+```bash
+vm0 model-provider setup --type azure-foundry
+```
+
+You'll be prompted for:
+1. **ANTHROPIC_FOUNDRY_API_KEY** - API key from Azure Foundry portal (Endpoints and keys)
+2. **ANTHROPIC_FOUNDRY_RESOURCE** - Azure resource name (from portal URL)
+3. **Model** - Custom model ID (e.g., `claude-sonnet-4-5`)
+
+## Get Credentials
+
+1. Go to the [Azure Portal](https://portal.azure.com)
+2. Navigate to your Azure Foundry resource
+3. Find **Endpoints and keys** section
+4. Copy the API key and resource name
+
+## Non-Interactive Setup
+
+```bash
+vm0 model-provider setup --type azure-foundry \
+  --credential ANTHROPIC_FOUNDRY_API_KEY=your-api-key \
+  --credential ANTHROPIC_FOUNDRY_RESOURCE=your-resource-name \
+  --model claude-sonnet-4-5
+```
+
+## Run
+
+Once configured, run agents as usual:
+
+```bash
+vm0 run my-agent "build a todo app"
+```
+
+Or specify the provider explicitly:
+
+```bash
+vm0 run my-agent "build a todo app" --model-provider azure-foundry
+```
+
+## Resources
+
+- [Claude Code Foundry Setup Guide](https://code.claude.com/docs/en/microsoft-foundry)
+- [Azure AI Foundry Documentation](https://learn.microsoft.com/en-us/azure/ai-foundry/)

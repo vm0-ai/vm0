@@ -1,83 +1,105 @@
 ---
 title: Overview
-description: Configure different model providers for your agents
+description: Configure model providers for your VM0 agents
 ---
 
-VM0 uses **Claude Code** as the primary agent framework. You can also use alternative model providers with Claude Code.
+VM0 agents use model providers to connect to AI models. The **model provider system** securely stores your credentials and automatically injects them when running agents.
 
-## Quick Start with Model Provider
+## Quick Start
 
-The fastest way to configure model authentication is using the model provider system:
+Configure a model provider with a single command:
 
 ```bash
 vm0 model-provider setup
 ```
 
 This interactive command will:
-1. Prompt you to select a provider type
-2. Ask for your credential (OAuth token or API key)
-3. Store it securely on the VM0 platform
+1. Show available provider types
+2. Prompt for your credential (API key or OAuth token)
+3. Allow model selection (for providers that support it)
+4. Store credentials securely on the VM0 platform
 
-Once configured, your credential is automatically injected when running agents.
+Once configured, credentials are automatically injected when running agents.
 
-### Available Provider Types
+## Available Providers
 
-| Type | Framework | How to Get |
-|------|-----------|------------|
-| `claude-code-oauth-token` | Claude Code | Run `claude setup-token` |
-| `anthropic-api-key` | Claude Code | [Anthropic Console](https://console.anthropic.com/settings/keys) |
+| Provider | Type | Models | How to Get Credential |
+|----------|------|--------|----------------------|
+| [Claude (OAuth)](/docs/model-selection/claude) | `claude-code-oauth-token` | Latest Claude | Run `claude setup-token` |
+| [Claude (API)](/docs/model-selection/claude) | `anthropic-api-key` | Latest Claude | [Anthropic Console](https://console.anthropic.com/settings/keys) |
+| [OpenRouter](/docs/model-selection/openrouter) | `openrouter-api-key` | Claude Sonnet/Opus/Haiku | [OpenRouter Keys](https://openrouter.ai/settings/keys) |
+| [Moonshot](/docs/model-selection/moonshot) | `moonshot-api-key` | Kimi K2 models | [Moonshot Platform](https://platform.moonshot.ai/console/api-keys) |
+| [MiniMax](/docs/model-selection/minimax) | `minimax-api-key` | MiniMax-M2.1 | [MiniMax Platform](https://platform.minimax.io/user-center/basic-information/interface-key) |
+| [DeepSeek](/docs/model-selection/deepseek) | `deepseek-api-key` | deepseek-chat | [DeepSeek Platform](https://platform.deepseek.com/api_keys) |
+| [Z.AI](/docs/model-selection/zai) | `zai-api-key` | GLM-4.7, GLM-4.5-Air | [Z.AI Platform](https://z.ai/model-api) |
+| [Azure Foundry](/docs/model-selection/azure-foundry) | `azure-foundry` | Custom | [Azure Portal](https://portal.azure.com) |
+| [AWS Bedrock](/docs/model-selection/aws-bedrock) | `aws-bedrock` | Custom | [AWS Console](https://console.aws.amazon.com) |
 
-### Managing Model Providers
+<Callout type="info">
+Azure Foundry and AWS Bedrock are experimental features with multi-credential authentication.
+</Callout>
+
+## Non-Interactive Setup
+
+For CI/CD or scripting, provide credentials via flags:
+
+```bash
+# Simple providers (single credential)
+vm0 model-provider setup --type anthropic-api-key --credential "sk-xxx"
+
+# With model selection
+vm0 model-provider setup --type openrouter-api-key --credential "sk-xxx" --model "anthropic/claude-sonnet-4.5"
+```
+
+## Model Selection
+
+Some providers support choosing specific models. During setup, you'll be prompted to select a model:
+
+| Provider | Available Models | Default |
+|----------|-----------------|---------|
+| OpenRouter | `anthropic/claude-sonnet-4.5`, `anthropic/claude-opus-4.5`, `anthropic/claude-haiku-4.5` | auto |
+| Moonshot | `kimi-k2.5`, `kimi-k2-thinking-turbo`, `kimi-k2-thinking` | `kimi-k2.5` |
+| Z.AI | `GLM-4.7`, `GLM-4.5-Air` | `GLM-4.7` |
+| MiniMax | `MiniMax-M2.1` | `MiniMax-M2.1` |
+| DeepSeek | `deepseek-chat` | `deepseek-chat` |
+| Azure Foundry | Custom input | - |
+| AWS Bedrock | Custom input | - |
+
+## Managing Model Providers
 
 ```bash
 # List all configured providers
 vm0 model-provider list
 
-# Set a different default
-vm0 model-provider set-default anthropic-api-key
+# Set a provider as default
+vm0 model-provider set-default openrouter-api-key
 
 # Delete a provider
-vm0 model-provider delete claude-code-oauth-token
+vm0 model-provider delete anthropic-api-key
 ```
 
-### Non-Interactive Setup
+<Callout type="info" title="How Credential Injection Works">
+When you run an agent:
+1. If your `vm0.yaml` has explicit auth environment variables, those are used
+2. Otherwise, your default model provider credential is injected automatically
+3. You can override at runtime with: `vm0 run agent "prompt" --model-provider <type>`
+</Callout>
 
-For CI/CD or scripting, use flags instead of prompts:
+## Runtime Override
+
+Override your default provider for a single run:
 
 ```bash
-vm0 model-provider setup --type anthropic-api-key --credential "sk-xxx"
+vm0 run my-agent "build a todo app" --model-provider openrouter-api-key
 ```
 
-<Callout type="info" title="How Model Selection Works">
-When you run an agent:
-1. If your `vm0.yaml` has explicit auth environment variables → those are used
-2. Otherwise → your default model provider credential is injected automatically
-3. Override with: `vm0 run agent "prompt" --model-provider <type>`
-</Callout>
-
-## Framework Selection
-
-Claude Code is the default and recommended agent framework. If you've configured a model provider above, authentication is handled automatically.
-
-### Claude Code (Default)
-
-Claude Code is the default framework, using Anthropic's Claude model:
-
-```yaml title="vm0.yaml"
-version: "1.0"
-
-agents:
-  my-agent:
-    framework: claude-code # [!code highlight]
-```
-
-## Alternative Model Providers
+## Advanced: Manual Configuration
 
 <Callout type="warning">
-Alternative model providers require manual configuration.
+For most users, `vm0 model-provider setup` is the recommended approach. Manual configuration is only needed for advanced use cases.
 </Callout>
 
-If you need to use providers other than Anthropic directly (like OpenRouter or DeepSeek), configure them manually in your `vm0.yaml`:
+If you need per-agent authentication overrides or custom configurations, you can set environment variables directly in your `vm0.yaml`:
 
 ```yaml title="vm0.yaml"
 version: "1.0"
@@ -86,16 +108,9 @@ agents:
   my-agent:
     framework: claude-code
     environment:
-      ANTHROPIC_BASE_URL: "https://api.example.com/anthropic" # [!code highlight]
-      ANTHROPIC_AUTH_TOKEN: "${{ secrets.API_KEY }}" # [!code highlight]
-      ANTHROPIC_MODEL: "model-name" # [!code highlight]
+      ANTHROPIC_BASE_URL: "https://api.example.com/anthropic"
+      ANTHROPIC_AUTH_TOKEN: "${{ secrets.MY_API_KEY }}"
+      ANTHROPIC_MODEL: "model-name"
 ```
 
-**Supported Providers:**
-
-- [Claude](/docs/model-selection/claude)
-- [OpenRouter](/docs/model-selection/openrouter)
-- [Moonshot (Kimi)](/docs/model-selection/moonshot)
-- [MiniMax](/docs/model-selection/minimax)
-- [DeepSeek](/docs/model-selection/deepseek)
-- [Z.AI (GLM)](/docs/model-selection/zai)
+See individual provider pages for specific environment variable details.

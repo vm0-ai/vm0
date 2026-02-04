@@ -1,0 +1,106 @@
+---
+title: AWS Bedrock
+description: Run Claude on AWS Bedrock
+---
+
+<Callout type="warning">
+AWS Bedrock support is experimental and may change in future releases.
+</Callout>
+
+[AWS Bedrock](https://aws.amazon.com/bedrock/) allows you to run Claude models on AWS infrastructure.
+
+## Quick Setup
+
+```bash
+vm0 model-provider setup --type aws-bedrock
+```
+
+You'll be prompted to choose an authentication method and provide the required credentials.
+
+## Authentication Methods
+
+### API Key (Recommended)
+
+Use a Bedrock API key for simple authentication.
+
+**Required credentials:**
+- **AWS_BEARER_TOKEN_BEDROCK** - Bedrock API key from AWS console
+- **AWS_REGION** - AWS region (e.g., `us-east-1`, `us-west-2`)
+
+```bash
+vm0 model-provider setup --type aws-bedrock --auth-method api-key \
+  --credential AWS_BEARER_TOKEN_BEDROCK=your-api-key \
+  --credential AWS_REGION=us-east-1
+```
+
+### IAM Access Keys
+
+Use IAM credentials for authentication.
+
+**Required credentials:**
+- **AWS_ACCESS_KEY_ID** - IAM access key ID
+- **AWS_SECRET_ACCESS_KEY** - IAM secret access key
+- **AWS_REGION** - AWS region
+
+**Optional credentials:**
+- **AWS_SESSION_TOKEN** - For temporary credentials (e.g., from STS)
+
+```bash
+vm0 model-provider setup --type aws-bedrock --auth-method access-keys \
+  --credential AWS_ACCESS_KEY_ID=your-access-key \
+  --credential AWS_SECRET_ACCESS_KEY=your-secret-key \
+  --credential AWS_REGION=us-east-1
+```
+
+With session token (temporary credentials):
+
+```bash
+vm0 model-provider setup --type aws-bedrock --auth-method access-keys \
+  --credential AWS_ACCESS_KEY_ID=your-access-key \
+  --credential AWS_SECRET_ACCESS_KEY=your-secret-key \
+  --credential AWS_SESSION_TOKEN=your-session-token \
+  --credential AWS_REGION=us-east-1
+```
+
+## Model Selection
+
+AWS Bedrock supports custom model IDs. During setup, you can specify a model:
+
+```bash
+vm0 model-provider setup --type aws-bedrock --auth-method api-key \
+  --credential AWS_BEARER_TOKEN_BEDROCK=xxx \
+  --credential AWS_REGION=us-east-1 \
+  --model anthropic.claude-sonnet-4-20250514-v1:0
+```
+
+## Get Credentials
+
+### For API Key method:
+1. Go to the [AWS Console](https://console.aws.amazon.com)
+2. Navigate to Amazon Bedrock
+3. Find your API key in the service settings
+
+### For IAM Access Keys method:
+1. Go to IAM in AWS Console
+2. Create or select a user with Bedrock permissions
+3. Generate access keys under Security credentials
+
+## Run
+
+Once configured, run agents as usual:
+
+```bash
+vm0 run my-agent "build a todo app"
+```
+
+Or specify the provider explicitly:
+
+```bash
+vm0 run my-agent "build a todo app" --model-provider aws-bedrock
+```
+
+## Resources
+
+- [Claude Code Bedrock Setup Guide](https://docs.anthropic.com/en/docs/claude-code/bedrock)
+- [AWS Bedrock Documentation](https://docs.aws.amazon.com/bedrock/)
+- [AWS Bedrock Pricing](https://aws.amazon.com/bedrock/pricing/)

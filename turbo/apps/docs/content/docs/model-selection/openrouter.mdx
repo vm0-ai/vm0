@@ -1,33 +1,48 @@
 ---
 title: OpenRouter
-description: Use multiple model providers through OpenRouter
+description: Use Claude models through OpenRouter
 ---
 
-[OpenRouter](https://openrouter.ai/docs/guides/guides/claude-code-integration) provides access to multiple model providers through a unified API, allowing you to use models from OpenAI, Anthropic, Google, and others.
+[OpenRouter](https://openrouter.ai) provides access to Claude models through a unified API.
 
-## Configuration
+## Quick Setup
 
-```yaml title="vm0.yaml"
-version: "1.0"
-
-agents:
-  my-agent:
-    framework: claude-code
-    environment:
-      ANTHROPIC_BASE_URL: "https://openrouter.ai/api" # [!code highlight]
-      ANTHROPIC_AUTH_TOKEN: "${{ secrets.OPENROUTER_API_KEY }}" # [!code highlight]
-      ANTHROPIC_API_KEY: "" # [!code highlight]
-      ANTHROPIC_DEFAULT_SONNET_MODEL: "anthropic/claude-sonnet-4" # [!code highlight]
-      ANTHROPIC_DEFAULT_OPUS_MODEL: "anthropic/claude-opus-4" # [!code highlight]
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: "anthropic/claude-haiku-3.5" # [!code highlight]
+```bash
+vm0 model-provider setup --type openrouter-api-key
 ```
 
-`ANTHROPIC_API_KEY` must be explicitly set to an empty string to prevent conflicts.
+You'll be prompted for your API key and model selection.
+
+## Get API Key
+
+Visit [OpenRouter Settings](https://openrouter.ai/settings/keys) to create and obtain an API key.
+
+## Available Models
+
+| Model | Description |
+|-------|-------------|
+| `anthropic/claude-sonnet-4.5` | Balanced performance |
+| `anthropic/claude-opus-4.5` | Highest capability |
+| `anthropic/claude-haiku-4.5` | Fastest response |
+| auto | Automatic model selection (default) |
+
+## Non-Interactive Setup
+
+```bash
+# With default model (auto)
+vm0 model-provider setup --type openrouter-api-key --credential "sk-or-xxx"
+
+# With specific model
+vm0 model-provider setup --type openrouter-api-key --credential "sk-or-xxx" --model "anthropic/claude-sonnet-4.5"
+```
 
 ## Run
 
 ```bash
-vm0 run my-agent "build a todo app" --secrets OPENROUTER_API_KEY=sk-xxx
+vm0 run my-agent "build a todo app"
 ```
 
-For available models and configuration options, see [OpenRouter Claude Code Integration](https://openrouter.ai/docs/guides/guides/claude-code-integration#changing-models).
+## Resources
+
+- [OpenRouter Claude Code Integration](https://openrouter.ai/docs/guides/guides/claude-code-integration)
+- [OpenRouter Documentation](https://openrouter.ai/docs)
