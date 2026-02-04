@@ -17,15 +17,42 @@ import urllib.parse
 import ipaddress
 import socket
 from mitmproxy import http, ctx, tls
+from mitmproxy.addonmanager import Loader
 
 
-# VM0 Proxy configuration from environment
-API_URL = os.environ.get("VM0_API_URL", "https://www.vm0.ai")
-REGISTRY_PATH = os.environ.get("VM0_REGISTRY_PATH", "/tmp/vm0-vm-registry.json")
+# Vercel bypass secret (still from environment as it's a secret)
 VERCEL_BYPASS = os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET", "")
 
-# Construct proxy URL
-PROXY_URL = f"{API_URL}/api/webhooks/agent/proxy"
+
+def load(loader: Loader) -> None:
+    """Register custom options for the addon."""
+    loader.add_option(
+        name="vm0_api_url",
+        typespec=str,
+        default="https://www.vm0.ai",
+        help="VM0 API URL for proxy endpoint",
+    )
+    loader.add_option(
+        name="vm0_registry_path",
+        typespec=str,
+        default="/tmp/vm0-vm-registry.json",
+        help="Path to VM registry file",
+    )
+
+
+def get_api_url() -> str:
+    """Get API URL from options."""
+    return ctx.options.vm0_api_url
+
+
+def get_registry_path() -> str:
+    """Get registry path from options."""
+    return ctx.options.vm0_registry_path
+
+
+def get_proxy_url() -> str:
+    """Construct proxy URL from API URL."""
+    return f"{get_api_url()}/api/webhooks/agent/proxy"
 
 # Cache for VM registry (reloaded periodically)
 _registry_cache = {}
@@ -45,8 +72,9 @@ def load_registry() -> dict:
         return _registry_cache
 
     try:
-        if os.path.exists(REGISTRY_PATH):
-            with open(REGISTRY_PATH, "r") as f:
+        registry_path = get_registry_path()
+        if os.path.exists(registry_path):
+            with open(registry_path, "r") as f:
                 data = json.load(f)
                 _registry_cache = data.get("vms", {})
                 _registry_cache_time = now
@@ -219,8 +247,9 @@ def tls_clienthello(data: tls.ClientHelloData) -> None:
     rules = vm_info.get("firewallRules", [])
 
     # Auto-allow VM0 API requests - the agent MUST be able to communicate with VM0
-    if API_URL and sni:
-        parsed_api = urllib.parse.urlparse(API_URL)
+    api_url = get_api_url()
+    if api_url and sni:
+        parsed_api = urllib.parse.urlparse(api_url)
         api_hostname = parsed_api.hostname.lower() if parsed_api.hostname else ""
         sni_lower = sni.lower()
         if api_hostname and (sni_lower == api_hostname or sni_lower.endswith(f".{api_hostname}")):
@@ -319,8 +348,9 @@ def request(flow: http.HTTPFlow) -> None:
 
     # Auto-allow VM0 API requests - the agent MUST be able to communicate with VM0
     # This is checked before user firewall rules to ensure agent functionality
-    if API_URL:
-        parsed_api = urllib.parse.urlparse(API_URL)
+    api_url = get_api_url()
+    if api_url:
+        parsed_api = urllib.parse.urlparse(api_url)
         api_hostname = parsed_api.hostname.lower() if parsed_api.hostname else ""
         if api_hostname and (hostname == api_hostname or hostname.endswith(f".{api_hostname}")):
             ctx.log.info(f"[{run_id}] Auto-allow VM0 API: {hostname}")
@@ -349,12 +379,12 @@ def request(flow: http.HTTPFlow) -> None:
     # Request is ALLOWED - proceed with processing
 
     # Skip if no API URL configured
-    if not API_URL:
-        ctx.log.warn("VM0_API_URL not set, passing through")
+    if not api_url:
+        ctx.log.warn("vm0_api_url not set, passing through")
         return
 
     # Skip rewriting requests already going to VM0 (avoid loops)
-    if API_URL in flow.request.pretty_url:
+    if api_url in flow.request.pretty_url:
         flow.metadata["original_url"] = flow.request.pretty_url
         flow.metadata["skip_rewrite"] = True
         return
@@ -388,7 +418,7 @@ def request(flow: http.HTTPFlow) -> None:
     ctx.log.info(f"[{run_id}] Proxying via MITM: {original_url}")
 
     # Parse proxy URL
-    parsed = urllib.parse.urlparse(PROXY_URL)
+    parsed = urllib.parse.urlparse(get_proxy_url())
 
     # Build query params
     query_params = {"url": original_url}

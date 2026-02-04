@@ -142,6 +142,7 @@ export class ProxyManager {
     logger.log(`  Registry: ${this.config.registryPath}`);
 
     // Start mitmproxy in transparent mode
+    // Pass config via --set options (visible in /proc/<pid>/cmdline for process identification)
     const args = [
       "--mode",
       "transparent",
@@ -149,20 +150,16 @@ export class ProxyManager {
       String(this.config.port),
       "--set",
       `confdir=${this.config.caDir}`,
+      "--set",
+      `vm0_api_url=${this.config.apiUrl}`,
+      "--set",
+      `vm0_registry_path=${this.config.registryPath}`,
       "--scripts",
       this.config.addonPath,
       "--quiet",
     ];
 
-    // Set environment variables for the addon
-    const env = {
-      ...process.env,
-      VM0_API_URL: this.config.apiUrl,
-      VM0_REGISTRY_PATH: this.config.registryPath,
-    };
-
     this.process = spawn("mitmdump", args, {
-      env,
       stdio: ["ignore", "pipe", "pipe"],
       detached: false,
     });
