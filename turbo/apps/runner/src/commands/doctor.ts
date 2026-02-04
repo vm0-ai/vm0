@@ -16,7 +16,7 @@ import { runnerPaths, runtimePaths } from "../lib/paths.js";
 import { pollForJob } from "../lib/api.js";
 import {
   findFirecrackerProcesses,
-  findMitmproxyProcess,
+  findMitmproxyProcesses,
 } from "../lib/firecracker/process.js";
 import { withFileLock } from "../lib/utils/file-lock.js";
 import { isProcessRunning } from "../lib/utils/process.js";
@@ -104,7 +104,9 @@ async function checkNetwork(
   console.log("Network:");
 
   const proxyPort = config.proxy.port;
-  const mitmProc = findMitmproxyProcess();
+  const registryPath = runnerPaths.vmRegistry(config.base_dir);
+  const mitmProcesses = findMitmproxyProcesses();
+  const mitmProc = mitmProcesses.find((p) => p.registryPath === registryPath);
   const portInUse = await isPortInUse(proxyPort);
 
   if (mitmProc) {

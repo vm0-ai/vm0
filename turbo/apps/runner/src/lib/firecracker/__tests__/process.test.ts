@@ -4,7 +4,7 @@ import {
   parseFirecrackerCmdline,
   parseMitmproxyCmdline,
   findFirecrackerProcesses,
-  findMitmproxyProcess,
+  findMitmproxyProcesses,
   findProcessByVmId,
 } from "../process.js";
 import { createVmId as vmId } from "../vm-id.js";
@@ -88,25 +88,35 @@ describe("process discovery", () => {
   });
 
   describe("parseMitmproxyCmdline", () => {
-    it("parses mitmproxy with -p flag", () => {
-      const input = cmdline("mitmproxy", "-p", "8080");
-      expect(parseMitmproxyCmdline(input)).toEqual({ port: 8080 });
+    it("parses mitmdump with vm0_registry_path", () => {
+      const input = cmdline(
+        "mitmdump",
+        "--set",
+        "vm0_registry_path=/opt/runner/vm-registry.json",
+      );
+      expect(parseMitmproxyCmdline(input)).toBe("/opt/runner/vm-registry.json");
     });
 
-    it("parses mitmdump with --listen-port flag", () => {
+    it("parses mitmproxy with vm0_registry_path among other args", () => {
       const input = cmdline(
         "mitmdump",
         "--listen-port",
-        "9090",
+        "8080",
+        "--set",
+        "confdir=/opt/proxy",
+        "--set",
+        "vm0_registry_path=/opt/runner/pr-123/vm-registry.json",
         "-s",
         "addon.py",
       );
-      expect(parseMitmproxyCmdline(input)).toEqual({ port: 9090 });
+      expect(parseMitmproxyCmdline(input)).toBe(
+        "/opt/runner/pr-123/vm-registry.json",
+      );
     });
 
-    it("parses mitmproxy without port flag", () => {
-      const input = cmdline("mitmproxy", "-s", "addon.py");
-      expect(parseMitmproxyCmdline(input)).toEqual({ port: undefined });
+    it("returns null for mitmproxy without vm0_registry_path", () => {
+      const input = cmdline("mitmdump", "--listen-port", "8080");
+      expect(parseMitmproxyCmdline(input)).toBeNull();
     });
 
     it("returns null for non-mitmproxy process", () => {
@@ -117,11 +127,6 @@ describe("process discovery", () => {
 
     it("returns null for empty cmdline", () => {
       expect(parseMitmproxyCmdline("")).toBeNull();
-    });
-
-    it("handles mitmproxy in path", () => {
-      const input = cmdline("/usr/bin/mitmproxy", "-p", "7777");
-      expect(parseMitmproxyCmdline(input)).toEqual({ port: 7777 });
     });
   });
 
@@ -271,50 +276,56 @@ describe("process discovery", () => {
     });
   });
 
-  describe("findMitmproxyProcess", () => {
-    it("finds mitmproxy process", () => {
+  describe("findMitmproxyProcesses", () => {
+    it("finds mitmproxy processes with registry path", () => {
       vol.fromJSON({
         "/proc/1000/cmdline": cmdline("nginx", "-c", "/etc/nginx.conf"),
         "/proc/2000/cmdline": cmdline(
           "mitmdump",
-          "-p",
-          "8080",
-          "-s",
-          "addon.py",
+          "--set",
+          "vm0_registry_path=/opt/runner-a/vm-registry.json",
+        ),
+        "/proc/3000/cmdline": cmdline(
+          "mitmdump",
+          "--set",
+          "vm0_registry_path=/opt/runner-b/vm-registry.json",
         ),
       });
 
-      const result = findMitmproxyProcess();
+      const result = findMitmproxyProcesses();
 
-      expect(result).toEqual({ pid: 2000, port: 8080 });
+      expect(result).toEqual([
+        { pid: 2000, registryPath: "/opt/runner-a/vm-registry.json" },
+        { pid: 3000, registryPath: "/opt/runner-b/vm-registry.json" },
+      ]);
     });
 
-    it("returns null when no mitmproxy process found", () => {
+    it("returns empty array when no mitmproxy process found", () => {
       vol.fromJSON({
         "/proc/1000/cmdline": cmdline("nginx", "-c", "/etc/nginx.conf"),
       });
 
-      const result = findMitmproxyProcess();
+      const result = findMitmproxyProcesses();
 
-      expect(result).toBeNull();
+      expect(result).toEqual([]);
     });
 
-    it("returns null when /proc is empty", () => {
+    it("returns empty array when /proc is empty", () => {
       vol.fromJSON({ "/proc/.keep": "" });
 
-      const result = findMitmproxyProcess();
+      const result = findMitmproxyProcesses();
 
-      expect(result).toBeNull();
+      expect(result).toEqual([]);
     });
 
-    it("finds mitmproxy without port", () => {
+    it("ignores mitmproxy without registry path", () => {
       vol.fromJSON({
-        "/proc/1000/cmdline": cmdline("mitmproxy", "-s", "addon.py"),
+        "/proc/1000/cmdline": cmdline("mitmdump", "-p", "8080"),
       });
 
-      const result = findMitmproxyProcess();
+      const result = findMitmproxyProcesses();
 
-      expect(result).toEqual({ pid: 1000, port: undefined });
+      expect(result).toEqual([]);
     });
   });
 });

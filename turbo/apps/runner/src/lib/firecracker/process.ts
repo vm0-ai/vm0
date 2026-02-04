@@ -53,22 +53,27 @@ export function parseFirecrackerCmdline(cmdline: string): VmId | null {
 }
 
 /**
- * Parse /proc/{pid}/cmdline content to extract mitmproxy process info.
+ * Parse /proc/{pid}/cmdline content to extract mitmproxy registry path.
  * Pure function for easy testing.
+ *
+ * Returns registryPath from --set vm0_registry_path=xxx (unique per runner)
  */
-export function parseMitmproxyCmdline(
-  cmdline: string,
-): { port?: number } | null {
+export function parseMitmproxyCmdline(cmdline: string): string | null {
   if (!cmdline.includes("mitmproxy") && !cmdline.includes("mitmdump")) {
     return null;
   }
 
   const args = cmdline.split("\0");
-  const portIdx = args.findIndex((a) => a === "-p" || a === "--listen-port");
-  const portArg = args[portIdx + 1];
-  const port = portIdx !== -1 && portArg ? parseInt(portArg, 10) : undefined;
 
-  return { port };
+  // Parse --set vm0_registry_path=xxx (unique per runner)
+  for (const arg of args) {
+    const match = arg.match(/^vm0_registry_path=(.+)$/);
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -148,17 +153,23 @@ export async function killProcess(
   return !isProcessRunning(pid);
 }
 
+interface MitmproxyProcess {
+  pid: number;
+  registryPath: string;
+}
+
 /**
- * Find mitmproxy process
+ * Find all mitmproxy processes
  */
-export function findMitmproxyProcess(): { pid: number; port?: number } | null {
+export function findMitmproxyProcesses(): MitmproxyProcess[] {
+  const processes: MitmproxyProcess[] = [];
   const procDir = "/proc";
 
   let entries: string[];
   try {
     entries = readdirSync(procDir);
   } catch {
-    return null;
+    return [];
   }
 
   for (const entry of entries) {
@@ -171,14 +182,14 @@ export function findMitmproxyProcess(): { pid: number; port?: number } | null {
 
     try {
       const cmdline = readFileSync(cmdlinePath, "utf-8");
-      const parsed = parseMitmproxyCmdline(cmdline);
-      if (parsed) {
-        return { pid, port: parsed.port };
+      const registryPath = parseMitmproxyCmdline(cmdline);
+      if (registryPath) {
+        processes.push({ pid, registryPath });
       }
     } catch {
       continue;
     }
   }
 
-  return null;
+  return processes;
 }
