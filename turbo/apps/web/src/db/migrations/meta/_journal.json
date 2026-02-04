@@ -435,6 +435,20 @@
       "when": 1768600000000,
       "tag": "0061_add_scope_id_to_storages",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1768700000000,
+      "tag": "0062_update_slack_thread_sessions_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1768800000000,
+      "tag": "0063_slack_bindings_orphan_support",
+      "breakpoints": true
     }
   ]
 }
