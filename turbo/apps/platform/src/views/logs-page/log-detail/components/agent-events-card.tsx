@@ -208,7 +208,7 @@ export function AgentEventsCard({
             </span>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
-            <div className="relative flex h-9 flex-1 sm:flex-none items-center rounded-md border border-border bg-card focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background">
+            <div className="relative flex h-9 flex-1 sm:flex-none items-center rounded-lg border border-border bg-card focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background">
               <div className="pl-2">
                 <IconSearch className="h-4 w-4 text-muted-foreground" />
               </div>
@@ -229,7 +229,7 @@ export function AgentEventsCard({
             </div>
             {!isCodex && (
               <>
-                <div className="h-5 w-px bg-border hidden sm:block" />
+                <div className="h-4 w-px bg-border hidden sm:block" />
                 <ViewModeToggle
                   mode={viewMode}
                   setMode={handleViewModeChange}
