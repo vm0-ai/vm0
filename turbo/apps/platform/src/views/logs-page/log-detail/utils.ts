@@ -18,8 +18,20 @@ interface ToolUseContent {
 interface ToolResultContent {
   type: "tool_result";
   tool_use_id?: string;
-  content: string;
+  // API may return non-string values (numbers, objects, etc.)
+  content: unknown;
   is_error?: boolean;
+}
+
+/**
+ * Normalizes tool result content to a string.
+ * The API may return non-string values that need to be converted.
+ */
+function normalizeToolResultContent(content: unknown): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  return String(content ?? "");
 }
 
 type MessageContent = TextContent | ToolUseContent | ToolResultContent;
@@ -129,7 +141,7 @@ function extractMessageContentText(contents: MessageContent[]): string[] {
     } else if (content.type === "tool_result") {
       const resultContent = content as ToolResultContent;
       if (resultContent.content) {
-        parts.push(resultContent.content);
+        parts.push(normalizeToolResultContent(resultContent.content));
       }
     }
   }
@@ -396,12 +408,9 @@ function processToolResult(
   const toolUseId = resultContent.tool_use_id;
   const pending = toolUseId ? pendingToolUses.get(toolUseId) : undefined;
 
+  const content = normalizeToolResultContent(resultContent.content);
+
   if (pending) {
-    // Ensure content is a string (API might return non-string values)
-    const content =
-      typeof resultContent.content === "string"
-        ? resultContent.content
-        : String(resultContent.content ?? "");
     pending.operation.result = {
       content,
       isError: resultContent.is_error === true,
@@ -413,11 +422,6 @@ function processToolResult(
   }
 
   // Orphan tool_result - create standalone message
-  // Ensure content is a string (API might return non-string values)
-  const orphanContent =
-    typeof resultContent.content === "string"
-      ? resultContent.content
-      : String(resultContent.content ?? "");
   grouped.push({
     type: "assistant",
     sequenceNumber: event.sequenceNumber,
@@ -429,7 +433,7 @@ function processToolResult(
         keyParam: "",
         input: {},
         result: {
-          content: orphanContent,
+          content,
           isError: resultContent.is_error === true,
           durationMs: toolMeta?.durationMs ?? undefined,
           bytes: toolMeta?.bytes ?? undefined,

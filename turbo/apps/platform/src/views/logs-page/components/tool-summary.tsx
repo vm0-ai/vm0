@@ -310,11 +310,7 @@ function ToolResultDetails({
   currentMatchIndex?: number;
   matchStartIndex?: number;
 }) {
-  const { content: rawContent, isError, bytes } = result;
-
-  // Ensure content is a string (API might return non-string values)
-  const content =
-    typeof rawContent === "string" ? rawContent : String(rawContent ?? "");
+  const { content, isError, bytes } = result;
 
   if (!content || content.trim() === "") {
     return (
