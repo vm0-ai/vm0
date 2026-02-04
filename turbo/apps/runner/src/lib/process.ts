@@ -1,13 +1,13 @@
 /**
- * Firecracker Process Discovery
+ * Process Discovery
  *
- * Utilities for finding and managing Firecracker and mitmproxy processes.
- * Used by maintenance CLI commands (doctor, kill) to discover running VMs.
+ * Utilities for finding runner, Firecracker, and mitmproxy processes.
+ * Used by maintenance CLI commands (doctor, kill) to discover running processes.
  */
 
 import { readdirSync, readFileSync, existsSync } from "fs";
 import path from "path";
-import { type VmId, createVmId, vmIdValue } from "./vm-id.js";
+import { type VmId, createVmId, vmIdValue } from "./firecracker/vm-id.js";
 
 export interface FirecrackerProcess {
   pid: number;

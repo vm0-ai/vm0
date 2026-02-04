@@ -18,7 +18,7 @@ import {
   findFirecrackerProcesses,
   findMitmproxyProcesses,
   type FirecrackerProcess,
-} from "../lib/firecracker/process.js";
+} from "../lib/process.js";
 import { withFileLock } from "../lib/utils/file-lock.js";
 import { isProcessRunning } from "../lib/utils/process.js";
 import { SNAPSHOT_NETWORK } from "../lib/firecracker/netns.js";

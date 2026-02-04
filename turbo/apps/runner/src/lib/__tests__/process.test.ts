@@ -7,7 +7,7 @@ import {
   findMitmproxyProcesses,
   findProcessByVmId,
 } from "../process.js";
-import { createVmId as vmId } from "../vm-id.js";
+import { createVmId as vmId } from "../firecracker/vm-id.js";
 
 // Use memfs for filesystem simulation
 vi.mock("fs", async () => {
