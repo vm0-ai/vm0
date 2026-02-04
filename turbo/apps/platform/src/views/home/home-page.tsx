@@ -1,7 +1,7 @@
 import { Card } from "@vm0/ui/components/ui/card";
 import { CopyButton } from "@vm0/ui/components/ui/copy-button";
 import { Button } from "@vm0/ui/components/ui/button";
-import { IconFileText, IconChevronRight } from "@tabler/icons-react";
+import { IconBook, IconChevronRight } from "@tabler/icons-react";
 import { AppShell } from "../layout/app-shell.tsx";
 import { OnboardingModal } from "./onboarding-modal.tsx";
 import { useGet } from "ccstate-react";
@@ -170,8 +170,8 @@ function ReferenceCard({
   href: string;
 }) {
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer">
-      <Card className="flex items-center gap-3 p-4 hover:bg-muted/50 transition-colors cursor-pointer">
+    <a href={href} target="_blank" rel="noopener noreferrer" className="h-full">
+      <Card className="h-full flex items-center gap-3 p-4 hover:bg-muted/50 transition-colors cursor-pointer">
         <div
           className={`flex h-8 w-8 items-center justify-center rounded-lg ${iconBg}`}
         >
@@ -192,7 +192,7 @@ function UsefulReferences({ theme }: { theme: string }) {
       <h2 className="text-base font-medium text-foreground mb-4">
         Useful reference
       </h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <ReferenceCard
           title="Explore our community"
           description="Join us on Discord"
@@ -224,11 +224,18 @@ function UsefulReferences({ theme }: { theme: string }) {
           href="https://github.com/vm0-ai/vm0"
         />
         <ReferenceCard
-          title="VM0 Professional Doc"
-          description="Professional docs and guides"
-          icon={<IconFileText className="h-8 w-8 text-primary" stroke={1.5} />}
+          title="Docs for developers"
+          description="Complete guides and CLI reference"
+          icon={<IconBook className="h-8 w-8 text-primary" stroke={1.5} />}
           iconBg=""
           href="https://docs.vm0.ai"
+        />
+        <ReferenceCard
+          title="Vibe coding quick start"
+          description="Build agents with Claude Code"
+          icon={<IconBook className="h-8 w-8 text-primary" stroke={1.5} />}
+          iconBg=""
+          href="https://docs.vm0.ai/docs/vibe-coder-quickstart"
         />
       </div>
     </section>
