@@ -13,14 +13,14 @@ interface SlackMessage {
  * @param client - Slack WebClient
  * @param channel - Channel ID
  * @param threadTs - Thread timestamp
- * @param limit - Maximum number of messages to fetch (default: 20)
+ * @param limit - Maximum number of messages to fetch (default: 100, fetch all)
  * @returns Array of messages
  */
 export async function fetchThreadContext(
   client: WebClient,
   channel: string,
   threadTs: string,
-  limit = 20,
+  limit = 100,
 ): Promise<SlackMessage[]> {
   const result = await client.conversations.replies({
     channel,
@@ -28,7 +28,9 @@ export async function fetchThreadContext(
     limit,
   });
 
-  return (result.messages ?? []) as SlackMessage[];
+  const messages = (result.messages ?? []) as SlackMessage[];
+  console.log(`[slack:context] Fetched ${messages.length} thread messages`);
+  return messages;
 }
 
 /**
@@ -57,7 +59,7 @@ export async function fetchChannelContext(
  * Format messages into context for agent prompt
  *
  * @param messages - Array of Slack messages
- * @param botUserId - Bot user ID to filter out bot messages (optional)
+ * @param botUserId - Bot user ID (kept for API compatibility, no longer used for filtering)
  * @param contextType - Type of context: "thread" or "channel"
  * @returns Formatted context string
  */
@@ -66,15 +68,12 @@ export function formatContextForAgent(
   botUserId?: string,
   contextType: "thread" | "channel" = "thread",
 ): string {
-  const formattedMessages = messages
-    // Filter out bot's own messages if botUserId is provided
-    .filter((msg) => !botUserId || msg.user !== botUserId)
-    // Format each message
-    .map((msg) => {
-      const user = msg.user ?? "unknown";
-      const text = msg.text ?? "";
-      return `[${user}]: ${text}`;
-    });
+  // Include all messages (don't filter bot messages)
+  const formattedMessages = messages.map((msg) => {
+    const user = msg.bot_id ? "bot" : (msg.user ?? "unknown");
+    const text = msg.text ?? "";
+    return `[${user}]: ${text}`;
+  });
 
   if (formattedMessages.length === 0) {
     return "";
@@ -85,7 +84,11 @@ export function formatContextForAgent(
       ? "## Slack Thread Context"
       : "## Recent Channel Messages";
 
-  return `${header}\n\n${formattedMessages.join("\n\n")}`;
+  const result = `${header}\n\n${formattedMessages.join("\n\n")}`;
+  console.log(
+    `[slack:context] Formatted ${formattedMessages.length} messages for ${contextType}, length=${result.length}`,
+  );
+  return result;
 }
 
 /**

@@ -114,15 +114,14 @@ async function routeMessageToAgent(
  * 3. If not linked, post link message
  * 4. Get user's bindings
  * 5. If no bindings, prompt to add agent
- * 6. Add thinking reaction and post "Thinking..." message (early feedback)
+ * 6. Add thinking reaction (emoji only)
  * 7. Route to agent (explicit or LLM)
- * 8. Update thinking message with agent name
- * 9. Find existing thread session (for session continuation)
- * 10. Fetch thread context
- * 11. Execute agent with session continuation
- * 12. Create thread session mapping (if new thread)
- * 13. Update thinking message with response
- * 14. Remove thinking reaction
+ * 8. Find existing thread session (for session continuation)
+ * 9. Fetch thread context
+ * 10. Execute agent with session continuation
+ * 11. Create thread session mapping (if new thread)
+ * 12. Post response message
+ * 13. Remove thinking reaction
  */
 export async function handleAppMention(context: MentionContext): Promise<void> {
   const { SECRETS_ENCRYPTION_KEY } = env();
@@ -203,7 +202,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       return;
     }
 
-    // 6. Add thinking reaction and post early "Thinking..." message
+    // 6. Add thinking reaction (emoji only, no message)
     const reactionAdded = await client.reactions
       .add({
         channel: context.channelId,
@@ -212,26 +211,6 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       })
       .then(() => true)
       .catch(() => false);
-
-    const thinkingTs = await postMessage(
-      client,
-      context.channelId,
-      "Thinking...",
-      {
-        threadTs,
-        blocks: [
-          {
-            type: "context",
-            elements: [
-              {
-                type: "mrkdwn",
-                text: `:hourglass_flowing_sand: *Thinking...*`,
-              },
-            ],
-          },
-        ],
-      },
-    );
 
     // Extract message content (remove bot mention)
     const messageContent = extractMessageContent(
@@ -243,15 +222,11 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
     const routeResult = await routeMessageToAgent(messageContent, bindings);
 
     if (!routeResult.success) {
-      // Update thinking message with error and cleanup
-      if (thinkingTs) {
-        await client.chat.update({
-          channel: context.channelId,
-          ts: thinkingTs,
-          text: routeResult.error,
-          blocks: buildErrorMessage(routeResult.error),
-        });
-      }
+      // Post error message and cleanup reaction
+      await postMessage(client, context.channelId, routeResult.error, {
+        threadTs,
+        blocks: buildErrorMessage(routeResult.error),
+      });
       if (reactionAdded) {
         await client.reactions
           .remove({
@@ -266,35 +241,16 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
 
     const { agentName: selectedAgentName, promptText } = routeResult;
 
-    // 8. Update thinking message with selected agent
-    if (thinkingTs) {
-      await client.chat
-        .update({
-          channel: context.channelId,
-          ts: thinkingTs,
-          text: `Thinking... (using ${selectedAgentName})`,
-          blocks: [
-            {
-              type: "context",
-              elements: [
-                {
-                  type: "mrkdwn",
-                  text: `:hourglass_flowing_sand: *Thinking...* (using \`${selectedAgentName}\`)`,
-                },
-              ],
-            },
-          ],
-        })
-        .catch(() => {});
-    }
-
     // Get the selected binding
     const selectedBinding = bindings.find(
       (b) => b.agentName === selectedAgentName,
     )!;
 
-    // 9. Find existing thread session for this binding (if in a thread)
+    // 8. Find existing thread session for this binding (if in a thread)
     let existingSessionId: string | undefined;
+    console.log(
+      `[slack:mention] Looking for thread session: threadTs=${threadTs}, context.threadTs=${context.threadTs}, bindingId=${selectedBinding.id}, channelId=${context.channelId}`,
+    );
     if (threadTs) {
       const [threadSession] = await globalThis.services.db
         .select({ agentSessionId: slackThreadSessions.agentSessionId })
@@ -309,9 +265,12 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
         .limit(1);
 
       existingSessionId = threadSession?.agentSessionId;
+      console.log(
+        `[slack:mention] Thread session query result: existingSessionId=${existingSessionId}`,
+      );
     }
 
-    // 10. Fetch Slack context (thread messages or recent channel messages)
+    // 9. Fetch Slack context (thread messages or recent channel messages)
     let formattedContext = "";
     if (context.threadTs) {
       // In a thread - fetch thread replies
@@ -328,7 +287,10 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
     }
 
     try {
-      // 11. Execute agent with session continuation
+      // 10. Execute agent with session continuation
+      console.log(
+        `[slack:mention] Calling runAgentForSlack with existingSessionId=${existingSessionId}`,
+      );
       const { response: agentResponse, sessionId: newSessionId } =
         await runAgentForSlack({
           binding: selectedBinding,
@@ -337,9 +299,15 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
           threadContext: formattedContext,
           userId: userLink.vm0UserId,
         });
+      console.log(
+        `[slack:mention] runAgentForSlack returned newSessionId=${newSessionId}`,
+      );
 
-      // 12. Create thread session mapping if this is a new thread (no existing session)
+      // 11. Create thread session mapping if this is a new thread (no existing session)
       if (threadTs && !existingSessionId && newSessionId) {
+        console.log(
+          `[slack:mention] Creating thread session mapping: threadTs=${threadTs}, newSessionId=${newSessionId}`,
+        );
         await globalThis.services.db
           .insert(slackThreadSessions)
           .values({
@@ -351,23 +319,13 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
           .onConflictDoNothing();
       }
 
-      // 13. Update thinking message with actual response
-      if (thinkingTs) {
-        await client.chat.update({
-          channel: context.channelId,
-          ts: thinkingTs,
-          text: agentResponse,
-          blocks: buildMarkdownMessage(agentResponse),
-        });
-      } else {
-        // Fallback: post new message if we don't have the thinking message ts
-        await postMessage(client, context.channelId, agentResponse, {
-          threadTs,
-          blocks: buildMarkdownMessage(agentResponse),
-        });
-      }
+      // 12. Post response message
+      await postMessage(client, context.channelId, agentResponse, {
+        threadTs,
+        blocks: buildMarkdownMessage(agentResponse),
+      });
     } finally {
-      // 14. Remove thinking reaction
+      // 13. Remove thinking reaction
       if (reactionAdded) {
         await client.reactions
           .remove({

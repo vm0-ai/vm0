@@ -1,4 +1,4 @@
-import { eq, desc, and, gte, asc } from "drizzle-orm";
+import { eq, desc, and, gte } from "drizzle-orm";
 import {
   agentComposes,
   agentComposeVersions,
@@ -138,8 +138,8 @@ export async function runAgentForSlack(
       pollIntervalMs: 5000, // 5 second polling interval
     });
 
-    // If no existing session, find the session created for this run
-    // Use run.createdAt to avoid race conditions with concurrent runs
+    // If no existing session, find the session created/updated for this run
+    // Use updatedAt >= run.createdAt to catch both new and updated sessions
     let resultSessionId = sessionId;
     if (!sessionId && result.status === "completed") {
       const [newSession] = await globalThis.services.db
@@ -149,10 +149,10 @@ export async function runAgentForSlack(
           and(
             eq(agentSessions.userId, userId),
             eq(agentSessions.agentComposeId, binding.composeId),
-            gte(agentSessions.createdAt, run.createdAt),
+            gte(agentSessions.updatedAt, run.createdAt),
           ),
         )
-        .orderBy(asc(agentSessions.createdAt))
+        .orderBy(desc(agentSessions.updatedAt))
         .limit(1);
 
       resultSessionId = newSession?.id;
