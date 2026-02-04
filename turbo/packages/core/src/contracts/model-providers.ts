@@ -57,7 +57,7 @@ export const MODEL_PROVIDER_TYPES = {
   "openrouter-api-key": {
     framework: "claude-code" as const,
     credentialName: "OPENROUTER_API_KEY",
-    label: "OpenRouter API Key",
+    label: "OpenRouter",
     credentialLabel: "API key",
     helpText: "Get your API key at: https://openrouter.ai/settings/keys",
     environmentMapping: {
@@ -80,7 +80,7 @@ export const MODEL_PROVIDER_TYPES = {
   "moonshot-api-key": {
     framework: "claude-code" as const,
     credentialName: "MOONSHOT_API_KEY",
-    label: "Moonshot API Key (Kimi)",
+    label: "Moonshot (Kimi)",
     credentialLabel: "API key",
     helpText:
       "Get your API key at: https://platform.moonshot.ai/console/api-keys",
@@ -103,7 +103,7 @@ export const MODEL_PROVIDER_TYPES = {
   "minimax-api-key": {
     framework: "claude-code" as const,
     credentialName: "MINIMAX_API_KEY",
-    label: "MiniMax API Key",
+    label: "MiniMax",
     credentialLabel: "API key",
     helpText:
       "Get your API key at: https://platform.minimax.io/user-center/basic-information/interface-key",
@@ -120,6 +120,26 @@ export const MODEL_PROVIDER_TYPES = {
     } as Record<string, string>,
     models: ["MiniMax-M2.1"] as string[],
     defaultModel: "MiniMax-M2.1",
+  },
+  "deepseek-api-key": {
+    framework: "claude-code" as const,
+    credentialName: "DEEPSEEK_API_KEY",
+    label: "DeepSeek",
+    credentialLabel: "API key",
+    helpText: "Get your API key at: https://platform.deepseek.com/api_keys",
+    environmentMapping: {
+      ANTHROPIC_AUTH_TOKEN: "$credential",
+      ANTHROPIC_BASE_URL: "https://api.deepseek.com/anthropic",
+      ANTHROPIC_MODEL: "$model",
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "$model",
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "$model",
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
+      CLAUDE_CODE_SUBAGENT_MODEL: "$model",
+      API_TIMEOUT_MS: "600000",
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+    } as Record<string, string>,
+    models: ["deepseek-chat"] as string[],
+    defaultModel: "deepseek-chat",
   },
   "aws-bedrock": {
     framework: "claude-code" as const,
@@ -198,6 +218,7 @@ export const modelProviderTypeSchema = z.enum([
   "openrouter-api-key",
   "moonshot-api-key",
   "minimax-api-key",
+  "deepseek-api-key",
   "aws-bedrock",
 ]);
 

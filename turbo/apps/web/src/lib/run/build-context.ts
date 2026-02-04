@@ -45,6 +45,7 @@ const MODEL_PROVIDER_ENV_VARS = [
   "OPENAI_API_KEY",
   "MOONSHOT_API_KEY",
   "MINIMAX_API_KEY",
+  "DEEPSEEK_API_KEY",
   "OPENROUTER_API_KEY",
   // Alternative auth methods (not model-provider supported yet)
   "ANTHROPIC_AUTH_TOKEN",

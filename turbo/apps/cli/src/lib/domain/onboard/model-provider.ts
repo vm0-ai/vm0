@@ -18,6 +18,7 @@ const ONBOARD_PROVIDER_TYPES: ModelProviderType[] = [
   "openrouter-api-key",
   "moonshot-api-key",
   "minimax-api-key",
+  "deepseek-api-key",
 ];
 import {
   listModelProviders,
