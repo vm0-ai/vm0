@@ -121,31 +121,6 @@ describe("ProxyManager", () => {
     });
   });
 
-  describe("ensureAddonScript", () => {
-    it("should throw error if addon script does not exist", () => {
-      const caDir = path.join(tempDir, "proxy");
-
-      // Create directory but not the addon script
-      fs.mkdirSync(caDir, { recursive: true });
-
-      expect(() => proxyManager.ensureAddonScript()).toThrow(
-        "Addon script not found",
-      );
-    });
-
-    it("should pass if addon script exists", () => {
-      const caDir = path.join(tempDir, "proxy");
-      const addonPath = path.join(caDir, "mitm-addon.py");
-
-      // Create directory and addon script
-      fs.mkdirSync(caDir, { recursive: true });
-      fs.writeFileSync(addonPath, "# test addon script", { mode: 0o755 });
-
-      // Should not throw
-      expect(() => proxyManager.ensureAddonScript()).not.toThrow();
-    });
-  });
-
   describe("validateConfig", () => {
     it("should throw error if CA directory does not exist", () => {
       // Directory doesn't exist yet

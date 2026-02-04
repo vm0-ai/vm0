@@ -92,19 +92,6 @@ export class ProxyManager {
   }
 
   /**
-   * Ensure the addon script exists at the configured path
-   */
-  ensureAddonScript(): void {
-    if (!fs.existsSync(this.config.addonPath)) {
-      throw new Error(
-        `Addon script not found: ${this.config.addonPath}. ` +
-          "Ensure the deploy-runner directory was set up correctly.",
-      );
-    }
-    logger.log(`Using addon script at ${this.config.addonPath}`);
-  }
-
-  /**
    * Validate proxy configuration
    */
   validateConfig(): void {
@@ -119,8 +106,10 @@ export class ProxyManager {
       throw new Error(`Proxy CA certificate not found: ${caCertPath}`);
     }
 
-    // Ensure addon script exists (write it if not)
-    this.ensureAddonScript();
+    // Check addon script exists (deployed by Ansible)
+    if (!fs.existsSync(this.config.addonPath)) {
+      throw new Error(`Addon script not found: ${this.config.addonPath}`);
+    }
   }
 
   /**
