@@ -30,7 +30,9 @@ export const featureSwitch$ = computed(async (get) => {
       L.debugGroup("Loaded feature switches from localStorage:");
       for (const key of Object.values(FeatureSwitchKey)) {
         const value = parsed[key];
-        result[key] = Boolean(value);
+        if (value !== undefined) {
+          result[key] = Boolean(value);
+        }
       }
       L.debugGroupEnd();
     }

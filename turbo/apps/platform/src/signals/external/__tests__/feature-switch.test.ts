@@ -23,4 +23,15 @@ describe("feature switch", () => {
       false,
     );
   });
+
+  it("should not override keys not present in localStorage", async () => {
+    // When localStorage only has partial overrides, other keys should keep their default values
+    // Setting an empty object should not affect the default value of 'dummy' (which is true)
+    await setupPage({ context, path: "/", featureSwitches: {} });
+
+    await expect(context.store.get(featureSwitch$)).resolves.toHaveProperty(
+      "dummy",
+      true,
+    );
+  });
 });
