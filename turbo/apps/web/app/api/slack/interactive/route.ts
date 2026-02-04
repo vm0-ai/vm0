@@ -23,6 +23,10 @@ import {
   createSlackClient,
   isSlackInvalidAuthError,
 } from "../../../../src/lib/slack";
+import {
+  listSecrets,
+  setSecret,
+} from "../../../../src/lib/secret/secret-service";
 
 /**
  * Slack Interactive Components Endpoint
@@ -147,7 +151,14 @@ export async function POST(request: Request) {
 async function fetchAvailableAgents(
   vm0UserId: string,
   userLinkId: string,
-): Promise<Array<{ id: string; name: string; requiredSecrets: string[] }>> {
+): Promise<
+  Array<{
+    id: string;
+    name: string;
+    requiredSecrets: string[];
+    existingSecrets: string[];
+  }>
+> {
   // Fetch user's available agents with their head version
   const composes = await globalThis.services.db
     .select({
@@ -195,16 +206,24 @@ async function fetchAvailableAgents(
           .where(inArray(agentComposeVersions.id, versionIds))
       : [];
 
+  // Get user's existing secrets
+  const userSecrets = await listSecrets(vm0UserId);
+  const existingSecretNames = new Set(userSecrets.map((s) => s.name));
+
   // Build map of compose ID to required secrets
   const versionMap = new Map(versions.map((v) => [v.id, v.content]));
   return availableComposes.map((c) => {
     const content = c.headVersionId ? versionMap.get(c.headVersionId) : null;
     const refs = content ? extractVariableReferences(content) : [];
     const grouped = groupVariablesBySource(refs);
+    const requiredSecrets = grouped.secrets.map((s) => s.name);
     return {
       id: c.id,
       name: c.name,
-      requiredSecrets: grouped.secrets.map((s) => s.name),
+      requiredSecrets,
+      existingSecrets: requiredSecrets.filter((name) =>
+        existingSecretNames.has(name),
+      ),
     };
   });
 }
@@ -215,7 +234,14 @@ async function fetchAvailableAgents(
 async function fetchBoundAgents(
   vm0UserId: string,
   userLinkId: string,
-): Promise<Array<{ id: string; name: string; requiredSecrets: string[] }>> {
+): Promise<
+  Array<{
+    id: string;
+    name: string;
+    requiredSecrets: string[];
+    existingSecrets: string[];
+  }>
+> {
   // Get user's bound agents with their compose IDs
   const bindings = await globalThis.services.db
     .select({
@@ -256,6 +282,10 @@ async function fetchBoundAgents(
           .where(inArray(agentComposeVersions.id, versionIds))
       : [];
 
+  // Get user's existing secrets
+  const userSecrets = await listSecrets(vm0UserId);
+  const existingSecretNames = new Set(userSecrets.map((s) => s.name));
+
   // Build map of compose ID to required secrets
   const composeToVersion = new Map(
     composes.map((c) => [c.id, c.headVersionId]),
@@ -267,10 +297,14 @@ async function fetchBoundAgents(
     const content = versionId ? versionMap.get(versionId) : null;
     const refs = content ? extractVariableReferences(content) : [];
     const grouped = groupVariablesBySource(refs);
+    const requiredSecrets = grouped.secrets.map((s) => s.name);
     return {
       id: b.id,
       name: b.agentName,
-      requiredSecrets: grouped.secrets.map((s) => s.name),
+      requiredSecrets,
+      existingSecrets: requiredSecrets.filter((name) =>
+        existingSecretNames.has(name),
+      ),
     };
   });
 }
@@ -537,6 +571,7 @@ function extractChannelIdFromMetadata(
 async function sendConfirmationMessage(
   workspaceId: string,
   agentName: string,
+  savedSecretNames: string[],
   channelId: string,
   slackUserId: string,
   encryptionKey: string,
@@ -557,6 +592,15 @@ async function sendConfirmationMessage(
   );
   const client = createSlackClient(botToken);
 
+  let messageText = `:white_check_mark: *Agent \`${agentName}\` has been added successfully!*`;
+
+  if (savedSecretNames.length > 0) {
+    const secretsList = savedSecretNames.map((n) => `\`${n}\``).join(", ");
+    messageText += `\n\nSecrets saved to your account: ${secretsList}`;
+  }
+
+  messageText += `\n\nYou can now use it by mentioning \`@VM0 use ${agentName} <message>\``;
+
   await client.chat.postEphemeral({
     channel: channelId,
     user: slackUserId,
@@ -566,7 +610,7 @@ async function sendConfirmationMessage(
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `:white_check_mark: *Agent \`${agentName}\` has been added successfully!*\n\nYou can now use it by mentioning \`@VM0 use ${agentName} <message>\``,
+          text: messageText,
         },
       },
     ],
@@ -663,8 +707,21 @@ async function handleAgentAddSubmission(
     });
   }
 
+  // Save secrets to user's scope
+  const savedSecretNames: string[] = [];
+  for (const [name, value] of Object.entries(formValues.secrets)) {
+    if (value.trim()) {
+      await setSecret(
+        userLink.vm0UserId,
+        name,
+        value,
+        `Configured via Slack for ${agentName}`,
+      );
+      savedSecretNames.push(name);
+    }
+  }
+
   // Create binding
-  // Note: encryptedSecrets column has been removed; secrets are no longer stored per-binding
   await globalThis.services.db.insert(slackBindings).values({
     slackUserLinkId: userLink.id,
     vm0UserId: userLink.vm0UserId,
@@ -679,6 +736,7 @@ async function handleAgentAddSubmission(
     await sendConfirmationMessage(
       payload.team.id,
       agentName,
+      savedSecretNames,
       channelId,
       payload.user.id,
       encryptionKey,
@@ -870,12 +928,23 @@ async function handleAgentUpdateSubmission(
   const newSecrets = extractSecretsFromFormValues(values);
 
   // If no new secrets provided, nothing to update
-  // Note: encryptedSecrets column has been removed; secrets are no longer stored per-binding
   if (Object.keys(newSecrets).length === 0) {
     return NextResponse.json({
       response_action: "errors",
-      errors: { agent_select: "No secrets provided to update" },
+      errors: { agent_select: "No new secrets provided" },
     });
+  }
+
+  // Save secrets to user's scope
+  const savedSecretNames: string[] = [];
+  for (const [name, value] of Object.entries(newSecrets)) {
+    await setSecret(
+      binding.vm0UserId,
+      name,
+      value,
+      `Updated via Slack for ${binding.agentName}`,
+    );
+    savedSecretNames.push(name);
   }
 
   // Await message to prevent serverless function from terminating before it's sent
@@ -883,7 +952,7 @@ async function handleAgentUpdateSubmission(
     await sendUpdateConfirmationMessage(
       payload.team.id,
       binding.agentName,
-      Object.keys(newSecrets),
+      savedSecretNames,
       channelId,
       payload.user.id,
       encryptionKey,

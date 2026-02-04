@@ -20,6 +20,7 @@ import {
   getSlackRedirectBaseUrl,
   isSlackInvalidAuthError,
 } from "../../../../src/lib/slack";
+import { listSecrets } from "../../../../src/lib/secret/secret-service";
 import {
   buildAgentAddModal,
   buildAgentListMessage,
@@ -406,16 +407,24 @@ async function handleAgentAdd(
           .where(inArray(agentComposeVersions.id, versionIds))
       : [];
 
+  // Get user's existing secrets
+  const userSecrets = await listSecrets(vm0UserId);
+  const existingSecretNames = new Set(userSecrets.map((s) => s.name));
+
   // Build map of compose ID to required secrets
   const versionMap = new Map(versions.map((v) => [v.id, v.content]));
   const agentsWithSecrets = availableComposes.map((c) => {
     const content = c.headVersionId ? versionMap.get(c.headVersionId) : null;
     const refs = content ? extractVariableReferences(content) : [];
     const grouped = groupVariablesBySource(refs);
+    const requiredSecrets = grouped.secrets.map((s) => s.name);
     return {
       id: c.id,
       name: c.name,
-      requiredSecrets: grouped.secrets.map((s) => s.name),
+      requiredSecrets,
+      existingSecrets: requiredSecrets.filter((name) =>
+        existingSecretNames.has(name),
+      ),
     };
   });
 
@@ -546,6 +555,10 @@ async function handleAgentUpdate(
           .where(inArray(agentComposeVersions.id, versionIds))
       : [];
 
+  // Get user's existing secrets
+  const userSecrets = await listSecrets(vm0UserId);
+  const existingSecretNames = new Set(userSecrets.map((s) => s.name));
+
   // Build map of compose ID to required secrets
   const composeToVersion = new Map(
     composes.map((c) => [c.id, c.headVersionId]),
@@ -557,10 +570,14 @@ async function handleAgentUpdate(
     const content = versionId ? versionMap.get(versionId) : null;
     const refs = content ? extractVariableReferences(content) : [];
     const grouped = groupVariablesBySource(refs);
+    const requiredSecrets = grouped.secrets.map((s) => s.name);
     return {
       id: b.id,
       name: b.agentName,
-      requiredSecrets: grouped.secrets.map((s) => s.name),
+      requiredSecrets,
+      existingSecrets: requiredSecrets.filter((name) =>
+        existingSecretNames.has(name),
+      ),
     };
   });
 

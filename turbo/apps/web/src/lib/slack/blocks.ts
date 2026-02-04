@@ -4,6 +4,7 @@ interface AgentOption {
   id: string;
   name: string;
   requiredSecrets: string[];
+  existingSecrets: string[];
 }
 
 interface BindingInfo {
@@ -79,23 +80,53 @@ export function buildAgentAddModal(
       },
     });
 
+    const existingSet = new Set(selectedAgent.existingSecrets);
+
     for (const secretName of selectedAgent.requiredSecrets) {
-      blocks.push({
-        type: "input",
-        block_id: `secret_${secretName}`,
-        element: {
-          type: "plain_text_input",
-          action_id: "value",
-          placeholder: {
-            type: "plain_text",
-            text: `Enter value for ${secretName}`,
+      const isExisting = existingSet.has(secretName);
+
+      if (isExisting) {
+        // Secret already exists in user's scope - make it optional
+        blocks.push({
+          type: "input",
+          block_id: `secret_${secretName}`,
+          optional: true,
+          element: {
+            type: "plain_text_input",
+            action_id: "value",
+            placeholder: {
+              type: "plain_text",
+              text: "Leave empty to keep current value",
+            },
           },
-        },
-        label: {
-          type: "plain_text",
-          text: secretName,
-        },
-      });
+          label: {
+            type: "plain_text",
+            text: `${secretName} ✓`,
+          },
+          hint: {
+            type: "plain_text",
+            text: "Already configured in your account",
+          },
+        });
+      } else {
+        // Secret not configured - required input
+        blocks.push({
+          type: "input",
+          block_id: `secret_${secretName}`,
+          element: {
+            type: "plain_text_input",
+            action_id: "value",
+            placeholder: {
+              type: "plain_text",
+              text: `Enter value for ${secretName}`,
+            },
+          },
+          label: {
+            type: "plain_text",
+            text: secretName,
+          },
+        });
+      }
     }
   } else if (selectedAgent && selectedAgent.requiredSecrets.length === 0) {
     blocks.push({
@@ -146,6 +177,7 @@ interface AgentUpdateOption {
   id: string;
   name: string;
   requiredSecrets: string[];
+  existingSecrets: string[];
 }
 
 /**
@@ -215,7 +247,11 @@ export function buildAgentUpdateModal(
       },
     });
 
+    const existingSet = new Set(selectedAgent.existingSecrets);
+
     for (const secretName of selectedAgent.requiredSecrets) {
+      const isExisting = existingSet.has(secretName);
+
       blocks.push({
         type: "input",
         block_id: `secret_${secretName}`,
@@ -225,13 +261,21 @@ export function buildAgentUpdateModal(
           action_id: "value",
           placeholder: {
             type: "plain_text",
-            text: `Enter new value for ${secretName}`,
+            text: isExisting
+              ? "Leave empty to keep current value"
+              : `Enter value for ${secretName}`,
           },
         },
         label: {
           type: "plain_text",
-          text: secretName,
+          text: isExisting ? `${secretName} ✓` : secretName,
         },
+        ...(isExisting && {
+          hint: {
+            type: "plain_text",
+            text: "Already configured in your account",
+          },
+        }),
       });
     }
   } else if (selectedAgent && selectedAgent.requiredSecrets.length === 0) {

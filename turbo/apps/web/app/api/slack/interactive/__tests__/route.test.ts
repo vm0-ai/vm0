@@ -389,6 +389,72 @@ describe("POST /api/slack/interactive", () => {
       const text = await response.text();
       expect(text).toBe("");
     });
+
+    it("saves secrets to user scope when provided", async () => {
+      const { installation, userLink } = await context.createSlackInstallation({
+        withUserLink: true,
+      });
+      // Create a compose (via binding helper) to get a compose ID, then delete the binding
+      const { composeId } = await context.createSlackBinding(userLink.id, {
+        agentName: "secret-agent",
+      });
+      // Delete this binding so we can create a new one
+      await globalThis.services.db
+        .delete(
+          (await import("../../../../../src/db/schema/slack-binding"))
+            .slackBindings,
+        )
+        .where(
+          (await import("drizzle-orm")).eq(
+            (await import("../../../../../src/db/schema/slack-binding"))
+              .slackBindings.slackUserLinkId,
+            userLink.id,
+          ),
+        );
+
+      const body = buildInteractiveBody({
+        type: "view_submission",
+        user: {
+          id: userLink.slackUserId,
+          username: "testuser",
+          team_id: installation.slackWorkspaceId,
+        },
+        team: { id: installation.slackWorkspaceId, domain: "test" },
+        view: {
+          id: "V123",
+          callback_id: "agent_add_modal",
+          state: {
+            values: {
+              agent_select: {
+                agent_select_action: { selected_option: { value: composeId } },
+              },
+              secret_API_KEY: {
+                value: { value: "test-api-key-value" },
+              },
+              secret_OTHER_SECRET: {
+                value: { value: "test-other-secret" },
+              },
+            },
+          },
+        },
+      });
+      const request = createSignedSlackRequest(body);
+
+      const response = await POST(request);
+
+      // Success returns empty 200 to close the modal
+      expect(response.status).toBe(200);
+
+      // Verify secrets were saved to user's scope
+      const { listSecrets } = await import(
+        "../../../../../src/lib/secret/secret-service"
+      );
+      const savedSecrets = await listSecrets(userLink.vm0UserId);
+      const secretNames = savedSecrets.map((s) => s.name);
+
+      expect(secretNames).toContain("API_KEY");
+      expect(secretNames).toContain("OTHER_SECRET");
+    });
   });
 
   describe("Unknown Callback", () => {

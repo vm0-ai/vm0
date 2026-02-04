@@ -17,8 +17,18 @@ import {
 describe("buildAgentAddModal", () => {
   it("should create a valid modal structure", () => {
     const agents = [
-      { id: "agent-1", name: "My Coder", requiredSecrets: [] },
-      { id: "agent-2", name: "My Analyst", requiredSecrets: [] },
+      {
+        id: "agent-1",
+        name: "My Coder",
+        requiredSecrets: [],
+        existingSecrets: [],
+      },
+      {
+        id: "agent-2",
+        name: "My Analyst",
+        requiredSecrets: [],
+        existingSecrets: [],
+      },
     ];
 
     // Without selected agent, submit button is not shown
@@ -48,8 +58,18 @@ describe("buildAgentAddModal", () => {
 
   it("should include agent options in select", () => {
     const agents = [
-      { id: "agent-1", name: "My Coder", requiredSecrets: [] },
-      { id: "agent-2", name: "My Analyst", requiredSecrets: [] },
+      {
+        id: "agent-1",
+        name: "My Coder",
+        requiredSecrets: [],
+        existingSecrets: [],
+      },
+      {
+        id: "agent-2",
+        name: "My Analyst",
+        requiredSecrets: [],
+        existingSecrets: [],
+      },
     ];
 
     const modal = buildAgentAddModal(agents);
@@ -66,6 +86,46 @@ describe("buildAgentAddModal", () => {
       text: { type: "plain_text", text: "My Coder" },
       value: "agent-1",
     });
+  });
+
+  it("should mark existing secrets as optional with checkmark", () => {
+    const agents = [
+      {
+        id: "agent-1",
+        name: "My Coder",
+        requiredSecrets: ["API_KEY", "NEW_SECRET"],
+        existingSecrets: ["API_KEY"],
+      },
+    ];
+
+    const modal = buildAgentAddModal(agents, "agent-1") as ModalView;
+
+    // Find the existing secret input (API_KEY)
+    const existingSecretBlock = modal.blocks?.find(
+      (b) => "block_id" in b && b.block_id === "secret_API_KEY",
+    ) as InputBlock;
+    expect(existingSecretBlock).toBeDefined();
+    expect(existingSecretBlock.optional).toBe(true);
+    expect(existingSecretBlock.label).toMatchObject({
+      type: "plain_text",
+      text: "API_KEY ✓",
+    });
+    expect(existingSecretBlock.hint).toMatchObject({
+      type: "plain_text",
+      text: "Already configured in your account",
+    });
+
+    // Find the new secret input (NEW_SECRET)
+    const newSecretBlock = modal.blocks?.find(
+      (b) => "block_id" in b && b.block_id === "secret_NEW_SECRET",
+    ) as InputBlock;
+    expect(newSecretBlock).toBeDefined();
+    expect(newSecretBlock.optional).toBeUndefined();
+    expect(newSecretBlock.label).toMatchObject({
+      type: "plain_text",
+      text: "NEW_SECRET",
+    });
+    expect(newSecretBlock.hint).toBeUndefined();
   });
 });
 
