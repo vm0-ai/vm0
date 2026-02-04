@@ -20,6 +20,9 @@ import {
 } from "../index";
 import { routeToAgent } from "../router";
 import { runAgentForSlack } from "./run-agent";
+import { logger } from "../../logger";
+
+const log = logger("slack:mention");
 
 interface MentionContext {
   workspaceId: string;
@@ -241,16 +244,28 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
 
     const { agentName: selectedAgentName, promptText } = routeResult;
 
-    // Get the selected binding
+    // Get the selected binding (guaranteed to exist since routeResult.success is true)
     const selectedBinding = bindings.find(
       (b) => b.agentName === selectedAgentName,
-    )!;
+    );
+    if (!selectedBinding) {
+      // This should never happen since routeMessageToAgent only returns success
+      // with an agent name that exists in bindings
+      log.error("Selected binding not found after successful route", {
+        selectedAgentName,
+        availableBindings: bindings.map((b) => b.agentName),
+      });
+      return;
+    }
 
     // 8. Find existing thread session for this binding (if in a thread)
     let existingSessionId: string | undefined;
-    console.log(
-      `[slack:mention] Looking for thread session: threadTs=${threadTs}, context.threadTs=${context.threadTs}, bindingId=${selectedBinding.id}, channelId=${context.channelId}`,
-    );
+    log.debug("Looking for thread session", {
+      threadTs,
+      contextThreadTs: context.threadTs,
+      bindingId: selectedBinding.id,
+      channelId: context.channelId,
+    });
     if (threadTs) {
       const [threadSession] = await globalThis.services.db
         .select({ agentSessionId: slackThreadSessions.agentSessionId })
@@ -265,9 +280,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
         .limit(1);
 
       existingSessionId = threadSession?.agentSessionId;
-      console.log(
-        `[slack:mention] Thread session query result: existingSessionId=${existingSessionId}`,
-      );
+      log.debug("Thread session query result", { existingSessionId });
     }
 
     // 9. Fetch Slack context (thread messages or recent channel messages)
@@ -288,9 +301,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
 
     try {
       // 10. Execute agent with session continuation
-      console.log(
-        `[slack:mention] Calling runAgentForSlack with existingSessionId=${existingSessionId}`,
-      );
+      log.debug("Calling runAgentForSlack", { existingSessionId });
       const { response: agentResponse, sessionId: newSessionId } =
         await runAgentForSlack({
           binding: selectedBinding,
@@ -299,15 +310,14 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
           threadContext: formattedContext,
           userId: userLink.vm0UserId,
         });
-      console.log(
-        `[slack:mention] runAgentForSlack returned newSessionId=${newSessionId}`,
-      );
+      log.debug("runAgentForSlack returned", { newSessionId });
 
       // 11. Create thread session mapping if this is a new thread (no existing session)
       if (threadTs && !existingSessionId && newSessionId) {
-        console.log(
-          `[slack:mention] Creating thread session mapping: threadTs=${threadTs}, newSessionId=${newSessionId}`,
-        );
+        log.debug("Creating thread session mapping", {
+          threadTs,
+          newSessionId,
+        });
         await globalThis.services.db
           .insert(slackThreadSessions)
           .values({
@@ -324,6 +334,19 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
         threadTs,
         blocks: buildMarkdownMessage(agentResponse),
       });
+    } catch (innerError) {
+      // If postMessage or session creation fails, still try to notify the user
+      log.error("Error posting response or creating session", {
+        error: innerError,
+      });
+      await postMessage(
+        client,
+        context.channelId,
+        "Sorry, an error occurred while sending the response. Please try again.",
+        { threadTs },
+      ).catch(() => {
+        // If even the error message fails, we can't do anything more
+      });
     } finally {
       // 13. Remove thinking reaction
       if (reactionAdded) {
@@ -339,8 +362,8 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       }
     }
   } catch (error) {
-    console.error("Error handling app_mention:", error);
-    // Don't throw - we don't want to retry
+    log.error("Error handling app_mention", { error });
+    // Don't throw - we don't want Slack to retry
   }
 }
 

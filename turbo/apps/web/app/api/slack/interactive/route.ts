@@ -27,6 +27,9 @@ import {
   listSecrets,
   setSecret,
 } from "../../../../src/lib/secret/secret-service";
+import { logger } from "../../../../src/lib/logger";
+
+const log = logger("slack:interactive");
 
 /**
  * Slack Interactive Components Endpoint
@@ -741,7 +744,7 @@ async function handleAgentAddSubmission(
       payload.user.id,
       encryptionKey,
     ).catch((error) => {
-      console.error("Error sending confirmation message:", error);
+      log.warn("Failed to send confirmation message (non-critical)", { error });
     });
   }
 
@@ -805,7 +808,9 @@ async function handleAgentRemoveSubmission(
       payload.user.id,
       encryptionKey,
     ).catch((error) => {
-      console.error("Error sending removal confirmation message:", error);
+      log.warn("Failed to send removal confirmation message (non-critical)", {
+        error,
+      });
     });
   }
 
@@ -957,7 +962,9 @@ async function handleAgentUpdateSubmission(
       payload.user.id,
       encryptionKey,
     ).catch((error) => {
-      console.error("Error sending update confirmation message:", error);
+      log.warn("Failed to send update confirmation message (non-critical)", {
+        error,
+      });
     });
   }
 
