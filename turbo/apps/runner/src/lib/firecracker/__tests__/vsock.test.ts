@@ -895,5 +895,41 @@ describe("VsockClient Integration Tests", () => {
       expect(execResult.exitCode).toBe(0);
       expect(execResult.stdout.trim()).toBe("done");
     });
+
+    it("should exit gracefully without reconnecting after shutdown", async () => {
+      // Capture agent stderr to verify no reconnection attempts
+      let agentOutput = "";
+      agent!.stderr!.on("data", (data: Buffer) => {
+        agentOutput += data.toString();
+      });
+
+      // Send shutdown and verify ack
+      const shutdownResult = await client!.shutdown(5000);
+      expect(shutdownResult).toBe(true);
+
+      // Close client connection (this triggers agent to check shutdown flag)
+      client!.close();
+      client = null;
+
+      // Wait for agent to exit (should exit gracefully, not timeout)
+      const exitCode = await new Promise<number | null>((resolve) => {
+        const timeout = setTimeout(() => {
+          // If agent doesn't exit within 1s, it's likely stuck reconnecting
+          resolve(null);
+        }, 1000);
+
+        agent!.on("exit", (code) => {
+          clearTimeout(timeout);
+          resolve(code);
+        });
+      });
+
+      // Agent should have exited (not null = didn't timeout)
+      expect(exitCode).not.toBeNull();
+
+      // Verify agent logged "Shutdown complete, exiting" and NOT "reconnecting"
+      expect(agentOutput).toContain("Shutdown complete, exiting");
+      expect(agentOutput).not.toMatch(/reconnecting.*\/50/);
+    });
   });
 });
