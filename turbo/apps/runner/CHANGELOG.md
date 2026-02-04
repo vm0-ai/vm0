@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.12.2](https://github.com/vm0-ai/vm0/compare/runner-v3.12.1...runner-v3.12.2) (2026-02-04)
+
+
+### Bug Fixes
+
+* **runner:** use runner-specific path for vm registry ([#2346](https://github.com/vm0-ai/vm0/issues/2346)) ([b46de84](https://github.com/vm0-ai/vm0/commit/b46de841527c1f79b379c20320609f167fa00287))
+
 ## [3.12.1](https://github.com/vm0-ai/vm0/compare/runner-v3.12.0...runner-v3.12.1) (2026-02-04)
 
 

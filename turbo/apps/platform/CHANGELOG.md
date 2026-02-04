@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.45.2](https://github.com/vm0-ai/vm0/compare/platform-v0.45.1...platform-v0.45.2) (2026-02-04)
+
+
+### Bug Fixes
+
+* **platform:** ensure tool result content is always a string ([#2354](https://github.com/vm0-ai/vm0/issues/2354)) ([4676574](https://github.com/vm0-ai/vm0/commit/46765749d0f3ac28d66255ddbd802548ded67b29))
+
 ## [0.45.1](https://github.com/vm0-ai/vm0/compare/platform-v0.45.0...platform-v0.45.1) (2026-02-04)
 
 
