@@ -10,6 +10,7 @@ import {
   createTestCompose,
   createTestV1Run,
   completeTestRun,
+  createTestCliToken,
 } from "../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -274,6 +275,29 @@ describe("Public API v1 - Runs Endpoints", () => {
 
       expect(response.status).toBe(404);
       expect(data.error.type).toBe("not_found_error");
+    });
+
+    it("should authenticate with CLI token when no Clerk session", async () => {
+      // Mock Clerk to return no session
+      mockClerk({ userId: null });
+
+      // Create a CLI token for the test user
+      const token = await createTestCliToken(user.userId);
+
+      const request = createTestRequest(
+        `http://localhost:3000/v1/runs/${testRunId}/logs`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      const response = await getRunLogs(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data).toBeInstanceOf(Array);
     });
   });
 

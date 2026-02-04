@@ -57,10 +57,10 @@ interface LogEntry {
 
 const router = tsr.router(publicRunLogsContract, {
   // eslint-disable-next-line complexity -- TODO: refactor complex function
-  getLogs: async ({ params, query }) => {
+  getLogs: async ({ params, query, headers }) => {
     initServices();
 
-    const auth = await authenticatePublicApi();
+    const auth = await authenticatePublicApi(headers.authorization);
     if (!isAuthSuccess(auth)) {
       return {
         status: 401 as const,
