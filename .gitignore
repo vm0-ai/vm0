@@ -170,3 +170,7 @@ turbo/apps/runner/scripts/deploy/proxy-ca/
 *.pem
 .mozilla
 turbo/apps/storybook/storybook-static/
+
+# VHS tape generated GIFs (regenerate with `vhs <name>.tape`)
+docs/tapes/**/*.gif
+docs/tapes/*.gif
