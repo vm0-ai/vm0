@@ -21,9 +21,56 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  build-e2b-template:
+  # Development builds - triggered on PRs
+  # Uses repository-level E2B_API_KEY secret (development account after migration)
+  build-e2b-template-dev:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+
+      - name: Install dependencies
+        working-directory: ./turbo
+        run: pnpm install --frozen-lockfile
+
+      - name: Build E2B claude-code template (dev)
+        working-directory: ./turbo
+        env:
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+        run: pnpm e2b:build:dev
+
+      - name: Build E2B codex template (dev)
+        working-directory: ./turbo
+        env:
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+        run: pnpm e2b:codex:build:dev
+
+      - name: Build E2B claude-code-github template (dev)
+        working-directory: ./turbo
+        env:
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+        run: pnpm e2b:claude-code-github:build:dev
+
+      - name: Build summary
+        run: echo "✅ E2B templates built successfully (dev account)"
+
+  # Production builds - triggered on push to main
+  # Uses production environment E2B_API_KEY secret (production account)
+  build-e2b-template-prod:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -43,53 +90,22 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build E2B claude-code template (production)
-        if: github.ref == 'refs/heads/main'
         working-directory: ./turbo
         env:
           E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
         run: pnpm e2b:build:prod
 
-      - name: Build E2B claude-code template (dev)
-        if: github.ref != 'refs/heads/main'
-        working-directory: ./turbo
-        env:
-          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
-        run: pnpm e2b:build:dev
-
       - name: Build E2B codex template (production)
-        if: github.ref == 'refs/heads/main'
         working-directory: ./turbo
         env:
           E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
         run: pnpm e2b:codex:build:prod
 
-      - name: Build E2B codex template (dev)
-        if: github.ref != 'refs/heads/main'
-        working-directory: ./turbo
-        env:
-          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
-        run: pnpm e2b:codex:build:dev
-
       - name: Build E2B claude-code-github template (production)
-        if: github.ref == 'refs/heads/main'
         working-directory: ./turbo
         env:
           E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
         run: pnpm e2b:claude-code-github:build:prod
 
-      - name: Build E2B claude-code-github template (dev)
-        if: github.ref != 'refs/heads/main'
-        working-directory: ./turbo
-        env:
-          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
-        run: pnpm e2b:claude-code-github:build:dev
-
       - name: Build summary
-        if: success()
-        run: |
-          echo "✅ E2B templates built successfully"
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            echo "Templates: vm0-claude-code, vm0-claude-code-github, vm0-codex (production)"
-          else
-            echo "Templates: vm0-claude-code-dev, vm0-claude-code-github-dev, vm0-codex-dev (dev)"
-          fi
+        run: echo "✅ E2B templates built successfully (production account)"
