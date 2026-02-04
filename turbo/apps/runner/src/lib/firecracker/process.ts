@@ -12,28 +12,43 @@ import { type VmId, createVmId, vmIdValue } from "./vm-id.js";
 interface FirecrackerProcess {
   pid: number;
   vmId: VmId;
-  socketPath: string;
 }
 
 /**
  * Parse /proc/{pid}/cmdline content to extract Firecracker process info.
  * Pure function for easy testing.
+ *
+ * Supports two modes:
+ * - Snapshot restore: --api-sock /path/to/vm0-{vmId}/api.sock
+ * - Fresh boot: --config-file /path/to/vm0-{vmId}/config.json
  */
-export function parseFirecrackerCmdline(
-  cmdline: string,
-): { vmId: VmId; socketPath: string } | null {
+export function parseFirecrackerCmdline(cmdline: string): VmId | null {
   const args = cmdline.split("\0");
 
   if (!args[0]?.includes("firecracker")) return null;
 
+  // Try --api-sock first (snapshot restore mode)
+  let filePath: string | undefined;
   const sockIdx = args.indexOf("--api-sock");
-  const socketPath = args[sockIdx + 1];
-  if (sockIdx === -1 || !socketPath) return null;
+  if (sockIdx !== -1) {
+    filePath = args[sockIdx + 1];
+  }
 
-  const match = socketPath.match(/vm0-([a-f0-9]+)\/firecracker\.sock$/);
+  // Try --config-file (fresh boot mode)
+  if (!filePath) {
+    const configIdx = args.indexOf("--config-file");
+    if (configIdx !== -1) {
+      filePath = args[configIdx + 1];
+    }
+  }
+
+  if (!filePath) return null;
+
+  // Extract vmId from path: .../vm0-{vmId}/...
+  const match = filePath.match(/vm0-([a-f0-9]+)\//);
   if (!match?.[1]) return null;
 
-  return { vmId: createVmId(match[1]), socketPath };
+  return createVmId(match[1]);
 }
 
 /**
@@ -79,9 +94,9 @@ export function findFirecrackerProcesses(): FirecrackerProcess[] {
 
     try {
       const cmdline = readFileSync(cmdlinePath, "utf-8");
-      const parsed = parseFirecrackerCmdline(cmdline);
-      if (parsed) {
-        processes.push({ pid, ...parsed });
+      const vmId = parseFirecrackerCmdline(cmdline);
+      if (vmId) {
+        processes.push({ pid, vmId });
       }
     } catch {
       continue;

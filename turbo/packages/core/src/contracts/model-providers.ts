@@ -160,6 +160,42 @@ export const MODEL_PROVIDER_TYPES = {
     models: ["GLM-4.7", "GLM-4.5-Air"] as string[],
     defaultModel: "GLM-4.7",
   },
+  "azure-foundry": {
+    framework: "claude-code" as const,
+    label: "Azure Foundry",
+    helpText:
+      "Run Claude on Microsoft Azure Foundry.\nSetup guide: https://code.claude.com/docs/en/microsoft-foundry",
+    authMethods: {
+      "api-key": {
+        label: "API Key",
+        helpText: "Use an Azure Foundry API key for authentication",
+        credentials: {
+          ANTHROPIC_FOUNDRY_API_KEY: {
+            label: "ANTHROPIC_FOUNDRY_API_KEY",
+            required: true,
+            helpText: "API key from Azure Foundry portal (Endpoints and keys)",
+          },
+          ANTHROPIC_FOUNDRY_RESOURCE: {
+            label: "ANTHROPIC_FOUNDRY_RESOURCE",
+            required: true,
+            placeholder: "my-resource",
+            helpText: "Azure resource name (from portal URL)",
+          },
+        },
+      },
+    } as Record<string, AuthMethodConfig>,
+    defaultAuthMethod: "api-key",
+    environmentMapping: {
+      CLAUDE_CODE_USE_FOUNDRY: "1",
+      ANTHROPIC_FOUNDRY_API_KEY: "$credentials.ANTHROPIC_FOUNDRY_API_KEY",
+      ANTHROPIC_FOUNDRY_RESOURCE: "$credentials.ANTHROPIC_FOUNDRY_RESOURCE",
+      ANTHROPIC_MODEL: "$model",
+    } as Record<string, string>,
+    models: [] as string[],
+    defaultModel: "",
+    allowCustomModel: true,
+    customModelPlaceholder: "claude-sonnet-4-5",
+  },
   "aws-bedrock": {
     framework: "claude-code" as const,
     label: "AWS Bedrock",
@@ -239,6 +275,7 @@ export const modelProviderTypeSchema = z.enum([
   "minimax-api-key",
   "deepseek-api-key",
   "zai-api-key",
+  "azure-foundry",
   "aws-bedrock",
 ]);
 

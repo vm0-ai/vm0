@@ -35,7 +35,6 @@ interface AgentBinding {
   agentName: string;
   description: string | null;
   composeId: string;
-  encryptedSecrets: string | null;
   enabled: boolean;
 }
 

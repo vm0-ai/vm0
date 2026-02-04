@@ -33,30 +33,34 @@ describe("process discovery", () => {
   // ==================== Pure function tests ====================
 
   describe("parseFirecrackerCmdline", () => {
-    it("parses valid firecracker cmdline", () => {
+    it("parses --api-sock mode (snapshot restore)", () => {
       const input = cmdline(
         "firecracker",
         "--api-sock",
-        "/tmp/vm0-abcd1234/firecracker.sock",
+        "/tmp/vm0-abcd1234/api.sock",
       );
-      expect(parseFirecrackerCmdline(input)).toEqual({
-        vmId: "abcd1234",
-        socketPath: "/tmp/vm0-abcd1234/firecracker.sock",
-      });
+      expect(parseFirecrackerCmdline(input)).toBe("abcd1234");
     });
 
-    it("parses cmdline with additional arguments", () => {
+    it("parses --config-file mode (fresh boot)", () => {
+      const input = cmdline(
+        "/usr/bin/firecracker",
+        "--config-file",
+        "/opt/vm0-runner/workspaces/vm0-12345678/config.json",
+        "--no-api",
+      );
+      expect(parseFirecrackerCmdline(input)).toBe("12345678");
+    });
+
+    it("prefers --api-sock over --config-file when both present", () => {
       const input = cmdline(
         "/usr/bin/firecracker",
         "--api-sock",
-        "/var/run/vm0-12345678/firecracker.sock",
+        "/var/run/vm0-aaaaaaaa/api.sock",
         "--config-file",
         "/etc/fc.json",
       );
-      expect(parseFirecrackerCmdline(input)).toEqual({
-        vmId: "12345678",
-        socketPath: "/var/run/vm0-12345678/firecracker.sock",
-      });
+      expect(parseFirecrackerCmdline(input)).toBe("aaaaaaaa");
     });
 
     it("returns null for non-firecracker process", () => {
@@ -65,7 +69,7 @@ describe("process discovery", () => {
       ).toBeNull();
     });
 
-    it("returns null when --api-sock is missing", () => {
+    it("returns null when neither --api-sock nor --config-file present", () => {
       expect(
         parseFirecrackerCmdline(
           cmdline("firecracker", "--other-flag", "value"),
@@ -73,22 +77,13 @@ describe("process discovery", () => {
       ).toBeNull();
     });
 
-    it("returns null for invalid socket path format", () => {
+    it("returns null for path without vm0- prefix", () => {
       const input = cmdline("firecracker", "--api-sock", "/tmp/other.sock");
       expect(parseFirecrackerCmdline(input)).toBeNull();
     });
 
     it("returns null for empty cmdline", () => {
       expect(parseFirecrackerCmdline("")).toBeNull();
-    });
-
-    it("handles socket path without vm0- prefix", () => {
-      const input = cmdline(
-        "firecracker",
-        "--api-sock",
-        "/tmp/firecracker.sock",
-      );
-      expect(parseFirecrackerCmdline(input)).toBeNull();
     });
   });
 
@@ -138,7 +133,7 @@ describe("process discovery", () => {
         "/proc/1234/cmdline": cmdline(
           "firecracker",
           "--api-sock",
-          "/tmp/vm0-aaaabbbb/firecracker.sock",
+          "/tmp/vm0-aaaabbbb/api.sock",
         ),
         "/proc/5678/cmdline": cmdline("nginx", "-c", "/etc/nginx.conf"),
       });
@@ -149,7 +144,6 @@ describe("process discovery", () => {
       expect(result[0]).toEqual({
         pid: 1234,
         vmId: "aaaabbbb",
-        socketPath: "/tmp/vm0-aaaabbbb/firecracker.sock",
       });
     });
 
@@ -164,12 +158,12 @@ describe("process discovery", () => {
         "/proc/100/cmdline": cmdline(
           "firecracker",
           "--api-sock",
-          "/tmp/vm0-11112222/firecracker.sock",
+          "/tmp/vm0-11112222/api.sock",
         ),
         "/proc/200/cmdline": cmdline(
           "firecracker",
           "--api-sock",
-          "/tmp/vm0-33334444/firecracker.sock",
+          "/tmp/vm0-33334444/api.sock",
         ),
       });
 
@@ -189,7 +183,7 @@ describe("process discovery", () => {
         "/proc/1234/cmdline": cmdline(
           "firecracker",
           "--api-sock",
-          "/tmp/vm0-eeeeeeee/firecracker.sock",
+          "/tmp/vm0-eeeeeeee/api.sock",
         ),
       });
 
@@ -214,7 +208,7 @@ describe("process discovery", () => {
         "/proc/1234/cmdline": cmdline(
           "firecracker",
           "--api-sock",
-          "/tmp/vm0-aaaabbbb/firecracker.sock",
+          "/tmp/vm0-aaaabbbb/api.sock",
         ),
         "/proc/5678/cmdline": "will be mocked to throw",
       });
@@ -245,12 +239,12 @@ describe("process discovery", () => {
         "/proc/100/cmdline": cmdline(
           "firecracker",
           "--api-sock",
-          "/tmp/vm0-aaaaaaaa/firecracker.sock",
+          "/tmp/vm0-aaaaaaaa/api.sock",
         ),
         "/proc/200/cmdline": cmdline(
           "firecracker",
           "--api-sock",
-          "/tmp/vm0-bbbbbbbb/firecracker.sock",
+          "/tmp/vm0-bbbbbbbb/api.sock",
         ),
       });
 
@@ -259,7 +253,6 @@ describe("process discovery", () => {
       expect(result).toEqual({
         pid: 200,
         vmId: "bbbbbbbb",
-        socketPath: "/tmp/vm0-bbbbbbbb/firecracker.sock",
       });
     });
 
@@ -268,7 +261,7 @@ describe("process discovery", () => {
         "/proc/100/cmdline": cmdline(
           "firecracker",
           "--api-sock",
-          "/tmp/vm0-aaaaaaaa/firecracker.sock",
+          "/tmp/vm0-aaaaaaaa/api.sock",
         ),
       });
 
