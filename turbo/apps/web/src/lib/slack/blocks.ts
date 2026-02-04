@@ -485,6 +485,58 @@ export function buildLoginPromptMessage(
   ];
 }
 
+interface WelcomeAgentInfo {
+  agentName: string;
+  description: string | null;
+}
+
+/**
+ * Build a welcome message for non-agent requests (greetings, casual chat)
+ * Explains what VM0 can do and lists available agents
+ *
+ * @param agents - User's available agents
+ * @returns Block Kit blocks
+ */
+export function buildWelcomeMessage(
+  agents: WelcomeAgentInfo[],
+): (Block | KnownBlock)[] {
+  const agentList =
+    agents.length > 0
+      ? agents
+          .map(
+            (a) => `• \`${a.agentName}\`: ${a.description ?? "No description"}`,
+          )
+          .join("\n")
+      : "_No agents configured yet._";
+
+  return [
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: ":wave: *Hi! I'm VM0.*\n\nI can connect you to AI agents to help with your tasks.",
+      },
+    },
+    {
+      type: "divider",
+    },
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `*Your Available Agents*\n${agentList}`,
+      },
+    },
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "*How to Use*\n• Just describe what you need help with\n• Or use `@VM0 use <agent> <message>` to specify an agent",
+      },
+    },
+  ];
+}
+
 /**
  * Build a help message
  *

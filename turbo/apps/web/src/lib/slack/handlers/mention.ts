@@ -16,9 +16,10 @@ import {
   buildLoginPromptMessage,
   buildErrorMessage,
   buildMarkdownMessage,
+  buildWelcomeMessage,
   getSlackRedirectBaseUrl,
 } from "../index";
-import { routeToAgent } from "../router";
+import { routeToAgent, type RouteResult } from "../router";
 import { runAgentForSlack } from "./run-agent";
 import { logger } from "../../logger";
 
@@ -41,17 +42,58 @@ interface AgentBinding {
   enabled: boolean;
 }
 
-type RouteSuccess = { success: true; agentName: string; promptText: string };
-type RouteFailure = { success: false; error: string };
+type RouteSuccess = { type: "success"; agentName: string; promptText: string };
+type RouteFailure = { type: "failure"; error: string };
+type RouteNotRequest = { type: "not_request" };
+type RouteMessageResult = RouteSuccess | RouteFailure | RouteNotRequest;
+
+type SlackClient = ReturnType<typeof createSlackClient>;
+
+/**
+ * Remove the thinking reaction from a message
+ */
+async function removeThinkingReaction(
+  client: SlackClient,
+  channelId: string,
+  messageTs: string,
+): Promise<void> {
+  await client.reactions
+    .remove({
+      channel: channelId,
+      timestamp: messageTs,
+      name: "hourglass_flowing_sand",
+    })
+    .catch(() => {
+      // Ignore errors when removing reaction
+    });
+}
+
+/**
+ * Fetch conversation context for the agent
+ */
+async function fetchConversationContext(
+  client: SlackClient,
+  channelId: string,
+  threadTs: string | undefined,
+  botUserId: string,
+): Promise<string> {
+  if (threadTs) {
+    const messages = await fetchThreadContext(client, channelId, threadTs);
+    return formatContextForAgent(messages, botUserId, "thread");
+  }
+  const messages = await fetchChannelContext(client, channelId, 10);
+  return formatContextForAgent(messages, botUserId, "channel");
+}
 
 /**
  * Route message to the appropriate agent
- * Returns success with agent details or failure with error message
+ * Returns success with agent details, failure with error message, or not_request for greetings
  */
 async function routeMessageToAgent(
   messageContent: string,
   bindings: AgentBinding[],
-): Promise<RouteSuccess | RouteFailure> {
+  context?: string,
+): Promise<RouteMessageResult> {
   const explicitSelection = parseExplicitAgentSelection(messageContent);
 
   if (explicitSelection) {
@@ -62,50 +104,48 @@ async function routeMessageToAgent(
     );
     if (!matchingBinding) {
       return {
-        success: false,
+        type: "failure",
         error: `Agent "${explicitSelection.agentName}" not found. Available agents: ${bindings.map((b) => b.agentName).join(", ")}`,
       };
     }
     return {
-      success: true,
+      type: "success",
       agentName: matchingBinding.agentName,
       promptText: explicitSelection.remainingMessage || messageContent,
     };
   }
 
-  if (bindings.length === 1 && bindings[0]) {
-    // Only one binding - use it directly
-    return {
-      success: true,
-      agentName: bindings[0].agentName,
-      promptText: messageContent,
-    };
-  }
-
-  // Multiple bindings - use LLM router
-  const selectedAgentName = await routeToAgent(
+  // Use the router (handles single agent, keyword matching, and LLM routing)
+  const routeResult: RouteResult = await routeToAgent(
     messageContent,
     bindings.map((b) => ({
       agentName: b.agentName,
       description: b.description,
     })),
+    context,
   );
 
-  if (!selectedAgentName) {
-    const agentList = bindings
-      .map((b) => `• \`${b.agentName}\`: ${b.description ?? "No description"}`)
-      .join("\n");
-    return {
-      success: false,
-      error: `I couldn't determine which agent to use. Please specify: \`@VM0 use <agent> <message>\`\n\nAvailable agents:\n${agentList}`,
-    };
+  switch (routeResult.type) {
+    case "matched":
+      return {
+        type: "success",
+        agentName: routeResult.agentName,
+        promptText: messageContent,
+      };
+    case "not_request":
+      return { type: "not_request" };
+    case "ambiguous": {
+      const agentList = bindings
+        .map(
+          (b) => `• \`${b.agentName}\`: ${b.description ?? "No description"}`,
+        )
+        .join("\n");
+      return {
+        type: "failure",
+        error: `I couldn't determine which agent to use. Please specify: \`@VM0 use <agent> <message>\`\n\nAvailable agents:\n${agentList}`,
+      };
+    }
   }
-
-  return {
-    success: true,
-    agentName: selectedAgentName,
-    promptText: messageContent,
-  };
 }
 
 /**
@@ -221,23 +261,57 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       botUserId,
     );
 
-    // 7. Route to agent
-    const routeResult = await routeMessageToAgent(messageContent, bindings);
+    // Fetch Slack context early (needed for routing and agent execution)
+    const formattedContext = await fetchConversationContext(
+      client,
+      context.channelId,
+      context.threadTs,
+      botUserId,
+    );
 
-    if (!routeResult.success) {
-      // Post error message and cleanup reaction
-      await postMessage(client, context.channelId, routeResult.error, {
-        threadTs,
-        blocks: buildErrorMessage(routeResult.error),
-      });
+    // 7. Route to agent (with context for LLM routing)
+    const routeResult = await routeMessageToAgent(
+      messageContent,
+      bindings,
+      formattedContext,
+    );
+
+    if (routeResult.type === "not_request") {
+      // User is not requesting agent assistance (greeting, casual chat)
+      if (thinkingTs) {
+        await client.chat.update({
+          channel: context.channelId,
+          ts: thinkingTs,
+          text: "Welcome to VM0!",
+          blocks: buildWelcomeMessage(bindings),
+        });
+      }
       if (reactionAdded) {
-        await client.reactions
-          .remove({
-            channel: context.channelId,
-            timestamp: context.messageTs,
-            name: "hourglass_flowing_sand",
-          })
-          .catch(() => {});
+        await removeThinkingReaction(
+          client,
+          context.channelId,
+          context.messageTs,
+        );
+      }
+      return;
+    }
+
+    if (routeResult.type === "failure") {
+      // Update thinking message with error and cleanup
+      if (thinkingTs) {
+        await client.chat.update({
+          channel: context.channelId,
+          ts: thinkingTs,
+          text: routeResult.error,
+          blocks: buildErrorMessage(routeResult.error),
+        });
+      }
+      if (reactionAdded) {
+        await removeThinkingReaction(
+          client,
+          context.channelId,
+          context.messageTs,
+        );
       }
       return;
     }
@@ -283,21 +357,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       log.debug("Thread session query result", { existingSessionId });
     }
 
-    // 9. Fetch Slack context (thread messages or recent channel messages)
-    let formattedContext = "";
-    if (context.threadTs) {
-      // In a thread - fetch thread replies
-      const messages = await fetchThreadContext(
-        client,
-        context.channelId,
-        context.threadTs,
-      );
-      formattedContext = formatContextForAgent(messages, botUserId, "thread");
-    } else {
-      // Not in a thread - fetch recent channel messages
-      const messages = await fetchChannelContext(client, context.channelId, 10);
-      formattedContext = formatContextForAgent(messages, botUserId, "channel");
-    }
+    // Context already fetched earlier for routing
 
     try {
       // 10. Execute agent with session continuation
@@ -350,15 +410,11 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
     } finally {
       // 13. Remove thinking reaction
       if (reactionAdded) {
-        await client.reactions
-          .remove({
-            channel: context.channelId,
-            timestamp: context.messageTs,
-            name: "hourglass_flowing_sand",
-          })
-          .catch(() => {
-            // Ignore errors when removing reaction
-          });
+        await removeThinkingReaction(
+          client,
+          context.channelId,
+          context.messageTs,
+        );
       }
     }
   } catch (error) {

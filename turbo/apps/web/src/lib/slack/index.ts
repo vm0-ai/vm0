@@ -47,6 +47,7 @@ export {
   buildErrorMessage,
   buildLoginPromptMessage,
   buildHelpMessage,
+  buildWelcomeMessage,
   buildSuccessMessage,
   buildMarkdownMessage,
 } from "./blocks";
