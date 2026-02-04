@@ -141,6 +141,25 @@ export const MODEL_PROVIDER_TYPES = {
     models: ["deepseek-chat"] as string[],
     defaultModel: "deepseek-chat",
   },
+  "zai-api-key": {
+    framework: "claude-code" as const,
+    credentialName: "ZAI_API_KEY",
+    label: "Z.AI (GLM)",
+    credentialLabel: "API key",
+    helpText: "Get your API key at: https://z.ai/model-api",
+    environmentMapping: {
+      ANTHROPIC_AUTH_TOKEN: "$credential",
+      ANTHROPIC_BASE_URL: "https://api.z.ai/api/anthropic",
+      ANTHROPIC_MODEL: "$model",
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "$model",
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "$model",
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
+      CLAUDE_CODE_SUBAGENT_MODEL: "$model",
+      API_TIMEOUT_MS: "3000000",
+    } as Record<string, string>,
+    models: ["GLM-4.7", "GLM-4.5-Air"] as string[],
+    defaultModel: "GLM-4.7",
+  },
   "aws-bedrock": {
     framework: "claude-code" as const,
     label: "AWS Bedrock",
@@ -219,6 +238,7 @@ export const modelProviderTypeSchema = z.enum([
   "moonshot-api-key",
   "minimax-api-key",
   "deepseek-api-key",
+  "zai-api-key",
   "aws-bedrock",
 ]);
 
