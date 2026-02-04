@@ -353,6 +353,7 @@ fn handle_write_file(payload: &[u8]) -> (bool, String) {
             && let Err(e) = stdin.write_all(content)
         {
             let _ = child.kill();
+            let _ = child.wait(); // Prevent zombie process
             return (false, format!("Failed to write to stdin: {}", e));
         }
         // stdin is dropped here, closing the pipe
