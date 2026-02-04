@@ -4,6 +4,7 @@
   <br>
   Natural language Agent, 24/7 in cloud sandbox
   <br>
+  <a href="https://trendshift.io/repositories/19748" target="_blank"><img src="https://trendshift.io/api/badge/repositories/19748" alt="vm0-ai%2Fvm0 | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
   <br>
   <p>
     <a href="https://deepwiki.com/vm0-ai/vm0"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" /></a>
