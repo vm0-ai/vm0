@@ -24,8 +24,11 @@ export function highlightText(
 ): HighlightResult {
   const { searchTerm, currentMatchIndex = -1, matchStartIndex = 0 } = options;
 
-  if (!searchTerm.trim() || !text) {
-    return { element: text, matchCount: 0 };
+  // Ensure text is a string (API might return non-string values)
+  const textStr = typeof text === "string" ? text : String(text ?? "");
+
+  if (!searchTerm.trim() || !textStr) {
+    return { element: textStr, matchCount: 0 };
   }
 
   const escapedTerm = searchTerm.replace(
@@ -33,7 +36,7 @@ export function highlightText(
     String.raw`\$&`,
   );
   const regex = new RegExp(`(${escapedTerm})`, "gi");
-  const parts = text.split(regex);
+  const parts = textStr.split(regex);
 
   let matchCount = 0;
   const elements: ReactNode[] = [];
@@ -70,7 +73,7 @@ export function highlightText(
   }
 
   return {
-    element: elements.length > 0 ? <>{elements}</> : text,
+    element: elements.length > 0 ? <>{elements}</> : textStr,
     matchCount,
   };
 }
@@ -80,7 +83,10 @@ export function highlightText(
  * More efficient when you only need the count.
  */
 export function countMatches(text: string, searchTerm: string): number {
-  if (!searchTerm.trim() || !text) {
+  // Ensure text is a string (API might return non-string values)
+  const textStr = typeof text === "string" ? text : String(text ?? "");
+
+  if (!searchTerm.trim() || !textStr) {
     return 0;
   }
 
@@ -89,6 +95,6 @@ export function countMatches(text: string, searchTerm: string): number {
     String.raw`\$&`,
   );
   const regex = new RegExp(escapedTerm, "gi");
-  const matches = text.match(regex);
+  const matches = textStr.match(regex);
   return matches?.length ?? 0;
 }

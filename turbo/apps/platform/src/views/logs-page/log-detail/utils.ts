@@ -397,8 +397,13 @@ function processToolResult(
   const pending = toolUseId ? pendingToolUses.get(toolUseId) : undefined;
 
   if (pending) {
+    // Ensure content is a string (API might return non-string values)
+    const content =
+      typeof resultContent.content === "string"
+        ? resultContent.content
+        : String(resultContent.content ?? "");
     pending.operation.result = {
-      content: resultContent.content,
+      content,
       isError: resultContent.is_error === true,
       durationMs: toolMeta?.durationMs ?? undefined,
       bytes: toolMeta?.bytes ?? undefined,
@@ -408,6 +413,11 @@ function processToolResult(
   }
 
   // Orphan tool_result - create standalone message
+  // Ensure content is a string (API might return non-string values)
+  const orphanContent =
+    typeof resultContent.content === "string"
+      ? resultContent.content
+      : String(resultContent.content ?? "");
   grouped.push({
     type: "assistant",
     sequenceNumber: event.sequenceNumber,
@@ -419,7 +429,7 @@ function processToolResult(
         keyParam: "",
         input: {},
         result: {
-          content: resultContent.content,
+          content: orphanContent,
           isError: resultContent.is_error === true,
           durationMs: toolMeta?.durationMs ?? undefined,
           bytes: toolMeta?.bytes ?? undefined,
