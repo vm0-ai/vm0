@@ -144,6 +144,12 @@ export const snapshotCommand = new Command("snapshot")
       let exitCode = 0;
 
       try {
+        // Clean up any stale work directory from previous run
+        if (fs.existsSync(workDir)) {
+          logger.log("Cleaning up stale work directory...");
+          fs.rmSync(workDir, { recursive: true, force: true });
+        }
+
         // Create directories
         logger.log(`Creating directories...`);
         fs.mkdirSync(options.output, { recursive: true });
