@@ -376,3 +376,101 @@ describe("formatMissingVariables", () => {
     expect(msg).toContain("Environment variables: A, B");
   });
 });
+
+describe("credentials to secrets aliasing", () => {
+  describe("expandVariablesInString", () => {
+    test("resolves credentials from secrets source", () => {
+      const result = expandVariablesInString(
+        "Key: ${{ credentials.MY_API_KEY }}",
+        {
+          secrets: { MY_API_KEY: "from-secrets" },
+        },
+      );
+      expect(result.result).toBe("Key: from-secrets");
+      expect(result.missingVars).toHaveLength(0);
+    });
+
+    test("falls back to credentials source when secrets not provided", () => {
+      const result = expandVariablesInString(
+        "Key: ${{ credentials.MY_API_KEY }}",
+        {
+          credentials: { MY_API_KEY: "from-credentials" },
+        },
+      );
+      expect(result.result).toBe("Key: from-credentials");
+      expect(result.missingVars).toHaveLength(0);
+    });
+
+    test("prefers secrets source over credentials source", () => {
+      const result = expandVariablesInString(
+        "Key: ${{ credentials.MY_API_KEY }}",
+        {
+          secrets: { MY_API_KEY: "from-secrets" },
+          credentials: { MY_API_KEY: "from-credentials" },
+        },
+      );
+      expect(result.result).toBe("Key: from-secrets");
+      expect(result.missingVars).toHaveLength(0);
+    });
+
+    test("reports missing when credential not in secrets or credentials", () => {
+      const result = expandVariablesInString(
+        "Key: ${{ credentials.MY_API_KEY }}",
+        {
+          secrets: {},
+          credentials: {},
+        },
+      );
+      expect(result.result).toBe("Key: ${{ credentials.MY_API_KEY }}");
+      expect(result.missingVars).toHaveLength(1);
+      expect(result.missingVars[0]?.source).toBe("credentials");
+      expect(result.missingVars[0]?.name).toBe("MY_API_KEY");
+    });
+  });
+
+  describe("validateRequiredVariables", () => {
+    test("validates credentials against secrets source", () => {
+      const refs = [
+        {
+          source: "credentials" as const,
+          name: "MY_KEY",
+          fullMatch: "${{ credentials.MY_KEY }}",
+        },
+      ];
+      const missing = validateRequiredVariables(refs, {
+        secrets: { MY_KEY: "value" },
+      });
+      expect(missing).toHaveLength(0);
+    });
+
+    test("validates credentials against credentials source as fallback", () => {
+      const refs = [
+        {
+          source: "credentials" as const,
+          name: "MY_KEY",
+          fullMatch: "${{ credentials.MY_KEY }}",
+        },
+      ];
+      const missing = validateRequiredVariables(refs, {
+        credentials: { MY_KEY: "value" },
+      });
+      expect(missing).toHaveLength(0);
+    });
+
+    test("returns missing when credential not in secrets or credentials", () => {
+      const refs = [
+        {
+          source: "credentials" as const,
+          name: "MY_KEY",
+          fullMatch: "${{ credentials.MY_KEY }}",
+        },
+      ];
+      const missing = validateRequiredVariables(refs, {
+        secrets: {},
+        credentials: {},
+      });
+      expect(missing).toHaveLength(1);
+      expect(missing[0]?.name).toBe("MY_KEY");
+    });
+  });
+});

@@ -2,6 +2,10 @@
  * Unified variable expansion for agent compose configurations
  * Supports ${{ vars.xxx }}, ${{ secrets.xxx }}, and ${{ credentials.xxx }} syntax
  * Note: ${{ env.xxx }} is parsed but not currently used (reserved for future)
+ *
+ * Migration note: ${{ credentials.X }} is now treated as an alias for ${{ secrets.X }}
+ * Both syntaxes resolve from the secrets source. The credentials source is kept for
+ * backward compatibility but secrets takes precedence.
  */
 
 /**
@@ -111,7 +115,12 @@ export function expandVariablesInString(
 
   const result = value.replace(VARIABLE_PATTERN, (fullMatch, source, name) => {
     const typedSource = source as "env" | "vars" | "secrets" | "credentials";
-    const sourceObj = sources[typedSource];
+    // Alias: credentials resolves from secrets source
+    // Fall back to credentials source for backward compatibility
+    const sourceObj =
+      typedSource === "credentials"
+        ? (sources.secrets ?? sources.credentials)
+        : sources[typedSource];
 
     if (sourceObj === undefined) {
       const key = `${typedSource}.${name}`;
@@ -196,7 +205,12 @@ export function validateRequiredVariables(
   const missing: VariableReference[] = [];
 
   for (const ref of refs) {
-    const sourceObj = sources[ref.source];
+    // Alias: credentials resolves from secrets source
+    // Fall back to credentials source for backward compatibility
+    const sourceObj =
+      ref.source === "credentials"
+        ? (sources.secrets ?? sources.credentials)
+        : sources[ref.source];
     if (sourceObj === undefined || sourceObj[ref.name] === undefined) {
       missing.push(ref);
     }
