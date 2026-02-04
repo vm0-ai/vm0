@@ -1,11 +1,15 @@
 /**
- * E2B configuration
+ * E2B sandbox configuration
+ *
+ * Templates are built via CI and pushed to separate E2B accounts:
+ * - Development: Uses repository-level E2B_API_KEY secret
+ * - Production: Uses production environment E2B_API_KEY secret
+ *
+ * The same template names exist in both accounts, isolated by the API key.
  */
-
 export const e2bConfig = {
-  defaultTimeout: 0, // No timeout - allows indefinite execution
-  // Default template name for E2B sandbox with Claude Code CLI
-  // Templates are built via CI and pushed to separate E2B accounts (dev/prod)
-  // The same template name exists in both accounts, isolated by E2B_API_KEY
+  /** Sandbox timeout in ms. 0 = no timeout (indefinite execution) */
+  defaultTimeout: 0,
+  /** Default E2B template for Claude Code CLI sandbox */
   defaultTemplate: "vm0-claude-code",
 } as const;
