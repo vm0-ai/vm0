@@ -192,7 +192,7 @@ function UsefulReferences({ theme }: { theme: string }) {
       <h2 className="text-base font-medium text-foreground mb-4">
         Useful reference
       </h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <ReferenceCard
           title="Explore our community"
           description="Join us on Discord"
