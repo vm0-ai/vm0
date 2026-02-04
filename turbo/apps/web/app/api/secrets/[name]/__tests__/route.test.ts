@@ -17,14 +17,14 @@ vi.mock("@axiomhq/js");
 const context = testContext();
 
 /**
- * Helper to create a credential for testing
+ * Helper to create a secret for testing
  */
-async function createCredential(
+async function createSecret(
   name: string,
   value: string,
   description?: string,
 ): Promise<{ id: string; name: string }> {
-  const request = createTestRequest("http://localhost:3000/api/credentials", {
+  const request = createTestRequest("http://localhost:3000/api/secrets", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, value, description }),
@@ -32,12 +32,12 @@ async function createCredential(
   const response = await PUT(request);
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(`Failed to create credential: ${error.error?.message}`);
+    throw new Error(`Failed to create secret: ${error.error?.message}`);
   }
   return response.json();
 }
 
-describe("GET /api/credentials/:name - Get Credential", () => {
+describe("GET /api/secrets/:name - Get Secret", () => {
   let user: UserContext;
 
   beforeEach(async () => {
@@ -49,7 +49,7 @@ describe("GET /api/credentials/:name - Get Credential", () => {
     mockClerk({ userId: null });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/credentials/TEST_KEY",
+      "http://localhost:3000/api/secrets/TEST_KEY",
     );
     const response = await GET(request);
     const data = await response.json();
@@ -58,11 +58,11 @@ describe("GET /api/credentials/:name - Get Credential", () => {
     expect(data.error.message).toContain("Not authenticated");
   });
 
-  it("should return credential metadata by name", async () => {
-    await createCredential("MY_SECRET_KEY", "secret-value", "My secret");
+  it("should return secret metadata by name", async () => {
+    await createSecret("MY_SECRET_KEY", "secret-value", "My secret");
 
     const request = createTestRequest(
-      "http://localhost:3000/api/credentials/MY_SECRET_KEY",
+      "http://localhost:3000/api/secrets/MY_SECRET_KEY",
     );
     const response = await GET(request);
     const data = await response.json();
@@ -77,9 +77,9 @@ describe("GET /api/credentials/:name - Get Credential", () => {
     expect(data).not.toHaveProperty("encryptedValue");
   });
 
-  it("should return 404 for nonexistent credential", async () => {
+  it("should return 404 for nonexistent secret", async () => {
     const request = createTestRequest(
-      "http://localhost:3000/api/credentials/NONEXISTENT_KEY",
+      "http://localhost:3000/api/secrets/NONEXISTENT_KEY",
     );
     const response = await GET(request);
     const data = await response.json();
@@ -89,15 +89,15 @@ describe("GET /api/credentials/:name - Get Credential", () => {
     expect(data.error.message).toContain("NONEXISTENT_KEY");
   });
 
-  it("should return 404 for other user's credential", async () => {
-    // Create credential as current user
-    await createCredential("USER1_KEY", "user1-secret");
+  it("should return 404 for other user's secret", async () => {
+    // Create secret as current user
+    await createSecret("USER1_KEY", "user1-secret");
 
     // Switch to other user
     await context.setupUser({ prefix: "other-user" });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/credentials/USER1_KEY",
+      "http://localhost:3000/api/secrets/USER1_KEY",
     );
     const response = await GET(request);
 
@@ -107,7 +107,7 @@ describe("GET /api/credentials/:name - Get Credential", () => {
     // Switch back to original user and verify it still exists
     mockClerk({ userId: user.userId });
     const request2 = createTestRequest(
-      "http://localhost:3000/api/credentials/USER1_KEY",
+      "http://localhost:3000/api/secrets/USER1_KEY",
     );
     const response2 = await GET(request2);
     expect(response2.status).toBe(200);
@@ -117,7 +117,7 @@ describe("GET /api/credentials/:name - Get Credential", () => {
     mockClerk({ userId: `user-no-scope-${Date.now()}` });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/credentials/ANY_KEY",
+      "http://localhost:3000/api/secrets/ANY_KEY",
     );
     const response = await GET(request);
 
@@ -125,7 +125,7 @@ describe("GET /api/credentials/:name - Get Credential", () => {
   });
 });
 
-describe("DELETE /api/credentials/:name - Delete Credential", () => {
+describe("DELETE /api/secrets/:name - Delete Secret", () => {
   let user: UserContext;
 
   beforeEach(async () => {
@@ -137,7 +137,7 @@ describe("DELETE /api/credentials/:name - Delete Credential", () => {
     mockClerk({ userId: null });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/credentials/TEST_KEY",
+      "http://localhost:3000/api/secrets/TEST_KEY",
       { method: "DELETE" },
     );
     const response = await DELETE(request);
@@ -147,19 +147,19 @@ describe("DELETE /api/credentials/:name - Delete Credential", () => {
     expect(data.error.message).toContain("Not authenticated");
   });
 
-  it("should delete credential successfully", async () => {
-    await createCredential("DELETE_ME_KEY", "to-be-deleted");
+  it("should delete secret successfully", async () => {
+    await createSecret("DELETE_ME_KEY", "to-be-deleted");
 
     // Verify it exists
     const getRequest = createTestRequest(
-      "http://localhost:3000/api/credentials/DELETE_ME_KEY",
+      "http://localhost:3000/api/secrets/DELETE_ME_KEY",
     );
     const getResponse = await GET(getRequest);
     expect(getResponse.status).toBe(200);
 
     // Delete it
     const deleteRequest = createTestRequest(
-      "http://localhost:3000/api/credentials/DELETE_ME_KEY",
+      "http://localhost:3000/api/secrets/DELETE_ME_KEY",
       { method: "DELETE" },
     );
     const deleteResponse = await DELETE(deleteRequest);
@@ -167,15 +167,15 @@ describe("DELETE /api/credentials/:name - Delete Credential", () => {
 
     // Verify it's gone
     const getRequest2 = createTestRequest(
-      "http://localhost:3000/api/credentials/DELETE_ME_KEY",
+      "http://localhost:3000/api/secrets/DELETE_ME_KEY",
     );
     const getResponse2 = await GET(getRequest2);
     expect(getResponse2.status).toBe(404);
   });
 
-  it("should return 404 for nonexistent credential", async () => {
+  it("should return 404 for nonexistent secret", async () => {
     const request = createTestRequest(
-      "http://localhost:3000/api/credentials/NONEXISTENT_KEY",
+      "http://localhost:3000/api/secrets/NONEXISTENT_KEY",
       { method: "DELETE" },
     );
     const response = await DELETE(request);
@@ -186,15 +186,15 @@ describe("DELETE /api/credentials/:name - Delete Credential", () => {
     expect(data.error.message).toContain("NONEXISTENT_KEY");
   });
 
-  it("should return 404 for other user's credential", async () => {
-    // Create credential as current user
-    await createCredential("USER1_SECRET", "user1-value");
+  it("should return 404 for other user's secret", async () => {
+    // Create secret as current user
+    await createSecret("USER1_SECRET", "user1-value");
 
     // Switch to other user
     await context.setupUser({ prefix: "other-user" });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/credentials/USER1_SECRET",
+      "http://localhost:3000/api/secrets/USER1_SECRET",
       { method: "DELETE" },
     );
     const response = await DELETE(request);
@@ -205,7 +205,7 @@ describe("DELETE /api/credentials/:name - Delete Credential", () => {
     // Switch back to original user and verify it still exists
     mockClerk({ userId: user.userId });
     const getRequest = createTestRequest(
-      "http://localhost:3000/api/credentials/USER1_SECRET",
+      "http://localhost:3000/api/secrets/USER1_SECRET",
     );
     const getResponse = await GET(getRequest);
     expect(getResponse.status).toBe(200);
@@ -215,45 +215,11 @@ describe("DELETE /api/credentials/:name - Delete Credential", () => {
     mockClerk({ userId: `user-no-scope-${Date.now()}` });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/credentials/ANY_KEY",
+      "http://localhost:3000/api/secrets/ANY_KEY",
       { method: "DELETE" },
     );
     const response = await DELETE(request);
 
     expect(response.status).toBe(404);
-  });
-});
-
-describe("Deprecation Headers", () => {
-  beforeEach(async () => {
-    context.setupMocks();
-    await context.setupUser();
-  });
-
-  it("should include deprecation warning header on GET", async () => {
-    await createCredential("DEPRECATION_TEST_GET", "test-value");
-
-    const request = createTestRequest(
-      "http://localhost:3000/api/credentials/DEPRECATION_TEST_GET",
-    );
-    const response = await GET(request);
-
-    expect(response.headers.get("X-Deprecation-Warning")).toBe(
-      "This endpoint is deprecated. Please upgrade your CLI and use /api/secrets instead.",
-    );
-  });
-
-  it("should include deprecation warning header on DELETE", async () => {
-    await createCredential("DEPRECATION_TEST_DEL", "test-value");
-
-    const request = createTestRequest(
-      "http://localhost:3000/api/credentials/DEPRECATION_TEST_DEL",
-      { method: "DELETE" },
-    );
-    const response = await DELETE(request);
-
-    expect(response.headers.get("X-Deprecation-Warning")).toBe(
-      "This endpoint is deprecated. Please upgrade your CLI and use /api/secrets instead.",
-    );
   });
 });
