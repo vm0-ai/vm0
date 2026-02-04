@@ -107,7 +107,7 @@ export async function executeJob(
     // Start VM (Firecracker process begins, guest will connect to vsock)
     // Derive snapshot workdir from snapshot config path:
     // - Snapshot is at {original_base_dir}/snapshot/snapshot.bin
-    // - Snapshot was generated with workdir at {original_base_dir}/snapshot-gen/workspaces/.snapshot-work
+    // - Snapshot was generated with workdir at {original_base_dir}/snapshot-gen/workspaces/snapshot
     // - Paths recorded in snapshot use that workdir
     const snapshotConfig = config.firecracker.snapshot;
     let snapshotPaths: Parameters<typeof vm.start>[0];

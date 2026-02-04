@@ -52,7 +52,7 @@ export const runnerPaths = {
 
   /** Snapshot generation work directory */
   snapshotWorkDir: (baseDir: string) =>
-    path.join(baseDir, "workspaces", ".snapshot-work"),
+    path.join(baseDir, "workspaces", "snapshot"),
 
   /** Check if a directory name is a VM workspace */
   isVmWorkspace: (dirname: string) => dirname.startsWith(VM_WORKSPACE_PREFIX),
