@@ -1,7 +1,10 @@
 import { command, computed, state } from "ccstate";
 import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
+import { logger } from "../log.ts";
 import type { ComposeListItem } from "@vm0/core";
+
+const L = logger("AgentsList");
 
 interface Schedule {
   name: string;
@@ -70,7 +73,8 @@ export const fetchAgentsList$ = command(async ({ get, set }) => {
       }
     } catch (error) {
       throwIfAbort(error);
-      // Silently ignore schedule fetch errors - schedules are optional
+      // Log schedule fetch errors for debugging, but don't fail the page
+      L.error("Failed to fetch schedules:", error);
     }
 
     set(agentsListState$, {
