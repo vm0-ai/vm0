@@ -110,8 +110,9 @@ export async function linkSlackAccount(
   if (existingLink) {
     if (existingLink.vm0UserId === userId) {
       // Send success message even for already linked users
+      // Must await to prevent serverless function from terminating before message is sent
       if (channelId) {
-        sendSuccessMessage(
+        await sendSuccessMessage(
           installation.encryptedBotToken,
           channelId,
           slackUserId,
@@ -159,8 +160,9 @@ export async function linkSlackAccount(
   }
 
   // Send success message to the Slack channel
+  // Must await to prevent serverless function from terminating before message is sent
   if (channelId) {
-    sendSuccessMessage(
+    await sendSuccessMessage(
       installation.encryptedBotToken,
       channelId,
       slackUserId,
