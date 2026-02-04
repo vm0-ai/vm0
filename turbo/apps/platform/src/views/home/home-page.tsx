@@ -170,8 +170,8 @@ function ReferenceCard({
   href: string;
 }) {
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer">
-      <Card className="flex items-center gap-3 p-4 hover:bg-muted/50 transition-colors cursor-pointer">
+    <a href={href} target="_blank" rel="noopener noreferrer" className="h-full">
+      <Card className="h-full flex items-center gap-3 p-4 hover:bg-muted/50 transition-colors cursor-pointer">
         <div
           className={`flex h-8 w-8 items-center justify-center rounded-lg ${iconBg}`}
         >
