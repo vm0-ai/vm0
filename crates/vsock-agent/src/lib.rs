@@ -51,6 +51,7 @@ const VSOCK_CID_HOST: u32 = 2;
 // Protocol constants
 const HEADER_SIZE: usize = 4;
 const MAX_MESSAGE_SIZE: usize = 16 * 1024 * 1024; // 16MB
+const READ_BUFFER_SIZE: usize = 64 * 1024; // 64KB read buffer
 
 // Message types
 const MSG_READY: u8 = 0x00;
@@ -528,7 +529,7 @@ impl Decoder {
         // Pre-allocate buffer to avoid frequent reallocations
         // 64KB matches the read buffer size in handle_connection
         Self {
-            buf: Vec::with_capacity(65536),
+            buf: Vec::with_capacity(READ_BUFFER_SIZE),
         }
     }
 
@@ -642,7 +643,7 @@ pub fn handle_connection(stream: UnixStream) -> std::io::Result<()> {
     }
     log("INFO", "Sent ready signal");
 
-    let mut buf = [0u8; 65536];
+    let mut buf = [0u8; READ_BUFFER_SIZE];
     loop {
         // Read from stream (reader is separate, no lock needed)
         let n = reader.read(&mut buf)?;
