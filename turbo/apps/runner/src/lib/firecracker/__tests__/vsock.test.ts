@@ -932,4 +932,46 @@ describe("VsockClient Integration Tests", () => {
       expect(agentOutput).not.toMatch(/reconnecting.*\/50/);
     });
   });
+
+  describe("Protocol Error Handling", () => {
+    it("should disconnect and reconnect on oversized message", async () => {
+      // First verify the connection is working
+      const pingResult = await client!.exec("echo test");
+      expect(pingResult.exitCode).toBe(0);
+
+      // Track agent logs
+      let agentOutput = "";
+      agent!.stderr!.on("data", (data: Buffer) => {
+        agentOutput += data.toString();
+      });
+
+      // Create a new client to listen for reconnection BEFORE sending malformed message
+      // This ensures the agent has somewhere to reconnect to
+      const newClient = new VsockClient(socketPath);
+      const reconnectPromise = newClient.waitForGuestConnection(5000);
+
+      // Send a malformed message with oversized length header (> 16MB)
+      // Protocol: [4-byte length][1-byte type][4-byte seq][payload]
+      // This creates a header claiming 20MB message size
+      const malformedHeader = Buffer.alloc(4);
+      malformedHeader.writeUInt32BE(20 * 1024 * 1024, 0); // 20MB - exceeds MAX_MESSAGE_SIZE
+      client!.sendRawForTesting(malformedHeader);
+
+      // Close old client (agent will detect disconnection)
+      client!.close();
+      client = null;
+
+      // Wait for agent to reconnect to the new client
+      await reconnectPromise;
+      client = newClient;
+
+      // Verify agent logged the protocol error
+      expect(agentOutput).toContain("Message too large");
+
+      // Verify connection works again after reconnection
+      const postErrorResult = await client!.exec("echo recovered");
+      expect(postErrorResult.exitCode).toBe(0);
+      expect(postErrorResult.stdout.trim()).toBe("recovered");
+    });
+  });
 });

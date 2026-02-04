@@ -543,7 +543,8 @@ impl Decoder {
         }
     }
 
-    fn decode(&mut self, data: &[u8]) -> Vec<(u8, u32, Vec<u8>)> {
+    /// Decode messages from data. Returns Err on protocol error (caller should reconnect).
+    fn decode(&mut self, data: &[u8]) -> std::io::Result<Vec<(u8, u32, Vec<u8>)>> {
         self.buf.extend_from_slice(data);
         let mut messages = Vec::new();
 
@@ -554,13 +555,19 @@ impl Decoder {
             if length > MAX_MESSAGE_SIZE {
                 log("ERROR", &format!("Message too large: {}", length));
                 self.buf.clear();
-                break;
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("Message too large: {}", length),
+                ));
             }
 
             if length < 5 {
                 log("ERROR", &format!("Message too small: {}", length));
                 self.buf.clear();
-                break;
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("Message too small: {}", length),
+                ));
             }
 
             let total = HEADER_SIZE + length;
@@ -576,7 +583,7 @@ impl Decoder {
             self.buf.drain(..total);
         }
 
-        messages
+        Ok(messages)
     }
 }
 
@@ -655,7 +662,7 @@ pub fn handle_connection(stream: UnixStream) -> std::io::Result<()> {
             break;
         }
 
-        for (msg_type, seq, payload) in decoder.decode(&buf[..n]) {
+        for (msg_type, seq, payload) in decoder.decode(&buf[..n])? {
             // Handle spawn_watch separately since it needs the writer Arc
             let response = if msg_type == MSG_SPAWN_WATCH {
                 Some(handle_spawn_watch(&payload, seq, Arc::clone(&writer)))

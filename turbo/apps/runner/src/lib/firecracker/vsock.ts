@@ -819,4 +819,19 @@ export class VsockClient implements GuestClient {
     // Clean up cached exits
     this.cachedExits.clear();
   }
+
+  /**
+   * Send raw bytes directly to the socket (for testing only)
+   *
+   * This allows tests to send malformed messages to verify the agent's
+   * protocol error handling (e.g., oversized messages).
+   *
+   * @internal This method is only for testing purposes
+   */
+  sendRawForTesting(data: Buffer): void {
+    if (!this.connected || !this.socket) {
+      throw new Error("Not connected - call waitForGuestConnection() first");
+    }
+    this.socket.write(data);
+  }
 }
