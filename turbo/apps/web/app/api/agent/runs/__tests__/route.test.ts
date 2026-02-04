@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { POST } from "../route";
+import { PUT as putSecret } from "../../../secrets/route";
 import { randomUUID } from "crypto";
 import { Sandbox } from "@e2b/code-interpreter";
 import {
@@ -219,6 +220,80 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       });
 
       // Should succeed (running, not failed)
+      expect(data.status).toBe("running");
+    });
+
+    it("should auto-fetch secrets from database when secrets.* is referenced", async () => {
+      // Store a secret in the database first
+      const secretName = `DB_SECRET_${Date.now()}`;
+      const createSecretRequest = createTestRequest(
+        "http://localhost:3000/api/secrets",
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: secretName,
+            value: "db-secret-value",
+          }),
+        },
+      );
+      await putSecret(createSecretRequest);
+
+      // Create compose that references the secret
+      const { composeId } = await createTestCompose(
+        `db-secret-test-${Date.now()}`,
+        {
+          overrides: {
+            environment: {
+              ANTHROPIC_API_KEY: "test-key",
+              MY_SECRET: `\${{ secrets.${secretName} }}`,
+            },
+          },
+        },
+      );
+
+      // Run WITHOUT passing the secret via CLI - should auto-fetch from DB
+      const data = await createTestRun(composeId, "Test DB secret auto-fetch");
+
+      // Should succeed (running, not failed)
+      expect(data.status).toBe("running");
+    });
+
+    it("should prefer CLI secrets over DB secrets", async () => {
+      // Store a secret in the database
+      const secretName = `OVERRIDE_SECRET_${Date.now()}`;
+      const createSecretRequest = createTestRequest(
+        "http://localhost:3000/api/secrets",
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: secretName,
+            value: "db-value",
+          }),
+        },
+      );
+      await putSecret(createSecretRequest);
+
+      // Create compose that references the secret
+      const { composeId } = await createTestCompose(
+        `override-secret-test-${Date.now()}`,
+        {
+          overrides: {
+            environment: {
+              ANTHROPIC_API_KEY: "test-key",
+              MY_SECRET: `\${{ secrets.${secretName} }}`,
+            },
+          },
+        },
+      );
+
+      // Pass the secret via CLI - should override DB value
+      const data = await createTestRun(composeId, "Test CLI override", {
+        secrets: { [secretName]: "cli-value" },
+      });
+
+      // Should succeed
       expect(data.status).toBe("running");
     });
 

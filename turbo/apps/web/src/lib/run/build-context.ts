@@ -310,24 +310,39 @@ async function fetchReferencedCredentials(
   const refs = extractVariableReferences(environment);
   const grouped = groupVariablesBySource(refs);
 
-  if (grouped.credentials.length === 0) {
+  if (grouped.credentials.length === 0 && grouped.secrets.length === 0) {
     return undefined;
   }
 
-  log.debug(
-    `Credentials referenced in environment: ${grouped.credentials.map((r) => r.name).join(", ")}`,
-  );
+  const referencedNames = [
+    ...grouped.credentials.map((r) => r.name),
+    ...grouped.secrets.map((r) => r.name),
+  ];
+  log.debug(`Secrets referenced in environment: ${referencedNames.join(", ")}`);
 
   const userScope = await getUserScopeByClerkId(userId);
   if (!userScope) {
     return undefined;
   }
 
-  const credentials = await getSecretValues(userScope.id);
+  const secrets = await getSecretValues(userScope.id);
   log.debug(
-    `Fetched ${Object.keys(credentials).length} credential(s) from scope ${userScope.slug}`,
+    `Fetched ${Object.keys(secrets).length} secret(s) from scope ${userScope.slug}`,
   );
-  return credentials;
+  return secrets;
+}
+
+/**
+ * Merge DB secrets with CLI secrets (CLI takes priority)
+ */
+function mergeSecrets(
+  dbSecrets: Record<string, string> | undefined,
+  cliSecrets: Record<string, string> | undefined,
+): Record<string, string> | undefined {
+  if (!dbSecrets) {
+    return cliSecrets;
+  }
+  return { ...dbSecrets, ...cliSecrets };
 }
 
 /**
@@ -468,7 +483,7 @@ export async function buildExecutionContext(
   let artifactName: string | undefined = params.artifactName;
   let artifactVersion: string | undefined = params.artifactVersion;
   let vars: Record<string, string> | undefined = params.vars;
-  const secrets: Record<string, string> | undefined = params.secrets;
+  let secrets: Record<string, string> | undefined = params.secrets;
   let secretNames: string[] | undefined;
   let volumeVersions: Record<string, string> | undefined =
     params.volumeVersions;
@@ -533,9 +548,7 @@ export async function buildExecutionContext(
     throw notFound("Agent compose could not be loaded");
   }
 
-  // Step 4: Check if credentials are needed and fetch them from the user's scope
-  let credentials: Record<string, string> | undefined;
-
+  // Step 4: Fetch secrets/credentials from user's scope and merge with CLI secrets
   // Extract compose structure
   const compose = agentCompose as {
     agents?: Record<
@@ -547,11 +560,17 @@ export async function buildExecutionContext(
     ? Object.values(compose.agents)[0]
     : undefined;
 
-  // Fetch credentials referenced in environment
-  credentials = await fetchReferencedCredentials(
+  // Fetch secrets/credentials referenced in environment
+  const dbSecrets = await fetchReferencedCredentials(
     params.userId,
     firstAgent?.environment,
   );
+
+  // Merge DB secrets with CLI secrets (CLI takes priority)
+  secrets = mergeSecrets(dbSecrets, params.secrets);
+
+  // credentials is used for backwards compatibility with credentials.* syntax
+  let credentials: Record<string, string> | undefined = dbSecrets;
 
   // Step 4b: Model provider credential injection
   const hasExplicitModelProviderConfig = MODEL_PROVIDER_ENV_VARS.some(
