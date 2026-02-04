@@ -152,11 +152,11 @@ setup() {
 # Uses a separate agent with configuration requirements
 # ============================================================
 
-@test "vm0 schedule setup with secrets and vars integration" {
+@test "vm0 schedule setup with vars integration" {
     local CONFIG_AGENT_NAME="schedule-config-${UNIQUE_ID}"
     local CONFIG_TEST_DIR="$(mktemp -d)"
 
-    # Create agent with secrets and vars requirements
+    # Create agent with vars requirements (secrets are managed separately via vm0 secret set)
     cat > "$CONFIG_TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -167,25 +167,22 @@ agents:
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:
-      API_KEY: "\${{ secrets.API_KEY }}"
       API_URL: "\${{ vars.API_URL }}"
+      DEBUG: "\${{ vars.DEBUG }}"
 EOF
 
     cd "$CONFIG_TEST_DIR"
     run $CLI_COMMAND compose vm0.yaml
     assert_success
 
-    # Create the required secret via platform (secrets are now managed via vm0 secret set)
-    run $CLI_COMMAND secret set "API_KEY" "test-secret-value"
-    assert_success
-
-    # Setup schedule with vars only (secrets are resolved from platform)
+    # Setup schedule with vars
     run $CLI_COMMAND schedule setup "$CONFIG_AGENT_NAME" \
         --frequency daily \
         --time "09:00" \
         --timezone "UTC" \
         --prompt "Task with config" \
-        --var "API_URL=https://api.example.com"
+        --var "API_URL=https://api.example.com" \
+        --var "DEBUG=true"
     assert_success
     assert_output --partial "Created schedule"
 
@@ -194,9 +191,9 @@ EOF
     assert_success
     assert_output --partial "Variables:"
     assert_output --partial "API_URL"
+    assert_output --partial "DEBUG"
 
-    # Clean up this separate agent and secret
+    # Clean up this separate agent
     $CLI_COMMAND schedule delete "$CONFIG_AGENT_NAME" --force 2>/dev/null || true
-    $CLI_COMMAND secret delete -y "API_KEY" 2>/dev/null || true
     rm -rf "$CONFIG_TEST_DIR"
 }

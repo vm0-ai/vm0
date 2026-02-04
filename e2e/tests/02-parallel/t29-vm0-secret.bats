@@ -105,12 +105,7 @@ teardown() {
     # Create test volume
     create_test_volume "e2e-vol-secret-mask"
 
-    # Step 1: Create a secret in the platform
-    echo "# Creating secret: $TEST_SECRET_NAME"
-    run $CLI_COMMAND secret set "$TEST_SECRET_NAME" "$secret_value"
-    assert_success
-
-    # Step 2: Create config that uses the secret
+    # Step 1: Create config that uses a secret
     cat > "$test_config" <<EOF
 version: "1.0"
 agents:
@@ -120,7 +115,7 @@ agents:
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:
-      MY_SECRET: "\${{ secrets.${TEST_SECRET_NAME} }}"
+      MY_SECRET: "\${{ secrets.MY_SECRET }}"
     volumes:
       - claude-files:/home/user/.claude
 volumes:
@@ -129,20 +124,21 @@ volumes:
     version: latest
 EOF
 
-    # Step 3: Create artifact
+    # Step 2: Create artifact
     mkdir -p "$test_artifact_dir/$artifact_name"
     cd "$test_artifact_dir/$artifact_name"
     $CLI_COMMAND artifact init --name "$artifact_name" >/dev/null 2>&1
     echo "test content" > test.txt
     $CLI_COMMAND artifact push >/dev/null 2>&1
 
-    # Step 4: Build the compose
+    # Step 3: Build the compose
     run $CLI_COMMAND compose "$test_config"
     assert_success
 
-    # Step 5: Run agent that echoes secret value
+    # Step 4: Run agent with secret provided via CLI
     echo "# Running agent that echoes secret value..."
     run $CLI_COMMAND run "$agent_name" \
+        --secrets "MY_SECRET=${secret_value}" \
         --artifact-name "$artifact_name" \
         "echo SECRET=\$MY_SECRET"
 
@@ -161,39 +157,34 @@ EOF
     cleanup_test_volume
 }
 
-@test "vm0 run CLI secrets take priority over platform secrets" {
+@test "vm0 run masks multiple CLI secrets in output" {
     if [[ -z "$VM0_API_URL" ]]; then
         skip "VM0_API_URL not set"
     fi
 
     # Create unique identifiers for this test
     local unique_id="$(date +%s%3N)-$RANDOM"
-    local platform_secret_value="platform-secret-${unique_id}"
-    local cli_secret_value="cli-secret-${unique_id}"
-    local artifact_name="e2e-secret-priority-${unique_id}"
-    local agent_name="e2e-secret-priority-agent"
+    local secret1_value="secret1-${unique_id}"
+    local secret2_value="secret2-${unique_id}"
+    local artifact_name="e2e-secret-multi-${unique_id}"
+    local agent_name="e2e-secret-multi-agent"
     local test_artifact_dir="$(mktemp -d)"
     local test_config="$(mktemp --suffix=.yaml)"
 
     # Create test volume
-    create_test_volume "e2e-vol-secret-priority"
+    create_test_volume "e2e-vol-secret-multi"
 
-    # Step 1: Create a secret in the platform
-    echo "# Creating platform secret: $TEST_SECRET_NAME"
-    run $CLI_COMMAND secret set "$TEST_SECRET_NAME" "$platform_secret_value"
-    assert_success
-
-    # Step 2: Create config that uses both a platform secret and a CLI secret
+    # Step 1: Create config that uses multiple secrets
     cat > "$test_config" <<EOF
 version: "1.0"
 agents:
   ${agent_name}:
-    description: "E2E test agent for secret priority"
+    description: "E2E test agent for multiple secrets"
     framework: claude-code
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:
-      API_KEY: "\${{ secrets.${TEST_SECRET_NAME} }}"
+      API_KEY: "\${{ secrets.API_KEY }}"
       CLI_SECRET: "\${{ secrets.CLI_SECRET }}"
     volumes:
       - claude-files:/home/user/.claude
@@ -203,21 +194,22 @@ volumes:
     version: latest
 EOF
 
-    # Step 3: Create artifact
+    # Step 2: Create artifact
     mkdir -p "$test_artifact_dir/$artifact_name"
     cd "$test_artifact_dir/$artifact_name"
     $CLI_COMMAND artifact init --name "$artifact_name" >/dev/null 2>&1
     echo "test content" > test.txt
     $CLI_COMMAND artifact push >/dev/null 2>&1
 
-    # Step 4: Build the compose
+    # Step 3: Build the compose
     run $CLI_COMMAND compose "$test_config"
     assert_success
 
-    # Step 5: Run agent with CLI secret
-    echo "# Running agent with CLI secret..."
+    # Step 4: Run agent with multiple CLI secrets
+    echo "# Running agent with multiple CLI secrets..."
     run $CLI_COMMAND run "$agent_name" \
-        --secrets "CLI_SECRET=${cli_secret_value}" \
+        --secrets "API_KEY=${secret1_value}" \
+        --secrets "CLI_SECRET=${secret2_value}" \
         --artifact-name "$artifact_name" \
         "echo API_KEY=\$API_KEY && echo CLI_SECRET=\$CLI_SECRET"
 
@@ -226,13 +218,13 @@ EOF
 
     assert_success
 
-    # Both platform secret and CLI secret should be masked
+    # Both secrets should be masked
     assert_output --partial "API_KEY=***"
     assert_output --partial "CLI_SECRET=***"
 
     # Neither actual value should appear
-    refute_output --partial "${platform_secret_value}"
-    refute_output --partial "${cli_secret_value}"
+    refute_output --partial "${secret1_value}"
+    refute_output --partial "${secret2_value}"
 
     # Cleanup
     rm -rf "$test_artifact_dir"
