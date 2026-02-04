@@ -5,7 +5,11 @@ import * as os from "os";
 import * as tar from "tar";
 import { writeStorageConfig, type StorageType } from "./storage-utils";
 import { getStorageDownload } from "../api";
-import { listTarFiles, formatBytes } from "../utils/file-utils";
+import {
+  listTarFiles,
+  formatBytes,
+  checkDirectoryStatus,
+} from "../utils/file-utils";
 
 interface CloneOptions {
   version?: string;
@@ -30,9 +34,10 @@ export async function cloneStorage(
 ): Promise<CloneResult> {
   const typeLabel = type === "artifact" ? "artifact" : "volume";
 
-  // Check if destination already exists
-  if (fs.existsSync(destination)) {
-    throw new Error(`Directory "${destination}" already exists`);
+  // Check if destination already exists and is non-empty
+  const dirStatus = checkDirectoryStatus(destination);
+  if (dirStatus.exists && !dirStatus.empty) {
+    throw new Error(`Directory "${destination}" is not empty`);
   }
 
   // Check if storage exists on remote

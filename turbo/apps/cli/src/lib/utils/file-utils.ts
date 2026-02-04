@@ -3,6 +3,32 @@ import * as path from "path";
 import * as tar from "tar";
 
 /**
+ * Check if a directory exists and is empty (contains no files or subdirectories).
+ * Returns: { exists: boolean, empty: boolean }
+ * - Non-existent path: { exists: false, empty: true }
+ * - Existing empty directory: { exists: true, empty: true }
+ * - Existing non-empty directory: { exists: true, empty: false }
+ * - Existing file (not directory): { exists: true, empty: false }
+ */
+export function checkDirectoryStatus(dirPath: string): {
+  exists: boolean;
+  empty: boolean;
+} {
+  if (!fs.existsSync(dirPath)) {
+    return { exists: false, empty: true };
+  }
+
+  const stat = fs.statSync(dirPath);
+  if (!stat.isDirectory()) {
+    // Path exists but is a file, not a directory
+    return { exists: true, empty: false };
+  }
+
+  const entries = fs.readdirSync(dirPath);
+  return { exists: true, empty: entries.length === 0 };
+}
+
+/**
  * Format bytes to human-readable format
  */
 export function formatBytes(bytes: number): string {

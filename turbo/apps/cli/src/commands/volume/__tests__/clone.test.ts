@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { cloneCommand } from "../clone";
-import { mkdtempSync, rmSync, existsSync } from "fs";
+import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync } from "fs";
 import * as path from "path";
 import * as os from "os";
 import chalk from "chalk";
@@ -197,12 +197,11 @@ describe("volume clone", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should fail if destination already exists", async () => {
-      // Create existing directory
+    it("should fail if destination is not empty", async () => {
+      // Create existing directory with a file inside
       const existingDir = path.join(tempDir, "existing-dir");
-      await import("fs/promises").then((fs) =>
-        fs.mkdir(existingDir, { recursive: true }),
-      );
+      mkdirSync(existingDir, { recursive: true });
+      writeFileSync(path.join(existingDir, "file.txt"), "content");
 
       await expect(async () => {
         await cloneCommand.parseAsync([
@@ -217,9 +216,33 @@ describe("volume clone", () => {
         expect.stringContaining("Clone failed"),
       );
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("already exists"),
+        expect.stringContaining("is not empty"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should succeed if destination is empty directory", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/storages/download", () => {
+          return HttpResponse.json({
+            empty: true,
+            versionId: "a1b2c3d4",
+            fileCount: 0,
+            size: 0,
+          });
+        }),
+      );
+
+      // Create empty directory
+      const emptyDir = path.join(tempDir, "empty-dir");
+      mkdirSync(emptyDir, { recursive: true });
+
+      await cloneCommand.parseAsync(["node", "cli", "my-volume", "empty-dir"]);
+
+      // Should succeed
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Successfully cloned volume"),
+      );
     });
 
     it("should handle authentication error", async () => {

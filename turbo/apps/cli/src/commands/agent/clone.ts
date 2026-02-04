@@ -1,7 +1,8 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { existsSync, mkdtempSync } from "fs";
+import { mkdtempSync } from "fs";
 import { mkdir, writeFile, readdir, copyFile, rm } from "fs/promises";
+import { checkDirectoryStatus } from "../../lib/utils/file-utils";
 import { join, dirname } from "path";
 import { tmpdir } from "os";
 import * as tar from "tar";
@@ -106,9 +107,10 @@ export const cloneCommand = new Command()
     try {
       const targetDir = destination || name;
 
-      // Check if destination already exists
-      if (existsSync(targetDir)) {
-        console.error(chalk.red(`✗ Directory "${targetDir}" already exists`));
+      // Check if destination already exists and is non-empty
+      const dirStatus = checkDirectoryStatus(targetDir);
+      if (dirStatus.exists && !dirStatus.empty) {
+        console.error(chalk.red(`✗ Directory "${targetDir}" is not empty`));
         process.exit(1);
       }
 

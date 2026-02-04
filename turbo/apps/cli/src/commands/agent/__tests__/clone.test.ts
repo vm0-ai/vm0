@@ -290,9 +290,11 @@ describe("agent clone command", () => {
       );
     });
 
-    it("should fail when destination already exists", async () => {
+    it("should fail when destination is not empty", async () => {
       const dest = path.join(tempDir, "existing");
       fs.mkdirSync(dest);
+      // Add a file to make directory non-empty
+      fs.writeFileSync(path.join(dest, "existing-file.txt"), "content");
 
       await expect(async () => {
         await cloneCommand.parseAsync(["node", "cli", "test-agent", dest]);
@@ -300,8 +302,51 @@ describe("agent clone command", () => {
 
       expect(mockExit).toHaveBeenCalledWith(1);
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("already exists"),
+        expect.stringContaining("is not empty"),
       );
+    });
+
+    it("should succeed when destination is empty directory", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
+          const url = new URL(request.url);
+          if (url.searchParams.get("name") === "test-agent") {
+            return HttpResponse.json({
+              id: "cmp-123",
+              name: "test-agent",
+              headVersionId:
+                "abc123def456789012345678901234567890123456789012345678901234",
+              content: {
+                version: "1",
+                agents: {
+                  "test-agent": {
+                    framework: "claude-code",
+                  },
+                },
+              },
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            });
+          }
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 400 },
+          );
+        }),
+      );
+
+      // Create empty directory
+      const dest = path.join(tempDir, "empty-dir");
+      fs.mkdirSync(dest);
+
+      await cloneCommand.parseAsync(["node", "cli", "test-agent", dest]);
+
+      // Verify vm0.yaml was created in the empty directory
+      expect(fs.existsSync(path.join(dest, "vm0.yaml"))).toBe(true);
+
+      // Verify success message
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Successfully cloned agent: test-agent");
     });
 
     it("should fail when compose has no content", async () => {
