@@ -17,6 +17,7 @@ import { pollForJob } from "../lib/api.js";
 import {
   findFirecrackerProcesses,
   findMitmproxyProcesses,
+  type FirecrackerProcess,
 } from "../lib/firecracker/process.js";
 import { withFileLock } from "../lib/utils/file-lock.js";
 import { isProcessRunning } from "../lib/utils/process.js";
@@ -30,11 +31,6 @@ interface JobInfo {
   runId: string;
   vmId: VmId;
   firecrackerPid?: number;
-}
-
-interface FirecrackerProcess {
-  pid: number;
-  vmId: VmId;
 }
 
 interface Warning {
@@ -104,9 +100,8 @@ async function checkNetwork(
   console.log("Network:");
 
   const proxyPort = config.proxy.port;
-  const registryPath = runnerPaths.vmRegistry(config.base_dir);
   const mitmProcesses = findMitmproxyProcesses();
-  const mitmProc = mitmProcesses.find((p) => p.registryPath === registryPath);
+  const mitmProc = mitmProcesses.find((p) => p.baseDir === config.base_dir);
   const portInUse = await isPortInUse(proxyPort);
 
   if (mitmProc) {
@@ -248,11 +243,15 @@ async function findOrphanNetworkNamespaces(
  */
 async function detectOrphanResources(
   jobs: JobInfo[],
-  processes: FirecrackerProcess[],
+  allProcesses: FirecrackerProcess[],
   workspaces: string[],
   statusVmIds: Set<VmId>,
+  baseDir: string,
   warnings: Warning[],
 ): Promise<void> {
+  // Filter processes to only include those belonging to this runner
+  const processes = allProcesses.filter((p) => p.baseDir === baseDir);
+
   // Runs without process
   for (const job of jobs) {
     if (!job.firecrackerPid) {
@@ -262,7 +261,7 @@ async function detectOrphanResources(
     }
   }
 
-  // Orphan processes
+  // Orphan processes (only for this runner)
   const processVmIds = new Set(processes.map((p) => p.vmId));
   for (const proc of processes) {
     if (!statusVmIds.has(proc.vmId)) {
@@ -360,6 +359,7 @@ export const doctorCommand = new Command("doctor")
         processes,
         workspaces,
         statusVmIds,
+        config.base_dir,
         warnings,
       );
 

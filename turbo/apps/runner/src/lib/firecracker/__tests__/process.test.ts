@@ -37,9 +37,13 @@ describe("process discovery", () => {
       const input = cmdline(
         "firecracker",
         "--api-sock",
-        "/tmp/vm0-abcd1234/api.sock",
+        "/opt/runner/workspaces/vm0-abcd1234/api.sock",
       );
-      expect(parseFirecrackerCmdline(input)).toBe("abcd1234");
+      const result = parseFirecrackerCmdline(input);
+      expect(result).toEqual({
+        vmId: vmId("abcd1234"),
+        baseDir: "/opt/runner",
+      });
     });
 
     it("parses --config-file mode (fresh boot)", () => {
@@ -49,18 +53,26 @@ describe("process discovery", () => {
         "/opt/vm0-runner/workspaces/vm0-12345678/config.json",
         "--no-api",
       );
-      expect(parseFirecrackerCmdline(input)).toBe("12345678");
+      const result = parseFirecrackerCmdline(input);
+      expect(result).toEqual({
+        vmId: vmId("12345678"),
+        baseDir: "/opt/vm0-runner",
+      });
     });
 
     it("prefers --api-sock over --config-file when both present", () => {
       const input = cmdline(
         "/usr/bin/firecracker",
         "--api-sock",
-        "/var/run/vm0-aaaaaaaa/api.sock",
+        "/var/run/runner/workspaces/vm0-aaaaaaaa/api.sock",
         "--config-file",
         "/etc/fc.json",
       );
-      expect(parseFirecrackerCmdline(input)).toBe("aaaaaaaa");
+      const result = parseFirecrackerCmdline(input);
+      expect(result).toEqual({
+        vmId: vmId("aaaaaaaa"),
+        baseDir: "/var/run/runner",
+      });
     });
 
     it("returns null for non-firecracker process", () => {
@@ -82,6 +94,15 @@ describe("process discovery", () => {
       expect(parseFirecrackerCmdline(input)).toBeNull();
     });
 
+    it("returns null for path without workspaces directory", () => {
+      const input = cmdline(
+        "firecracker",
+        "--api-sock",
+        "/tmp/vm0-abcd1234/api.sock",
+      );
+      expect(parseFirecrackerCmdline(input)).toBeNull();
+    });
+
     it("returns null for empty cmdline", () => {
       expect(parseFirecrackerCmdline("")).toBeNull();
     });
@@ -94,7 +115,7 @@ describe("process discovery", () => {
         "--set",
         "vm0_registry_path=/opt/runner/vm-registry.json",
       );
-      expect(parseMitmproxyCmdline(input)).toBe("/opt/runner/vm-registry.json");
+      expect(parseMitmproxyCmdline(input)).toBe("/opt/runner");
     });
 
     it("parses mitmproxy with vm0_registry_path among other args", () => {
@@ -109,9 +130,7 @@ describe("process discovery", () => {
         "-s",
         "addon.py",
       );
-      expect(parseMitmproxyCmdline(input)).toBe(
-        "/opt/runner/pr-123/vm-registry.json",
-      );
+      expect(parseMitmproxyCmdline(input)).toBe("/opt/runner/pr-123");
     });
 
     it("returns null for mitmproxy without vm0_registry_path", () => {
@@ -138,7 +157,7 @@ describe("process discovery", () => {
         "/proc/1234/cmdline": cmdline(
           "firecracker",
           "--api-sock",
-          "/tmp/vm0-aaaabbbb/api.sock",
+          "/opt/runner/workspaces/vm0-aaaabbbb/api.sock",
         ),
         "/proc/5678/cmdline": cmdline("nginx", "-c", "/etc/nginx.conf"),
       });
@@ -148,7 +167,8 @@ describe("process discovery", () => {
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual({
         pid: 1234,
-        vmId: "aaaabbbb",
+        vmId: vmId("aaaabbbb"),
+        baseDir: "/opt/runner",
       });
     });
 
@@ -158,27 +178,33 @@ describe("process discovery", () => {
       expect(findFirecrackerProcesses()).toEqual([]);
     });
 
-    it("handles multiple firecracker processes", () => {
+    it("handles multiple firecracker processes from different runners", () => {
       vol.fromJSON({
         "/proc/100/cmdline": cmdline(
           "firecracker",
           "--api-sock",
-          "/tmp/vm0-11112222/api.sock",
+          "/opt/runner-a/workspaces/vm0-11112222/api.sock",
         ),
         "/proc/200/cmdline": cmdline(
           "firecracker",
           "--api-sock",
-          "/tmp/vm0-33334444/api.sock",
+          "/opt/runner-b/workspaces/vm0-33334444/api.sock",
         ),
       });
 
       const result = findFirecrackerProcesses();
 
       expect(result).toHaveLength(2);
-      expect(result.map((p) => p.vmId).sort()).toEqual([
-        "11112222",
-        "33334444",
-      ]);
+      expect(result).toContainEqual({
+        pid: 100,
+        vmId: vmId("11112222"),
+        baseDir: "/opt/runner-a",
+      });
+      expect(result).toContainEqual({
+        pid: 200,
+        vmId: vmId("33334444"),
+        baseDir: "/opt/runner-b",
+      });
     });
 
     it("skips non-numeric entries in /proc", () => {
@@ -188,14 +214,14 @@ describe("process discovery", () => {
         "/proc/1234/cmdline": cmdline(
           "firecracker",
           "--api-sock",
-          "/tmp/vm0-eeeeeeee/api.sock",
+          "/opt/runner/workspaces/vm0-eeeeeeee/api.sock",
         ),
       });
 
       const result = findFirecrackerProcesses();
 
       expect(result).toHaveLength(1);
-      expect(result[0]?.vmId).toBe("eeeeeeee");
+      expect(result[0]?.vmId).toEqual(vmId("eeeeeeee"));
     });
 
     it("skips when cmdline file does not exist", () => {
@@ -213,7 +239,7 @@ describe("process discovery", () => {
         "/proc/1234/cmdline": cmdline(
           "firecracker",
           "--api-sock",
-          "/tmp/vm0-aaaabbbb/api.sock",
+          "/opt/runner/workspaces/vm0-aaaabbbb/api.sock",
         ),
         "/proc/5678/cmdline": "will be mocked to throw",
       });
@@ -234,7 +260,7 @@ describe("process discovery", () => {
 
       // Should find the readable process and skip the unreadable one
       expect(result).toHaveLength(1);
-      expect(result[0]?.vmId).toBe("aaaabbbb");
+      expect(result[0]?.vmId).toEqual(vmId("aaaabbbb"));
     });
   });
 
@@ -244,12 +270,12 @@ describe("process discovery", () => {
         "/proc/100/cmdline": cmdline(
           "firecracker",
           "--api-sock",
-          "/tmp/vm0-aaaaaaaa/api.sock",
+          "/opt/runner/workspaces/vm0-aaaaaaaa/api.sock",
         ),
         "/proc/200/cmdline": cmdline(
           "firecracker",
           "--api-sock",
-          "/tmp/vm0-bbbbbbbb/api.sock",
+          "/opt/runner/workspaces/vm0-bbbbbbbb/api.sock",
         ),
       });
 
@@ -257,7 +283,8 @@ describe("process discovery", () => {
 
       expect(result).toEqual({
         pid: 200,
-        vmId: "bbbbbbbb",
+        vmId: vmId("bbbbbbbb"),
+        baseDir: "/opt/runner",
       });
     });
 
@@ -266,7 +293,7 @@ describe("process discovery", () => {
         "/proc/100/cmdline": cmdline(
           "firecracker",
           "--api-sock",
-          "/tmp/vm0-aaaaaaaa/api.sock",
+          "/opt/runner/workspaces/vm0-aaaaaaaa/api.sock",
         ),
       });
 
@@ -295,8 +322,8 @@ describe("process discovery", () => {
       const result = findMitmproxyProcesses();
 
       expect(result).toEqual([
-        { pid: 2000, registryPath: "/opt/runner-a/vm-registry.json" },
-        { pid: 3000, registryPath: "/opt/runner-b/vm-registry.json" },
+        { pid: 2000, baseDir: "/opt/runner-a" },
+        { pid: 3000, baseDir: "/opt/runner-b" },
       ]);
     });
 
