@@ -332,10 +332,10 @@ jobs:
           CLERK_SECRET_KEY: sk_test_mock_secret_key_for_testing
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_mock_instance.clerk.accounts.dev$
           E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_USER_STORAGES_BUCKET_NAME: ${{ secrets.R2_USER_STORAGES_BUCKET_NAME }}
+          R2_USER_STORAGES_BUCKET_NAME: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
           SECRETS_ENCRYPTION_KEY: ${{ secrets.SECRETS_ENCRYPTION_KEY }}
           AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -437,10 +437,10 @@ jobs:
             NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
             E2B_API_KEY=${{ secrets.E2B_API_KEY }}
-            R2_ACCOUNT_ID=${{ secrets.R2_ACCOUNT_ID }}
+            R2_ACCOUNT_ID=${{ vars.R2_ACCOUNT_ID }}
             R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }}
             R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}
-            R2_USER_STORAGES_BUCKET_NAME=${{ secrets.R2_USER_STORAGES_BUCKET_NAME }}
+            R2_USER_STORAGES_BUCKET_NAME=${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
             SECRETS_ENCRYPTION_KEY=${{ secrets.SECRETS_ENCRYPTION_KEY }}
             OFFICIAL_RUNNER_SECRET=${{ secrets.OFFICIAL_RUNNER_SECRET }}
             AXIOM_TOKEN=${{ secrets.AXIOM_TOKEN }}
@@ -983,7 +983,7 @@ jobs:
         env:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          METAL_USER: ${{ secrets.AWS_METAL_RUNNER_USER }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
         run: |
           # Parse hosts into array
@@ -1143,7 +1143,7 @@ jobs:
         id: prepare
         env:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-          METAL_USER: ${{ secrets.AWS_METAL_RUNNER_USER }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           RUNNER_HOST: ${{ steps.lock.outputs.host }}
           SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
         run: |
@@ -1198,7 +1198,7 @@ jobs:
 
       - name: Run benchmark command for VM performance testing
         env:
-          METAL_USER: ${{ secrets.AWS_METAL_RUNNER_USER }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           RUNNER_HOST: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
           RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
           PROXY_PORT: ${{ needs.deploy-runner-prepare.outputs.proxy-port }}
@@ -1273,7 +1273,7 @@ jobs:
         id: start
         env:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-          METAL_USER: ${{ secrets.AWS_METAL_RUNNER_USER }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           RUNNER_HOST: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
           RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
           PROXY_PORT: ${{ needs.deploy-runner-prepare.outputs.proxy-port }}
@@ -1323,7 +1323,7 @@ jobs:
         env:
           RUNNER_HOST: ${{ needs.deploy-runner-prepare.outputs.runner-host }}
           RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
-          METAL_USER: ${{ secrets.AWS_METAL_RUNNER_USER }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
         run: |
           mkdir -p "$HOME/.ssh"
