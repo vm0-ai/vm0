@@ -70,7 +70,25 @@ const MSG_ERROR: u8 = 0xFF;
 /// Exit code returned when command times out (same as bash/Python)
 const EXIT_CODE_TIMEOUT: i32 = 124;
 
+/// Maximum length for command preview in logs
+const COMMAND_PREVIEW_MAX_LEN: usize = 100;
+
 static START_TIME: OnceLock<Instant> = OnceLock::new();
+
+/// Truncate a command string for logging, preserving UTF-8 boundaries
+fn truncate_preview(s: &str) -> String {
+    if s.len() <= COMMAND_PREVIEW_MAX_LEN {
+        return s.to_string();
+    }
+    // Find a safe UTF-8 boundary at or before the max length
+    let end = s
+        .char_indices()
+        .take_while(|(i, _)| *i < COMMAND_PREVIEW_MAX_LEN)
+        .last()
+        .map(|(i, c)| i + c.len_utf8())
+        .unwrap_or(COMMAND_PREVIEW_MAX_LEN);
+    format!("{}...", &s[..end])
+}
 
 /// Log a message with timestamp
 pub fn log(level: &str, msg: &str) {
@@ -229,21 +247,9 @@ fn handle_exec(payload: &[u8]) -> (i32, Vec<u8>, Vec<u8>) {
         Err(_) => return (1, Vec::new(), b"Invalid UTF-8 in command".to_vec()),
     };
 
-    let preview = if command.len() > 100 {
-        // Find a safe UTF-8 boundary at or before byte 100
-        let end = command
-            .char_indices()
-            .take_while(|(i, _)| *i < 100)
-            .last()
-            .map(|(i, c)| i + c.len_utf8())
-            .unwrap_or(100);
-        format!("{}...", &command[..end])
-    } else {
-        command.to_string()
-    };
     log(
         "INFO",
-        &format!("exec: {} (timeout={}ms)", preview, timeout_ms),
+        &format!("exec: {} (timeout={}ms)", truncate_preview(command), timeout_ms),
     );
 
     // Create new process group so we can kill the entire tree on timeout
@@ -415,20 +421,9 @@ fn handle_spawn_watch(payload: &[u8], seq: u32, writer: Arc<Mutex<UnixStream>>) 
         Err(_) => return encode_error(seq, "Invalid UTF-8 in command"),
     };
 
-    let preview = if command.len() > 100 {
-        let end = command
-            .char_indices()
-            .take_while(|(i, _)| *i < 100)
-            .last()
-            .map(|(i, c)| i + c.len_utf8())
-            .unwrap_or(100);
-        format!("{}...", &command[..end])
-    } else {
-        command.clone()
-    };
     log(
         "INFO",
-        &format!("spawn_watch: {} (timeout={}ms)", preview, timeout_ms),
+        &format!("spawn_watch: {} (timeout={}ms)", truncate_preview(&command), timeout_ms),
     );
 
     // Create new process group so we can kill the entire tree on timeout
