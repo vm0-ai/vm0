@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
 import {
@@ -17,7 +17,8 @@ import { handleAppMention } from "../../../../src/lib/slack/handlers/mention";
  * - app_mention events (when users @mention the bot)
  *
  * Important: Must respond within 3 seconds to avoid Slack retries.
- * Uses fire-and-forget pattern for async processing of events.
+ * Uses Next.js after() to process events in the background while keeping
+ * the serverless function alive until completion.
  */
 
 interface SlackUrlVerificationEvent {
@@ -112,18 +113,20 @@ export async function POST(request: Request) {
     if (event.type === "app_mention") {
       initServices();
 
-      // Process async to respond within 3 seconds
-      // Fire-and-forget: don't await, let it run in background
-      handleAppMention({
-        workspaceId: payload.team_id,
-        channelId: event.channel,
-        userId: event.user,
-        messageText: event.text,
-        messageTs: event.ts,
-        threadTs: event.thread_ts,
-      }).catch((error) => {
-        console.error("Error handling app_mention:", error);
-      });
+      // Use after() to ensure the background task completes
+      // This prevents Vercel from freezing the function and closing DB connections
+      after(
+        handleAppMention({
+          workspaceId: payload.team_id,
+          channelId: event.channel,
+          userId: event.user,
+          messageText: event.text,
+          messageTs: event.ts,
+          threadTs: event.thread_ts,
+        }).catch((error) => {
+          console.error("Error handling app_mention:", error);
+        }),
+      );
     }
 
     // Return 200 OK immediately

@@ -30,6 +30,82 @@ interface MentionContext {
   threadTs?: string;
 }
 
+interface AgentBinding {
+  id: string;
+  agentName: string;
+  description: string | null;
+  composeId: string;
+  encryptedSecrets: string | null;
+  enabled: boolean;
+}
+
+type RouteSuccess = { success: true; agentName: string; promptText: string };
+type RouteFailure = { success: false; error: string };
+
+/**
+ * Route message to the appropriate agent
+ * Returns success with agent details or failure with error message
+ */
+async function routeMessageToAgent(
+  messageContent: string,
+  bindings: AgentBinding[],
+): Promise<RouteSuccess | RouteFailure> {
+  const explicitSelection = parseExplicitAgentSelection(messageContent);
+
+  if (explicitSelection) {
+    // Explicit agent selection: "use <agent> <message>"
+    const matchingBinding = bindings.find(
+      (b) =>
+        b.agentName.toLowerCase() === explicitSelection.agentName.toLowerCase(),
+    );
+    if (!matchingBinding) {
+      return {
+        success: false,
+        error: `Agent "${explicitSelection.agentName}" not found. Available agents: ${bindings.map((b) => b.agentName).join(", ")}`,
+      };
+    }
+    return {
+      success: true,
+      agentName: matchingBinding.agentName,
+      promptText: explicitSelection.remainingMessage || messageContent,
+    };
+  }
+
+  if (bindings.length === 1 && bindings[0]) {
+    // Only one binding - use it directly
+    return {
+      success: true,
+      agentName: bindings[0].agentName,
+      promptText: messageContent,
+    };
+  }
+
+  // Multiple bindings - use LLM router
+  const selectedAgentName = await routeToAgent(
+    messageContent,
+    bindings.map((b) => ({
+      agentName: b.agentName,
+      description: b.description,
+    })),
+  );
+
+  if (!selectedAgentName) {
+    const agentList = bindings
+      .map((b) => `• \`${b.agentName}\`: ${b.description ?? "No description"}`)
+      .join("\n");
+    return {
+      success: false,
+      error: `I couldn't determine which agent to use. Please specify: \`@VM0 use <agent> <message>\`\n\nAvailable agents:\n${agentList}`,
+    };
+  }
+
+  return {
+    success: true,
+    agentName: selectedAgentName,
+    promptText: messageContent,
+  };
+}
+
 /**
  * Handle an app_mention event from Slack
  *
@@ -39,11 +115,11 @@ interface MentionContext {
  * 3. If not linked, post link message
  * 4. Get user's bindings
  * 5. If no bindings, prompt to add agent
- * 6. Route to agent (explicit or LLM)
- * 7. Find existing thread session (for session continuation)
- * 8. Fetch thread context
- * 9. Add thinking reaction
- * 10. Post thinking message
+ * 6. Add thinking reaction and post "Thinking..." message (early feedback)
+ * 7. Route to agent (explicit or LLM)
+ * 8. Update thinking message with agent name
+ * 9. Find existing thread session (for session continuation)
+ * 10. Fetch thread context
  * 11. Execute agent with session continuation
  * 12. Create thread session mapping (if new thread)
  * 13. Update thinking message with response
@@ -129,67 +205,89 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       return;
     }
 
+    // 6. Add thinking reaction and post early "Thinking..." message
+    const reactionAdded = await client.reactions
+      .add({
+        channel: context.channelId,
+        timestamp: context.messageTs,
+        name: "hourglass_flowing_sand",
+      })
+      .then(() => true)
+      .catch(() => false);
+
+    const thinkingTs = await postMessage(
+      client,
+      context.channelId,
+      "Thinking...",
+      {
+        threadTs,
+        blocks: [
+          {
+            type: "context",
+            elements: [
+              {
+                type: "mrkdwn",
+                text: `:hourglass_flowing_sand: *Thinking...*`,
+              },
+            ],
+          },
+        ],
+      },
+    );
+
     // Extract message content (remove bot mention)
     const messageContent = extractMessageContent(
       context.messageText,
       botUserId,
     );
 
-    // 6. Route to agent
-    const explicitSelection = parseExplicitAgentSelection(messageContent);
-    let selectedAgentName: string | null = null;
-    let promptText = messageContent;
+    // 7. Route to agent
+    const routeResult = await routeMessageToAgent(messageContent, bindings);
 
-    if (explicitSelection) {
-      // Explicit agent selection: "use <agent> <message>"
-      selectedAgentName = explicitSelection.agentName;
-      promptText = explicitSelection.remainingMessage || messageContent;
-
-      // Verify the agent exists
-      const matchingBinding = bindings.find(
-        (b) => b.agentName.toLowerCase() === selectedAgentName!.toLowerCase(),
-      );
-      if (!matchingBinding) {
-        await postMessage(
-          client,
-          context.channelId,
-          `Agent "${selectedAgentName}" not found. Available agents: ${bindings.map((b) => b.agentName).join(", ")}`,
-          {
-            threadTs,
-            blocks: buildErrorMessage(`Agent "${selectedAgentName}" not found`),
-          },
-        );
-        return;
+    if (!routeResult.success) {
+      // Update thinking message with error and cleanup
+      if (thinkingTs) {
+        await client.chat.update({
+          channel: context.channelId,
+          ts: thinkingTs,
+          text: routeResult.error,
+          blocks: buildErrorMessage(routeResult.error),
+        });
       }
-      selectedAgentName = matchingBinding.agentName;
-    } else if (bindings.length === 1 && bindings[0]) {
-      // Only one binding - use it directly
-      selectedAgentName = bindings[0].agentName;
-    } else {
-      // Multiple bindings - use LLM router
-      selectedAgentName = await routeToAgent(
-        messageContent,
-        bindings.map((b) => ({
-          agentName: b.agentName,
-          description: b.description,
-        })),
-      );
-
-      if (!selectedAgentName) {
-        // Couldn't determine which agent to use
-        const agentList = bindings
-          .map(
-            (b) => `• \`${b.agentName}\`: ${b.description ?? "No description"}`,
-          )
-          .join("\n");
-        await postMessage(
-          client,
-          context.channelId,
-          `I couldn't determine which agent to use. Please specify: \`@VM0 use <agent> <message>\`\n\nAvailable agents:\n${agentList}`,
-          { threadTs },
-        );
-        return;
+      if (reactionAdded) {
+        await client.reactions
+          .remove({
+            channel: context.channelId,
+            timestamp: context.messageTs,
+            name: "hourglass_flowing_sand",
+          })
+          .catch(() => {});
       }
+      return;
+    }
+
+    const { agentName: selectedAgentName, promptText } = routeResult;
+
+    // 8. Update thinking message with selected agent
+    if (thinkingTs) {
+      await client.chat
+        .update({
+          channel: context.channelId,
+          ts: thinkingTs,
+          text: `Thinking... (using ${selectedAgentName})`,
+          blocks: [
+            {
+              type: "context",
+              elements: [
+                {
+                  type: "mrkdwn",
+                  text: `:hourglass_flowing_sand: *Thinking...* (using \`${selectedAgentName}\`)`,
+                },
+              ],
+            },
+          ],
+        })
+        .catch(() => {});
     }
 
     // Get the selected binding
@@ -197,7 +295,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       (b) => b.agentName === selectedAgentName,
     )!;
 
-    // 7. Find existing thread session for this binding (if in a thread)
+    // 9. Find existing thread session for this binding (if in a thread)
     let existingSessionId: string | undefined;
     if (threadTs) {
       const [threadSession] = await globalThis.services.db
@@ -215,7 +313,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       existingSessionId = threadSession?.agentSessionId;
     }
 
-    // 8. Fetch Slack context (thread messages or recent channel messages)
+    // 10. Fetch Slack context (thread messages or recent channel messages)
     let formattedContext = "";
     if (context.threadTs) {
       // In a thread - fetch thread replies
@@ -231,39 +329,8 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       formattedContext = formatContextForAgent(messages, botUserId, "channel");
     }
 
-    // 9. Add thinking reaction to user's message (non-critical, ignore errors)
-    const reactionAdded = await client.reactions
-      .add({
-        channel: context.channelId,
-        timestamp: context.messageTs,
-        name: "hourglass_flowing_sand",
-      })
-      .then(() => true)
-      .catch(() => false);
-
-    // 10. Post thinking message (will be updated with response)
-    const thinkingTs = await postMessage(
-      client,
-      context.channelId,
-      "Thinking...",
-      {
-        threadTs,
-        blocks: [
-          {
-            type: "context",
-            elements: [
-              {
-                type: "mrkdwn",
-                text: `:hourglass_flowing_sand: *Thinking...* (using \`${selectedAgentName}\`)`,
-              },
-            ],
-          },
-        ],
-      },
-    );
-
     try {
-      // 11. Execute agent with session continuation (if in thread with same agent)
+      // 11. Execute agent with session continuation
       const { response: agentResponse, sessionId: newSessionId } =
         await runAgentForSlack({
           binding: selectedBinding,
@@ -303,7 +370,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
         });
       }
     } finally {
-      // 14. Remove thinking reaction (only if it was added)
+      // 14. Remove thinking reaction
       if (reactionAdded) {
         await client.reactions
           .remove({
