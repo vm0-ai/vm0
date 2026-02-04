@@ -26,6 +26,7 @@ jobs:
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
       runner-changed: ${{ steps.detect.outputs.runner-changed }}
       platform-changed: ${{ steps.detect.outputs.platform-changed }}
+      e2b-changed: ${{ steps.detect-e2b.outputs.e2b-changed }}
       cli-e2e-parallel-matrix: ${{ steps.cli-e2e-matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
@@ -74,6 +75,27 @@ jobs:
               echo "${app}-changed=false" >> $GITHUB_OUTPUT
             fi
           done
+
+      - name: Detect E2B template changes
+        id: detect-e2b
+        run: |
+          # Determine base ref based on event type
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_REF=$(git merge-base ${{ github.event.pull_request.base.sha }} HEAD)
+          elif [ "${{ github.event_name }}" = "merge_group" ]; then
+            BASE_REF="${{ github.event.merge_group.base_sha }}"
+          else
+            BASE_REF="HEAD^"
+          fi
+
+          # Check if E2B template files changed
+          if git diff --name-only "$BASE_REF" HEAD | grep -q "^turbo/scripts/e2b/"; then
+            echo "E2B template changes detected"
+            echo "e2b-changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No E2B template changes"
+            echo "e2b-changed=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Set job-ref
         id: set-job-ref
@@ -310,7 +332,6 @@ jobs:
           CLERK_SECRET_KEY: sk_test_mock_secret_key_for_testing
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_mock_instance.clerk.accounts.dev$
           E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
-          E2B_TEMPLATE_NAME: ${{ secrets.E2B_TEMPLATE_NAME }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -416,7 +437,6 @@ jobs:
             NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
             E2B_API_KEY=${{ secrets.E2B_API_KEY }}
-            E2B_TEMPLATE_NAME=${{ secrets.E2B_TEMPLATE_NAME }}
             R2_ACCOUNT_ID=${{ secrets.R2_ACCOUNT_ID }}
             R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }}
             R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -1335,3 +1355,30 @@ jobs:
           # Release the host lock
           ssh $SSH_OPTS ${METAL_USER}@${RUNNER_HOST} "rm -rf /opt/vm0-runner/.lock" || true
           echo "Unlocked runner host: $RUNNER_HOST"
+
+  # Build E2B templates (development account)
+  # Uses repository-level E2B_API_KEY secret
+  build-e2b-template:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
+    needs: [prepare]
+    # Build on PR or main push when E2B templates changed, skip release-please commits
+    if: |
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+      needs.prepare.outputs.e2b-changed == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Build E2B templates
+        working-directory: turbo
+        env:
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+        run: |
+          pnpm e2b:build
+          pnpm e2b:codex:build
+          pnpm e2b:claude-code-github:build
+
+      - name: Build summary
+        run: echo "✅ E2B templates built successfully (development account)"

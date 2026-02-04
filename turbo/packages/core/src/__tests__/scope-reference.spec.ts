@@ -277,11 +277,11 @@ describe("parseImageReferenceWithTag", () => {
 
   describe("case normalization", () => {
     it("normalizes explicit scope and name to lowercase", () => {
-      const result = parseImageReferenceWithTag("VM0/Claude-Code:dev");
+      const result = parseImageReferenceWithTag("VM0/Claude-Code:latest");
       expect(result).toEqual({
         scope: "vm0",
         name: "claude-code",
-        tag: "dev",
+        tag: "latest",
         isLegacy: false,
       });
     });
@@ -366,7 +366,7 @@ describe("system scope constants", () => {
   });
 
   it("has correct valid tags", () => {
-    expect(SYSTEM_VALID_TAGS).toEqual(["latest", "dev"]);
+    expect(SYSTEM_VALID_TAGS).toEqual(["latest"]);
   });
 });
 
@@ -391,8 +391,8 @@ describe("isValidSystemTag", () => {
     expect(isValidSystemTag("latest")).toBe(true);
   });
 
-  it("returns true for dev", () => {
-    expect(isValidSystemTag("dev")).toBe(true);
+  it("returns false for dev (no longer supported)", () => {
+    expect(isValidSystemTag("dev")).toBe(false);
   });
 
   it("returns false for hash versions", () => {
@@ -417,11 +417,6 @@ describe("resolveSystemImageToE2b", () => {
       const result = resolveSystemImageToE2b("claude-code", "latest");
       expect(result.e2bTemplate).toBe("vm0-claude-code");
     });
-
-    it("converts vm0/claude-code:dev to vm0-claude-code-dev", () => {
-      const result = resolveSystemImageToE2b("claude-code", "dev");
-      expect(result.e2bTemplate).toBe("vm0-claude-code-dev");
-    });
   });
 
   describe("codex conversions", () => {
@@ -433,11 +428,6 @@ describe("resolveSystemImageToE2b", () => {
     it("converts vm0/codex:latest to vm0-codex", () => {
       const result = resolveSystemImageToE2b("codex", "latest");
       expect(result.e2bTemplate).toBe("vm0-codex");
-    });
-
-    it("converts vm0/codex:dev to vm0-codex-dev", () => {
-      const result = resolveSystemImageToE2b("codex", "dev");
-      expect(result.e2bTemplate).toBe("vm0-codex-dev");
     });
   });
 
@@ -451,6 +441,12 @@ describe("resolveSystemImageToE2b", () => {
     it("error message lists available images", () => {
       expect(() => resolveSystemImageToE2b("unknown-image")).toThrow(
         "vm0/claude-code, vm0/codex",
+      );
+    });
+
+    it("throws for :dev tag (no longer supported)", () => {
+      expect(() => resolveSystemImageToE2b("claude-code", "dev")).toThrow(
+        'Invalid tag ":dev" for system image',
       );
     });
 
@@ -475,12 +471,6 @@ describe("getLegacySystemTemplateWarning", () => {
       expect(warning).toContain("deprecated");
       expect(warning).toContain("vm0/claude-code");
     });
-
-    it("returns warning for vm0-claude-code-dev", () => {
-      const warning = getLegacySystemTemplateWarning("vm0-claude-code-dev");
-      expect(warning).toContain("deprecated");
-      expect(warning).toContain("vm0/claude-code:dev");
-    });
   });
 
   describe("codex legacy formats", () => {
@@ -488,12 +478,6 @@ describe("getLegacySystemTemplateWarning", () => {
       const warning = getLegacySystemTemplateWarning("vm0-codex");
       expect(warning).toContain("deprecated");
       expect(warning).toContain("vm0/codex");
-    });
-
-    it("returns warning for vm0-codex-dev", () => {
-      const warning = getLegacySystemTemplateWarning("vm0-codex-dev");
-      expect(warning).toContain("deprecated");
-      expect(warning).toContain("vm0/codex:dev");
     });
   });
 

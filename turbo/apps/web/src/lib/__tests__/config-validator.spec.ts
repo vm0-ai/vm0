@@ -70,7 +70,7 @@ describe("extractTemplateVars", () => {
         myAgent: {
           description: "Test agent",
           framework: "claude-code",
-          image: "vm0/claude-code:dev",
+          image: "vm0/claude-code:latest",
           volumes: {
             "user-data": {
               name: "${{ vars.userName }}-data",

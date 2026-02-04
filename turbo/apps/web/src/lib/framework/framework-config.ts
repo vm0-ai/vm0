@@ -12,76 +12,57 @@ import type { SupportedFramework } from "@vm0/core";
  */
 interface FrameworkDefaults {
   workingDir: string;
-  image: {
-    production: string;
-    development: string;
-  };
+  image: string;
 }
 
 /**
  * Default configurations for each supported framework
+ * Note: All images use :latest tag. The :dev tag is no longer supported.
  */
 const FRAMEWORK_DEFAULTS: Record<SupportedFramework, FrameworkDefaults> = {
   "claude-code": {
     workingDir: "/home/user/workspace",
-    image: {
-      production: "vm0/claude-code:latest",
-      development: "vm0/claude-code:dev",
-    },
+    image: "vm0/claude-code:latest",
   },
   codex: {
     workingDir: "/home/user/workspace",
-    image: {
-      production: "vm0/codex:latest",
-      development: "vm0/codex:dev",
-    },
+    image: "vm0/codex:latest",
   },
 };
 
 /**
  * App-aware image variants
  * Maps framework + app combination to specialized images
+ * Note: All images use :latest tag. The :dev tag is no longer supported.
  */
 const FRAMEWORK_APPS_IMAGES: Record<
   SupportedFramework,
-  Record<string, { production: string; development: string }>
+  Record<string, string>
 > = {
   "claude-code": {
-    github: {
-      production: "vm0/claude-code-github:latest",
-      development: "vm0/claude-code-github:dev",
-    },
+    github: "vm0/claude-code-github:latest",
   },
   codex: {
-    github: {
-      production: "vm0/codex-github:latest",
-      development: "vm0/codex-github:dev",
-    },
+    github: "vm0/codex-github:latest",
   },
 };
 
 /**
- * Parse app string into app name and tag
+ * Parse app string into app name (tag is ignored, always uses :latest)
  * @param appString - App string in format "app" or "app:tag"
- * @returns Object with app name and tag (defaults to "latest")
+ * @returns The app name
  */
-function parseAppString(appString: string): {
-  app: string;
-  tag: "latest" | "dev";
-} {
-  const [app, tag] = appString.split(":");
-  return {
-    app: app ?? appString,
-    tag: tag === "dev" ? "dev" : "latest",
-  };
+function parseAppName(appString: string): string {
+  const [app] = appString.split(":");
+  return app ?? appString;
 }
 
 /**
  * Resolve the image for a framework based on apps configuration
  *
  * @param framework - The supported framework
- * @param apps - Optional array of apps in format "app" or "app:tag"
- * @returns The resolved image string
+ * @param apps - Optional array of apps in format "app" or "app:tag" (tag is ignored)
+ * @returns The resolved image string (always uses :latest tag)
  */
 export function resolveFrameworkImage(
   framework: SupportedFramework,
@@ -95,19 +76,15 @@ export function resolveFrameworkImage(
     // Currently we only support single app (github)
     const firstApp = apps[0];
     if (firstApp) {
-      const { app, tag } = parseAppString(firstApp);
-      const appImage = frameworkApps[app];
+      const appName = parseAppName(firstApp);
+      const appImage = frameworkApps[appName];
       if (appImage) {
-        // Use the tag from the app string (dev or latest)
-        return tag === "dev" ? appImage.development : appImage.production;
+        return appImage;
       }
     }
   }
 
-  // Fall back to default image based on VERCEL_ENV
-  // In production, use :latest; otherwise use :dev
-  const isProduction = process.env.VERCEL_ENV === "production";
-  return isProduction ? defaults.image.production : defaults.image.development;
+  return defaults.image;
 }
 
 /**

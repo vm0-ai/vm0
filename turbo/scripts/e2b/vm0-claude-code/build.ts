@@ -2,7 +2,7 @@ import { Template, defaultBuildLogger } from "e2b";
 import { template } from "./template";
 
 // E2B_API_KEY should be set as an environment variable
-// In CI: from GitHub secrets
+// In CI: from GitHub secrets (repository-level for dev, production environment for prod)
 // Locally: from turbo/apps/web/.env.local (loaded by build command)
 if (!process.env.E2B_API_KEY) {
   console.error("Error: E2B_API_KEY environment variable is not set");

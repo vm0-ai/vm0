@@ -151,7 +151,7 @@ E2B (e2b.dev) is a third-party managed sandbox service that provides containeriz
 #### Integration
 
 - SDK: `@e2b/code-interpreter`
-- Template: Specified via `E2B_TEMPLATE_NAME` environment variable or `agent.image` in `vm0.yaml`
+- Template: Specified via `agent.image` in `vm0.yaml` (defaults to `vm0/claude-code`)
 - Authentication: `E2B_API_KEY`
 
 #### Execution Flow

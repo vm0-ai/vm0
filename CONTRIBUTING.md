@@ -88,7 +88,6 @@ Create the following `.env.local` files manually:
 | `CLERK_SECRET_KEY` | Yes | [Clerk](https://dashboard.clerk.com) |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes | [Clerk](https://dashboard.clerk.com) |
 | `E2B_API_KEY` | Yes | [E2B](https://e2b.dev/dashboard) |
-| `E2B_TEMPLATE_NAME` | Yes | Set to `vm0-claude-code-dev` |
 | `R2_ACCOUNT_ID` | Yes | [Cloudflare R2](https://dash.cloudflare.com) |
 | `R2_ACCESS_KEY_ID` | Yes | [Cloudflare R2](https://dash.cloudflare.com) |
 | `R2_SECRET_ACCESS_KEY` | Yes | [Cloudflare R2](https://dash.cloudflare.com) |

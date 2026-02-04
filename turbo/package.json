@@ -17,12 +17,9 @@
     "knip:production": "knip --production --strict",
     "generate-certs": "bash ../scripts/generate-certs.sh",
     "check-certs": "node packages/proxy/scripts/check-certs.js",
-    "e2b:build:prod": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-claude-code/build.prod.ts",
-    "e2b:build:dev": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-claude-code/build.dev.ts",
-    "e2b:codex:build:prod": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-codex/build.prod.ts",
-    "e2b:codex:build:dev": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-codex/build.dev.ts",
-    "e2b:claude-code-github:build:prod": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-claude-code-github/build.prod.ts",
-    "e2b:claude-code-github:build:dev": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-claude-code-github/build.dev.ts"
+    "e2b:build": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-claude-code/build.ts",
+    "e2b:codex:build": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-codex/build.ts",
+    "e2b:claude-code-github:build": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-claude-code-github/build.ts"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.8.1",

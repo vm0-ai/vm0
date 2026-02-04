@@ -22,7 +22,7 @@ export const SYSTEM_IMAGES = [
   SYSTEM_IMAGE_CLAUDE_CODE_GITHUB,
   SYSTEM_IMAGE_CODEX_GITHUB,
 ] as const;
-export const SYSTEM_VALID_TAGS = ["latest", "dev"] as const;
+export const SYSTEM_VALID_TAGS = ["latest"] as const;
 
 export type SystemValidTag = (typeof SYSTEM_VALID_TAGS)[number];
 
@@ -48,10 +48,11 @@ export function isValidSystemTag(
  * Conversion rules:
  * - vm0/claude-code → vm0-claude-code
  * - vm0/claude-code:latest → vm0-claude-code
- * - vm0/claude-code:dev → vm0-claude-code-dev
  * - vm0/codex → vm0-codex
  * - vm0/codex:latest → vm0-codex
- * - vm0/codex:dev → vm0-codex-dev
+ *
+ * Note: :dev tag is no longer supported. Development and production use the
+ * same template names but different E2B accounts (controlled by E2B_API_KEY).
  *
  * @throws Error if image name is unknown or tag is not supported
  */
@@ -66,19 +67,14 @@ export function resolveSystemImageToE2b(
     );
   }
 
-  // Validate tag
+  // Validate tag (only 'latest' or undefined allowed)
   if (!isValidSystemTag(tag)) {
     throw new Error(
-      `Invalid tag ":${tag}" for system image. System images only support: :latest, :dev (hash versions not supported)`,
+      `Invalid tag ":${tag}" for system image. System images only support: :latest`,
     );
   }
 
-  // Convert to E2B template name
-  if (tag === "dev") {
-    return { e2bTemplate: `${SYSTEM_SCOPE_SLUG}-${name}-dev` };
-  }
-
-  // Default (undefined or 'latest') → vm0-{name}
+  // Convert to E2B template name: vm0-{name}
   return { e2bTemplate: `${SYSTEM_SCOPE_SLUG}-${name}` };
 }
 
@@ -96,14 +92,8 @@ export function getLegacySystemTemplateWarning(
   if (legacyFormat === "vm0-claude-code") {
     return `Warning: "${legacyFormat}" format is deprecated. Use "vm0/claude-code" instead.`;
   }
-  if (legacyFormat === "vm0-claude-code-dev") {
-    return `Warning: "${legacyFormat}" format is deprecated. Use "vm0/claude-code:dev" instead.`;
-  }
   if (legacyFormat === "vm0-codex") {
     return `Warning: "${legacyFormat}" format is deprecated. Use "vm0/codex" instead.`;
-  }
-  if (legacyFormat === "vm0-codex-dev") {
-    return `Warning: "${legacyFormat}" format is deprecated. Use "vm0/codex:dev" instead.`;
   }
   if (legacyFormat.startsWith("vm0-github-cli")) {
     return `Warning: "${legacyFormat}" is deprecated. Use "apps: [github]" in vm0.yaml instead.`;

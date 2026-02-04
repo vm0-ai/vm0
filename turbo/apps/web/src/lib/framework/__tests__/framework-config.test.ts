@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { SUPPORTED_FRAMEWORKS, isSupportedFramework } from "@vm0/core";
 import {
   resolveFrameworkImage,
@@ -51,83 +51,52 @@ describe("framework-config", () => {
   });
 
   describe("resolveFrameworkImage", () => {
-    afterEach(() => {
-      vi.unstubAllEnvs();
-    });
-
     describe("without apps", () => {
-      it("returns production image for claude-code when VERCEL_ENV is production", () => {
-        vi.stubEnv("VERCEL_ENV", "production");
+      it("returns :latest image for claude-code", () => {
         expect(resolveFrameworkImage("claude-code")).toBe(
           "vm0/claude-code:latest",
         );
       });
 
-      it("returns dev image for claude-code when VERCEL_ENV is not production", () => {
-        vi.stubEnv("VERCEL_ENV", "preview");
-        expect(resolveFrameworkImage("claude-code")).toBe(
-          "vm0/claude-code:dev",
-        );
-      });
-
-      it("returns dev image for claude-code when VERCEL_ENV is undefined", () => {
-        vi.stubEnv("VERCEL_ENV", "");
-        expect(resolveFrameworkImage("claude-code")).toBe(
-          "vm0/claude-code:dev",
-        );
-      });
-
-      it("returns production image for codex when VERCEL_ENV is production", () => {
-        vi.stubEnv("VERCEL_ENV", "production");
+      it("returns :latest image for codex", () => {
         expect(resolveFrameworkImage("codex")).toBe("vm0/codex:latest");
-      });
-
-      it("returns dev image for codex when VERCEL_ENV is not production", () => {
-        vi.stubEnv("VERCEL_ENV", "development");
-        expect(resolveFrameworkImage("codex")).toBe("vm0/codex:dev");
       });
     });
 
     describe("with github app", () => {
-      it("returns github-specific production image for claude-code with github app", () => {
-        vi.stubEnv("VERCEL_ENV", "production");
+      it("returns github-specific :latest image for claude-code with github app", () => {
         expect(resolveFrameworkImage("claude-code", ["github"])).toBe(
           "vm0/claude-code-github:latest",
         );
       });
 
-      it("returns github-specific dev image for claude-code with github:dev app", () => {
-        vi.stubEnv("VERCEL_ENV", "production");
+      it("returns github-specific :latest image for claude-code with github:dev app (dev tag ignored)", () => {
         expect(resolveFrameworkImage("claude-code", ["github:dev"])).toBe(
-          "vm0/claude-code-github:dev",
+          "vm0/claude-code-github:latest",
         );
       });
 
-      it("returns github-specific latest image for claude-code with github:latest app", () => {
-        vi.stubEnv("VERCEL_ENV", "development");
+      it("returns github-specific :latest image for claude-code with github:latest app", () => {
         expect(resolveFrameworkImage("claude-code", ["github:latest"])).toBe(
           "vm0/claude-code-github:latest",
         );
       });
 
-      it("returns github-specific production image for codex with github app", () => {
-        vi.stubEnv("VERCEL_ENV", "production");
+      it("returns github-specific :latest image for codex with github app", () => {
         expect(resolveFrameworkImage("codex", ["github"])).toBe(
           "vm0/codex-github:latest",
         );
       });
 
-      it("returns github-specific dev image for codex with github:dev app", () => {
-        vi.stubEnv("VERCEL_ENV", "production");
+      it("returns github-specific :latest image for codex with github:dev app (dev tag ignored)", () => {
         expect(resolveFrameworkImage("codex", ["github:dev"])).toBe(
-          "vm0/codex-github:dev",
+          "vm0/codex-github:latest",
         );
       });
     });
 
     describe("with unknown app", () => {
       it("falls back to default image when app is not recognized", () => {
-        vi.stubEnv("VERCEL_ENV", "production");
         expect(resolveFrameworkImage("claude-code", ["unknown-app"])).toBe(
           "vm0/claude-code:latest",
         );
@@ -136,7 +105,6 @@ describe("framework-config", () => {
 
     describe("with empty apps array", () => {
       it("returns default image when apps array is empty", () => {
-        vi.stubEnv("VERCEL_ENV", "production");
         expect(resolveFrameworkImage("claude-code", [])).toBe(
           "vm0/claude-code:latest",
         );

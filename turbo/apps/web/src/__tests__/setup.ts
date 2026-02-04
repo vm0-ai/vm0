@@ -17,7 +17,6 @@ vi.hoisted(() => {
   );
   vi.stubEnv("CLERK_SECRET_KEY", "sk_test_mock_secret_key_for_testing");
   vi.stubEnv("E2B_API_KEY", "e2b_test_api_key");
-  vi.stubEnv("E2B_TEMPLATE_NAME", "test-template");
   vi.stubEnv("R2_ACCOUNT_ID", "test-account-id");
   vi.stubEnv("R2_ACCESS_KEY_ID", "test-access-key");
   vi.stubEnv("R2_SECRET_ACCESS_KEY", "test-secret-key");

@@ -321,7 +321,7 @@ async function createSandbox(
 
   if (!imageAlias) {
     throw badRequest(
-      "No template specified. Either set agent.image in vm0.config.yaml or E2B_TEMPLATE_NAME environment variable.",
+      "No template specified. Set agent.image in vm0.config.yaml.",
     );
   }
 

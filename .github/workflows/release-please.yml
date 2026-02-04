@@ -155,7 +155,6 @@ jobs:
             NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
             E2B_API_KEY=${{ secrets.E2B_API_KEY }}
-            E2B_TEMPLATE_NAME=${{ secrets.E2B_TEMPLATE_NAME }}
             R2_ACCOUNT_ID=${{ secrets.R2_ACCOUNT_ID }}
             R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }}
             R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -619,3 +618,31 @@ jobs:
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
             text: "*Runner* deploying to production servers...\n:x: Deploy failed"
+
+  # Build E2B templates to production account
+  # Uses production environment E2B_API_KEY secret
+  build-e2b-template-production:
+    needs: [release-please]
+    # Build when any release is created
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
+    permissions:
+      contents: read
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Build E2B templates
+        working-directory: turbo
+        env:
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+        run: |
+          pnpm e2b:build
+          pnpm e2b:codex:build
+          pnpm e2b:claude-code-github:build
+
+      - name: Build summary
+        run: echo "✅ E2B templates built successfully (production account)"
