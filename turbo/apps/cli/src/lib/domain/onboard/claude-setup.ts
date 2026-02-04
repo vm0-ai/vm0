@@ -33,7 +33,6 @@ async function runClaudeCommand(
 ): Promise<ClaudeCommandResult> {
   return new Promise((resolve) => {
     const child = spawn("claude", args, {
-      shell: true,
       stdio: ["inherit", "pipe", "pipe"],
       cwd,
     });
