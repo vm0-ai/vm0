@@ -456,6 +456,13 @@
       "when": 1768900000000,
       "tag": "0064_rename_credentials_to_secrets",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1769000000000,
+      "tag": "0065_add_variables",
+      "breakpoints": true
     }
   ]
 }
