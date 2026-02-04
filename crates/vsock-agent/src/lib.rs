@@ -34,9 +34,13 @@
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use std::{fs, thread};
+
+/// Flag indicating shutdown was received (don't reconnect after shutdown)
+static SHUTDOWN_RECEIVED: AtomicBool = AtomicBool::new(false);
 
 // Vsock constants (only used on Linux)
 #[cfg(target_os = "linux")]
@@ -386,6 +390,8 @@ fn handle_shutdown(seq: u32) -> Vec<u8> {
         libc::sync();
     }
     log("INFO", "Sync complete");
+    // Set flag so run() knows not to reconnect after connection closes
+    SHUTDOWN_RECEIVED.store(true, Ordering::SeqCst);
     encode(MSG_SHUTDOWN_ACK, seq, &[])
 }
 
@@ -671,8 +677,8 @@ pub fn handle_connection(stream: UnixStream) -> std::io::Result<()> {
 
 /// Maximum reconnection attempts before giving up
 const MAX_RECONNECT_ATTEMPTS: u32 = 50;
-/// Delay between reconnection attempts (100ms)
-const RECONNECT_DELAY_MS: u64 = 100;
+/// Delay between reconnection attempts (10ms for fast reconnect after snapshot restore)
+const RECONNECT_DELAY_MS: u64 = 10;
 
 /// Run the vsock agent with the given options.
 /// Includes reconnection logic for snapshot restore scenarios where
@@ -705,6 +711,11 @@ pub fn run(unix_socket: Option<&str>) -> std::io::Result<()> {
 
         match result {
             Ok(()) => {
+                // If shutdown was received, exit gracefully without reconnecting
+                if SHUTDOWN_RECEIVED.load(Ordering::SeqCst) {
+                    log("INFO", "Shutdown complete, exiting");
+                    return Ok(());
+                }
                 // Connection closed gracefully, try to reconnect
                 if attempts >= MAX_RECONNECT_ATTEMPTS {
                     log(
