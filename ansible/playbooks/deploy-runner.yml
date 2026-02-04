@@ -511,7 +511,7 @@
       loop:
         - "{{ runner_base_dir }}/snapshot-gen.yaml"
         - "{{ runner_base_dir }}/snapshot-gen"
-      when: enable_snapshot and snapshot_needs_rebuild
+      when: enable_snapshot
       tags: [prepare]
 
     # ========================================
