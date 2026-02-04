@@ -4,11 +4,11 @@ import { env } from "../../env";
 
 const log = logger("slack:router");
 
-/** Free model for routing decisions */
+/** Free model for routing decisions (does not support system prompts) */
 const ROUTING_MODEL = "google/gemma-3-4b-it:free";
 
 /** Timeout for LLM routing in milliseconds */
-const LLM_TIMEOUT_MS = 2000;
+const LLM_TIMEOUT_MS = 5000;
 
 export interface AgentBinding {
   agentName: string;
@@ -83,16 +83,20 @@ export function keywordMatch(
 }
 
 /**
- * Build system prompt for LLM routing
+ * Build combined prompt for LLM routing (no system prompt for gemma compatibility)
  */
-function buildRoutingSystemPrompt(bindings: AgentBinding[]): string {
+function buildRoutingPrompt(
+  message: string,
+  bindings: AgentBinding[],
+  context?: string,
+): string {
   const agentList = bindings
     .map((b) => `- ${b.agentName}: ${b.description ?? "No description"}`)
     .join("\n");
 
-  return `You are a router for VM0, a service that connects users to AI agents via Slack.
+  let prompt = `You are a router for VM0, a service that connects users to AI agents via Slack.
 
-Your job is to analyze the user's message (with conversation context) and determine:
+Your job is to analyze the user's message and determine:
 1. Whether the user wants to use an agent
 2. If yes, which agent is most appropriate
 
@@ -108,21 +112,23 @@ Examples:
 - "help me review this code" with a code-reviewer agent → AGENT:code-reviewer
 - "I need help" with no clear context → AMBIGUOUS
 - "hi" or "hello" → NOT_REQUEST
-- "what can you do?" → NOT_REQUEST`;
-}
+- "what can you do?" → NOT_REQUEST
 
-/**
- * Build user prompt for LLM routing (includes context)
- */
-function buildRoutingUserPrompt(message: string, context?: string): string {
+`;
+
   if (context) {
-    return `## Conversation Context
+    prompt += `## Conversation Context
 ${context}
 
-## Current Message
-${message}`;
+`;
   }
-  return message;
+
+  prompt += `## User Message
+${message}
+
+Your response (AGENT:<name>, AMBIGUOUS, or NOT_REQUEST):`;
+
+  return prompt;
 }
 
 /**
@@ -172,17 +178,14 @@ async function llmRoute(
     return { type: "ambiguous" };
   }
 
-  const systemPrompt = buildRoutingSystemPrompt(bindings);
-  const userPrompt = buildRoutingUserPrompt(message, context);
+  const prompt = buildRoutingPrompt(message, bindings, context);
 
   log.debug("Starting LLM routing", { messageLength: message.length });
 
+  // Use only user message (no system prompt) for gemma compatibility
   const llmPromise = chat(apiKey, {
     model: ROUTING_MODEL,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
+    messages: [{ role: "user", content: prompt }],
   });
 
   const timeoutPromise = new Promise<null>((resolve) =>

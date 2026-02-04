@@ -515,6 +515,7 @@ async function handleAgentUpdate(
     .select({
       id: slackBindings.id,
       agentName: slackBindings.agentName,
+      description: slackBindings.description,
       composeId: slackBindings.composeId,
     })
     .from(slackBindings)
@@ -574,6 +575,7 @@ async function handleAgentUpdate(
     return {
       id: b.id,
       name: b.agentName,
+      description: b.description,
       requiredSecrets,
       existingSecrets: requiredSecrets.filter((name) =>
         existingSecretNames.has(name),

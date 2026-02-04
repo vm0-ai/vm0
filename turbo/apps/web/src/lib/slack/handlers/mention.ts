@@ -15,13 +15,14 @@ import {
   parseExplicitAgentSelection,
   buildLoginPromptMessage,
   buildErrorMessage,
-  buildMarkdownMessage,
+  buildAgentResponseMessage,
   buildWelcomeMessage,
   getSlackRedirectBaseUrl,
 } from "../index";
 import { routeToAgent, type RouteResult } from "../router";
 import { runAgentForSlack } from "./run-agent";
 import { logger } from "../../logger";
+import { getPlatformUrl } from "../../url";
 
 const log = logger("slack:mention");
 
@@ -354,15 +355,18 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
     try {
       // 10. Execute agent with session continuation
       log.debug("Calling runAgentForSlack", { existingSessionId });
-      const { response: agentResponse, sessionId: newSessionId } =
-        await runAgentForSlack({
-          binding: selectedBinding,
-          sessionId: existingSessionId,
-          prompt: promptText,
-          threadContext: formattedContext,
-          userId: userLink.vm0UserId,
-        });
-      log.debug("runAgentForSlack returned", { newSessionId });
+      const {
+        response: agentResponse,
+        sessionId: newSessionId,
+        runId,
+      } = await runAgentForSlack({
+        binding: selectedBinding,
+        sessionId: existingSessionId,
+        prompt: promptText,
+        threadContext: formattedContext,
+        userId: userLink.vm0UserId,
+      });
+      log.debug("runAgentForSlack returned", { newSessionId, runId });
 
       // 11. Create thread session mapping if this is a new thread (no existing session)
       if (threadTs && !existingSessionId && newSessionId) {
@@ -381,10 +385,15 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
           .onConflictDoNothing();
       }
 
-      // 12. Post response message
+      // 12. Post response message with agent name and logs link
+      const logsUrl = runId ? buildLogsUrl(runId) : undefined;
       await postMessage(client, context.channelId, agentResponse, {
         threadTs,
-        blocks: buildMarkdownMessage(agentResponse),
+        blocks: buildAgentResponseMessage(
+          agentResponse,
+          selectedAgentName,
+          logsUrl,
+        ),
       });
     } catch (innerError) {
       // If postMessage or session creation fails, still try to notify the user
@@ -425,4 +434,11 @@ function buildLoginUrl(workspaceId: string, slackUserId: string): string {
     u: slackUserId,
   });
   return `${baseUrl}/slack/link?${params.toString()}`;
+}
+
+/**
+ * Build the logs URL for a run
+ */
+function buildLogsUrl(runId: string): string {
+  return `${getPlatformUrl()}/logs/${runId}`;
 }

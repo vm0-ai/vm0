@@ -39,6 +39,7 @@ interface WaitResult {
 interface RunAgentResult {
   response: string;
   sessionId: string | undefined;
+  runId: string | undefined;
 }
 
 /**
@@ -60,7 +61,11 @@ export async function runAgentForSlack(
       .limit(1);
 
     if (!compose) {
-      return { response: "Error: Agent configuration not found.", sessionId };
+      return {
+        response: "Error: Agent configuration not found.",
+        sessionId,
+        runId: undefined,
+      };
     }
 
     // Get latest version (using headVersionId if available, otherwise query)
@@ -77,6 +82,7 @@ export async function runAgentForSlack(
         return {
           response: "Error: Agent has no versions configured.",
           sessionId,
+          runId: undefined,
         };
       }
       versionId = latestVersion.id;
@@ -108,7 +114,11 @@ export async function runAgentForSlack(
       .returning();
 
     if (!run) {
-      return { response: "Error: Failed to create run.", sessionId };
+      return {
+        response: "Error: Failed to create run.",
+        sessionId,
+        runId: undefined,
+      };
     }
 
     log.debug(`Created run ${run.id} for Slack binding ${binding.id}`);
@@ -162,23 +172,30 @@ export async function runAgentForSlack(
       return {
         response: result.output ?? "Task completed successfully.",
         sessionId: resultSessionId,
+        runId: run.id,
       };
     } else if (result.status === "failed") {
       return {
         response: `Error: ${result.error ?? "Agent execution failed."}`,
         sessionId: resultSessionId,
+        runId: run.id,
       };
     } else {
       return {
         response:
           "The agent is still working on your request. Check back later.",
         sessionId: resultSessionId,
+        runId: run.id,
       };
     }
   } catch (error) {
     log.error("Error running agent for Slack:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
-    return { response: `Error executing agent: ${message}`, sessionId };
+    return {
+      response: `Error executing agent: ${message}`,
+      sessionId,
+      runId: undefined,
+    };
   }
 }
 

@@ -241,6 +241,7 @@ async function fetchBoundAgents(
   Array<{
     id: string;
     name: string;
+    description: string | null;
     requiredSecrets: string[];
     existingSecrets: string[];
   }>
@@ -250,6 +251,7 @@ async function fetchBoundAgents(
     .select({
       id: slackBindings.id,
       agentName: slackBindings.agentName,
+      description: slackBindings.description,
       composeId: slackBindings.composeId,
     })
     .from(slackBindings)
@@ -304,6 +306,7 @@ async function fetchBoundAgents(
     return {
       id: b.id,
       name: b.agentName,
+      description: b.description,
       requiredSecrets,
       existingSecrets: requiredSecrets.filter((name) =>
         existingSecretNames.has(name),
@@ -495,12 +498,14 @@ async function handleViewSubmission(
 
 interface AgentAddFormValues {
   composeId: string | undefined;
+  description: string | undefined;
   secrets: Record<string, string>;
 }
 
 /** Validated form values with required fields guaranteed */
 interface ValidatedAgentAddForm {
   composeId: string;
+  description: string | undefined;
   secrets: Record<string, string>;
 }
 
@@ -524,8 +529,13 @@ function extractFormValues(values: ModalStateValues): AgentAddFormValues {
     }
   }
 
+  // Extract description
+  const description =
+    values.agent_description?.description_input?.value?.trim() || undefined;
+
   return {
     composeId: values.agent_select?.agent_select_action?.selected_option?.value,
+    description,
     secrets,
   };
 }
@@ -547,6 +557,7 @@ function validateAgentAddForm(
   // Return validated form with narrowed types
   return {
     composeId: formValues.composeId,
+    description: formValues.description,
     secrets: formValues.secrets,
   };
 }
@@ -731,6 +742,7 @@ async function handleAgentAddSubmission(
     slackWorkspaceId: payload.team.id,
     composeId: formValues.composeId,
     agentName,
+    description: formValues.description ?? null,
     enabled: true,
   });
 
@@ -932,12 +944,25 @@ async function handleAgentUpdateSubmission(
   // Extract new secrets from form (only non-empty values)
   const newSecrets = extractSecretsFromFormValues(values);
 
-  // If no new secrets provided, nothing to update
-  if (Object.keys(newSecrets).length === 0) {
+  // Extract description from form
+  const newDescription =
+    values.agent_description?.description_input?.value?.trim() || null;
+  const descriptionChanged = newDescription !== binding.description;
+
+  // If no updates provided, nothing to do
+  if (Object.keys(newSecrets).length === 0 && !descriptionChanged) {
     return NextResponse.json({
       response_action: "errors",
-      errors: { agent_select: "No new secrets provided" },
+      errors: { agent_select: "No changes to save" },
     });
+  }
+
+  // Update description if changed
+  if (descriptionChanged) {
+    await globalThis.services.db
+      .update(slackBindings)
+      .set({ description: newDescription })
+      .where(eq(slackBindings.id, bindingId));
   }
 
   // Save secrets to user's scope
@@ -958,6 +983,7 @@ async function handleAgentUpdateSubmission(
       payload.team.id,
       binding.agentName,
       savedSecretNames,
+      descriptionChanged,
       channelId,
       payload.user.id,
       encryptionKey,
@@ -973,12 +999,13 @@ async function handleAgentUpdateSubmission(
 }
 
 /**
- * Send confirmation message to channel after agent secrets are updated (ephemeral - only visible to the user)
+ * Send confirmation message to channel after agent is updated (ephemeral - only visible to the user)
  */
 async function sendUpdateConfirmationMessage(
   workspaceId: string,
   agentName: string,
   updatedSecretNames: string[],
+  descriptionUpdated: boolean,
   channelId: string,
   slackUserId: string,
   encryptionKey: string,
@@ -999,19 +1026,30 @@ async function sendUpdateConfirmationMessage(
   );
   const client = createSlackClient(botToken);
 
-  const secretList = updatedSecretNames.map((n) => `\`${n}\``).join(", ");
-  const plural = updatedSecretNames.length > 1 ? "s" : "";
+  // Build update summary
+  const updates: string[] = [];
+  if (descriptionUpdated) {
+    updates.push("description");
+  }
+  if (updatedSecretNames.length > 0) {
+    const secretList = updatedSecretNames.map((n) => `\`${n}\``).join(", ");
+    updates.push(
+      `secret${updatedSecretNames.length > 1 ? "s" : ""}: ${secretList}`,
+    );
+  }
+
+  const updateSummary = updates.join(", ");
 
   await client.chat.postEphemeral({
     channel: channelId,
     user: slackUserId,
-    text: `Agent "${agentName}" secret${plural} updated: ${secretList}`,
+    text: `Agent "${agentName}" updated: ${updateSummary}`,
     blocks: [
       {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `:white_check_mark: *Agent \`${agentName}\` secret${plural} updated:* ${secretList}`,
+          text: `:white_check_mark: *Agent \`${agentName}\` updated:* ${updateSummary}`,
         },
       },
     ],

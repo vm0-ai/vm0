@@ -192,6 +192,7 @@ describe("Feature: App Mention Handling", () => {
         .mockResolvedValue({
           response: "Here is my helpful response!",
           sessionId: undefined, // Avoid FK constraint on agent_sessions
+          runId: "test-run-id",
         });
 
       // When I @mention the VM0 bot
@@ -232,10 +233,31 @@ describe("Feature: App Mention Handling", () => {
       // 4. Response message should be posted with the agent's response
       // Note: The new flow posts response directly without intermediate "Thinking..." message
       expect(postCalls).toHaveLength(1);
-      const responseText = (postCalls[0]!.body as { text?: string }).text;
-      expect(responseText).toBe("Here is my helpful response!");
+      const responseBody = postCalls[0]!.body as {
+        text?: string;
+        blocks?: string;
+      };
+      expect(responseBody.text).toBe("Here is my helpful response!");
 
-      // 5. Thinking reaction should be removed
+      // Parse blocks from JSON string (Slack form data sends blocks as JSON string)
+      const blocks = JSON.parse(responseBody.blocks ?? "[]") as Array<{
+        type: string;
+        elements?: Array<{ text?: string }>;
+      }>;
+
+      // 5. Response should include agent name in context block
+      const contextBlocks = blocks.filter((b) => b.type === "context");
+      expect(contextBlocks.length).toBeGreaterThanOrEqual(1);
+      // First context block should have agent name
+      const agentContext = contextBlocks[0]!.elements?.[0]?.text;
+      expect(agentContext).toContain("my-helper");
+
+      // 6. Response should include logs URL in last context block
+      const logsContext =
+        contextBlocks[contextBlocks.length - 1]!.elements?.[0]?.text;
+      expect(logsContext).toContain("/logs/test-run-id");
+
+      // 7. Thinking reaction should be removed
       const reactionRemoveCalls = slackApiCalls.filter(
         (c) => c.method === "reactions.remove",
       );
@@ -258,6 +280,7 @@ describe("Feature: App Mention Handling", () => {
         .mockResolvedValue({
           response: "Code fixed!",
           sessionId: undefined,
+          runId: "test-run-id",
         });
 
       // When I say "use coder fix this bug"

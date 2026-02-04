@@ -67,6 +67,31 @@ export function buildAgentAddModal(
     },
   ];
 
+  // Add description field only after agent is selected
+  if (selectedAgent) {
+    blocks.push({
+      type: "input",
+      block_id: "agent_description",
+      optional: true,
+      element: {
+        type: "plain_text_input",
+        action_id: "description_input",
+        placeholder: {
+          type: "plain_text",
+          text: "e.g., Helps with code reviews and bug fixes",
+        },
+      },
+      label: {
+        type: "plain_text",
+        text: "Description",
+      },
+      hint: {
+        type: "plain_text",
+        text: "Helps route messages to the right agent when you have multiple agents",
+      },
+    });
+  }
+
   // Add secrets fields if agent is selected and has required secrets
   if (selectedAgent && selectedAgent.requiredSecrets.length > 0) {
     blocks.push({
@@ -154,12 +179,10 @@ export function buildAgentAddModal(
       type: "plain_text",
       text: "Add Agent",
     },
-    submit: selectedAgent
-      ? {
-          type: "plain_text",
-          text: "Add",
-        }
-      : undefined,
+    submit: {
+      type: "plain_text",
+      text: "Add",
+    },
     close: {
       type: "plain_text",
       text: "Cancel",
@@ -176,6 +199,7 @@ interface AgentBinding {
 interface AgentUpdateOption {
   id: string;
   name: string;
+  description: string | null;
   requiredSecrets: string[];
   existingSecrets: string[];
 }
@@ -233,6 +257,34 @@ export function buildAgentUpdateModal(
       },
     },
   ];
+
+  // Add description field only after agent is selected
+  if (selectedAgent) {
+    blocks.push({
+      type: "input",
+      block_id: "agent_description",
+      optional: true,
+      element: {
+        type: "plain_text_input",
+        action_id: "description_input",
+        placeholder: {
+          type: "plain_text",
+          text: "e.g., Helps with code reviews and bug fixes",
+        },
+        ...(selectedAgent.description && {
+          initial_value: selectedAgent.description,
+        }),
+      },
+      label: {
+        type: "plain_text",
+        text: "Description",
+      },
+      hint: {
+        type: "plain_text",
+        text: "Helps route messages to the right agent when you have multiple agents",
+      },
+    });
+  }
 
   // Add secrets fields if agent is selected and has required secrets
   if (selectedAgent && selectedAgent.requiredSecrets.length > 0) {
@@ -665,6 +717,48 @@ export function buildMarkdownMessage(content: string): (Block | KnownBlock)[] {
       },
     });
     remaining = remaining.substring(splitIndex).trimStart();
+  }
+
+  return blocks;
+}
+
+/**
+ * Build an agent response message with agent name context and optional logs link
+ *
+ * @param content - The agent's response content
+ * @param agentName - The name of the agent that responded
+ * @param logsUrl - Optional URL to the run logs
+ * @returns Block Kit blocks with agent context header
+ */
+export function buildAgentResponseMessage(
+  content: string,
+  agentName: string,
+  logsUrl?: string,
+): (Block | KnownBlock)[] {
+  const blocks: (Block | KnownBlock)[] = [
+    {
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: `:robot_face: *${agentName}*`,
+        },
+      ],
+    },
+    ...buildMarkdownMessage(content),
+  ];
+
+  // Add logs link at the end if provided
+  if (logsUrl) {
+    blocks.push({
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: `<${logsUrl}|:clipboard: View logs>`,
+        },
+      ],
+    });
   }
 
   return blocks;

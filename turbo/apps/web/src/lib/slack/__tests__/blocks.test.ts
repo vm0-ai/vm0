@@ -39,7 +39,11 @@ describe("buildAgentAddModal", () => {
       type: "plain_text",
       text: "Add Agent",
     });
-    expect(modalWithoutSelection.submit).toBeUndefined();
+    // Submit button is always shown (required for input blocks)
+    expect(modalWithoutSelection.submit).toEqual({
+      type: "plain_text",
+      text: "Add",
+    });
     expect(modalWithoutSelection.close).toEqual({
       type: "plain_text",
       text: "Cancel",

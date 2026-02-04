@@ -50,6 +50,7 @@ export {
   buildWelcomeMessage,
   buildSuccessMessage,
   buildMarkdownMessage,
+  buildAgentResponseMessage,
 } from "./blocks";
 
 // Thread context
