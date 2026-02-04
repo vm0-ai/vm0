@@ -13,6 +13,15 @@ vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
 
+// Mock next/server's after() function which requires a request scope
+vi.mock("next/server", async (importOriginal) => {
+  const original = await importOriginal<typeof import("next/server")>();
+  return {
+    ...original,
+    after: vi.fn(),
+  };
+});
+
 const context = testContext();
 
 // Use the same signing secret as configured in setup.ts
