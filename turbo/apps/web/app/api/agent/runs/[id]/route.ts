@@ -1,12 +1,12 @@
 import {
   createHandler,
   tsr,
-  TsRestResponse,
+  validationErrorHandler,
 } from "../../../../../src/lib/ts-rest-handler";
 import { runsByIdContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 
 const router = tsr.router(runsByIdContract, {
@@ -23,11 +23,11 @@ const router = tsr.router(runsByIdContract, {
       };
     }
 
-    // Query run from database
+    // Query run from database - filter by userId for security
     const [run] = await globalThis.services.db
       .select()
       .from(agentRuns)
-      .where(eq(agentRuns.id, params.id))
+      .where(and(eq(agentRuns.id, params.id), eq(agentRuns.userId, userId)))
       .limit(1);
 
     if (!run) {
@@ -65,35 +65,8 @@ const router = tsr.router(runsByIdContract, {
   },
 });
 
-/**
- * Custom error handler to convert validation errors to API error format
- */
-function errorHandler(err: unknown): TsRestResponse | void {
-  if (err && typeof err === "object" && "pathParamsError" in err) {
-    const validationError = err as {
-      pathParamsError: {
-        issues: Array<{ path: string[]; message: string }>;
-      } | null;
-    };
-
-    if (validationError.pathParamsError) {
-      const issue = validationError.pathParamsError.issues[0];
-      if (issue) {
-        const path = issue.path.join(".");
-        const message = path ? `${path}: ${issue.message}` : issue.message;
-        return TsRestResponse.fromJson(
-          { error: { message, code: "BAD_REQUEST" } },
-          { status: 400 },
-        );
-      }
-    }
-  }
-
-  return undefined;
-}
-
 const handler = createHandler(runsByIdContract, router, {
-  errorHandler,
+  errorHandler: validationErrorHandler,
 });
 
 export { handler as GET };
