@@ -258,7 +258,7 @@ export async function executeJob(
     // Check for OOM kill (exit code 137 = 128 + SIGKILL)
     if (exitCode === 137 || exitCode === 9) {
       const dmesgCheck = await guest.exec(
-        `dmesg | tail -20 | grep -iE "killed|oom" 2>/dev/null`,
+        `sudo dmesg | tail -20 | grep -iE "killed|oom" 2>/dev/null`,
       );
       if (
         dmesgCheck.stdout.toLowerCase().includes("oom") ||
