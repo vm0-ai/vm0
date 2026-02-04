@@ -6,10 +6,7 @@ import {
 import { secretsMainContract, createErrorResponse, ApiError } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
 import { getUserId } from "../../../src/lib/auth/get-user-id";
-import {
-  listCredentials,
-  setCredential,
-} from "../../../src/lib/credential/credential-service";
+import { listSecrets, setSecret } from "../../../src/lib/secret/secret-service";
 import { logger } from "../../../src/lib/logger";
 import { isBadRequest } from "../../../src/lib/errors";
 
@@ -27,12 +24,12 @@ const router = tsr.router(secretsMainContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const credentials = await listCredentials(userId);
+    const secrets = await listSecrets(userId);
 
     return {
       status: 200 as const,
       body: {
-        secrets: credentials.map((c) => ({
+        secrets: secrets.map((c) => ({
           id: c.id,
           name: c.name,
           description: c.description,
@@ -60,17 +57,17 @@ const router = tsr.router(secretsMainContract, {
     log.debug("setting secret", { userId, name });
 
     try {
-      const credential = await setCredential(userId, name, value, description);
+      const secret = await setSecret(userId, name, value, description);
 
       return {
         status: 200 as const,
         body: {
-          id: credential.id,
-          name: credential.name,
-          description: credential.description,
-          type: credential.type,
-          createdAt: credential.createdAt.toISOString(),
-          updatedAt: credential.updatedAt.toISOString(),
+          id: secret.id,
+          name: secret.name,
+          description: secret.description,
+          type: secret.type,
+          createdAt: secret.createdAt.toISOString(),
+          updatedAt: secret.updatedAt.toISOString(),
         },
       };
     } catch (error) {

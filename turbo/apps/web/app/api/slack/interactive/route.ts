@@ -18,10 +18,7 @@ import {
   buildAgentAddModal,
   buildAgentUpdateModal,
 } from "../../../../src/lib/slack/blocks";
-import {
-  decryptCredentialValue,
-  encryptCredentialValue,
-} from "../../../../src/lib/crypto/secrets-encryption";
+import { decryptCredentialValue } from "../../../../src/lib/crypto/secrets-encryption";
 import {
   createSlackClient,
   isSlackInvalidAuthError,
@@ -666,24 +663,14 @@ async function handleAgentAddSubmission(
     });
   }
 
-  // Encrypt secrets if provided
-  let encryptedSecrets: string | null = null;
-  if (Object.keys(formValues.secrets).length > 0) {
-    // Convert secrets record to KEY=value format
-    const secretsText = Object.entries(formValues.secrets)
-      .map(([key, value]) => `${key}=${value}`)
-      .join("\n");
-    encryptedSecrets = encryptCredentialValue(secretsText, encryptionKey);
-  }
-
   // Create binding
+  // Note: encryptedSecrets column has been removed; secrets are no longer stored per-binding
   await globalThis.services.db.insert(slackBindings).values({
     slackUserLinkId: userLink.id,
     vm0UserId: userLink.vm0UserId,
     slackWorkspaceId: payload.team.id,
     composeId: formValues.composeId,
     agentName,
-    encryptedSecrets,
     enabled: true,
   });
 
@@ -834,32 +821,6 @@ function extractSecretsFromFormValues(
 }
 
 /**
- * Merge and encrypt secrets for agent binding update
- */
-function mergeAndEncryptSecrets(
-  existingEncrypted: string | null,
-  newSecrets: Record<string, string>,
-  encryptionKey: string,
-): string {
-  // Decrypt existing secrets if any
-  let existingSecrets: Record<string, string> = {};
-  if (existingEncrypted) {
-    const decrypted = decryptCredentialValue(existingEncrypted, encryptionKey);
-    existingSecrets = parseSecretsFromString(decrypted);
-  }
-
-  // Merge new secrets with existing (new values override)
-  const mergedSecrets = { ...existingSecrets, ...newSecrets };
-
-  // Convert merged secrets to KEY=value format and encrypt
-  const secretsText = Object.entries(mergedSecrets)
-    .map(([key, value]) => `${key}=${value}`)
-    .join("\n");
-
-  return encryptCredentialValue(secretsText, encryptionKey);
-}
-
-/**
  * Handle agent update modal submission
  */
 async function handleAgentUpdateSubmission(
@@ -891,7 +852,7 @@ async function handleAgentUpdateSubmission(
     });
   }
 
-  // Get the binding to verify it exists and get current secrets
+  // Get the binding to verify it exists
   const [binding] = await globalThis.services.db
     .select()
     .from(slackBindings)
@@ -909,25 +870,13 @@ async function handleAgentUpdateSubmission(
   const newSecrets = extractSecretsFromFormValues(values);
 
   // If no new secrets provided, nothing to update
+  // Note: encryptedSecrets column has been removed; secrets are no longer stored per-binding
   if (Object.keys(newSecrets).length === 0) {
     return NextResponse.json({
       response_action: "errors",
       errors: { agent_select: "No secrets provided to update" },
     });
   }
-
-  // Merge and encrypt secrets
-  const encryptedSecrets = mergeAndEncryptSecrets(
-    binding.encryptedSecrets,
-    newSecrets,
-    encryptionKey,
-  );
-
-  // Update the binding
-  await globalThis.services.db
-    .update(slackBindings)
-    .set({ encryptedSecrets })
-    .where(eq(slackBindings.id, bindingId));
 
   // Await message to prevent serverless function from terminating before it's sent
   if (channelId) {
@@ -945,28 +894,6 @@ async function handleAgentUpdateSubmission(
 
   // Close modal
   return new Response("", { status: 200 });
-}
-
-/**
- * Parse secrets from KEY=value format string
- */
-function parseSecretsFromString(secretsStr: string): Record<string, string> {
-  const secrets: Record<string, string> = {};
-  const lines = secretsStr.split("\n");
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-
-    const eqIndex = trimmed.indexOf("=");
-    if (eqIndex > 0) {
-      const key = trimmed.substring(0, eqIndex).trim();
-      const value = trimmed.substring(eqIndex + 1).trim();
-      secrets[key] = value;
-    }
-  }
-
-  return secrets;
 }
 
 /**

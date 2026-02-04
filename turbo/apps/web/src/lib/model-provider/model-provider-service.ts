@@ -11,7 +11,7 @@ import {
   type ModelProviderFramework,
 } from "@vm0/core";
 import { modelProviders } from "../../db/schema/model-provider";
-import { credentials } from "../../db/schema/credential";
+import { secrets } from "../../db/schema/secret";
 import { encryptCredentialValue } from "../crypto";
 import { badRequest, notFound, conflict } from "../errors";
 import { logger } from "../logger";
@@ -43,7 +43,7 @@ export async function listModelProviders(
     return [];
   }
 
-  // Use leftJoin to include multi-auth providers that don't have credentialId
+  // Use leftJoin to include multi-auth providers that don't have secretId
   const result = await globalThis.services.db
     .select({
       id: modelProviders.id,
@@ -51,12 +51,12 @@ export async function listModelProviders(
       isDefault: modelProviders.isDefault,
       selectedModel: modelProviders.selectedModel,
       authMethod: modelProviders.authMethod,
-      credentialName: credentials.name,
+      credentialName: secrets.name,
       createdAt: modelProviders.createdAt,
       updatedAt: modelProviders.updatedAt,
     })
     .from(modelProviders)
-    .leftJoin(credentials, eq(modelProviders.credentialId, credentials.id))
+    .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
     .where(eq(modelProviders.scopeId, scope.id))
     .orderBy(modelProviders.type);
 
@@ -112,14 +112,9 @@ export async function checkCredentialExists(
   }
 
   const [existing] = await globalThis.services.db
-    .select({ type: credentials.type })
-    .from(credentials)
-    .where(
-      and(
-        eq(credentials.scopeId, scope.id),
-        eq(credentials.name, credentialName),
-      ),
-    )
+    .select({ type: secrets.type })
+    .from(secrets)
+    .where(and(eq(secrets.scopeId, scope.id), eq(secrets.name, credentialName)))
     .limit(1);
 
   if (!existing) {
@@ -156,7 +151,7 @@ export async function upsertModelProvider(
   // Multi-auth providers need different handling
   if (hasAuthMethods(type)) {
     throw badRequest(
-      `Provider "${type}" requires multiple credentials. Use the multi-auth API instead.`,
+      `Provider "${type}" requires multiple secrets. Use the multi-auth API instead.`,
     );
   }
 
@@ -184,8 +179,8 @@ export async function upsertModelProvider(
     .limit(1);
 
   if (existingProvider) {
-    // Legacy providers should have credentialId
-    if (!existingProvider.credentialId) {
+    // Legacy providers should have secretId
+    if (!existingProvider.secretId) {
       throw badRequest(
         `Provider "${type}" is missing credential reference. This is an invalid state.`,
       );
@@ -193,9 +188,9 @@ export async function upsertModelProvider(
 
     // Update existing credential value
     await globalThis.services.db
-      .update(credentials)
+      .update(secrets)
       .set({ encryptedValue, updatedAt: new Date() })
-      .where(eq(credentials.id, existingProvider.credentialId));
+      .where(eq(secrets.id, existingProvider.secretId));
 
     await globalThis.services.db
       .update(modelProviders)
@@ -229,19 +224,14 @@ export async function upsertModelProvider(
   }
 
   // Check if credential exists with same name
-  const [existingCredential] = await globalThis.services.db
+  const [existingSecret] = await globalThis.services.db
     .select()
-    .from(credentials)
-    .where(
-      and(
-        eq(credentials.scopeId, scope.id),
-        eq(credentials.name, credentialName),
-      ),
-    )
+    .from(secrets)
+    .where(and(eq(secrets.scopeId, scope.id), eq(secrets.name, credentialName)))
     .limit(1);
 
-  if (existingCredential) {
-    if (existingCredential.type === "user" && !convertExisting) {
+  if (existingSecret) {
+    if (existingSecret.type === "user" && !convertExisting) {
       // Conflict: user credential exists, need explicit conversion
       throw conflict(
         `Credential "${credentialName}" already exists. Use --convert to convert it to a model provider.`,
@@ -250,13 +240,13 @@ export async function upsertModelProvider(
 
     // Convert existing credential or update model-provider credential
     await globalThis.services.db
-      .update(credentials)
+      .update(secrets)
       .set({
         encryptedValue,
         type: "model-provider",
         updatedAt: new Date(),
       })
-      .where(eq(credentials.id, existingCredential.id));
+      .where(eq(secrets.id, existingSecret.id));
 
     // Check if first for framework (for default assignment)
     const allProviders = await listModelProviders(clerkUserId);
@@ -270,7 +260,7 @@ export async function upsertModelProvider(
       .values({
         scopeId: scope.id,
         type,
-        credentialId: existingCredential.id,
+        secretId: existingSecret.id,
         isDefault: !hasProviderForFramework,
         selectedModel: selectedModel ?? null,
       })
@@ -284,7 +274,7 @@ export async function upsertModelProvider(
       providerId: created.id,
       type,
       selectedModel,
-      converted: existingCredential.type === "user",
+      converted: existingSecret.type === "user",
     });
 
     return {
@@ -311,8 +301,8 @@ export async function upsertModelProvider(
     (p) => p.framework === framework,
   );
 
-  const [newCredential] = await globalThis.services.db
-    .insert(credentials)
+  const [newSecret] = await globalThis.services.db
+    .insert(secrets)
     .values({
       scopeId: scope.id,
       name: credentialName,
@@ -322,7 +312,7 @@ export async function upsertModelProvider(
     })
     .returning();
 
-  if (!newCredential) {
+  if (!newSecret) {
     throw new Error("Failed to create credential");
   }
 
@@ -331,7 +321,7 @@ export async function upsertModelProvider(
     .values({
       scopeId: scope.id,
       type,
-      credentialId: newCredential.id,
+      secretId: newSecret.id,
       isDefault: !hasProviderForFramework,
       selectedModel: selectedModel ?? null,
     })
@@ -343,7 +333,7 @@ export async function upsertModelProvider(
 
   log.debug("model provider created", {
     providerId: newProvider.id,
-    credentialId: newCredential.id,
+    secretId: newSecret.id,
     type,
     selectedModel,
     isDefault: newProvider.isDefault,
@@ -369,7 +359,7 @@ export async function upsertModelProvider(
 /**
  * Upsert a single credential for a multi-auth provider
  */
-async function upsertMultiAuthCredential(
+async function upsertMultiAuthSecret(
   scopeId: string,
   name: string,
   value: string,
@@ -378,24 +368,24 @@ async function upsertMultiAuthCredential(
 ): Promise<void> {
   const encryptedValue = encryptCredentialValue(value, encryptionKey);
 
-  const [existingCredential] = await globalThis.services.db
+  const [existingSecret] = await globalThis.services.db
     .select()
-    .from(credentials)
-    .where(and(eq(credentials.scopeId, scopeId), eq(credentials.name, name)))
+    .from(secrets)
+    .where(and(eq(secrets.scopeId, scopeId), eq(secrets.name, name)))
     .limit(1);
 
-  if (existingCredential) {
+  if (existingSecret) {
     await globalThis.services.db
-      .update(credentials)
+      .update(secrets)
       .set({
         encryptedValue,
         type: "model-provider",
         description,
         updatedAt: new Date(),
       })
-      .where(eq(credentials.id, existingCredential.id));
+      .where(eq(secrets.id, existingSecret.id));
   } else {
-    await globalThis.services.db.insert(credentials).values({
+    await globalThis.services.db.insert(secrets).values({
       scopeId,
       name,
       encryptedValue,
@@ -408,11 +398,11 @@ async function upsertMultiAuthCredential(
 /**
  * Clean up old credentials when switching auth methods
  */
-async function cleanupOldAuthMethodCredentials(
+async function cleanupOldAuthMethodSecrets(
   scopeId: string,
   type: ModelProviderType,
   oldAuthMethod: string,
-  newCredentialNames: string[],
+  newSecretNames: string[],
 ): Promise<void> {
   const oldCredentialNames = getCredentialNamesForAuthMethod(
     type,
@@ -421,16 +411,16 @@ async function cleanupOldAuthMethodCredentials(
 
   // Find credentials that exist in old auth method but not in new
   const credentialsToDelete = oldCredentialNames?.filter(
-    (name) => !newCredentialNames.includes(name),
+    (name) => !newSecretNames.includes(name),
   );
 
   if (credentialsToDelete && credentialsToDelete.length > 0) {
     await globalThis.services.db
-      .delete(credentials)
+      .delete(secrets)
       .where(
         and(
-          eq(credentials.scopeId, scopeId),
-          inArray(credentials.name, credentialsToDelete),
+          eq(secrets.scopeId, scopeId),
+          inArray(secrets.name, credentialsToDelete),
         ),
       );
     log.debug("old auth method credentials cleaned up", {
@@ -520,7 +510,7 @@ export async function upsertMultiAuthModelProvider(
 
   // If switching auth methods, clean up old credentials that are no longer used
   if (existingProvider && existingProvider.authMethod !== authMethod) {
-    await cleanupOldAuthMethodCredentials(
+    await cleanupOldAuthMethodSecrets(
       scope.id,
       type,
       existingProvider.authMethod ?? "",
@@ -533,7 +523,7 @@ export async function upsertMultiAuthModelProvider(
   const credentialDescription = `${MODEL_PROVIDER_TYPES[type].label} credential (${authMethod})`;
 
   for (const [name, value] of Object.entries(credentialValues)) {
-    await upsertMultiAuthCredential(
+    await upsertMultiAuthSecret(
       scope.id,
       name,
       value,
@@ -583,7 +573,7 @@ export async function upsertMultiAuthModelProvider(
     (p) => p.framework === framework,
   );
 
-  // Create new provider (no credentialId for multi-auth)
+  // Create new provider (no secretId for multi-auth)
   const [newProvider] = await globalThis.services.db
     .insert(modelProviders)
     .values({
@@ -652,22 +642,17 @@ export async function convertCredentialToModelProvider(
   const framework = getFrameworkForType(type);
 
   // Find the credential
-  const [existingCredential] = await globalThis.services.db
+  const [existingSecret] = await globalThis.services.db
     .select()
-    .from(credentials)
-    .where(
-      and(
-        eq(credentials.scopeId, scope.id),
-        eq(credentials.name, credentialName),
-      ),
-    )
+    .from(secrets)
+    .where(and(eq(secrets.scopeId, scope.id), eq(secrets.name, credentialName)))
     .limit(1);
 
-  if (!existingCredential) {
+  if (!existingSecret) {
     throw notFound(`Credential "${credentialName}" not found`);
   }
 
-  if (existingCredential.type === "model-provider") {
+  if (existingSecret.type === "model-provider") {
     throw badRequest(
       `Credential "${credentialName}" is already a model provider`,
     );
@@ -675,9 +660,9 @@ export async function convertCredentialToModelProvider(
 
   // Update credential type
   await globalThis.services.db
-    .update(credentials)
+    .update(secrets)
     .set({ type: "model-provider", updatedAt: new Date() })
-    .where(eq(credentials.id, existingCredential.id));
+    .where(eq(secrets.id, existingSecret.id));
 
   // Check if first for framework
   const allProviders = await listModelProviders(clerkUserId);
@@ -691,7 +676,7 @@ export async function convertCredentialToModelProvider(
     .values({
       scopeId: scope.id,
       type,
-      credentialId: existingCredential.id,
+      secretId: existingSecret.id,
       isDefault: !hasProviderForFramework,
     })
     .returning();
@@ -702,7 +687,7 @@ export async function convertCredentialToModelProvider(
 
   log.debug("credential converted to model provider", {
     providerId: newProvider.id,
-    credentialId: existingCredential.id,
+    secretId: existingSecret.id,
     type,
   });
 
@@ -748,13 +733,13 @@ export async function deleteModelProvider(
   }
 
   const wasDefault = provider.isDefault;
-  const credentialId = provider.credentialId;
+  const secretId = provider.secretId;
 
   // Delete credential (cascades to model_provider) - only for legacy providers
-  if (credentialId) {
+  if (secretId) {
     await globalThis.services.db
-      .delete(credentials)
-      .where(eq(credentials.id, credentialId));
+      .delete(secrets)
+      .where(eq(secrets.id, secretId));
   } else {
     // Multi-auth providers: delete all associated credentials
     if (provider.authMethod) {
@@ -764,11 +749,11 @@ export async function deleteModelProvider(
       );
       if (credentialNames && credentialNames.length > 0) {
         await globalThis.services.db
-          .delete(credentials)
+          .delete(secrets)
           .where(
             and(
-              eq(credentials.scopeId, scope.id),
-              inArray(credentials.name, credentialNames),
+              eq(secrets.scopeId, scope.id),
+              inArray(secrets.name, credentialNames),
             ),
           );
         log.debug("multi-auth credentials deleted", {
@@ -974,7 +959,7 @@ export async function getDefaultModelProvider(
   scopeId: string,
   framework: ModelProviderFramework,
 ): Promise<ModelProviderInfo | null> {
-  // Use leftJoin to include multi-auth providers that don't have credentialId
+  // Use leftJoin to include multi-auth providers that don't have secretId
   const allProviders = await globalThis.services.db
     .select({
       id: modelProviders.id,
@@ -982,12 +967,12 @@ export async function getDefaultModelProvider(
       isDefault: modelProviders.isDefault,
       selectedModel: modelProviders.selectedModel,
       authMethod: modelProviders.authMethod,
-      credentialName: credentials.name,
+      credentialName: secrets.name,
       createdAt: modelProviders.createdAt,
       updatedAt: modelProviders.updatedAt,
     })
     .from(modelProviders)
-    .leftJoin(credentials, eq(modelProviders.credentialId, credentials.id))
+    .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
     .where(eq(modelProviders.scopeId, scopeId));
 
   const defaultProvider = allProviders.find(

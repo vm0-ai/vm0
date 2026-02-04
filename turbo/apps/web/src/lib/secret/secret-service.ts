@@ -1,21 +1,21 @@
 import { eq, and, inArray } from "drizzle-orm";
 import {
-  type CredentialType,
+  type SecretType,
   type ModelProviderType,
   getCredentialNamesForAuthMethod,
   getFrameworkForType,
 } from "@vm0/core";
-import { credentials } from "../../db/schema/credential";
+import { secrets } from "../../db/schema/secret";
 import { modelProviders } from "../../db/schema/model-provider";
 import { encryptCredentialValue, decryptCredentialValue } from "../crypto";
 import { badRequest, notFound } from "../errors";
 import { logger } from "../logger";
 import { getUserScopeByClerkId } from "../scope/scope-service";
 
-const log = logger("service:credential");
+const log = logger("service:secret");
 
 /**
- * Credential name validation regex
+ * Secret name validation regex
  * Rules:
  * - 1-255 characters
  * - uppercase letters, numbers, and underscores only
@@ -24,35 +24,33 @@ const log = logger("service:credential");
 const NAME_REGEX = /^[A-Z][A-Z0-9_]*$/;
 
 /**
- * Validate credential name format
+ * Validate secret name format
  */
-function validateCredentialName(name: string): void {
+function validateSecretName(name: string): void {
   if (name.length === 0 || name.length > 255) {
-    throw badRequest("Credential name must be between 1 and 255 characters");
+    throw badRequest("Secret name must be between 1 and 255 characters");
   }
 
   if (!NAME_REGEX.test(name)) {
     throw badRequest(
-      "Credential name must contain only uppercase letters, numbers, and underscores, and must start with a letter (e.g., MY_API_KEY)",
+      "Secret name must contain only uppercase letters, numbers, and underscores, and must start with a letter (e.g., MY_API_KEY)",
     );
   }
 }
 
-interface CredentialInfo {
+interface SecretInfo {
   id: string;
   name: string;
   description: string | null;
-  type: CredentialType;
+  type: SecretType;
   createdAt: Date;
   updatedAt: Date;
 }
 
 /**
- * List all credentials for a user's scope (metadata only, no values)
+ * List all secrets for a user's scope (metadata only, no values)
  */
-export async function listCredentials(
-  clerkUserId: string,
-): Promise<CredentialInfo[]> {
+export async function listSecrets(clerkUserId: string): Promise<SecretInfo[]> {
   const scope = await getUserScopeByClerkId(clerkUserId);
   if (!scope) {
     return [];
@@ -60,30 +58,30 @@ export async function listCredentials(
 
   const result = await globalThis.services.db
     .select({
-      id: credentials.id,
-      name: credentials.name,
-      description: credentials.description,
-      type: credentials.type,
-      createdAt: credentials.createdAt,
-      updatedAt: credentials.updatedAt,
+      id: secrets.id,
+      name: secrets.name,
+      description: secrets.description,
+      type: secrets.type,
+      createdAt: secrets.createdAt,
+      updatedAt: secrets.updatedAt,
     })
-    .from(credentials)
-    .where(eq(credentials.scopeId, scope.id))
-    .orderBy(credentials.name);
+    .from(secrets)
+    .where(eq(secrets.scopeId, scope.id))
+    .orderBy(secrets.name);
 
   return result.map((row) => ({
     ...row,
-    type: row.type as CredentialType,
+    type: row.type as SecretType,
   }));
 }
 
 /**
- * Get a credential by name for a user's scope (metadata only)
+ * Get a secret by name for a user's scope (metadata only)
  */
-export async function getCredential(
+export async function getSecret(
   clerkUserId: string,
   name: string,
-): Promise<CredentialInfo | null> {
+): Promise<SecretInfo | null> {
   const scope = await getUserScopeByClerkId(clerkUserId);
   if (!scope) {
     return null;
@@ -91,15 +89,15 @@ export async function getCredential(
 
   const result = await globalThis.services.db
     .select({
-      id: credentials.id,
-      name: credentials.name,
-      description: credentials.description,
-      type: credentials.type,
-      createdAt: credentials.createdAt,
-      updatedAt: credentials.updatedAt,
+      id: secrets.id,
+      name: secrets.name,
+      description: secrets.description,
+      type: secrets.type,
+      createdAt: secrets.createdAt,
+      updatedAt: secrets.updatedAt,
     })
-    .from(credentials)
-    .where(and(eq(credentials.scopeId, scope.id), eq(credentials.name, name)))
+    .from(secrets)
+    .where(and(eq(secrets.scopeId, scope.id), eq(secrets.name, name)))
     .limit(1);
 
   if (!result[0]) {
@@ -108,24 +106,24 @@ export async function getCredential(
 
   return {
     ...result[0],
-    type: result[0].type as CredentialType,
+    type: result[0].type as SecretType,
   };
 }
 
 /**
- * Get decrypted credential value by name
+ * Get decrypted secret value by name
  * Used internally for variable expansion during agent execution
  */
-export async function getCredentialValue(
+export async function getSecretValue(
   scopeId: string,
   name: string,
 ): Promise<string | null> {
   const result = await globalThis.services.db
     .select({
-      encryptedValue: credentials.encryptedValue,
+      encryptedValue: secrets.encryptedValue,
     })
-    .from(credentials)
-    .where(and(eq(credentials.scopeId, scopeId), eq(credentials.name, name)))
+    .from(secrets)
+    .where(and(eq(secrets.scopeId, scopeId), eq(secrets.name, name)))
     .limit(1);
 
   if (!result[0]) {
@@ -137,19 +135,19 @@ export async function getCredentialValue(
 }
 
 /**
- * Get all credential values for a scope as a map
- * Used for batch credential resolution during variable expansion
+ * Get all secret values for a scope as a map
+ * Used for batch secret resolution during variable expansion
  */
-export async function getCredentialValues(
+export async function getSecretValues(
   scopeId: string,
 ): Promise<Record<string, string>> {
   const result = await globalThis.services.db
     .select({
-      name: credentials.name,
-      encryptedValue: credentials.encryptedValue,
+      name: secrets.name,
+      encryptedValue: secrets.encryptedValue,
     })
-    .from(credentials)
-    .where(eq(credentials.scopeId, scopeId));
+    .from(secrets)
+    .where(eq(secrets.scopeId, scopeId));
 
   const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
   const values: Record<string, string> = {};
@@ -165,15 +163,15 @@ export async function getCredentialValues(
 }
 
 /**
- * Create or update a credential (upsert)
+ * Create or update a secret (upsert)
  */
-export async function setCredential(
+export async function setSecret(
   clerkUserId: string,
   name: string,
   value: string,
   description?: string,
-): Promise<CredentialInfo> {
-  validateCredentialName(name);
+): Promise<SecretInfo> {
+  validateSecretName(name);
 
   const scope = await getUserScopeByClerkId(clerkUserId);
   if (!scope) {
@@ -185,44 +183,44 @@ export async function setCredential(
   const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
   const encryptedValue = encryptCredentialValue(value, encryptionKey);
 
-  log.debug("setting credential", { scopeId: scope.id, name });
+  log.debug("setting secret", { scopeId: scope.id, name });
 
-  // Check if credential exists
+  // Check if secret exists
   const existing = await globalThis.services.db
-    .select({ id: credentials.id })
-    .from(credentials)
-    .where(and(eq(credentials.scopeId, scope.id), eq(credentials.name, name)))
+    .select({ id: secrets.id })
+    .from(secrets)
+    .where(and(eq(secrets.scopeId, scope.id), eq(secrets.name, name)))
     .limit(1);
 
   if (existing[0]) {
-    // Update existing credential
+    // Update existing secret
     const [updated] = await globalThis.services.db
-      .update(credentials)
+      .update(secrets)
       .set({
         encryptedValue,
         description: description ?? null,
         updatedAt: new Date(),
       })
-      .where(eq(credentials.id, existing[0].id))
+      .where(eq(secrets.id, existing[0].id))
       .returning({
-        id: credentials.id,
-        name: credentials.name,
-        description: credentials.description,
-        type: credentials.type,
-        createdAt: credentials.createdAt,
-        updatedAt: credentials.updatedAt,
+        id: secrets.id,
+        name: secrets.name,
+        description: secrets.description,
+        type: secrets.type,
+        createdAt: secrets.createdAt,
+        updatedAt: secrets.updatedAt,
       });
 
-    log.debug("credential updated", { credentialId: updated!.id, name });
+    log.debug("secret updated", { secretId: updated!.id, name });
     return {
       ...updated!,
-      type: updated!.type as CredentialType,
+      type: updated!.type as SecretType,
     };
   }
 
-  // Create new credential
+  // Create new secret
   const [created] = await globalThis.services.db
-    .insert(credentials)
+    .insert(secrets)
     .values({
       scopeId: scope.id,
       name,
@@ -230,75 +228,75 @@ export async function setCredential(
       description: description ?? null,
     })
     .returning({
-      id: credentials.id,
-      name: credentials.name,
-      description: credentials.description,
-      type: credentials.type,
-      createdAt: credentials.createdAt,
-      updatedAt: credentials.updatedAt,
+      id: secrets.id,
+      name: secrets.name,
+      description: secrets.description,
+      type: secrets.type,
+      createdAt: secrets.createdAt,
+      updatedAt: secrets.updatedAt,
     });
 
-  log.debug("credential created", { credentialId: created!.id, name });
+  log.debug("secret created", { secretId: created!.id, name });
   return {
     ...created!,
-    type: created!.type as CredentialType,
+    type: created!.type as SecretType,
   };
 }
 
 /**
- * Delete a credential by name
+ * Delete a secret by name
  *
- * For multi-auth provider credentials, this will also delete:
+ * For multi-auth provider secrets, this will also delete:
  * - The associated model provider
- * - All other credentials for that provider's auth method
+ * - All other secrets for that provider's auth method
  */
-export async function deleteCredential(
+export async function deleteSecret(
   clerkUserId: string,
   name: string,
 ): Promise<void> {
   const scope = await getUserScopeByClerkId(clerkUserId);
   if (!scope) {
-    throw notFound("Credential not found");
+    throw notFound("Secret not found");
   }
 
-  // Check if this credential exists
-  const [credential] = await globalThis.services.db
+  // Check if this secret exists
+  const [secret] = await globalThis.services.db
     .select()
-    .from(credentials)
-    .where(and(eq(credentials.scopeId, scope.id), eq(credentials.name, name)))
+    .from(secrets)
+    .where(and(eq(secrets.scopeId, scope.id), eq(secrets.name, name)))
     .limit(1);
 
-  if (!credential) {
-    throw notFound(`Credential "${name}" not found`);
+  if (!secret) {
+    throw notFound(`Secret "${name}" not found`);
   }
 
-  // Check if this credential belongs to a multi-auth provider
-  // Multi-auth provider credentials have type "model-provider" and
-  // there's a model provider with authMethod set (not credentialId)
-  if (credential.type === "model-provider") {
-    // Find any multi-auth provider that uses this credential
+  // Check if this secret belongs to a multi-auth provider
+  // Multi-auth provider secrets have type "model-provider" and
+  // there's a model provider with authMethod set (not secretId)
+  if (secret.type === "model-provider") {
+    // Find any multi-auth provider that uses this secret
     const allProviders = await globalThis.services.db
       .select()
       .from(modelProviders)
       .where(eq(modelProviders.scopeId, scope.id));
 
     for (const provider of allProviders) {
-      if (provider.authMethod && !provider.credentialId) {
+      if (provider.authMethod && !provider.secretId) {
         // This is a multi-auth provider
-        const credentialNames = getCredentialNamesForAuthMethod(
+        const secretNames = getCredentialNamesForAuthMethod(
           provider.type as ModelProviderType,
           provider.authMethod,
         );
 
-        if (credentialNames && credentialNames.includes(name)) {
-          // This credential belongs to this multi-auth provider
-          // Delete all credentials for this auth method
+        if (secretNames && secretNames.includes(name)) {
+          // This secret belongs to this multi-auth provider
+          // Delete all secrets for this auth method
           await globalThis.services.db
-            .delete(credentials)
+            .delete(secrets)
             .where(
               and(
-                eq(credentials.scopeId, scope.id),
-                inArray(credentials.name, credentialNames),
+                eq(secrets.scopeId, scope.id),
+                inArray(secrets.name, secretNames),
               ),
             );
 
@@ -312,11 +310,11 @@ export async function deleteCredential(
             .delete(modelProviders)
             .where(eq(modelProviders.id, provider.id));
 
-          log.debug("multi-auth provider and credentials deleted", {
+          log.debug("multi-auth provider and secrets deleted", {
             scopeId: scope.id,
             type: provider.type,
             authMethod: provider.authMethod,
-            credentialNames,
+            secretNames,
           });
 
           // If it was default, assign new default for framework
@@ -346,10 +344,8 @@ export async function deleteCredential(
     }
   }
 
-  // Not a multi-auth provider credential, delete normally
-  await globalThis.services.db
-    .delete(credentials)
-    .where(eq(credentials.id, credential.id));
+  // Not a multi-auth provider secret, delete normally
+  await globalThis.services.db.delete(secrets).where(eq(secrets.id, secret.id));
 
-  log.debug("credential deleted", { scopeId: scope.id, name });
+  log.debug("secret deleted", { scopeId: scope.id, name });
 }

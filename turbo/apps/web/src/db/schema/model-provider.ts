@@ -8,15 +8,15 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 import { scopes } from "./scope";
-import { credentials } from "./credential";
+import { secrets } from "./secret";
 
 /**
  * Model Providers table
  * Stores metadata for model provider configurations
- * Actual credentials stored in credentials table via FK
+ * Actual secrets stored in secrets table via FK
  *
- * For legacy single-credential providers: uses credentialId
- * For multi-auth providers (like aws-bedrock): uses authMethod + credentials stored separately
+ * For legacy single-secret providers: uses secretId
+ * For multi-auth providers (like aws-bedrock): uses authMethod + secrets stored separately
  */
 export const modelProviders = pgTable(
   "model_providers",
@@ -26,8 +26,8 @@ export const modelProviders = pgTable(
       .references(() => scopes.id, { onDelete: "cascade" })
       .notNull(),
     type: varchar("type", { length: 50 }).notNull(),
-    // Legacy single credential FK - null for multi-auth providers
-    credentialId: uuid("credential_id").references(() => credentials.id, {
+    // Legacy single secret FK - null for multi-auth providers
+    secretId: uuid("secret_id").references(() => secrets.id, {
       onDelete: "cascade",
     }),
     // Auth method for multi-auth providers (e.g., "api-key", "access-keys")
@@ -40,6 +40,6 @@ export const modelProviders = pgTable(
   (table) => [
     uniqueIndex("idx_model_providers_scope_type").on(table.scopeId, table.type),
     index("idx_model_providers_scope").on(table.scopeId),
-    index("idx_model_providers_credential").on(table.credentialId),
+    index("idx_model_providers_secret").on(table.secretId),
   ],
 );

@@ -36,8 +36,6 @@ export const slackBindings = pgTable(
     agentName: varchar("agent_name", { length: 255 }).notNull(),
     // Description for LLM routing
     description: text("description"),
-    // Secrets encrypted with AES-256-GCM
-    encryptedSecrets: text("encrypted_secrets"),
     enabled: boolean("enabled").default(true).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

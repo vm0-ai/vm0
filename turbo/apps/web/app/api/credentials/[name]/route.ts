@@ -12,9 +12,9 @@ import {
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import {
-  getCredential,
-  deleteCredential,
-} from "../../../../src/lib/credential/credential-service";
+  getSecret,
+  deleteSecret,
+} from "../../../../src/lib/secret/secret-service";
 import { logger } from "../../../../src/lib/logger";
 import { isNotFound } from "../../../../src/lib/errors";
 
@@ -32,7 +32,7 @@ const router = tsr.router(credentialsByNameContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const credential = await getCredential(userId, params.name);
+    const credential = await getSecret(userId, params.name);
     if (!credential) {
       return createErrorResponse(
         "NOT_FOUND",
@@ -67,7 +67,7 @@ const router = tsr.router(credentialsByNameContract, {
     log.debug("deleting credential", { userId, name: params.name });
 
     try {
-      await deleteCredential(userId, params.name);
+      await deleteSecret(userId, params.name);
 
       return {
         status: 204 as const,

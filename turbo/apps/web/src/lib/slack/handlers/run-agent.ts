@@ -5,7 +5,6 @@ import {
 } from "../../../db/schema/agent-compose";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { agentSessions } from "../../../db/schema/agent-session";
-import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { generateSandboxToken } from "../../auth/sandbox-token";
 import { buildExecutionContext, prepareAndDispatchRun } from "../../run";
 import { queryAxiom, getDatasetName, DATASETS } from "../../axiom";
@@ -17,13 +16,11 @@ interface RunAgentParams {
   binding: {
     id: string;
     composeId: string;
-    encryptedSecrets: string | null;
   };
   sessionId: string | undefined;
   prompt: string;
   threadContext: string;
   userId: string;
-  encryptionKey: string;
 }
 
 interface WaitOptions {
@@ -50,8 +47,7 @@ interface RunAgentResult {
 export async function runAgentForSlack(
   params: RunAgentParams,
 ): Promise<RunAgentResult> {
-  const { binding, sessionId, prompt, threadContext, userId, encryptionKey } =
-    params;
+  const { binding, sessionId, prompt, threadContext, userId } = params;
 
   try {
     // Get compose and latest version
@@ -84,15 +80,9 @@ export async function runAgentForSlack(
       versionId = latestVersion.id;
     }
 
-    // Decrypt binding secrets if present
-    let secrets: Record<string, string> = {};
-    if (binding.encryptedSecrets) {
-      const decrypted = decryptCredentialValue(
-        binding.encryptedSecrets,
-        encryptionKey,
-      );
-      secrets = parseSecrets(decrypted);
-    }
+    // Note: encryptedSecrets column has been removed from slack_bindings
+    // Secrets are no longer stored per-binding; they will be resolved from the user's scope
+    const secrets: Record<string, string> = {};
 
     // Build the full prompt with thread context
     const fullPrompt = threadContext
@@ -254,28 +244,6 @@ async function getRunOutput(runId: string): Promise<string | undefined> {
   }
 
   return events[0]?.eventData?.result;
-}
-
-/**
- * Parse secrets from KEY=value format
- */
-function parseSecrets(secretsStr: string): Record<string, string> {
-  const secrets: Record<string, string> = {};
-  const lines = secretsStr.split("\n");
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-
-    const eqIndex = trimmed.indexOf("=");
-    if (eqIndex > 0) {
-      const key = trimmed.substring(0, eqIndex).trim();
-      const value = trimmed.substring(eqIndex + 1).trim();
-      secrets[key] = value;
-    }
-  }
-
-  return secrets;
 }
 
 /**

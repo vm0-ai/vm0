@@ -107,7 +107,6 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
         agentName: slackBindings.agentName,
         description: slackBindings.description,
         composeId: slackBindings.composeId,
-        encryptedSecrets: slackBindings.encryptedSecrets,
         enabled: slackBindings.enabled,
       })
       .from(slackBindings)
@@ -271,7 +270,6 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
           prompt: promptText,
           threadContext: formattedContext,
           userId: userLink.vm0UserId,
-          encryptionKey: SECRETS_ENCRYPTION_KEY,
         });
 
       // 12. Create thread session mapping if this is a new thread (no existing session)

@@ -25,10 +25,7 @@ import {
 } from "./resolvers";
 import { expandEnvironmentFromCompose } from "./environment";
 import { getUserScopeByClerkId } from "../scope/scope-service";
-import {
-  getCredentialValue,
-  getCredentialValues,
-} from "../credential/credential-service";
+import { getSecretValue, getSecretValues } from "../secret/secret-service";
 import { getDefaultModelProvider } from "../model-provider/model-provider-service";
 
 const log = logger("run:build-context");
@@ -230,7 +227,7 @@ async function resolveModelProviderCredential(
     }
 
     // Fetch all credentials by name
-    const allCredentialValues = await getCredentialValues(userScope.id);
+    const allCredentialValues = await getSecretValues(userScope.id);
     const credentialsMap: Record<string, string> = {};
     let hasAllRequired = true;
 
@@ -275,10 +272,7 @@ async function resolveModelProviderCredential(
     return { credentials, injectedEnvVars: undefined };
   }
 
-  const credentialValue = await getCredentialValue(
-    userScope.id,
-    credentialName,
-  );
+  const credentialValue = await getSecretValue(userScope.id, credentialName);
 
   if (!credentialValue) {
     return { credentials, injectedEnvVars: undefined };
@@ -329,7 +323,7 @@ async function fetchReferencedCredentials(
     return undefined;
   }
 
-  const credentials = await getCredentialValues(userScope.id);
+  const credentials = await getSecretValues(userScope.id);
   log.debug(
     `Fetched ${Object.keys(credentials).length} credential(s) from scope ${userScope.slug}`,
   );

@@ -14,7 +14,7 @@ import * as sandboxTelemetrySchema from "./schema/sandbox-telemetry";
 import * as scopeSchema from "./schema/scope";
 import * as runnerSchema from "./schema/runner-job-queue";
 import * as agentScheduleSchema from "./schema/agent-schedule";
-import * as credentialSchema from "./schema/credential";
+import * as secretSchema from "./schema/secret";
 import * as modelProviderSchema from "./schema/model-provider";
 import * as slackInstallationSchema from "./schema/slack-installation";
 import * as slackUserLinkSchema from "./schema/slack-user-link";
@@ -38,7 +38,7 @@ export const schema = {
   ...scopeSchema,
   ...runnerSchema,
   ...agentScheduleSchema,
-  ...credentialSchema,
+  ...secretSchema,
   ...modelProviderSchema,
   ...slackInstallationSchema,
   ...slackUserLinkSchema,

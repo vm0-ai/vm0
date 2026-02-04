@@ -11,9 +11,9 @@ import {
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import {
-  getCredential,
-  deleteCredential,
-} from "../../../../src/lib/credential/credential-service";
+  getSecret,
+  deleteSecret,
+} from "../../../../src/lib/secret/secret-service";
 import { logger } from "../../../../src/lib/logger";
 import { isNotFound } from "../../../../src/lib/errors";
 
@@ -31,8 +31,8 @@ const router = tsr.router(secretsByNameContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const credential = await getCredential(userId, params.name);
-    if (!credential) {
+    const secret = await getSecret(userId, params.name);
+    if (!secret) {
       return createErrorResponse(
         "NOT_FOUND",
         `Secret "${params.name}" not found`,
@@ -42,12 +42,12 @@ const router = tsr.router(secretsByNameContract, {
     return {
       status: 200 as const,
       body: {
-        id: credential.id,
-        name: credential.name,
-        description: credential.description,
-        type: credential.type,
-        createdAt: credential.createdAt.toISOString(),
-        updatedAt: credential.updatedAt.toISOString(),
+        id: secret.id,
+        name: secret.name,
+        description: secret.description,
+        type: secret.type,
+        createdAt: secret.createdAt.toISOString(),
+        updatedAt: secret.updatedAt.toISOString(),
       },
     };
   },
@@ -66,7 +66,7 @@ const router = tsr.router(secretsByNameContract, {
     log.debug("deleting secret", { userId, name: params.name });
 
     try {
-      await deleteCredential(userId, params.name);
+      await deleteSecret(userId, params.name);
 
       return {
         status: 204 as const,

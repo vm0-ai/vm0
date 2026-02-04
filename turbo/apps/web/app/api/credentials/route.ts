@@ -11,10 +11,7 @@ import {
 } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
 import { getUserId } from "../../../src/lib/auth/get-user-id";
-import {
-  listCredentials,
-  setCredential,
-} from "../../../src/lib/credential/credential-service";
+import { listSecrets, setSecret } from "../../../src/lib/secret/secret-service";
 import { logger } from "../../../src/lib/logger";
 import { isBadRequest } from "../../../src/lib/errors";
 
@@ -32,7 +29,7 @@ const router = tsr.router(credentialsMainContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const credentials = await listCredentials(userId);
+    const credentials = await listSecrets(userId);
 
     return {
       status: 200 as const,
@@ -65,7 +62,7 @@ const router = tsr.router(credentialsMainContract, {
     log.debug("setting credential", { userId, name });
 
     try {
-      const credential = await setCredential(userId, name, value, description);
+      const credential = await setSecret(userId, name, value, description);
 
       return {
         status: 200 as const,

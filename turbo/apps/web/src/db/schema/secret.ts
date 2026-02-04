@@ -10,14 +10,14 @@ import {
 import { scopes } from "./scope";
 
 /**
- * Credentials table
- * Stores encrypted third-party service credentials at scope level
+ * Secrets table (formerly "credentials")
+ * Stores encrypted third-party service secrets at scope level
  * Values encrypted with AES-256-GCM using SECRETS_ENCRYPTION_KEY
  *
  * Scoped to user's personal scope initially, supports organization scopes in future
  */
-export const credentials = pgTable(
-  "credentials",
+export const secrets = pgTable(
+  "secrets",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     scopeId: uuid("scope_id")
@@ -31,8 +31,8 @@ export const credentials = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
-    uniqueIndex("idx_credentials_scope_name").on(table.scopeId, table.name),
-    index("idx_credentials_scope").on(table.scopeId),
-    index("idx_credentials_type").on(table.type),
+    uniqueIndex("idx_secrets_scope_name").on(table.scopeId, table.name),
+    index("idx_secrets_scope").on(table.scopeId),
+    index("idx_secrets_type").on(table.type),
   ],
 );

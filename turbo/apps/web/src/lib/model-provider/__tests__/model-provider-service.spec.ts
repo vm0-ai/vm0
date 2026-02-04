@@ -21,7 +21,7 @@ import {
 } from "../model-provider-service";
 import { initServices } from "../../init-services";
 import { modelProviders } from "../../../db/schema/model-provider";
-import { credentials } from "../../../db/schema/credential";
+import { secrets } from "../../../db/schema/secret";
 import { scopes } from "../../../db/schema/scope";
 import { eq, and } from "drizzle-orm";
 
@@ -52,8 +52,8 @@ describe("Model Provider Service", () => {
       .delete(modelProviders)
       .where(eq(modelProviders.scopeId, testScopeId));
     await globalThis.services.db
-      .delete(credentials)
-      .where(eq(credentials.scopeId, testScopeId));
+      .delete(secrets)
+      .where(eq(secrets.scopeId, testScopeId));
     await globalThis.services.db
       .delete(scopes)
       .where(eq(scopes.id, testScopeId));
@@ -66,11 +66,11 @@ describe("Model Provider Service", () => {
       .delete(modelProviders)
       .where(eq(modelProviders.scopeId, testScopeId));
     await globalThis.services.db
-      .delete(credentials)
+      .delete(secrets)
       .where(
         and(
-          eq(credentials.scopeId, testScopeId),
-          eq(credentials.type, "model-provider"),
+          eq(secrets.scopeId, testScopeId),
+          eq(secrets.type, "model-provider"),
         ),
       );
   });
@@ -206,7 +206,7 @@ describe("Model Provider Service", () => {
   describe("convertCredentialToModelProvider", () => {
     it("should convert user credential to model provider", async () => {
       // Create a user credential directly
-      await globalThis.services.db.insert(credentials).values({
+      await globalThis.services.db.insert(secrets).values({
         scopeId: testScopeId,
         name: "ANTHROPIC_API_KEY",
         encryptedValue: "encrypted-value",
@@ -225,11 +225,11 @@ describe("Model Provider Service", () => {
       // Verify credential type was updated
       const [credential] = await globalThis.services.db
         .select()
-        .from(credentials)
+        .from(secrets)
         .where(
           and(
-            eq(credentials.scopeId, testScopeId),
-            eq(credentials.name, "ANTHROPIC_API_KEY"),
+            eq(secrets.scopeId, testScopeId),
+            eq(secrets.name, "ANTHROPIC_API_KEY"),
           ),
         );
 
@@ -267,11 +267,11 @@ describe("Model Provider Service", () => {
       // Verify credential is also gone (cascade)
       const [credential] = await globalThis.services.db
         .select()
-        .from(credentials)
+        .from(secrets)
         .where(
           and(
-            eq(credentials.scopeId, testScopeId),
-            eq(credentials.name, "ANTHROPIC_API_KEY"),
+            eq(secrets.scopeId, testScopeId),
+            eq(secrets.name, "ANTHROPIC_API_KEY"),
           ),
         );
       expect(credential).toBeUndefined();
