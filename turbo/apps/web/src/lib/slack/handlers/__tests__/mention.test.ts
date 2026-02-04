@@ -41,6 +41,18 @@ function setupSlackMswHandlers() {
         channel: data.channel,
       });
     }),
+    http.post(
+      "https://slack.com/api/chat.postEphemeral",
+      async ({ request }) => {
+        const body = await request.formData();
+        const data = Object.fromEntries(body.entries());
+        slackApiCalls.push({ method: "chat.postEphemeral", body: data });
+        return HttpResponse.json({
+          ok: true,
+          message_ts: `${Date.now()}.000000`,
+        });
+      },
+    ),
     http.post("https://slack.com/api/chat.update", async ({ request }) => {
       const body = await request.formData();
       const data = Object.fromEntries(body.entries());
@@ -108,7 +120,7 @@ describe("Feature: App Mention Handling", () => {
   });
 
   describe("Scenario: Mention bot as unlinked user", () => {
-    it("should post login prompt when user is not linked", async () => {
+    it("should post ephemeral login prompt when user is not linked", async () => {
       // Given I am a Slack user without a linked account
       const { installation } = await givenSlackWorkspaceInstalled();
 
@@ -121,29 +133,31 @@ describe("Feature: App Mention Handling", () => {
         messageTs: "1234567890.123456",
       });
 
-      // Then I should receive a login prompt with a button
-      const postCalls = slackApiCalls.filter(
-        (c) => c.method === "chat.postMessage",
+      // Then I should receive an ephemeral login prompt (only visible to me)
+      const ephemeralCalls = slackApiCalls.filter(
+        (c) => c.method === "chat.postEphemeral",
       );
-      expect(postCalls).toHaveLength(1);
+      expect(ephemeralCalls).toHaveLength(1);
 
-      const call = postCalls[0]!;
+      const call = ephemeralCalls[0]!;
       expect(call.body).toMatchObject({
         channel: "C123",
+        user: "U-unlinked-user",
       });
 
-      // Check that blocks contain login URL
+      // Check that blocks contain login URL with channel parameter
       const blocks = JSON.parse(
         (call.body as { blocks?: string }).blocks ?? "[]",
       );
-      const hasLoginButton = blocks.some(
-        (block: { type: string; elements?: Array<{ url?: string }> }) =>
-          block.type === "actions" &&
-          block.elements?.some((e: { url?: string }) =>
-            e.url?.includes("/slack/link"),
-          ),
-      );
-      expect(hasLoginButton).toBe(true);
+      const loginButton = blocks
+        .flatMap(
+          (block: { type: string; elements?: Array<{ url?: string }> }) =>
+            block.type === "actions" ? (block.elements ?? []) : [],
+        )
+        .find((e: { url?: string }) => e.url?.includes("/slack/link"));
+
+      expect(loginButton).toBeDefined();
+      expect(loginButton.url).toContain("c=C123"); // Channel ID included for success message
     });
   });
 

@@ -1,10 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { eq, and, isNull } from "drizzle-orm";
 import { checkLinkStatus, linkSlackAccount } from "../actions";
 import { testContext } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
 import { initServices } from "../../../../src/lib/init-services";
 import { slackInstallations } from "../../../../src/db/schema/slack-installation";
 import { slackUserLinks } from "../../../../src/db/schema/slack-user-link";
+import { slackBindings } from "../../../../src/db/schema/slack-binding";
+import {
+  givenLinkedSlackUser,
+  givenUserHasAgent,
+} from "../../../../src/lib/slack/__tests__/helpers";
 
 // Mock external dependencies
 vi.mock("@clerk/nextjs/server");
@@ -176,6 +182,55 @@ describe("Slack Link Actions", () => {
       expect(result.error).toContain(
         "already linked to a different VM0 account",
       );
+    });
+
+    it("should restore orphaned bindings when user re-links after logout", async () => {
+      // Given a linked user with an agent
+      const { userLink, installation } = await givenLinkedSlackUser();
+      const { binding } = await givenUserHasAgent(userLink.id, {
+        agentName: "test-agent",
+        description: "A test agent",
+      });
+
+      // Mock Clerk to return the same vm0UserId
+      mockClerk({ userId: userLink.vm0UserId });
+      initServices();
+
+      // Simulate logout - delete the user link (this orphans the binding)
+      await globalThis.services.db
+        .delete(slackUserLinks)
+        .where(eq(slackUserLinks.id, userLink.id));
+
+      // Verify binding is now orphaned
+      const [orphanedBinding] = await globalThis.services.db
+        .select()
+        .from(slackBindings)
+        .where(
+          and(
+            eq(slackBindings.vm0UserId, userLink.vm0UserId),
+            eq(slackBindings.slackWorkspaceId, installation.slackWorkspaceId),
+            isNull(slackBindings.slackUserLinkId),
+          ),
+        );
+      expect(orphanedBinding).toBeDefined();
+      expect(orphanedBinding?.agentName).toBe("test-agent");
+
+      // Re-link (simulate login again)
+      const result = await linkSlackAccount(
+        userLink.slackUserId,
+        installation.slackWorkspaceId,
+      );
+      expect(result.success).toBe(true);
+
+      // Verify binding is restored to the new user link
+      const [restoredBinding] = await globalThis.services.db
+        .select()
+        .from(slackBindings)
+        .where(eq(slackBindings.id, binding.id));
+
+      expect(restoredBinding).toBeDefined();
+      expect(restoredBinding?.slackUserLinkId).not.toBeNull();
+      expect(restoredBinding?.agentName).toBe("test-agent");
     });
   });
 });

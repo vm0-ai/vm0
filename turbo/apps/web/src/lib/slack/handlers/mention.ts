@@ -209,10 +209,17 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       .limit(1);
 
     if (!userLink) {
-      // 3. User not logged in - post login message
-      const loginUrl = buildLoginUrl(context.workspaceId, context.userId);
-      await postMessage(client, context.channelId, "Please login first", {
-        threadTs,
+      // 3. User not logged in - post ephemeral login message (only visible to user)
+      const loginUrl = buildLoginUrl(
+        context.workspaceId,
+        context.userId,
+        context.channelId,
+      );
+      await client.chat.postEphemeral({
+        channel: context.channelId,
+        user: context.userId,
+        thread_ts: threadTs,
+        text: "Please login first",
         blocks: buildLoginPromptMessage(loginUrl),
       });
       return;
@@ -427,11 +434,16 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
 /**
  * Build the login URL
  */
-function buildLoginUrl(workspaceId: string, slackUserId: string): string {
+function buildLoginUrl(
+  workspaceId: string,
+  slackUserId: string,
+  channelId: string,
+): string {
   const baseUrl = getSlackRedirectBaseUrl();
   const params = new URLSearchParams({
     w: workspaceId,
     u: slackUserId,
+    c: channelId,
   });
   return `${baseUrl}/slack/link?${params.toString()}`;
 }
