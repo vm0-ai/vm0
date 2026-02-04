@@ -55,8 +55,188 @@ interface LogEntry {
   metadata?: Record<string, unknown>;
 }
 
+interface TimeFilterParams {
+  since?: string;
+  until?: string;
+  cursor?: string;
+  order: "asc" | "desc";
+}
+
+/**
+ * Build APL time filter clauses
+ */
+function buildTimeFilters({
+  since,
+  until,
+  cursor,
+  order,
+}: TimeFilterParams): string {
+  const filters: string[] = [];
+
+  if (since) {
+    filters.push(
+      `| where _time >= datetime("${new Date(since).toISOString()}")`,
+    );
+  }
+  if (until) {
+    filters.push(
+      `| where _time <= datetime("${new Date(until).toISOString()}")`,
+    );
+  }
+  if (cursor) {
+    const op = order === "desc" ? "<" : ">";
+    filters.push(
+      `| where _time ${op} datetime("${new Date(cursor).toISOString()}")`,
+    );
+  }
+
+  return filters.join("\n");
+}
+
+/**
+ * Query logs from a specific Axiom dataset
+ */
+async function queryLogsFromDataset<T>(
+  dataset: string,
+  runId: string,
+  timeFilterStr: string,
+  order: "asc" | "desc",
+  limit: number,
+): Promise<T[] | null> {
+  const apl = `['${dataset}']
+| where runId == "${runId}"
+${timeFilterStr}
+| order by _time ${order}
+| limit ${limit + 1}`;
+
+  return queryAxiom<T>(apl);
+}
+
+/**
+ * Convert system log events to LogEntry format
+ */
+function convertSystemLogs(
+  events: AxiomSystemLogEvent[],
+  limit: number,
+): LogEntry[] {
+  return events.slice(0, limit).map((e) => ({
+    timestamp: e._time,
+    type: "system" as const,
+    level: "info" as const,
+    message: e.log,
+  }));
+}
+
+/**
+ * Convert agent events to LogEntry format
+ */
+function convertAgentLogs(
+  events: AxiomAgentEvent[],
+  limit: number,
+): LogEntry[] {
+  return events.slice(0, limit).map((e) => ({
+    timestamp: e._time,
+    type: "agent" as const,
+    level: "info" as const,
+    message: `[${e.eventType}] ${JSON.stringify(e.eventData)}`,
+    metadata: {
+      sequenceNumber: e.sequenceNumber,
+      eventType: e.eventType,
+      eventData: e.eventData,
+    },
+  }));
+}
+
+/**
+ * Convert network events to LogEntry format
+ */
+function convertNetworkLogs(
+  events: AxiomNetworkEvent[],
+  limit: number,
+): LogEntry[] {
+  return events.slice(0, limit).map((e) => ({
+    timestamp: e._time,
+    type: "network" as const,
+    level: e.status >= 400 ? ("error" as const) : ("info" as const),
+    message: `${e.method} ${e.url} - ${e.status} (${e.duration}ms)`,
+    metadata: {
+      method: e.method,
+      url: e.url,
+      status: e.status,
+      duration: e.duration,
+    },
+  }));
+}
+
+/**
+ * Fetch logs based on type filter
+ */
+async function fetchLogs(
+  runId: string,
+  type: "agent" | "system" | "network" | "all",
+  timeFilterStr: string,
+  order: "asc" | "desc",
+  limit: number,
+): Promise<LogEntry[]> {
+  const logs: LogEntry[] = [];
+
+  if (type === "all" || type === "system") {
+    const dataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_SYSTEM);
+    const events = await queryLogsFromDataset<AxiomSystemLogEvent>(
+      dataset,
+      runId,
+      timeFilterStr,
+      order,
+      limit,
+    );
+    if (events) {
+      logs.push(...convertSystemLogs(events, limit));
+    }
+  }
+
+  if (type === "all" || type === "agent") {
+    const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
+    const events = await queryLogsFromDataset<AxiomAgentEvent>(
+      dataset,
+      runId,
+      timeFilterStr,
+      order,
+      limit,
+    );
+    if (events) {
+      logs.push(...convertAgentLogs(events, limit));
+    }
+  }
+
+  if (type === "all" || type === "network") {
+    const dataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_NETWORK);
+    const events = await queryLogsFromDataset<AxiomNetworkEvent>(
+      dataset,
+      runId,
+      timeFilterStr,
+      order,
+      limit,
+    );
+    if (events) {
+      logs.push(...convertNetworkLogs(events, limit));
+    }
+  }
+
+  return logs;
+}
+
+/**
+ * Sort logs by timestamp
+ */
+function sortLogs(logs: LogEntry[], order: "asc" | "desc"): void {
+  logs.sort((a, b) => {
+    const cmp =
+      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+    return order === "desc" ? -cmp : cmp;
+  });
+}
+
 const router = tsr.router(publicRunLogsContract, {
-  // eslint-disable-next-line complexity -- TODO: refactor complex function
   getLogs: async ({ params, query, headers }) => {
     initServices();
 
@@ -81,21 +261,7 @@ const router = tsr.router(publicRunLogsContract, {
       .where(eq(agentRuns.id, params.id))
       .limit(1);
 
-    if (!run) {
-      return {
-        status: 404 as const,
-        body: {
-          error: {
-            type: "not_found_error" as const,
-            code: "resource_not_found",
-            message: `No such run: '${params.id}'`,
-          },
-        },
-      };
-    }
-
-    // Verify ownership
-    if (run.userId !== auth.userId) {
+    if (!run || run.userId !== auth.userId) {
       return {
         status: 404 as const,
         body: {
@@ -111,112 +277,15 @@ const router = tsr.router(publicRunLogsContract, {
     const { type, since, until, order, limit, cursor } = query;
     const effectiveLimit = limit ?? 100;
 
-    // Build time filters for APL
-    const timeFilters: string[] = [];
-    if (since) {
-      timeFilters.push(
-        `| where _time >= datetime("${new Date(since).toISOString()}")`,
-      );
-    }
-    if (until) {
-      timeFilters.push(
-        `| where _time <= datetime("${new Date(until).toISOString()}")`,
-      );
-    }
-    // Cursor is a timestamp for cursor-based pagination
-    if (cursor) {
-      const op = order === "desc" ? "<" : ">";
-      timeFilters.push(
-        `| where _time ${op} datetime("${new Date(cursor).toISOString()}")`,
-      );
-    }
-    const timeFilterStr = timeFilters.join("\n");
-
-    const logs: LogEntry[] = [];
-
-    // Query system logs if requested
-    if (type === "all" || type === "system") {
-      const dataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_SYSTEM);
-      const apl = `['${dataset}']
-| where runId == "${params.id}"
-${timeFilterStr}
-| order by _time ${order}
-| limit ${effectiveLimit + 1}`;
-
-      const events = await queryAxiom<AxiomSystemLogEvent>(apl);
-      if (events) {
-        for (const e of events.slice(0, effectiveLimit)) {
-          logs.push({
-            timestamp: e._time,
-            type: "system",
-            level: "info",
-            message: e.log,
-          });
-        }
-      }
-    }
-
-    // Query agent events if requested
-    if (type === "all" || type === "agent") {
-      const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
-      const apl = `['${dataset}']
-| where runId == "${params.id}"
-${timeFilterStr}
-| order by _time ${order}
-| limit ${effectiveLimit + 1}`;
-
-      const events = await queryAxiom<AxiomAgentEvent>(apl);
-      if (events) {
-        for (const e of events.slice(0, effectiveLimit)) {
-          logs.push({
-            timestamp: e._time,
-            type: "agent",
-            level: "info",
-            message: `[${e.eventType}] ${JSON.stringify(e.eventData)}`,
-            metadata: {
-              sequenceNumber: e.sequenceNumber,
-              eventType: e.eventType,
-              eventData: e.eventData,
-            },
-          });
-        }
-      }
-    }
-
-    // Query network events if requested
-    if (type === "all" || type === "network") {
-      const dataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_NETWORK);
-      const apl = `['${dataset}']
-| where runId == "${params.id}"
-${timeFilterStr}
-| order by _time ${order}
-| limit ${effectiveLimit + 1}`;
-
-      const events = await queryAxiom<AxiomNetworkEvent>(apl);
-      if (events) {
-        for (const e of events.slice(0, effectiveLimit)) {
-          logs.push({
-            timestamp: e._time,
-            type: "network",
-            level: e.status >= 400 ? "error" : "info",
-            message: `${e.method} ${e.url} - ${e.status} (${e.duration}ms)`,
-            metadata: {
-              method: e.method,
-              url: e.url,
-              status: e.status,
-              duration: e.duration,
-            },
-          });
-        }
-      }
-    }
-
-    // Sort combined logs by timestamp
-    logs.sort((a, b) => {
-      const cmp =
-        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
-      return order === "desc" ? -cmp : cmp;
-    });
+    const timeFilterStr = buildTimeFilters({ since, until, cursor, order });
+    const logs = await fetchLogs(
+      params.id,
+      type,
+      timeFilterStr,
+      order,
+      effectiveLimit,
+    );
+    sortLogs(logs, order);
 
     // Apply limit and determine pagination
     const hasMore = logs.length > effectiveLimit;
@@ -229,8 +298,8 @@ ${timeFilterStr}
       body: {
         data,
         pagination: {
-          hasMore: hasMore,
-          nextCursor: nextCursor,
+          hasMore,
+          nextCursor,
         },
       },
     };
