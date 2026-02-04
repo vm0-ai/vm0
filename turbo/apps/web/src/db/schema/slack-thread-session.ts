@@ -30,8 +30,9 @@ export const slackThreadSessions = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
-    // Each thread can only have one session
-    uniqueIndex("idx_slack_thread_sessions_thread").on(
+    // Each thread + binding combination can only have one session
+    uniqueIndex("idx_slack_thread_sessions_thread_binding").on(
+      table.slackBindingId,
       table.slackChannelId,
       table.slackThreadTs,
     ),

@@ -679,6 +679,8 @@ async function handleAgentAddSubmission(
   // Create binding
   await globalThis.services.db.insert(slackBindings).values({
     slackUserLinkId: userLink.id,
+    vm0UserId: userLink.vm0UserId,
+    slackWorkspaceId: payload.team.id,
     composeId: formValues.composeId,
     agentName,
     encryptedSecrets,

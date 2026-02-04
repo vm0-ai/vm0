@@ -1,11 +1,12 @@
 "use server";
 
 import { auth } from "@clerk/nextjs/server";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { initServices } from "../../../src/lib/init-services";
 import { env } from "../../../src/env";
 import { slackUserLinks } from "../../../src/db/schema/slack-user-link";
 import { slackInstallations } from "../../../src/db/schema/slack-installation";
+import { slackBindings } from "../../../src/db/schema/slack-binding";
 import { decryptCredentialValue } from "../../../src/lib/crypto/secrets-encryption";
 import { createSlackClient } from "../../../src/lib/slack";
 
@@ -108,6 +109,16 @@ export async function linkSlackAccount(
 
   if (existingLink) {
     if (existingLink.vm0UserId === userId) {
+      // Send success message even for already linked users
+      if (channelId) {
+        sendSuccessMessage(
+          installation.encryptedBotToken,
+          channelId,
+          slackUserId,
+        ).catch((error) => {
+          console.error("Error sending Slack message:", error);
+        });
+      }
       return { success: true, alreadyLinked: true };
     }
     return {
@@ -117,11 +128,35 @@ export async function linkSlackAccount(
   }
 
   // Create the link
-  await globalThis.services.db.insert(slackUserLinks).values({
-    slackUserId,
-    slackWorkspaceId: workspaceId,
-    vm0UserId: userId,
-  });
+  const [newUserLink] = await globalThis.services.db
+    .insert(slackUserLinks)
+    .values({
+      slackUserId,
+      slackWorkspaceId: workspaceId,
+      vm0UserId: userId,
+    })
+    .returning({ id: slackUserLinks.id });
+
+  // Restore orphaned bindings from previous logout
+  if (newUserLink) {
+    const restoredCount = await globalThis.services.db
+      .update(slackBindings)
+      .set({ slackUserLinkId: newUserLink.id })
+      .where(
+        and(
+          eq(slackBindings.vm0UserId, userId),
+          eq(slackBindings.slackWorkspaceId, workspaceId),
+          isNull(slackBindings.slackUserLinkId),
+        ),
+      )
+      .then((result) => result.rowCount ?? 0);
+
+    if (restoredCount > 0) {
+      console.log(
+        `Restored ${restoredCount} orphaned bindings for user ${userId} in workspace ${workspaceId}`,
+      );
+    }
+  }
 
   // Send success message to the Slack channel
   if (channelId) {

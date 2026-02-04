@@ -131,8 +131,8 @@ export async function runAgentForSlack(
 
     // Wait for run completion
     const result = await waitForRunCompletion(run.id, {
-      timeoutMs: 5 * 60 * 1000, // 5 minute timeout
-      pollIntervalMs: 1000,
+      timeoutMs: 30 * 60 * 1000, // 30 minute timeout
+      pollIntervalMs: 5000, // 5 second polling interval
     });
 
     if (result.status === "completed") {

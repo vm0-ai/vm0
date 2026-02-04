@@ -20,9 +20,15 @@ export const slackBindings = pgTable(
   "slack_bindings",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    slackUserLinkId: uuid("slack_user_link_id")
-      .notNull()
-      .references(() => slackUserLinks.id, { onDelete: "cascade" }),
+    // Nullable to support orphaned bindings during logout/login cycle
+    slackUserLinkId: uuid("slack_user_link_id").references(
+      () => slackUserLinks.id,
+      { onDelete: "set null" },
+    ),
+    // VM0 user ID for restoring bindings after logout/login
+    vm0UserId: text("vm0_user_id").notNull(),
+    // Slack workspace ID for scoping orphaned bindings lookup
+    slackWorkspaceId: varchar("slack_workspace_id", { length: 255 }).notNull(),
     composeId: uuid("compose_id")
       .notNull()
       .references(() => agentComposes.id, { onDelete: "cascade" }),

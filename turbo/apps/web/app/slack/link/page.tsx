@@ -193,6 +193,14 @@ function SlackLinkContent(): React.JSX.Element {
               </div>
               <button
                 onClick={() => {
+                  // Call linkSlackAccount to send success message to Slack
+                  if (slackUserId && workspaceId) {
+                    linkSlackAccount(slackUserId, workspaceId, channelId).catch(
+                      (error) => {
+                        console.error("Error sending Slack message:", error);
+                      },
+                    );
+                  }
                   const params = new URLSearchParams({ linked: "true" });
                   if (workspaceId) params.set("workspace_id", workspaceId);
                   if (channelId) params.set("channel_id", channelId);

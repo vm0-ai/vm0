@@ -193,16 +193,16 @@ async function handleLogoutCommand(
       blocks: buildErrorMessage("You are not logged in."),
     });
   }
-  // Delete user link and associated bindings
-  await globalThis.services.db
-    .delete(slackBindings)
-    .where(eq(slackBindings.slackUserLinkId, userLink.id));
+  // Delete user link only - bindings will be orphaned (slackUserLinkId set to NULL)
+  // They will be restored when the user logs in again
   await globalThis.services.db
     .delete(slackUserLinks)
     .where(eq(slackUserLinks.id, userLink.id));
   return NextResponse.json({
     response_type: "ephemeral",
-    blocks: buildSuccessMessage("You have been logged out successfully."),
+    blocks: buildSuccessMessage(
+      "You have been logged out successfully.\n\nYour agent configurations have been preserved and will be restored when you log in again.",
+    ),
   });
 }
 

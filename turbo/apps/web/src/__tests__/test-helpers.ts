@@ -567,6 +567,8 @@ export function testContext(): TestContext {
       .insert(slackBindings)
       .values({
         slackUserLinkId: userLinkId,
+        vm0UserId: link.vm0UserId,
+        slackWorkspaceId: link.slackWorkspaceId,
         composeId: compose.id,
         agentName,
         description,
