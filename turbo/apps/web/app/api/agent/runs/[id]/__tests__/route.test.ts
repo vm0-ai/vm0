@@ -18,6 +18,7 @@ vi.mock("@clerk/nextjs/server");
 vi.mock("@e2b/code-interpreter");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
+vi.mock("@axiomhq/js");
 
 const context = testContext();
 
@@ -34,7 +35,7 @@ describe("GET /api/agent/runs/:id - Get Run By ID", () => {
   });
 
   describe("Successful Retrieval", () => {
-    it("should return run details for valid run ID", async () => {
+    it("should return run details with all expected fields", async () => {
       const run = await createTestRun(testComposeId, "Test prompt");
 
       const request = createTestRequest(
@@ -47,39 +48,10 @@ describe("GET /api/agent/runs/:id - Get Run By ID", () => {
       expect(response.status).toBe(200);
       expect(data.runId).toBe(run.runId);
       expect(data.prompt).toBe("Test prompt");
-    });
-
-    it("should return all expected fields", async () => {
-      const run = await createTestRun(testComposeId, "Test prompt with fields");
-
-      const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs/${run.runId}`,
-      );
-
-      const response = await GET(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data).toHaveProperty("runId");
-      expect(data).toHaveProperty("agentComposeVersionId");
-      expect(data).toHaveProperty("status");
-      expect(data).toHaveProperty("prompt");
-      expect(data).toHaveProperty("createdAt");
-    });
-
-    it("should return running run with correct status", async () => {
-      const run = await createTestRun(testComposeId, "Running run");
-
-      const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs/${run.runId}`,
-      );
-
-      const response = await GET(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
       expect(data.status).toBe("running");
       expect(data.completedAt).toBeUndefined();
+      expect(data).toHaveProperty("agentComposeVersionId");
+      expect(data).toHaveProperty("createdAt");
     });
 
     it("should return completed run with result", async () => {
