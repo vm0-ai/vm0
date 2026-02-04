@@ -40,7 +40,7 @@ describe("ProxyManager", () => {
 
       expect(config.caDir).toBe(path.join(tempDir, "proxy"));
       expect(config.addonPath).toBe(
-        path.join(tempDir, "proxy", "mitm_addon.py"),
+        path.join(tempDir, "proxy", "mitm-addon.py"),
       );
     });
 
@@ -58,7 +58,7 @@ describe("ProxyManager", () => {
       expect(config.port).toBe(9090);
       expect(config.apiUrl).toBe("https://custom.api.com");
       expect(config.caDir).toBe(customDir);
-      expect(config.addonPath).toBe(path.join(customDir, "mitm_addon.py"));
+      expect(config.addonPath).toBe(path.join(customDir, "mitm-addon.py"));
     });
 
     it("should use default port when not specified", () => {
@@ -122,35 +122,27 @@ describe("ProxyManager", () => {
   });
 
   describe("ensureAddonScript", () => {
-    it("should create directory and write addon script", () => {
+    it("should throw error if addon script does not exist", () => {
       const caDir = path.join(tempDir, "proxy");
-      const addonPath = path.join(caDir, "mitm_addon.py");
 
-      // Ensure directory doesn't exist
-      expect(fs.existsSync(caDir)).toBe(false);
-
-      proxyManager.ensureAddonScript();
-
-      // Verify directory was created
-      expect(fs.existsSync(caDir)).toBe(true);
-      // Verify addon script was written
-      expect(fs.existsSync(addonPath)).toBe(true);
-      // Verify file content
-      const content = fs.readFileSync(addonPath, "utf-8");
-      expect(content).toContain("def request");
-    });
-
-    it("should not create directory if it exists", () => {
-      const caDir = path.join(tempDir, "proxy");
-      const addonPath = path.join(caDir, "mitm_addon.py");
-
-      // Create directory first
+      // Create directory but not the addon script
       fs.mkdirSync(caDir, { recursive: true });
 
-      proxyManager.ensureAddonScript();
+      expect(() => proxyManager.ensureAddonScript()).toThrow(
+        "Addon script not found",
+      );
+    });
 
-      // Verify addon script was still written
-      expect(fs.existsSync(addonPath)).toBe(true);
+    it("should pass if addon script exists", () => {
+      const caDir = path.join(tempDir, "proxy");
+      const addonPath = path.join(caDir, "mitm-addon.py");
+
+      // Create directory and addon script
+      fs.mkdirSync(caDir, { recursive: true });
+      fs.writeFileSync(addonPath, "# test addon script", { mode: 0o755 });
+
+      // Should not throw
+      expect(() => proxyManager.ensureAddonScript()).not.toThrow();
     });
   });
 
@@ -171,19 +163,31 @@ describe("ProxyManager", () => {
       );
     });
 
-    it("should pass validation and write addon script when CA exists", () => {
+    it("should throw error if addon script does not exist", () => {
       const caDir = path.join(tempDir, "proxy");
       const caCertPath = path.join(caDir, "mitmproxy-ca.pem");
-      const addonPath = path.join(caDir, "mitm_addon.py");
 
-      // Create directory and CA certificate
+      // Create directory and CA certificate but not addon script
       fs.mkdirSync(caDir, { recursive: true });
       fs.writeFileSync(caCertPath, "fake cert content");
 
-      proxyManager.validateConfig();
+      expect(() => proxyManager.validateConfig()).toThrow(
+        "Addon script not found",
+      );
+    });
 
-      // Should write addon script as part of validation
-      expect(fs.existsSync(addonPath)).toBe(true);
+    it("should pass validation when CA and addon script exist", () => {
+      const caDir = path.join(tempDir, "proxy");
+      const caCertPath = path.join(caDir, "mitmproxy-ca.pem");
+      const addonPath = path.join(caDir, "mitm-addon.py");
+
+      // Create directory, CA certificate, and addon script
+      fs.mkdirSync(caDir, { recursive: true });
+      fs.writeFileSync(caCertPath, "fake cert content");
+      fs.writeFileSync(addonPath, "# test addon script", { mode: 0o755 });
+
+      // Should not throw
+      expect(() => proxyManager.validateConfig()).not.toThrow();
     });
   });
 

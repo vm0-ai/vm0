@@ -225,6 +225,7 @@
         mode: '0755'
       with_fileglob:
         - "{{ playbook_dir }}/../../turbo/apps/runner/scripts/deploy/*.sh"
+        - "{{ playbook_dir }}/../../turbo/apps/runner/scripts/deploy/*.py"
         - "{{ playbook_dir }}/../../crates/target/aarch64-unknown-linux-musl/release/vm-init"
       tags: [prepare]
 
@@ -305,6 +306,16 @@
         group: "{{ ansible_user }}"
         recurse: yes
       when: not proxy_ca_file.stat.exists
+      tags: [prepare]
+
+    - name: Copy mitmproxy addon script to proxy directory
+      copy:
+        src: "{{ runner_base_dir }}/deploy-runner/mitm-addon.py"
+        dest: "{{ runner_base_dir }}/proxy/mitm-addon.py"
+        remote_src: yes
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
       tags: [prepare]
 
     - name: Ensure proxy-ca directory exists in deploy-runner

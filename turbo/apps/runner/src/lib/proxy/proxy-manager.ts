@@ -10,7 +10,6 @@ import { spawn, ChildProcess } from "child_process";
 import fs from "fs";
 import path from "path";
 import { getVMRegistry } from "./vm-registry";
-import { RUNNER_MITM_ADDON_SCRIPT } from "./mitm-addon-script";
 import { createLogger } from "../logger.js";
 
 const logger = createLogger("ProxyManager");
@@ -64,8 +63,8 @@ export class ProxyManager {
   private isRunning: boolean = false;
 
   constructor(config: ProxyConfigInput) {
-    // Derive addonPath from caDir
-    const addonPath = path.join(config.caDir, "mitm_addon.py");
+    // Derive addonPath from caDir (proxy directory)
+    const addonPath = path.join(config.caDir, "mitm-addon.py");
     this.config = {
       ...DEFAULT_PROXY_OPTIONS,
       ...config,
@@ -96,18 +95,13 @@ export class ProxyManager {
    * Ensure the addon script exists at the configured path
    */
   ensureAddonScript(): void {
-    const addonDir = path.dirname(this.config.addonPath);
-
-    // Create directory if needed
-    if (!fs.existsSync(addonDir)) {
-      fs.mkdirSync(addonDir, { recursive: true });
+    if (!fs.existsSync(this.config.addonPath)) {
+      throw new Error(
+        `Addon script not found: ${this.config.addonPath}. ` +
+          "Ensure the deploy-runner directory was set up correctly.",
+      );
     }
-
-    // Write addon script
-    fs.writeFileSync(this.config.addonPath, RUNNER_MITM_ADDON_SCRIPT, {
-      mode: 0o755,
-    });
-    logger.log(`Addon script written to ${this.config.addonPath}`);
+    logger.log(`Using addon script at ${this.config.addonPath}`);
   }
 
   /**

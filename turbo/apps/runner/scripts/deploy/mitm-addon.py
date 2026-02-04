@@ -1,10 +1,4 @@
-/**
- * mitmproxy addon script for runner-level network security
- *
- * This script is written to the runner's proxy directory at startup
- * and used by mitmproxy to intercept and forward VM traffic.
- */
-export const RUNNER_MITM_ADDON_SCRIPT = `#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 mitmproxy addon for VM0 runner-level network security mode.
 
@@ -83,7 +77,7 @@ def log_network_entry(run_id: str, entry: dict) -> None:
     try:
         fd = os.open(log_path, os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o644)
         try:
-            os.write(fd, (json.dumps(entry) + "\\n").encode())
+            os.write(fd, (json.dumps(entry) + "\n").encode())
         finally:
             os.close(fd)
     except Exception as e:
@@ -484,4 +478,3 @@ def response(flow: http.HTTPFlow) -> None:
 
 # mitmproxy addon registration
 addons = [tls_clienthello, request, response]
-`;
