@@ -12,7 +12,8 @@ import { existsSync, readFileSync, writeFileSync, rmSync } from "fs";
 import * as readline from "readline";
 import { loadConfig } from "../lib/config.js";
 import { runnerPaths } from "../lib/paths.js";
-import { findProcessByVmId, killProcess } from "../lib/firecracker/process.js";
+import { findProcessByVmId } from "../lib/firecracker/process.js";
+import { gracefulKillProcess } from "../lib/utils/process.js";
 import { type VmId, createVmId } from "../lib/firecracker/vm-id.js";
 import { RunnerStatusSchema } from "../lib/runner/types.js";
 
@@ -74,7 +75,7 @@ export const killCommand = new Command("kill")
 
         // 1. Kill process
         if (proc) {
-          const killed = await killProcess(proc.pid);
+          const killed = await gracefulKillProcess(proc.pid);
           results.push({
             step: "Firecracker process",
             success: killed,

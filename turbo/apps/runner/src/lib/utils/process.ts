@@ -23,6 +23,38 @@ export function isProcessRunning(pid: number): boolean {
 }
 
 /**
+ * Kill a process with SIGTERM, wait, then SIGKILL if needed
+ */
+export async function gracefulKillProcess(
+  pid: number,
+  timeoutMs: number = 5000,
+): Promise<boolean> {
+  if (!isProcessRunning(pid)) return true;
+
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    return !isProcessRunning(pid);
+  }
+
+  const startTime = Date.now();
+  while (Date.now() - startTime < timeoutMs) {
+    if (!isProcessRunning(pid)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  if (isProcessRunning(pid)) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      // Ignore - process may have exited
+    }
+  }
+
+  return !isProcessRunning(pid);
+}
+
+/**
  * Kill a process and all its descendants (children, grandchildren, etc.)
  *
  * Uses depth-first traversal to kill children before parents,

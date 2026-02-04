@@ -8,7 +8,6 @@
 import { readdirSync, readFileSync, existsSync } from "fs";
 import path from "path";
 import { type VmId, createVmId, vmIdValue } from "./vm-id.js";
-import { isProcessRunning } from "../utils/process.js";
 
 export interface FirecrackerProcess {
   pid: number;
@@ -128,38 +127,6 @@ export function findProcessByVmId(vmId: VmId): FirecrackerProcess | null {
   const processes = findFirecrackerProcesses();
   const vmIdStr = vmIdValue(vmId);
   return processes.find((p) => vmIdValue(p.vmId) === vmIdStr) || null;
-}
-
-/**
- * Kill a process with SIGTERM, wait, then SIGKILL if needed
- */
-export async function killProcess(
-  pid: number,
-  timeoutMs: number = 5000,
-): Promise<boolean> {
-  if (!isProcessRunning(pid)) return true;
-
-  try {
-    process.kill(pid, "SIGTERM");
-  } catch {
-    return !isProcessRunning(pid);
-  }
-
-  const startTime = Date.now();
-  while (Date.now() - startTime < timeoutMs) {
-    if (!isProcessRunning(pid)) return true;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-
-  if (isProcessRunning(pid)) {
-    try {
-      process.kill(pid, "SIGKILL");
-    } catch {
-      // Ignore - process may have exited
-    }
-  }
-
-  return !isProcessRunning(pid);
 }
 
 interface MitmproxyProcess {
