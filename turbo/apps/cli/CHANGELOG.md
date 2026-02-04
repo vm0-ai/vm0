@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.15.2](https://github.com/vm0-ai/vm0/compare/cli-v9.15.1...cli-v9.15.2) (2026-02-04)
+
+
+### Bug Fixes
+
+* **cli:** remove shell option from claude command spawn ([#2273](https://github.com/vm0-ai/vm0/issues/2273)) ([b462f41](https://github.com/vm0-ai/vm0/commit/b462f418b97d6caf9ee63914d568975632eda134))
+
 ## [9.15.1](https://github.com/vm0-ai/vm0/compare/cli-v9.15.0...cli-v9.15.1) (2026-02-03)
 
 
