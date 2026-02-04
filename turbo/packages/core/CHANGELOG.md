@@ -1,5 +1,13 @@
 # Changelog
 
+## [7.15.0](https://github.com/vm0-ai/vm0/compare/core-v7.14.0...core-v7.15.0) (2026-02-04)
+
+
+### Features
+
+* add /api/secrets endpoints for credential-to-secret migration (Phase 1) ([#2293](https://github.com/vm0-ai/vm0/issues/2293)) ([0954347](https://github.com/vm0-ai/vm0/commit/0954347e24a495d40b4ad0b28afb7c338e56ee6c))
+* **model-provider:** add Z.AI (GLM) support ([#2291](https://github.com/vm0-ai/vm0/issues/2291)) ([a4a0df9](https://github.com/vm0-ai/vm0/commit/a4a0df92c63461c0e957b80eb2f79d4cfa83889b)), closes [#2283](https://github.com/vm0-ai/vm0/issues/2283)
+
 ## [7.14.0](https://github.com/vm0-ai/vm0/compare/core-v7.13.0...core-v7.14.0) (2026-02-04)
 
 

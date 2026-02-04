@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.17.0](https://github.com/vm0-ai/vm0/compare/cli-v9.16.0...cli-v9.17.0) (2026-02-04)
+
+
+### Features
+
+* **cli:** default to vm0.yaml when compose is called without arguments ([#2292](https://github.com/vm0-ai/vm0/issues/2292)) ([f928631](https://github.com/vm0-ai/vm0/commit/f9286315b25fc7265564b9b6a8819666e8c9790c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.15.0
+
 ## [9.16.0](https://github.com/vm0-ai/vm0/compare/cli-v9.15.2...cli-v9.16.0) (2026-02-04)
 
 

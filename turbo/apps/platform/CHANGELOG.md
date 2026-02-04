@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.44.2](https://github.com/vm0-ai/vm0/compare/platform-v0.44.1...platform-v0.44.2) (2026-02-04)
+
+
+### Bug Fixes
+
+* **platform:** only override feature switches when value is explicitly set in localStorage ([#2297](https://github.com/vm0-ai/vm0/issues/2297)) ([a7e97de](https://github.com/vm0-ai/vm0/commit/a7e97de6e8379a6a3d9557264b491b6d13e32809)), closes [#2289](https://github.com/vm0-ai/vm0/issues/2289)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.15.0
+
 ## [0.44.1](https://github.com/vm0-ai/vm0/compare/platform-v0.44.0...platform-v0.44.1) (2026-02-04)
 
 

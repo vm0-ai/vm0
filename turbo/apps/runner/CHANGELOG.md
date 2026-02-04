@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.11.3](https://github.com/vm0-ai/vm0/compare/runner-v3.11.2...runner-v3.11.3) (2026-02-04)
+
+
+### Bug Fixes
+
+* **vsock-agent:** improve error handling (mutex poison + decoder protocol errors) ([#2285](https://github.com/vm0-ai/vm0/issues/2285)) ([7ecc8ac](https://github.com/vm0-ai/vm0/commit/7ecc8ac28ba87b3408c09bb9e95f15658648db5c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.15.0
+
 ## [3.11.2](https://github.com/vm0-ai/vm0/compare/runner-v3.11.1...runner-v3.11.2) (2026-02-04)
 
 

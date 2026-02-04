@@ -1,6 +1,6 @@
 {
   "name": "web",
-  "version": "11.25.0",
+  "version": "11.26.0",
   "type": "module",
   "private": true,
   "scripts": {

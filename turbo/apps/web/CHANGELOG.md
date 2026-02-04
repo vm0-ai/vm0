@@ -1,5 +1,20 @@
 # Changelog
 
+## [11.26.0](https://github.com/vm0-ai/vm0/compare/web-v11.25.0...web-v11.26.0) (2026-02-04)
+
+
+### Features
+
+* add /api/secrets endpoints for credential-to-secret migration (Phase 1) ([#2293](https://github.com/vm0-ai/vm0/issues/2293)) ([0954347](https://github.com/vm0-ai/vm0/commit/0954347e24a495d40b4ad0b28afb7c338e56ee6c))
+* **web:** add slack session continuation and binding preservation ([#2294](https://github.com/vm0-ai/vm0/issues/2294)) ([8a9701e](https://github.com/vm0-ai/vm0/commit/8a9701ecd7a1e3639000e8f2936a322216ab2006))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 7.15.0
+
 ## [11.25.0](https://github.com/vm0-ai/vm0/compare/web-v11.24.1...web-v11.25.0) (2026-02-04)
 
 
