@@ -299,7 +299,7 @@ describe("POST /api/slack/commands", () => {
       expect(text).toBe("");
     });
 
-    it("returns error when user already has a binding", async () => {
+    it("returns error with agent name when user already has a binding", async () => {
       const { installation, userLink } = await context.createSlackInstallation({
         withUserLink: true,
       });
@@ -320,7 +320,8 @@ describe("POST /api/slack/commands", () => {
       expect(response.status).toBe(200);
       expect(data.response_type).toBe("ephemeral");
       const blockStr = JSON.stringify(data.blocks);
-      expect(blockStr).toContain("already have an agent linked");
+      expect(blockStr).toContain("existing-agent");
+      expect(blockStr).toContain("already have agent");
     });
   });
 

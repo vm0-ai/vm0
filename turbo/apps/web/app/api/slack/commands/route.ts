@@ -368,16 +368,17 @@ async function handleAgentLink(
 ): Promise<NextResponse> {
   // Check if user already has a binding (single binding constraint)
   const existingBindings = await globalThis.services.db
-    .select({ id: slackBindings.id })
+    .select({ id: slackBindings.id, agentName: slackBindings.agentName })
     .from(slackBindings)
     .where(eq(slackBindings.slackUserLinkId, userLinkId))
     .limit(1);
 
   if (existingBindings.length > 0) {
+    const agentName = existingBindings[0]?.agentName;
     return NextResponse.json({
       response_type: "ephemeral",
       blocks: buildErrorMessage(
-        "You already have an agent linked.\n\nUse `/vm0 agent unlink` to remove it first, or `/vm0 agent update` to update its configuration.",
+        `You already have agent \`${agentName}\` linked.\n\nUse \`/vm0 agent unlink\` to remove it first, or \`/vm0 agent update\` to update its configuration.`,
       ),
     });
   }
