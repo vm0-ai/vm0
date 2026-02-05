@@ -28,6 +28,7 @@ describe("Agent Sharing Commands", () => {
 
   const testComposeId = "test-compose-123";
   const testAgentName = "my-agent";
+  const testScopeSlug = "test-user";
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -50,6 +51,16 @@ describe("Agent Sharing Commands", () => {
           { error: { message: "Agent compose not found", code: "NOT_FOUND" } },
           { status: 404 },
         );
+      }),
+      // Default handler for scope API
+      http.get("http://localhost:3000/api/scope", () => {
+        return HttpResponse.json({
+          id: "scope-123",
+          slug: testScopeSlug,
+          type: "personal",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
       }),
     );
   });
@@ -84,6 +95,10 @@ describe("Agent Sharing Commands", () => {
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("now public"),
+      );
+      // Check for run command hint
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining(`vm0 run ${testScopeSlug}/${testAgentName}`),
       );
     });
 
@@ -208,6 +223,10 @@ describe("Agent Sharing Commands", () => {
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("shared with"),
+      );
+      // Check for run command hint
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining(`vm0 run ${testScopeSlug}/${testAgentName}`),
       );
     });
 

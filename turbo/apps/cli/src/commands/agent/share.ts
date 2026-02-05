@@ -1,6 +1,11 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { getComposeByName, httpPost, type ApiError } from "../../lib/api";
+import {
+  getComposeByName,
+  getScope,
+  httpPost,
+  type ApiError,
+} from "../../lib/api";
 
 export const shareCommand = new Command()
   .name("share")
@@ -15,6 +20,9 @@ export const shareCommand = new Command()
         console.error(chalk.red(`✗ Agent not found: ${name}`));
         process.exit(1);
       }
+
+      // Get scope for display
+      const scope = await getScope();
 
       // Add email permission
       const response = await httpPost(
@@ -35,9 +43,13 @@ export const shareCommand = new Command()
         throw new Error(error.error?.message || "Failed to share agent");
       }
 
+      const fullName = `${scope.slug}/${name}`;
       console.log(
         chalk.green(`✓ Agent "${name}" shared with ${options.email}`),
       );
+      console.log();
+      console.log("They can now run your agent with:");
+      console.log(chalk.cyan(`  vm0 run ${fullName} "your prompt"`));
     } catch (error) {
       console.error(chalk.red("✗ Failed to share agent"));
       if (error instanceof Error) {
