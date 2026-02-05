@@ -8,7 +8,7 @@ import {
 } from "../../lib/api";
 
 export const shareCommand = new Command()
-  .name("share")
+  .name("experimental-share")
   .description("Share an agent with a user by email")
   .argument("<name>", "Agent name")
   .requiredOption("--email <email>", "Email address to share with")
@@ -49,7 +49,11 @@ export const shareCommand = new Command()
       );
       console.log();
       console.log("They can now run your agent with:");
-      console.log(chalk.cyan(`  vm0 run ${fullName} "your prompt"`));
+      console.log(
+        chalk.cyan(
+          `  vm0 run ${fullName} --experimental-shared-agent "your prompt"`,
+        ),
+      );
     } catch (error) {
       console.error(chalk.red("✗ Failed to share agent"));
       if (error instanceof Error) {

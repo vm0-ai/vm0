@@ -8,7 +8,7 @@ import {
 } from "../../lib/api";
 
 export const publicCommand = new Command()
-  .name("public")
+  .name("experimental-public")
   .description("Make an agent public (accessible to all authenticated users)")
   .argument("<name>", "Agent name")
   .action(async (name: string) => {
@@ -42,7 +42,11 @@ export const publicCommand = new Command()
       console.log(chalk.green(`✓ Agent "${name}" is now public`));
       console.log();
       console.log("Others can now run your agent with:");
-      console.log(chalk.cyan(`  vm0 run ${fullName} "your prompt"`));
+      console.log(
+        chalk.cyan(
+          `  vm0 run ${fullName} --experimental-shared-agent "your prompt"`,
+        ),
+      );
     } catch (error) {
       console.error(chalk.red("✗ Failed to make agent public"));
       if (error instanceof Error) {

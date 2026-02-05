@@ -3,7 +3,7 @@ import chalk from "chalk";
 import { getComposeByName, httpDelete, type ApiError } from "../../lib/api";
 
 export const privateCommand = new Command()
-  .name("private")
+  .name("experimental-private")
   .description("Make an agent private (remove public access)")
   .argument("<name>", "Agent name")
   .action(async (name: string) => {

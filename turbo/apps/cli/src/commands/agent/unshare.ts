@@ -3,7 +3,7 @@ import chalk from "chalk";
 import { getComposeByName, httpDelete, type ApiError } from "../../lib/api";
 
 export const unshareCommand = new Command()
-  .name("unshare")
+  .name("experimental-unshare")
   .description("Remove sharing from a user")
   .argument("<name>", "Agent name")
   .requiredOption("--email <email>", "Email address to unshare")
