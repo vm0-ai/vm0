@@ -359,7 +359,7 @@ jobs:
           environment-variables: |
             VITE_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
             VITE_API_URL=https://www.vm0.ai
-            VITE_SENTRY_DSN=${{ secrets.VITE_SENTRY_DSN_PLATFORM }}
+            VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN_PLATFORM }}
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
             SENTRY_ORG=${{ vars.SENTRY_ORG }}
             SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_PLATFORM }}
