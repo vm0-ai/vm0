@@ -130,25 +130,32 @@ export function parseMitmproxyCmdline(cmdline: string): string | null {
  * Parse /proc/{pid}/cmdline content to extract runner process info.
  * Pure function for easy testing.
  *
- * Looks for: "start" or "benchmark" mode AND "--config <path>.yaml"
- * Order doesn't matter (PM2 cluster mode may reorder args)
+ * Looks for: "start" or "benchmark" followed by "--config <path>.yaml"
  */
 export function parseRunnerCmdline(
   cmdline: string,
 ): { configPath: string; mode: "start" | "benchmark" } | null {
   const args = cmdline.split("\0").filter((a) => a !== "");
 
-  // Find mode
-  let mode: "start" | "benchmark" | null = null;
-  if (args.includes("start")) {
-    mode = "start";
-  } else if (args.includes("benchmark")) {
-    mode = "benchmark";
-  }
-  if (!mode) return null;
+  // Find mode (start or benchmark)
+  const startIdx = args.indexOf("start");
+  const benchmarkIdx = args.indexOf("benchmark");
 
-  // Find --config with .yaml/.yml file
-  const configIdx = args.indexOf("--config");
+  let mode: "start" | "benchmark";
+  let modeIdx: number;
+
+  if (startIdx !== -1 && (benchmarkIdx === -1 || startIdx < benchmarkIdx)) {
+    mode = "start";
+    modeIdx = startIdx;
+  } else if (benchmarkIdx !== -1) {
+    mode = "benchmark";
+    modeIdx = benchmarkIdx;
+  } else {
+    return null;
+  }
+
+  // Find --config after mode
+  const configIdx = args.indexOf("--config", modeIdx + 1);
   if (configIdx === -1 || configIdx >= args.length - 1) return null;
 
   const configPath = args[configIdx + 1];
