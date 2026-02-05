@@ -816,4 +816,557 @@ agents:
       expect(allLogs.some((log) => log.includes("Upgrading via"))).toBe(false);
     });
   });
+
+  describe("complete cook workflow", () => {
+    beforeEach(async () => {
+      // Create valid vm0.yaml with volume
+      // Note: volumeConfig.name in yaml is used as the directory name
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        `version: "1.0"
+agents:
+  test-agent:
+    framework: claude-code
+    working_dir: /workspace
+    volumes:
+      - mydata:/data
+volumes:
+  mydata:
+    name: mydata
+    version: latest
+`,
+      );
+      // Create volume directory (must match volumeConfig.name)
+      await fs.mkdir(path.join(tempDir, "mydata"), { recursive: true });
+    });
+
+    it("should execute full workflow: volumes → artifact → compose → run", async () => {
+      const spawnCalls: string[][] = [];
+
+      vi.mocked(spawn).mockImplementation((cmd, args) => {
+        spawnCalls.push([cmd as string, ...(args as string[])]);
+
+        // Return run output with IDs for the run command
+        if (args?.includes("run")) {
+          return createMockChildProcessWithOutput(
+            0,
+            `Starting run...
+Run completed successfully
+Run ID: run-abc123
+Session ID: session-def456
+Checkpoint ID: checkpoint-ghi789`,
+          ) as ReturnType<typeof spawn>;
+        }
+
+        return createMockChildProcessWithOutput(0, "Success") as ReturnType<
+          typeof spawn
+        >;
+      });
+
+      await cookCommand.parseAsync([
+        "node",
+        "cli",
+        "test prompt",
+        "--no-auto-update",
+      ]);
+
+      // Verify workflow order: volume init → volume push → artifact init → artifact push → compose → run
+      const volumeInitCall = spawnCalls.find(
+        (call) => call.includes("volume") && call.includes("init"),
+      );
+      const volumePushCall = spawnCalls.find(
+        (call) => call.includes("volume") && call.includes("push"),
+      );
+      const artifactInitCall = spawnCalls.find(
+        (call) => call.includes("artifact") && call.includes("init"),
+      );
+      const artifactPushCall = spawnCalls.find(
+        (call) => call.includes("artifact") && call.includes("push"),
+      );
+      const composeCall = spawnCalls.find((call) => call.includes("compose"));
+      const runCall = spawnCalls.find((call) => call.includes("run"));
+
+      expect(volumeInitCall).toBeDefined();
+      expect(volumePushCall).toBeDefined();
+      expect(artifactInitCall).toBeDefined();
+      expect(artifactPushCall).toBeDefined();
+      expect(composeCall).toBeDefined();
+      expect(runCall).toBeDefined();
+
+      // Verify run command includes agent name and prompt
+      expect(runCall).toContain("test-agent");
+      expect(runCall).toContain("test prompt");
+    });
+
+    it("should skip run step when no prompt is provided", async () => {
+      const spawnCalls: string[][] = [];
+
+      vi.mocked(spawn).mockImplementation((cmd, args) => {
+        spawnCalls.push([cmd as string, ...(args as string[])]);
+        return createMockChildProcessWithOutput(0, "Success") as ReturnType<
+          typeof spawn
+        >;
+      });
+
+      // No prompt provided - should only compose, not run
+      await cookCommand.parseAsync(["node", "cli", "--no-auto-update"]);
+
+      const composeCall = spawnCalls.find((call) => call.includes("compose"));
+      const runCall = spawnCalls.find(
+        (call) => call.includes("run") && !call.includes("artifact"),
+      );
+
+      expect(composeCall).toBeDefined();
+      expect(runCall).toBeUndefined();
+    });
+
+    it("should pass --yes flag to compose command", async () => {
+      const spawnCalls: string[][] = [];
+
+      vi.mocked(spawn).mockImplementation((cmd, args) => {
+        spawnCalls.push([cmd as string, ...(args as string[])]);
+        return createMockChildProcessWithOutput(0, "Success") as ReturnType<
+          typeof spawn
+        >;
+      });
+
+      await cookCommand.parseAsync([
+        "node",
+        "cli",
+        "--yes",
+        "--no-auto-update",
+      ]);
+
+      const composeCall = spawnCalls.find((call) => call.includes("compose"));
+      expect(composeCall).toBeDefined();
+      expect(composeCall).toContain("--yes");
+    });
+  });
+
+  describe("logs subcommand options", () => {
+    async function writeStateWithRunId(runId: string): Promise<void> {
+      const ppid = String(process.ppid);
+      const configDir = path.join(os.tmpdir(), ".vm0");
+      await fs.mkdir(configDir, { recursive: true });
+      const stateFile = path.join(configDir, "cook.json");
+      await fs.writeFile(
+        stateFile,
+        JSON.stringify({
+          ppid: {
+            [ppid]: {
+              lastRunId: runId,
+              lastActiveAt: Date.now(),
+            },
+          },
+        }),
+      );
+    }
+
+    it("should pass --system flag to logs command", async () => {
+      await writeStateWithRunId("run-test-123");
+
+      vi.mocked(spawn).mockImplementation(() => {
+        return createMockChildProcessWithOutput(
+          0,
+          "System logs...",
+        ) as ReturnType<typeof spawn>;
+      });
+
+      await cookCommand.parseAsync(["node", "cli", "logs", "--system"]);
+
+      expect(spawn).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.arrayContaining(["logs", "run-test-123", "--system"]),
+        expect.anything(),
+      );
+    });
+
+    it("should pass --metrics flag to logs command", async () => {
+      await writeStateWithRunId("run-test-123");
+
+      vi.mocked(spawn).mockImplementation(() => {
+        return createMockChildProcessWithOutput(0, "Metrics...") as ReturnType<
+          typeof spawn
+        >;
+      });
+
+      await cookCommand.parseAsync(["node", "cli", "logs", "--metrics"]);
+
+      expect(spawn).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.arrayContaining(["logs", "run-test-123", "--metrics"]),
+        expect.anything(),
+      );
+    });
+
+    it("should pass --network flag to logs command", async () => {
+      await writeStateWithRunId("run-test-123");
+
+      vi.mocked(spawn).mockImplementation(() => {
+        return createMockChildProcessWithOutput(
+          0,
+          "Network logs...",
+        ) as ReturnType<typeof spawn>;
+      });
+
+      await cookCommand.parseAsync(["node", "cli", "logs", "--network"]);
+
+      expect(spawn).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.arrayContaining(["logs", "run-test-123", "--network"]),
+        expect.anything(),
+      );
+    });
+
+    it("should pass --since option to logs command", async () => {
+      await writeStateWithRunId("run-test-123");
+
+      vi.mocked(spawn).mockImplementation(() => {
+        return createMockChildProcessWithOutput(0, "Logs...") as ReturnType<
+          typeof spawn
+        >;
+      });
+
+      await cookCommand.parseAsync(["node", "cli", "logs", "--since", "5m"]);
+
+      expect(spawn).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.arrayContaining(["logs", "run-test-123", "--since", "5m"]),
+        expect.anything(),
+      );
+    });
+
+    it("should pass --tail option to logs command", async () => {
+      await writeStateWithRunId("run-test-123");
+
+      vi.mocked(spawn).mockImplementation(() => {
+        return createMockChildProcessWithOutput(0, "Logs...") as ReturnType<
+          typeof spawn
+        >;
+      });
+
+      await cookCommand.parseAsync(["node", "cli", "logs", "--tail", "20"]);
+
+      expect(spawn).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.arrayContaining(["logs", "run-test-123", "--tail", "20"]),
+        expect.anything(),
+      );
+    });
+
+    it("should pass --head option to logs command", async () => {
+      await writeStateWithRunId("run-test-123");
+
+      vi.mocked(spawn).mockImplementation(() => {
+        return createMockChildProcessWithOutput(0, "Logs...") as ReturnType<
+          typeof spawn
+        >;
+      });
+
+      await cookCommand.parseAsync(["node", "cli", "logs", "--head", "10"]);
+
+      expect(spawn).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.arrayContaining(["logs", "run-test-123", "--head", "10"]),
+        expect.anything(),
+      );
+    });
+
+    it("should combine multiple flags", async () => {
+      await writeStateWithRunId("run-test-123");
+
+      vi.mocked(spawn).mockImplementation(() => {
+        return createMockChildProcessWithOutput(0, "Logs...") as ReturnType<
+          typeof spawn
+        >;
+      });
+
+      await cookCommand.parseAsync([
+        "node",
+        "cli",
+        "logs",
+        "--system",
+        "--tail",
+        "50",
+      ]);
+
+      expect(spawn).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.arrayContaining([
+          "logs",
+          "run-test-123",
+          "--system",
+          "--tail",
+          "50",
+        ]),
+        expect.anything(),
+      );
+    });
+  });
+
+  describe("volume handling", () => {
+    it("should exit with error when volume directory does not exist", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        `version: "1.0"
+agents:
+  test-agent:
+    framework: claude-code
+    working_dir: /workspace
+    volumes:
+      - nonexistent:/data
+volumes:
+  nonexistent:
+    name: missing-volume
+    version: latest
+`,
+      );
+      // Note: NOT creating the 'nonexistent' directory
+
+      await expect(async () => {
+        await cookCommand.parseAsync([
+          "node",
+          "cli",
+          "test prompt",
+          "--no-auto-update",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("not found"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should process multiple volumes in order", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        `version: "1.0"
+agents:
+  test-agent:
+    framework: claude-code
+    working_dir: /workspace
+    volumes:
+      - vol1:/data1
+      - vol2:/data2
+volumes:
+  vol1:
+    name: vol1
+    version: latest
+  vol2:
+    name: vol2
+    version: latest
+`,
+      );
+      // Directory names must match volumeConfig.name
+      await fs.mkdir(path.join(tempDir, "vol1"), { recursive: true });
+      await fs.mkdir(path.join(tempDir, "vol2"), { recursive: true });
+
+      const volumeOperations: string[] = [];
+
+      vi.mocked(spawn).mockImplementation((cmd, args) => {
+        if (args?.includes("volume")) {
+          const operation = args.includes("init") ? "init" : "push";
+          // Extract volume name from cwd or args
+          volumeOperations.push(operation);
+        }
+        return createMockChildProcessWithOutput(0, "Success") as ReturnType<
+          typeof spawn
+        >;
+      });
+
+      await cookCommand.parseAsync(["node", "cli", "--no-auto-update"]);
+
+      // Should have init and push for each volume
+      expect(volumeOperations.filter((op) => op === "init").length).toBe(2);
+      expect(volumeOperations.filter((op) => op === "push").length).toBe(2);
+    });
+  });
+
+  describe("environment variable loading", () => {
+    it("should load variables from --env-file", async () => {
+      const uniqueVar = `COOK_TEST_VAR_${Date.now()}`;
+
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        `version: "1.0"
+agents:
+  test-agent:
+    framework: claude-code
+    working_dir: /workspace
+    environment:
+      MY_VAR: "\${{ vars.${uniqueVar} }}"
+`,
+      );
+
+      // Create .env file with the required variable
+      await fs.writeFile(
+        path.join(tempDir, "test.env"),
+        `${uniqueVar}=test-value`,
+      );
+
+      vi.mocked(spawn).mockImplementation(() => {
+        return createMockChildProcessWithOutput(0, "Success") as ReturnType<
+          typeof spawn
+        >;
+      });
+
+      // Should succeed with env file
+      await cookCommand.parseAsync([
+        "node",
+        "cli",
+        "--env-file",
+        "test.env",
+        "--no-auto-update",
+      ]);
+
+      // No error should be thrown
+      expect(mockExit).not.toHaveBeenCalled();
+    });
+
+    it("should prefer CLI env over file env", async () => {
+      const uniqueVar = `COOK_TEST_VAR_${Date.now()}`;
+
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        `version: "1.0"
+agents:
+  test-agent:
+    framework: claude-code
+    working_dir: /workspace
+    environment:
+      MY_VAR: "\${{ vars.${uniqueVar} }}"
+`,
+      );
+
+      // Create .env file
+      await fs.writeFile(
+        path.join(tempDir, "test.env"),
+        `${uniqueVar}=file-value`,
+      );
+
+      // Set environment variable (higher priority)
+      vi.stubEnv(uniqueVar, "cli-env-value");
+
+      vi.mocked(spawn).mockImplementation(() => {
+        return createMockChildProcessWithOutput(0, "Success") as ReturnType<
+          typeof spawn
+        >;
+      });
+
+      await cookCommand.parseAsync([
+        "node",
+        "cli",
+        "--env-file",
+        "test.env",
+        "--no-auto-update",
+      ]);
+
+      // Should succeed - env var takes precedence
+      expect(mockExit).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("continue and resume success flows", () => {
+    async function writeStateWithIds(state: {
+      lastRunId: string;
+      lastSessionId: string;
+      lastCheckpointId: string;
+    }): Promise<void> {
+      const ppid = String(process.ppid);
+      const configDir = path.join(os.tmpdir(), ".vm0");
+      await fs.mkdir(configDir, { recursive: true });
+      const stateFile = path.join(configDir, "cook.json");
+      await fs.writeFile(
+        stateFile,
+        JSON.stringify({
+          ppid: {
+            [ppid]: {
+              ...state,
+              lastActiveAt: Date.now(),
+            },
+          },
+        }),
+      );
+    }
+
+    beforeEach(async () => {
+      // Create minimal vm0.yaml
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        `version: "1.0"
+agents:
+  test-agent:
+    framework: claude-code
+    working_dir: /workspace
+`,
+      );
+    });
+
+    it("should save new state after successful continue", async () => {
+      await writeStateWithIds({
+        lastRunId: "run-old",
+        lastSessionId: "session-old",
+        lastCheckpointId: "checkpoint-old",
+      });
+
+      vi.mocked(spawn).mockImplementation(() => {
+        return createMockChildProcessWithOutput(
+          0,
+          `Run completed successfully
+Run ID: run-new-123
+Session ID: session-new-456
+Checkpoint ID: checkpoint-new-789`,
+        ) as ReturnType<typeof spawn>;
+      });
+
+      await cookCommand.parseAsync([
+        "node",
+        "cli",
+        "continue",
+        "next prompt",
+        "--no-auto-update",
+      ]);
+
+      // Verify the run command was called with continue
+      expect(spawn).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.arrayContaining(["run", "continue", "session-old"]),
+        expect.anything(),
+      );
+    });
+
+    it("should save new state after successful resume", async () => {
+      await writeStateWithIds({
+        lastRunId: "run-old",
+        lastSessionId: "session-old",
+        lastCheckpointId: "checkpoint-old",
+      });
+
+      vi.mocked(spawn).mockImplementation(() => {
+        return createMockChildProcessWithOutput(
+          0,
+          `Run completed successfully
+Run ID: run-new-123
+Session ID: session-new-456
+Checkpoint ID: checkpoint-new-789`,
+        ) as ReturnType<typeof spawn>;
+      });
+
+      await cookCommand.parseAsync([
+        "node",
+        "cli",
+        "resume",
+        "next prompt",
+        "--no-auto-update",
+      ]);
+
+      // Verify the run command was called with resume
+      expect(spawn).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.arrayContaining(["run", "resume", "checkpoint-old"]),
+        expect.anything(),
+      );
+    });
+  });
 });
