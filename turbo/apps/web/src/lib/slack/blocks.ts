@@ -492,7 +492,7 @@ export function buildAgentListMessage(
         type: "section",
         text: {
           type: "mrkdwn",
-          text: "You don't have any agents bound yet.\n\nUse `/vm0 agent add` to add one.",
+          text: "You don't have any agent linked yet.\n\nUse `/vm0 agent link` to link one.",
         },
       },
     ];
@@ -503,7 +503,7 @@ export function buildAgentListMessage(
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "*Your Bound Agents*",
+        text: "*Your Linked Agent*",
       },
     },
     {
@@ -660,14 +660,14 @@ export function buildHelpMessage(): (Block | KnownBlock)[] {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "*Agents*\n• `/vm0 agent add` - Add a new agent\n• `/vm0 agent list` - List your agents\n• `/vm0 agent update` - Update agent secrets\n• `/vm0 agent remove` - Remove agents",
+        text: "*Agent*\n• `/vm0 agent link` - Link an agent\n• `/vm0 agent unlink` - Unlink your agent\n• `/vm0 agent update` - Update agent configuration",
       },
     },
     {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "*Usage*\n• `@VM0 <message>` - Auto-route to best agent\n• `@VM0 use <agent> <message>` - Use specific agent",
+        text: "*Usage*\n• `@VM0 <message>` - Send a message to your agent",
       },
     },
   ];

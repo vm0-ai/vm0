@@ -152,7 +152,7 @@ describe("buildAgentListMessage", () => {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: expect.stringContaining("don't have any agents"),
+        text: expect.stringContaining("don't have any agent linked"),
       },
     });
   });
@@ -247,12 +247,12 @@ describe("buildHelpMessage", () => {
 
     expect(blocks.length).toBeGreaterThanOrEqual(3);
 
-    // Check for commands section
+    // Check for commands section (now uses link/unlink instead of add/remove)
     const commandsBlock = blocks.find(
       (b) =>
         b.type === "section" &&
         "text" in b &&
-        b.text?.text?.includes("/vm0 agent add"),
+        b.text?.text?.includes("/vm0 agent link"),
     );
     expect(commandsBlock).toBeDefined();
 

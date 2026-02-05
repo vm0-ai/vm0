@@ -182,6 +182,10 @@ interface TestContext {
     userLinkId: string,
     options?: SlackBindingOptions,
   ): Promise<{ id: string; agentName: string; composeId: string }>;
+  createAgentCompose(
+    vm0UserId: string,
+    options?: { name?: string },
+  ): Promise<{ id: string; name: string; scopeId: string }>;
 }
 
 export interface UserContext {
@@ -587,6 +591,54 @@ export function testContext(): TestContext {
     };
   }
 
+  /**
+   * Creates an agent compose for a user (without a binding).
+   * Useful for testing link command which requires composes but no existing bindings.
+   */
+  async function createAgentCompose(
+    vm0UserId: string,
+    options: { name?: string } = {},
+  ): Promise<{ id: string; name: string; scopeId: string }> {
+    const { name = uniqueId("test-compose") } = options;
+
+    initServices();
+
+    // Create a scope directly in the database (bypass API to avoid Clerk auth)
+    const scopeSlug = uniqueId("scope");
+    const [scopeData] = await globalThis.services.db
+      .insert(scopes)
+      .values({
+        slug: scopeSlug,
+        type: "personal",
+        ownerId: vm0UserId,
+      })
+      .returning();
+
+    if (!scopeData) {
+      throw new Error("Failed to create scope");
+    }
+
+    // Create a compose for this user
+    const [compose] = await globalThis.services.db
+      .insert(agentComposes)
+      .values({
+        userId: vm0UserId,
+        scopeId: scopeData.id,
+        name,
+      })
+      .returning();
+
+    if (!compose) {
+      throw new Error("Failed to create agent compose");
+    }
+
+    return {
+      id: compose.id,
+      name: compose.name,
+      scopeId: scopeData.id,
+    };
+  }
+
   return {
     get signal(): AbortSignal {
       return controller.signal;
@@ -603,5 +655,6 @@ export function testContext(): TestContext {
     setupUser,
     createSlackInstallation,
     createSlackBinding,
+    createAgentCompose,
   };
 }

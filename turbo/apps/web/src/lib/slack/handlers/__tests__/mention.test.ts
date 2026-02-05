@@ -175,7 +175,7 @@ describe("Feature: App Mention Handling", () => {
         messageTs: "1234567890.123456",
       });
 
-      // Then I should receive a message prompting to add an agent
+      // Then I should receive a message prompting to link an agent
       const postCalls = slackApiCalls.filter(
         (c) => c.method === "chat.postMessage",
       );
@@ -183,8 +183,8 @@ describe("Feature: App Mention Handling", () => {
 
       const call = postCalls[0]!;
       const text = (call.body as { text?: string }).text ?? "";
-      expect(text).toContain("don't have any agents");
-      expect(text).toContain("/vm0 agent add");
+      expect(text).toContain("don't have any agent linked");
+      expect(text).toContain("/vm0 agent link");
     });
   });
 

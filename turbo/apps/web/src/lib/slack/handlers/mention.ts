@@ -243,11 +243,11 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       );
 
     if (bindings.length === 0) {
-      // 5. No bindings - prompt to add agent
+      // 5. No bindings - prompt to link agent
       await postMessage(
         client,
         context.channelId,
-        "You don't have any agents configured. Use `/vm0 agent add` to add one.",
+        "You don't have any agent linked. Use `/vm0 agent link` to link one.",
         { threadTs },
       );
       return;
