@@ -37,7 +37,6 @@ import { POST as storageCommitRoute } from "../../app/api/storages/commit/route"
 import { DELETE as deleteModelProviderRoute } from "../../app/api/model-providers/[type]/route";
 import { GET as listModelProvidersRoute } from "../../app/api/model-providers/route";
 import { GET as listSecretsRoute } from "../../app/api/secrets/route";
-import { DELETE as deleteSecretRoute } from "../../app/api/secrets/[name]/route";
 import { POST as addPermissionRoute } from "../../app/api/agent/composes/[id]/permissions/route";
 
 /**
@@ -939,25 +938,6 @@ export async function listTestSecrets(): Promise<
   }
   const data = await response.json();
   return data.secrets;
-}
-
-/**
- * Delete a secret via API route handler.
- *
- * @param name - The secret name to delete
- */
-export async function deleteTestSecret(name: string): Promise<void> {
-  const request = createTestRequest(
-    `http://localhost:3000/api/secrets/${name}`,
-    { method: "DELETE" },
-  );
-  const response = await deleteSecretRoute(request);
-  if (!response.ok && response.status !== 204) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to delete secret: ${error.error?.message || response.status}`,
-    );
-  }
 }
 
 /**

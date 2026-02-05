@@ -35,12 +35,6 @@ interface ForbiddenError extends ApiErrorBase {
   readonly code: "FORBIDDEN";
 }
 
-interface ConflictError extends ApiErrorBase {
-  readonly name: "ConflictError";
-  readonly statusCode: 409;
-  readonly code: "CONFLICT";
-}
-
 interface SchedulePastError extends ApiErrorBase {
   readonly name: "SchedulePastError";
   readonly statusCode: 400;
@@ -89,14 +83,6 @@ export function forbidden(message = "Forbidden"): ForbiddenError {
   return error;
 }
 
-export function conflict(message = "Conflict"): ConflictError {
-  const error = new Error(message) as ConflictError;
-  (error as { name: string }).name = "ConflictError";
-  (error as { statusCode: number }).statusCode = 409;
-  (error as { code: string }).code = "CONFLICT";
-  return error;
-}
-
 export function schedulePast(
   message = "Schedule time has already passed",
 ): SchedulePastError {
@@ -131,10 +117,6 @@ export function isBadRequest(e: unknown): e is BadRequestError {
 
 export function isForbidden(e: unknown): e is ForbiddenError {
   return e instanceof Error && e.name === "ForbiddenError";
-}
-
-export function isConflict(e: unknown): e is ConflictError {
-  return e instanceof Error && e.name === "ConflictError";
 }
 
 export function isSchedulePast(e: unknown): e is SchedulePastError {

@@ -4,7 +4,6 @@ import {
   deleteTestModelProvider,
   listTestModelProviders,
   listTestSecrets,
-  deleteTestSecret,
 } from "../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../src/__tests__/test-helpers";
 
@@ -94,43 +93,10 @@ describe("Multi-auth provider cascade deletion", () => {
     });
   });
 
-  describe("DELETE /api/secrets/:name", () => {
-    it("should delete model provider when deleting a required secret", async () => {
-      // Create multi-auth provider
-      await createTestMultiAuthModelProvider(
-        "aws-bedrock",
-        "access-keys",
-        {
-          AWS_ACCESS_KEY_ID: "test-access-key",
-          AWS_SECRET_ACCESS_KEY: "test-secret-key",
-          AWS_REGION: "us-east-1",
-        },
-        "anthropic.claude-3-5-sonnet-20241022-v2:0",
-      );
-
-      // Verify provider exists
-      const providersBefore = await listTestModelProviders();
-      expect(
-        providersBefore.find((p) => p.type === "aws-bedrock"),
-      ).toBeDefined();
-
-      // Delete a required secret (AWS_ACCESS_KEY_ID is required for access-keys)
-      await deleteTestSecret("AWS_ACCESS_KEY_ID");
-
-      // Verify model provider is also deleted
-      const providersAfter = await listTestModelProviders();
-      expect(
-        providersAfter.find((p) => p.type === "aws-bedrock"),
-      ).toBeUndefined();
-
-      // Verify other secrets are also deleted
-      const secretsAfter = await listTestSecrets();
-      expect(
-        secretsAfter.find((c) => c.name === "AWS_SECRET_ACCESS_KEY"),
-      ).toBeUndefined();
-      expect(secretsAfter.find((c) => c.name === "AWS_REGION")).toBeUndefined();
-    });
-  });
+  // Note: With type isolation, model-provider secrets cannot be deleted via /api/secrets
+  // (which only handles user-type secrets). To delete model-provider secrets, you must
+  // delete the model provider itself via DELETE /api/model-providers/:type, which
+  // cascades the deletion to all associated secrets.
 
   describe("Switching auth methods", () => {
     it("should clean up old secrets when switching auth methods", async () => {

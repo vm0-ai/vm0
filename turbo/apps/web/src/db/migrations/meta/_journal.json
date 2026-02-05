@@ -470,6 +470,13 @@
       "when": 1769100000000,
       "tag": "0066_add_agent_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1769200000000,
+      "tag": "0067_isolate_secrets_by_type",
+      "breakpoints": true
     }
   ]
 }
