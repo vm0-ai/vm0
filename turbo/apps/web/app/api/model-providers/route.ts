@@ -6,7 +6,6 @@ import {
 import {
   modelProvidersMainContract,
   createErrorResponse,
-  getCredentialNameForType,
   hasAuthMethods,
 } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
@@ -17,7 +16,7 @@ import {
   upsertMultiAuthModelProvider,
 } from "../../../src/lib/model-provider/model-provider-service";
 import { logger } from "../../../src/lib/logger";
-import { isBadRequest, isConflict } from "../../../src/lib/errors";
+import { isBadRequest } from "../../../src/lib/errors";
 
 const log = logger("api:model-providers");
 
@@ -65,14 +64,7 @@ const router = tsr.router(modelProvidersMainContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const {
-      type,
-      credential,
-      authMethod,
-      credentials,
-      convert,
-      selectedModel,
-    } = body;
+    const { type, credential, authMethod, credentials, selectedModel } = body;
 
     log.debug("upserting model provider", { userId, type, selectedModel });
 
@@ -112,7 +104,6 @@ const router = tsr.router(modelProvidersMainContract, {
           userId,
           type,
           credential,
-          convert,
           selectedModel,
         );
         provider = result.provider;
@@ -140,18 +131,6 @@ const router = tsr.router(modelProvidersMainContract, {
     } catch (error) {
       if (isBadRequest(error)) {
         return createErrorResponse("BAD_REQUEST", error.message);
-      }
-      if (isConflict(error)) {
-        return {
-          status: 409 as const,
-          body: {
-            error: {
-              message: error.message,
-              code: "CONFLICT",
-              credentialName: getCredentialNameForType(type),
-            },
-          },
-        };
       }
       throw error;
     }

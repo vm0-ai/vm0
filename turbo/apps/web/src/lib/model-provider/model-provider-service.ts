@@ -13,7 +13,7 @@ import {
 import { modelProviders } from "../../db/schema/model-provider";
 import { secrets } from "../../db/schema/secret";
 import { encryptCredentialValue } from "../crypto";
-import { badRequest, notFound, conflict } from "../errors";
+import { badRequest, notFound } from "../errors";
 import { logger } from "../logger";
 import { getUserScopeByClerkId } from "../scope/scope-service";
 
@@ -89,13 +89,13 @@ export async function listModelProviders(
 }
 
 /**
- * Check if credential exists for a model provider type
+ * Check if model-provider credential exists for a provider type
  * Note: Multi-auth providers (like aws-bedrock) are not supported by this function
  */
 export async function checkCredentialExists(
   clerkUserId: string,
   type: ModelProviderType,
-): Promise<{ exists: boolean; currentType?: "user" | "model-provider" }> {
+): Promise<{ exists: boolean }> {
   const scope = await getUserScopeByClerkId(clerkUserId);
   if (!scope) {
     return { exists: false };
@@ -111,34 +111,33 @@ export async function checkCredentialExists(
     return { exists: false };
   }
 
+  // Only check for model-provider type secrets (user secrets are independent)
   const [existing] = await globalThis.services.db
-    .select({ type: secrets.type })
+    .select({ id: secrets.id })
     .from(secrets)
-    .where(and(eq(secrets.scopeId, scope.id), eq(secrets.name, credentialName)))
+    .where(
+      and(
+        eq(secrets.scopeId, scope.id),
+        eq(secrets.name, credentialName),
+        eq(secrets.type, "model-provider"),
+      ),
+    )
     .limit(1);
 
-  if (!existing) {
-    return { exists: false };
-  }
-
-  return {
-    exists: true,
-    currentType: existing.type as "user" | "model-provider",
-  };
+  return { exists: !!existing };
 }
 
 /**
  * Create or update a model provider (legacy single-credential)
- * @param convertExisting If true, convert existing 'user' credential to 'model-provider'
  * @param selectedModel For providers with model selection, the chosen model
  *
  * Note: Multi-auth providers (like aws-bedrock) should use upsertMultiAuthModelProvider instead
+ * Note: User secrets and model-provider secrets are isolated by type, so no conflict detection needed
  */
 export async function upsertModelProvider(
   clerkUserId: string,
   type: ModelProviderType,
   credential: string,
-  convertExisting: boolean = false,
   selectedModel?: string,
 ): Promise<{ provider: ModelProviderInfo; created: boolean }> {
   const scope = await getUserScopeByClerkId(clerkUserId);
@@ -223,27 +222,26 @@ export async function upsertModelProvider(
     };
   }
 
-  // Check if credential exists with same name
+  // Check if model-provider secret already exists with same name
+  // Note: User secrets are independent and don't conflict
   const [existingSecret] = await globalThis.services.db
     .select()
     .from(secrets)
-    .where(and(eq(secrets.scopeId, scope.id), eq(secrets.name, credentialName)))
+    .where(
+      and(
+        eq(secrets.scopeId, scope.id),
+        eq(secrets.name, credentialName),
+        eq(secrets.type, "model-provider"),
+      ),
+    )
     .limit(1);
 
   if (existingSecret) {
-    if (existingSecret.type === "user" && !convertExisting) {
-      // Conflict: user credential exists, need explicit conversion
-      throw conflict(
-        `Credential "${credentialName}" already exists. Use --convert to convert it to a model provider.`,
-      );
-    }
-
-    // Convert existing credential or update model-provider credential
+    // Update existing model-provider secret
     await globalThis.services.db
       .update(secrets)
       .set({
         encryptedValue,
-        type: "model-provider",
         updatedAt: new Date(),
       })
       .where(eq(secrets.id, existingSecret.id));
@@ -270,11 +268,10 @@ export async function upsertModelProvider(
       throw new Error("Failed to create model provider");
     }
 
-    log.debug("model provider created from existing credential", {
+    log.debug("model provider created from existing secret", {
       providerId: created.id,
       type,
       selectedModel,
-      converted: existingSecret.type === "user",
     });
 
     return {
@@ -294,7 +291,7 @@ export async function upsertModelProvider(
     };
   }
 
-  // Create new credential and model provider
+  // Create new model-provider credential and model provider
   // Check if first for framework
   const allProviders = await listModelProviders(clerkUserId);
   const hasProviderForFramework = allProviders.some(
@@ -358,6 +355,7 @@ export async function upsertModelProvider(
 
 /**
  * Upsert a single credential for a multi-auth provider
+ * Note: Only looks for model-provider type secrets (user secrets are independent)
  */
 async function upsertMultiAuthSecret(
   scopeId: string,
@@ -368,10 +366,17 @@ async function upsertMultiAuthSecret(
 ): Promise<void> {
   const encryptedValue = encryptCredentialValue(value, encryptionKey);
 
+  // Only look for model-provider secrets (user secrets are independent)
   const [existingSecret] = await globalThis.services.db
-    .select()
+    .select({ id: secrets.id })
     .from(secrets)
-    .where(and(eq(secrets.scopeId, scopeId), eq(secrets.name, name)))
+    .where(
+      and(
+        eq(secrets.scopeId, scopeId),
+        eq(secrets.name, name),
+        eq(secrets.type, "model-provider"),
+      ),
+    )
     .limit(1);
 
   if (existingSecret) {
@@ -379,7 +384,6 @@ async function upsertMultiAuthSecret(
       .update(secrets)
       .set({
         encryptedValue,
-        type: "model-provider",
         description,
         updatedAt: new Date(),
       })
@@ -615,94 +619,14 @@ export async function upsertMultiAuthModelProvider(
 }
 
 /**
- * Convert existing user credential to model provider (legacy single-credential)
- *
- * Note: Multi-auth providers (like aws-bedrock) don't support conversion
+ * @deprecated Credential conversion is no longer needed since user and model-provider secrets
+ * are now isolated by type. Simply configure your model provider directly.
  */
-export async function convertCredentialToModelProvider(
-  clerkUserId: string,
-  type: ModelProviderType,
-): Promise<ModelProviderInfo> {
-  const scope = await getUserScopeByClerkId(clerkUserId);
-  if (!scope) {
-    throw notFound("Credential not found");
-  }
-
-  // Multi-auth providers don't support conversion
-  if (hasAuthMethods(type)) {
-    throw badRequest(
-      `Provider "${type}" requires multiple credentials and does not support conversion.`,
-    );
-  }
-
-  const credentialName = getCredentialNameForType(type);
-  if (!credentialName) {
-    throw badRequest(`Provider "${type}" does not have a credential name`);
-  }
-  const framework = getFrameworkForType(type);
-
-  // Find the credential
-  const [existingSecret] = await globalThis.services.db
-    .select()
-    .from(secrets)
-    .where(and(eq(secrets.scopeId, scope.id), eq(secrets.name, credentialName)))
-    .limit(1);
-
-  if (!existingSecret) {
-    throw notFound(`Credential "${credentialName}" not found`);
-  }
-
-  if (existingSecret.type === "model-provider") {
-    throw badRequest(
-      `Credential "${credentialName}" is already a model provider`,
-    );
-  }
-
-  // Update credential type
-  await globalThis.services.db
-    .update(secrets)
-    .set({ type: "model-provider", updatedAt: new Date() })
-    .where(eq(secrets.id, existingSecret.id));
-
-  // Check if first for framework
-  const allProviders = await listModelProviders(clerkUserId);
-  const hasProviderForFramework = allProviders.some(
-    (p) => p.framework === framework,
+export async function convertCredentialToModelProvider(): Promise<never> {
+  throw badRequest(
+    "Credential conversion is no longer needed. User secrets and model provider secrets are now isolated by type. " +
+      "Simply configure your model provider directly with `vm0 model-provider setup`.",
   );
-
-  // Create model provider row
-  const [newProvider] = await globalThis.services.db
-    .insert(modelProviders)
-    .values({
-      scopeId: scope.id,
-      type,
-      secretId: existingSecret.id,
-      isDefault: !hasProviderForFramework,
-    })
-    .returning();
-
-  if (!newProvider) {
-    throw new Error("Failed to create model provider");
-  }
-
-  log.debug("credential converted to model provider", {
-    providerId: newProvider.id,
-    secretId: existingSecret.id,
-    type,
-  });
-
-  return {
-    id: newProvider.id,
-    type,
-    framework,
-    credentialName,
-    authMethod: null, // Legacy single-credential provider
-    credentialNames: null,
-    isDefault: newProvider.isDefault,
-    selectedModel: newProvider.selectedModel,
-    createdAt: newProvider.createdAt,
-    updatedAt: newProvider.updatedAt,
-  };
 }
 
 /**

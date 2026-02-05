@@ -31,7 +31,8 @@ const router = tsr.router(modelProvidersCheckContract, {
       body: {
         exists: result.exists,
         credentialName: getCredentialNameForType(params.type) ?? "",
-        currentType: result.currentType,
+        // Note: currentType is no longer relevant since user and model-provider secrets are isolated
+        currentType: result.exists ? "model-provider" : undefined,
       },
     };
   },

@@ -227,8 +227,11 @@ async function resolveModelProviderCredential(
       return { credentials, injectedEnvVars: undefined };
     }
 
-    // Fetch all credentials by name
-    const allCredentialValues = await getSecretValues(userScope.id);
+    // Fetch all model-provider credentials by name
+    const allCredentialValues = await getSecretValues(
+      userScope.id,
+      "model-provider",
+    );
     const credentialsMap: Record<string, string> = {};
     let hasAllRequired = true;
 
@@ -273,7 +276,11 @@ async function resolveModelProviderCredential(
     return { credentials, injectedEnvVars: undefined };
   }
 
-  const credentialValue = await getSecretValue(userScope.id, credentialName);
+  const credentialValue = await getSecretValue(
+    userScope.id,
+    credentialName,
+    "model-provider",
+  );
 
   if (!credentialValue) {
     return { credentials, injectedEnvVars: undefined };
@@ -326,11 +333,12 @@ async function fetchReferencedCredentials(
     return undefined;
   }
 
-  const secrets = await getSecretValues(userScope.id);
+  // Only fetch user secrets for variable expansion (model-provider secrets are isolated)
+  const userSecrets = await getSecretValues(userScope.id, "user");
   log.debug(
-    `Fetched ${Object.keys(secrets).length} secret(s) from scope ${userScope.slug}`,
+    `Fetched ${Object.keys(userSecrets).length} user secret(s) from scope ${userScope.slug}`,
   );
-  return secrets;
+  return userSecrets;
 }
 
 /**

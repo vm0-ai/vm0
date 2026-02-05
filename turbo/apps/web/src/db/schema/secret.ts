@@ -31,7 +31,13 @@ export const secrets = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
-    uniqueIndex("idx_secrets_scope_name").on(table.scopeId, table.name),
+    // Unique constraint includes type to allow same name with different types
+    // e.g., (scope_123, "API_KEY", "user") and (scope_123, "API_KEY", "model-provider") can coexist
+    uniqueIndex("idx_secrets_scope_name_type").on(
+      table.scopeId,
+      table.name,
+      table.type,
+    ),
     index("idx_secrets_scope").on(table.scopeId),
     index("idx_secrets_type").on(table.type),
   ],

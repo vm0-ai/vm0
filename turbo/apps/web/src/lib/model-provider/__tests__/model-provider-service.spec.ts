@@ -61,18 +61,13 @@ describe("Model Provider Service", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    // Clean up model providers and model-provider credentials before each test
+    // Clean up model providers and all secrets before each test
     await globalThis.services.db
       .delete(modelProviders)
       .where(eq(modelProviders.scopeId, testScopeId));
     await globalThis.services.db
       .delete(secrets)
-      .where(
-        and(
-          eq(secrets.scopeId, testScopeId),
-          eq(secrets.type, "model-provider"),
-        ),
-      );
+      .where(eq(secrets.scopeId, testScopeId));
   });
 
   describe("listModelProviders", () => {
@@ -111,10 +106,9 @@ describe("Model Provider Service", () => {
         "anthropic-api-key",
       );
       expect(result.exists).toBe(false);
-      expect(result.currentType).toBeUndefined();
     });
 
-    it("should return true with type for existing model-provider credential", async () => {
+    it("should return true for existing model-provider credential", async () => {
       // Create a model provider first
       await upsertModelProvider(
         testUserId,
@@ -127,7 +121,6 @@ describe("Model Provider Service", () => {
         "anthropic-api-key",
       );
       expect(result.exists).toBe(true);
-      expect(result.currentType).toBe("model-provider");
     });
   });
 
@@ -201,29 +194,28 @@ describe("Model Provider Service", () => {
 
       expect(second.isDefault).toBe(false);
     });
-  });
 
-  describe("convertCredentialToModelProvider", () => {
-    it("should convert user credential to model provider", async () => {
-      // Create a user credential directly
+    it("should allow same secret name for user and model-provider types", async () => {
+      // Create a user secret first
       await globalThis.services.db.insert(secrets).values({
         scopeId: testScopeId,
         name: "ANTHROPIC_API_KEY",
-        encryptedValue: "encrypted-value",
+        encryptedValue: "user-encrypted-value",
         type: "user",
       });
 
-      const provider = await convertCredentialToModelProvider(
+      // Creating model provider should NOT conflict with user secret
+      const { provider, created } = await upsertModelProvider(
         testUserId,
         "anthropic-api-key",
+        "provider-key",
       );
 
+      expect(created).toBe(true);
       expect(provider.type).toBe("anthropic-api-key");
-      expect(provider.framework).toBe("claude-code");
-      expect(provider.isDefault).toBe(true);
 
-      // Verify credential type was updated
-      const [credential] = await globalThis.services.db
+      // Verify both secrets exist with same name but different types
+      const allSecrets = await globalThis.services.db
         .select()
         .from(secrets)
         .where(
@@ -233,22 +225,21 @@ describe("Model Provider Service", () => {
           ),
         );
 
-      expect(credential!.type).toBe("model-provider");
+      expect(allSecrets).toHaveLength(2);
+      expect(allSecrets.map((s) => s.type).sort()).toEqual([
+        "model-provider",
+        "user",
+      ]);
     });
+  });
 
-    it("should throw NotFoundError for nonexistent credential", async () => {
-      await expect(
-        convertCredentialToModelProvider(testUserId, "anthropic-api-key"),
-      ).rejects.toMatchObject({ name: "NotFoundError" });
-    });
-
-    it("should throw BadRequestError if credential is already model-provider", async () => {
-      // Create a model provider first
-      await upsertModelProvider(testUserId, "anthropic-api-key", "test-key");
-
-      await expect(
-        convertCredentialToModelProvider(testUserId, "anthropic-api-key"),
-      ).rejects.toMatchObject({ name: "BadRequestError" });
+  describe("convertCredentialToModelProvider (deprecated)", () => {
+    it("should throw BadRequestError as conversion is no longer needed", async () => {
+      // convertCredentialToModelProvider is deprecated - user and model-provider secrets are isolated by type
+      await expect(convertCredentialToModelProvider()).rejects.toMatchObject({
+        name: "BadRequestError",
+        message: expect.stringContaining("no longer needed"),
+      });
     });
   });
 
@@ -264,7 +255,8 @@ describe("Model Provider Service", () => {
       const providers = await listModelProviders(testUserId);
       expect(providers).toHaveLength(0);
 
-      // Verify credential is also gone (cascade)
+      // Verify model-provider credential is also gone (cascade)
+      // Note: User secrets with the same name are not affected
       const [credential] = await globalThis.services.db
         .select()
         .from(secrets)
@@ -272,6 +264,7 @@ describe("Model Provider Service", () => {
           and(
             eq(secrets.scopeId, testScopeId),
             eq(secrets.name, "ANTHROPIC_API_KEY"),
+            eq(secrets.type, "model-provider"),
           ),
         );
       expect(credential).toBeUndefined();
@@ -314,7 +307,6 @@ describe("Model Provider Service", () => {
         testUserId,
         "moonshot-api-key",
         "test-moonshot-key",
-        false,
         "kimi-k2.5",
       );
 
@@ -329,7 +321,6 @@ describe("Model Provider Service", () => {
         testUserId,
         "moonshot-api-key",
         "test-moonshot-key",
-        false,
         "kimi-k2-thinking-turbo",
       );
 
@@ -338,7 +329,6 @@ describe("Model Provider Service", () => {
         testUserId,
         "moonshot-api-key",
         "test-moonshot-key",
-        false,
         "kimi-k2.5",
       );
 
@@ -351,7 +341,6 @@ describe("Model Provider Service", () => {
         testUserId,
         "moonshot-api-key",
         "test-moonshot-key",
-        false,
         undefined, // no model selected
       );
 
@@ -365,7 +354,6 @@ describe("Model Provider Service", () => {
         testUserId,
         "moonshot-api-key",
         "test-moonshot-key",
-        false,
         "kimi-k2.5",
       );
 
@@ -439,7 +427,6 @@ describe("Model Provider Service", () => {
         testUserId,
         "moonshot-api-key",
         "test-moonshot-key",
-        false,
         "kimi-k2.5",
       );
 
@@ -460,7 +447,6 @@ describe("Model Provider Service", () => {
         testUserId,
         "moonshot-api-key",
         "test-moonshot-key",
-        false,
         "kimi-k2.5",
       );
 
@@ -486,7 +472,6 @@ describe("Model Provider Service", () => {
         testUserId,
         "moonshot-api-key",
         "test-moonshot-key",
-        false,
         "kimi-k2.5",
       );
 

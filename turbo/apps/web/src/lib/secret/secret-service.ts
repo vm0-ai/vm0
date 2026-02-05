@@ -1,12 +1,6 @@
-import { eq, and, inArray } from "drizzle-orm";
-import {
-  type SecretType,
-  type ModelProviderType,
-  getCredentialNamesForAuthMethod,
-  getFrameworkForType,
-} from "@vm0/core";
+import { eq, and } from "drizzle-orm";
+import { type SecretType } from "@vm0/core";
 import { secrets } from "../../db/schema/secret";
-import { modelProviders } from "../../db/schema/model-provider";
 import { encryptCredentialValue, decryptCredentialValue } from "../crypto";
 import { badRequest, notFound } from "../errors";
 import { logger } from "../logger";
@@ -77,6 +71,7 @@ export async function listSecrets(clerkUserId: string): Promise<SecretInfo[]> {
 
 /**
  * Get a secret by name for a user's scope (metadata only)
+ * Only returns user-type secrets; model-provider secrets are managed via model-provider commands
  */
 export async function getSecret(
   clerkUserId: string,
@@ -97,7 +92,13 @@ export async function getSecret(
       updatedAt: secrets.updatedAt,
     })
     .from(secrets)
-    .where(and(eq(secrets.scopeId, scope.id), eq(secrets.name, name)))
+    .where(
+      and(
+        eq(secrets.scopeId, scope.id),
+        eq(secrets.name, name),
+        eq(secrets.type, "user"),
+      ),
+    )
     .limit(1);
 
   if (!result[0]) {
@@ -113,17 +114,24 @@ export async function getSecret(
 /**
  * Get decrypted secret value by name
  * Used internally for variable expansion during agent execution
+ * @param type - Optional type filter to isolate user vs model-provider secrets
  */
 export async function getSecretValue(
   scopeId: string,
   name: string,
+  type?: SecretType,
 ): Promise<string | null> {
+  const conditions = [eq(secrets.scopeId, scopeId), eq(secrets.name, name)];
+  if (type) {
+    conditions.push(eq(secrets.type, type));
+  }
+
   const result = await globalThis.services.db
     .select({
       encryptedValue: secrets.encryptedValue,
     })
     .from(secrets)
-    .where(and(eq(secrets.scopeId, scopeId), eq(secrets.name, name)))
+    .where(and(...conditions))
     .limit(1);
 
   if (!result[0]) {
@@ -137,17 +145,24 @@ export async function getSecretValue(
 /**
  * Get all secret values for a scope as a map
  * Used for batch secret resolution during variable expansion
+ * @param type - Optional type filter to isolate user vs model-provider secrets
  */
 export async function getSecretValues(
   scopeId: string,
+  type?: SecretType,
 ): Promise<Record<string, string>> {
+  const conditions = [eq(secrets.scopeId, scopeId)];
+  if (type) {
+    conditions.push(eq(secrets.type, type));
+  }
+
   const result = await globalThis.services.db
     .select({
       name: secrets.name,
       encryptedValue: secrets.encryptedValue,
     })
     .from(secrets)
-    .where(eq(secrets.scopeId, scopeId));
+    .where(and(...conditions));
 
   const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
   const values: Record<string, string> = {};
@@ -185,11 +200,18 @@ export async function setSecret(
 
   log.debug("setting secret", { scopeId: scope.id, name });
 
-  // Check if secret exists
+  // Check if user secret exists with same name
+  // Note: We only check for user type to allow coexistence with model-provider secrets
   const existing = await globalThis.services.db
     .select({ id: secrets.id })
     .from(secrets)
-    .where(and(eq(secrets.scopeId, scope.id), eq(secrets.name, name)))
+    .where(
+      and(
+        eq(secrets.scopeId, scope.id),
+        eq(secrets.name, name),
+        eq(secrets.type, "user"),
+      ),
+    )
     .limit(1);
 
   if (existing[0]) {
@@ -244,11 +266,8 @@ export async function setSecret(
 }
 
 /**
- * Delete a secret by name
- *
- * For multi-auth provider secrets, this will also delete:
- * - The associated model provider
- * - All other secrets for that provider's auth method
+ * Delete a user secret by name
+ * Note: Model-provider secrets are managed via model-provider commands
  */
 export async function deleteSecret(
   clerkUserId: string,
@@ -259,92 +278,23 @@ export async function deleteSecret(
     throw notFound("Secret not found");
   }
 
-  // Check if this secret exists
+  // Check if this user secret exists
   const [secret] = await globalThis.services.db
-    .select()
+    .select({ id: secrets.id })
     .from(secrets)
-    .where(and(eq(secrets.scopeId, scope.id), eq(secrets.name, name)))
+    .where(
+      and(
+        eq(secrets.scopeId, scope.id),
+        eq(secrets.name, name),
+        eq(secrets.type, "user"),
+      ),
+    )
     .limit(1);
 
   if (!secret) {
     throw notFound(`Secret "${name}" not found`);
   }
 
-  // Check if this secret belongs to a multi-auth provider
-  // Multi-auth provider secrets have type "model-provider" and
-  // there's a model provider with authMethod set (not secretId)
-  if (secret.type === "model-provider") {
-    // Find any multi-auth provider that uses this secret
-    const allProviders = await globalThis.services.db
-      .select()
-      .from(modelProviders)
-      .where(eq(modelProviders.scopeId, scope.id));
-
-    for (const provider of allProviders) {
-      if (provider.authMethod && !provider.secretId) {
-        // This is a multi-auth provider
-        const secretNames = getCredentialNamesForAuthMethod(
-          provider.type as ModelProviderType,
-          provider.authMethod,
-        );
-
-        if (secretNames && secretNames.includes(name)) {
-          // This secret belongs to this multi-auth provider
-          // Delete all secrets for this auth method
-          await globalThis.services.db
-            .delete(secrets)
-            .where(
-              and(
-                eq(secrets.scopeId, scope.id),
-                inArray(secrets.name, secretNames),
-              ),
-            );
-
-          // Delete the model provider
-          const wasDefault = provider.isDefault;
-          const framework = getFrameworkForType(
-            provider.type as ModelProviderType,
-          );
-
-          await globalThis.services.db
-            .delete(modelProviders)
-            .where(eq(modelProviders.id, provider.id));
-
-          log.debug("multi-auth provider and secrets deleted", {
-            scopeId: scope.id,
-            type: provider.type,
-            authMethod: provider.authMethod,
-            secretNames,
-          });
-
-          // If it was default, assign new default for framework
-          if (wasDefault) {
-            const remaining = await globalThis.services.db
-              .select({ id: modelProviders.id, type: modelProviders.type })
-              .from(modelProviders)
-              .where(eq(modelProviders.scopeId, scope.id))
-              .orderBy(modelProviders.createdAt);
-
-            const nextDefault = remaining.find(
-              (p) =>
-                getFrameworkForType(p.type as ModelProviderType) === framework,
-            );
-
-            if (nextDefault) {
-              await globalThis.services.db
-                .update(modelProviders)
-                .set({ isDefault: true, updatedAt: new Date() })
-                .where(eq(modelProviders.id, nextDefault.id));
-            }
-          }
-
-          return;
-        }
-      }
-    }
-  }
-
-  // Not a multi-auth provider secret, delete normally
   await globalThis.services.db.delete(secrets).where(eq(secrets.id, secret.id));
 
   log.debug("secret deleted", { scopeId: scope.id, name });
