@@ -151,12 +151,13 @@ async function downloadAndUploadSlackFile(
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Upload to R2 temporary storage
+    // Upload to R2 temporary storage with correct MIME type
     const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
     const filename = file.name || file.id || "image";
     const s3Key = `slack-images/${sessionId}/${file.id || Date.now()}-${filename}`;
+    const contentType = file.mimetype || "application/octet-stream";
 
-    await uploadS3Buffer(bucketName, s3Key, buffer);
+    await uploadS3Buffer(bucketName, s3Key, buffer, contentType);
 
     // Generate presigned URL (valid for 1 hour)
     const presignedUrl = await generatePresignedUrl(bucketName, s3Key, 3600);

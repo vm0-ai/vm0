@@ -82,11 +82,13 @@ export async function listS3Objects(
  * @param bucket - S3 bucket name
  * @param key - S3 object key
  * @param data - Buffer data to upload
+ * @param contentType - Optional MIME type for the file
  */
 export async function uploadS3Buffer(
   bucket: string,
   key: string,
   data: Buffer,
+  contentType?: string,
 ): Promise<void> {
   const client = getS3Client();
 
@@ -95,6 +97,7 @@ export async function uploadS3Buffer(
       Bucket: bucket,
       Key: key,
       Body: data,
+      ...(contentType && { ContentType: contentType }),
     });
 
     await client.send(command);

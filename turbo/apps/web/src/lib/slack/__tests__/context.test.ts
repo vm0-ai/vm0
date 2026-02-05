@@ -422,6 +422,13 @@ describe("Feature: Format Context With Image Upload", () => {
         },
       );
       expect(uploadS3BufferMock).toHaveBeenCalled();
+      // Verify contentType is passed when uploading
+      expect(uploadS3BufferMock).toHaveBeenCalledWith(
+        "test-bucket",
+        expect.stringContaining("slack-images/test-session-123/"),
+        expect.any(Buffer),
+        "image/png",
+      );
       expect(generatePresignedUrlMock).toHaveBeenCalled();
       expect(result).toContain("[file]: screenshot.png (image/png)");
       expect(result).toContain("Dimensions: 1920x1080");
@@ -461,6 +468,13 @@ describe("Feature: Format Context With Image Upload", () => {
 
       expect(result).toContain(
         "Image URL: https://r2.example.com/presigned-url",
+      );
+      // Verify contentType is passed for JPEG
+      expect(uploadS3BufferMock).toHaveBeenCalledWith(
+        "test-bucket",
+        expect.stringContaining("slack-images/test-session-123/"),
+        expect.any(Buffer),
+        "image/jpeg",
       );
     });
   });
