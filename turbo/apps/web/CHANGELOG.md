@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.2.1](https://github.com/vm0-ai/vm0/compare/web-v12.2.0...web-v12.2.1) (2026-02-05)
+
+
+### Bug Fixes
+
+* **slack:** make login prompt ephemeral and restore bindings on re-link ([#2359](https://github.com/vm0-ai/vm0/issues/2359)) ([8564e5a](https://github.com/vm0-ai/vm0/commit/8564e5a12e051d0704edd3a3285c9a0268de71f9))
+
 ## [12.2.0](https://github.com/vm0-ai/vm0/compare/web-v12.1.1...web-v12.2.0) (2026-02-04)
 
 

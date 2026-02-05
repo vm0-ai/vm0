@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.13.0](https://github.com/vm0-ai/vm0/compare/runner-v3.12.3...runner-v3.13.0) (2026-02-05)
+
+
+### Features
+
+* **vsock-agent:** execute commands as user instead of root ([#2371](https://github.com/vm0-ai/vm0/issues/2371)) ([5774013](https://github.com/vm0-ai/vm0/commit/5774013d972c65726e8a91a1069d751cbb6a329e))
+
 ## [3.12.3](https://github.com/vm0-ai/vm0/compare/runner-v3.12.2...runner-v3.12.3) (2026-02-04)
 
 
