@@ -74,7 +74,7 @@ export const mainRunCommand = new Command()
   )
   .option("--verbose", "Show full tool inputs and outputs")
   .option(
-    "--experimental-dangerously-allow-shared",
+    "--experimental-shared-agent",
     "Allow running agents shared by other users (required when running scope/agent format)",
   )
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
@@ -94,7 +94,7 @@ export const mainRunCommand = new Command()
         experimentalRealtime?: boolean;
         modelProvider?: string;
         verbose?: boolean;
-        experimentalDangerouslyAllowShared?: boolean;
+        experimentalSharedAgent?: boolean;
         debugNoMockClaude?: boolean;
         autoUpdate?: boolean;
       },
@@ -104,7 +104,7 @@ export const mainRunCommand = new Command()
         const { scope, name, version } = parseIdentifier(identifier);
 
         // 1.5. Validate: running another user's agent requires explicit opt-in
-        if (scope && !options.experimentalDangerouslyAllowShared) {
+        if (scope && !options.experimentalSharedAgent) {
           // Check if it's the user's own scope
           const userScope = await getScope();
           const isOwnScope = userScope.slug === scope;
@@ -112,7 +112,7 @@ export const mainRunCommand = new Command()
           if (!isOwnScope) {
             console.error(
               chalk.red(
-                `✗ Running shared agents requires --experimental-dangerously-allow-shared flag`,
+                `✗ Running shared agents requires --experimental-shared-agent flag`,
               ),
             );
             console.error();
@@ -126,7 +126,7 @@ export const mainRunCommand = new Command()
             console.error("Example:");
             console.error(
               chalk.cyan(
-                `  vm0 run ${identifier} --experimental-dangerously-allow-shared "your prompt"`,
+                `  vm0 run ${identifier} --experimental-shared-agent "your prompt"`,
               ),
             );
             process.exit(1);

@@ -99,7 +99,7 @@ describe("run command", () => {
       http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
         return HttpResponse.json(defaultEventsResponse);
       }),
-      // Default scope handler for experimental-dangerously-allow-shared validation
+      // Default scope handler for experimental-shared-agent validation
       http.get("http://localhost:3000/api/scope", () => {
         return HttpResponse.json({
           id: "scope-123",
@@ -473,7 +473,7 @@ describe("run command", () => {
         "node",
         "cli",
         "user-abc123/my-agent",
-        "--experimental-dangerously-allow-shared",
+        "--experimental-shared-agent",
         "test prompt",
         "--artifact-name",
         "test-artifact",
@@ -551,7 +551,7 @@ describe("run command", () => {
         "node",
         "cli",
         "user-abc123/my-agent:abc12345",
-        "--experimental-dangerously-allow-shared",
+        "--experimental-shared-agent",
         "test prompt",
         "--artifact-name",
         "test-artifact",
@@ -1287,7 +1287,7 @@ describe("run command", () => {
     });
   });
 
-  describe("--experimental-dangerously-allow-shared flag", () => {
+  describe("--experimental-shared-agent flag", () => {
     it("should require flag when running agent from another user's scope", async () => {
       await expect(async () => {
         await runCommand.parseAsync([
@@ -1301,7 +1301,7 @@ describe("run command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("--experimental-dangerously-allow-shared"),
+        expect.stringContaining("--experimental-shared-agent"),
       );
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("security risks"),
@@ -1348,7 +1348,7 @@ describe("run command", () => {
 
       // Should not have error about the flag
       expect(mockConsoleError).not.toHaveBeenCalledWith(
-        expect.stringContaining("--experimental-dangerously-allow-shared"),
+        expect.stringContaining("--experimental-shared-agent"),
       );
     });
 
@@ -1384,7 +1384,7 @@ describe("run command", () => {
         "node",
         "cli",
         "other-user/shared-agent",
-        "--experimental-dangerously-allow-shared",
+        "--experimental-shared-agent",
         "test prompt",
         "--artifact-name",
         "test-artifact",
@@ -1392,7 +1392,7 @@ describe("run command", () => {
 
       // Should not have error about the flag
       expect(mockConsoleError).not.toHaveBeenCalledWith(
-        expect.stringContaining("--experimental-dangerously-allow-shared"),
+        expect.stringContaining("--experimental-shared-agent"),
       );
     });
   });
@@ -1427,7 +1427,7 @@ describe("run command", () => {
           "node",
           "cli",
           "nonexistent-scope-xyz123/my-agent",
-          "--experimental-dangerously-allow-shared",
+          "--experimental-shared-agent",
           "test prompt",
           "--artifact-name",
           "test-artifact",
@@ -1460,7 +1460,7 @@ describe("run command", () => {
           "node",
           "cli",
           "invalid-scope/test-agent",
-          "--experimental-dangerously-allow-shared",
+          "--experimental-shared-agent",
           "test prompt",
           "--artifact-name",
           "test-artifact",
@@ -1509,7 +1509,7 @@ describe("run command", () => {
           "node",
           "cli",
           "user-abc12345/nonexistent-agent-xyz123",
-          "--experimental-dangerously-allow-shared",
+          "--experimental-shared-agent",
           "test prompt",
           "--artifact-name",
           "test-artifact",
@@ -1542,7 +1542,7 @@ describe("run command", () => {
           "node",
           "cli",
           "user-scope/missing-agent",
-          "--experimental-dangerously-allow-shared",
+          "--experimental-shared-agent",
           "test prompt",
           "--artifact-name",
           "test-artifact",
@@ -1585,7 +1585,7 @@ describe("run command", () => {
           "node",
           "cli",
           "other-user-scope/my-agent",
-          "--experimental-dangerously-allow-shared",
+          "--experimental-shared-agent",
           "test prompt",
           "--artifact-name",
           "test-artifact",
@@ -1618,7 +1618,7 @@ describe("run command", () => {
           "node",
           "cli",
           "another-scope/secret-agent",
-          "--experimental-dangerously-allow-shared",
+          "--experimental-shared-agent",
           "test prompt",
           "--artifact-name",
           "test-artifact",
