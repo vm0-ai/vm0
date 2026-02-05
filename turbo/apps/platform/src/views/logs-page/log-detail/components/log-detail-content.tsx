@@ -47,7 +47,7 @@ export function LogDetailContent({ logId }: { logId: string }) {
     <div className="flex flex-col gap-4 h-full min-h-0">
       {/* Info Card - Grid layout with dividers */}
       <div className="p-4 pb-0 sm:px-8 sm:pt-4 sm:pb-0">
-        <div className="shrink-0 grid grid-cols-2 md:grid-cols-4 gap-y-2 text-sm px-2 sm:px-4 py-3 bg-card rounded-lg border border-border">
+        <div className="shrink-0 grid grid-cols-2 lg:grid-cols-4 gap-y-2 text-sm px-2 sm:px-4 py-3 bg-card rounded-lg border border-border">
           <InfoItem label="Status" showDivider>
             <StatusBadge status={detail.status} />
           </InfoItem>
@@ -145,7 +145,7 @@ function InfoItem({
   showDivider?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-2 px-2 sm:px-4 [&:nth-child(2n+1)]:pl-0 md:[&:nth-child(2n+1)]:pl-4 md:[&:nth-child(4n+1)]:pl-0 relative overflow-hidden [&:nth-child(2n)>.divider]:hidden md:[&:nth-child(2n)>.divider]:block md:[&:nth-child(4n)>.divider]:hidden">
+    <div className="flex items-center gap-2 px-2 sm:px-4 [&:nth-child(2n+1)]:pl-0 lg:[&:nth-child(2n+1)]:pl-4 lg:[&:nth-child(4n+1)]:pl-0 relative overflow-hidden [&:nth-child(2n)>.divider]:hidden lg:[&:nth-child(2n)>.divider]:block lg:[&:nth-child(4n)>.divider]:hidden">
       <span className="text-sm text-muted-foreground shrink-0">{label}</span>
       <div className="flex items-center text-sm min-w-0 overflow-hidden">
         {children}
