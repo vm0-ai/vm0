@@ -13,7 +13,7 @@ import {
   cleanupNetnsPool,
 } from "../lib/firecracker/netns-pool.js";
 import { initVMRegistry } from "../lib/proxy/index.js";
-import { Timer } from "../lib/timing.js";
+import { Timer } from "../lib/utils/timing.js";
 import { setGlobalLogger } from "../lib/logger.js";
 import { runnerPaths } from "../lib/paths.js";
 import { execCommand } from "../lib/utils/exec.js";

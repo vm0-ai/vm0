@@ -28,7 +28,7 @@ import fs from "node:fs";
 import os from "node:os";
 import readline from "node:readline";
 import { loadDebugConfig, validateFirecrackerPaths } from "../lib/config.js";
-import { Timer } from "../lib/timing.js";
+import { Timer } from "../lib/utils/timing.js";
 import { setGlobalLogger, createLogger } from "../lib/logger.js";
 import { VsockClient } from "../lib/firecracker/vsock.js";
 import { FirecrackerClient } from "../lib/firecracker/client.js";
