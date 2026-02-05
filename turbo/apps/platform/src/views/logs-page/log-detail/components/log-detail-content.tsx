@@ -59,7 +59,9 @@ export function LogDetailContent({ logId }: { logId: string }) {
           </InfoItem>
 
           <InfoItem label="Framework" showDivider>
-            <span className="text-foreground">{detail.framework || "-"}</span>
+            <span className="text-foreground truncate">
+              {detail.framework || "-"}
+            </span>
           </InfoItem>
 
           <InfoItem label="Duration" showDivider={false}>
@@ -109,11 +111,15 @@ export function LogDetailContent({ logId }: { logId: string }) {
       {/* Error Banner */}
       {detail.error && (
         <div className="px-4 sm:px-8">
-          <div className="shrink-0 px-4 py-3 bg-destructive/10 rounded-lg border border-destructive/30">
-            <span className="text-sm font-medium text-destructive">
-              Error:{" "}
-            </span>
-            <span className="text-sm text-destructive">{detail.error}</span>
+          <div className="shrink-0 px-4 py-3 bg-destructive/10 rounded-lg border border-destructive/30 overflow-hidden">
+            <div className="flex items-start gap-1 min-w-0">
+              <span className="text-sm font-medium text-destructive shrink-0">
+                Error:{" "}
+              </span>
+              <span className="text-sm text-destructive truncate">
+                {detail.error}
+              </span>
+            </div>
           </div>
         </div>
       )}
