@@ -11,6 +11,7 @@ import {
   streamEvents,
   type StreamResult,
 } from "../../lib/realtime/stream-events";
+import { captureException } from "../../instrument.js";
 
 /**
  * Collector for --secrets and --vars flags
@@ -353,6 +354,9 @@ function handleGenericRunError(error: Error, commandLabel: string): void {
  * Handles all standard error cases and calls process.exit(1)
  */
 export function handleRunError(error: unknown, identifier: string): void {
+  // Capture error to Sentry with context
+  captureException(error, { command: "run", identifier });
+
   if (error instanceof Error) {
     if (error.message.includes("Not authenticated")) {
       console.error(chalk.red("✗ Not authenticated. Run: vm0 auth login"));
@@ -389,6 +393,13 @@ export function handleResumeOrContinueError(
   resourceId: string,
   resourceLabel: "Agent session" | "Checkpoint",
 ): void {
+  // Capture error to Sentry with context
+  captureException(error, {
+    command: commandLabel.toLowerCase(),
+    resourceId,
+    resourceLabel,
+  });
+
   if (error instanceof Error) {
     if (error.message.includes("Not authenticated")) {
       console.error(chalk.red("✗ Not authenticated. Run: vm0 auth login"));

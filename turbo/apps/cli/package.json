@@ -25,6 +25,7 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
+    "@sentry/node": "^10.38.0",
     "@ts-rest/core": "3.53.0-rc.1",
     "@vm0/core": "workspace:*",
     "ably": "^2.17.0",

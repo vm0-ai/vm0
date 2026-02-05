@@ -2,6 +2,7 @@
   "$schema": "https://turborepo.com/schema.json",
   "ui": "tui",
   "globalEnv": [
+    "VM0_TELEMETRY",
     "DATABASE_URL",
     "DB_POOL_MAX",
     "DB_POOL_IDLE_TIMEOUT_MS",

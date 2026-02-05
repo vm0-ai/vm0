@@ -1,4 +1,6 @@
 // VM0 CLI - main entry point
+// Initialize Sentry before any other imports
+import "./instrument.js";
 import { Command } from "commander";
 import { authCommand } from "./commands/auth";
 import { infoCommand } from "./commands/info";
