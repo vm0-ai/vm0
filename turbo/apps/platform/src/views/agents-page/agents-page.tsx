@@ -41,7 +41,7 @@ export function AgentsPage() {
     <AppShell
       breadcrumb={["Agents"]}
       title="Agents"
-      subtitle="A list of all your active agents"
+      subtitle="Your agents, their schedules, and when they were last updated"
     >
       <div className="flex flex-col gap-5 px-6 pb-8">
         <AgentsListSection />
@@ -64,7 +64,7 @@ function AgentsListSection() {
     return (
       <div className="rounded-lg border border-border bg-card overflow-hidden">
         <div className="p-8 text-center">
-          <p className="text-sm text-destructive">Error: {error}</p>
+          <p className="text-sm text-destructive">Whoops! {error}</p>
         </div>
       </div>
     );
@@ -73,10 +73,16 @@ function AgentsListSection() {
   if (agents.length === 0) {
     return (
       <div className="rounded-lg border border-border bg-card overflow-hidden">
-        <div className="p-8 text-center">
+        <div className="p-8 text-center space-y-4">
           <p className="text-sm text-muted-foreground">
-            No agents found. Create your first agent with the CLI.
+            No agents yet. Time to create your first one.
           </p>
+          <div className="flex flex-col items-center gap-2">
+            <p className="text-xs text-muted-foreground">Get started:</p>
+            <code className="px-3 py-2 text-xs bg-muted rounded-md font-mono text-foreground">
+              npm install -g @vm0/cli && vm0 onboard
+            </code>
+          </div>
         </div>
       </div>
     );

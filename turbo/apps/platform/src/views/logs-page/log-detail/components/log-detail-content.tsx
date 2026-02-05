@@ -35,7 +35,7 @@ export function LogDetailContent({ logId }: { logId: string }) {
     return (
       <div className="p-4 sm:p-8">
         <div className="p-8 text-center text-destructive">
-          Error: {errorMessage}
+          Hmm, couldn&apos;t load that... {errorMessage}
         </div>
       </div>
     );

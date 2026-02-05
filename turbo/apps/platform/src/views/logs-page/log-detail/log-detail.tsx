@@ -18,7 +18,7 @@ export function LogDetailPage() {
           <LogDetailContent logId={logId} />
         ) : (
           <div className="p-8 text-center text-muted-foreground">
-            Log ID not found
+            Can&apos;t find that run
           </div>
         )}
       </div>

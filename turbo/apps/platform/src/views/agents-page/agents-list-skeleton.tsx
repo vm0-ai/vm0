@@ -21,7 +21,7 @@ export function AgentsListSkeleton() {
         </TableRow>
       </TableHeader>
       <TableBody>
-        {Array.from({ length: 12 }, (_, i) => (
+        {Array.from({ length: 8 }, (_, i) => (
           <TableRow key={`skeleton-${i}`} className="h-[53px]">
             <TableCell className="px-3 py-2">
               <Skeleton className="h-5 w-32" />

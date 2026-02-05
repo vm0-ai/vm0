@@ -43,7 +43,7 @@ export function LogsTableSkeleton() {
     <Table>
       <LogsTableHeader />
       <TableBody>
-        {Array.from({ length: 15 }, (_, i) => (
+        {Array.from({ length: 8 }, (_, i) => (
           <TableRow key={`skeleton-${i}`} className="h-[49px]">
             <TableCell className="px-3 py-2">
               <Skeleton className="h-4 w-24" />

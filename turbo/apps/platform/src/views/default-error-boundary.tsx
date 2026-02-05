@@ -12,11 +12,11 @@ export function DefaultErrorFallback(_props: ErrorFallbackProps) {
       <div className="flex flex-col items-center">
         <div className="mt-12">
           <div className="w-80 text-center text-base font-semibold text-gray-900">
-            Something went wrong.
+            Oops! Something went sideways
           </div>
 
           <div className="mt-2 w-80 text-center text-sm text-gray-500">
-            Please try again or get in touch with our team for further help.
+            Give it another try or reach out—we&apos;re here to help.
           </div>
         </div>
       </div>

@@ -82,10 +82,10 @@ export function LogDetailSkeleton() {
 
         {/* Event items - one line per event with status dot */}
         <div>
-          {Array.from({ length: 15 }, (_, i) => (
+          {Array.from({ length: 8 }, (_, i) => (
             <div key={`event-${i}`} className="py-2 relative">
               {/* Connector line (except for last item) */}
-              {i < 14 && (
+              {i < 7 && (
                 <div
                   className="absolute left-[3px] top-6 bottom-[-8px] w-[1px] bg-border/40"
                   aria-hidden="true"
