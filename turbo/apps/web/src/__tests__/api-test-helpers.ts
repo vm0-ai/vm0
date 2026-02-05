@@ -38,6 +38,7 @@ import { DELETE as deleteModelProviderRoute } from "../../app/api/model-provider
 import { GET as listModelProvidersRoute } from "../../app/api/model-providers/route";
 import { GET as listSecretsRoute } from "../../app/api/secrets/route";
 import { DELETE as deleteSecretRoute } from "../../app/api/secrets/[name]/route";
+import { POST as addPermissionRoute } from "../../app/api/agent/composes/[id]/permissions/route";
 
 /**
  * Helper to create a NextRequest for testing.
@@ -955,6 +956,42 @@ export async function deleteTestSecret(name: string): Promise<void> {
     const error = await response.json();
     throw new Error(
       `Failed to delete secret: ${error.error?.message || response.status}`,
+    );
+  }
+}
+
+/**
+ * Create a permission for an agent compose via API route handler.
+ *
+ * @param composeId - The compose ID to add permission to
+ * @param granteeType - The permission type ('public' or 'email')
+ * @param granteeEmail - The email address (required if granteeType is 'email')
+ */
+export async function createTestPermission(
+  composeId: string,
+  granteeType: "public" | "email",
+  granteeEmail?: string,
+): Promise<void> {
+  const body: { granteeType: string; granteeEmail?: string } = { granteeType };
+  if (granteeType === "email" && granteeEmail) {
+    body.granteeEmail = granteeEmail;
+  }
+
+  const request = createTestRequest(
+    `http://localhost:3000/api/agent/composes/${composeId}/permissions`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  const response = await addPermissionRoute(request, {
+    params: Promise.resolve({ id: composeId }),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `Failed to create permission: ${error.error?.message || response.status}`,
     );
   }
 }
