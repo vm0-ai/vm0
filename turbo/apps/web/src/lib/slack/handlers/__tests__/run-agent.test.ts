@@ -199,7 +199,7 @@ describe("Feature: Agent Run Execution for Slack", () => {
       expect(postCalls).toHaveLength(1);
 
       const text = (postCalls[0]!.body as { text?: string }).text ?? "";
-      expect(text).toContain("don't have any agents");
+      expect(text).toContain("don't have any agent linked");
     });
   });
 });
