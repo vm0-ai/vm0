@@ -2,6 +2,8 @@
   "$schema": "https://turborepo.com/schema.json",
   "ui": "tui",
   "globalEnv": [
+    "CI",
+    "GITHUB_ACTIONS",
     "VM0_TELEMETRY",
     "DATABASE_URL",
     "DB_POOL_MAX",

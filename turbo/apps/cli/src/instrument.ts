@@ -5,11 +5,13 @@ import * as os from "node:os";
 declare const __CLI_VERSION__: string;
 
 const TELEMETRY_DISABLED = process.env.VM0_TELEMETRY === "false";
+// Disable Sentry in CI to avoid network-related hangs during CLI exit
+const IS_CI = Boolean(process.env.CI || process.env.GITHUB_ACTIONS);
 const PRODUCTION_DSN =
   "https://268d9b4cd051531805af76a5b3934dca@o4510583739777024.ingest.us.sentry.io/4510832047947776";
 const DSN = process.env.SENTRY_DSN || PRODUCTION_DSN;
 
-if (!TELEMETRY_DISABLED && DSN) {
+if (!TELEMETRY_DISABLED && !IS_CI && DSN) {
   Sentry.init({
     dsn: DSN,
     sendDefaultPii: false,
