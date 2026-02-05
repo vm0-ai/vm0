@@ -1,3 +1,5 @@
+// Initialize Sentry before anything else (side-effect import)
+import "./lib/sentry.ts";
 import "./polyfill.ts";
 import { createStore, type Store } from "ccstate";
 import { createRoot } from "react-dom/client";

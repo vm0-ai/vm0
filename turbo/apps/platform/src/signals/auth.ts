@@ -1,5 +1,6 @@
 import { Clerk } from "@clerk/clerk-js";
 import { command, computed, state } from "ccstate";
+import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
 
 const reload$ = state(0);
 
@@ -32,7 +33,18 @@ export const setupClerk$ = command(
     const clerk = await get(clerk$);
     signal.throwIfAborted();
 
+    // Set initial Sentry user context
+    if (clerk.user) {
+      setSentryUser(clerk.user.id);
+    }
+
     const unsubscribe = clerk.addListener(() => {
+      // Update Sentry user context on auth state change
+      if (clerk.user) {
+        setSentryUser(clerk.user.id);
+      } else {
+        clearSentryUser();
+      }
       set(reload$, (x) => x + 1);
     });
     signal.addEventListener("abort", unsubscribe);

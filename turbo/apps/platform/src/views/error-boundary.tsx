@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { Sentry } from "../lib/sentry.ts";
 import { logger } from "../signals/log.ts";
 import { DefaultErrorFallback } from "./default-error-boundary.tsx";
 
@@ -18,6 +19,7 @@ interface State {
   hasError: boolean;
   error: Error | null;
   errorInfo: ErrorInfo | null;
+  sentryEventId: string | undefined;
 }
 
 const L = logger("React");
@@ -27,6 +29,7 @@ export class ErrorBoundary extends Component<Props, State> {
     hasError: false,
     error: null,
     errorInfo: null,
+    sentryEventId: undefined,
   };
 
   public static getDerivedStateFromError(error: Error): Partial<State> {
@@ -35,7 +38,10 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     L.error("Uncaught error:", error, errorInfo);
-    this.setState({ errorInfo });
+    const eventId = Sentry.captureException(error, {
+      extra: { componentStack: errorInfo.componentStack },
+    });
+    this.setState({ errorInfo, sentryEventId: eventId });
   }
 
   public render() {
@@ -43,6 +49,7 @@ export class ErrorBoundary extends Component<Props, State> {
       const fallbackProps: ErrorFallbackProps = {
         error: this.state.error,
         errorInfo: this.state.errorInfo,
+        sentryEventId: this.state.sentryEventId,
       };
 
       if (this.props.fallback) {
