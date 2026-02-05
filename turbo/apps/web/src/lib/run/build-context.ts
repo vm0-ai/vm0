@@ -3,11 +3,11 @@ import {
   extractVariableReferences,
   groupVariablesBySource,
   getFrameworkForType,
-  getCredentialNameForType,
+  getSecretNameForType,
   getEnvironmentMapping,
   getDefaultModel,
   hasAuthMethods,
-  getCredentialNamesForAuthMethod,
+  getSecretNamesForAuthMethod,
   MODEL_PROVIDER_TYPES,
   type ModelProviderType,
   type ModelProviderFramework,
@@ -108,7 +108,7 @@ function resolveEnvironmentMapping(
 
   if (!mapping) {
     // No mapping - return credential directly under its natural name
-    const credentialName = getCredentialNameForType(providerType);
+    const credentialName = getSecretNameForType(providerType);
     if (!credentialName || !credentialValue) {
       // Multi-auth providers should have environmentMapping, this shouldn't happen
       return {};
@@ -218,7 +218,7 @@ async function resolveModelProviderCredential(
     }
 
     // Get credential names for this auth method
-    const credentialNames = getCredentialNamesForAuthMethod(
+    const credentialNames = getSecretNamesForAuthMethod(
       providerType,
       authMethod,
     );
@@ -271,7 +271,7 @@ async function resolveModelProviderCredential(
   }
 
   // Handle legacy single-credential providers
-  const credentialName = getCredentialNameForType(providerType);
+  const credentialName = getSecretNameForType(providerType);
   if (!credentialName) {
     return { credentials, injectedEnvVars: undefined };
   }

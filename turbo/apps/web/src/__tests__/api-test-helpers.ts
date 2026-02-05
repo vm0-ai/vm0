@@ -221,13 +221,13 @@ export async function createTestCompose(
  * Create a test model provider via API route handler.
  *
  * @param type - The provider type
- * @param credentialValue - The credential value
+ * @param secretValue - The secret value
  * @param selectedModel - Optional selected model for providers with model selection
  * @returns The created provider with id and type
  */
 export async function createTestModelProvider(
   type: string,
-  credentialValue: string,
+  secretValue: string,
   selectedModel?: string,
 ): Promise<{ id: string; type: string; selectedModel: string | null }> {
   const request = createTestRequest(
@@ -237,7 +237,7 @@ export async function createTestModelProvider(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         type,
-        credential: credentialValue,
+        secret: secretValue,
         selectedModel,
       }),
     },
@@ -258,20 +258,20 @@ export async function createTestModelProvider(
  *
  * @param type - The provider type (e.g., "aws-bedrock")
  * @param authMethod - The auth method (e.g., "api-key", "access-keys")
- * @param credentials - Map of credential names to values
+ * @param secrets - Map of secret names to values
  * @param selectedModel - Optional selected model
  * @returns The created provider with id and type
  */
 export async function createTestMultiAuthModelProvider(
   type: string,
   authMethod: string,
-  credentials: Record<string, string>,
+  secrets: Record<string, string>,
   selectedModel?: string,
 ): Promise<{
   id: string;
   type: string;
   authMethod: string | null;
-  credentialNames: string[] | null;
+  secretNames: string[] | null;
   selectedModel: string | null;
 }> {
   const request = createTestRequest(
@@ -282,7 +282,7 @@ export async function createTestMultiAuthModelProvider(
       body: JSON.stringify({
         type,
         authMethod,
-        credentials,
+        secrets,
         selectedModel,
       }),
     },
@@ -888,9 +888,9 @@ export async function listTestModelProviders(): Promise<
     id: string;
     type: string;
     framework: string;
-    credentialName: string | null;
+    secretName: string | null;
     authMethod: string | null;
-    credentialNames: string[] | null;
+    secretNames: string[] | null;
     isDefault: boolean;
     selectedModel: string | null;
   }>

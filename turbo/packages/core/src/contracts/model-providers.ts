@@ -5,9 +5,9 @@ import { apiErrorSchema } from "./errors";
 const c = initContract();
 
 /**
- * Credential field configuration for multi-credential providers
+ * Secret field configuration for multi-secret providers
  */
-export interface CredentialFieldConfig {
+export interface SecretFieldConfig {
   label: string;
   required: boolean;
   placeholder?: string;
@@ -20,48 +20,48 @@ export interface CredentialFieldConfig {
 export interface AuthMethodConfig {
   label: string;
   helpText?: string;
-  credentials: Record<string, CredentialFieldConfig>;
+  secrets: Record<string, SecretFieldConfig>;
 }
 
 /**
  * Model Provider type configuration
- * Maps type to framework, credential name, and display info
+ * Maps type to framework, secret name, and display info
  *
- * For providers with `environmentMapping`, the credential is mapped to framework variables:
- * - `$credential` → the stored credential value (legacy single credential)
- * - `$credentials.X` → lookup credential X from the credentials map (multi-credential)
+ * For providers with `environmentMapping`, the secret is mapped to framework variables:
+ * - `$secret` → the stored secret value (legacy single secret)
+ * - `$secrets.X` → lookup secret X from the secrets map (multi-secret)
  * - `$model` → the selected model (or default)
  * - Other values are passed through as literals
  *
  * Provider types:
- * - Legacy providers: use `credentialName` for single credential
- * - Multi-auth providers: use `authMethods` for multiple auth options with different credentials
+ * - Legacy providers: use `secretName` for single secret
+ * - Multi-auth providers: use `authMethods` for multiple auth options with different secrets
  */
 export const MODEL_PROVIDER_TYPES = {
   "claude-code-oauth-token": {
     framework: "claude-code" as const,
-    credentialName: "CLAUDE_CODE_OAUTH_TOKEN",
+    secretName: "CLAUDE_CODE_OAUTH_TOKEN",
     label: "Claude Code (OAuth Token)",
-    credentialLabel: "OAuth token",
+    secretLabel: "OAuth token",
     helpText:
       "To get your OAuth token, run: claude setup-token\n(Requires Claude Pro or Max subscription)",
   },
   "anthropic-api-key": {
     framework: "claude-code" as const,
-    credentialName: "ANTHROPIC_API_KEY",
+    secretName: "ANTHROPIC_API_KEY",
     label: "Anthropic API Key",
-    credentialLabel: "API key",
+    secretLabel: "API key",
     helpText:
       "Get your API key at: https://console.anthropic.com/settings/keys",
   },
   "openrouter-api-key": {
     framework: "claude-code" as const,
-    credentialName: "OPENROUTER_API_KEY",
+    secretName: "OPENROUTER_API_KEY",
     label: "OpenRouter",
-    credentialLabel: "API key",
+    secretLabel: "API key",
     helpText: "Get your API key at: https://openrouter.ai/settings/keys",
     environmentMapping: {
-      ANTHROPIC_AUTH_TOKEN: "$credential",
+      ANTHROPIC_AUTH_TOKEN: "$secret",
       ANTHROPIC_BASE_URL: "https://openrouter.ai/api",
       ANTHROPIC_API_KEY: "",
       ANTHROPIC_MODEL: "$model",
@@ -79,13 +79,13 @@ export const MODEL_PROVIDER_TYPES = {
   },
   "moonshot-api-key": {
     framework: "claude-code" as const,
-    credentialName: "MOONSHOT_API_KEY",
+    secretName: "MOONSHOT_API_KEY",
     label: "Moonshot (Kimi)",
-    credentialLabel: "API key",
+    secretLabel: "API key",
     helpText:
       "Get your API key at: https://platform.moonshot.ai/console/api-keys",
     environmentMapping: {
-      ANTHROPIC_AUTH_TOKEN: "$credential",
+      ANTHROPIC_AUTH_TOKEN: "$secret",
       ANTHROPIC_BASE_URL: "https://api.moonshot.ai/anthropic",
       ANTHROPIC_MODEL: "$model",
       ANTHROPIC_DEFAULT_OPUS_MODEL: "$model",
@@ -102,13 +102,13 @@ export const MODEL_PROVIDER_TYPES = {
   },
   "minimax-api-key": {
     framework: "claude-code" as const,
-    credentialName: "MINIMAX_API_KEY",
+    secretName: "MINIMAX_API_KEY",
     label: "MiniMax",
-    credentialLabel: "API key",
+    secretLabel: "API key",
     helpText:
       "Get your API key at: https://platform.minimax.io/user-center/basic-information/interface-key",
     environmentMapping: {
-      ANTHROPIC_AUTH_TOKEN: "$credential",
+      ANTHROPIC_AUTH_TOKEN: "$secret",
       ANTHROPIC_BASE_URL: "https://api.minimax.io/anthropic",
       ANTHROPIC_MODEL: "$model",
       ANTHROPIC_DEFAULT_OPUS_MODEL: "$model",
@@ -123,12 +123,12 @@ export const MODEL_PROVIDER_TYPES = {
   },
   "deepseek-api-key": {
     framework: "claude-code" as const,
-    credentialName: "DEEPSEEK_API_KEY",
+    secretName: "DEEPSEEK_API_KEY",
     label: "DeepSeek",
-    credentialLabel: "API key",
+    secretLabel: "API key",
     helpText: "Get your API key at: https://platform.deepseek.com/api_keys",
     environmentMapping: {
-      ANTHROPIC_AUTH_TOKEN: "$credential",
+      ANTHROPIC_AUTH_TOKEN: "$secret",
       ANTHROPIC_BASE_URL: "https://api.deepseek.com/anthropic",
       ANTHROPIC_MODEL: "$model",
       ANTHROPIC_DEFAULT_OPUS_MODEL: "$model",
@@ -143,12 +143,12 @@ export const MODEL_PROVIDER_TYPES = {
   },
   "zai-api-key": {
     framework: "claude-code" as const,
-    credentialName: "ZAI_API_KEY",
+    secretName: "ZAI_API_KEY",
     label: "Z.AI (GLM)",
-    credentialLabel: "API key",
+    secretLabel: "API key",
     helpText: "Get your API key at: https://z.ai/model-api",
     environmentMapping: {
-      ANTHROPIC_AUTH_TOKEN: "$credential",
+      ANTHROPIC_AUTH_TOKEN: "$secret",
       ANTHROPIC_BASE_URL: "https://api.z.ai/api/anthropic",
       ANTHROPIC_MODEL: "$model",
       ANTHROPIC_DEFAULT_OPUS_MODEL: "$model",
@@ -169,7 +169,7 @@ export const MODEL_PROVIDER_TYPES = {
       "api-key": {
         label: "API Key",
         helpText: "Use an Azure Foundry API key for authentication",
-        credentials: {
+        secrets: {
           ANTHROPIC_FOUNDRY_API_KEY: {
             label: "ANTHROPIC_FOUNDRY_API_KEY",
             required: true,
@@ -187,8 +187,8 @@ export const MODEL_PROVIDER_TYPES = {
     defaultAuthMethod: "api-key",
     environmentMapping: {
       CLAUDE_CODE_USE_FOUNDRY: "1",
-      ANTHROPIC_FOUNDRY_API_KEY: "$credentials.ANTHROPIC_FOUNDRY_API_KEY",
-      ANTHROPIC_FOUNDRY_RESOURCE: "$credentials.ANTHROPIC_FOUNDRY_RESOURCE",
+      ANTHROPIC_FOUNDRY_API_KEY: "$secrets.ANTHROPIC_FOUNDRY_API_KEY",
+      ANTHROPIC_FOUNDRY_RESOURCE: "$secrets.ANTHROPIC_FOUNDRY_RESOURCE",
       ANTHROPIC_MODEL: "$model",
     } as Record<string, string>,
     models: [] as string[],
@@ -205,7 +205,7 @@ export const MODEL_PROVIDER_TYPES = {
       "api-key": {
         label: "Bedrock API Key",
         helpText: "Use a Bedrock API key for authentication",
-        credentials: {
+        secrets: {
           AWS_BEARER_TOKEN_BEDROCK: {
             label: "AWS_BEARER_TOKEN_BEDROCK",
             required: true,
@@ -221,8 +221,8 @@ export const MODEL_PROVIDER_TYPES = {
       },
       "access-keys": {
         label: "IAM Access Keys",
-        helpText: "Use IAM access key credentials",
-        credentials: {
+        helpText: "Use IAM access key secrets",
+        secrets: {
           AWS_ACCESS_KEY_ID: {
             label: "AWS_ACCESS_KEY_ID",
             required: true,
@@ -236,7 +236,7 @@ export const MODEL_PROVIDER_TYPES = {
           AWS_SESSION_TOKEN: {
             label: "AWS_SESSION_TOKEN",
             required: false,
-            helpText: "Optional, for temporary credentials",
+            helpText: "Optional, for temporary secrets",
           },
           AWS_REGION: {
             label: "AWS_REGION",
@@ -250,11 +250,11 @@ export const MODEL_PROVIDER_TYPES = {
     defaultAuthMethod: "api-key",
     environmentMapping: {
       CLAUDE_CODE_USE_BEDROCK: "1",
-      AWS_REGION: "$credentials.AWS_REGION",
-      AWS_BEARER_TOKEN_BEDROCK: "$credentials.AWS_BEARER_TOKEN_BEDROCK",
-      AWS_ACCESS_KEY_ID: "$credentials.AWS_ACCESS_KEY_ID",
-      AWS_SECRET_ACCESS_KEY: "$credentials.AWS_SECRET_ACCESS_KEY",
-      AWS_SESSION_TOKEN: "$credentials.AWS_SESSION_TOKEN",
+      AWS_REGION: "$secrets.AWS_REGION",
+      AWS_BEARER_TOKEN_BEDROCK: "$secrets.AWS_BEARER_TOKEN_BEDROCK",
+      AWS_ACCESS_KEY_ID: "$secrets.AWS_ACCESS_KEY_ID",
+      AWS_SECRET_ACCESS_KEY: "$secrets.AWS_SECRET_ACCESS_KEY",
+      AWS_SESSION_TOKEN: "$secrets.AWS_SESSION_TOKEN",
       ANTHROPIC_MODEL: "$model",
     } as Record<string, string>,
     models: [] as string[],
@@ -291,14 +291,14 @@ export function getFrameworkForType(
 }
 
 /**
- * Get credential name for a model provider type (legacy single-credential providers)
+ * Get secret name for a model provider type (legacy single-secret providers)
  * Returns undefined for multi-auth providers
  */
-export function getCredentialNameForType(
+export function getSecretNameForType(
   type: ModelProviderType,
 ): string | undefined {
   const config = MODEL_PROVIDER_TYPES[type];
-  return "credentialName" in config ? config.credentialName : undefined;
+  return "secretName" in config ? config.secretName : undefined;
 }
 
 /**
@@ -311,7 +311,7 @@ export function hasAuthMethods(type: ModelProviderType): boolean {
 
 /**
  * Get auth methods for a model provider type
- * Returns undefined for legacy single-credential providers
+ * Returns undefined for legacy single-secret providers
  */
 export function getAuthMethodsForType(
   type: ModelProviderType,
@@ -322,7 +322,7 @@ export function getAuthMethodsForType(
 
 /**
  * Get default auth method for a model provider type
- * Returns undefined for legacy single-credential providers
+ * Returns undefined for legacy single-secret providers
  */
 export function getDefaultAuthMethod(
   type: ModelProviderType,
@@ -332,39 +332,39 @@ export function getDefaultAuthMethod(
 }
 
 /**
- * Get credentials config for a specific auth method
+ * Get secrets config for a specific auth method
  * Returns undefined if provider doesn't have auth methods or auth method doesn't exist
  */
-export function getCredentialsForAuthMethod(
+export function getSecretsForAuthMethod(
   type: ModelProviderType,
   authMethod: string,
-): Record<string, CredentialFieldConfig> | undefined {
+): Record<string, SecretFieldConfig> | undefined {
   const authMethods = getAuthMethodsForType(type);
   if (!authMethods || !(authMethod in authMethods)) {
     return undefined;
   }
   const method = authMethods[authMethod];
-  return method?.credentials;
+  return method?.secrets;
 }
 
 /**
- * Get credential names for a specific auth method
- * Returns array of credential names required for the auth method
+ * Get secret names for a specific auth method
+ * Returns array of secret names required for the auth method
  */
-export function getCredentialNamesForAuthMethod(
+export function getSecretNamesForAuthMethod(
   type: ModelProviderType,
   authMethod: string,
 ): string[] | undefined {
-  const credentials = getCredentialsForAuthMethod(type, authMethod);
-  if (!credentials) {
+  const secrets = getSecretsForAuthMethod(type, authMethod);
+  if (!secrets) {
     return undefined;
   }
-  return Object.keys(credentials);
+  return Object.keys(secrets);
 }
 
 /**
  * Get environment mapping for a model provider type
- * Returns undefined for providers without mapping (use credential directly)
+ * Returns undefined for providers without mapping (use secret directly)
  */
 export function getEnvironmentMapping(
   type: ModelProviderType,
@@ -430,9 +430,9 @@ export const modelProviderResponseSchema = z.object({
   id: z.string().uuid(),
   type: modelProviderTypeSchema,
   framework: modelProviderFrameworkSchema,
-  credentialName: z.string().nullable(), // Legacy single-credential (deprecated for multi-auth)
+  secretName: z.string().nullable(), // Legacy single-secret (deprecated for multi-auth)
   authMethod: z.string().nullable(), // For multi-auth providers
-  credentialNames: z.array(z.string()).nullable(), // For multi-auth providers
+  secretNames: z.array(z.string()).nullable(), // For multi-auth providers
   isDefault: z.boolean(),
   selectedModel: z.string().nullable(),
   createdAt: z.string(),
@@ -455,14 +455,14 @@ export type ModelProviderListResponse = z.infer<
 /**
  * Create/update model provider request
  *
- * Legacy providers use `credential` (single string)
- * Multi-auth providers use `authMethod` + `credentials` (map)
+ * Legacy providers use `secret` (single string)
+ * Multi-auth providers use `authMethod` + `secrets` (map)
  */
 export const upsertModelProviderRequestSchema = z.object({
   type: modelProviderTypeSchema,
-  credential: z.string().min(1).optional(), // Legacy single credential
+  secret: z.string().min(1).optional(), // Legacy single secret
   authMethod: z.string().optional(), // For multi-auth providers
-  credentials: z.record(z.string(), z.string()).optional(), // For multi-auth providers
+  secrets: z.record(z.string(), z.string()).optional(), // For multi-auth providers
   selectedModel: z.string().optional(),
 });
 
@@ -483,16 +483,14 @@ export type UpsertModelProviderResponse = z.infer<
 >;
 
 /**
- * Check for existing credential response
+ * Check for existing secret response
  */
-export const checkCredentialResponseSchema = z.object({
+export const checkSecretResponseSchema = z.object({
   exists: z.boolean(),
-  credentialName: z.string(),
+  secretName: z.string(),
 });
 
-export type CheckCredentialResponse = z.infer<
-  typeof checkCredentialResponseSchema
->;
+export type CheckSecretResponse = z.infer<typeof checkSecretResponseSchema>;
 
 /**
  * Model providers main contract for /api/model-providers
@@ -529,7 +527,7 @@ export const modelProvidersMainContract = c.router({
 export type ModelProvidersMainContract = typeof modelProvidersMainContract;
 
 /**
- * Check credential contract for /api/model-providers/check/[type]
+ * Check secret contract for /api/model-providers/check/[type]
  */
 export const modelProvidersCheckContract = c.router({
   check: {
@@ -540,11 +538,11 @@ export const modelProvidersCheckContract = c.router({
       type: modelProviderTypeSchema,
     }),
     responses: {
-      200: checkCredentialResponseSchema,
+      200: checkSecretResponseSchema,
       401: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Check if credential exists for a model provider type",
+    summary: "Check if secret exists for a model provider type",
   },
 });
 
@@ -592,7 +590,7 @@ export const modelProvidersConvertContract = c.router({
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Convert existing user credential to model provider",
+    summary: "Convert existing user secret to model provider",
   },
 });
 

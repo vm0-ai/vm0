@@ -12,9 +12,9 @@ import {
 } from "vitest";
 import {
   listModelProviders,
-  checkCredentialExists,
+  checkSecretExists,
   upsertModelProvider,
-  convertCredentialToModelProvider,
+  convertSecretToModelProvider,
   deleteModelProvider,
   setModelProviderDefault,
   updateModelProviderModel,
@@ -94,17 +94,14 @@ describe("Model Provider Service", () => {
       expect(result).toHaveLength(1);
       expect(result[0]!.type).toBe("anthropic-api-key");
       expect(result[0]!.framework).toBe("claude-code");
-      expect(result[0]!.credentialName).toBe("ANTHROPIC_API_KEY");
+      expect(result[0]!.secretName).toBe("ANTHROPIC_API_KEY");
       expect(result[0]!.isDefault).toBe(true); // First provider for framework is default
     });
   });
 
-  describe("checkCredentialExists", () => {
+  describe("checkSecretExists", () => {
     it("should return false for nonexistent credential", async () => {
-      const result = await checkCredentialExists(
-        testUserId,
-        "anthropic-api-key",
-      );
+      const result = await checkSecretExists(testUserId, "anthropic-api-key");
       expect(result.exists).toBe(false);
     });
 
@@ -116,10 +113,7 @@ describe("Model Provider Service", () => {
         "test-api-key-123",
       );
 
-      const result = await checkCredentialExists(
-        testUserId,
-        "anthropic-api-key",
-      );
+      const result = await checkSecretExists(testUserId, "anthropic-api-key");
       expect(result.exists).toBe(true);
     });
   });
@@ -135,7 +129,7 @@ describe("Model Provider Service", () => {
       expect(created).toBe(true);
       expect(provider.type).toBe("anthropic-api-key");
       expect(provider.framework).toBe("claude-code");
-      expect(provider.credentialName).toBe("ANTHROPIC_API_KEY");
+      expect(provider.secretName).toBe("ANTHROPIC_API_KEY");
       expect(provider.isDefault).toBe(true); // First provider is default
     });
 
@@ -233,10 +227,10 @@ describe("Model Provider Service", () => {
     });
   });
 
-  describe("convertCredentialToModelProvider (deprecated)", () => {
+  describe("convertSecretToModelProvider (deprecated)", () => {
     it("should throw BadRequestError as conversion is no longer needed", async () => {
-      // convertCredentialToModelProvider is deprecated - user and model-provider secrets are isolated by type
-      await expect(convertCredentialToModelProvider()).rejects.toMatchObject({
+      // convertSecretToModelProvider is deprecated - user and model-provider secrets are isolated by type
+      await expect(convertSecretToModelProvider()).rejects.toMatchObject({
         name: "BadRequestError",
         message: expect.stringContaining("no longer needed"),
       });

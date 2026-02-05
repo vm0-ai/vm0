@@ -3,7 +3,7 @@ import chalk from "chalk";
 import prompts from "prompts";
 import {
   upsertModelProvider,
-  checkModelProviderCredential,
+  checkModelProviderSecret,
   listModelProviders,
   updateModelProviderModel,
   setModelProviderDefault,
@@ -18,19 +18,19 @@ import {
   hasAuthMethods,
   getAuthMethodsForType,
   getDefaultAuthMethod,
-  getCredentialsForAuthMethod,
+  getSecretsForAuthMethod,
   type ModelProviderType,
 } from "@vm0/core";
 import { isInteractive } from "../../lib/utils/prompt-utils";
 
 interface SetupInput {
   type: ModelProviderType;
-  credential?: string;
+  secret?: string;
   // Multi-auth support
   authMethod?: string;
-  credentials?: Record<string, string>;
+  secrets?: Record<string, string>;
   selectedModel?: string;
-  keepExistingCredential?: boolean;
+  keepExistingSecret?: boolean;
   isInteractiveMode?: boolean;
 }
 
@@ -90,87 +90,85 @@ function validateAuthMethod(
 }
 
 /**
- * Parse credential arguments into a credentials object.
+ * Parse secret arguments into a secrets object.
  * Supports two formats:
- * - Single value (e.g., "sk-xxx") - auto-mapped to the provider's credential name
+ * - Single value (e.g., "sk-xxx") - auto-mapped to the provider's secret name
  * - KEY=VALUE format (e.g., "AWS_REGION=us-east-1") - explicit mapping
  */
-function parseCredentials(
+function parseSecrets(
   type: ModelProviderType,
   authMethod: string,
-  credentialArgs: string[],
+  secretArgs: string[],
 ): Record<string, string> {
-  const credentialsConfig = getCredentialsForAuthMethod(type, authMethod);
-  if (!credentialsConfig) {
+  const secretsConfig = getSecretsForAuthMethod(type, authMethod);
+  if (!secretsConfig) {
     console.error(chalk.red(`✗ Invalid auth method "${authMethod}"`));
     process.exit(1);
   }
 
-  const credentialNames = Object.keys(credentialsConfig);
+  const secretNames = Object.keys(secretsConfig);
 
-  // Single value without = sign: only allowed for single-credential auth methods
-  const firstArg = credentialArgs[0];
-  if (credentialArgs.length === 1 && firstArg && !firstArg.includes("=")) {
-    if (credentialNames.length !== 1) {
+  // Single value without = sign: only allowed for single-secret auth methods
+  const firstArg = secretArgs[0];
+  if (secretArgs.length === 1 && firstArg && !firstArg.includes("=")) {
+    if (secretNames.length !== 1) {
       console.error(
-        chalk.red(
-          "✗ Must use KEY=VALUE format for multi-credential auth methods",
-        ),
+        chalk.red("✗ Must use KEY=VALUE format for multi-secret auth methods"),
       );
       console.log();
-      console.log("Required credentials:");
-      for (const [name, fieldConfig] of Object.entries(credentialsConfig)) {
+      console.log("Required secrets:");
+      for (const [name, fieldConfig] of Object.entries(secretsConfig)) {
         const requiredNote = fieldConfig.required ? " (required)" : "";
         console.log(`  ${chalk.cyan(name)}${requiredNote}`);
       }
       process.exit(1);
     }
-    const firstCredentialName = credentialNames[0];
-    if (!firstCredentialName) {
-      console.error(chalk.red("✗ No credentials defined for this auth method"));
+    const firstSecretName = secretNames[0];
+    if (!firstSecretName) {
+      console.error(chalk.red("✗ No secrets defined for this auth method"));
       process.exit(1);
     }
-    return { [firstCredentialName]: firstArg };
+    return { [firstSecretName]: firstArg };
   }
 
   // KEY=VALUE format
-  const credentials: Record<string, string> = {};
-  for (const arg of credentialArgs) {
+  const secrets: Record<string, string> = {};
+  for (const arg of secretArgs) {
     const eqIndex = arg.indexOf("=");
     if (eqIndex === -1) {
-      console.error(chalk.red(`✗ Invalid credential format "${arg}"`));
+      console.error(chalk.red(`✗ Invalid secret format "${arg}"`));
       console.log();
       console.log("Use KEY=VALUE format (e.g., AWS_REGION=us-east-1)");
       process.exit(1);
     }
     const key = arg.slice(0, eqIndex);
     const value = arg.slice(eqIndex + 1);
-    credentials[key] = value;
+    secrets[key] = value;
   }
-  return credentials;
+  return secrets;
 }
 
 /**
- * Validate credentials against the auth method config.
+ * Validate secrets against the auth method config.
  */
-function validateCredentials(
+function validateSecrets(
   type: ModelProviderType,
   authMethod: string,
-  credentials: Record<string, string>,
+  secrets: Record<string, string>,
 ): void {
-  const credentialsConfig = getCredentialsForAuthMethod(type, authMethod);
-  if (!credentialsConfig) {
+  const secretsConfig = getSecretsForAuthMethod(type, authMethod);
+  if (!secretsConfig) {
     console.error(chalk.red(`✗ Invalid auth method "${authMethod}"`));
     process.exit(1);
   }
 
   // Check required fields
-  for (const [name, fieldConfig] of Object.entries(credentialsConfig)) {
-    if (fieldConfig.required && !credentials[name]) {
-      console.error(chalk.red(`✗ Missing required credential: ${name}`));
+  for (const [name, fieldConfig] of Object.entries(secretsConfig)) {
+    if (fieldConfig.required && !secrets[name]) {
+      console.error(chalk.red(`✗ Missing required secret: ${name}`));
       console.log();
-      console.log("Required credentials:");
-      for (const [n, fc] of Object.entries(credentialsConfig)) {
+      console.log("Required secrets:");
+      for (const [n, fc] of Object.entries(secretsConfig)) {
         if (fc.required) {
           console.log(`  ${chalk.cyan(n)} - ${fc.label}`);
         }
@@ -180,12 +178,12 @@ function validateCredentials(
   }
 
   // Check for unknown fields
-  for (const name of Object.keys(credentials)) {
-    if (!(name in credentialsConfig)) {
-      console.error(chalk.red(`✗ Unknown credential: ${name}`));
+  for (const name of Object.keys(secrets)) {
+    if (!(name in secretsConfig)) {
+      console.error(chalk.red(`✗ Unknown secret: ${name}`));
       console.log();
-      console.log("Valid credentials:");
-      for (const [n, fc] of Object.entries(credentialsConfig)) {
+      console.log("Valid secrets:");
+      for (const [n, fc] of Object.entries(secretsConfig)) {
         const requiredNote = fc.required ? " (required)" : " (optional)";
         console.log(`  ${chalk.cyan(n)}${requiredNote}`);
       }
@@ -196,7 +194,7 @@ function validateCredentials(
 
 function handleNonInteractiveMode(options: {
   type: string;
-  credential: string[];
+  secret: string[];
   authMethod?: string;
   model?: string;
 }): SetupInput {
@@ -247,46 +245,46 @@ function handleNonInteractiveMode(options: {
         console.log("Example:");
         console.log(
           chalk.cyan(
-            `  vm0 model-provider setup --type ${type} --auth-method ${authMethodNames[0]} --credential KEY=VALUE`,
+            `  vm0 model-provider setup --type ${type} --auth-method ${authMethodNames[0]} --secret KEY=VALUE`,
           ),
         );
         process.exit(1);
       }
     }
 
-    // Parse and validate credentials
-    const credentials = parseCredentials(type, authMethod, options.credential);
-    validateCredentials(type, authMethod, credentials);
+    // Parse and validate secrets
+    const secrets = parseSecrets(type, authMethod, options.secret);
+    validateSecrets(type, authMethod, secrets);
 
     return {
       type,
       authMethod,
-      credentials,
+      secrets,
       selectedModel,
       isInteractiveMode: false,
     };
   }
 
-  // Single-credential provider (legacy)
+  // Single-secret provider (legacy)
   // Accept single value or KEY=VALUE format
-  const credentialArgs = options.credential;
-  const firstArg = credentialArgs[0];
+  const secretArgs = options.secret;
+  const firstArg = secretArgs[0];
   if (!firstArg) {
-    console.error(chalk.red("✗ Credential is required"));
+    console.error(chalk.red("✗ Secret is required"));
     process.exit(1);
   }
 
   // If KEY=VALUE format, extract the value
-  let credential: string;
+  let secret: string;
   if (firstArg.includes("=")) {
-    credential = firstArg.slice(firstArg.indexOf("=") + 1);
+    secret = firstArg.slice(firstArg.indexOf("=") + 1);
   } else {
-    credential = firstArg;
+    secret = firstArg;
   }
 
   return {
     type,
-    credential,
+    secret,
     selectedModel,
     isInteractiveMode: false,
   };
@@ -394,42 +392,42 @@ async function promptForAuthMethod(type: ModelProviderType): Promise<string> {
  * Prompt for credentials based on auth method configuration
  */
 /**
- * Determine if a credential should be masked (password type)
+ * Determine if a secret should be masked (password type)
  * Non-secret values like region should be visible
  */
-function isSecretCredential(name: string): boolean {
+function isSensitiveSecret(name: string): boolean {
   const nonSecretPatterns = ["REGION", "ENDPOINT", "URL"];
   return !nonSecretPatterns.some((pattern) =>
     name.toUpperCase().includes(pattern),
   );
 }
 
-async function promptForCredentials(
+async function promptForSecrets(
   type: ModelProviderType,
   authMethod: string,
 ): Promise<Record<string, string>> {
-  const credentialsConfig = getCredentialsForAuthMethod(type, authMethod);
+  const secretsConfig = getSecretsForAuthMethod(type, authMethod);
 
-  if (!credentialsConfig) {
+  if (!secretsConfig) {
     console.error(chalk.red(`✗ Invalid auth method "${authMethod}"`));
     process.exit(1);
   }
 
-  const credentials: Record<string, string> = {};
+  const secrets: Record<string, string> = {};
 
-  for (const [name, fieldConfig] of Object.entries(credentialsConfig)) {
+  for (const [name, fieldConfig] of Object.entries(secretsConfig)) {
     if (fieldConfig.helpText) {
       console.log(chalk.dim(fieldConfig.helpText));
     }
 
-    const isSecret = isSecretCredential(name);
+    const isSensitive = isSensitiveSecret(name);
     const placeholder =
       "placeholder" in fieldConfig ? (fieldConfig.placeholder as string) : "";
 
     if (fieldConfig.required) {
       const response = await prompts(
         {
-          type: isSecret ? "password" : "text",
+          type: isSensitive ? "password" : "text",
           name: "value",
           message: `${fieldConfig.label}:`,
           initial: placeholder ? "" : undefined,
@@ -438,12 +436,12 @@ async function promptForCredentials(
         },
         { onCancel: () => process.exit(0) },
       );
-      credentials[name] = response.value as string;
+      secrets[name] = response.value as string;
     } else {
       // Optional field
       const response = await prompts(
         {
-          type: isSecret ? "password" : "text",
+          type: isSensitive ? "password" : "text",
           name: "value",
           message: `${fieldConfig.label} (optional):`,
         },
@@ -451,12 +449,12 @@ async function promptForCredentials(
       );
       const value = response.value as string;
       if (value && value.trim()) {
-        credentials[name] = value.trim();
+        secrets[name] = value.trim();
       }
     }
   }
 
-  return credentials;
+  return secrets;
 }
 
 async function handleInteractiveMode(): Promise<SetupInput | null> {
@@ -507,10 +505,10 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
 
   const type = typeResponse.type as ModelProviderType;
 
-  // Check if credential already exists
-  const checkResult = await checkModelProviderCredential(type);
+  // Check if secret already exists
+  const checkResult = await checkModelProviderSecret(type);
 
-  // Handle existing model-provider credential
+  // Handle existing model-provider secret
   if (checkResult.exists) {
     console.log();
     console.log(`"${type}" is already configured.`);
@@ -522,24 +520,24 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
         name: "action",
         message: "",
         choices: [
-          { title: "Keep existing credential", value: "keep" },
-          { title: "Update credential", value: "update" },
+          { title: "Keep existing secret", value: "keep" },
+          { title: "Update secret", value: "update" },
         ],
       },
       { onCancel: () => process.exit(0) },
     );
 
     if (actionResponse.action === "keep") {
-      // Keep existing credential - only prompt for model if applicable
+      // Keep existing secret - only prompt for model if applicable
       const selectedModel = await promptForModelSelection(type);
       return {
         type,
-        keepExistingCredential: true,
+        keepExistingSecret: true,
         selectedModel,
         isInteractiveMode: true,
       };
     }
-    // Fall through to credential prompt for "update"
+    // Fall through to secret prompt for "update"
   }
 
   const config = MODEL_PROVIDER_TYPES[type];
@@ -551,37 +549,36 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
   // Handle multi-auth providers
   if (hasAuthMethods(type)) {
     const authMethod = await promptForAuthMethod(type);
-    const credentials = await promptForCredentials(type, authMethod);
+    const secrets = await promptForSecrets(type, authMethod);
     const selectedModel = await promptForModelSelection(type);
 
     return {
       type,
       authMethod,
-      credentials,
+      secrets,
       selectedModel,
       isInteractiveMode: true,
     };
   }
 
-  // Single-credential provider (legacy)
-  const credentialLabel =
-    "credentialLabel" in config ? config.credentialLabel : "credential";
+  // Single-secret provider (legacy)
+  const secretLabel = "secretLabel" in config ? config.secretLabel : "secret";
 
-  const credentialResponse = await prompts(
+  const secretResponse = await prompts(
     {
       type: "password",
-      name: "credential",
-      message: `Enter your ${credentialLabel}:`,
+      name: "secret",
+      message: `Enter your ${secretLabel}:`,
       validate: (value: string) =>
-        value.length > 0 || `${credentialLabel} is required`,
+        value.length > 0 || `${secretLabel} is required`,
     },
     { onCancel: () => process.exit(0) },
   );
 
-  const credential = credentialResponse.credential as string;
+  const secret = secretResponse.secret as string;
   const selectedModel = await promptForModelSelection(type);
 
-  return { type, credential, selectedModel, isInteractiveMode: true };
+  return { type, secret, selectedModel, isInteractiveMode: true };
 }
 
 function handleSetupError(error: unknown): never {
@@ -621,9 +618,9 @@ async function promptSetAsDefault(
 }
 
 /**
- * Collect credential values from repeatable --credential option
+ * Collect secret values from repeatable --secret option
  */
-function collectCredentials(value: string, previous: string[]): string[] {
+function collectSecrets(value: string, previous: string[]): string[] {
   return previous.concat([value]);
 }
 
@@ -632,9 +629,9 @@ export const setupCommand = new Command()
   .description("Configure a model provider")
   .option("-t, --type <type>", "Provider type (for non-interactive mode)")
   .option(
-    "-c, --credential <value>",
-    "Credential value (can be used multiple times, supports VALUE or KEY=VALUE format)",
-    collectCredentials,
+    "-s, --secret <value>",
+    "Secret value (can be used multiple times, supports VALUE or KEY=VALUE format)",
+    collectSecrets,
     [],
   )
   .option(
@@ -645,25 +642,23 @@ export const setupCommand = new Command()
   .action(
     async (options: {
       type?: string;
-      credential?: string[];
+      secret?: string[];
       authMethod?: string;
       model?: string;
     }) => {
       try {
         let input: SetupInput;
-        const credentialArgs = options.credential ?? [];
+        const secretArgs = options.secret ?? [];
 
-        if (options.type && credentialArgs.length > 0) {
+        if (options.type && secretArgs.length > 0) {
           input = handleNonInteractiveMode({
             type: options.type,
-            credential: credentialArgs,
+            secret: secretArgs,
             authMethod: options.authMethod,
             model: options.model,
           });
-        } else if (options.type || credentialArgs.length > 0) {
-          console.error(
-            chalk.red("✗ Both --type and --credential are required"),
-          );
+        } else if (options.type || secretArgs.length > 0) {
+          console.error(chalk.red("✗ Both --type and --secret are required"));
           process.exit(1);
         } else {
           const result = await handleInteractiveMode();
@@ -673,8 +668,8 @@ export const setupCommand = new Command()
           input = result;
         }
 
-        // Handle "keep existing credential" flow
-        if (input.keepExistingCredential) {
+        // Handle "keep existing secret" flow
+        if (input.keepExistingSecret) {
           const provider = await updateModelProviderModel(
             input.type,
             input.selectedModel,
@@ -709,12 +704,12 @@ export const setupCommand = new Command()
           return;
         }
 
-        // Standard upsert flow with credential
+        // Standard upsert flow with secret
         const { provider, created } = await upsertModelProvider({
           type: input.type,
-          credential: input.credential,
+          secret: input.secret,
           authMethod: input.authMethod,
-          credentials: input.credentials,
+          secrets: input.secrets,
           selectedModel: input.selectedModel,
         });
 

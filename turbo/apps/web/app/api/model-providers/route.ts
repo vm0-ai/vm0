@@ -41,9 +41,9 @@ const router = tsr.router(modelProvidersMainContract, {
           id: p.id,
           type: p.type,
           framework: p.framework,
-          credentialName: p.credentialName,
+          secretName: p.secretName,
           authMethod: p.authMethod ?? null,
-          credentialNames: p.credentialNames ?? null,
+          secretNames: p.secretNames ?? null,
           isDefault: p.isDefault,
           selectedModel: p.selectedModel,
           createdAt: p.createdAt.toISOString(),
@@ -64,7 +64,7 @@ const router = tsr.router(modelProvidersMainContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const { type, credential, authMethod, credentials, selectedModel } = body;
+    const { type, secret, authMethod, secrets, selectedModel } = body;
 
     log.debug("upserting model provider", { userId, type, selectedModel });
 
@@ -77,33 +77,33 @@ const router = tsr.router(modelProvidersMainContract, {
 
       if (isMultiAuth) {
         // Multi-auth provider (e.g., aws-bedrock)
-        if (!authMethod || !credentials) {
+        if (!authMethod || !secrets) {
           return createErrorResponse(
             "BAD_REQUEST",
-            `Provider "${type}" requires authMethod and credentials`,
+            `Provider "${type}" requires authMethod and secrets`,
           );
         }
         const result = await upsertMultiAuthModelProvider(
           userId,
           type,
           authMethod,
-          credentials,
+          secrets,
           selectedModel,
         );
         provider = result.provider;
         created = result.created;
       } else {
-        // Legacy single-credential provider
-        if (!credential) {
+        // Legacy single-secret provider
+        if (!secret) {
           return createErrorResponse(
             "BAD_REQUEST",
-            `Provider "${type}" requires a credential`,
+            `Provider "${type}" requires a secret`,
           );
         }
         const result = await upsertModelProvider(
           userId,
           type,
-          credential,
+          secret,
           selectedModel,
         );
         provider = result.provider;
@@ -117,9 +117,9 @@ const router = tsr.router(modelProvidersMainContract, {
             id: provider.id,
             type: provider.type,
             framework: provider.framework,
-            credentialName: provider.credentialName,
+            secretName: provider.secretName,
             authMethod: provider.authMethod ?? null,
-            credentialNames: provider.credentialNames ?? null,
+            secretNames: provider.secretNames ?? null,
             isDefault: provider.isDefault,
             selectedModel: provider.selectedModel,
             createdAt: provider.createdAt.toISOString(),

@@ -9,7 +9,7 @@ import {
   type ModelProviderListResponse,
   type ModelProviderResponse,
   type UpsertModelProviderResponse,
-  type CheckCredentialResponse,
+  type CheckSecretResponse,
 } from "@vm0/core";
 import { getClientConfig, handleError } from "../core/client-factory";
 
@@ -34,11 +34,11 @@ export async function listModelProviders(): Promise<ModelProviderListResponse> {
  */
 export async function upsertModelProvider(body: {
   type: ModelProviderType;
-  // Legacy single credential
-  credential?: string;
+  // Legacy single secret
+  secret?: string;
   // Multi-auth support
   authMethod?: string;
-  credentials?: Record<string, string>;
+  secrets?: Record<string, string>;
   selectedModel?: string;
 }): Promise<UpsertModelProviderResponse> {
   const config = await getClientConfig();
@@ -54,11 +54,11 @@ export async function upsertModelProvider(body: {
 }
 
 /**
- * Check if credential exists for a model provider type
+ * Check if secret exists for a model provider type
  */
-export async function checkModelProviderCredential(
+export async function checkModelProviderSecret(
   type: ModelProviderType,
-): Promise<CheckCredentialResponse> {
+): Promise<CheckSecretResponse> {
   const config = await getClientConfig();
   const client = initClient(modelProvidersCheckContract, config);
 
@@ -70,7 +70,7 @@ export async function checkModelProviderCredential(
     return result.body;
   }
 
-  handleError(result, "Failed to check credential");
+  handleError(result, "Failed to check secret");
 }
 
 /**

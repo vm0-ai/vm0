@@ -44,7 +44,7 @@ export const saveClaudeCodeOauthToken$ = command(
 
     const promise = set(createModelProvider$, {
       type: "claude-code-oauth-token",
-      credential: tokenValue,
+      secret: tokenValue,
     });
     set(internalActionPromise$, promise);
     signal.addEventListener("abort", () => {

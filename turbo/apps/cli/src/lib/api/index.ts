@@ -63,7 +63,7 @@ export {
 export {
   listModelProviders,
   upsertModelProvider,
-  checkModelProviderCredential,
+  checkModelProviderSecret,
   deleteModelProvider,
   setModelProviderDefault,
   updateModelProviderModel,

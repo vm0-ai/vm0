@@ -54,7 +54,7 @@ describe("test model providers", () => {
                 id: "anthropic-provider",
                 type: "anthropic-api-key",
                 framework: "claude-code",
-                credentialName: "ANTHROPIC_API_KEY",
+                secretName: "ANTHROPIC_API_KEY",
                 isDefault: false,
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
@@ -102,7 +102,7 @@ describe("test model providers", () => {
           putCalled = true;
           const body = (await request.json()) as {
             type: string;
-            credential: string;
+            secret: string;
           };
           return HttpResponse.json(
             {
@@ -110,7 +110,7 @@ describe("test model providers", () => {
                 id: "new-provider",
                 type: body.type,
                 framework: "claude-code",
-                credentialName: "CLAUDE_CODE_OAUTH_TOKEN",
+                secretName: "CLAUDE_CODE_OAUTH_TOKEN",
                 isDefault: false,
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
@@ -126,7 +126,7 @@ describe("test model providers", () => {
 
       await context.store.set(createModelProvider$, {
         type: "claude-code-oauth-token",
-        credential: "test-token",
+        secret: "test-token",
       });
 
       expect(putCalled).toBeTruthy();

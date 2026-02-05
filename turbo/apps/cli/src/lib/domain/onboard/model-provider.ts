@@ -34,7 +34,7 @@ interface ProviderChoice {
   type: ModelProviderType;
   label: string;
   helpText: string;
-  credentialLabel: string;
+  secretLabel: string;
   models?: string[];
   defaultModel?: string;
 }
@@ -69,8 +69,7 @@ export function getProviderChoices(): ProviderChoice[] {
       type,
       label: config.label,
       helpText: config.helpText,
-      credentialLabel:
-        "credentialLabel" in config ? config.credentialLabel : "",
+      secretLabel: "secretLabel" in config ? config.secretLabel : "",
       models: getModels(type),
       defaultModel: getDefaultModel(type),
     };
@@ -78,16 +77,16 @@ export function getProviderChoices(): ProviderChoice[] {
 }
 
 /**
- * Setup a model provider with the given credential
+ * Setup a model provider with the given secret
  */
 export async function setupModelProvider(
   type: ModelProviderType,
-  credential: string,
+  secret: string,
   options?: { selectedModel?: string },
 ): Promise<SetupResult> {
   const response: UpsertModelProviderResponse = await upsertModelProvider({
     type,
-    credential,
+    secret,
     selectedModel: options?.selectedModel,
   });
 

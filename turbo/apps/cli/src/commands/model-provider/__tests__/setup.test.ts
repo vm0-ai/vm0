@@ -43,8 +43,8 @@ describe("model-provider setup command", () => {
           "cli",
           "--type",
           "invalid-type",
-          "--credential",
-          "test-credential",
+          "--secret",
+          "test-secret",
         ]);
       }).rejects.toThrow("process.exit called");
 
@@ -57,7 +57,7 @@ describe("model-provider setup command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should reject when only --type is provided without --credential", async () => {
+    it("should reject when only --type is provided without --secret", async () => {
       await expect(async () => {
         await setupCommand.parseAsync([
           "node",
@@ -68,23 +68,23 @@ describe("model-provider setup command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Both --type and --credential are required"),
+        expect.stringContaining("Both --type and --secret are required"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should reject when only --credential is provided without --type", async () => {
+    it("should reject when only --secret is provided without --type", async () => {
       await expect(async () => {
         await setupCommand.parseAsync([
           "node",
           "cli",
-          "--credential",
-          "test-credential",
+          "--secret",
+          "test-secret",
         ]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Both --type and --credential are required"),
+        expect.stringContaining("Both --type and --secret are required"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -96,8 +96,8 @@ describe("model-provider setup command", () => {
           "cli",
           "--type",
           "not-a-real-type",
-          "--credential",
-          "test-credential",
+          "--secret",
+          "test-secret",
         ]);
       }).rejects.toThrow("process.exit called");
 
@@ -137,7 +137,7 @@ describe("model-provider setup command", () => {
               id: "mp-123",
               type: "anthropic-api-key",
               framework: "claude-code",
-              credentialName: "ANTHROPIC_API_KEY",
+              secretName: "ANTHROPIC_API_KEY",
               isDefault: true,
               createdAt: "2024-01-01T00:00:00Z",
               updatedAt: "2024-01-01T00:00:00Z",
@@ -152,7 +152,7 @@ describe("model-provider setup command", () => {
         "cli",
         "--type",
         "anthropic-api-key",
-        "--credential",
+        "--secret",
         "sk-ant-test-key",
       ]);
 
@@ -172,7 +172,7 @@ describe("model-provider setup command", () => {
               id: "mp-123",
               type: "anthropic-api-key",
               framework: "claude-code",
-              credentialName: "ANTHROPIC_API_KEY",
+              secretName: "ANTHROPIC_API_KEY",
               isDefault: true,
               createdAt: "2024-01-01T00:00:00Z",
               updatedAt: "2024-01-02T00:00:00Z",
@@ -187,7 +187,7 @@ describe("model-provider setup command", () => {
         "cli",
         "--type",
         "anthropic-api-key",
-        "--credential",
+        "--secret",
         "sk-ant-new-key",
       ]);
 
@@ -217,7 +217,7 @@ describe("model-provider setup command", () => {
           "cli",
           "--type",
           "anthropic-api-key",
-          "--credential",
+          "--secret",
           "sk-ant-test-key",
         ]);
       }).rejects.toThrow("process.exit called");
@@ -244,7 +244,7 @@ describe("model-provider setup command", () => {
           "cli",
           "--type",
           "anthropic-api-key",
-          "--credential",
+          "--secret",
           "sk-ant-test-key",
         ]);
       }).rejects.toThrow("process.exit called");
@@ -276,7 +276,7 @@ describe("model-provider setup command", () => {
           "cli",
           "--type",
           "anthropic-api-key",
-          "--credential",
+          "--secret",
           "sk-ant-test-key",
         ]);
       }).rejects.toThrow("process.exit called");
@@ -295,7 +295,7 @@ describe("model-provider setup command", () => {
               id: "mp-456",
               type: "anthropic-api-key",
               framework: "claude-code",
-              credentialName: "ANTHROPIC_API_KEY",
+              secretName: "ANTHROPIC_API_KEY",
               isDefault: false,
               selectedModel: null,
               createdAt: "2024-01-01T00:00:00Z",
@@ -311,7 +311,7 @@ describe("model-provider setup command", () => {
         "cli",
         "--type",
         "anthropic-api-key",
-        "--credential",
+        "--secret",
         "sk-ant-test-key",
       ]);
 
@@ -333,7 +333,7 @@ describe("model-provider setup command", () => {
                 id: "mp-moonshot",
                 type: "moonshot-api-key",
                 framework: "claude-code",
-                credentialName: "MOONSHOT_API_KEY",
+                secretName: "MOONSHOT_API_KEY",
                 isDefault: true,
                 selectedModel: body.selectedModel,
                 createdAt: "2024-01-01T00:00:00Z",
@@ -350,7 +350,7 @@ describe("model-provider setup command", () => {
         "cli",
         "--type",
         "moonshot-api-key",
-        "--credential",
+        "--secret",
         "sk-moonshot-key",
         "--model",
         "kimi-k2.5",
@@ -368,7 +368,7 @@ describe("model-provider setup command", () => {
           "cli",
           "--type",
           "moonshot-api-key",
-          "--credential",
+          "--secret",
           "sk-moonshot-key",
           "--model",
           "invalid-model",
@@ -397,7 +397,7 @@ describe("model-provider setup command", () => {
                 id: "mp-moonshot",
                 type: "moonshot-api-key",
                 framework: "claude-code",
-                credentialName: "MOONSHOT_API_KEY",
+                secretName: "MOONSHOT_API_KEY",
                 isDefault: true,
                 selectedModel: body.selectedModel,
                 createdAt: "2024-01-01T00:00:00Z",
@@ -414,7 +414,7 @@ describe("model-provider setup command", () => {
         "cli",
         "--type",
         "moonshot-api-key",
-        "--credential",
+        "--secret",
         "sk-moonshot-key",
       ]);
 
@@ -432,7 +432,7 @@ describe("model-provider setup command", () => {
           "cli",
           "--type",
           "moonshot-api-key",
-          "--credential",
+          "--secret",
           "sk-moonshot-key",
           "--model",
           "not-a-valid-model",
@@ -463,7 +463,7 @@ describe("model-provider setup command", () => {
                 id: "mp-openrouter",
                 type: "openrouter-api-key",
                 framework: "claude-code",
-                credentialName: "OPENROUTER_API_KEY",
+                secretName: "OPENROUTER_API_KEY",
                 isDefault: true,
                 selectedModel: null,
                 createdAt: "2024-01-01T00:00:00Z",
@@ -480,7 +480,7 @@ describe("model-provider setup command", () => {
         "cli",
         "--type",
         "openrouter-api-key",
-        "--credential",
+        "--secret",
         "sk-or-xxx",
       ]);
 
@@ -504,7 +504,7 @@ describe("model-provider setup command", () => {
                 id: "mp-openrouter",
                 type: "openrouter-api-key",
                 framework: "claude-code",
-                credentialName: "OPENROUTER_API_KEY",
+                secretName: "OPENROUTER_API_KEY",
                 isDefault: true,
                 selectedModel: body.selectedModel,
                 createdAt: "2024-01-01T00:00:00Z",
@@ -521,7 +521,7 @@ describe("model-provider setup command", () => {
         "cli",
         "--type",
         "openrouter-api-key",
-        "--credential",
+        "--secret",
         "sk-or-xxx",
         "--model",
         "anthropic/claude-sonnet-4.5",
@@ -540,7 +540,7 @@ describe("model-provider setup command", () => {
           "cli",
           "--type",
           "openrouter-api-key",
-          "--credential",
+          "--secret",
           "sk-or-xxx",
           "--model",
           "invalid/model",
@@ -563,7 +563,7 @@ describe("model-provider setup command", () => {
           "cli",
           "--type",
           "openrouter-api-key",
-          "--credential",
+          "--secret",
           "sk-or-xxx",
           "--model",
           "not-valid",
@@ -592,7 +592,7 @@ describe("model-provider setup command", () => {
               id: "mp-456",
               type: "anthropic-api-key",
               framework: "claude-code",
-              credentialName: "ANTHROPIC_API_KEY",
+              secretName: "ANTHROPIC_API_KEY",
               isDefault: false,
               selectedModel: null,
               createdAt: "2024-01-01T00:00:00Z",
@@ -608,7 +608,7 @@ describe("model-provider setup command", () => {
         "cli",
         "--type",
         "anthropic-api-key",
-        "--credential",
+        "--secret",
         "sk-ant-test-key",
       ]);
 
@@ -628,7 +628,7 @@ describe("model-provider setup command", () => {
               id: "mp-123",
               type: "anthropic-api-key",
               framework: "claude-code",
-              credentialName: "ANTHROPIC_API_KEY",
+              secretName: "ANTHROPIC_API_KEY",
               isDefault: true,
               selectedModel: null,
               createdAt: "2024-01-01T00:00:00Z",
@@ -644,7 +644,7 @@ describe("model-provider setup command", () => {
         "cli",
         "--type",
         "anthropic-api-key",
-        "--credential",
+        "--secret",
         "sk-ant-test-key",
       ]);
 
