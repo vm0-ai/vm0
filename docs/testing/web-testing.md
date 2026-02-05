@@ -518,3 +518,196 @@ const result = handlers({
 ```
 
 The return type preserves handler keys for TypeScript autocomplete.
+
+---
+
+## Domain-Specific Test Helpers
+
+For complex integrations (e.g., Slack, OAuth), create domain-specific BDD-style helpers that use API endpoints instead of direct DB operations.
+
+### Location
+
+Place domain helpers in `src/__tests__/<domain>/`:
+
+```
+src/__tests__/
+├── api-test-helpers.ts    # Generic helpers (createTestCompose, etc.)
+├── slack/
+│   ├── index.ts           # Re-exports
+│   └── api-helpers.ts     # Slack-specific helpers
+```
+
+### Pattern: Given Helpers
+
+Create `given*` helpers that set up preconditions through real API flows:
+
+```typescript
+// src/__tests__/slack/api-helpers.ts
+import { HttpResponse } from "msw";
+import { handlers, http } from "../msw";
+import { server } from "../../mocks/server";
+import { createTestCompose, createTestScope } from "../api-test-helpers";
+import { mockClerk } from "../clerk-mock";
+
+// Import route handlers and server actions
+import { GET as oauthCallbackRoute } from "../../../app/api/slack/oauth/callback/route";
+import { linkSlackAccount } from "../../../app/slack/link/actions";
+
+/**
+ * Given a Slack workspace has installed the app.
+ * Uses OAuth callback route with mocked Slack API.
+ */
+export async function givenSlackWorkspaceInstalled(
+  options: WorkspaceInstallationOptions = {},
+): Promise<WorkspaceInstallationResult> {
+  // Mock external Slack OAuth API
+  const oauthMock = handlers({
+    oauthAccess: http.post("https://slack.com/api/oauth.v2.access", () =>
+      HttpResponse.json({
+        ok: true,
+        access_token: "xoxb-test-token",
+        bot_user_id: options.botUserId ?? "B123",
+        team: { id: options.workspaceId ?? "T123", name: "Test Workspace" },
+      }),
+    ),
+  });
+  server.use(...oauthMock.handlers);
+
+  // Call the actual OAuth callback route
+  const request = new Request("http://localhost/api/slack/oauth/callback?code=mock-code");
+  await oauthCallbackRoute(request);
+
+  return { installation: { slackWorkspaceId: options.workspaceId ?? "T123", ... } };
+}
+
+/**
+ * Given a Slack user has linked their account.
+ * Uses server action with mocked Clerk auth.
+ */
+export async function givenLinkedSlackUser(
+  options: LinkedUserOptions = {},
+): Promise<LinkedUserResult> {
+  const { installation } = await givenSlackWorkspaceInstalled(options);
+
+  // Mock Clerk and create scope
+  mockClerk({ userId: options.vm0UserId ?? "user-123" });
+  await createTestScope("test-scope");
+
+  // Call the actual server action
+  await linkSlackAccount(options.slackUserId ?? "U123", installation.slackWorkspaceId);
+
+  return { installation, userLink: { ... } };
+}
+```
+
+### Usage in Tests
+
+```typescript
+import {
+  givenLinkedSlackUser,
+  givenUserHasAgent,
+} from "../../../../../src/__tests__/slack";
+
+describe("POST /api/slack/events", () => {
+  it("should execute agent when mentioned", async () => {
+    // Given - BDD-style setup through API helpers
+    const { userLink, installation } = await givenLinkedSlackUser();
+    await givenUserHasAgent(userLink, { agentName: "my-helper" });
+
+    // When - call the route under test
+    const request = createSlackEventRequest({ ... });
+    const response = await POST(request);
+
+    // Then
+    expect(response.status).toBe(200);
+  });
+});
+```
+
+### Bad Case - Direct DB Operations in Helpers
+
+```typescript
+// ❌ Don't do this - bypasses validation, auth, and business logic
+export async function givenLinkedSlackUser() {
+  initServices();
+
+  // Direct DB insert - skips OAuth flow validation
+  await globalThis.services.db.insert(slackInstallations).values({
+    slackWorkspaceId: "T123",
+    encryptedBotToken: encryptCredentialValue("xoxb-token", key),
+    botUserId: "B123",
+  });
+
+  // Direct DB insert - skips auth and link validation
+  await globalThis.services.db.insert(slackUserLinks).values({
+    slackUserId: "U123",
+    slackWorkspaceId: "T123",
+    vm0UserId: "user-123",
+  });
+
+  return { ... };
+}
+```
+
+### Bad Case - Testing Internal Functions Instead of Routes
+
+```typescript
+// ❌ Don't do this - tests internal implementation, not API contract
+import { handleAppMention } from "../../../lib/slack/handlers/mention";
+
+describe("handleAppMention", () => {
+  it("should respond to mention", async () => {
+    // Testing internal function directly
+    await handleAppMention(event, installation, userLink);
+  });
+});
+```
+
+```typescript
+// ✅ Do this - test the route endpoint
+import { POST } from "../route";
+
+describe("POST /api/slack/events", () => {
+  it("should respond to mention", async () => {
+    const request = createSlackEventRequest({ ... });
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+  });
+});
+```
+
+### Bad Case - Mocking Internal Modules
+
+```typescript
+// ❌ Don't do this - mocking internal modules hides bugs
+import * as runAgentModule from "../../../lib/slack/handlers/run-agent";
+
+vi.spyOn(runAgentModule, "runAgentForSlack").mockResolvedValue({
+  response: "mocked response",
+});
+
+it("should run agent", async () => {
+  await POST(request);
+  expect(runAgentModule.runAgentForSlack).toHaveBeenCalled();
+});
+```
+
+```typescript
+// ✅ Do this - mock only external services, verify behavior through response
+vi.mock("@e2b/code-interpreter"); // External service
+
+it("should run agent", async () => {
+  const response = await POST(request);
+
+  // Verify behavior through actual response content
+  const data = await getFormData(slackHandlers.mocked.postMessage);
+  expect(data.text).toContain("agent response");
+});
+```
+
+### Benefits
+
+1. **Tests real flows** - Fixtures are created through the same paths as production
+2. **Catches integration bugs** - DB schema changes, validation rules, etc. are automatically tested
+3. **Self-documenting** - `givenLinkedSlackUser()` clearly describes the precondition
+4. **No internal coupling** - Helpers don't import internal services or DB schemas
