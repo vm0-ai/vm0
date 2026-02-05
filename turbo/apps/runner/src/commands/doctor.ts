@@ -386,13 +386,15 @@ export const doctorCommand = new Command("doctor")
   .description("Diagnose health of all runners on this host")
   .action(async (): Promise<void> => {
     try {
+      const globalWarnings: Warning[] = [];
+      let totalWarnings = 0;
+
+      // Scan all processes once
+      const allFirecrackerProcesses = findFirecrackerProcesses();
+      const allMitmproxyProcesses = findMitmproxyProcesses();
+
       // Discover all runner processes
       const runnerProcesses = findRunnerProcesses();
-
-      if (runnerProcesses.length === 0) {
-        console.error("No runner processes found on this host");
-        process.exit(1);
-      }
 
       // Load config for each runner
       const discoveredRunners: DiscoveredRunner[] = [];
@@ -405,40 +407,34 @@ export const doctorCommand = new Command("doctor")
             mode: rp.mode,
           });
         } catch (err) {
-          console.error(
-            `Warning: Failed to load config ${rp.configPath}: ${err instanceof Error ? err.message : "Unknown error"}`,
-          );
+          globalWarnings.push({
+            message: `Failed to load config ${rp.configPath}: ${err instanceof Error ? err.message : "Unknown error"}`,
+          });
         }
       }
 
-      if (discoveredRunners.length === 0) {
-        console.error("No runners with valid configuration found");
-        process.exit(1);
-      }
-
-      // Scan all processes once
-      const allFirecrackerProcesses = findFirecrackerProcesses();
-      const allMitmproxyProcesses = findMitmproxyProcesses();
-
-      // Display header
+      // Display runners
       console.log(`Runners (${discoveredRunners.length} found):`);
       console.log("");
 
-      // Check each runner
-      let totalWarnings = 0;
-      for (let i = 0; i < discoveredRunners.length; i++) {
-        const warnings = await displayRunnerHealth(
-          discoveredRunners[i]!,
-          i + 1,
-          allFirecrackerProcesses,
-          allMitmproxyProcesses,
-        );
-        totalWarnings += warnings.length;
+      if (discoveredRunners.length === 0) {
+        console.log("    No runner processes found");
         console.log("");
+      } else {
+        // Check each runner
+        for (let i = 0; i < discoveredRunners.length; i++) {
+          const warnings = await displayRunnerHealth(
+            discoveredRunners[i]!,
+            i + 1,
+            allFirecrackerProcesses,
+            allMitmproxyProcesses,
+          );
+          totalWarnings += warnings.length;
+          console.log("");
+        }
       }
 
       // Global orphan detection
-      const globalWarnings: Warning[] = [];
       await detectGlobalOrphans(
         discoveredRunners,
         allFirecrackerProcesses,
