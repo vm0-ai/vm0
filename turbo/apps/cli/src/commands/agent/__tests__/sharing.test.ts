@@ -1,5 +1,5 @@
 /**
- * Tests for agent sharing commands (public, private, share, unshare, permissions)
+ * Tests for agent sharing commands (public, private, share, unshare, permission)
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -14,7 +14,7 @@ import { publicCommand } from "../public";
 import { privateCommand } from "../private";
 import { shareCommand } from "../share";
 import { unshareCommand } from "../unshare";
-import { permissionsCommand } from "../permissions";
+import { permissionCommand } from "../permission";
 import chalk from "chalk";
 
 describe("Agent Sharing Commands", () => {
@@ -299,7 +299,7 @@ describe("Agent Sharing Commands", () => {
     });
   });
 
-  describe("vm0 agent permissions", () => {
+  describe("vm0 agent permission", () => {
     it("should list permissions for agent", async () => {
       server.use(
         http.get(
@@ -329,7 +329,7 @@ describe("Agent Sharing Commands", () => {
         ),
       );
 
-      await permissionsCommand.parseAsync(["node", "cli", testAgentName]);
+      await permissionCommand.parseAsync(["node", "cli", testAgentName]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("public");
@@ -346,7 +346,7 @@ describe("Agent Sharing Commands", () => {
         ),
       );
 
-      await permissionsCommand.parseAsync(["node", "cli", testAgentName]);
+      await permissionCommand.parseAsync(["node", "cli", testAgentName]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("No permissions"),
@@ -364,7 +364,7 @@ describe("Agent Sharing Commands", () => {
       );
 
       await expect(async () => {
-        await permissionsCommand.parseAsync(["node", "cli", testAgentName]);
+        await permissionCommand.parseAsync(["node", "cli", testAgentName]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
