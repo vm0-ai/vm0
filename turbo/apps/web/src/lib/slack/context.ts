@@ -1,12 +1,14 @@
 import type { WebClient } from "@slack/web-api";
 import { logger } from "../logger";
+import { uploadS3Buffer, generatePresignedUrl } from "../s3/s3-client";
+import { env } from "../../env";
 
 const log = logger("slack:context");
 
-/** Maximum file size to download and embed as base64 (5MB) */
-const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+/** Maximum file size to download and upload (10MB) */
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
-/** Image MIME types that can be embedded as base64 data URLs */
+/** Image MIME types that can be uploaded for agent access */
 const SUPPORTED_IMAGE_TYPES = [
   "image/png",
   "image/jpeg",
@@ -107,12 +109,13 @@ function isSupportedImageType(file: SlackFile): boolean {
 }
 
 /**
- * Download a Slack file using the bot token and return base64 data URL
- * Returns null if download fails or file is too large
+ * Download a Slack file and upload to R2 temporary storage
+ * Returns a presigned URL that Claude Code can access directly
  */
-async function downloadSlackFileAsBase64(
+async function downloadAndUploadSlackFile(
   file: SlackFile,
   botToken: string,
+  sessionId: string,
 ): Promise<string | null> {
   const downloadUrl = file.url_private_download;
   if (!downloadUrl) {
@@ -122,7 +125,7 @@ async function downloadSlackFileAsBase64(
 
   // Check file size before downloading
   if (file.size && file.size > MAX_FILE_SIZE_BYTES) {
-    log.debug("File too large to embed", {
+    log.debug("File too large to upload", {
       fileId: file.id,
       size: file.size,
       maxSize: MAX_FILE_SIZE_BYTES,
@@ -146,12 +149,31 @@ async function downloadSlackFileAsBase64(
     }
 
     const arrayBuffer = await response.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString("base64");
-    const mimetype = file.mimetype || "application/octet-stream";
+    const buffer = Buffer.from(arrayBuffer);
 
-    return `data:${mimetype};base64,${base64}`;
+    // Upload to R2 temporary storage
+    const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
+    const filename = file.name || file.id || "image";
+    const s3Key = `slack-images/${sessionId}/${file.id || Date.now()}-${filename}`;
+
+    await uploadS3Buffer(bucketName, s3Key, buffer);
+
+    // Generate presigned URL (valid for 1 hour)
+    const presignedUrl = await generatePresignedUrl(bucketName, s3Key, 3600);
+
+    log.debug("Uploaded Slack image to R2", {
+      fileId: file.id,
+      name: filename,
+      size: buffer.length,
+      s3Key,
+    });
+
+    return presignedUrl;
   } catch (error) {
-    log.debug("Error downloading Slack file", { fileId: file.id, error });
+    log.debug("Error downloading/uploading Slack file", {
+      fileId: file.id,
+      error,
+    });
     return null;
   }
 }
@@ -180,12 +202,13 @@ function formatFileInfo(file: SlackFile): string {
 }
 
 /**
- * Format file information for context with optional image embedding
- * Downloads and embeds supported image types as base64 data URLs
+ * Format file information for context with image upload to R2
+ * Uploads supported image types to R2 and provides presigned URLs
  */
 async function formatFileInfoWithImage(
   file: SlackFile,
   botToken: string | undefined,
+  sessionId: string,
 ): Promise<string> {
   const parts: string[] = [];
 
@@ -197,17 +220,20 @@ async function formatFileInfoWithImage(
     parts.push(`   Dimensions: ${file.original_w}x${file.original_h}`);
   }
 
-  // Try to download and embed image if supported type and bot token available
+  // Try to upload image to R2 and get presigned URL
   if (botToken && isSupportedImageType(file)) {
-    const dataUrl = await downloadSlackFileAsBase64(file, botToken);
-    if (dataUrl) {
-      parts.push(`   Image Data: ${dataUrl}`);
-      log.debug("Embedded image as base64", { fileId: file.id, name });
+    const presignedUrl = await downloadAndUploadSlackFile(
+      file,
+      botToken,
+      sessionId,
+    );
+    if (presignedUrl) {
+      parts.push(`   Image URL: ${presignedUrl}`);
       return parts.join("\n");
     }
   }
 
-  // Fallback to URL reference
+  // Fallback to original URL reference (may not be accessible)
   const url =
     file.permalink_public || file.thumb_480 || file.thumb_360 || file.permalink;
   if (url) {
@@ -302,18 +328,20 @@ export function formatContextForAgent(
 }
 
 /**
- * Format messages into context for agent prompt with image embedding
- * Downloads and embeds supported image types as base64 data URLs
+ * Format messages into context for agent prompt with image upload
+ * Uploads supported image types to R2 and provides presigned URLs
  *
  * @param messages - Array of Slack messages
  * @param botToken - Bot token for downloading private files
+ * @param sessionId - Session ID for organizing uploaded images
  * @param botUserId - Bot user ID (kept for API compatibility, no longer used for filtering)
  * @param contextType - Type of context: "thread" or "channel"
- * @returns Formatted context string with embedded images
+ * @returns Formatted context string with image URLs
  */
 export async function formatContextForAgentWithImages(
   messages: SlackMessage[],
   botToken: string,
+  sessionId: string,
   botUserId?: string,
   contextType: "thread" | "channel" = "thread",
 ): Promise<string> {
@@ -325,10 +353,14 @@ export async function formatContextForAgentWithImages(
 
       const parts: string[] = [`[${user}]: ${text}`];
 
-      // Format files with image embedding
+      // Format files with image upload
       if (msg.files && msg.files.length > 0) {
         for (const file of msg.files) {
-          const fileInfo = await formatFileInfoWithImage(file, botToken);
+          const fileInfo = await formatFileInfoWithImage(
+            file,
+            botToken,
+            sessionId,
+          );
           parts.push(fileInfo);
         }
       }

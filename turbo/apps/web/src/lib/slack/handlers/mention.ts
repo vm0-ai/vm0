@@ -70,7 +70,8 @@ async function removeThinkingReaction(
 }
 
 /**
- * Fetch conversation context for the agent with embedded images
+ * Fetch conversation context for the agent with uploaded images
+ * Images are uploaded to R2 and presigned URLs are provided in the context
  */
 async function fetchConversationContext(
   client: SlackClient,
@@ -79,11 +80,15 @@ async function fetchConversationContext(
   botUserId: string,
   botToken: string,
 ): Promise<string> {
+  // Use channel-thread as session ID for organizing uploaded images
+  const imageSessionId = `${channelId}-${threadTs ?? "channel"}`;
+
   if (threadTs) {
     const messages = await fetchThreadContext(client, channelId, threadTs);
     return formatContextForAgentWithImages(
       messages,
       botToken,
+      imageSessionId,
       botUserId,
       "thread",
     );
@@ -92,6 +97,7 @@ async function fetchConversationContext(
   return formatContextForAgentWithImages(
     messages,
     botToken,
+    imageSessionId,
     botUserId,
     "channel",
   );

@@ -1,10 +1,33 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  type Mock,
+} from "vitest";
 import {
   formatContextForAgent,
   formatContextForAgentWithImages,
   extractMessageContent,
   parseExplicitAgentSelection,
 } from "../context";
+
+// Mock S3 client
+vi.mock("../../s3/s3-client", () => ({
+  uploadS3Buffer: vi.fn().mockResolvedValue(undefined),
+  generatePresignedUrl: vi
+    .fn()
+    .mockResolvedValue("https://r2.example.com/presigned-url"),
+}));
+
+// Mock env
+vi.mock("../../../env", () => ({
+  env: () => ({
+    R2_USER_STORAGES_BUCKET_NAME: "test-bucket",
+  }),
+}));
 
 describe("Feature: Format Context For Agent", () => {
   describe("Scenario: Format thread messages into context string", () => {
@@ -328,21 +351,36 @@ describe("Feature: Extract Message Content", () => {
   });
 });
 
-describe("Feature: Format Context With Image Embedding", () => {
+describe("Feature: Format Context With Image Upload", () => {
   const mockFetch = vi.fn();
   const originalFetch = global.fetch;
 
-  beforeEach(() => {
+  // Import mocked S3 functions
+  let uploadS3BufferMock: Mock;
+  let generatePresignedUrlMock: Mock;
+
+  beforeEach(async () => {
     global.fetch = mockFetch;
     mockFetch.mockReset();
+
+    // Get mocked S3 functions
+    const s3Client = await import("../../s3/s3-client");
+    uploadS3BufferMock = s3Client.uploadS3Buffer as Mock;
+    generatePresignedUrlMock = s3Client.generatePresignedUrl as Mock;
+
+    uploadS3BufferMock.mockReset();
+    generatePresignedUrlMock.mockReset();
+    generatePresignedUrlMock.mockResolvedValue(
+      "https://r2.example.com/presigned-url",
+    );
   });
 
   afterEach(() => {
     global.fetch = originalFetch;
   });
 
-  describe("Scenario: Embed supported image types as base64", () => {
-    it("should download and embed PNG image as base64 data URL", async () => {
+  describe("Scenario: Upload supported image types to R2", () => {
+    it("should download PNG image and upload to R2 with presigned URL", async () => {
       const imageBuffer = Buffer.from("fake-png-image-content");
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -370,6 +408,7 @@ describe("Feature: Format Context With Image Embedding", () => {
       const result = await formatContextForAgentWithImages(
         messages,
         "xoxb-test-token",
+        "test-session-123",
         "BBOT123",
         "thread",
       );
@@ -382,13 +421,16 @@ describe("Feature: Format Context With Image Embedding", () => {
           },
         },
       );
+      expect(uploadS3BufferMock).toHaveBeenCalled();
+      expect(generatePresignedUrlMock).toHaveBeenCalled();
       expect(result).toContain("[file]: screenshot.png (image/png)");
       expect(result).toContain("Dimensions: 1920x1080");
-      expect(result).toContain("Image Data: data:image/png;base64,");
-      expect(result).not.toContain("URL:");
+      expect(result).toContain(
+        "Image URL: https://r2.example.com/presigned-url",
+      );
     });
 
-    it("should embed JPEG images", async () => {
+    it("should upload JPEG images to R2", async () => {
       const imageBuffer = Buffer.from("fake-jpeg-image-content");
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -414,14 +456,17 @@ describe("Feature: Format Context With Image Embedding", () => {
       const result = await formatContextForAgentWithImages(
         messages,
         "xoxb-test-token",
+        "test-session-123",
       );
 
-      expect(result).toContain("Image Data: data:image/jpeg;base64,");
+      expect(result).toContain(
+        "Image URL: https://r2.example.com/presigned-url",
+      );
     });
   });
 
   describe("Scenario: Fall back to URL for unsupported types", () => {
-    it("should not embed PDF files, use URL fallback", async () => {
+    it("should not upload PDF files, use URL fallback", async () => {
       const messages = [
         {
           user: "U123",
@@ -441,12 +486,14 @@ describe("Feature: Format Context With Image Embedding", () => {
       const result = await formatContextForAgentWithImages(
         messages,
         "xoxb-test-token",
+        "test-session-123",
       );
 
       expect(mockFetch).not.toHaveBeenCalled();
+      expect(uploadS3BufferMock).not.toHaveBeenCalled();
       expect(result).toContain("[file]: report.pdf (application/pdf)");
       expect(result).toContain("URL: https://slack.com/files/report.pdf");
-      expect(result).not.toContain("Image Data:");
+      expect(result).not.toContain("Image URL:");
     });
   });
 
@@ -477,10 +524,11 @@ describe("Feature: Format Context With Image Embedding", () => {
       const result = await formatContextForAgentWithImages(
         messages,
         "xoxb-test-token",
+        "test-session-123",
       );
 
       expect(result).toContain("URL: https://slack.com/files/screenshot.png");
-      expect(result).not.toContain("Image Data:");
+      expect(result).not.toContain("Image URL:");
     });
 
     it("should fall back to URL when fetch throws", async () => {
@@ -505,17 +553,18 @@ describe("Feature: Format Context With Image Embedding", () => {
       const result = await formatContextForAgentWithImages(
         messages,
         "xoxb-test-token",
+        "test-session-123",
       );
 
       expect(result).toContain(
         "URL: https://files.slack.com/thumb/screenshot.png",
       );
-      expect(result).not.toContain("Image Data:");
+      expect(result).not.toContain("Image URL:");
     });
   });
 
   describe("Scenario: Respect file size limits", () => {
-    it("should not embed files larger than 5MB", async () => {
+    it("should not upload files larger than 10MB", async () => {
       const messages = [
         {
           user: "U123",
@@ -524,7 +573,7 @@ describe("Feature: Format Context With Image Embedding", () => {
             {
               name: "large.png",
               mimetype: "image/png",
-              size: 10 * 1024 * 1024, // 10MB
+              size: 15 * 1024 * 1024, // 15MB (exceeds 10MB limit)
               url_private_download:
                 "https://files.slack.com/download/large.png",
               permalink: "https://slack.com/files/large.png",
@@ -536,11 +585,13 @@ describe("Feature: Format Context With Image Embedding", () => {
       const result = await formatContextForAgentWithImages(
         messages,
         "xoxb-test-token",
+        "test-session-123",
       );
 
       expect(mockFetch).not.toHaveBeenCalled();
+      expect(uploadS3BufferMock).not.toHaveBeenCalled();
       expect(result).toContain("URL: https://slack.com/files/large.png");
-      expect(result).not.toContain("Image Data:");
+      expect(result).not.toContain("Image URL:");
     });
   });
 
@@ -563,15 +614,17 @@ describe("Feature: Format Context With Image Embedding", () => {
       const result = await formatContextForAgentWithImages(
         messages,
         "xoxb-test-token",
+        "test-session-123",
       );
 
       expect(mockFetch).not.toHaveBeenCalled();
+      expect(uploadS3BufferMock).not.toHaveBeenCalled();
       expect(result).toContain("URL: https://files.slack.com/public/old.png");
     });
   });
 
   describe("Scenario: Handle multiple files in one message", () => {
-    it("should embed multiple images concurrently", async () => {
+    it("should upload multiple images", async () => {
       const imageBuffer1 = Buffer.from("image1");
       const imageBuffer2 = Buffer.from("image2");
 
@@ -591,11 +644,13 @@ describe("Feature: Format Context With Image Embedding", () => {
           text: "Two images",
           files: [
             {
+              id: "F1",
               name: "img1.png",
               mimetype: "image/png",
               url_private_download: "https://files.slack.com/download/img1.png",
             },
             {
+              id: "F2",
               name: "img2.png",
               mimetype: "image/png",
               url_private_download: "https://files.slack.com/download/img2.png",
@@ -607,13 +662,15 @@ describe("Feature: Format Context With Image Embedding", () => {
       const result = await formatContextForAgentWithImages(
         messages,
         "xoxb-test-token",
+        "test-session-123",
       );
 
       expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(uploadS3BufferMock).toHaveBeenCalledTimes(2);
       expect(result).toContain("[file]: img1.png");
       expect(result).toContain("[file]: img2.png");
-      // Both should have embedded data
-      expect((result.match(/Image Data:/g) || []).length).toBe(2);
+      // Both should have presigned URLs
+      expect((result.match(/Image URL:/g) || []).length).toBe(2);
     });
   });
 });
