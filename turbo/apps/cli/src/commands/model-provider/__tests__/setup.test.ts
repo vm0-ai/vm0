@@ -12,6 +12,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { setupCommand } from "../setup";
 import { MODEL_PROVIDER_TYPES } from "@vm0/core";
+import prompts from "prompts";
 
 describe("model-provider setup command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -22,10 +23,15 @@ describe("model-provider setup command", () => {
     .spyOn(console, "error")
     .mockImplementation(() => {});
 
+  let originalIsTTY: boolean | undefined;
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
+
+    // Save original TTY state
+    originalIsTTY = process.stdout.isTTY;
   });
 
   afterEach(() => {
@@ -33,6 +39,13 @@ describe("model-provider setup command", () => {
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
     vi.unstubAllEnvs();
+
+    // Restore TTY state
+    Object.defineProperty(process.stdout, "isTTY", {
+      value: originalIsTTY,
+      writable: true,
+      configurable: true,
+    });
   });
 
   describe("input validation", () => {
@@ -652,6 +665,564 @@ describe("model-provider setup command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain('Model provider "anthropic-api-key" created');
       expect(logCalls).toContain("default for claude-code");
+    });
+  });
+
+  describe("interactive mode", () => {
+    // Helper to enable interactive mode
+    function enableInteractiveMode() {
+      Object.defineProperty(process.stdout, "isTTY", {
+        value: true,
+        writable: true,
+        configurable: true,
+      });
+    }
+
+    describe("provider type selection", () => {
+      it("should prompt for provider type and secret in interactive mode", async () => {
+        enableInteractiveMode();
+
+        server.use(
+          // listModelProviders for getting configured providers
+          http.get("http://localhost:3000/api/model-providers", () => {
+            return HttpResponse.json({ modelProviders: [] });
+          }),
+          // checkModelProviderSecret
+          http.get(
+            "http://localhost:3000/api/model-providers/check/:type",
+            () => {
+              return HttpResponse.json({
+                exists: false,
+                secretName: "ANTHROPIC_API_KEY",
+              });
+            },
+          ),
+          // upsertModelProvider
+          http.put("http://localhost:3000/api/model-providers", () => {
+            return HttpResponse.json({
+              provider: {
+                id: "mp-123",
+                type: "anthropic-api-key",
+                framework: "claude-code",
+                secretName: "ANTHROPIC_API_KEY",
+                isDefault: true,
+                selectedModel: null,
+                createdAt: "2024-01-01T00:00:00Z",
+                updatedAt: "2024-01-01T00:00:00Z",
+              },
+              created: true,
+            });
+          }),
+        );
+
+        // Inject: provider type selection (anthropic-api-key is index 1)
+        // Inject: secret input
+        prompts.inject(["anthropic-api-key", "sk-ant-interactive-key"]);
+
+        await setupCommand.parseAsync(["node", "cli"]);
+
+        const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+        expect(logCalls).toContain(
+          'Model provider "anthropic-api-key" created',
+        );
+        expect(logCalls).toContain("default for claude-code");
+      });
+    });
+
+    describe("model selection", () => {
+      it("should prompt for model selection for providers with models", async () => {
+        enableInteractiveMode();
+
+        server.use(
+          http.get("http://localhost:3000/api/model-providers", () => {
+            return HttpResponse.json({ modelProviders: [] });
+          }),
+          http.get(
+            "http://localhost:3000/api/model-providers/check/:type",
+            () => {
+              return HttpResponse.json({
+                exists: false,
+                secretName: "MOONSHOT_API_KEY",
+              });
+            },
+          ),
+          http.put(
+            "http://localhost:3000/api/model-providers",
+            async ({ request }) => {
+              const body = (await request.json()) as { selectedModel?: string };
+              return HttpResponse.json({
+                provider: {
+                  id: "mp-moonshot",
+                  type: "moonshot-api-key",
+                  framework: "claude-code",
+                  secretName: "MOONSHOT_API_KEY",
+                  isDefault: true,
+                  selectedModel: body.selectedModel,
+                  createdAt: "2024-01-01T00:00:00Z",
+                  updatedAt: "2024-01-01T00:00:00Z",
+                },
+                created: true,
+              });
+            },
+          ),
+        );
+
+        // Inject: provider type selection, secret, model selection
+        prompts.inject([
+          "moonshot-api-key",
+          "sk-moonshot-interactive",
+          "kimi-k2-thinking-turbo",
+        ]);
+
+        await setupCommand.parseAsync(["node", "cli"]);
+
+        const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+        expect(logCalls).toContain('Model provider "moonshot-api-key" created');
+        expect(logCalls).toContain("with model: kimi-k2-thinking-turbo");
+      });
+
+      it("should allow custom model input for providers that support it", async () => {
+        enableInteractiveMode();
+
+        server.use(
+          http.get("http://localhost:3000/api/model-providers", () => {
+            return HttpResponse.json({ modelProviders: [] });
+          }),
+          http.get(
+            "http://localhost:3000/api/model-providers/check/:type",
+            () => {
+              return HttpResponse.json({
+                exists: false,
+                secretName: "AWS_BEARER_TOKEN_BEDROCK",
+              });
+            },
+          ),
+          http.put(
+            "http://localhost:3000/api/model-providers",
+            async ({ request }) => {
+              const body = (await request.json()) as { selectedModel?: string };
+              return HttpResponse.json({
+                provider: {
+                  id: "mp-bedrock",
+                  type: "aws-bedrock",
+                  framework: "claude-code",
+                  authMethod: "api-key",
+                  secretNames: ["AWS_BEARER_TOKEN_BEDROCK", "AWS_REGION"],
+                  isDefault: true,
+                  selectedModel: body.selectedModel,
+                  createdAt: "2024-01-01T00:00:00Z",
+                  updatedAt: "2024-01-01T00:00:00Z",
+                },
+                created: true,
+              });
+            },
+          ),
+        );
+
+        // Inject: provider type, auth method, secrets (API key, region), model selection (__custom__), custom model input
+        prompts.inject([
+          "aws-bedrock",
+          "api-key",
+          "bedrock-api-key-123",
+          "us-west-2",
+          "__custom__",
+          "anthropic.claude-sonnet-4-custom",
+        ]);
+
+        await setupCommand.parseAsync(["node", "cli"]);
+
+        const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+        expect(logCalls).toContain('Model provider "aws-bedrock" created');
+        expect(logCalls).toContain(
+          "with model: anthropic.claude-sonnet-4-custom",
+        );
+      });
+    });
+
+    describe("multi-auth providers", () => {
+      it("should prompt for auth method and multiple secrets for aws-bedrock", async () => {
+        enableInteractiveMode();
+
+        let capturedBody: {
+          authMethod?: string;
+          secrets?: Record<string, string>;
+        } = {};
+
+        server.use(
+          http.get("http://localhost:3000/api/model-providers", () => {
+            return HttpResponse.json({ modelProviders: [] });
+          }),
+          http.get(
+            "http://localhost:3000/api/model-providers/check/:type",
+            () => {
+              return HttpResponse.json({
+                exists: false,
+                secretName: "AWS_BEARER_TOKEN_BEDROCK",
+              });
+            },
+          ),
+          http.put(
+            "http://localhost:3000/api/model-providers",
+            async ({ request }) => {
+              capturedBody = (await request.json()) as typeof capturedBody;
+              return HttpResponse.json({
+                provider: {
+                  id: "mp-bedrock",
+                  type: "aws-bedrock",
+                  framework: "claude-code",
+                  authMethod: capturedBody.authMethod,
+                  secretNames: ["AWS_BEARER_TOKEN_BEDROCK", "AWS_REGION"],
+                  isDefault: true,
+                  selectedModel: null,
+                  createdAt: "2024-01-01T00:00:00Z",
+                  updatedAt: "2024-01-01T00:00:00Z",
+                },
+                created: true,
+              });
+            },
+          ),
+        );
+
+        // Inject: provider type, auth method (api-key), API key, region, model selection (auto)
+        prompts.inject([
+          "aws-bedrock",
+          "api-key",
+          "bedrock-api-key-value",
+          "us-east-1",
+          "",
+        ]);
+
+        await setupCommand.parseAsync(["node", "cli"]);
+
+        expect(capturedBody.authMethod).toBe("api-key");
+        expect(capturedBody.secrets).toEqual({
+          AWS_BEARER_TOKEN_BEDROCK: "bedrock-api-key-value",
+          AWS_REGION: "us-east-1",
+        });
+
+        const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+        expect(logCalls).toContain('Model provider "aws-bedrock" created');
+      });
+
+      it("should handle access-keys auth method with optional session token", async () => {
+        enableInteractiveMode();
+
+        let capturedBody: {
+          authMethod?: string;
+          secrets?: Record<string, string>;
+        } = {};
+
+        server.use(
+          http.get("http://localhost:3000/api/model-providers", () => {
+            return HttpResponse.json({ modelProviders: [] });
+          }),
+          http.get(
+            "http://localhost:3000/api/model-providers/check/:type",
+            () => {
+              return HttpResponse.json({
+                exists: false,
+                secretName: "AWS_ACCESS_KEY_ID",
+              });
+            },
+          ),
+          http.put(
+            "http://localhost:3000/api/model-providers",
+            async ({ request }) => {
+              capturedBody = (await request.json()) as typeof capturedBody;
+              return HttpResponse.json({
+                provider: {
+                  id: "mp-bedrock",
+                  type: "aws-bedrock",
+                  framework: "claude-code",
+                  authMethod: capturedBody.authMethod,
+                  secretNames: [
+                    "AWS_ACCESS_KEY_ID",
+                    "AWS_SECRET_ACCESS_KEY",
+                    "AWS_REGION",
+                  ],
+                  isDefault: true,
+                  selectedModel: null,
+                  createdAt: "2024-01-01T00:00:00Z",
+                  updatedAt: "2024-01-01T00:00:00Z",
+                },
+                created: true,
+              });
+            },
+          ),
+        );
+
+        // Inject: provider type, auth method (access-keys), access key id, secret access key, session token (optional - empty), region, model (auto)
+        prompts.inject([
+          "aws-bedrock",
+          "access-keys",
+          "AKIAIOSFODNN7EXAMPLE",
+          "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+          "", // optional session token - skip
+          "eu-west-1",
+          "",
+        ]);
+
+        await setupCommand.parseAsync(["node", "cli"]);
+
+        expect(capturedBody.authMethod).toBe("access-keys");
+        expect(capturedBody.secrets?.AWS_ACCESS_KEY_ID).toBe(
+          "AKIAIOSFODNN7EXAMPLE",
+        );
+        expect(capturedBody.secrets?.AWS_SECRET_ACCESS_KEY).toBe(
+          "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+        );
+        expect(capturedBody.secrets?.AWS_REGION).toBe("eu-west-1");
+        // Session token should not be present when empty
+        expect(capturedBody.secrets?.AWS_SESSION_TOKEN).toBeUndefined();
+      });
+    });
+
+    describe("existing secret flow", () => {
+      it("should prompt to keep or update when secret already exists", async () => {
+        enableInteractiveMode();
+
+        server.use(
+          http.get("http://localhost:3000/api/model-providers", () => {
+            return HttpResponse.json({
+              modelProviders: [
+                {
+                  id: "mp-existing",
+                  type: "anthropic-api-key",
+                  framework: "claude-code",
+                  secretName: "ANTHROPIC_API_KEY",
+                  isDefault: true,
+                  selectedModel: null,
+                  createdAt: "2024-01-01T00:00:00Z",
+                  updatedAt: "2024-01-01T00:00:00Z",
+                },
+              ],
+            });
+          }),
+          http.get(
+            "http://localhost:3000/api/model-providers/check/:type",
+            () => {
+              return HttpResponse.json({
+                exists: true,
+                secretName: "ANTHROPIC_API_KEY",
+              });
+            },
+          ),
+          // updateModelProviderModel for "keep" flow
+          http.patch(
+            "http://localhost:3000/api/model-providers/:type/model",
+            () => {
+              return HttpResponse.json({
+                id: "mp-existing",
+                type: "anthropic-api-key",
+                framework: "claude-code",
+                secretName: "ANTHROPIC_API_KEY",
+                isDefault: true,
+                selectedModel: null,
+                createdAt: "2024-01-01T00:00:00Z",
+                updatedAt: "2024-01-01T00:00:00Z",
+              });
+            },
+          ),
+        );
+
+        // Inject: provider type, action (keep)
+        prompts.inject(["anthropic-api-key", "keep"]);
+
+        await setupCommand.parseAsync(["node", "cli"]);
+
+        const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+        expect(logCalls).toContain('Model provider "anthropic-api-key"');
+        expect(logCalls).toContain("unchanged");
+      });
+
+      it("should update secret when user chooses to update", async () => {
+        enableInteractiveMode();
+
+        server.use(
+          http.get("http://localhost:3000/api/model-providers", () => {
+            return HttpResponse.json({
+              modelProviders: [
+                {
+                  id: "mp-existing",
+                  type: "anthropic-api-key",
+                  framework: "claude-code",
+                  secretName: "ANTHROPIC_API_KEY",
+                  isDefault: true,
+                  selectedModel: null,
+                  createdAt: "2024-01-01T00:00:00Z",
+                  updatedAt: "2024-01-01T00:00:00Z",
+                },
+              ],
+            });
+          }),
+          http.get(
+            "http://localhost:3000/api/model-providers/check/:type",
+            () => {
+              return HttpResponse.json({
+                exists: true,
+                secretName: "ANTHROPIC_API_KEY",
+              });
+            },
+          ),
+          http.put("http://localhost:3000/api/model-providers", () => {
+            return HttpResponse.json({
+              provider: {
+                id: "mp-existing",
+                type: "anthropic-api-key",
+                framework: "claude-code",
+                secretName: "ANTHROPIC_API_KEY",
+                isDefault: true,
+                selectedModel: null,
+                createdAt: "2024-01-01T00:00:00Z",
+                updatedAt: "2024-01-02T00:00:00Z",
+              },
+              created: false,
+            });
+          }),
+        );
+
+        // Inject: provider type, action (update), new secret
+        prompts.inject([
+          "anthropic-api-key",
+          "update",
+          "sk-ant-new-updated-key",
+        ]);
+
+        await setupCommand.parseAsync(["node", "cli"]);
+
+        const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+        expect(logCalls).toContain(
+          'Model provider "anthropic-api-key" updated',
+        );
+      });
+    });
+
+    describe("set as default prompt", () => {
+      it("should prompt to set as default when provider is not default", async () => {
+        enableInteractiveMode();
+
+        server.use(
+          http.get("http://localhost:3000/api/model-providers", () => {
+            return HttpResponse.json({ modelProviders: [] });
+          }),
+          http.get(
+            "http://localhost:3000/api/model-providers/check/:type",
+            () => {
+              return HttpResponse.json({
+                exists: false,
+                secretName: "ANTHROPIC_API_KEY",
+              });
+            },
+          ),
+          http.put("http://localhost:3000/api/model-providers", () => {
+            return HttpResponse.json({
+              provider: {
+                id: "mp-456",
+                type: "anthropic-api-key",
+                framework: "claude-code",
+                secretName: "ANTHROPIC_API_KEY",
+                isDefault: false,
+                selectedModel: null,
+                createdAt: "2024-01-01T00:00:00Z",
+                updatedAt: "2024-01-01T00:00:00Z",
+              },
+              created: true,
+            });
+          }),
+          http.post(
+            "http://localhost:3000/api/model-providers/:type/set-default",
+            () => {
+              return HttpResponse.json({
+                id: "mp-456",
+                type: "anthropic-api-key",
+                framework: "claude-code",
+                secretName: "ANTHROPIC_API_KEY",
+                isDefault: true,
+                selectedModel: null,
+                createdAt: "2024-01-01T00:00:00Z",
+                updatedAt: "2024-01-01T00:00:00Z",
+              });
+            },
+          ),
+        );
+
+        // Inject: provider type, secret, set as default (yes)
+        prompts.inject(["anthropic-api-key", "sk-ant-key", true]);
+
+        await setupCommand.parseAsync(["node", "cli"]);
+
+        const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+        expect(logCalls).toContain(
+          'Model provider "anthropic-api-key" created',
+        );
+        expect(logCalls).toContain(
+          'Default for claude-code set to "anthropic-api-key"',
+        );
+      });
+
+      it("should not set as default when user declines", async () => {
+        enableInteractiveMode();
+
+        let setDefaultCalled = false;
+
+        server.use(
+          http.get("http://localhost:3000/api/model-providers", () => {
+            return HttpResponse.json({ modelProviders: [] });
+          }),
+          http.get(
+            "http://localhost:3000/api/model-providers/check/:type",
+            () => {
+              return HttpResponse.json({
+                exists: false,
+                secretName: "ANTHROPIC_API_KEY",
+              });
+            },
+          ),
+          http.put("http://localhost:3000/api/model-providers", () => {
+            return HttpResponse.json({
+              provider: {
+                id: "mp-456",
+                type: "anthropic-api-key",
+                framework: "claude-code",
+                secretName: "ANTHROPIC_API_KEY",
+                isDefault: false,
+                selectedModel: null,
+                createdAt: "2024-01-01T00:00:00Z",
+                updatedAt: "2024-01-01T00:00:00Z",
+              },
+              created: true,
+            });
+          }),
+          http.post(
+            "http://localhost:3000/api/model-providers/:type/set-default",
+            () => {
+              setDefaultCalled = true;
+              return HttpResponse.json({
+                id: "mp-456",
+                type: "anthropic-api-key",
+                framework: "claude-code",
+                secretName: "ANTHROPIC_API_KEY",
+                isDefault: true,
+                selectedModel: null,
+                createdAt: "2024-01-01T00:00:00Z",
+                updatedAt: "2024-01-01T00:00:00Z",
+              });
+            },
+          ),
+        );
+
+        // Inject: provider type, secret, set as default (no)
+        prompts.inject(["anthropic-api-key", "sk-ant-key", false]);
+
+        await setupCommand.parseAsync(["node", "cli"]);
+
+        expect(setDefaultCalled).toBe(false);
+        const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+        expect(logCalls).toContain(
+          'Model provider "anthropic-api-key" created',
+        );
+        expect(logCalls).not.toContain("Default for claude-code set to");
+      });
     });
   });
 });
