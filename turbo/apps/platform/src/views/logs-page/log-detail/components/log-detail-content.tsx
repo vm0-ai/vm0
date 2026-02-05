@@ -123,7 +123,7 @@ export function LogDetailContent({ logId }: { logId: string }) {
         framework={detail.framework}
         searchTerm={searchTerm}
         setSearchTerm={setSearchTerm}
-        className="flex-1 min-h-0 overflow-auto"
+        className="flex-1 min-h-0"
       />
     </div>
   );
