@@ -47,7 +47,7 @@ export function LogDetailContent({ logId }: { logId: string }) {
     <div className="flex flex-col gap-4 h-full min-h-0">
       {/* Info Card - Grid layout with dividers */}
       <div className="p-4 pb-0 sm:px-8 sm:pt-4 sm:pb-0">
-        <div className="shrink-0 grid grid-cols-2 md:grid-cols-4 gap-y-3 text-sm px-2 sm:px-4 py-3 bg-card rounded-lg border border-border">
+        <div className="shrink-0 grid grid-cols-2 md:grid-cols-4 gap-y-2 text-sm px-2 sm:px-4 py-3 bg-card rounded-lg border border-border">
           <InfoItem label="Status" showDivider>
             <StatusBadge status={detail.status} />
           </InfoItem>
