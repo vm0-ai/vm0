@@ -103,67 +103,91 @@ function AgentsListSection() {
         {agents.map((agent) => {
           const hasSchedule = getAgentScheduleStatus(agent.name, schedules);
           return (
-            <TableRow key={agent.name} className="h-[53px]">
-              <TableCell className="px-3 py-2">
-                <span className="font-medium">{agent.name}</span>
-              </TableCell>
-              <TableCell className="px-3 py-2">
-                <span className="text-sm">Claude code</span>
-              </TableCell>
-              <TableCell className="px-3 py-2">
-                {hasSchedule ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
-                    <Clock className="h-3 w-3 text-sky-600" />
-                    Scheduled
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
-                    <Bed className="h-3 w-3 text-sky-600" />
-                    No schedule
-                  </span>
-                )}
-              </TableCell>
-              <TableCell className="px-3 py-2">
-                <span className="text-sm">
-                  {new Date(agent.updatedAt).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })}
-                </span>
-              </TableCell>
-              <TableCell className="px-2 py-2">
-                <Dialog>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <DialogTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <Settings className="h-4 w-4" />
-                          </Button>
-                        </DialogTrigger>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Manage in Claude Code</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  <DialogContent className="max-w-2xl">
-                    <DialogHeader>
-                      <DialogTitle>Manage {agent.name}</DialogTitle>
-                      <DialogDescription>
-                        How to manage this agent in Claude Code
-                      </DialogDescription>
-                    </DialogHeader>
-                    <AgentCommandsSection agent={agent} />
-                  </DialogContent>
-                </Dialog>
-              </TableCell>
-            </TableRow>
+            <AgentRow
+              key={agent.name}
+              agent={agent}
+              hasSchedule={hasSchedule}
+            />
           );
         })}
       </TableBody>
     </Table>
+  );
+}
+
+function AgentRow({
+  agent,
+  hasSchedule,
+}: {
+  agent: ComposeListItem;
+  hasSchedule: boolean;
+}) {
+  return (
+    <Dialog>
+      <TableRow className="h-[53px]">
+        <DialogTrigger asChild>
+          <TableCell className="px-3 py-2 cursor-pointer">
+            <span className="font-medium">{agent.name}</span>
+          </TableCell>
+        </DialogTrigger>
+        <DialogTrigger asChild>
+          <TableCell className="px-3 py-2 cursor-pointer">
+            <span className="text-sm">Claude code</span>
+          </TableCell>
+        </DialogTrigger>
+        <DialogTrigger asChild>
+          <TableCell className="px-3 py-2 cursor-pointer">
+            {hasSchedule ? (
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
+                <Clock className="h-3 w-3 text-sky-600" />
+                Scheduled
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
+                <Bed className="h-3 w-3 text-sky-600" />
+                No schedule
+              </span>
+            )}
+          </TableCell>
+        </DialogTrigger>
+        <DialogTrigger asChild>
+          <TableCell className="pl-3 pr-6 py-2 cursor-pointer">
+            <span className="text-sm">
+              {new Date(agent.updatedAt).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })}
+            </span>
+          </TableCell>
+        </DialogTrigger>
+        <TableCell className="pl-0 pr-4 py-2">
+          <TooltipProvider>
+            <Tooltip>
+              <DialogTrigger asChild>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm">
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+              </DialogTrigger>
+              <TooltipContent>
+                <p>Manage in Claude Code</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </TableCell>
+      </TableRow>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Manage {agent.name}</DialogTitle>
+          <DialogDescription>
+            How to manage this agent in Claude Code
+          </DialogDescription>
+        </DialogHeader>
+        <AgentCommandsSection agent={agent} />
+      </DialogContent>
+    </Dialog>
   );
 }
 
