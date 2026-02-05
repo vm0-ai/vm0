@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.7.0](https://github.com/vm0-ai/vm0/compare/web-v12.6.0...web-v12.7.0) (2026-02-05)
+
+
+### Features
+
+* **web:** make database pool settings configurable via env vars ([#2373](https://github.com/vm0-ai/vm0/issues/2373)) ([baf911f](https://github.com/vm0-ai/vm0/commit/baf911f2e88aa5bcbabbd74d32d9314275271144))
+
 ## [12.6.0](https://github.com/vm0-ai/vm0/compare/web-v12.5.0...web-v12.6.0) (2026-02-05)
 
 
