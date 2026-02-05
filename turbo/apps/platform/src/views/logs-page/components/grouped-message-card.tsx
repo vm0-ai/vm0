@@ -2,7 +2,6 @@ import {
   IconCheck,
   IconCircleDashed,
   IconLoader,
-  IconBulb,
 } from "@tabler/icons-react";
 import MarkdownPreview from "@uiw/react-markdown-preview";
 import type { GroupedMessage } from "../log-detail/utils.ts";
@@ -174,7 +173,6 @@ function ResultMessageCard({
         <summary className="cursor-pointer list-none relative py-2">
           <div className="flex gap-2 items-center">
             <StatusDot variant="primary" />
-            <IconBulb className="h-4 w-4 text-orange-500" />
             <span className="font-semibold text-sm text-foreground">
               Summary
             </span>
