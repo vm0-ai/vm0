@@ -96,7 +96,7 @@ export function LogDetailContent({ logId }: { logId: string }) {
             <CopyableId value={detail.id} />
           </InfoItem>
 
-          <InfoItem label="Report" showDivider={false}>
+          <InfoItem label="Artifacts" showDivider={false}>
             {detail.artifact.name && detail.artifact.version ? (
               <ArtifactDownloadButton
                 name={detail.artifact.name}
