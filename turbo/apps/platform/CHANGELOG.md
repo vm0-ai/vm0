@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.46.0](https://github.com/vm0-ai/vm0/compare/platform-v0.45.4...platform-v0.46.0) (2026-02-05)
+
+
+### Features
+
+* **platform:** polish logs page ui with refined styling and interactions ([#2391](https://github.com/vm0-ai/vm0/issues/2391)) ([98c8118](https://github.com/vm0-ai/vm0/commit/98c81188738fec04cf6e0543ef8028e515d784f9))
+
 ## [0.45.4](https://github.com/vm0-ai/vm0/compare/platform-v0.45.3...platform-v0.45.4) (2026-02-05)
 
 

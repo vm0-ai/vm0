@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.6.0](https://github.com/vm0-ai/vm0/compare/web-v12.5.0...web-v12.6.0) (2026-02-05)
+
+
+### Features
+
+* **web:** integrate sentry error tracking ([#2397](https://github.com/vm0-ai/vm0/issues/2397)) ([994c21d](https://github.com/vm0-ai/vm0/commit/994c21d18d0380594bb72dc20ade24b36efe3d2b))
+
 ## [12.5.0](https://github.com/vm0-ai/vm0/compare/web-v12.4.0...web-v12.5.0) (2026-02-05)
 
 
