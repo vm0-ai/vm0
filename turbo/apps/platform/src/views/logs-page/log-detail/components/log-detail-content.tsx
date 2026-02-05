@@ -52,7 +52,7 @@ export function LogDetailContent({ logId }: { logId: string }) {
             <StatusBadge status={detail.status} />
           </InfoItem>
 
-          <InfoItem label="Agent" showDivider={false}>
+          <InfoItem label="Agent" showDivider>
             <span className="font-medium text-foreground truncate">
               {detail.agentName}
             </span>
