@@ -12,6 +12,7 @@ import { getOrCreateLogDetail$ } from "../../../../signals/logs-page/logs-signal
 import { StatusBadge } from "../../status-badge.tsx";
 import { ArtifactDownloadButton } from "./artifact-download-button.tsx";
 import { AgentEventsCard } from "./agent-events-card.tsx";
+import { LogDetailSkeleton } from "../log-detail-skeleton.tsx";
 import { formatTime, formatTimeShort, formatDuration } from "../utils.ts";
 
 export function LogDetailContent({ logId }: { logId: string }) {
@@ -23,11 +24,7 @@ export function LogDetailContent({ logId }: { logId: string }) {
   const loadable = useLoadable(detail$);
 
   if (loadable.state === "loading") {
-    return (
-      <div className="p-4 sm:p-8">
-        <div className="p-8 text-center text-muted-foreground">Loading...</div>
-      </div>
-    );
+    return <LogDetailSkeleton />;
   }
 
   if (loadable.state === "hasError") {
@@ -48,15 +45,15 @@ export function LogDetailContent({ logId }: { logId: string }) {
 
   return (
     <div className="flex flex-col gap-4 h-full min-h-0">
-      {/* Info Card - Grid layout similar to table card */}
+      {/* Info Card - Grid layout with dividers */}
       <div className="p-4 pb-0 sm:px-8 sm:pt-4 sm:pb-0">
-        <div className="shrink-0 grid grid-cols-2 md:grid-cols-4 gap-y-3 text-sm px-4 py-3 bg-card rounded-lg border border-border">
+        <div className="shrink-0 grid grid-cols-2 lg:grid-cols-4 gap-x-0 gap-y-2 text-sm px-2 py-2 bg-card rounded-lg border border-border">
           <InfoItem label="Status" showDivider>
             <StatusBadge status={detail.status} />
           </InfoItem>
 
-          <InfoItem label="Agent" showDivider>
-            <span className="font-medium text-foreground">
+          <InfoItem label="Agent" showDivider={false} showDividerLg>
+            <span className="font-medium text-foreground truncate">
               {detail.agentName}
             </span>
           </InfoItem>
@@ -66,7 +63,7 @@ export function LogDetailContent({ logId }: { logId: string }) {
           </InfoItem>
 
           <InfoItem label="Duration" showDivider={false}>
-            <span className="text-foreground">
+            <span className="text-foreground whitespace-nowrap">
               {formatDuration(detail.startedAt, detail.completedAt)}
             </span>
           </InfoItem>
@@ -88,7 +85,7 @@ export function LogDetailContent({ logId }: { logId: string }) {
             </span>
           </InfoItem>
 
-          <InfoItem label="Session ID" showDivider>
+          <InfoItem label="Session ID" showDivider={false} showDividerLg>
             <CopyableId value={detail.sessionId || detail.id} />
           </InfoItem>
 
@@ -135,17 +132,31 @@ function InfoItem({
   label,
   children,
   showDivider = true,
+  showDividerLg = false,
 }: {
   label: string;
   children: ReactNode;
   showDivider?: boolean;
+  showDividerLg?: boolean;
 }) {
+  // 如果 showDividerLg 为 true，表示只在大屏幕显示分割线
+  // 如果 showDivider 为 true，表示在小屏幕和大屏幕都显示分割线
+  const dividerClass = showDividerLg
+    ? "hidden lg:block" // 只在大屏幕显示
+    : showDivider
+      ? "block" // 小屏幕和大屏幕都显示
+      : "hidden"; // 都不显示
+
   return (
-    <div className="flex items-center gap-2 px-4 [&:nth-child(4n+1)]:pl-0 relative">
+    <div className="flex items-center gap-2 px-3 relative min-w-0">
       <span className="text-sm text-muted-foreground shrink-0">{label}</span>
-      <div className="flex items-center text-sm min-w-0">{children}</div>
-      {showDivider && (
-        <div className="absolute right-0 top-1/2 -translate-y-1/2 h-4 w-px bg-border" />
+      <div className="flex items-center text-sm min-w-0 overflow-hidden">
+        {children}
+      </div>
+      {(showDivider || showDividerLg) && (
+        <div
+          className={`absolute right-0 top-1/2 -translate-y-1/2 h-4 w-px bg-border ${dividerClass}`}
+        />
       )}
     </div>
   );

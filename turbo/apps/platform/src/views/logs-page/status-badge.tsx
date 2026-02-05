@@ -1,10 +1,17 @@
-import { IconCircleCheck } from "@tabler/icons-react";
+import {
+  IconCircleCheck,
+  IconClock,
+  IconPlayerPlay,
+  IconCircleX,
+  IconClockExclamation,
+  IconBan,
+} from "@tabler/icons-react";
 import type { LogStatus } from "../../signals/logs-page/types.ts";
 
 interface StatusBadgeConfig {
   label: string;
-  className: string;
-  iconClassName?: string;
+  icon: typeof IconCircleCheck;
+  iconClassName: string;
 }
 
 interface StatusBadgeProps {
@@ -13,31 +20,47 @@ interface StatusBadgeProps {
 
 function getStatusConfig(): Record<LogStatus, StatusBadgeConfig> {
   return {
-    pending: { label: "Pending", className: "bg-yellow-100 text-yellow-800" },
-    running: { label: "Running", className: "bg-sky-100 text-sky-800" },
+    pending: {
+      label: "Pending",
+      icon: IconClock,
+      iconClassName: "text-yellow-600",
+    },
+    running: {
+      label: "Running",
+      icon: IconPlayerPlay,
+      iconClassName: "text-sky-600",
+    },
     completed: {
       label: "Done",
-      className: "border border-border bg-background text-muted-foreground",
+      icon: IconCircleCheck,
       iconClassName: "text-green-600",
     },
-    failed: { label: "Failed", className: "bg-red-100 text-red-800" },
-    timeout: { label: "Timeout", className: "bg-orange-100 text-orange-800" },
-    cancelled: { label: "Cancelled", className: "bg-gray-100 text-gray-800" },
+    failed: {
+      label: "Failed",
+      icon: IconCircleX,
+      iconClassName: "text-red-600",
+    },
+    timeout: {
+      label: "Timeout",
+      icon: IconClockExclamation,
+      iconClassName: "text-orange-600",
+    },
+    cancelled: {
+      label: "Cancelled",
+      icon: IconBan,
+      iconClassName: "text-gray-600",
+    },
   };
 }
 
 export function StatusBadge({ status }: StatusBadgeProps) {
   const statusConfig = getStatusConfig();
   const config = statusConfig[status];
-  const showIcon = config.iconClassName;
+  const Icon = config.icon;
 
   return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium ${config.className}`}
-    >
-      {showIcon && (
-        <IconCircleCheck className={`h-3 w-3 ${config.iconClassName}`} />
-      )}
+    <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
+      <Icon className={`h-3 w-3 ${config.iconClassName}`} />
       {config.label}
     </span>
   );

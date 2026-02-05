@@ -60,7 +60,7 @@ export function Pagination({
           value={String(rowsPerPage)}
           onValueChange={handleRowsPerPageChange}
         >
-          <SelectTrigger className="w-20">
+          <SelectTrigger className="w-[80px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -85,41 +85,41 @@ export function Pagination({
         <Button
           variant="outline"
           size="icon"
-          className="size-8"
+          className="size-7 bg-card"
           onClick={onBackTwoPages}
           disabled={!canGoBackTwo}
         >
-          <IconChevronsLeft className="size-6" />
+          <IconChevronsLeft className="size-4" />
         </Button>
         {/* Previous page */}
         <Button
           variant="outline"
           size="icon"
-          className="size-8"
+          className="size-7 bg-card"
           onClick={onPrevPage}
           disabled={!hasPrev}
         >
-          <IconChevronLeft className="size-6" />
+          <IconChevronLeft className="size-4" />
         </Button>
         {/* Next page */}
         <Button
           variant="outline"
           size="icon"
-          className="size-8"
+          className="size-7 bg-card"
           onClick={onNextPage}
           disabled={!hasNext || isLoading}
         >
-          <IconChevronRight className="size-6" />
+          <IconChevronRight className="size-4" />
         </Button>
         {/* Forward two pages */}
         <Button
           variant="outline"
           size="icon"
-          className="size-8"
+          className="size-7 bg-card"
           onClick={onForwardTwoPages}
           disabled={!hasNext || isLoading}
         >
-          <IconChevronsRight className="size-6" />
+          <IconChevronsRight className="size-4" />
         </Button>
       </div>
     </div>

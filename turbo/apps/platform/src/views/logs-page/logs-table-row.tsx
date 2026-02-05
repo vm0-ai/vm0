@@ -41,27 +41,37 @@ export function LogsTableRow({ entry }: LogsTableRowProps) {
       className="h-[53px] cursor-pointer hover:bg-muted/50"
       onClick={handleRowClick}
     >
-      <TableCell className="max-w-[180px] px-3 py-2 text-sm font-medium">
-        <span className="block truncate">{entry.id}</span>
+      <TableCell className="px-3 py-2 text-sm font-medium w-[20%] min-w-[80px]">
+        <span className="block truncate whitespace-nowrap">{entry.id}</span>
       </TableCell>
-      <TableCell className="max-w-[180px] px-3 py-2 text-sm">
-        <span className="block truncate">{entry.sessionId ?? "-"}</span>
+      <TableCell className="px-3 py-2 text-sm w-[20%] min-w-[80px]">
+        <span className="block truncate whitespace-nowrap">
+          {entry.sessionId ?? "-"}
+        </span>
       </TableCell>
-      <TableCell className="w-[120px] truncate px-3 py-2 text-sm">
-        {entry.agentName}
+      <TableCell className="px-3 py-2 text-sm w-[15%] min-w-[80px]">
+        <span className="block truncate whitespace-nowrap">
+          {entry.agentName}
+        </span>
       </TableCell>
-      <TableCell className="w-[180px] truncate px-3 py-2 text-sm">
-        {entry.framework ?? "-"}
+      <TableCell className="px-3 py-2 text-sm w-[12%] min-w-[70px]">
+        <span className="block truncate whitespace-nowrap">
+          {entry.framework ?? "-"}
+        </span>
       </TableCell>
-      <TableCell className="w-[100px] px-3 py-2">
-        <StatusBadge status={entry.status} />
+      <TableCell className="px-3 py-2 w-[13%] min-w-[80px]">
+        <div className="truncate whitespace-nowrap">
+          <StatusBadge status={entry.status} />
+        </div>
       </TableCell>
-      <TableCell className="px-3 py-2 text-sm">
-        {formatTime(entry.createdAt)}
+      <TableCell className="px-3 py-2 text-sm w-[15%] min-w-[120px]">
+        <span className="block truncate whitespace-nowrap">
+          {formatTime(entry.createdAt)}
+        </span>
       </TableCell>
-      <TableCell className="w-[50px] px-2 py-2">
-        <div className="flex size-8 items-center justify-center">
-          <IconChevronRight className="size-6 text-muted-foreground" />
+      <TableCell className="w-[44px] px-2 py-2">
+        <div className="flex size-full items-center justify-end pr-[12px]">
+          <IconChevronRight className="size-4 flex-shrink-0" />
         </div>
       </TableCell>
     </TableRow>

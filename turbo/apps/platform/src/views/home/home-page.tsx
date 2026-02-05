@@ -17,7 +17,7 @@ export function HomePage() {
         subtitle="Follow the steps below and let it run."
         gradientBackground
       >
-        <div className="flex flex-col gap-10 px-8 pb-8">
+        <div className="flex flex-col gap-10 px-6 pb-8">
           <>
             <Step1InstallSkill />
             <Step2SampleAgents />

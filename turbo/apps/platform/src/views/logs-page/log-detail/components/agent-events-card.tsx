@@ -231,13 +231,7 @@ export function AgentEventsCard({
               />
             </div>
             {!isCodex && (
-              <>
-                <div className="h-4 w-px bg-border hidden sm:block" />
-                <ViewModeToggle
-                  mode={viewMode}
-                  setMode={handleViewModeChange}
-                />
-              </>
+              <ViewModeToggle mode={viewMode} setMode={handleViewModeChange} />
             )}
           </div>
         </div>

@@ -3,6 +3,7 @@ import type { Computed } from "ccstate";
 import { currentPageLogs$ } from "../../signals/logs-page/logs-signals.ts";
 import { LogsTableRow } from "./logs-table-row.tsx";
 import { LogsEmptyState } from "./logs-empty-state.tsx";
+import { LogsTableSkeleton } from "./logs-table-skeleton.tsx";
 import { Table, TableHeader, TableBody, TableHead, TableRow } from "@vm0/ui";
 import type { LogsListResponse } from "../../signals/logs-page/types.ts";
 
@@ -10,45 +11,34 @@ function LogsTableHeader() {
   return (
     <TableHeader className="bg-muted">
       <TableRow className="hover:bg-transparent">
-        <TableHead className="h-10 w-[180px] px-3 text-sm font-medium text-foreground">
-          Run ID
+        <TableHead className="h-10 px-3 text-sm font-medium text-foreground w-[20%] min-w-[80px]">
+          <span className="block truncate whitespace-nowrap">Run ID</span>
         </TableHead>
-        <TableHead className="h-10 w-[180px] px-3 text-sm font-medium text-foreground">
-          Session ID
+        <TableHead className="h-10 px-3 text-sm font-medium text-foreground w-[20%] min-w-[80px]">
+          <span className="block truncate whitespace-nowrap">Session ID</span>
         </TableHead>
-        <TableHead className="h-10 w-[120px] px-3 text-sm font-medium text-foreground">
-          Agent
+        <TableHead className="h-10 px-3 text-sm font-medium text-foreground w-[15%] min-w-[80px]">
+          <span className="block truncate whitespace-nowrap">Agent</span>
         </TableHead>
-        <TableHead className="h-10 w-[180px] px-3 text-sm font-medium text-foreground">
-          Framework
+        <TableHead className="h-10 px-3 text-sm font-medium text-foreground w-[12%] min-w-[70px]">
+          <span className="block truncate whitespace-nowrap">Framework</span>
         </TableHead>
-        <TableHead className="h-10 w-[100px] px-3 text-sm font-medium text-foreground">
-          Status
+        <TableHead className="h-10 px-3 text-sm font-medium text-foreground w-[13%] min-w-[80px]">
+          <span className="block truncate whitespace-nowrap">Status</span>
         </TableHead>
-        <TableHead className="h-10 px-3 text-sm font-medium text-foreground">
-          Generate time
+        <TableHead className="h-10 px-3 text-sm font-medium text-foreground w-[15%] min-w-[120px]">
+          <span className="block truncate whitespace-nowrap">
+            Generate time
+          </span>
         </TableHead>
-        <TableHead className="h-10 w-[50px] px-2" />
+        <TableHead className="h-10 w-[44px] px-2" />
       </TableRow>
     </TableHeader>
   );
 }
 
 function LoadingTable() {
-  return (
-    <div className="overflow-x-auto">
-      <Table className="min-w-[800px]">
-        <LogsTableHeader />
-        <TableBody>
-          <TableRow>
-            <td colSpan={7} className="p-4 text-center">
-              Loading...
-            </td>
-          </TableRow>
-        </TableBody>
-      </Table>
-    </div>
-  );
+  return <LogsTableSkeleton />;
 }
 
 export function LogsTable() {
@@ -64,18 +54,16 @@ export function LogsTable() {
         ? currentPage.error.message
         : "Failed to load logs";
     return (
-      <div className="overflow-x-auto">
-        <Table className="min-w-[800px]">
-          <LogsTableHeader />
-          <TableBody>
-            <TableRow>
-              <td colSpan={7} className="p-4 text-center text-destructive">
-                Error: {errorMessage}
-              </td>
-            </TableRow>
-          </TableBody>
-        </Table>
-      </div>
+      <Table>
+        <LogsTableHeader />
+        <TableBody>
+          <TableRow>
+            <td colSpan={7} className="p-4 text-center text-destructive">
+              Error: {errorMessage}
+            </td>
+          </TableRow>
+        </TableBody>
+      </Table>
     );
   }
 
@@ -103,18 +91,16 @@ function LogsTableData({ pageComputed }: LogsTableDataProps) {
         ? dataLoadable.error.message
         : "Failed to load logs";
     return (
-      <div className="overflow-x-auto">
-        <Table className="min-w-[800px]">
-          <LogsTableHeader />
-          <TableBody>
-            <TableRow>
-              <td colSpan={7} className="p-4 text-center text-destructive">
-                Error: {errorMessage}
-              </td>
-            </TableRow>
-          </TableBody>
-        </Table>
-      </div>
+      <Table>
+        <LogsTableHeader />
+        <TableBody>
+          <TableRow>
+            <td colSpan={7} className="p-4 text-center text-destructive">
+              Error: {errorMessage}
+            </td>
+          </TableRow>
+        </TableBody>
+      </Table>
     );
   }
 
@@ -123,15 +109,13 @@ function LogsTableData({ pageComputed }: LogsTableDataProps) {
   }
 
   return (
-    <div className="overflow-x-auto">
-      <Table className="min-w-[800px]">
-        <LogsTableHeader />
-        <TableBody>
-          {dataLoadable.data.data.map((entry) => (
-            <LogsTableRow key={entry.id} entry={entry} />
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+    <Table>
+      <LogsTableHeader />
+      <TableBody>
+        {dataLoadable.data.data.map((entry) => (
+          <LogsTableRow key={entry.id} entry={entry} />
+        ))}
+      </TableBody>
+    </Table>
   );
 }

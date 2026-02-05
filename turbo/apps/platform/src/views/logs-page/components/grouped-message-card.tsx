@@ -124,7 +124,7 @@ function SystemMessageCard({
     <div className={`${MESSAGE_SPACING} relative`}>
       {showConnector && (
         <div
-          className="absolute left-[3px] top-6 bottom-[-8px] w-[1px] bg-border/40"
+          className="absolute left-[3px] top-6 bottom-[-8px] w-[1px] bg-border/70"
           aria-hidden="true"
         />
       )}
@@ -161,11 +161,11 @@ function ResultMessageCard({
     <div className="relative">
       {showConnector && (
         <div
-          className="absolute left-[3px] top-6 bottom-[-8px] w-[1px] bg-border/40"
+          className="absolute left-[3px] top-6 bottom-[-8px] w-[1px] bg-border/70"
           aria-hidden="true"
         />
       )}
-      <details className="group" open>
+      <details className="group relative" open>
         <summary className="cursor-pointer list-none relative py-2">
           <div className="flex gap-2 items-center">
             <StatusDot variant="primary" />
@@ -181,7 +181,9 @@ function ResultMessageCard({
             {timestamp}
           </div>
         </summary>
-        <div className="mt-2 ml-[18px]">
+        {/* Vertical line from dot to content */}
+        <div className="absolute left-[2px] top-[2.25rem] bottom-0 w-[1px] bg-border/70 group-open:block hidden" />
+        <div className="ml-[16px] mt-2 relative">
           <ResultEventContent eventData={eventData} />
         </div>
       </details>
@@ -248,7 +250,7 @@ function TodoCard({
     <div className={`${MESSAGE_SPACING} relative`}>
       {showConnector && (
         <div
-          className="absolute left-[3px] top-6 bottom-[-8px] w-[1px] bg-border/40"
+          className="absolute left-[3px] top-6 bottom-[-8px] w-[1px] bg-border/70"
           aria-hidden="true"
         />
       )}
@@ -330,8 +332,8 @@ function Connector({ isDashed }: { isDashed: boolean }) {
     <div
       className={`absolute left-[3px] top-6 bottom-[-8px] w-[1px] ${
         isDashed
-          ? "border-l border-dashed border-border/60 bg-transparent"
-          : "bg-border/40"
+          ? "border-l border-dashed border-border/70 bg-transparent"
+          : "bg-border/70"
       }`}
       aria-hidden="true"
     />
