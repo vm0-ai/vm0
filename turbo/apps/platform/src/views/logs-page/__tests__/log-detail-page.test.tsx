@@ -348,7 +348,7 @@ describe("log detail page", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/Error:/)).toBeInTheDocument();
+      expect(screen.getByText(/Hmm, couldn't load that/)).toBeInTheDocument();
     });
   });
 

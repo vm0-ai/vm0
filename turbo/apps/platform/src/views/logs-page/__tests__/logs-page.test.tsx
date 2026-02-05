@@ -69,7 +69,7 @@ describe("logs page", () => {
 
     // Wait for empty state to render
     await waitFor(() => {
-      expect(screen.getByText("No runs found")).toBeInTheDocument();
+      expect(screen.getByText("Nothing here yet")).toBeInTheDocument();
     });
   });
 
