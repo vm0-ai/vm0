@@ -29,8 +29,8 @@ Use a Bedrock API key for simple authentication.
 
 ```bash
 vm0 model-provider setup --type aws-bedrock --auth-method api-key \
-  --credential AWS_BEARER_TOKEN_BEDROCK=your-api-key \
-  --credential AWS_REGION=us-east-1
+  --secret AWS_BEARER_TOKEN_BEDROCK=your-api-key \
+  --secret AWS_REGION=us-east-1
 ```
 
 ### IAM Access Keys
@@ -47,19 +47,19 @@ Use IAM credentials for authentication.
 
 ```bash
 vm0 model-provider setup --type aws-bedrock --auth-method access-keys \
-  --credential AWS_ACCESS_KEY_ID=your-access-key \
-  --credential AWS_SECRET_ACCESS_KEY=your-secret-key \
-  --credential AWS_REGION=us-east-1
+  --secret AWS_ACCESS_KEY_ID=your-access-key \
+  --secret AWS_SECRET_ACCESS_KEY=your-secret-key \
+  --secret AWS_REGION=us-east-1
 ```
 
 With session token (temporary credentials):
 
 ```bash
 vm0 model-provider setup --type aws-bedrock --auth-method access-keys \
-  --credential AWS_ACCESS_KEY_ID=your-access-key \
-  --credential AWS_SECRET_ACCESS_KEY=your-secret-key \
-  --credential AWS_SESSION_TOKEN=your-session-token \
-  --credential AWS_REGION=us-east-1
+  --secret AWS_ACCESS_KEY_ID=your-access-key \
+  --secret AWS_SECRET_ACCESS_KEY=your-secret-key \
+  --secret AWS_SESSION_TOKEN=your-session-token \
+  --secret AWS_REGION=us-east-1
 ```
 
 ## Model Selection
@@ -68,8 +68,8 @@ AWS Bedrock supports custom model IDs. During setup, you can specify a model:
 
 ```bash
 vm0 model-provider setup --type aws-bedrock --auth-method api-key \
-  --credential AWS_BEARER_TOKEN_BEDROCK=xxx \
-  --credential AWS_REGION=us-east-1 \
+  --secret AWS_BEARER_TOKEN_BEDROCK=xxx \
+  --secret AWS_REGION=us-east-1 \
   --model anthropic.claude-sonnet-4-20250514-v1:0
 ```
 

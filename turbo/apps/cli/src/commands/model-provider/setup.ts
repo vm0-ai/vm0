@@ -463,9 +463,7 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
     console.log();
     console.log("Use non-interactive mode:");
     console.log(
-      chalk.cyan(
-        '  vm0 model-provider setup --type <type> --credential "<value>"',
-      ),
+      chalk.cyan('  vm0 model-provider setup --type <type> --secret "<value>"'),
     );
     process.exit(1);
   }

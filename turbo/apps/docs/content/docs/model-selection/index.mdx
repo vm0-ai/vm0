@@ -45,10 +45,10 @@ For CI/CD or scripting, provide credentials via flags:
 
 ```bash
 # Simple providers (single credential)
-vm0 model-provider setup --type anthropic-api-key --credential "sk-xxx"
+vm0 model-provider setup --type anthropic-api-key --secret "sk-xxx"
 
 # With model selection
-vm0 model-provider setup --type openrouter-api-key --credential "sk-xxx" --model "anthropic/claude-sonnet-4.5"
+vm0 model-provider setup --type openrouter-api-key --secret "sk-xxx" --model "anthropic/claude-sonnet-4.5"
 ```
 
 ## Model Selection

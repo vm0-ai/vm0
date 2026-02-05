@@ -26,7 +26,7 @@ teardown_file() {
     # Using claude-code-oauth-token as the default for claude-code framework
     $CLI_COMMAND model-provider setup \
         --type "claude-code-oauth-token" \
-        --credential "mock-oauth-token-for-e2e" >/dev/null 2>&1 || true
+        --secret "mock-oauth-token-for-e2e" >/dev/null 2>&1 || true
 }
 
 # ============================================================================
@@ -34,14 +34,14 @@ teardown_file() {
 # ============================================================================
 
 @test "vm0 model-provider setup creates provider" {
-    run $CLI_COMMAND model-provider setup --type "anthropic-api-key" --credential "$TEST_CREDENTIAL_VALUE"
+    run $CLI_COMMAND model-provider setup --type "anthropic-api-key" --secret "$TEST_CREDENTIAL_VALUE"
     assert_success
     assert_output --partial "anthropic-api-key"
     assert_output --partial "created"
 }
 
 @test "vm0 model-provider ls shows created provider" {
-    $CLI_COMMAND model-provider setup --type "anthropic-api-key" --credential "$TEST_CREDENTIAL_VALUE"
+    $CLI_COMMAND model-provider setup --type "anthropic-api-key" --secret "$TEST_CREDENTIAL_VALUE"
 
     run $CLI_COMMAND model-provider ls
     assert_success
@@ -51,7 +51,7 @@ teardown_file() {
 }
 
 @test "vm0 model-provider delete removes provider" {
-    $CLI_COMMAND model-provider setup --type "anthropic-api-key" --credential "$TEST_CREDENTIAL_VALUE"
+    $CLI_COMMAND model-provider setup --type "anthropic-api-key" --secret "$TEST_CREDENTIAL_VALUE"
 
     run $CLI_COMMAND model-provider delete "anthropic-api-key"
     assert_success

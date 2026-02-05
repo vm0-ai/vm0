@@ -28,7 +28,7 @@ Configure model providers for agent runs.
 | Command | Description | Options |
 | ------- | ----------- | ------- |
 | `vm0 model-provider list` | List configured model providers | - |
-| `vm0 model-provider setup` | Configure a model provider | `-t, --type <type>`, `-c, --credential <value>`, `--convert` |
+| `vm0 model-provider setup` | Configure a model provider | `-t, --type <type>`, `-s, --secret <value>`, `--convert` |
 | `vm0 model-provider delete <type>` | Delete a model provider | - |
 | `vm0 model-provider set-default <type>` | Set a model provider as default for its framework | - |
 
@@ -39,7 +39,7 @@ Configure model providers for agent runs.
 vm0 model-provider setup
 
 # Non-interactive setup
-vm0 model-provider setup --type anthropic-api-key --credential "sk-ant-xxx"
+vm0 model-provider setup --type anthropic-api-key --secret "sk-ant-xxx"
 
 # Convert existing credential to model provider
 vm0 model-provider setup --convert
