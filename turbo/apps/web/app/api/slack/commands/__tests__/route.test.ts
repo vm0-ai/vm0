@@ -3,7 +3,6 @@ import { createHmac } from "crypto";
 import { http, HttpResponse } from "msw";
 import { POST } from "../route";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
-import { reloadEnv } from "../../../../../src/env";
 import { server } from "../../../../../src/mocks/server";
 
 // Mock only external dependencies (third-party packages)
@@ -81,25 +80,6 @@ describe("POST /api/slack/commands", () => {
 
   afterEach(() => {
     server.resetHandlers();
-  });
-
-  describe("Configuration", () => {
-    it("returns 503 when Slack signing secret is not configured", async () => {
-      vi.stubEnv("SLACK_SIGNING_SECRET", "");
-      reloadEnv();
-
-      const body = buildCommandBody("help", "T123", "U123");
-      const request = createSignedSlackRequest(body);
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(503);
-      expect(data.error).toBe("Slack integration is not configured");
-
-      vi.stubEnv("SLACK_SIGNING_SECRET", testSigningSecret);
-      reloadEnv();
-    });
   });
 
   describe("Signature Verification", () => {

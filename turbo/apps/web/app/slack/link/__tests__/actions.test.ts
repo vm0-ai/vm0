@@ -10,7 +10,7 @@ import { slackBindings } from "../../../../src/db/schema/slack-binding";
 import {
   givenLinkedSlackUser,
   givenUserHasAgent,
-} from "../../../../src/lib/slack/__tests__/helpers";
+} from "../../../../src/__tests__/slack/api-helpers";
 
 // Mock external dependencies
 vi.mock("@clerk/nextjs/server");
@@ -187,7 +187,7 @@ describe("Slack Link Actions", () => {
     it("should restore orphaned bindings when user re-links after logout", async () => {
       // Given a linked user with an agent
       const { userLink, installation } = await givenLinkedSlackUser();
-      const { binding } = await givenUserHasAgent(userLink.id, {
+      const { binding } = await givenUserHasAgent(userLink, {
         agentName: "test-agent",
         description: "A test agent",
       });
@@ -199,7 +199,12 @@ describe("Slack Link Actions", () => {
       // Simulate logout - delete the user link (this orphans the binding)
       await globalThis.services.db
         .delete(slackUserLinks)
-        .where(eq(slackUserLinks.id, userLink.id));
+        .where(
+          and(
+            eq(slackUserLinks.slackUserId, userLink.slackUserId),
+            eq(slackUserLinks.slackWorkspaceId, userLink.slackWorkspaceId),
+          ),
+        );
 
       // Verify binding is now orphaned
       const [orphanedBinding] = await globalThis.services.db
@@ -226,7 +231,12 @@ describe("Slack Link Actions", () => {
       const [restoredBinding] = await globalThis.services.db
         .select()
         .from(slackBindings)
-        .where(eq(slackBindings.id, binding.id));
+        .where(
+          and(
+            eq(slackBindings.vm0UserId, userLink.vm0UserId),
+            eq(slackBindings.agentName, binding.agentName),
+          ),
+        );
 
       expect(restoredBinding).toBeDefined();
       expect(restoredBinding?.slackUserLinkId).not.toBeNull();

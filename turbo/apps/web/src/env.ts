@@ -30,10 +30,10 @@ function initEnv() {
       AXIOM_TOKEN: z.string().min(1).optional(),
       AXIOM_DATASET_SUFFIX: z.enum(["dev", "prod"]).optional(), // Explicit control for Axiom dataset suffix
       // Slack integration
-      SLACK_CLIENT_ID: z.string().min(1).optional(),
-      SLACK_CLIENT_SECRET: z.string().min(1).optional(),
-      SLACK_SIGNING_SECRET: z.string().min(1).optional(),
-      SLACK_REDIRECT_BASE_URL: z.string().url().optional(), // Override base URL for OAuth redirects (e.g., tunnel URL)
+      SLACK_CLIENT_ID: z.string().min(1),
+      SLACK_CLIENT_SECRET: z.string().min(1),
+      SLACK_SIGNING_SECRET: z.string().min(1),
+      SLACK_REDIRECT_BASE_URL: z.string().url(), // Override base URL for OAuth redirects (e.g., tunnel URL)
       // LLM API
       OPENROUTER_API_KEY: z.string().min(1).optional(), // OpenRouter API key for logged-in users
       // Sentry
