@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.14.0](https://github.com/vm0-ai/vm0/compare/runner-v3.13.0...runner-v3.14.0) (2026-02-05)
+
+
+### Features
+
+* **agent:** add agent sharing with acl-based access control ([#2377](https://github.com/vm0-ai/vm0/issues/2377)) ([d3f63c6](https://github.com/vm0-ai/vm0/commit/d3f63c61b08a93bf9cbffda51ff77f389e18316b))
+
 ## [3.13.0](https://github.com/vm0-ai/vm0/compare/runner-v3.12.3...runner-v3.13.0) (2026-02-05)
 
 

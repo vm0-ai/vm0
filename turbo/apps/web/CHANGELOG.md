@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.4.0](https://github.com/vm0-ai/vm0/compare/web-v12.3.0...web-v12.4.0) (2026-02-05)
+
+
+### Features
+
+* **agent:** add agent sharing with acl-based access control ([#2377](https://github.com/vm0-ai/vm0/issues/2377)) ([d3f63c6](https://github.com/vm0-ai/vm0/commit/d3f63c61b08a93bf9cbffda51ff77f389e18316b))
+
+
+### Bug Fixes
+
+* **slack:** add artifact name parameter to run context ([#2378](https://github.com/vm0-ai/vm0/issues/2378)) ([11529db](https://github.com/vm0-ai/vm0/commit/11529dbcee53a6adb6e3cc173c84ca0e7348cb81))
+
 ## [12.3.0](https://github.com/vm0-ai/vm0/compare/web-v12.2.1...web-v12.3.0) (2026-02-05)
 
 
