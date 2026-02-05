@@ -167,6 +167,7 @@ async function downloadAndUploadSlackFile(
       name: filename,
       size: buffer.length,
       s3Key,
+      presignedUrl,
     });
 
     return presignedUrl;
