@@ -118,7 +118,7 @@ export const mainRunCommand = new Command()
             console.error();
             console.error(
               chalk.dim(
-                "  Running code from other users carries security risks.",
+                "  Running agent from other users carries security risks.",
               ),
             );
             console.error(chalk.dim("  Only run agents from users you trust."));
