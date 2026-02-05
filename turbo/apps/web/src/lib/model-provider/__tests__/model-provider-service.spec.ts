@@ -12,9 +12,9 @@ import {
 } from "vitest";
 import {
   listModelProviders,
-  checkCredentialExists,
+  checkSecretExists,
   upsertModelProvider,
-  convertCredentialToModelProvider,
+  convertSecretToModelProvider,
   deleteModelProvider,
   setModelProviderDefault,
   updateModelProviderModel,
@@ -99,22 +99,19 @@ describe("Model Provider Service", () => {
       expect(result).toHaveLength(1);
       expect(result[0]!.type).toBe("anthropic-api-key");
       expect(result[0]!.framework).toBe("claude-code");
-      expect(result[0]!.credentialName).toBe("ANTHROPIC_API_KEY");
+      expect(result[0]!.secretName).toBe("ANTHROPIC_API_KEY");
       expect(result[0]!.isDefault).toBe(true); // First provider for framework is default
     });
   });
 
-  describe("checkCredentialExists", () => {
-    it("should return false for nonexistent credential", async () => {
-      const result = await checkCredentialExists(
-        testUserId,
-        "anthropic-api-key",
-      );
+  describe("checkSecretExists", () => {
+    it("should return false for nonexistent secret", async () => {
+      const result = await checkSecretExists(testUserId, "anthropic-api-key");
       expect(result.exists).toBe(false);
       expect(result.currentType).toBeUndefined();
     });
 
-    it("should return true with type for existing model-provider credential", async () => {
+    it("should return true with type for existing model-provider secret", async () => {
       // Create a model provider first
       await upsertModelProvider(
         testUserId,
@@ -122,10 +119,7 @@ describe("Model Provider Service", () => {
         "test-api-key-123",
       );
 
-      const result = await checkCredentialExists(
-        testUserId,
-        "anthropic-api-key",
-      );
+      const result = await checkSecretExists(testUserId, "anthropic-api-key");
       expect(result.exists).toBe(true);
       expect(result.currentType).toBe("model-provider");
     });
@@ -142,7 +136,7 @@ describe("Model Provider Service", () => {
       expect(created).toBe(true);
       expect(provider.type).toBe("anthropic-api-key");
       expect(provider.framework).toBe("claude-code");
-      expect(provider.credentialName).toBe("ANTHROPIC_API_KEY");
+      expect(provider.secretName).toBe("ANTHROPIC_API_KEY");
       expect(provider.isDefault).toBe(true); // First provider is default
     });
 
@@ -203,7 +197,7 @@ describe("Model Provider Service", () => {
     });
   });
 
-  describe("convertCredentialToModelProvider", () => {
+  describe("convertSecretToModelProvider", () => {
     it("should convert user credential to model provider", async () => {
       // Create a user credential directly
       await globalThis.services.db.insert(secrets).values({
@@ -213,7 +207,7 @@ describe("Model Provider Service", () => {
         type: "user",
       });
 
-      const provider = await convertCredentialToModelProvider(
+      const provider = await convertSecretToModelProvider(
         testUserId,
         "anthropic-api-key",
       );
@@ -238,7 +232,7 @@ describe("Model Provider Service", () => {
 
     it("should throw NotFoundError for nonexistent credential", async () => {
       await expect(
-        convertCredentialToModelProvider(testUserId, "anthropic-api-key"),
+        convertSecretToModelProvider(testUserId, "anthropic-api-key"),
       ).rejects.toMatchObject({ name: "NotFoundError" });
     });
 
@@ -247,7 +241,7 @@ describe("Model Provider Service", () => {
       await upsertModelProvider(testUserId, "anthropic-api-key", "test-key");
 
       await expect(
-        convertCredentialToModelProvider(testUserId, "anthropic-api-key"),
+        convertSecretToModelProvider(testUserId, "anthropic-api-key"),
       ).rejects.toMatchObject({ name: "BadRequestError" });
     });
   });

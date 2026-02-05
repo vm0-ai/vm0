@@ -148,7 +148,7 @@ export const saveOnboardingConfig$ = command(
       // Create model provider with OAuth token
       await set(createModelProvider$, {
         type: "claude-code-oauth-token",
-        credential: tokenValue.trim(),
+        secret: tokenValue.trim(),
       });
       signal.throwIfAborted();
 

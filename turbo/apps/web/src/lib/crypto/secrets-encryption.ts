@@ -180,10 +180,10 @@ export function decryptSecretsMap(
 }
 
 /**
- * Encrypt a single credential value using AES-256-GCM
+ * Encrypt a single secret value using AES-256-GCM
  * Returns base64-encoded ciphertext in format: iv:authTag:encryptedData
  */
-export function encryptCredentialValue(
+export function encryptSecretValue(
   value: string,
   encryptionKey: string | undefined,
 ): string {
@@ -215,10 +215,10 @@ export function encryptCredentialValue(
 }
 
 /**
- * Decrypt a single credential value encrypted with AES-256-GCM
+ * Decrypt a single secret value encrypted with AES-256-GCM
  * Input format: iv:authTag:encryptedData (all base64)
  */
-export function decryptCredentialValue(
+export function decryptSecretValue(
   encryptedData: string,
   encryptionKey: string | undefined,
 ): string {
@@ -233,7 +233,7 @@ export function decryptCredentialValue(
 
   const parts = encryptedData.split(":");
   if (parts.length !== 3) {
-    throw new Error("Invalid encrypted credential format");
+    throw new Error("Invalid encrypted secret format");
   }
 
   const [ivBase64, authTagBase64, dataBase64] = parts;

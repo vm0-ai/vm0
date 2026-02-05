@@ -126,7 +126,7 @@ describe("test model providers", () => {
 
       await context.store.set(createModelProvider$, {
         type: "claude-code-oauth-token",
-        credential: "test-token",
+        secret: "test-token",
       });
 
       expect(putCalled).toBeTruthy();

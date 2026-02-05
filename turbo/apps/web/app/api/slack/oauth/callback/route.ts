@@ -5,7 +5,7 @@ import {
   exchangeOAuthCode,
   getSlackRedirectBaseUrl,
 } from "../../../../../src/lib/slack";
-import { encryptCredentialValue } from "../../../../../src/lib/crypto/secrets-encryption";
+import { encryptSecretValue } from "../../../../../src/lib/crypto/secrets-encryption";
 import { slackInstallations } from "../../../../../src/db/schema/slack-installation";
 
 /**
@@ -80,7 +80,7 @@ export async function GET(request: Request) {
     );
 
     // Encrypt the bot token
-    const encryptedBotToken = encryptCredentialValue(
+    const encryptedBotToken = encryptSecretValue(
       oauthResult.accessToken,
       SECRETS_ENCRYPTION_KEY,
     );

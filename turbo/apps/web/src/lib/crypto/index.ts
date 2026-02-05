@@ -1,6 +1,6 @@
 export {
   encryptSecretsMap,
   decryptSecretsMap,
-  encryptCredentialValue,
-  decryptCredentialValue,
+  encryptSecretValue,
+  decryptSecretValue,
 } from "./secrets-encryption";

@@ -18,7 +18,7 @@ import {
   buildAgentAddModal,
   buildAgentUpdateModal,
 } from "../../../../src/lib/slack/blocks";
-import { decryptCredentialValue } from "../../../../src/lib/crypto/secrets-encryption";
+import { decryptSecretValue } from "../../../../src/lib/crypto/secrets-encryption";
 import {
   createSlackClient,
   isSlackInvalidAuthError,
@@ -396,7 +396,7 @@ async function handleAgentAddSelection(
 
   if (!userLink) return;
 
-  const botToken = decryptCredentialValue(
+  const botToken = decryptSecretValue(
     installation.encryptedBotToken,
     SECRETS_ENCRYPTION_KEY,
   );
@@ -446,7 +446,7 @@ async function handleAgentUpdateSelection(
 
   if (!userLink) return;
 
-  const botToken = decryptCredentialValue(
+  const botToken = decryptSecretValue(
     installation.encryptedBotToken,
     SECRETS_ENCRYPTION_KEY,
   );
@@ -636,7 +636,7 @@ async function sendConfirmationMessage(
     return;
   }
 
-  const botToken = decryptCredentialValue(
+  const botToken = decryptSecretValue(
     installation.encryptedBotToken,
     encryptionKey,
   );
@@ -906,7 +906,7 @@ async function sendRemovalConfirmationMessage(
     return;
   }
 
-  const botToken = decryptCredentialValue(
+  const botToken = decryptSecretValue(
     installation.encryptedBotToken,
     encryptionKey,
   );
@@ -1113,7 +1113,7 @@ async function sendUpdateConfirmationMessage(
     return;
   }
 
-  const botToken = decryptCredentialValue(
+  const botToken = decryptSecretValue(
     installation.encryptedBotToken,
     encryptionKey,
   );

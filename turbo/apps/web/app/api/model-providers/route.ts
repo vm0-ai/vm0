@@ -6,7 +6,7 @@ import {
 import {
   modelProvidersMainContract,
   createErrorResponse,
-  getCredentialNameForType,
+  getSecretNameForType,
   hasAuthMethods,
 } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
@@ -42,9 +42,9 @@ const router = tsr.router(modelProvidersMainContract, {
           id: p.id,
           type: p.type,
           framework: p.framework,
-          credentialName: p.credentialName,
+          secretName: p.secretName,
           authMethod: p.authMethod ?? null,
-          credentialNames: p.credentialNames ?? null,
+          secretNames: p.secretNames ?? null,
           isDefault: p.isDefault,
           selectedModel: p.selectedModel,
           createdAt: p.createdAt.toISOString(),
@@ -67,9 +67,9 @@ const router = tsr.router(modelProvidersMainContract, {
 
     const {
       type,
-      credential,
+      secret,
       authMethod,
-      credentials,
+      secrets: secretsMap,
       convert,
       selectedModel,
     } = body;
@@ -85,33 +85,33 @@ const router = tsr.router(modelProvidersMainContract, {
 
       if (isMultiAuth) {
         // Multi-auth provider (e.g., aws-bedrock)
-        if (!authMethod || !credentials) {
+        if (!authMethod || !secretsMap) {
           return createErrorResponse(
             "BAD_REQUEST",
-            `Provider "${type}" requires authMethod and credentials`,
+            `Provider "${type}" requires authMethod and secrets`,
           );
         }
         const result = await upsertMultiAuthModelProvider(
           userId,
           type,
           authMethod,
-          credentials,
+          secretsMap,
           selectedModel,
         );
         provider = result.provider;
         created = result.created;
       } else {
-        // Legacy single-credential provider
-        if (!credential) {
+        // Legacy single-secret provider
+        if (!secret) {
           return createErrorResponse(
             "BAD_REQUEST",
-            `Provider "${type}" requires a credential`,
+            `Provider "${type}" requires a secret`,
           );
         }
         const result = await upsertModelProvider(
           userId,
           type,
-          credential,
+          secret,
           convert,
           selectedModel,
         );
@@ -126,9 +126,9 @@ const router = tsr.router(modelProvidersMainContract, {
             id: provider.id,
             type: provider.type,
             framework: provider.framework,
-            credentialName: provider.credentialName,
+            secretName: provider.secretName,
             authMethod: provider.authMethod ?? null,
-            credentialNames: provider.credentialNames ?? null,
+            secretNames: provider.secretNames ?? null,
             isDefault: provider.isDefault,
             selectedModel: provider.selectedModel,
             createdAt: provider.createdAt.toISOString(),
@@ -148,7 +148,7 @@ const router = tsr.router(modelProvidersMainContract, {
             error: {
               message: error.message,
               code: "CONFLICT",
-              credentialName: getCredentialNameForType(type),
+              secretName: getSecretNameForType(type),
             },
           },
         };

@@ -2,12 +2,12 @@ import { eq, and, inArray } from "drizzle-orm";
 import {
   type SecretType,
   type ModelProviderType,
-  getCredentialNamesForAuthMethod,
+  getSecretNamesForAuthMethod,
   getFrameworkForType,
 } from "@vm0/core";
 import { secrets } from "../../db/schema/secret";
 import { modelProviders } from "../../db/schema/model-provider";
-import { encryptCredentialValue, decryptCredentialValue } from "../crypto";
+import { encryptSecretValue, decryptSecretValue } from "../crypto";
 import { badRequest, notFound } from "../errors";
 import { logger } from "../logger";
 import { getUserScopeByClerkId } from "../scope/scope-service";
@@ -131,7 +131,7 @@ export async function getSecretValue(
   }
 
   const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
-  return decryptCredentialValue(result[0].encryptedValue, encryptionKey);
+  return decryptSecretValue(result[0].encryptedValue, encryptionKey);
 }
 
 /**
@@ -153,10 +153,7 @@ export async function getSecretValues(
   const values: Record<string, string> = {};
 
   for (const row of result) {
-    values[row.name] = decryptCredentialValue(
-      row.encryptedValue,
-      encryptionKey,
-    );
+    values[row.name] = decryptSecretValue(row.encryptedValue, encryptionKey);
   }
 
   return values;
@@ -181,7 +178,7 @@ export async function setSecret(
   }
 
   const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
-  const encryptedValue = encryptCredentialValue(value, encryptionKey);
+  const encryptedValue = encryptSecretValue(value, encryptionKey);
 
   log.debug("setting secret", { scopeId: scope.id, name });
 
@@ -283,7 +280,7 @@ export async function deleteSecret(
     for (const provider of allProviders) {
       if (provider.authMethod && !provider.secretId) {
         // This is a multi-auth provider
-        const secretNames = getCredentialNamesForAuthMethod(
+        const secretNames = getSecretNamesForAuthMethod(
           provider.type as ModelProviderType,
           provider.authMethod,
         );

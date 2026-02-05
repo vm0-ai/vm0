@@ -48,7 +48,7 @@ import { slackUserLinks } from "../db/schema/slack-user-link";
 import { slackBindings } from "../db/schema/slack-binding";
 import { agentComposes } from "../db/schema/agent-compose";
 import { scopes } from "../db/schema/scope";
-import { encryptCredentialValue } from "../lib/crypto/secrets-encryption";
+import { encryptSecretValue } from "../lib/crypto/secrets-encryption";
 import { env } from "../env";
 
 /**
@@ -457,7 +457,7 @@ export function testContext(): TestContext {
     const { SECRETS_ENCRYPTION_KEY } = env();
 
     // Create installation
-    const encryptedBotToken = encryptCredentialValue(
+    const encryptedBotToken = encryptSecretValue(
       "xoxb-test-bot-token",
       SECRETS_ENCRYPTION_KEY,
     );

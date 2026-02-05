@@ -117,13 +117,11 @@ async function handleModelProvider(ctx: OnboardContext): Promise<void> {
       }
     }
 
-    const credential = await step.prompt(() =>
-      promptPassword(
-        `Enter your ${selectedChoice?.credentialLabel ?? "credential"}:`,
-      ),
+    const secret = await step.prompt(() =>
+      promptPassword(`Enter your ${selectedChoice?.secretLabel ?? "secret"}:`),
     );
 
-    if (!credential) {
+    if (!secret) {
       console.log(chalk.dim("Cancelled"));
       process.exit(0);
     }
@@ -162,7 +160,7 @@ async function handleModelProvider(ctx: OnboardContext): Promise<void> {
       selectedModel = modelSelection === "" ? undefined : modelSelection;
     }
 
-    const result = await setupModelProvider(providerType, credential, {
+    const result = await setupModelProvider(providerType, secret, {
       selectedModel,
     });
     const modelNote = result.provider.selectedModel

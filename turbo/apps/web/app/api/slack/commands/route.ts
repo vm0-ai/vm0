@@ -14,7 +14,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
-import { decryptCredentialValue } from "../../../../src/lib/crypto/secrets-encryption";
+import { decryptSecretValue } from "../../../../src/lib/crypto/secrets-encryption";
 import {
   createSlackClient,
   getSlackRedirectBaseUrl,
@@ -302,7 +302,7 @@ export async function POST(request: Request) {
     });
   }
 
-  const botToken = decryptCredentialValue(
+  const botToken = decryptSecretValue(
     installation.encryptedBotToken,
     SECRETS_ENCRYPTION_KEY,
   );

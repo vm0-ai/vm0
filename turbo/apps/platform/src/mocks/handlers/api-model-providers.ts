@@ -14,9 +14,9 @@ const DUMMY_MODEL_PROVIDER: ModelProviderResponse = {
   id: "dummy-provider",
   type: "claude-code-oauth-token",
   framework: "claude-code",
-  credentialName: "CLAUDE_CODE_OAUTH_TOKEN",
+  secretName: "CLAUDE_CODE_OAUTH_TOKEN",
   authMethod: null,
-  credentialNames: null,
+  secretNames: null,
   isDefault: false,
   selectedModel: null,
   createdAt: new Date().toISOString(),
@@ -46,7 +46,7 @@ export const apiModelProvidersHandlers = [
   http.put("/api/model-providers", async ({ request }) => {
     const body = (await request.json()) as {
       type: ModelProviderResponse["type"];
-      credential: string;
+      secret: string;
       convert?: boolean;
     };
 
@@ -58,12 +58,12 @@ export const apiModelProvidersHandlers = [
       id: existing?.id ?? crypto.randomUUID(),
       type: body.type,
       framework: "claude-code",
-      credentialName:
+      secretName:
         body.type === "claude-code-oauth-token"
           ? "CLAUDE_CODE_OAUTH_TOKEN"
           : "ANTHROPIC_API_KEY",
       authMethod: null,
-      credentialNames: null,
+      secretNames: null,
       isDefault:
         mockModelProviders.length === 0 || existing?.isDefault || false,
       selectedModel: null,
@@ -86,19 +86,19 @@ export const apiModelProvidersHandlers = [
     );
   }),
 
-  // GET /api/model-providers/check/:type - Check if credential exists
+  // GET /api/model-providers/check/:type - Check if secret exists
   http.get("/api/model-providers/check/:type", ({ params }) => {
     const type = params.type as ModelProviderResponse["type"];
     const existing = mockModelProviders.find((p) => p.type === type);
 
-    const credentialName =
+    const secretName =
       type === "claude-code-oauth-token"
         ? "CLAUDE_CODE_OAUTH_TOKEN"
         : "ANTHROPIC_API_KEY";
 
     return HttpResponse.json({
       exists: !!existing,
-      credentialName,
+      secretName,
       ...(existing && { currentType: "model-provider" as const }),
     });
   }),

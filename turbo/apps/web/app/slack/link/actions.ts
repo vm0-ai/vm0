@@ -7,7 +7,7 @@ import { env } from "../../../src/env";
 import { slackUserLinks } from "../../../src/db/schema/slack-user-link";
 import { slackInstallations } from "../../../src/db/schema/slack-installation";
 import { slackBindings } from "../../../src/db/schema/slack-binding";
-import { decryptCredentialValue } from "../../../src/lib/crypto/secrets-encryption";
+import { decryptSecretValue } from "../../../src/lib/crypto/secrets-encryption";
 import { createSlackClient } from "../../../src/lib/slack";
 
 interface LinkResult {
@@ -183,7 +183,7 @@ async function sendSuccessMessage(
   slackUserId: string,
 ): Promise<void> {
   const { SECRETS_ENCRYPTION_KEY } = env();
-  const botToken = decryptCredentialValue(
+  const botToken = decryptSecretValue(
     encryptedBotToken,
     SECRETS_ENCRYPTION_KEY,
   );

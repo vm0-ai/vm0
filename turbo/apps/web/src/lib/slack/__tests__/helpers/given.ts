@@ -15,11 +15,11 @@ import {
   agentComposeVersions,
 } from "../../../../db/schema/agent-compose";
 import { scopes } from "../../../../db/schema/scope";
-import { encryptCredentialValue } from "../../../../lib/crypto/secrets-encryption";
+import { encryptSecretValue } from "../../../../lib/crypto/secrets-encryption";
 import { env } from "../../../../env";
 import { uniqueId } from "../../../../__tests__/test-helpers";
 
-// Note: encryptCredentialValue and env are still used for encrypting bot tokens
+// Note: encryptSecretValue and env are still used for encrypting bot tokens
 
 /**
  * Result from givenSlackWorkspaceInstalled
@@ -110,7 +110,7 @@ export async function givenSlackWorkspaceInstalled(
   initServices();
   const { SECRETS_ENCRYPTION_KEY } = env();
 
-  const encryptedBotToken = encryptCredentialValue(
+  const encryptedBotToken = encryptSecretValue(
     "xoxb-test-bot-token",
     SECRETS_ENCRYPTION_KEY,
   );
