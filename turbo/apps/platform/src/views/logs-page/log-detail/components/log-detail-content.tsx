@@ -161,7 +161,7 @@ function CopyableId({ label, value }: { label?: string; value: string }) {
   return (
     <span className="inline-flex items-center gap-1.5 min-w-0 max-w-full">
       {label && <span className="text-muted-foreground text-sm">{label}</span>}
-      <code className="font-mono text-xs sm:text-sm text-foreground bg-gray-50 px-1.5 sm:px-3 py-1 rounded-lg inline-flex items-center gap-1 truncate">
+      <code className="font-mono text-xs sm:text-sm text-foreground bg-gray-50 px-1.5 sm:px-3 py-1 rounded-lg inline-flex items-center gap-1 min-w-0">
         <span className="truncate">{value.slice(0, 8)}...</span>
         <CopyButton text={value} className="h-4 w-4 p-0 ml-0.5 shrink-0" />
       </code>
