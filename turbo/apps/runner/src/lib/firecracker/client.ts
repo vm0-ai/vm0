@@ -242,14 +242,16 @@ export class FirecrackerClient {
     timeoutMs: number = 5000,
     intervalMs: number = 100,
   ): Promise<void> {
+    const startTime = Date.now();
+    const remainingTime = () => timeoutMs - (Date.now() - startTime);
+
     // Wait for socket file to exist
     if (!fs.existsSync(this.socketPath)) {
-      await this.waitForSocketFile(timeoutMs);
+      await this.waitForSocketFile(remainingTime());
     }
 
     // Wait for API to respond
-    const startTime = Date.now();
-    while (Date.now() - startTime < timeoutMs) {
+    while (remainingTime() > 0) {
       try {
         await this.get("/");
         return;
