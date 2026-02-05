@@ -3,11 +3,38 @@ import { logger } from "../logger";
 
 const log = logger("slack:context");
 
+interface SlackFile {
+  id?: string;
+  name?: string;
+  title?: string;
+  mimetype?: string;
+  filetype?: string;
+  pretty_type?: string;
+  size?: number;
+  original_w?: string;
+  original_h?: string;
+  thumb_360?: string;
+  thumb_480?: string;
+  permalink?: string;
+  permalink_public?: string;
+}
+
+interface SlackAttachment {
+  image_url?: string;
+  image_width?: number;
+  image_height?: number;
+  thumb_url?: string;
+  title?: string;
+  fallback?: string;
+}
+
 interface SlackMessage {
   user?: string;
   text?: string;
   ts?: string;
   bot_id?: string;
+  files?: SlackFile[];
+  attachments?: SlackAttachment[];
 }
 
 /**
@@ -59,6 +86,55 @@ export async function fetchChannelContext(
 }
 
 /**
+ * Format file information for context
+ */
+function formatFileInfo(file: SlackFile): string {
+  const parts: string[] = [];
+
+  const name = file.name || file.title || "Untitled";
+  const type = file.pretty_type || file.mimetype || "file";
+  parts.push(`[file]: ${name} (${type})`);
+
+  if (file.original_w && file.original_h) {
+    parts.push(`   Dimensions: ${file.original_w}x${file.original_h}`);
+  }
+
+  const url =
+    file.permalink_public || file.thumb_480 || file.thumb_360 || file.permalink;
+  if (url) {
+    parts.push(`   URL: ${url}`);
+  }
+
+  return parts.join("\n");
+}
+
+/**
+ * Format attachment with image for context
+ */
+function formatAttachmentImage(attachment: SlackAttachment): string | null {
+  if (!attachment.image_url && !attachment.thumb_url) {
+    return null;
+  }
+
+  const parts: string[] = [];
+  const title = attachment.title || attachment.fallback || "Image";
+  parts.push(`[image]: ${title}`);
+
+  if (attachment.image_width && attachment.image_height) {
+    parts.push(
+      `   Dimensions: ${attachment.image_width}x${attachment.image_height}`,
+    );
+  }
+
+  const url = attachment.image_url || attachment.thumb_url;
+  if (url) {
+    parts.push(`   URL: ${url}`);
+  }
+
+  return parts.join("\n");
+}
+
+/**
  * Format messages into context for agent prompt
  *
  * @param messages - Array of Slack messages
@@ -75,7 +151,27 @@ export function formatContextForAgent(
   const formattedMessages = messages.map((msg) => {
     const user = msg.bot_id ? "bot" : (msg.user ?? "unknown");
     const text = msg.text ?? "";
-    return `[${user}]: ${text}`;
+
+    const parts: string[] = [`[${user}]: ${text}`];
+
+    // Format files (uploaded images, documents, etc.)
+    if (msg.files && msg.files.length > 0) {
+      for (const file of msg.files) {
+        parts.push(formatFileInfo(file));
+      }
+    }
+
+    // Format attachments with images (URL unfurls, etc.)
+    if (msg.attachments && msg.attachments.length > 0) {
+      for (const attachment of msg.attachments) {
+        const attachmentInfo = formatAttachmentImage(attachment);
+        if (attachmentInfo) {
+          parts.push(attachmentInfo);
+        }
+      }
+    }
+
+    return parts.join("\n");
   });
 
   if (formattedMessages.length === 0) {

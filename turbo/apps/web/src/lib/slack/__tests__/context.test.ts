@@ -80,6 +80,211 @@ describe("Feature: Format Context For Agent", () => {
       expect(result).toContain("[U123]: Recent message");
     });
   });
+
+  describe("Scenario: Include files in context", () => {
+    it("should format message with single image file", () => {
+      const messages = [
+        {
+          user: "U123",
+          text: "Check out this screenshot",
+          files: [
+            {
+              name: "screenshot.png",
+              pretty_type: "PNG Image",
+              original_w: "1920",
+              original_h: "1080",
+              permalink_public: "https://files.slack.com/public/screenshot.png",
+            },
+          ],
+        },
+      ];
+
+      const result = formatContextForAgent(messages);
+
+      expect(result).toContain("[U123]: Check out this screenshot");
+      expect(result).toContain("[file]: screenshot.png (PNG Image)");
+      expect(result).toContain("Dimensions: 1920x1080");
+      expect(result).toContain(
+        "URL: https://files.slack.com/public/screenshot.png",
+      );
+    });
+
+    it("should format message with multiple files", () => {
+      const messages = [
+        {
+          user: "U123",
+          text: "Here are the files",
+          files: [
+            {
+              name: "image1.png",
+              pretty_type: "PNG Image",
+              permalink: "https://slack.com/files/image1.png",
+            },
+            {
+              name: "document.pdf",
+              pretty_type: "PDF",
+              permalink: "https://slack.com/files/document.pdf",
+            },
+          ],
+        },
+      ];
+
+      const result = formatContextForAgent(messages);
+
+      expect(result).toContain("[file]: image1.png (PNG Image)");
+      expect(result).toContain("[file]: document.pdf (PDF)");
+    });
+
+    it("should use thumbnail URL when public URL is not available", () => {
+      const messages = [
+        {
+          user: "U123",
+          text: "Private image",
+          files: [
+            {
+              name: "private.png",
+              mimetype: "image/png",
+              thumb_480: "https://files.slack.com/thumb_480/private.png",
+            },
+          ],
+        },
+      ];
+
+      const result = formatContextForAgent(messages);
+
+      expect(result).toContain("[file]: private.png (image/png)");
+      expect(result).toContain(
+        "URL: https://files.slack.com/thumb_480/private.png",
+      );
+    });
+
+    it("should handle files without dimensions", () => {
+      const messages = [
+        {
+          user: "U123",
+          text: "A document",
+          files: [
+            {
+              name: "report.docx",
+              pretty_type: "Word Document",
+              permalink: "https://slack.com/files/report.docx",
+            },
+          ],
+        },
+      ];
+
+      const result = formatContextForAgent(messages);
+
+      expect(result).toContain("[file]: report.docx (Word Document)");
+      expect(result).not.toContain("Dimensions:");
+    });
+  });
+
+  describe("Scenario: Include attachments with images in context", () => {
+    it("should format attachment with image URL", () => {
+      const messages = [
+        {
+          user: "U123",
+          text: "Check this article",
+          attachments: [
+            {
+              title: "Article Preview",
+              image_url: "https://example.com/preview.jpg",
+              image_width: 800,
+              image_height: 600,
+            },
+          ],
+        },
+      ];
+
+      const result = formatContextForAgent(messages);
+
+      expect(result).toContain("[U123]: Check this article");
+      expect(result).toContain("[image]: Article Preview");
+      expect(result).toContain("Dimensions: 800x600");
+      expect(result).toContain("URL: https://example.com/preview.jpg");
+    });
+
+    it("should use fallback for attachment title", () => {
+      const messages = [
+        {
+          user: "U123",
+          text: "Link",
+          attachments: [
+            {
+              fallback: "Preview image",
+              thumb_url: "https://example.com/thumb.jpg",
+            },
+          ],
+        },
+      ];
+
+      const result = formatContextForAgent(messages);
+
+      expect(result).toContain("[image]: Preview image");
+      expect(result).toContain("URL: https://example.com/thumb.jpg");
+    });
+
+    it("should skip attachments without images", () => {
+      const messages = [
+        {
+          user: "U123",
+          text: "Text only attachment",
+          attachments: [
+            {
+              title: "No image here",
+              fallback: "Just text",
+            },
+          ],
+        },
+      ];
+
+      const result = formatContextForAgent(messages);
+
+      expect(result).toContain("[U123]: Text only attachment");
+      expect(result).not.toContain("[image]:");
+    });
+  });
+
+  describe("Scenario: Mixed content in thread", () => {
+    it("should format thread with text, files, and attachments", () => {
+      const messages = [
+        { user: "U123", text: "Here is the error screenshot" },
+        {
+          user: "U456",
+          text: "I see the issue",
+          files: [
+            {
+              name: "fix.png",
+              pretty_type: "PNG Image",
+              original_w: "640",
+              original_h: "480",
+              permalink_public: "https://files.slack.com/fix.png",
+            },
+          ],
+        },
+        {
+          user: "U123",
+          text: "Related article",
+          attachments: [
+            {
+              title: "Bug Report",
+              image_url: "https://example.com/bug.jpg",
+            },
+          ],
+        },
+      ];
+
+      const result = formatContextForAgent(messages);
+
+      expect(result).toContain("[U123]: Here is the error screenshot");
+      expect(result).toContain("[U456]: I see the issue");
+      expect(result).toContain("[file]: fix.png (PNG Image)");
+      expect(result).toContain("Dimensions: 640x480");
+      expect(result).toContain("[U123]: Related article");
+      expect(result).toContain("[image]: Bug Report");
+    });
+  });
 });
 
 describe("Feature: Extract Message Content", () => {
