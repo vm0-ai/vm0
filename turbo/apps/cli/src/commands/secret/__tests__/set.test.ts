@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { setCommand } from "../set";
+import prompts from "prompts";
 import chalk from "chalk";
 
 describe("secret set command", () => {
@@ -22,11 +23,16 @@ describe("secret set command", () => {
     .spyOn(console, "error")
     .mockImplementation(() => {});
 
+  let originalIsTTY: boolean | undefined;
+
   beforeEach(() => {
     vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
+
+    // Save original TTY state
+    originalIsTTY = process.stdout.isTTY;
   });
 
   afterEach(() => {
@@ -34,6 +40,13 @@ describe("secret set command", () => {
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
     vi.unstubAllEnvs();
+
+    // Restore TTY state
+    Object.defineProperty(process.stdout, "isTTY", {
+      value: originalIsTTY,
+      writable: true,
+      configurable: true,
+    });
   });
 
   describe("--body flag", () => {
@@ -118,6 +131,80 @@ describe("secret set command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain('Secret "MY_API_KEY" saved');
+    });
+  });
+
+  describe("interactive mode", () => {
+    it("should prompt for secret value in interactive mode", async () => {
+      // Set TTY to true for interactive mode
+      Object.defineProperty(process.stdout, "isTTY", {
+        value: true,
+        writable: true,
+        configurable: true,
+      });
+
+      server.use(
+        http.put("http://localhost:3000/api/secrets", async ({ request }) => {
+          const body = (await request.json()) as { value: string };
+          expect(body.value).toBe("interactive-secret-value");
+          return HttpResponse.json({
+            id: "1",
+            name: "MY_API_KEY",
+            description: null,
+            type: "user",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+        }),
+      );
+
+      // Inject the password response
+      prompts.inject(["interactive-secret-value"]);
+
+      await setCommand.parseAsync(["node", "cli", "MY_API_KEY"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain('Secret "MY_API_KEY" saved');
+    });
+
+    it("should create secret with interactive input and description", async () => {
+      Object.defineProperty(process.stdout, "isTTY", {
+        value: true,
+        writable: true,
+        configurable: true,
+      });
+
+      server.use(
+        http.put("http://localhost:3000/api/secrets", async ({ request }) => {
+          const body = (await request.json()) as {
+            value: string;
+            description?: string;
+          };
+          expect(body.value).toBe("my-secret");
+          expect(body.description).toBe("Test description");
+          return HttpResponse.json({
+            id: "1",
+            name: "TEST_SECRET",
+            description: "Test description",
+            type: "user",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+        }),
+      );
+
+      prompts.inject(["my-secret"]);
+
+      await setCommand.parseAsync([
+        "node",
+        "cli",
+        "TEST_SECRET",
+        "-d",
+        "Test description",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain('Secret "TEST_SECRET" saved');
     });
   });
 
