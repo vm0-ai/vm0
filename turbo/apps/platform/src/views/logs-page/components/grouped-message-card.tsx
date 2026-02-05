@@ -15,6 +15,7 @@ interface GroupedMessageCardProps {
   searchTerm?: string;
   currentMatchIndex?: number;
   matchStartIndex?: number;
+  showConnector?: boolean;
 }
 
 // Layout constants
@@ -52,22 +53,41 @@ export function GroupedMessageCard({
   searchTerm,
   currentMatchIndex,
   matchStartIndex = 0,
+  showConnector = false,
 }: GroupedMessageCardProps) {
   const eventData = message.eventData as EventData;
 
   // System event
   if (message.type === "system") {
-    return <SystemMessageCard message={message} eventData={eventData} />;
+    return (
+      <SystemMessageCard
+        message={message}
+        eventData={eventData}
+        showConnector={showConnector}
+      />
+    );
   }
 
   // Result event
   if (message.type === "result") {
-    return <ResultMessageCard message={message} eventData={eventData} />;
+    return (
+      <ResultMessageCard
+        message={message}
+        eventData={eventData}
+        showConnector={showConnector}
+      />
+    );
   }
 
   // Todo card (standalone)
   if (message.type === "todo") {
-    return <TodoCard message={message} searchTerm={searchTerm} />;
+    return (
+      <TodoCard
+        message={message}
+        searchTerm={searchTerm}
+        showConnector={showConnector}
+      />
+    );
   }
 
   // Assistant message
@@ -77,6 +97,7 @@ export function GroupedMessageCard({
       searchTerm={searchTerm}
       currentMatchIndex={currentMatchIndex}
       matchStartIndex={matchStartIndex}
+      showConnector={showConnector}
     />
   );
 }
@@ -84,15 +105,23 @@ export function GroupedMessageCard({
 function SystemMessageCard({
   message,
   eventData,
+  showConnector = false,
 }: {
   message: GroupedMessage;
   eventData: EventData;
+  showConnector?: boolean;
 }) {
   const subtype = eventData.subtype;
   const timestamp = formatEventTime(message.createdAt);
   return (
-    <div className={MESSAGE_SPACING}>
-      <div className="flex gap-2 items-center">
+    <div className={`${MESSAGE_SPACING} relative`}>
+      {showConnector && (
+        <div
+          className="absolute left-[3px] top-6 bottom-[-8px] w-[1px] bg-border/40"
+          aria-hidden="true"
+        />
+      )}
+      <div className="flex gap-2 items-center relative">
         <StatusDot variant="neutral" />
         <span className="font-semibold text-sm text-foreground">
           {subtype === "init" ? "Initialize" : subtype}
@@ -113,18 +142,31 @@ function SystemMessageCard({
 
 function ResultMessageCard({
   eventData,
+  showConnector = false,
 }: {
   message: GroupedMessage;
   eventData: EventData;
+  showConnector?: boolean;
 }) {
   const subtype = eventData.subtype;
   const isError = eventData.is_error === true || subtype === "error";
-  const borderColor = isError ? "border-red-500/30" : "border-lime-500/30";
-  const bgColor = isError ? "bg-red-500/5" : "bg-lime-500/5";
+  const borderColor = isError ? "border-red-600/30" : "border-border";
+  const bgColor = isError ? "bg-red-600/5" : "bg-card";
 
   return (
-    <div className={MESSAGE_SPACING}>
-      <div className={`p-3 rounded-lg border ${borderColor} ${bgColor}`}>
+    <div className="relative py-2">
+      {showConnector && (
+        <div
+          className="absolute left-[3px] top-6 bottom-0 w-[1px] bg-border/40"
+          aria-hidden="true"
+        />
+      )}
+      <div
+        className={`py-3 px-4 rounded-lg border ${borderColor} ${bgColor} relative`}
+      >
+        <div className="text-base font-medium text-foreground mb-3">
+          Summary
+        </div>
         <ResultEventContent eventData={eventData} />
       </div>
     </div>
@@ -134,7 +176,7 @@ function ResultMessageCard({
 function getTodoStatusIcon(status: string) {
   switch (status) {
     case "completed": {
-      return <IconCheck className="h-4 w-4 text-lime-500" />;
+      return <IconCheck className="h-4 w-4 text-green-600" />;
     }
     case "in_progress": {
       return <IconLoader className="h-4 w-4 text-yellow-500" />;
@@ -161,9 +203,11 @@ function isSubtask(content: string): boolean {
 function TodoCard({
   message,
   searchTerm,
+  showConnector = false,
 }: {
   message: GroupedMessage;
   searchTerm?: string;
+  showConnector?: boolean;
 }) {
   const todoItems = message.todoState ?? [];
   // Filter out subtasks for count - only count top-level tasks
@@ -185,57 +229,96 @@ function TodoCard({
 
   const timestamp = formatEventTime(message.createdAt);
   return (
-    <details className={`${MESSAGE_SPACING} group`} open={hasSearchMatch}>
-      <summary className="cursor-pointer list-none">
-        <div className="flex gap-2 items-center">
-          <StatusDot variant="todo" />
-          <span className="font-semibold text-sm text-foreground shrink-0">
-            Todo
-          </span>
-          {inProgressTask ? (
-            <span
-              className="text-sm text-foreground truncate"
-              title={inProgressTask.content}
-            >
-              {inProgressTask.content}
+    <div className={`${MESSAGE_SPACING} relative`}>
+      {showConnector && (
+        <div
+          className="absolute left-[3px] top-6 bottom-[-8px] w-[1px] bg-border/40"
+          aria-hidden="true"
+        />
+      )}
+      <details className="group" open={hasSearchMatch}>
+        <summary className="cursor-pointer list-none relative">
+          <div className="flex gap-2 items-center">
+            <StatusDot variant="todo" />
+            <span className="font-semibold text-sm text-foreground shrink-0">
+              Todo
             </span>
-          ) : (
-            <span className="text-sm text-muted-foreground">
-              All tasks completed
+            {inProgressTask ? (
+              <span
+                className="text-sm text-foreground truncate"
+                title={inProgressTask.content}
+              >
+                {inProgressTask.content}
+              </span>
+            ) : (
+              <span className="text-sm text-muted-foreground">
+                All tasks completed
+              </span>
+            )}
+            <span className="text-sm text-muted-foreground shrink-0">
+              [{completedCount}/{totalCount}]
             </span>
-          )}
-          <span className="text-sm text-muted-foreground shrink-0">
-            [{completedCount}/{totalCount}]
-          </span>
-          <span className="flex-1" />
-          <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
-            {timestamp}
-          </span>
-        </div>
-        <div className="text-xs text-muted-foreground pl-5 mt-1 sm:hidden">
-          {timestamp}
-        </div>
-      </summary>
-      <div className="mt-2 space-y-1.5 ml-[18px]">
-        {todoItems.map((item, index) => (
-          <div
-            key={`${item.content}-${index}`}
-            className="flex items-center gap-2 text-sm"
-          >
-            <span className="shrink-0">{getTodoStatusIcon(item.status)}</span>
-            <span
-              className={
-                item.status === "completed"
-                  ? "text-muted-foreground line-through"
-                  : "text-foreground"
-              }
-            >
-              {item.content}
+            <span className="flex-1" />
+            <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
+              {timestamp}
             </span>
           </div>
-        ))}
-      </div>
-    </details>
+          <div className="text-xs text-muted-foreground pl-5 mt-1 sm:hidden">
+            {timestamp}
+          </div>
+        </summary>
+        <div className="mt-2 space-y-1.5 ml-[18px]">
+          {todoItems.map((item, index) => (
+            <div
+              key={`${item.content}-${index}`}
+              className="flex items-center gap-2 text-sm"
+            >
+              <span className="shrink-0">{getTodoStatusIcon(item.status)}</span>
+              <span
+                className={
+                  item.status === "completed"
+                    ? "text-muted-foreground line-through"
+                    : "text-foreground"
+                }
+              >
+                {item.content}
+              </span>
+            </div>
+          ))}
+        </div>
+      </details>
+    </div>
+  );
+}
+
+/**
+ * Determine if a connector should be shown for an element within an assistant message.
+ * Returns an object with showConnector and isDashed properties.
+ */
+function shouldShowAssistantConnector(params: {
+  isLastElementInMessage: boolean;
+  showConnectorToNextMessage: boolean;
+}): { showConnector: boolean; isDashed: boolean } {
+  const { isLastElementInMessage, showConnectorToNextMessage } = params;
+  const showConnector = !isLastElementInMessage || showConnectorToNextMessage;
+  // Within the same message, use dashed lines between elements
+  const isDashed = !isLastElementInMessage;
+  return { showConnector, isDashed };
+}
+
+/**
+ * Render a connector line between elements.
+ */
+function Connector({ isDashed }: { isDashed: boolean }) {
+  return (
+    <div
+      className={`absolute left-[3px] top-6 bottom-[-8px] w-[1px] ${
+        isDashed
+          ? "border-l border-dashed border-border/60 bg-transparent"
+          : "bg-border/40"
+      }`}
+      aria-hidden="true"
+    />
   );
 }
 
@@ -244,11 +327,13 @@ function AssistantMessageCard({
   searchTerm,
   currentMatchIndex,
   matchStartIndex,
+  showConnector = false,
 }: {
   message: GroupedMessage;
   searchTerm?: string;
   currentMatchIndex?: number;
   matchStartIndex?: number;
+  showConnector?: boolean;
 }) {
   const { textBefore, textAfter, toolOperations } = message;
   const hasTools = toolOperations && toolOperations.length > 0;
@@ -272,9 +357,17 @@ function AssistantMessageCard({
   // Text before tools with timestamp
   const timestamp = formatEventTime(message.createdAt);
   if (textBefore) {
+    const isLastElement = !hasTools && !textAfter;
+    const { showConnector: showConnectorHere, isDashed } =
+      shouldShowAssistantConnector({
+        isLastElementInMessage: isLastElement,
+        showConnectorToNextMessage: showConnector,
+      });
+
     elements.push(
-      <div key="text-before" className={MESSAGE_SPACING}>
-        <div className="flex gap-2 items-start">
+      <div key="text-before" className={`${MESSAGE_SPACING} relative`}>
+        {showConnectorHere && <Connector isDashed={isDashed} />}
+        <div className="flex gap-2 items-start relative">
           <StatusDot variant="neutral" className="mt-1.5" />
           <div className="flex-1 min-w-0">
             <CollapsibleText text={textBefore} />
@@ -292,17 +385,37 @@ function AssistantMessageCard({
 
   // Tool operations - each independent with its own timestamp
   if (hasTools) {
-    for (const op of toolOperations) {
+    for (let i = 0; i < toolOperations.length; i++) {
+      const op = toolOperations[i];
       const toolMatchStart = currentOffset + textBeforeMatches;
+      const isLastTool = i === toolOperations.length - 1;
+      const isLastElement = isLastTool && !textAfter;
+
+      // Check if next tool is the same type
+      const nextOp = toolOperations[i + 1];
+      const isSameToolTypeAsNext = nextOp && nextOp.toolName === op.toolName;
+
+      const { showConnector: showConnectorHere, isDashed: isDashedDefault } =
+        shouldShowAssistantConnector({
+          isLastElementInMessage: isLastElement,
+          showConnectorToNextMessage: showConnector,
+        });
+
+      // Use dashed line if it's the same tool type
+      const isDashed = isDashedDefault || isSameToolTypeAsNext;
+
       elements.push(
-        <div key={op.toolUseId} className={MESSAGE_SPACING}>
-          <ToolSummary
-            operation={op}
-            searchTerm={searchTerm}
-            currentMatchIndex={currentMatchIndex}
-            matchStartIndex={toolMatchStart}
-            timestamp={formatEventTime(message.createdAt)}
-          />
+        <div key={op.toolUseId} className={`${MESSAGE_SPACING} relative`}>
+          {showConnectorHere && <Connector isDashed={isDashed} />}
+          <div className="relative">
+            <ToolSummary
+              operation={op}
+              searchTerm={searchTerm}
+              currentMatchIndex={currentMatchIndex}
+              matchStartIndex={toolMatchStart}
+              timestamp={formatEventTime(message.createdAt)}
+            />
+          </div>
         </div>,
       );
     }
@@ -310,14 +423,21 @@ function AssistantMessageCard({
 
   // Text after tools
   if (textAfter) {
+    const isLastElement = true;
+    const { showConnector: showConnectorHere, isDashed } =
+      shouldShowAssistantConnector({
+        isLastElementInMessage: isLastElement,
+        showConnectorToNextMessage: showConnector,
+      });
+
     elements.push(
-      <div
-        key="text-after"
-        className={`${MESSAGE_SPACING} flex gap-2 items-start`}
-      >
-        <StatusDot variant="neutral" className="mt-1.5" />
-        <div className="flex-1 min-w-0">
-          <CollapsibleText text={textAfter} />
+      <div key="text-after" className={`${MESSAGE_SPACING} relative`}>
+        {showConnectorHere && <Connector isDashed={isDashed} />}
+        <div className="flex gap-2 items-start relative w-full">
+          <StatusDot variant="neutral" className="mt-1.5" />
+          <div className="flex-1 min-w-0">
+            <CollapsibleText text={textAfter} />
+          </div>
         </div>
       </div>,
     );

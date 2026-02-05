@@ -49,7 +49,7 @@ export function LogDetailContent({ logId }: { logId: string }) {
   return (
     <div className="flex flex-col gap-4 h-full min-h-0">
       {/* Info Card - Grid layout similar to table card */}
-      <div className="p-4 pb-0 sm:p-8 sm:pb-0">
+      <div className="p-4 pb-0 sm:px-8 sm:pt-4 sm:pb-0">
         <div className="shrink-0 grid grid-cols-2 md:grid-cols-4 gap-y-3 text-sm px-4 py-3 bg-card rounded-lg border border-border">
           <InfoItem label="Status" showDivider>
             <StatusBadge status={detail.status} />

@@ -56,7 +56,6 @@
   margin-top: 6px;
 }
 
-.wmde-markdown p,
 .wmde-markdown blockquote,
 .wmde-markdown ul,
 .wmde-markdown ol,
@@ -65,4 +64,29 @@
 .wmde-markdown pre,
 .wmde-markdown details {
   margin-bottom: 6px;
+}
+
+.wmde-markdown h2 {
+  font-size: 16px;
+  margin-top: 16px;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.wmde-markdown ol {
+  padding-left: 0px;
+}
+
+/* Details/summary animation */
+details > summary {
+  transition: color 0.15s ease;
+}
+
+details > summary > span:first-child {
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+
+details[open] > summary > span:first-child {
+  transform: rotate(90deg);
 }

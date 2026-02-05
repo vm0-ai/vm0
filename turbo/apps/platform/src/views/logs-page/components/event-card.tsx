@@ -1,6 +1,6 @@
 import {
   IconClock,
-  IconArrowRight,
+  IconRepeat,
   IconTool,
   IconRobot,
   IconTerminal,
@@ -180,6 +180,56 @@ export function SystemInitContent({ eventData }: { eventData: EventData }) {
 
 // ============ RESULT EVENT (Final stats) ============
 
+function ModelUsagePopover({
+  modelUsage,
+}: {
+  modelUsage: Record<
+    string,
+    {
+      costUSD?: number | null;
+      inputTokens?: number | null;
+      outputTokens?: number | null;
+    }
+  >;
+}) {
+  const entries = Object.entries(modelUsage).filter(
+    ([, usage]) => usage.inputTokens || usage.outputTokens,
+  );
+
+  if (entries.length === 0) {
+    return null;
+  }
+
+  return (
+    <Popover>
+      <PopoverTrigger className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+        <IconTool className="h-3 w-3" />
+        <span>{entries.length} models</span>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-80 max-h-64 overflow-y-auto p-3"
+      >
+        <div className="space-y-1.5">
+          {entries.map(([model, usage]) => (
+            <div key={model} className="text-xs font-mono">
+              <div className="text-foreground font-medium">{model}</div>
+              <div className="text-muted-foreground pl-2">
+                {usage.inputTokens && (
+                  <div>in: {usage.inputTokens.toLocaleString()}</div>
+                )}
+                {usage.outputTokens && (
+                  <div>out: {usage.outputTokens.toLocaleString()}</div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // Exported for use in GroupedMessageCard
 export function ResultEventContent({ eventData }: { eventData: EventData }) {
   const durationMs = eventData.duration_ms;
@@ -188,66 +238,40 @@ export function ResultEventContent({ eventData }: { eventData: EventData }) {
   const result = eventData.result;
 
   return (
-    <div className="space-y-3">
-      {/* Summary stats */}
-      <div className="flex flex-wrap gap-4 text-sm">
+    <div className="space-y-2">
+      {/* Summary stats - horizontal layout like SystemInitContent */}
+      <div className="flex flex-wrap gap-2">
         {durationMs !== null && durationMs !== undefined && (
-          <div className="flex items-center gap-1.5">
-            <IconClock className="h-4 w-4 text-muted-foreground" />
-            <span className="text-foreground">
-              {formatDuration(durationMs)}
-            </span>
+          <div className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+            <IconClock className="h-3 w-3" />
+            <span>{formatDuration(durationMs)}</span>
           </div>
         )}
         {numTurns !== null && numTurns !== undefined && (
-          <div className="flex items-center gap-1.5">
-            <IconArrowRight className="h-4 w-4 text-muted-foreground" />
-            <span className="text-foreground">{numTurns} turns</span>
+          <div className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+            <IconRepeat className="h-3 w-3" />
+            <span>{numTurns} turns</span>
           </div>
+        )}
+        {modelUsage && Object.keys(modelUsage).length > 0 && (
+          <ModelUsagePopover modelUsage={modelUsage} />
         )}
       </div>
 
-      {/* Model usage breakdown */}
-      {modelUsage && Object.keys(modelUsage).length > 0 && (
-        <details className="group text-xs">
-          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-            Model Usage
-          </summary>
-          <div className="mt-1 space-y-0.5 pl-2">
-            {Object.entries(modelUsage)
-              .filter(([, usage]) => usage.inputTokens || usage.outputTokens)
-              .map(([model, usage]) => (
-                <div key={model} className="text-muted-foreground">
-                  {model}{" "}
-                  <span>
-                    (
-                    {usage.inputTokens
-                      ? `in: ${usage.inputTokens.toLocaleString()}`
-                      : ""}
-                    {usage.inputTokens && usage.outputTokens ? " " : ""}
-                    {usage.outputTokens
-                      ? `out: ${usage.outputTokens.toLocaleString()}`
-                      : ""}
-                    )
-                  </span>
-                </div>
-              ))}
-          </div>
-        </details>
-      )}
-
       {/* Result text */}
       {result && (
-        <MarkdownPreview
-          source={result}
-          className="!bg-transparent !text-foreground text-sm"
-          style={{
-            backgroundColor: "transparent",
-            fontSize: "0.875rem",
-            lineHeight: "1.5",
-            fontFamily: "var(--font-family-sans)",
-          }}
-        />
+        <div className="pt-1">
+          <MarkdownPreview
+            source={result}
+            className="!bg-transparent !text-foreground text-sm"
+            style={{
+              backgroundColor: "transparent",
+              fontSize: "0.875rem",
+              lineHeight: "1.5",
+              fontFamily: "var(--font-family-sans)",
+            }}
+          />
+        </div>
       )}
     </div>
   );
