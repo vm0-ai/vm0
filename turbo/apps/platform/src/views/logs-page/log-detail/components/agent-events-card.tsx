@@ -243,7 +243,11 @@ export function AgentEventsCard({
         </div>
 
         <div>
-          {!isCodex && viewMode === "formatted" ? (
+          {events.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground">
+              No events available
+            </div>
+          ) : !isCodex && viewMode === "formatted" ? (
             <>
               <FormattedEventsView
                 events={events}

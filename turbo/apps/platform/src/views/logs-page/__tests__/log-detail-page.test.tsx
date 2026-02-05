@@ -101,8 +101,8 @@ describe("log detail page", () => {
     });
     expect(screen.getAllByText("Done").length).toBeGreaterThan(0); // Status badge
     expect(screen.getAllByText("openai").length).toBeGreaterThan(0); // Framework
-    expect(screen.getByText("Run:")).toBeInTheDocument(); // Run label (desktop only)
-    expect(screen.getByText("Session:")).toBeInTheDocument(); // Session label (desktop only)
+    expect(screen.getByText("Run ID")).toBeInTheDocument(); // Run label (desktop only)
+    expect(screen.getByText("Session ID")).toBeInTheDocument(); // Session label (desktop only)
   });
 
   it("should display duration correctly", async () => {

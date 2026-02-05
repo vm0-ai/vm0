@@ -1,8 +1,4 @@
-import {
-  IconCheck,
-  IconCircleDashed,
-  IconLoader,
-} from "@tabler/icons-react";
+import { IconCheck, IconCircleDashed, IconLoader } from "@tabler/icons-react";
 import MarkdownPreview from "@uiw/react-markdown-preview";
 import type { GroupedMessage } from "../log-detail/utils.ts";
 import { ToolSummary } from "./tool-summary.tsx";
