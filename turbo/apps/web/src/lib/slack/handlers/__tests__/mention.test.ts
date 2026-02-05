@@ -1,8 +1,7 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { http, HttpResponse } from "msw";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { HttpResponse } from "msw";
 import { testContext } from "../../../../__tests__/test-helpers";
 import { server } from "../../../../mocks/server";
-import { reloadEnv } from "../../../../env";
 import {
   givenLinkedSlackUser,
   givenSlackWorkspaceInstalled,
@@ -11,8 +10,8 @@ import {
 } from "../../__tests__/helpers";
 import { handleAppMention } from "../mention";
 import * as runAgentModule from "../run-agent";
+import { handlers, http } from "../../../../__tests__/msw";
 
-// Mock external dependencies
 vi.mock("@clerk/nextjs/server");
 vi.mock("@e2b/code-interpreter");
 vi.mock("@aws-sdk/client-s3");
@@ -21,102 +20,58 @@ vi.mock("@axiomhq/js");
 
 const context = testContext();
 
-// Track Slack API calls via MSW
-let slackApiCalls: Array<{ method: string; body: unknown }> = [];
+const SLACK_API = "https://slack.com/api";
 
-// Store original env value for cleanup
-let originalSlackRedirectBaseUrl: string | undefined;
-
-function setupSlackMswHandlers() {
-  slackApiCalls = [];
-
-  server.use(
-    http.post("https://slack.com/api/chat.postMessage", async ({ request }) => {
+const slackHandlers = handlers({
+  postMessage: http.post(
+    `${SLACK_API}/chat.postMessage`,
+    async ({ request }) => {
       const body = await request.formData();
       const data = Object.fromEntries(body.entries());
-      slackApiCalls.push({ method: "chat.postMessage", body: data });
       return HttpResponse.json({
         ok: true,
         ts: `${Date.now()}.000000`,
         channel: data.channel,
       });
-    }),
-    http.post(
-      "https://slack.com/api/chat.postEphemeral",
-      async ({ request }) => {
-        const body = await request.formData();
-        const data = Object.fromEntries(body.entries());
-        slackApiCalls.push({ method: "chat.postEphemeral", body: data });
-        return HttpResponse.json({
-          ok: true,
-          message_ts: `${Date.now()}.000000`,
-        });
-      },
-    ),
-    http.post("https://slack.com/api/chat.update", async ({ request }) => {
-      const body = await request.formData();
-      const data = Object.fromEntries(body.entries());
-      slackApiCalls.push({ method: "chat.update", body: data });
-      return HttpResponse.json({
-        ok: true,
-        ts: data.ts,
-        channel: data.channel,
-      });
-    }),
-    http.post("https://slack.com/api/reactions.add", async ({ request }) => {
-      const body = await request.formData();
-      const data = Object.fromEntries(body.entries());
-      slackApiCalls.push({ method: "reactions.add", body: data });
-      return HttpResponse.json({ ok: true });
-    }),
-    http.post("https://slack.com/api/reactions.remove", async ({ request }) => {
-      const body = await request.formData();
-      const data = Object.fromEntries(body.entries());
-      slackApiCalls.push({ method: "reactions.remove", body: data });
-      return HttpResponse.json({ ok: true });
-    }),
-    http.post(
-      "https://slack.com/api/conversations.replies",
-      async ({ request }) => {
-        const body = await request.formData();
-        const data = Object.fromEntries(body.entries());
-        slackApiCalls.push({ method: "conversations.replies", body: data });
-        return HttpResponse.json({ ok: true, messages: [] });
-      },
-    ),
-    http.post(
-      "https://slack.com/api/conversations.history",
-      async ({ request }) => {
-        const body = await request.formData();
-        const data = Object.fromEntries(body.entries());
-        slackApiCalls.push({ method: "conversations.history", body: data });
-        return HttpResponse.json({ ok: true, messages: [] });
-      },
-    ),
-  );
+    },
+  ),
+  postEphemeral: http.post(`${SLACK_API}/chat.postEphemeral`, () =>
+    HttpResponse.json({ ok: true, message_ts: `${Date.now()}.000000` }),
+  ),
+  chatUpdate: http.post(`${SLACK_API}/chat.update`, async ({ request }) => {
+    const body = await request.formData();
+    const data = Object.fromEntries(body.entries());
+    return HttpResponse.json({ ok: true, ts: data.ts, channel: data.channel });
+  }),
+  reactionsAdd: http.post(`${SLACK_API}/reactions.add`, () =>
+    HttpResponse.json({ ok: true }),
+  ),
+  reactionsRemove: http.post(`${SLACK_API}/reactions.remove`, () =>
+    HttpResponse.json({ ok: true }),
+  ),
+  conversationsReplies: http.post(`${SLACK_API}/conversations.replies`, () =>
+    HttpResponse.json({ ok: true, messages: [] }),
+  ),
+  conversationsHistory: http.post(`${SLACK_API}/conversations.history`, () =>
+    HttpResponse.json({ ok: true, messages: [] }),
+  ),
+});
+
+/** Helper to get form data from a mock's call */
+async function getFormData(
+  mock: { mock: { calls: Array<[{ request: Request }]> } },
+  callIndex = 0,
+): Promise<Record<string, FormDataEntryValue>> {
+  const request = mock.mock.calls[callIndex]![0].request;
+  const body = await request.formData();
+  return Object.fromEntries(body.entries());
 }
 
 describe("Feature: App Mention Handling", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     context.setupMocks();
-    setupSlackMswHandlers();
-    // Set required env var for Slack redirect URL and reload env cache
-    originalSlackRedirectBaseUrl = process.env.SLACK_REDIRECT_BASE_URL;
-    process.env.SLACK_REDIRECT_BASE_URL = "https://test.example.com";
-    reloadEnv();
-  });
-
-  afterEach(() => {
-    server.resetHandlers();
-    vi.restoreAllMocks();
-    // Restore original env value and reload env cache
-    if (originalSlackRedirectBaseUrl === undefined) {
-      delete process.env.SLACK_REDIRECT_BASE_URL;
-    } else {
-      process.env.SLACK_REDIRECT_BASE_URL = originalSlackRedirectBaseUrl;
-    }
-    reloadEnv();
+    server.use(...slackHandlers.handlers);
   });
 
   describe("Scenario: Mention bot as unlinked user", () => {
@@ -134,21 +89,14 @@ describe("Feature: App Mention Handling", () => {
       });
 
       // Then I should receive an ephemeral login prompt (only visible to me)
-      const ephemeralCalls = slackApiCalls.filter(
-        (c) => c.method === "chat.postEphemeral",
-      );
-      expect(ephemeralCalls).toHaveLength(1);
+      expect(slackHandlers.mocked.postEphemeral).toHaveBeenCalledTimes(1);
 
-      const call = ephemeralCalls[0]!;
-      expect(call.body).toMatchObject({
-        channel: "C123",
-        user: "U-unlinked-user",
-      });
+      const data = await getFormData(slackHandlers.mocked.postEphemeral);
+      expect(data.channel).toBe("C123");
+      expect(data.user).toBe("U-unlinked-user");
 
       // Check that blocks contain login URL with channel parameter
-      const blocks = JSON.parse(
-        (call.body as { blocks?: string }).blocks ?? "[]",
-      );
+      const blocks = JSON.parse((data.blocks as string) ?? "[]");
       const loginButton = blocks
         .flatMap(
           (block: { type: string; elements?: Array<{ url?: string }> }) =>
@@ -176,14 +124,10 @@ describe("Feature: App Mention Handling", () => {
 
       // Then the ephemeral message should NOT include thread_ts
       // (Slack ephemeral messages with thread_ts don't display correctly)
-      const ephemeralCalls = slackApiCalls.filter(
-        (c) => c.method === "chat.postEphemeral",
-      );
-      expect(ephemeralCalls).toHaveLength(1);
+      expect(slackHandlers.mocked.postEphemeral).toHaveBeenCalledTimes(1);
 
-      const call = ephemeralCalls[0]!;
-      const body = call.body as { thread_ts?: string };
-      expect(body.thread_ts).toBeUndefined();
+      const data = await getFormData(slackHandlers.mocked.postEphemeral);
+      expect(data.thread_ts).toBeUndefined();
     });
   });
 
@@ -202,13 +146,10 @@ describe("Feature: App Mention Handling", () => {
       });
 
       // Then I should receive a message prompting to link an agent
-      const postCalls = slackApiCalls.filter(
-        (c) => c.method === "chat.postMessage",
-      );
-      expect(postCalls).toHaveLength(1);
+      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
 
-      const call = postCalls[0]!;
-      const text = (call.body as { text?: string }).text ?? "";
+      const data = await getFormData(slackHandlers.mocked.postMessage);
+      const text = (data.text as string) ?? "";
       expect(text).toContain("don't have any agent linked");
       expect(text).toContain("/vm0 agent link");
     });
@@ -246,19 +187,12 @@ describe("Feature: App Mention Handling", () => {
 
       // Then:
       // 1. Thinking reaction should be added
-      const reactionAddCalls = slackApiCalls.filter(
-        (c) => c.method === "reactions.add",
-      );
-      expect(reactionAddCalls).toHaveLength(1);
-      expect((reactionAddCalls[0]!.body as { name?: string }).name).toBe(
-        "thought_balloon",
-      );
+      expect(slackHandlers.mocked.reactionsAdd).toHaveBeenCalledTimes(1);
+      const reactionData = await getFormData(slackHandlers.mocked.reactionsAdd);
+      expect(reactionData.name).toBe("thought_balloon");
 
       // 2. Thinking message should be posted
-      const postCalls = slackApiCalls.filter(
-        (c) => c.method === "chat.postMessage",
-      );
-      expect(postCalls).toHaveLength(1);
+      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
 
       // 3. Agent should be executed with correct prompt
       expect(mockRunAgent).toHaveBeenCalledWith(
@@ -271,16 +205,11 @@ describe("Feature: App Mention Handling", () => {
       );
 
       // 4. Response message should be posted with the agent's response
-      // Note: The new flow posts response directly without intermediate "Thinking..." message
-      expect(postCalls).toHaveLength(1);
-      const responseBody = postCalls[0]!.body as {
-        text?: string;
-        blocks?: string;
-      };
-      expect(responseBody.text).toBe("Here is my helpful response!");
+      const data = await getFormData(slackHandlers.mocked.postMessage);
+      expect(data.text).toBe("Here is my helpful response!");
 
       // Parse blocks from JSON string (Slack form data sends blocks as JSON string)
-      const blocks = JSON.parse(responseBody.blocks ?? "[]") as Array<{
+      const blocks = JSON.parse((data.blocks as string) ?? "[]") as Array<{
         type: string;
         elements?: Array<{ text?: string }>;
       }>;
@@ -298,10 +227,7 @@ describe("Feature: App Mention Handling", () => {
       expect(logsContext).toContain("/logs/test-run-id");
 
       // 7. Thinking reaction should be removed
-      const reactionRemoveCalls = slackApiCalls.filter(
-        (c) => c.method === "reactions.remove",
-      );
-      expect(reactionRemoveCalls).toHaveLength(1);
+      expect(slackHandlers.mocked.reactionsRemove).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -364,12 +290,10 @@ describe("Feature: App Mention Handling", () => {
       });
 
       // Then I should see list of available agents
-      // Note: The new flow posts error message directly via postMessage
-      const postCalls = slackApiCalls.filter(
-        (c) => c.method === "chat.postMessage",
-      );
-      expect(postCalls).toHaveLength(1);
-      const text = (postCalls[0]!.body as { text?: string }).text ?? "";
+      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+
+      const data = await getFormData(slackHandlers.mocked.postMessage);
+      const text = (data.text as string) ?? "";
       expect(text).toContain("couldn't determine which agent");
       expect(text).toContain("agent-a");
       expect(text).toContain("agent-b");
@@ -395,12 +319,10 @@ describe("Feature: App Mention Handling", () => {
       });
 
       // Then I should see error that "writer" not found
-      // Note: The new flow posts error message directly via postMessage
-      const postCalls = slackApiCalls.filter(
-        (c) => c.method === "chat.postMessage",
-      );
-      expect(postCalls).toHaveLength(1);
-      const text = (postCalls[0]!.body as { text?: string }).text ?? "";
+      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+
+      const data = await getFormData(slackHandlers.mocked.postMessage);
+      const text = (data.text as string) ?? "";
       expect(text).toContain('"writer" not found');
       // And I should see list of available agents
       expect(text).toContain("coder");
@@ -420,10 +342,7 @@ describe("Feature: App Mention Handling", () => {
       });
 
       // Then no messages should be sent (silent failure)
-      const postCalls = slackApiCalls.filter(
-        (c) => c.method === "chat.postMessage",
-      );
-      expect(postCalls).toHaveLength(0);
+      expect(slackHandlers.mocked.postMessage).not.toHaveBeenCalled();
     });
   });
 });

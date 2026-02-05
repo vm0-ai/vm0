@@ -94,7 +94,10 @@ import {
   createTestModelProvider,
   completeTestRun,
 } from "../../../../../src/__tests__/api-test-helpers";
-import { testContext, type UserContext } from "../../../../../src/__tests__/test-helpers";
+import {
+  testContext,
+  type UserContext,
+} from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 ```
 
@@ -294,9 +297,9 @@ expect(data.status).toBe("failed");
 
 Only test route-level integration tests (primary) and pure functions (exception only):
 
-| Type            | Location                | Examples                                    |
-| --------------- | ----------------------- | ------------------------------------------- |
-| **Web Route Integration Tests** | `app/.../route.test.ts` | Validation, authorization, business logic   |
+| Type                            | Location                | Examples                                     |
+| ------------------------------- | ----------------------- | -------------------------------------------- |
+| **Web Route Integration Tests** | `app/.../route.test.ts` | Validation, authorization, business logic    |
 | Pure function tests (exception) | `lib/.../xxx.test.ts`   | Extremely complex algorithmic functions only |
 
 ```typescript
@@ -324,6 +327,7 @@ describe("calculateSessionHistoryPath", () => {
 ## Pure Function Test Guidelines (Rare Exception)
 
 Pure function tests are a **rare exception**, reserved only for:
+
 - **Security-critical functions** (cryptographic operations, token validation, permission checks)
 - **Extremely complex algorithms** where bugs would have severe consequences
 
@@ -372,6 +376,7 @@ describe("formatPath", () => {
 ```
 
 If your "pure function" test requires mocks or database access, either:
+
 1. The function isn't actually pure - move the test to a route test
 2. You're testing implementation details - refactor to test behavior through APIs
 
@@ -405,3 +410,111 @@ afterEach(async () => {
 // context.setupUser() creates unique userId each time
 // Data is naturally isolated by unique IDs
 ```
+
+---
+
+## MSW with Mock Tracking
+
+For testing code that calls external HTTP APIs (e.g., Slack API), use the custom MSW wrapper at `src/__tests__/msw.ts`.
+
+### Why a Custom Wrapper?
+
+The wrapper provides:
+
+1. **Automatic request cloning** - Request body remains available for test assertions
+2. **Mock tracking** - Each handler is wrapped with `vi.fn()` for call verification
+3. **Type-safe handler keys** - Return type preserves handler names for autocomplete
+
+### Basic Usage
+
+```typescript
+import { HttpResponse } from "msw";
+import { server } from "../../mocks/server";
+import { handlers, http } from "../../__tests__/msw";
+
+const SLACK_API = "https://slack.com/api";
+
+// Define handlers with mock tracking
+const slackHandlers = handlers({
+  postMessage: http.post(
+    `${SLACK_API}/chat.postMessage`,
+    async ({ request }) => {
+      const body = await request.formData();
+      const data = Object.fromEntries(body.entries());
+      return HttpResponse.json({
+        ok: true,
+        ts: `${Date.now()}.000000`,
+        channel: data.channel,
+      });
+    },
+  ),
+  reactionsAdd: http.post(`${SLACK_API}/reactions.add`, () =>
+    HttpResponse.json({ ok: true }),
+  ),
+});
+
+describe("My Feature", () => {
+  beforeEach(() => {
+    server.use(...slackHandlers.handlers);
+  });
+
+  it("should call the API", async () => {
+    // ... trigger the code that calls the API
+
+    // Verify the mock was called
+    expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+  });
+});
+```
+
+### Reading Request Data from Mock Calls
+
+The wrapper automatically clones requests, so you can read the request body in test assertions:
+
+```typescript
+/** Helper to get form data from a mock's call */
+async function getFormData(
+  mock: { mock: { calls: Array<[{ request: Request }]> } },
+  callIndex = 0,
+): Promise<Record<string, FormDataEntryValue>> {
+  const request = mock.mock.calls[callIndex]![0].request;
+  const body = await request.formData();
+  return Object.fromEntries(body.entries());
+}
+
+it("should send correct data", async () => {
+  // ... trigger the code
+
+  expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+
+  // Read the request body that was sent
+  const data = await getFormData(slackHandlers.mocked.postMessage);
+  expect(data.channel).toBe("C123");
+  expect(data.text).toContain("Hello");
+});
+```
+
+### API Reference
+
+#### `http.post(predicate, resolver, options?)`
+
+Creates a POST handler with mock tracking. Also available: `http.get`, `http.put`, `http.delete`.
+
+Returns: `{ handler: HttpHandler; mocked: Mock }`
+
+#### `handlers(mockedHandlers)`
+
+Aggregates multiple handlers and extracts their mocks:
+
+```typescript
+const result = handlers({
+  foo: http.post("/foo", ...),
+  bar: http.get("/bar", ...),
+});
+
+// result.handlers: HttpHandler[] - Pass to server.use()
+// result.mocked.foo: Mock - Vitest mock for foo handler
+// result.mocked.bar: Mock - Vitest mock for bar handler
+```
+
+The return type preserves handler keys for TypeScript autocomplete.

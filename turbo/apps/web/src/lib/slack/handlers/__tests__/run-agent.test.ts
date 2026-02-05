@@ -1,16 +1,16 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { http, HttpResponse } from "msw";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { HttpResponse } from "msw";
 import { eq } from "drizzle-orm";
 import { testContext } from "../../../../__tests__/test-helpers";
 import { server } from "../../../../mocks/server";
 import { initServices } from "../../../../lib/init-services";
 import { agentRuns } from "../../../../db/schema/agent-run";
-import { reloadEnv } from "../../../../env";
 import {
   givenLinkedSlackUser,
   givenUserHasAgentWithConfig,
 } from "../../__tests__/helpers";
 import { handleAppMention } from "../mention";
+import { handlers, http } from "../../../../__tests__/msw";
 
 // Mock only external dependencies (at package boundary)
 vi.mock("@clerk/nextjs/server");
@@ -21,102 +21,48 @@ vi.mock("@axiomhq/js");
 
 const context = testContext();
 
-// Track Slack API calls via MSW
-let slackApiCalls: Array<{ method: string; body: unknown }> = [];
+const SLACK_API = "https://slack.com/api";
 
-// Store original env value for cleanup
-let originalSlackRedirectBaseUrl: string | undefined;
-
-function setupSlackMswHandlers() {
-  slackApiCalls = [];
-
-  server.use(
-    http.post("https://slack.com/api/chat.postMessage", async ({ request }) => {
+const slackHandlers = handlers({
+  postMessage: http.post(
+    `${SLACK_API}/chat.postMessage`,
+    async ({ request }) => {
+      // Use clone() so original request body remains available for test assertions
       const body = await request.formData();
       const data = Object.fromEntries(body.entries());
-      slackApiCalls.push({ method: "chat.postMessage", body: data });
       return HttpResponse.json({
         ok: true,
         ts: `${Date.now()}.000000`,
         channel: data.channel,
       });
-    }),
-    http.post(
-      "https://slack.com/api/chat.postEphemeral",
-      async ({ request }) => {
-        const body = await request.formData();
-        const data = Object.fromEntries(body.entries());
-        slackApiCalls.push({ method: "chat.postEphemeral", body: data });
-        return HttpResponse.json({
-          ok: true,
-          message_ts: `${Date.now()}.000000`,
-        });
-      },
-    ),
-    http.post("https://slack.com/api/chat.update", async ({ request }) => {
-      const body = await request.formData();
-      const data = Object.fromEntries(body.entries());
-      slackApiCalls.push({ method: "chat.update", body: data });
-      return HttpResponse.json({
-        ok: true,
-        ts: data.ts,
-        channel: data.channel,
-      });
-    }),
-    http.post("https://slack.com/api/reactions.add", async ({ request }) => {
-      const body = await request.formData();
-      const data = Object.fromEntries(body.entries());
-      slackApiCalls.push({ method: "reactions.add", body: data });
-      return HttpResponse.json({ ok: true });
-    }),
-    http.post("https://slack.com/api/reactions.remove", async ({ request }) => {
-      const body = await request.formData();
-      const data = Object.fromEntries(body.entries());
-      slackApiCalls.push({ method: "reactions.remove", body: data });
-      return HttpResponse.json({ ok: true });
-    }),
-    http.post(
-      "https://slack.com/api/conversations.replies",
-      async ({ request }) => {
-        const body = await request.formData();
-        const data = Object.fromEntries(body.entries());
-        slackApiCalls.push({ method: "conversations.replies", body: data });
-        return HttpResponse.json({ ok: true, messages: [] });
-      },
-    ),
-    http.post(
-      "https://slack.com/api/conversations.history",
-      async ({ request }) => {
-        const body = await request.formData();
-        const data = Object.fromEntries(body.entries());
-        slackApiCalls.push({ method: "conversations.history", body: data });
-        return HttpResponse.json({ ok: true, messages: [] });
-      },
-    ),
-  );
-}
+    },
+  ),
+  postEphemeral: http.post(`${SLACK_API}/chat.postEphemeral`, () =>
+    HttpResponse.json({ ok: true, message_ts: `${Date.now()}.000000` }),
+  ),
+  chatUpdate: http.post(`${SLACK_API}/chat.update`, async ({ request }) => {
+    const body = await request.formData();
+    const data = Object.fromEntries(body.entries());
+    return HttpResponse.json({ ok: true, ts: data.ts, channel: data.channel });
+  }),
+  reactionsAdd: http.post(`${SLACK_API}/reactions.add`, () =>
+    HttpResponse.json({ ok: true }),
+  ),
+  reactionsRemove: http.post(`${SLACK_API}/reactions.remove`, () =>
+    HttpResponse.json({ ok: true }),
+  ),
+  conversationsReplies: http.post(`${SLACK_API}/conversations.replies`, () =>
+    HttpResponse.json({ ok: true, messages: [] }),
+  ),
+  conversationsHistory: http.post(`${SLACK_API}/conversations.history`, () =>
+    HttpResponse.json({ ok: true, messages: [] }),
+  ),
+});
 
 describe("Feature: Agent Run Execution for Slack", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
     context.setupMocks();
-    setupSlackMswHandlers();
-    // Set required env var for Slack redirect URL and reload env cache
-    originalSlackRedirectBaseUrl = process.env.SLACK_REDIRECT_BASE_URL;
-    process.env.SLACK_REDIRECT_BASE_URL = "https://test.example.com";
-    reloadEnv();
-  });
-
-  afterEach(() => {
-    server.resetHandlers();
-    vi.restoreAllMocks();
-    // Restore original env value and reload env cache
-    if (originalSlackRedirectBaseUrl === undefined) {
-      delete process.env.SLACK_REDIRECT_BASE_URL;
-    } else {
-      process.env.SLACK_REDIRECT_BASE_URL = originalSlackRedirectBaseUrl;
-    }
-    reloadEnv();
+    server.use(...slackHandlers.handlers);
   });
 
   describe("Scenario: Run creation with proper configuration", () => {
@@ -169,10 +115,7 @@ describe("Feature: Agent Run Execution for Slack", () => {
       expect(runs.length).toBeGreaterThanOrEqual(0);
 
       // And a response should be posted to Slack (either success or error)
-      const postCalls = slackApiCalls.filter(
-        (c) => c.method === "chat.postMessage",
-      );
-      expect(postCalls.length).toBeGreaterThanOrEqual(1);
+      expect(slackHandlers.mocked.postMessage).toHaveBeenCalled();
     });
   });
 
@@ -193,12 +136,13 @@ describe("Feature: Agent Run Execution for Slack", () => {
       });
 
       // Then I should receive a message about not having agents
-      const postCalls = slackApiCalls.filter(
-        (c) => c.method === "chat.postMessage",
-      );
-      expect(postCalls).toHaveLength(1);
+      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
 
-      const text = (postCalls[0]!.body as { text?: string }).text ?? "";
+      // Verify request body from mock.calls (works because handler uses request.clone())
+      const call = slackHandlers.mocked.postMessage.mock.calls[0]![0];
+      const body = await call.request.formData();
+      const data = Object.fromEntries(body.entries());
+      const text = (data.text as string) ?? "";
       expect(text).toContain("don't have any agent linked");
     });
   });

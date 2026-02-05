@@ -39,6 +39,7 @@ vi.hoisted(() => {
   );
   // OpenRouter API key for LLM chat
   vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-api-key");
+  vi.stubEnv("SLACK_REDIRECT_BASE_URL", "https://test.example.com");
 });
 
 // Mock server-only package (no-op in tests)
