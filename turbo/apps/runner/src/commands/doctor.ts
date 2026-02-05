@@ -20,6 +20,7 @@ import {
   findMitmproxyProcesses,
   findRunnerProcesses,
   type FirecrackerProcess,
+  type MitmproxyProcess,
 } from "../lib/process.js";
 import { withFileLock } from "../lib/utils/file-lock.js";
 import { isProcessRunning } from "../lib/utils/process.js";
@@ -246,7 +247,7 @@ async function displayRunnerHealth(
   runner: DiscoveredRunner,
   index: number,
   allFirecrackerProcesses: FirecrackerProcess[],
-  allMitmproxyProcesses: { pid: number; baseDir: string }[],
+  allMitmproxyProcesses: MitmproxyProcess[],
 ): Promise<Warning[]> {
   const warnings: Warning[] = [];
   const { config, pid, mode } = runner;
@@ -348,7 +349,7 @@ async function displayRunnerHealth(
 async function detectGlobalOrphans(
   discoveredRunners: DiscoveredRunner[],
   allFirecrackerProcesses: FirecrackerProcess[],
-  allMitmproxyProcesses: { pid: number; baseDir: string }[],
+  allMitmproxyProcesses: MitmproxyProcess[],
   globalWarnings: Warning[],
 ): Promise<void> {
   const runnerBaseDirs = new Set(
@@ -357,7 +358,11 @@ async function detectGlobalOrphans(
 
   // Orphan mitmproxy processes
   for (const mitm of allMitmproxyProcesses) {
-    if (!runnerBaseDirs.has(mitm.baseDir)) {
+    if (mitm.isOrphan) {
+      globalWarnings.push({
+        message: `Orphan mitmproxy: PID ${mitm.pid} (PPID=1, parent process dead)`,
+      });
+    } else if (!runnerBaseDirs.has(mitm.baseDir)) {
       globalWarnings.push({
         message: `Orphan mitmproxy: PID ${mitm.pid} (baseDir ${mitm.baseDir}, runner not running)`,
       });
@@ -366,7 +371,11 @@ async function detectGlobalOrphans(
 
   // Orphan Firecracker processes
   for (const fc of allFirecrackerProcesses) {
-    if (!runnerBaseDirs.has(fc.baseDir)) {
+    if (fc.isOrphan) {
+      globalWarnings.push({
+        message: `Orphan Firecracker: PID ${fc.pid} (vmId ${fc.vmId}, PPID=1, parent process dead)`,
+      });
+    } else if (!runnerBaseDirs.has(fc.baseDir)) {
       globalWarnings.push({
         message: `Orphan Firecracker: PID ${fc.pid} (vmId ${fc.vmId}, baseDir ${fc.baseDir}, runner not running)`,
       });

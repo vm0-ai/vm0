@@ -18,7 +18,7 @@ export interface FirecrackerProcess {
   isOrphan: boolean;
 }
 
-interface MitmproxyProcess {
+export interface MitmproxyProcess {
   pid: number;
   baseDir: string;
   isOrphan: boolean;
