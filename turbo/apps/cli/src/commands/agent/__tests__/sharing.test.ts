@@ -66,9 +66,6 @@ describe("Agent Sharing Commands", () => {
   });
 
   afterEach(() => {
-    mockExit.mockClear();
-    mockConsoleLog.mockClear();
-    mockConsoleError.mockClear();
     vi.unstubAllEnvs();
   });
 
