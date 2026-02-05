@@ -5,7 +5,7 @@
  * Used by maintenance CLI commands (doctor, kill) to discover running processes.
  */
 
-import { readdirSync, readFileSync, existsSync } from "fs";
+import { readdirSync, readFileSync, readlinkSync, existsSync } from "fs";
 import path from "path";
 import { type VmId, createVmId, vmIdValue } from "./firecracker/vm-id.js";
 
@@ -253,7 +253,25 @@ export function findMitmproxyProcesses(): MitmproxyProcess[] {
 }
 
 /**
+ * Check if cmdline looks like a node process running index.js
+ */
+function isNodeIndexJs(cmdline: string): boolean {
+  const args = cmdline.split("\0").filter((a) => a !== "");
+  if (args.length < 2) return false;
+
+  // First arg should be node
+  if (!args[0]?.includes("node")) return false;
+
+  // Second arg should be index.js (with optional path)
+  return args[1]?.endsWith("index.js") ?? false;
+}
+
+/**
  * Find all runner processes
+ *
+ * Detection strategies:
+ * 1. Direct CLI: "start/benchmark --config xxx.yaml" in cmdline
+ * 2. PM2 mode: "node index.js" with runner.yaml in cwd
  */
 export function findRunnerProcesses(): RunnerProcess[] {
   const processes: RunnerProcess[] = [];
@@ -276,6 +294,8 @@ export function findRunnerProcesses(): RunnerProcess[] {
 
     try {
       const cmdline = readFileSync(cmdlinePath, "utf-8");
+
+      // Strategy 1: Direct CLI mode (args in cmdline)
       const parsed = parseRunnerCmdline(cmdline);
       if (parsed) {
         processes.push({
@@ -283,6 +303,21 @@ export function findRunnerProcesses(): RunnerProcess[] {
           configPath: parsed.configPath,
           mode: parsed.mode,
         });
+        continue;
+      }
+
+      // Strategy 2: PM2 mode (node index.js, check cwd for runner.yaml)
+      if (isNodeIndexJs(cmdline)) {
+        const cwdPath = path.join(procDir, entry, "cwd");
+        const cwd = readlinkSync(cwdPath);
+        const configPath = path.join(cwd, "runner.yaml");
+        if (existsSync(configPath)) {
+          processes.push({
+            pid,
+            configPath,
+            mode: "start", // Default to start mode (cannot determine from cmdline)
+          });
+        }
       }
     } catch {
       continue;

@@ -514,5 +514,39 @@ describe("process discovery", () => {
 
       expect(result).toEqual([]);
     });
+
+    it("finds PM2 runner via cwd symlink", () => {
+      vol.fromJSON({
+        // PM2 mode: node index.js without args, but cwd has runner.yaml
+        "/proc/4000/cmdline": cmdline(
+          "node",
+          "/opt/vm0-runner/pr-123/index.js",
+        ),
+        "/opt/vm0-runner/pr-123/runner.yaml": "# runner config",
+      });
+      // Create symlink for cwd
+      vol.symlinkSync("/opt/vm0-runner/pr-123", "/proc/4000/cwd");
+
+      const result = findRunnerProcesses();
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        pid: 4000,
+        configPath: "/opt/vm0-runner/pr-123/runner.yaml",
+        mode: "start",
+      });
+    });
+
+    it("ignores node index.js without runner.yaml in cwd", () => {
+      vol.fromJSON({
+        "/proc/5000/cmdline": cmdline("node", "/opt/some-app/index.js"),
+        "/opt/some-app/package.json": "{}",
+      });
+      vol.symlinkSync("/opt/some-app", "/proc/5000/cwd");
+
+      const result = findRunnerProcesses();
+
+      expect(result).toEqual([]);
+    });
   });
 });
