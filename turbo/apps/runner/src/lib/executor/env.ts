@@ -4,8 +4,8 @@
  * Environment variable building for agent execution in Firecracker VMs.
  */
 
-import type { ExecutionContext } from "./api.js";
-import { VM_PROXY_CA_PATH } from "./vm-setup/index.js";
+import type { ExecutionContext } from "../api.js";
+import { VM_PROXY_CA_PATH } from "../vm-setup/index.js";
 
 /**
  * Path to environment JSON file in VM

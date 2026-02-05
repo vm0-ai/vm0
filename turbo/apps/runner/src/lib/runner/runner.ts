@@ -9,7 +9,7 @@ import {
   subscribeToJobs,
   type JobSubscription,
 } from "../realtime/subscription.js";
-import { executeJob as executeJobInVM } from "../executor.js";
+import { executeJob as executeJobInVM } from "../executor/index.js";
 import { withRunnerTiming } from "../metrics/index.js";
 import type { RunnerState, RunnerResources } from "./types.js";
 import { createStatusUpdater } from "./status.js";

@@ -13,28 +13,28 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { FirecrackerVM, type VMConfig } from "./firecracker/vm.js";
-import { createVmId } from "./firecracker/vm-id.js";
-import type { GuestClient } from "./firecracker/guest.js";
-import { VsockClient } from "./firecracker/vsock.js";
-import type { ExecutionContext } from "./api.js";
-import type { RunnerConfig } from "./config.js";
-import { runnerPaths, vmPaths } from "./paths.js";
-import { ENV_LOADER_PATH } from "./scripts/index.js";
-import { getVMRegistry } from "./proxy/index.js";
+import { FirecrackerVM, type VMConfig } from "../firecracker/vm.js";
+import { createVmId } from "../firecracker/vm-id.js";
+import type { GuestClient } from "../firecracker/guest.js";
+import { VsockClient } from "../firecracker/vsock.js";
+import type { ExecutionContext } from "../api.js";
+import type { RunnerConfig } from "../config.js";
+import { runnerPaths, vmPaths } from "../paths.js";
+import { ENV_LOADER_PATH } from "../scripts/index.js";
+import { getVMRegistry } from "../proxy/index.js";
 import {
   withSandboxTiming,
   recordOperation,
   setSandboxContext,
   clearSandboxContext,
-} from "./metrics/index.js";
+} from "../metrics/index.js";
 
 // Import from extracted modules
-import type { ExecutionResult, ExecutionOptions } from "./executor-types.js";
-import { buildEnvironmentVariables, ENV_JSON_PATH } from "./executor-env.js";
-import { uploadNetworkLogs } from "./network-logs/index.js";
-import { downloadStorages, restoreSessionHistory } from "./vm-setup/index.js";
-import { createLogger } from "./logger.js";
+import type { ExecutionResult, ExecutionOptions } from "./types.js";
+import { buildEnvironmentVariables, ENV_JSON_PATH } from "./env.js";
+import { uploadNetworkLogs } from "../network-logs/index.js";
+import { downloadStorages, restoreSessionHistory } from "../vm-setup/index.js";
+import { createLogger } from "../logger.js";
 
 const logger = createLogger("Executor");
 

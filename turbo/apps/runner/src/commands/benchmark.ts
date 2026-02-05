@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import crypto from "crypto";
 import { loadDebugConfig, validateFirecrackerPaths } from "../lib/config.js";
-import { executeJob } from "../lib/executor.js";
+import { executeJob } from "../lib/executor/index.js";
 import type { ExecutionContext } from "../lib/api.js";
 import { checkNetworkPrerequisites } from "../lib/firecracker/network.js";
 import {
