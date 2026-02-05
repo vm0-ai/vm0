@@ -245,6 +245,7 @@ export class FirecrackerClient {
     while (Date.now() - startTime < timeoutMs) {
       // First check if socket file exists
       if (!fs.existsSync(this.socketPath)) {
+        logger.log(`Waiting for socket file: ${this.socketPath}`);
         await this.sleep(intervalMs);
         continue;
       }
