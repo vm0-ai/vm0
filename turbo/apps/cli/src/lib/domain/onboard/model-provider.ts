@@ -83,12 +83,11 @@ export function getProviderChoices(): ProviderChoice[] {
 export async function setupModelProvider(
   type: ModelProviderType,
   credential: string,
-  options?: { convert?: boolean; selectedModel?: string },
+  options?: { selectedModel?: string },
 ): Promise<SetupResult> {
   const response: UpsertModelProviderResponse = await upsertModelProvider({
     type,
     credential,
-    convert: options?.convert,
     selectedModel: options?.selectedModel,
   });
 

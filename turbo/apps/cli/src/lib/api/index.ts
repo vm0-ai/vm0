@@ -65,7 +65,6 @@ export {
   upsertModelProvider,
   checkModelProviderCredential,
   deleteModelProvider,
-  convertModelProviderCredential,
   setModelProviderDefault,
   updateModelProviderModel,
 } from "./domains/model-providers";

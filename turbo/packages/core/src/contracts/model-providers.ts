@@ -463,7 +463,6 @@ export const upsertModelProviderRequestSchema = z.object({
   credential: z.string().min(1).optional(), // Legacy single credential
   authMethod: z.string().optional(), // For multi-auth providers
   credentials: z.record(z.string(), z.string()).optional(), // For multi-auth providers
-  convert: z.boolean().optional(),
   selectedModel: z.string().optional(),
 });
 
@@ -489,7 +488,6 @@ export type UpsertModelProviderResponse = z.infer<
 export const checkCredentialResponseSchema = z.object({
   exists: z.boolean(),
   credentialName: z.string(),
-  currentType: z.enum(["user", "model-provider"]).optional(),
 });
 
 export type CheckCredentialResponse = z.infer<

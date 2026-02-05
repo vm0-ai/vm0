@@ -196,15 +196,14 @@ describe("model-provider setup command", () => {
       );
     });
 
-    it("should handle credential already exists error", async () => {
+    it("should handle API error", async () => {
       server.use(
         http.put("http://localhost:3000/api/model-providers", () => {
           return HttpResponse.json(
             {
               error: {
-                message:
-                  'Credential "ANTHROPIC_API_KEY" already exists as user credential',
-                code: "CREDENTIAL_EXISTS",
+                message: "Something went wrong",
+                code: "BAD_REQUEST",
               },
             },
             { status: 400 },
@@ -224,10 +223,7 @@ describe("model-provider setup command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("already exists"),
-      );
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 model-provider setup --convert"),
+        expect.stringContaining("Something went wrong"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

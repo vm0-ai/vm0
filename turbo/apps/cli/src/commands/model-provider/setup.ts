@@ -4,7 +4,6 @@ import prompts from "prompts";
 import {
   upsertModelProvider,
   checkModelProviderCredential,
-  convertModelProviderCredential,
   listModelProviders,
   updateModelProviderModel,
   setModelProviderDefault,
@@ -511,37 +510,8 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
   // Check if credential already exists
   const checkResult = await checkModelProviderCredential(type);
 
-  // Handle user credential conversion
-  if (checkResult.exists && checkResult.currentType === "user") {
-    const convertResponse = await prompts(
-      {
-        type: "confirm",
-        name: "convert",
-        message: `Credential "${checkResult.credentialName}" already exists. Convert to model provider?`,
-        initial: true,
-      },
-      { onCancel: () => process.exit(0) },
-    );
-
-    if (convertResponse.convert) {
-      const provider = await convertModelProviderCredential(type);
-      const defaultNote = provider.isDefault
-        ? ` (default for ${provider.framework})`
-        : "";
-      console.log(
-        chalk.green(
-          `✓ Converted "${checkResult.credentialName}" to model provider${defaultNote}`,
-        ),
-      );
-      await promptSetAsDefault(type, provider.framework, provider.isDefault);
-      return null; // Signal that conversion was done
-    }
-    console.log(chalk.dim("Aborted"));
-    process.exit(0);
-  }
-
   // Handle existing model-provider credential
-  if (checkResult.exists && checkResult.currentType === "model-provider") {
+  if (checkResult.exists) {
     console.log();
     console.log(`"${type}" is already configured.`);
     console.log();
@@ -616,12 +586,7 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
 
 function handleSetupError(error: unknown): never {
   if (error instanceof Error) {
-    if (error.message.includes("already exists")) {
-      console.error(chalk.red(`✗ ${error.message}`));
-      console.log();
-      console.log("To convert the existing credential, run:");
-      console.log(chalk.cyan("  vm0 model-provider setup --convert"));
-    } else if (error.message.includes("Not authenticated")) {
+    if (error.message.includes("Not authenticated")) {
       console.error(chalk.red("✗ Not authenticated. Run: vm0 auth login"));
     } else {
       console.error(chalk.red(`✗ ${error.message}`));
@@ -677,18 +642,15 @@ export const setupCommand = new Command()
     "Auth method (required for multi-auth providers like aws-bedrock)",
   )
   .option("-m, --model <model>", "Model selection (for non-interactive mode)")
-  .option("--convert", "Convert existing user credential to model provider")
   .action(
     async (options: {
       type?: string;
       credential?: string[];
       authMethod?: string;
       model?: string;
-      convert?: boolean;
     }) => {
       try {
         let input: SetupInput;
-        const shouldConvert = options.convert ?? false;
         const credentialArgs = options.credential ?? [];
 
         if (options.type && credentialArgs.length > 0) {
@@ -753,7 +715,6 @@ export const setupCommand = new Command()
           credential: input.credential,
           authMethod: input.authMethod,
           credentials: input.credentials,
-          convert: shouldConvert,
           selectedModel: input.selectedModel,
         });
 

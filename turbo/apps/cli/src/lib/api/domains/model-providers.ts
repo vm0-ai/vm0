@@ -3,7 +3,6 @@ import {
   modelProvidersMainContract,
   modelProvidersCheckContract,
   modelProvidersByTypeContract,
-  modelProvidersConvertContract,
   modelProvidersSetDefaultContract,
   modelProvidersUpdateModelContract,
   type ModelProviderType,
@@ -40,8 +39,6 @@ export async function upsertModelProvider(body: {
   // Multi-auth support
   authMethod?: string;
   credentials?: Record<string, string>;
-  // Common options
-  convert?: boolean;
   selectedModel?: string;
 }): Promise<UpsertModelProviderResponse> {
   const config = await getClientConfig();
@@ -94,26 +91,6 @@ export async function deleteModelProvider(
   }
 
   handleError(result, `Model provider "${type}" not found`);
-}
-
-/**
- * Convert existing user credential to model provider
- */
-export async function convertModelProviderCredential(
-  type: ModelProviderType,
-): Promise<ModelProviderResponse> {
-  const config = await getClientConfig();
-  const client = initClient(modelProvidersConvertContract, config);
-
-  const result = await client.convert({
-    params: { type },
-  });
-
-  if (result.status === 200) {
-    return result.body;
-  }
-
-  handleError(result, "Failed to convert credential");
 }
 
 /**
