@@ -1,5 +1,13 @@
 # Changelog
 
+## [9.20.0](https://github.com/vm0-ai/vm0/compare/cli-v9.19.0...cli-v9.20.0) (2026-02-05)
+
+
+### Features
+
+* **cli:** mark agent sharing as experimental with safety flag ([#2393](https://github.com/vm0-ai/vm0/issues/2393)) ([0fe6188](https://github.com/vm0-ai/vm0/commit/0fe6188e8420a504a5afa4ce6794e3e769e9f63a))
+* **cli:** support github url for vm0 compose command ([#2402](https://github.com/vm0-ai/vm0/issues/2402)) ([4df7b65](https://github.com/vm0-ai/vm0/commit/4df7b65f5cef16be99693213ad59c3bc91252f27))
+
 ## [9.19.0](https://github.com/vm0-ai/vm0/compare/cli-v9.18.0...cli-v9.19.0) (2026-02-05)
 
 
