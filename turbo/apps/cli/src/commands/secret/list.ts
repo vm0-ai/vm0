@@ -14,7 +14,7 @@ export const listCommand = new Command()
         console.log(chalk.dim("No secrets found"));
         console.log();
         console.log("To add a secret:");
-        console.log(chalk.cyan("  vm0 secret set MY_API_KEY <value>"));
+        console.log(chalk.cyan("  vm0 secret set MY_API_KEY --body <value>"));
         return;
       }
 

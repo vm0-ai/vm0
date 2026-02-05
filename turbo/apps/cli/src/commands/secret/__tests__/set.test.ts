@@ -36,8 +36,8 @@ describe("secret set command", () => {
     vi.unstubAllEnvs();
   });
 
-  describe("successful set", () => {
-    it("should create a new secret", async () => {
+  describe("--body flag", () => {
+    it("should create a new secret with --body", async () => {
       server.use(
         http.put("http://localhost:3000/api/secrets", () => {
           return HttpResponse.json({
@@ -55,6 +55,7 @@ describe("secret set command", () => {
         "node",
         "cli",
         "MY_API_KEY",
+        "--body",
         "secret-value",
       ]);
 
@@ -63,7 +64,33 @@ describe("secret set command", () => {
       expect(logCalls).toContain("secrets.MY_API_KEY");
     });
 
-    it("should create a secret with description", async () => {
+    it("should create a secret with -b short flag", async () => {
+      server.use(
+        http.put("http://localhost:3000/api/secrets", () => {
+          return HttpResponse.json({
+            id: "1",
+            name: "MY_API_KEY",
+            description: null,
+            type: "user",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+        }),
+      );
+
+      await setCommand.parseAsync([
+        "node",
+        "cli",
+        "MY_API_KEY",
+        "-b",
+        "secret-value",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain('Secret "MY_API_KEY" saved');
+    });
+
+    it("should create a secret with --body and --description", async () => {
       server.use(
         http.put("http://localhost:3000/api/secrets", async ({ request }) => {
           const body = (await request.json()) as { description?: string };
@@ -83,6 +110,7 @@ describe("secret set command", () => {
         "node",
         "cli",
         "MY_API_KEY",
+        "--body",
         "secret-value",
         "-d",
         "My API key",
@@ -90,6 +118,29 @@ describe("secret set command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain('Secret "MY_API_KEY" saved');
+    });
+  });
+
+  describe("non-interactive mode", () => {
+    it("should error when no --body provided in non-interactive mode", async () => {
+      // Tests run in non-interactive environment (no TTY)
+      await expect(async () => {
+        await setCommand.parseAsync(["node", "cli", "MY_API_KEY"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--body is required in non-interactive mode"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should show usage hint in error message", async () => {
+      await expect(async () => {
+        await setCommand.parseAsync(["node", "cli", "MY_API_KEY"]);
+      }).rejects.toThrow("process.exit called");
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("vm0 secret set MY_API_KEY --body");
     });
   });
 
@@ -110,7 +161,13 @@ describe("secret set command", () => {
       );
 
       await expect(async () => {
-        await setCommand.parseAsync(["node", "cli", "MY_API_KEY", "value"]);
+        await setCommand.parseAsync([
+          "node",
+          "cli",
+          "MY_API_KEY",
+          "--body",
+          "value",
+        ]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
@@ -136,7 +193,13 @@ describe("secret set command", () => {
       );
 
       await expect(async () => {
-        await setCommand.parseAsync(["node", "cli", "invalid-name", "value"]);
+        await setCommand.parseAsync([
+          "node",
+          "cli",
+          "invalid-name",
+          "--body",
+          "value",
+        ]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
