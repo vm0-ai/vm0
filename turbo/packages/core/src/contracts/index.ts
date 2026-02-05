@@ -398,5 +398,28 @@ export {
   type ComposeJobResponse,
 } from "./compose-jobs";
 
+export {
+  connectorsMainContract,
+  connectorsByTypeContract,
+  connectorTypeSchema,
+  connectorResponseSchema,
+  connectorListResponseSchema,
+  CONNECTOR_TYPES,
+  getConnectorAuthMethods,
+  getConnectorDefaultAuthMethod,
+  getConnectorSecretsForAuthMethod,
+  getConnectorSecretNames,
+  getConnectorEnvironmentMapping,
+  getConnectorOAuthConfig,
+  type ConnectorsMainContract,
+  type ConnectorsByTypeContract,
+  type ConnectorType,
+  type ConnectorResponse,
+  type ConnectorListResponse,
+  type ConnectorSecretConfig,
+  type ConnectorAuthMethodConfig,
+  type ConnectorOAuthConfig,
+} from "./connectors";
+
 // Public API v1 contracts (developer-friendly external API)
 export * from "./public";

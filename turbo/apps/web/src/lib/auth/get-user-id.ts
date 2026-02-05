@@ -59,3 +59,14 @@ export async function getUserId(authHeader?: string): Promise<string | null> {
 
   return tokenRecord.userId;
 }
+
+/**
+ * Get user ID from a Request object
+ * Used for API routes that receive the full Request
+ */
+export async function getUserIdFromRequest(
+  request: Request,
+): Promise<string | null> {
+  const authHeader = request.headers.get("authorization") ?? undefined;
+  return getUserId(authHeader);
+}
