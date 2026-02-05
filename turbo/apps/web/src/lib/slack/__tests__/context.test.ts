@@ -1,9 +1,33 @@
-import { describe, it, expect } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  type Mock,
+} from "vitest";
 import {
   formatContextForAgent,
+  formatContextForAgentWithImages,
   extractMessageContent,
   parseExplicitAgentSelection,
 } from "../context";
+
+// Mock S3 client
+vi.mock("../../s3/s3-client", () => ({
+  uploadS3Buffer: vi.fn().mockResolvedValue(undefined),
+  generatePresignedUrl: vi
+    .fn()
+    .mockResolvedValue("https://r2.example.com/presigned-url"),
+}));
+
+// Mock env
+vi.mock("../../../env", () => ({
+  env: () => ({
+    R2_USER_STORAGES_BUCKET_NAME: "test-bucket",
+  }),
+}));
 
 describe("Feature: Format Context For Agent", () => {
   describe("Scenario: Format thread messages into context string", () => {
@@ -80,6 +104,211 @@ describe("Feature: Format Context For Agent", () => {
       expect(result).toContain("[U123]: Recent message");
     });
   });
+
+  describe("Scenario: Include files in context", () => {
+    it("should format message with single image file", () => {
+      const messages = [
+        {
+          user: "U123",
+          text: "Check out this screenshot",
+          files: [
+            {
+              name: "screenshot.png",
+              pretty_type: "PNG Image",
+              original_w: "1920",
+              original_h: "1080",
+              permalink_public: "https://files.slack.com/public/screenshot.png",
+            },
+          ],
+        },
+      ];
+
+      const result = formatContextForAgent(messages);
+
+      expect(result).toContain("[U123]: Check out this screenshot");
+      expect(result).toContain("[file]: screenshot.png (PNG Image)");
+      expect(result).toContain("Dimensions: 1920x1080");
+      expect(result).toContain(
+        "URL: https://files.slack.com/public/screenshot.png",
+      );
+    });
+
+    it("should format message with multiple files", () => {
+      const messages = [
+        {
+          user: "U123",
+          text: "Here are the files",
+          files: [
+            {
+              name: "image1.png",
+              pretty_type: "PNG Image",
+              permalink: "https://slack.com/files/image1.png",
+            },
+            {
+              name: "document.pdf",
+              pretty_type: "PDF",
+              permalink: "https://slack.com/files/document.pdf",
+            },
+          ],
+        },
+      ];
+
+      const result = formatContextForAgent(messages);
+
+      expect(result).toContain("[file]: image1.png (PNG Image)");
+      expect(result).toContain("[file]: document.pdf (PDF)");
+    });
+
+    it("should use thumbnail URL when public URL is not available", () => {
+      const messages = [
+        {
+          user: "U123",
+          text: "Private image",
+          files: [
+            {
+              name: "private.png",
+              mimetype: "image/png",
+              thumb_480: "https://files.slack.com/thumb_480/private.png",
+            },
+          ],
+        },
+      ];
+
+      const result = formatContextForAgent(messages);
+
+      expect(result).toContain("[file]: private.png (image/png)");
+      expect(result).toContain(
+        "URL: https://files.slack.com/thumb_480/private.png",
+      );
+    });
+
+    it("should handle files without dimensions", () => {
+      const messages = [
+        {
+          user: "U123",
+          text: "A document",
+          files: [
+            {
+              name: "report.docx",
+              pretty_type: "Word Document",
+              permalink: "https://slack.com/files/report.docx",
+            },
+          ],
+        },
+      ];
+
+      const result = formatContextForAgent(messages);
+
+      expect(result).toContain("[file]: report.docx (Word Document)");
+      expect(result).not.toContain("Dimensions:");
+    });
+  });
+
+  describe("Scenario: Include attachments with images in context", () => {
+    it("should format attachment with image URL", () => {
+      const messages = [
+        {
+          user: "U123",
+          text: "Check this article",
+          attachments: [
+            {
+              title: "Article Preview",
+              image_url: "https://example.com/preview.jpg",
+              image_width: 800,
+              image_height: 600,
+            },
+          ],
+        },
+      ];
+
+      const result = formatContextForAgent(messages);
+
+      expect(result).toContain("[U123]: Check this article");
+      expect(result).toContain("[image]: Article Preview");
+      expect(result).toContain("Dimensions: 800x600");
+      expect(result).toContain("URL: https://example.com/preview.jpg");
+    });
+
+    it("should use fallback for attachment title", () => {
+      const messages = [
+        {
+          user: "U123",
+          text: "Link",
+          attachments: [
+            {
+              fallback: "Preview image",
+              thumb_url: "https://example.com/thumb.jpg",
+            },
+          ],
+        },
+      ];
+
+      const result = formatContextForAgent(messages);
+
+      expect(result).toContain("[image]: Preview image");
+      expect(result).toContain("URL: https://example.com/thumb.jpg");
+    });
+
+    it("should skip attachments without images", () => {
+      const messages = [
+        {
+          user: "U123",
+          text: "Text only attachment",
+          attachments: [
+            {
+              title: "No image here",
+              fallback: "Just text",
+            },
+          ],
+        },
+      ];
+
+      const result = formatContextForAgent(messages);
+
+      expect(result).toContain("[U123]: Text only attachment");
+      expect(result).not.toContain("[image]:");
+    });
+  });
+
+  describe("Scenario: Mixed content in thread", () => {
+    it("should format thread with text, files, and attachments", () => {
+      const messages = [
+        { user: "U123", text: "Here is the error screenshot" },
+        {
+          user: "U456",
+          text: "I see the issue",
+          files: [
+            {
+              name: "fix.png",
+              pretty_type: "PNG Image",
+              original_w: "640",
+              original_h: "480",
+              permalink_public: "https://files.slack.com/fix.png",
+            },
+          ],
+        },
+        {
+          user: "U123",
+          text: "Related article",
+          attachments: [
+            {
+              title: "Bug Report",
+              image_url: "https://example.com/bug.jpg",
+            },
+          ],
+        },
+      ];
+
+      const result = formatContextForAgent(messages);
+
+      expect(result).toContain("[U123]: Here is the error screenshot");
+      expect(result).toContain("[U456]: I see the issue");
+      expect(result).toContain("[file]: fix.png (PNG Image)");
+      expect(result).toContain("Dimensions: 640x480");
+      expect(result).toContain("[U123]: Related article");
+      expect(result).toContain("[image]: Bug Report");
+    });
+  });
 });
 
 describe("Feature: Extract Message Content", () => {
@@ -118,6 +347,451 @@ describe("Feature: Extract Message Content", () => {
       const result = extractMessageContent(text, botUserId);
 
       expect(result).toBe("hello");
+    });
+  });
+});
+
+describe("Feature: Format Context With Image Upload", () => {
+  const mockFetch = vi.fn();
+  const originalFetch = global.fetch;
+
+  // Import mocked S3 functions
+  let uploadS3BufferMock: Mock;
+  let generatePresignedUrlMock: Mock;
+
+  beforeEach(async () => {
+    global.fetch = mockFetch;
+    mockFetch.mockReset();
+
+    // Get mocked S3 functions
+    const s3Client = await import("../../s3/s3-client");
+    uploadS3BufferMock = s3Client.uploadS3Buffer as Mock;
+    generatePresignedUrlMock = s3Client.generatePresignedUrl as Mock;
+
+    uploadS3BufferMock.mockReset();
+    generatePresignedUrlMock.mockReset();
+    generatePresignedUrlMock.mockResolvedValue(
+      "https://r2.example.com/presigned-url",
+    );
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  describe("Scenario: Upload supported image types to R2", () => {
+    it("should download PNG image and upload to R2 with presigned URL", async () => {
+      // PNG magic bytes: 89 50 4E 47 (0x89 P N G)
+      const pngMagic = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+      const imageBuffer = Buffer.concat([
+        pngMagic,
+        Buffer.from("fake-content"),
+      ]);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: (name: string) => (name === "content-type" ? "image/png" : null),
+        },
+        arrayBuffer: async () => imageBuffer,
+      });
+
+      const messages = [
+        {
+          user: "U123",
+          text: "Check this screenshot",
+          files: [
+            {
+              id: "F123",
+              name: "screenshot.png",
+              mimetype: "image/png",
+              original_w: "1920",
+              original_h: "1080",
+              url_private_download:
+                "https://files.slack.com/files-pri/T123-F123/download/screenshot.png",
+            },
+          ],
+        },
+      ];
+
+      const result = await formatContextForAgentWithImages(
+        messages,
+        "xoxb-test-token",
+        "test-session-123",
+        "BBOT123",
+        "thread",
+      );
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://files.slack.com/files-pri/T123-F123/download/screenshot.png",
+        {
+          headers: {
+            Authorization: "Bearer xoxb-test-token",
+          },
+        },
+      );
+      expect(uploadS3BufferMock).toHaveBeenCalled();
+      // Verify contentType is passed when uploading
+      expect(uploadS3BufferMock).toHaveBeenCalledWith(
+        "test-bucket",
+        expect.stringContaining("slack-images/test-session-123/"),
+        expect.any(Buffer),
+        "image/png",
+      );
+      expect(generatePresignedUrlMock).toHaveBeenCalled();
+      expect(result).toContain("[file]: screenshot.png (image/png)");
+      expect(result).toContain("Dimensions: 1920x1080");
+      expect(result).toContain(
+        "Image URL: https://r2.example.com/presigned-url",
+      );
+    });
+
+    it("should upload JPEG images to R2", async () => {
+      // JPEG magic bytes: FF D8 FF
+      const jpegMagic = Buffer.from([0xff, 0xd8, 0xff]);
+      const imageBuffer = Buffer.concat([
+        jpegMagic,
+        Buffer.from("fake-content"),
+      ]);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: (name: string) =>
+            name === "content-type" ? "image/jpeg" : null,
+        },
+        arrayBuffer: async () => imageBuffer,
+      });
+
+      const messages = [
+        {
+          user: "U123",
+          text: "Photo",
+          files: [
+            {
+              id: "F456",
+              name: "photo.jpg",
+              mimetype: "image/jpeg",
+              url_private_download:
+                "https://files.slack.com/download/photo.jpg",
+            },
+          ],
+        },
+      ];
+
+      const result = await formatContextForAgentWithImages(
+        messages,
+        "xoxb-test-token",
+        "test-session-123",
+      );
+
+      expect(result).toContain(
+        "Image URL: https://r2.example.com/presigned-url",
+      );
+      // Verify contentType is passed for JPEG
+      expect(uploadS3BufferMock).toHaveBeenCalledWith(
+        "test-bucket",
+        expect.stringContaining("slack-images/test-session-123/"),
+        expect.any(Buffer),
+        "image/jpeg",
+      );
+    });
+  });
+
+  describe("Scenario: Fall back to URL for unsupported types", () => {
+    it("should not upload PDF files, use URL fallback", async () => {
+      const messages = [
+        {
+          user: "U123",
+          text: "Document",
+          files: [
+            {
+              name: "report.pdf",
+              mimetype: "application/pdf",
+              url_private_download:
+                "https://files.slack.com/download/report.pdf",
+              permalink: "https://slack.com/files/report.pdf",
+            },
+          ],
+        },
+      ];
+
+      const result = await formatContextForAgentWithImages(
+        messages,
+        "xoxb-test-token",
+        "test-session-123",
+      );
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(uploadS3BufferMock).not.toHaveBeenCalled();
+      expect(result).toContain("[file]: report.pdf (application/pdf)");
+      expect(result).toContain("URL: https://slack.com/files/report.pdf");
+      expect(result).not.toContain("Image URL:");
+    });
+  });
+
+  describe("Scenario: Handle download failures gracefully", () => {
+    it("should fall back to URL when download fails", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+      });
+
+      const messages = [
+        {
+          user: "U123",
+          text: "Screenshot",
+          files: [
+            {
+              id: "F123",
+              name: "screenshot.png",
+              mimetype: "image/png",
+              url_private_download:
+                "https://files.slack.com/download/screenshot.png",
+              permalink: "https://slack.com/files/screenshot.png",
+            },
+          ],
+        },
+      ];
+
+      const result = await formatContextForAgentWithImages(
+        messages,
+        "xoxb-test-token",
+        "test-session-123",
+      );
+
+      expect(result).toContain("URL: https://slack.com/files/screenshot.png");
+      expect(result).not.toContain("Image URL:");
+    });
+
+    it("should fall back to URL when fetch throws", async () => {
+      mockFetch.mockRejectedValueOnce(new Error("Network error"));
+
+      const messages = [
+        {
+          user: "U123",
+          text: "Screenshot",
+          files: [
+            {
+              name: "screenshot.png",
+              mimetype: "image/png",
+              url_private_download:
+                "https://files.slack.com/download/screenshot.png",
+              thumb_480: "https://files.slack.com/thumb/screenshot.png",
+            },
+          ],
+        },
+      ];
+
+      const result = await formatContextForAgentWithImages(
+        messages,
+        "xoxb-test-token",
+        "test-session-123",
+      );
+
+      expect(result).toContain(
+        "URL: https://files.slack.com/thumb/screenshot.png",
+      );
+      expect(result).not.toContain("Image URL:");
+    });
+
+    it("should fall back to URL when Slack returns HTML instead of image", async () => {
+      // Simulate Slack returning a login page HTML instead of the actual image
+      const htmlContent = Buffer.from("<!DOCTYPE html><html>Login page</html>");
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: (name: string) => (name === "content-type" ? "text/html" : null),
+        },
+        arrayBuffer: async () => htmlContent,
+      });
+
+      const messages = [
+        {
+          user: "U123",
+          text: "Screenshot",
+          files: [
+            {
+              id: "F123",
+              name: "screenshot.png",
+              mimetype: "image/png",
+              url_private_download:
+                "https://files.slack.com/download/screenshot.png",
+              permalink: "https://slack.com/files/screenshot.png",
+            },
+          ],
+        },
+      ];
+
+      const result = await formatContextForAgentWithImages(
+        messages,
+        "xoxb-test-token",
+        "test-session-123",
+      );
+
+      // Should fall back to URL since the response was not an image
+      expect(uploadS3BufferMock).not.toHaveBeenCalled();
+      expect(result).toContain("URL: https://slack.com/files/screenshot.png");
+      expect(result).not.toContain("Image URL:");
+    });
+
+    it("should fall back to URL when content has invalid image magic bytes", async () => {
+      // Simulate Slack returning non-image content with image content-type
+      const invalidContent = Buffer.from("Not an image file content");
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: (name: string) => (name === "content-type" ? "image/png" : null),
+        },
+        arrayBuffer: async () => invalidContent,
+      });
+
+      const messages = [
+        {
+          user: "U123",
+          text: "Screenshot",
+          files: [
+            {
+              id: "F123",
+              name: "screenshot.png",
+              mimetype: "image/png",
+              url_private_download:
+                "https://files.slack.com/download/screenshot.png",
+              permalink: "https://slack.com/files/screenshot.png",
+            },
+          ],
+        },
+      ];
+
+      const result = await formatContextForAgentWithImages(
+        messages,
+        "xoxb-test-token",
+        "test-session-123",
+      );
+
+      // Should fall back to URL since the content is not a valid image
+      expect(uploadS3BufferMock).not.toHaveBeenCalled();
+      expect(result).toContain("URL: https://slack.com/files/screenshot.png");
+      expect(result).not.toContain("Image URL:");
+    });
+  });
+
+  describe("Scenario: Respect file size limits", () => {
+    it("should not upload files larger than 10MB", async () => {
+      const messages = [
+        {
+          user: "U123",
+          text: "Large image",
+          files: [
+            {
+              name: "large.png",
+              mimetype: "image/png",
+              size: 15 * 1024 * 1024, // 15MB (exceeds 10MB limit)
+              url_private_download:
+                "https://files.slack.com/download/large.png",
+              permalink: "https://slack.com/files/large.png",
+            },
+          ],
+        },
+      ];
+
+      const result = await formatContextForAgentWithImages(
+        messages,
+        "xoxb-test-token",
+        "test-session-123",
+      );
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(uploadS3BufferMock).not.toHaveBeenCalled();
+      expect(result).toContain("URL: https://slack.com/files/large.png");
+      expect(result).not.toContain("Image URL:");
+    });
+  });
+
+  describe("Scenario: Handle files without url_private_download", () => {
+    it("should use URL fallback when no download URL available", async () => {
+      const messages = [
+        {
+          user: "U123",
+          text: "Old image",
+          files: [
+            {
+              name: "old.png",
+              mimetype: "image/png",
+              permalink_public: "https://files.slack.com/public/old.png",
+            },
+          ],
+        },
+      ];
+
+      const result = await formatContextForAgentWithImages(
+        messages,
+        "xoxb-test-token",
+        "test-session-123",
+      );
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(uploadS3BufferMock).not.toHaveBeenCalled();
+      expect(result).toContain("URL: https://files.slack.com/public/old.png");
+    });
+  });
+
+  describe("Scenario: Handle multiple files in one message", () => {
+    it("should upload multiple images", async () => {
+      // PNG magic bytes: 89 50 4E 47 (0x89 P N G)
+      const pngMagic = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+      const imageBuffer1 = Buffer.concat([pngMagic, Buffer.from("image1")]);
+      const imageBuffer2 = Buffer.concat([pngMagic, Buffer.from("image2")]);
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          headers: {
+            get: (name: string) =>
+              name === "content-type" ? "image/png" : null,
+          },
+          arrayBuffer: async () => imageBuffer1,
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          headers: {
+            get: (name: string) =>
+              name === "content-type" ? "image/png" : null,
+          },
+          arrayBuffer: async () => imageBuffer2,
+        });
+
+      const messages = [
+        {
+          user: "U123",
+          text: "Two images",
+          files: [
+            {
+              id: "F1",
+              name: "img1.png",
+              mimetype: "image/png",
+              url_private_download: "https://files.slack.com/download/img1.png",
+            },
+            {
+              id: "F2",
+              name: "img2.png",
+              mimetype: "image/png",
+              url_private_download: "https://files.slack.com/download/img2.png",
+            },
+          ],
+        },
+      ];
+
+      const result = await formatContextForAgentWithImages(
+        messages,
+        "xoxb-test-token",
+        "test-session-123",
+      );
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(uploadS3BufferMock).toHaveBeenCalledTimes(2);
+      expect(result).toContain("[file]: img1.png");
+      expect(result).toContain("[file]: img2.png");
+      // Both should have presigned URLs
+      expect((result.match(/Image URL:/g) || []).length).toBe(2);
     });
   });
 });

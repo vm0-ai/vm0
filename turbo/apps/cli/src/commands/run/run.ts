@@ -4,6 +4,7 @@ import {
   getComposeById,
   getComposeByName,
   getComposeVersion,
+  getScope,
   createRun,
 } from "../../lib/api";
 import { EventRenderer } from "../../lib/events/event-renderer";
@@ -72,6 +73,10 @@ export const mainRunCommand = new Command()
     "Override model provider (e.g., anthropic-api-key)",
   )
   .option("--verbose", "Show full tool inputs and outputs")
+  .option(
+    "--experimental-shared-agent",
+    "Allow running agents shared by other users (required when running scope/agent format)",
+  )
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .addOption(new Option("--no-auto-update").hideHelp())
   .action(
@@ -89,6 +94,7 @@ export const mainRunCommand = new Command()
         experimentalRealtime?: boolean;
         modelProvider?: string;
         verbose?: boolean;
+        experimentalSharedAgent?: boolean;
         debugNoMockClaude?: boolean;
         autoUpdate?: boolean;
       },
@@ -96,6 +102,36 @@ export const mainRunCommand = new Command()
       try {
         // 1. Parse identifier for optional scope and version specifier
         const { scope, name, version } = parseIdentifier(identifier);
+
+        // 1.5. Validate: running another user's agent requires explicit opt-in
+        if (scope && !options.experimentalSharedAgent) {
+          // Check if it's the user's own scope
+          const userScope = await getScope();
+          const isOwnScope = userScope.slug === scope;
+
+          if (!isOwnScope) {
+            console.error(
+              chalk.red(
+                `✗ Running shared agents requires --experimental-shared-agent flag`,
+              ),
+            );
+            console.error();
+            console.error(
+              chalk.dim(
+                "  Running agent from other users carries security risks.",
+              ),
+            );
+            console.error(chalk.dim("  Only run agents from users you trust."));
+            console.error();
+            console.error("Example:");
+            console.error(
+              chalk.cyan(
+                `  vm0 run ${identifier} --experimental-shared-agent "your prompt"`,
+              ),
+            );
+            process.exit(1);
+          }
+        }
 
         // 2. Resolve name to composeId and get compose content
         let composeId: string;

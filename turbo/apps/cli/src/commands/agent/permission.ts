@@ -17,7 +17,7 @@ interface PermissionsResponse {
 }
 
 export const permissionCommand = new Command()
-  .name("permission")
+  .name("experimental-permission")
   .description("List all permissions for an agent")
   .argument("<name>", "Agent name")
   .action(async (name: string) => {

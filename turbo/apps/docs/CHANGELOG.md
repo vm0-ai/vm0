@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.10.0](https://github.com/vm0-ai/vm0/compare/docs-v2.9.0...docs-v2.10.0) (2026-02-05)
+
+
+### Features
+
+* **docs:** refine product philosophy content ([#2399](https://github.com/vm0-ai/vm0/issues/2399)) ([63da522](https://github.com/vm0-ai/vm0/commit/63da5221b8ab9a7076644b34bf17de8b93e6d179))
+
 ## [2.9.0](https://github.com/vm0-ai/vm0/compare/docs-v2.8.0...docs-v2.9.0) (2026-02-05)
 
 

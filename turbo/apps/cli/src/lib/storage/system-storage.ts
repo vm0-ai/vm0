@@ -61,7 +61,9 @@ export async function uploadInstructions(
   basePath: string,
   framework?: string,
 ): Promise<StorageUploadResult> {
-  const storageName = getInstructionsStorageName(agentName);
+  // Normalize agent name to lowercase to match server's normalization behavior
+  // Server normalizes agent names to lowercase when storing compose configs
+  const storageName = getInstructionsStorageName(agentName.toLowerCase());
 
   // Resolve file path relative to base path
   const absolutePath = path.isAbsolute(instructionsFilePath)

@@ -1,5 +1,34 @@
 # Changelog
 
+## [12.7.2](https://github.com/vm0-ai/vm0/compare/web-v12.7.1...web-v12.7.2) (2026-02-05)
+
+
+### Bug Fixes
+
+* **slack:** update command naming and auto-configure dev environment ([#2424](https://github.com/vm0-ai/vm0/issues/2424)) ([a684bfe](https://github.com/vm0-ai/vm0/commit/a684bfe99b362a8677d2075d9fc67a06fb0a8704))
+
+## [12.7.1](https://github.com/vm0-ai/vm0/compare/web-v12.7.0...web-v12.7.1) (2026-02-05)
+
+
+### Bug Fixes
+
+* **cli:** normalize agent name to lowercase before uploading instructions ([#2417](https://github.com/vm0-ai/vm0/issues/2417)) ([afb1a9c](https://github.com/vm0-ai/vm0/commit/afb1a9cb07fe2aeef4b139ff79a1179351ff35c8)), closes [#2414](https://github.com/vm0-ai/vm0/issues/2414)
+* **slack:** download and upload images to R2 for Claude Code access ([#2413](https://github.com/vm0-ai/vm0/issues/2413)) ([eda84dc](https://github.com/vm0-ai/vm0/commit/eda84dc6065a66f0aa70c925323933fc80a12579))
+
+## [12.7.0](https://github.com/vm0-ai/vm0/compare/web-v12.6.0...web-v12.7.0) (2026-02-05)
+
+
+### Features
+
+* **web:** make database pool settings configurable via env vars ([#2373](https://github.com/vm0-ai/vm0/issues/2373)) ([baf911f](https://github.com/vm0-ai/vm0/commit/baf911f2e88aa5bcbabbd74d32d9314275271144))
+
+## [12.6.0](https://github.com/vm0-ai/vm0/compare/web-v12.5.0...web-v12.6.0) (2026-02-05)
+
+
+### Features
+
+* **web:** integrate sentry error tracking ([#2397](https://github.com/vm0-ai/vm0/issues/2397)) ([994c21d](https://github.com/vm0-ai/vm0/commit/994c21d18d0380594bb72dc20ade24b36efe3d2b))
+
 ## [12.5.0](https://github.com/vm0-ai/vm0/compare/web-v12.4.0...web-v12.5.0) (2026-02-05)
 
 

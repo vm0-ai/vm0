@@ -51,17 +51,17 @@ export function initServices(): void {
           // See: https://vercel.com/guides/connection-pooling-with-functions
           _pool = new NeonPool({
             connectionString: this.env.DATABASE_URL,
-            max: 10,
-            idleTimeoutMillis: 10000,
-            connectionTimeoutMillis: 10000,
+            max: this.env.DB_POOL_MAX,
+            idleTimeoutMillis: this.env.DB_POOL_IDLE_TIMEOUT_MS ?? 10000,
+            connectionTimeoutMillis: this.env.DB_POOL_CONNECT_TIMEOUT_MS,
           });
         } else {
           // Use regular pg driver for local development
           _pool = new PgPool({
             connectionString: this.env.DATABASE_URL,
-            max: 10,
-            idleTimeoutMillis: 30000,
-            connectionTimeoutMillis: 10000,
+            max: this.env.DB_POOL_MAX,
+            idleTimeoutMillis: this.env.DB_POOL_IDLE_TIMEOUT_MS ?? 30000,
+            connectionTimeoutMillis: this.env.DB_POOL_CONNECT_TIMEOUT_MS,
           });
         }
       }

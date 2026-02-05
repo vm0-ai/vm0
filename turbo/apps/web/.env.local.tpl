@@ -29,3 +29,10 @@ CLAUDE_CODE_VERSION_URL=https://storage.googleapis.com/claude-code-dist-86c565f3
 
 # Optional: LLM API (OpenRouter)
 OPENROUTER_API_KEY=op://Development/vm0-env-local/openrouter_api_key
+
+# Optional: Error Tracking (Sentry)
+SENTRY_DSN=
+SENTRY_AUTH_TOKEN=
+SENTRY_ORG=
+SENTRY_PROJECT=
+NEXT_PUBLIC_SENTRY_DSN=

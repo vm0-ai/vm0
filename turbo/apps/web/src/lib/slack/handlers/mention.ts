@@ -11,7 +11,7 @@ import {
   extractMessageContent,
   fetchThreadContext,
   fetchChannelContext,
-  formatContextForAgent,
+  formatContextForAgentWithImages,
   parseExplicitAgentSelection,
   buildLoginPromptMessage,
   buildErrorMessage,
@@ -70,20 +70,37 @@ async function removeThinkingReaction(
 }
 
 /**
- * Fetch conversation context for the agent
+ * Fetch conversation context for the agent with uploaded images
+ * Images are uploaded to R2 and presigned URLs are provided in the context
  */
 async function fetchConversationContext(
   client: SlackClient,
   channelId: string,
   threadTs: string | undefined,
   botUserId: string,
+  botToken: string,
 ): Promise<string> {
+  // Use channel-thread as session ID for organizing uploaded images
+  const imageSessionId = `${channelId}-${threadTs ?? "channel"}`;
+
   if (threadTs) {
     const messages = await fetchThreadContext(client, channelId, threadTs);
-    return formatContextForAgent(messages, botUserId, "thread");
+    return formatContextForAgentWithImages(
+      messages,
+      botToken,
+      imageSessionId,
+      botUserId,
+      "thread",
+    );
   }
   const messages = await fetchChannelContext(client, channelId, 10);
-  return formatContextForAgent(messages, botUserId, "channel");
+  return formatContextForAgentWithImages(
+    messages,
+    botToken,
+    imageSessionId,
+    botUserId,
+    "channel",
+  );
 }
 
 /**
@@ -243,11 +260,11 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       );
 
     if (bindings.length === 0) {
-      // 5. No bindings - prompt to add agent
+      // 5. No bindings - prompt to link agent
       await postMessage(
         client,
         context.channelId,
-        "You don't have any agents configured. Use `/vm0 agent add` to add one.",
+        "You don't have any agent linked. Use `/vm0 agent link` to link one.",
         { threadTs },
       );
       return;
@@ -270,11 +287,13 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
     );
 
     // Fetch Slack context early (needed for routing and agent execution)
+    // Uses bot token to download and embed images from Slack
     const formattedContext = await fetchConversationContext(
       client,
       context.channelId,
       context.threadTs,
       botUserId,
+      botToken,
     );
 
     // 7. Route to agent (with context for LLM routing)

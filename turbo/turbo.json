@@ -3,6 +3,9 @@
   "ui": "tui",
   "globalEnv": [
     "DATABASE_URL",
+    "DB_POOL_MAX",
+    "DB_POOL_IDLE_TIMEOUT_MS",
+    "DB_POOL_CONNECT_TIMEOUT_MS",
     "VM0_DEBUG",
     "NODE_ENV",
     "SKIP_ENV_VALIDATION",
@@ -38,7 +41,15 @@
     "SLACK_SIGNING_SECRET",
     "SLACK_REDIRECT_BASE_URL",
     "CLAUDE_CODE_VERSION_URL",
-    "OPENROUTER_API_KEY"
+    "OPENROUTER_API_KEY",
+    "SENTRY_DSN",
+    "SENTRY_AUTH_TOKEN",
+    "SENTRY_ORG",
+    "SENTRY_PROJECT",
+    "NEXT_PUBLIC_SENTRY_DSN",
+    "VITE_SENTRY_DSN",
+    "NEXT_RUNTIME",
+    "NEXT_PUBLIC_VERCEL_ENV"
   ],
   "tasks": {
     "build": {

@@ -216,53 +216,6 @@ describe("POST /api/slack/commands", () => {
     });
   });
 
-  describe("Agent List Command", () => {
-    it("returns empty list when user has no agents", async () => {
-      const { installation, userLink } = await context.createSlackInstallation({
-        withUserLink: true,
-      });
-
-      const body = buildCommandBody(
-        "agent list",
-        installation.slackWorkspaceId,
-        userLink.slackUserId,
-      );
-      const request = createSignedSlackRequest(body);
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.response_type).toBe("ephemeral");
-      expect(data.blocks).toBeDefined();
-    });
-
-    it("returns list of bound agents", async () => {
-      const { installation, userLink } = await context.createSlackInstallation({
-        withUserLink: true,
-      });
-      await context.createSlackBinding(userLink.id, {
-        agentName: "test-agent",
-        description: "A test agent",
-      });
-
-      const body = buildCommandBody(
-        "agent list",
-        installation.slackWorkspaceId,
-        userLink.slackUserId,
-      );
-      const request = createSignedSlackRequest(body);
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.response_type).toBe("ephemeral");
-      const blockStr = JSON.stringify(data.blocks);
-      expect(blockStr).toContain("test-agent");
-    });
-  });
-
   describe("Agent Remove Command", () => {
     it("returns error when user has no agents", async () => {
       const { installation, userLink } = await context.createSlackInstallation({
@@ -311,6 +264,158 @@ describe("POST /api/slack/commands", () => {
       expect(response.status).toBe(200);
       const text = await response.text();
       expect(text).toBe("");
+    });
+  });
+
+  describe("Agent Link Command", () => {
+    it("opens modal when user has no binding", async () => {
+      // Mock Slack views.open API
+      server.use(
+        http.post("https://slack.com/api/views.open", () => {
+          return HttpResponse.json({ ok: true, view: { id: "V123" } });
+        }),
+      );
+
+      const { installation, userLink } = await context.createSlackInstallation({
+        withUserLink: true,
+      });
+      // Create an agent compose for the user
+      await context.createAgentCompose(userLink.vm0UserId, {
+        name: "my-agent",
+      });
+
+      const body = buildCommandBody(
+        "agent link",
+        installation.slackWorkspaceId,
+        userLink.slackUserId,
+      );
+      const request = createSignedSlackRequest(body);
+
+      const response = await POST(request);
+
+      // When opening a modal, Slack expects empty 200 response
+      expect(response.status).toBe(200);
+      const text = await response.text();
+      expect(text).toBe("");
+    });
+
+    it("returns error with agent name when user already has a binding", async () => {
+      const { installation, userLink } = await context.createSlackInstallation({
+        withUserLink: true,
+      });
+      await context.createSlackBinding(userLink.id, {
+        agentName: "existing-agent",
+      });
+
+      const body = buildCommandBody(
+        "agent link",
+        installation.slackWorkspaceId,
+        userLink.slackUserId,
+      );
+      const request = createSignedSlackRequest(body);
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.response_type).toBe("ephemeral");
+      const blockStr = JSON.stringify(data.blocks);
+      expect(blockStr).toContain("existing-agent");
+      expect(blockStr).toContain("already have agent");
+    });
+  });
+
+  describe("Agent Unlink Command", () => {
+    it("deletes binding and shows success message", async () => {
+      const { installation, userLink } = await context.createSlackInstallation({
+        withUserLink: true,
+      });
+      await context.createSlackBinding(userLink.id, {
+        agentName: "to-unlink",
+      });
+
+      const body = buildCommandBody(
+        "agent unlink",
+        installation.slackWorkspaceId,
+        userLink.slackUserId,
+      );
+      const request = createSignedSlackRequest(body);
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.response_type).toBe("ephemeral");
+      const blockStr = JSON.stringify(data.blocks);
+      expect(blockStr).toContain("to-unlink");
+      expect(blockStr).toContain("has been unlinked");
+    });
+
+    it("returns error when user has no binding", async () => {
+      const { installation, userLink } = await context.createSlackInstallation({
+        withUserLink: true,
+      });
+
+      const body = buildCommandBody(
+        "agent unlink",
+        installation.slackWorkspaceId,
+        userLink.slackUserId,
+      );
+      const request = createSignedSlackRequest(body);
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.response_type).toBe("ephemeral");
+      const blockStr = JSON.stringify(data.blocks);
+      expect(blockStr).toContain("don't have any agent linked");
+    });
+  });
+
+  describe("Deprecated Commands", () => {
+    it("returns deprecation error for add command", async () => {
+      const { installation, userLink } = await context.createSlackInstallation({
+        withUserLink: true,
+      });
+
+      const body = buildCommandBody(
+        "agent add",
+        installation.slackWorkspaceId,
+        userLink.slackUserId,
+      );
+      const request = createSignedSlackRequest(body);
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.response_type).toBe("ephemeral");
+      const blockStr = JSON.stringify(data.blocks);
+      expect(blockStr).toContain("has been replaced");
+      expect(blockStr).toContain("/vm0 agent link");
+    });
+
+    it("returns deprecation error for list command", async () => {
+      const { installation, userLink } = await context.createSlackInstallation({
+        withUserLink: true,
+      });
+
+      const body = buildCommandBody(
+        "agent list",
+        installation.slackWorkspaceId,
+        userLink.slackUserId,
+      );
+      const request = createSignedSlackRequest(body);
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.response_type).toBe("ephemeral");
+      const blockStr = JSON.stringify(data.blocks);
+      expect(blockStr).toContain("has been removed");
+      expect(blockStr).toContain("one agent linked at a time");
     });
   });
 

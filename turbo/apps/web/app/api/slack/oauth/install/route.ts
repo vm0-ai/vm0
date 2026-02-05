@@ -24,6 +24,7 @@ const BOT_SCOPES = [
   "commands", // Handle slash commands
   "users:read", // Get user info
   "reactions:write", // Add reactions to messages (for thinking indicator)
+  "files:read", // Download files shared in messages (images, etc.)
 ].join(",");
 
 export async function GET(request: Request) {

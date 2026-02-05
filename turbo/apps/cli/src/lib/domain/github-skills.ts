@@ -97,6 +97,83 @@ export async function downloadGitHubSkill(
 }
 
 /**
+ * Result of downloading a GitHub directory
+ */
+interface GitHubDownloadResult {
+  /** Path to the downloaded directory */
+  dir: string;
+  /** Path to the temp root directory (for cleanup) */
+  tempRoot: string;
+}
+
+/**
+ * Download a GitHub directory using git sparse-checkout.
+ * Returns paths to both the downloaded directory and the temp root for cleanup.
+ *
+ * @param url - GitHub tree URL
+ * @returns Object with dir (downloaded path) and tempRoot (for cleanup)
+ */
+export async function downloadGitHubDirectory(
+  url: string,
+): Promise<GitHubDownloadResult> {
+  const parsed = parseGitHubTreeUrl(url);
+  const repoUrl = `https://github.com/${parsed.owner}/${parsed.repo}.git`;
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "vm0-github-"));
+
+  try {
+    // Check git is available
+    try {
+      await execAsync("git --version");
+    } catch {
+      throw new Error(
+        "git command not found. Please install git to use GitHub URLs.",
+      );
+    }
+
+    // Initialize sparse checkout
+    await execAsync(`git init`, { cwd: tempDir });
+    await execAsync(`git remote add origin "${repoUrl}"`, { cwd: tempDir });
+    await execAsync(`git config core.sparseCheckout true`, { cwd: tempDir });
+
+    // Configure sparse checkout to only fetch the target path
+    const sparseFile = path.join(tempDir, ".git", "info", "sparse-checkout");
+    await fs.writeFile(sparseFile, parsed.path + "\n");
+
+    // Fetch only the required branch with better error handling
+    try {
+      await execAsync(`git fetch --depth 1 origin "${parsed.branch}"`, {
+        cwd: tempDir,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (
+        message.includes("Authentication failed") ||
+        message.includes("could not read Username")
+      ) {
+        throw new Error(`Cannot access repository. Is it private? URL: ${url}`);
+      }
+      if (message.includes("couldn't find remote ref")) {
+        throw new Error(
+          `Branch "${parsed.branch}" not found in repository: ${url}`,
+        );
+      }
+      throw error;
+    }
+
+    await execAsync(`git checkout "${parsed.branch}"`, { cwd: tempDir });
+
+    return {
+      dir: path.join(tempDir, parsed.path),
+      tempRoot: tempDir,
+    };
+  } catch (error) {
+    // Clean up on error
+    await fs.rm(tempDir, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+/**
  * Validate that a downloaded skill has the required SKILL.md file
  *
  * @param skillDir - Path to the downloaded skill directory

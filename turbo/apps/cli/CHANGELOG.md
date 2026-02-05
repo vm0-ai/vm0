@@ -1,5 +1,27 @@
 # Changelog
 
+## [9.20.2](https://github.com/vm0-ai/vm0/compare/cli-v9.20.1...cli-v9.20.2) (2026-02-05)
+
+
+### Bug Fixes
+
+* **dev:** change pre-commit hooks to serial execution ([#2422](https://github.com/vm0-ai/vm0/issues/2422)) ([2505c13](https://github.com/vm0-ai/vm0/commit/2505c13d11bb38376b3e6343a051a7814b011a61))
+
+## [9.20.1](https://github.com/vm0-ai/vm0/compare/cli-v9.20.0...cli-v9.20.1) (2026-02-05)
+
+
+### Bug Fixes
+
+* **cli:** normalize agent name to lowercase before uploading instructions ([#2417](https://github.com/vm0-ai/vm0/issues/2417)) ([afb1a9c](https://github.com/vm0-ai/vm0/commit/afb1a9cb07fe2aeef4b139ff79a1179351ff35c8)), closes [#2414](https://github.com/vm0-ai/vm0/issues/2414)
+
+## [9.20.0](https://github.com/vm0-ai/vm0/compare/cli-v9.19.0...cli-v9.20.0) (2026-02-05)
+
+
+### Features
+
+* **cli:** mark agent sharing as experimental with safety flag ([#2393](https://github.com/vm0-ai/vm0/issues/2393)) ([0fe6188](https://github.com/vm0-ai/vm0/commit/0fe6188e8420a504a5afa4ce6794e3e769e9f63a))
+* **cli:** support github url for vm0 compose command ([#2402](https://github.com/vm0-ai/vm0/issues/2402)) ([4df7b65](https://github.com/vm0-ai/vm0/commit/4df7b65f5cef16be99693213ad59c3bc91252f27))
+
 ## [9.19.0](https://github.com/vm0-ai/vm0/compare/cli-v9.18.0...cli-v9.19.0) (2026-02-05)
 
 

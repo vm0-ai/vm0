@@ -66,13 +66,10 @@ describe("Agent Sharing Commands", () => {
   });
 
   afterEach(() => {
-    mockExit.mockClear();
-    mockConsoleLog.mockClear();
-    mockConsoleError.mockClear();
     vi.unstubAllEnvs();
   });
 
-  describe("vm0 agent public", () => {
+  describe("vm0 agent experimental-public", () => {
     it("should make agent public successfully", async () => {
       server.use(
         http.post(
@@ -96,9 +93,11 @@ describe("Agent Sharing Commands", () => {
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("now public"),
       );
-      // Check for run command hint
+      // Check for run command hint with experimental flag
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining(`vm0 run ${testScopeSlug}/${testAgentName}`),
+        expect.stringContaining(
+          `vm0 run ${testScopeSlug}/${testAgentName} --experimental-shared-agent`,
+        ),
       );
     });
 
@@ -150,7 +149,7 @@ describe("Agent Sharing Commands", () => {
     });
   });
 
-  describe("vm0 agent private", () => {
+  describe("vm0 agent experimental-private", () => {
     it("should make agent private successfully", async () => {
       server.use(
         http.delete(
@@ -191,7 +190,7 @@ describe("Agent Sharing Commands", () => {
     });
   });
 
-  describe("vm0 agent share", () => {
+  describe("vm0 agent experimental-share", () => {
     it("should share agent with email successfully", async () => {
       const shareEmail = "user@example.com";
 
@@ -224,9 +223,11 @@ describe("Agent Sharing Commands", () => {
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("shared with"),
       );
-      // Check for run command hint
+      // Check for run command hint with experimental flag
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining(`vm0 run ${testScopeSlug}/${testAgentName}`),
+        expect.stringContaining(
+          `vm0 run ${testScopeSlug}/${testAgentName} --experimental-shared-agent`,
+        ),
       );
     });
 
@@ -262,7 +263,7 @@ describe("Agent Sharing Commands", () => {
     });
   });
 
-  describe("vm0 agent unshare", () => {
+  describe("vm0 agent experimental-unshare", () => {
     it("should unshare agent from email successfully", async () => {
       const unshareEmail = "user@example.com";
 
@@ -318,7 +319,7 @@ describe("Agent Sharing Commands", () => {
     });
   });
 
-  describe("vm0 agent permission", () => {
+  describe("vm0 agent experimental-permission", () => {
     it("should list permissions for agent", async () => {
       server.use(
         http.get(

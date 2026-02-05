@@ -8,6 +8,14 @@ function initEnv() {
       NODE_ENV: z
         .enum(["development", "test", "production"])
         .default("development"),
+      // Database pool configuration
+      DB_POOL_MAX: z.coerce.number().int().positive().default(10),
+      DB_POOL_IDLE_TIMEOUT_MS: z.coerce.number().int().nonnegative().optional(),
+      DB_POOL_CONNECT_TIMEOUT_MS: z.coerce
+        .number()
+        .int()
+        .positive()
+        .default(10000),
       CLERK_SECRET_KEY: z.string().min(1),
       E2B_API_KEY: z.string().min(1),
       VM0_API_URL: z.string().url().optional(),
@@ -28,13 +36,22 @@ function initEnv() {
       SLACK_REDIRECT_BASE_URL: z.string().url().optional(), // Override base URL for OAuth redirects (e.g., tunnel URL)
       // LLM API
       OPENROUTER_API_KEY: z.string().min(1).optional(), // OpenRouter API key for logged-in users
+      // Sentry
+      SENTRY_DSN: z.string().url().optional(),
+      SENTRY_AUTH_TOKEN: z.string().min(1).optional(),
+      SENTRY_ORG: z.string().min(1).optional(),
+      SENTRY_PROJECT: z.string().min(1).optional(),
     },
     client: {
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1),
+      NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
     },
     runtimeEnv: {
       DATABASE_URL: process.env.DATABASE_URL,
       NODE_ENV: process.env.NODE_ENV,
+      DB_POOL_MAX: process.env.DB_POOL_MAX,
+      DB_POOL_IDLE_TIMEOUT_MS: process.env.DB_POOL_IDLE_TIMEOUT_MS,
+      DB_POOL_CONNECT_TIMEOUT_MS: process.env.DB_POOL_CONNECT_TIMEOUT_MS,
       CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
       E2B_API_KEY: process.env.E2B_API_KEY,
       VM0_API_URL: process.env.VM0_API_URL,
@@ -53,8 +70,13 @@ function initEnv() {
       SLACK_SIGNING_SECRET: process.env.SLACK_SIGNING_SECRET,
       SLACK_REDIRECT_BASE_URL: process.env.SLACK_REDIRECT_BASE_URL,
       OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+      SENTRY_DSN: process.env.SENTRY_DSN,
+      SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
+      SENTRY_ORG: process.env.SENTRY_ORG,
+      SENTRY_PROJECT: process.env.SENTRY_PROJECT,
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
         process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+      NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
     },
     emptyStringAsUndefined: true,
   });

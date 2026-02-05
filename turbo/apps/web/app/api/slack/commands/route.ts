@@ -24,7 +24,6 @@ import { listSecrets } from "../../../../src/lib/secret/secret-service";
 import { listVariables } from "../../../../src/lib/variable/variable-service";
 import {
   buildAgentAddModal,
-  buildAgentListMessage,
   buildHelpMessage,
   buildErrorMessage,
   buildSuccessMessage,
@@ -116,18 +115,34 @@ function verifyRequest(
  */
 async function handleAgentCommand(
   action: string,
-  args: string[],
+  _args: string[],
   client: ReturnType<typeof createSlackClient>,
   payload: SlackCommandPayload,
   userLinkId: string,
   vm0UserId: string,
 ): Promise<NextResponse> {
   switch (action) {
+    case "link":
+      return handleAgentLink(client, payload, vm0UserId, userLinkId);
+
+    case "unlink":
+      return handleAgentUnlink(userLinkId);
+
     case "add":
-      return handleAgentAdd(client, payload, vm0UserId, userLinkId);
+      return NextResponse.json({
+        response_type: "ephemeral",
+        blocks: buildErrorMessage(
+          "The `add` command has been replaced.\n\nUse `/vm0 agent link` instead.",
+        ),
+      });
 
     case "list":
-      return handleAgentList(userLinkId);
+      return NextResponse.json({
+        response_type: "ephemeral",
+        blocks: buildErrorMessage(
+          "The `list` command has been removed.\n\nYou can only have one agent linked at a time.",
+        ),
+      });
 
     case "remove":
       return handleAgentRemove(client, payload, userLinkId);
@@ -139,7 +154,7 @@ async function handleAgentCommand(
       return NextResponse.json({
         response_type: "ephemeral",
         blocks: buildErrorMessage(
-          `Unknown agent command: \`${action}\`\n\nAvailable commands:\n• \`/vm0 agent add\`\n• \`/vm0 agent list\`\n• \`/vm0 agent update\`\n• \`/vm0 agent remove\``,
+          `Unknown agent command: \`${action}\`\n\nAvailable commands:\n• \`/vm0 agent link\`\n• \`/vm0 agent unlink\`\n• \`/vm0 agent update\``,
         ),
       });
   }
@@ -159,7 +174,7 @@ function handleLoginCommand(
     return NextResponse.json({
       response_type: "ephemeral",
       blocks: buildSuccessMessage(
-        "You are already logged in.\n\nUse `/vm0 agent add` to add an agent or `/vm0 help` for more commands.",
+        "You are already logged in.\n\nUse `/vm0 agent link` to link an agent or `/vm0 help` for more commands.",
       ),
     });
   }
@@ -343,7 +358,70 @@ export async function POST(request: Request) {
 }
 
 /**
- * Handle /vm0 agent add - Open modal to add agent
+ * Handle /vm0 agent link - Link an agent (single binding mode)
+ */
+async function handleAgentLink(
+  client: ReturnType<typeof createSlackClient>,
+  payload: SlackCommandPayload,
+  vm0UserId: string,
+  userLinkId: string,
+): Promise<NextResponse> {
+  // Check if user already has a binding (single binding constraint)
+  const existingBindings = await globalThis.services.db
+    .select({ id: slackBindings.id, agentName: slackBindings.agentName })
+    .from(slackBindings)
+    .where(eq(slackBindings.slackUserLinkId, userLinkId))
+    .limit(1);
+
+  if (existingBindings.length > 0) {
+    const agentName = existingBindings[0]?.agentName;
+    return NextResponse.json({
+      response_type: "ephemeral",
+      blocks: buildErrorMessage(
+        `You already have agent \`${agentName}\` linked.\n\nUse \`/vm0 agent unlink\` to remove it first, or \`/vm0 agent update\` to update its configuration.`,
+      ),
+    });
+  }
+
+  // Reuse existing add logic
+  return handleAgentAdd(client, payload, vm0UserId, userLinkId);
+}
+
+/**
+ * Handle /vm0 agent unlink - Unlink the current agent
+ */
+async function handleAgentUnlink(userLinkId: string): Promise<NextResponse> {
+  // Get user's current binding
+  const bindings = await globalThis.services.db
+    .select({ id: slackBindings.id, agentName: slackBindings.agentName })
+    .from(slackBindings)
+    .where(eq(slackBindings.slackUserLinkId, userLinkId));
+
+  if (bindings.length === 0) {
+    return NextResponse.json({
+      response_type: "ephemeral",
+      blocks: buildErrorMessage(
+        "You don't have any agent linked.\n\nUse `/vm0 agent link` to link one.",
+      ),
+    });
+  }
+
+  // Delete all bindings for this user (in single-binding mode, should be only one)
+  const agentName = bindings[0]?.agentName;
+  await globalThis.services.db
+    .delete(slackBindings)
+    .where(eq(slackBindings.slackUserLinkId, userLinkId));
+
+  return NextResponse.json({
+    response_type: "ephemeral",
+    blocks: buildSuccessMessage(
+      `Agent \`${agentName}\` has been unlinked.\n\nUse \`/vm0 agent link\` to link a different agent.`,
+    ),
+  });
+}
+
+/**
+ * Handle /vm0 agent add - Open modal to add agent (internal, used by link)
  */
 async function handleAgentAdd(
   client: ReturnType<typeof createSlackClient>,
@@ -453,25 +531,6 @@ async function handleAgentAdd(
 }
 
 /**
- * Handle /vm0 agent list - List bound agents
- */
-async function handleAgentList(userLinkId: string): Promise<NextResponse> {
-  const bindings = await globalThis.services.db
-    .select({
-      agentName: slackBindings.agentName,
-      description: slackBindings.description,
-      enabled: slackBindings.enabled,
-    })
-    .from(slackBindings)
-    .where(eq(slackBindings.slackUserLinkId, userLinkId));
-
-  return NextResponse.json({
-    response_type: "ephemeral",
-    blocks: buildAgentListMessage(bindings),
-  });
-}
-
-/**
  * Handle /vm0 agent remove - Open modal to select agents to remove
  */
 async function handleAgentRemove(
@@ -492,7 +551,7 @@ async function handleAgentRemove(
     return NextResponse.json({
       response_type: "ephemeral",
       blocks: buildErrorMessage(
-        "You don't have any agents to remove.\n\nUse `/vm0 agent add` to add one first.",
+        "You don't have any agents to remove.\n\nUse `/vm0 agent link` to link one first.",
       ),
     });
   }
@@ -533,7 +592,7 @@ async function handleAgentUpdate(
     return NextResponse.json({
       response_type: "ephemeral",
       blocks: buildErrorMessage(
-        "You don't have any agents to update.\n\nUse `/vm0 agent add` to add one first.",
+        "You don't have any agent linked.\n\nUse `/vm0 agent link` to link one first.",
       ),
     });
   }
@@ -598,10 +657,12 @@ async function handleAgentUpdate(
     };
   });
 
-  // Open modal
+  // Open modal - pre-select if only one agent (single binding mode)
+  const selectedAgentId =
+    agentsWithSecrets.length === 1 ? agentsWithSecrets[0]?.id : undefined;
   const modal = buildAgentUpdateModal(
     agentsWithSecrets,
-    undefined,
+    selectedAgentId,
     payload.channel_id,
   );
 

@@ -4,13 +4,13 @@ import { server } from "../../../mocks/server";
 import { createMockChildProcess } from "../../../mocks/spawn-helpers";
 import { composeCommand, getSecretsFromComposeContent } from "../index";
 import * as fs from "fs/promises";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "fs";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as yaml from "yaml";
 import chalk from "chalk";
 
-// Mock downloadGitHubSkill since it uses git commands (external system call)
+// Mock downloadGitHubSkill and downloadGitHubDirectory since they use git commands (external system call)
 // This is the actual external boundary - git sparse-checkout via child_process.exec
 vi.mock("../../../lib/domain/github-skills", async (importOriginal) => {
   const original =
@@ -18,6 +18,7 @@ vi.mock("../../../lib/domain/github-skills", async (importOriginal) => {
   return {
     ...original,
     downloadGitHubSkill: vi.fn(),
+    downloadGitHubDirectory: vi.fn(),
   };
 });
 
@@ -31,8 +32,12 @@ vi.mock("child_process", async (importOriginal) => {
   };
 });
 
-import { downloadGitHubSkill } from "../../../lib/domain/github-skills";
+import {
+  downloadGitHubSkill,
+  downloadGitHubDirectory,
+} from "../../../lib/domain/github-skills";
 const mockDownloadGitHubSkill = vi.mocked(downloadGitHubSkill);
+const mockDownloadGitHubDirectory = vi.mocked(downloadGitHubDirectory);
 
 import { spawn } from "child_process";
 const mockSpawn = vi.mocked(spawn);
@@ -1525,6 +1530,510 @@ agents:
         expect.objectContaining({
           stdio: "pipe",
         }),
+      );
+    });
+  });
+});
+
+describe("GitHub URL compose", () => {
+  let tempDir: string;
+  let originalCwd: string;
+
+  const scopeResponse = {
+    id: "scope-123",
+    slug: "user-abc12345",
+    type: "personal",
+    displayName: null,
+    createdAt: "2025-01-01T00:00:00Z",
+    updatedAt: "2025-01-01T00:00:00Z",
+  };
+
+  /**
+   * Helper to create a mock GitHub cookbook directory with vm0.yaml.
+   */
+  function createMockCookbookDir(
+    parentDir: string,
+    subPath: string,
+    vm0YamlContent: string,
+  ): string {
+    const cookbookDir = path.join(parentDir, subPath);
+    mkdirSync(cookbookDir, { recursive: true });
+    writeFileSync(path.join(cookbookDir, "vm0.yaml"), vm0YamlContent);
+    return cookbookDir;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tempDir = mkdtempSync(path.join(os.tmpdir(), "test-github-compose-"));
+    originalCwd = process.cwd();
+    process.chdir(tempDir);
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
+    chalk.level = 0;
+
+    // Default npm registry handler
+    server.use(
+      http.get("https://registry.npmjs.org/*/latest", () => {
+        return HttpResponse.json({ version: "0.0.0-test" });
+      }),
+    );
+
+    // Default spawn mock
+    mockSpawn.mockImplementation(() => createMockChildProcess(0) as never);
+  });
+
+  afterEach(() => {
+    process.chdir(originalCwd);
+    rmSync(tempDir, { recursive: true, force: true });
+    vi.unstubAllEnvs();
+  });
+
+  it("should show security warning when GitHub URL used without --experimental-shared-compose flag", async () => {
+    await expect(async () => {
+      await composeCommand.parseAsync([
+        "node",
+        "cli",
+        "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Composing shared agents requires --experimental-shared-compose flag",
+      ),
+    );
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Composing agents from other users carries security risks.",
+      ),
+    );
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining("Only compose agents from users you trust."),
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it("should error when vm0.yaml not found in GitHub directory", async () => {
+    // Mock downloadGitHubDirectory to return an empty directory (no vm0.yaml)
+    const tempRoot = path.join(tempDir, "github-download");
+    const emptyDir = path.join(tempRoot, "tutorials/101-intro");
+    mkdirSync(emptyDir, { recursive: true });
+    mockDownloadGitHubDirectory.mockResolvedValue({ dir: emptyDir, tempRoot });
+
+    await expect(async () => {
+      await composeCommand.parseAsync([
+        "node",
+        "cli",
+        "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
+        "--experimental-shared-compose",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining("vm0.yaml not found"),
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it("should error when compose has volumes", async () => {
+    // Mock downloadGitHubDirectory to return a directory with vm0.yaml containing volumes
+    const tempRoot = path.join(tempDir, "github-download");
+    const cookbookDir = createMockCookbookDir(
+      tempRoot,
+      "tutorials/104-intro-volume",
+      `version: "1.0"
+agents:
+  intro-volume:
+    framework: claude-code
+    volumes:
+      - claude-files:/home/user/.claude
+
+volumes:
+  claude-files:
+    name: claude-files
+    version: latest`,
+    );
+    mockDownloadGitHubDirectory.mockResolvedValue({
+      dir: cookbookDir,
+      tempRoot,
+    });
+
+    await expect(async () => {
+      await composeCommand.parseAsync([
+        "node",
+        "cli",
+        "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/104-intro-volume",
+        "--experimental-shared-compose",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Volumes are not supported for GitHub URL compose",
+      ),
+    );
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining("Clone the repository locally"),
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it("should successfully compose from GitHub URL with flag", async () => {
+    // Mock downloadGitHubDirectory to return a valid cookbook
+    const tempRoot = path.join(tempDir, "github-download");
+    const cookbookDir = createMockCookbookDir(
+      tempRoot,
+      "tutorials/101-intro",
+      `version: "1.0"
+agents:
+  intro:
+    framework: claude-code`,
+    );
+    mockDownloadGitHubDirectory.mockResolvedValue({
+      dir: cookbookDir,
+      tempRoot,
+    });
+
+    server.use(
+      http.get("http://localhost:3000/api/agent/composes", () => {
+        return HttpResponse.json(
+          { error: { message: "Not found", code: "NOT_FOUND" } },
+          { status: 404 },
+        );
+      }),
+      http.post("http://localhost:3000/api/agent/composes", () => {
+        return HttpResponse.json({
+          composeId: "cmp-123",
+          name: "intro",
+          versionId: "a".repeat(64),
+          action: "created",
+        });
+      }),
+      http.get("http://localhost:3000/api/scope", () => {
+        return HttpResponse.json(scopeResponse);
+      }),
+    );
+
+    await composeCommand.parseAsync([
+      "node",
+      "cli",
+      "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
+      "--experimental-shared-compose",
+    ]);
+
+    expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect.stringContaining("Downloading from GitHub"),
+    );
+    expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect.stringContaining("Compose created: user-abc12345/intro"),
+    );
+  });
+
+  it("should handle compose with instructions from GitHub URL", async () => {
+    // Create cookbook directory with instructions file
+    const tempRoot = path.join(tempDir, "github-download");
+    const cookbookDir = createMockCookbookDir(
+      tempRoot,
+      "tutorials/101-intro",
+      `version: "1.0"
+agents:
+  intro:
+    framework: claude-code
+    instructions: AGENTS.md`,
+    );
+    writeFileSync(path.join(cookbookDir, "AGENTS.md"), "# Agent Instructions");
+    mockDownloadGitHubDirectory.mockResolvedValue({
+      dir: cookbookDir,
+      tempRoot,
+    });
+
+    server.use(
+      http.post("http://localhost:3000/api/storages/prepare", () => {
+        return HttpResponse.json({
+          versionId: "a".repeat(64),
+          existing: true,
+        });
+      }),
+      http.post("http://localhost:3000/api/storages/commit", () => {
+        return HttpResponse.json({
+          success: true,
+          versionId: "a".repeat(64),
+          storageName: "test-storage",
+          size: 1000,
+          fileCount: 1,
+          deduplicated: true,
+        });
+      }),
+      http.get("http://localhost:3000/api/agent/composes", () => {
+        return HttpResponse.json(
+          { error: { message: "Not found", code: "NOT_FOUND" } },
+          { status: 404 },
+        );
+      }),
+      http.post("http://localhost:3000/api/agent/composes", () => {
+        return HttpResponse.json({
+          composeId: "cmp-123",
+          name: "intro",
+          versionId: "a".repeat(64),
+          action: "created",
+        });
+      }),
+      http.get("http://localhost:3000/api/scope", () => {
+        return HttpResponse.json(scopeResponse);
+      }),
+    );
+
+    await composeCommand.parseAsync([
+      "node",
+      "cli",
+      "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
+      "--experimental-shared-compose",
+    ]);
+
+    expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect.stringContaining("Uploading instructions"),
+    );
+    expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect.stringContaining("Compose created"),
+    );
+  });
+
+  it("should cleanup temp directory after successful compose", async () => {
+    // Create a temp directory structure that matches what downloadGitHubDirectory returns
+    // The function now returns { dir, tempRoot } so cleanup uses tempRoot directly
+
+    // Simulate the actual structure: vm0-github-xxx/tutorials/101-intro
+    const vm0TempRoot = mkdtempSync(path.join(tempDir, "vm0-github-"));
+    const cookbookDir = createMockCookbookDir(
+      vm0TempRoot,
+      "tutorials/101-intro",
+      `version: "1.0"
+agents:
+  intro:
+    framework: claude-code`,
+    );
+    mockDownloadGitHubDirectory.mockResolvedValue({
+      dir: cookbookDir,
+      tempRoot: vm0TempRoot,
+    });
+
+    server.use(
+      http.get("http://localhost:3000/api/agent/composes", () => {
+        return HttpResponse.json(
+          { error: { message: "Not found", code: "NOT_FOUND" } },
+          { status: 404 },
+        );
+      }),
+      http.post("http://localhost:3000/api/agent/composes", () => {
+        return HttpResponse.json({
+          composeId: "cmp-123",
+          name: "intro",
+          versionId: "a".repeat(64),
+          action: "created",
+        });
+      }),
+      http.get("http://localhost:3000/api/scope", () => {
+        return HttpResponse.json(scopeResponse);
+      }),
+    );
+
+    await composeCommand.parseAsync([
+      "node",
+      "cli",
+      "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
+      "--experimental-shared-compose",
+    ]);
+
+    // The tempRoot should be fully cleaned up (including the .git folder)
+    expect(existsSync(vm0TempRoot)).toBe(false);
+  });
+
+  it("should detect GitHub tree URLs correctly", async () => {
+    // Non-GitHub URL should not trigger experimental flag check
+    await expect(async () => {
+      await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
+    }).rejects.toThrow("process.exit called");
+
+    // Should show "not found" error, not the experimental flag error
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining("Config file not found"),
+    );
+    expect(mockConsoleError).not.toHaveBeenCalledWith(
+      expect.stringContaining("--experimental-shared-compose"),
+    );
+  });
+
+  describe("existing agent overwrite confirmation", () => {
+    it("should prompt for confirmation when agent already exists (non-interactive without --yes)", async () => {
+      const tempRoot = path.join(tempDir, "github-download");
+      const cookbookDir = createMockCookbookDir(
+        tempRoot,
+        "tutorials/101-intro",
+        `version: "1.0"
+agents:
+  intro:
+    framework: claude-code`,
+      );
+      mockDownloadGitHubDirectory.mockResolvedValue({
+        dir: cookbookDir,
+        tempRoot,
+      });
+
+      // Mock existing compose
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            id: "existing-compose-id",
+            name: "intro",
+            headVersionId: "c".repeat(64),
+            content: {
+              version: "1.0",
+              agents: { intro: { framework: "claude-code" } },
+            },
+            createdAt: "2025-01-01T00:00:00Z",
+            updatedAt: "2025-01-01T00:00:00Z",
+          });
+        }),
+      );
+
+      // Non-interactive mode
+      vi.stubEnv("CI", "true");
+
+      await expect(async () => {
+        await composeCommand.parseAsync([
+          "node",
+          "cli",
+          "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
+          "--experimental-shared-compose",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('An agent named "intro" already exists'),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Cannot overwrite existing agent in non-interactive mode",
+        ),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--yes"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should allow overwrite with --yes flag when agent exists (non-interactive)", async () => {
+      const tempRoot = path.join(tempDir, "github-download");
+      const cookbookDir = createMockCookbookDir(
+        tempRoot,
+        "tutorials/101-intro",
+        `version: "1.0"
+agents:
+  intro:
+    framework: claude-code`,
+      );
+      mockDownloadGitHubDirectory.mockResolvedValue({
+        dir: cookbookDir,
+        tempRoot,
+      });
+
+      // Mock existing compose for the name check
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            id: "existing-compose-id",
+            name: "intro",
+            headVersionId: "c".repeat(64),
+            content: {
+              version: "1.0",
+              agents: { intro: { framework: "claude-code" } },
+            },
+            createdAt: "2025-01-01T00:00:00Z",
+            updatedAt: "2025-01-01T00:00:00Z",
+          });
+        }),
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            composeId: "cmp-123",
+            name: "intro",
+            versionId: "a".repeat(64),
+            action: "existing",
+          });
+        }),
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(scopeResponse);
+        }),
+      );
+
+      // Non-interactive mode
+      vi.stubEnv("CI", "true");
+
+      await composeCommand.parseAsync([
+        "node",
+        "cli",
+        "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
+        "--experimental-shared-compose",
+        "--yes",
+      ]);
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('An agent named "intro" already exists'),
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Compose version exists"),
+      );
+    });
+
+    it("should not prompt when agent does not exist", async () => {
+      const tempRoot = path.join(tempDir, "github-download");
+      const cookbookDir = createMockCookbookDir(
+        tempRoot,
+        "tutorials/101-intro",
+        `version: "1.0"
+agents:
+  new-agent:
+    framework: claude-code`,
+      );
+      mockDownloadGitHubDirectory.mockResolvedValue({
+        dir: cookbookDir,
+        tempRoot,
+      });
+
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            composeId: "cmp-123",
+            name: "new-agent",
+            versionId: "a".repeat(64),
+            action: "created",
+          });
+        }),
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(scopeResponse);
+        }),
+      );
+
+      await composeCommand.parseAsync([
+        "node",
+        "cli",
+        "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
+        "--experimental-shared-compose",
+      ]);
+
+      // Should not show the "already exists" warning
+      const allLogs = mockConsoleLog.mock.calls
+        .map((call) => call[0])
+        .filter((log): log is string => typeof log === "string");
+      expect(allLogs.some((log) => log.includes("already exists"))).toBe(false);
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Compose created"),
       );
     });
   });

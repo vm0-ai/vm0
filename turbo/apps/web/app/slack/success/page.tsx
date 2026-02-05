@@ -161,8 +161,8 @@ function SlackSuccessContent(): React.JSX.Element {
               <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
                 <li>
                   • Use{" "}
-                  <code className="rounded bg-muted px-1">/vm0 agent add</code>{" "}
-                  to add an agent
+                  <code className="rounded bg-muted px-1">/vm0 agent link</code>{" "}
+                  to link an agent
                 </li>
                 <li>
                   • Mention <code className="rounded bg-muted px-1">@VM0</code>{" "}
