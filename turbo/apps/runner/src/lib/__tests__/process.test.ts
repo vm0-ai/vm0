@@ -152,75 +152,49 @@ describe("process discovery", () => {
   });
 
   describe("parseRunnerCmdline", () => {
-    it("parses runner start command", () => {
+    it("parses start command with yaml config", () => {
       const input = cmdline(
         "node",
-        "/opt/runner/dist/cli.js",
-        "runner",
+        "./index.js",
         "start",
         "--config",
-        "/opt/runner/runner.yaml",
+        "./runner.yaml",
       );
       expect(parseRunnerCmdline(input)).toEqual({
-        configPath: "/opt/runner/runner.yaml",
+        configPath: "./runner.yaml",
         mode: "start",
       });
     });
 
-    it("parses runner benchmark command", () => {
+    it("parses benchmark command with yaml config", () => {
       const input = cmdline(
         "node",
-        "/opt/runner/dist/cli.js",
-        "runner",
+        "./index.js",
         "benchmark",
         "--config",
-        "/opt/runner/runner.yaml",
+        "./benchmark.yaml",
       );
       expect(parseRunnerCmdline(input)).toEqual({
-        configPath: "/opt/runner/runner.yaml",
+        configPath: "./benchmark.yaml",
         mode: "benchmark",
       });
     });
 
-    it("parses runner command with additional args", () => {
-      const input = cmdline(
-        "node",
-        "/opt/runner/dist/cli.js",
-        "runner",
-        "start",
-        "--config",
-        "/opt/runner/runner.yaml",
-        "--verbose",
-      );
+    it("parses with .yml extension", () => {
+      const input = cmdline("node", "x.js", "start", "--config", "runner.yml");
       expect(parseRunnerCmdline(input)).toEqual({
-        configPath: "/opt/runner/runner.yaml",
+        configPath: "runner.yml",
         mode: "start",
       });
     });
 
-    it("returns null for non-runner process", () => {
-      const input = cmdline("node", "server.js", "start");
+    it("returns null without --config", () => {
+      const input = cmdline("node", "./index.js", "start");
       expect(parseRunnerCmdline(input)).toBeNull();
     });
 
-    it("returns null for runner without mode", () => {
-      const input = cmdline(
-        "node",
-        "/opt/runner/dist/cli.js",
-        "runner",
-        "--config",
-        "/opt/runner/runner.yaml",
-      );
-      expect(parseRunnerCmdline(input)).toBeNull();
-    });
-
-    it("returns null for runner without --config", () => {
-      const input = cmdline(
-        "node",
-        "/opt/runner/dist/cli.js",
-        "runner",
-        "start",
-      );
+    it("returns null with non-yaml config", () => {
+      const input = cmdline("node", "x.js", "start", "--config", "config.json");
       expect(parseRunnerCmdline(input)).toBeNull();
     });
 
@@ -441,19 +415,17 @@ describe("process discovery", () => {
       vol.fromJSON({
         "/proc/1000/cmdline": cmdline(
           "node",
-          "/opt/runner/dist/cli.js",
-          "runner",
+          "index.js",
           "start",
           "--config",
           "/opt/runner-a/runner.yaml",
         ),
         "/proc/2000/cmdline": cmdline(
           "node",
-          "/opt/runner/dist/cli.js",
-          "runner",
+          "index.js",
           "benchmark",
           "--config",
-          "/opt/runner-b/runner.yaml",
+          "/opt/runner-b/benchmark.yaml",
         ),
         "/proc/3000/cmdline": cmdline("nginx", "-c", "/etc/nginx.conf"),
       });
@@ -468,7 +440,7 @@ describe("process discovery", () => {
       });
       expect(result).toContainEqual({
         pid: 2000,
-        configPath: "/opt/runner-b/runner.yaml",
+        configPath: "/opt/runner-b/benchmark.yaml",
         mode: "benchmark",
       });
     });

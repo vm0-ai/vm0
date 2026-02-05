@@ -103,50 +103,30 @@ export function parseMitmproxyCmdline(cmdline: string): string | null {
  * Parse /proc/{pid}/cmdline content to extract runner process info.
  * Pure function for easy testing.
  *
- * Parses: node ... runner start --config /path/to/runner.yaml
- * Parses: node ... runner benchmark --config /path/to/runner.yaml
+ * Looks for pattern: ... (start|benchmark) --config <path> ...
+ * where config path ends with .yaml or .yml
  */
 export function parseRunnerCmdline(
   cmdline: string,
 ): { configPath: string; mode: "start" | "benchmark" } | null {
-  const args = cmdline.split("\0");
+  const args = cmdline.split("\0").filter((a) => a !== "");
 
-  // Find "start" or "benchmark" mode
-  const startIdx = args.indexOf("start");
-  const benchmarkIdx = args.indexOf("benchmark");
+  // Find "start" or "benchmark" followed by "--config <yaml file>"
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg !== "start" && arg !== "benchmark") continue;
 
-  let mode: "start" | "benchmark";
-  let modeIdx: number;
+    // Look for --config after mode
+    const configIdx = args.indexOf("--config", i + 1);
+    if (configIdx === -1 || configIdx >= args.length - 1) continue;
 
-  if (startIdx !== -1 && (benchmarkIdx === -1 || startIdx < benchmarkIdx)) {
-    mode = "start";
-    modeIdx = startIdx;
-  } else if (benchmarkIdx !== -1) {
-    mode = "benchmark";
-    modeIdx = benchmarkIdx;
-  } else {
-    return null;
+    const configPath = args[configIdx + 1];
+    if (!configPath?.match(/\.ya?ml$/)) continue;
+
+    return { configPath, mode: arg };
   }
 
-  // Check that this looks like a runner command (node ... runner start/benchmark)
-  // The arg before mode should be "runner" or end with "/runner"
-  const prevArg = args[modeIdx - 1];
-  if (!prevArg || (!prevArg.endsWith("runner") && prevArg !== "runner")) {
-    return null;
-  }
-
-  // Find --config argument
-  const configIdx = args.indexOf("--config");
-  if (configIdx === -1 || configIdx >= args.length - 1) {
-    return null;
-  }
-
-  const configPath = args[configIdx + 1];
-  if (!configPath) {
-    return null;
-  }
-
-  return { configPath, mode };
+  return null;
 }
 
 // ==================== Process Finders ====================
