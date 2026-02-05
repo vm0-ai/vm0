@@ -58,6 +58,7 @@ export {
   fetchThreadContext,
   fetchChannelContext,
   formatContextForAgent,
+  formatContextForAgentWithImages,
   extractMessageContent,
   parseExplicitAgentSelection,
 } from "./context";

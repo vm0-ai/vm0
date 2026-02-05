@@ -1,6 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   formatContextForAgent,
+  formatContextForAgentWithImages,
   extractMessageContent,
   parseExplicitAgentSelection,
 } from "../context";
@@ -323,6 +324,296 @@ describe("Feature: Extract Message Content", () => {
       const result = extractMessageContent(text, botUserId);
 
       expect(result).toBe("hello");
+    });
+  });
+});
+
+describe("Feature: Format Context With Image Embedding", () => {
+  const mockFetch = vi.fn();
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    global.fetch = mockFetch;
+    mockFetch.mockReset();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  describe("Scenario: Embed supported image types as base64", () => {
+    it("should download and embed PNG image as base64 data URL", async () => {
+      const imageBuffer = Buffer.from("fake-png-image-content");
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        arrayBuffer: async () => imageBuffer,
+      });
+
+      const messages = [
+        {
+          user: "U123",
+          text: "Check this screenshot",
+          files: [
+            {
+              id: "F123",
+              name: "screenshot.png",
+              mimetype: "image/png",
+              original_w: "1920",
+              original_h: "1080",
+              url_private_download:
+                "https://files.slack.com/files-pri/T123-F123/download/screenshot.png",
+            },
+          ],
+        },
+      ];
+
+      const result = await formatContextForAgentWithImages(
+        messages,
+        "xoxb-test-token",
+        "BBOT123",
+        "thread",
+      );
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://files.slack.com/files-pri/T123-F123/download/screenshot.png",
+        {
+          headers: {
+            Authorization: "Bearer xoxb-test-token",
+          },
+        },
+      );
+      expect(result).toContain("[file]: screenshot.png (image/png)");
+      expect(result).toContain("Dimensions: 1920x1080");
+      expect(result).toContain("Image Data: data:image/png;base64,");
+      expect(result).not.toContain("URL:");
+    });
+
+    it("should embed JPEG images", async () => {
+      const imageBuffer = Buffer.from("fake-jpeg-image-content");
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        arrayBuffer: async () => imageBuffer,
+      });
+
+      const messages = [
+        {
+          user: "U123",
+          text: "Photo",
+          files: [
+            {
+              id: "F456",
+              name: "photo.jpg",
+              mimetype: "image/jpeg",
+              url_private_download:
+                "https://files.slack.com/download/photo.jpg",
+            },
+          ],
+        },
+      ];
+
+      const result = await formatContextForAgentWithImages(
+        messages,
+        "xoxb-test-token",
+      );
+
+      expect(result).toContain("Image Data: data:image/jpeg;base64,");
+    });
+  });
+
+  describe("Scenario: Fall back to URL for unsupported types", () => {
+    it("should not embed PDF files, use URL fallback", async () => {
+      const messages = [
+        {
+          user: "U123",
+          text: "Document",
+          files: [
+            {
+              name: "report.pdf",
+              mimetype: "application/pdf",
+              url_private_download:
+                "https://files.slack.com/download/report.pdf",
+              permalink: "https://slack.com/files/report.pdf",
+            },
+          ],
+        },
+      ];
+
+      const result = await formatContextForAgentWithImages(
+        messages,
+        "xoxb-test-token",
+      );
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(result).toContain("[file]: report.pdf (application/pdf)");
+      expect(result).toContain("URL: https://slack.com/files/report.pdf");
+      expect(result).not.toContain("Image Data:");
+    });
+  });
+
+  describe("Scenario: Handle download failures gracefully", () => {
+    it("should fall back to URL when download fails", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+      });
+
+      const messages = [
+        {
+          user: "U123",
+          text: "Screenshot",
+          files: [
+            {
+              id: "F123",
+              name: "screenshot.png",
+              mimetype: "image/png",
+              url_private_download:
+                "https://files.slack.com/download/screenshot.png",
+              permalink: "https://slack.com/files/screenshot.png",
+            },
+          ],
+        },
+      ];
+
+      const result = await formatContextForAgentWithImages(
+        messages,
+        "xoxb-test-token",
+      );
+
+      expect(result).toContain("URL: https://slack.com/files/screenshot.png");
+      expect(result).not.toContain("Image Data:");
+    });
+
+    it("should fall back to URL when fetch throws", async () => {
+      mockFetch.mockRejectedValueOnce(new Error("Network error"));
+
+      const messages = [
+        {
+          user: "U123",
+          text: "Screenshot",
+          files: [
+            {
+              name: "screenshot.png",
+              mimetype: "image/png",
+              url_private_download:
+                "https://files.slack.com/download/screenshot.png",
+              thumb_480: "https://files.slack.com/thumb/screenshot.png",
+            },
+          ],
+        },
+      ];
+
+      const result = await formatContextForAgentWithImages(
+        messages,
+        "xoxb-test-token",
+      );
+
+      expect(result).toContain(
+        "URL: https://files.slack.com/thumb/screenshot.png",
+      );
+      expect(result).not.toContain("Image Data:");
+    });
+  });
+
+  describe("Scenario: Respect file size limits", () => {
+    it("should not embed files larger than 5MB", async () => {
+      const messages = [
+        {
+          user: "U123",
+          text: "Large image",
+          files: [
+            {
+              name: "large.png",
+              mimetype: "image/png",
+              size: 10 * 1024 * 1024, // 10MB
+              url_private_download:
+                "https://files.slack.com/download/large.png",
+              permalink: "https://slack.com/files/large.png",
+            },
+          ],
+        },
+      ];
+
+      const result = await formatContextForAgentWithImages(
+        messages,
+        "xoxb-test-token",
+      );
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(result).toContain("URL: https://slack.com/files/large.png");
+      expect(result).not.toContain("Image Data:");
+    });
+  });
+
+  describe("Scenario: Handle files without url_private_download", () => {
+    it("should use URL fallback when no download URL available", async () => {
+      const messages = [
+        {
+          user: "U123",
+          text: "Old image",
+          files: [
+            {
+              name: "old.png",
+              mimetype: "image/png",
+              permalink_public: "https://files.slack.com/public/old.png",
+            },
+          ],
+        },
+      ];
+
+      const result = await formatContextForAgentWithImages(
+        messages,
+        "xoxb-test-token",
+      );
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(result).toContain("URL: https://files.slack.com/public/old.png");
+    });
+  });
+
+  describe("Scenario: Handle multiple files in one message", () => {
+    it("should embed multiple images concurrently", async () => {
+      const imageBuffer1 = Buffer.from("image1");
+      const imageBuffer2 = Buffer.from("image2");
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          arrayBuffer: async () => imageBuffer1,
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          arrayBuffer: async () => imageBuffer2,
+        });
+
+      const messages = [
+        {
+          user: "U123",
+          text: "Two images",
+          files: [
+            {
+              name: "img1.png",
+              mimetype: "image/png",
+              url_private_download: "https://files.slack.com/download/img1.png",
+            },
+            {
+              name: "img2.png",
+              mimetype: "image/png",
+              url_private_download: "https://files.slack.com/download/img2.png",
+            },
+          ],
+        },
+      ];
+
+      const result = await formatContextForAgentWithImages(
+        messages,
+        "xoxb-test-token",
+      );
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(result).toContain("[file]: img1.png");
+      expect(result).toContain("[file]: img2.png");
+      // Both should have embedded data
+      expect((result.match(/Image Data:/g) || []).length).toBe(2);
     });
   });
 });
