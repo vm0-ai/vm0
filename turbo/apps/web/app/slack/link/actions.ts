@@ -198,7 +198,7 @@ async function sendSuccessMessage(
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `:white_check_mark: *Successfully logged in to VM0!*\n\nYou can now:\n• Use \`/vm0 agent add\` to add an agent\n• Mention \`@VM0\` to interact with your agents`,
+          text: `:white_check_mark: *Successfully logged in to VM0!*\n\nYou can now:\n• Use \`/vm0 agent link\` to link an agent\n• Mention \`@VM0\` to interact with your agents`,
         },
       },
     ],

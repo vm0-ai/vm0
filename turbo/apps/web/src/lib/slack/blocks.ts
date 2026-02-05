@@ -653,7 +653,7 @@ export function buildHelpMessage(): (Block | KnownBlock)[] {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "*Account*\n• `/vm0 login` - Link your VM0 account\n• `/vm0 logout` - Unlink your account",
+        text: "*Account*\n• `/vm0 login` - Log in to VM0\n• `/vm0 logout` - Log out of VM0",
       },
     },
     {

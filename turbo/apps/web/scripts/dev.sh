@@ -88,6 +88,20 @@ log_info "Tunnel URL: ${GREEN}${TUNNEL_URL}${NC}"
 log_info "Webhooks: ${YELLOW}${TUNNEL_URL}/api/webhooks/agent-events${NC}"
 echo ""
 
+# Update SLACK_REDIRECT_BASE_URL in .env.local
+ENV_LOCAL_FILE="$WEB_APP_DIR/.env.local"
+if [ -f "$ENV_LOCAL_FILE" ]; then
+  if grep -q "^SLACK_REDIRECT_BASE_URL=" "$ENV_LOCAL_FILE"; then
+    # Update existing value
+    sed -i "s|^SLACK_REDIRECT_BASE_URL=.*|SLACK_REDIRECT_BASE_URL=${TUNNEL_URL}|" "$ENV_LOCAL_FILE"
+    log_info "Updated SLACK_REDIRECT_BASE_URL in .env.local"
+  else
+    # Append new value
+    echo "SLACK_REDIRECT_BASE_URL=${TUNNEL_URL}" >> "$ENV_LOCAL_FILE"
+    log_info "Added SLACK_REDIRECT_BASE_URL to .env.local"
+  fi
+fi
+
 # Change to web app directory and exec next dev with VM0_API_URL set
 cd "$WEB_APP_DIR"
 exec env VM0_API_URL="$TUNNEL_URL" npx next dev --turbopack --port 3000
