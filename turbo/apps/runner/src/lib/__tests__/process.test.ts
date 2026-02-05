@@ -22,6 +22,12 @@ function cmdline(...args: string[]): string {
   return args.join("\x00") + "\x00";
 }
 
+// Helper to build /proc/{pid}/stat content
+// Format: pid (comm) state ppid ...
+function procStat(pid: number, ppid: number): string {
+  return `${pid} (process) S ${ppid} ${pid} ${pid} 0 -1 4194304 0 0 0 0 0 0 0 0 20 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0`;
+}
+
 describe("process discovery", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -213,6 +219,7 @@ describe("process discovery", () => {
           "--api-sock",
           "/opt/runner/workspaces/vm0-aaaabbbb/api.sock",
         ),
+        "/proc/1234/stat": procStat(1234, 100), // PPID=100, not orphan
         "/proc/5678/cmdline": cmdline("nginx", "-c", "/etc/nginx.conf"),
       });
 
@@ -223,7 +230,24 @@ describe("process discovery", () => {
         pid: 1234,
         vmId: vmId("aaaabbbb"),
         baseDir: "/opt/runner",
+        isOrphan: false,
       });
+    });
+
+    it("detects orphan firecracker process (PPID=1)", () => {
+      vol.fromJSON({
+        "/proc/1234/cmdline": cmdline(
+          "firecracker",
+          "--api-sock",
+          "/opt/runner/workspaces/vm0-aaaabbbb/api.sock",
+        ),
+        "/proc/1234/stat": procStat(1234, 1), // PPID=1, orphan
+      });
+
+      const result = findFirecrackerProcesses();
+
+      expect(result).toHaveLength(1);
+      expect(result[0]?.isOrphan).toBe(true);
     });
 
     it("returns empty array when /proc is empty", () => {
@@ -239,11 +263,13 @@ describe("process discovery", () => {
           "--api-sock",
           "/opt/runner-a/workspaces/vm0-11112222/api.sock",
         ),
+        "/proc/100/stat": procStat(100, 50),
         "/proc/200/cmdline": cmdline(
           "firecracker",
           "--api-sock",
           "/opt/runner-b/workspaces/vm0-33334444/api.sock",
         ),
+        "/proc/200/stat": procStat(200, 50),
       });
 
       const result = findFirecrackerProcesses();
@@ -253,11 +279,13 @@ describe("process discovery", () => {
         pid: 100,
         vmId: vmId("11112222"),
         baseDir: "/opt/runner-a",
+        isOrphan: false,
       });
       expect(result).toContainEqual({
         pid: 200,
         vmId: vmId("33334444"),
         baseDir: "/opt/runner-b",
+        isOrphan: false,
       });
     });
 
@@ -270,6 +298,7 @@ describe("process discovery", () => {
           "--api-sock",
           "/opt/runner/workspaces/vm0-eeeeeeee/api.sock",
         ),
+        "/proc/1234/stat": procStat(1234, 100),
       });
 
       const result = findFirecrackerProcesses();
@@ -295,6 +324,7 @@ describe("process discovery", () => {
           "--api-sock",
           "/opt/runner/workspaces/vm0-aaaabbbb/api.sock",
         ),
+        "/proc/1234/stat": procStat(1234, 100),
         "/proc/5678/cmdline": "will be mocked to throw",
       });
 
@@ -326,11 +356,13 @@ describe("process discovery", () => {
           "--api-sock",
           "/opt/runner/workspaces/vm0-aaaaaaaa/api.sock",
         ),
+        "/proc/100/stat": procStat(100, 50),
         "/proc/200/cmdline": cmdline(
           "firecracker",
           "--api-sock",
           "/opt/runner/workspaces/vm0-bbbbbbbb/api.sock",
         ),
+        "/proc/200/stat": procStat(200, 50),
       });
 
       const result = findProcessByVmId(vmId("bbbbbbbb"));
@@ -339,6 +371,7 @@ describe("process discovery", () => {
         pid: 200,
         vmId: vmId("bbbbbbbb"),
         baseDir: "/opt/runner",
+        isOrphan: false,
       });
     });
 
@@ -349,6 +382,7 @@ describe("process discovery", () => {
           "--api-sock",
           "/opt/runner/workspaces/vm0-aaaaaaaa/api.sock",
         ),
+        "/proc/100/stat": procStat(100, 50),
       });
 
       const result = findProcessByVmId(vmId("notfound"));
@@ -366,19 +400,37 @@ describe("process discovery", () => {
           "--set",
           "vm0_registry_path=/opt/runner-a/vm-registry.json",
         ),
+        "/proc/2000/stat": procStat(2000, 50),
         "/proc/3000/cmdline": cmdline(
           "mitmdump",
           "--set",
           "vm0_registry_path=/opt/runner-b/vm-registry.json",
         ),
+        "/proc/3000/stat": procStat(3000, 50),
       });
 
       const result = findMitmproxyProcesses();
 
       expect(result).toEqual([
-        { pid: 2000, baseDir: "/opt/runner-a" },
-        { pid: 3000, baseDir: "/opt/runner-b" },
+        { pid: 2000, baseDir: "/opt/runner-a", isOrphan: false },
+        { pid: 3000, baseDir: "/opt/runner-b", isOrphan: false },
       ]);
+    });
+
+    it("detects orphan mitmproxy process (PPID=1)", () => {
+      vol.fromJSON({
+        "/proc/2000/cmdline": cmdline(
+          "mitmdump",
+          "--set",
+          "vm0_registry_path=/opt/runner/vm-registry.json",
+        ),
+        "/proc/2000/stat": procStat(2000, 1), // PPID=1, orphan
+      });
+
+      const result = findMitmproxyProcesses();
+
+      expect(result).toHaveLength(1);
+      expect(result[0]?.isOrphan).toBe(true);
     });
 
     it("returns empty array when no mitmproxy process found", () => {

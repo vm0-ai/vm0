@@ -15,17 +15,44 @@ export interface FirecrackerProcess {
   pid: number;
   vmId: VmId;
   baseDir: string;
+  isOrphan: boolean;
 }
 
 interface MitmproxyProcess {
   pid: number;
   baseDir: string;
+  isOrphan: boolean;
 }
 
 interface RunnerProcess {
   pid: number;
   configPath: string;
   mode: "start" | "benchmark";
+}
+
+// ==================== Helpers ====================
+
+/**
+ * Check if a process is orphan (adopted by init, PPID == 1)
+ */
+function isOrphanProcess(pid: number): boolean {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf-8");
+    // Format: pid (comm) state ppid ...
+    // comm can contain ')' so find the last ')' to locate end of comm
+    const lastParen = stat.lastIndexOf(")");
+    if (lastParen === -1) return false;
+
+    // After comm: " state ppid ..."
+    const fields = stat
+      .slice(lastParen + 1)
+      .trim()
+      .split(/\s+/);
+    // fields[0] = state, fields[1] = ppid
+    return fields[1] === "1";
+  } catch {
+    return false;
+  }
 }
 
 // ==================== Cmdline Parsers ====================
@@ -157,7 +184,12 @@ export function findFirecrackerProcesses(): FirecrackerProcess[] {
       const cmdline = readFileSync(cmdlinePath, "utf-8");
       const parsed = parseFirecrackerCmdline(cmdline);
       if (parsed) {
-        processes.push({ pid, vmId: parsed.vmId, baseDir: parsed.baseDir });
+        processes.push({
+          pid,
+          vmId: parsed.vmId,
+          baseDir: parsed.baseDir,
+          isOrphan: isOrphanProcess(pid),
+        });
       }
     } catch {
       continue;
@@ -202,7 +234,7 @@ export function findMitmproxyProcesses(): MitmproxyProcess[] {
       const cmdline = readFileSync(cmdlinePath, "utf-8");
       const baseDir = parseMitmproxyCmdline(cmdline);
       if (baseDir) {
-        processes.push({ pid, baseDir });
+        processes.push({ pid, baseDir, isOrphan: isOrphanProcess(pid) });
       }
     } catch {
       continue;
