@@ -45,7 +45,8 @@
     "SENTRY_PROJECT",
     "NEXT_PUBLIC_SENTRY_DSN",
     "VITE_SENTRY_DSN",
-    "NEXT_RUNTIME"
+    "NEXT_RUNTIME",
+    "NEXT_PUBLIC_VERCEL_ENV"
   ],
   "tasks": {
     "build": {

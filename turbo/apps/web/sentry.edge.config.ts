@@ -6,6 +6,9 @@ Sentry.init({
   // Only enable in production
   enabled: process.env.NODE_ENV === "production",
 
+  // Set environment (Vercel provides VERCEL_ENV)
+  environment: process.env.VERCEL_ENV || process.env.NODE_ENV,
+
   // Set app tag to distinguish from platform app
   initialScope: {
     tags: {
