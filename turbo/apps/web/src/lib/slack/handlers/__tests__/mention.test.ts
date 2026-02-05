@@ -159,6 +159,32 @@ describe("Feature: App Mention Handling", () => {
       expect(loginButton).toBeDefined();
       expect(loginButton.url).toContain("c=C123"); // Channel ID included for success message
     });
+
+    it("should not include thread_ts in ephemeral login prompt (even when mentioned in thread)", async () => {
+      // Given I am a Slack user without a linked account
+      const { installation } = await givenSlackWorkspaceInstalled();
+
+      // When I @mention the VM0 bot in a thread
+      await handleAppMention({
+        workspaceId: installation.slackWorkspaceId,
+        channelId: "C123",
+        userId: "U-unlinked-user",
+        messageText: "<@BOT123> help me",
+        messageTs: "1234567890.123456",
+        threadTs: "1234567890.000000", // This is a thread reply
+      });
+
+      // Then the ephemeral message should NOT include thread_ts
+      // (Slack ephemeral messages with thread_ts don't display correctly)
+      const ephemeralCalls = slackApiCalls.filter(
+        (c) => c.method === "chat.postEphemeral",
+      );
+      expect(ephemeralCalls).toHaveLength(1);
+
+      const call = ephemeralCalls[0]!;
+      const body = call.body as { thread_ts?: string };
+      expect(body.thread_ts).toBeUndefined();
+    });
   });
 
   describe("Scenario: Mention bot with no agents", () => {

@@ -215,10 +215,10 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
         context.userId,
         context.channelId,
       );
+      // Note: Don't include thread_ts for ephemeral messages - they don't appear correctly in threads
       await client.chat.postEphemeral({
         channel: context.channelId,
         user: context.userId,
-        thread_ts: threadTs,
         text: "Please login first",
         blocks: buildLoginPromptMessage(loginUrl),
       });
