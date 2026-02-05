@@ -9,6 +9,18 @@ import {
 } from "../../../../../../src/lib/agent/permission-service";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
 
+// PostgreSQL error code 23505 = unique_violation
+function isDuplicateKeyError(error: unknown): boolean {
+  if (error instanceof Error) {
+    // Check the error message
+    if (error.message.includes("duplicate key value")) return true;
+    // Check for PostgreSQL error code in cause
+    const cause = (error as Error & { cause?: { code?: string } }).cause;
+    if (cause?.code === "23505") return true;
+  }
+  return false;
+}
+
 /**
  * GET /api/agent/composes/:id/permissions - List permissions
  */
@@ -138,11 +150,8 @@ export async function POST(
     );
     return NextResponse.json({ success: true }, { status: 201 });
   } catch (error) {
-    // Handle duplicate permission error
-    if (
-      error instanceof Error &&
-      error.message.includes("duplicate key value")
-    ) {
+    // Handle duplicate permission error (PostgreSQL error code 23505)
+    if (isDuplicateKeyError(error)) {
       return NextResponse.json(
         { error: { message: "Permission already exists", code: "CONFLICT" } },
         { status: 409 },
