@@ -263,6 +263,27 @@ describe("buildHelpMessage", () => {
     );
     expect(usageBlock).toBeDefined();
   });
+
+  it("should use 'Log in' and 'Log out' descriptions for login/logout commands", () => {
+    const blocks = buildHelpMessage();
+
+    // Find the account section
+    const accountBlock = blocks.find(
+      (b) =>
+        b.type === "section" &&
+        "text" in b &&
+        b.text?.text?.includes("/vm0 login"),
+    );
+    expect(accountBlock).toBeDefined();
+
+    const text = (accountBlock as SectionBlock).text?.text ?? "";
+    // Should use "Log in to VM0" not "Link your VM0 account"
+    expect(text).toContain("Log in to VM0");
+    expect(text).toContain("Log out of VM0");
+    // Should NOT contain old descriptions
+    expect(text).not.toContain("Link your VM0 account");
+    expect(text).not.toContain("Unlink your account");
+  });
 });
 
 describe("buildSuccessMessage", () => {
