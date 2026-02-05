@@ -456,8 +456,8 @@ jobs:
             SLACK_CLIENT_SECRET=${{ secrets.SLACK_CLIENT_SECRET }}
             SLACK_SIGNING_SECRET=${{ secrets.SLACK_SIGNING_SECRET }}
             SLACK_REDIRECT_BASE_URL=${{ needs.prepare.outputs.web-preview-url }}
-            SENTRY_DSN=${{ secrets.SENTRY_DSN }}
-            NEXT_PUBLIC_SENTRY_DSN=${{ secrets.SENTRY_DSN }}
+            SENTRY_DSN=${{ secrets.SENTRY_DSN_WEB }}
+            NEXT_PUBLIC_SENTRY_DSN=${{ secrets.SENTRY_DSN_WEB }}
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
             SENTRY_ORG=${{ vars.SENTRY_ORG }}
             SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_WEB }}
@@ -609,7 +609,7 @@ jobs:
           environment-variables: |
             VITE_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
             VITE_API_URL=${{ needs.prepare.outputs.web-preview-url }}
-            VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN }}
+            VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN_PLATFORM }}
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
             SENTRY_ORG=${{ vars.SENTRY_ORG }}
             SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_PLATFORM }}
