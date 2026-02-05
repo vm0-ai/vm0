@@ -5,7 +5,7 @@ export type { ApiError, RunResult } from "./core/types";
 export { ApiRequestError } from "./core/client-factory";
 
 // HTTP utilities (only export what's actually used)
-export { httpGet } from "./core/http";
+export { httpGet, httpPost, httpDelete } from "./core/http";
 
 // Domain modules - Composes
 export {

@@ -11,6 +11,8 @@ import {
   agentComposeVersions,
 } from "../../../../../src/db/schema/agent-compose";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
+import { canAccessCompose } from "../../../../../src/lib/agent/permission-service";
 import type { AgentComposeYaml } from "../../../../../src/types/agent-compose";
 
 const router = tsr.router(composesByIdContract, {
@@ -34,6 +36,18 @@ const router = tsr.router(composesByIdContract, {
       .limit(1);
 
     if (!compose) {
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Agent compose not found", code: "NOT_FOUND" },
+        },
+      };
+    }
+
+    // Check permission to access this compose
+    const userEmail = await getUserEmail(userId);
+    const hasAccess = await canAccessCompose(userId, userEmail, compose.id);
+    if (!hasAccess) {
       return {
         status: 404 as const,
         body: {

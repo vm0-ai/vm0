@@ -35,3 +35,33 @@ export async function httpGet(path: string): Promise<Response> {
     headers,
   });
 }
+
+/**
+ * Generic POST request
+ */
+export async function httpPost(path: string, body: unknown): Promise<Response> {
+  const baseUrl = await getBaseUrl();
+  const headers = await getRawHeaders();
+
+  return fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: {
+      ...headers,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Generic DELETE request
+ */
+export async function httpDelete(path: string): Promise<Response> {
+  const baseUrl = await getBaseUrl();
+  const headers = await getRawHeaders();
+
+  return fetch(`${baseUrl}${path}`, {
+    method: "DELETE",
+    headers,
+  });
+}

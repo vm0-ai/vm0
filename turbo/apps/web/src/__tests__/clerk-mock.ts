@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import { auth } from "@clerk/nextjs/server";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 
 /**
  * Mock Clerk auth for testing
@@ -24,6 +24,7 @@ import { auth } from "@clerk/nextjs/server";
  */
 
 const mockAuth = vi.mocked(auth);
+const mockClerkClient = vi.mocked(clerkClient);
 
 /**
  * Configure Clerk auth mock
@@ -34,6 +35,16 @@ export function mockClerk(options: { userId: string | null }) {
   mockAuth.mockResolvedValue({
     userId: options.userId,
   } as Awaited<ReturnType<typeof auth>>);
+
+  // Also set up clerkClient mock to return user data with email
+  mockClerkClient.mockResolvedValue({
+    users: {
+      getUser: vi.fn().mockResolvedValue({
+        emailAddresses: [{ id: "email_1", emailAddress: "test@example.com" }],
+        primaryEmailAddressId: "email_1",
+      }),
+    },
+  } as unknown as Awaited<ReturnType<typeof clerkClient>>);
 }
 
 /**
@@ -41,4 +52,5 @@ export function mockClerk(options: { userId: string | null }) {
  */
 export function clearClerkMock() {
   mockAuth.mockClear();
+  mockClerkClient.mockClear();
 }
