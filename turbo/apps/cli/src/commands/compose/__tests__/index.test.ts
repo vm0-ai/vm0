@@ -1863,6 +1863,119 @@ agents:
     );
   });
 
+  describe("repository root URL support", () => {
+    it("should recognize plain repository URL as GitHub URL", async () => {
+      const tempRoot = path.join(tempDir, "github-download");
+      mkdirSync(tempRoot, { recursive: true });
+      writeFileSync(
+        path.join(tempRoot, "vm0.yaml"),
+        `version: "1.0"
+agents:
+  test-agent:
+    framework: claude-code`,
+      );
+      mockDownloadGitHubDirectory.mockResolvedValue({
+        dir: tempRoot,
+        tempRoot,
+      });
+
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            composeId: "cmp-123",
+            name: "test-agent",
+            versionId: "a".repeat(64),
+            action: "created",
+          });
+        }),
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(scopeResponse);
+        }),
+      );
+
+      await composeCommand.parseAsync([
+        "node",
+        "cli",
+        "https://github.com/owner/repo",
+        "--experimental-shared-compose",
+      ]);
+
+      expect(mockDownloadGitHubDirectory).toHaveBeenCalledWith(
+        "https://github.com/owner/repo",
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Downloading from GitHub"),
+      );
+    });
+
+    it("should recognize tree URL without path (root) as GitHub URL", async () => {
+      const tempRoot = path.join(tempDir, "github-download");
+      mkdirSync(tempRoot, { recursive: true });
+      writeFileSync(
+        path.join(tempRoot, "vm0.yaml"),
+        `version: "1.0"
+agents:
+  test-agent:
+    framework: claude-code`,
+      );
+      mockDownloadGitHubDirectory.mockResolvedValue({
+        dir: tempRoot,
+        tempRoot,
+      });
+
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            composeId: "cmp-123",
+            name: "test-agent",
+            versionId: "a".repeat(64),
+            action: "created",
+          });
+        }),
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(scopeResponse);
+        }),
+      );
+
+      await composeCommand.parseAsync([
+        "node",
+        "cli",
+        "https://github.com/owner/repo/tree/main",
+        "--experimental-shared-compose",
+      ]);
+
+      expect(mockDownloadGitHubDirectory).toHaveBeenCalledWith(
+        "https://github.com/owner/repo/tree/main",
+      );
+    });
+
+    it("should require --experimental-shared-compose for plain repo URL", async () => {
+      await expect(async () => {
+        await composeCommand.parseAsync([
+          "node",
+          "cli",
+          "https://github.com/owner/repo",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--experimental-shared-compose"),
+      );
+    });
+  });
+
   describe("existing agent overwrite confirmation", () => {
     it("should prompt for confirmation when agent already exists (non-interactive without --yes)", async () => {
       const tempRoot = path.join(tempDir, "github-download");

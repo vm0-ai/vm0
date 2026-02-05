@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { parseGitHubTreeUrl, getSkillNameFromPath } from "../github-url";
+import {
+  parseGitHubTreeUrl,
+  parseGitHubUrl,
+  getSkillNameFromPath,
+} from "../github-url";
 
 describe("parseGitHubTreeUrl", () => {
   it("parses valid GitHub tree URL", () => {
@@ -67,6 +71,78 @@ describe("parseGitHubTreeUrl", () => {
     const result = parseGitHubTreeUrl(url);
 
     expect(result?.fullPath).toBe("vm0/skills/tree/main/conventional-commits");
+  });
+});
+
+describe("parseGitHubUrl", () => {
+  it("parses plain repository URL", () => {
+    const result = parseGitHubUrl("https://github.com/owner/repo");
+    expect(result).toEqual({
+      owner: "owner",
+      repo: "repo",
+      branch: null,
+      path: null,
+      fullPath: "owner/repo",
+    });
+  });
+
+  it("parses repository URL with trailing slash", () => {
+    const result = parseGitHubUrl("https://github.com/owner/repo/");
+    expect(result).toEqual({
+      owner: "owner",
+      repo: "repo",
+      branch: null,
+      path: null,
+      fullPath: "owner/repo/",
+    });
+  });
+
+  it("parses tree URL without path (root)", () => {
+    const result = parseGitHubUrl("https://github.com/owner/repo/tree/main");
+    expect(result).toEqual({
+      owner: "owner",
+      repo: "repo",
+      branch: "main",
+      path: null,
+      fullPath: "owner/repo/tree/main",
+    });
+  });
+
+  it("parses tree URL with path", () => {
+    const result = parseGitHubUrl(
+      "https://github.com/owner/repo/tree/main/path/to/dir",
+    );
+    expect(result).toEqual({
+      owner: "owner",
+      repo: "repo",
+      branch: "main",
+      path: "path/to/dir",
+      fullPath: "owner/repo/tree/main/path/to/dir",
+    });
+  });
+
+  it("handles different branch names", () => {
+    const result = parseGitHubUrl(
+      "https://github.com/owner/repo/tree/develop/path",
+    );
+    expect(result?.branch).toBe("develop");
+    expect(result?.path).toBe("path");
+  });
+
+  it("returns null for non-GitHub URLs", () => {
+    expect(parseGitHubUrl("https://gitlab.com/owner/repo")).toBeNull();
+  });
+
+  it("returns null for incomplete GitHub URLs", () => {
+    expect(parseGitHubUrl("https://github.com/owner")).toBeNull();
+    expect(parseGitHubUrl("https://github.com/")).toBeNull();
+    expect(parseGitHubUrl("not-a-url")).toBeNull();
+  });
+
+  it("returns null for blob URLs", () => {
+    expect(
+      parseGitHubUrl("https://github.com/owner/repo/blob/main/file.ts"),
+    ).toBeNull();
   });
 });
 

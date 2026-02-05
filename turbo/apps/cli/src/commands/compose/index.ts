@@ -29,10 +29,11 @@ declare const __CLI_VERSION__: string;
 const DEFAULT_CONFIG_FILE = "vm0.yaml";
 
 /**
- * Check if input is a GitHub tree URL
+ * Check if input is a GitHub URL (supports plain repo, root with branch, and subdirectory)
+ * Matches: https://github.com/owner/repo[/tree/branch[/path]]
  */
-function isGitHubTreeUrl(input: string): boolean {
-  return input.startsWith("https://github.com/") && input.includes("/tree/");
+function isGitHubUrl(input: string): boolean {
+  return /^https:\/\/github\.com\/[^/]+\/[^/]+/.test(input);
 }
 
 /**
@@ -496,7 +497,7 @@ export const composeCommand = new Command()
       const resolvedConfigFile = configFile ?? DEFAULT_CONFIG_FILE;
       try {
         // Branch based on input type
-        if (isGitHubTreeUrl(resolvedConfigFile)) {
+        if (isGitHubUrl(resolvedConfigFile)) {
           // Require experimental flag for GitHub URLs
           if (!options.experimentalSharedCompose) {
             console.error(
