@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.3.0](https://github.com/vm0-ai/vm0/compare/web-v12.2.1...web-v12.3.0) (2026-02-05)
+
+
+### Features
+
+* **docs:** update environment variables documentation to reflect current implementation ([#2379](https://github.com/vm0-ai/vm0/issues/2379)) ([f937d73](https://github.com/vm0-ai/vm0/commit/f937d735d7c2fa45a709997cfbe1370d5fb0bbc8))
+
 ## [12.2.1](https://github.com/vm0-ai/vm0/compare/web-v12.2.0...web-v12.2.1) (2026-02-05)
 
 
