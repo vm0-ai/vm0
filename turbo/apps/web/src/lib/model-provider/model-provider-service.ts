@@ -154,7 +154,7 @@ export async function upsertModelProvider(
 
   const secretName = getSecretNameForType(type);
   if (!secretName) {
-    throw badRequest(`Provider "${type}" does not have a credential name`);
+    throw badRequest(`Provider "${type}" does not have a secret name`);
   }
   const framework = getFrameworkForType(type);
   const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
@@ -179,7 +179,7 @@ export async function upsertModelProvider(
     // Legacy providers should have secretId
     if (!existingProvider.secretId) {
       throw badRequest(
-        `Provider "${type}" is missing credential reference. This is an invalid state.`,
+        `Provider "${type}" is missing secret reference. This is an invalid state.`,
       );
     }
 
@@ -231,7 +231,7 @@ export async function upsertModelProvider(
     if (existingSecret.type === "user" && !convertExisting) {
       // Conflict: user credential exists, need explicit conversion
       throw conflict(
-        `Credential "${secretName}" already exists. Use --convert to convert it to a model provider.`,
+        `Secret "${secretName}" already exists. Use --convert to convert it to a model provider.`,
       );
     }
 
@@ -305,12 +305,12 @@ export async function upsertModelProvider(
       name: secretName,
       encryptedValue,
       type: "model-provider",
-      description: `Model provider credential for ${MODEL_PROVIDER_TYPES[type].label}`,
+      description: `Model provider secret for ${MODEL_PROVIDER_TYPES[type].label}`,
     })
     .returning();
 
   if (!newSecret) {
-    throw new Error("Failed to create credential");
+    throw new Error("Failed to create secret");
   }
 
   const [newProvider] = await globalThis.services.db
@@ -417,11 +417,11 @@ async function cleanupOldAuthMethodSecrets(
           inArray(secrets.name, credentialsToDelete),
         ),
       );
-    log.debug("old auth method credentials cleaned up", {
+    log.debug("old auth method secrets cleaned up", {
       scopeId,
       type,
       oldAuthMethod,
-      deletedCredentials: credentialsToDelete,
+      deletedSecrets: credentialsToDelete,
     });
   }
 }
@@ -465,9 +465,7 @@ export async function upsertMultiAuthModelProvider(
   // Validate required credentials
   const credentialsConfig = getSecretsForAuthMethod(type, authMethod);
   if (!credentialsConfig) {
-    throw badRequest(
-      `No credentials config found for auth method "${authMethod}"`,
-    );
+    throw badRequest(`No secrets config found for auth method "${authMethod}"`);
   }
 
   const missingRequired: string[] = [];
@@ -479,7 +477,7 @@ export async function upsertMultiAuthModelProvider(
 
   if (missingRequired.length > 0) {
     throw badRequest(
-      `Missing required credentials for ${authMethod}: ${missingRequired.join(", ")}`,
+      `Missing required secrets for ${authMethod}: ${missingRequired.join(", ")}`,
     );
   }
 
@@ -514,14 +512,14 @@ export async function upsertMultiAuthModelProvider(
 
   // Store/update all credentials
   const secretNames = Object.keys(credentialValues);
-  const credentialDescription = `${MODEL_PROVIDER_TYPES[type].label} credential (${authMethod})`;
+  const secretDescription = `${MODEL_PROVIDER_TYPES[type].label} secret (${authMethod})`;
 
   for (const [name, value] of Object.entries(credentialValues)) {
     await upsertMultiAuthSecret(
       scope.id,
       name,
       value,
-      credentialDescription,
+      secretDescription,
       encryptionKey,
     );
   }
@@ -619,19 +617,19 @@ export async function convertSecretToModelProvider(
 ): Promise<ModelProviderInfo> {
   const scope = await getUserScopeByClerkId(clerkUserId);
   if (!scope) {
-    throw notFound("Credential not found");
+    throw notFound("Secret not found");
   }
 
   // Multi-auth providers don't support conversion
   if (hasAuthMethods(type)) {
     throw badRequest(
-      `Provider "${type}" requires multiple credentials and does not support conversion.`,
+      `Provider "${type}" requires multiple secrets and does not support conversion.`,
     );
   }
 
   const secretName = getSecretNameForType(type);
   if (!secretName) {
-    throw badRequest(`Provider "${type}" does not have a credential name`);
+    throw badRequest(`Provider "${type}" does not have a secret name`);
   }
   const framework = getFrameworkForType(type);
 
@@ -643,11 +641,11 @@ export async function convertSecretToModelProvider(
     .limit(1);
 
   if (!existingSecret) {
-    throw notFound(`Credential "${secretName}" not found`);
+    throw notFound(`Secret "${secretName}" not found`);
   }
 
   if (existingSecret.type === "model-provider") {
-    throw badRequest(`Credential "${secretName}" is already a model provider`);
+    throw badRequest(`Secret "${secretName}" is already a model provider`);
   }
 
   // Update credential type
@@ -677,7 +675,7 @@ export async function convertSecretToModelProvider(
     throw new Error("Failed to create model provider");
   }
 
-  log.debug("credential converted to model provider", {
+  log.debug("secret converted to model provider", {
     providerId: newProvider.id,
     secretId: existingSecret.id,
     type,
@@ -748,7 +746,7 @@ export async function deleteModelProvider(
               inArray(secrets.name, secretNames),
             ),
           );
-        log.debug("multi-auth credentials deleted", {
+        log.debug("multi-auth secrets deleted", {
           scopeId: scope.id,
           type,
           secretNames,
