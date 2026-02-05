@@ -14,6 +14,8 @@ if (!TELEMETRY_DISABLED && DSN) {
     dsn: DSN,
     sendDefaultPii: false,
     tracesSampleRate: 0,
+    // Set a short shutdown timeout to avoid hanging on exit (default is 2000ms)
+    shutdownTimeout: 500,
     environment: process.env.SENTRY_DSN ? "development" : "production",
     initialScope: {
       tags: {
