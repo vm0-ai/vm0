@@ -236,11 +236,11 @@ export class FirecrackerClient {
    * then polls until the socket responds to requests.
    *
    * @param timeoutMs Maximum time to wait (default: 5000ms)
-   * @param intervalMs Polling interval for API readiness (default: 100ms)
+   * @param intervalMs Polling interval for API readiness (default: 10ms)
    */
   async waitForReady(
     timeoutMs: number = 5000,
-    intervalMs: number = 100,
+    intervalMs: number = 10,
   ): Promise<void> {
     const startTime = Date.now();
     const remainingTime = () => timeoutMs - (Date.now() - startTime);
