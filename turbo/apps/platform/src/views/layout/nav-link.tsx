@@ -61,7 +61,8 @@ export function NavLink({ item, isActive, collapsed }: NavLinkProps) {
 
   const handleClick = () => {
     if (item.path) {
-      navigate(item.path);
+      // Clear search params to ensure navigation goes to base route with clean state
+      navigate(item.path, { searchParams: new URLSearchParams() });
     } else if (item.url) {
       if (item.newTab) {
         window.open(item.url, "_blank");
