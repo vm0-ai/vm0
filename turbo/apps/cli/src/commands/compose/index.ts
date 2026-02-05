@@ -321,8 +321,7 @@ async function handleGitHubCompose(
 ): Promise<void> {
   console.log(`Downloading from GitHub: ${url}`);
 
-  const downloadedDir = await downloadGitHubDirectory(url);
-  const tempRoot = dirname(downloadedDir);
+  const { dir: downloadedDir, tempRoot } = await downloadGitHubDirectory(url);
   const configFile = join(downloadedDir, "vm0.yaml");
 
   try {

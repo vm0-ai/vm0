@@ -97,14 +97,25 @@ export async function downloadGitHubSkill(
 }
 
 /**
+ * Result of downloading a GitHub directory
+ */
+interface GitHubDownloadResult {
+  /** Path to the downloaded directory */
+  dir: string;
+  /** Path to the temp root directory (for cleanup) */
+  tempRoot: string;
+}
+
+/**
  * Download a GitHub directory using git sparse-checkout.
- * Returns the path to the downloaded directory. Caller is responsible for
- * cleaning up the parent temp directory.
+ * Returns paths to both the downloaded directory and the temp root for cleanup.
  *
  * @param url - GitHub tree URL
- * @returns Path to downloaded directory (caller must cleanup parent)
+ * @returns Object with dir (downloaded path) and tempRoot (for cleanup)
  */
-export async function downloadGitHubDirectory(url: string): Promise<string> {
+export async function downloadGitHubDirectory(
+  url: string,
+): Promise<GitHubDownloadResult> {
   const parsed = parseGitHubTreeUrl(url);
   const repoUrl = `https://github.com/${parsed.owner}/${parsed.repo}.git`;
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "vm0-github-"));
@@ -151,7 +162,10 @@ export async function downloadGitHubDirectory(url: string): Promise<string> {
 
     await execAsync(`git checkout "${parsed.branch}"`, { cwd: tempDir });
 
-    return path.join(tempDir, parsed.path);
+    return {
+      dir: path.join(tempDir, parsed.path),
+      tempRoot: tempDir,
+    };
   } catch (error) {
     // Clean up on error
     await fs.rm(tempDir, { recursive: true, force: true });

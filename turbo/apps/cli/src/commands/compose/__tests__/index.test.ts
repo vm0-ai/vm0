@@ -1615,13 +1615,10 @@ describe("GitHub URL compose", () => {
 
   it("should error when vm0.yaml not found in GitHub directory", async () => {
     // Mock downloadGitHubDirectory to return an empty directory (no vm0.yaml)
-    const emptyDir = path.join(
-      tempDir,
-      "github-download",
-      "tutorials/101-intro",
-    );
+    const tempRoot = path.join(tempDir, "github-download");
+    const emptyDir = path.join(tempRoot, "tutorials/101-intro");
     mkdirSync(emptyDir, { recursive: true });
-    mockDownloadGitHubDirectory.mockResolvedValue(emptyDir);
+    mockDownloadGitHubDirectory.mockResolvedValue({ dir: emptyDir, tempRoot });
 
     await expect(async () => {
       await composeCommand.parseAsync([
@@ -1640,8 +1637,9 @@ describe("GitHub URL compose", () => {
 
   it("should error when compose has volumes", async () => {
     // Mock downloadGitHubDirectory to return a directory with vm0.yaml containing volumes
+    const tempRoot = path.join(tempDir, "github-download");
     const cookbookDir = createMockCookbookDir(
-      path.join(tempDir, "github-download"),
+      tempRoot,
       "tutorials/104-intro-volume",
       `version: "1.0"
 agents:
@@ -1655,7 +1653,10 @@ volumes:
     name: claude-files
     version: latest`,
     );
-    mockDownloadGitHubDirectory.mockResolvedValue(cookbookDir);
+    mockDownloadGitHubDirectory.mockResolvedValue({
+      dir: cookbookDir,
+      tempRoot,
+    });
 
     await expect(async () => {
       await composeCommand.parseAsync([
@@ -1679,15 +1680,19 @@ volumes:
 
   it("should successfully compose from GitHub URL with flag", async () => {
     // Mock downloadGitHubDirectory to return a valid cookbook
+    const tempRoot = path.join(tempDir, "github-download");
     const cookbookDir = createMockCookbookDir(
-      path.join(tempDir, "github-download"),
+      tempRoot,
       "tutorials/101-intro",
       `version: "1.0"
 agents:
   intro:
     framework: claude-code`,
     );
-    mockDownloadGitHubDirectory.mockResolvedValue(cookbookDir);
+    mockDownloadGitHubDirectory.mockResolvedValue({
+      dir: cookbookDir,
+      tempRoot,
+    });
 
     server.use(
       http.get("http://localhost:3000/api/agent/composes", () => {
@@ -1726,8 +1731,9 @@ agents:
 
   it("should handle compose with instructions from GitHub URL", async () => {
     // Create cookbook directory with instructions file
+    const tempRoot = path.join(tempDir, "github-download");
     const cookbookDir = createMockCookbookDir(
-      path.join(tempDir, "github-download"),
+      tempRoot,
       "tutorials/101-intro",
       `version: "1.0"
 agents:
@@ -1736,7 +1742,10 @@ agents:
     instructions: AGENTS.md`,
     );
     writeFileSync(path.join(cookbookDir, "AGENTS.md"), "# Agent Instructions");
-    mockDownloadGitHubDirectory.mockResolvedValue(cookbookDir);
+    mockDownloadGitHubDirectory.mockResolvedValue({
+      dir: cookbookDir,
+      tempRoot,
+    });
 
     server.use(
       http.post("http://localhost:3000/api/storages/prepare", () => {
@@ -1791,11 +1800,7 @@ agents:
 
   it("should cleanup temp directory after successful compose", async () => {
     // Create a temp directory structure that matches what downloadGitHubDirectory returns
-    // The function returns: path.join(tempDir, parsed.path)
-    // So tempRoot = dirname(downloadedDir) would be the immediate parent
-    // For path "tutorials/101-intro", the returned path is tempDir/tutorials/101-intro
-    // And tempRoot = dirname(tempDir/tutorials/101-intro) = tempDir/tutorials
-    // But the cleanup uses dirname(downloadedDir) which should be the temp root
+    // The function now returns { dir, tempRoot } so cleanup uses tempRoot directly
 
     // Simulate the actual structure: vm0-github-xxx/tutorials/101-intro
     const vm0TempRoot = mkdtempSync(path.join(tempDir, "vm0-github-"));
@@ -1807,7 +1812,10 @@ agents:
   intro:
     framework: claude-code`,
     );
-    mockDownloadGitHubDirectory.mockResolvedValue(cookbookDir);
+    mockDownloadGitHubDirectory.mockResolvedValue({
+      dir: cookbookDir,
+      tempRoot: vm0TempRoot,
+    });
 
     server.use(
       http.get("http://localhost:3000/api/agent/composes", () => {
@@ -1836,12 +1844,8 @@ agents:
       "--experimental-shared-compose",
     ]);
 
-    // The tempRoot (dirname of cookbookDir) should be cleaned up
-    // cookbookDir = vm0TempRoot/tutorials/101-intro
-    // dirname(cookbookDir) = vm0TempRoot/tutorials
-    // So tutorials dir gets removed, but vm0TempRoot may still exist
-    // Actually the cleanup code removes dirname(downloadedDir) which is vm0TempRoot/tutorials
-    expect(existsSync(path.dirname(cookbookDir))).toBe(false);
+    // The tempRoot should be fully cleaned up (including the .git folder)
+    expect(existsSync(vm0TempRoot)).toBe(false);
   });
 
   it("should detect GitHub tree URLs correctly", async () => {
