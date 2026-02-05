@@ -156,7 +156,9 @@ export function AgentEventsCard({
 
   if (eventsLoadable.state === "loading") {
     return (
-      <div className="flex items-center justify-center p-8">
+      <div
+        className={`flex items-center justify-center p-8 ${className ?? ""}`}
+      >
         <IconLoader2 className="h-5 w-5 animate-spin text-muted-foreground" />
       </div>
     );
@@ -164,7 +166,7 @@ export function AgentEventsCard({
 
   if (eventsLoadable.state === "hasError") {
     return (
-      <div className="space-y-4">
+      <div className={`space-y-4 px-4 sm:px-8 ${className ?? ""}`}>
         <div className="flex items-center gap-3">
           <span className="text-base font-medium text-foreground">
             Agent events
