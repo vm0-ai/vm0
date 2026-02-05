@@ -577,7 +577,7 @@
       tags: [start]
 
     - name: Verify runner health
-      command: node index.js doctor --config ./runner.yaml
+      command: node index.js doctor
       args:
         chdir: "{{ runner_base_dir }}"
       become: no
