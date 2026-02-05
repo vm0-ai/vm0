@@ -9,11 +9,26 @@ import { readdirSync, readFileSync, existsSync } from "fs";
 import path from "path";
 import { type VmId, createVmId, vmIdValue } from "./firecracker/vm-id.js";
 
+// ==================== Interfaces ====================
+
 export interface FirecrackerProcess {
   pid: number;
   vmId: VmId;
   baseDir: string;
 }
+
+interface MitmproxyProcess {
+  pid: number;
+  baseDir: string;
+}
+
+interface RunnerProcess {
+  pid: number;
+  configPath: string;
+  mode: "start" | "benchmark";
+}
+
+// ==================== Cmdline Parsers ====================
 
 /**
  * Parse /proc/{pid}/cmdline content to extract Firecracker process info.
@@ -85,62 +100,6 @@ export function parseMitmproxyCmdline(cmdline: string): string | null {
 }
 
 /**
- * Find all running Firecracker processes by scanning /proc
- */
-export function findFirecrackerProcesses(): FirecrackerProcess[] {
-  const processes: FirecrackerProcess[] = [];
-  const procDir = "/proc";
-
-  let entries: string[];
-  try {
-    entries = readdirSync(procDir);
-  } catch {
-    return [];
-  }
-
-  for (const entry of entries) {
-    if (!/^\d+$/.test(entry)) continue;
-
-    const pid = parseInt(entry, 10);
-    const cmdlinePath = path.join(procDir, entry, "cmdline");
-
-    if (!existsSync(cmdlinePath)) continue;
-
-    try {
-      const cmdline = readFileSync(cmdlinePath, "utf-8");
-      const parsed = parseFirecrackerCmdline(cmdline);
-      if (parsed) {
-        processes.push({ pid, vmId: parsed.vmId, baseDir: parsed.baseDir });
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  return processes;
-}
-
-/**
- * Find a specific Firecracker process by vmId
- */
-export function findProcessByVmId(vmId: VmId): FirecrackerProcess | null {
-  const processes = findFirecrackerProcesses();
-  const vmIdStr = vmIdValue(vmId);
-  return processes.find((p) => vmIdValue(p.vmId) === vmIdStr) || null;
-}
-
-interface MitmproxyProcess {
-  pid: number;
-  baseDir: string;
-}
-
-interface RunnerProcess {
-  pid: number;
-  configPath: string;
-  mode: "start" | "benchmark";
-}
-
-/**
  * Parse /proc/{pid}/cmdline content to extract runner process info.
  * Pure function for easy testing.
  *
@@ -188,6 +147,53 @@ export function parseRunnerCmdline(
   }
 
   return { configPath, mode };
+}
+
+// ==================== Process Finders ====================
+
+/**
+ * Find all running Firecracker processes by scanning /proc
+ */
+export function findFirecrackerProcesses(): FirecrackerProcess[] {
+  const processes: FirecrackerProcess[] = [];
+  const procDir = "/proc";
+
+  let entries: string[];
+  try {
+    entries = readdirSync(procDir);
+  } catch {
+    return [];
+  }
+
+  for (const entry of entries) {
+    if (!/^\d+$/.test(entry)) continue;
+
+    const pid = parseInt(entry, 10);
+    const cmdlinePath = path.join(procDir, entry, "cmdline");
+
+    if (!existsSync(cmdlinePath)) continue;
+
+    try {
+      const cmdline = readFileSync(cmdlinePath, "utf-8");
+      const parsed = parseFirecrackerCmdline(cmdline);
+      if (parsed) {
+        processes.push({ pid, vmId: parsed.vmId, baseDir: parsed.baseDir });
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return processes;
+}
+
+/**
+ * Find a specific Firecracker process by vmId
+ */
+export function findProcessByVmId(vmId: VmId): FirecrackerProcess | null {
+  const processes = findFirecrackerProcesses();
+  const vmIdStr = vmIdValue(vmId);
+  return processes.find((p) => vmIdValue(p.vmId) === vmIdStr) || null;
 }
 
 /**
