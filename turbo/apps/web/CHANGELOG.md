@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.5.0](https://github.com/vm0-ai/vm0/compare/web-v12.4.0...web-v12.5.0) (2026-02-05)
+
+
+### Features
+
+* **slack:** add vars input support in agent add/update flow ([#2388](https://github.com/vm0-ai/vm0/issues/2388)) ([7711d2e](https://github.com/vm0-ai/vm0/commit/7711d2e94ca58493447fa19ef0524e3b8c9845dd)), closes [#2387](https://github.com/vm0-ai/vm0/issues/2387)
+
+
+### Bug Fixes
+
+* **slack:** remove thread_ts from ephemeral login prompt ([#2390](https://github.com/vm0-ai/vm0/issues/2390)) ([a8a459d](https://github.com/vm0-ai/vm0/commit/a8a459d4cfa16af6683c0d33f80ce1aedb561961))
+
 ## [12.4.0](https://github.com/vm0-ai/vm0/compare/web-v12.3.0...web-v12.4.0) (2026-02-05)
 
 
