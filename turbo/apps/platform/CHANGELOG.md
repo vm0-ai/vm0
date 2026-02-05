@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.47.1](https://github.com/vm0-ai/vm0/compare/platform-v0.47.0...platform-v0.47.1) (2026-02-05)
+
+
+### Bug Fixes
+
+* **platform:** prevent layout overlap in logs detail page on mobile ([#2418](https://github.com/vm0-ai/vm0/issues/2418)) ([5c732bb](https://github.com/vm0-ai/vm0/commit/5c732bb3ec23cf31caaefd1c4ac65f149332bc95))
+
 ## [0.47.0](https://github.com/vm0-ai/vm0/compare/platform-v0.46.0...platform-v0.47.0) (2026-02-05)
 
 

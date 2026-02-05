@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.7.2](https://github.com/vm0-ai/vm0/compare/web-v12.7.1...web-v12.7.2) (2026-02-05)
+
+
+### Bug Fixes
+
+* **slack:** update command naming and auto-configure dev environment ([#2424](https://github.com/vm0-ai/vm0/issues/2424)) ([a684bfe](https://github.com/vm0-ai/vm0/commit/a684bfe99b362a8677d2075d9fc67a06fb0a8704))
+
 ## [12.7.1](https://github.com/vm0-ai/vm0/compare/web-v12.7.0...web-v12.7.1) (2026-02-05)
 
 

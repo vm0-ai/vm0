@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.20.2](https://github.com/vm0-ai/vm0/compare/cli-v9.20.1...cli-v9.20.2) (2026-02-05)
+
+
+### Bug Fixes
+
+* **dev:** change pre-commit hooks to serial execution ([#2422](https://github.com/vm0-ai/vm0/issues/2422)) ([2505c13](https://github.com/vm0-ai/vm0/commit/2505c13d11bb38376b3e6343a051a7814b011a61))
+
 ## [9.20.1](https://github.com/vm0-ai/vm0/compare/cli-v9.20.0...cli-v9.20.1) (2026-02-05)
 
 
