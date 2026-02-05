@@ -30,18 +30,22 @@ export function ArtifactDownloadButton({
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-col gap-1">
       <button
         onClick={handleDownload}
         disabled={isLoading}
-        className="inline-flex items-center gap-1.5 text-sm text-foreground hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed"
-        title="Download artifact"
+        className="inline-flex items-center gap-1.5 text-sm text-foreground hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        title={isLoading ? "Downloading..." : "Download artifact"}
       >
-        <span className="whitespace-nowrap">Download</span>
+        <span className="whitespace-nowrap">
+          {isLoading ? "Downloading..." : "Download"}
+        </span>
         <IconDownload className="h-4 w-4 text-muted-foreground" />
       </button>
       {errorMessage && (
-        <span className="text-xs text-destructive">{errorMessage}</span>
+        <span className="text-xs text-destructive break-words">
+          {errorMessage}
+        </span>
       )}
     </div>
   );

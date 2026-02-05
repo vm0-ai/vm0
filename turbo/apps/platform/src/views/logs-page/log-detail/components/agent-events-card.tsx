@@ -199,52 +199,52 @@ export function AgentEventsCard({
         id={EVENTS_CONTAINER_ID}
         className="px-4 sm:px-8 flex flex-col gap-4 pb-8"
       >
-        <div className="bg-card rounded-lg border border-border">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3">
-            <div className="flex items-center gap-3">
-              <span className="text-base font-medium text-foreground whitespace-nowrap">
-                Agent events
-              </span>
-              <span className="text-sm text-muted-foreground whitespace-nowrap">
-                {searchTerm.trim()
-                  ? `(${matchingCount}/${events.length} matched)`
-                  : `${totalCountDisplay} total`}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 sm:gap-3">
-              <div className="relative flex h-9 flex-1 sm:flex-none items-center rounded-lg border border-border bg-card transition-colors focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/10">
-                <div className="pl-2">
-                  <IconSearch className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <Input
-                  placeholder="Search logs"
-                  value={searchTerm}
-                  onChange={(e) => handleSearchChange(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  className="h-full w-full sm:w-44 border-0 text-sm focus:border-0 focus:ring-0 pl-2 pr-20 bg-transparent"
-                />
-                <SearchNavigation
-                  currentIndex={currentMatchIdx}
-                  totalCount={totalMatches}
-                  onNext={handleNext}
-                  onPrevious={handlePrevious}
-                  hasSearchTerm={searchTerm.trim().length > 0}
-                />
-              </div>
-              {!isCodex && (
-                <>
-                  <div className="h-4 w-px bg-border hidden sm:block" />
-                  <ViewModeToggle
-                    mode={viewMode}
-                    setMode={handleViewModeChange}
-                  />
-                </>
-              )}
-            </div>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="text-base font-medium text-foreground whitespace-nowrap">
+              Agent events
+            </span>
+            <span className="text-sm text-muted-foreground whitespace-nowrap">
+              {searchTerm.trim()
+                ? `(${matchingCount}/${events.length} matched)`
+                : `${totalCountDisplay} total`}
+            </span>
           </div>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="relative flex h-9 flex-1 sm:flex-none items-center rounded-lg border border-border bg-card transition-colors focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/10">
+              <div className="pl-2">
+                <IconSearch className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <Input
+                placeholder="Search logs"
+                value={searchTerm}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                onKeyDown={handleKeyDown}
+                className="h-full w-full sm:w-44 border-0 text-sm focus:border-0 focus:ring-0 pl-2 pr-20 bg-transparent"
+              />
+              <SearchNavigation
+                currentIndex={currentMatchIdx}
+                totalCount={totalMatches}
+                onNext={handleNext}
+                onPrevious={handlePrevious}
+                hasSearchTerm={searchTerm.trim().length > 0}
+              />
+            </div>
+            {!isCodex && (
+              <>
+                <div className="h-4 w-px bg-border hidden sm:block" />
+                <ViewModeToggle
+                  mode={viewMode}
+                  setMode={handleViewModeChange}
+                />
+              </>
+            )}
+          </div>
+        </div>
 
-          <div className="px-4 pb-3 pt-0">
-            {!isCodex && viewMode === "formatted" ? (
+        <div>
+          {!isCodex && viewMode === "formatted" ? (
+            <>
               <FormattedEventsView
                 events={events}
                 searchTerm={searchTerm}
@@ -252,26 +252,23 @@ export function AgentEventsCard({
                 setTotalMatches={setTotalMatches}
                 filterType="non-result"
               />
-            ) : (
-              <RawJsonView
+              <FormattedEventsView
                 events={events}
                 searchTerm={searchTerm}
                 currentMatchIndex={currentMatchIdx}
                 setTotalMatches={setTotalMatches}
+                filterType="result"
               />
-            )}
-          </div>
+            </>
+          ) : (
+            <RawJsonView
+              events={events}
+              searchTerm={searchTerm}
+              currentMatchIndex={currentMatchIdx}
+              setTotalMatches={setTotalMatches}
+            />
+          )}
         </div>
-
-        {!isCodex && viewMode === "formatted" && (
-          <FormattedEventsView
-            events={events}
-            searchTerm={searchTerm}
-            currentMatchIndex={currentMatchIdx}
-            setTotalMatches={setTotalMatches}
-            filterType="result"
-          />
-        )}
 
         {showHasMore && (
           <div
