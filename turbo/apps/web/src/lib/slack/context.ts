@@ -134,10 +134,22 @@ async function downloadAndUploadSlackFile(
   }
 
   try {
+    log.debug("Downloading Slack file", {
+      fileId: file.id,
+      downloadUrl,
+    });
+
     const response = await fetch(downloadUrl, {
       headers: {
         Authorization: `Bearer ${botToken}`,
       },
+    });
+
+    log.debug("Slack download response", {
+      fileId: file.id,
+      status: response.status,
+      contentType: response.headers.get("content-type"),
+      contentLength: response.headers.get("content-length"),
     });
 
     if (!response.ok) {
@@ -148,8 +160,33 @@ async function downloadAndUploadSlackFile(
       return null;
     }
 
+    // Verify the response content type is an image
+    const responseContentType = response.headers.get("content-type");
+    if (!responseContentType || !responseContentType.startsWith("image/")) {
+      log.debug("Slack returned non-image content", {
+        fileId: file.id,
+        contentType: responseContentType,
+      });
+      return null;
+    }
+
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
+
+    // Verify the content is actually an image (check magic bytes)
+    // PNG: 89 50 4E 47, JPEG: FF D8 FF, GIF: 47 49 46, WebP: 52 49 46 46
+    const isPng = buffer[0] === 0x89 && buffer[1] === 0x50;
+    const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8;
+    const isGif = buffer[0] === 0x47 && buffer[1] === 0x49;
+    const isWebp = buffer[0] === 0x52 && buffer[1] === 0x49;
+
+    if (!isPng && !isJpeg && !isGif && !isWebp) {
+      log.debug("Downloaded content is not a valid image", {
+        fileId: file.id,
+        firstBytes: buffer.slice(0, 10).toString("hex"),
+      });
+      return null;
+    }
 
     // Upload to R2 temporary storage with correct MIME type
     const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;

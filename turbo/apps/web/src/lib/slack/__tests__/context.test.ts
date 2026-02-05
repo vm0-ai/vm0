@@ -381,9 +381,17 @@ describe("Feature: Format Context With Image Upload", () => {
 
   describe("Scenario: Upload supported image types to R2", () => {
     it("should download PNG image and upload to R2 with presigned URL", async () => {
-      const imageBuffer = Buffer.from("fake-png-image-content");
+      // PNG magic bytes: 89 50 4E 47 (0x89 P N G)
+      const pngMagic = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+      const imageBuffer = Buffer.concat([
+        pngMagic,
+        Buffer.from("fake-content"),
+      ]);
       mockFetch.mockResolvedValueOnce({
         ok: true,
+        headers: {
+          get: (name: string) => (name === "content-type" ? "image/png" : null),
+        },
         arrayBuffer: async () => imageBuffer,
       });
 
@@ -438,9 +446,18 @@ describe("Feature: Format Context With Image Upload", () => {
     });
 
     it("should upload JPEG images to R2", async () => {
-      const imageBuffer = Buffer.from("fake-jpeg-image-content");
+      // JPEG magic bytes: FF D8 FF
+      const jpegMagic = Buffer.from([0xff, 0xd8, 0xff]);
+      const imageBuffer = Buffer.concat([
+        jpegMagic,
+        Buffer.from("fake-content"),
+      ]);
       mockFetch.mockResolvedValueOnce({
         ok: true,
+        headers: {
+          get: (name: string) =>
+            name === "content-type" ? "image/jpeg" : null,
+        },
         arrayBuffer: async () => imageBuffer,
       });
 
@@ -575,6 +592,86 @@ describe("Feature: Format Context With Image Upload", () => {
       );
       expect(result).not.toContain("Image URL:");
     });
+
+    it("should fall back to URL when Slack returns HTML instead of image", async () => {
+      // Simulate Slack returning a login page HTML instead of the actual image
+      const htmlContent = Buffer.from("<!DOCTYPE html><html>Login page</html>");
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: (name: string) => (name === "content-type" ? "text/html" : null),
+        },
+        arrayBuffer: async () => htmlContent,
+      });
+
+      const messages = [
+        {
+          user: "U123",
+          text: "Screenshot",
+          files: [
+            {
+              id: "F123",
+              name: "screenshot.png",
+              mimetype: "image/png",
+              url_private_download:
+                "https://files.slack.com/download/screenshot.png",
+              permalink: "https://slack.com/files/screenshot.png",
+            },
+          ],
+        },
+      ];
+
+      const result = await formatContextForAgentWithImages(
+        messages,
+        "xoxb-test-token",
+        "test-session-123",
+      );
+
+      // Should fall back to URL since the response was not an image
+      expect(uploadS3BufferMock).not.toHaveBeenCalled();
+      expect(result).toContain("URL: https://slack.com/files/screenshot.png");
+      expect(result).not.toContain("Image URL:");
+    });
+
+    it("should fall back to URL when content has invalid image magic bytes", async () => {
+      // Simulate Slack returning non-image content with image content-type
+      const invalidContent = Buffer.from("Not an image file content");
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: (name: string) => (name === "content-type" ? "image/png" : null),
+        },
+        arrayBuffer: async () => invalidContent,
+      });
+
+      const messages = [
+        {
+          user: "U123",
+          text: "Screenshot",
+          files: [
+            {
+              id: "F123",
+              name: "screenshot.png",
+              mimetype: "image/png",
+              url_private_download:
+                "https://files.slack.com/download/screenshot.png",
+              permalink: "https://slack.com/files/screenshot.png",
+            },
+          ],
+        },
+      ];
+
+      const result = await formatContextForAgentWithImages(
+        messages,
+        "xoxb-test-token",
+        "test-session-123",
+      );
+
+      // Should fall back to URL since the content is not a valid image
+      expect(uploadS3BufferMock).not.toHaveBeenCalled();
+      expect(result).toContain("URL: https://slack.com/files/screenshot.png");
+      expect(result).not.toContain("Image URL:");
+    });
   });
 
   describe("Scenario: Respect file size limits", () => {
@@ -639,16 +736,26 @@ describe("Feature: Format Context With Image Upload", () => {
 
   describe("Scenario: Handle multiple files in one message", () => {
     it("should upload multiple images", async () => {
-      const imageBuffer1 = Buffer.from("image1");
-      const imageBuffer2 = Buffer.from("image2");
+      // PNG magic bytes: 89 50 4E 47 (0x89 P N G)
+      const pngMagic = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+      const imageBuffer1 = Buffer.concat([pngMagic, Buffer.from("image1")]);
+      const imageBuffer2 = Buffer.concat([pngMagic, Buffer.from("image2")]);
 
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
+          headers: {
+            get: (name: string) =>
+              name === "content-type" ? "image/png" : null,
+          },
           arrayBuffer: async () => imageBuffer1,
         })
         .mockResolvedValueOnce({
           ok: true,
+          headers: {
+            get: (name: string) =>
+              name === "content-type" ? "image/png" : null,
+          },
           arrayBuffer: async () => imageBuffer2,
         });
 
