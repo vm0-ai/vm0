@@ -1,41 +1,23 @@
 ---
 title: Environment Variables
-description: Configure secrets, variables, and credentials for VM0 agents
+description: Configure variables and secrets for VM0 agents
 ---
 
-This guide explains how to use template variables in your `vm0.yaml` configuration and pass values when running agents.
+This guide explains how to configure environment variables for your agents using `vm0.yaml` and manage them via CLI.
 
-## Template Variables
+## Overview
 
-VM0 supports three types of template variables in your configuration:
+VM0 provides two types of environment values:
 
-| Type            | Syntax                      | Storage             | Purpose                              |
-| --------------- | --------------------------- | ------------------- | ------------------------------------ |
-| **Vars**        | `${{ vars.NAME }}`          | CLI (ephemeral)     | Non-sensitive configuration values   |
-| **Secrets**     | `${{ secrets.NAME }}`       | CLI (ephemeral)     | Sensitive data passed at runtime     |
-| **Credentials** | `${{ credentials.NAME }}`   | Platform (persistent) | Sensitive data stored on VM0       |
+| Type | Syntax | Purpose | Storage |
+|------|--------|---------|---------|
+| **Variables** | `${{ vars.NAME }}` | Non-sensitive configuration | Platform (plaintext) |
+| **Secrets** | `${{ secrets.NAME }}` | Sensitive data (API keys, passwords) | Platform (encrypted) |
 
-### When to Use Each Type
+Both types support two storage modes:
 
-**Vars** are for general configuration:
-
-- Feature flags
-- Environment names
-- Non-sensitive settings
-
-**Secrets** are for sensitive data passed at runtime:
-
-- API keys from CI/CD systems
-- One-off sensitive values
-- Values that change per-run
-
-**Credentials** are for sensitive data stored on the platform:
-
-- API keys you use repeatedly
-- Tokens shared across multiple runs
-- Secrets managed via CLI
-
-The key difference between secrets and credentials is **persistence**: secrets are passed each time you run, while credentials are stored once and automatically loaded.
+- **Platform Storage** (recommended): Store once with CLI, automatically loaded on every run
+- **Runtime Override**: Pass at runtime with `--vars` or `--secrets` flags
 
 ## Using Variables in vm0.yaml
 
@@ -48,29 +30,72 @@ agents:
   my-agent:
     framework: claude-code
     environment: # [!code highlight]
-      # Secrets for runtime sensitive data
-      ANTHROPIC_AUTH_TOKEN: "${{ secrets.API_KEY }}" # [!code highlight]
+      # Secrets for sensitive data
+      ANTHROPIC_AUTH_TOKEN: "${{ secrets.ANTHROPIC_API_KEY }}" # [!code highlight]
       DATABASE_PASSWORD: "${{ secrets.DB_PASSWORD }}" # [!code highlight]
 
-      # Vars for configuration
+      # Variables for configuration
       ENVIRONMENT: "${{ vars.ENV_NAME }}" # [!code highlight]
       DEBUG_MODE: "${{ vars.DEBUG }}" # [!code highlight]
-
-      # Credentials for platform-stored secrets
-      GITHUB_TOKEN: "${{ credentials.GITHUB_TOKEN }}" # [!code highlight]
 ```
 
-## Passing Values
+## Platform Storage (Recommended)
+
+Store values once and use them across all agent runs.
+
+### Managing Secrets
+
+```bash
+# Store a secret
+vm0 secret set MY_API_KEY sk-xxx
+
+# With optional description
+vm0 secret set MY_API_KEY sk-xxx -d "OpenAI API key for production"
+
+# List all secrets (values are hidden)
+vm0 secret list
+
+# Delete a secret
+vm0 secret delete MY_API_KEY
+```
+
+### Managing Variables
+
+```bash
+# Store a variable
+vm0 variable set ENV_NAME production
+
+# With optional description
+vm0 variable set ENV_NAME production -d "Current environment"
+
+# List all variables
+vm0 variable list
+
+# Delete a variable
+vm0 variable delete ENV_NAME
+```
+
+### Naming Rules
+
+Names must use uppercase letters, numbers, and underscores only:
+
+- `MY_API_KEY`
+- `GITHUB_TOKEN`
+- `AWS_ACCESS_KEY_ID`
+
+Names like `my-api-key` or `myApiKey` are not allowed.
+
+## Runtime Override
+
+Pass values at runtime to override or supplement stored values.
 
 ### CLI Flags
-
-Pass values directly using `--secrets` and `--vars` flags:
 
 ```bash
 # Pass secrets
 vm0 run my-agent "your prompt" --secrets API_KEY=sk-xxx --secrets DB_PASSWORD=mypassword
 
-# Pass vars
+# Pass variables
 vm0 run my-agent "your prompt" --vars ENV_NAME=production --vars DEBUG=true
 
 # Combine both
@@ -99,107 +124,54 @@ ENV_NAME=production
 Environment files are **not** automatically loaded. You must explicitly specify the file path with `--env-file`.
 </Callout>
 
-### Shell Environment
-
-Values can also be read from shell environment variables:
-
-```bash
-# Export variables
-export API_KEY=sk-xxx
-export ENV_NAME=production
-
-# Run the agent
-vm0 run my-agent "your prompt"
-```
-
 ## Value Resolution Priority
 
-When the same variable is defined in multiple places, VM0 uses this priority order:
+When the same value is defined in multiple places, VM0 uses this priority order:
 
 1. **CLI flags** (`--vars`, `--secrets`) - highest priority
-2. **`--env-file`** values - medium priority
-3. **Shell environment** (`process.env`) - lowest priority
+2. **Platform-stored values** - medium priority
+3. **`--env-file`** values - lowest priority
 
 Example:
 
 ```bash
+# Platform has: vm0 secret set API_KEY stored-value
 # .env file contains: API_KEY=from-env-file
-# Shell has: export API_KEY=from-shell
 
-# CLI value wins
+# CLI value wins over everything
 vm0 run my-agent "prompt" --secrets API_KEY=from-cli --env-file .env
 # Result: API_KEY = "from-cli"
 
-# Without CLI flag, --env-file wins over shell
+# Without CLI flag, Platform-stored value wins
+vm0 run my-agent "prompt" --env-file .env
+# Result: API_KEY = "stored-value"
+
+# Without Platform-stored value, --env-file is used
 vm0 run my-agent "prompt" --env-file .env
 # Result: API_KEY = "from-env-file"
-
-# Without --env-file, shell environment is used
-vm0 run my-agent "prompt"
-# Result: API_KEY = "from-shell"
 ```
-
-## Managing Credentials
-
-Credentials are stored securely on the VM0 platform and automatically loaded when your agent runs. Use the CLI to manage your credentials.
-
-### Setting a Credential
-
-```bash
-vm0 credential set MY_API_KEY sk-xxx
-```
-
-You can add an optional description:
-
-```bash
-vm0 credential set MY_API_KEY sk-xxx -d "OpenAI API key for production"
-```
-
-### Listing Credentials
-
-```bash
-vm0 credential list
-```
-
-This shows credential names and metadata. Values are never displayed for security.
-
-### Deleting a Credential
-
-```bash
-vm0 credential delete MY_API_KEY
-```
-
-### Naming Rules
-
-Credential names must use uppercase letters, numbers, and underscores only:
-
-- `MY_API_KEY`
-- `GITHUB_TOKEN`
-- `AWS_ACCESS_KEY_ID`
-
-Names like `my-api-key` or `myApiKey` are not allowed.
 
 ## Best Practices
 
-### Use Credentials for Reusable Secrets
+### Use Platform Storage for Reusable Secrets
 
-For API keys you use repeatedly across multiple runs, store them as credentials:
+For API keys you use repeatedly across multiple runs:
 
 ```bash
 # Set once
-vm0 credential set ANTHROPIC_API_KEY sk-xxx
+vm0 secret set ANTHROPIC_API_KEY sk-xxx
 ```
 
 Then use in any agent:
 
 ```yaml title="vm0.yaml"
 environment:
-  ANTHROPIC_AUTH_TOKEN: "${{ credentials.ANTHROPIC_API_KEY }}"
+  ANTHROPIC_AUTH_TOKEN: "${{ secrets.ANTHROPIC_API_KEY }}"
 ```
 
-### Use Secrets for CI/CD
+### Use Runtime Override for CI/CD
 
-For values that change per-run or come from CI/CD systems, use secrets:
+For values that change per-run or come from CI/CD systems:
 
 ```bash
 vm0 run my-agent "prompt" --secrets API_KEY=$CI_API_KEY
@@ -216,7 +188,7 @@ echo ".env" >> .gitignore
 
 ### Use Descriptive Names
 
-Choose clear, descriptive names for your variables:
+Choose clear, descriptive names for your values:
 
 ```yaml title="vm0.yaml"
 # Good
@@ -236,7 +208,7 @@ Organize your configuration logically:
 environment:
   # Model Provider Configuration
   ANTHROPIC_BASE_URL: "${{ vars.MODEL_PROVIDER_BASE_URL }}"
-  ANTHROPIC_AUTH_TOKEN: "${{ credentials.MODEL_PROVIDER_API_KEY }}"
+  ANTHROPIC_AUTH_TOKEN: "${{ secrets.MODEL_PROVIDER_API_KEY }}"
 
   # Database Configuration
   DATABASE_URL: "${{ secrets.DATABASE_URL }}"

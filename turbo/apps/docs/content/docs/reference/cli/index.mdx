@@ -45,27 +45,56 @@ vm0 model-provider setup --type anthropic-api-key --credential "sk-ant-xxx"
 vm0 model-provider setup --convert
 ```
 
-## Credential Management
+## Secret Management
 
-Store and manage credentials for use in agent runs.
+Store and manage secrets (sensitive data) for use in agent runs.
 
 | Command | Description | Options |
 | ------- | ----------- | ------- |
-| `vm0 credential list` | List all stored credentials | Alias: `ls` |
-| `vm0 credential set <name> <value>` | Store a credential | - |
-| `vm0 credential delete <name>` | Delete a credential | `-y, --yes` |
+| `vm0 secret list` | List all stored secrets | Alias: `ls` |
+| `vm0 secret set <name> <value>` | Store a secret | `-d, --description` |
+| `vm0 secret delete <name>` | Delete a secret | - |
 
 ### Examples
 
 ```bash
-# Store a credential
-vm0 credential set MY_API_KEY sk-xxx
+# Store a secret
+vm0 secret set MY_API_KEY sk-xxx
 
-# List all credentials
-vm0 credential list
+# Store with description
+vm0 secret set MY_API_KEY sk-xxx -d "OpenAI API key"
 
-# Delete a credential
-vm0 credential delete MY_API_KEY --yes
+# List all secrets (values are hidden)
+vm0 secret list
+
+# Delete a secret
+vm0 secret delete MY_API_KEY
+```
+
+## Variable Management
+
+Store and manage variables (non-sensitive configuration) for use in agent runs.
+
+| Command | Description | Options |
+| ------- | ----------- | ------- |
+| `vm0 variable list` | List all stored variables | Alias: `ls` |
+| `vm0 variable set <name> <value>` | Store a variable | `-d, --description` |
+| `vm0 variable delete <name>` | Delete a variable | - |
+
+### Examples
+
+```bash
+# Store a variable
+vm0 variable set ENV_NAME production
+
+# Store with description
+vm0 variable set ENV_NAME production -d "Current environment"
+
+# List all variables
+vm0 variable list
+
+# Delete a variable
+vm0 variable delete ENV_NAME
 ```
 
 ## Scope Management

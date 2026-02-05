@@ -125,7 +125,7 @@ export function expandEnvironmentFromCompose(
     );
     if (missingCredentials.length > 0) {
       throw badRequest(
-        `Missing required credentials: ${missingCredentials.join(", ")}. Use 'vm0 credential set ${missingCredentials[0]} <value>' to add them.`,
+        `Missing required secrets: ${missingCredentials.join(", ")}. Use 'vm0 secret set ${missingCredentials[0]} <value>' to add them.`,
       );
     }
 
