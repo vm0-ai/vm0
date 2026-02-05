@@ -100,6 +100,22 @@ async function loadAndValidateConfig(
 }
 
 /**
+ * Type guard to check if config has a non-empty volumes field.
+ */
+function hasVolumes(config: unknown): boolean {
+  if (typeof config !== "object" || config === null) {
+    return false;
+  }
+  const cfg = config as Record<string, unknown>;
+  const volumes = cfg.volumes;
+  return (
+    typeof volumes === "object" &&
+    volumes !== null &&
+    Object.keys(volumes).length > 0
+  );
+}
+
+/**
  * Check for legacy image format and show deprecation warnings.
  */
 function checkLegacyImageFormat(config: unknown): void {
@@ -313,6 +329,55 @@ function mergeSkillVariables(
 }
 
 /**
+ * Finalize compose: confirm variables, merge into config, call API, and display result.
+ * Shared by both GitHub URL and local file flows.
+ */
+async function finalizeCompose(
+  config: unknown,
+  agent: AgentConfig,
+  variables: SkillVariables,
+  options: { yes?: boolean; autoUpdate?: boolean },
+): Promise<void> {
+  // Display variables and confirm with user
+  const confirmed = await displayAndConfirmVariables(variables, options);
+  if (!confirmed) {
+    process.exit(0);
+  }
+
+  // Merge skill variables into environment
+  mergeSkillVariables(agent, variables);
+
+  // Call API
+  console.log("Uploading compose...");
+  const response = await createOrUpdateCompose({ content: config });
+
+  // Display result
+  const scopeResponse = await getScope();
+  const shortVersionId = response.versionId.slice(0, 8);
+  const displayName = `${scopeResponse.slug}/${response.name}`;
+
+  if (response.action === "created") {
+    console.log(chalk.green(`✓ Compose created: ${displayName}`));
+  } else {
+    console.log(chalk.green(`✓ Compose version exists: ${displayName}`));
+  }
+
+  console.log(chalk.dim(`  Version: ${shortVersionId}`));
+  console.log();
+  console.log("  Run your agent:");
+  console.log(
+    chalk.cyan(
+      `    vm0 run ${displayName}:${shortVersionId} --artifact-name <artifact> "your prompt"`,
+    ),
+  );
+
+  // Silent upgrade after successful command completion
+  if (options.autoUpdate !== false) {
+    await silentUpgradeAfterCommand(__CLI_VERSION__);
+  }
+}
+
+/**
  * Handle compose from GitHub URL
  */
 async function handleGitHubCompose(
@@ -372,8 +437,7 @@ async function handleGitHubCompose(
     }
 
     // Check for unsupported volumes
-    const cfg = config as Record<string, unknown>;
-    if (cfg.volumes && Object.keys(cfg.volumes as object).length > 0) {
+    if (hasVolumes(config)) {
       console.error(
         chalk.red(`✗ Volumes are not supported for GitHub URL compose`),
       );
@@ -399,43 +463,8 @@ async function handleGitHubCompose(
       agentName,
     );
 
-    // Display variables and confirm with user
-    const confirmed = await displayAndConfirmVariables(variables, options);
-    if (!confirmed) {
-      process.exit(0);
-    }
-
-    // Merge skill variables into environment
-    mergeSkillVariables(agent, variables);
-
-    // Call API
-    console.log("Uploading compose...");
-    const response = await createOrUpdateCompose({ content: config });
-
-    // Display result
-    const scopeResponse = await getScope();
-    const shortVersionId = response.versionId.slice(0, 8);
-    const displayName = `${scopeResponse.slug}/${response.name}`;
-
-    if (response.action === "created") {
-      console.log(chalk.green(`✓ Compose created: ${displayName}`));
-    } else {
-      console.log(chalk.green(`✓ Compose version exists: ${displayName}`));
-    }
-
-    console.log(chalk.dim(`  Version: ${shortVersionId}`));
-    console.log();
-    console.log("  Run your agent:");
-    console.log(
-      chalk.cyan(
-        `    vm0 run ${displayName}:${shortVersionId} --artifact-name <artifact> "your prompt"`,
-      ),
-    );
-
-    // Silent upgrade after successful command completion
-    if (options.autoUpdate !== false) {
-      await silentUpgradeAfterCommand(__CLI_VERSION__);
-    }
+    // Finalize compose (confirm, merge, upload, display)
+    await finalizeCompose(config, agent, variables, options);
   } finally {
     // Cleanup temp directory
     await rm(tempRoot, { recursive: true, force: true });
@@ -507,48 +536,8 @@ export const composeCommand = new Command()
             agentName,
           );
 
-          // 5. Display variables and confirm with user
-          const confirmed = await displayAndConfirmVariables(
-            variables,
-            options,
-          );
-          if (!confirmed) {
-            process.exit(0);
-          }
-
-          // 6. Merge skill variables into environment
-          mergeSkillVariables(agent, variables);
-
-          // 7. Call API
-          console.log("Uploading compose...");
-          const response = await createOrUpdateCompose({ content: config });
-
-          // 8. Display result
-          const scopeResponse = await getScope();
-          const shortVersionId = response.versionId.slice(0, 8);
-          const displayName = `${scopeResponse.slug}/${response.name}`;
-
-          if (response.action === "created") {
-            console.log(chalk.green(`✓ Compose created: ${displayName}`));
-          } else {
-            console.log(
-              chalk.green(`✓ Compose version exists: ${displayName}`),
-            );
-          }
-
-          console.log(chalk.dim(`  Version: ${shortVersionId}`));
-          console.log();
-          console.log("  Run your agent:");
-          console.log(
-            chalk.cyan(
-              `    vm0 run ${displayName}:${shortVersionId} --artifact-name <artifact> "your prompt"`,
-            ),
-          );
-
-          // Silent upgrade after successful command completion
-          if (options.autoUpdate !== false) {
-            await silentUpgradeAfterCommand(__CLI_VERSION__);
-          }
+          // 5. Finalize compose (confirm, merge, upload, display)
+          await finalizeCompose(config, agent, variables, options);
         }
       } catch (error) {
         if (error instanceof Error) {
