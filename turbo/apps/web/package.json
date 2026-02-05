@@ -26,6 +26,7 @@
     "@neondatabase/serverless": "^1.0.1",
     "@openrouter/sdk": "^0.5.1",
     "@opentelemetry/api": "^1.9.0",
+    "@sentry/nextjs": "^10.38.0",
     "@slack/web-api": "^7.13.0",
     "@t3-oss/env-nextjs": "^0.13.8",
     "@tabler/icons-react": "^3.36.1",
