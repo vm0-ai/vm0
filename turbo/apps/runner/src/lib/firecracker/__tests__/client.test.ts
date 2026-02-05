@@ -289,12 +289,12 @@ describe("FirecrackerClient", () => {
       expect(elapsed).toBeGreaterThanOrEqual(150);
     });
 
-    it("should throw after timeout", async () => {
+    it("should throw after timeout when socket file not created", async () => {
       // No server created - socket doesn't exist
       const client = new FirecrackerClient(socketPath);
 
       await expect(client.waitForReady(200, 50)).rejects.toThrow(
-        "Firecracker API not ready after 200ms",
+        "Socket file not created after",
       );
     });
   });
