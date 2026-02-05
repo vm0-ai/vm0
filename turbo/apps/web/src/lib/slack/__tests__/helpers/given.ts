@@ -88,6 +88,13 @@ export interface AgentBindingOptions {
 }
 
 /**
+ * Options for creating an agent binding with custom compose config
+ */
+export interface AgentBindingWithConfigOptions extends AgentBindingOptions {
+  composeConfig: Record<string, unknown>;
+}
+
+/**
  * Given a Slack workspace has installed the VM0 app.
  * Creates a Slack installation record with encrypted bot token.
  */
@@ -316,4 +323,126 @@ export async function givenUserHasMultipleAgents(
   }
 
   return results;
+}
+
+/**
+ * Result from givenUserHasAgentWithConfig
+ */
+export interface AgentBindingWithConfigResult extends AgentBindingResult {
+  scopeId: string;
+}
+
+/**
+ * Given a user has an agent configured with custom compose config.
+ * Creates binding, compose, and version records with the provided config.
+ * This is useful for tests that need specific compose configuration like working_dir.
+ */
+export async function givenUserHasAgentWithConfig(
+  userLinkId: string,
+  options: AgentBindingWithConfigOptions,
+): Promise<AgentBindingWithConfigResult> {
+  const {
+    agentName = uniqueId("agent"),
+    description = null,
+    enabled = true,
+    composeConfig,
+  } = options;
+
+  initServices();
+
+  // Get user link to find vm0UserId and workspaceId
+  const [link] = await globalThis.services.db
+    .select()
+    .from(slackUserLinks)
+    .where(eq(slackUserLinks.id, userLinkId))
+    .limit(1);
+
+  if (!link) {
+    throw new Error(`Slack user link not found: ${userLinkId}`);
+  }
+
+  // Create scope
+  const [scopeData] = await globalThis.services.db
+    .insert(scopes)
+    .values({
+      slug: uniqueId("scope"),
+      type: "personal",
+      ownerId: link.vm0UserId,
+    })
+    .returning();
+
+  if (!scopeData) {
+    throw new Error("Failed to create scope");
+  }
+
+  // Create compose
+  const [compose] = await globalThis.services.db
+    .insert(agentComposes)
+    .values({
+      userId: link.vm0UserId,
+      scopeId: scopeData.id,
+      name: agentName,
+    })
+    .returning();
+
+  if (!compose) {
+    throw new Error("Failed to create agent compose");
+  }
+
+  // Create compose version with content-addressed ID using provided config
+  const versionId = createHash("sha256")
+    .update(JSON.stringify({ ...composeConfig, _composeId: compose.id }))
+    .digest("hex");
+
+  const [version] = await globalThis.services.db
+    .insert(agentComposeVersions)
+    .values({
+      id: versionId,
+      composeId: compose.id,
+      content: composeConfig,
+      createdBy: link.vm0UserId,
+    })
+    .returning();
+
+  if (!version) {
+    throw new Error("Failed to create compose version");
+  }
+
+  // Update compose with head version
+  await globalThis.services.db
+    .update(agentComposes)
+    .set({ headVersionId: version.id })
+    .where(eq(agentComposes.id, compose.id));
+
+  // Create binding
+  const [binding] = await globalThis.services.db
+    .insert(slackBindings)
+    .values({
+      slackUserLinkId: userLinkId,
+      vm0UserId: link.vm0UserId,
+      slackWorkspaceId: link.slackWorkspaceId,
+      composeId: compose.id,
+      agentName,
+      description,
+      enabled,
+    })
+    .returning();
+
+  if (!binding) {
+    throw new Error("Failed to create Slack binding");
+  }
+
+  return {
+    binding: {
+      id: binding.id,
+      agentName: binding.agentName,
+      composeId: binding.composeId,
+      description: binding.description,
+    },
+    compose: {
+      id: compose.id,
+      name: compose.name,
+    },
+    scopeId: scopeData.id,
+  };
 }
