@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.45.4](https://github.com/vm0-ai/vm0/compare/platform-v0.45.3...platform-v0.45.4) (2026-02-05)
+
+
+### Bug Fixes
+
+* **platform:** improve logs page navigation behavior ([#2380](https://github.com/vm0-ai/vm0/issues/2380)) ([4347d33](https://github.com/vm0-ai/vm0/commit/4347d33220af9248addb8829032601d26d1af9ce))
+
 ## [0.45.3](https://github.com/vm0-ai/vm0/compare/platform-v0.45.2...platform-v0.45.3) (2026-02-04)
 
 
