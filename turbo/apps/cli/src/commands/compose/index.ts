@@ -335,6 +335,42 @@ async function handleGitHubCompose(
     const { config, agentName, agent, basePath } =
       await loadAndValidateConfig(configFile);
 
+    // Check if agent with same name already exists
+    const existingCompose = await getComposeByName(agentName);
+    if (existingCompose) {
+      console.log();
+      console.log(
+        chalk.yellow(`⚠ An agent named "${agentName}" already exists.`),
+      );
+
+      if (!isInteractive()) {
+        // Non-interactive mode: require --yes flag to overwrite
+        if (!options.yes) {
+          console.error(
+            chalk.red(
+              `✗ Cannot overwrite existing agent in non-interactive mode`,
+            ),
+          );
+          console.error(
+            chalk.dim(
+              `  Use --yes flag to confirm overwriting the existing agent.`,
+            ),
+          );
+          process.exit(1);
+        }
+      } else {
+        // Interactive mode: prompt user (default No)
+        const confirmed = await promptConfirm(
+          "Do you want to overwrite it?",
+          false,
+        );
+        if (!confirmed) {
+          console.log(chalk.yellow("Compose cancelled."));
+          process.exit(0);
+        }
+      }
+    }
+
     // Check for unsupported volumes
     const cfg = config as Record<string, unknown>;
     if (cfg.volumes && Object.keys(cfg.volumes as object).length > 0) {
