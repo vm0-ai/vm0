@@ -199,7 +199,7 @@ export function AgentEventsCard({
     <div className={`flex flex-col gap-4 ${className ?? ""}`}>
       <div
         id={EVENTS_CONTAINER_ID}
-        className="px-4 sm:px-8 flex flex-col gap-4 pb-8"
+        className="px-4 sm:px-8 pt-1 flex flex-col gap-4 pb-8"
       >
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex items-center gap-3">
