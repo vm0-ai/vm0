@@ -1,4 +1,9 @@
-import { IconCheck, IconCircle, IconLoader } from "@tabler/icons-react";
+import {
+  IconCheck,
+  IconCircleDashed,
+  IconLoader,
+  IconBulb,
+} from "@tabler/icons-react";
 import MarkdownPreview from "@uiw/react-markdown-preview";
 import type { GroupedMessage } from "../log-detail/utils.ts";
 import { ToolSummary } from "./tool-summary.tsx";
@@ -37,6 +42,13 @@ function MarkdownContent({ text }: { text: string }) {
 }
 
 function CollapsibleText({ text }: { text: string }) {
+  // Check if text is long (more than ~100 characters or contains newlines)
+  const isLong = text.length > 100 || text.includes("\n");
+
+  if (!isLong) {
+    return <MarkdownContent text={text} />;
+  }
+
   return (
     <details className="group cursor-pointer">
       <summary className="list-none">
@@ -141,6 +153,7 @@ function SystemMessageCard({
 }
 
 function ResultMessageCard({
+  message,
   eventData,
   showConnector = false,
 }: {
@@ -148,27 +161,36 @@ function ResultMessageCard({
   eventData: EventData;
   showConnector?: boolean;
 }) {
-  const subtype = eventData.subtype;
-  const isError = eventData.is_error === true || subtype === "error";
-  const borderColor = isError ? "border-red-600/30" : "border-border";
-  const bgColor = isError ? "bg-red-600/5" : "bg-card";
-
+  const timestamp = formatEventTime(message.createdAt);
   return (
-    <div className="relative py-2">
+    <div className="relative">
       {showConnector && (
         <div
-          className="absolute left-[3px] top-6 bottom-0 w-[1px] bg-border/40"
+          className="absolute left-[3px] top-6 bottom-[-8px] w-[1px] bg-border/40"
           aria-hidden="true"
         />
       )}
-      <div
-        className={`py-3 px-4 rounded-lg border ${borderColor} ${bgColor} relative`}
-      >
-        <div className="text-base font-medium text-foreground mb-3">
-          Summary
+      <details className="group" open>
+        <summary className="cursor-pointer list-none relative py-2">
+          <div className="flex gap-2 items-center">
+            <StatusDot variant="primary" />
+            <IconBulb className="h-4 w-4 text-orange-500" />
+            <span className="font-semibold text-sm text-foreground">
+              Summary
+            </span>
+            <span className="flex-1" />
+            <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
+              {timestamp}
+            </span>
+          </div>
+          <div className="text-xs text-muted-foreground pl-5 mt-1 sm:hidden">
+            {timestamp}
+          </div>
+        </summary>
+        <div className="mt-2 ml-[18px]">
+          <ResultEventContent eventData={eventData} />
         </div>
-        <ResultEventContent eventData={eventData} />
-      </div>
+      </details>
     </div>
   );
 }
@@ -182,7 +204,7 @@ function getTodoStatusIcon(status: string) {
       return <IconLoader className="h-4 w-4 text-yellow-500" />;
     }
     default: {
-      return <IconCircle className="h-4 w-4 text-muted-foreground" />;
+      return <IconCircleDashed className="h-4 w-4 text-muted-foreground" />;
     }
   }
 }
@@ -301,8 +323,8 @@ function shouldShowAssistantConnector(params: {
 }): { showConnector: boolean; isDashed: boolean } {
   const { isLastElementInMessage, showConnectorToNextMessage } = params;
   const showConnector = !isLastElementInMessage || showConnectorToNextMessage;
-  // Within the same message, use dashed lines between elements
-  const isDashed = !isLastElementInMessage;
+  // Default to solid lines - dashed lines only for same tool types
+  const isDashed = false;
   return { showConnector, isDashed };
 }
 
@@ -391,18 +413,19 @@ function AssistantMessageCard({
       const isLastTool = i === toolOperations.length - 1;
       const isLastElement = isLastTool && !textAfter;
 
-      // Check if next tool is the same type
+      // Check if next tool is the same type (only for dashed line decision)
       const nextOp = toolOperations[i + 1];
       const isSameToolTypeAsNext = nextOp && nextOp.toolName === op.toolName;
 
-      const { showConnector: showConnectorHere, isDashed: isDashedDefault } =
-        shouldShowAssistantConnector({
+      const { showConnector: showConnectorHere } = shouldShowAssistantConnector(
+        {
           isLastElementInMessage: isLastElement,
           showConnectorToNextMessage: showConnector,
-        });
+        },
+      );
 
-      // Use dashed line if it's the same tool type
-      const isDashed = isDashedDefault || isSameToolTypeAsNext;
+      // Use dashed line ONLY if next tool is the same type
+      const isDashed = isSameToolTypeAsNext;
 
       elements.push(
         <div key={op.toolUseId} className={`${MESSAGE_SPACING} relative`}>
