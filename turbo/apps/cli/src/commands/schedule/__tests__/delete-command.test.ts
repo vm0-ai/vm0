@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { deleteCommand } from "../delete";
+import prompts from "prompts";
 import chalk from "chalk";
 
 // Helper to create a mock schedule response
@@ -47,11 +48,16 @@ describe("schedule delete command", () => {
     .spyOn(console, "error")
     .mockImplementation(() => {});
 
+  let originalIsTTY: boolean | undefined;
+
   beforeEach(() => {
     vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
+
+    // Save original TTY state
+    originalIsTTY = process.stdout.isTTY;
   });
 
   afterEach(() => {
@@ -59,6 +65,13 @@ describe("schedule delete command", () => {
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
     vi.unstubAllEnvs();
+
+    // Restore TTY state
+    Object.defineProperty(process.stdout, "isTTY", {
+      value: originalIsTTY,
+      writable: true,
+      configurable: true,
+    });
   });
 
   describe("help text", () => {
@@ -168,6 +181,72 @@ describe("schedule delete command", () => {
         expect.stringContaining("--force required"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should delete schedule when user confirms in interactive mode", async () => {
+      // Set TTY to true for interactive mode
+      Object.defineProperty(process.stdout, "isTTY", {
+        value: true,
+        writable: true,
+        configurable: true,
+      });
+
+      const schedule = createMockSchedule();
+      let deletedName: string | undefined;
+
+      server.use(
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json({ schedules: [schedule] });
+        }),
+        http.delete(
+          "http://localhost:3000/api/agent/schedules/:name",
+          ({ params }) => {
+            deletedName = params.name as string;
+            return new HttpResponse(null, { status: 204 });
+          },
+        ),
+      );
+
+      // Inject user confirmation (true = yes)
+      prompts.inject([true]);
+
+      await deleteCommand.parseAsync(["node", "cli", "test-agent"]);
+
+      expect(deletedName).toBe("test-agent-schedule");
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Deleted schedule");
+      expect(logCalls).toContain("test-agent");
+    });
+
+    it("should cancel deletion when user declines in interactive mode", async () => {
+      // Set TTY to true for interactive mode
+      Object.defineProperty(process.stdout, "isTTY", {
+        value: true,
+        writable: true,
+        configurable: true,
+      });
+
+      const schedule = createMockSchedule();
+      let deleteWasCalled = false;
+
+      server.use(
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json({ schedules: [schedule] });
+        }),
+        http.delete("http://localhost:3000/api/agent/schedules/:name", () => {
+          deleteWasCalled = true;
+          return new HttpResponse(null, { status: 204 });
+        }),
+      );
+
+      // Inject user declining (false = no)
+      prompts.inject([false]);
+
+      await deleteCommand.parseAsync(["node", "cli", "test-agent"]);
+
+      expect(deleteWasCalled).toBe(false);
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Cancelled");
     });
   });
 
