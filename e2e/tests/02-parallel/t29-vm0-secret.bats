@@ -26,7 +26,7 @@ teardown() {
 }
 
 @test "vm0 secret set creates a secret" {
-    run $CLI_COMMAND secret set "$TEST_SECRET_NAME" "test-secret-value"
+    run $CLI_COMMAND secret set "$TEST_SECRET_NAME" --body "test-secret-value"
     assert_success
     assert_output --partial "Secret \"$TEST_SECRET_NAME\" saved"
     assert_output --partial "Use in vm0.yaml"
@@ -35,7 +35,7 @@ teardown() {
 
 @test "vm0 secret list shows created secret" {
     # First create a secret
-    $CLI_COMMAND secret set "$TEST_SECRET_NAME" "secret-value" --description "E2E test"
+    $CLI_COMMAND secret set "$TEST_SECRET_NAME" --body "secret-value" --description "E2E test"
 
     # Then list secrets
     run $CLI_COMMAND secret list
@@ -47,7 +47,7 @@ teardown() {
 
 @test "vm0 secret ls works as alias for list" {
     # First create a secret
-    $CLI_COMMAND secret set "$TEST_SECRET_NAME" "secret-value"
+    $CLI_COMMAND secret set "$TEST_SECRET_NAME" --body "secret-value"
 
     # List using ls alias
     run $CLI_COMMAND secret ls
@@ -57,10 +57,10 @@ teardown() {
 
 @test "vm0 secret set updates existing secret" {
     # Create initial secret
-    $CLI_COMMAND secret set "$TEST_SECRET_NAME" "initial-value"
+    $CLI_COMMAND secret set "$TEST_SECRET_NAME" --body "initial-value"
 
     # Update it
-    run $CLI_COMMAND secret set "$TEST_SECRET_NAME" "updated-value" --description "Updated"
+    run $CLI_COMMAND secret set "$TEST_SECRET_NAME" --body "updated-value" --description "Updated"
     assert_success
     assert_output --partial "Secret \"$TEST_SECRET_NAME\" saved"
 
@@ -71,7 +71,7 @@ teardown() {
 
 @test "vm0 secret delete removes secret" {
     # Create a secret
-    $CLI_COMMAND secret set "$TEST_SECRET_NAME" "to-be-deleted"
+    $CLI_COMMAND secret set "$TEST_SECRET_NAME" --body "to-be-deleted"
 
     # Delete it (use -y to skip confirmation)
     run $CLI_COMMAND secret delete -y "$TEST_SECRET_NAME"
