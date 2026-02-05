@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.20.1](https://github.com/vm0-ai/vm0/compare/cli-v9.20.0...cli-v9.20.1) (2026-02-05)
+
+
+### Bug Fixes
+
+* **cli:** normalize agent name to lowercase before uploading instructions ([#2417](https://github.com/vm0-ai/vm0/issues/2417)) ([afb1a9c](https://github.com/vm0-ai/vm0/commit/afb1a9cb07fe2aeef4b139ff79a1179351ff35c8)), closes [#2414](https://github.com/vm0-ai/vm0/issues/2414)
+
 ## [9.20.0](https://github.com/vm0-ai/vm0/compare/cli-v9.19.0...cli-v9.20.0) (2026-02-05)
 
 
