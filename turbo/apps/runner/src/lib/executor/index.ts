@@ -86,7 +86,8 @@ export async function executeJob(
       firecrackerBinary: config.firecracker.binary,
       workDir: runnerPaths.vmWorkDir(config.base_dir, vmId),
     };
-    // Create workDir and vsock subdir before VM so vsock listener can be started before vm.start()
+    // Remove old workDir and create fresh one before VM starts
+    fs.rmSync(vmConfig.workDir, { recursive: true, force: true });
     fs.mkdirSync(vmConfig.workDir, { recursive: true });
     fs.mkdirSync(vmPaths.vsockDir(vmConfig.workDir), { recursive: true });
 
