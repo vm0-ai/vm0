@@ -9,6 +9,7 @@
 
 import * as http from "node:http";
 import * as fs from "node:fs";
+import * as path from "node:path";
 import { createLogger } from "../logger.js";
 
 const logger = createLogger("FirecrackerClient");
@@ -231,31 +232,28 @@ export class FirecrackerClient {
   /**
    * Wait for the API socket to become ready
    *
-   * Polls until the socket exists and responds to requests.
+   * Uses inotify (via fs.watch) to wait for socket file creation,
+   * then polls until the socket responds to requests.
    *
    * @param timeoutMs Maximum time to wait (default: 5000ms)
-   * @param intervalMs Polling interval (default: 100ms)
+   * @param intervalMs Polling interval for API readiness (default: 100ms)
    */
   async waitForReady(
     timeoutMs: number = 5000,
     intervalMs: number = 100,
   ): Promise<void> {
+    // Wait for socket file to exist
+    if (!fs.existsSync(this.socketPath)) {
+      await this.waitForSocketFile(timeoutMs);
+    }
+
+    // Wait for API to respond
     const startTime = Date.now();
-
     while (Date.now() - startTime < timeoutMs) {
-      // First check if socket file exists
-      if (!fs.existsSync(this.socketPath)) {
-        logger.log(`Waiting for socket file: ${this.socketPath}`);
-        await this.sleep(intervalMs);
-        continue;
-      }
-
-      // Try to make a request
       try {
         await this.get("/");
         return;
       } catch {
-        // Socket exists but not ready yet, or request failed
         await this.sleep(intervalMs);
       }
     }
@@ -263,6 +261,42 @@ export class FirecrackerClient {
     throw new Error(
       `Firecracker API not ready after ${timeoutMs}ms (socket: ${this.socketPath})`,
     );
+  }
+
+  /**
+   * Wait for socket file to be created using inotify
+   */
+  private waitForSocketFile(timeoutMs: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const socketDir = path.dirname(this.socketPath);
+      const socketName = path.basename(this.socketPath);
+
+      logger.log(`Waiting for socket file: ${this.socketPath}`);
+
+      const timer = setTimeout(() => {
+        watcher.close();
+        reject(
+          new Error(
+            `Socket file not created after ${timeoutMs}ms: ${this.socketPath}`,
+          ),
+        );
+      }, timeoutMs);
+
+      const watcher = fs.watch(socketDir, (_event, filename) => {
+        if (filename === socketName && fs.existsSync(this.socketPath)) {
+          clearTimeout(timer);
+          watcher.close();
+          resolve();
+        }
+      });
+
+      // Check again in case file was created between existsSync and watch
+      if (fs.existsSync(this.socketPath)) {
+        clearTimeout(timer);
+        watcher.close();
+        resolve();
+      }
+    });
   }
 
   /**
