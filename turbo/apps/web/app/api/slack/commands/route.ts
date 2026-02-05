@@ -21,6 +21,7 @@ import {
   isSlackInvalidAuthError,
 } from "../../../../src/lib/slack";
 import { listSecrets } from "../../../../src/lib/secret/secret-service";
+import { listVariables } from "../../../../src/lib/variable/variable-service";
 import {
   buildAgentAddModal,
   buildAgentListMessage,
@@ -407,17 +408,22 @@ async function handleAgentAdd(
           .where(inArray(agentComposeVersions.id, versionIds))
       : [];
 
-  // Get user's existing secrets
-  const userSecrets = await listSecrets(vm0UserId);
+  // Get user's existing secrets and variables
+  const [userSecrets, userVars] = await Promise.all([
+    listSecrets(vm0UserId),
+    listVariables(vm0UserId),
+  ]);
   const existingSecretNames = new Set(userSecrets.map((s) => s.name));
+  const existingVarNames = new Set(userVars.map((v) => v.name));
 
-  // Build map of compose ID to required secrets
+  // Build map of compose ID to required secrets and vars
   const versionMap = new Map(versions.map((v) => [v.id, v.content]));
   const agentsWithSecrets = availableComposes.map((c) => {
     const content = c.headVersionId ? versionMap.get(c.headVersionId) : null;
     const refs = content ? extractVariableReferences(content) : [];
     const grouped = groupVariablesBySource(refs);
     const requiredSecrets = grouped.secrets.map((s) => s.name);
+    const requiredVars = grouped.vars.map((v) => v.name);
     return {
       id: c.id,
       name: c.name,
@@ -425,6 +431,8 @@ async function handleAgentAdd(
       existingSecrets: requiredSecrets.filter((name) =>
         existingSecretNames.has(name),
       ),
+      requiredVars,
+      existingVars: requiredVars.filter((name) => existingVarNames.has(name)),
     };
   });
 
@@ -556,11 +564,15 @@ async function handleAgentUpdate(
           .where(inArray(agentComposeVersions.id, versionIds))
       : [];
 
-  // Get user's existing secrets
-  const userSecrets = await listSecrets(vm0UserId);
+  // Get user's existing secrets and variables
+  const [userSecrets, userVars] = await Promise.all([
+    listSecrets(vm0UserId),
+    listVariables(vm0UserId),
+  ]);
   const existingSecretNames = new Set(userSecrets.map((s) => s.name));
+  const existingVarNames = new Set(userVars.map((v) => v.name));
 
-  // Build map of compose ID to required secrets
+  // Build map of compose ID to required secrets and vars
   const composeToVersion = new Map(
     composes.map((c) => [c.id, c.headVersionId]),
   );
@@ -572,6 +584,7 @@ async function handleAgentUpdate(
     const refs = content ? extractVariableReferences(content) : [];
     const grouped = groupVariablesBySource(refs);
     const requiredSecrets = grouped.secrets.map((s) => s.name);
+    const requiredVars = grouped.vars.map((v) => v.name);
     return {
       id: b.id,
       name: b.agentName,
@@ -580,6 +593,8 @@ async function handleAgentUpdate(
       existingSecrets: requiredSecrets.filter((name) =>
         existingSecretNames.has(name),
       ),
+      requiredVars,
+      existingVars: requiredVars.filter((name) => existingVarNames.has(name)),
     };
   });
 

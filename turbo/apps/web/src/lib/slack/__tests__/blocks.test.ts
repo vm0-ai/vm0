@@ -22,12 +22,16 @@ describe("buildAgentAddModal", () => {
         name: "My Coder",
         requiredSecrets: [],
         existingSecrets: [],
+        requiredVars: [],
+        existingVars: [],
       },
       {
         id: "agent-2",
         name: "My Analyst",
         requiredSecrets: [],
         existingSecrets: [],
+        requiredVars: [],
+        existingVars: [],
       },
     ];
 
@@ -67,12 +71,16 @@ describe("buildAgentAddModal", () => {
         name: "My Coder",
         requiredSecrets: [],
         existingSecrets: [],
+        requiredVars: [],
+        existingVars: [],
       },
       {
         id: "agent-2",
         name: "My Analyst",
         requiredSecrets: [],
         existingSecrets: [],
+        requiredVars: [],
+        existingVars: [],
       },
     ];
 
@@ -99,6 +107,8 @@ describe("buildAgentAddModal", () => {
         name: "My Coder",
         requiredSecrets: ["API_KEY", "NEW_SECRET"],
         existingSecrets: ["API_KEY"],
+        requiredVars: [],
+        existingVars: [],
       },
     ];
 

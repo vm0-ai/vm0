@@ -1,16 +1,62 @@
-import type { Block, KnownBlock, View, SectionBlock } from "@slack/web-api";
+import type {
+  Block,
+  InputBlock,
+  KnownBlock,
+  View,
+  SectionBlock,
+} from "@slack/web-api";
 
 interface AgentOption {
   id: string;
   name: string;
   requiredSecrets: string[];
   existingSecrets: string[];
+  requiredVars: string[];
+  existingVars: string[];
 }
 
 interface BindingInfo {
   agentName: string;
   description: string | null;
   enabled: boolean;
+}
+
+/**
+ * Build an input block for a variable or secret value
+ * Used by both add and update modals
+ */
+function buildValueInputBlock(
+  blockIdPrefix: string,
+  name: string,
+  isExisting: boolean,
+  isRequired: boolean,
+): InputBlock {
+  const isOptional = !isRequired || isExisting;
+  return {
+    type: "input",
+    block_id: `${blockIdPrefix}_${name}`,
+    ...(isOptional && { optional: true }),
+    element: {
+      type: "plain_text_input",
+      action_id: "value",
+      placeholder: {
+        type: "plain_text",
+        text: isExisting
+          ? "Leave empty to keep current value"
+          : `Enter value for ${name}`,
+      },
+    },
+    label: {
+      type: "plain_text",
+      text: isExisting ? `${name} ✓` : name,
+    },
+    ...(isExisting && {
+      hint: {
+        type: "plain_text",
+        text: "Already configured in your account",
+      },
+    }),
+  };
 }
 
 /**
@@ -92,81 +138,67 @@ export function buildAgentAddModal(
     });
   }
 
+  // Add variables fields if agent is selected and has required vars
+  if (selectedAgent && selectedAgent.requiredVars.length > 0) {
+    blocks.push({ type: "divider" });
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: "*Variables*" },
+    });
+
+    const existingVarsSet = new Set(selectedAgent.existingVars);
+    for (const varName of selectedAgent.requiredVars) {
+      blocks.push(
+        buildValueInputBlock(
+          "var",
+          varName,
+          existingVarsSet.has(varName),
+          true,
+        ),
+      );
+    }
+  }
+
   // Add secrets fields if agent is selected and has required secrets
   if (selectedAgent && selectedAgent.requiredSecrets.length > 0) {
-    blocks.push({
-      type: "divider",
-    });
+    blocks.push({ type: "divider" });
     blocks.push({
       type: "section",
-      text: {
-        type: "mrkdwn",
-        text: "*Required Secrets*",
-      },
+      text: { type: "mrkdwn", text: "*Secrets*" },
     });
 
-    const existingSet = new Set(selectedAgent.existingSecrets);
-
+    const existingSecretsSet = new Set(selectedAgent.existingSecrets);
     for (const secretName of selectedAgent.requiredSecrets) {
-      const isExisting = existingSet.has(secretName);
-
-      if (isExisting) {
-        // Secret already exists in user's scope - make it optional
-        blocks.push({
-          type: "input",
-          block_id: `secret_${secretName}`,
-          optional: true,
-          element: {
-            type: "plain_text_input",
-            action_id: "value",
-            placeholder: {
-              type: "plain_text",
-              text: "Leave empty to keep current value",
-            },
-          },
-          label: {
-            type: "plain_text",
-            text: `${secretName} ✓`,
-          },
-          hint: {
-            type: "plain_text",
-            text: "Already configured in your account",
-          },
-        });
-      } else {
-        // Secret not configured - required input
-        blocks.push({
-          type: "input",
-          block_id: `secret_${secretName}`,
-          element: {
-            type: "plain_text_input",
-            action_id: "value",
-            placeholder: {
-              type: "plain_text",
-              text: `Enter value for ${secretName}`,
-            },
-          },
-          label: {
-            type: "plain_text",
-            text: secretName,
-          },
-        });
-      }
+      blocks.push(
+        buildValueInputBlock(
+          "secret",
+          secretName,
+          existingSecretsSet.has(secretName),
+          true,
+        ),
+      );
     }
-  } else if (selectedAgent && selectedAgent.requiredSecrets.length === 0) {
+  }
+
+  // Show message if no variables or secrets required
+  if (
+    selectedAgent &&
+    selectedAgent.requiredVars.length === 0 &&
+    selectedAgent.requiredSecrets.length === 0
+  ) {
     blocks.push({
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "_This agent doesn't require any secrets._",
+        text: "_This agent doesn't require any variables or secrets._",
       },
     });
-  } else {
+  } else if (!selectedAgent) {
     blocks.push({
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "_Select an agent to see required secrets._",
+        text: "_Select an agent to see required configuration._",
       },
     });
   }
@@ -202,6 +234,8 @@ interface AgentUpdateOption {
   description: string | null;
   requiredSecrets: string[];
   existingSecrets: string[];
+  requiredVars: string[];
+  existingVars: string[];
 }
 
 /**
@@ -286,11 +320,33 @@ export function buildAgentUpdateModal(
     });
   }
 
+  // Add variables fields if agent is selected and has required vars
+  if (selectedAgent && selectedAgent.requiredVars.length > 0) {
+    blocks.push({ type: "divider" });
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "*Update Variables*\n_Leave empty to keep current value_",
+      },
+    });
+
+    const existingVarsSet = new Set(selectedAgent.existingVars);
+    for (const varName of selectedAgent.requiredVars) {
+      blocks.push(
+        buildValueInputBlock(
+          "var",
+          varName,
+          existingVarsSet.has(varName),
+          false,
+        ),
+      );
+    }
+  }
+
   // Add secrets fields if agent is selected and has required secrets
   if (selectedAgent && selectedAgent.requiredSecrets.length > 0) {
-    blocks.push({
-      type: "divider",
-    });
+    blocks.push({ type: "divider" });
     blocks.push({
       type: "section",
       text: {
@@ -299,51 +355,38 @@ export function buildAgentUpdateModal(
       },
     });
 
-    const existingSet = new Set(selectedAgent.existingSecrets);
-
+    const existingSecretsSet = new Set(selectedAgent.existingSecrets);
     for (const secretName of selectedAgent.requiredSecrets) {
-      const isExisting = existingSet.has(secretName);
-
-      blocks.push({
-        type: "input",
-        block_id: `secret_${secretName}`,
-        optional: true,
-        element: {
-          type: "plain_text_input",
-          action_id: "value",
-          placeholder: {
-            type: "plain_text",
-            text: isExisting
-              ? "Leave empty to keep current value"
-              : `Enter value for ${secretName}`,
-          },
-        },
-        label: {
-          type: "plain_text",
-          text: isExisting ? `${secretName} ✓` : secretName,
-        },
-        ...(isExisting && {
-          hint: {
-            type: "plain_text",
-            text: "Already configured in your account",
-          },
-        }),
-      });
+      blocks.push(
+        buildValueInputBlock(
+          "secret",
+          secretName,
+          existingSecretsSet.has(secretName),
+          false,
+        ),
+      );
     }
-  } else if (selectedAgent && selectedAgent.requiredSecrets.length === 0) {
+  }
+
+  // Show message if no variables or secrets to update
+  if (
+    selectedAgent &&
+    selectedAgent.requiredVars.length === 0 &&
+    selectedAgent.requiredSecrets.length === 0
+  ) {
     blocks.push({
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "_This agent doesn't have any secrets to update._",
+        text: "_This agent doesn't have any variables or secrets to update._",
       },
     });
-  } else {
+  } else if (!selectedAgent) {
     blocks.push({
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "_Select an agent to update its secrets._",
+        text: "_Select an agent to update its configuration._",
       },
     });
   }

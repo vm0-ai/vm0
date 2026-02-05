@@ -27,6 +27,10 @@ import {
   listSecrets,
   setSecret,
 } from "../../../../src/lib/secret/secret-service";
+import {
+  listVariables,
+  setVariable,
+} from "../../../../src/lib/variable/variable-service";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("slack:interactive");
@@ -160,6 +164,8 @@ async function fetchAvailableAgents(
     name: string;
     requiredSecrets: string[];
     existingSecrets: string[];
+    requiredVars: string[];
+    existingVars: string[];
   }>
 > {
   // Fetch user's available agents with their head version
@@ -193,7 +199,7 @@ async function fetchAvailableAgents(
     return [];
   }
 
-  // Get compose versions to extract required secrets
+  // Get compose versions to extract required secrets and vars
   const versionIds = availableComposes
     .map((c) => c.headVersionId)
     .filter((id): id is string => id !== null);
@@ -209,17 +215,22 @@ async function fetchAvailableAgents(
           .where(inArray(agentComposeVersions.id, versionIds))
       : [];
 
-  // Get user's existing secrets
-  const userSecrets = await listSecrets(vm0UserId);
+  // Get user's existing secrets and variables
+  const [userSecrets, userVars] = await Promise.all([
+    listSecrets(vm0UserId),
+    listVariables(vm0UserId),
+  ]);
   const existingSecretNames = new Set(userSecrets.map((s) => s.name));
+  const existingVarNames = new Set(userVars.map((v) => v.name));
 
-  // Build map of compose ID to required secrets
+  // Build map of compose ID to required secrets and vars
   const versionMap = new Map(versions.map((v) => [v.id, v.content]));
   return availableComposes.map((c) => {
     const content = c.headVersionId ? versionMap.get(c.headVersionId) : null;
     const refs = content ? extractVariableReferences(content) : [];
     const grouped = groupVariablesBySource(refs);
     const requiredSecrets = grouped.secrets.map((s) => s.name);
+    const requiredVars = grouped.vars.map((v) => v.name);
     return {
       id: c.id,
       name: c.name,
@@ -227,6 +238,8 @@ async function fetchAvailableAgents(
       existingSecrets: requiredSecrets.filter((name) =>
         existingSecretNames.has(name),
       ),
+      requiredVars,
+      existingVars: requiredVars.filter((name) => existingVarNames.has(name)),
     };
   });
 }
@@ -244,6 +257,8 @@ async function fetchBoundAgents(
     description: string | null;
     requiredSecrets: string[];
     existingSecrets: string[];
+    requiredVars: string[];
+    existingVars: string[];
   }>
 > {
   // Get user's bound agents with their compose IDs
@@ -261,7 +276,7 @@ async function fetchBoundAgents(
     return [];
   }
 
-  // Get compose versions to extract required secrets
+  // Get compose versions to extract required secrets and vars
   const composeIds = bindings.map((b) => b.composeId);
   const composes = await globalThis.services.db
     .select({
@@ -287,11 +302,15 @@ async function fetchBoundAgents(
           .where(inArray(agentComposeVersions.id, versionIds))
       : [];
 
-  // Get user's existing secrets
-  const userSecrets = await listSecrets(vm0UserId);
+  // Get user's existing secrets and variables
+  const [userSecrets, userVars] = await Promise.all([
+    listSecrets(vm0UserId),
+    listVariables(vm0UserId),
+  ]);
   const existingSecretNames = new Set(userSecrets.map((s) => s.name));
+  const existingVarNames = new Set(userVars.map((v) => v.name));
 
-  // Build map of compose ID to required secrets
+  // Build map of compose ID to required secrets and vars
   const composeToVersion = new Map(
     composes.map((c) => [c.id, c.headVersionId]),
   );
@@ -303,6 +322,7 @@ async function fetchBoundAgents(
     const refs = content ? extractVariableReferences(content) : [];
     const grouped = groupVariablesBySource(refs);
     const requiredSecrets = grouped.secrets.map((s) => s.name);
+    const requiredVars = grouped.vars.map((v) => v.name);
     return {
       id: b.id,
       name: b.agentName,
@@ -311,6 +331,8 @@ async function fetchBoundAgents(
       existingSecrets: requiredSecrets.filter((name) =>
         existingSecretNames.has(name),
       ),
+      requiredVars,
+      existingVars: requiredVars.filter((name) => existingVarNames.has(name)),
     };
   });
 }
@@ -500,6 +522,7 @@ interface AgentAddFormValues {
   composeId: string | undefined;
   description: string | undefined;
   secrets: Record<string, string>;
+  vars: Record<string, string>;
 }
 
 /** Validated form values with required fields guaranteed */
@@ -507,6 +530,7 @@ interface ValidatedAgentAddForm {
   composeId: string;
   description: string | undefined;
   secrets: Record<string, string>;
+  vars: Record<string, string>;
 }
 
 type ModalStateValues = NonNullable<
@@ -519,12 +543,21 @@ type ModalStateValues = NonNullable<
 function extractFormValues(values: ModalStateValues): AgentAddFormValues {
   // Extract secrets from individual secret_* blocks
   const secrets: Record<string, string> = {};
+  // Extract vars from individual var_* blocks
+  const vars: Record<string, string> = {};
+
   for (const [blockId, block] of Object.entries(values)) {
     if (blockId.startsWith("secret_")) {
       const secretName = blockId.replace("secret_", "");
       const value = block?.value?.value?.trim();
       if (value) {
         secrets[secretName] = value;
+      }
+    } else if (blockId.startsWith("var_")) {
+      const varName = blockId.replace("var_", "");
+      const value = block?.value?.value?.trim();
+      if (value) {
+        vars[varName] = value;
       }
     }
   }
@@ -537,6 +570,7 @@ function extractFormValues(values: ModalStateValues): AgentAddFormValues {
     composeId: values.agent_select?.agent_select_action?.selected_option?.value,
     description,
     secrets,
+    vars,
   };
 }
 
@@ -559,6 +593,7 @@ function validateAgentAddForm(
     composeId: formValues.composeId,
     description: formValues.description,
     secrets: formValues.secrets,
+    vars: formValues.vars,
   };
 }
 
@@ -586,6 +621,7 @@ async function sendConfirmationMessage(
   workspaceId: string,
   agentName: string,
   savedSecretNames: string[],
+  savedVarNames: string[],
   channelId: string,
   slackUserId: string,
   encryptionKey: string,
@@ -607,6 +643,11 @@ async function sendConfirmationMessage(
   const client = createSlackClient(botToken);
 
   let messageText = `:white_check_mark: *Agent \`${agentName}\` has been added successfully!*`;
+
+  if (savedVarNames.length > 0) {
+    const varsList = savedVarNames.map((n) => `\`${n}\``).join(", ");
+    messageText += `\n\nVariables saved to your account: ${varsList}`;
+  }
 
   if (savedSecretNames.length > 0) {
     const secretsList = savedSecretNames.map((n) => `\`${n}\``).join(", ");
@@ -721,6 +762,20 @@ async function handleAgentAddSubmission(
     });
   }
 
+  // Save variables to user's scope
+  const savedVarNames: string[] = [];
+  for (const [name, value] of Object.entries(formValues.vars)) {
+    if (value.trim()) {
+      await setVariable(
+        userLink.vm0UserId,
+        name,
+        value,
+        `Configured via Slack for ${agentName}`,
+      );
+      savedVarNames.push(name);
+    }
+  }
+
   // Save secrets to user's scope
   const savedSecretNames: string[] = [];
   for (const [name, value] of Object.entries(formValues.secrets)) {
@@ -752,6 +807,7 @@ async function handleAgentAddSubmission(
       payload.team.id,
       agentName,
       savedSecretNames,
+      savedVarNames,
       channelId,
       payload.user.id,
       encryptionKey,
@@ -896,6 +952,55 @@ function extractSecretsFromFormValues(
 }
 
 /**
+ * Extract vars from form values (only non-empty values)
+ */
+function extractVarsFromFormValues(
+  values: ModalStateValues,
+): Record<string, string> {
+  const vars: Record<string, string> = {};
+  for (const [blockId, block] of Object.entries(values)) {
+    if (blockId.startsWith("var_")) {
+      const varName = blockId.replace("var_", "");
+      const value = block?.value?.value?.trim();
+      if (value) {
+        vars[varName] = value;
+      }
+    }
+  }
+  return vars;
+}
+
+/**
+ * Save variables and secrets from form submission
+ */
+async function saveVarsAndSecrets(
+  userId: string,
+  agentName: string,
+  vars: Record<string, string>,
+  secrets: Record<string, string>,
+): Promise<{ savedVarNames: string[]; savedSecretNames: string[] }> {
+  const savedVarNames: string[] = [];
+  const savedSecretNames: string[] = [];
+
+  for (const [name, value] of Object.entries(vars)) {
+    await setVariable(
+      userId,
+      name,
+      value,
+      `Updated via Slack for ${agentName}`,
+    );
+    savedVarNames.push(name);
+  }
+
+  for (const [name, value] of Object.entries(secrets)) {
+    await setSecret(userId, name, value, `Updated via Slack for ${agentName}`);
+    savedSecretNames.push(name);
+  }
+
+  return { savedVarNames, savedSecretNames };
+}
+
+/**
  * Handle agent update modal submission
  */
 async function handleAgentUpdateSubmission(
@@ -903,7 +1008,6 @@ async function handleAgentUpdateSubmission(
   encryptionKey: string,
 ): Promise<Response> {
   const values = payload.view?.state?.values;
-
   if (!values) {
     return NextResponse.json({
       response_action: "errors",
@@ -911,12 +1015,9 @@ async function handleAgentUpdateSubmission(
     });
   }
 
-  // Extract channelId from private_metadata
   const channelId = extractChannelIdFromMetadata(
     payload.view?.private_metadata,
   );
-
-  // Get selected binding ID
   const bindingId =
     values.agent_select?.agent_update_select_action?.selected_option?.value;
 
@@ -927,7 +1028,6 @@ async function handleAgentUpdateSubmission(
     });
   }
 
-  // Get the binding to verify it exists
   const [binding] = await globalThis.services.db
     .select()
     .from(slackBindings)
@@ -941,23 +1041,21 @@ async function handleAgentUpdateSubmission(
     });
   }
 
-  // Extract new secrets from form (only non-empty values)
+  const newVars = extractVarsFromFormValues(values);
   const newSecrets = extractSecretsFromFormValues(values);
-
-  // Extract description from form
   const newDescription =
     values.agent_description?.description_input?.value?.trim() || null;
   const descriptionChanged = newDescription !== binding.description;
+  const hasVars = Object.keys(newVars).length > 0;
+  const hasSecrets = Object.keys(newSecrets).length > 0;
 
-  // If no updates provided, nothing to do
-  if (Object.keys(newSecrets).length === 0 && !descriptionChanged) {
+  if (!hasVars && !hasSecrets && !descriptionChanged) {
     return NextResponse.json({
       response_action: "errors",
       errors: { agent_select: "No changes to save" },
     });
   }
 
-  // Update description if changed
   if (descriptionChanged) {
     await globalThis.services.db
       .update(slackBindings)
@@ -965,23 +1063,18 @@ async function handleAgentUpdateSubmission(
       .where(eq(slackBindings.id, bindingId));
   }
 
-  // Save secrets to user's scope
-  const savedSecretNames: string[] = [];
-  for (const [name, value] of Object.entries(newSecrets)) {
-    await setSecret(
-      binding.vm0UserId,
-      name,
-      value,
-      `Updated via Slack for ${binding.agentName}`,
-    );
-    savedSecretNames.push(name);
-  }
+  const { savedVarNames, savedSecretNames } = await saveVarsAndSecrets(
+    binding.vm0UserId,
+    binding.agentName,
+    newVars,
+    newSecrets,
+  );
 
-  // Await message to prevent serverless function from terminating before it's sent
   if (channelId) {
     await sendUpdateConfirmationMessage(
       payload.team.id,
       binding.agentName,
+      savedVarNames,
       savedSecretNames,
       descriptionChanged,
       channelId,
@@ -994,7 +1087,6 @@ async function handleAgentUpdateSubmission(
     });
   }
 
-  // Close modal
   return new Response("", { status: 200 });
 }
 
@@ -1004,6 +1096,7 @@ async function handleAgentUpdateSubmission(
 async function sendUpdateConfirmationMessage(
   workspaceId: string,
   agentName: string,
+  updatedVarNames: string[],
   updatedSecretNames: string[],
   descriptionUpdated: boolean,
   channelId: string,
@@ -1030,6 +1123,12 @@ async function sendUpdateConfirmationMessage(
   const updates: string[] = [];
   if (descriptionUpdated) {
     updates.push("description");
+  }
+  if (updatedVarNames.length > 0) {
+    const varList = updatedVarNames.map((n) => `\`${n}\``).join(", ");
+    updates.push(
+      `variable${updatedVarNames.length > 1 ? "s" : ""}: ${varList}`,
+    );
   }
   if (updatedSecretNames.length > 0) {
     const secretList = updatedSecretNames.map((n) => `\`${n}\``).join(", ");
