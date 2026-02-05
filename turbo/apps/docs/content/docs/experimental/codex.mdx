@@ -26,11 +26,21 @@ agents:
 
 ## Running Your Agent
 
-Run with your API key passed as a secret:
+First, store your API key on the platform (one-time setup):
 
 ```bash
-vm0 run my-agent "your prompt" --secrets OPENAI_API_KEY=sk-xxx
+vm0 secret set OPENAI_API_KEY sk-xxx
 ```
+
+Then run your agent - the secret is automatically loaded:
+
+```bash
+vm0 run my-agent "your prompt"
+```
+
+<Callout type="info">
+For CI/CD or temporary overrides, you can pass the secret at runtime: `--secrets OPENAI_API_KEY=sk-xxx`
+</Callout>
 
 ## Instructions
 
@@ -47,8 +57,7 @@ When you specify an `instructions` file in your `vm0.yaml`, VM0 automatically mo
 
 Codex has some limitations compared to Claude Code:
 
-- **No model provider support** - You cannot use `vm0 model-provider setup` with Codex. You must pass the API key manually.
-- **Manual secret passing** - The `OPENAI_API_KEY` must be provided via the `--secrets` flag on every run.
+- **No model provider support** - You cannot use `vm0 model-provider setup` with Codex. Use `vm0 secret set OPENAI_API_KEY` instead.
 - **Experimental status** - The feature may have breaking changes in future releases.
 
 ## Getting an API Key
@@ -57,4 +66,4 @@ To use Codex, you need an OpenAI API key:
 
 1. Go to [OpenAI Platform](https://platform.openai.com/api-keys)
 2. Create a new API key
-3. Use it with the `--secrets` flag when running your agent
+3. Store it with `vm0 secret set OPENAI_API_KEY sk-xxx`

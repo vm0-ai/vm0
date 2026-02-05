@@ -102,32 +102,29 @@ Skills require the following environment variables:
 
 VM0 is asking you to approve the new secrets required by these skills. This is a security confirmation since the secrets are implicitly passed through the skills. Type `y` and press Enter to continue.
 
-## Step 4: Run Your Agent
+## Step 4: Store Your API Keys
 
-Let's test it out:
+Before running, store your API keys on the platform (one-time setup):
+
+```bash
+vm0 secret set FIRECRAWL_API_KEY fc-xxx
+vm0 secret set TAVILY_API_KEY tvly-xxx
+```
+
+This stores your secrets securely on VM0's servers. They'll be automatically loaded whenever you run your agent.
+
+## Step 5: Run Your Agent
+
+Now let's test it out:
 
 ```bash
 vm0 run my-researcher --artifact-name artifact "research the latest developments in WebAssembly for 2025"
 ```
 
-You'll see an error asking for the API keys:
+Since your secrets are stored on the platform, you don't need to pass them every time!
 
-```
-✗ Run preparation failed
-  Missing required secrets: TAVILY_API_KEY, FIRECRAWL_API_KEY. Use '--secrets TAVILY_API_KEY=<value>' to provide them.
-```
-
-Run again with the API keys:
-
-```bash
-vm0 run my-researcher --artifact-name artifact \
-  --secrets FIRECRAWL_API_KEY=fc-xxx \
-  --secrets TAVILY_API_KEY=tvly-xxx \
-  "research the latest developments in WebAssembly for 2025"
-```
-
-<Callout type="tip">
-You can also store secrets in a `.env` file and load it with `--env-file .env` to avoid typing them each time.
+<Callout type="info">
+For CI/CD or temporary overrides, you can still pass secrets at runtime with `--secrets FIRECRAWL_API_KEY=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
 </Callout>
 
 This time it should work! You'll see the agent:
