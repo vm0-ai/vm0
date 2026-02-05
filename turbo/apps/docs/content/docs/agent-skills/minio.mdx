@@ -27,10 +27,22 @@ agents:
 
 ## Run
 
+Store your secrets on the platform (recommended, one-time setup):
+
 ```bash
-vm0 run my-agent "upload file to MinIO" \
-  --secrets MINIO_ACCESS_KEY=xxx MINIO_SECRET_KEY=xxx --vars MINIO_ENDPOINT=xxx # [!code highlight]
+vm0 secret set MINIO_ACCESS_KEY your-minio-access-key
+vm0 secret set MINIO_SECRET_KEY your-minio-secret-key
 ```
+
+Then run your agent - secrets are automatically loaded:
+
+```bash
+vm0 run my-agent "upload file to MinIO"
+```
+
+<Callout type="info">
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets MINIO_ACCESS_KEY=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+</Callout>
 
 ## Example Instructions
 

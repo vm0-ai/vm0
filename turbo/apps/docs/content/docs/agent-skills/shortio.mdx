@@ -27,10 +27,21 @@ agents:
 
 ## Run
 
+Store your secret on the platform (recommended, one-time setup):
+
 ```bash
-vm0 run my-agent "create short link" \
-  --secrets SHORTIO_API_KEY=xxx --vars SHORTIO_DOMAIN=xxx SHORTIO_DOMAIN_ID=xxx # [!code highlight]
+vm0 secret set SHORTIO_API_KEY your-shortio-api-key
 ```
+
+Then run your agent - secret is automatically loaded:
+
+```bash
+vm0 run my-agent "create short link"
+```
+
+<Callout type="info">
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets SHORTIO_API_KEY=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+</Callout>
 
 ## Example Instructions
 

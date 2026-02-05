@@ -27,10 +27,22 @@ agents:
 
 ## Run
 
+Store your secrets on the platform (recommended, one-time setup):
+
 ```bash
-vm0 run my-agent "upload and optimize this image" \
-  --secrets CLOUDINARY_API_KEY=xxx CLOUDINARY_API_SECRET=xxx --vars CLOUDINARY_CLOUD_NAME=xxx # [!code highlight]
+vm0 secret set CLOUDINARY_API_KEY your-cloudinary-api-key
+vm0 secret set CLOUDINARY_API_SECRET your-cloudinary-api-secret
 ```
+
+Then run your agent - secrets are automatically loaded:
+
+```bash
+vm0 run my-agent "upload and optimize this image"
+```
+
+<Callout type="info">
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets CLOUDINARY_API_KEY=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+</Callout>
 
 ## Example Instructions
 

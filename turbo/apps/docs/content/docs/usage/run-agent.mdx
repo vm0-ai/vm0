@@ -32,6 +32,23 @@ vm0 run my-agent:abc123 "build a todo app"
 
 ### Passing Variables and Secrets
 
+**Recommended: Store on Platform (one-time setup)**
+
+```bash
+vm0 variable set ENV production
+vm0 secret set API_KEY sk-xxx
+```
+
+Then run your agent - values are automatically loaded:
+
+```bash
+vm0 run my-agent "deploy to production"
+```
+
+**Alternative: Pass at Runtime**
+
+For CI/CD or temporary overrides, pass values directly:
+
 ```bash
 vm0 run my-agent "deploy to production" \
   --vars ENV=production \
@@ -156,27 +173,33 @@ curl -H "Authorization: Bearer $VM0_TOKEN" \
 
 <Accordion title="How do I pass multiple environment variables?">
 
-You can pass multiple `--vars` and `--secrets` flags:
+**Recommended: Store on Platform**
+
+Store values once and they're automatically loaded on every run:
+
+```bash
+vm0 variable set ENV production
+vm0 variable set REGION us-west
+vm0 secret set API_KEY sk-xxx
+vm0 secret set DB_PASSWORD pwd123
+```
+
+Then just run:
+
+```bash
+vm0 run my-agent "deploy"
+```
+
+**Alternative: Pass at Runtime**
+
+For CI/CD or overrides, pass multiple flags:
 
 ```bash
 vm0 run my-agent "deploy" \
   --vars ENV=production \
   --vars REGION=us-west \
-  --vars DEBUG=false \
   --secrets API_KEY=sk-xxx \
   --secrets DB_PASSWORD=pwd123
-```
-
-Or use a `.env` file with `vm0 cook`:
-
-```bash title=".env"
-ENV=production
-REGION=us-west
-API_KEY=sk-xxx
-```
-
-```bash
-vm0 cook "deploy to production"
 ```
 
 See [Environment Variables](/docs/core-concept/environment-variable) for more details.

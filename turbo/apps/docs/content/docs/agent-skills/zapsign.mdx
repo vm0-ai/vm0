@@ -25,10 +25,21 @@ agents:
 
 ## Run
 
+Store your secret on the platform (recommended, one-time setup):
+
 ```bash
-vm0 run my-agent "create document for signature" \
-  --secrets ZAPSIGN_API_TOKEN=xxx # [!code highlight]
+vm0 secret set ZAPSIGN_API_TOKEN your-zapsign-api-token
 ```
+
+Then run your agent - secret is automatically loaded:
+
+```bash
+vm0 run my-agent "create document for signature"
+```
+
+<Callout type="info">
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets ZAPSIGN_API_TOKEN=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+</Callout>
 
 ## Example Instructions
 

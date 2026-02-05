@@ -26,10 +26,21 @@ agents:
 
 ## Run
 
+Store your secret on the platform (recommended, one-time setup):
+
 ```bash
-vm0 run my-agent "create a new lead" \
-  --secrets KOMMO_API_KEY=xxx --vars KOMMO_SUBDOMAIN=xxx # [!code highlight]
+vm0 secret set KOMMO_API_KEY your-kommo-api-key
 ```
+
+Then run your agent - secret is automatically loaded:
+
+```bash
+vm0 run my-agent "create a new lead"
+```
+
+<Callout type="info">
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets KOMMO_API_KEY=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+</Callout>
 
 ## Example Instructions
 

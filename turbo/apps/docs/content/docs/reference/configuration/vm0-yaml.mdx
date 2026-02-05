@@ -35,13 +35,17 @@ agents:
       - my-volume:/home/user/.config
     environment:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-      MY_VAR: "value"
+      MY_VAR: ${{ vars.MY_VAR }}
 
 volumes:
   my-volume:
     name: my-volume
     version: latest
 ```
+
+<Callout type="info">
+Template values like `${{ secrets.X }}` and `${{ vars.X }}` are resolved from Platform-stored secrets and variables. Store them once with `vm0 secret set` or `vm0 variable set`, and they're automatically loaded on every run. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+</Callout>
 
 ## Top-Level Fields
 

@@ -27,10 +27,21 @@ agents:
 
 ## Run
 
+Store your secret on the platform (recommended, one-time setup):
+
 ```bash
-vm0 run my-agent "create a bug ticket in Jira" \
-  --secrets JIRA_API_TOKEN=xxx --vars JIRA_DOMAIN=xxx --vars JIRA_EMAIL=xxx # [!code highlight]
+vm0 secret set JIRA_API_TOKEN your-jira-api-token
 ```
+
+Then run your agent - secret is automatically loaded:
+
+```bash
+vm0 run my-agent "create a bug ticket in Jira"
+```
+
+<Callout type="info">
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets JIRA_API_TOKEN=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+</Callout>
 
 ## Example Instructions
 

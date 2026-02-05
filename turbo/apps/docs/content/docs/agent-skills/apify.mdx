@@ -25,10 +25,21 @@ agents:
 
 ## Run
 
+Store your secret on the platform (recommended, one-time setup):
+
 ```bash
-vm0 run my-agent "scrape product data from amazon" \
-  --secrets APIFY_API_TOKEN=apify_api_xxx # [!code highlight]
+vm0 secret set APIFY_API_TOKEN your-apify-api-token
 ```
+
+Then run your agent - secret is automatically loaded:
+
+```bash
+vm0 run my-agent "scrape product data from amazon"
+```
+
+<Callout type="info">
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets APIFY_API_TOKEN=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+</Callout>
 
 ## Example Instructions
 

@@ -36,10 +36,22 @@ agents:
 
 ## Run
 
+Store your secrets on the platform (recommended, one-time setup):
+
 ```bash
-vm0 run my-agent "check my inbox" \
-  --secrets GMAIL_CLIENT_ID=xxx --secrets GMAIL_CLIENT_SECRET=xxx --secrets GMAIL_REFRESH_TOKEN=xxx # [!code highlight]
+vm0 secret set GMAIL_CLIENT_SECRET your-gmail-client-secret
+vm0 secret set GMAIL_REFRESH_TOKEN your-gmail-refresh-token
 ```
+
+Then run your agent - secrets are automatically loaded:
+
+```bash
+vm0 run my-agent "check my inbox"
+```
+
+<Callout type="info">
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets GMAIL_CLIENT_SECRET=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+</Callout>
 
 ## Example Instructions
 

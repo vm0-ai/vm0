@@ -27,10 +27,22 @@ agents:
 
 ## Run
 
+Store your secrets on the platform (recommended, one-time setup):
+
 ```bash
-vm0 run my-agent "query error logs from last hour" \
-  --secrets AXIOM_API_TOKEN=xaat-xxx # [!code highlight]
+vm0 secret set AXIOM_API_TOKEN your-axiom-api-token
+vm0 secret set AXIOM_PERSONAL_ACCESS_TOKEN your-axiom-personal-access-token
 ```
+
+Then run your agent - secrets are automatically loaded:
+
+```bash
+vm0 run my-agent "query error logs from last hour"
+```
+
+<Callout type="info">
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets AXIOM_API_TOKEN=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+</Callout>
 
 ## Example Instructions
 

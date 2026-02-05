@@ -25,10 +25,21 @@ agents:
 
 ## Run
 
+Store your secret on the platform (recommended, one-time setup):
+
 ```bash
-vm0 run my-agent "create a new lead in CRM" \
-  --secrets BITRIX_WEBHOOK_URL=https://your-domain.bitrix24.com/rest/1/xxx # [!code highlight]
+vm0 secret set BITRIX_WEBHOOK_URL your-bitrix-webhook-url
 ```
+
+Then run your agent - secret is automatically loaded:
+
+```bash
+vm0 run my-agent "create a new lead in CRM"
+```
+
+<Callout type="info">
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets BITRIX_WEBHOOK_URL=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+</Callout>
 
 ## Example Instructions
 

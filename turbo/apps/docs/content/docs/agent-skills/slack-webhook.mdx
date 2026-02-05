@@ -25,10 +25,21 @@ agents:
 
 ## Run
 
+Store your secret on the platform (recommended, one-time setup):
+
 ```bash
-vm0 run my-agent "send status update to Slack" \
-  --secrets SLACK_WEBHOOK_URL=https://hooks.slack.com/services/xxx # [!code highlight]
+vm0 secret set SLACK_WEBHOOK_URL your-slack-webhook-url
 ```
+
+Then run your agent - secret is automatically loaded:
+
+```bash
+vm0 run my-agent "send status update to Slack"
+```
+
+<Callout type="info">
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets SLACK_WEBHOOK_URL=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+</Callout>
 
 ## Example Instructions
 

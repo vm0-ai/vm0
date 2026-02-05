@@ -72,11 +72,18 @@ agents:
       - https://github.com/vm0-ai/vm0-skills/tree/main/slack
 ```
 
+First, store your secrets on the platform (one-time setup):
+
 ```bash
-vm0 run research-bot "research AI agent frameworks and create a comparison" \
-  --secrets FIRECRAWL_API_KEY=fc-xxx \
-  --secrets NOTION_API_KEY=secret_xxx \
-  --secrets SLACK_BOT_TOKEN=xoxb-xxx
+vm0 secret set FIRECRAWL_API_KEY fc-xxx
+vm0 secret set NOTION_API_KEY secret_xxx
+vm0 secret set SLACK_BOT_TOKEN xoxb-xxx
+```
+
+Then run your agent - secrets are automatically loaded:
+
+```bash
+vm0 run research-bot "research AI agent frameworks and create a comparison"
 ```
 
 ## Runtime Prompts
@@ -119,16 +126,23 @@ Help the agent understand where and how to use each skill:
 
 ### Handle Credentials
 
-Pass required credentials when running your agent:
+Store required credentials on the platform (recommended, one-time setup):
 
 ```bash
-vm0 run my-agent "sync data to sheets" \
-  --secrets GOOGLE_SHEETS_CLIENT_ID=xxx \
-  --secrets GOOGLE_SHEETS_CLIENT_SECRET=xxx \
-  --secrets GOOGLE_SHEETS_REFRESH_TOKEN=xxx
+vm0 secret set GOOGLE_SHEETS_CLIENT_ID xxx
+vm0 secret set GOOGLE_SHEETS_CLIENT_SECRET xxx
+vm0 secret set GOOGLE_SHEETS_REFRESH_TOKEN xxx
 ```
 
-See [Environment Variables](/docs/core-concept/environment-variable) for managing secrets.
+Then run your agent - secrets are automatically loaded:
+
+```bash
+vm0 run my-agent "sync data to sheets"
+```
+
+<Callout type="info">
+For CI/CD or temporary overrides, pass secrets at runtime with `--secrets KEY=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+</Callout>
 
 ## Troubleshooting
 

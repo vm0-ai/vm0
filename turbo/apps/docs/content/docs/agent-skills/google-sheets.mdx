@@ -34,10 +34,22 @@ agents:
 
 ## Run
 
+Store your secrets on the platform (recommended, one-time setup):
+
 ```bash
-vm0 run my-agent "update the spreadsheet" \
-  --secrets GOOGLE_SHEETS_CLIENT_ID=xxx --secrets GOOGLE_SHEETS_CLIENT_SECRET=xxx --secrets GOOGLE_SHEETS_REFRESH_TOKEN=xxx # [!code highlight]
+vm0 secret set GOOGLE_SHEETS_CLIENT_SECRET your-google-sheets-client-secret
+vm0 secret set GOOGLE_SHEETS_REFRESH_TOKEN your-google-sheets-refresh-token
 ```
+
+Then run your agent - secrets are automatically loaded:
+
+```bash
+vm0 run my-agent "update the spreadsheet"
+```
+
+<Callout type="info">
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets GOOGLE_SHEETS_CLIENT_SECRET=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+</Callout>
 
 ## Example Instructions
 

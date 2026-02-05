@@ -27,10 +27,21 @@ agents:
 
 ## Run
 
+Store your secret on the platform (recommended, one-time setup):
+
 ```bash
-vm0 run my-agent "create support ticket" \
-  --secrets ZENDESK_API_TOKEN=xxx --vars ZENDESK_EMAIL=xxx ZENDESK_SUBDOMAIN=xxx # [!code highlight]
+vm0 secret set ZENDESK_API_TOKEN your-zendesk-api-token
 ```
+
+Then run your agent - secret is automatically loaded:
+
+```bash
+vm0 run my-agent "create support ticket"
+```
+
+<Callout type="info">
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets ZENDESK_API_TOKEN=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+</Callout>
 
 ## Example Instructions
 

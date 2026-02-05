@@ -25,10 +25,21 @@ agents:
 
 ## Run
 
+Store your secret on the platform (recommended, one-time setup):
+
 ```bash
-vm0 run my-agent "search for latest AI news" \
-  --secrets BRAVE_API_KEY=xxx # [!code highlight]
+vm0 secret set BRAVE_API_KEY your-brave-api-key
 ```
+
+Then run your agent - secret is automatically loaded:
+
+```bash
+vm0 run my-agent "search for latest AI news"
+```
+
+<Callout type="info">
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets BRAVE_API_KEY=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+</Callout>
 
 ## Example Instructions
 

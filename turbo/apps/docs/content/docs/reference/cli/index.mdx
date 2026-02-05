@@ -343,7 +343,24 @@ Use `-y` flag to skip confirmation prompts.
 
 <Accordion title="How do I pass environment variables to an agent?">
 
-Use `--vars` for non-sensitive variables and `--secrets` for sensitive data:
+**Recommended: Store on Platform (one-time setup)**
+
+```bash
+vm0 variable set ENV production
+vm0 variable set REGION us-west
+vm0 secret set API_KEY sk-xxx
+vm0 secret set DB_PASSWORD pwd123
+```
+
+Then just run your agent - values are automatically loaded:
+
+```bash
+vm0 run my-agent "deploy"
+```
+
+**Alternative: Pass at Runtime**
+
+For CI/CD or temporary overrides:
 
 ```bash
 vm0 run my-agent "deploy" \

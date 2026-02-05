@@ -25,10 +25,21 @@ agents:
 
 ## Run
 
+Store your secret on the platform (recommended, one-time setup):
+
 ```bash
-vm0 run my-agent "scrape the website" \
-  --secrets FIRECRAWL_API_KEY=fc-xxx # [!code highlight]
+vm0 secret set FIRECRAWL_API_KEY your-firecrawl-api-key
 ```
+
+Then run your agent - secret is automatically loaded:
+
+```bash
+vm0 run my-agent "scrape the website"
+```
+
+<Callout type="info">
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets FIRECRAWL_API_KEY=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+</Callout>
 
 ## Example Instructions
 

@@ -25,10 +25,21 @@ agents:
 
 ## Run
 
+Store your secret on the platform (recommended, one-time setup):
+
 ```bash
-vm0 run my-agent "list open conversations" \
-  --secrets INTERCOM_ACCESS_TOKEN=xxx # [!code highlight]
+vm0 secret set INTERCOM_ACCESS_TOKEN your-intercom-access-token
 ```
+
+Then run your agent - secret is automatically loaded:
+
+```bash
+vm0 run my-agent "list open conversations"
+```
+
+<Callout type="info">
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets INTERCOM_ACCESS_TOKEN=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+</Callout>
 
 ## Example Instructions
 

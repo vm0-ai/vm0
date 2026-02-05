@@ -26,10 +26,21 @@ agents:
 
 ## Run
 
+Store your secret on the platform (recommended, one-time setup):
+
 ```bash
-vm0 run my-agent "create a daily backup job" \
-  --secrets CRONLYTIC_API_KEY=xxx --vars CRONLYTIC_USER_ID=xxx # [!code highlight]
+vm0 secret set CRONLYTIC_API_KEY your-cronlytic-api-key
 ```
+
+Then run your agent - secret is automatically loaded:
+
+```bash
+vm0 run my-agent "create a daily backup job"
+```
+
+<Callout type="info">
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets CRONLYTIC_API_KEY=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+</Callout>
 
 ## Example Instructions
 

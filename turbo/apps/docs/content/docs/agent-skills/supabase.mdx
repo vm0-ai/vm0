@@ -27,10 +27,21 @@ agents:
 
 ## Run
 
+Store your secret on the platform (recommended, one-time setup):
+
 ```bash
-vm0 run my-agent "query database" \
-  --secrets SUPABASE_SECRET_KEY=xxx --vars SUPABASE_URL=xxx SUPABASE_PUBLISHABLE_KEY=xxx # [!code highlight]
+vm0 secret set SUPABASE_SECRET_KEY your-supabase-secret-key
 ```
+
+Then run your agent - secret is automatically loaded:
+
+```bash
+vm0 run my-agent "query database"
+```
+
+<Callout type="info">
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets SUPABASE_SECRET_KEY=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+</Callout>
 
 ## Example Instructions
 

@@ -26,10 +26,22 @@ agents:
 
 ## Run
 
+Store your secrets on the platform (recommended, one-time setup):
+
 ```bash
-vm0 run my-agent "automate browser tasks" \
-  --secrets BROWSERBASE_API_KEY=xxx --secrets BROWSERBASE_PROJECT_ID=xxx # [!code highlight]
+vm0 secret set BROWSERBASE_API_KEY your-browserbase-api-key
+vm0 secret set BROWSERBASE_PROJECT_ID your-browserbase-project-id
 ```
+
+Then run your agent - secrets are automatically loaded:
+
+```bash
+vm0 run my-agent "automate browser tasks"
+```
+
+<Callout type="info">
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets BROWSERBASE_API_KEY=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+</Callout>
 
 ## Example Instructions
 

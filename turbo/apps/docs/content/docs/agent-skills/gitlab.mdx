@@ -26,10 +26,21 @@ agents:
 
 ## Run
 
+Store your secret on the platform (recommended, one-time setup):
+
 ```bash
-vm0 run my-agent "create an issue in GitLab" \
-  --secrets GITLAB_TOKEN=glpat-xxx --vars GITLAB_HOST=gitlab.com # [!code highlight]
+vm0 secret set GITLAB_TOKEN your-gitlab-token
 ```
+
+Then run your agent - secret is automatically loaded:
+
+```bash
+vm0 run my-agent "create an issue in GitLab"
+```
+
+<Callout type="info">
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets GITLAB_TOKEN=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+</Callout>
 
 ## Example Instructions
 

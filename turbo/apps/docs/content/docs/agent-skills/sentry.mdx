@@ -27,10 +27,21 @@ agents:
 
 ## Run
 
+Store your secret on the platform (recommended, one-time setup):
+
 ```bash
-vm0 run my-agent "list recent errors" \
-  --secrets SENTRY_TOKEN=sntrys_xxx --vars SENTRY_HOST=xxx SENTRY_ORG=xxx # [!code highlight]
+vm0 secret set SENTRY_TOKEN your-sentry-token
 ```
+
+Then run your agent - secret is automatically loaded:
+
+```bash
+vm0 run my-agent "list recent errors"
+```
+
+<Callout type="info">
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets SENTRY_TOKEN=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+</Callout>
 
 ## Example Instructions
 

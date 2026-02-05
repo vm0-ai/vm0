@@ -26,10 +26,21 @@ agents:
 
 ## Run
 
+Store your secret on the platform (recommended, one-time setup):
+
 ```bash
-vm0 run my-agent "search similar documents" \
-  --secrets QDRANT_API_KEY=xxx --vars QDRANT_URL=xxx # [!code highlight]
+vm0 secret set QDRANT_API_KEY your-qdrant-api-key
 ```
+
+Then run your agent - secret is automatically loaded:
+
+```bash
+vm0 run my-agent "search similar documents"
+```
+
+<Callout type="info">
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets QDRANT_API_KEY=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+</Callout>
 
 ## Example Instructions
 

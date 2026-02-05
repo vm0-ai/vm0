@@ -25,10 +25,21 @@ agents:
 
 ## Run
 
+Store your secret on the platform (recommended, one-time setup):
+
 ```bash
-vm0 run my-agent "send deployment notification to Discord" \
-  --secrets DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/xxx # [!code highlight]
+vm0 secret set DISCORD_WEBHOOK_URL your-discord-webhook-url
 ```
+
+Then run your agent - secret is automatically loaded:
+
+```bash
+vm0 run my-agent "send deployment notification to Discord"
+```
+
+<Callout type="info">
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets DISCORD_WEBHOOK_URL=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+</Callout>
 
 ## Example Instructions
 

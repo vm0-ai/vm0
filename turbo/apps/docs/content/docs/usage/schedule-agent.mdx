@@ -131,7 +131,27 @@ vm0 schedule delete my-agent
 
 ## Passing Variables and Secrets
 
-Schedules can include variables and secrets that are passed to each run:
+**Recommended: Use Platform Storage**
+
+Store secrets on the platform once, and they're automatically available for all scheduled runs:
+
+```bash
+vm0 variable set ENV production
+vm0 secret set API_KEY sk-xxx
+```
+
+Then set up your schedule without passing secrets:
+
+```bash
+vm0 schedule setup my-agent \
+  --frequency daily \
+  --time 09:00 \
+  --prompt "deploy to production"
+```
+
+**Alternative: Schedule-Specific Values**
+
+For schedule-specific overrides, pass values in the setup command:
 
 ```bash
 vm0 schedule setup my-agent \
@@ -141,6 +161,10 @@ vm0 schedule setup my-agent \
   --var ENV=production \
   --secret API_KEY=sk-xxx
 ```
+
+<Callout type="info">
+Schedule-specific values (`--var`, `--secret`) override Platform-stored values for that schedule only. Other schedules and manual runs still use Platform-stored values.
+</Callout>
 
 The agent can access these via `${{ vars.ENV }}` and `${{ secrets.API_KEY }}`.
 
