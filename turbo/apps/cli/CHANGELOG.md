@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.19.0](https://github.com/vm0-ai/vm0/compare/cli-v9.18.0...cli-v9.19.0) (2026-02-05)
+
+
+### Features
+
+* **agent:** add agent sharing with acl-based access control ([#2377](https://github.com/vm0-ai/vm0/issues/2377)) ([d3f63c6](https://github.com/vm0-ai/vm0/commit/d3f63c61b08a93bf9cbffda51ff77f389e18316b))
+
 ## [9.18.0](https://github.com/vm0-ai/vm0/compare/cli-v9.17.2...cli-v9.18.0) (2026-02-04)
 
 

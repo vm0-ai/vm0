@@ -24,6 +24,8 @@ import {
   getUserScopeByClerkId,
   getScopeBySlug,
 } from "../../../../src/lib/scope/scope-service";
+import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
+import { canAccessCompose } from "../../../../src/lib/agent/permission-service";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 
 const router = tsr.router(composesMainContract, {
@@ -97,6 +99,23 @@ const router = tsr.router(composesMainContract, {
     }
 
     const compose = composes[0];
+
+    // Check permission to access this compose (for cross-scope lookups)
+    if (query.scope) {
+      const userEmail = await getUserEmail(userId);
+      const hasAccess = await canAccessCompose(userId, userEmail, compose.id);
+      if (!hasAccess) {
+        return {
+          status: 404 as const,
+          body: {
+            error: {
+              message: `Agent compose not found: ${query.name}`,
+              code: "NOT_FOUND",
+            },
+          },
+        };
+      }
+    }
 
     // Get HEAD version content if available
     let content: AgentComposeYaml | null = null;

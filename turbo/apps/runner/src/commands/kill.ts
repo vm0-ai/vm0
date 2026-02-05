@@ -12,7 +12,7 @@ import { existsSync, readFileSync, writeFileSync, rmSync } from "fs";
 import * as readline from "readline";
 import { loadConfig } from "../lib/config.js";
 import { runnerPaths } from "../lib/paths.js";
-import { findProcessByVmId } from "../lib/firecracker/process.js";
+import { findProcessByVmId } from "../lib/process.js";
 import { gracefulKillProcess } from "../lib/utils/process.js";
 import { type VmId, createVmId } from "../lib/firecracker/vm-id.js";
 import { RunnerStatusSchema } from "../lib/runner/types.js";

@@ -195,8 +195,11 @@ export function AgentEventsCard({
 
   return (
     <div className={`flex flex-col gap-4 ${className ?? ""}`}>
-      <div className="px-4 sm:px-8">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0">
+      <div
+        id={EVENTS_CONTAINER_ID}
+        className="px-4 sm:px-8 flex flex-col gap-4 pb-8"
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="text-base font-medium text-foreground whitespace-nowrap">
               Agent events
@@ -208,7 +211,7 @@ export function AgentEventsCard({
             </span>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
-            <div className="relative flex h-9 flex-1 sm:flex-none items-center rounded-md border border-border bg-card focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background">
+            <div className="relative flex h-9 flex-1 sm:flex-none items-center rounded-lg border border-border bg-card transition-colors focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/10">
               <div className="pl-2">
                 <IconSearch className="h-4 w-4 text-muted-foreground" />
               </div>
@@ -217,7 +220,7 @@ export function AgentEventsCard({
                 value={searchTerm}
                 onChange={(e) => handleSearchChange(e.target.value)}
                 onKeyDown={handleKeyDown}
-                className="h-full w-full sm:w-44 border-0 text-sm focus-visible:ring-0 focus-visible:ring-offset-0 pl-2 pr-20"
+                className="h-full w-full sm:w-44 border-0 text-sm focus:border-0 focus:ring-0 pl-2 pr-20 bg-transparent"
               />
               <SearchNavigation
                 currentIndex={currentMatchIdx}
@@ -229,7 +232,7 @@ export function AgentEventsCard({
             </div>
             {!isCodex && (
               <>
-                <div className="h-5 w-px bg-border hidden sm:block" />
+                <div className="h-4 w-px bg-border hidden sm:block" />
                 <ViewModeToggle
                   mode={viewMode}
                   setMode={handleViewModeChange}
@@ -238,27 +241,39 @@ export function AgentEventsCard({
             )}
           </div>
         </div>
-      </div>
 
-      <div
-        id={EVENTS_CONTAINER_ID}
-        className="flex-1 min-h-0 overflow-y-auto px-4 pb-4 sm:px-8 sm:pb-8"
-      >
-        {!isCodex && viewMode === "formatted" ? (
-          <FormattedEventsView
-            events={events}
-            searchTerm={searchTerm}
-            currentMatchIndex={currentMatchIdx}
-            setTotalMatches={setTotalMatches}
-          />
-        ) : (
-          <RawJsonView
-            events={events}
-            searchTerm={searchTerm}
-            currentMatchIndex={currentMatchIdx}
-            setTotalMatches={setTotalMatches}
-          />
-        )}
+        <div>
+          {events.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground">
+              No events available
+            </div>
+          ) : !isCodex && viewMode === "formatted" ? (
+            <>
+              <FormattedEventsView
+                events={events}
+                searchTerm={searchTerm}
+                currentMatchIndex={currentMatchIdx}
+                setTotalMatches={setTotalMatches}
+                filterType="non-result"
+              />
+              <FormattedEventsView
+                events={events}
+                searchTerm={searchTerm}
+                currentMatchIndex={currentMatchIdx}
+                setTotalMatches={setTotalMatches}
+                filterType="result"
+              />
+            </>
+          ) : (
+            <RawJsonView
+              events={events}
+              searchTerm={searchTerm}
+              currentMatchIndex={currentMatchIdx}
+              setTotalMatches={setTotalMatches}
+            />
+          )}
+        </div>
+
         {showHasMore && (
           <div
             key={`sentinel-${events.length}`}

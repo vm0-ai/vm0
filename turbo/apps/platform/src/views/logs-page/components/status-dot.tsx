@@ -1,6 +1,12 @@
 import { cn } from "@vm0/ui";
 
-type StatusDotVariant = "success" | "error" | "pending" | "neutral" | "todo";
+type StatusDotVariant =
+  | "success"
+  | "error"
+  | "pending"
+  | "neutral"
+  | "todo"
+  | "primary";
 
 interface StatusDotProps {
   variant: StatusDotVariant;
@@ -10,19 +16,22 @@ interface StatusDotProps {
 function getVariantStyle(variant: StatusDotVariant): string {
   switch (variant) {
     case "success": {
-      return "text-lime-500";
+      return "text-green-700";
     }
     case "error": {
-      return "text-red-500";
+      return "text-red-700";
     }
     case "pending": {
-      return "text-yellow-500";
+      return "text-yellow-700";
     }
     case "neutral": {
       return "text-muted-foreground";
     }
     case "todo": {
-      return "text-cyan-500";
+      return "text-sky-700";
+    }
+    case "primary": {
+      return "text-orange-600";
     }
   }
 }
@@ -31,7 +40,7 @@ export function StatusDot({ variant, className }: StatusDotProps) {
   return (
     <span
       className={cn(
-        "text-[10px] leading-none shrink-0 inline-block",
+        "text-[8px] leading-none shrink-0 inline-block",
         getVariantStyle(variant),
         className,
       )}

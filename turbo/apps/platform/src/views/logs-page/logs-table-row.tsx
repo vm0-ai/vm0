@@ -1,5 +1,6 @@
 import { useSet } from "ccstate-react";
 import { IconChevronRight } from "@tabler/icons-react";
+import type { MouseEvent } from "react";
 import { navigateInReact$ } from "../../signals/route.ts";
 import { TableRow, TableCell } from "@vm0/ui";
 import { StatusBadge } from "./status-badge.tsx";
@@ -24,8 +25,14 @@ interface LogsTableRowProps {
 
 export function LogsTableRow({ entry }: LogsTableRowProps) {
   const navigate = useSet(navigateInReact$);
+  const logDetailUrl = `/logs/${entry.id}`;
 
-  const handleRowClick = () => {
+  const handleRowClick = (event: MouseEvent<HTMLTableRowElement>) => {
+    // Open in new tab if Cmd (Mac) or Ctrl (Windows/Linux) is pressed
+    if (event.metaKey || event.ctrlKey) {
+      window.open(logDetailUrl, "_blank");
+      return;
+    }
     navigate("/logs/:id", { pathParams: { id: entry.id } });
   };
 
@@ -37,19 +44,19 @@ export function LogsTableRow({ entry }: LogsTableRowProps) {
       <TableCell className="max-w-[180px] px-3 py-2 text-sm font-medium">
         <span className="block truncate">{entry.id}</span>
       </TableCell>
-      <TableCell className="max-w-[180px] px-3 py-2 text-sm font-medium">
+      <TableCell className="max-w-[180px] px-3 py-2 text-sm">
         <span className="block truncate">{entry.sessionId ?? "-"}</span>
       </TableCell>
-      <TableCell className="w-[120px] truncate px-3 py-2 text-sm font-medium">
+      <TableCell className="w-[120px] truncate px-3 py-2 text-sm">
         {entry.agentName}
       </TableCell>
-      <TableCell className="w-[180px] truncate px-3 py-2 text-sm font-medium">
+      <TableCell className="w-[180px] truncate px-3 py-2 text-sm">
         {entry.framework ?? "-"}
       </TableCell>
       <TableCell className="w-[100px] px-3 py-2">
         <StatusBadge status={entry.status} />
       </TableCell>
-      <TableCell className="px-3 py-2 text-sm font-medium">
+      <TableCell className="px-3 py-2 text-sm">
         {formatTime(entry.createdAt)}
       </TableCell>
       <TableCell className="w-[50px] px-2 py-2">

@@ -14,6 +14,7 @@ import {
   createTestRun,
   getTestRun,
   completeTestRun,
+  createTestPermission,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -393,6 +394,114 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       // Should succeed (running, not failed)
       expect(data.status).toBe("running");
+    });
+  });
+
+  describe("Shared Agent Access", () => {
+    it("should allow running a public shared agent", async () => {
+      // User A creates an agent and makes it public
+      const ownerUser = user;
+      await createTestPermission(testComposeId, "public");
+
+      // Switch to User B
+      await context.setupUser({ prefix: "other" });
+
+      // User B should be able to run the public agent
+      const data = await createTestRun(testComposeId, "Run public agent");
+
+      expect(data.status).toBe("running");
+
+      // Switch back to owner for cleanup
+      mockClerk({ userId: ownerUser.userId });
+    });
+
+    it("should allow running an email-shared agent", async () => {
+      // User A creates an agent and shares with specific email
+      const ownerUser = user;
+      const sharedEmail = "test@example.com"; // Default mock email
+      await createTestPermission(testComposeId, "email", sharedEmail);
+
+      // Switch to User B (who has the shared email via mock)
+      await context.setupUser({ prefix: "other" });
+
+      // User B should be able to run the shared agent
+      const data = await createTestRun(testComposeId, "Run email-shared agent");
+
+      expect(data.status).toBe("running");
+
+      // Switch back to owner for cleanup
+      mockClerk({ userId: ownerUser.userId });
+    });
+
+    it("should deny running private agent owned by another user", async () => {
+      // User A creates an agent (private by default)
+      const ownerUser = user;
+
+      // Switch to User B
+      await context.setupUser({ prefix: "other" });
+
+      // User B should NOT be able to run the private agent
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: testComposeId,
+            prompt: "Try to run private agent",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      // Returns 403 Forbidden for unauthorized access
+      expect(response.status).toBe(403);
+      expect(data.error.message).toMatch(
+        /access denied|not authorized|permission/i,
+      );
+
+      // Switch back to owner for cleanup
+      mockClerk({ userId: ownerUser.userId });
+    });
+
+    it("should deny running agent when email does not match", async () => {
+      // User A creates an agent and shares with different email
+      const ownerUser = user;
+      await createTestPermission(
+        testComposeId,
+        "email",
+        "different@example.com",
+      );
+
+      // Switch to User B (who has test@example.com, NOT the shared email)
+      await context.setupUser({ prefix: "other" });
+
+      // User B should NOT be able to run the agent
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: testComposeId,
+            prompt: "Try to run with wrong email",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      // Returns 403 Forbidden for unauthorized access
+      expect(response.status).toBe(403);
+      expect(data.error.message).toMatch(
+        /access denied|not authorized|permission/i,
+      );
+
+      // Switch back to owner for cleanup
+      mockClerk({ userId: ownerUser.userId });
     });
   });
 

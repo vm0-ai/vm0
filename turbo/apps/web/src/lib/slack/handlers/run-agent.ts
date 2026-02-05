@@ -136,6 +136,7 @@ export async function runAgentForSlack(
       sandboxToken,
       userId,
       agentName: compose.name,
+      artifactName: "artifact", // Same default as cook command
     });
 
     // Dispatch run to executor

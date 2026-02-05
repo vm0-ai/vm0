@@ -33,10 +33,13 @@ export {
   givenLinkedSlackUser,
   givenUserHasAgent,
   givenUserHasMultipleAgents,
+  givenUserHasAgentWithConfig,
   type WorkspaceInstallationResult,
   type LinkedUserResult,
   type AgentBindingResult,
+  type AgentBindingWithConfigResult,
   type WorkspaceInstallationOptions,
   type LinkedUserOptions,
   type AgentBindingOptions,
+  type AgentBindingWithConfigOptions,
 } from "./given";

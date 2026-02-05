@@ -8,6 +8,6 @@ export * from "./network.js";
 export * from "./vm.js";
 export * from "./guest.js";
 export * from "./vsock.js";
-export * from "./process.js";
+export * from "../process.js";
 export * from "./netns-pool.js";
 export * from "./client.js";

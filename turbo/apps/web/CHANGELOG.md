@@ -1,5 +1,36 @@
 # Changelog
 
+## [12.5.0](https://github.com/vm0-ai/vm0/compare/web-v12.4.0...web-v12.5.0) (2026-02-05)
+
+
+### Features
+
+* **slack:** add vars input support in agent add/update flow ([#2388](https://github.com/vm0-ai/vm0/issues/2388)) ([7711d2e](https://github.com/vm0-ai/vm0/commit/7711d2e94ca58493447fa19ef0524e3b8c9845dd)), closes [#2387](https://github.com/vm0-ai/vm0/issues/2387)
+
+
+### Bug Fixes
+
+* **slack:** remove thread_ts from ephemeral login prompt ([#2390](https://github.com/vm0-ai/vm0/issues/2390)) ([a8a459d](https://github.com/vm0-ai/vm0/commit/a8a459d4cfa16af6683c0d33f80ce1aedb561961))
+
+## [12.4.0](https://github.com/vm0-ai/vm0/compare/web-v12.3.0...web-v12.4.0) (2026-02-05)
+
+
+### Features
+
+* **agent:** add agent sharing with acl-based access control ([#2377](https://github.com/vm0-ai/vm0/issues/2377)) ([d3f63c6](https://github.com/vm0-ai/vm0/commit/d3f63c61b08a93bf9cbffda51ff77f389e18316b))
+
+
+### Bug Fixes
+
+* **slack:** add artifact name parameter to run context ([#2378](https://github.com/vm0-ai/vm0/issues/2378)) ([11529db](https://github.com/vm0-ai/vm0/commit/11529dbcee53a6adb6e3cc173c84ca0e7348cb81))
+
+## [12.3.0](https://github.com/vm0-ai/vm0/compare/web-v12.2.1...web-v12.3.0) (2026-02-05)
+
+
+### Features
+
+* **docs:** update environment variables documentation to reflect current implementation ([#2379](https://github.com/vm0-ai/vm0/issues/2379)) ([f937d73](https://github.com/vm0-ai/vm0/commit/f937d735d7c2fa45a709997cfbe1370d5fb0bbc8))
+
 ## [12.2.1](https://github.com/vm0-ai/vm0/compare/web-v12.2.0...web-v12.2.1) (2026-02-05)
 
 

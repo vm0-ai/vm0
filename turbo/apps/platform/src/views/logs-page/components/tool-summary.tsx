@@ -36,6 +36,7 @@ function ToolSummaryHeader({
   isError,
   hasResult,
   timestamp,
+  errorMessage,
 }: {
   toolName: string;
   keyParamElement: ReactNode;
@@ -43,6 +44,7 @@ function ToolSummaryHeader({
   isError: boolean;
   hasResult: boolean;
   timestamp?: string;
+  errorMessage?: string;
 }) {
   // Determine status dot variant based on result state
   const getStatusVariant = () => {
@@ -62,15 +64,24 @@ function ToolSummaryHeader({
         <span className="font-semibold text-sm text-foreground shrink-0">
           {toolName}
         </span>
-        {keyParam && (
-          <code
-            className="text-xs text-muted-foreground font-mono truncate min-w-0 flex-1 mt-px"
-            title={keyParam}
-          >
-            {keyParamElement}
-          </code>
-        )}
-        {!keyParam && <span className="flex-1" />}
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          {keyParam && (
+            <code
+              className="text-xs text-muted-foreground font-mono truncate"
+              title={keyParam}
+            >
+              {keyParamElement}
+            </code>
+          )}
+          {isError && errorMessage && (
+            <span
+              className="text-xs text-red-600 shrink-0"
+              title={errorMessage}
+            >
+              {errorMessage}
+            </span>
+          )}
+        </div>
         {timestamp && (
           <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
             {timestamp}
@@ -116,6 +127,9 @@ export function ToolSummary({
         }).element
       : keyParam;
 
+  // Get error message to display in header
+  const errorMessage = isError && result?.content ? result.content : undefined;
+
   return (
     <details className="group" open={hasSearchMatch}>
       <ToolSummaryHeader
@@ -125,6 +139,7 @@ export function ToolSummary({
         isError={isError}
         hasResult={Boolean(result)}
         timestamp={timestamp}
+        errorMessage={errorMessage}
       />
 
       <div className="mt-1 flex items-start gap-1.5 ml-[18px] mr-[100px]">
@@ -140,7 +155,7 @@ export function ToolSummary({
             <ToolInputDetails input={input} toolName={toolName} />
           )}
 
-          {result && (
+          {result && !isError && (
             <ToolResultDetails
               result={result}
               searchTerm={searchTerm}
@@ -225,7 +240,7 @@ function ToolInputDetails({
     }
   }
 
-  // Write - show full content
+  // Write - show full content in a code block
   if (lowerName === "write") {
     const content = input.content as string | undefined;
     if (content) {
@@ -246,16 +261,16 @@ function ToolInputDetails({
         <div className="space-y-1">
           {oldString && (
             <div className="flex items-start gap-2">
-              <span className="text-red-500 shrink-0">-</span>
-              <pre className="font-mono text-xs text-red-500/70 whitespace-pre-wrap break-all">
+              <span className="text-red-600 shrink-0">-</span>
+              <pre className="font-mono text-xs text-red-600/70 whitespace-pre-wrap break-all">
                 {oldString}
               </pre>
             </div>
           )}
           {newString && (
             <div className="flex items-start gap-2">
-              <span className="text-lime-500 shrink-0">+</span>
-              <pre className="font-mono text-xs text-lime-500/70 whitespace-pre-wrap break-all">
+              <span className="text-green-600 shrink-0">+</span>
+              <pre className="font-mono text-xs text-green-600/70 whitespace-pre-wrap break-all">
                 {newString}
               </pre>
             </div>
@@ -340,7 +355,7 @@ function ToolResultDetails({
 
   if (isError) {
     return (
-      <pre className="text-xs text-red-500 whitespace-pre-wrap break-all">
+      <pre className="text-xs text-red-600 whitespace-pre-wrap break-all">
         {contentElement}
       </pre>
     );

@@ -27,6 +27,8 @@ import { logger } from "../../../../src/lib/logger";
 import { isConcurrentRunLimit } from "../../../../src/lib/errors";
 import { getVariableValues } from "../../../../src/lib/variable/variable-service";
 import { getUserScopeByClerkId } from "../../../../src/lib/scope/scope-service";
+import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
+import { canAccessCompose } from "../../../../src/lib/agent/permission-service";
 
 const log = logger("api:runs");
 
@@ -227,6 +229,27 @@ const router = tsr.router(runsMainContract, {
           .where(eq(agentComposes.id, version.composeId))
           .limit(1);
 
+        // Check permission to access this compose
+        if (compose) {
+          const userEmail = await getUserEmail(userId);
+          const hasAccess = await canAccessCompose(
+            userId,
+            userEmail,
+            compose.id,
+          );
+          if (!hasAccess) {
+            return {
+              status: 403 as const,
+              body: {
+                error: {
+                  message: "Access denied to agent",
+                  code: "FORBIDDEN",
+                },
+              },
+            };
+          }
+        }
+
         agentComposeName = compose?.name || undefined;
       } else {
         // Resolve compose ID to HEAD version
@@ -243,6 +266,21 @@ const router = tsr.router(runsMainContract, {
             status: 404 as const,
             body: {
               error: { message: "Agent compose not found", code: "NOT_FOUND" },
+            },
+          };
+        }
+
+        // Check permission to access this compose
+        const userEmail = await getUserEmail(userId);
+        const hasAccess = await canAccessCompose(userId, userEmail, compose.id);
+        if (!hasAccess) {
+          return {
+            status: 403 as const,
+            body: {
+              error: {
+                message: "Access denied to agent",
+                code: "FORBIDDEN",
+              },
             },
           };
         }

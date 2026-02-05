@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.9.0](https://github.com/vm0-ai/vm0/compare/docs-v2.8.0...docs-v2.9.0) (2026-02-05)
+
+
+### Features
+
+* **docs:** update environment variables documentation to reflect current implementation ([#2379](https://github.com/vm0-ai/vm0/issues/2379)) ([f937d73](https://github.com/vm0-ai/vm0/commit/f937d735d7c2fa45a709997cfbe1370d5fb0bbc8))
+
 ## [2.8.0](https://github.com/vm0-ai/vm0/compare/docs-v2.7.0...docs-v2.8.0) (2026-02-04)
 
 

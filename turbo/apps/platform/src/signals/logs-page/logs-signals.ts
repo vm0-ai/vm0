@@ -574,8 +574,20 @@ export const downloadArtifact$ = command(
 
       const data = (await response.json()) as ArtifactDownloadResponse;
 
+      // Validate URL before attempting to open
+      if (!data.url) {
+        throw new Error("Download URL not provided by server");
+      }
+
       // Trigger download by opening the presigned URL
-      window.open(data.url, "_blank");
+      const opened = window.open(data.url, "_blank");
+
+      // Check if popup was blocked
+      if (!opened || opened.closed || typeof opened.closed === "undefined") {
+        throw new Error(
+          "Download blocked by browser. Please allow popups for this site.",
+        );
+      }
     })();
 
     set(internalArtifactDownloadPromise$, downloadPromise);

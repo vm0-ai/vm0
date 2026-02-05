@@ -12,17 +12,19 @@ export function FormattedEventsView({
   searchTerm,
   currentMatchIndex,
   setTotalMatches,
+  filterType,
 }: {
   events: AgentEvent[];
   searchTerm: string;
   currentMatchIndex: number;
   setTotalMatches: (count: number) => void;
+  filterType?: "result" | "non-result";
 }) {
   // Group events into messages
   const groupedMessages = groupEventsIntoMessages(events);
 
   // Filter out text-only assistant messages right before result (they're redundant)
-  const visibleMessages = groupedMessages.filter((message, index) => {
+  let visibleMessages = groupedMessages.filter((message, index) => {
     if (message.type !== "assistant") {
       return true;
     }
@@ -36,6 +38,13 @@ export function FormattedEventsView({
       message.toolOperations && message.toolOperations.length > 0;
     return hasTools;
   });
+
+  // Apply filterType if provided
+  if (filterType === "result") {
+    visibleMessages = visibleMessages.filter((m) => m.type === "result");
+  } else if (filterType === "non-result") {
+    visibleMessages = visibleMessages.filter((m) => m.type !== "result");
+  }
 
   // Count total matches for search navigation (no filtering, just highlight and scroll)
   let totalMatches = 0;
@@ -60,24 +69,23 @@ export function FormattedEventsView({
   };
 
   if (visibleMessages.length === 0) {
-    return (
-      <div ref={containerRef} className="p-8 text-center text-muted-foreground">
-        No events available
-      </div>
-    );
+    return null;
   }
 
   let matchOffset = 0;
 
   return (
     <div ref={containerRef}>
-      {visibleMessages.map((message) => {
+      {visibleMessages.map((message, index) => {
         const messageMatchStart = matchOffset;
         const visibleText = getVisibleGroupedMessageText(message);
         const messageMatches = searchTerm.trim()
           ? countMatches(visibleText, searchTerm)
           : 0;
         matchOffset += messageMatches;
+
+        // Show connector for all messages except the last one
+        const showConnector = index < visibleMessages.length - 1;
 
         return (
           <GroupedMessageCard
@@ -86,6 +94,7 @@ export function FormattedEventsView({
             searchTerm={searchTerm}
             currentMatchIndex={currentMatchIndex}
             matchStartIndex={messageMatchStart}
+            showConnector={showConnector}
           />
         );
       })}

@@ -1,7 +1,8 @@
 /**
  * Runner Doctor Command
  *
- * Comprehensive health check for the runner, including:
+ * Comprehensive health check for all runners on the host, including:
+ * - Auto-discovery of runner processes
  * - API connectivity
  * - Network status (proxy)
  * - Active jobs
@@ -17,11 +18,12 @@ import { pollForJob } from "../lib/api.js";
 import {
   findFirecrackerProcesses,
   findMitmproxyProcesses,
+  findRunnerProcesses,
   type FirecrackerProcess,
-} from "../lib/firecracker/process.js";
+  type MitmproxyProcess,
+} from "../lib/process.js";
 import { withFileLock } from "../lib/utils/file-lock.js";
 import { isProcessRunning } from "../lib/utils/process.js";
-import { SNAPSHOT_NETWORK } from "../lib/firecracker/netns.js";
 import { NS_PREFIX, RegistrySchema } from "../lib/firecracker/netns-pool.js";
 import { type VmId, createVmId } from "../lib/firecracker/vm-id.js";
 import { type RunnerStatus, RunnerStatusSchema } from "../lib/runner/types.js";
@@ -36,31 +38,28 @@ interface Warning {
   message: string;
 }
 
+interface DiscoveredRunner {
+  pid: number;
+  config: RunnerConfig;
+  mode: "start" | "benchmark";
+}
+
 /**
- * Display runner status from status.json
+ * Get runner status from status.json
  */
-function displayRunnerStatus(
+function getRunnerStatus(
   statusFilePath: string,
   warnings: Warning[],
 ): RunnerStatus | null {
   if (!existsSync(statusFilePath)) {
-    console.log("Mode: unknown (no status.json)");
     return null;
   }
 
   try {
-    const status = RunnerStatusSchema.parse(
+    return RunnerStatusSchema.parse(
       JSON.parse(readFileSync(statusFilePath, "utf-8")),
     );
-    console.log(`Mode: ${status.mode}`);
-    if (status.started_at) {
-      const started = new Date(status.started_at);
-      const uptime = formatUptime(Date.now() - started.getTime());
-      console.log(`Started: ${started.toLocaleString()} (uptime: ${uptime})`);
-    }
-    return status;
   } catch {
-    console.log("Mode: unknown (status.json unreadable)");
     warnings.push({ message: "status.json exists but cannot be parsed" });
     return null;
   }
@@ -72,44 +71,16 @@ function displayRunnerStatus(
 async function checkApiConnectivity(
   config: RunnerConfig,
   warnings: Warning[],
-): Promise<void> {
-  console.log("API Connectivity:");
+): Promise<boolean> {
   try {
     await pollForJob(config.server, config.group);
-    console.log(`  ✓ Connected to ${config.server.url}`);
-    console.log("  ✓ Authentication: OK");
+    return true;
   } catch (error) {
-    console.log(`  ✗ Cannot connect to ${config.server.url}`);
-    console.log(
-      `    Error: ${error instanceof Error ? error.message : "Unknown error"}`,
-    );
     warnings.push({
       message: `Cannot connect to API: ${error instanceof Error ? error.message : "Unknown error"}`,
     });
+    return false;
   }
-}
-
-/**
- * Check network status (proxy)
- */
-function checkNetwork(config: RunnerConfig, warnings: Warning[]): void {
-  console.log("Network:");
-
-  const mitmProcesses = findMitmproxyProcesses();
-  const mitmProc = mitmProcesses.find((p) => p.baseDir === config.base_dir);
-
-  if (mitmProc) {
-    console.log(
-      `  ✓ Proxy mitmproxy (PID ${mitmProc.pid}) on :${config.proxy.port}`,
-    );
-  } else {
-    console.log(`  ✗ Proxy mitmproxy not running`);
-    warnings.push({ message: "Proxy mitmproxy is not running" });
-  }
-
-  console.log(
-    `  ℹ Namespaces: each VM runs in isolated namespace with IP ${SNAPSHOT_NETWORK.guestIp}`,
-  );
 }
 
 /**
@@ -118,15 +89,19 @@ function checkNetwork(config: RunnerConfig, warnings: Warning[]): void {
 function buildJobInfo(
   status: RunnerStatus | null,
   processes: FirecrackerProcess[],
+  baseDir: string,
 ): { jobs: JobInfo[]; statusVmIds: Set<VmId> } {
   const jobs: JobInfo[] = [];
   const statusVmIds = new Set<VmId>();
+
+  // Filter processes to this runner's baseDir
+  const runnerProcesses = processes.filter((p) => p.baseDir === baseDir);
 
   if (status?.active_run_ids) {
     for (const runId of status.active_run_ids) {
       const vmId = createVmId(runId);
       statusVmIds.add(vmId);
-      const proc = processes.find((p) => p.vmId === vmId);
+      const proc = runnerProcesses.find((p) => p.vmId === vmId);
 
       jobs.push({
         runId,
@@ -137,27 +112,6 @@ function buildJobInfo(
   }
 
   return { jobs, statusVmIds };
-}
-
-/**
- * Display active runs
- */
-function displayRuns(jobs: JobInfo[], maxConcurrent: number): void {
-  console.log(`Runs (${jobs.length} active, max ${maxConcurrent}):`);
-
-  if (jobs.length === 0) {
-    console.log("  No active runs");
-    return;
-  }
-
-  console.log("  Run ID                                VM ID       Status");
-  for (const job of jobs) {
-    const statusText = job.firecrackerPid
-      ? `✓ Running (PID ${job.firecrackerPid})`
-      : "⚠️ No process";
-
-    console.log(`  ${job.runId}  ${job.vmId}    ${statusText}`);
-  }
 }
 
 /**
@@ -228,16 +182,16 @@ async function findOrphanNetworkNamespaces(
 }
 
 /**
- * Detect orphan resources and add warnings
+ * Detect orphan resources for a specific runner
  */
-async function detectOrphanResources(
+function detectRunnerOrphanResources(
   jobs: JobInfo[],
   allProcesses: FirecrackerProcess[],
   workspaces: string[],
   statusVmIds: Set<VmId>,
   baseDir: string,
   warnings: Warning[],
-): Promise<void> {
+): void {
   // Filter processes to only include those belonging to this runner
   const processes = allProcesses.filter((p) => p.baseDir === baseDir);
 
@@ -245,7 +199,7 @@ async function detectOrphanResources(
   for (const job of jobs) {
     if (!job.firecrackerPid) {
       warnings.push({
-        message: `Run ${job.vmId} in status.json but no Firecracker process running`,
+        message: `Run ${job.vmId} in status.json but no Firecracker process`,
       });
     }
   }
@@ -260,35 +214,13 @@ async function detectOrphanResources(
     }
   }
 
-  // Orphan network namespaces
-  const orphanNetns = await findOrphanNetworkNamespaces(warnings);
-  for (const ns of orphanNetns) {
-    warnings.push({
-      message: `Orphan network namespace: ${ns} (runner process not running)`,
-    });
-  }
-
   // Orphan workspaces
   for (const ws of workspaces) {
     const vmId = runnerPaths.extractVmId(ws);
     if (!processVmIds.has(vmId) && !statusVmIds.has(vmId)) {
       warnings.push({
-        message: `Orphan workspace: ${ws} (no matching job or process)`,
+        message: `Orphan workspace: ${ws}`,
       });
-    }
-  }
-}
-
-/**
- * Display warnings
- */
-function displayWarnings(warnings: Warning[]): void {
-  console.log("Warnings:");
-  if (warnings.length === 0) {
-    console.log("  None");
-  } else {
-    for (const w of warnings) {
-      console.log(`  - ${w.message}`);
     }
   }
 }
@@ -308,54 +240,228 @@ function formatUptime(ms: number): string {
   return `${seconds}s`;
 }
 
+/**
+ * Display a single runner's health status
+ */
+async function displayRunnerHealth(
+  runner: DiscoveredRunner,
+  index: number,
+  allFirecrackerProcesses: FirecrackerProcess[],
+  allMitmproxyProcesses: MitmproxyProcess[],
+): Promise<Warning[]> {
+  const warnings: Warning[] = [];
+  const { config, pid, mode } = runner;
+  const baseDir = config.base_dir;
+
+  // Header
+  console.log(`[${index}] ${baseDir} (PID ${pid}) [${mode}]`);
+
+  // Status from status.json
+  const statusFilePath = runnerPaths.statusFile(baseDir);
+  const status = getRunnerStatus(statusFilePath, warnings);
+
+  if (status) {
+    let statusLine = `    Mode: ${status.mode}`;
+    if (status.started_at) {
+      const started = new Date(status.started_at);
+      const uptime = formatUptime(Date.now() - started.getTime());
+      statusLine += `, uptime: ${uptime}`;
+    }
+    console.log(statusLine);
+  } else {
+    console.log("    Mode: unknown (no status.json)");
+  }
+
+  // API connectivity
+  const apiOk = await checkApiConnectivity(config, warnings);
+  if (apiOk) {
+    console.log(`    API: ✓ Connected to ${config.server.url}`);
+  } else {
+    console.log(`    API: ✗ Cannot connect to ${config.server.url}`);
+  }
+
+  // Proxy status
+  const mitmProc = allMitmproxyProcesses.find((p) => p.baseDir === baseDir);
+  if (mitmProc) {
+    console.log(
+      `    Proxy: ✓ mitmproxy (PID ${mitmProc.pid}) on :${config.proxy.port}`,
+    );
+  } else if (mode === "start") {
+    console.log("    Proxy: ✗ not running");
+    warnings.push({ message: "Proxy mitmproxy is not running" });
+  } else {
+    // benchmark mode - proxy is optional
+    console.log("    Proxy: - (not running)");
+  }
+
+  // Active runs
+  const { jobs, statusVmIds } = buildJobInfo(
+    status,
+    allFirecrackerProcesses,
+    baseDir,
+  );
+  console.log(
+    `    Runs (${jobs.length} active, max ${config.sandbox.max_concurrent}):`,
+  );
+
+  if (jobs.length === 0) {
+    console.log("      No active runs");
+  } else {
+    for (const job of jobs) {
+      const statusText = job.firecrackerPid
+        ? `✓ Running (PID ${job.firecrackerPid})`
+        : "⚠️ No process";
+      console.log(`      ${job.vmId}  ${statusText}`);
+    }
+  }
+
+  // Detect orphan resources for this runner
+  const workspacesDir = runnerPaths.workspacesDir(baseDir);
+  const workspaces = existsSync(workspacesDir)
+    ? readdirSync(workspacesDir).filter(runnerPaths.isVmWorkspace)
+    : [];
+
+  detectRunnerOrphanResources(
+    jobs,
+    allFirecrackerProcesses,
+    workspaces,
+    statusVmIds,
+    baseDir,
+    warnings,
+  );
+
+  // Display warnings
+  console.log(`    Warnings:`);
+  if (warnings.length === 0) {
+    console.log("      None");
+  } else {
+    for (const w of warnings) {
+      console.log(`      - ${w.message}`);
+    }
+  }
+
+  return warnings;
+}
+
+/**
+ * Detect global orphan resources (not belonging to any discovered runner)
+ */
+async function detectGlobalOrphans(
+  discoveredRunners: DiscoveredRunner[],
+  allFirecrackerProcesses: FirecrackerProcess[],
+  allMitmproxyProcesses: MitmproxyProcess[],
+  globalWarnings: Warning[],
+): Promise<void> {
+  const runnerBaseDirs = new Set(
+    discoveredRunners.map((r) => r.config.base_dir),
+  );
+
+  // Orphan mitmproxy processes
+  for (const mitm of allMitmproxyProcesses) {
+    if (mitm.isOrphan) {
+      globalWarnings.push({
+        message: `Orphan mitmproxy: PID ${mitm.pid} (PPID=1, parent process dead)`,
+      });
+    } else if (!runnerBaseDirs.has(mitm.baseDir)) {
+      globalWarnings.push({
+        message: `Orphan mitmproxy: PID ${mitm.pid} (baseDir ${mitm.baseDir}, runner not running)`,
+      });
+    }
+  }
+
+  // Orphan Firecracker processes
+  for (const fc of allFirecrackerProcesses) {
+    if (fc.isOrphan) {
+      globalWarnings.push({
+        message: `Orphan Firecracker: PID ${fc.pid} (vmId ${fc.vmId}, PPID=1, parent process dead)`,
+      });
+    } else if (!runnerBaseDirs.has(fc.baseDir)) {
+      globalWarnings.push({
+        message: `Orphan Firecracker: PID ${fc.pid} (vmId ${fc.vmId}, baseDir ${fc.baseDir}, runner not running)`,
+      });
+    }
+  }
+
+  // Orphan network namespaces
+  const orphanNetns = await findOrphanNetworkNamespaces(globalWarnings);
+  for (const ns of orphanNetns) {
+    globalWarnings.push({
+      message: `Orphan namespace: ${ns} (runner process not running)`,
+    });
+  }
+}
+
 export const doctorCommand = new Command("doctor")
-  .description("Diagnose runner health, check network, and detect issues")
-  .option("--config <path>", "Config file path", "./runner.yaml")
-  .action(async (options: { config: string }): Promise<void> => {
+  .description("Diagnose health of all runners on this host")
+  .action(async (): Promise<void> => {
     try {
-      const config = loadConfig(options.config);
-      const statusFilePath = runnerPaths.statusFile(config.base_dir);
-      const workspacesDir = runnerPaths.workspacesDir(config.base_dir);
-      const warnings: Warning[] = [];
+      const globalWarnings: Warning[] = [];
+      let totalWarnings = 0;
 
-      // Runner info
-      console.log(`Runner: ${config.name}`);
-      const status = displayRunnerStatus(statusFilePath, warnings);
+      // Scan all processes once
+      const allFirecrackerProcesses = findFirecrackerProcesses();
+      const allMitmproxyProcesses = findMitmproxyProcesses();
+
+      // Discover all runner processes
+      const runnerProcesses = findRunnerProcesses();
+
+      // Load config for each runner
+      const discoveredRunners: DiscoveredRunner[] = [];
+      for (const rp of runnerProcesses) {
+        try {
+          const config = loadConfig(rp.configPath);
+          discoveredRunners.push({
+            pid: rp.pid,
+            config,
+            mode: rp.mode,
+          });
+        } catch (err) {
+          globalWarnings.push({
+            message: `Failed to load config ${rp.configPath}: ${err instanceof Error ? err.message : "Unknown error"}`,
+          });
+        }
+      }
+
+      // Display runners
+      console.log(`Runners (${discoveredRunners.length} found):`);
       console.log("");
 
-      // API Connectivity
-      await checkApiConnectivity(config, warnings);
-      console.log("");
+      if (discoveredRunners.length === 0) {
+        console.log("    No runner processes found");
+        console.log("");
+      } else {
+        // Check each runner
+        for (let i = 0; i < discoveredRunners.length; i++) {
+          const warnings = await displayRunnerHealth(
+            discoveredRunners[i]!,
+            i + 1,
+            allFirecrackerProcesses,
+            allMitmproxyProcesses,
+          );
+          totalWarnings += warnings.length;
+          console.log("");
+        }
+      }
 
-      // Network status
-      checkNetwork(config, warnings);
-      console.log("");
-
-      // Scan resources
-      const processes = findFirecrackerProcesses();
-      const workspaces = existsSync(workspacesDir)
-        ? readdirSync(workspacesDir).filter(runnerPaths.isVmWorkspace)
-        : [];
-
-      // Build and display job info
-      const { jobs, statusVmIds } = buildJobInfo(status, processes);
-      displayRuns(jobs, config.sandbox.max_concurrent);
-      console.log("");
-
-      // Detect warnings
-      await detectOrphanResources(
-        jobs,
-        processes,
-        workspaces,
-        statusVmIds,
-        config.base_dir,
-        warnings,
+      // Global orphan detection
+      await detectGlobalOrphans(
+        discoveredRunners,
+        allFirecrackerProcesses,
+        allMitmproxyProcesses,
+        globalWarnings,
       );
 
-      // Display warnings
-      displayWarnings(warnings);
+      console.log("Global:");
+      if (globalWarnings.length === 0) {
+        console.log("    No orphan resources");
+      } else {
+        for (const w of globalWarnings) {
+          console.log(`    ${w.message}`);
+        }
+      }
 
-      process.exit(warnings.length > 0 ? 1 : 0);
+      totalWarnings += globalWarnings.length;
+      process.exit(totalWarnings > 0 ? 1 : 0);
     } catch (error) {
       console.error(
         `Error: ${error instanceof Error ? error.message : "Unknown error"}`,

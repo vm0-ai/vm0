@@ -102,7 +102,7 @@ function AgentsListSection() {
         {agents.map((agent) => {
           const hasSchedule = getAgentScheduleStatus(agent.name, schedules);
           return (
-            <TableRow key={agent.name}>
+            <TableRow key={agent.name} className="h-[53px]">
               <TableCell>
                 <span className="font-medium">{agent.name}</span>
               </TableCell>
