@@ -85,7 +85,7 @@ export function LogDetailContent({ logId }: { logId: string }) {
             </span>
           </InfoItem>
 
-          <InfoItem label="Session ID" showDivider={false}>
+          <InfoItem label="Session ID" showDivider>
             <CopyableId value={detail.sessionId || detail.id} />
           </InfoItem>
 
