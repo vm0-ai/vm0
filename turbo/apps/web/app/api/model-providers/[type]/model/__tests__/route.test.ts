@@ -18,7 +18,7 @@ const context = testContext();
  */
 async function createModelProvider(
   type: string,
-  credential: string,
+  secret: string,
   selectedModel?: string,
 ): Promise<{
   provider: { id: string; type: string; selectedModel: string | null };
@@ -28,7 +28,7 @@ async function createModelProvider(
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type, credential, selectedModel }),
+      body: JSON.stringify({ type, secret, selectedModel }),
     },
   );
   const response = await PUT(request);
