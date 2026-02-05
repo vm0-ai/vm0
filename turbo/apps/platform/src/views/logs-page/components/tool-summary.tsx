@@ -246,16 +246,16 @@ function ToolInputDetails({
         <div className="space-y-1">
           {oldString && (
             <div className="flex items-start gap-2">
-              <span className="text-red-500 shrink-0">-</span>
-              <pre className="font-mono text-xs text-red-500/70 whitespace-pre-wrap break-all">
+              <span className="text-red-600 shrink-0">-</span>
+              <pre className="font-mono text-xs text-red-600/70 whitespace-pre-wrap break-all">
                 {oldString}
               </pre>
             </div>
           )}
           {newString && (
             <div className="flex items-start gap-2">
-              <span className="text-lime-500 shrink-0">+</span>
-              <pre className="font-mono text-xs text-lime-500/70 whitespace-pre-wrap break-all">
+              <span className="text-green-600 shrink-0">+</span>
+              <pre className="font-mono text-xs text-green-600/70 whitespace-pre-wrap break-all">
                 {newString}
               </pre>
             </div>
@@ -340,7 +340,7 @@ function ToolResultDetails({
 
   if (isError) {
     return (
-      <pre className="text-xs text-red-500 whitespace-pre-wrap break-all">
+      <pre className="text-xs text-red-600 whitespace-pre-wrap break-all">
         {contentElement}
       </pre>
     );

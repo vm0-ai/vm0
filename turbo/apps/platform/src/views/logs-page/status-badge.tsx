@@ -14,7 +14,7 @@ interface StatusBadgeProps {
 function getStatusConfig(): Record<LogStatus, StatusBadgeConfig> {
   return {
     pending: { label: "Pending", className: "bg-yellow-100 text-yellow-800" },
-    running: { label: "Running", className: "bg-blue-100 text-blue-800" },
+    running: { label: "Running", className: "bg-sky-100 text-sky-800" },
     completed: {
       label: "Done",
       className: "border border-border bg-background text-muted-foreground",
