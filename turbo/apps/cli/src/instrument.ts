@@ -9,6 +9,12 @@ declare const __CLI_VERSION__: string;
 
 const TELEMETRY_DISABLED = process.env.VM0_TELEMETRY === "false";
 const IS_CI = Boolean(process.env.CI || process.env.GITHUB_ACTIONS);
+const IS_DEV = process.env.NODE_ENV === "development";
+// Only enable Sentry for production (vm0.ai)
+// If VM0_API_URL is set to a non-production URL, disable Sentry
+const PRODUCTION_API_URL = "https://www.vm0.ai";
+const API_URL = process.env.VM0_API_URL ?? "";
+const IS_PRODUCTION_API = API_URL === "" || API_URL === PRODUCTION_API_URL;
 const DSN =
   "https://268d9b4cd051531805af76a5b3934dca@o4510583739777024.ingest.us.sentry.io/4510832047947776";
 
@@ -55,7 +61,7 @@ function isOperationalError(error: unknown): boolean {
   return OPERATIONAL_ERROR_PATTERNS.some((pattern) => pattern.test(message));
 }
 
-if (!TELEMETRY_DISABLED && !IS_CI) {
+if (!TELEMETRY_DISABLED && !IS_CI && !IS_DEV && IS_PRODUCTION_API) {
   Sentry.init({
     dsn: DSN,
     sendDefaultPii: false,
