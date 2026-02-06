@@ -7,6 +7,7 @@ import { IconChevronDown, IconFile } from "@tabler/icons-react";
 import { useUser } from "@clerk/nextjs";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
+import AnnouncementBanner from "./AnnouncementBanner";
 import { getPlatformUrl } from "../../src/lib/url";
 
 const TYPED_TEXT = "Help me build an agent for tech news aggregation";
@@ -212,9 +213,19 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
         })}
       </div>
 
-      <Navbar />
+      {/* Fixed Header Container */}
+      <header className="header-container">
+        <AnnouncementBanner />
+        <Navbar />
+      </header>
 
-      <main className="flex flex-col items-center w-full pt-[128px]">
+      <main
+        className="flex flex-col items-center w-full"
+        style={{
+          paddingTop:
+            "calc(var(--announcement-banner-height, 0px) + 60px + 80px)",
+        }}
+      >
         {/* Hero Section */}
         <section className="w-full max-w-[1440px] pb-0">
           <div className="max-w-[1200px] mx-auto px-[30px]">

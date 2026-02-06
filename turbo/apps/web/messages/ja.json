@@ -285,5 +285,10 @@
     "subscribe": "購読する",
     "joinDiscord": "Discordに参加",
     "shareArticle": "この記事を共有"
+  },
+  "banner": {
+    "label": "新機能",
+    "message": "VM0がパブリックベータ版として提供開始しました。",
+    "link": "詳細を見る"
   }
 }
