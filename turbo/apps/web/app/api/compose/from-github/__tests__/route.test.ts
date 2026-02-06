@@ -1,10 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "../route";
 import { GET } from "../[jobId]/route";
-import { createTestRequest } from "../../../../../src/__tests__/api-test-helpers";
+import { POST as webhookComplete } from "../../../webhooks/compose/complete/route";
+import {
+  createTestRequest,
+  createTestComposeJobToken,
+} from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
-import { composeJobs } from "../../../../../src/db/schema/compose-job";
-import { eq } from "drizzle-orm";
+import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
 
 vi.mock("@clerk/nextjs/server");
@@ -23,11 +26,6 @@ describe("POST /api/compose/from-github", () => {
 
   describe("Authentication", () => {
     it("should reject request without authentication", async () => {
-      // Reset mock to simulate unauthenticated request
-      vi.resetModules();
-      const { mockClerk } = await import(
-        "../../../../../src/__tests__/clerk-mock"
-      );
       mockClerk({ userId: null });
 
       const request = createTestRequest(
@@ -171,7 +169,9 @@ describe("POST /api/compose/from-github", () => {
     });
 
     it("should create new job after previous one completes", async () => {
-      // Create and complete first job
+      const user = await context.setupUser();
+
+      // Create first job
       const request1 = createTestRequest(
         "http://localhost:3000/api/compose/from-github",
         {
@@ -188,11 +188,30 @@ describe("POST /api/compose/from-github", () => {
       const data1 = await response1.json();
       const jobId1 = data1.jobId;
 
-      // Mark first job as completed
-      await globalThis.services.db
-        .update(composeJobs)
-        .set({ status: "completed", completedAt: new Date() })
-        .where(eq(composeJobs.id, jobId1));
+      // Complete first job via webhook using test helper to generate token
+      const sandboxToken = await createTestComposeJobToken(user.userId, jobId1);
+      const webhookRequest = createTestRequest(
+        "http://localhost:3000/api/webhooks/compose/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${sandboxToken}`,
+          },
+          body: JSON.stringify({
+            jobId: jobId1,
+            success: true,
+            result: {
+              composeId: "test-compose-id",
+              composeName: "test-compose",
+              versionId: "test-version-id",
+              warnings: [],
+            },
+          }),
+        },
+      );
+
+      await webhookComplete(webhookRequest);
 
       // Create second job (should create new job)
       const request2 = createTestRequest(
@@ -217,10 +236,12 @@ describe("POST /api/compose/from-github", () => {
 
 describe("GET /api/compose/from-github/:jobId", () => {
   let testJobId: string;
+  let testUserId: string;
 
   beforeEach(async () => {
     context.setupMocks();
-    await context.setupUser();
+    const user = await context.setupUser();
+    testUserId = user.userId;
 
     // Create a test job
     const request = createTestRequest(
@@ -241,11 +262,6 @@ describe("GET /api/compose/from-github/:jobId", () => {
 
   describe("Authentication", () => {
     it("should reject request without authentication", async () => {
-      // Reset mock to simulate unauthenticated request
-      vi.resetModules();
-      const { mockClerk } = await import(
-        "../../../../../src/__tests__/clerk-mock"
-      );
       mockClerk({ userId: null });
 
       const request = createTestRequest(
@@ -280,20 +296,33 @@ describe("GET /api/compose/from-github/:jobId", () => {
     });
 
     it("should return completed job with result", async () => {
-      // Update job to completed status
-      await globalThis.services.db
-        .update(composeJobs)
-        .set({
-          status: "completed",
-          completedAt: new Date(),
-          result: {
-            composeId: "test-compose-id",
-            composeName: "test-compose",
-            versionId: "test-version-id",
-            warnings: [],
+      // Complete job via webhook using test helper to generate token
+      const sandboxToken = await createTestComposeJobToken(
+        testUserId,
+        testJobId,
+      );
+      const webhookRequest = createTestRequest(
+        "http://localhost:3000/api/webhooks/compose/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${sandboxToken}`,
           },
-        })
-        .where(eq(composeJobs.id, testJobId));
+          body: JSON.stringify({
+            jobId: testJobId,
+            success: true,
+            result: {
+              composeId: "test-compose-id",
+              composeName: "test-compose",
+              versionId: "test-version-id",
+              warnings: [],
+            },
+          }),
+        },
+      );
+
+      await webhookComplete(webhookRequest);
 
       const request = createTestRequest(
         `http://localhost:3000/api/compose/from-github/${testJobId}`,
@@ -313,15 +342,28 @@ describe("GET /api/compose/from-github/:jobId", () => {
     });
 
     it("should return failed job with error", async () => {
-      // Update job to failed status
-      await globalThis.services.db
-        .update(composeJobs)
-        .set({
-          status: "failed",
-          completedAt: new Date(),
-          error: "Failed to parse vm0.yaml",
-        })
-        .where(eq(composeJobs.id, testJobId));
+      // Fail job via webhook using test helper to generate token
+      const sandboxToken = await createTestComposeJobToken(
+        testUserId,
+        testJobId,
+      );
+      const webhookRequest = createTestRequest(
+        "http://localhost:3000/api/webhooks/compose/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${sandboxToken}`,
+          },
+          body: JSON.stringify({
+            jobId: testJobId,
+            success: false,
+            error: "Failed to parse vm0.yaml",
+          }),
+        },
+      );
+
+      await webhookComplete(webhookRequest);
 
       const request = createTestRequest(
         `http://localhost:3000/api/compose/from-github/${testJobId}`,
@@ -358,18 +400,28 @@ describe("GET /api/compose/from-github/:jobId", () => {
     });
 
     it("should return 404 for job owned by different user", async () => {
-      // Create another user's job directly in DB
-      const otherUserId = `user_${randomUUID()}`;
-      const otherJobId = randomUUID();
+      // Switch to another user and create their job
+      await context.setupUser({ prefix: "other" });
 
-      await globalThis.services.db.insert(composeJobs).values({
-        id: otherJobId,
-        userId: otherUserId,
-        githubUrl: "https://github.com/other/repo",
-        overwrite: false,
-        status: "pending",
-      });
+      const otherJobRequest = createTestRequest(
+        "http://localhost:3000/api/compose/from-github",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            githubUrl: "https://github.com/other/repo",
+          }),
+        },
+      );
 
+      const otherJobResponse = await POST(otherJobRequest);
+      const otherJobData = await otherJobResponse.json();
+      const otherJobId = otherJobData.jobId;
+
+      // Switch back to original user by re-mocking Clerk
+      mockClerk({ userId: testUserId });
+
+      // Try to access the other user's job
       const request = createTestRequest(
         `http://localhost:3000/api/compose/from-github/${otherJobId}`,
         {
