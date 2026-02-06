@@ -3,11 +3,12 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use tokio::time::sleep;
+use vsock_host::VsockHost;
 
 /// Spawn a guest agent in a background OS thread that connects to the given socket path.
 ///
-/// Retries connection up to 50 times with 10ms delay (matching vsock-guest's reconnect logic)
-/// to handle the race between host listener bind and guest connect.
+/// Retries connection up to 50 times with 10ms delay to handle the race between
+/// host listener bind and guest connect.
 fn start_guest(socket_path: &str) -> JoinHandle<io::Result<()>> {
     let path = socket_path.to_owned();
     thread::spawn(move || {
@@ -30,97 +31,233 @@ fn retry_connect(path: &str) -> io::Result<std::os::unix::net::UnixStream> {
     unreachable!()
 }
 
-/// Create a unique temp directory for socket files and return (dir_path, base_vsock_path).
-/// Caller must clean up the directory when done.
-fn make_vsock_path() -> (std::path::PathBuf, String) {
-    let dir = std::env::temp_dir().join(format!("vsock-test-{}", std::process::id()));
-    // Each test runs in its own async task, use thread id for uniqueness
-    let dir = dir.join(format!("{:?}", std::thread::current().id()));
-    std::fs::create_dir_all(&dir).expect("failed to create temp dir");
-    let base = dir.join("vsock").to_string_lossy().to_string();
-    (dir, base)
+/// Test harness: creates temp dir, starts guest thread, connects host.
+struct Harness {
+    dir: std::path::PathBuf,
+    host: VsockHost,
+    guest: Option<JoinHandle<io::Result<()>>>,
 }
 
-fn cleanup(dir: &std::path::Path) {
-    let _ = std::fs::remove_dir_all(dir);
+impl Harness {
+    async fn new() -> Self {
+        let dir = std::env::temp_dir()
+            .join(format!("vsock-test-{}", std::process::id()))
+            .join(format!("{:?}", std::thread::current().id()));
+        std::fs::create_dir_all(&dir).expect("failed to create temp dir");
+        let base_path = dir.join("vsock").to_string_lossy().to_string();
+        let listener_path = format!("{base_path}_1000");
+
+        let guest = start_guest(&listener_path);
+        let host = VsockHost::wait_for_connection(&base_path, Duration::from_secs(5))
+            .await
+            .expect("host connection failed");
+
+        Self {
+            dir,
+            host,
+            guest: Some(guest),
+        }
+    }
+
+    fn finish(mut self) {
+        drop(self.host);
+        if let Some(g) = self.guest.take() {
+            g.join()
+                .expect("guest thread panicked")
+                .expect("guest returned error");
+        }
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+
+    /// Finish without asserting guest result (for shutdown tests where guest exits differently)
+    fn finish_ignore_guest(mut self) {
+        drop(self.host);
+        if let Some(g) = self.guest.take() {
+            let _ = g.join();
+        }
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
 }
+
+// ── exec ─────────────────────────────────────────────────────────────
 
 #[tokio::test]
 async fn test_exec() {
-    let (dir, base_path) = make_vsock_path();
-    let listener_path = format!("{base_path}_1000");
-    let guest = start_guest(&listener_path);
+    let mut h = Harness::new().await;
 
-    let mut host = vsock_host::VsockHost::wait_for_connection(&base_path, Duration::from_secs(5))
-        .await
-        .expect("host connection failed");
-
-    let result = host.exec("echo hello", 5000).await.expect("exec failed");
+    let result = h.host.exec("echo hello", 5000).await.expect("exec failed");
 
     assert_eq!(result.exit_code, 0);
     assert_eq!(result.stdout, b"hello\n");
     assert!(result.stderr.is_empty());
-
-    drop(host);
-    guest
-        .join()
-        .expect("guest thread panicked")
-        .expect("guest returned error");
-    cleanup(&dir);
+    h.finish();
 }
 
 #[tokio::test]
-async fn test_write_file() {
-    let (dir, base_path) = make_vsock_path();
-    let listener_path = format!("{base_path}_1000");
-    let guest = start_guest(&listener_path);
+async fn test_exec_stderr() {
+    let mut h = Harness::new().await;
 
-    let mut host = vsock_host::VsockHost::wait_for_connection(&base_path, Duration::from_secs(5))
+    let result = h
+        .host
+        .exec("echo error >&2 && exit 1", 5000)
         .await
-        .expect("host connection failed");
+        .expect("exec failed");
 
-    let file_path = format!("{base_path}_testfile.txt");
+    assert_eq!(result.exit_code, 1);
+    assert_eq!(result.stderr, b"error\n");
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_exec_multiline() {
+    let mut h = Harness::new().await;
+
+    let result = h
+        .host
+        .exec("printf 'line1\\nline2\\nline3\\n'", 5000)
+        .await
+        .expect("exec failed");
+
+    assert_eq!(result.exit_code, 0);
+    assert_eq!(result.stdout, b"line1\nline2\nline3\n");
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_exec_pipe_chain() {
+    let mut h = Harness::new().await;
+
+    let result = h
+        .host
+        .exec("echo 'hello world' | tr 'a-z' 'A-Z'", 5000)
+        .await
+        .expect("exec failed");
+
+    assert_eq!(result.exit_code, 0);
+    assert_eq!(result.stdout, b"HELLO WORLD\n");
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_exec_env_vars() {
+    let mut h = Harness::new().await;
+
+    let result = h
+        .host
+        .exec("export TEST_VAR=hello; echo $TEST_VAR", 5000)
+        .await
+        .expect("exec failed");
+
+    assert_eq!(result.exit_code, 0);
+    assert_eq!(result.stdout, b"hello\n");
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_exec_timeout() {
+    let mut h = Harness::new().await;
+
+    let result = h.host.exec("sleep 10", 100).await.expect("exec failed");
+
+    assert_eq!(result.exit_code, 124);
+    assert!(result.stderr.starts_with(b"Timeout"));
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_exec_sequential() {
+    let mut h = Harness::new().await;
+
+    for i in 0..5 {
+        let result = h
+            .host
+            .exec(&format!("echo {i}"), 5000)
+            .await
+            .expect("exec failed");
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.stdout, format!("{i}\n").as_bytes());
+    }
+    h.finish();
+}
+
+// ── write_file ───────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_write_file() {
+    let mut h = Harness::new().await;
+
+    let file_path = h.dir.join("testfile.txt");
+    let file_path_str = file_path.to_string_lossy().to_string();
     let content = b"hello from vsock-test";
 
-    host.write_file(&file_path, content, false)
+    h.host
+        .write_file(&file_path_str, content, false)
         .await
         .expect("write_file failed");
 
     // Verify by reading the file back via exec
-    let result = host
-        .exec(&format!("cat '{file_path}'"), 5000)
+    let result = h
+        .host
+        .exec(&format!("cat '{file_path_str}'"), 5000)
         .await
         .expect("exec cat failed");
 
     assert_eq!(result.exit_code, 0);
     assert_eq!(result.stdout, content);
-
-    drop(host);
-    guest
-        .join()
-        .expect("guest thread panicked")
-        .expect("guest returned error");
-    cleanup(&dir);
+    h.finish();
 }
 
 #[tokio::test]
-async fn test_spawn_watch() {
-    let (dir, base_path) = make_vsock_path();
-    let listener_path = format!("{base_path}_1000");
-    let guest = start_guest(&listener_path);
+async fn test_write_file_special_characters() {
+    let mut h = Harness::new().await;
 
-    let mut host = vsock_host::VsockHost::wait_for_connection(&base_path, Duration::from_secs(5))
+    let file_path = h.dir.join("special.txt");
+    let file_path_str = file_path.to_string_lossy().to_string();
+    let content = b"Line1\nLine2\tTabbed\n\"Quoted\"";
+
+    h.host
+        .write_file(&file_path_str, content, false)
         .await
-        .expect("host connection failed");
+        .expect("write_file failed");
 
-    let pid = host
+    let written = std::fs::read(&file_path).expect("failed to read written file");
+    assert_eq!(written, content);
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_write_file_creates_parent_dirs() {
+    let mut h = Harness::new().await;
+
+    let file_path = h.dir.join("a/b/c/nested.txt");
+    let file_path_str = file_path.to_string_lossy().to_string();
+    let content = b"nested content";
+
+    h.host
+        .write_file(&file_path_str, content, false)
+        .await
+        .expect("write_file failed");
+
+    let written = std::fs::read(&file_path).expect("failed to read written file");
+    assert_eq!(written, content);
+    h.finish();
+}
+
+// ── spawn_watch ──────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_spawn_watch() {
+    let mut h = Harness::new().await;
+
+    let pid = h
+        .host
         .spawn_watch("echo done", 5000)
         .await
         .expect("spawn_watch failed");
-
     assert!(pid > 0);
 
-    let event = host
+    let event = h
+        .host
         .wait_for_exit(pid, Duration::from_secs(5))
         .await
         .expect("wait_for_exit failed");
@@ -128,35 +265,265 @@ async fn test_spawn_watch() {
     assert_eq!(event.exit_code, 0);
     assert_eq!(event.stdout, b"done\n");
     assert!(event.stderr.is_empty());
-
-    drop(host);
-    guest
-        .join()
-        .expect("guest thread panicked")
-        .expect("guest returned error");
-    cleanup(&dir);
+    h.finish();
 }
 
 #[tokio::test]
-async fn test_shutdown() {
-    let (dir, base_path) = make_vsock_path();
-    let listener_path = format!("{base_path}_1000");
-    let guest = start_guest(&listener_path);
+async fn test_spawn_watch_exit_code() {
+    let mut h = Harness::new().await;
 
-    let mut host = vsock_host::VsockHost::wait_for_connection(&base_path, Duration::from_secs(5))
+    let pid = h
+        .host
+        .spawn_watch("exit 42", 5000)
         .await
-        .expect("host connection failed");
+        .expect("spawn_watch failed");
 
-    // Small delay to ensure connection is fully stable
+    let event = h
+        .host
+        .wait_for_exit(pid, Duration::from_secs(5))
+        .await
+        .expect("wait_for_exit failed");
+
+    assert_eq!(event.exit_code, 42);
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_spawn_watch_stderr() {
+    let mut h = Harness::new().await;
+
+    let pid = h
+        .host
+        .spawn_watch("echo error >&2 && exit 1", 5000)
+        .await
+        .expect("spawn_watch failed");
+
+    let event = h
+        .host
+        .wait_for_exit(pid, Duration::from_secs(5))
+        .await
+        .expect("wait_for_exit failed");
+
+    assert_eq!(event.exit_code, 1);
+    assert_eq!(event.stderr, b"error\n");
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_spawn_watch_both_stdout_stderr() {
+    let mut h = Harness::new().await;
+
+    let pid = h
+        .host
+        .spawn_watch("echo out && echo err >&2 && exit 2", 5000)
+        .await
+        .expect("spawn_watch failed");
+
+    let event = h
+        .host
+        .wait_for_exit(pid, Duration::from_secs(5))
+        .await
+        .expect("wait_for_exit failed");
+
+    assert_eq!(event.exit_code, 2);
+    assert_eq!(event.stdout, b"out\n");
+    assert_eq!(event.stderr, b"err\n");
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_spawn_watch_no_output() {
+    let mut h = Harness::new().await;
+
+    let pid = h
+        .host
+        .spawn_watch("true", 5000)
+        .await
+        .expect("spawn_watch failed");
+
+    let event = h
+        .host
+        .wait_for_exit(pid, Duration::from_secs(5))
+        .await
+        .expect("wait_for_exit failed");
+
+    assert_eq!(event.exit_code, 0);
+    assert!(event.stdout.is_empty());
+    assert!(event.stderr.is_empty());
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_spawn_watch_concurrent() {
+    let mut h = Harness::new().await;
+
+    // Spawn two processes — second finishes first
+    let pid1 = h
+        .host
+        .spawn_watch("sleep 0.1 && echo first", 5000)
+        .await
+        .expect("spawn_watch 1 failed");
+    let pid2 = h
+        .host
+        .spawn_watch("echo second", 5000)
+        .await
+        .expect("spawn_watch 2 failed");
+
+    assert_ne!(pid1, pid2);
+
+    // Wait in reverse order to exercise cached exit events
+    let event2 = h
+        .host
+        .wait_for_exit(pid2, Duration::from_secs(5))
+        .await
+        .expect("wait_for_exit 2 failed");
+    let event1 = h
+        .host
+        .wait_for_exit(pid1, Duration::from_secs(5))
+        .await
+        .expect("wait_for_exit 1 failed");
+
+    assert_eq!(event1.exit_code, 0);
+    assert_eq!(event1.stdout, b"first\n");
+    assert_eq!(event2.exit_code, 0);
+    assert_eq!(event2.stdout, b"second\n");
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_spawn_watch_timeout() {
+    let mut h = Harness::new().await;
+
+    let pid = h
+        .host
+        .spawn_watch("sleep 10", 100)
+        .await
+        .expect("spawn_watch failed");
+
+    let event = h
+        .host
+        .wait_for_exit(pid, Duration::from_secs(5))
+        .await
+        .expect("wait_for_exit failed");
+
+    assert_eq!(event.exit_code, 124);
+    assert!(event.stderr.starts_with(b"Timeout"));
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_spawn_watch_cached_exit() {
+    let mut h = Harness::new().await;
+
+    let pid = h
+        .host
+        .spawn_watch("echo cached", 5000)
+        .await
+        .expect("spawn_watch failed");
+
+    // Let exit event arrive and be cached
+    sleep(Duration::from_millis(300)).await;
+
+    let event = h
+        .host
+        .wait_for_exit(pid, Duration::from_secs(5))
+        .await
+        .expect("wait_for_exit failed");
+
+    assert_eq!(event.exit_code, 0);
+    assert_eq!(event.stdout, b"cached\n");
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_spawn_watch_multiline() {
+    let mut h = Harness::new().await;
+
+    let pid = h
+        .host
+        .spawn_watch("printf 'line1\\nline2\\nline3\\n'", 5000)
+        .await
+        .expect("spawn_watch failed");
+
+    let event = h
+        .host
+        .wait_for_exit(pid, Duration::from_secs(5))
+        .await
+        .expect("wait_for_exit failed");
+
+    assert_eq!(event.exit_code, 0);
+    assert_eq!(event.stdout, b"line1\nline2\nline3\n");
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_spawn_watch_large_output() {
+    let mut h = Harness::new().await;
+
+    let pid = h
+        .host
+        .spawn_watch(
+            "dd if=/dev/zero bs=1024 count=10 2>/dev/null | base64",
+            5000,
+        )
+        .await
+        .expect("spawn_watch failed");
+
+    let event = h
+        .host
+        .wait_for_exit(pid, Duration::from_secs(10))
+        .await
+        .expect("wait_for_exit failed");
+
+    assert_eq!(event.exit_code, 0);
+    assert!(event.stdout.len() > 10000);
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_spawn_watch_delayed_output() {
+    let mut h = Harness::new().await;
+
+    let pid = h
+        .host
+        .spawn_watch("sleep 0.2 && echo delayed", 5000)
+        .await
+        .expect("spawn_watch failed");
+
+    let event = h
+        .host
+        .wait_for_exit(pid, Duration::from_secs(5))
+        .await
+        .expect("wait_for_exit failed");
+
+    assert_eq!(event.exit_code, 0);
+    assert_eq!(event.stdout, b"delayed\n");
+    h.finish();
+}
+
+// ── shutdown ─────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_shutdown() {
+    let mut h = Harness::new().await;
     sleep(Duration::from_millis(50)).await;
 
-    let acked = host.shutdown(Duration::from_secs(5)).await;
+    let acked = h.host.shutdown(Duration::from_secs(5)).await;
     assert!(acked);
 
-    drop(host);
-    guest
-        .join()
-        .expect("guest thread panicked")
-        .expect("guest returned error");
-    cleanup(&dir);
+    h.finish_ignore_guest();
+}
+
+#[tokio::test]
+async fn test_shutdown_after_exec() {
+    let mut h = Harness::new().await;
+
+    // Run a command first, then shutdown
+    let result = h.host.exec("echo before", 5000).await.expect("exec failed");
+    assert_eq!(result.exit_code, 0);
+
+    let acked = h.host.shutdown(Duration::from_secs(5)).await;
+    assert!(acked);
+
+    h.finish_ignore_guest();
 }
