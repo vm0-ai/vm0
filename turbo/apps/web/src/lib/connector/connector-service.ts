@@ -1,14 +1,29 @@
 import { eq, and } from "drizzle-orm";
-import type { ConnectorType, ConnectorResponse } from "@vm0/core";
+import {
+  type ConnectorType,
+  type ConnectorResponse,
+  connectorTypeSchema,
+} from "@vm0/core";
 import { connectors } from "../../db/schema/connector";
 import { secrets } from "../../db/schema/secret";
 import { encryptCredentialValue } from "../crypto";
-import { notFound } from "../errors";
+import { notFound, badRequest } from "../errors";
 import { logger } from "../logger";
 import { getUserScopeByClerkId } from "../scope/scope-service";
 import { getGitHubSecretName } from "./providers/github";
 
 const log = logger("service:connector");
+
+/**
+ * Validate and parse connector type from database value
+ */
+function parseConnectorType(type: string): ConnectorType {
+  const result = connectorTypeSchema.safeParse(type);
+  if (!result.success) {
+    throw badRequest(`Invalid connector type: ${type}`);
+  }
+  return result.data;
+}
 
 /**
  * Get secret name for a connector type
@@ -51,7 +66,7 @@ export async function listConnectors(
 
   return result.map((row) => ({
     id: row.id,
-    type: row.type as ConnectorType,
+    type: parseConnectorType(row.type),
     authMethod: row.authMethod,
     externalId: row.externalId,
     externalUsername: row.externalUsername,
@@ -97,7 +112,7 @@ export async function getConnector(
   const row = result[0];
   return {
     id: row.id,
-    type: row.type as ConnectorType,
+    type: parseConnectorType(row.type),
     authMethod: row.authMethod,
     externalId: row.externalId,
     externalUsername: row.externalUsername,
@@ -191,6 +206,10 @@ export async function upsertOAuthConnector(
   };
 
   if (isUpdate) {
+    const existingId = existingConnector[0]?.id;
+    if (!existingId) {
+      throw new Error("Existing connector not found during update");
+    }
     const [updated] = await db
       .update(connectors)
       .set({
@@ -201,9 +220,12 @@ export async function upsertOAuthConnector(
         oauthScopes: JSON.stringify(oauthScopes),
         updatedAt: new Date(),
       })
-      .where(eq(connectors.id, existingConnector[0]!.id))
+      .where(eq(connectors.id, existingId))
       .returning();
-    connectorRow = updated!;
+    if (!updated) {
+      throw new Error("Failed to update connector");
+    }
+    connectorRow = updated;
     log.debug("connector updated", { connectorId: connectorRow.id, type });
   } else {
     const [created] = await db
@@ -218,14 +240,17 @@ export async function upsertOAuthConnector(
         oauthScopes: JSON.stringify(oauthScopes),
       })
       .returning();
-    connectorRow = created!;
+    if (!created) {
+      throw new Error("Failed to create connector");
+    }
+    connectorRow = created;
     log.debug("connector created", { connectorId: connectorRow.id, type });
   }
 
   return {
     connector: {
       id: connectorRow.id,
-      type: connectorRow.type as ConnectorType,
+      type: parseConnectorType(connectorRow.type),
       authMethod: connectorRow.authMethod,
       externalId: connectorRow.externalId,
       externalUsername: connectorRow.externalUsername,

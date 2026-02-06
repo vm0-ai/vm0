@@ -123,5 +123,10 @@ export function getGitHubSecretName(): string {
   if (!oauthMethod) {
     throw new Error("GitHub OAuth auth method not found");
   }
-  return Object.keys(oauthMethod.secrets)[0]!;
+  const secretNames = Object.keys(oauthMethod.secrets);
+  const firstSecret = secretNames[0];
+  if (!firstSecret) {
+    throw new Error("GitHub OAuth secrets not configured");
+  }
+  return firstSecret;
 }
