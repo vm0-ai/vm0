@@ -34,8 +34,10 @@ export { verifySlackSignature, getSlackSignatureHeaders } from "./verify";
 export {
   createSlackClient,
   postMessage,
+  updateMessage,
   openModal,
   updateModal,
+  publishAppHome,
   exchangeOAuthCode,
   isSlackInvalidAuthError,
 } from "./client";
@@ -44,6 +46,7 @@ export {
 export {
   buildAgentAddModal,
   buildAgentListMessage,
+  buildAppHomeView,
   buildErrorMessage,
   buildLoginPromptMessage,
   buildHelpMessage,
@@ -65,3 +68,4 @@ export {
 
 // Handlers
 export { handleDirectMessage } from "./handlers/direct-message";
+export { handleAppHomeOpened } from "./handlers/app-home-opened";

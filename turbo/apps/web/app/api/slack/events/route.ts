@@ -7,6 +7,7 @@ import {
 } from "../../../../src/lib/slack/verify";
 import { handleAppMention } from "../../../../src/lib/slack/handlers/mention";
 import { handleDirectMessage } from "../../../../src/lib/slack/handlers/direct-message";
+import { handleAppHomeOpened } from "../../../../src/lib/slack/handlers/app-home-opened";
 
 /**
  * Slack Events API Endpoint
@@ -52,12 +53,21 @@ interface SlackDirectMessageEvent {
   bot_id?: string;
 }
 
+interface SlackAppHomeOpenedEvent {
+  type: "app_home_opened";
+  user: string;
+  tab: "home" | "messages";
+}
+
 interface SlackEventCallback {
   type: "event_callback";
   token: string;
   team_id: string;
   api_app_id: string;
-  event: SlackAppMentionEvent | SlackDirectMessageEvent;
+  event:
+    | SlackAppMentionEvent
+    | SlackDirectMessageEvent
+    | SlackAppHomeOpenedEvent;
   event_id: string;
   event_time: number;
   authorizations?: Array<{
@@ -163,6 +173,20 @@ export async function POST(request: Request) {
           threadTs: event.thread_ts,
         }).catch((error) => {
           console.error("Error handling direct_message:", error);
+        }),
+      );
+    }
+
+    // Handle app_home_opened events
+    if (event.type === "app_home_opened" && event.tab === "home") {
+      initServices();
+
+      after(
+        handleAppHomeOpened({
+          workspaceId: payload.team_id,
+          userId: event.user,
+        }).catch((error) => {
+          console.error("Error handling app_home_opened:", error);
         }),
       );
     }

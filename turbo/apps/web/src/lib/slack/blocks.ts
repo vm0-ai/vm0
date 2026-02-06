@@ -223,6 +223,141 @@ export function buildAgentAddModal(
   };
 }
 
+interface AppHomeBinding {
+  agentName: string;
+  description: string | null;
+  enabled: boolean;
+}
+
+/**
+ * Build the App Home tab view
+ *
+ * @param options - Configuration for the home view
+ * @returns View definition for the Home tab
+ */
+export function buildAppHomeView(options: {
+  isLinked: boolean;
+  vm0UserId?: string;
+  bindings?: AppHomeBinding[];
+  loginUrl?: string;
+}): View {
+  const blocks: (Block | KnownBlock)[] = [
+    {
+      type: "header",
+      text: {
+        type: "plain_text",
+        text: "Welcome to VM0!",
+      },
+    },
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "Connect your AI agents to Slack and interact with them through messages.",
+      },
+    },
+    { type: "divider" },
+  ];
+
+  // Account status
+  if (options.isLinked) {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `:white_check_mark: *Account connected*\n\`${options.vm0UserId}\``,
+      },
+    });
+  } else {
+    const connectBlocks: (Block | KnownBlock)[] = [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: ":x: *Account not connected*",
+        },
+      },
+    ];
+    if (options.loginUrl) {
+      connectBlocks.push({
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: {
+              type: "plain_text",
+              text: "Connect",
+            },
+            url: options.loginUrl,
+            action_id: "home_login_prompt",
+            style: "primary",
+          },
+        ],
+      });
+    }
+    blocks.push(...connectBlocks);
+  }
+
+  blocks.push({ type: "divider" });
+
+  // Linked agents
+  blocks.push({
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: "*Your Agents*",
+    },
+  });
+
+  if (options.bindings && options.bindings.length > 0) {
+    for (const binding of options.bindings) {
+      const status = binding.enabled ? ":white_check_mark:" : ":x:";
+      const description = binding.description ?? "_No description_";
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `${status} *${binding.agentName}*\n${description}`,
+        },
+      });
+    }
+  } else {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "_No agents linked yet._ Use `/vm0 agent link` to link one.",
+      },
+    });
+  }
+
+  blocks.push({ type: "divider" });
+
+  // Help section
+  blocks.push({
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: "*Commands*\n• `/vm0 help` — Show help\n• `/vm0 connect` — Connect your account\n• `/vm0 agent link` — Link an agent\n• `/vm0 agent unlink` — Unlink an agent\n• `/vm0 agent update` — Update agent configuration",
+    },
+  });
+
+  blocks.push({
+    type: "context",
+    elements: [
+      {
+        type: "mrkdwn",
+        text: "Send me a DM or `@VM0` in any channel to start chatting with your agents!",
+      },
+    ],
+  });
+
+  return {
+    type: "home",
+    blocks,
+  };
+}
+
 interface AgentBinding {
   id: string;
   agentName: string;
