@@ -6,6 +6,11 @@
 const requiredEnvVars = ["VITE_CLERK_PUBLISHABLE_KEY", "VITE_API_URL"] as const;
 
 export function validateEnv() {
+  // Skip validation if explicitly disabled (e.g., during knip analysis)
+  if (process.env.SKIP_ENV_VALIDATION === "true") {
+    return;
+  }
+
   const missing: string[] = [];
 
   for (const varName of requiredEnvVars) {

@@ -6,7 +6,10 @@ const withNextIntl = createNextIntlPlugin("./i18n.ts");
 
 // Force environment validation at build time
 // This ensures all required environment variables are present before deployment
-env();
+// Skip if SKIP_ENV_VALIDATION is set (e.g., during knip analysis)
+if (process.env.SKIP_ENV_VALIDATION !== "true") {
+  env();
+}
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
