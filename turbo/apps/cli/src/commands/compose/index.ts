@@ -66,9 +66,16 @@ interface LoadedConfig {
  */
 async function loadAndValidateConfig(
   configFile: string,
+  porcelainMode?: boolean,
 ): Promise<LoadedConfig> {
   if (!existsSync(configFile)) {
-    console.error(chalk.red(`✗ Config file not found: ${configFile}`));
+    if (porcelainMode) {
+      console.log(
+        JSON.stringify({ error: `Config file not found: ${configFile}` }),
+      );
+    } else {
+      console.error(chalk.red(`✗ Config file not found: ${configFile}`));
+    }
     process.exit(1);
   }
 
@@ -78,16 +85,23 @@ async function loadAndValidateConfig(
   try {
     config = parseYaml(content);
   } catch (error) {
-    console.error(chalk.red("✗ Invalid YAML format"));
-    if (error instanceof Error) {
-      console.error(chalk.dim(`  ${error.message}`));
+    const message = error instanceof Error ? error.message : "Unknown error";
+    if (porcelainMode) {
+      console.log(JSON.stringify({ error: `Invalid YAML format: ${message}` }));
+    } else {
+      console.error(chalk.red("✗ Invalid YAML format"));
+      console.error(chalk.dim(`  ${message}`));
     }
     process.exit(1);
   }
 
   const validation = validateAgentCompose(config);
   if (!validation.valid) {
-    console.error(chalk.red(`✗ ${validation.error}`));
+    if (porcelainMode) {
+      console.log(JSON.stringify({ error: validation.error }));
+    } else {
+      console.error(chalk.red(`✗ ${validation.error}`));
+    }
     process.exit(1);
   }
 
@@ -146,34 +160,45 @@ async function uploadAssets(
   agentName: string,
   agent: AgentConfig,
   basePath: string,
+  porcelainMode?: boolean,
 ): Promise<SkillUploadResult[]> {
   if (agent.instructions) {
-    console.log(`Uploading instructions: ${agent.instructions}`);
+    if (!porcelainMode) {
+      console.log(`Uploading instructions: ${agent.instructions}`);
+    }
     const result = await uploadInstructions(
       agentName,
       agent.instructions,
       basePath,
       agent.framework,
     );
-    console.log(
-      chalk.green(
-        `✓ Instructions ${result.action === "deduplicated" ? "(unchanged)" : "uploaded"}: ${result.versionId.slice(0, 8)}`,
-      ),
-    );
+    if (!porcelainMode) {
+      console.log(
+        chalk.green(
+          `✓ Instructions ${result.action === "deduplicated" ? "(unchanged)" : "uploaded"}: ${result.versionId.slice(0, 8)}`,
+        ),
+      );
+    }
   }
 
   const skillResults: SkillUploadResult[] = [];
   if (agent.skills && Array.isArray(agent.skills)) {
-    console.log(`Uploading ${agent.skills.length} skill(s)...`);
+    if (!porcelainMode) {
+      console.log(`Uploading ${agent.skills.length} skill(s)...`);
+    }
     for (const skillUrl of agent.skills) {
-      console.log(chalk.dim(`  Downloading: ${skillUrl}`));
+      if (!porcelainMode) {
+        console.log(chalk.dim(`  Downloading: ${skillUrl}`));
+      }
       const result = await uploadSkill(skillUrl);
       skillResults.push(result);
-      console.log(
-        chalk.green(
-          `  ✓ Skill ${result.action === "deduplicated" ? "(unchanged)" : "uploaded"}: ${result.skillName} (${result.versionId.slice(0, 8)})`,
-        ),
-      );
+      if (!porcelainMode) {
+        console.log(
+          chalk.green(
+            `  ✓ Skill ${result.action === "deduplicated" ? "(unchanged)" : "uploaded"}: ${result.skillName} (${result.versionId.slice(0, 8)})`,
+          ),
+        );
+      }
     }
   }
 
@@ -244,7 +269,7 @@ async function collectSkillVariables(
  */
 async function displayAndConfirmVariables(
   variables: SkillVariables,
-  options: { yes?: boolean },
+  options: { yes?: boolean; porcelain?: boolean },
 ): Promise<boolean> {
   const { newSecrets, newVars, trulyNewSecrets } = variables;
 
@@ -252,40 +277,53 @@ async function displayAndConfirmVariables(
     return true;
   }
 
-  console.log();
-  console.log(
-    chalk.bold("Skills require the following environment variables:"),
-  );
-  console.log();
+  // In porcelain mode, skip display but still check for new secrets
+  if (!options.porcelain) {
+    console.log();
+    console.log(
+      chalk.bold("Skills require the following environment variables:"),
+    );
+    console.log();
 
-  if (newSecrets.length > 0) {
-    console.log(chalk.cyan("  Secrets:"));
-    for (const [name, skills] of newSecrets) {
-      const isNew = trulyNewSecrets.includes(name);
-      const newMarker = isNew ? chalk.yellow(" (new)") : "";
-      console.log(`    ${name.padEnd(24)}${newMarker} <- ${skills.join(", ")}`);
+    if (newSecrets.length > 0) {
+      console.log(chalk.cyan("  Secrets:"));
+      for (const [name, skills] of newSecrets) {
+        const isNew = trulyNewSecrets.includes(name);
+        const newMarker = isNew ? chalk.yellow(" (new)") : "";
+        console.log(
+          `    ${name.padEnd(24)}${newMarker} <- ${skills.join(", ")}`,
+        );
+      }
     }
-  }
 
-  if (newVars.length > 0) {
-    console.log(chalk.cyan("  Vars:"));
-    for (const [name, skills] of newVars) {
-      console.log(`    ${name.padEnd(24)} <- ${skills.join(", ")}`);
+    if (newVars.length > 0) {
+      console.log(chalk.cyan("  Vars:"));
+      for (const [name, skills] of newVars) {
+        console.log(`    ${name.padEnd(24)} <- ${skills.join(", ")}`);
+      }
     }
-  }
 
-  console.log();
+    console.log();
+  }
 
   if (trulyNewSecrets.length > 0 && !options.yes) {
     if (!isInteractive()) {
-      console.error(
-        chalk.red(`✗ New secrets detected: ${trulyNewSecrets.join(", ")}`),
-      );
-      console.error(
-        chalk.dim(
-          "  Use --yes flag to approve new secrets in non-interactive mode.",
-        ),
-      );
+      if (options.porcelain) {
+        console.log(
+          JSON.stringify({
+            error: `New secrets detected: ${trulyNewSecrets.join(", ")}. Use --yes flag to approve.`,
+          }),
+        );
+      } else {
+        console.error(
+          chalk.red(`✗ New secrets detected: ${trulyNewSecrets.join(", ")}`),
+        );
+        console.error(
+          chalk.dim(
+            "  Use --yes flag to approve new secrets in non-interactive mode.",
+          ),
+        );
+      }
       process.exit(1);
     }
 
@@ -294,7 +332,9 @@ async function displayAndConfirmVariables(
       true,
     );
     if (!confirmed) {
-      console.log(chalk.yellow("Compose cancelled"));
+      if (!options.porcelain) {
+        console.log(chalk.yellow("Compose cancelled"));
+      }
       return false;
     }
   }
@@ -330,15 +370,27 @@ function mergeSkillVariables(
 }
 
 /**
+ * Result from finalizeCompose for porcelain output
+ */
+interface ComposeResult {
+  composeId: string;
+  composeName: string;
+  versionId: string;
+  action: "created" | "existing";
+  displayName: string;
+}
+
+/**
  * Finalize compose: confirm variables, merge into config, call API, and display result.
  * Shared by both GitHub URL and local file flows.
+ * Returns the compose result for porcelain output mode.
  */
 async function finalizeCompose(
   config: unknown,
   agent: AgentConfig,
   variables: SkillVariables,
-  options: { yes?: boolean; autoUpdate?: boolean },
-): Promise<void> {
+  options: { yes?: boolean; autoUpdate?: boolean; porcelain?: boolean },
+): Promise<ComposeResult> {
   // Display variables and confirm with user
   const confirmed = await displayAndConfirmVariables(variables, options);
   if (!confirmed) {
@@ -349,33 +401,49 @@ async function finalizeCompose(
   mergeSkillVariables(agent, variables);
 
   // Call API
-  console.log("Uploading compose...");
+  if (!options.porcelain) {
+    console.log("Uploading compose...");
+  }
   const response = await createOrUpdateCompose({ content: config });
 
-  // Display result
+  // Get scope for display name
   const scopeResponse = await getScope();
   const shortVersionId = response.versionId.slice(0, 8);
   const displayName = `${scopeResponse.slug}/${response.name}`;
 
-  if (response.action === "created") {
-    console.log(chalk.green(`✓ Compose created: ${displayName}`));
-  } else {
-    console.log(chalk.green(`✓ Compose version exists: ${displayName}`));
-  }
+  // Build result
+  const result: ComposeResult = {
+    composeId: response.composeId,
+    composeName: response.name,
+    versionId: response.versionId,
+    action: response.action,
+    displayName,
+  };
 
-  console.log(chalk.dim(`  Version: ${shortVersionId}`));
-  console.log();
-  console.log("  Run your agent:");
-  console.log(
-    chalk.cyan(
-      `    vm0 run ${displayName}:${shortVersionId} --artifact-name <artifact> "your prompt"`,
-    ),
-  );
+  // Display human-readable result (skip in porcelain mode)
+  if (!options.porcelain) {
+    if (response.action === "created") {
+      console.log(chalk.green(`✓ Compose created: ${displayName}`));
+    } else {
+      console.log(chalk.green(`✓ Compose version exists: ${displayName}`));
+    }
+
+    console.log(chalk.dim(`  Version: ${shortVersionId}`));
+    console.log();
+    console.log("  Run your agent:");
+    console.log(
+      chalk.cyan(
+        `    vm0 run ${displayName}:${shortVersionId} --artifact-name <artifact> "your prompt"`,
+      ),
+    );
+  }
 
   // Silent upgrade after successful command completion
   if (options.autoUpdate !== false) {
     await silentUpgradeAfterCommand(__CLI_VERSION__);
   }
+
+  return result;
 }
 
 /**
@@ -383,45 +451,70 @@ async function finalizeCompose(
  */
 async function handleGitHubCompose(
   url: string,
-  options: { yes?: boolean; autoUpdate?: boolean },
-): Promise<void> {
-  console.log(`Downloading from GitHub: ${url}`);
+  options: { yes?: boolean; autoUpdate?: boolean; porcelain?: boolean },
+): Promise<ComposeResult> {
+  if (!options.porcelain) {
+    console.log(`Downloading from GitHub: ${url}`);
+  }
 
   const { dir: downloadedDir, tempRoot } = await downloadGitHubDirectory(url);
   const configFile = join(downloadedDir, "vm0.yaml");
 
   try {
     if (!existsSync(configFile)) {
-      console.error(chalk.red(`✗ vm0.yaml not found in the GitHub directory`));
-      console.error(chalk.dim(`  URL: ${url}`));
+      if (options.porcelain) {
+        console.log(
+          JSON.stringify({
+            error: "vm0.yaml not found in the GitHub directory",
+          }),
+        );
+      } else {
+        console.error(
+          chalk.red(`✗ vm0.yaml not found in the GitHub directory`),
+        );
+        console.error(chalk.dim(`  URL: ${url}`));
+      }
       process.exit(1);
     }
 
     // Load and validate config
-    const { config, agentName, agent, basePath } =
-      await loadAndValidateConfig(configFile);
+    const { config, agentName, agent, basePath } = await loadAndValidateConfig(
+      configFile,
+      options.porcelain,
+    );
 
     // Check if agent with same name already exists
     const existingCompose = await getComposeByName(agentName);
     if (existingCompose) {
-      console.log();
-      console.log(
-        chalk.yellow(`⚠ An agent named "${agentName}" already exists.`),
-      );
+      if (!options.porcelain) {
+        console.log();
+        console.log(
+          chalk.yellow(`⚠ An agent named "${agentName}" already exists.`),
+        );
+      }
 
       if (!isInteractive()) {
         // Non-interactive mode: require --yes flag to overwrite
         if (!options.yes) {
-          console.error(
-            chalk.red(
-              `✗ Cannot overwrite existing agent in non-interactive mode`,
-            ),
-          );
-          console.error(
-            chalk.dim(
-              `  Use --yes flag to confirm overwriting the existing agent.`,
-            ),
-          );
+          if (options.porcelain) {
+            console.log(
+              JSON.stringify({
+                error:
+                  "Cannot overwrite existing agent in non-interactive mode",
+              }),
+            );
+          } else {
+            console.error(
+              chalk.red(
+                `✗ Cannot overwrite existing agent in non-interactive mode`,
+              ),
+            );
+            console.error(
+              chalk.dim(
+                `  Use --yes flag to confirm overwriting the existing agent.`,
+              ),
+            );
+          }
           process.exit(1);
         }
       } else {
@@ -431,7 +524,9 @@ async function handleGitHubCompose(
           false,
         );
         if (!confirmed) {
-          console.log(chalk.yellow("Compose cancelled."));
+          if (!options.porcelain) {
+            console.log(chalk.yellow("Compose cancelled."));
+          }
           process.exit(0);
         }
       }
@@ -439,22 +534,37 @@ async function handleGitHubCompose(
 
     // Check for unsupported volumes
     if (hasVolumes(config)) {
-      console.error(
-        chalk.red(`✗ Volumes are not supported for GitHub URL compose`),
-      );
-      console.error(
-        chalk.dim(
-          `  Clone the repository locally and run: vm0 compose ./path/to/vm0.yaml`,
-        ),
-      );
+      if (options.porcelain) {
+        console.log(
+          JSON.stringify({
+            error: "Volumes are not supported for GitHub URL compose",
+          }),
+        );
+      } else {
+        console.error(
+          chalk.red(`✗ Volumes are not supported for GitHub URL compose`),
+        );
+        console.error(
+          chalk.dim(
+            `  Clone the repository locally and run: vm0 compose ./path/to/vm0.yaml`,
+          ),
+        );
+      }
       process.exit(1);
     }
 
-    // Check for legacy image format
-    checkLegacyImageFormat(config);
+    // Check for legacy image format (skip in porcelain mode)
+    if (!options.porcelain) {
+      checkLegacyImageFormat(config);
+    }
 
     // Upload instructions and skills
-    const skillResults = await uploadAssets(agentName, agent, basePath);
+    const skillResults = await uploadAssets(
+      agentName,
+      agent,
+      basePath,
+      options.porcelain,
+    );
 
     // Collect and process skill variables
     const environment = agent.environment || {};
@@ -465,7 +575,7 @@ async function handleGitHubCompose(
     );
 
     // Finalize compose (confirm, merge, upload, display)
-    await finalizeCompose(config, agent, variables, options);
+    return await finalizeCompose(config, agent, variables, options);
   } finally {
     // Cleanup temp directory
     await rm(tempRoot, { recursive: true, force: true });
@@ -484,6 +594,10 @@ export const composeCommand = new Command()
     "--experimental-shared-compose",
     "Enable GitHub URL compose (experimental)",
   )
+  .option(
+    "--porcelain",
+    "Output stable JSON for scripts (suppresses interactive output)",
+  )
   .addOption(new Option("--no-auto-update").hideHelp())
   .action(
     async (
@@ -492,42 +606,68 @@ export const composeCommand = new Command()
         yes?: boolean;
         autoUpdate?: boolean;
         experimentalSharedCompose?: boolean;
+        porcelain?: boolean;
       },
     ) => {
       const resolvedConfigFile = configFile ?? DEFAULT_CONFIG_FILE;
+
+      // Porcelain mode implies --yes and disables auto-update (for CI/CD usage)
+      if (options.porcelain) {
+        options.yes = true;
+        options.autoUpdate = false;
+      }
+
       try {
+        let result: ComposeResult;
+
         // Branch based on input type
         if (isGitHubUrl(resolvedConfigFile)) {
           // Require experimental flag for GitHub URLs
           if (!options.experimentalSharedCompose) {
-            console.error(
-              chalk.red(
-                "✗ Composing shared agents requires --experimental-shared-compose flag",
-              ),
-            );
-            console.error();
-            console.error(
-              chalk.dim(
-                "  Composing agents from other users carries security risks.",
-              ),
-            );
-            console.error(
-              chalk.dim("  Only compose agents from users you trust."),
-            );
+            if (options.porcelain) {
+              console.log(
+                JSON.stringify({
+                  error:
+                    "Composing shared agents requires --experimental-shared-compose flag",
+                }),
+              );
+            } else {
+              console.error(
+                chalk.red(
+                  "✗ Composing shared agents requires --experimental-shared-compose flag",
+                ),
+              );
+              console.error();
+              console.error(
+                chalk.dim(
+                  "  Composing agents from other users carries security risks.",
+                ),
+              );
+              console.error(
+                chalk.dim("  Only compose agents from users you trust."),
+              );
+            }
             process.exit(1);
           }
-          await handleGitHubCompose(resolvedConfigFile, options);
+          result = await handleGitHubCompose(resolvedConfigFile, options);
         } else {
           // Existing local file flow
           // 1. Load and validate config
           const { config, agentName, agent, basePath } =
-            await loadAndValidateConfig(resolvedConfigFile);
+            await loadAndValidateConfig(resolvedConfigFile, options.porcelain);
 
-          // 2. Check for legacy image format
-          checkLegacyImageFormat(config);
+          // 2. Check for legacy image format (skip in JSON mode)
+          if (!options.porcelain) {
+            checkLegacyImageFormat(config);
+          }
 
           // 3. Upload instructions and skills
-          const skillResults = await uploadAssets(agentName, agent, basePath);
+          const skillResults = await uploadAssets(
+            agentName,
+            agent,
+            basePath,
+            options.porcelain,
+          );
 
           // 4. Collect and process skill variables
           const environment = agent.environment || {};
@@ -538,9 +678,23 @@ export const composeCommand = new Command()
           );
 
           // 5. Finalize compose (confirm, merge, upload, display)
-          await finalizeCompose(config, agent, variables, options);
+          result = await finalizeCompose(config, agent, variables, options);
+        }
+
+        // Output porcelain JSON result if requested
+        if (options.porcelain) {
+          console.log(JSON.stringify(result));
         }
       } catch (error) {
+        if (options.porcelain) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "An unexpected error occurred";
+          console.log(JSON.stringify({ error: message }));
+          process.exit(1);
+        }
+
         if (error instanceof Error) {
           if (error.message.includes("Not authenticated")) {
             console.error(

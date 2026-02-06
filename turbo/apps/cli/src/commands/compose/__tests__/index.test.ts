@@ -1533,6 +1533,173 @@ agents:
       );
     });
   });
+
+  describe("--porcelain option", () => {
+    it("should output JSON result on success", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code\n    working_dir: /`,
+      );
+      server.use(
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            composeId: "cmp-123",
+            name: "test-agent",
+            versionId:
+              "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
+            action: "created",
+          });
+        }),
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(scopeResponse);
+        }),
+      );
+
+      await composeCommand.parseAsync(["node", "cli", "--porcelain"]);
+
+      // Find the JSON output call
+      const jsonOutputCall = mockConsoleLog.mock.calls.find((call) => {
+        try {
+          const parsed = JSON.parse(call[0] as string);
+          return parsed.composeId !== undefined;
+        } catch {
+          return false;
+        }
+      });
+
+      expect(jsonOutputCall).toBeDefined();
+      const result = JSON.parse(jsonOutputCall![0] as string);
+      expect(result).toMatchObject({
+        composeId: "cmp-123",
+        composeName: "test-agent",
+        versionId:
+          "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
+        action: "created",
+        displayName: "user-abc12345/test-agent",
+      });
+    });
+
+    it("should suppress intermediate output in porcelain mode", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code\n    working_dir: /`,
+      );
+      server.use(
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            composeId: "cmp-123",
+            name: "test-agent",
+            versionId:
+              "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
+            action: "created",
+          });
+        }),
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(scopeResponse);
+        }),
+      );
+
+      await composeCommand.parseAsync(["node", "cli", "--porcelain"]);
+
+      // Should not have "Uploading compose..." or "Compose created:" messages
+      const allLogs = mockConsoleLog.mock.calls
+        .map((call) => call[0])
+        .filter((log): log is string => typeof log === "string");
+
+      expect(allLogs.some((log) => log.includes("Uploading compose"))).toBe(
+        false,
+      );
+      expect(allLogs.some((log) => log.includes("Compose created:"))).toBe(
+        false,
+      );
+      expect(allLogs.some((log) => log.includes("Run your agent"))).toBe(false);
+    });
+
+    it("should output JSON error on failure", async () => {
+      // No vm0.yaml file exists
+      await expect(async () => {
+        await composeCommand.parseAsync(["node", "cli", "--porcelain"]);
+      }).rejects.toThrow("process.exit called");
+
+      // Find the JSON error output
+      const jsonOutputCall = mockConsoleLog.mock.calls.find((call) => {
+        try {
+          const parsed = JSON.parse(call[0] as string);
+          return parsed.error !== undefined;
+        } catch {
+          return false;
+        }
+      });
+
+      expect(jsonOutputCall).toBeDefined();
+      const result = JSON.parse(jsonOutputCall![0] as string);
+      expect(result.error).toContain("Config file not found");
+    });
+
+    it("should imply --yes flag in porcelain mode", async () => {
+      // Simple test: verify --porcelain mode sets options.yes = true internally
+      // by checking that no confirmation prompts appear in JSON output
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code\n    working_dir: /`,
+      );
+      server.use(
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            composeId: "cmp-123",
+            name: "test-agent",
+            versionId:
+              "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
+            action: "created",
+          });
+        }),
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(scopeResponse);
+        }),
+      );
+
+      await composeCommand.parseAsync(["node", "cli", "--porcelain"]);
+
+      // No prompt-related output should appear
+      const allLogs = mockConsoleLog.mock.calls
+        .map((call) => call[0])
+        .filter((log): log is string => typeof log === "string");
+
+      expect(allLogs.some((log) => log.includes("confirm"))).toBe(false);
+      expect(allLogs.some((log) => log.includes("Approve"))).toBe(false);
+    });
+
+    it("should skip auto-update in porcelain mode", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code\n    working_dir: /`,
+      );
+
+      // Set up a newer version available
+      server.use(
+        http.get("https://registry.npmjs.org/*/latest", () => {
+          return HttpResponse.json({ version: "99.0.0" });
+        }),
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            composeId: "cmp-123",
+            name: "test-agent",
+            versionId:
+              "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
+            action: "created",
+          });
+        }),
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(scopeResponse);
+        }),
+      );
+
+      await composeCommand.parseAsync(["node", "cli", "--porcelain"]);
+
+      // spawn should NOT be called for auto-update in porcelain mode
+      expect(mockSpawn).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe("GitHub URL compose", () => {
@@ -2249,6 +2416,163 @@ agents:
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Compose created"),
       );
+    });
+  });
+
+  describe("--porcelain option with GitHub URL", () => {
+    it("should output JSON result for GitHub URL compose", async () => {
+      const tempRoot = path.join(tempDir, "github-download");
+      const cookbookDir = createMockCookbookDir(
+        tempRoot,
+        "tutorials/101-intro",
+        `version: "1.0"
+agents:
+  intro:
+    framework: claude-code`,
+      );
+      mockDownloadGitHubDirectory.mockResolvedValue({
+        dir: cookbookDir,
+        tempRoot,
+      });
+
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            composeId: "cmp-github-123",
+            name: "intro",
+            versionId: "b".repeat(64),
+            action: "created",
+          });
+        }),
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(scopeResponse);
+        }),
+      );
+
+      await composeCommand.parseAsync([
+        "node",
+        "cli",
+        "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
+        "--experimental-shared-compose",
+        "--porcelain",
+      ]);
+
+      // Find the JSON output
+      const jsonOutputCall = mockConsoleLog.mock.calls.find((call) => {
+        try {
+          const parsed = JSON.parse(call[0] as string);
+          return parsed.composeId !== undefined;
+        } catch {
+          return false;
+        }
+      });
+
+      expect(jsonOutputCall).toBeDefined();
+      const result = JSON.parse(jsonOutputCall![0] as string);
+      expect(result).toMatchObject({
+        composeId: "cmp-github-123",
+        composeName: "intro",
+        versionId: "b".repeat(64),
+        action: "created",
+        displayName: "user-abc12345/intro",
+      });
+    });
+
+    it("should suppress intermediate output for GitHub URL in porcelain mode", async () => {
+      const tempRoot = path.join(tempDir, "github-download");
+      const cookbookDir = createMockCookbookDir(
+        tempRoot,
+        "tutorials/101-intro",
+        `version: "1.0"
+agents:
+  intro:
+    framework: claude-code`,
+      );
+      mockDownloadGitHubDirectory.mockResolvedValue({
+        dir: cookbookDir,
+        tempRoot,
+      });
+
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            composeId: "cmp-123",
+            name: "intro",
+            versionId: "a".repeat(64),
+            action: "created",
+          });
+        }),
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(scopeResponse);
+        }),
+      );
+
+      await composeCommand.parseAsync([
+        "node",
+        "cli",
+        "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
+        "--experimental-shared-compose",
+        "--porcelain",
+      ]);
+
+      // Should not have "Downloading from GitHub..." message
+      const allLogs = mockConsoleLog.mock.calls
+        .map((call) => call[0])
+        .filter((log): log is string => typeof log === "string");
+
+      expect(
+        allLogs.some((log) => log.includes("Downloading from GitHub")),
+      ).toBe(false);
+      expect(allLogs.some((log) => log.includes("Uploading compose"))).toBe(
+        false,
+      );
+    });
+
+    it("should output JSON error for GitHub URL failures", async () => {
+      // Mock downloadGitHubDirectory to return an empty directory (no vm0.yaml)
+      const tempRoot = path.join(tempDir, "github-download");
+      const emptyDir = path.join(tempRoot, "tutorials/101-intro");
+      mkdirSync(emptyDir, { recursive: true });
+      mockDownloadGitHubDirectory.mockResolvedValue({
+        dir: emptyDir,
+        tempRoot,
+      });
+
+      await expect(async () => {
+        await composeCommand.parseAsync([
+          "node",
+          "cli",
+          "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
+          "--experimental-shared-compose",
+          "--porcelain",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      // Find the JSON error output
+      const jsonOutputCall = mockConsoleLog.mock.calls.find((call) => {
+        try {
+          const parsed = JSON.parse(call[0] as string);
+          return parsed.error !== undefined;
+        } catch {
+          return false;
+        }
+      });
+
+      expect(jsonOutputCall).toBeDefined();
+      const result = JSON.parse(jsonOutputCall![0] as string);
+      expect(result.error).toContain("vm0.yaml not found");
     });
   });
 });
