@@ -2,7 +2,7 @@ import { CONNECTOR_TYPES, getConnectorOAuthConfig } from "@vm0/core";
 
 const GITHUB_API_BASE = "https://api.github.com";
 
-export interface GitHubUserInfo {
+interface GitHubUserInfo {
   id: string;
   username: string;
   email: string | null;
