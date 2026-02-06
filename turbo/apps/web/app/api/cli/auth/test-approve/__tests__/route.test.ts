@@ -149,26 +149,34 @@ describe("/api/cli/auth/test-approve", () => {
     });
 
     it("should return 400 when device code is expired", async () => {
+      // Create device code with real time
       const code = await createTestDeviceCode();
 
-      // Advance time past the 15-minute expiration
+      // Use fake timers to simulate time passage.
+      // Note: This is one of the rare cases where fake timers are necessary
+      // because the code under test uses `new Date()` constructor for comparison,
+      // which cannot be mocked with vi.spyOn(Date, "now").
       vi.useFakeTimers();
-      vi.setSystemTime(Date.now() + 16 * 60 * 1000);
+      try {
+        vi.setSystemTime(Date.now() + 16 * 60 * 1000);
 
-      const request = createTestRequest(
-        "http://localhost:3000/api/cli/auth/test-approve",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ device_code: code }),
-        },
-      );
+        const request = createTestRequest(
+          "http://localhost:3000/api/cli/auth/test-approve",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ device_code: code }),
+          },
+        );
 
-      const response = await POST(request);
-      const data = await response.json();
+        const response = await POST(request);
+        const data = await response.json();
 
-      expect(response.status).toBe(400);
-      expect(data.error).toBe("Device code has expired");
+        expect(response.status).toBe(400);
+        expect(data.error).toBe("Device code has expired");
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 
