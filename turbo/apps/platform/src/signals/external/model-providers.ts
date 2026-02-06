@@ -31,6 +31,14 @@ export const hasClaudeCodeOAuthToken$ = computed(async (get) => {
 });
 
 /**
+ * Whether the user has any model provider configured.
+ */
+export const hasAnyModelProvider$ = computed(async (get) => {
+  const { modelProviders } = await get(modelProviders$);
+  return modelProviders.length > 0;
+});
+
+/**
  * Trigger a reload of model providers data.
  */
 export const reloadModelProviders$ = command(({ set }) => {

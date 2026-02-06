@@ -33,9 +33,7 @@ export function ProviderRow({
         <ProviderIcon type={provider.type} size={28} />
       </div>
       <div className="flex flex-1 flex-col gap-1 min-w-0">
-        <div className="text-sm font-medium text-foreground">
-          {label}
-        </div>
+        <div className="text-sm font-medium text-foreground">{label}</div>
         {description && (
           <div className="text-sm text-muted-foreground">{description}</div>
         )}

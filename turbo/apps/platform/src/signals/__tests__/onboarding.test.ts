@@ -7,7 +7,10 @@ import { pathname$ } from "../route.ts";
 import {
   needsOnboarding$,
   showOnboardingModal$,
-  setTokenValue$,
+  setOnboardingSecret$,
+  setOnboardingProviderType$,
+  setOnboardingAuthMethod$,
+  setOnboardingSecretField$,
   saveOnboardingConfig$,
   closeOnboardingModal$,
 } from "../onboarding.ts";
@@ -52,7 +55,7 @@ describe("needsOnboarding$", () => {
     expect(needsOnboarding).toBeTruthy();
   });
 
-  it("should return true when no claude-code-oauth-token exists", async () => {
+  it("should return true when no model providers exist", async () => {
     server.use(
       http.get("/api/model-providers", () => {
         return HttpResponse.json({ modelProviders: [] });
@@ -65,7 +68,7 @@ describe("needsOnboarding$", () => {
     expect(needsOnboarding).toBeTruthy();
   });
 
-  it("should return false when both scope and oauth token exist", async () => {
+  it("should return false when both scope and a model provider exist", async () => {
     // Default mocks have both scope and oauth token
     await setupPage({ context, path: "/" });
 
@@ -75,7 +78,7 @@ describe("needsOnboarding$", () => {
 });
 
 describe("saveOnboardingConfig$", () => {
-  it("should create scope and model provider when saving", async () => {
+  it("should create scope and model provider when saving with oauth token", async () => {
     let scopeCreated = false;
     let providerCreated = false;
 
@@ -110,7 +113,7 @@ describe("saveOnboardingConfig$", () => {
     await setupPage({ context, path: "/" });
 
     act(() => {
-      context.store.set(setTokenValue$, "test-oauth-token");
+      context.store.set(setOnboardingSecret$, "test-oauth-token");
     });
 
     await act(async () => {
@@ -122,7 +125,111 @@ describe("saveOnboardingConfig$", () => {
     expect(context.store.get(showOnboardingModal$)).toBeFalsy();
   });
 
-  it("should not save when token is empty", async () => {
+  it("should create model provider with api-key type", async () => {
+    let createdBody: Record<string, unknown> | null = null;
+
+    server.use(
+      http.put("/api/model-providers", async ({ request }) => {
+        createdBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(
+          {
+            provider: {
+              id: "new-provider",
+              type: "anthropic-api-key",
+              framework: "claude-code",
+              credentialName: "ANTHROPIC_API_KEY",
+              isDefault: false,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+            created: true,
+          },
+          { status: 201 },
+        );
+      }),
+    );
+
+    await setupPage({ context, path: "/" });
+
+    act(() => {
+      context.store.set(setOnboardingProviderType$, "anthropic-api-key");
+    });
+
+    act(() => {
+      context.store.set(setOnboardingSecret$, "sk-ant-test-key");
+    });
+
+    await act(async () => {
+      await context.store.set(saveOnboardingConfig$, context.signal);
+    });
+
+    expect(createdBody).toBeTruthy();
+    expect(createdBody!.type).toBe("anthropic-api-key");
+    expect(createdBody!.secret).toBe("sk-ant-test-key");
+    expect(context.store.get(showOnboardingModal$)).toBeFalsy();
+  });
+
+  it("should create model provider with multi-auth type", async () => {
+    let createdBody: Record<string, unknown> | null = null;
+
+    server.use(
+      http.put("/api/model-providers", async ({ request }) => {
+        createdBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(
+          {
+            provider: {
+              id: "new-provider",
+              type: "aws-bedrock",
+              framework: "claude-code",
+              credentialName: "AWS_BEARER_TOKEN_BEDROCK",
+              isDefault: false,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+            created: true,
+          },
+          { status: 201 },
+        );
+      }),
+    );
+
+    await setupPage({ context, path: "/" });
+
+    act(() => {
+      context.store.set(setOnboardingProviderType$, "aws-bedrock");
+    });
+
+    act(() => {
+      context.store.set(setOnboardingAuthMethod$, "api-key");
+    });
+
+    act(() => {
+      context.store.set(
+        setOnboardingSecretField$,
+        "AWS_BEARER_TOKEN_BEDROCK",
+        "test-bedrock-key",
+      );
+    });
+
+    act(() => {
+      context.store.set(setOnboardingSecretField$, "AWS_REGION", "us-east-1");
+    });
+
+    await act(async () => {
+      await context.store.set(saveOnboardingConfig$, context.signal);
+    });
+
+    expect(createdBody).toBeTruthy();
+    expect(createdBody!.type).toBe("aws-bedrock");
+    expect(createdBody!.authMethod).toBe("api-key");
+    expect(createdBody!.secrets).toStrictEqual({
+      AWS_BEARER_TOKEN_BEDROCK: "test-bedrock-key",
+      AWS_REGION: "us-east-1",
+    });
+    expect(context.store.get(showOnboardingModal$)).toBeFalsy();
+  });
+
+  it("should not save when secret is empty", async () => {
     let providerCreated = false;
 
     server.use(

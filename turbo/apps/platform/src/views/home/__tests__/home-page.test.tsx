@@ -51,26 +51,26 @@ describe("home page", () => {
 
     expect(screen.getByText(/Define your model provider/)).toBeInTheDocument();
 
-    // Save button should be disabled when token is empty
+    // Save button should be disabled when no secret is entered
     const saveButton = screen.getByRole("button", { name: "Save" });
     expect(saveButton).toBeDisabled();
 
-    // Type a token value
+    // Type a token value (default provider is claude-code-oauth-token)
     const tokenInput = screen.getByPlaceholderText("sk-ant-oat...");
     await user.type(tokenInput, "sk-ant-oat-test-token");
 
     // Save button should now be enabled
     expect(saveButton).toBeEnabled();
 
-    // Click "Add it later" to close the modal
-    await user.click(screen.getByText("Add it later"));
+    // Click "Cancel" to close the modal
+    await user.click(screen.getByText("Cancel"));
 
     await vi.waitFor(() => {
       expect(saveButton).not.toBeInTheDocument();
     });
   });
 
-  it("should show onboarding modal when no claude-code-oauth-token exists", async () => {
+  it("should show onboarding modal when no model providers exist", async () => {
     server.use(
       http.get("/api/model-providers", () => {
         return HttpResponse.json({ modelProviders: [] });
@@ -85,7 +85,7 @@ describe("home page", () => {
     expect(screen.getByText(/Define your model provider/)).toBeDefined();
   });
 
-  it("should not show onboarding modal when both scope and oauth token exist", async () => {
+  it("should not show onboarding modal when both scope and a model provider exist", async () => {
     // Default mocks have both scope and oauth token
     await setupPage({
       context,
