@@ -35,35 +35,42 @@ export function DefaultProviderCard() {
   };
 
   return (
-    <Card className="p-6">
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-col gap-1">
-          <h3 className="text-sm font-medium text-foreground">
-            Default model provider
-          </h3>
-          <p className="text-xs text-muted-foreground">
-            The default provider used when running sandboxes
-          </p>
+    <div className="flex flex-col gap-4">
+      <h3 className="text-base font-medium text-foreground">
+        Default model provider
+      </h3>
+      <Card className="p-4">
+        <div className="flex items-center gap-4">
+          <div className="flex flex-1 flex-col gap-1">
+            <span className="text-sm font-medium text-foreground">
+              Default model provider
+            </span>
+            <span className="text-sm text-muted-foreground">
+              Choose the provider VM0 will use by default when running agents.
+            </span>
+          </div>
+          <Select
+            value={defaultProvider?.type ?? ""}
+            onValueChange={handleChange}
+          >
+            <SelectTrigger className="w-[280px] shrink-0">
+              <SelectValue placeholder="Select a default provider" />
+            </SelectTrigger>
+            <SelectContent>
+              {providers.map((provider) => (
+                <SelectItem key={provider.type} value={provider.type}>
+                  <div className="flex items-center gap-2">
+                    <ProviderIcon type={provider.type} size={16} />
+                    <span>
+                      {MODEL_PROVIDER_TYPES[provider.type].label}
+                    </span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-        <Select
-          value={defaultProvider?.type ?? ""}
-          onValueChange={handleChange}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="Select a default provider" />
-          </SelectTrigger>
-          <SelectContent>
-            {providers.map((provider) => (
-              <SelectItem key={provider.type} value={provider.type}>
-                <div className="flex items-center gap-2">
-                  <ProviderIcon type={provider.type} size={16} />
-                  <span>{MODEL_PROVIDER_TYPES[provider.type].label}</span>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-    </Card>
+      </Card>
+    </div>
   );
 }
