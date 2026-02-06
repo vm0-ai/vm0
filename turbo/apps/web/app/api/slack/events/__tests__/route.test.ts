@@ -135,6 +135,43 @@ function createSlackDmEventRequest(event: {
   });
 }
 
+/** Create a signed Slack app_home_opened event request */
+function createSlackAppHomeOpenedRequest(event: {
+  teamId: string;
+  userId: string;
+}): Request {
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const payload = {
+    type: "event_callback",
+    token: "test-token",
+    team_id: event.teamId,
+    api_app_id: "A123",
+    event: {
+      type: "app_home_opened",
+      user: event.userId,
+      tab: "home",
+    },
+    event_id: "Ev789",
+    event_time: parseInt(timestamp),
+  };
+  const body = JSON.stringify(payload);
+
+  // Generate signature
+  const baseString = `v0:${timestamp}:${body}`;
+  const hmac = crypto.createHmac("sha256", TEST_SIGNING_SECRET);
+  const signature = `v0=${hmac.update(baseString).digest("hex")}`;
+
+  return new Request("http://localhost/api/slack/events", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-slack-signature": signature,
+      "x-slack-request-timestamp": timestamp,
+    },
+    body,
+  });
+}
+
 const SLACK_API = "https://slack.com/api";
 
 const slackHandlers = handlers({
@@ -169,6 +206,9 @@ const slackHandlers = handlers({
   ),
   conversationsHistory: http.post(`${SLACK_API}/conversations.history`, () =>
     HttpResponse.json({ ok: true, messages: [] }),
+  ),
+  viewsPublish: http.post(`${SLACK_API}/views.publish`, () =>
+    HttpResponse.json({ ok: true }),
   ),
 });
 
@@ -512,7 +552,7 @@ describe("POST /api/slack/events", () => {
   });
 
   describe("Scenario: DM bot with single agent", () => {
-    it("should execute agent and post response", async () => {
+    it("should post thinking message then update with agent response", async () => {
       // Given I am a linked Slack user with one agent
       const { userLink, installation } = await givenLinkedSlackUser();
       await givenUserHasAgent(userLink, {
@@ -536,12 +576,17 @@ describe("POST /api/slack/events", () => {
       // 1. Thinking reaction should be added
       expect(slackHandlers.mocked.reactionsAdd).toHaveBeenCalledTimes(1);
 
-      // 2. Response message should be posted
+      // 2. Thinking message should be posted first
       expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+      const thinkingData = await getFormData(slackHandlers.mocked.postMessage);
+      expect(thinkingData.text).toBe("_Thinking..._");
 
-      // 3. Response should include agent name in context block
-      const data = await getFormData(slackHandlers.mocked.postMessage);
-      const blocks = JSON.parse((data.blocks as string) ?? "[]") as Array<{
+      // 3. chatUpdate should replace thinking message with agent response
+      expect(slackHandlers.mocked.chatUpdate).toHaveBeenCalledTimes(1);
+      const updateData = await getFormData(slackHandlers.mocked.chatUpdate);
+      const blocks = JSON.parse(
+        (updateData.blocks as string) ?? "[]",
+      ) as Array<{
         type: string;
         elements?: Array<{ text?: string }>;
       }>;
@@ -576,17 +621,22 @@ describe("POST /api/slack/events", () => {
       expect(response.status).toBe(200);
       await flushAfterCallbacks();
 
-      // Then the message should be routed to the agent (not show welcome card)
+      // Then thinking message should be posted first
       expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+      const thinkingData = await getFormData(slackHandlers.mocked.postMessage);
+      expect(thinkingData.text).toBe("_Thinking..._");
 
-      const data = await getFormData(slackHandlers.mocked.postMessage);
-      const blocks = JSON.parse((data.blocks as string) ?? "[]") as Array<{
+      // And chatUpdate should replace it with agent response (not welcome card)
+      expect(slackHandlers.mocked.chatUpdate).toHaveBeenCalledTimes(1);
+      const updateData = await getFormData(slackHandlers.mocked.chatUpdate);
+      const blocks = JSON.parse(
+        (updateData.blocks as string) ?? "[]",
+      ) as Array<{
         type: string;
         elements?: Array<{ text?: string }>;
       }>;
       const contextBlocks = blocks.filter((b) => b.type === "context");
       expect(contextBlocks.length).toBeGreaterThanOrEqual(1);
-      // Agent name should be in the response (not a welcome card)
       const agentContext = contextBlocks[0]!.elements?.[0]?.text;
       expect(agentContext).toContain("my-helper");
     });
@@ -635,6 +685,126 @@ describe("POST /api/slack/events", () => {
       // Then no handler should be called (message silently ignored at route level)
       expect(slackHandlers.mocked.postMessage).not.toHaveBeenCalled();
       expect(slackHandlers.mocked.postEphemeral).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Scenario: App Home opened by unlinked user", () => {
+    it("should publish home view with login prompt", async () => {
+      // Given I am a Slack user without a linked account
+      const { installation } = await givenSlackWorkspaceInstalled();
+
+      // When I open the bot's Home tab
+      const request = createSlackAppHomeOpenedRequest({
+        teamId: installation.slackWorkspaceId,
+        userId: "U-unlinked-user",
+      });
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      // Then the home view should be published with login prompt
+      expect(slackHandlers.mocked.viewsPublish).toHaveBeenCalledTimes(1);
+
+      const data = await getFormData(slackHandlers.mocked.viewsPublish);
+      expect(data.user_id).toBe("U-unlinked-user");
+
+      // View should contain "not connected" and a login button
+      const view = JSON.parse((data.view as string) ?? "{}") as {
+        type: string;
+        blocks: Array<{
+          type: string;
+          text?: { text: string };
+          elements?: Array<{ action_id?: string; url?: string }>;
+        }>;
+      };
+      expect(view.type).toBe("home");
+      const texts = view.blocks
+        .filter(
+          (b): b is { type: string; text: { text: string } } =>
+            b.type === "section" && !!b.text,
+        )
+        .map((b) => b.text.text);
+      expect(texts.some((t) => t.includes("not connected"))).toBe(true);
+    });
+  });
+
+  describe("Scenario: App Home opened by linked user with agent", () => {
+    it("should publish home view with agent list", async () => {
+      // Given I am a linked Slack user with one agent
+      const { userLink, installation } = await givenLinkedSlackUser();
+      await givenUserHasAgent(userLink, {
+        agentName: "my-helper",
+        description: "A helpful assistant",
+      });
+
+      // When I open the bot's Home tab
+      const request = createSlackAppHomeOpenedRequest({
+        teamId: installation.slackWorkspaceId,
+        userId: userLink.slackUserId,
+      });
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      // Then the home view should be published with agent info
+      expect(slackHandlers.mocked.viewsPublish).toHaveBeenCalledTimes(1);
+
+      const data = await getFormData(slackHandlers.mocked.viewsPublish);
+      expect(data.user_id).toBe(userLink.slackUserId);
+
+      const view = JSON.parse((data.view as string) ?? "{}") as {
+        type: string;
+        blocks: Array<{
+          type: string;
+          text?: { text: string };
+        }>;
+      };
+      expect(view.type).toBe("home");
+      const texts = view.blocks
+        .filter(
+          (b): b is { type: string; text: { text: string } } =>
+            b.type === "section" && !!b.text,
+        )
+        .map((b) => b.text.text);
+      expect(texts.some((t) => t.includes("Account connected"))).toBe(true);
+      expect(texts.some((t) => t.includes("my-helper"))).toBe(true);
+    });
+  });
+
+  describe("Scenario: App Home opened by linked user without agents", () => {
+    it("should publish home view with link prompt", async () => {
+      // Given I am a linked Slack user with no agents
+      const { userLink, installation } = await givenLinkedSlackUser();
+
+      // When I open the bot's Home tab
+      const request = createSlackAppHomeOpenedRequest({
+        teamId: installation.slackWorkspaceId,
+        userId: userLink.slackUserId,
+      });
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      // Then the home view should be published with link prompt
+      expect(slackHandlers.mocked.viewsPublish).toHaveBeenCalledTimes(1);
+
+      const data = await getFormData(slackHandlers.mocked.viewsPublish);
+      const view = JSON.parse((data.view as string) ?? "{}") as {
+        type: string;
+        blocks: Array<{
+          type: string;
+          text?: { text: string };
+        }>;
+      };
+      expect(view.type).toBe("home");
+      const texts = view.blocks
+        .filter(
+          (b): b is { type: string; text: { text: string } } =>
+            b.type === "section" && !!b.text,
+        )
+        .map((b) => b.text.text);
+      expect(texts.some((t) => t.includes("Account connected"))).toBe(true);
+      expect(texts.some((t) => t.includes("No agents linked yet"))).toBe(true);
     });
   });
 });
