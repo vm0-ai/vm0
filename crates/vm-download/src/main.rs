@@ -153,15 +153,17 @@ fn download_storages_parallel(storages: &[Storage]) -> bool {
     );
 
     let mut all_success = true;
+    let mut download_tasks = download_tasks;
 
     // Process in chunks to limit concurrency
-    for chunk in download_tasks.chunks(MAX_CONCURRENT) {
+    while !download_tasks.is_empty() {
+        let chunk: Vec<_> = download_tasks
+            .drain(..download_tasks.len().min(MAX_CONCURRENT))
+            .collect();
+
         let handles: Vec<_> = chunk
-            .iter()
+            .into_iter()
             .map(|(idx, url, mount_path)| {
-                let idx = *idx;
-                let url = url.clone();
-                let mount_path = mount_path.clone();
                 thread::spawn(move || {
                     let start = Instant::now();
                     log_info!(LOG_TAG, "Downloading storage {} to {}", idx + 1, mount_path);
