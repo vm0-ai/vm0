@@ -6,7 +6,7 @@ load '../../helpers/setup'
 # Tests verify that the GitHub compose workflow works end-to-end
 
 # Test GitHub repository URL (must contain a valid vm0.yaml)
-TEST_GITHUB_URL="https://github.com/vm0-ai/vm0-skills/tree/main/github"
+TEST_GITHUB_URL="https://github.com/vm0-ai/vm0-cookbooks/tree/main/examples/201-hackernews"
 
 # Polling configuration
 MAX_POLL_ATTEMPTS=60
