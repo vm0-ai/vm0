@@ -93,9 +93,6 @@ describe("cook command", () => {
     } catch {
       // File may not exist
     }
-    mockExit.mockClear();
-    mockConsoleLog.mockClear();
-    mockConsoleError.mockClear();
     vi.unstubAllEnvs();
   });
 
