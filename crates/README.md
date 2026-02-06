@@ -12,7 +12,7 @@ This workspace contains Rust crates for running code inside Firecracker microVMs
 | **vsock-test** | End-to-end integration tests — real host + real guest over Unix sockets |
 | **guest-init** | Init process (PID 1) for Firecracker VMs — filesystem setup, signal handling, vsock-guest |
 | **guest-common** | Shared utilities for guest-init and guest-download |
-| **guest-download** | Downloads and unpacks VM assets (kernel, rootfs, snapshots) |
+| **guest-download** | Downloads and extracts storage archives based on manifest — parallel downloads with retry logic |
 
 ## Architecture
 
@@ -21,12 +21,12 @@ This workspace contains Rust crates for running code inside Firecracker microVMs
 │              Firecracker VM              │
 │                                          │
 │   guest-init (PID 1) + vsock-guest       │
-│                  │                        │
+│                  │                       │
 │             vsock (CID=2, port=1000)     │
 └──────────────────┼───────────────────────┘
                    │
 ┌──────────────────┼───────────────────────┐
-│  Host (Runner)   │                        │
+│  Host (Runner)   │                       │
 │     VsockHost (Rust) / VsockClient (TS)  │
 └──────────────────────────────────────────┘
 ```
