@@ -43,22 +43,6 @@ bash scripts/generate-certs.sh
 
 This script uses mkcert to create locally-trusted SSL certificates for development.
 
-#### 3. Configure Hosts File
-
-Add the following entries to `/etc/hosts`:
-
-```bash
-sudo vim /etc/hosts
-# or
-sudo nano /etc/hosts
-```
-
-Add these lines:
-
-```
-127.0.0.1 vm7.ai www.vm7.ai docs.vm7.ai platform.vm7.ai storybook.vm7.ai
-```
-
 ### Getting Started
 
 1. Fork and clone the repository
