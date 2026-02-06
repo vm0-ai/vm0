@@ -162,13 +162,13 @@ async function main() {
     process.exit(1);
   }
 
-  // Execute vm0 compose
+  // Execute vm0 compose with --json for structured output
   log('INFO', 'Running vm0 compose...');
   const result = spawnSync('vm0', [
     'compose',
     GITHUB_URL,
-    '--yes',
     '--experimental-shared-compose',
+    '--json',
   ], {
     env: {
       ...process.env,
@@ -183,54 +183,33 @@ async function main() {
   const stderr = result.stderr || '';
 
   log('INFO', 'CLI exit code: ' + result.status);
-  if (stdout) log('INFO', 'stdout: ' + stdout);
   if (stderr) log('INFO', 'stderr: ' + stderr);
 
-  if (result.status !== 0) {
-    const errorMsg = stderr || stdout || 'CLI exited with code ' + result.status;
-    await reportCompletion(false, null, errorMsg);
+  // Parse JSON output from CLI
+  let cliResult;
+  try {
+    cliResult = JSON.parse(stdout.trim());
+  } catch (parseError) {
+    log('ERROR', 'Failed to parse CLI JSON output: ' + stdout);
+    await reportCompletion(false, null, 'Failed to parse CLI output: ' + stdout.slice(0, 200));
     process.exit(1);
   }
 
-  // Parse CLI output to extract compose info
-  // CLI outputs: "✔ Compose created: <name> (<id>)" or similar
-  let composeName = null;
-  let composeId = null;
-  let versionId = null;
-
-  // Try to parse structured output from CLI
-  const lines = (stdout + '\\n' + stderr).split('\\n');
-  for (const line of lines) {
-    // Match patterns like "Compose created: agent-name (uuid)"
-    const createMatch = line.match(/Compose (?:created|updated):\\s*([\\w-]+)\\s*\\(([a-f0-9-]+)\\)/i);
-    if (createMatch) {
-      composeName = createMatch[1];
-      composeId = createMatch[2];
-    }
-    // Match version pattern
-    const versionMatch = line.match(/version[:\\s]+([a-f0-9]{64})/i);
-    if (versionMatch) {
-      versionId = versionMatch[1];
-    }
+  // Check for error in CLI output
+  if (cliResult.error) {
+    log('ERROR', 'CLI error: ' + cliResult.error);
+    await reportCompletion(false, null, cliResult.error);
+    process.exit(1);
   }
 
-  if (composeName && composeId) {
-    await reportCompletion(true, {
-      composeId: composeId,
-      composeName: composeName,
-      versionId: versionId || 'unknown',
-      warnings: [],
-    }, null);
-  } else {
-    // CLI succeeded but we couldn't parse output - still report success
-    log('WARN', 'Could not parse compose details from CLI output');
-    await reportCompletion(true, {
-      composeId: 'unknown',
-      composeName: 'unknown',
-      versionId: 'unknown',
-      warnings: ['Could not parse compose details from CLI output'],
-    }, null);
-  }
+  // Report success with structured result
+  log('INFO', 'Compose result: ' + JSON.stringify(cliResult));
+  await reportCompletion(true, {
+    composeId: cliResult.composeId,
+    composeName: cliResult.composeName,
+    versionId: cliResult.versionId,
+    warnings: [],
+  }, null);
 
   log('INFO', 'Done!');
 }
