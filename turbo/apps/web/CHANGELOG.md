@@ -1,5 +1,26 @@
 # Changelog
 
+## [12.8.0](https://github.com/vm0-ai/vm0/compare/web-v12.7.2...web-v12.8.0) (2026-02-06)
+
+
+### Features
+
+* **web:** add blog public routes and fix list styling ([#2472](https://github.com/vm0-ai/vm0/issues/2472)) ([c93aa30](https://github.com/vm0-ai/vm0/commit/c93aa30ca65ce37982ff7129cc2616eba722f4ab))
+* **web:** add eslint rule to prevent direct db access in tests ([#2470](https://github.com/vm0-ai/vm0/issues/2470)) ([da6c435](https://github.com/vm0-ai/vm0/commit/da6c435fdba3686380720bfc25db4fc4c538fc6f))
+* **web:** load author avatars from strapi in blog ([#2474](https://github.com/vm0-ai/vm0/issues/2474)) ([d490cfa](https://github.com/vm0-ai/vm0/commit/d490cfac7635c38fcb95cb64fc42def47b92208c))
+
+
+### Bug Fixes
+
+* **web:** validate locale before dynamic import in i18n config ([#2453](https://github.com/vm0-ai/vm0/issues/2453)) ([0a84b2a](https://github.com/vm0-ai/vm0/commit/0a84b2a224d9af8099a5cda452cbc3c1df1d3379)), closes [#2452](https://github.com/vm0-ai/vm0/issues/2452)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.2.1
+
 ## [12.7.2](https://github.com/vm0-ai/vm0/compare/web-v12.7.1...web-v12.7.2) (2026-02-05)
 
 

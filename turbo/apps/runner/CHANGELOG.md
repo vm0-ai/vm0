@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.15.0](https://github.com/vm0-ai/vm0/compare/runner-v3.14.0...runner-v3.15.0) (2026-02-06)
+
+
+### Features
+
+* **runner:** add vm-common and vm-download rust crates ([#2463](https://github.com/vm0-ai/vm0/issues/2463)) ([d463ed1](https://github.com/vm0-ai/vm0/commit/d463ed1766b8c18325e21804e01fcd0e9ed747e8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.2.1
+
 ## [3.14.0](https://github.com/vm0-ai/vm0/compare/runner-v3.13.0...runner-v3.14.0) (2026-02-05)
 
 

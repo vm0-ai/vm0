@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.48.0](https://github.com/vm0-ai/vm0/compare/platform-v0.47.1...platform-v0.48.0) (2026-02-06)
+
+
+### Features
+
+* **platform:** make agents table rows fully clickable ([#2438](https://github.com/vm0-ai/vm0/issues/2438)) ([5771131](https://github.com/vm0-ai/vm0/commit/5771131b92ddde046e28b06e4e403b48ae047a0c))
+* **platform:** polish logs page ui with skeletons and refined copy ([#2428](https://github.com/vm0-ai/vm0/issues/2428)) ([0050775](https://github.com/vm0-ai/vm0/commit/005077591a8bdc9891f2b9e7745553514f74a29c))
+
+
+### Bug Fixes
+
+* **platform:** wrap error messages to prevent horizontal scroll ([#2454](https://github.com/vm0-ai/vm0/issues/2454)) ([2391be6](https://github.com/vm0-ai/vm0/commit/2391be6cd22ecca8e9c6cdeba04df72b971cf667)), closes [#2450](https://github.com/vm0-ai/vm0/issues/2450)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.2.1
+
 ## [0.47.1](https://github.com/vm0-ai/vm0/compare/platform-v0.47.0...platform-v0.47.1) (2026-02-05)
 
 
