@@ -69,36 +69,34 @@ Add these lines:
 
 ### Environment Variables
 
-#### For VM0 Team Members
-
-Run the sync script to populate environment variables from 1Password:
+Run the sync script to populate environment variables from `.env.local.tpl` templates:
 
 ```bash
 scripts/sync-env.sh
 ```
 
-#### For Community Contributors
+The script will ask if you have 1Password access:
+- **VM0 team members**: Choose yes to auto-sync from 1Password
+- **Community contributors**: Choose no to enter values interactively (only missing values are prompted)
 
-Create the following `.env.local` files manually:
+`SECRETS_ENCRYPTION_KEY` is auto-generated if you press Enter when prompted.
 
-**`turbo/apps/web/.env.local`:**
+**Required services for the web app (`turbo/apps/web`):**
 
-| Variable | Required | Service |
-|----------|----------|---------|
-| `CLERK_SECRET_KEY` | Yes | [Clerk](https://dashboard.clerk.com) |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes | [Clerk](https://dashboard.clerk.com) |
-| `E2B_API_KEY` | Yes | [E2B](https://e2b.dev/dashboard) |
-| `R2_ACCOUNT_ID` | Yes | [Cloudflare R2](https://dash.cloudflare.com) |
-| `R2_ACCESS_KEY_ID` | Yes | [Cloudflare R2](https://dash.cloudflare.com) |
-| `R2_SECRET_ACCESS_KEY` | Yes | [Cloudflare R2](https://dash.cloudflare.com) |
-| `R2_USER_STORAGES_BUCKET_NAME` | Yes | Create bucket in Cloudflare |
+| Variable | Service |
+|----------|---------|
+| `CLERK_SECRET_KEY` | [Clerk](https://dashboard.clerk.com) |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | [Clerk](https://dashboard.clerk.com) |
+| `E2B_API_KEY` | [E2B](https://e2b.dev/dashboard) |
+| `R2_ACCOUNT_ID` | [Cloudflare R2](https://dash.cloudflare.com) |
+| `R2_ACCESS_KEY_ID` | [Cloudflare R2](https://dash.cloudflare.com) |
+| `R2_SECRET_ACCESS_KEY` | [Cloudflare R2](https://dash.cloudflare.com) |
+| `R2_USER_STORAGES_BUCKET_NAME` | Create bucket in Cloudflare |
+| `SLACK_CLIENT_ID` | [Slack API](https://api.slack.com/apps) |
+| `SLACK_CLIENT_SECRET` | [Slack API](https://api.slack.com/apps) |
+| `SLACK_SIGNING_SECRET` | [Slack API](https://api.slack.com/apps) |
 
-**`turbo/apps/platform/.env.local`:**
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `VITE_CLERK_PUBLISHABLE_KEY` | Yes | Same as `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` |
-| `VITE_API_URL` | Yes | Use `http://localhost:3000` |
+> **Troubleshooting**: If you see `❌ Invalid environment variables` when running `pnpm dev`, re-run `scripts/sync-env.sh` to fill in the missing values.
 
 ### Local Web Development
 
