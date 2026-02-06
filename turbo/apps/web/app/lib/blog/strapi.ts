@@ -65,6 +65,12 @@ function transformArticle(article: StrapiArticle): BlogPost {
     coverUrl = url.startsWith("http") ? url : `${STRAPI_URL}${url}`;
   }
 
+  let avatarUrl: string | undefined;
+  if (article.author?.avatar?.url) {
+    const url = article.author.avatar.url;
+    avatarUrl = url.startsWith("http") ? url : `${STRAPI_URL}${url}`;
+  }
+
   let content = "";
   if (article.blocks && article.blocks.length > 0) {
     content = article.blocks
@@ -96,6 +102,7 @@ function transformArticle(article: StrapiArticle): BlogPost {
     category: article.category?.name || "General",
     author: {
       name: article.author?.name || "VM0 Team",
+      avatar: avatarUrl,
     },
     publishedAt: article.publishedAt || article.createdAt,
     readTime: `${readTime} min read`,
@@ -107,7 +114,7 @@ function transformArticle(article: StrapiArticle): BlogPost {
 export async function getPostsFromStrapi(
   locale: string = "en",
 ): Promise<BlogPost[]> {
-  const url = `${STRAPI_URL}/api/articles?locale=${locale}&populate=*&sort=publishedAt:desc`;
+  const url = `${STRAPI_URL}/api/articles?locale=${locale}&populate[0]=cover&populate[1]=blocks&populate[2]=category&populate[3]=author.avatar&sort=publishedAt:desc`;
 
   const res = await fetch(url, {
     next: { revalidate: 60 },
@@ -125,7 +132,7 @@ export async function getPostBySlugFromStrapi(
   slug: string,
   locale: string = "en",
 ): Promise<BlogPost | null> {
-  const url = `${STRAPI_URL}/api/articles?locale=${locale}&filters[slug][$eq]=${slug}&populate=*`;
+  const url = `${STRAPI_URL}/api/articles?locale=${locale}&filters[slug][$eq]=${slug}&populate[0]=cover&populate[1]=blocks&populate[2]=category&populate[3]=author.avatar`;
 
   const res = await fetch(url, {
     next: { revalidate: 60 },
@@ -149,7 +156,7 @@ export async function getPostBySlugFromStrapi(
 export async function getFeaturedPostFromStrapi(
   locale: string = "en",
 ): Promise<BlogPost | null> {
-  const url = `${STRAPI_URL}/api/articles?locale=${locale}&populate=*&sort=publishedAt:desc&pagination[limit]=1`;
+  const url = `${STRAPI_URL}/api/articles?locale=${locale}&populate[0]=cover&populate[1]=blocks&populate[2]=category&populate[3]=author.avatar&sort=publishedAt:desc&pagination[limit]=1`;
 
   const res = await fetch(url, {
     next: { revalidate: 60 },

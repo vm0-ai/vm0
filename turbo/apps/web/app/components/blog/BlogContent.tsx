@@ -164,7 +164,22 @@ export default function BlogContent({
                     <div className="blog-card-footer">
                       <div className="blog-card-author">
                         <div className="blog-card-avatar">
-                          {post.author.name.charAt(0)}
+                          {post.author.avatar ? (
+                            <Image
+                              src={post.author.avatar}
+                              alt={post.author.name}
+                              width={32}
+                              height={32}
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                objectFit: "cover",
+                                borderRadius: "50%",
+                              }}
+                            />
+                          ) : (
+                            post.author.name.charAt(0)
+                          )}
                         </div>
                         <span className="blog-card-author-name">
                           {post.author.name}
