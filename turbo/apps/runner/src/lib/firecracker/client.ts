@@ -299,6 +299,7 @@ export class FirecrackerClient {
 
       watcher.on("change", checkAndResolve);
       watcher.on("error", (err) => {
+        logger.log(`Watcher error: ${err.message}`);
         if (!settled) {
           settled = true;
           clearTimeout(timer);
