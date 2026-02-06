@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.11.0](https://github.com/vm0-ai/vm0/compare/web-v12.10.0...web-v12.11.0) (2026-02-06)
+
+
+### Features
+
+* **cli:** add --porcelain option to compose command ([#2494](https://github.com/vm0-ai/vm0/issues/2494)) ([f5f5a3f](https://github.com/vm0-ai/vm0/commit/f5f5a3fad10cff2a2cc7e962d40062f9c004fd88))
+
+
+### Bug Fixes
+
+* **web:** exclude stale pending runs from concurrency check ([#2445](https://github.com/vm0-ai/vm0/issues/2445)) ([0dc7427](https://github.com/vm0-ai/vm0/commit/0dc7427a10d4faa382d771664a09b1b0739231c6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.2.2
+
 ## [12.10.0](https://github.com/vm0-ai/vm0/compare/web-v12.9.0...web-v12.10.0) (2026-02-06)
 
 

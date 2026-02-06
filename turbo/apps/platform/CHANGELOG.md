@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.50.0](https://github.com/vm0-ai/vm0/compare/platform-v0.49.0...platform-v0.50.0) (2026-02-06)
+
+
+### Features
+
+* add dual-mode data provider to sync-env.sh ([#2496](https://github.com/vm0-ai/vm0/issues/2496)) ([1ccff32](https://github.com/vm0-ai/vm0/commit/1ccff32ad5cb7feca4d6b16b8ec548c1283295bd))
+* improve model provider descriptions and ui ([#2500](https://github.com/vm0-ai/vm0/issues/2500)) ([435ac6c](https://github.com/vm0-ai/vm0/commit/435ac6c4b9091578463a55d614dc81975a9924ad))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.2.2
+
 ## [0.49.0](https://github.com/vm0-ai/vm0/compare/platform-v0.48.0...platform-v0.49.0) (2026-02-06)
 
 

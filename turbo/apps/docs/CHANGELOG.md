@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.10.1](https://github.com/vm0-ai/vm0/compare/docs-v2.10.0...docs-v2.10.1) (2026-02-06)
+
+
+### Bug Fixes
+
+* **docs:** update aws bedrock setup guide url ([#2495](https://github.com/vm0-ai/vm0/issues/2495)) ([8026a4a](https://github.com/vm0-ai/vm0/commit/8026a4a185ebea25738d580ebe8cda5ea067d59e))
+
 ## [2.10.0](https://github.com/vm0-ai/vm0/compare/docs-v2.9.0...docs-v2.10.0) (2026-02-05)
 
 

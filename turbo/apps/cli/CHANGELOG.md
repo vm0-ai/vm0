@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.22.0](https://github.com/vm0-ai/vm0/compare/cli-v9.21.0...cli-v9.22.0) (2026-02-06)
+
+
+### Features
+
+* **cli:** add --porcelain option to compose command ([#2494](https://github.com/vm0-ai/vm0/issues/2494)) ([f5f5a3f](https://github.com/vm0-ai/vm0/commit/f5f5a3fad10cff2a2cc7e962d40062f9c004fd88))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.2.2
+
 ## [9.21.0](https://github.com/vm0-ai/vm0/compare/cli-v9.20.2...cli-v9.21.0) (2026-02-06)
 
 
