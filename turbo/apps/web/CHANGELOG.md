@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.9.0](https://github.com/vm0-ai/vm0/compare/web-v12.8.0...web-v12.9.0) (2026-02-06)
+
+
+### Features
+
+* improve banner and navbar design ([#2478](https://github.com/vm0-ai/vm0/issues/2478)) ([e028418](https://github.com/vm0-ai/vm0/commit/e0284187c6e00e999d26863c7578c933c8e91f8a))
+
 ## [12.8.0](https://github.com/vm0-ai/vm0/compare/web-v12.7.2...web-v12.8.0) (2026-02-06)
 
 
