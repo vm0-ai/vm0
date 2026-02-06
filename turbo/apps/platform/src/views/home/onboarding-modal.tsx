@@ -94,53 +94,45 @@ export function OnboardingModal() {
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && closeModal()}>
       <DialogContent
-        className="flex max-h-[100dvh] flex-col sm:max-h-[85dvh] sm:max-w-[600px] p-6 border-border rounded-[10px]"
+        className="flex max-h-[100dvh] flex-col gap-0 overflow-hidden sm:max-h-[85dvh] sm:max-w-[600px] p-6 border-border rounded-[10px] [&>button[aria-label=Close]:last-child]:hidden"
         style={{
           backgroundImage: backgroundGradient,
         }}
       >
-        {/* Close button */}
-        <TooltipProvider delayDuration={100}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <DialogClose asChild>
-                <button
-                  onClick={() => closeModal()}
-                  className="absolute right-4 top-4 icon-button opacity-70 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                  aria-label="Close"
-                >
-                  <IconX size={20} className="text-foreground" />
-                </button>
-              </DialogClose>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p className="text-xs">Close</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        {/* Close button - absolute, outside scroll flow */}
+        <DialogClose asChild>
+          <button
+            className="absolute right-4 top-4 z-10 icon-button opacity-70 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+            aria-label="Close"
+          >
+            <IconX size={20} className="text-foreground" />
+          </button>
+        </DialogClose>
 
-        {/* Logo */}
-        <div className="flex shrink-0 items-center justify-center gap-2 mt-[24px]">
-          <img
-            src={theme === "dark" ? "/logo_dark.svg" : "/logo_light.svg"}
-            alt="VM0"
-            className="h-[40px] w-auto"
-          />
-          <span className="text-4xl font-normal text-foreground">Platform</span>
-        </div>
+        {/* Scrollable content area */}
+        <div className="!shrink -mx-1 min-h-0 overflow-y-auto px-1 flex flex-col gap-4">
+          {/* Logo */}
+          <div className="flex items-center justify-center gap-2 mt-[24px]">
+            <img
+              src={theme === "dark" ? "/logo_dark.svg" : "/logo_light.svg"}
+              alt="VM0"
+              className="h-[40px] w-auto"
+            />
+            <span className="text-4xl font-normal text-foreground">
+              Platform
+            </span>
+          </div>
 
-        {/* Header */}
-        <div className="shrink-0 text-center mt-[24px]">
-          <DialogTitle className="text-lg font-medium leading-7 text-foreground">
-            Define your model provider
-          </DialogTitle>
-          <DialogDescription className="text-sm text-foreground mt-[10px]">
-            Your model provider is required for sandboxed execution.
-          </DialogDescription>
-        </div>
+          {/* Header */}
+          <div className="text-center">
+            <DialogTitle className="text-lg font-medium leading-7 text-foreground">
+              Define your model provider
+            </DialogTitle>
+            <DialogDescription className="text-sm text-foreground mt-[10px]">
+              Your model provider is required for sandboxed execution.
+            </DialogDescription>
+          </div>
 
-        {/* Form (scrollable region) */}
-        <div className="flex min-h-0 flex-col gap-4 mt-[24px] overflow-y-auto">
           {/* Provider Type Selector */}
           <div className="flex flex-col gap-2">
             <label className="px-1 text-sm font-medium text-foreground">
@@ -204,8 +196,8 @@ export function OnboardingModal() {
           )}
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex shrink-0 justify-end gap-2 mt-[24px]">
+        {/* Action Buttons - fixed outside scroll */}
+        <div className="shrink-0 flex justify-end gap-2 pt-6">
           <Button variant="outline" onClick={() => closeModal()}>
             Cancel
           </Button>
@@ -451,7 +443,7 @@ function OnboardingModelSelector({
               role="switch"
               aria-checked={useDefaultModel}
               onClick={() => onUseDefaultModelChange(!useDefaultModel)}
-              className={`relative ml-4 inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors ${useDefaultModel ? "bg-primary" : "bg-muted"}`}
+              className={`relative ml-4 inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${useDefaultModel ? "bg-primary" : "bg-muted"}`}
             >
               <span
                 className={`pointer-events-none inline-block size-5 rounded-full bg-white shadow-sm ring-0 transition-transform ${useDefaultModel ? "translate-x-5" : "translate-x-0.5"} mt-0.5`}
