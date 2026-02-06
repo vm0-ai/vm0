@@ -16,7 +16,7 @@ This project uses [Dev Containers](https://containers.dev/) for development. The
 
 | Service | Purpose | Tokens needed | Dashboard |
 |---------|---------|---------------|-----------|
-| [Clerk](https://clerk.com) | User authentication and session management | `CLERK_SECRET_KEY`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | [dashboard.clerk.com](https://dashboard.clerk.com) |
+| [Clerk](https://clerk.com) | User authentication and session management | `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY` | [dashboard.clerk.com](https://dashboard.clerk.com) |
 | [E2B](https://e2b.dev) | Cloud sandbox runtime for executing agent code | `E2B_API_KEY` | [e2b.dev/dashboard](https://e2b.dev/dashboard) |
 | [Cloudflare R2](https://www.cloudflare.com/products/r2/) | Object storage for user files and artifacts | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_USER_STORAGES_BUCKET_NAME` | [dash.cloudflare.com](https://dash.cloudflare.com) |
 | [Slack API](https://api.slack.com) | Slack app integration for notifications and commands | `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_SIGNING_SECRET` | [api.slack.com/apps](https://api.slack.com/apps) |

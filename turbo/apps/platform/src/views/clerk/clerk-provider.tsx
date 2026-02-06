@@ -17,8 +17,7 @@ export function VM0ClerkProvider({ children }: ClerkProviderProps) {
     return null;
   }
 
-  const publishableKey = import.meta.env
-    .NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY as string;
+  const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string;
 
   return (
     <BaseClerkProvider

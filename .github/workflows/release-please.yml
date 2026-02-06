@@ -79,7 +79,7 @@ jobs:
         env:
           DATABASE_URL: ${{ steps.get-db-url.outputs.database-url }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
@@ -153,7 +153,7 @@ jobs:
           environment-variables: |
             DATABASE_URL=${{ steps.get-db-url.outputs.database-url }}
             NEXT_PUBLIC_BASE_URL=https://www.vm0.ai
-            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
             E2B_API_KEY=${{ secrets.E2B_API_KEY }}
             R2_ACCOUNT_ID=${{ vars.R2_ACCOUNT_ID }}
@@ -296,7 +296,7 @@ jobs:
           deployment-env: site
           environment-variables: |
             WEB_APP_URL=https://www.vm0.ai
-            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
 
       - name: Notify Slack - Success
@@ -357,7 +357,7 @@ jobs:
           environment: production
           deployment-env: platform
           environment-variables: |
-            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+            VITE_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             VITE_API_URL=https://www.vm0.ai
             VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN_PLATFORM }}
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}

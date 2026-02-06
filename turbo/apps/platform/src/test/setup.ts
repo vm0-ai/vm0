@@ -11,7 +11,7 @@ vi.mock("@clerk/clerk-js", () => ({
 }));
 
 vi.hoisted(() => {
-  vi.stubEnv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "test_key");
+  vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY", "test_key");
   vi.stubEnv("VITE_API_URL", "http://localhost:3000");
 });
 

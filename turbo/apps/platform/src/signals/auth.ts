@@ -6,18 +6,16 @@ const reload$ = state(0);
 
 /**
  * Clerk instance signal that initializes the Clerk SDK with the publishable key.
- * The NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY environment variable must be set at build time
+ * The VITE_CLERK_PUBLISHABLE_KEY environment variable must be set at build time
  * via .env.production.local file for production deployments.
  */
 export const clerk$ = computed(async () => {
-  const publishableKey = import.meta.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY as
+  const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as
     | string
     | undefined;
 
   if (!publishableKey) {
-    throw new Error(
-      "Missing NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY environment variable",
-    );
+    throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY environment variable");
   }
 
   const clerkInstance = new Clerk(publishableKey);

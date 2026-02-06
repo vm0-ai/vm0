@@ -57,10 +57,10 @@ This ensures client-side routing works correctly.
 
 For future features, these variables may be needed:
 
-| Variable                            | Description          | Required            |
-| ----------------------------------- | -------------------- | ------------------- |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk authentication | For auth feature    |
-| `VITE_API_URL`                      | Backend API URL      | For API integration |
+| Variable                     | Description          | Required            |
+| ---------------------------- | -------------------- | ------------------- |
+| `VITE_CLERK_PUBLISHABLE_KEY` | Clerk authentication | For auth feature    |
+| `VITE_API_URL`               | Backend API URL      | For API integration |
 
 ## Troubleshooting
 
