@@ -5,12 +5,23 @@ import { logger } from "../logger";
 const log = logger("auth:sandbox");
 
 /**
- * JWT payload for sandbox tokens
+ * JWT payload for sandbox tokens (agent runs)
  */
 interface SandboxTokenPayload {
   userId: string;
   runId: string;
   scope: "sandbox";
+  iat: number;
+  exp: number;
+}
+
+/**
+ * JWT payload for compose job tokens
+ */
+interface ComposeJobTokenPayload {
+  userId: string;
+  jobId: string;
+  scope: "compose-job";
   iat: number;
   exp: number;
 }
@@ -180,4 +191,88 @@ export function verifySandboxToken(token: string): SandboxAuth | null {
  */
 export function isSandboxToken(token: string): boolean {
   return token.split(".").length === 3;
+}
+
+// ============================================================================
+// Compose Job Token Functions
+// ============================================================================
+
+/**
+ * Result of verifying a compose job token
+ */
+export interface ComposeJobAuth {
+  userId: string;
+  jobId: string;
+}
+
+/**
+ * Generate a JWT token for compose job sandbox
+ * Token is valid for 10 minutes (longer than 5-minute sandbox timeout)
+ */
+export async function generateComposeJobToken(
+  userId: string,
+  jobId: string,
+): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  const expiresIn = 10 * 60; // 10 minutes in seconds
+
+  const payload: ComposeJobTokenPayload = {
+    userId,
+    jobId,
+    scope: "compose-job",
+    iat: now,
+    exp: now + expiresIn,
+  };
+
+  const token = createJwt(payload as unknown as SandboxTokenPayload);
+  log.debug(`Generated compose job JWT for job ${jobId}`);
+  return token;
+}
+
+/**
+ * Verify a compose job JWT token and extract auth info
+ * Returns null if token is invalid, expired, or not a compose-job token
+ */
+export function verifyComposeJobToken(token: string): ComposeJobAuth | null {
+  const parts = token.split(".");
+  if (parts.length !== 3) {
+    return null;
+  }
+
+  const [headerEncoded, payloadEncoded, signatureEncoded] = parts;
+
+  // Verify signature
+  const data = `${headerEncoded}.${payloadEncoded}`;
+  const expectedSignature = createHmac("sha256", getJwtKey())
+    .update(data)
+    .digest();
+  const actualSignature = base64UrlDecode(signatureEncoded!);
+
+  if (!expectedSignature.equals(actualSignature)) {
+    return null;
+  }
+
+  // Decode and validate payload
+  try {
+    const payload = JSON.parse(
+      base64UrlDecode(payloadEncoded!).toString(),
+    ) as ComposeJobTokenPayload;
+
+    // Check expiration
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+      return null;
+    }
+
+    // Validate required fields - must be compose-job scope
+    if (payload.scope !== "compose-job" || !payload.userId || !payload.jobId) {
+      return null;
+    }
+
+    return {
+      userId: payload.userId,
+      jobId: payload.jobId,
+    };
+  } catch {
+    return null;
+  }
 }

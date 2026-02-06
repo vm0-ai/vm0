@@ -477,6 +477,13 @@
       "when": 1769200000000,
       "tag": "0067_isolate_secrets_by_type",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1769300000000,
+      "tag": "0068_add_compose_jobs",
+      "breakpoints": true
     }
   ]
 }

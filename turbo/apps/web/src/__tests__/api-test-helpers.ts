@@ -7,7 +7,10 @@
  */
 import { NextRequest } from "next/server";
 import type { AgentComposeYaml } from "../types/agent-compose";
-import { generateSandboxToken } from "../lib/auth/sandbox-token";
+import {
+  generateSandboxToken,
+  generateComposeJobToken,
+} from "../lib/auth/sandbox-token";
 import { cliTokens } from "../db/schema/cli-tokens";
 import { eq } from "drizzle-orm";
 
@@ -126,6 +129,21 @@ export async function createTestSandboxToken(
   runId: string,
 ): Promise<string> {
   return generateSandboxToken(userId, runId);
+}
+
+/**
+ * Create a test compose job JWT token for webhook endpoints
+ * This generates a valid JWT that can be used to authenticate compose job sandbox requests
+ *
+ * @param userId - The user ID to encode in the token
+ * @param jobId - The compose job ID to encode in the token
+ * @returns A valid JWT token string
+ */
+export async function createTestComposeJobToken(
+  userId: string,
+  jobId: string,
+): Promise<string> {
+  return generateComposeJobToken(userId, jobId);
 }
 
 /**

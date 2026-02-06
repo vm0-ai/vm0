@@ -381,5 +381,22 @@ export {
   type TokenUsage,
 } from "./llm";
 
+export {
+  composeJobsMainContract,
+  composeJobsByIdContract,
+  webhookComposeCompleteContract,
+  composeJobStatusSchema,
+  composeJobResultSchema,
+  createComposeJobRequestSchema,
+  composeJobResponseSchema,
+  type ComposeJobsMainContract,
+  type ComposeJobsByIdContract,
+  type WebhookComposeCompleteContract,
+  type ComposeJobStatus,
+  type ComposeJobResult,
+  type CreateComposeJobRequest,
+  type ComposeJobResponse,
+} from "./compose-jobs";
+
 // Public API v1 contracts (developer-friendly external API)
 export * from "./public";

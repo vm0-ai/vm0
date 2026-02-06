@@ -14,6 +14,7 @@ export {
   DOWNLOAD_SCRIPT,
   MOCK_CLAUDE_SCRIPT,
   ENV_LOADER_SCRIPT,
+  COMPOSE_GITHUB_SCRIPT,
 } from "./dist/bundled";
 
 /**
@@ -33,4 +34,6 @@ export const SCRIPT_PATHS = {
   mockClaude: "/usr/local/bin/vm0-agent/mock-claude.mjs",
   /** Environment loader for runner - loads env from JSON file before running agent */
   envLoader: "/usr/local/bin/vm0-agent/env-loader.mjs",
+  /** Compose from GitHub - downloads GitHub repo and creates compose from vm0.yaml */
+  composeGithub: "/usr/local/bin/vm0-agent/compose-github.mjs",
 } as const;
