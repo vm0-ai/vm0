@@ -157,7 +157,8 @@ impl VsockHost {
 
         // Send ping
         let seq = self.next_seq();
-        let ping = vsock_proto::encode(MSG_PING, seq, &[]);
+        let ping = vsock_proto::encode(MSG_PING, seq, &[])
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
         self.stream.write_all(&ping).await?;
 
         // Wait for pong with matching seq
@@ -204,7 +205,8 @@ impl VsockHost {
         timeout: Duration,
     ) -> io::Result<RawMessage> {
         let seq = self.next_seq();
-        let data = vsock_proto::encode(msg_type, seq, payload);
+        let data = vsock_proto::encode(msg_type, seq, payload)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
         self.stream.write_all(&data).await?;
 
         let deadline = Instant::now() + timeout;
@@ -348,7 +350,7 @@ mod tests {
     /// Perform mock guest handshake: send ready, receive ping, send pong.
     async fn mock_handshake(stream: &mut UnixStream, decoder: &mut Decoder) {
         // Send ready
-        let ready = vsock_proto::encode(MSG_READY, 0, &[]);
+        let ready = vsock_proto::encode(MSG_READY, 0, &[]).unwrap();
         stream.write_all(&ready).await.unwrap();
 
         // Read ping
@@ -358,7 +360,7 @@ mod tests {
         assert_eq!(msgs[0].msg_type, MSG_PING);
 
         // Send pong
-        let pong = vsock_proto::encode(MSG_PONG, msgs[0].seq, &[]);
+        let pong = vsock_proto::encode(MSG_PONG, msgs[0].seq, &[]).unwrap();
         stream.write_all(&pong).await.unwrap();
     }
 
@@ -394,7 +396,7 @@ mod tests {
             assert_eq!(timeout, 5000);
 
             let payload = vsock_proto::encode_exec_result(0, b"hello\n", b"");
-            let resp = vsock_proto::encode(MSG_EXEC_RESULT, msgs[0].seq, &payload);
+            let resp = vsock_proto::encode(MSG_EXEC_RESULT, msgs[0].seq, &payload).unwrap();
             guest.write_all(&resp).await.unwrap();
         });
 
@@ -418,7 +420,7 @@ mod tests {
             let msgs = decoder.decode(&buf[..n]).unwrap();
 
             let payload = vsock_proto::encode_error("command not found");
-            let resp = vsock_proto::encode(MSG_ERROR, msgs[0].seq, &payload);
+            let resp = vsock_proto::encode(MSG_ERROR, msgs[0].seq, &payload).unwrap();
             guest.write_all(&resp).await.unwrap();
         });
 
@@ -447,7 +449,7 @@ mod tests {
             assert!(!sudo);
 
             let payload = vsock_proto::encode_write_file_result(true, "");
-            let resp = vsock_proto::encode(MSG_WRITE_FILE_RESULT, msgs[0].seq, &payload);
+            let resp = vsock_proto::encode(MSG_WRITE_FILE_RESULT, msgs[0].seq, &payload).unwrap();
             guest.write_all(&resp).await.unwrap();
         });
 
@@ -470,7 +472,7 @@ mod tests {
             let msgs = decoder.decode(&buf[..n]).unwrap();
 
             let payload = vsock_proto::encode_write_file_result(false, "permission denied");
-            let resp = vsock_proto::encode(MSG_WRITE_FILE_RESULT, msgs[0].seq, &payload);
+            let resp = vsock_proto::encode(MSG_WRITE_FILE_RESULT, msgs[0].seq, &payload).unwrap();
             guest.write_all(&resp).await.unwrap();
         });
 
@@ -497,13 +499,13 @@ mod tests {
 
             // Send spawn_watch_result with pid=42
             let payload = vsock_proto::encode_spawn_watch_result(42);
-            let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &payload);
+            let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &payload).unwrap();
             guest.write_all(&resp).await.unwrap();
 
             // After a short delay, send process_exit (unsolicited, seq=0)
             tokio::time::sleep(Duration::from_millis(50)).await;
             let exit_payload = vsock_proto::encode_process_exit(42, 0, b"done", b"");
-            let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, 0, &exit_payload);
+            let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, 0, &exit_payload).unwrap();
             guest.write_all(&exit_msg).await.unwrap();
 
             // Keep connection alive until host reads the exit event
@@ -539,9 +541,9 @@ mod tests {
             // Send spawn_watch_result followed immediately by process_exit
             // in the same write, so they arrive together before wait_for_exit
             let payload = vsock_proto::encode_spawn_watch_result(99);
-            let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &payload);
+            let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &payload).unwrap();
             let exit_payload = vsock_proto::encode_process_exit(99, 1, b"", b"error");
-            let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, 0, &exit_payload);
+            let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, 0, &exit_payload).unwrap();
 
             // Write both together
             let mut combined = resp;
@@ -577,7 +579,7 @@ mod tests {
             let msgs = decoder.decode(&buf[..n]).unwrap();
             assert_eq!(msgs[0].msg_type, MSG_SHUTDOWN);
 
-            let resp = vsock_proto::encode(MSG_SHUTDOWN_ACK, msgs[0].seq, &[]);
+            let resp = vsock_proto::encode(MSG_SHUTDOWN_ACK, msgs[0].seq, &[]).unwrap();
             guest.write_all(&resp).await.unwrap();
         });
 

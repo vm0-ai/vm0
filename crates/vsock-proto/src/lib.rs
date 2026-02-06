@@ -93,14 +93,17 @@ pub struct RawMessage {
 // ---------------------------------------------------------------------------
 
 /// Encode a raw message: `[4-byte length][1-byte type][4-byte seq][payload]`.
-pub fn encode(msg_type: u8, seq: u32, payload: &[u8]) -> Vec<u8> {
+pub fn encode(msg_type: u8, seq: u32, payload: &[u8]) -> Result<Vec<u8>, ProtocolError> {
     let body_len = 1 + 4 + payload.len();
+    if body_len > MAX_MESSAGE_SIZE {
+        return Err(ProtocolError::MessageTooLarge(body_len));
+    }
     let mut buf = Vec::with_capacity(HEADER_SIZE + body_len);
     buf.extend_from_slice(&(body_len as u32).to_be_bytes());
     buf.push(msg_type);
     buf.extend_from_slice(&seq.to_be_bytes());
     buf.extend_from_slice(payload);
-    buf
+    Ok(buf)
 }
 
 /// Encode exec payload: `[4B timeout_ms][4B cmd_len][command]`.
@@ -126,16 +129,12 @@ pub fn encode_exec_result(exit_code: i32, stdout: &[u8], stderr: &[u8]) -> Vec<u
 
 /// Encode write_file payload: `[2B path_len][path][1B flags][4B content_len][content]`.
 ///
-/// Returns `Err` if path exceeds 65535 bytes or the total message exceeds the protocol limit.
+/// Returns `Err` if path exceeds 65535 bytes (u16 field limit).
+/// Total message size is validated by [`encode`].
 pub fn encode_write_file(path: &str, content: &[u8], sudo: bool) -> Result<Vec<u8>, ProtocolError> {
     let path_bytes = path.as_bytes();
     if path_bytes.len() > 65535 {
         return Err(ProtocolError::PayloadTooLarge("path", path_bytes.len()));
-    }
-    // Full message body = type(1) + seq(4) + path_len(2) + path + flags(1) + content_len(4) + content
-    let body_size = MIN_BODY_SIZE + 7 + path_bytes.len() + content.len();
-    if body_size > MAX_MESSAGE_SIZE {
-        return Err(ProtocolError::PayloadTooLarge("content", content.len()));
     }
     let path_len = path_bytes.len() as u16;
     let mut p = Vec::with_capacity(7 + path_len as usize + content.len());
@@ -422,7 +421,7 @@ mod tests {
 
     #[test]
     fn encode_decode_roundtrip_empty_payload() {
-        let data = encode(MSG_PING, 1, &[]);
+        let data = encode(MSG_PING, 1, &[]).unwrap();
         let mut dec = Decoder::new();
         let msgs = dec.decode(&data).unwrap();
         assert_eq!(msgs.len(), 1);
@@ -433,7 +432,7 @@ mod tests {
 
     #[test]
     fn encode_decode_roundtrip_with_payload() {
-        let data = encode(MSG_EXEC, 42, b"hello world");
+        let data = encode(MSG_EXEC, 42, b"hello world").unwrap();
         let mut dec = Decoder::new();
         let msgs = dec.decode(&data).unwrap();
         assert_eq!(msgs.len(), 1);
@@ -444,7 +443,7 @@ mod tests {
 
     #[test]
     fn decoder_handles_partial_reads() {
-        let data = encode(MSG_PONG, 7, &[]);
+        let data = encode(MSG_PONG, 7, &[]).unwrap();
         let mut dec = Decoder::new();
 
         // Feed first 4 bytes (header only)
@@ -460,9 +459,9 @@ mod tests {
 
     #[test]
     fn decoder_handles_multiple_messages() {
-        let mut data = encode(MSG_PING, 1, &[]);
-        data.extend_from_slice(&encode(MSG_PONG, 1, &[]));
-        data.extend_from_slice(&encode(MSG_READY, 0, &[]));
+        let mut data = encode(MSG_PING, 1, &[]).unwrap();
+        data.extend_from_slice(&encode(MSG_PONG, 1, &[]).unwrap());
+        data.extend_from_slice(&encode(MSG_READY, 0, &[]).unwrap());
 
         let mut dec = Decoder::new();
         let msgs = dec.decode(&data).unwrap();
@@ -544,8 +543,9 @@ mod tests {
     #[test]
     fn write_file_content_too_large() {
         let big = vec![0u8; MAX_MESSAGE_SIZE];
-        let err = encode_write_file("/tmp/f", &big, false).unwrap_err();
-        assert!(matches!(err, ProtocolError::PayloadTooLarge("content", _)));
+        let payload = encode_write_file("/tmp/f", &big, false).unwrap();
+        let err = encode(MSG_WRITE_FILE, 1, &payload).unwrap_err();
+        assert!(matches!(err, ProtocolError::MessageTooLarge(_)));
     }
 
     #[test]
@@ -603,7 +603,7 @@ mod tests {
     #[test]
     fn full_message_exec_roundtrip() {
         let payload = encode_exec(10000, "ls -la");
-        let msg = encode(MSG_EXEC, 5, &payload);
+        let msg = encode(MSG_EXEC, 5, &payload).unwrap();
 
         let mut dec = Decoder::new();
         let msgs = dec.decode(&msg).unwrap();
@@ -618,7 +618,7 @@ mod tests {
 
     #[test]
     fn decoder_byte_by_byte() {
-        let data = encode(MSG_PING, 1, &[]);
+        let data = encode(MSG_PING, 1, &[]).unwrap();
         let mut dec = Decoder::new();
 
         for (i, &byte) in data.iter().enumerate() {
