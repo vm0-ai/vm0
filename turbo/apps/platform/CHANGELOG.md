@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.49.0](https://github.com/vm0-ai/vm0/compare/platform-v0.48.0...platform-v0.49.0) (2026-02-06)
+
+
+### Features
+
+* **platform:** model provider settings page with full CRUD management ([#2469](https://github.com/vm0-ai/vm0/issues/2469)) ([0f9fd01](https://github.com/vm0-ai/vm0/commit/0f9fd01a574011c940c1b4d1653fa76161a2c7f3))
+
 ## [0.48.0](https://github.com/vm0-ai/vm0/compare/platform-v0.47.1...platform-v0.48.0) (2026-02-06)
 
 
