@@ -5,6 +5,7 @@ import { GET as getComposeJob } from "../../../../compose/from-github/[jobId]/ro
 import {
   createTestRequest,
   createTestComposeJobToken,
+  createTestCliToken,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -28,11 +29,17 @@ async function createTestComposeJobViaApi(
   userId: string,
   githubUrl: string = "https://github.com/owner/repo",
 ): Promise<{ jobId: string; token: string }> {
+  // Create CLI token for authenticated request
+  const cliToken = await createTestCliToken(userId);
+
   const request = createTestRequest(
     "http://localhost:3000/api/compose/from-github",
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${cliToken}`,
+      },
       body: JSON.stringify({ githubUrl }),
     },
   );
@@ -50,7 +57,10 @@ async function createTestComposeJobViaApi(
 /**
  * Helper to get compose job status via API
  */
-async function getTestComposeJobViaApi(jobId: string): Promise<{
+async function getTestComposeJobViaApi(
+  jobId: string,
+  userId: string,
+): Promise<{
   jobId: string;
   status: string;
   result?: {
@@ -62,9 +72,17 @@ async function getTestComposeJobViaApi(jobId: string): Promise<{
   error?: string;
   completedAt?: string;
 }> {
+  // Create CLI token for authenticated request
+  const cliToken = await createTestCliToken(userId);
+
   const request = createTestRequest(
     `http://localhost:3000/api/compose/from-github/${jobId}`,
-    { method: "GET" },
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${cliToken}`,
+      },
+    },
   );
   const response = await getComposeJob(request);
   return response.json();
@@ -280,8 +298,7 @@ describe("POST /api/webhooks/compose/complete", () => {
       expect(data.success).toBe(true);
 
       // Verify job was updated via API
-      mockClerk({ userId: user.userId }); // Re-enable auth for GET
-      const job = await getTestComposeJobViaApi(testJobId);
+      const job = await getTestComposeJobViaApi(testJobId, user.userId);
 
       expect(job.status).toBe("completed");
       expect(job.result).toEqual(result);
@@ -317,8 +334,7 @@ describe("POST /api/webhooks/compose/complete", () => {
       expect(response.status).toBe(200);
 
       // Verify warnings were stored via API
-      mockClerk({ userId: user.userId }); // Re-enable auth for GET
-      const job = await getTestComposeJobViaApi(testJobId);
+      const job = await getTestComposeJobViaApi(testJobId, user.userId);
 
       expect(job.result?.warnings).toEqual(["Some deprecated field used"]);
     });
@@ -349,8 +365,7 @@ describe("POST /api/webhooks/compose/complete", () => {
       expect(data.success).toBe(true);
 
       // Verify job was updated via API
-      mockClerk({ userId: user.userId }); // Re-enable auth for GET
-      const job = await getTestComposeJobViaApi(testJobId);
+      const job = await getTestComposeJobViaApi(testJobId, user.userId);
 
       expect(job.status).toBe("failed");
       expect(job.error).toBe("Failed to parse vm0.yaml");
@@ -401,8 +416,7 @@ describe("POST /api/webhooks/compose/complete", () => {
       expect(data.success).toBe(true);
 
       // Verify original result was not changed via API
-      mockClerk({ userId: user.userId }); // Re-enable auth for GET
-      const job = await getTestComposeJobViaApi(testJobId);
+      const job = await getTestComposeJobViaApi(testJobId, user.userId);
 
       expect(job.result?.composeId).toBe("original-compose-id");
     });
@@ -437,8 +451,7 @@ describe("POST /api/webhooks/compose/complete", () => {
       expect(data.success).toBe(true);
 
       // Verify original error was not changed via API
-      mockClerk({ userId: user.userId }); // Re-enable auth for GET
-      const job = await getTestComposeJobViaApi(testJobId);
+      const job = await getTestComposeJobViaApi(testJobId, user.userId);
 
       expect(job.error).toBe("Original error");
     });
