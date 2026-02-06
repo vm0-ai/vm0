@@ -1,6 +1,6 @@
 //! Telemetry recording for sandbox operations.
 
-use crate::paths;
+use crate::{log, paths};
 use serde::Serialize;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -21,7 +21,7 @@ struct SandboxOpEntry {
 /// Format is compatible with the TypeScript version for consistency.
 pub fn record_sandbox_op(action_type: &str, duration_ms: u64, success: bool, error: Option<&str>) {
     let entry = SandboxOpEntry {
-        ts: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+        ts: log::timestamp(),
         action_type: action_type.to_string(),
         duration_ms,
         success,
