@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserIdFromRequest } from "../../../../../src/lib/auth/get-user-id";
 import {
@@ -6,6 +7,7 @@ import {
   fetchGitHubUserInfo,
 } from "../../../../../src/lib/connector/providers/github";
 import { upsertOAuthConnector } from "../../../../../src/lib/connector/connector-service";
+import { connectorSessions } from "../../../../../src/db/schema/connector-session";
 import { logger } from "../../../../../src/lib/logger";
 import type { ConnectorType } from "@vm0/core";
 
@@ -20,8 +22,9 @@ const log = logger("api:connectors:callback");
  * stores connector and redirects to success page
  */
 
-// Cookie name for OAuth state
+// Cookie names for OAuth state and session
 const STATE_COOKIE_NAME = "connector_oauth_state";
+const SESSION_COOKIE_NAME = "connector_oauth_session";
 
 /**
  * Parse cookies from request header
@@ -74,8 +77,9 @@ export async function GET(
     return redirectWithError(url.origin, type, "GitHub OAuth not configured");
   }
 
-  // Get state from cookie
+  // Get state and session from cookies
   const savedState = getCookie(request, STATE_COOKIE_NAME);
+  const sessionId = getCookie(request, SESSION_COOKIE_NAME);
 
   // Get code and state from query params
   const code = url.searchParams.get("code");
@@ -147,7 +151,21 @@ export async function GET(
       type,
       username: userInfo.username,
       created,
+      sessionId,
     });
+
+    // If this was a CLI session, mark it as complete
+    if (sessionId) {
+      await globalThis.services.db
+        .update(connectorSessions)
+        .set({
+          status: "complete",
+          completedAt: new Date(),
+        })
+        .where(eq(connectorSessions.id, sessionId));
+
+      log.debug("Connector session marked complete", { sessionId });
+    }
 
     // Redirect to success page
     const successUrl = new URL("/settings", url.origin);
@@ -156,23 +174,36 @@ export async function GET(
     successUrl.searchParams.set("username", userInfo.username);
 
     const response = NextResponse.redirect(successUrl.toString());
-    // Clear the state cookie
-    response.headers.set(
+    // Clear cookies
+    response.headers.append(
       "Set-Cookie",
       buildDeleteCookieHeader(STATE_COOKIE_NAME),
     );
+    response.headers.append(
+      "Set-Cookie",
+      buildDeleteCookieHeader(SESSION_COOKIE_NAME),
+    );
     return response;
   } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : "OAuth failed";
     log.error("OAuth callback error", {
       type,
-      error: err instanceof Error ? err.message : String(err),
+      error: errorMessage,
+      sessionId,
     });
-    return redirectWithError(
-      url.origin,
-      type,
-      err instanceof Error ? err.message : "OAuth failed",
-      true,
-    );
+
+    // Mark session as error if present
+    if (sessionId) {
+      await globalThis.services.db
+        .update(connectorSessions)
+        .set({
+          status: "error",
+          errorMessage,
+        })
+        .where(eq(connectorSessions.id, sessionId));
+    }
+
+    return redirectWithError(url.origin, type, errorMessage, true);
   }
 }
 
@@ -183,7 +214,7 @@ function redirectWithError(
   origin: string,
   type: string,
   message: string,
-  clearCookie = false,
+  clearCookies = false,
 ): NextResponse {
   const errorUrl = new URL("/settings", origin);
   errorUrl.searchParams.set("connector", type);
@@ -191,10 +222,14 @@ function redirectWithError(
   errorUrl.searchParams.set("message", message);
 
   const response = NextResponse.redirect(errorUrl.toString());
-  if (clearCookie) {
-    response.headers.set(
+  if (clearCookies) {
+    response.headers.append(
       "Set-Cookie",
       buildDeleteCookieHeader(STATE_COOKIE_NAME),
+    );
+    response.headers.append(
+      "Set-Cookie",
+      buildDeleteCookieHeader(SESSION_COOKIE_NAME),
     );
   }
   return response;

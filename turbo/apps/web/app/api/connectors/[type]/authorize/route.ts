@@ -11,9 +11,10 @@ import { buildGitHubAuthorizationUrl } from "../../../../../src/lib/connector/pr
  * Redirects users to the OAuth provider's authorization page
  */
 
-// Cookie name for OAuth state
+// Cookie names for OAuth state and session
 const STATE_COOKIE_NAME = "connector_oauth_state";
-const STATE_COOKIE_MAX_AGE = 15 * 60; // 15 minutes
+const SESSION_COOKIE_NAME = "connector_oauth_session";
+const COOKIE_MAX_AGE = 15 * 60; // 15 minutes
 
 /**
  * Generate a random state string for CSRF protection
@@ -88,6 +89,9 @@ export async function GET(
   const url = new URL(request.url);
   const redirectUri = `${url.origin}/api/connectors/${type}/callback`;
 
+  // Check for session parameter (CLI device flow)
+  const sessionId = url.searchParams.get("session");
+
   // Build authorization URL
   const authUrl = buildGitHubAuthorizationUrl(
     env.GH_OAUTH_CLIENT_ID,
@@ -97,10 +101,18 @@ export async function GET(
 
   // Create redirect response with state cookie
   const response = NextResponse.redirect(authUrl);
-  response.headers.set(
+  response.headers.append(
     "Set-Cookie",
-    buildCookieHeader(STATE_COOKIE_NAME, state, STATE_COOKIE_MAX_AGE),
+    buildCookieHeader(STATE_COOKIE_NAME, state, COOKIE_MAX_AGE),
   );
+
+  // If session ID provided, store it in a cookie for the callback
+  if (sessionId) {
+    response.headers.append(
+      "Set-Cookie",
+      buildCookieHeader(SESSION_COOKIE_NAME, sessionId, COOKIE_MAX_AGE),
+    );
+  }
 
   return response;
 }

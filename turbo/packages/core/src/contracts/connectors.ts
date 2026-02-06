@@ -213,3 +213,106 @@ export const connectorsByTypeContract = c.router({
 });
 
 export type ConnectorsByTypeContract = typeof connectorsByTypeContract;
+
+/**
+ * Connector session status enum
+ */
+export const connectorSessionStatusSchema = z.enum([
+  "pending",
+  "complete",
+  "expired",
+  "error",
+]);
+
+export type ConnectorSessionStatus = z.infer<
+  typeof connectorSessionStatusSchema
+>;
+
+/**
+ * Connector session response schema
+ */
+export const connectorSessionResponseSchema = z.object({
+  id: z.string().uuid(),
+  code: z.string(),
+  type: connectorTypeSchema,
+  status: connectorSessionStatusSchema,
+  verificationUrl: z.string(),
+  expiresIn: z.number(),
+  interval: z.number(),
+  errorMessage: z.string().nullable().optional(),
+});
+
+export type ConnectorSessionResponse = z.infer<
+  typeof connectorSessionResponseSchema
+>;
+
+/**
+ * Connector session status response (for polling)
+ */
+export const connectorSessionStatusResponseSchema = z.object({
+  status: connectorSessionStatusSchema,
+  errorMessage: z.string().nullable().optional(),
+});
+
+export type ConnectorSessionStatusResponse = z.infer<
+  typeof connectorSessionStatusResponseSchema
+>;
+
+/**
+ * Connector sessions contract for /api/connectors/[type]/sessions
+ * Used for CLI device flow - initiate OAuth from CLI
+ */
+export const connectorSessionsContract = c.router({
+  /**
+   * POST /api/connectors/:type/sessions
+   * Create a new connector session for CLI device flow
+   */
+  create: {
+    method: "POST",
+    path: "/api/connectors/:type/sessions",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      type: connectorTypeSchema,
+    }),
+    body: z.object({}).optional(),
+    responses: {
+      200: connectorSessionResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Create connector session for CLI device flow",
+  },
+});
+
+export type ConnectorSessionsContract = typeof connectorSessionsContract;
+
+/**
+ * Connector session by ID contract for /api/connectors/[type]/sessions/[id]
+ * Used for CLI polling to check session status
+ */
+export const connectorSessionByIdContract = c.router({
+  /**
+   * GET /api/connectors/:type/sessions/:sessionId
+   * Get connector session status (for CLI polling)
+   */
+  get: {
+    method: "GET",
+    path: "/api/connectors/:type/sessions/:sessionId",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      type: connectorTypeSchema,
+      sessionId: z.string().uuid(),
+    }),
+    responses: {
+      200: connectorSessionStatusResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Get connector session status",
+  },
+});
+
+export type ConnectorSessionByIdContract = typeof connectorSessionByIdContract;
