@@ -81,20 +81,14 @@ The script will ask if you have 1Password access:
 
 `SECRETS_ENCRYPTION_KEY` is auto-generated if you press Enter when prompted.
 
-**Required services for the web app (`turbo/apps/web`):**
+**Required SaaS services (community contributors need to register these before running the script):**
 
-| Variable | Service |
-|----------|---------|
-| `CLERK_SECRET_KEY` | [Clerk](https://dashboard.clerk.com) |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | [Clerk](https://dashboard.clerk.com) |
-| `E2B_API_KEY` | [E2B](https://e2b.dev/dashboard) |
-| `R2_ACCOUNT_ID` | [Cloudflare R2](https://dash.cloudflare.com) |
-| `R2_ACCESS_KEY_ID` | [Cloudflare R2](https://dash.cloudflare.com) |
-| `R2_SECRET_ACCESS_KEY` | [Cloudflare R2](https://dash.cloudflare.com) |
-| `R2_USER_STORAGES_BUCKET_NAME` | Create bucket in Cloudflare |
-| `SLACK_CLIENT_ID` | [Slack API](https://api.slack.com/apps) |
-| `SLACK_CLIENT_SECRET` | [Slack API](https://api.slack.com/apps) |
-| `SLACK_SIGNING_SECRET` | [Slack API](https://api.slack.com/apps) |
+| Service | Purpose | Tokens needed | Dashboard |
+|---------|---------|---------------|-----------|
+| [Clerk](https://clerk.com) | User authentication and session management | `CLERK_SECRET_KEY`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | [dashboard.clerk.com](https://dashboard.clerk.com) |
+| [E2B](https://e2b.dev) | Cloud sandbox runtime for executing agent code | `E2B_API_KEY` | [e2b.dev/dashboard](https://e2b.dev/dashboard) |
+| [Cloudflare R2](https://www.cloudflare.com/products/r2/) | Object storage for user files and artifacts | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_USER_STORAGES_BUCKET_NAME` | [dash.cloudflare.com](https://dash.cloudflare.com) |
+| [Slack API](https://api.slack.com) | Slack app integration for notifications and commands | `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_SIGNING_SECRET` | [api.slack.com/apps](https://api.slack.com/apps) |
 
 > **Troubleshooting**: If you see `❌ Invalid environment variables` when running `pnpm dev`, re-run `scripts/sync-env.sh` to fill in the missing values.
 
