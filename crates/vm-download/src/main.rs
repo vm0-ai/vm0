@@ -7,9 +7,12 @@
 
 use serde::Deserialize;
 use std::fs;
+use std::sync::LazyLock;
 use std::thread;
 use std::time::{Duration, Instant};
-use vm_common::telemetry::record_sandbox_op;
+use vm_common::{log_error, log_info, log_warn, telemetry::record_sandbox_op};
+
+const LOG_TAG: &str = "sandbox:download";
 
 /// Storage manifest format (matches TypeScript StorageManifest).
 #[derive(Deserialize)]
@@ -41,12 +44,20 @@ const RETRY_DELAY: Duration = Duration::from_secs(1);
 const TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_CONCURRENT: usize = 4;
 
+/// Global HTTP agent with timeout configuration (created once, reused).
+static HTTP_AGENT: LazyLock<ureq::Agent> = LazyLock::new(|| {
+    let config = ureq::Agent::config_builder()
+        .timeout_global(Some(TIMEOUT))
+        .build();
+    config.into()
+});
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let manifest_path = match args.get(1) {
         Some(p) => p,
         None => {
-            log_error("Usage: vm-download <manifest_path>");
+            log_error!(LOG_TAG, "Usage: vm-download <manifest_path>");
             std::process::exit(1);
         }
     };
@@ -58,11 +69,11 @@ fn main() {
     match result {
         Ok(()) => {
             record_sandbox_op("download_total", duration_ms, true, None);
-            log_info(&format!("Download completed in {duration_ms}ms"));
+            log_info!(LOG_TAG, "Download completed in {duration_ms}ms");
         }
         Err(e) => {
             record_sandbox_op("download_total", duration_ms, false, Some(&e));
-            log_error(&format!("Download failed: {e}"));
+            log_error!(LOG_TAG, "Download failed: {e}");
             std::process::exit(1);
         }
     }
@@ -83,13 +94,13 @@ fn run(manifest_path: &str) -> Result<(), String> {
         && let Some(url) = &artifact.archive_url
     {
         let start = Instant::now();
-        log_info(&format!("Downloading artifact to {}", artifact.mount_path));
+        log_info!(LOG_TAG, "Downloading artifact to {}", artifact.mount_path);
 
         match download_with_retry(url, &artifact.mount_path) {
             Ok(()) => {
                 let duration_ms = start.elapsed().as_millis() as u64;
                 record_sandbox_op("artifact_download", duration_ms, true, None);
-                log_info(&format!("Artifact downloaded in {duration_ms}ms"));
+                log_info!(LOG_TAG, "Artifact downloaded in {duration_ms}ms");
             }
             Err(e) => {
                 let duration_ms = start.elapsed().as_millis() as u64;
@@ -128,11 +139,12 @@ fn download_storages_parallel(storages: &[Storage]) -> Result<(), String> {
         return Ok(());
     }
 
-    log_info(&format!(
+    log_info!(
+        LOG_TAG,
         "Downloading {} storages (max {} concurrent)",
         download_tasks.len(),
         MAX_CONCURRENT
-    ));
+    );
 
     // Process in chunks to limit concurrency
     for chunk in download_tasks.chunks(MAX_CONCURRENT) {
@@ -144,11 +156,7 @@ fn download_storages_parallel(storages: &[Storage]) -> Result<(), String> {
                 let mount_path = mount_path.clone();
                 thread::spawn(move || {
                     let start = Instant::now();
-                    log_info(&format!(
-                        "Downloading storage {} to {}",
-                        idx + 1,
-                        mount_path
-                    ));
+                    log_info!(LOG_TAG, "Downloading storage {} to {}", idx + 1, mount_path);
 
                     let result = download_with_retry(&url, &mount_path);
                     let duration_ms = start.elapsed().as_millis() as u64;
@@ -156,11 +164,12 @@ fn download_storages_parallel(storages: &[Storage]) -> Result<(), String> {
                     match &result {
                         Ok(()) => {
                             record_sandbox_op("storage_download", duration_ms, true, None);
-                            log_info(&format!(
+                            log_info!(
+                                LOG_TAG,
                                 "Storage {} downloaded in {}ms",
                                 idx + 1,
                                 duration_ms
-                            ));
+                            );
                         }
                         Err(e) => {
                             record_sandbox_op("storage_download", duration_ms, false, Some(e));
@@ -192,7 +201,7 @@ fn download_with_retry(url: &str, target_path: &str) -> Result<(), String> {
         match download_and_extract(url, target_path) {
             Ok(()) => return Ok(()),
             Err(e) => {
-                log_warn(&format!("Attempt {attempt}/{MAX_RETRIES} failed: {e}"));
+                log_warn!(LOG_TAG, "Attempt {attempt}/{MAX_RETRIES} failed: {e}");
                 last_error = e;
                 if attempt < MAX_RETRIES {
                     thread::sleep(RETRY_DELAY);
@@ -209,14 +218,8 @@ fn download_and_extract(url: &str, target_path: &str) -> Result<(), String> {
     fs::create_dir_all(target_path)
         .map_err(|e| format!("Failed to create directory {target_path}: {e}"))?;
 
-    // Build HTTP agent with timeout
-    let config = ureq::Agent::config_builder()
-        .timeout_global(Some(TIMEOUT))
-        .build();
-    let agent: ureq::Agent = config.into();
-
-    // Make HTTP request
-    let response = agent
+    // Make HTTP request using global agent
+    let response = HTTP_AGENT
         .get(url)
         .call()
         .map_err(|e| format!("HTTP request failed: {e}"))?;
@@ -227,27 +230,12 @@ fn download_and_extract(url: &str, target_path: &str) -> Result<(), String> {
     let mut archive = tar::Archive::new(decoder);
 
     // Extract to target path
+    // Note: tar crate handles empty archives gracefully (returns Ok with 0 entries)
     archive
         .unpack(target_path)
         .map_err(|e| format!("Failed to extract archive: {e}"))?;
 
     Ok(())
-}
-
-// Logging helpers (match TypeScript format)
-fn log_info(msg: &str) {
-    let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    eprintln!("[{ts}] [INFO] [sandbox:download] {msg}");
-}
-
-fn log_warn(msg: &str) {
-    let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    eprintln!("[{ts}] [WARN] [sandbox:download] {msg}");
-}
-
-fn log_error(msg: &str) {
-    let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    eprintln!("[{ts}] [ERROR] [sandbox:download] {msg}");
 }
 
 #[cfg(test)]
