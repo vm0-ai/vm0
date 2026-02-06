@@ -8,11 +8,9 @@ import { env } from "../../../env";
 import {
   createSlackClient,
   postMessage,
-  extractMessageContent,
   buildLoginPromptMessage,
   buildErrorMessage,
   buildAgentResponseMessage,
-  buildWelcomeMessage,
 } from "../index";
 import { runAgentForSlack } from "./run-agent";
 import {
@@ -24,9 +22,9 @@ import {
 } from "./shared";
 import { logger } from "../../logger";
 
-const log = logger("slack:mention");
+const log = logger("slack:dm");
 
-interface MentionContext {
+interface DirectMessageContext {
   workspaceId: string;
   channelId: string;
   userId: string;
@@ -36,24 +34,16 @@ interface MentionContext {
 }
 
 /**
- * Handle an app_mention event from Slack
+ * Handle a direct message event from Slack
  *
- * Flow:
- * 1. Get workspace installation and decrypt bot token
- * 2. Check if user is linked
- * 3. If not linked, post link message
- * 4. Get user's bindings
- * 5. If no bindings, prompt to add agent
- * 6. Add thinking reaction (emoji only)
- * 7. Route to agent (explicit or LLM)
- * 8. Find existing thread session (for session continuation)
- * 9. Fetch thread context
- * 10. Execute agent with session continuation
- * 11. Create thread session mapping (if new thread)
- * 12. Post response message
- * 13. Remove thinking reaction
+ * Same flow as handleAppMention() with these differences:
+ * 1. No mention prefix stripping — use messageText directly
+ * 2. Login prompt uses postMessage instead of postEphemeral (DMs are already private)
+ * 3. not_request result routes to agent (user deliberately DM'd the bot)
  */
-export async function handleAppMention(context: MentionContext): Promise<void> {
+export async function handleDirectMessage(
+  context: DirectMessageContext,
+): Promise<void> {
   const { SECRETS_ENCRYPTION_KEY } = env();
 
   try {
@@ -95,19 +85,18 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       .limit(1);
 
     if (!userLink) {
-      // 3. User not connected - post ephemeral connect message (only visible to user)
+      // 3. User not connected - post direct message (not ephemeral, DMs are already private)
       const loginUrl = buildLoginUrl(
         context.workspaceId,
         context.userId,
         context.channelId,
       );
-      // Note: Don't include thread_ts for ephemeral messages - they don't appear correctly in threads
-      await client.chat.postEphemeral({
-        channel: context.channelId,
-        user: context.userId,
-        text: "Please connect your account first",
-        blocks: buildLoginPromptMessage(loginUrl),
-      });
+      await postMessage(
+        client,
+        context.channelId,
+        "Please connect your account first",
+        { blocks: buildLoginPromptMessage(loginUrl) },
+      );
       return;
     }
 
@@ -139,7 +128,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       return;
     }
 
-    // 6. Add thinking reaction (emoji only, no message)
+    // 6. Add thinking reaction
     const reactionAdded = await client.reactions
       .add({
         channel: context.channelId,
@@ -149,14 +138,10 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       .then(() => true)
       .catch(() => false);
 
-    // Extract message content (remove bot mention)
-    const messageContent = extractMessageContent(
-      context.messageText,
-      botUserId,
-    );
+    // Use message text directly (no mention prefix to strip in DMs)
+    const messageContent = context.messageText;
 
     // Fetch Slack context early (needed for routing and agent execution)
-    // Uses bot token to download and embed images from Slack
     const formattedContext = await fetchConversationContext(
       client,
       context.channelId,
@@ -172,24 +157,14 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       formattedContext,
     );
 
-    if (routeResult.type === "not_request") {
-      // User is not requesting agent assistance (greeting, casual chat)
-      await postMessage(client, context.channelId, "Welcome to VM0!", {
-        threadTs,
-        blocks: buildWelcomeMessage(bindings),
-      });
-      if (reactionAdded) {
-        await removeThinkingReaction(
-          client,
-          context.channelId,
-          context.messageTs,
-        );
-      }
-      return;
-    }
+    // In DMs, not_request routes to the first/single agent (user deliberately DM'd the bot)
+    let selectedAgentName: string;
+    let promptText: string;
 
-    if (routeResult.type === "failure") {
-      // Post error message
+    if (routeResult.type === "not_request") {
+      selectedAgentName = bindings[0]!.agentName;
+      promptText = messageContent;
+    } else if (routeResult.type === "failure") {
       await postMessage(client, context.channelId, routeResult.error, {
         threadTs,
         blocks: buildErrorMessage(routeResult.error),
@@ -202,17 +177,16 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
         );
       }
       return;
+    } else {
+      selectedAgentName = routeResult.agentName;
+      promptText = routeResult.promptText;
     }
 
-    const { agentName: selectedAgentName, promptText } = routeResult;
-
-    // Get the selected binding (guaranteed to exist since routeResult.success is true)
+    // Get the selected binding
     const selectedBinding = bindings.find(
       (b) => b.agentName === selectedAgentName,
     );
     if (!selectedBinding) {
-      // This should never happen since routeMessageToAgent only returns success
-      // with an agent name that exists in bindings
       log.error("Selected binding not found after successful route", {
         selectedAgentName,
         availableBindings: bindings.map((b) => b.agentName),
@@ -220,14 +194,8 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       return;
     }
 
-    // 8. Find existing thread session for this binding (if in a thread)
+    // 8. Find existing thread session
     let existingSessionId: string | undefined;
-    log.debug("Looking for thread session", {
-      threadTs,
-      contextThreadTs: context.threadTs,
-      bindingId: selectedBinding.id,
-      channelId: context.channelId,
-    });
     if (threadTs) {
       const [threadSession] = await globalThis.services.db
         .select({ agentSessionId: slackThreadSessions.agentSessionId })
@@ -242,14 +210,10 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
         .limit(1);
 
       existingSessionId = threadSession?.agentSessionId;
-      log.debug("Thread session query result", { existingSessionId });
     }
 
-    // Context already fetched earlier for routing
-
     try {
-      // 10. Execute agent with session continuation
-      log.debug("Calling runAgentForSlack", { existingSessionId });
+      // 9. Execute agent
       const {
         response: agentResponse,
         sessionId: newSessionId,
@@ -261,14 +225,9 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
         threadContext: formattedContext,
         userId: userLink.vm0UserId,
       });
-      log.debug("runAgentForSlack returned", { newSessionId, runId });
 
-      // 11. Create thread session mapping if this is a new thread (no existing session)
+      // 10. Create thread session mapping if new thread
       if (threadTs && !existingSessionId && newSessionId) {
-        log.debug("Creating thread session mapping", {
-          threadTs,
-          newSessionId,
-        });
         await globalThis.services.db
           .insert(slackThreadSessions)
           .values({
@@ -280,7 +239,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
           .onConflictDoNothing();
       }
 
-      // 12. Post response message with agent name and logs link
+      // 11. Post response message
       const logsUrl = runId ? buildLogsUrl(runId) : undefined;
       await postMessage(client, context.channelId, agentResponse, {
         threadTs,
@@ -291,7 +250,6 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
         ),
       });
     } catch (innerError) {
-      // If postMessage or session creation fails, still try to notify the user
       log.error("Error posting response or creating session", {
         error: innerError,
       });
@@ -304,7 +262,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
         // If even the error message fails, we can't do anything more
       });
     } finally {
-      // 13. Remove thinking reaction
+      // 12. Remove thinking reaction
       if (reactionAdded) {
         await removeThinkingReaction(
           client,
@@ -314,7 +272,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       }
     }
   } catch (error) {
-    log.error("Error handling app_mention", { error });
+    log.error("Error handling direct_message", { error });
     // Don't throw - we don't want Slack to retry
   }
 }
