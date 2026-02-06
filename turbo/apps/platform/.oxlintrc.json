@@ -107,6 +107,12 @@
       }
     },
     {
+      "files": ["vite.config.ts"],
+      "rules": {
+        "new-cap": "allow"
+      }
+    },
+    {
       "files": ["src/signals/log.ts"],
       "rules": {
         "no-console": "allow"
