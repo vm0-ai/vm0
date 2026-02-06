@@ -967,7 +967,7 @@ describe("VsockClient Integration Tests", () => {
       client = newClient;
 
       // Verify agent logged the protocol error
-      expect(agentOutput).toContain("Message too large");
+      expect(agentOutput).toContain("message too large");
 
       // Verify connection works again after reconnection
       const postErrorResult = await client!.exec("echo recovered");
