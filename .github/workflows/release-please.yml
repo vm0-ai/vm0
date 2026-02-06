@@ -357,7 +357,7 @@ jobs:
           environment: production
           deployment-env: platform
           environment-variables: |
-            VITE_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
             VITE_API_URL=https://www.vm0.ai
             VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN_PLATFORM }}
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}

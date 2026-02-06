@@ -1,8 +1,5 @@
 import { command, computed, state } from "ccstate";
 
-/**
- * Internal state for theme (light or dark).
- */
 const internalTheme$ = state<"light" | "dark">("light");
 
 /**
