@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.50.1](https://github.com/vm0-ai/vm0/compare/platform-v0.50.0...platform-v0.50.1) (2026-02-06)
+
+
+### Bug Fixes
+
+* **ci:** update platform deployment to use unified clerk env var ([#2502](https://github.com/vm0-ai/vm0/issues/2502)) ([f63ae57](https://github.com/vm0-ai/vm0/commit/f63ae575aff0b7d4549abdf141af5ebe05086a7d))
+
 ## [0.50.0](https://github.com/vm0-ai/vm0/compare/platform-v0.49.0...platform-v0.50.0) (2026-02-06)
 
 

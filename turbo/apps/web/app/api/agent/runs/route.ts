@@ -56,7 +56,7 @@ const router = tsr.router(runsMainContract, {
       conditions.push(inArray(agentRuns.status, ["pending", "running"]));
     }
 
-    // Query runs with compose name
+    // Query runs with compose name via JOIN (single query instead of 3)
     const runs = await globalThis.services.db
       .select({
         id: agentRuns.id,
@@ -64,53 +64,27 @@ const router = tsr.router(runsMainContract, {
         prompt: agentRuns.prompt,
         createdAt: agentRuns.createdAt,
         startedAt: agentRuns.startedAt,
-        agentComposeVersionId: agentRuns.agentComposeVersionId,
+        composeName: agentComposes.name,
       })
       .from(agentRuns)
+      .leftJoin(
+        agentComposeVersions,
+        eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
+      )
+      .leftJoin(
+        agentComposes,
+        eq(agentComposeVersions.composeId, agentComposes.id),
+      )
       .where(and(...conditions))
       .orderBy(desc(agentRuns.createdAt))
       .limit(query.limit);
-
-    // Get compose names for all runs
-    const versionIds = [...new Set(runs.map((r) => r.agentComposeVersionId))];
-    const versionToCompose = new Map<string, string>();
-
-    if (versionIds.length > 0) {
-      const versions = await globalThis.services.db
-        .select({
-          id: agentComposeVersions.id,
-          composeId: agentComposeVersions.composeId,
-        })
-        .from(agentComposeVersions)
-        .where(inArray(agentComposeVersions.id, versionIds));
-
-      const composeIds = [...new Set(versions.map((v) => v.composeId))];
-      if (composeIds.length > 0) {
-        const composes = await globalThis.services.db
-          .select({
-            id: agentComposes.id,
-            name: agentComposes.name,
-          })
-          .from(agentComposes)
-          .where(inArray(agentComposes.id, composeIds));
-
-        const composeNameMap = new Map(composes.map((c) => [c.id, c.name]));
-        for (const version of versions) {
-          const composeName = composeNameMap.get(version.composeId);
-          if (composeName) {
-            versionToCompose.set(version.id, composeName);
-          }
-        }
-      }
-    }
 
     return {
       status: 200 as const,
       body: {
         runs: runs.map((run) => ({
           id: run.id,
-          agentName:
-            versionToCompose.get(run.agentComposeVersionId) || "unknown",
+          agentName: run.composeName || "unknown",
           status: run.status as RunStatus,
           prompt: run.prompt,
           createdAt: run.createdAt.toISOString(),
