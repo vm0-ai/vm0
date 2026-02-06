@@ -255,9 +255,7 @@ describe("GET /api/compose/from-github/:jobId", () => {
         },
       );
 
-      const response = await GET(request, {
-        params: Promise.resolve({ jobId: testJobId }),
-      });
+      const response = await GET(request);
 
       expect(response.status).toBe(401);
     });
@@ -272,9 +270,7 @@ describe("GET /api/compose/from-github/:jobId", () => {
         },
       );
 
-      const response = await GET(request, {
-        params: Promise.resolve({ jobId: testJobId }),
-      });
+      const response = await GET(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -306,9 +302,7 @@ describe("GET /api/compose/from-github/:jobId", () => {
         },
       );
 
-      const response = await GET(request, {
-        params: Promise.resolve({ jobId: testJobId }),
-      });
+      const response = await GET(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -336,9 +330,7 @@ describe("GET /api/compose/from-github/:jobId", () => {
         },
       );
 
-      const response = await GET(request, {
-        params: Promise.resolve({ jobId: testJobId }),
-      });
+      const response = await GET(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -358,9 +350,7 @@ describe("GET /api/compose/from-github/:jobId", () => {
         },
       );
 
-      const response = await GET(request, {
-        params: Promise.resolve({ jobId: nonExistentId }),
-      });
+      const response = await GET(request);
 
       expect(response.status).toBe(404);
       const data = await response.json();
@@ -387,9 +377,7 @@ describe("GET /api/compose/from-github/:jobId", () => {
         },
       );
 
-      const response = await GET(request, {
-        params: Promise.resolve({ jobId: otherJobId }),
-      });
+      const response = await GET(request);
 
       expect(response.status).toBe(404);
     });
@@ -402,9 +390,7 @@ describe("GET /api/compose/from-github/:jobId", () => {
         },
       );
 
-      const response = await GET(request, {
-        params: Promise.resolve({ jobId: "invalid-uuid" }),
-      });
+      const response = await GET(request);
 
       expect(response.status).toBe(400);
     });
