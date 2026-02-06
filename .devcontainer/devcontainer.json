@@ -27,7 +27,8 @@
     "source=mkcert,target=/home/vscode/.local/share/mkcert",
     "source=claude,target=/home/vscode/.local/share/claude",
     "source=codex,target=/home/vscode/.codex",
-    "source=pki,target=/home/vscode/.pki"
+    "source=pki,target=/home/vscode/.pki",
+    "source=cloudflared,target=/home/vscode/.cloudflared"
   ],
   "postCreateCommand": "bash .devcontainer/setup.sh",
   "postStartCommand": "gh auth setup-git",
