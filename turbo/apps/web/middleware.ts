@@ -41,6 +41,7 @@ export default clerkMiddleware(async (auth, request: NextRequest) => {
     request.nextUrl.pathname.startsWith("/v1/") ||
     request.nextUrl.pathname.startsWith("/_next/") ||
     request.nextUrl.pathname.startsWith("/cli-auth") ||
+    request.nextUrl.pathname.startsWith("/connector/") ||
     request.nextUrl.pathname.startsWith("/slack/") ||
     request.nextUrl.pathname.startsWith("/sign-in") ||
     request.nextUrl.pathname.startsWith("/sign-up") ||

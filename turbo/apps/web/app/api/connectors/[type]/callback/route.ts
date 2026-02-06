@@ -22,6 +22,24 @@ const log = logger("api:connectors:callback");
  * stores connector and redirects to success page
  */
 
+/**
+ * Get the origin URL, respecting proxy headers
+ */
+function getOrigin(request: Request): string {
+  const url = new URL(request.url);
+
+  // Check for forwarded headers (set by reverse proxies/tunnels)
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+
+  if (forwardedHost) {
+    const proto = forwardedProto || "https";
+    return `${proto}://${forwardedHost}`;
+  }
+
+  return url.origin;
+}
+
 // Cookie names for OAuth state and session
 const STATE_COOKIE_NAME = "connector_oauth_state";
 const SESSION_COOKIE_NAME = "connector_oauth_session";
@@ -58,23 +76,25 @@ export async function GET(
 
   const { type } = await params;
   const url = new URL(request.url);
+  const origin = getOrigin(request);
 
   // Validate connector type
   if (type !== "github") {
-    return redirectWithError(url.origin, type, "Unknown connector type");
+    return redirectWithError(origin, type, "Unknown connector type");
   }
 
   // Verify user is authenticated
   const userId = await getUserIdFromRequest(request);
+  log.debug("OAuth callback auth check", { userId, hasUserId: !!userId });
   if (!userId) {
-    return redirectWithError(url.origin, type, "Not authenticated");
+    return redirectWithError(origin, type, "Not authenticated");
   }
 
   const env = globalThis.services.env;
 
   // Check if GitHub OAuth is configured
   if (!env.GH_OAUTH_CLIENT_ID || !env.GH_OAUTH_CLIENT_SECRET) {
-    return redirectWithError(url.origin, type, "GitHub OAuth not configured");
+    return redirectWithError(origin, type, "GitHub OAuth not configured");
   }
 
   // Get state and session from cookies
@@ -91,7 +111,7 @@ export async function GET(
   if (error) {
     log.warn("OAuth error from provider", { error, errorDescription });
     return redirectWithError(
-      url.origin,
+      origin,
       type,
       errorDescription || error || "OAuth authorization failed",
       true,
@@ -100,23 +120,18 @@ export async function GET(
 
   // Validate required params
   if (!code) {
-    return redirectWithError(
-      url.origin,
-      type,
-      "Missing authorization code",
-      true,
-    );
+    return redirectWithError(origin, type, "Missing authorization code", true);
   }
 
   if (!state) {
-    return redirectWithError(url.origin, type, "Missing state parameter", true);
+    return redirectWithError(origin, type, "Missing state parameter", true);
   }
 
   // Validate state matches
   if (state !== savedState) {
     log.warn("State mismatch", { expected: savedState, received: state });
     return redirectWithError(
-      url.origin,
+      origin,
       type,
       "Invalid state - please try again",
       true,
@@ -125,7 +140,7 @@ export async function GET(
 
   try {
     // Build redirect URI (must match authorize endpoint)
-    const redirectUri = `${url.origin}/api/connectors/${type}/callback`;
+    const redirectUri = `${origin}/api/connectors/${type}/callback`;
 
     // Exchange code for token
     const { accessToken, scopes } = await exchangeGitHubCode(
@@ -137,6 +152,12 @@ export async function GET(
 
     // Fetch user info
     const userInfo = await fetchGitHubUserInfo(accessToken);
+
+    log.debug("Storing connector", {
+      userId,
+      type,
+      username: userInfo.username,
+    });
 
     // Store connector and secret
     const { created } = await upsertOAuthConnector(
@@ -168,9 +189,8 @@ export async function GET(
     }
 
     // Redirect to success page
-    const successUrl = new URL("/settings", url.origin);
-    successUrl.searchParams.set("connector", type);
-    successUrl.searchParams.set("status", "success");
+    const successUrl = new URL("/connector/success", origin);
+    successUrl.searchParams.set("type", type);
     successUrl.searchParams.set("username", userInfo.username);
 
     const response = NextResponse.redirect(successUrl.toString());
@@ -203,7 +223,7 @@ export async function GET(
         .where(eq(connectorSessions.id, sessionId));
     }
 
-    return redirectWithError(url.origin, type, errorMessage, true);
+    return redirectWithError(origin, type, errorMessage, true);
   }
 }
 
@@ -216,9 +236,8 @@ function redirectWithError(
   message: string,
   clearCookies = false,
 ): NextResponse {
-  const errorUrl = new URL("/settings", origin);
-  errorUrl.searchParams.set("connector", type);
-  errorUrl.searchParams.set("status", "error");
+  const errorUrl = new URL("/connector/error", origin);
+  errorUrl.searchParams.set("type", type);
   errorUrl.searchParams.set("message", message);
 
   const response = NextResponse.redirect(errorUrl.toString());

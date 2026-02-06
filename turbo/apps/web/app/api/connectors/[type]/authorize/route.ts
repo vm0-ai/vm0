@@ -11,6 +11,24 @@ import { buildGitHubAuthorizationUrl } from "../../../../../src/lib/connector/pr
  * Redirects users to the OAuth provider's authorization page
  */
 
+/**
+ * Get the origin URL, respecting proxy headers
+ */
+function getOrigin(request: Request): string {
+  const url = new URL(request.url);
+
+  // Check for forwarded headers (set by reverse proxies/tunnels)
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+
+  if (forwardedHost) {
+    const proto = forwardedProto || "https";
+    return `${proto}://${forwardedHost}`;
+  }
+
+  return url.origin;
+}
+
 // Cookie names for OAuth state and session
 const STATE_COOKIE_NAME = "connector_oauth_state";
 const SESSION_COOKIE_NAME = "connector_oauth_session";
@@ -85,9 +103,10 @@ export async function GET(
   // Generate state for CSRF protection
   const state = generateState();
 
-  // Build redirect URI
+  // Build redirect URI (use forwarded host if behind proxy/tunnel)
   const url = new URL(request.url);
-  const redirectUri = `${url.origin}/api/connectors/${type}/callback`;
+  const origin = getOrigin(request);
+  const redirectUri = `${origin}/api/connectors/${type}/callback`;
 
   // Check for session parameter (CLI device flow)
   const sessionId = url.searchParams.get("session");
