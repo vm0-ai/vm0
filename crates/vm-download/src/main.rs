@@ -300,4 +300,29 @@ mod tests {
         assert!(manifest.storages.is_empty());
         assert!(manifest.artifact.is_none());
     }
+
+    #[test]
+    fn test_parse_manifest_missing_storages() {
+        // storages field is optional due to #[serde(default)]
+        let json = r#"{}"#;
+        let manifest: Manifest = serde_json::from_str(json).unwrap();
+        assert!(manifest.storages.is_empty());
+    }
+
+    #[test]
+    fn test_is_valid_url_none() {
+        assert!(!is_valid_url(&None));
+    }
+
+    #[test]
+    fn test_is_valid_url_null_string() {
+        assert!(!is_valid_url(&Some("null".to_string())));
+    }
+
+    #[test]
+    fn test_is_valid_url_valid() {
+        assert!(is_valid_url(&Some(
+            "https://example.com/file.tar.gz".to_string()
+        )));
+    }
 }
