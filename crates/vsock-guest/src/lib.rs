@@ -10,9 +10,9 @@ use std::io::{self, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use vsock_proto::{
     self, MSG_ERROR, MSG_EXEC, MSG_EXEC_RESULT, MSG_PING, MSG_PONG, MSG_PROCESS_EXIT, MSG_READY,
@@ -78,8 +78,6 @@ fn build_exec_command(command: &str) -> Command {
     }
 }
 
-static START_TIME: OnceLock<Instant> = OnceLock::new();
-
 /// Truncate a command string for logging, preserving UTF-8 boundaries
 fn truncate_preview(s: &str) -> String {
     if s.len() <= COMMAND_PREVIEW_MAX_LEN {
@@ -109,18 +107,9 @@ fn extract_exit_code(status: ExitStatus) -> i32 {
     status.code().unwrap_or(1)
 }
 
-/// Log a message with timestamp
+/// Log a message to stderr
 pub fn log(level: &str, msg: &str) {
-    let start = START_TIME.get_or_init(Instant::now);
-    let elapsed = start.elapsed();
-    let total_ms = elapsed.as_millis() as u64;
-    let minutes = total_ms / 60000;
-    let seconds = (total_ms % 60000) / 1000;
-    let millis = total_ms % 1000;
-    eprintln!(
-        "[{:02}:{:02}.{:03}] [vsock-guest] [{}] {}",
-        minutes, seconds, millis, level, msg
-    );
+    eprintln!("[vsock-guest] [{level}] {msg}");
 }
 
 /// Run a child process with timeout. Returns (exit_code, stdout, stderr).
