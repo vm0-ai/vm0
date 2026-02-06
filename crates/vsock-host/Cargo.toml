@@ -1,0 +1,12 @@
+[package]
+name = "vsock-host"
+version = "0.1.0"
+edition = "2024"
+description = "Vsock host client for Firecracker VM communication"
+
+[dependencies]
+tokio.workspace = true
+vsock-proto.workspace = true
+
+[lints]
+workspace = true
