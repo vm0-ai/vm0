@@ -22,7 +22,7 @@ echo "✓ Locale configured"
 
 # Setup directories - fix ownership for all mounted volumes
 sudo mkdir -p /home/vscode/.local/bin /home/vscode/.pki
-sudo chown -R vscode:vscode /home/vscode/.config /home/vscode/.cache /home/vscode/.local /home/vscode/.pki
+sudo chown -R vscode:vscode /home/vscode/.config /home/vscode/.cache /home/vscode/.local /home/vscode/.pki /home/vscode/.cloudflared
 
 # Create ~/.claude symlink to ~/.config/claude for Claude Code IDE integration
 # The VS Code extension uses ~/.claude/ide/ while CLI respects CLAUDE_CONFIG_DIR
