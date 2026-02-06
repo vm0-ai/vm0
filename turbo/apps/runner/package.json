@@ -19,7 +19,7 @@
     "build": "tsup",
     "postbuild": "cp package.json dist/ && pnpm json -I -f dist/package.json -e 'this.name=\"@vm0/runner\"; delete this.private; delete this.scripts; delete this.devDependencies; delete this.dependencies[\"@vm0/core\"]; this.bin[\"vm0-runner\"]=\"index.js\"; this.files=[\".\"]'",
     "dev": "tsup --watch",
-    "pretest": "cargo build --manifest-path ../../../crates/Cargo.toml -p vsock-agent",
+    "pretest": "cargo build --manifest-path ../../../crates/Cargo.toml -p vsock-guest",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && eslint . --max-warnings 0",

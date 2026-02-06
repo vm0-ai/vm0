@@ -1,43 +1,24 @@
-//! Vsock Agent library for Firecracker VM host-guest communication.
+//! Vsock Guest library for Firecracker VM host-guest communication.
 //!
 //! This library provides the core functionality for host-guest IPC via vsock
 //! or Unix sockets. It can be used standalone or embedded in other binaries
 //! like vm-init.
 //!
-//! ## Binary Protocol
-//!
-//! ```text
-//! [4-byte length][1-byte type][4-byte seq][payload]
-//! ```
-//!
-//! - length: size of (type + seq + payload), big-endian
-//! - type: message type
-//! - seq: sequence number for request/response matching, big-endian
-//! - payload: type-specific binary data
-//!
-//! ## Message Types
-//!
-//! - `0x00` ready (G→H): Agent is ready
-//! - `0x01` ping (H→G): Keepalive request
-//! - `0x02` pong (G→H): Keepalive response
-//! - `0x03` exec (H→G): Execute command
-//! - `0x04` exec_result (G→H): Command result
-//! - `0x05` write_file (H→G): Write file
-//! - `0x06` write_file_result (G→H): Write result
-//! - `0x07` spawn_watch (H→G): Spawn process and monitor for exit
-//! - `0x08` spawn_watch_result (G→H): Acknowledgment with PID
-//! - `0x09` process_exit (G→H): Unsolicited notification when process exits
-//! - `0x0A` shutdown (H→G): Request graceful shutdown
-//! - `0x0B` shutdown_ack (G→H): Acknowledge shutdown after sync
-//! - `0xFF` error (G→H): Error message
+//! Protocol encoding/decoding is handled by the `vsock-proto` crate.
 
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
+
+use vsock_proto::{
+    self, MSG_ERROR, MSG_EXEC, MSG_EXEC_RESULT, MSG_PING, MSG_PONG, MSG_PROCESS_EXIT, MSG_READY,
+    MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT, MSG_WRITE_FILE,
+    MSG_WRITE_FILE_RESULT, ProtocolError, RawMessage,
+};
 
 /// Flag indicating shutdown was received (don't reconnect after shutdown)
 static SHUTDOWN_RECEIVED: AtomicBool = AtomicBool::new(false);
@@ -48,31 +29,19 @@ const VSOCK_PORT: u32 = 1000;
 #[cfg(target_os = "linux")]
 const VSOCK_CID_HOST: u32 = 2;
 
-// Protocol constants
-const HEADER_SIZE: usize = 4;
-const MAX_MESSAGE_SIZE: usize = 16 * 1024 * 1024; // 16MB
-const READ_BUFFER_SIZE: usize = 64 * 1024; // 64KB read buffer
-
-// Message types
-const MSG_READY: u8 = 0x00;
-const MSG_PING: u8 = 0x01;
-const MSG_PONG: u8 = 0x02;
-const MSG_EXEC: u8 = 0x03;
-const MSG_EXEC_RESULT: u8 = 0x04;
-const MSG_WRITE_FILE: u8 = 0x05;
-const MSG_WRITE_FILE_RESULT: u8 = 0x06;
-const MSG_SPAWN_WATCH: u8 = 0x07;
-const MSG_SPAWN_WATCH_RESULT: u8 = 0x08;
-const MSG_PROCESS_EXIT: u8 = 0x09;
-const MSG_SHUTDOWN: u8 = 0x0A;
-const MSG_SHUTDOWN_ACK: u8 = 0x0B;
-const MSG_ERROR: u8 = 0xFF;
+/// Read buffer size for the connection event loop (local tuning constant).
+const READ_BUFFER_SIZE: usize = 64 * 1024; // 64KB
 
 /// Exit code returned when command times out (same as bash/Python)
 const EXIT_CODE_TIMEOUT: i32 = 124;
 
 /// Maximum length for command preview in logs
 const COMMAND_PREVIEW_MAX_LEN: usize = 100;
+
+/// Convert a ProtocolError to an io::Error
+fn to_io_error(e: ProtocolError) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, e.to_string())
+}
 
 /// Get the user to execute commands as
 /// - Debug builds: None (run as current user via sh -c)
@@ -149,73 +118,9 @@ pub fn log(level: &str, msg: &str) {
     let seconds = (total_ms % 60000) / 1000;
     let millis = total_ms % 1000;
     eprintln!(
-        "[{:02}:{:02}.{:03}] [vsock-agent] [{}] {}",
+        "[{:02}:{:02}.{:03}] [vsock-guest] [{}] {}",
         minutes, seconds, millis, level, msg
     );
-}
-
-/// Encode a message with binary protocol
-fn encode(msg_type: u8, seq: u32, payload: &[u8]) -> Vec<u8> {
-    let body_len = 1 + 4 + payload.len(); // type + seq + payload
-    let mut buf = Vec::with_capacity(4 + body_len);
-    buf.extend_from_slice(&(body_len as u32).to_be_bytes());
-    buf.push(msg_type);
-    buf.extend_from_slice(&seq.to_be_bytes());
-    buf.extend_from_slice(payload);
-    buf
-}
-
-/// Encode an error message
-fn encode_error(seq: u32, error: &str) -> Vec<u8> {
-    let error_bytes = error.as_bytes();
-    let len = error_bytes.len().min(65535) as u16;
-    let mut payload = Vec::with_capacity(2 + len as usize);
-    payload.extend_from_slice(&len.to_be_bytes());
-    payload.extend_from_slice(&error_bytes[..len as usize]);
-    encode(MSG_ERROR, seq, &payload)
-}
-
-/// Encode exec_result message
-fn encode_exec_result(seq: u32, exit_code: i32, stdout: &[u8], stderr: &[u8]) -> Vec<u8> {
-    let mut payload = Vec::with_capacity(4 + 4 + stdout.len() + 4 + stderr.len());
-    payload.extend_from_slice(&exit_code.to_be_bytes());
-    payload.extend_from_slice(&(stdout.len() as u32).to_be_bytes());
-    payload.extend_from_slice(stdout);
-    payload.extend_from_slice(&(stderr.len() as u32).to_be_bytes());
-    payload.extend_from_slice(stderr);
-    encode(MSG_EXEC_RESULT, seq, &payload)
-}
-
-/// Encode write_file_result message
-fn encode_write_file_result(seq: u32, success: bool, error: &str) -> Vec<u8> {
-    let error_bytes = error.as_bytes();
-    let len = error_bytes.len().min(65535) as u16;
-    let mut payload = Vec::with_capacity(1 + 2 + len as usize);
-    payload.push(if success { 1 } else { 0 });
-    payload.extend_from_slice(&len.to_be_bytes());
-    if len > 0 {
-        payload.extend_from_slice(&error_bytes[..len as usize]);
-    }
-    encode(MSG_WRITE_FILE_RESULT, seq, &payload)
-}
-
-/// Encode spawn_watch_result message
-fn encode_spawn_watch_result(seq: u32, pid: u32) -> Vec<u8> {
-    let mut payload = Vec::with_capacity(4);
-    payload.extend_from_slice(&pid.to_be_bytes());
-    encode(MSG_SPAWN_WATCH_RESULT, seq, &payload)
-}
-
-/// Encode process_exit message (unsolicited notification, seq=0)
-fn encode_process_exit(pid: u32, exit_code: i32, stdout: &[u8], stderr: &[u8]) -> Vec<u8> {
-    let mut payload = Vec::with_capacity(4 + 4 + 4 + stdout.len() + 4 + stderr.len());
-    payload.extend_from_slice(&pid.to_be_bytes());
-    payload.extend_from_slice(&exit_code.to_be_bytes());
-    payload.extend_from_slice(&(stdout.len() as u32).to_be_bytes());
-    payload.extend_from_slice(stdout);
-    payload.extend_from_slice(&(stderr.len() as u32).to_be_bytes());
-    payload.extend_from_slice(stderr);
-    encode(MSG_PROCESS_EXIT, 0, &payload) // seq=0 for unsolicited messages
 }
 
 /// Run a child process with timeout. Returns (exit_code, stdout, stderr).
@@ -272,23 +177,7 @@ fn wait_with_timeout(child: Child, timeout_ms: u32) -> (i32, Vec<u8>, Vec<u8>) {
 }
 
 /// Handle exec message
-fn handle_exec(payload: &[u8]) -> (i32, Vec<u8>, Vec<u8>) {
-    if payload.len() < 8 {
-        return (1, Vec::new(), b"Invalid exec payload".to_vec());
-    }
-
-    let timeout_ms = u32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]);
-    let cmd_len = u32::from_be_bytes([payload[4], payload[5], payload[6], payload[7]]) as usize;
-
-    if payload.len() < 8 + cmd_len {
-        return (1, Vec::new(), b"Invalid exec payload: truncated".to_vec());
-    }
-
-    let command = match std::str::from_utf8(&payload[8..8 + cmd_len]) {
-        Ok(s) => s,
-        Err(_) => return (1, Vec::new(), b"Invalid UTF-8 in command".to_vec()),
-    };
-
+fn handle_exec(timeout_ms: u32, command: &str) -> (i32, Vec<u8>, Vec<u8>) {
     log(
         "INFO",
         &format!(
@@ -337,39 +226,7 @@ fn handle_exec(payload: &[u8]) -> (i32, Vec<u8>, Vec<u8>) {
 }
 
 /// Handle write_file message
-fn handle_write_file(payload: &[u8]) -> (bool, String) {
-    if payload.len() < 3 {
-        return (false, "Invalid write_file payload".to_string());
-    }
-
-    let path_len = u16::from_be_bytes([payload[0], payload[1]]) as usize;
-    if payload.len() < 2 + path_len + 1 + 4 {
-        return (false, "Invalid write_file payload: too short".to_string());
-    }
-
-    let path = match std::str::from_utf8(&payload[2..2 + path_len]) {
-        Ok(s) => s,
-        Err(_) => return (false, "Invalid UTF-8 in path".to_string()),
-    };
-
-    let flags = payload[2 + path_len];
-    let content_len = u32::from_be_bytes([
-        payload[3 + path_len],
-        payload[4 + path_len],
-        payload[5 + path_len],
-        payload[6 + path_len],
-    ]) as usize;
-
-    if payload.len() < 7 + path_len + content_len {
-        return (
-            false,
-            "Invalid write_file payload: content truncated".to_string(),
-        );
-    }
-
-    let content = &payload[7 + path_len..7 + path_len + content_len];
-    let use_sudo = (flags & 0x01) != 0;
-
+fn handle_write_file(path: &str, content: &[u8], use_sudo: bool) -> (bool, String) {
     log(
         "INFO",
         &format!(
@@ -437,7 +294,7 @@ fn handle_write_file(payload: &[u8]) -> (bool, String) {
 }
 
 /// Handle shutdown message - sync filesystems and acknowledge
-fn handle_shutdown(seq: u32) -> Vec<u8> {
+fn handle_shutdown(seq: u32) -> io::Result<Vec<u8>> {
     log("INFO", "Shutdown requested, syncing filesystems...");
     unsafe {
         libc::sync();
@@ -445,33 +302,22 @@ fn handle_shutdown(seq: u32) -> Vec<u8> {
     log("INFO", "Sync complete");
     // Set flag so run() knows not to reconnect after connection closes
     SHUTDOWN_RECEIVED.store(true, Ordering::SeqCst);
-    encode(MSG_SHUTDOWN_ACK, seq, &[])
+    vsock_proto::encode(MSG_SHUTDOWN_ACK, seq, &[]).map_err(to_io_error)
 }
 
 /// Handle spawn_watch message - spawn process and monitor in background
 /// Returns immediate acknowledgment with PID, then sends process_exit when done
-fn handle_spawn_watch(payload: &[u8], seq: u32, writer: Arc<Mutex<UnixStream>>) -> Vec<u8> {
-    if payload.len() < 8 {
-        return encode_error(seq, "Invalid spawn_watch payload");
-    }
-
-    let timeout_ms = u32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]);
-    let cmd_len = u32::from_be_bytes([payload[4], payload[5], payload[6], payload[7]]) as usize;
-
-    if payload.len() < 8 + cmd_len {
-        return encode_error(seq, "Invalid spawn_watch payload: truncated");
-    }
-
-    let command = match std::str::from_utf8(&payload[8..8 + cmd_len]) {
-        Ok(s) => s.to_string(),
-        Err(_) => return encode_error(seq, "Invalid UTF-8 in command"),
-    };
-
+fn handle_spawn_watch(
+    timeout_ms: u32,
+    command: &str,
+    seq: u32,
+    writer: Arc<Mutex<UnixStream>>,
+) -> io::Result<Vec<u8>> {
     log(
         "INFO",
         &format!(
             "spawn_watch: {} (timeout={}ms)",
-            truncate_preview(&command),
+            truncate_preview(command),
             timeout_ms
         ),
     );
@@ -480,14 +326,14 @@ fn handle_spawn_watch(payload: &[u8], seq: u32, writer: Arc<Mutex<UnixStream>>) 
     #[cfg(unix)]
     let child = {
         use std::os::unix::process::CommandExt;
-        build_exec_command(&command)
+        build_exec_command(command)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .process_group(0)
             .spawn()
     };
     #[cfg(not(unix))]
-    let child = build_exec_command(&command)
+    let child = build_exec_command(command)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn();
@@ -525,7 +371,15 @@ fn handle_spawn_watch(payload: &[u8], seq: u32, writer: Arc<Mutex<UnixStream>>) 
                 );
 
                 // Send process_exit notification
-                let exit_msg = encode_process_exit(pid, result.0, &result.1, &result.2);
+                let payload = vsock_proto::encode_process_exit(pid, result.0, &result.1, &result.2);
+                // seq=0 for unsolicited messages
+                let exit_msg = match vsock_proto::encode(MSG_PROCESS_EXIT, 0, &payload) {
+                    Ok(msg) => msg,
+                    Err(e) => {
+                        log("ERROR", &format!("Failed to encode process_exit: {}", e));
+                        return;
+                    }
+                };
                 let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
                 if let Err(e) = w.write_all(&exit_msg) {
                     log("ERROR", &format!("Failed to send process_exit: {}", e));
@@ -533,103 +387,68 @@ fn handle_spawn_watch(payload: &[u8], seq: u32, writer: Arc<Mutex<UnixStream>>) 
             });
 
             // Return immediate acknowledgment with PID
-            encode_spawn_watch_result(seq, pid)
+            let payload = vsock_proto::encode_spawn_watch_result(pid);
+            vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, seq, &payload).map_err(to_io_error)
         }
-        Err(e) => encode_error(seq, &format!("Failed to spawn: {}", e)),
+        Err(e) => {
+            let payload = vsock_proto::encode_error(&format!("Failed to spawn: {}", e));
+            vsock_proto::encode(MSG_ERROR, seq, &payload).map_err(to_io_error)
+        }
     }
 }
 
-/// Handle incoming message and return response
-fn handle_message(msg_type: u8, seq: u32, payload: &[u8]) -> Option<Vec<u8>> {
+/// Handle incoming message and return response.
+///
+/// `MSG_SPAWN_WATCH` is handled separately in `handle_connection` because it
+/// needs the writer `Arc` for background process-exit notifications.
+fn handle_message(msg: &RawMessage) -> io::Result<Option<Vec<u8>>> {
     log(
         "INFO",
-        &format!("Received: type=0x{:02X} seq={}", msg_type, seq),
+        &format!("Received: type=0x{:02X} seq={}", msg.msg_type, msg.seq),
     );
 
-    match msg_type {
-        MSG_PING => Some(encode(MSG_PONG, seq, &[])),
+    match msg.msg_type {
+        MSG_PING => Ok(Some(
+            vsock_proto::encode(MSG_PONG, msg.seq, &[]).map_err(to_io_error)?,
+        )),
         MSG_EXEC => {
-            let (exit_code, stdout, stderr) = handle_exec(payload);
-            Some(encode_exec_result(seq, exit_code, &stdout, &stderr))
+            let (timeout_ms, command) =
+                vsock_proto::decode_exec(&msg.payload).map_err(to_io_error)?;
+            let (exit_code, stdout, stderr) = handle_exec(timeout_ms, command);
+            let payload = vsock_proto::encode_exec_result(exit_code, &stdout, &stderr);
+            Ok(Some(
+                vsock_proto::encode(MSG_EXEC_RESULT, msg.seq, &payload).map_err(to_io_error)?,
+            ))
         }
         MSG_WRITE_FILE => {
-            let (success, error) = handle_write_file(payload);
-            Some(encode_write_file_result(seq, success, &error))
+            let (path, content, use_sudo) =
+                vsock_proto::decode_write_file(&msg.payload).map_err(to_io_error)?;
+            let (success, error) = handle_write_file(path, content, use_sudo);
+            let payload = vsock_proto::encode_write_file_result(success, &error);
+            Ok(Some(
+                vsock_proto::encode(MSG_WRITE_FILE_RESULT, msg.seq, &payload)
+                    .map_err(to_io_error)?,
+            ))
         }
-        MSG_SHUTDOWN => Some(handle_shutdown(seq)),
-        _ => Some(encode_error(
-            seq,
-            &format!("Unknown message type: 0x{:02X}", msg_type),
-        )),
-    }
-}
-
-/// Message decoder with buffering
-struct Decoder {
-    buf: Vec<u8>,
-}
-
-impl Decoder {
-    fn new() -> Self {
-        // Pre-allocate buffer to avoid frequent reallocations
-        // 64KB matches the read buffer size in handle_connection
-        Self {
-            buf: Vec::with_capacity(READ_BUFFER_SIZE),
+        MSG_SHUTDOWN => Ok(Some(handle_shutdown(msg.seq)?)),
+        _ => {
+            let payload =
+                vsock_proto::encode_error(&format!("Unknown message type: 0x{:02X}", msg.msg_type));
+            Ok(Some(
+                vsock_proto::encode(MSG_ERROR, msg.seq, &payload).map_err(to_io_error)?,
+            ))
         }
-    }
-
-    /// Decode messages from data. Returns Err on protocol error (caller should reconnect).
-    fn decode(&mut self, data: &[u8]) -> std::io::Result<Vec<(u8, u32, Vec<u8>)>> {
-        self.buf.extend_from_slice(data);
-        let mut messages = Vec::new();
-
-        while self.buf.len() >= HEADER_SIZE {
-            let length =
-                u32::from_be_bytes([self.buf[0], self.buf[1], self.buf[2], self.buf[3]]) as usize;
-
-            if length > MAX_MESSAGE_SIZE {
-                log("ERROR", &format!("Message too large: {}", length));
-                self.buf.clear();
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    format!("Message too large: {}", length),
-                ));
-            }
-
-            if length < 5 {
-                log("ERROR", &format!("Message too small: {}", length));
-                self.buf.clear();
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    format!("Message too small: {}", length),
-                ));
-            }
-
-            let total = HEADER_SIZE + length;
-            if self.buf.len() < total {
-                break;
-            }
-
-            let msg_type = self.buf[4];
-            let seq = u32::from_be_bytes([self.buf[5], self.buf[6], self.buf[7], self.buf[8]]);
-            let payload = self.buf[9..total].to_vec();
-
-            messages.push((msg_type, seq, payload));
-            self.buf.drain(..total);
-        }
-
-        Ok(messages)
     }
 }
 
 /// Connect to vsock (Linux only - this binary runs inside Firecracker VM)
 #[cfg(target_os = "linux")]
-pub fn connect_vsock() -> std::io::Result<UnixStream> {
+pub fn connect_vsock() -> io::Result<UnixStream> {
     use std::os::unix::io::FromRawFd;
 
     let fd = unsafe { libc::socket(libc::AF_VSOCK, libc::SOCK_STREAM, 0) };
     if fd < 0 {
-        return Err(std::io::Error::last_os_error());
+        return Err(io::Error::last_os_error());
     }
 
     let addr = libc::sockaddr_vm {
@@ -650,7 +469,7 @@ pub fn connect_vsock() -> std::io::Result<UnixStream> {
 
     if ret < 0 {
         unsafe { libc::close(fd) };
-        return Err(std::io::Error::last_os_error());
+        return Err(io::Error::last_os_error());
     }
 
     Ok(unsafe { UnixStream::from_raw_fd(fd) })
@@ -658,31 +477,31 @@ pub fn connect_vsock() -> std::io::Result<UnixStream> {
 
 /// Stub for non-Linux platforms (for IDE support)
 #[cfg(not(target_os = "linux"))]
-pub fn connect_vsock() -> std::io::Result<UnixStream> {
-    Err(std::io::Error::new(
-        std::io::ErrorKind::Unsupported,
+pub fn connect_vsock() -> io::Result<UnixStream> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
         "vsock is only supported on Linux",
     ))
 }
 
 /// Connect to Unix socket (for testing)
-pub fn connect_unix(path: &str) -> std::io::Result<UnixStream> {
+pub fn connect_unix(path: &str) -> io::Result<UnixStream> {
     UnixStream::connect(path)
 }
 
 /// Handle connection - the main event loop
 /// Uses separate reader/writer to avoid deadlock between main loop and background threads
-pub fn handle_connection(stream: UnixStream) -> std::io::Result<()> {
+pub fn handle_connection(stream: UnixStream) -> io::Result<()> {
     // Clone the stream to get separate reader and writer
     // This avoids deadlock: reader can block while writer sends process_exit
     let mut reader = stream.try_clone()?;
     let writer = Arc::new(Mutex::new(stream));
 
-    let mut decoder = Decoder::new();
+    let mut decoder = vsock_proto::Decoder::new();
 
     // Send ready signal
     {
-        let ready = encode(MSG_READY, 0, &[]);
+        let ready = vsock_proto::encode(MSG_READY, 0, &[]).map_err(to_io_error)?;
         let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
         w.write_all(&ready)?;
     }
@@ -697,17 +516,24 @@ pub fn handle_connection(stream: UnixStream) -> std::io::Result<()> {
             break;
         }
 
-        for (msg_type, seq, payload) in decoder.decode(&buf[..n])? {
+        for msg in decoder.decode(&buf[..n]).map_err(to_io_error)? {
             // Handle spawn_watch separately since it needs the writer Arc
-            let response = if msg_type == MSG_SPAWN_WATCH {
-                Some(handle_spawn_watch(&payload, seq, Arc::clone(&writer)))
+            let response = if msg.msg_type == MSG_SPAWN_WATCH {
+                let (timeout_ms, command) =
+                    vsock_proto::decode_exec(&msg.payload).map_err(to_io_error)?;
+                Some(handle_spawn_watch(
+                    timeout_ms,
+                    command,
+                    msg.seq,
+                    Arc::clone(&writer),
+                )?)
             } else {
-                handle_message(msg_type, seq, &payload)
+                handle_message(&msg)?
             };
 
-            if let Some(msg) = response {
+            if let Some(response) = response {
                 let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
-                w.write_all(&msg)?;
+                w.write_all(&response)?;
             }
         }
     }
@@ -721,11 +547,11 @@ const MAX_RECONNECT_ATTEMPTS: u32 = 50;
 /// Delay between reconnection attempts (10ms for fast reconnect after snapshot restore)
 const RECONNECT_DELAY_MS: u64 = 10;
 
-/// Run the vsock agent with the given options.
+/// Run the vsock guest agent with the given options.
 /// Includes reconnection logic for snapshot restore scenarios where
 /// the connection is lost when VM is paused and resumed.
-pub fn run(unix_socket: Option<&str>) -> std::io::Result<()> {
-    log("INFO", "Starting vsock agent...");
+pub fn run(unix_socket: Option<&str>) -> io::Result<()> {
+    log("INFO", "Starting vsock guest...");
 
     let mut attempts = 0u32;
 
@@ -766,8 +592,8 @@ pub fn run(unix_socket: Option<&str>) -> std::io::Result<()> {
                             MAX_RECONNECT_ATTEMPTS
                         ),
                     );
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::ConnectionReset,
+                    return Err(io::Error::new(
+                        io::ErrorKind::ConnectionReset,
                         "Max reconnect attempts reached",
                     ));
                 }

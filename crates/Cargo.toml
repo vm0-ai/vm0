@@ -1,11 +1,11 @@
 [workspace]
 resolver = "2"
-members = ["vsock-agent", "vsock-proto", "vsock-host", "vm-init", "vm-common", "vm-download"]
+members = ["vsock-guest", "vsock-proto", "vsock-host", "vm-init", "vm-common", "vm-download"]
 
 [workspace.dependencies]
 # Internal crates
 vm-common = { path = "vm-common" }
-vsock-agent = { path = "vsock-agent" }
+vsock-guest = { path = "vsock-guest" }
 vsock-proto = { path = "vsock-proto" }
 
 # External dependencies

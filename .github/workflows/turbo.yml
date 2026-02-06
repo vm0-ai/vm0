@@ -379,8 +379,8 @@ jobs:
       - name: Build Core Package
         working-directory: turbo
         run: pnpm turbo run build --filter=@vm0/core
-      - name: Build vsock-agent (for runner tests)
-        run: cargo build --manifest-path crates/Cargo.toml -p vsock-agent
+      - name: Build vsock-guest (for runner tests)
+        run: cargo build --manifest-path crates/Cargo.toml -p vsock-guest
       - name: Test Other Packages
         working-directory: turbo
         run: pnpm vitest run --project=@vm0/runner --project=@vm0/core --project=@vm0/ui --project=site

@@ -64,7 +64,7 @@ interface FirecrackerConfigParams {
  *   - numa=off: disable NUMA (single node)
  *   - mitigations=off: disable CPU vulnerability mitigations
  *   - noresume: skip hibernation resume check
- *   - init=/sbin/vm-init: use vm-init (Rust binary) for filesystem setup and vsock-agent
+ *   - init=/sbin/vm-init: use vm-init (Rust binary) for filesystem setup and vsock-guest
  *   - ip=...: network configuration (fixed IPs from SNAPSHOT_NETWORK)
  */
 export function buildBootArgs(): string {

@@ -737,14 +737,15 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "nix",
- "vsock-agent",
+ "vsock-guest",
 ]
 
 [[package]]
-name = "vsock-agent"
+name = "vsock-guest"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "vsock-proto",
 ]
 
 [[package]]

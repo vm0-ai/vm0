@@ -113,7 +113,7 @@ Before running unit tests, ensure dependencies are installed and Rust binary is 
 # 1. Install Node.js dependencies
 cd turbo && pnpm install
 
-# 2. Build Rust vsock-agent binary (required for runner tests)
+# 2. Build Rust vsock-guest binary (required for runner tests)
 cd ../crates && cargo build
 ```
 
@@ -235,7 +235,7 @@ Mock Claude location: `turbo/packages/core/src/sandbox/scripts/src/mock-claude.t
 cd turbo && pnpm install
 ```
 
-#### Problem: "Agent binary not found: vsock-agent"
+#### Problem: "Agent binary not found: vsock-guest"
 
 **Cause**: Rust binary not compiled
 

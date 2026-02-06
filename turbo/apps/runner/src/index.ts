@@ -1,6 +1,6 @@
 // Deployment: Added buildkit cache retry mechanism (issue #1328)
 // CI: Refactored E2E tests with setup_file() - parallel tests use 45s timeout (issue #1555)
-// Perf: Replaced Python vsock-agent with Rust for 16x faster VM startup (issue #1668)
+// Perf: Replaced Python vsock-guest with Rust for 16x faster VM startup (issue #1668)
 // Perf: Added snapshot support for fast VM boot from pre-warmed state (issue #1600)
 // CI: Trigger runner CI pipeline
 import { program } from "commander";

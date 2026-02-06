@@ -23,7 +23,7 @@ pub fn shutdown_requested() -> bool {
 ///
 /// NOTE: We intentionally do NOT set SIGCHLD to SIG_IGN because that causes
 /// the kernel to auto-reap children, which can race with waitpid() calls in
-/// vsock-agent and cause them to fail with ECHILD.
+/// vsock-guest and cause them to fail with ECHILD.
 pub fn setup_signal_handlers() {
     unsafe {
         libc::signal(libc::SIGTERM, handle_shutdown_signal as *const () as usize);

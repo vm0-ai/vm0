@@ -12,9 +12,9 @@ The init process (PID 1) for Firecracker VMs. This binary is installed at `/sbin
 
 1. **Filesystem initialization** - Mounts squashfs (read-only base) and ext4 (read-write overlay), sets up overlayfs, and performs pivot_root
 2. **PID 1 duties** - Signal forwarding and zombie process reaping
-3. **Host communication** - Runs vsock-agent for host-guest IPC
+3. **Host communication** - Runs vsock-guest for host-guest IPC
 
-### vsock-agent
+### vsock-guest
 
 A library and standalone binary for host-guest communication via vsock or Unix sockets.
 
@@ -59,7 +59,7 @@ cargo build --release --target aarch64-unknown-linux-musl -p vm-init
 │  │  vm-init (PID 1)                                      │  │
 │  │   ├── init.rs    - Filesystem setup (overlayfs)       │  │
 │  │   ├── pid1.rs    - Signal handling, zombie reaping    │  │
-│  │   └── main.rs    - Orchestration + vsock-agent        │  │
+│  │   └── main.rs    - Orchestration + vsock-guest        │  │
 │  └───────────────────────────────────────────────────────┘  │
 │                           │                                  │
 │                      vsock (CID=2, port=1000)               │
@@ -74,14 +74,14 @@ cargo build --release --target aarch64-unknown-linux-musl -p vm-init
 
 ## Testing
 
-The vsock-agent binary supports `--unix-socket` flag for testing without actual vsock:
+The vsock-guest binary supports `--unix-socket` flag for testing without actual vsock:
 
 ```bash
 # Build for tests
-cargo build -p vsock-agent
+cargo build -p vsock-guest
 
 # Used by turbo/apps/runner tests
-./target/debug/vsock-agent --unix-socket /tmp/test.sock
+./target/debug/vsock-guest --unix-socket /tmp/test.sock
 ```
 
 Protocol encoding/decoding and message handling tests are located in the TypeScript runner:

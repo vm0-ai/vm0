@@ -6,7 +6,7 @@
 //! ## Connection Flow
 //!
 //! 1. Host creates UDS listener at `{vsock_path}_{port}`
-//! 2. Guest boots and vsock-agent connects to CID=2
+//! 2. Guest boots and vsock-guest connects to CID=2
 //! 3. Firecracker forwards connection to Host's UDS listener
 //! 4. Host accepts, receives `ready`, sends `ping`, waits for `pong`
 //! 5. Connection established — host can send commands
