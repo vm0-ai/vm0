@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.10.0](https://github.com/vm0-ai/vm0/compare/web-v12.9.0...web-v12.10.0) (2026-02-06)
+
+
+### Features
+
+* **slack:** add direct message chat capability ([#2489](https://github.com/vm0-ai/vm0/issues/2489)) ([b5a01bf](https://github.com/vm0-ai/vm0/commit/b5a01bfb927d360b73bbf28b5e9e370cdb5127ce))
+
 ## [12.9.0](https://github.com/vm0-ai/vm0/compare/web-v12.8.0...web-v12.9.0) (2026-02-06)
 
 
