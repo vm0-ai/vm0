@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["vsock-agent", "vm-init"]
+members = ["vsock-agent", "vm-init", "vm-common", "vm-download"]
 
 [profile.release]
 lto = true
