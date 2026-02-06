@@ -48,7 +48,7 @@ export function OnboardingModal() {
       : "linear-gradient(91deg, rgba(255, 200, 176, 0.26) 0%, rgba(166, 222, 255, 0.26) 51%, rgba(255, 231, 162, 0.26) 100%), linear-gradient(90deg, hsl(var(--background)) 0%, hsl(var(--background)) 100%)";
 
   return (
-    <Dialog open={isOpen}>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && closeModal()}>
       <DialogContent
         className="sm:max-w-[600px] p-6 border-border rounded-[10px]"
         style={{
