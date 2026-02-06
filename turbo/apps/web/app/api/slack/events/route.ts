@@ -6,6 +6,7 @@ import {
   getSlackSignatureHeaders,
 } from "../../../../src/lib/slack/verify";
 import { handleAppMention } from "../../../../src/lib/slack/handlers/mention";
+import { handleDirectMessage } from "../../../../src/lib/slack/handlers/direct-message";
 
 /**
  * Slack Events API Endpoint
@@ -15,6 +16,7 @@ import { handleAppMention } from "../../../../src/lib/slack/handlers/mention";
  * Handles incoming events from Slack:
  * - URL verification challenge (for initial setup)
  * - app_mention events (when users @mention the bot)
+ * - message events with channel_type "im" (direct messages to the bot)
  *
  * Important: Must respond within 3 seconds to avoid Slack retries.
  * Uses Next.js after() to process events in the background while keeping
@@ -37,12 +39,25 @@ interface SlackAppMentionEvent {
   thread_ts?: string;
 }
 
+interface SlackDirectMessageEvent {
+  type: "message";
+  channel_type: "im";
+  user: string;
+  text: string;
+  ts: string;
+  channel: string;
+  event_ts: string;
+  thread_ts?: string;
+  subtype?: string;
+  bot_id?: string;
+}
+
 interface SlackEventCallback {
   type: "event_callback";
   token: string;
   team_id: string;
   api_app_id: string;
-  event: SlackAppMentionEvent;
+  event: SlackAppMentionEvent | SlackDirectMessageEvent;
   event_id: string;
   event_time: number;
   authorizations?: Array<{
@@ -125,6 +140,29 @@ export async function POST(request: Request) {
           threadTs: event.thread_ts,
         }).catch((error) => {
           console.error("Error handling app_mention:", error);
+        }),
+      );
+    }
+
+    // Handle direct message events
+    if (
+      event.type === "message" &&
+      event.channel_type === "im" &&
+      !event.subtype &&
+      !event.bot_id
+    ) {
+      initServices();
+
+      after(
+        handleDirectMessage({
+          workspaceId: payload.team_id,
+          channelId: event.channel,
+          userId: event.user,
+          messageText: event.text,
+          messageTs: event.ts,
+          threadTs: event.thread_ts,
+        }).catch((error) => {
+          console.error("Error handling direct_message:", error);
         }),
       );
     }

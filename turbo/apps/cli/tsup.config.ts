@@ -22,9 +22,12 @@ export default defineConfig({
   },
   // Bundle workspace packages
   noExternal: [/@vm0\/.*/],
-  // Inject version from package.json at build time
+  // Inject version and default Sentry DSN from package.json/env at build time
   define: {
     __CLI_VERSION__: JSON.stringify(pkg.version),
+    __DEFAULT_SENTRY_DSN__: JSON.stringify(
+      process.env.DEFAULT_SENTRY_DSN ?? "",
+    ),
   },
   onSuccess: isWatchMode
     ? async () => {

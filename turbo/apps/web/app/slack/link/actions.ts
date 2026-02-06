@@ -138,7 +138,7 @@ export async function linkSlackAccount(
     })
     .returning({ id: slackUserLinks.id });
 
-  // Restore orphaned bindings from previous logout
+  // Restore orphaned bindings from previous disconnect
   if (newUserLink) {
     const restoredCount = await globalThis.services.db
       .update(slackBindings)
@@ -192,13 +192,13 @@ async function sendSuccessMessage(
   await client.chat.postEphemeral({
     channel: channelId,
     user: slackUserId,
-    text: `Successfully logged in to VM0!`,
+    text: `Successfully connected to VM0!`,
     blocks: [
       {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `:white_check_mark: *Successfully logged in to VM0!*\n\nYou can now:\n• Use \`/vm0 agent link\` to link an agent\n• Mention \`@VM0\` to interact with your agents`,
+          text: `:white_check_mark: *Successfully connected to VM0!*\n\nYou can now:\n• Use \`/vm0 agent link\` to link an agent\n• Mention \`@VM0\` to interact with your agents`,
         },
       },
     ],

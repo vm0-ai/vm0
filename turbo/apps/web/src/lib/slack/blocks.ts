@@ -559,7 +559,7 @@ export function buildLoginPromptMessage(
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "To use VM0 in Slack, please login first.",
+        text: "To use VM0 in Slack, please connect your account first.",
       },
     },
     {
@@ -569,7 +569,7 @@ export function buildLoginPromptMessage(
           type: "button",
           text: {
             type: "plain_text",
-            text: "Login",
+            text: "Connect",
           },
           url: loginUrl,
           action_id: "login_prompt",
@@ -653,7 +653,7 @@ export function buildHelpMessage(): (Block | KnownBlock)[] {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "*Account*\n• `/vm0 login` - Log in to VM0\n• `/vm0 logout` - Log out of VM0",
+        text: "*Account*\n• `/vm0 connect` - Connect to VM0\n• `/vm0 disconnect` - Disconnect from VM0",
       },
     },
     {
@@ -819,7 +819,7 @@ export function buildLoginMessage(loginUrl: string): (Block | KnownBlock)[] {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "Please login to use VM0 in this workspace.",
+        text: "Please connect your account to use VM0 in this workspace.",
       },
     },
     {
@@ -829,7 +829,7 @@ export function buildLoginMessage(loginUrl: string): (Block | KnownBlock)[] {
           type: "button",
           text: {
             type: "plain_text",
-            text: "Login",
+            text: "Connect",
           },
           url: loginUrl,
           action_id: "login",

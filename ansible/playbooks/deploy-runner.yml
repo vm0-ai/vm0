@@ -216,7 +216,7 @@
         mode: '0755'
       tags: [prepare]
 
-    - name: Copy deploy scripts and vm-init binary
+    - name: Copy deploy scripts and Rust binaries
       copy:
         src: "{{ item }}"
         dest: "{{ runner_base_dir }}/deploy-runner/"
@@ -227,6 +227,7 @@
         - "{{ playbook_dir }}/../../turbo/apps/runner/scripts/deploy/*.sh"
         - "{{ playbook_dir }}/../../turbo/apps/runner/scripts/deploy/*.py"
         - "{{ playbook_dir }}/../../crates/target/aarch64-unknown-linux-musl/release/vm-init"
+        - "{{ playbook_dir }}/../../crates/target/aarch64-unknown-linux-musl/release/vm-download"
       tags: [prepare]
 
     - name: Copy rootfs build files
@@ -344,11 +345,11 @@
       tags: [prepare]
 
     # Calculate hash of all files that affect rootfs content
-    # Must match files copied above: Dockerfile, *.sh, vm-init (binary), *.mjs, proxy CA cert
+    # Must match files copied above: Dockerfile, *.sh, vm-init, vm-download (binaries), *.mjs, proxy CA cert
     - name: Calculate rootfs build inputs hash
       shell: |
         find "{{ runner_base_dir }}/deploy-runner/" \
-          \( -name "Dockerfile" -o -name "*.sh" -o -name "vm-init" -o -name "*.mjs" -o -name "*.pem" \) \
+          \( -name "Dockerfile" -o -name "*.sh" -o -name "vm-init" -o -name "vm-download" -o -name "*.mjs" -o -name "*.pem" \) \
           -type f -print0 | sort -z | xargs -0 cat | sha256sum | cut -d' ' -f1
       args:
         executable: /bin/bash

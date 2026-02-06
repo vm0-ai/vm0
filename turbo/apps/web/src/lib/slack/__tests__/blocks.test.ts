@@ -224,7 +224,7 @@ describe("buildLoginPromptMessage", () => {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: expect.stringContaining("login"),
+        text: expect.stringContaining("connect your account"),
       },
     });
     expect(blocks[1]).toMatchObject({
@@ -232,7 +232,7 @@ describe("buildLoginPromptMessage", () => {
       elements: [
         {
           type: "button",
-          text: { type: "plain_text", text: "Login" },
+          text: { type: "plain_text", text: "Connect" },
           url: loginUrl,
           style: "primary",
         },
@@ -264,7 +264,7 @@ describe("buildHelpMessage", () => {
     expect(usageBlock).toBeDefined();
   });
 
-  it("should use 'Log in' and 'Log out' descriptions for login/logout commands", () => {
+  it("should use 'Connect' and 'Disconnect' descriptions for connect/disconnect commands", () => {
     const blocks = buildHelpMessage();
 
     // Find the account section
@@ -272,17 +272,17 @@ describe("buildHelpMessage", () => {
       (b) =>
         b.type === "section" &&
         "text" in b &&
-        b.text?.text?.includes("/vm0 login"),
+        b.text?.text?.includes("/vm0 connect"),
     );
     expect(accountBlock).toBeDefined();
 
     const text = (accountBlock as SectionBlock).text?.text ?? "";
-    // Should use "Log in to VM0" not "Link your VM0 account"
-    expect(text).toContain("Log in to VM0");
-    expect(text).toContain("Log out of VM0");
+    // Should use "Connect to VM0" not "Log in to VM0"
+    expect(text).toContain("Connect to VM0");
+    expect(text).toContain("Disconnect from VM0");
     // Should NOT contain old descriptions
-    expect(text).not.toContain("Link your VM0 account");
-    expect(text).not.toContain("Unlink your account");
+    expect(text).not.toContain("Log in to VM0");
+    expect(text).not.toContain("Log out of VM0");
   });
 });
 

@@ -62,3 +62,6 @@ export {
   extractMessageContent,
   parseExplicitAgentSelection,
 } from "./context";
+
+// Handlers
+export { handleDirectMessage } from "./handlers/direct-message";

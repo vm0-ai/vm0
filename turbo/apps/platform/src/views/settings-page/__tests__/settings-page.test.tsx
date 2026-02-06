@@ -4,7 +4,7 @@ import { http, HttpResponse } from "msw";
 import { setupPage } from "../../../__tests__/page-helper";
 import { testContext } from "../../../signals/__tests__/test-helpers";
 import { pathname$ } from "../../../signals/route";
-import { screen } from "@testing-library/react";
+import { screen, within, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 
 const context = testContext();
@@ -26,52 +26,15 @@ describe("settings page", () => {
     expect(context.store.get(pathname$)).toBe("/");
   });
 
-  it("can edit and save user claude oauth token", async () => {
-    const { store } = context;
-
+  it("shows configured providers in the list", async () => {
     await setupPage({ context, path: "/settings" });
-    expect(store.get(pathname$)).toBe("/settings");
+    expect(context.store.get(pathname$)).toBe("/settings");
 
-    const input = screen.queryByPlaceholderText(/sk-ant.*/i);
-    expect(input).toBeInTheDocument();
-
-    expect(
-      screen.queryByRole("button", { name: /save/i }),
-    ).not.toBeInTheDocument();
-
-    await user.click(input!);
-    await user.keyboard("sk-ant-oauth-token-12345");
-
-    const button = screen.getByRole("button", { name: /save/i });
-    await user.click(button);
-
-    expect(button).not.toBeInTheDocument();
-    // After saving, the input should show the masked token
-    expect(input).toHaveValue("sk-ant-oat-••••••••••••••••");
+    // The default mock has a claude-code-oauth-token provider
+    expect(screen.getByText("Claude Code OAuth token")).toBeInTheDocument();
   });
 
-  it("can cancel input", async () => {
-    const { store } = context;
-
-    await setupPage({ context, path: "/settings" });
-    expect(store.get(pathname$)).toBe("/settings");
-
-    const input = screen.getByPlaceholderText(/sk-ant.*/i);
-    await user.click(input);
-    await user.keyboard("sk-ant-oauth-token-12345");
-
-    expect(input).toHaveValue("sk-ant-oauth-token-12345");
-
-    const button = screen.getByRole("button", { name: /cancel/i });
-    await user.click(button);
-
-    expect(button).not.toBeInTheDocument();
-
-    // After canceling, the input should show the masked token (not empty)
-    expect(input).toHaveValue("sk-ant-oat-••••••••••••••••");
-  });
-
-  it('should be empty if use does not have "claude-code-oauth-token" provider', async () => {
+  it("shows empty state when no providers configured", async () => {
     server.use(
       http.get("/api/model-providers", () => {
         return HttpResponse.json({ modelProviders: [] });
@@ -80,36 +43,78 @@ describe("settings page", () => {
 
     await setupPage({ context, path: "/settings" });
 
-    // When no token exists, placeholder should be "sk-ant-oat..."
-    const input = screen.getByPlaceholderText("sk-ant-oat...");
-    expect(input).toBeInTheDocument();
+    // Should show "New model provider" button but no provider rows
+    expect(screen.getByText("New model provider")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Claude Code OAuth token"),
+    ).not.toBeInTheDocument();
   });
 
-  it('can delete existing "claude-code-oauth-token" provider', async () => {
-    const { store } = context;
+  it("can add a new provider via the dialog", async () => {
+    server.use(
+      http.get("/api/model-providers", () => {
+        return HttpResponse.json({ modelProviders: [] });
+      }),
+    );
 
     await setupPage({ context, path: "/settings" });
-    expect(store.get(pathname$)).toBe("/settings");
 
-    const input = screen.getByPlaceholderText(/sk-ant.*/i);
+    // Click "Add more model provider" to open dropdown
+    const addButton = screen.getByText("Add more model provider");
+    await user.click(addButton);
 
-    // Changed from "delete claude code oauth token" to "Clear token"
-    const deleteButton = screen.getByRole("button", {
-      name: /clear token/i,
+    // Select "Anthropic API key" from the menu
+    const anthropicOption = await screen.findByText("Anthropic API key");
+    await user.click(anthropicOption);
+
+    // Dialog should open with API key input
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText("Add your Anthropic API key"),
+    ).toBeInTheDocument();
+
+    // Fill in the API key
+    const input = within(dialog).getByPlaceholderText("Enter your API key");
+    await user.click(input);
+    await user.keyboard("sk-ant-api-key-12345");
+
+    // Submit
+    const addProviderButton = within(dialog).getByRole("button", {
+      name: /^add$/i,
     });
+    await user.click(addProviderButton);
+
+    // Dialog should close after save
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("can delete a provider via kebab menu", async () => {
+    await setupPage({ context, path: "/settings" });
+
+    // Open kebab menu for the existing provider
+    const optionsButton = screen.getByRole("button", {
+      name: /provider options/i,
+    });
+    await user.click(optionsButton);
+
+    // Click Delete
+    const deleteButton = await screen.findByText("Delete");
     await user.click(deleteButton);
 
-    // After deletion, placeholder should still be "sk-ant-oat..."
-    expect(input).toHaveProperty("placeholder", "sk-ant-oat...");
+    // Confirm deletion in dialog
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/are you sure/i)).toBeInTheDocument();
 
-    await user.click(input);
-    await user.keyboard("sk-ant-oauth-token-12345");
+    const confirmButton = within(dialog).getByRole("button", {
+      name: /delete/i,
+    });
+    await user.click(confirmButton);
 
-    expect(input).toHaveValue("sk-ant-oauth-token-12345");
-    const button = screen.getByRole("button", { name: /save/i });
-    await user.click(button);
-
-    // After saving, should show masked token
-    expect(input).toHaveValue("sk-ant-oat-••••••••••••••••");
+    // Dialog should close
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
   });
 });

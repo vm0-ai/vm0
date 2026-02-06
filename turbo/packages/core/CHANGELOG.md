@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.2.1](https://github.com/vm0-ai/vm0/compare/core-v8.2.0...core-v8.2.1) (2026-02-06)
+
+
+### Bug Fixes
+
+* **cli:** support repository root GitHub URLs in vm0 compose ([#2427](https://github.com/vm0-ai/vm0/issues/2427)) ([6c0ba38](https://github.com/vm0-ai/vm0/commit/6c0ba385bdca8a63d1bff03840d0595150d78cd4)), closes [#2423](https://github.com/vm0-ai/vm0/issues/2423)
+* **core:** handle trailing slashes in GitHub URL parsing ([#2459](https://github.com/vm0-ai/vm0/issues/2459)) ([10226c7](https://github.com/vm0-ai/vm0/commit/10226c74372cfd3a9e9f08295ad086c41e80acc7)), closes [#2455](https://github.com/vm0-ai/vm0/issues/2455)
+
 ## [8.2.0](https://github.com/vm0-ai/vm0/compare/core-v8.1.0...core-v8.2.0) (2026-02-04)
 
 

@@ -1,12 +1,15 @@
 /**
- * Agent execution scripts configuration
+ * Native binary paths in the Firecracker VM
  *
- * Note: Script content is no longer exported here - scripts are pre-bundled
- * in the rootfs image during build. See: apps/runner/scripts/deploy/build-rootfs.sh
- *
- * Only paths are exported for runtime usage (e.g., running download script).
+ * These are statically compiled binaries for performance-critical operations.
+ * Only used in Firecracker runner (not E2B).
  */
-export { SCRIPT_PATHS } from "@vm0/core";
+export const VM_BINARY_PATHS = {
+  /** PID 1 init process - sets up overlayfs and spawns vsock-agent */
+  vmInit: "/sbin/vm-init",
+  /** Storage download - parallel downloads with streaming extraction */
+  vmDownload: "/usr/local/bin/vm-download",
+} as const;
 
 /**
  * Environment loader script path

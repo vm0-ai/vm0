@@ -254,9 +254,22 @@ async function getRunOutput(runId: string): Promise<string | undefined> {
 | order by sequenceNumber desc
 | limit 1`;
 
+  interface PermissionDenial {
+    tool_name: string;
+    tool_input?: {
+      questions?: Array<{
+        question: string;
+        header?: string;
+        options?: Array<{ label: string; description?: string }>;
+        multiSelect?: boolean;
+      }>;
+    };
+  }
+
   interface ResultEvent {
     eventData: {
       result?: string;
+      permission_denials?: PermissionDenial[];
     };
   }
 
@@ -265,7 +278,56 @@ async function getRunOutput(runId: string): Promise<string | undefined> {
     return undefined;
   }
 
-  return events[0]?.eventData?.result;
+  const event = events[0];
+  const result = event?.eventData?.result;
+  const denials = event?.eventData?.permission_denials;
+
+  // When AskUserQuestion was denied (sandbox/non-interactive mode),
+  // format the questions as readable text so the Slack user can see
+  // what the agent wanted to ask.
+  const askDenials = denials?.filter((d) => d.tool_name === "AskUserQuestion");
+  if (askDenials && askDenials.length > 0) {
+    const formatted = formatAskUserDenials(askDenials);
+    if (formatted) {
+      return result ? `${result}\n\n${formatted}` : formatted;
+    }
+  }
+
+  return result;
+}
+
+export function formatAskUserDenials(
+  denials: Array<{
+    tool_input?: {
+      questions?: Array<{
+        question: string;
+        header?: string;
+        options?: Array<{ label: string; description?: string }>;
+        multiSelect?: boolean;
+      }>;
+    };
+  }>,
+): string | undefined {
+  const parts: string[] = [];
+
+  for (const denial of denials) {
+    const questions = denial.tool_input?.questions;
+    if (!questions || questions.length === 0) continue;
+
+    for (const q of questions) {
+      parts.push(q.question);
+      if (q.options) {
+        for (const opt of q.options) {
+          const desc = opt.description ? ` — ${opt.description}` : "";
+          parts.push(`  • ${opt.label}${desc}`);
+        }
+      }
+    }
+  }
+
+  if (parts.length === 0) return undefined;
+
+  return `The agent needs your input to proceed:\n\n${parts.join("\n")}`;
 }
 
 /**

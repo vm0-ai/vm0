@@ -39,6 +39,7 @@ const nextConfig = {
   experimental: {
     optimizePackageImports: ["next-intl"],
   },
+  allowedDevOrigins: ["*.vm7.ai"],
   serverExternalPackages: ["ably"],
 };
 

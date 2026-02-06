@@ -1,5 +1,27 @@
 # Changelog
 
+## [9.21.0](https://github.com/vm0-ai/vm0/compare/cli-v9.20.2...cli-v9.21.0) (2026-02-06)
+
+
+### Features
+
+* **cli:** add interactive mode and --body flag for secret set command ([#2441](https://github.com/vm0-ai/vm0/issues/2441)) ([8d75b85](https://github.com/vm0-ai/vm0/commit/8d75b85bbe7a2c29b586ac832f040d4c073ee2ce))
+* **cli:** integrate sentry for error monitoring ([#2416](https://github.com/vm0-ai/vm0/issues/2416)) ([d6b2937](https://github.com/vm0-ai/vm0/commit/d6b29374bd6842e6e531b11c207a231cb1bce539))
+
+
+### Bug Fixes
+
+* **cli:** map 401/403 responses to user-friendly error messages ([#2475](https://github.com/vm0-ai/vm0/issues/2475)) ([ed384fb](https://github.com/vm0-ai/vm0/commit/ed384fb109c32046335f789f42974261d8c05fec))
+* **cli:** support repository root GitHub URLs in vm0 compose ([#2427](https://github.com/vm0-ai/vm0/issues/2427)) ([6c0ba38](https://github.com/vm0-ai/vm0/commit/6c0ba385bdca8a63d1bff03840d0595150d78cd4)), closes [#2423](https://github.com/vm0-ai/vm0/issues/2423)
+* **core:** handle trailing slashes in GitHub URL parsing ([#2459](https://github.com/vm0-ai/vm0/issues/2459)) ([10226c7](https://github.com/vm0-ai/vm0/commit/10226c74372cfd3a9e9f08295ad086c41e80acc7)), closes [#2455](https://github.com/vm0-ai/vm0/issues/2455)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.2.1
+
 ## [9.20.2](https://github.com/vm0-ai/vm0/compare/cli-v9.20.1...cli-v9.20.2) (2026-02-05)
 
 

@@ -2,12 +2,13 @@ import { getApiUrl, getToken } from "../config";
 import type { ApiErrorResponse } from "@vm0/core";
 
 /**
- * Custom API request error with code
+ * Custom API request error with code and HTTP status
  */
 export class ApiRequestError extends Error {
   constructor(
     message: string,
     public code: string,
+    public status: number,
   ) {
     super(message);
     this.name = "ApiRequestError";
@@ -63,14 +64,37 @@ export async function getClientConfig(): Promise<{
 }
 
 /**
- * Handle API error responses and throw appropriate error
+ * Handle API error responses and throw appropriate error.
+ *
+ * By default, 401/403 responses are mapped to user-friendly messages.
+ * Pass `useServerMessage: true` to preserve the original server error
+ * message (e.g., for domain-specific 403 like "slug is reserved").
  */
 export function handleError(
-  result: { body: unknown },
+  result: { status: number; body: unknown },
   defaultMessage: string,
+  options?: { useServerMessage?: boolean },
 ): never {
+  if (!options?.useServerMessage) {
+    if (result.status === 401) {
+      throw new ApiRequestError(
+        "Not authenticated. Run: vm0 auth login",
+        "UNAUTHORIZED",
+        401,
+      );
+    }
+
+    if (result.status === 403) {
+      throw new ApiRequestError(
+        "An unexpected network issue occurred",
+        "FORBIDDEN",
+        403,
+      );
+    }
+  }
+
   const errorBody = result.body as ApiErrorResponse;
   const message = errorBody.error?.message || defaultMessage;
   const code = errorBody.error?.code || "UNKNOWN";
-  throw new ApiRequestError(message, code);
+  throw new ApiRequestError(message, code, result.status);
 }

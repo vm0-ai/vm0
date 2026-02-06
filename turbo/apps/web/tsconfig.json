@@ -1,6 +1,7 @@
 {
   "extends": "@vm0/typescript-config/nextjs.json",
   "compilerOptions": {
+    "allowImportingTsExtensions": true,
     "plugins": [
       {
         "name": "next"
