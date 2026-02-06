@@ -296,7 +296,7 @@ async function getRunOutput(runId: string): Promise<string | undefined> {
   return result;
 }
 
-function formatAskUserDenials(
+export function formatAskUserDenials(
   denials: Array<{
     tool_input?: {
       questions?: Array<{
