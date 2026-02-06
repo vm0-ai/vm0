@@ -4,7 +4,7 @@ import { initClient } from "@ts-rest/core";
 import {
   connectorSessionsContract,
   connectorSessionByIdContract,
-  type ConnectorType,
+  connectorTypeSchema,
   type ApiErrorResponse,
 } from "@vm0/core";
 import { getApiUrl, getToken } from "../../lib/api/config";
@@ -37,14 +37,15 @@ export const connectCommand = new Command()
   .description("Connect a third-party service (e.g., GitHub)")
   .argument("<type>", "Connector type (e.g., github)")
   .action(async (type: string) => {
-    // Validate connector type
-    if (type !== "github") {
+    // Validate connector type with runtime validation
+    const parseResult = connectorTypeSchema.safeParse(type);
+    if (!parseResult.success) {
       console.error(chalk.red(`Unknown connector type: ${type}`));
       console.error("Available connectors: github");
       process.exit(1);
     }
 
-    const connectorType = type as ConnectorType;
+    const connectorType = parseResult.data;
     const apiUrl = await getApiUrl();
     const headers = await getHeaders();
 
