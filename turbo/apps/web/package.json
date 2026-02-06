@@ -37,6 +37,7 @@
     "ably": "^2.17.0",
     "croner": "^9.1.0",
     "drizzle-orm": "^0.44.5",
+    "import-in-the-middle": "^2.0.6",
     "next": "^15.5.7",
     "next-intl": "^4.6.1",
     "p-limit": "^7.2.0",
@@ -47,6 +48,7 @@
     "react-markdown": "^10.1.0",
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1",
+    "require-in-the-middle": "^8.0.1",
     "server-only": "^0.0.1",
     "zod": "^4.1.12"
   },
