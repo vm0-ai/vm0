@@ -9,6 +9,7 @@ import {
 import { upsertOAuthConnector } from "../../../../../src/lib/connector/connector-service";
 import { connectorSessions } from "../../../../../src/db/schema/connector-session";
 import { logger } from "../../../../../src/lib/logger";
+import { getOrigin } from "../../../../../src/lib/request/get-origin";
 import type { ConnectorType } from "@vm0/core";
 
 const log = logger("api:connectors:callback");
@@ -21,24 +22,6 @@ const log = logger("api:connectors:callback");
  * Handles OAuth callback from provider, exchanges code for token,
  * stores connector and redirects to success page
  */
-
-/**
- * Get the origin URL, respecting proxy headers
- */
-function getOrigin(request: Request): string {
-  const url = new URL(request.url);
-
-  // Check for forwarded headers (set by reverse proxies/tunnels)
-  const forwardedHost = request.headers.get("x-forwarded-host");
-  const forwardedProto = request.headers.get("x-forwarded-proto");
-
-  if (forwardedHost) {
-    const proto = forwardedProto || "https";
-    return `${proto}://${forwardedHost}`;
-  }
-
-  return url.origin;
-}
 
 // Cookie names for OAuth state and session
 const STATE_COOKIE_NAME = "connector_oauth_state";

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserIdFromRequest } from "../../../../../src/lib/auth/get-user-id";
 import { buildGitHubAuthorizationUrl } from "../../../../../src/lib/connector/providers/github";
+import { getOrigin } from "../../../../../src/lib/request/get-origin";
 
 /**
  * Connector OAuth Authorize Endpoint
@@ -10,24 +11,6 @@ import { buildGitHubAuthorizationUrl } from "../../../../../src/lib/connector/pr
  *
  * Redirects users to the OAuth provider's authorization page
  */
-
-/**
- * Get the origin URL, respecting proxy headers
- */
-function getOrigin(request: Request): string {
-  const url = new URL(request.url);
-
-  // Check for forwarded headers (set by reverse proxies/tunnels)
-  const forwardedHost = request.headers.get("x-forwarded-host");
-  const forwardedProto = request.headers.get("x-forwarded-proto");
-
-  if (forwardedHost) {
-    const proto = forwardedProto || "https";
-    return `${proto}://${forwardedHost}`;
-  }
-
-  return url.origin;
-}
 
 // Cookie names for OAuth state and session
 const STATE_COOKIE_NAME = "connector_oauth_state";

@@ -42,6 +42,10 @@ import { DELETE as deleteModelProviderRoute } from "../../app/api/model-provider
 import { GET as listModelProvidersRoute } from "../../app/api/model-providers/route";
 import { GET as listSecretsRoute } from "../../app/api/secrets/route";
 import { POST as addPermissionRoute } from "../../app/api/agent/composes/[id]/permissions/route";
+import { connectors } from "../db/schema/connector";
+import { connectorSessions } from "../db/schema/connector-session";
+import { secrets } from "../db/schema/secret";
+import type { ConnectorType } from "@vm0/core";
 
 /**
  * Helper to create a NextRequest for testing.
@@ -1029,4 +1033,99 @@ export async function createTestPermission(
       `Failed to create permission: ${error.error?.message || response.status}`,
     );
   }
+}
+
+/**
+ * Create a test connector directly in the database.
+ * Used for setting up test data for connector API tests.
+ *
+ * @param scopeId - The scope ID to associate with the connector
+ * @param options - Optional overrides for connector properties
+ */
+export async function createTestConnector(
+  scopeId: string,
+  options?: {
+    type?: ConnectorType;
+    authMethod?: "oauth" | "pat";
+    externalId?: string;
+    externalUsername?: string;
+    externalEmail?: string;
+    oauthScopes?: string[];
+  },
+): Promise<typeof connectors.$inferSelect> {
+  const type = options?.type ?? "github";
+
+  const [connector] = await globalThis.services.db
+    .insert(connectors)
+    .values({
+      scopeId,
+      type,
+      authMethod: options?.authMethod ?? "oauth",
+      externalId: options?.externalId ?? "12345",
+      externalUsername: options?.externalUsername ?? "testuser",
+      externalEmail: options?.externalEmail ?? "test@example.com",
+      oauthScopes: JSON.stringify(options?.oauthScopes ?? ["repo"]),
+    })
+    .returning();
+
+  // Also create the associated secret
+  const secretName = `${type.toUpperCase()}_ACCESS_TOKEN`;
+  await globalThis.services.db.insert(secrets).values({
+    scopeId,
+    name: secretName,
+    type: "connector",
+    encryptedValue: "encrypted-test-token",
+    description: `OAuth token for ${type} connector`,
+  });
+
+  return connector!;
+}
+
+/**
+ * Generate a unique session code for testing (format: XXXX-XXXX, max 9 chars)
+ */
+function generateTestSessionCode(): string {
+  const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  let code = "";
+  for (let i = 0; i < 8; i++) {
+    if (i === 4) code += "-";
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return code;
+}
+
+/**
+ * Create a test connector session directly in the database.
+ * Used for setting up test data for session status tests.
+ *
+ * @param userId - The user ID to associate with the session
+ * @param type - The connector type
+ * @param options - Session configuration options
+ */
+export async function createTestConnectorSession(
+  userId: string,
+  type: ConnectorType,
+  options?: {
+    status?: "pending" | "complete" | "error";
+    errorMessage?: string;
+    expiresAt?: Date;
+    completedAt?: Date;
+  },
+): Promise<typeof connectorSessions.$inferSelect> {
+  const expiresAt = options?.expiresAt ?? new Date(Date.now() + 15 * 60 * 1000); // 15 minutes default
+
+  const [session] = await globalThis.services.db
+    .insert(connectorSessions)
+    .values({
+      code: generateTestSessionCode(),
+      type,
+      userId,
+      status: options?.status ?? "pending",
+      errorMessage: options?.errorMessage,
+      expiresAt,
+      completedAt: options?.completedAt,
+    })
+    .returning();
+
+  return session!;
 }
