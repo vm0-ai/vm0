@@ -33,48 +33,60 @@ interface ProviderUIOverrides {
   authMethodLabelOverrides?: Record<string, string>;
 }
 
-function multiProviderDescription(): ProviderUIOverrides {
-  return {
-    description:
-      "Supports multiple providers and models behind a single endpoint.",
-  };
-}
-
 function getOverrides(
   type: ModelProviderType,
 ): ProviderUIOverrides | undefined {
   if (type === "claude-code-oauth-token") {
     return {
       label: "Claude Code OAuth token",
-      description: "Use your Claude Code OAuth token for agent execution.",
+      description:
+        "Leverage Claude Code's exceptional intelligence to build and run agents.",
     };
   }
   if (type === "anthropic-api-key") {
     return {
       label: "Anthropic API key",
-      description: "Use a personal Anthropic API key for direct model access.",
+      description:
+        "Power your agents with Claude models for advanced reasoning and analysis.",
     };
   }
   if (type === "openrouter-api-key") {
     return {
-      ...multiProviderDescription(),
+      description:
+        "Route to 200+ models from multiple providers through unified interface.",
       defaultModel: "anthropic/claude-sonnet-4.5",
     };
   }
-  if (
-    type === "moonshot-api-key" ||
-    type === "minimax-api-key" ||
-    type === "zai-api-key"
-  ) {
-    return multiProviderDescription();
+  if (type === "moonshot-api-key") {
+    return {
+      description:
+        "Process extensive context with up to 200k tokens for complex workflows.",
+    };
+  }
+  if (type === "minimax-api-key") {
+    return {
+      description:
+        "Generate multimodal content including text, images, and voice.",
+    };
+  }
+  if (type === "zai-api-key") {
+    return {
+      description:
+        "Access Zhipu AI's ChatGLM models with excellent performance at competitive pricing.",
+    };
   }
   if (type === "deepseek-api-key") {
-    return { label: "Deepseek", ...multiProviderDescription() };
+    return {
+      label: "Deepseek",
+      description:
+        "Execute deep reasoning and analytical tasks with cost-effective performance.",
+    };
   }
   if (type === "azure-foundry") {
     return {
       label: "Azure foundry portal",
-      ...multiProviderDescription(),
+      description:
+        "Deploy enterprise-grade AI with Azure security and compliance.",
       authMethodLabelOverrides: { "api-key": "API key" },
       secretFieldOverrides: {
         ANTHROPIC_FOUNDRY_API_KEY: {
@@ -90,7 +102,8 @@ function getOverrides(
   }
   if (type === "aws-bedrock") {
     return {
-      ...multiProviderDescription(),
+      description:
+        "Scale foundation models with AWS enterprise security and infrastructure.",
       authMethodLabelOverrides: {
         "api-key": "Bedrock API key",
         "access-keys": "IAM access keys",

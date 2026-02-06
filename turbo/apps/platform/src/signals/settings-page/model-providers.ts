@@ -96,7 +96,10 @@ export const actionPromise$ = computed((get) => get(internalActionPromise$));
 
 export const configuredProviders$ = computed(async (get) => {
   const { modelProviders } = await get(modelProviders$);
-  return modelProviders;
+  // Sort by creation time (oldest first)
+  return [...modelProviders].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  );
 });
 
 export const defaultProvider$ = computed(async (get) => {
