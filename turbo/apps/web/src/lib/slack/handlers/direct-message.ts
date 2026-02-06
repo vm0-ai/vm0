@@ -69,8 +69,9 @@ export async function handleDirectMessage(
     const client = createSlackClient(botToken);
     const botUserId = installation.botUserId;
 
-    // Thread timestamp for replies (use existing thread or start new one)
-    const threadTs = context.threadTs ?? context.messageTs;
+    // In DMs, only use thread_ts when replying within an existing thread.
+    // Top-level DM messages should get flat chat replies (no thread).
+    const threadTs = context.threadTs;
 
     // 2. Check if user is linked
     const [userLink] = await globalThis.services.db
