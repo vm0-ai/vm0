@@ -1,0 +1,8 @@
+[package]
+name = "vsock-proto"
+version = "0.1.0"
+edition = "2024"
+description = "Vsock binary protocol for host-guest communication"
+
+[lints]
+workspace = true

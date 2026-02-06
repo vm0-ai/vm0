@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.2.2](https://github.com/vm0-ai/vm0/compare/core-v8.2.1...core-v8.2.2) (2026-02-06)
+
+
+### Bug Fixes
+
+* **docs:** update aws bedrock setup guide url ([#2495](https://github.com/vm0-ai/vm0/issues/2495)) ([8026a4a](https://github.com/vm0-ai/vm0/commit/8026a4a185ebea25738d580ebe8cda5ea067d59e))
+
+## [8.2.1](https://github.com/vm0-ai/vm0/compare/core-v8.2.0...core-v8.2.1) (2026-02-06)
+
+
+### Bug Fixes
+
+* **cli:** support repository root GitHub URLs in vm0 compose ([#2427](https://github.com/vm0-ai/vm0/issues/2427)) ([6c0ba38](https://github.com/vm0-ai/vm0/commit/6c0ba385bdca8a63d1bff03840d0595150d78cd4)), closes [#2423](https://github.com/vm0-ai/vm0/issues/2423)
+* **core:** handle trailing slashes in GitHub URL parsing ([#2459](https://github.com/vm0-ai/vm0/issues/2459)) ([10226c7](https://github.com/vm0-ai/vm0/commit/10226c74372cfd3a9e9f08295ad086c41e80acc7)), closes [#2455](https://github.com/vm0-ai/vm0/issues/2455)
+
 ## [8.2.0](https://github.com/vm0-ai/vm0/compare/core-v8.1.0...core-v8.2.0) (2026-02-04)
 
 

@@ -1534,7 +1534,7 @@ agents:
     });
   });
 
-  describe("--json option", () => {
+  describe("--porcelain option", () => {
     it("should output JSON result on success", async () => {
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
@@ -1555,7 +1555,7 @@ agents:
         }),
       );
 
-      await composeCommand.parseAsync(["node", "cli", "--json"]);
+      await composeCommand.parseAsync(["node", "cli", "--porcelain"]);
 
       // Find the JSON output call
       const jsonOutputCall = mockConsoleLog.mock.calls.find((call) => {
@@ -1579,7 +1579,7 @@ agents:
       });
     });
 
-    it("should suppress intermediate output in JSON mode", async () => {
+    it("should suppress intermediate output in porcelain mode", async () => {
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
         `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code\n    working_dir: /`,
@@ -1599,7 +1599,7 @@ agents:
         }),
       );
 
-      await composeCommand.parseAsync(["node", "cli", "--json"]);
+      await composeCommand.parseAsync(["node", "cli", "--porcelain"]);
 
       // Should not have "Uploading compose..." or "Compose created:" messages
       const allLogs = mockConsoleLog.mock.calls
@@ -1618,7 +1618,7 @@ agents:
     it("should output JSON error on failure", async () => {
       // No vm0.yaml file exists
       await expect(async () => {
-        await composeCommand.parseAsync(["node", "cli", "--json"]);
+        await composeCommand.parseAsync(["node", "cli", "--porcelain"]);
       }).rejects.toThrow("process.exit called");
 
       // Find the JSON error output
@@ -1636,8 +1636,8 @@ agents:
       expect(result.error).toContain("Config file not found");
     });
 
-    it("should imply --yes flag in JSON mode", async () => {
-      // Simple test: verify --json mode sets options.yes = true internally
+    it("should imply --yes flag in porcelain mode", async () => {
+      // Simple test: verify --porcelain mode sets options.yes = true internally
       // by checking that no confirmation prompts appear in JSON output
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
@@ -1658,7 +1658,7 @@ agents:
         }),
       );
 
-      await composeCommand.parseAsync(["node", "cli", "--json"]);
+      await composeCommand.parseAsync(["node", "cli", "--porcelain"]);
 
       // No prompt-related output should appear
       const allLogs = mockConsoleLog.mock.calls
@@ -1669,7 +1669,7 @@ agents:
       expect(allLogs.some((log) => log.includes("Approve"))).toBe(false);
     });
 
-    it("should skip auto-update in JSON mode", async () => {
+    it("should skip auto-update in porcelain mode", async () => {
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
         `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code\n    working_dir: /`,
@@ -1694,9 +1694,9 @@ agents:
         }),
       );
 
-      await composeCommand.parseAsync(["node", "cli", "--json"]);
+      await composeCommand.parseAsync(["node", "cli", "--porcelain"]);
 
-      // spawn should NOT be called for auto-update in JSON mode
+      // spawn should NOT be called for auto-update in porcelain mode
       expect(mockSpawn).not.toHaveBeenCalled();
     });
   });
@@ -2419,7 +2419,7 @@ agents:
     });
   });
 
-  describe("--json option with GitHub URL", () => {
+  describe("--porcelain option with GitHub URL", () => {
     it("should output JSON result for GitHub URL compose", async () => {
       const tempRoot = path.join(tempDir, "github-download");
       const cookbookDir = createMockCookbookDir(
@@ -2460,7 +2460,7 @@ agents:
         "cli",
         "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
         "--experimental-shared-compose",
-        "--json",
+        "--porcelain",
       ]);
 
       // Find the JSON output
@@ -2484,7 +2484,7 @@ agents:
       });
     });
 
-    it("should suppress intermediate output for GitHub URL in JSON mode", async () => {
+    it("should suppress intermediate output for GitHub URL in porcelain mode", async () => {
       const tempRoot = path.join(tempDir, "github-download");
       const cookbookDir = createMockCookbookDir(
         tempRoot,
@@ -2524,7 +2524,7 @@ agents:
         "cli",
         "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
         "--experimental-shared-compose",
-        "--json",
+        "--porcelain",
       ]);
 
       // Should not have "Downloading from GitHub..." message
@@ -2556,7 +2556,7 @@ agents:
           "cli",
           "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
           "--experimental-shared-compose",
-          "--json",
+          "--porcelain",
         ]);
       }).rejects.toThrow("process.exit called");
 

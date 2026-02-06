@@ -85,6 +85,56 @@ function createSlackEventRequest(event: {
   });
 }
 
+/** Create a signed Slack DM event request */
+function createSlackDmEventRequest(event: {
+  teamId: string;
+  channelId: string;
+  userId: string;
+  text: string;
+  ts: string;
+  threadTs?: string;
+  subtype?: string;
+  botId?: string;
+}): Request {
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const payload = {
+    type: "event_callback",
+    token: "test-token",
+    team_id: event.teamId,
+    api_app_id: "A123",
+    event: {
+      type: "message",
+      channel_type: "im",
+      user: event.userId,
+      text: event.text,
+      ts: event.ts,
+      channel: event.channelId,
+      event_ts: event.ts,
+      ...(event.threadTs && { thread_ts: event.threadTs }),
+      ...(event.subtype && { subtype: event.subtype }),
+      ...(event.botId && { bot_id: event.botId }),
+    },
+    event_id: "Ev456",
+    event_time: parseInt(timestamp),
+  };
+  const body = JSON.stringify(payload);
+
+  // Generate signature
+  const baseString = `v0:${timestamp}:${body}`;
+  const hmac = crypto.createHmac("sha256", TEST_SIGNING_SECRET);
+  const signature = `v0=${hmac.update(baseString).digest("hex")}`;
+
+  return new Request("http://localhost/api/slack/events", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-slack-signature": signature,
+      "x-slack-request-timestamp": timestamp,
+    },
+    body,
+  });
+}
+
 const SLACK_API = "https://slack.com/api";
 
 const slackHandlers = handlers({
@@ -394,6 +444,197 @@ describe("POST /api/slack/events", () => {
 
       // Then no messages should be sent (silent failure)
       expect(slackHandlers.mocked.postMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Scenario: DM bot as unlinked user", () => {
+    it("should post login prompt as direct message (not ephemeral)", async () => {
+      // Given I am a Slack user without a linked account
+      const { installation } = await givenSlackWorkspaceInstalled();
+
+      // When I send a DM to the bot
+      const request = createSlackDmEventRequest({
+        teamId: installation.slackWorkspaceId,
+        channelId: "D123",
+        userId: "U-unlinked-user",
+        text: "hello",
+        ts: "1234567890.123456",
+      });
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      // Then the login prompt should be posted as a direct message (not ephemeral)
+      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+      expect(slackHandlers.mocked.postEphemeral).not.toHaveBeenCalled();
+
+      const data = await getFormData(slackHandlers.mocked.postMessage);
+      expect(data.channel).toBe("D123");
+
+      // Check that blocks contain login URL
+      const blocks = JSON.parse((data.blocks as string) ?? "[]");
+      const loginButton = blocks
+        .flatMap(
+          (block: { type: string; elements?: Array<{ url?: string }> }) =>
+            block.type === "actions" ? (block.elements ?? []) : [],
+        )
+        .find((e: { url?: string }) => e.url?.includes("/slack/link"));
+
+      expect(loginButton).toBeDefined();
+    });
+  });
+
+  describe("Scenario: DM bot with no agents", () => {
+    it("should prompt user to link an agent", async () => {
+      // Given I am a linked Slack user with no agents
+      const { userLink, installation } = await givenLinkedSlackUser();
+
+      // When I send a DM to the bot
+      const request = createSlackDmEventRequest({
+        teamId: installation.slackWorkspaceId,
+        channelId: "D123",
+        userId: userLink.slackUserId,
+        text: "help me",
+        ts: "1234567890.123456",
+      });
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      // Then I should receive a message prompting to link an agent
+      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+
+      const data = await getFormData(slackHandlers.mocked.postMessage);
+      const text = (data.text as string) ?? "";
+      expect(text).toContain("don't have any agent linked");
+      expect(text).toContain("/vm0 agent link");
+    });
+  });
+
+  describe("Scenario: DM bot with single agent", () => {
+    it("should execute agent and post response", async () => {
+      // Given I am a linked Slack user with one agent
+      const { userLink, installation } = await givenLinkedSlackUser();
+      await givenUserHasAgent(userLink, {
+        agentName: "my-helper",
+        description: "A helpful assistant",
+      });
+
+      // When I send a DM to the bot
+      const request = createSlackDmEventRequest({
+        teamId: installation.slackWorkspaceId,
+        channelId: "D123",
+        userId: userLink.slackUserId,
+        text: "help me with this code",
+        ts: "1234567890.123456",
+      });
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      // Then:
+      // 1. Thinking reaction should be added
+      expect(slackHandlers.mocked.reactionsAdd).toHaveBeenCalledTimes(1);
+
+      // 2. Response message should be posted
+      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+
+      // 3. Response should include agent name in context block
+      const data = await getFormData(slackHandlers.mocked.postMessage);
+      const blocks = JSON.parse((data.blocks as string) ?? "[]") as Array<{
+        type: string;
+        elements?: Array<{ text?: string }>;
+      }>;
+      const contextBlocks = blocks.filter((b) => b.type === "context");
+      expect(contextBlocks.length).toBeGreaterThanOrEqual(1);
+      const agentContext = contextBlocks[0]!.elements?.[0]?.text;
+      expect(agentContext).toContain("my-helper");
+
+      // 4. Thinking reaction should be removed
+      expect(slackHandlers.mocked.reactionsRemove).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("Scenario: DM bot with greeting message", () => {
+    it("should route greeting to agent instead of showing welcome card", async () => {
+      // Given I am a linked Slack user with one agent
+      const { userLink, installation } = await givenLinkedSlackUser();
+      await givenUserHasAgent(userLink, {
+        agentName: "my-helper",
+        description: "A helpful assistant",
+      });
+
+      // When I send "hello" in DM (a greeting that triggers not_request in mentions)
+      const request = createSlackDmEventRequest({
+        teamId: installation.slackWorkspaceId,
+        channelId: "D123",
+        userId: userLink.slackUserId,
+        text: "hello",
+        ts: "1234567890.123456",
+      });
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      // Then the message should be routed to the agent (not show welcome card)
+      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+
+      const data = await getFormData(slackHandlers.mocked.postMessage);
+      const blocks = JSON.parse((data.blocks as string) ?? "[]") as Array<{
+        type: string;
+        elements?: Array<{ text?: string }>;
+      }>;
+      const contextBlocks = blocks.filter((b) => b.type === "context");
+      expect(contextBlocks.length).toBeGreaterThanOrEqual(1);
+      // Agent name should be in the response (not a welcome card)
+      const agentContext = contextBlocks[0]!.elements?.[0]?.text;
+      expect(agentContext).toContain("my-helper");
+    });
+  });
+
+  describe("Scenario: DM from bot (loop prevention)", () => {
+    it("should silently ignore messages with bot_id", async () => {
+      const { installation } = await givenSlackWorkspaceInstalled();
+
+      // When a bot message event arrives (has bot_id)
+      const request = createSlackDmEventRequest({
+        teamId: installation.slackWorkspaceId,
+        channelId: "D123",
+        userId: "U123",
+        text: "I am a bot reply",
+        ts: "1234567890.123456",
+        botId: "B999",
+      });
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      // Then no handler should be called (message silently ignored at route level)
+      expect(slackHandlers.mocked.postMessage).not.toHaveBeenCalled();
+      expect(slackHandlers.mocked.postEphemeral).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Scenario: DM with subtype (e.g. message_changed)", () => {
+    it("should silently ignore messages with subtype", async () => {
+      const { installation } = await givenSlackWorkspaceInstalled();
+
+      // When a message_changed event arrives (has subtype)
+      const request = createSlackDmEventRequest({
+        teamId: installation.slackWorkspaceId,
+        channelId: "D123",
+        userId: "U123",
+        text: "edited message",
+        ts: "1234567890.123456",
+        subtype: "message_changed",
+      });
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      // Then no handler should be called (message silently ignored at route level)
+      expect(slackHandlers.mocked.postMessage).not.toHaveBeenCalled();
+      expect(slackHandlers.mocked.postEphemeral).not.toHaveBeenCalled();
     });
   });
 });

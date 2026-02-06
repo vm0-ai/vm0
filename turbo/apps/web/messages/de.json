@@ -286,5 +286,10 @@
     "subscribe": "Abonnieren",
     "joinDiscord": "Discord beitreten",
     "shareArticle": "Artikel teilen"
+  },
+  "banner": {
+    "label": "Neu",
+    "message": "VM0 ist jetzt als öffentliche Beta verfügbar.",
+    "link": "Details anzeigen"
   }
 }

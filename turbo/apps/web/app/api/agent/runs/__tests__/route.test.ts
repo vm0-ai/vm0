@@ -15,6 +15,7 @@ import {
   getTestRun,
   completeTestRun,
   createTestPermission,
+  insertStalePendingRun,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -711,6 +712,53 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       } finally {
         vi.unstubAllEnvs();
       }
+    });
+
+    it("should not count stale pending runs toward concurrency limit", async () => {
+      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+
+      // Get a valid agentComposeVersionId from an existing compose
+      const { versionId } = await createTestCompose(uniqueId("stale"));
+
+      // Insert a stale "pending" run (20 minutes old, past the 15-min TTL)
+      // This simulates a run stuck in pending state that the cron job missed
+      await insertStalePendingRun(user.userId, versionId);
+
+      // New run should succeed because the stale pending run (>15min) is excluded
+      const run = await createTestRun(testComposeId, "Should not be blocked");
+      expect(run.status).toBe("running");
+    });
+
+    it("should still count running runs older than TTL toward concurrency limit", async () => {
+      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+
+      // Record time when run is created
+      const runCreationTime = Date.now();
+
+      // First run should succeed and stay running
+      const run1 = await createTestRun(testComposeId, "Long running task");
+      expect(run1.status).toBe("running");
+
+      // Advance time past the pending TTL (16 minutes)
+      // Running runs should STILL count regardless of age
+      context.mocks.dateNow.mockReturnValue(runCreationTime + 16 * 60 * 1000);
+
+      // Second run should still fail because the first run is "running"
+      // (running runs are always counted, even if older than TTL)
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: testComposeId,
+            prompt: "Should be blocked",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(429);
     });
 
     it("should fall back to default limit when CONCURRENT_RUN_LIMIT is invalid", async () => {

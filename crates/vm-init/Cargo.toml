@@ -2,12 +2,12 @@
 name = "vm-init"
 version = "0.1.0"
 edition = "2024"
-description = "VM init process for Firecracker - filesystem setup, PID 1, and vsock-agent"
+description = "VM init process for Firecracker - filesystem setup, PID 1, and vsock-guest"
 
 [dependencies]
-libc = "0.2"
-nix = { version = "0.31", default-features = false, features = ["mount", "fs"] }
-vsock-agent = { path = "../vsock-agent" }
+libc.workspace = true
+nix.workspace = true
+vsock-guest.workspace = true
 
 [lints]
 workspace = true

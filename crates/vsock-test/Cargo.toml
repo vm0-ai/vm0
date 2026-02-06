@@ -1,0 +1,12 @@
+[package]
+name = "vsock-test"
+version = "0.1.0"
+edition = "2024"
+
+[dev-dependencies]
+vsock-guest.workspace = true
+vsock-host.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

@@ -92,7 +92,7 @@ export async function executeJob(
     fs.mkdirSync(vmPaths.vsockDir(vmConfig.workDir), { recursive: true });
 
     // Start vsock listener BEFORE VM starts to avoid race condition
-    // Guest's vsock-agent connects immediately after boot/resume
+    // Guest's vsock-guest connects immediately after boot/resume
     const vsockPath = vmPaths.vsock(vmConfig.workDir);
     vsockClient = new VsockClient(vsockPath);
     const guest: GuestClient = vsockClient;

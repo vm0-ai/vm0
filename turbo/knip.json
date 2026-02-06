@@ -21,7 +21,9 @@
         "e2b",
         "@testing-library/react",
         "@types/tar",
-        "@slack/web-api"
+        "@slack/web-api",
+        "import-in-the-middle",
+        "require-in-the-middle"
       ],
       "next": {
         "entry": ["next.config.{js,ts,mjs}"]

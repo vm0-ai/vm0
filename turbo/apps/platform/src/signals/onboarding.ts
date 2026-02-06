@@ -1,72 +1,175 @@
 import { command, computed, state } from "ccstate";
+import {
+  getDefaultAuthMethod,
+  getDefaultModel,
+  getSecretsForAuthMethod,
+  hasAuthMethods,
+  hasModelSelection,
+  type ModelProviderType,
+} from "@vm0/core";
 import { initScope$, hasScope$ } from "./scope.ts";
 import {
-  hasClaudeCodeOAuthToken$,
+  hasAnyModelProvider$,
   createModelProvider$,
 } from "./external/model-providers.ts";
+import { getProviderShape } from "../views/settings-page/provider-ui-config.ts";
 
-/**
- * Internal state for onboarding modal visibility.
- */
+// ---------------------------------------------------------------------------
+// Internal state
+// ---------------------------------------------------------------------------
+
 const internalShowOnboardingModal$ = state(false);
 
-/**
- * Internal state for OAuth token value.
- */
-const internalTokenValue$ = state("");
+const internalProviderType$ = state<ModelProviderType>(
+  "claude-code-oauth-token",
+);
 
-/**
- * Internal state for copy status.
- */
+interface OnboardingFormValues {
+  secret: string;
+  selectedModel: string;
+  authMethod: string;
+  secrets: Record<string, string>;
+  useDefaultModel: boolean;
+}
+
+function defaultFormValues(): OnboardingFormValues {
+  return {
+    secret: "",
+    selectedModel: "",
+    authMethod: "",
+    secrets: {},
+    useDefaultModel: true,
+  };
+}
+
+const internalFormValues$ = state<OnboardingFormValues>(defaultFormValues());
+
 const internalCopyStatus$ = state<"idle" | "copied">("idle");
 
-/**
- * Whether the onboarding modal is currently shown.
- */
+const internalCopyTimeoutId$ = state<number | null>(null);
+
+const internalActionPromise$ = state<Promise<unknown> | null>(null);
+
+// ---------------------------------------------------------------------------
+// Exported computed state
+// ---------------------------------------------------------------------------
+
 export const showOnboardingModal$ = computed((get) =>
   get(internalShowOnboardingModal$),
 );
 
-/**
- * Current OAuth token value.
- */
-export const tokenValue$ = computed((get) => get(internalTokenValue$));
+export const onboardingProviderType$ = computed((get) =>
+  get(internalProviderType$),
+);
 
-/**
- * Current copy status.
- */
+export const onboardingFormValues$ = computed((get) =>
+  get(internalFormValues$),
+);
+
 export const copyStatus$ = computed((get) => get(internalCopyStatus$));
+
+export const actionPromise$ = computed((get) => get(internalActionPromise$));
 
 /**
  * Whether the Save button should be enabled.
- * Requires a non-empty token value.
+ * Shape-aware validation matching the settings page dialog.
  */
 export const canSaveOnboarding$ = computed((get) => {
-  const tokenValue = get(internalTokenValue$);
-  return tokenValue.trim().length > 0;
+  const providerType = get(internalProviderType$);
+  const formValues = get(internalFormValues$);
+  const shape = getProviderShape(providerType);
+
+  if (shape === "multi-auth") {
+    // For multi-auth, check required secret fields
+    const secretsConfig = getSecretsForAuthMethod(
+      providerType,
+      formValues.authMethod,
+    );
+    if (!secretsConfig) {
+      return false;
+    }
+    for (const [key, config] of Object.entries(secretsConfig)) {
+      if (config.required && !formValues.secrets[key]?.trim()) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // For oauth and api-key shapes, require the secret field
+  return formValues.secret.trim().length > 0;
 });
 
 /**
  * Whether the user needs to complete onboarding.
- * Returns true if scope is missing OR claude-code-oauth-token is missing.
+ * Returns true if scope is missing OR no model provider is configured.
  */
 export const needsOnboarding$ = computed(async (get) => {
   const scopeExists = await get(hasScope$);
-  const hasOAuthToken = await get(hasClaudeCodeOAuthToken$);
-  return !scopeExists || !hasOAuthToken;
+  const hasProvider = await get(hasAnyModelProvider$);
+  return !scopeExists || !hasProvider;
 });
 
-/**
- * Set the OAuth token value.
- */
-export const setTokenValue$ = command(({ set }, value: string) => {
-  set(internalTokenValue$, value);
+// ---------------------------------------------------------------------------
+// Commands: form updates
+// ---------------------------------------------------------------------------
+
+export const setOnboardingProviderType$ = command(
+  ({ set }, type: ModelProviderType) => {
+    set(internalProviderType$, type);
+
+    // Reset form values with defaults for the new provider type
+    const defaultAuth = hasAuthMethods(type)
+      ? (getDefaultAuthMethod(type) ?? "")
+      : "";
+    const defaultModel = hasModelSelection(type)
+      ? (getDefaultModel(type) ?? "")
+      : "";
+
+    set(internalFormValues$, {
+      secret: "",
+      selectedModel: defaultModel,
+      authMethod: defaultAuth,
+      secrets: {},
+      useDefaultModel: true,
+    });
+  },
+);
+
+export const setOnboardingSecret$ = command(({ set }, value: string) => {
+  set(internalFormValues$, (prev) => ({ ...prev, secret: value }));
 });
 
-/**
- * Internal state for copy timeout id.
- */
-const internalCopyTimeoutId$ = state<number | null>(null);
+export const setOnboardingModel$ = command(({ set }, value: string) => {
+  set(internalFormValues$, (prev) => ({ ...prev, selectedModel: value }));
+});
+
+export const setOnboardingUseDefaultModel$ = command(
+  ({ set }, value: boolean) => {
+    set(internalFormValues$, (prev) => ({
+      ...prev,
+      useDefaultModel: value,
+      selectedModel: value ? "" : prev.selectedModel,
+    }));
+  },
+);
+
+export const setOnboardingAuthMethod$ = command(({ set }, value: string) => {
+  set(internalFormValues$, (prev) => ({
+    ...prev,
+    authMethod: value,
+    secrets: {},
+  }));
+});
+
+export const setOnboardingSecretField$ = command(
+  ({ set }, key: string, value: string) => {
+    set(internalFormValues$, (prev) => ({
+      ...prev,
+      secrets: { ...prev.secrets, [key]: value },
+    }));
+  },
+);
 
 /**
  * Copy text to clipboard and show "copied" status for 5 seconds.
@@ -75,7 +178,6 @@ export const copyToClipboard$ = command(({ get, set }, text: string) => {
   navigator.clipboard
     .writeText(text)
     .then(() => {
-      // Clear any existing timeout
       const existingTimeoutId = get(internalCopyTimeoutId$);
       if (existingTimeoutId !== null) {
         window.clearTimeout(existingTimeoutId);
@@ -83,7 +185,6 @@ export const copyToClipboard$ = command(({ get, set }, text: string) => {
 
       set(internalCopyStatus$, "copied");
 
-      // Reset after 5 seconds
       const timeoutId = window.setTimeout(() => {
         set(internalCopyStatus$, "idle");
         set(internalCopyTimeoutId$, null);
@@ -95,9 +196,13 @@ export const copyToClipboard$ = command(({ get, set }, text: string) => {
     });
 });
 
+// ---------------------------------------------------------------------------
+// Commands: lifecycle
+// ---------------------------------------------------------------------------
+
 /**
  * Start the onboarding flow - show modal only.
- * Scope and model provider creation is deferred to save action.
+ * Scope creation is deferred to save action.
  */
 export const startOnboarding$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -115,24 +220,39 @@ export const startOnboarding$ = command(
 );
 
 /**
- * Close the onboarding modal (Add it later).
- * Creates scope if needed but skips model provider creation.
+ * Close the onboarding modal (Cancel / Add it later).
  */
 export const closeOnboardingModal$ = command(({ set }) => {
-  set(internalTokenValue$, "");
+  set(internalProviderType$, "claude-code-oauth-token");
+  set(internalFormValues$, defaultFormValues());
   set(internalShowOnboardingModal$, false);
 });
 
 /**
  * Save the onboarding configuration.
- * Creates scope if needed and creates the model provider with OAuth token.
+ * Creates scope if needed and creates the model provider.
  */
 export const saveOnboardingConfig$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const promise = (async () => {
-      // Get token value
-      const tokenValue = get(internalTokenValue$);
-      if (!tokenValue.trim()) {
+      const providerType = get(internalProviderType$);
+      const formValues = get(internalFormValues$);
+      const shape = getProviderShape(providerType);
+
+      // Validate based on shape
+      if (shape === "multi-auth") {
+        const secretsConfig = getSecretsForAuthMethod(
+          providerType,
+          formValues.authMethod,
+        );
+        if (secretsConfig) {
+          for (const [key, config] of Object.entries(secretsConfig)) {
+            if (config.required && !formValues.secrets[key]?.trim()) {
+              return;
+            }
+          }
+        }
+      } else if (!formValues.secret.trim()) {
         return;
       }
 
@@ -145,15 +265,33 @@ export const saveOnboardingConfig$ = command(
         signal.throwIfAborted();
       }
 
-      // Create model provider with OAuth token
-      await set(createModelProvider$, {
-        type: "claude-code-oauth-token",
-        secret: tokenValue.trim(),
-      });
+      // Build request based on provider shape
+      const request: Record<string, unknown> = { type: providerType };
+
+      if (shape === "multi-auth") {
+        request.authMethod = formValues.authMethod;
+        request.secrets = formValues.secrets;
+      } else {
+        request.secret = formValues.secret.trim();
+      }
+
+      if (
+        hasModelSelection(providerType) &&
+        !formValues.useDefaultModel &&
+        formValues.selectedModel
+      ) {
+        request.selectedModel = formValues.selectedModel;
+      }
+
+      await set(
+        createModelProvider$,
+        request as Parameters<typeof createModelProvider$.write>[1],
+      );
       signal.throwIfAborted();
 
-      // Clear token and close modal
-      set(internalTokenValue$, "");
+      // Reset and close
+      set(internalProviderType$, "claude-code-oauth-token");
+      set(internalFormValues$, defaultFormValues());
       set(internalShowOnboardingModal$, false);
     })();
 
@@ -163,9 +301,3 @@ export const saveOnboardingConfig$ = command(
     signal.throwIfAborted();
   },
 );
-
-const internalActionPromise$ = state<Promise<unknown> | null>(null);
-
-export const actionPromise$ = computed((get) => {
-  return get(internalActionPromise$);
-});

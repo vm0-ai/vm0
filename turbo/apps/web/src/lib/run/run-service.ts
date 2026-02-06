@@ -1,4 +1,4 @@
-import { eq, and, count, inArray } from "drizzle-orm";
+import { eq, and, count, gt, or } from "drizzle-orm";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { agentRuns } from "../../db/schema/agent-run";
 import {
@@ -22,6 +22,11 @@ import {
 
 const log = logger("service:run");
 
+// Defense-in-depth: exclude pending runs older than this from concurrency check.
+// The cleanup-sandboxes cron job already transitions pending runs to "timeout" after 5 minutes,
+// so this TTL only matters if the cron job fails to run.
+const PENDING_RUN_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
 // Re-export for backward compatibility
 export { calculateSessionHistoryPath } from "./utils/session-history-path";
 
@@ -31,10 +36,6 @@ export { calculateSessionHistoryPath } from "./utils/session-history-path";
  * @param userId User ID to check
  * @param limit Maximum allowed concurrent runs (default: 1, or CONCURRENT_RUN_LIMIT env var, 0 = no limit)
  * @throws ConcurrentRunLimitError if limit exceeded
- *
- * TODO: cleanup-sandboxes cron job only cleans up "running" runs, not "pending" runs.
- * If a run gets stuck in "pending" status, it will block the user's concurrent limit forever.
- * Need to add cleanup logic for stale pending runs.
  */
 export async function checkRunConcurrencyLimit(
   userId: string,
@@ -64,13 +65,22 @@ export async function checkRunConcurrencyLimit(
     return;
   }
 
+  // Count active runs: all "running" runs + "pending" runs within TTL
+  const staleThreshold = new Date(Date.now() - PENDING_RUN_TTL_MS);
+
   const [result] = await globalThis.services.db
     .select({ count: count() })
     .from(agentRuns)
     .where(
       and(
         eq(agentRuns.userId, userId),
-        inArray(agentRuns.status, ["pending", "running"]),
+        or(
+          eq(agentRuns.status, "running"),
+          and(
+            eq(agentRuns.status, "pending"),
+            gt(agentRuns.createdAt, staleThreshold),
+          ),
+        ),
       ),
     );
 

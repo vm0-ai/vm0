@@ -2,13 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { statusCommand } from "../status";
-import * as config from "../../../lib/api/config";
-
-// Mock the config module for auth
-vi.mock("../../../lib/api/config", () => ({
-  getApiUrl: vi.fn(),
-  getToken: vi.fn(),
-}));
 
 describe("scope status command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -21,8 +14,8 @@ describe("scope status command", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(config.getApiUrl).mockResolvedValue("http://localhost:3000");
-    vi.mocked(config.getToken).mockResolvedValue("test-token");
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
   });
 
   afterEach(() => {
@@ -33,7 +26,9 @@ describe("scope status command", () => {
 
   describe("authentication", () => {
     it("should exit with error if not authenticated", async () => {
-      vi.mocked(config.getToken).mockResolvedValue(undefined);
+      vi.unstubAllEnvs();
+      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+      // VM0_TOKEN not set - simulates unauthenticated state
 
       await expect(async () => {
         await statusCommand.parseAsync(["node", "cli"]);

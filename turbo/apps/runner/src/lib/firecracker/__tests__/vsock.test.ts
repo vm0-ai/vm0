@@ -14,7 +14,7 @@ import * as os from "node:os";
 import { VsockClient } from "../vsock.js";
 
 /**
- * Integration tests for VsockClient and vsock-agent (Rust)
+ * Integration tests for VsockClient and vsock-guest (Rust)
  *
  * These tests use Guest-initiated connection mode (same as production):
  * - Host (VsockClient) listens on "{socketPath}_1000"
@@ -23,7 +23,7 @@ import { VsockClient } from "../vsock.js";
 
 const AGENT_BINARY = path.resolve(
   __dirname,
-  "../../../../../../../crates/target/debug/vsock-agent",
+  "../../../../../../../crates/target/debug/vsock-guest",
 );
 
 const VSOCK_PORT = 1000;
@@ -967,7 +967,7 @@ describe("VsockClient Integration Tests", () => {
       client = newClient;
 
       // Verify agent logged the protocol error
-      expect(agentOutput).toContain("Message too large");
+      expect(agentOutput).toContain("message too large");
 
       // Verify connection works again after reconnection
       const postErrorResult = await client!.exec("echo recovered");

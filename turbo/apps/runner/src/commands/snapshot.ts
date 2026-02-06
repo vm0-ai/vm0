@@ -221,7 +221,7 @@ export const snapshotCommand = new Command("snapshot")
         logger.log("VM configured");
 
         // Start vsock listener BEFORE starting VM to avoid race condition
-        // Guest's vsock-agent connects immediately after boot (~300ms)
+        // Guest's vsock-guest connects immediately after boot (~300ms)
         logger.log("Starting vsock listener...");
         vsockClient = new VsockClient(vsockPath);
         const guestConnectionPromise =

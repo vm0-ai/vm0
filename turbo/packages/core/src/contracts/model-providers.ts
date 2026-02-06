@@ -200,7 +200,7 @@ export const MODEL_PROVIDER_TYPES = {
     framework: "claude-code" as const,
     label: "AWS Bedrock",
     helpText:
-      "Run Claude on AWS Bedrock.\nSetup guide: https://docs.anthropic.com/en/docs/claude-code/bedrock",
+      "Run Claude on AWS Bedrock.\nSetup guide: https://code.claude.com/docs/en/amazon-bedrock",
     authMethods: {
       "api-key": {
         label: "Bedrock API Key",

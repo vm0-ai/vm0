@@ -1,6 +1,24 @@
 [workspace]
 resolver = "2"
-members = ["vsock-agent", "vm-init", "vm-common", "vm-download"]
+members = ["vsock-guest", "vsock-proto", "vsock-host", "vsock-test", "vm-init", "vm-common", "vm-download"]
+
+[workspace.dependencies]
+# Internal crates
+vm-common = { path = "vm-common" }
+vsock-guest = { path = "vsock-guest" }
+vsock-host = { path = "vsock-host" }
+vsock-proto = { path = "vsock-proto" }
+
+# External dependencies
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+flate2 = "1"
+libc = "0.2"
+nix = { version = "0.31", default-features = false, features = ["mount", "fs"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tar = "0.4"
+tokio = { version = "1", features = ["net", "io-util", "time", "rt", "macros"] }
+ureq = { version = "3", features = ["platform-verifier"] }
 
 [profile.release]
 lto = true

@@ -162,13 +162,13 @@ async function main() {
     process.exit(1);
   }
 
-  // Execute vm0 compose with --json for structured output
+  // Execute vm0 compose with --porcelain for structured output
   log('INFO', 'Running vm0 compose...');
   const result = spawnSync('vm0', [
     'compose',
     GITHUB_URL,
     '--experimental-shared-compose',
-    '--json',
+    '--porcelain',
   ], {
     env: {
       ...process.env,

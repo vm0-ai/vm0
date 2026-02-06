@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { http, HttpResponse } from "msw";
 import type { ConnectionStateChange, InboundMessage } from "ably";
+import { server } from "../../../mocks/server";
 
 // Track registered listeners
 let connectionListeners: Map<
@@ -8,7 +10,7 @@ let connectionListeners: Map<
 >;
 let messageHandler: ((message: InboundMessage) => void) | null;
 
-// Mock Ably
+// Mock Ably - this is an external dependency (third-party SDK)
 vi.mock("ably", () => {
   return {
     default: {
@@ -43,17 +45,6 @@ vi.mock("ably", () => {
   };
 });
 
-// Mock the api module
-vi.mock("../../api.js", () => ({
-  getRealtimeToken: vi.fn().mockResolvedValue({
-    keyName: "test-key",
-    timestamp: Date.now(),
-    capability: '{"runner-group:test":["subscribe"]}',
-    nonce: "test-nonce",
-    mac: "test-mac",
-  }),
-}));
-
 import { subscribeToJobs } from "../subscription.js";
 
 describe("realtime/subscription", () => {
@@ -66,6 +57,19 @@ describe("realtime/subscription", () => {
     vi.clearAllMocks();
     connectionListeners = new Map();
     messageHandler = null;
+
+    // Mock the realtime token endpoint using MSW
+    server.use(
+      http.post("https://api.vm0.dev/api/runners/realtime/token", () => {
+        return HttpResponse.json({
+          keyName: "test-key",
+          timestamp: Date.now(),
+          capability: '{"runner-group:test":["subscribe"]}',
+          nonce: "test-nonce",
+          mac: "test-mac",
+        });
+      }),
+    );
   });
 
   describe("subscribeToJobs", () => {

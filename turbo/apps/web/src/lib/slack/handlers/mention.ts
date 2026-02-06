@@ -9,20 +9,20 @@ import {
   createSlackClient,
   postMessage,
   extractMessageContent,
-  fetchThreadContext,
-  fetchChannelContext,
-  formatContextForAgentWithImages,
-  parseExplicitAgentSelection,
   buildLoginPromptMessage,
   buildErrorMessage,
   buildAgentResponseMessage,
   buildWelcomeMessage,
-  getSlackRedirectBaseUrl,
 } from "../index";
-import { routeToAgent, type RouteResult } from "../router";
 import { runAgentForSlack } from "./run-agent";
+import {
+  removeThinkingReaction,
+  fetchConversationContext,
+  routeMessageToAgent,
+  buildLoginUrl,
+  buildLogsUrl,
+} from "./shared";
 import { logger } from "../../logger";
-import { getPlatformUrl } from "../../url";
 
 const log = logger("slack:mention");
 
@@ -33,137 +33,6 @@ interface MentionContext {
   messageText: string;
   messageTs: string;
   threadTs?: string;
-}
-
-interface AgentBinding {
-  id: string;
-  agentName: string;
-  description: string | null;
-  composeId: string;
-  enabled: boolean;
-}
-
-type RouteSuccess = { type: "success"; agentName: string; promptText: string };
-type RouteFailure = { type: "failure"; error: string };
-type RouteNotRequest = { type: "not_request" };
-type RouteMessageResult = RouteSuccess | RouteFailure | RouteNotRequest;
-
-type SlackClient = ReturnType<typeof createSlackClient>;
-
-/**
- * Remove the thinking reaction from a message
- */
-async function removeThinkingReaction(
-  client: SlackClient,
-  channelId: string,
-  messageTs: string,
-): Promise<void> {
-  await client.reactions
-    .remove({
-      channel: channelId,
-      timestamp: messageTs,
-      name: "thought_balloon",
-    })
-    .catch(() => {
-      // Ignore errors when removing reaction
-    });
-}
-
-/**
- * Fetch conversation context for the agent with uploaded images
- * Images are uploaded to R2 and presigned URLs are provided in the context
- */
-async function fetchConversationContext(
-  client: SlackClient,
-  channelId: string,
-  threadTs: string | undefined,
-  botUserId: string,
-  botToken: string,
-): Promise<string> {
-  // Use channel-thread as session ID for organizing uploaded images
-  const imageSessionId = `${channelId}-${threadTs ?? "channel"}`;
-
-  if (threadTs) {
-    const messages = await fetchThreadContext(client, channelId, threadTs);
-    return formatContextForAgentWithImages(
-      messages,
-      botToken,
-      imageSessionId,
-      botUserId,
-      "thread",
-    );
-  }
-  const messages = await fetchChannelContext(client, channelId, 10);
-  return formatContextForAgentWithImages(
-    messages,
-    botToken,
-    imageSessionId,
-    botUserId,
-    "channel",
-  );
-}
-
-/**
- * Route message to the appropriate agent
- * Returns success with agent details, failure with error message, or not_request for greetings
- */
-async function routeMessageToAgent(
-  messageContent: string,
-  bindings: AgentBinding[],
-  context?: string,
-): Promise<RouteMessageResult> {
-  const explicitSelection = parseExplicitAgentSelection(messageContent);
-
-  if (explicitSelection) {
-    // Explicit agent selection: "use <agent> <message>"
-    const matchingBinding = bindings.find(
-      (b) =>
-        b.agentName.toLowerCase() === explicitSelection.agentName.toLowerCase(),
-    );
-    if (!matchingBinding) {
-      return {
-        type: "failure",
-        error: `Agent "${explicitSelection.agentName}" not found. Available agents: ${bindings.map((b) => b.agentName).join(", ")}`,
-      };
-    }
-    return {
-      type: "success",
-      agentName: matchingBinding.agentName,
-      promptText: explicitSelection.remainingMessage || messageContent,
-    };
-  }
-
-  // Use the router (handles single agent, keyword matching, and LLM routing)
-  const routeResult: RouteResult = await routeToAgent(
-    messageContent,
-    bindings.map((b) => ({
-      agentName: b.agentName,
-      description: b.description,
-    })),
-    context,
-  );
-
-  switch (routeResult.type) {
-    case "matched":
-      return {
-        type: "success",
-        agentName: routeResult.agentName,
-        promptText: messageContent,
-      };
-    case "not_request":
-      return { type: "not_request" };
-    case "ambiguous": {
-      const agentList = bindings
-        .map(
-          (b) => `• \`${b.agentName}\`: ${b.description ?? "No description"}`,
-        )
-        .join("\n");
-      return {
-        type: "failure",
-        error: `I couldn't determine which agent to use. Please specify: \`@VM0 use <agent> <message>\`\n\nAvailable agents:\n${agentList}`,
-      };
-    }
-  }
 }
 
 /**
@@ -448,28 +317,4 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
     log.error("Error handling app_mention", { error });
     // Don't throw - we don't want Slack to retry
   }
-}
-
-/**
- * Build the login URL
- */
-function buildLoginUrl(
-  workspaceId: string,
-  slackUserId: string,
-  channelId: string,
-): string {
-  const baseUrl = getSlackRedirectBaseUrl();
-  const params = new URLSearchParams({
-    w: workspaceId,
-    u: slackUserId,
-    c: channelId,
-  });
-  return `${baseUrl}/slack/link?${params.toString()}`;
-}
-
-/**
- * Build the logs URL for a run
- */
-function buildLogsUrl(runId: string): string {
-  return `${getPlatformUrl()}/logs/${runId}`;
 }

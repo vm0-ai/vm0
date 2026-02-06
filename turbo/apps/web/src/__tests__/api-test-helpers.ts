@@ -12,6 +12,7 @@ import {
   generateComposeJobToken,
 } from "../lib/auth/sandbox-token";
 import { cliTokens } from "../db/schema/cli-tokens";
+import { agentRuns } from "../db/schema/agent-run";
 import { eq } from "drizzle-orm";
 
 // Route handlers - imported here so callers don't need to pass them
@@ -956,6 +957,42 @@ export async function listTestSecrets(): Promise<
   }
   const data = await response.json();
   return data.secrets;
+}
+
+/**
+ * Insert a stale pending run directly into the database.
+ * This simulates a run stuck in "pending" state past the cleanup TTL,
+ * which cannot be reproduced through normal API flows since the route
+ * handler immediately transitions runs to "running" or "failed".
+ *
+ * @param userId - The user ID who owns the run
+ * @param agentComposeVersionId - The compose version ID
+ * @param ageMs - How old the run should be in milliseconds (default: 20 minutes)
+ * @returns The inserted run ID
+ */
+export async function insertStalePendingRun(
+  userId: string,
+  agentComposeVersionId: string,
+  ageMs: number = 20 * 60 * 1000,
+): Promise<string> {
+  const staleCreatedAt = new Date(Date.now() - ageMs);
+  const [run] = await globalThis.services.db
+    .insert(agentRuns)
+    .values({
+      userId,
+      agentComposeVersionId,
+      status: "pending",
+      prompt: "Stale pending run",
+      createdAt: staleCreatedAt,
+      lastHeartbeatAt: staleCreatedAt,
+    })
+    .returning({ id: agentRuns.id });
+
+  if (!run) {
+    throw new Error("Failed to insert stale pending run");
+  }
+
+  return run.id;
 }
 
 /**

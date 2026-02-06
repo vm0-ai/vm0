@@ -30,7 +30,7 @@ jobs:
           cd crates
           cargo clippy --all-targets --all-features
 
-      - name: Build
+      - name: Run tests
         run: |
           cd crates
-          cargo build --all-targets
+          cargo test --all-targets

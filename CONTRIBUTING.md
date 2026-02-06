@@ -12,6 +12,15 @@ This project uses [Dev Containers](https://containers.dev/) for development. The
 - [VS Code](https://code.visualstudio.com/) with [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
 - [mkcert](https://github.com/FiloSottile/mkcert) for local SSL certificates
 
+**Required SaaS services (community contributors need to register these before running the setup):**
+
+| Service | Purpose | Tokens needed | Dashboard |
+|---------|---------|---------------|-----------|
+| [Clerk](https://clerk.com) | User authentication and session management | `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY` | [dashboard.clerk.com](https://dashboard.clerk.com) |
+| [E2B](https://e2b.dev) | Cloud sandbox runtime for executing agent code | `E2B_API_KEY` | [e2b.dev/dashboard](https://e2b.dev/dashboard) |
+| [Cloudflare R2](https://www.cloudflare.com/products/r2/) | Object storage for user files and artifacts | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_USER_STORAGES_BUCKET_NAME` | [dash.cloudflare.com](https://dash.cloudflare.com) |
+| [Slack API](https://api.slack.com) | Slack app integration for notifications and commands | `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_SIGNING_SECRET` | [api.slack.com/apps](https://api.slack.com/apps) |
+
 ### SSL Certificates and Hosts Configuration
 
 Before opening the project in VS Code, you need to set up SSL certificates and hosts on your **host machine** (the machine running Docker, not inside the container).
@@ -43,22 +52,6 @@ bash scripts/generate-certs.sh
 
 This script uses mkcert to create locally-trusted SSL certificates for development.
 
-#### 3. Configure Hosts File
-
-Add the following entries to `/etc/hosts`:
-
-```bash
-sudo vim /etc/hosts
-# or
-sudo nano /etc/hosts
-```
-
-Add these lines:
-
-```
-127.0.0.1 vm7.ai www.vm7.ai docs.vm7.ai platform.vm7.ai storybook.vm7.ai
-```
-
 ### Getting Started
 
 1. Fork and clone the repository
@@ -69,36 +62,17 @@ Add these lines:
 
 ### Environment Variables
 
-#### For VM0 Team Members
-
-Run the sync script to populate environment variables from 1Password:
+Run the sync script to populate environment variables from `.env.local.tpl` templates:
 
 ```bash
 scripts/sync-env.sh
 ```
 
-#### For Community Contributors
+The script will ask if you have 1Password access:
+- **VM0 team members**: Choose yes to auto-sync from 1Password
+- **Community contributors**: Choose no to enter values interactively (only missing values are prompted)
 
-Create the following `.env.local` files manually:
-
-**`turbo/apps/web/.env.local`:**
-
-| Variable | Required | Service |
-|----------|----------|---------|
-| `CLERK_SECRET_KEY` | Yes | [Clerk](https://dashboard.clerk.com) |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes | [Clerk](https://dashboard.clerk.com) |
-| `E2B_API_KEY` | Yes | [E2B](https://e2b.dev/dashboard) |
-| `R2_ACCOUNT_ID` | Yes | [Cloudflare R2](https://dash.cloudflare.com) |
-| `R2_ACCESS_KEY_ID` | Yes | [Cloudflare R2](https://dash.cloudflare.com) |
-| `R2_SECRET_ACCESS_KEY` | Yes | [Cloudflare R2](https://dash.cloudflare.com) |
-| `R2_USER_STORAGES_BUCKET_NAME` | Yes | Create bucket in Cloudflare |
-
-**`turbo/apps/platform/.env.local`:**
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `VITE_CLERK_PUBLISHABLE_KEY` | Yes | Same as `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` |
-| `VITE_API_URL` | Yes | Use `http://localhost:3000` |
+`SECRETS_ENCRYPTION_KEY` is auto-generated if you press Enter when prompted.
 
 ### Local Web Development
 
@@ -108,7 +82,7 @@ To run the web application locally with HTTPS:
 
 2. **Start the dev server** (inside dev container):
    ```bash
-   cd turbo && pnpm install && pnpm dev
+   bash scripts/prepare.sh && cd turbo && pnpm dev
    ```
 
 3. **Access the application**:

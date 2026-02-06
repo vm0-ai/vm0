@@ -531,7 +531,7 @@ export class VsockClient implements GuestClient {
    *
    * Flow:
    * 1. Host creates UDS server at "{vsockPath}_{port}"
-   * 2. Guest boots and vsock-agent connects to CID=2, port
+   * 2. Guest boots and vsock-guest connects to CID=2, port
    * 3. Firecracker forwards connection to Host's UDS
    * 4. Host accepts, receives "ready", sends ping/pong
    */

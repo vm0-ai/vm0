@@ -66,10 +66,10 @@ interface LoadedConfig {
  */
 async function loadAndValidateConfig(
   configFile: string,
-  jsonMode?: boolean,
+  porcelainMode?: boolean,
 ): Promise<LoadedConfig> {
   if (!existsSync(configFile)) {
-    if (jsonMode) {
+    if (porcelainMode) {
       console.log(
         JSON.stringify({ error: `Config file not found: ${configFile}` }),
       );
@@ -86,7 +86,7 @@ async function loadAndValidateConfig(
     config = parseYaml(content);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    if (jsonMode) {
+    if (porcelainMode) {
       console.log(JSON.stringify({ error: `Invalid YAML format: ${message}` }));
     } else {
       console.error(chalk.red("✗ Invalid YAML format"));
@@ -97,7 +97,7 @@ async function loadAndValidateConfig(
 
   const validation = validateAgentCompose(config);
   if (!validation.valid) {
-    if (jsonMode) {
+    if (porcelainMode) {
       console.log(JSON.stringify({ error: validation.error }));
     } else {
       console.error(chalk.red(`✗ ${validation.error}`));
@@ -160,10 +160,10 @@ async function uploadAssets(
   agentName: string,
   agent: AgentConfig,
   basePath: string,
-  jsonMode?: boolean,
+  porcelainMode?: boolean,
 ): Promise<SkillUploadResult[]> {
   if (agent.instructions) {
-    if (!jsonMode) {
+    if (!porcelainMode) {
       console.log(`Uploading instructions: ${agent.instructions}`);
     }
     const result = await uploadInstructions(
@@ -172,7 +172,7 @@ async function uploadAssets(
       basePath,
       agent.framework,
     );
-    if (!jsonMode) {
+    if (!porcelainMode) {
       console.log(
         chalk.green(
           `✓ Instructions ${result.action === "deduplicated" ? "(unchanged)" : "uploaded"}: ${result.versionId.slice(0, 8)}`,
@@ -183,16 +183,16 @@ async function uploadAssets(
 
   const skillResults: SkillUploadResult[] = [];
   if (agent.skills && Array.isArray(agent.skills)) {
-    if (!jsonMode) {
+    if (!porcelainMode) {
       console.log(`Uploading ${agent.skills.length} skill(s)...`);
     }
     for (const skillUrl of agent.skills) {
-      if (!jsonMode) {
+      if (!porcelainMode) {
         console.log(chalk.dim(`  Downloading: ${skillUrl}`));
       }
       const result = await uploadSkill(skillUrl);
       skillResults.push(result);
-      if (!jsonMode) {
+      if (!porcelainMode) {
         console.log(
           chalk.green(
             `  ✓ Skill ${result.action === "deduplicated" ? "(unchanged)" : "uploaded"}: ${result.skillName} (${result.versionId.slice(0, 8)})`,
@@ -269,7 +269,7 @@ async function collectSkillVariables(
  */
 async function displayAndConfirmVariables(
   variables: SkillVariables,
-  options: { yes?: boolean; json?: boolean },
+  options: { yes?: boolean; porcelain?: boolean },
 ): Promise<boolean> {
   const { newSecrets, newVars, trulyNewSecrets } = variables;
 
@@ -277,8 +277,8 @@ async function displayAndConfirmVariables(
     return true;
   }
 
-  // In JSON mode, skip display but still check for new secrets
-  if (!options.json) {
+  // In porcelain mode, skip display but still check for new secrets
+  if (!options.porcelain) {
     console.log();
     console.log(
       chalk.bold("Skills require the following environment variables:"),
@@ -308,7 +308,7 @@ async function displayAndConfirmVariables(
 
   if (trulyNewSecrets.length > 0 && !options.yes) {
     if (!isInteractive()) {
-      if (options.json) {
+      if (options.porcelain) {
         console.log(
           JSON.stringify({
             error: `New secrets detected: ${trulyNewSecrets.join(", ")}. Use --yes flag to approve.`,
@@ -332,7 +332,7 @@ async function displayAndConfirmVariables(
       true,
     );
     if (!confirmed) {
-      if (!options.json) {
+      if (!options.porcelain) {
         console.log(chalk.yellow("Compose cancelled"));
       }
       return false;
@@ -370,7 +370,7 @@ function mergeSkillVariables(
 }
 
 /**
- * Result from finalizeCompose for JSON output
+ * Result from finalizeCompose for porcelain output
  */
 interface ComposeResult {
   composeId: string;
@@ -383,13 +383,13 @@ interface ComposeResult {
 /**
  * Finalize compose: confirm variables, merge into config, call API, and display result.
  * Shared by both GitHub URL and local file flows.
- * Returns the compose result for JSON output mode.
+ * Returns the compose result for porcelain output mode.
  */
 async function finalizeCompose(
   config: unknown,
   agent: AgentConfig,
   variables: SkillVariables,
-  options: { yes?: boolean; autoUpdate?: boolean; json?: boolean },
+  options: { yes?: boolean; autoUpdate?: boolean; porcelain?: boolean },
 ): Promise<ComposeResult> {
   // Display variables and confirm with user
   const confirmed = await displayAndConfirmVariables(variables, options);
@@ -401,7 +401,7 @@ async function finalizeCompose(
   mergeSkillVariables(agent, variables);
 
   // Call API
-  if (!options.json) {
+  if (!options.porcelain) {
     console.log("Uploading compose...");
   }
   const response = await createOrUpdateCompose({ content: config });
@@ -420,8 +420,8 @@ async function finalizeCompose(
     displayName,
   };
 
-  // Display human-readable result (skip in JSON mode)
-  if (!options.json) {
+  // Display human-readable result (skip in porcelain mode)
+  if (!options.porcelain) {
     if (response.action === "created") {
       console.log(chalk.green(`✓ Compose created: ${displayName}`));
     } else {
@@ -451,9 +451,9 @@ async function finalizeCompose(
  */
 async function handleGitHubCompose(
   url: string,
-  options: { yes?: boolean; autoUpdate?: boolean; json?: boolean },
+  options: { yes?: boolean; autoUpdate?: boolean; porcelain?: boolean },
 ): Promise<ComposeResult> {
-  if (!options.json) {
+  if (!options.porcelain) {
     console.log(`Downloading from GitHub: ${url}`);
   }
 
@@ -462,7 +462,7 @@ async function handleGitHubCompose(
 
   try {
     if (!existsSync(configFile)) {
-      if (options.json) {
+      if (options.porcelain) {
         console.log(
           JSON.stringify({
             error: "vm0.yaml not found in the GitHub directory",
@@ -480,13 +480,13 @@ async function handleGitHubCompose(
     // Load and validate config
     const { config, agentName, agent, basePath } = await loadAndValidateConfig(
       configFile,
-      options.json,
+      options.porcelain,
     );
 
     // Check if agent with same name already exists
     const existingCompose = await getComposeByName(agentName);
     if (existingCompose) {
-      if (!options.json) {
+      if (!options.porcelain) {
         console.log();
         console.log(
           chalk.yellow(`⚠ An agent named "${agentName}" already exists.`),
@@ -496,7 +496,7 @@ async function handleGitHubCompose(
       if (!isInteractive()) {
         // Non-interactive mode: require --yes flag to overwrite
         if (!options.yes) {
-          if (options.json) {
+          if (options.porcelain) {
             console.log(
               JSON.stringify({
                 error:
@@ -524,7 +524,7 @@ async function handleGitHubCompose(
           false,
         );
         if (!confirmed) {
-          if (!options.json) {
+          if (!options.porcelain) {
             console.log(chalk.yellow("Compose cancelled."));
           }
           process.exit(0);
@@ -534,7 +534,7 @@ async function handleGitHubCompose(
 
     // Check for unsupported volumes
     if (hasVolumes(config)) {
-      if (options.json) {
+      if (options.porcelain) {
         console.log(
           JSON.stringify({
             error: "Volumes are not supported for GitHub URL compose",
@@ -553,8 +553,8 @@ async function handleGitHubCompose(
       process.exit(1);
     }
 
-    // Check for legacy image format (skip in JSON mode)
-    if (!options.json) {
+    // Check for legacy image format (skip in porcelain mode)
+    if (!options.porcelain) {
       checkLegacyImageFormat(config);
     }
 
@@ -563,7 +563,7 @@ async function handleGitHubCompose(
       agentName,
       agent,
       basePath,
-      options.json,
+      options.porcelain,
     );
 
     // Collect and process skill variables
@@ -594,7 +594,10 @@ export const composeCommand = new Command()
     "--experimental-shared-compose",
     "Enable GitHub URL compose (experimental)",
   )
-  .option("--json", "Output result as JSON (suppresses all other output)")
+  .option(
+    "--porcelain",
+    "Output stable JSON for scripts (suppresses interactive output)",
+  )
   .addOption(new Option("--no-auto-update").hideHelp())
   .action(
     async (
@@ -603,13 +606,13 @@ export const composeCommand = new Command()
         yes?: boolean;
         autoUpdate?: boolean;
         experimentalSharedCompose?: boolean;
-        json?: boolean;
+        porcelain?: boolean;
       },
     ) => {
       const resolvedConfigFile = configFile ?? DEFAULT_CONFIG_FILE;
 
-      // JSON mode implies --yes and disables auto-update (for CI/CD usage)
-      if (options.json) {
+      // Porcelain mode implies --yes and disables auto-update (for CI/CD usage)
+      if (options.porcelain) {
         options.yes = true;
         options.autoUpdate = false;
       }
@@ -621,7 +624,7 @@ export const composeCommand = new Command()
         if (isGitHubUrl(resolvedConfigFile)) {
           // Require experimental flag for GitHub URLs
           if (!options.experimentalSharedCompose) {
-            if (options.json) {
+            if (options.porcelain) {
               console.log(
                 JSON.stringify({
                   error:
@@ -651,10 +654,10 @@ export const composeCommand = new Command()
           // Existing local file flow
           // 1. Load and validate config
           const { config, agentName, agent, basePath } =
-            await loadAndValidateConfig(resolvedConfigFile, options.json);
+            await loadAndValidateConfig(resolvedConfigFile, options.porcelain);
 
           // 2. Check for legacy image format (skip in JSON mode)
-          if (!options.json) {
+          if (!options.porcelain) {
             checkLegacyImageFormat(config);
           }
 
@@ -663,7 +666,7 @@ export const composeCommand = new Command()
             agentName,
             agent,
             basePath,
-            options.json,
+            options.porcelain,
           );
 
           // 4. Collect and process skill variables
@@ -678,12 +681,12 @@ export const composeCommand = new Command()
           result = await finalizeCompose(config, agent, variables, options);
         }
 
-        // Output JSON result if requested
-        if (options.json) {
+        // Output porcelain JSON result if requested
+        if (options.porcelain) {
           console.log(JSON.stringify(result));
         }
       } catch (error) {
-        if (options.json) {
+        if (options.porcelain) {
           const message =
             error instanceof Error
               ? error.message
