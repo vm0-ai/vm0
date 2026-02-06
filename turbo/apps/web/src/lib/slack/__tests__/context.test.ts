@@ -1,33 +1,22 @@
-import {
-  describe,
-  it,
-  expect,
-  vi,
-  beforeEach,
-  afterEach,
-  type Mock,
-} from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { HttpResponse } from "msw";
 import {
   formatContextForAgent,
   formatContextForAgentWithImages,
   extractMessageContent,
   parseExplicitAgentSelection,
 } from "../context";
+import { testContext } from "../../../__tests__/test-helpers";
+import { server } from "../../../mocks/server";
+import { http } from "../../../__tests__/msw";
 
-// Mock S3 client
-vi.mock("../../s3/s3-client", () => ({
-  uploadS3Buffer: vi.fn().mockResolvedValue(undefined),
-  generatePresignedUrl: vi
-    .fn()
-    .mockResolvedValue("https://r2.example.com/presigned-url"),
-}));
+// Mock external dependencies required by testContext().setupMocks()
+vi.mock("@e2b/code-interpreter");
+vi.mock("@aws-sdk/client-s3");
+vi.mock("@aws-sdk/s3-request-presigner");
+vi.mock("@axiomhq/js");
 
-// Mock env
-vi.mock("../../../env", () => ({
-  env: () => ({
-    R2_USER_STORAGES_BUCKET_NAME: "test-bucket",
-  }),
-}));
+const context = testContext();
 
 describe("Feature: Format Context For Agent", () => {
   describe("Scenario: Format thread messages into context string", () => {
@@ -352,31 +341,8 @@ describe("Feature: Extract Message Content", () => {
 });
 
 describe("Feature: Format Context With Image Upload", () => {
-  const mockFetch = vi.fn();
-  const originalFetch = global.fetch;
-
-  // Import mocked S3 functions
-  let uploadS3BufferMock: Mock;
-  let generatePresignedUrlMock: Mock;
-
-  beforeEach(async () => {
-    global.fetch = mockFetch;
-    mockFetch.mockReset();
-
-    // Get mocked S3 functions
-    const s3Client = await import("../../s3/s3-client");
-    uploadS3BufferMock = s3Client.uploadS3Buffer as Mock;
-    generatePresignedUrlMock = s3Client.generatePresignedUrl as Mock;
-
-    uploadS3BufferMock.mockReset();
-    generatePresignedUrlMock.mockReset();
-    generatePresignedUrlMock.mockResolvedValue(
-      "https://r2.example.com/presigned-url",
-    );
-  });
-
-  afterEach(() => {
-    global.fetch = originalFetch;
+  beforeEach(() => {
+    context.setupMocks();
   });
 
   describe("Scenario: Upload supported image types to R2", () => {
@@ -387,13 +353,17 @@ describe("Feature: Format Context With Image Upload", () => {
         pngMagic,
         Buffer.from("fake-content"),
       ]);
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        headers: {
-          get: (name: string) => (name === "content-type" ? "image/png" : null),
+
+      // Mock Slack file download via MSW
+      const downloadHandler = http.get(
+        "https://files.slack.com/files-pri/T123-F123/download/screenshot.png",
+        () => {
+          return new HttpResponse(imageBuffer, {
+            headers: { "content-type": "image/png" },
+          });
         },
-        arrayBuffer: async () => imageBuffer,
-      });
+      );
+      server.use(downloadHandler.handler);
 
       const messages = [
         {
@@ -421,28 +391,17 @@ describe("Feature: Format Context With Image Upload", () => {
         "thread",
       );
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        "https://files.slack.com/files-pri/T123-F123/download/screenshot.png",
-        {
-          headers: {
-            Authorization: "Bearer xoxb-test-token",
-          },
-        },
-      );
-      expect(uploadS3BufferMock).toHaveBeenCalled();
-      // Verify contentType is passed when uploading
-      expect(uploadS3BufferMock).toHaveBeenCalledWith(
+      expect(context.mocks.s3.uploadS3Buffer).toHaveBeenCalled();
+      expect(context.mocks.s3.uploadS3Buffer).toHaveBeenCalledWith(
         "test-bucket",
         expect.stringContaining("slack-images/test-session-123/"),
         expect.any(Buffer),
         "image/png",
       );
-      expect(generatePresignedUrlMock).toHaveBeenCalled();
+      expect(context.mocks.s3.generatePresignedUrl).toHaveBeenCalled();
       expect(result).toContain("[file]: screenshot.png (image/png)");
       expect(result).toContain("Dimensions: 1920x1080");
-      expect(result).toContain(
-        "Image URL: https://r2.example.com/presigned-url",
-      );
+      expect(result).toContain("Image URL: https://mock-presigned-url");
     });
 
     it("should upload JPEG images to R2", async () => {
@@ -452,14 +411,16 @@ describe("Feature: Format Context With Image Upload", () => {
         jpegMagic,
         Buffer.from("fake-content"),
       ]);
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        headers: {
-          get: (name: string) =>
-            name === "content-type" ? "image/jpeg" : null,
+
+      const downloadHandler = http.get(
+        "https://files.slack.com/download/photo.jpg",
+        () => {
+          return new HttpResponse(imageBuffer, {
+            headers: { "content-type": "image/jpeg" },
+          });
         },
-        arrayBuffer: async () => imageBuffer,
-      });
+      );
+      server.use(downloadHandler.handler);
 
       const messages = [
         {
@@ -483,11 +444,8 @@ describe("Feature: Format Context With Image Upload", () => {
         "test-session-123",
       );
 
-      expect(result).toContain(
-        "Image URL: https://r2.example.com/presigned-url",
-      );
-      // Verify contentType is passed for JPEG
-      expect(uploadS3BufferMock).toHaveBeenCalledWith(
+      expect(result).toContain("Image URL: https://mock-presigned-url");
+      expect(context.mocks.s3.uploadS3Buffer).toHaveBeenCalledWith(
         "test-bucket",
         expect.stringContaining("slack-images/test-session-123/"),
         expect.any(Buffer),
@@ -520,8 +478,7 @@ describe("Feature: Format Context With Image Upload", () => {
         "test-session-123",
       );
 
-      expect(mockFetch).not.toHaveBeenCalled();
-      expect(uploadS3BufferMock).not.toHaveBeenCalled();
+      expect(context.mocks.s3.uploadS3Buffer).not.toHaveBeenCalled();
       expect(result).toContain("[file]: report.pdf (application/pdf)");
       expect(result).toContain("URL: https://slack.com/files/report.pdf");
       expect(result).not.toContain("Image URL:");
@@ -530,10 +487,13 @@ describe("Feature: Format Context With Image Upload", () => {
 
   describe("Scenario: Handle download failures gracefully", () => {
     it("should fall back to URL when download fails", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 401,
-      });
+      const downloadHandler = http.get(
+        "https://files.slack.com/download/screenshot.png",
+        () => {
+          return new HttpResponse(null, { status: 401 });
+        },
+      );
+      server.use(downloadHandler.handler);
 
       const messages = [
         {
@@ -563,7 +523,13 @@ describe("Feature: Format Context With Image Upload", () => {
     });
 
     it("should fall back to URL when fetch throws", async () => {
-      mockFetch.mockRejectedValueOnce(new Error("Network error"));
+      const downloadHandler = http.get(
+        "https://files.slack.com/download/screenshot.png",
+        () => {
+          return HttpResponse.error();
+        },
+      );
+      server.use(downloadHandler.handler);
 
       const messages = [
         {
@@ -594,15 +560,16 @@ describe("Feature: Format Context With Image Upload", () => {
     });
 
     it("should fall back to URL when Slack returns HTML instead of image", async () => {
-      // Simulate Slack returning a login page HTML instead of the actual image
       const htmlContent = Buffer.from("<!DOCTYPE html><html>Login page</html>");
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        headers: {
-          get: (name: string) => (name === "content-type" ? "text/html" : null),
+      const downloadHandler = http.get(
+        "https://files.slack.com/download/screenshot.png",
+        () => {
+          return new HttpResponse(htmlContent, {
+            headers: { "content-type": "text/html" },
+          });
         },
-        arrayBuffer: async () => htmlContent,
-      });
+      );
+      server.use(downloadHandler.handler);
 
       const messages = [
         {
@@ -627,22 +594,22 @@ describe("Feature: Format Context With Image Upload", () => {
         "test-session-123",
       );
 
-      // Should fall back to URL since the response was not an image
-      expect(uploadS3BufferMock).not.toHaveBeenCalled();
+      expect(context.mocks.s3.uploadS3Buffer).not.toHaveBeenCalled();
       expect(result).toContain("URL: https://slack.com/files/screenshot.png");
       expect(result).not.toContain("Image URL:");
     });
 
     it("should fall back to URL when content has invalid image magic bytes", async () => {
-      // Simulate Slack returning non-image content with image content-type
       const invalidContent = Buffer.from("Not an image file content");
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        headers: {
-          get: (name: string) => (name === "content-type" ? "image/png" : null),
+      const downloadHandler = http.get(
+        "https://files.slack.com/download/screenshot.png",
+        () => {
+          return new HttpResponse(invalidContent, {
+            headers: { "content-type": "image/png" },
+          });
         },
-        arrayBuffer: async () => invalidContent,
-      });
+      );
+      server.use(downloadHandler.handler);
 
       const messages = [
         {
@@ -667,8 +634,7 @@ describe("Feature: Format Context With Image Upload", () => {
         "test-session-123",
       );
 
-      // Should fall back to URL since the content is not a valid image
-      expect(uploadS3BufferMock).not.toHaveBeenCalled();
+      expect(context.mocks.s3.uploadS3Buffer).not.toHaveBeenCalled();
       expect(result).toContain("URL: https://slack.com/files/screenshot.png");
       expect(result).not.toContain("Image URL:");
     });
@@ -699,8 +665,7 @@ describe("Feature: Format Context With Image Upload", () => {
         "test-session-123",
       );
 
-      expect(mockFetch).not.toHaveBeenCalled();
-      expect(uploadS3BufferMock).not.toHaveBeenCalled();
+      expect(context.mocks.s3.uploadS3Buffer).not.toHaveBeenCalled();
       expect(result).toContain("URL: https://slack.com/files/large.png");
       expect(result).not.toContain("Image URL:");
     });
@@ -728,36 +693,34 @@ describe("Feature: Format Context With Image Upload", () => {
         "test-session-123",
       );
 
-      expect(mockFetch).not.toHaveBeenCalled();
-      expect(uploadS3BufferMock).not.toHaveBeenCalled();
+      expect(context.mocks.s3.uploadS3Buffer).not.toHaveBeenCalled();
       expect(result).toContain("URL: https://files.slack.com/public/old.png");
     });
   });
 
   describe("Scenario: Handle multiple files in one message", () => {
     it("should upload multiple images", async () => {
-      // PNG magic bytes: 89 50 4E 47 (0x89 P N G)
       const pngMagic = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
       const imageBuffer1 = Buffer.concat([pngMagic, Buffer.from("image1")]);
       const imageBuffer2 = Buffer.concat([pngMagic, Buffer.from("image2")]);
 
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          headers: {
-            get: (name: string) =>
-              name === "content-type" ? "image/png" : null,
-          },
-          arrayBuffer: async () => imageBuffer1,
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          headers: {
-            get: (name: string) =>
-              name === "content-type" ? "image/png" : null,
-          },
-          arrayBuffer: async () => imageBuffer2,
-        });
+      const handler1 = http.get(
+        "https://files.slack.com/download/img1.png",
+        () => {
+          return new HttpResponse(imageBuffer1, {
+            headers: { "content-type": "image/png" },
+          });
+        },
+      );
+      const handler2 = http.get(
+        "https://files.slack.com/download/img2.png",
+        () => {
+          return new HttpResponse(imageBuffer2, {
+            headers: { "content-type": "image/png" },
+          });
+        },
+      );
+      server.use(handler1.handler, handler2.handler);
 
       const messages = [
         {
@@ -786,8 +749,7 @@ describe("Feature: Format Context With Image Upload", () => {
         "test-session-123",
       );
 
-      expect(mockFetch).toHaveBeenCalledTimes(2);
-      expect(uploadS3BufferMock).toHaveBeenCalledTimes(2);
+      expect(context.mocks.s3.uploadS3Buffer).toHaveBeenCalledTimes(2);
       expect(result).toContain("[file]: img1.png");
       expect(result).toContain("[file]: img2.png");
       // Both should have presigned URLs

@@ -518,3 +518,9 @@ const result = handlers({
 ```
 
 The return type preserves handler keys for TypeScript autocomplete.
+
+## Required Practices
+
+- [ ] Use `testContext()` with `context.setupMocks()` in `beforeEach`
+- [ ] Use `context.setupUser()` for isolated user context
+- [ ] Use API helpers for fixture creation (not direct DB operations)

@@ -7,64 +7,47 @@ This document describes our standard testing patterns. These aren't arbitrary co
 Our most common test type. When testing Next.js API route handlers, we follow a specific structure that has evolved through practice.
 
 ```typescript
-import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
-import { initServices } from "../../../../src/lib/init-services";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { POST } from "../route";
+import {
+  createTestRequest,
+  createTestCompose,
+  createTestRun,
+} from "../../../../../src/__tests__/api-test-helpers";
+import {
+  testContext,
+  type UserContext,
+} from "../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 
 // ========== MOCKS SECTION ==========
 // Only mock EXTERNAL third-party packages
+vi.mock("@clerk/nextjs/server");
+vi.mock("@e2b/code-interpreter");
+vi.mock("@aws-sdk/client-s3");
+vi.mock("@aws-sdk/s3-request-presigner");
+vi.mock("@axiomhq/js");
 
-vi.mock("@clerk/nextjs/server", () => ({
-  auth: vi.fn(),
-}));
-
-// ========== IMPORTS SECTION ==========
-import { auth } from "@clerk/nextjs/server";
-import { POST } from "./route";
-import { agentRuns } from "../../../../src/lib/db/schema";
-import { eq } from "drizzle-orm";
-
-const mockAuth = vi.mocked(auth);
+// ========== TEST CONTEXT ==========
+const context = testContext();
 
 // ========== TEST SUITE ==========
 describe("POST /api/agent/runs", () => {
-  const testUserId = "test-user-123";
+  let user: UserContext;
+  let testComposeId: string;
 
-  beforeAll(() => {
-    initServices();  // Real database connection
+  beforeEach(async () => {
+    context.setupMocks();
+    user = await context.setupUser();
+    const { composeId } = await createTestCompose(uniqueId("agent"));
+    testComposeId = composeId;
   });
 
-  beforeEach(() => {
-    vi.clearAllMocks();  // REQUIRED
+  it("should create a run with running status", async () => {
+    const data = await createTestRun(testComposeId, "Test prompt");
 
-    mockAuth.mockResolvedValue({
-      userId: testUserId,
-    } as Awaited<ReturnType<typeof auth>>);
-  });
-
-  afterEach(async () => {
-    // Clean up test data in real database
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.userId, testUserId));
-  });
-
-  it("should create run with real service integration", async () => {
-    const request = new Request("http://localhost/api/agent/runs", {
-      method: "POST",
-      body: JSON.stringify({ name: "Test Run" }),
-    });
-
-    const response = await POST(request);
-    const data = await response.json();
-
-    // Verify with real database query
-    const dbRuns = await globalThis.services.db
-      .select()
-      .from(agentRuns)
-      .where(eq(agentRuns.id, data.id));
-
-    expect(dbRuns).toHaveLength(1);
-    expect(dbRuns[0]!.status).toBe("pending");
+    expect(data.status).toBe("running");
+    expect(data.runId).toBeDefined();
   });
 });
 ```
@@ -73,15 +56,19 @@ The key points:
 
 1. **Mocks at the top, before imports**. Vitest hoists `vi.mock()` calls, so putting them at the top makes the hoisting explicit.
 
-2. **Only mock external dependencies**. Clerk is a third-party SaaS requiring API keys. Our internal services use real implementations.
+2. **Only mock external dependencies**. Clerk, E2B, S3, Axiom are third-party SaaS requiring API keys. Our internal services use real implementations.
 
-3. **`initServices()` in `beforeAll`**. This establishes the real database connection once for all tests.
+3. **`testContext()` outside describe blocks**. This provides `setupMocks()` for external service mocks and `setupUser()` for isolated user context.
 
-4. **`vi.clearAllMocks()` in `beforeEach`**. This is required to prevent mock state from leaking between tests.
+4. **No `vi.clearAllMocks()` needed**. Vitest is configured with `clearMocks: true`, so mocks are automatically cleared between tests.
 
-5. **Database cleanup in `afterEach`**. We delete test data after each test using the real database.
+5. **No `initServices()` in route tests**. Route handlers call `initServices()` internally. If you need it in tests, it means you're accessing the database directly instead of through API helpers.
 
-6. **Verify with database queries**. Don't just check the response—query the database to verify the actual state was persisted.
+6. **No database cleanup needed**. `context.setupUser()` creates a unique userId each time, so data is naturally isolated.
+
+7. **Use API helpers for fixtures**. Create test data via `createTestCompose()`, `createTestRun()`, etc. instead of direct database operations.
+
+8. **Assert HTTP responses, not database state**. Test the behavior through the API, not internal implementation details.
 
 ### Variations
 
@@ -93,17 +80,22 @@ beforeEach(() => {
   // Second call: Check Clerk auth
   mockAuth
     .mockResolvedValueOnce({ userId: null } as Awaited<ReturnType<typeof auth>>)
-    .mockResolvedValueOnce({ userId: testUserId } as Awaited<ReturnType<typeof auth>>);
+    .mockResolvedValueOnce({ userId: testUserId } as Awaited<
+      ReturnType<typeof auth>
+    >);
 });
 ```
 
-**Multi-user scenarios** need broader cleanup:
+**Multi-user scenarios** use multiple `setupUser()` calls:
 
 ```typescript
-afterEach(async () => {
-  await globalThis.services.db
-    .delete(agentRuns)
-    .where(inArray(agentRuns.userId, [testUserId1, testUserId2]));
+let user1: UserContext;
+let user2: UserContext;
+
+beforeEach(async () => {
+  context.setupMocks();
+  user1 = await context.setupUser({ prefix: "user1" });
+  user2 = await context.setupUser({ prefix: "user2" });
 });
 ```
 
@@ -135,10 +127,12 @@ describe("calculateTotal", () => {
 Note what's absent: no mocks, no `beforeEach`/`afterEach` if there's no state. Pure function tests are simple because pure functions are simple.
 
 **When to use this pattern**:
+
 - Security-critical functions (cryptographic operations, token validation, permission checks)
 - Complex algorithms where bugs would have severe consequences
 
 **When NOT to use this pattern**:
+
 - Validators, parsers, formatters (exercise through integration tests)
 - Simple utility functions
 - Any function that can be exercised through route/command integration tests
@@ -172,7 +166,10 @@ export const apiHandlers = [
 
   // Error simulation
   http.get("https://api.example.com/error", () => {
-    return HttpResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return HttpResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 },
+    );
   }),
 
   // Network error simulation
@@ -185,14 +182,9 @@ export const apiHandlers = [
 **Test file usage**:
 
 ```typescript
-import { setupServer } from 'msw/node';
-import { apiHandlers } from './mocks/handlers/api-handlers';
+import { server } from "../../mocks/server";
 
-const server = setupServer(...apiHandlers);
-
-beforeAll(() => server.listen());
-afterEach(() => server.resetHandlers());
-afterAll(() => server.close());
+// No server.listen()/resetHandlers()/close() needed - global setup.ts handles lifecycle
 
 it("should fetch user data", async () => {
   const user = await fetchUser("123");
@@ -204,14 +196,14 @@ it("should handle API errors", async () => {
   server.use(
     http.get("https://api.example.com/users/:id", () => {
       return HttpResponse.json({ error: "Not found" }, { status: 404 });
-    })
+    }),
   );
 
   await expect(fetchUser("999")).rejects.toThrow("Not found");
 });
 ```
 
-MSW provides realistic HTTP behavior—status codes, headers, streaming—and tests actual request construction. It works in both Node.js and browser environments.
+MSW provides realistic HTTP behavior—status codes, headers, streaming—and tests actual request construction. The MSW server lifecycle (`listen`, `resetHandlers`, `close`) is managed by the global `setup.ts`, so test files should NOT include those calls.
 
 ---
 
@@ -286,7 +278,7 @@ export function clearClerkMock() {
 **Usage patterns**:
 
 ```typescript
-import { mockClerk, clearClerkMock } from '@/__tests__/clerk-mock';
+import { mockClerk, clearClerkMock } from "@/__tests__/clerk-mock";
 
 beforeEach(() => {
   mockClerk({ userId: testUserId });
@@ -557,91 +549,77 @@ describe("scope signals", () => {
 
 ## Standard Test File Structure
 
-Every test file should follow this structure:
+Every web route test file should follow this structure:
 
 ```typescript
-import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { POST, GET } from "../route";
+import {
+  createTestRequest,
+  createTestCompose,
+  createTestRun,
+} from "../../../../../src/__tests__/api-test-helpers";
+import {
+  testContext,
+  type UserContext,
+} from "../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 
 // ========== MOCKS SECTION ==========
-// All vi.mock() calls at the top, before any imports
 // Only mock EXTERNAL third-party packages
+vi.mock("@clerk/nextjs/server");
+vi.mock("@e2b/code-interpreter");
+vi.mock("@aws-sdk/client-s3");
+vi.mock("@aws-sdk/s3-request-presigner");
+vi.mock("@axiomhq/js");
 
-vi.mock("@clerk/nextjs/server", () => ({
-  auth: vi.fn(),
-}));
-
-// ========== IMPORTS SECTION ==========
-// Import mocked modules first
-import { auth } from "@clerk/nextjs/server";
-
-// Import test utilities
-import { initServices } from "../../../../src/lib/init-services";
-
-// Import module under test (use REAL implementation)
-import { POST } from "./route";
-
-// Import database schema for cleanup
-import { agentRuns } from "../../../../src/lib/db/schema";
-import { eq } from "drizzle-orm";
-
-// Get typed mock references
-const mockAuth = vi.mocked(auth);
+// ========== TEST CONTEXT ==========
+const context = testContext();
 
 // ========== TEST SUITE ==========
-describe("Module Name", () => {
-  // Test data constants
-  const testUserId = "test-user-123";
+describe("POST /api/agent/runs", () => {
+  let user: UserContext;
+  let testComposeId: string;
 
-  beforeAll(() => {
-    initServices();  // Real database connection
-  });
-
-  beforeEach(() => {
-    vi.clearAllMocks();  // REQUIRED
-
-    // Configure external mocks
-    mockAuth.mockResolvedValue({
-      userId: testUserId,
-    } as Awaited<ReturnType<typeof auth>>);
-  });
-
-  afterEach(async () => {
-    // Clean up test data in real database
-    await globalThis.services.db
-      .delete(agentRuns)
-      .where(eq(agentRuns.userId, testUserId));
-  });
-
-  afterAll(async () => {
-    // One-time cleanup (if needed)
+  beforeEach(async () => {
+    context.setupMocks();
+    user = await context.setupUser();
+    const { composeId } = await createTestCompose(`agent-${Date.now()}`);
+    testComposeId = composeId;
   });
 
   // ========== TEST CASES ==========
-  it("should test real behavior", async () => {
-    // Arrange
-    const request = new Request("http://localhost/api/test", {
+  it("should create a run with running status", async () => {
+    // Given - fixtures prepared in beforeEach
+
+    // When - execute behavior under test
+    const data = await createTestRun(testComposeId, "Test prompt");
+
+    // Then - assert the HTTP response
+    expect(data.status).toBe("running");
+    expect(data.runId).toBeDefined();
+  });
+
+  it("should reject unauthenticated request", async () => {
+    mockClerk({ userId: null });
+
+    const request = createTestRequest("http://localhost/api/agent/runs", {
       method: "POST",
       body: JSON.stringify({ name: "Test" }),
     });
-
-    // Act
     const response = await POST(request);
-    const data = await response.json();
 
-    // Assert
-    expect(response.status).toBe(200);
-    expect(data.name).toBe("Test");
-
-    // Verify with real database
-    const dbData = await globalThis.services.db
-      .select()
-      .from(agentRuns)
-      .where(eq(agentRuns.id, data.id));
-
-    expect(dbData).toHaveLength(1);
+    expect(response.status).toBe(401);
   });
 });
 ```
+
+Note what's absent compared to older patterns:
+
+- No `vi.clearAllMocks()` — Vitest config has `clearMocks: true`
+- No `initServices()` — Route handlers call it internally
+- No `afterEach` database cleanup — `setupUser()` provides isolated user context
+- No database state assertions — Test HTTP responses only
 
 ---
 
@@ -650,6 +628,7 @@ describe("Module Name", () => {
 ### External Dependencies (MOCK)
 
 **Third-party SaaS/APIs**:
+
 - `@clerk/nextjs` - Authentication service
 - `@aws-sdk/client-s3` - Cloud storage
 - `@e2b/code-interpreter` - Sandbox service
@@ -660,11 +639,13 @@ describe("Module Name", () => {
 ### Internal Implementation (USE REAL)
 
 **Database**:
+
 - `globalThis.services.db` - Always use real database
 - Database queries and operations
 - Transaction logic
 
 **Internal services**:
+
 - `../../lib/blob/blob-service`
 - `../../lib/storage/storage-service`
 - `../../lib/run/run-service`
@@ -672,9 +653,10 @@ describe("Module Name", () => {
 - All internal utilities and helpers
 
 **Test data management**:
-- Create test data with real database operations
-- Clean up test data in `beforeEach`/`afterEach`
-- Use unique test IDs or prefixes
+
+- Create test data via API helpers (`createTestCompose`, `createTestRun`, etc.)
+- `testContext().setupUser()` provides isolated user context with unique IDs
+- No manual cleanup needed — user isolation handles it
 
 ---
 
@@ -686,13 +668,14 @@ When refactoring an existing test file to follow these patterns, use this workfl
 
 List all `vi.mock()` calls and classify each:
 
-| Mock Type | Action |
-|-----------|--------|
-| External (third-party from node_modules) | Keep |
-| Internal (relative path `../../` or `../`) | Remove |
-| Built-in (fs, child_process) | Evaluate |
+| Mock Type                                  | Action   |
+| ------------------------------------------ | -------- |
+| External (third-party from node_modules)   | Keep     |
+| Internal (relative path `../../` or `../`) | Remove   |
+| Built-in (fs, child_process)               | Evaluate |
 
 **Questions to ask**:
+
 - Does this import start with `@` or is it a package name? → Likely external
 - Does it use relative path `../../`? → Internal (remove)
 - Is it from `node_modules`? → Check if third-party
@@ -705,32 +688,22 @@ vi.mock("../../lib/run", () => ({
   runService: { createRun: vi.fn() },
 }));
 
-// AFTER (remove mock, import real)
-import { runService } from "../../lib/run";
-
-beforeAll(() => {
-  initServices();  // If using database
-});
+// AFTER (remove mock, use API helpers to create fixtures)
+import { createTestRun } from "../../../../../src/__tests__/api-test-helpers";
 ```
 
-### Step 3: Add Proper Cleanup
+### Step 3: Use testContext Pattern
 
 ```typescript
-beforeEach(() => {
-  vi.clearAllMocks();  // REQUIRED
+const context = testContext();
 
-  vi.stubEnv("API_KEY", "test-key");
-
-  mockAuth.mockResolvedValue({ userId: testUserId });
+beforeEach(async () => {
+  context.setupMocks();
+  user = await context.setupUser();
 });
 
-afterEach(async () => {
-  vi.unstubAllEnvs();
-
-  await globalThis.services.db
-    .delete(testTable)
-    .where(eq(testTable.userId, testUserId));
-});
+// No vi.clearAllMocks() — Vitest config has clearMocks: true
+// No afterEach cleanup — setupUser() provides isolated user context
 ```
 
 ### Step 4: Verify Test Quality
@@ -763,6 +736,6 @@ const mockAuth = vi.mocked(auth);
 mockAuth.mockResolvedValue({ userId: testUserId });
 
 // AFTER: Use helper
-import { mockClerk } from '@/__tests__/clerk-mock';
+import { mockClerk } from "@/__tests__/clerk-mock";
 mockClerk({ userId: testUserId });
 ```

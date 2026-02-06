@@ -45,18 +45,15 @@ This approach has several problems. First, you're not testing the actual request
 We use MSW (Mock Service Worker) instead:
 
 ```typescript
-import { http, HttpResponse } from 'msw';
-import { setupServer } from 'msw/node';
+import { http, HttpResponse } from "msw";
+import { server } from "../../mocks/server";
 
-const server = setupServer(
-  http.get('https://api.example.com/users', () => {
-    return HttpResponse.json({ users: [{ id: 1, name: 'Test' }] });
-  })
+// Override handlers per test — server lifecycle is managed by global setup.ts
+server.use(
+  http.get("https://api.example.com/users", () => {
+    return HttpResponse.json({ users: [{ id: 1, name: "Test" }] });
+  }),
 );
-
-beforeAll(() => server.listen());
-afterEach(() => server.resetHandlers());
-afterAll(() => server.close());
 ```
 
 MSW intercepts at the network level, so your code makes real `fetch` calls that get intercepted. This tests the actual request construction and catches bugs in URL building, header formatting, and request body serialization.
@@ -125,9 +122,9 @@ This is our highest priority anti-pattern to avoid. If you find yourself writing
 
 ```typescript
 // These are wrong
-vi.mock("../../blob/blob-service")
-vi.mock("../../storage/storage-service")
-vi.mock("../agent-session-service")
+vi.mock("../../blob/blob-service");
+vi.mock("../../storage/storage-service");
+vi.mock("../agent-session-service");
 ```
 
 **The Relative Path Rule**: If the path in `vi.mock()` starts with `../` or `../../`, it's almost always wrong.
@@ -138,23 +135,23 @@ What should you mock? Only external third-party packages:
 
 ```typescript
 // These are correct
-vi.mock("@clerk/nextjs")
-vi.mock("@aws-sdk/client-s3")
-vi.mock("@e2b/code-interpreter")
-vi.mock("@anthropic-ai/sdk")
+vi.mock("@clerk/nextjs");
+vi.mock("@aws-sdk/client-s3");
+vi.mock("@e2b/code-interpreter");
+vi.mock("@anthropic-ai/sdk");
 ```
 
 These are external services that require API keys, network access, or external infrastructure. Your internal code—services, utilities, database access—should use real implementations.
 
 Here's the mock hierarchy:
 
-| Category | Example | Mock? |
-|----------|---------|-------|
-| Third-party SaaS | `@clerk/nextjs`, `@aws-sdk/client-s3` | Yes |
-| Node.js built-ins | `child_process` | Sometimes |
-| Database | `globalThis.services.db` | Never |
-| Internal services | `../../lib/*` | Never |
-| Internal utilities | `../../utils/*` | Never |
+| Category           | Example                               | Mock?     |
+| ------------------ | ------------------------------------- | --------- |
+| Third-party SaaS   | `@clerk/nextjs`, `@aws-sdk/client-s3` | Yes       |
+| Node.js built-ins  | `child_process`                       | Sometimes |
+| Database           | `globalThis.services.db`              | Never     |
+| Internal services  | `../../lib/*`                         | Never     |
+| Internal utilities | `../../utils/*`                       | Never     |
 
 When you use real internal code, you catch real bugs. When you mock it, you're just verifying that your mock orchestration is correct.
 
@@ -175,8 +172,8 @@ If you need deterministic time, mock only what you need:
 
 ```typescript
 beforeEach(() => {
-  vi.spyOn(Date, 'now').mockReturnValue(
-    new Date("2024-01-15T12:00:00Z").getTime()
+  vi.spyOn(Date, "now").mockReturnValue(
+    new Date("2024-01-15T12:00:00Z").getTime(),
   );
 });
 
@@ -378,6 +375,7 @@ The `setupPage()` helper mirrors `main.ts` bootstrap: it sets the pathname, conf
 When reviewing tests, watch for these patterns:
 
 **Mocking Issues**:
+
 - [ ] Mocking internal services (`../../lib/*`)
 - [ ] Mocking `globalThis.services.db`
 - [ ] Direct fetch mocking (use MSW instead)
@@ -385,11 +383,13 @@ When reviewing tests, watch for these patterns:
 - [ ] Partial mocks with `vi.importActual()`
 
 **Timer Issues**:
+
 - [ ] Using `vi.useFakeTimers()`
 - [ ] Using `vi.advanceTimersByTime()`
 - [ ] Artificial delays (`setTimeout` in tests)
 
 **Test Quality Issues**:
+
 - [ ] Testing that mocks were called (not behavior)
 - [ ] Testing UI text content or CSS classes
 - [ ] Testing empty/loading states without logic
@@ -398,8 +398,6 @@ When reviewing tests, watch for these patterns:
 - [ ] Direct component rendering (use bootstrap$)
 
 **Required Practices**:
-- [ ] `vi.clearAllMocks()` in `beforeEach`
-- [ ] `initServices()` in `beforeAll` (for database tests)
-- [ ] Database cleanup in `afterEach`
+
 - [ ] Only mock third-party dependencies
-- [ ] Test real behavior and outcomes
+- [ ] Test real behavior and outcomes (HTTP responses, react component state, not DB state)

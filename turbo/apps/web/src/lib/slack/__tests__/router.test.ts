@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { testContext } from "../../../__tests__/test-helpers";
+import { reloadEnv } from "../../../env";
 import { routeToAgent, keywordMatch, type RouteResult } from "../router";
 
 // Ensure Axiom logger is disabled in tests by unsetting AXIOM_TOKEN
@@ -17,16 +18,6 @@ vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
 vi.mock("@axiomhq/logging");
 
-// Mock the env
-vi.mock("../../../env", () => ({
-  env: vi.fn(() => ({
-    OPENROUTER_API_KEY: undefined,
-  })),
-}));
-
-import { env } from "../../../env";
-
-const mockedEnv = vi.mocked(env);
 const context = testContext();
 
 /**
@@ -132,17 +123,10 @@ describe("keywordMatch", () => {
 
 describe("routeToAgent", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
     context.setupMocks();
-    server.listen({ onUnhandledRequest: "bypass" });
-    mockedEnv.mockReturnValue({
-      OPENROUTER_API_KEY: undefined,
-    } as ReturnType<typeof env>);
-  });
-
-  afterEach(() => {
-    server.resetHandlers();
-    server.close();
+    // Ensure OPENROUTER_API_KEY is not set by default
+    vi.stubEnv("OPENROUTER_API_KEY", "");
+    reloadEnv();
   });
 
   it("returns ambiguous for empty bindings", async () => {
@@ -181,9 +165,8 @@ describe("routeToAgent", () => {
 
   describe("with LLM routing", () => {
     beforeEach(() => {
-      mockedEnv.mockReturnValue({
-        OPENROUTER_API_KEY: "test-api-key",
-      } as ReturnType<typeof env>);
+      vi.stubEnv("OPENROUTER_API_KEY", "test-api-key");
+      reloadEnv();
     });
 
     it("calls LLM when keyword matching is ambiguous", async () => {

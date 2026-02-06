@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { GET } from "../route";
 import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
@@ -6,7 +6,7 @@ import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../../src/env";
 import { server } from "../../../../../../src/mocks/server";
 
-// Mock external dependencies
+// Mock external dependencies required by testContext().setupMocks()
 vi.mock("@clerk/nextjs/server");
 vi.mock("@e2b/code-interpreter");
 vi.mock("@aws-sdk/client-s3");
@@ -18,16 +18,11 @@ const context = testContext();
 describe("/api/slack/oauth/callback", () => {
   beforeEach(() => {
     context.setupMocks();
-    vi.clearAllMocks();
-    // Reset to default test values
+    // Reset Slack env to default test values (tests may override these)
     vi.stubEnv("SLACK_CLIENT_ID", "test-slack-client-id");
     vi.stubEnv("SLACK_CLIENT_SECRET", "test-slack-client-secret");
     vi.stubEnv("SLACK_REDIRECT_BASE_URL", "");
     reloadEnv();
-  });
-
-  afterEach(() => {
-    server.resetHandlers();
   });
 
   describe("GET /api/slack/oauth/callback", () => {
