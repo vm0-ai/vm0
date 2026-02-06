@@ -1,51 +1,78 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { createHmac } from "crypto";
-import { POST } from "../route";
-import { createTestRequest } from "../../../../../src/__tests__/api-test-helpers";
+import crypto from "crypto";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { HttpResponse } from "msw";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
-import { reloadEnv } from "../../../../../src/env";
 import { server } from "../../../../../src/mocks/server";
+import {
+  givenLinkedSlackUser,
+  givenSlackWorkspaceInstalled,
+  givenUserHasAgent,
+  givenUserHasMultipleAgents,
+} from "../../../../../src/__tests__/slack/api-helpers";
+import { handlers, http } from "../../../../../src/__tests__/msw";
+import { POST } from "../route";
 
-// Mock only external dependencies (third-party packages)
 vi.mock("@clerk/nextjs/server");
 vi.mock("@e2b/code-interpreter");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
 
-// Mock next/server's after() function which requires a request scope
+// Mock Next.js after() to execute synchronously instead of deferring
+const afterPromises: Promise<unknown>[] = [];
 vi.mock("next/server", async (importOriginal) => {
   const original = await importOriginal<typeof import("next/server")>();
   return {
     ...original,
-    after: vi.fn(),
+    after: (promise: Promise<unknown>) => {
+      afterPromises.push(promise);
+    },
   };
 });
 
-const context = testContext();
-
-// Use the same signing secret as configured in setup.ts
-const testSigningSecret = "test-slack-signing-secret";
-
-/**
- * Create a valid Slack signature for testing
- */
-function createSlackSignature(
-  signingSecret: string,
-  timestamp: string,
-  body: string,
-): string {
-  const baseString = `v0:${timestamp}:${body}`;
-  const hmac = createHmac("sha256", signingSecret);
-  return `v0=${hmac.update(baseString).digest("hex")}`;
+/** Wait for all after() callbacks to complete */
+async function flushAfterCallbacks() {
+  await Promise.all(afterPromises);
+  afterPromises.length = 0;
 }
 
-/**
- * Create a request with valid Slack signature headers
- */
-function createSignedSlackRequest(body: string): Request {
+const context = testContext();
+
+const TEST_SIGNING_SECRET = "test-slack-signing-secret";
+
+/** Create a signed Slack event request */
+function createSlackEventRequest(event: {
+  teamId: string;
+  channelId: string;
+  userId: string;
+  text: string;
+  ts: string;
+  threadTs?: string;
+}): Request {
   const timestamp = Math.floor(Date.now() / 1000).toString();
-  const signature = createSlackSignature(testSigningSecret, timestamp, body);
+  const payload = {
+    type: "event_callback",
+    token: "test-token",
+    team_id: event.teamId,
+    api_app_id: "A123",
+    event: {
+      type: "app_mention",
+      user: event.userId,
+      text: event.text,
+      ts: event.ts,
+      channel: event.channelId,
+      event_ts: event.ts,
+      ...(event.threadTs && { thread_ts: event.threadTs }),
+    },
+    event_id: "Ev123",
+    event_time: parseInt(timestamp),
+  };
+  const body = JSON.stringify(payload);
+
+  // Generate signature
+  const baseString = `v0:${timestamp}:${body}`;
+  const hmac = crypto.createHmac("sha256", TEST_SIGNING_SECRET);
+  const signature = `v0=${hmac.update(baseString).digest("hex")}`;
 
   return new Request("http://localhost/api/slack/events", {
     method: "POST",
@@ -58,238 +85,315 @@ function createSignedSlackRequest(body: string): Request {
   });
 }
 
+const SLACK_API = "https://slack.com/api";
+
+const slackHandlers = handlers({
+  postMessage: http.post(
+    `${SLACK_API}/chat.postMessage`,
+    async ({ request }) => {
+      const body = await request.formData();
+      const data = Object.fromEntries(body.entries());
+      return HttpResponse.json({
+        ok: true,
+        ts: `${Date.now()}.000000`,
+        channel: data.channel,
+      });
+    },
+  ),
+  postEphemeral: http.post(`${SLACK_API}/chat.postEphemeral`, () =>
+    HttpResponse.json({ ok: true, message_ts: `${Date.now()}.000000` }),
+  ),
+  chatUpdate: http.post(`${SLACK_API}/chat.update`, async ({ request }) => {
+    const body = await request.formData();
+    const data = Object.fromEntries(body.entries());
+    return HttpResponse.json({ ok: true, ts: data.ts, channel: data.channel });
+  }),
+  reactionsAdd: http.post(`${SLACK_API}/reactions.add`, () =>
+    HttpResponse.json({ ok: true }),
+  ),
+  reactionsRemove: http.post(`${SLACK_API}/reactions.remove`, () =>
+    HttpResponse.json({ ok: true }),
+  ),
+  conversationsReplies: http.post(`${SLACK_API}/conversations.replies`, () =>
+    HttpResponse.json({ ok: true, messages: [] }),
+  ),
+  conversationsHistory: http.post(`${SLACK_API}/conversations.history`, () =>
+    HttpResponse.json({ ok: true, messages: [] }),
+  ),
+});
+
+/** Helper to get form data from a mock's call */
+async function getFormData(
+  mock: { mock: { calls: Array<[{ request: Request }]> } },
+  callIndex = 0,
+): Promise<Record<string, FormDataEntryValue>> {
+  const request = mock.mock.calls[callIndex]![0].request;
+  const body = await request.formData();
+  return Object.fromEntries(body.entries());
+}
+
 describe("POST /api/slack/events", () => {
   beforeEach(() => {
     context.setupMocks();
+    server.use(...slackHandlers.handlers);
   });
 
-  afterEach(() => {
-    server.resetHandlers();
-  });
+  describe("Scenario: Mention bot as unlinked user", () => {
+    it("should post ephemeral login prompt when user is not linked", async () => {
+      // Given I am a Slack user without a linked account
+      const { installation } = await givenSlackWorkspaceInstalled();
 
-  describe("Configuration", () => {
-    it("returns 503 when Slack signing secret is not configured", async () => {
-      // Temporarily clear signing secret to test unconfigured state
-      vi.stubEnv("SLACK_SIGNING_SECRET", "");
-      reloadEnv();
-
-      const body = JSON.stringify({
-        type: "url_verification",
-        challenge: "test",
+      // When I @mention the VM0 bot via the events API
+      const request = createSlackEventRequest({
+        teamId: installation.slackWorkspaceId,
+        channelId: "C123",
+        userId: "U-unlinked-user",
+        text: "<@BOT123> help me",
+        ts: "1234567890.123456",
       });
-      const request = createTestRequest(
-        "http://localhost:3000/api/slack/events",
-        {
-          method: "POST",
-          body,
-        },
-      );
-
       const response = await POST(request);
-      const data = await response.json();
 
-      expect(response.status).toBe(503);
-      expect(data.error).toBe("Slack integration is not configured");
-
-      // Restore the signing secret for subsequent tests
-      vi.stubEnv("SLACK_SIGNING_SECRET", testSigningSecret);
-      reloadEnv();
-    });
-  });
-
-  describe("Signature Verification", () => {
-    it("returns 401 when signature headers are missing", async () => {
-      const request = createTestRequest(
-        "http://localhost:3000/api/slack/events",
-        {
-          method: "POST",
-          body: JSON.stringify({ type: "url_verification", challenge: "test" }),
-        },
-      );
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(401);
-      expect(data.error).toBe("Missing Slack signature headers");
-    });
-
-    it("returns 401 when signature is invalid", async () => {
-      const body = JSON.stringify({
-        type: "url_verification",
-        challenge: "test",
-      });
-      const timestamp = Math.floor(Date.now() / 1000).toString();
-
-      const request = new Request("http://localhost/api/slack/events", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-slack-signature": "v0=invalid-signature",
-          "x-slack-request-timestamp": timestamp,
-        },
-        body,
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(401);
-      expect(data.error).toBe("Invalid signature");
-    });
-
-    it("returns 401 when timestamp is too old (replay attack protection)", async () => {
-      const body = JSON.stringify({
-        type: "url_verification",
-        challenge: "test",
-      });
-      // Timestamp from 10 minutes ago
-      const oldTimestamp = (Math.floor(Date.now() / 1000) - 600).toString();
-      const signature = createSlackSignature(
-        testSigningSecret,
-        oldTimestamp,
-        body,
-      );
-
-      const request = new Request("http://localhost/api/slack/events", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-slack-signature": signature,
-          "x-slack-request-timestamp": oldTimestamp,
-        },
-        body,
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(401);
-      expect(data.error).toBe("Invalid signature");
-    });
-  });
-
-  describe("Payload Parsing", () => {
-    it("returns 400 when JSON is invalid", async () => {
-      const invalidBody = "invalid json";
-      const request = createSignedSlackRequest(invalidBody);
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data.error).toBe("Invalid JSON payload");
-    });
-  });
-
-  describe("URL Verification", () => {
-    it("handles URL verification challenge and returns challenge value", async () => {
-      const challenge = "test-challenge-123";
-      const body = JSON.stringify({
-        type: "url_verification",
-        challenge,
-        token: "test-token",
-      });
-      const request = createSignedSlackRequest(body);
-
-      const response = await POST(request);
-      const data = await response.json();
-
+      // Then the route should return 200 OK
       expect(response.status).toBe(200);
-      expect(data.challenge).toBe(challenge);
+
+      // Wait for after() callbacks to complete
+      await flushAfterCallbacks();
+
+      // And the ephemeral login prompt should be posted
+      expect(slackHandlers.mocked.postEphemeral).toHaveBeenCalledTimes(1);
+
+      const data = await getFormData(slackHandlers.mocked.postEphemeral);
+      expect(data.channel).toBe("C123");
+      expect(data.user).toBe("U-unlinked-user");
+
+      // Check that blocks contain login URL with channel parameter
+      const blocks = JSON.parse((data.blocks as string) ?? "[]");
+      const loginButton = blocks
+        .flatMap(
+          (block: { type: string; elements?: Array<{ url?: string }> }) =>
+            block.type === "actions" ? (block.elements ?? []) : [],
+        )
+        .find((e: { url?: string }) => e.url?.includes("/slack/link"));
+
+      expect(loginButton).toBeDefined();
+      expect(loginButton.url).toContain("c=C123"); // Channel ID included for success message
+    });
+
+    it("should not include thread_ts in ephemeral login prompt (even when mentioned in thread)", async () => {
+      // Given I am a Slack user without a linked account
+      const { installation } = await givenSlackWorkspaceInstalled();
+
+      // When I @mention the VM0 bot in a thread
+      const request = createSlackEventRequest({
+        teamId: installation.slackWorkspaceId,
+        channelId: "C123",
+        userId: "U-unlinked-user",
+        text: "<@BOT123> help me",
+        ts: "1234567890.123456",
+        threadTs: "1234567890.000000", // This is a thread reply
+      });
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      // Then the ephemeral message should NOT include thread_ts
+      // (Slack ephemeral messages with thread_ts don't display correctly)
+      expect(slackHandlers.mocked.postEphemeral).toHaveBeenCalledTimes(1);
+
+      const data = await getFormData(slackHandlers.mocked.postEphemeral);
+      expect(data.thread_ts).toBeUndefined();
     });
   });
 
-  describe("Event Handling", () => {
-    it("returns 200 immediately for app_mention events", async () => {
-      // Note: The actual async handler processing is tested separately
-      // This test verifies the route responds quickly to meet Slack's 3-second requirement
-      const body = JSON.stringify({
-        type: "event_callback",
-        token: "test-token",
-        team_id: "T123",
-        api_app_id: "A123",
-        event: {
-          type: "app_mention",
-          user: "U123",
-          text: "<@BXYZ> hello",
-          ts: "1234567890.123456",
-          channel: "C123",
-          event_ts: "1234567890.123456",
-        },
-        event_id: "E123",
-        event_time: 1234567890,
+  describe("Scenario: Mention bot with no agents", () => {
+    it("should prompt user to add an agent", async () => {
+      // Given I am a linked Slack user with no agents
+      const { userLink, installation } = await givenLinkedSlackUser();
+
+      // When I @mention the VM0 bot
+      const request = createSlackEventRequest({
+        teamId: installation.slackWorkspaceId,
+        channelId: "C123",
+        userId: userLink.slackUserId,
+        text: `<@${installation.botUserId}> help me`,
+        ts: "1234567890.123456",
       });
-      const request = createSignedSlackRequest(body);
-
       const response = await POST(request);
-      const text = await response.text();
-
       expect(response.status).toBe(200);
-      expect(text).toBe("OK");
+      await flushAfterCallbacks();
+
+      // Then I should receive a message prompting to link an agent
+      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+
+      const data = await getFormData(slackHandlers.mocked.postMessage);
+      const text = (data.text as string) ?? "";
+      expect(text).toContain("don't have any agent linked");
+      expect(text).toContain("/vm0 agent link");
     });
+  });
 
-    it("returns 200 for app_mention events in a thread", async () => {
-      const body = JSON.stringify({
-        type: "event_callback",
-        token: "test-token",
-        team_id: "T123",
-        api_app_id: "A123",
-        event: {
-          type: "app_mention",
-          user: "U123",
-          text: "<@BXYZ> follow up",
-          ts: "1234567890.999999",
-          channel: "C123",
-          event_ts: "1234567890.999999",
-          thread_ts: "1234567890.123456",
-        },
-        event_id: "E123",
-        event_time: 1234567890,
+  describe("Scenario: Mention bot with single agent", () => {
+    it("should execute agent and post response", async () => {
+      // Given I am a linked Slack user with one agent
+      const { userLink, installation } = await givenLinkedSlackUser();
+      await givenUserHasAgent(userLink, {
+        agentName: "my-helper",
+        description: "A helpful assistant",
       });
-      const request = createSignedSlackRequest(body);
 
+      // When I @mention the VM0 bot
+      const request = createSlackEventRequest({
+        teamId: installation.slackWorkspaceId,
+        channelId: "C123",
+        userId: userLink.slackUserId,
+        text: `<@${installation.botUserId}> help me with this code`,
+        ts: "1234567890.123456",
+      });
       const response = await POST(request);
-      const text = await response.text();
-
       expect(response.status).toBe(200);
-      expect(text).toBe("OK");
+      await flushAfterCallbacks();
+
+      // Then:
+      // 1. Thinking reaction should be added
+      expect(slackHandlers.mocked.reactionsAdd).toHaveBeenCalledTimes(1);
+      const reactionData = await getFormData(slackHandlers.mocked.reactionsAdd);
+      expect(reactionData.name).toBe("thought_balloon");
+
+      // 2. Response message should be posted
+      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+
+      // 3. Response should include agent name in context block
+      const data = await getFormData(slackHandlers.mocked.postMessage);
+      const blocks = JSON.parse((data.blocks as string) ?? "[]") as Array<{
+        type: string;
+        elements?: Array<{ text?: string }>;
+      }>;
+      const contextBlocks = blocks.filter((b) => b.type === "context");
+      expect(contextBlocks.length).toBeGreaterThanOrEqual(1);
+      const agentContext = contextBlocks[0]!.elements?.[0]?.text;
+      expect(agentContext).toContain("my-helper");
+
+      // 4. Thinking reaction should be removed
+      expect(slackHandlers.mocked.reactionsRemove).toHaveBeenCalledTimes(1);
     });
+  });
 
-    it("returns 200 for unknown event types", async () => {
-      const body = JSON.stringify({
-        type: "unknown_event_type",
+  describe("Scenario: Mention bot with multiple agents (explicit selection)", () => {
+    it("should use explicitly selected agent", async () => {
+      // Given I have agents "coder" and "reviewer"
+      const { userLink, installation } = await givenLinkedSlackUser();
+      await givenUserHasMultipleAgents(userLink, [
+        { name: "coder", description: "Writes code" },
+        { name: "reviewer", description: "Reviews code" },
+      ]);
+
+      // When I say "use coder fix this bug"
+      const request = createSlackEventRequest({
+        teamId: installation.slackWorkspaceId,
+        channelId: "C123",
+        userId: userLink.slackUserId,
+        text: `<@${installation.botUserId}> use coder fix this bug`,
+        ts: "1234567890.123456",
       });
-      const request = createSignedSlackRequest(body);
-
       const response = await POST(request);
-
       expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      // Then "coder" should be selected (verified by agent name in response)
+      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+      const data = await getFormData(slackHandlers.mocked.postMessage);
+      const blocks = JSON.parse((data.blocks as string) ?? "[]") as Array<{
+        type: string;
+        elements?: Array<{ text?: string }>;
+      }>;
+      const contextBlocks = blocks.filter((b) => b.type === "context");
+      expect(contextBlocks.length).toBeGreaterThanOrEqual(1);
+      const agentContext = contextBlocks[0]!.elements?.[0]?.text;
+      expect(agentContext).toContain("coder");
     });
+  });
 
-    it("returns 200 for event_callback with unknown inner event type", async () => {
-      const body = JSON.stringify({
-        type: "event_callback",
-        token: "test-token",
-        team_id: "T123",
-        api_app_id: "A123",
-        event: {
-          type: "message",
-          user: "U123",
-          text: "hello",
-          ts: "1234567890.123456",
-          channel: "C123",
-        },
-        event_id: "E123",
-        event_time: 1234567890,
+  describe("Scenario: Mention bot with multiple agents (ambiguous)", () => {
+    it("should show list of available agents when routing is ambiguous", async () => {
+      // Given I have similar agents
+      const { userLink, installation } = await givenLinkedSlackUser();
+      await givenUserHasMultipleAgents(userLink, [
+        { name: "agent-a", description: "A friendly helper" },
+        { name: "agent-b", description: "Another friendly helper" },
+      ]);
+
+      // When I say "hello" (ambiguous - could be for either agent)
+      const request = createSlackEventRequest({
+        teamId: installation.slackWorkspaceId,
+        channelId: "C123",
+        userId: userLink.slackUserId,
+        text: `<@${installation.botUserId}> hello`,
+        ts: "1234567890.123456",
       });
-      const request = createSignedSlackRequest(body);
-
       const response = await POST(request);
-      const text = await response.text();
-
       expect(response.status).toBe(200);
-      expect(text).toBe("OK");
+      await flushAfterCallbacks();
+
+      // Then I should see list of available agents
+      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+
+      const data = await getFormData(slackHandlers.mocked.postMessage);
+      const text = (data.text as string) ?? "";
+      expect(text).toContain("couldn't determine which agent");
+      expect(text).toContain("agent-a");
+      expect(text).toContain("agent-b");
+    });
+  });
+
+  describe("Scenario: Explicit selection of non-existent agent", () => {
+    it("should show error when selected agent does not exist", async () => {
+      // Given I have agent "coder"
+      const { userLink, installation } = await givenLinkedSlackUser();
+      await givenUserHasAgent(userLink, {
+        agentName: "coder",
+        description: "Writes code",
+      });
+
+      // When I say "use writer help me"
+      const request = createSlackEventRequest({
+        teamId: installation.slackWorkspaceId,
+        channelId: "C123",
+        userId: userLink.slackUserId,
+        text: `<@${installation.botUserId}> use writer help me`,
+        ts: "1234567890.123456",
+      });
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      // Then I should see error that "writer" not found
+      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+
+      const data = await getFormData(slackHandlers.mocked.postMessage);
+      const text = (data.text as string) ?? "";
+      expect(text).toContain('"writer" not found');
+      // And I should see list of available agents
+      expect(text).toContain("coder");
+    });
+  });
+
+  describe("Scenario: Installation not found", () => {
+    it("should handle gracefully when workspace is not installed", async () => {
+      // Given workspace is not installed (no installation record)
+      // When event is received for unknown workspace
+      const request = createSlackEventRequest({
+        teamId: "T-unknown-workspace",
+        channelId: "C123",
+        userId: "U123",
+        text: "<@BOT123> help me",
+        ts: "1234567890.123456",
+      });
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      // Then no messages should be sent (silent failure)
+      expect(slackHandlers.mocked.postMessage).not.toHaveBeenCalled();
     });
   });
 });

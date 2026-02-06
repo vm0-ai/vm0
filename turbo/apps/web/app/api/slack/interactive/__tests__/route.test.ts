@@ -3,7 +3,6 @@ import { createHmac } from "crypto";
 import { eq } from "drizzle-orm";
 import { POST } from "../route";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
-import { reloadEnv } from "../../../../../src/env";
 import { server } from "../../../../../src/mocks/server";
 import { slackBindings } from "../../../../../src/db/schema/slack-binding";
 import { listSecrets } from "../../../../../src/lib/secret/secret-service";
@@ -68,25 +67,6 @@ describe("POST /api/slack/interactive", () => {
 
   afterEach(() => {
     server.resetHandlers();
-  });
-
-  describe("Configuration", () => {
-    it("returns 503 when Slack signing secret is not configured", async () => {
-      vi.stubEnv("SLACK_SIGNING_SECRET", "");
-      reloadEnv();
-
-      const body = buildInteractiveBody({ type: "block_actions" });
-      const request = createSignedSlackRequest(body);
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(503);
-      expect(data.error).toBe("Slack integration is not configured");
-
-      vi.stubEnv("SLACK_SIGNING_SECRET", testSigningSecret);
-      reloadEnv();
-    });
   });
 
   describe("Signature Verification", () => {

@@ -312,3 +312,23 @@ export async function givenUserHasAgent(
     },
   };
 }
+
+/**
+ * Given a user has multiple agents configured.
+ */
+export async function givenUserHasMultipleAgents(
+  userLink: LinkedUserResult["userLink"],
+  agents: Array<{ name: string; description?: string | null }>,
+): Promise<AgentBindingResult[]> {
+  const results: AgentBindingResult[] = [];
+
+  for (const agent of agents) {
+    const result = await givenUserHasAgent(userLink, {
+      agentName: agent.name,
+      description: agent.description ?? null,
+    });
+    results.push(result);
+  }
+
+  return results;
+}

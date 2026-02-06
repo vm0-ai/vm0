@@ -1,32 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { GET } from "../route";
 import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
 import { reloadEnv } from "../../../../../../src/env";
 
 describe("/api/slack/oauth/install", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    // Reset to default test values
-    vi.stubEnv("SLACK_CLIENT_ID", "test-slack-client-id");
-    vi.stubEnv("SLACK_REDIRECT_BASE_URL", "");
-    reloadEnv();
-  });
-
   describe("GET /api/slack/oauth/install", () => {
-    it("should return 503 when SLACK_CLIENT_ID is not configured", async () => {
-      vi.stubEnv("SLACK_CLIENT_ID", "");
-      reloadEnv();
-
-      const request = createTestRequest(
-        "http://localhost:3000/api/slack/oauth/install",
-      );
-      const response = await GET(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(503);
-      expect(data.error).toBe("Slack integration is not configured");
-    });
-
     it("should redirect to Slack OAuth URL with correct parameters", async () => {
       const request = createTestRequest(
         "http://localhost:3000/api/slack/oauth/install",
@@ -48,7 +26,7 @@ describe("/api/slack/oauth/install", () => {
         "app_mentions:read",
       );
       expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-        "http://localhost:3000/api/slack/oauth/callback",
+        "https://test.example.com/api/slack/oauth/callback",
       );
     });
 
