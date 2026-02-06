@@ -63,6 +63,27 @@ export const createModelProvider$ = command(
 );
 
 /**
+ * Set a model provider as the default for its framework.
+ */
+export const setDefaultModelProvider$ = command(
+  async ({ get, set }, type: string) => {
+    const fetchFn = get(fetch$);
+    const response = await fetchFn(`/api/model-providers/${type}/set-default`, {
+      method: "POST",
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to set default model provider: ${response.status}`,
+      );
+    }
+
+    // Trigger reload after successful update
+    set(internalReloadModelProviders$, (x) => x + 1);
+  },
+);
+
+/**
  * Delete a model provider by type.
  */
 export const deleteModelProvider$ = command(

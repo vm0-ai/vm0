@@ -1,0 +1,69 @@
+import { useGet, useLastResolved, useSet } from "ccstate-react";
+import { Card } from "@vm0/ui/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@vm0/ui/components/ui/select";
+import { MODEL_PROVIDER_TYPES, type ModelProviderType } from "@vm0/core";
+import { detach, Reason } from "../../signals/utils.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import {
+  configuredProviders$,
+  defaultProvider$,
+  setDefaultProvider$,
+} from "../../signals/settings-page/model-providers.ts";
+import { ProviderIcon } from "./provider-icons.tsx";
+
+export function DefaultProviderCard() {
+  const providers = useLastResolved(configuredProviders$);
+  const defaultProvider = useLastResolved(defaultProvider$);
+  const setDefault = useSet(setDefaultProvider$);
+  const pageSignal = useGet(pageSignal$);
+
+  if (!providers || providers.length === 0) {
+    return null;
+  }
+
+  const handleChange = (value: string) => {
+    detach(
+      setDefault(value as ModelProviderType, pageSignal),
+      Reason.DomCallback,
+    );
+  };
+
+  return (
+    <Card className="p-6">
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1">
+          <h3 className="text-sm font-medium text-foreground">
+            Default model provider
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            The default provider used when running sandboxes
+          </p>
+        </div>
+        <Select
+          value={defaultProvider?.type ?? ""}
+          onValueChange={handleChange}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select a default provider" />
+          </SelectTrigger>
+          <SelectContent>
+            {providers.map((provider) => (
+              <SelectItem key={provider.type} value={provider.type}>
+                <div className="flex items-center gap-2">
+                  <ProviderIcon type={provider.type} size={16} />
+                  <span>{MODEL_PROVIDER_TYPES[provider.type].label}</span>
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </Card>
+  );
+}

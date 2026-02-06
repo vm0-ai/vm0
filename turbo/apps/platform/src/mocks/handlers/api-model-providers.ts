@@ -103,6 +103,26 @@ export const apiModelProvidersHandlers = [
     });
   }),
 
+  // POST /api/model-providers/:type/set-default - Set default provider
+  http.post("/api/model-providers/:type/set-default", ({ params }) => {
+    const type = params.type as ModelProviderResponse["type"];
+    const existing = mockModelProviders.find((p) => p.type === type);
+
+    if (!existing) {
+      return HttpResponse.json(
+        { error: { message: "Model provider not found", code: "NOT_FOUND" } },
+        { status: 404 },
+      );
+    }
+
+    mockModelProviders = mockModelProviders.map((p) => ({
+      ...p,
+      isDefault: p.type === type,
+    }));
+
+    return HttpResponse.json({ ...existing, isDefault: true });
+  }),
+
   // DELETE /api/model-providers/:type - Delete model provider
   http.delete("/api/model-providers/:type", ({ params }) => {
     const type = params.type as ModelProviderResponse["type"];

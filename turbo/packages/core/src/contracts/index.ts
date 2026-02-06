@@ -243,6 +243,9 @@ export {
   getDefaultAuthMethod,
   getSecretsForAuthMethod,
   getSecretNamesForAuthMethod,
+  // Provider shape helpers
+  getProviderShape,
+  type ProviderShape,
   type ModelProvidersMainContract,
   type ModelProvidersCheckContract,
   type ModelProvidersByTypeContract,
