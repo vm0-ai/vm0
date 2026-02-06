@@ -27,7 +27,7 @@ fn is_valid_url(url: &Option<String>) -> bool {
     matches!(url, Some(u) if u != "null")
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Storage {
     mount_path: String,
@@ -39,10 +39,6 @@ struct Storage {
 struct Artifact {
     mount_path: String,
     archive_url: Option<String>,
-    #[allow(dead_code)]
-    vas_storage_name: String,
-    #[allow(dead_code)]
-    vas_version_id: String,
 }
 
 const MAX_RETRIES: u32 = 3;
@@ -283,9 +279,7 @@ mod tests {
             "storages": [],
             "artifact": {
                 "mountPath": "/artifact",
-                "archiveUrl": "https://example.com/artifact.tar.gz",
-                "vasStorageName": "test",
-                "vasVersionId": "v1"
+                "archiveUrl": "https://example.com/artifact.tar.gz"
             }
         }"#;
         let manifest: Manifest = serde_json::from_str(json).unwrap();
