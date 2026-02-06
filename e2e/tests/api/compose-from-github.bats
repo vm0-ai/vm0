@@ -126,6 +126,12 @@ setup() {
 
     echo "# Final status: $status" >&3
 
+    # If failed, output error for debugging
+    if [[ "$status" == "failed" ]]; then
+        error=$(echo "$final_result" | jq -r '.error // "no error message"')
+        echo "# Job error: $error" >&3
+    fi
+
     # Verify job completed successfully
     [[ "$status" == "completed" ]]
 
