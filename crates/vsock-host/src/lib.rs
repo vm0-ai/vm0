@@ -125,7 +125,7 @@ impl VsockHost {
         let mut result = Vec::with_capacity(messages.len());
         for msg in messages {
             if msg.msg_type == MSG_PROCESS_EXIT && msg.seq == 0 {
-                self.cache_exit_event(&msg);
+                self.cache_exit_event(&msg)?;
             } else {
                 result.push(msg);
             }
@@ -134,19 +134,19 @@ impl VsockHost {
     }
 
     /// Parse and cache a process_exit event from a raw message.
-    fn cache_exit_event(&mut self, msg: &RawMessage) {
-        if let Ok((pid, exit_code, stdout, stderr)) = vsock_proto::decode_process_exit(&msg.payload)
-        {
-            self.cached_exits.insert(
+    fn cache_exit_event(&mut self, msg: &RawMessage) -> io::Result<()> {
+        let (pid, exit_code, stdout, stderr) = vsock_proto::decode_process_exit(&msg.payload)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        self.cached_exits.insert(
+            pid,
+            ProcessExitEvent {
                 pid,
-                ProcessExitEvent {
-                    pid,
-                    exit_code,
-                    stdout: stdout.to_vec(),
-                    stderr: stderr.to_vec(),
-                },
-            );
-        }
+                exit_code,
+                stdout: stdout.to_vec(),
+                stderr: stderr.to_vec(),
+            },
+        );
+        Ok(())
     }
 
     /// Perform the connection handshake: ready → ping → pong.
@@ -586,5 +586,32 @@ mod tests {
 
         let mut host = host_from_stream(host_stream).await.unwrap();
         assert!(host.shutdown(Duration::from_secs(2)).await);
+    }
+
+    #[tokio::test]
+    async fn test_corrupted_process_exit_returns_error() {
+        let (host_stream, mut guest) = make_pair();
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            // Read the exec request from host
+            let mut buf = [0u8; 4096];
+            let n = guest.read(&mut buf).await.unwrap();
+            let msgs = decoder.decode(&buf[..n]).unwrap();
+            assert_eq!(msgs[0].msg_type, MSG_EXEC);
+
+            // Send a corrupted process_exit (truncated payload) before the exec response.
+            // This exercises cache_exit_event's error path during read_and_dispatch.
+            let corrupted = vsock_proto::encode(MSG_PROCESS_EXIT, 0, &[0x00, 0x01]).unwrap();
+            guest.write_all(&corrupted).await.unwrap();
+        });
+
+        let mut host = host_from_stream(host_stream).await.unwrap();
+
+        // exec triggers read_and_dispatch which encounters the corrupted process_exit
+        let err = host.exec("echo hi", 5000).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
     }
 }
