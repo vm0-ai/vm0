@@ -1974,6 +1974,107 @@ agents:
         expect.stringContaining("--experimental-shared-compose"),
       );
     });
+
+    it("should handle tree URL with trailing slash (root)", async () => {
+      const tempRoot = path.join(tempDir, "github-download");
+      mkdirSync(tempRoot, { recursive: true });
+      writeFileSync(
+        path.join(tempRoot, "vm0.yaml"),
+        `version: "1.0"
+agents:
+  test-agent:
+    framework: claude-code`,
+      );
+      mockDownloadGitHubDirectory.mockResolvedValue({
+        dir: tempRoot,
+        tempRoot,
+      });
+
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            composeId: "cmp-123",
+            name: "test-agent",
+            versionId: "a".repeat(64),
+            action: "created",
+          });
+        }),
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(scopeResponse);
+        }),
+      );
+
+      await composeCommand.parseAsync([
+        "node",
+        "cli",
+        "https://github.com/owner/repo/tree/main/",
+        "--experimental-shared-compose",
+      ]);
+
+      expect(mockDownloadGitHubDirectory).toHaveBeenCalledWith(
+        "https://github.com/owner/repo/tree/main/",
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Compose created"),
+      );
+    });
+
+    it("should handle tree URL with trailing slash (path)", async () => {
+      const tempRoot = path.join(tempDir, "github-download");
+      const subDir = path.join(tempRoot, "examples/101-intro");
+      mkdirSync(subDir, { recursive: true });
+      writeFileSync(
+        path.join(subDir, "vm0.yaml"),
+        `version: "1.0"
+agents:
+  test-agent:
+    framework: claude-code`,
+      );
+      mockDownloadGitHubDirectory.mockResolvedValue({
+        dir: subDir,
+        tempRoot,
+      });
+
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            composeId: "cmp-123",
+            name: "test-agent",
+            versionId: "a".repeat(64),
+            action: "created",
+          });
+        }),
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(scopeResponse);
+        }),
+      );
+
+      await composeCommand.parseAsync([
+        "node",
+        "cli",
+        "https://github.com/owner/repo/tree/main/examples/101-intro/",
+        "--experimental-shared-compose",
+      ]);
+
+      expect(mockDownloadGitHubDirectory).toHaveBeenCalledWith(
+        "https://github.com/owner/repo/tree/main/examples/101-intro/",
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Compose created"),
+      );
+    });
   });
 
   describe("existing agent overwrite confirmation", () => {

@@ -72,6 +72,19 @@ describe("parseGitHubTreeUrl", () => {
 
     expect(result?.fullPath).toBe("vm0/skills/tree/main/conventional-commits");
   });
+
+  it("handles trailing slash on path", () => {
+    const result = parseGitHubTreeUrl(
+      "https://github.com/owner/repo/tree/main/path/",
+    );
+    expect(result).not.toBeNull();
+    expect(result?.owner).toBe("owner");
+    expect(result?.repo).toBe("repo");
+    expect(result?.branch).toBe("main");
+    expect(result?.path).toBe("path");
+    expect(result?.skillName).toBe("path");
+    expect(result?.fullPath).toBe("owner/repo/tree/main/path");
+  });
 });
 
 describe("parseGitHubUrl", () => {
@@ -93,7 +106,7 @@ describe("parseGitHubUrl", () => {
       repo: "repo",
       branch: null,
       path: null,
-      fullPath: "owner/repo/",
+      fullPath: "owner/repo",
     });
   });
 
@@ -143,6 +156,43 @@ describe("parseGitHubUrl", () => {
     expect(
       parseGitHubUrl("https://github.com/owner/repo/blob/main/file.ts"),
     ).toBeNull();
+  });
+
+  it("parses tree URL with trailing slash (root)", () => {
+    const result = parseGitHubUrl("https://github.com/owner/repo/tree/main/");
+    expect(result).toEqual({
+      owner: "owner",
+      repo: "repo",
+      branch: "main",
+      path: null,
+      fullPath: "owner/repo/tree/main",
+    });
+  });
+
+  it("parses tree URL with trailing slash (path)", () => {
+    const result = parseGitHubUrl(
+      "https://github.com/owner/repo/tree/main/path/",
+    );
+    expect(result).toEqual({
+      owner: "owner",
+      repo: "repo",
+      branch: "main",
+      path: "path",
+      fullPath: "owner/repo/tree/main/path",
+    });
+  });
+
+  it("parses tree URL with trailing slash (deep path)", () => {
+    const result = parseGitHubUrl(
+      "https://github.com/owner/repo/tree/main/path/to/dir/",
+    );
+    expect(result).toEqual({
+      owner: "owner",
+      repo: "repo",
+      branch: "main",
+      path: "path/to/dir",
+      fullPath: "owner/repo/tree/main/path/to/dir",
+    });
   });
 });
 

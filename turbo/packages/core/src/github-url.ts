@@ -26,8 +26,11 @@ export interface ParsedGitHubTreeUrl {
  * @returns Parsed URL components, or null if URL format is invalid
  */
 export function parseGitHubTreeUrl(url: string): ParsedGitHubTreeUrl | null {
+  // Normalize: strip trailing slashes for consistent matching
+  const normalizedUrl = url.replace(/\/+$/, "");
+
   // First, extract the full path after github.com/ (always correct)
-  const fullPathMatch = url.match(/^https:\/\/github\.com\/(.+)$/);
+  const fullPathMatch = normalizedUrl.match(/^https:\/\/github\.com\/(.+)$/);
   if (!fullPathMatch) {
     return null;
   }
@@ -36,7 +39,7 @@ export function parseGitHubTreeUrl(url: string): ParsedGitHubTreeUrl | null {
   // Parse components (may be incorrect for branches with slashes)
   const regex =
     /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)\/(.+)$/;
-  const match = url.match(regex);
+  const match = normalizedUrl.match(regex);
 
   if (!match) {
     return null;
@@ -91,15 +94,20 @@ export interface ParsedGitHubUrl {
  * @returns Parsed URL components, or null if URL format is invalid
  */
 export function parseGitHubUrl(url: string): ParsedGitHubUrl | null {
+  // Normalize: strip trailing slashes for consistent matching
+  const normalizedUrl = url.replace(/\/+$/, "");
+
   // Extract full path after github.com/
-  const fullPathMatch = url.match(/^https:\/\/github\.com\/(.+)$/);
+  const fullPathMatch = normalizedUrl.match(/^https:\/\/github\.com\/(.+)$/);
   if (!fullPathMatch) {
     return null;
   }
   const fullPath = fullPathMatch[1]!;
 
-  // Pattern 1: Plain repo URL (https://github.com/owner/repo or https://github.com/owner/repo/)
-  const plainMatch = url.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+?)\/?$/);
+  // Pattern 1: Plain repo URL (https://github.com/owner/repo)
+  const plainMatch = normalizedUrl.match(
+    /^https:\/\/github\.com\/([^/]+)\/([^/]+)$/,
+  );
   if (plainMatch) {
     return {
       owner: plainMatch[1]!,
@@ -112,7 +120,7 @@ export function parseGitHubUrl(url: string): ParsedGitHubUrl | null {
 
   // Pattern 2: Tree URL with optional path
   // https://github.com/owner/repo/tree/branch or https://github.com/owner/repo/tree/branch/path
-  const treeMatch = url.match(
+  const treeMatch = normalizedUrl.match(
     /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)(?:\/(.+))?$/,
   );
   if (treeMatch) {
