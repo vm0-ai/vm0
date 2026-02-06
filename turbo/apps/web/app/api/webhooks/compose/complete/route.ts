@@ -9,8 +9,6 @@ import { composeJobs } from "../../../../../src/db/schema/compose-job";
 import { eq } from "drizzle-orm";
 import { verifyComposeJobToken } from "../../../../../src/lib/auth/sandbox-token";
 import { logger } from "../../../../../src/lib/logger";
-import yaml from "yaml";
-import { createComposeFromYaml } from "../../../../../src/lib/compose/compose-service";
 
 const log = logger("webhook:compose-complete");
 
@@ -43,7 +41,7 @@ const router = tsr.router(webhookComposeCompleteContract, {
       };
     }
 
-    const { jobId, success, yamlContent, result, error } = body;
+    const { jobId, success, result, error } = body;
 
     // Verify token matches the job ID
     if (auth.jobId !== jobId) {
@@ -86,61 +84,27 @@ const router = tsr.router(webhookComposeCompleteContract, {
       };
     }
 
-    // Process the result
-    let finalResult = result;
-    let finalError = error;
-
-    // If yamlContent is provided and success, parse and create compose
-    if (success && yamlContent && !result) {
-      try {
-        log.debug(`Parsing YAML content for job ${jobId}...`);
-
-        // Parse YAML
-        const content = yaml.parse(yamlContent) as Record<string, unknown>;
-
-        // Create compose via service
-        const composeResult = await createComposeFromYaml(
-          auth.userId,
-          content,
-          job.overwrite,
-        );
-
-        finalResult = {
-          composeId: composeResult.composeId,
-          composeName: composeResult.composeName,
-          versionId: composeResult.versionId,
-          warnings: composeResult.warnings || [],
-        };
-
-        log.info(
-          `Job ${jobId} completed: compose=${finalResult.composeName}, version=${finalResult.versionId}`,
-        );
-      } catch (err) {
-        const errorMessage =
-          err instanceof Error ? err.message : "Failed to create compose";
-        log.error(`Job ${jobId} failed to create compose: ${errorMessage}`);
-        finalError = errorMessage;
-        finalResult = undefined;
-      }
-    }
-
     // Update job status
+    // CLI has already created the compose, we just record the result
     const updateData: {
       status: string;
       completedAt: Date;
-      result?: typeof finalResult;
+      result?: typeof result;
       error?: string;
     } = {
-      status: success && finalResult ? "completed" : "failed",
+      status: success && result ? "completed" : "failed",
       completedAt: new Date(),
     };
 
-    if (finalResult) {
-      updateData.result = finalResult;
+    if (result) {
+      updateData.result = result;
+      log.info(
+        `Job ${jobId} completed: compose=${result.composeName}, version=${result.versionId}`,
+      );
     }
-    if (finalError) {
-      updateData.error = finalError;
-      log.error(`Job ${jobId} failed: ${finalError}`);
+    if (error) {
+      updateData.error = error;
+      log.error(`Job ${jobId} failed: ${error}`);
     }
 
     await globalThis.services.db

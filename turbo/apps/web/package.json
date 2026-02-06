@@ -48,7 +48,6 @@
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1",
     "server-only": "^0.0.1",
-    "yaml": "^2.8.2",
     "zod": "^4.1.12"
   },
   "devDependencies": {

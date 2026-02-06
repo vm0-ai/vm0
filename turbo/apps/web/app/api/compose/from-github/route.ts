@@ -69,25 +69,26 @@ function formatJobResponse(job: {
  * Inline sandbox script for compose-from-github.
  *
  * This script runs in E2B sandbox and:
- * 1. Downloads GitHub repository using git sparse-checkout
- * 2. Reads vm0.yaml content as string
- * 3. Sends yaml content to webhook for server-side parsing
+ * 1. Installs vm0 CLI
+ * 2. Executes `vm0 compose <github_url> --yes --experimental-shared-compose`
+ * 3. Parses CLI output and sends result to webhook
  *
- * No external dependencies - uses only Node.js built-ins.
+ * Using CLI ensures full feature parity including:
+ * - Skills download and frontmatter parsing
+ * - Automatic secrets/vars injection from skills
+ * - Instructions file handling
  */
 const COMPOSE_SANDBOX_SCRIPT = `
-const fs = require('fs');
-const path = require('path');
-const { execSync } = require('child_process');
+const { execSync, spawnSync } = require('child_process');
 
 // Environment variables
 const JOB_ID = process.env.VM0_JOB_ID || '';
 const GITHUB_URL = process.env.VM0_GITHUB_URL || '';
-const API_TOKEN = process.env.VM0_API_TOKEN || '';
+const VM0_TOKEN = process.env.VM0_TOKEN || '';
+const VM0_API_URL = process.env.VM0_API_URL || '';
 const WEBHOOK_URL = process.env.VM0_WEBHOOK_URL || '';
+const WEBHOOK_TOKEN = process.env.VM0_WEBHOOK_TOKEN || '';
 const VERCEL_BYPASS = process.env.VERCEL_PROTECTION_BYPASS || '';
-
-const WORK_DIR = '/tmp/compose-github';
 
 function log(level, msg) {
   const ts = new Date().toISOString();
@@ -97,7 +98,7 @@ function log(level, msg) {
 async function httpPost(url, data) {
   const headers = {
     'Content-Type': 'application/json',
-    'Authorization': 'Bearer ' + API_TOKEN,
+    'Authorization': 'Bearer ' + WEBHOOK_TOKEN,
   };
   if (VERCEL_BYPASS) {
     headers['x-vercel-protection-bypass'] = VERCEL_BYPASS;
@@ -126,119 +127,111 @@ async function httpPost(url, data) {
   return null;
 }
 
-function parseGitHubUrl(url) {
-  url = url.replace(/\\/$/, '');
-  const match = url.match(/^https:\\/\\/github\\.com\\/([^/]+)\\/([^/]+)(?:\\/tree\\/([^/]+)(?:\\/(.+))?)?$/);
-  if (!match) return null;
-  return {
-    owner: match[1] || '',
-    repo: match[2] || '',
-    branch: match[3] || 'main',
-    path: match[4] || '',
-  };
-}
-
-function downloadGitHubDirectory(info, destDir) {
-  const repoUrl = 'https://github.com/' + info.owner + '/' + info.repo + '.git';
-  try {
-    fs.mkdirSync(destDir, { recursive: true });
-    execSync('git init', { cwd: destDir, stdio: 'pipe' });
-    execSync('git remote add origin ' + repoUrl, { cwd: destDir, stdio: 'pipe' });
-    execSync('git config core.sparseCheckout true', { cwd: destDir, stdio: 'pipe' });
-
-    const sparseDir = path.join(destDir, '.git/info');
-    fs.mkdirSync(sparseDir, { recursive: true });
-    fs.writeFileSync(path.join(sparseDir, 'sparse-checkout'), (info.path || '*') + '\\n');
-
-    execSync('git fetch --depth=1 origin ' + info.branch, { cwd: destDir, stdio: 'pipe', timeout: 60000 });
-    execSync('git checkout ' + info.branch, { cwd: destDir, stdio: 'pipe' });
-
-    log('INFO', 'Downloaded from ' + repoUrl + ' (branch: ' + info.branch + ')');
-    return true;
-  } catch (error) {
-    log('ERROR', 'Failed to download: ' + error.message);
-    return false;
-  }
-}
-
-function findVm0Yaml(baseDir, subPath) {
-  const searchDir = subPath ? path.join(baseDir, subPath) : baseDir;
-
-  for (const name of ['vm0.yaml', 'vm0.yml']) {
-    const p = path.join(searchDir, name);
-    if (fs.existsSync(p)) return p;
-  }
-
-  if (subPath) {
-    for (const name of ['vm0.yaml', 'vm0.yml']) {
-      const p = path.join(baseDir, name);
-      if (fs.existsSync(p)) return p;
-    }
-  }
-  return null;
-}
-
-async function reportCompletion(success, yamlContent, error) {
+async function reportCompletion(success, result, error) {
   const payload = { jobId: JOB_ID, success };
-  if (yamlContent) payload.yamlContent = yamlContent;
+  if (result) payload.result = result;
   if (error) payload.error = error;
 
-  log('INFO', 'Reporting to ' + WEBHOOK_URL);
+  log('INFO', 'Reporting to webhook...');
   const response = await httpPost(WEBHOOK_URL, payload);
   if (response) {
     log('INFO', 'Reported successfully');
   } else {
-    log('ERROR', 'Failed to report');
+    log('ERROR', 'Failed to report to webhook');
   }
 }
 
 async function main() {
-  log('INFO', 'Starting job: ' + JOB_ID);
+  log('INFO', 'Starting compose job: ' + JOB_ID);
   log('INFO', 'GitHub URL: ' + GITHUB_URL);
+  log('INFO', 'API URL: ' + VM0_API_URL);
 
   // Validate
-  if (!JOB_ID || !GITHUB_URL || !API_TOKEN || !WEBHOOK_URL) {
+  if (!JOB_ID || !GITHUB_URL || !VM0_TOKEN || !VM0_API_URL || !WEBHOOK_URL || !WEBHOOK_TOKEN) {
     await reportCompletion(false, null, 'Missing required environment variables');
     process.exit(1);
   }
 
-  // Parse URL
-  const gitInfo = parseGitHubUrl(GITHUB_URL);
-  if (!gitInfo) {
-    await reportCompletion(false, null, 'Invalid GitHub URL: ' + GITHUB_URL);
+  // Install vm0 CLI
+  log('INFO', 'Installing vm0 CLI...');
+  try {
+    execSync('npm install -g @vm0/cli@latest', { stdio: 'inherit', timeout: 120000 });
+    log('INFO', 'CLI installed successfully');
+  } catch (error) {
+    await reportCompletion(false, null, 'Failed to install vm0 CLI: ' + error.message);
     process.exit(1);
   }
 
-  log('INFO', 'Parsed: ' + gitInfo.owner + '/' + gitInfo.repo + ' branch=' + gitInfo.branch + ' path=' + (gitInfo.path || '(root)'));
+  // Execute vm0 compose
+  log('INFO', 'Running vm0 compose...');
+  const result = spawnSync('vm0', [
+    'compose',
+    GITHUB_URL,
+    '--yes',
+    '--experimental-shared-compose',
+  ], {
+    env: {
+      ...process.env,
+      VM0_TOKEN: VM0_TOKEN,
+      VM0_API_URL: VM0_API_URL,
+    },
+    encoding: 'utf-8',
+    timeout: 180000, // 3 minutes
+  });
 
-  // Clean up
-  if (fs.existsSync(WORK_DIR)) {
-    fs.rmSync(WORK_DIR, { recursive: true, force: true });
-  }
+  const stdout = result.stdout || '';
+  const stderr = result.stderr || '';
 
-  // Download
-  log('INFO', 'Downloading from GitHub...');
-  if (!downloadGitHubDirectory(gitInfo, WORK_DIR)) {
-    await reportCompletion(false, null, 'Failed to download from GitHub');
+  log('INFO', 'CLI exit code: ' + result.status);
+  if (stdout) log('INFO', 'stdout: ' + stdout);
+  if (stderr) log('INFO', 'stderr: ' + stderr);
+
+  if (result.status !== 0) {
+    const errorMsg = stderr || stdout || 'CLI exited with code ' + result.status;
+    await reportCompletion(false, null, errorMsg);
     process.exit(1);
   }
 
-  // Find yaml
-  log('INFO', 'Looking for vm0.yaml...');
-  const yamlPath = findVm0Yaml(WORK_DIR, gitInfo.path);
-  if (!yamlPath) {
-    await reportCompletion(false, null, 'vm0.yaml not found in repository');
-    process.exit(1);
+  // Parse CLI output to extract compose info
+  // CLI outputs: "✔ Compose created: <name> (<id>)" or similar
+  let composeName = null;
+  let composeId = null;
+  let versionId = null;
+
+  // Try to parse structured output from CLI
+  const lines = (stdout + '\\n' + stderr).split('\\n');
+  for (const line of lines) {
+    // Match patterns like "Compose created: agent-name (uuid)"
+    const createMatch = line.match(/Compose (?:created|updated):\\s*([\\w-]+)\\s*\\(([a-f0-9-]+)\\)/i);
+    if (createMatch) {
+      composeName = createMatch[1];
+      composeId = createMatch[2];
+    }
+    // Match version pattern
+    const versionMatch = line.match(/version[:\\s]+([a-f0-9]{64})/i);
+    if (versionMatch) {
+      versionId = versionMatch[1];
+    }
   }
 
-  log('INFO', 'Found: ' + yamlPath);
+  if (composeName && composeId) {
+    await reportCompletion(true, {
+      composeId: composeId,
+      composeName: composeName,
+      versionId: versionId || 'unknown',
+      warnings: [],
+    }, null);
+  } else {
+    // CLI succeeded but we couldn't parse output - still report success
+    log('WARN', 'Could not parse compose details from CLI output');
+    await reportCompletion(true, {
+      composeId: 'unknown',
+      composeName: 'unknown',
+      versionId: 'unknown',
+      warnings: ['Could not parse compose details from CLI output'],
+    }, null);
+  }
 
-  // Read yaml content as string
-  const yamlContent = fs.readFileSync(yamlPath, 'utf-8');
-  log('INFO', 'Read ' + yamlContent.length + ' bytes');
-
-  // Send to webhook for server-side processing
-  await reportCompletion(true, yamlContent, null);
   log('INFO', 'Done!');
 }
 
@@ -251,12 +244,17 @@ main().catch(async (error) => {
 
 /**
  * Spawn E2B sandbox for compose job (fire-and-forget)
+ *
+ * @param jobId - The compose job ID
+ * @param githubUrl - GitHub URL to compose from
+ * @param userToken - User's CLI token for API authentication
+ * @param webhookToken - Short-lived token for webhook callback
  */
 async function spawnComposeJobSandbox(
   jobId: string,
   githubUrl: string,
-  _overwrite: boolean,
-  sandboxToken: string,
+  userToken: string,
+  webhookToken: string,
 ): Promise<void> {
   const apiUrl = getApiUrl();
   const webhookUrl = `${apiUrl}/api/webhooks/compose/complete`;
@@ -269,8 +267,10 @@ async function spawnComposeJobSandbox(
     envs: {
       VM0_JOB_ID: jobId,
       VM0_GITHUB_URL: githubUrl,
-      VM0_API_TOKEN: sandboxToken,
+      VM0_TOKEN: userToken, // User's real token for CLI
+      VM0_API_URL: apiUrl,
       VM0_WEBHOOK_URL: webhookUrl,
+      VM0_WEBHOOK_TOKEN: webhookToken, // Short-lived token for webhook
       // Add Vercel protection bypass if available
       ...(process.env.VERCEL_AUTOMATION_BYPASS_SECRET && {
         VERCEL_PROTECTION_BYPASS: process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
@@ -378,28 +378,41 @@ const router = tsr.router(composeJobsMainContract, {
 
     log.debug(`Created new job ${jobId} for user ${userId}`);
 
-    // Generate sandbox token
-    const sandboxToken = await generateComposeJobToken(userId, jobId);
+    // Extract user token from Authorization header
+    const userToken = headers.authorization?.substring(7); // Remove "Bearer "
+    if (!userToken) {
+      return {
+        status: 401 as const,
+        body: {
+          error: {
+            message: "Missing authorization token",
+            code: "UNAUTHORIZED",
+          },
+        },
+      };
+    }
+
+    // Generate webhook token (short-lived, for callback only)
+    const webhookToken = await generateComposeJobToken(userId, jobId);
 
     // Fire-and-forget: Spawn sandbox asynchronously
-    spawnComposeJobSandbox(
-      jobId,
-      githubUrl,
-      overwrite ?? false,
-      sandboxToken,
-    ).catch(async (error) => {
-      log.error(`Failed to spawn sandbox for job ${jobId}:`, error);
-      // Update job status to failed
-      await globalThis.services.db
-        .update(composeJobs)
-        .set({
-          status: "failed",
-          error:
-            error instanceof Error ? error.message : "Failed to create sandbox",
-          completedAt: new Date(),
-        })
-        .where(eq(composeJobs.id, jobId));
-    });
+    spawnComposeJobSandbox(jobId, githubUrl, userToken, webhookToken).catch(
+      async (error) => {
+        log.error(`Failed to spawn sandbox for job ${jobId}:`, error);
+        // Update job status to failed
+        await globalThis.services.db
+          .update(composeJobs)
+          .set({
+            status: "failed",
+            error:
+              error instanceof Error
+                ? error.message
+                : "Failed to create sandbox",
+            completedAt: new Date(),
+          })
+          .where(eq(composeJobs.id, jobId));
+      },
+    );
 
     return {
       status: 201 as const,

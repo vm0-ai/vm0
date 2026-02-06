@@ -5,6 +5,7 @@ import { POST as webhookComplete } from "../../../webhooks/compose/complete/rout
 import {
   createTestRequest,
   createTestComposeJobToken,
+  createTestCliToken,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
@@ -18,10 +19,15 @@ vi.mock("@axiomhq/js");
 
 const context = testContext();
 
+// Shared CLI token for authenticated requests
+let testCliToken: string;
+
 describe("POST /api/compose/from-github", () => {
   beforeEach(async () => {
     context.setupMocks();
-    await context.setupUser();
+    const user = await context.setupUser();
+    // Create CLI token for this user
+    testCliToken = await createTestCliToken(user.userId);
   });
 
   describe("Authentication", () => {
@@ -54,7 +60,10 @@ describe("POST /api/compose/from-github", () => {
         "http://localhost:3000/api/compose/from-github",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testCliToken}`,
+          },
           body: JSON.stringify({}),
         },
       );
@@ -71,7 +80,10 @@ describe("POST /api/compose/from-github", () => {
         "http://localhost:3000/api/compose/from-github",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testCliToken}`,
+          },
           body: JSON.stringify({
             githubUrl: "https://gitlab.com/owner/repo",
           }),
@@ -92,7 +104,10 @@ describe("POST /api/compose/from-github", () => {
         "http://localhost:3000/api/compose/from-github",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testCliToken}`,
+          },
           body: JSON.stringify({
             githubUrl: "https://github.com/owner/repo",
           }),
@@ -114,7 +129,10 @@ describe("POST /api/compose/from-github", () => {
         "http://localhost:3000/api/compose/from-github",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testCliToken}`,
+          },
           body: JSON.stringify({
             githubUrl: "https://github.com/owner/repo",
             overwrite: true,
@@ -137,7 +155,10 @@ describe("POST /api/compose/from-github", () => {
         "http://localhost:3000/api/compose/from-github",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testCliToken}`,
+          },
           body: JSON.stringify({
             githubUrl: "https://github.com/owner/repo",
           }),
@@ -154,7 +175,10 @@ describe("POST /api/compose/from-github", () => {
         "http://localhost:3000/api/compose/from-github",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testCliToken}`,
+          },
           body: JSON.stringify({
             githubUrl: "https://github.com/other/repo",
           }),
@@ -170,13 +194,18 @@ describe("POST /api/compose/from-github", () => {
 
     it("should create new job after previous one completes", async () => {
       const user = await context.setupUser();
+      // Create CLI token for this specific user
+      const userCliToken = await createTestCliToken(user.userId);
 
       // Create first job
       const request1 = createTestRequest(
         "http://localhost:3000/api/compose/from-github",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${userCliToken}`,
+          },
           body: JSON.stringify({
             githubUrl: "https://github.com/owner/repo",
           }),
@@ -218,7 +247,10 @@ describe("POST /api/compose/from-github", () => {
         "http://localhost:3000/api/compose/from-github",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${userCliToken}`,
+          },
           body: JSON.stringify({
             githubUrl: "https://github.com/other/repo",
           }),
@@ -237,18 +269,23 @@ describe("POST /api/compose/from-github", () => {
 describe("GET /api/compose/from-github/:jobId", () => {
   let testJobId: string;
   let testUserId: string;
+  let testUserCliToken: string;
 
   beforeEach(async () => {
     context.setupMocks();
     const user = await context.setupUser();
     testUserId = user.userId;
+    testUserCliToken = await createTestCliToken(user.userId);
 
     // Create a test job
     const request = createTestRequest(
       "http://localhost:3000/api/compose/from-github",
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${testUserCliToken}`,
+        },
         body: JSON.stringify({
           githubUrl: "https://github.com/owner/repo",
         }),
@@ -283,6 +320,9 @@ describe("GET /api/compose/from-github/:jobId", () => {
         `http://localhost:3000/api/compose/from-github/${testJobId}`,
         {
           method: "GET",
+          headers: {
+            Authorization: `Bearer ${testUserCliToken}`,
+          },
         },
       );
 
@@ -328,6 +368,9 @@ describe("GET /api/compose/from-github/:jobId", () => {
         `http://localhost:3000/api/compose/from-github/${testJobId}`,
         {
           method: "GET",
+          headers: {
+            Authorization: `Bearer ${testUserCliToken}`,
+          },
         },
       );
 
@@ -369,6 +412,9 @@ describe("GET /api/compose/from-github/:jobId", () => {
         `http://localhost:3000/api/compose/from-github/${testJobId}`,
         {
           method: "GET",
+          headers: {
+            Authorization: `Bearer ${testUserCliToken}`,
+          },
         },
       );
 
@@ -389,6 +435,9 @@ describe("GET /api/compose/from-github/:jobId", () => {
         `http://localhost:3000/api/compose/from-github/${nonExistentId}`,
         {
           method: "GET",
+          headers: {
+            Authorization: `Bearer ${testUserCliToken}`,
+          },
         },
       );
 
@@ -400,14 +449,22 @@ describe("GET /api/compose/from-github/:jobId", () => {
     });
 
     it("should return 404 for job owned by different user", async () => {
-      // Switch to another user and create their job
-      await context.setupUser({ prefix: "other" });
+      // Create another user and their CLI token
+      // Note: setupUser will mock Clerk for this user
+      const otherUser = await context.setupUser({ prefix: "other" });
+      const otherCliToken = await createTestCliToken(otherUser.userId);
+
+      // Clear Clerk mock so CLI token is used for auth
+      mockClerk({ userId: null });
 
       const otherJobRequest = createTestRequest(
         "http://localhost:3000/api/compose/from-github",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${otherCliToken}`,
+          },
           body: JSON.stringify({
             githubUrl: "https://github.com/other/repo",
           }),
@@ -418,14 +475,15 @@ describe("GET /api/compose/from-github/:jobId", () => {
       const otherJobData = await otherJobResponse.json();
       const otherJobId = otherJobData.jobId;
 
-      // Switch back to original user by re-mocking Clerk
-      mockClerk({ userId: testUserId });
-
-      // Try to access the other user's job
+      // Try to access the other user's job with original user's token
+      // Clerk is null, so testUserCliToken will be used for auth
       const request = createTestRequest(
         `http://localhost:3000/api/compose/from-github/${otherJobId}`,
         {
           method: "GET",
+          headers: {
+            Authorization: `Bearer ${testUserCliToken}`,
+          },
         },
       );
 
@@ -439,6 +497,9 @@ describe("GET /api/compose/from-github/:jobId", () => {
         "http://localhost:3000/api/compose/from-github/invalid-uuid",
         {
           method: "GET",
+          headers: {
+            Authorization: `Bearer ${testUserCliToken}`,
+          },
         },
       );
 

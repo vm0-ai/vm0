@@ -108,9 +108,7 @@ export const webhookComposeCompleteContract = c.router({
     body: z.object({
       jobId: z.string().uuid(),
       success: z.boolean(),
-      // YAML content from sandbox (server parses this)
-      yamlContent: z.string().optional(),
-      // Legacy: direct result (for backwards compatibility)
+      // Result from CLI compose command
       result: composeJobResultSchema.optional(),
       error: z.string().optional(),
     }),
