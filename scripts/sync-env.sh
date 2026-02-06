@@ -25,14 +25,14 @@ sync_with_1password() {
 
   echo "Syncing all environment templates..."
 
-  while IFS= read -r tpl_file; do
-    local output_file="${tpl_file%.tpl}"
+  find "$PROJECT_ROOT" -name ".env.local.tpl" -type f | while IFS= read -r tpl_file; do
+    output_file="${tpl_file%.tpl}"
     echo ""
     echo "Syncing: $tpl_file"
     echo "Output:  $output_file"
     op inject --force -i "$tpl_file" -o "$output_file"
     echo "✓ Synced successfully"
-  done < <(find "$PROJECT_ROOT" -name ".env.local.tpl" -type f)
+  done
 
   echo ""
   echo "✓ All environment variables synced successfully"
@@ -135,9 +135,9 @@ sync_with_manual_input() {
   echo "Press Enter to skip optional variables or use auto-generated defaults."
   echo ""
 
-  while IFS= read -r tpl_file; do
+  find "$PROJECT_ROOT" -name ".env.local.tpl" -type f | while IFS= read -r tpl_file; do
     process_tpl_manually "$tpl_file"
-  done < <(find "$PROJECT_ROOT" -name ".env.local.tpl" -type f)
+  done
 
   echo ""
   echo "✓ All environment variables synced successfully"
