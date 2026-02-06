@@ -110,7 +110,9 @@ async function spawnComposeJobSandbox(
     .where(eq(composeJobs.id, jobId));
 
   // Upload and run compose script (fire-and-forget)
+  // First create the directory, then write the script
   const scriptPath = SCRIPT_PATHS.composeGithub;
+  await sandbox.commands.run(`mkdir -p ${SCRIPT_PATHS.baseDir}`);
   await sandbox.files.write(scriptPath, COMPOSE_GITHUB_SCRIPT);
 
   // Run in background - don't await
