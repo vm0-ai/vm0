@@ -17,8 +17,14 @@ const LOG_TAG: &str = "sandbox:download";
 /// Storage manifest format (matches TypeScript StorageManifest).
 #[derive(Deserialize)]
 struct Manifest {
+    #[serde(default)]
     storages: Vec<Storage>,
     artifact: Option<Artifact>,
+}
+
+/// Check if archive URL is valid (not None and not string "null").
+fn is_valid_url(url: &Option<String>) -> bool {
+    matches!(url, Some(u) if u != "null")
 }
 
 #[derive(Deserialize, Clone)]
@@ -63,36 +69,49 @@ fn main() {
     };
 
     let start = Instant::now();
-    let result = run(manifest_path);
+    let success = run(manifest_path);
     let duration_ms = start.elapsed().as_millis() as u64;
 
-    match result {
-        Ok(()) => {
-            record_sandbox_op("download_total", duration_ms, true, None);
-            log_info!(LOG_TAG, "Download completed in {duration_ms}ms");
-        }
-        Err(e) => {
-            record_sandbox_op("download_total", duration_ms, false, Some(&e));
-            log_error!(LOG_TAG, "Download failed: {e}");
-            std::process::exit(1);
-        }
+    if success {
+        record_sandbox_op("download_total", duration_ms, true, None);
+        log_info!(LOG_TAG, "Download completed in {duration_ms}ms");
+    } else {
+        record_sandbox_op("download_total", duration_ms, false, None);
+        log_error!(LOG_TAG, "Download failed");
+        std::process::exit(1);
     }
 }
 
-fn run(manifest_path: &str) -> Result<(), String> {
+fn run(manifest_path: &str) -> bool {
     // Read and parse manifest
-    let manifest_json =
-        fs::read_to_string(manifest_path).map_err(|e| format!("Failed to read manifest: {e}"))?;
-    let manifest: Manifest = serde_json::from_str(&manifest_json)
-        .map_err(|e| format!("Failed to parse manifest: {e}"))?;
+    let manifest_json = match fs::read_to_string(manifest_path) {
+        Ok(json) => json,
+        Err(e) => {
+            log_error!(LOG_TAG, "Failed to read manifest: {e}");
+            return false;
+        }
+    };
+
+    let manifest: Manifest = match serde_json::from_str(&manifest_json) {
+        Ok(m) => m,
+        Err(e) => {
+            log_error!(LOG_TAG, "Failed to parse manifest: {e}");
+            return false;
+        }
+    };
+
+    let mut all_success = true;
 
     // Download storages in parallel
-    download_storages_parallel(&manifest.storages)?;
+    if !download_storages_parallel(&manifest.storages) {
+        all_success = false;
+    }
 
     // Download artifact if present (after storages complete)
     if let Some(artifact) = &manifest.artifact
-        && let Some(url) = &artifact.archive_url
+        && is_valid_url(&artifact.archive_url)
     {
+        let url = artifact.archive_url.as_ref().unwrap();
         let start = Instant::now();
         log_info!(LOG_TAG, "Downloading artifact to {}", artifact.mount_path);
 
@@ -105,38 +124,29 @@ fn run(manifest_path: &str) -> Result<(), String> {
             Err(e) => {
                 let duration_ms = start.elapsed().as_millis() as u64;
                 record_sandbox_op("artifact_download", duration_ms, false, Some(&e));
-                return Err(format!("Artifact download failed: {e}"));
+                log_error!(LOG_TAG, "Artifact download failed: {e}");
+                all_success = false;
             }
         }
     }
 
-    Ok(())
+    all_success
 }
 
 /// Download all storages in parallel using std::thread.
 /// Limits concurrency to MAX_CONCURRENT to avoid spawning too many threads.
-fn download_storages_parallel(storages: &[Storage]) -> Result<(), String> {
-    // Collect storages that need downloading (have archive_url)
+/// Returns true if all downloads succeeded, false if any failed.
+fn download_storages_parallel(storages: &[Storage]) -> bool {
+    // Collect storages that need downloading (have valid archive_url)
     let download_tasks: Vec<_> = storages
         .iter()
         .enumerate()
-        .filter_map(|(i, s)| {
-            s.archive_url
-                .as_ref()
-                .map(|url| (i, url.clone(), s.mount_path.clone()))
-        })
+        .filter(|(_, s)| is_valid_url(&s.archive_url))
+        .map(|(i, s)| (i, s.archive_url.clone().unwrap(), s.mount_path.clone()))
         .collect();
 
-    // Create directories for storages without archive_url
-    for storage in storages {
-        if storage.archive_url.is_none() {
-            fs::create_dir_all(&storage.mount_path)
-                .map_err(|e| format!("Failed to create directory: {e}"))?;
-        }
-    }
-
     if download_tasks.is_empty() {
-        return Ok(());
+        return true;
     }
 
     log_info!(
@@ -145,6 +155,8 @@ fn download_storages_parallel(storages: &[Storage]) -> Result<(), String> {
         download_tasks.len(),
         MAX_CONCURRENT
     );
+
+    let mut all_success = true;
 
     // Process in chunks to limit concurrency
     for chunk in download_tasks.chunks(MAX_CONCURRENT) {
@@ -173,10 +185,11 @@ fn download_storages_parallel(storages: &[Storage]) -> Result<(), String> {
                         }
                         Err(e) => {
                             record_sandbox_op("storage_download", duration_ms, false, Some(e));
+                            log_error!(LOG_TAG, "Storage {} download failed: {}", idx + 1, e);
                         }
                     }
 
-                    result.map_err(|e| format!("Storage {} download failed: {}", idx + 1, e))
+                    result.is_ok()
                 })
             })
             .collect();
@@ -184,14 +197,20 @@ fn download_storages_parallel(storages: &[Storage]) -> Result<(), String> {
         // Wait for this chunk to complete before starting next
         for handle in handles {
             match handle.join() {
-                Ok(Ok(())) => {}
-                Ok(Err(e)) => return Err(e),
-                Err(_) => return Err("Thread panicked".to_string()),
+                Ok(success) => {
+                    if !success {
+                        all_success = false;
+                    }
+                }
+                Err(_) => {
+                    log_error!(LOG_TAG, "Thread panicked");
+                    all_success = false;
+                }
             }
         }
     }
 
-    Ok(())
+    all_success
 }
 
 fn download_with_retry(url: &str, target_path: &str) -> Result<(), String> {
