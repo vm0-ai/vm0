@@ -16,8 +16,10 @@ export const languageNames: Record<Locale, string> = {
 };
 
 export default getRequestConfig(async ({ locale }) => {
-  // Fallback to default locale if undefined
-  const resolvedLocale = locale || defaultLocale;
+  // Validate locale and fallback to default if invalid
+  // This prevents errors from malformed URLs like /favicon.ico/blog
+  const resolvedLocale =
+    locale && locales.includes(locale as Locale) ? locale : defaultLocale;
 
   return {
     locale: resolvedLocale,
