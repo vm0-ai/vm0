@@ -124,6 +124,11 @@ create_squashfs_image() {
     sudo cp "$SCRIPT_DIR/vm-init" "$EXTRACT_DIR/sbin/vm-init"
     sudo chmod 755 "$EXTRACT_DIR/sbin/vm-init"
 
+    # Install vm-download binary (storage downloader) - to /usr/local/bin
+    echo "[INSTALL] Installing vm-download..."
+    sudo cp "$SCRIPT_DIR/vm-download" "$EXTRACT_DIR/usr/local/bin/vm-download"
+    sudo chmod 755 "$EXTRACT_DIR/usr/local/bin/vm-download"
+
     # Install agent files (ESM scripts)
     echo "[INSTALL] Installing agent files..."
     sudo cp "$SCRIPT_DIR/run-agent.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
@@ -192,6 +197,13 @@ verify_rootfs() {
         ERRORS=$((ERRORS + 1))
     else
         echo "  vm-init: installed (Rust binary at /sbin/vm-init)"
+    fi
+
+    if [ ! -f "$MOUNT_POINT/usr/local/bin/vm-download" ]; then
+        echo "ERROR: vm-download binary not found in rootfs"
+        ERRORS=$((ERRORS + 1))
+    else
+        echo "  vm-download: installed (Rust binary at /usr/local/bin/vm-download)"
     fi
 
     # Check for agent scripts
