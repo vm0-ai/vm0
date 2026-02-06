@@ -421,7 +421,10 @@ async fn test_spawn_watch_cached_exit() {
         .await
         .expect("spawn_watch failed");
 
-    // Let exit event arrive and be cached
+    // Wait for the exit event to arrive and be cached by the host before calling
+    // wait_for_exit. This tests the cache-hit path (event already in HashMap).
+    // 300ms is generous — the echo command finishes in <10ms, but the exit event must
+    // travel: guest thread → mutex write → Unix socket → tokio read → decode → cache.
     sleep(Duration::from_millis(300)).await;
 
     let event = h
@@ -512,6 +515,8 @@ async fn test_spawn_watch_sigterm() {
         .await
         .expect("spawn_watch failed");
 
+    // Wait for the process to be fully running before sending signal.
+    // Without this, kill may arrive before exec replaces the shell.
     sleep(Duration::from_millis(100)).await;
 
     // Kill process group with SIGTERM
@@ -543,6 +548,7 @@ async fn test_spawn_watch_sigkill() {
         .await
         .expect("spawn_watch failed");
 
+    // Wait for the process to be fully running before sending signal.
     sleep(Duration::from_millis(100)).await;
 
     h.host
@@ -699,6 +705,9 @@ async fn test_write_file_large() {
 #[tokio::test]
 async fn test_shutdown() {
     let mut h = Harness::new().await;
+    // Brief pause to ensure the handshake is fully settled on both sides
+    // before sending shutdown. Without this, shutdown can race with the
+    // guest's post-handshake read loop setup.
     sleep(Duration::from_millis(50)).await;
 
     let acked = h.host.shutdown(Duration::from_secs(5)).await;

@@ -333,9 +333,6 @@ impl VsockHost {
         let result = self.request(MSG_SHUTDOWN, &[], timeout).await;
         matches!(result, Ok(ref m) if m.msg_type == MSG_SHUTDOWN_ACK)
     }
-
-    /// Close the connection.
-    pub fn close(self) {}
 }
 
 #[cfg(test)]

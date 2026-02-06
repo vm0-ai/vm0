@@ -20,7 +20,10 @@ use vsock_proto::{
     MSG_WRITE_FILE_RESULT, ProtocolError, RawMessage,
 };
 
-/// Flag indicating shutdown was received (don't reconnect after shutdown)
+/// Flag indicating shutdown was received (don't reconnect after shutdown).
+///
+/// Process-level static: safe because integration tests use `handle_connection` per-thread
+/// (not `run()`), and each test gets its own connection. Only `run()` reads this flag.
 static SHUTDOWN_RECEIVED: AtomicBool = AtomicBool::new(false);
 
 // Vsock constants (only used on Linux)
@@ -136,8 +139,9 @@ fn wait_with_timeout(child: Child, timeout_ms: u32) -> (i32, Vec<u8>, Vec<u8>) {
             // Timeout reached, mark and kill the entire process group
             // Using negative pid kills all processes in the group (like tini does)
             killed_by_timeout_clone.store(true, Ordering::SeqCst);
+            // SAFETY: child_id is a valid PID from Command::spawn (Linux PIDs < 4M,
+            // so u32→i32 cast never overflows). Negative pid kills the process group.
             unsafe {
-                // Kill process group (negative pid) to clean up any child processes
                 libc::kill(-(child_id as i32), libc::SIGKILL);
             }
         }
@@ -285,6 +289,7 @@ fn handle_write_file(path: &str, content: &[u8], use_sudo: bool) -> (bool, Strin
 /// Handle shutdown message - sync filesystems and acknowledge
 fn handle_shutdown(seq: u32) -> io::Result<Vec<u8>> {
     log("INFO", "Shutdown requested, syncing filesystems...");
+    // SAFETY: libc::sync() has no preconditions — it flushes all pending filesystem writes.
     unsafe {
         libc::sync();
     }
@@ -369,6 +374,8 @@ fn handle_spawn_watch(
                         return;
                     }
                 };
+                // Recover from poisoned mutex: a panicked thread shouldn't prevent
+                // us from sending the exit notification on a best-effort basis.
                 let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
                 if let Err(e) = w.write_all(&exit_msg) {
                     log("ERROR", &format!("Failed to send process_exit: {}", e));
@@ -435,6 +442,7 @@ fn handle_message(msg: &RawMessage) -> io::Result<Option<Vec<u8>>> {
 pub fn connect_vsock() -> io::Result<UnixStream> {
     use std::os::unix::io::FromRawFd;
 
+    // SAFETY: Creating a vsock socket with valid constants. fd is checked for errors below.
     let fd = unsafe { libc::socket(libc::AF_VSOCK, libc::SOCK_STREAM, 0) };
     if fd < 0 {
         return Err(io::Error::last_os_error());
@@ -448,6 +456,8 @@ pub fn connect_vsock() -> io::Result<UnixStream> {
         svm_zero: [0; 4],
     };
 
+    // SAFETY: fd is a valid socket from above, addr is properly initialized, and
+    // size_of returns the correct sockaddr_vm size. Errors are checked below.
     let ret = unsafe {
         libc::connect(
             fd,
@@ -457,10 +467,12 @@ pub fn connect_vsock() -> io::Result<UnixStream> {
     };
 
     if ret < 0 {
+        // SAFETY: fd is a valid open socket descriptor, and we're about to return an error.
         unsafe { libc::close(fd) };
         return Err(io::Error::last_os_error());
     }
 
+    // SAFETY: fd is a valid, connected socket descriptor. Ownership transfers to UnixStream.
     Ok(unsafe { UnixStream::from_raw_fd(fd) })
 }
 
@@ -491,6 +503,8 @@ pub fn handle_connection(stream: UnixStream) -> io::Result<()> {
     // Send ready signal
     {
         let ready = vsock_proto::encode(MSG_READY, 0, &[]).map_err(to_io_error)?;
+        // Recover from poisoned mutex: prefer sending ready over propagating a
+        // panic from an unrelated thread.
         let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
         w.write_all(&ready)?;
     }
@@ -521,6 +535,8 @@ pub fn handle_connection(stream: UnixStream) -> io::Result<()> {
             };
 
             if let Some(response) = response {
+                // Recover from poisoned mutex: a panicked spawn_watch thread
+                // shouldn't block the main event loop from sending responses.
                 let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
                 w.write_all(&response)?;
             }

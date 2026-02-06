@@ -133,7 +133,7 @@ pub fn encode_exec_result(exit_code: i32, stdout: &[u8], stderr: &[u8]) -> Vec<u
 /// Total message size is validated by [`encode`].
 pub fn encode_write_file(path: &str, content: &[u8], sudo: bool) -> Result<Vec<u8>, ProtocolError> {
     let path_bytes = path.as_bytes();
-    if path_bytes.len() > 65535 {
+    if path_bytes.len() > u16::MAX as usize {
         return Err(ProtocolError::PayloadTooLarge("path", path_bytes.len()));
     }
     let path_len = path_bytes.len() as u16;
@@ -151,7 +151,7 @@ pub fn encode_write_file(path: &str, content: &[u8], sudo: bool) -> Result<Vec<u
 /// Error message is truncated to 65535 bytes if longer.
 pub fn encode_write_file_result(success: bool, error: &str) -> Vec<u8> {
     let err = error.as_bytes();
-    let err_len = err.len().min(65535) as u16;
+    let err_len = err.len().min(u16::MAX as usize) as u16;
     let mut p = Vec::with_capacity(3 + err_len as usize);
     p.push(u8::from(success));
     p.extend_from_slice(&err_len.to_be_bytes());
@@ -181,7 +181,7 @@ pub fn encode_process_exit(pid: u32, exit_code: i32, stdout: &[u8], stderr: &[u8
 /// Error message is truncated to 65535 bytes if longer.
 pub fn encode_error(message: &str) -> Vec<u8> {
     let msg = message.as_bytes();
-    let msg_len = msg.len().min(65535) as u16;
+    let msg_len = msg.len().min(u16::MAX as usize) as u16;
     let mut p = Vec::with_capacity(2 + msg_len as usize);
     p.extend_from_slice(&msg_len.to_be_bytes());
     p.extend_from_slice(&msg[..msg_len as usize]);
