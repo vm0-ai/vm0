@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "../route";
+import { POST as createComposeJob } from "../../../../compose/from-github/route";
+import { GET as getComposeJob } from "../../../../compose/from-github/[jobId]/route";
 import {
   createTestRequest,
   createTestComposeJobToken,
@@ -9,8 +11,6 @@ import {
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
-import { composeJobs } from "../../../../../../src/db/schema/compose-job";
-import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 vi.mock("@clerk/nextjs/server");
@@ -21,6 +21,98 @@ vi.mock("@axiomhq/js");
 
 const context = testContext();
 
+/**
+ * Helper to create a compose job via API and return jobId and token
+ */
+async function createTestComposeJobViaApi(
+  userId: string,
+  githubUrl: string = "https://github.com/owner/repo",
+): Promise<{ jobId: string; token: string }> {
+  const request = createTestRequest(
+    "http://localhost:3000/api/compose/from-github",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ githubUrl }),
+    },
+  );
+  const response = await createComposeJob(request);
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(`Failed to create compose job: ${data.error?.message}`);
+  }
+
+  const token = await createTestComposeJobToken(userId, data.jobId);
+  return { jobId: data.jobId, token };
+}
+
+/**
+ * Helper to get compose job status via API
+ */
+async function getTestComposeJobViaApi(jobId: string): Promise<{
+  jobId: string;
+  status: string;
+  result?: {
+    composeId: string;
+    composeName: string;
+    versionId: string;
+    warnings: string[];
+  };
+  error?: string;
+  completedAt?: string;
+}> {
+  const request = createTestRequest(
+    `http://localhost:3000/api/compose/from-github/${jobId}`,
+    { method: "GET" },
+  );
+  const response = await getComposeJob(request);
+  return response.json();
+}
+
+/**
+ * Helper to complete a compose job via webhook
+ */
+async function completeComposeJobViaWebhook(
+  jobId: string,
+  token: string,
+  success: boolean,
+  resultOrError?: {
+    result?: {
+      composeId: string;
+      composeName: string;
+      versionId: string;
+      warnings: string[];
+    };
+    error?: string;
+  },
+): Promise<void> {
+  const body: Record<string, unknown> = { jobId, success };
+  if (success && resultOrError?.result) {
+    body.result = resultOrError.result;
+  }
+  if (!success && resultOrError?.error) {
+    body.error = resultOrError.error;
+  }
+
+  const request = createTestRequest(
+    "http://localhost:3000/api/webhooks/compose/complete",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    },
+  );
+  const response = await POST(request);
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(`Failed to complete compose job: ${data.error?.message}`);
+  }
+}
+
 describe("POST /api/webhooks/compose/complete", () => {
   let user: UserContext;
   let testJobId: string;
@@ -30,19 +122,13 @@ describe("POST /api/webhooks/compose/complete", () => {
     context.setupMocks();
     user = await context.setupUser();
 
-    // Create a test job directly in DB
-    testJobId = randomUUID();
-    await globalThis.services.db.insert(composeJobs).values({
-      id: testJobId,
-      userId: user.userId,
-      githubUrl: "https://github.com/owner/repo",
-      overwrite: false,
-      status: "running",
-      startedAt: new Date(),
-    });
-
-    // Generate JWT token for sandbox auth
-    testToken = await createTestComposeJobToken(user.userId, testJobId);
+    // Create a test job via API
+    const { jobId, token } = await createTestComposeJobViaApi(
+      user.userId,
+      "https://github.com/owner/repo",
+    );
+    testJobId = jobId;
+    testToken = token;
 
     // Reset auth mock for webhook tests (which use token auth, not Clerk)
     mockClerk({ userId: null });
@@ -193,15 +279,13 @@ describe("POST /api/webhooks/compose/complete", () => {
       const data = await response.json();
       expect(data.success).toBe(true);
 
-      // Verify job was updated
-      const [job] = await globalThis.services.db
-        .select()
-        .from(composeJobs)
-        .where(eq(composeJobs.id, testJobId));
+      // Verify job was updated via API
+      mockClerk({ userId: user.userId }); // Re-enable auth for GET
+      const job = await getTestComposeJobViaApi(testJobId);
 
-      expect(job?.status).toBe("completed");
-      expect(job?.result).toEqual(result);
-      expect(job?.completedAt).toBeDefined();
+      expect(job.status).toBe("completed");
+      expect(job.result).toEqual(result);
+      expect(job.completedAt).toBeDefined();
     });
 
     it("should handle successful completion with warnings", async () => {
@@ -232,13 +316,11 @@ describe("POST /api/webhooks/compose/complete", () => {
 
       expect(response.status).toBe(200);
 
-      // Verify warnings were stored
-      const [job] = await globalThis.services.db
-        .select()
-        .from(composeJobs)
-        .where(eq(composeJobs.id, testJobId));
+      // Verify warnings were stored via API
+      mockClerk({ userId: user.userId }); // Re-enable auth for GET
+      const job = await getTestComposeJobViaApi(testJobId);
 
-      expect(job?.result?.warnings).toEqual(["Some deprecated field used"]);
+      expect(job.result?.warnings).toEqual(["Some deprecated field used"]);
     });
   });
 
@@ -266,36 +348,31 @@ describe("POST /api/webhooks/compose/complete", () => {
       const data = await response.json();
       expect(data.success).toBe(true);
 
-      // Verify job was updated
-      const [job] = await globalThis.services.db
-        .select()
-        .from(composeJobs)
-        .where(eq(composeJobs.id, testJobId));
+      // Verify job was updated via API
+      mockClerk({ userId: user.userId }); // Re-enable auth for GET
+      const job = await getTestComposeJobViaApi(testJobId);
 
-      expect(job?.status).toBe("failed");
-      expect(job?.error).toBe("Failed to parse vm0.yaml");
-      expect(job?.completedAt).toBeDefined();
+      expect(job.status).toBe("failed");
+      expect(job.error).toBe("Failed to parse vm0.yaml");
+      expect(job.completedAt).toBeDefined();
     });
   });
 
   describe("Idempotency", () => {
     it("should accept duplicate success completion", async () => {
-      // Mark job as completed first
-      await globalThis.services.db
-        .update(composeJobs)
-        .set({
-          status: "completed",
-          completedAt: new Date(),
-          result: {
-            composeId: "original-compose-id",
-            composeName: "test-compose",
-            versionId: "original-version-id",
-            warnings: [],
-          },
-        })
-        .where(eq(composeJobs.id, testJobId));
+      const originalResult = {
+        composeId: "original-compose-id",
+        composeName: "test-compose",
+        versionId: "original-version-id",
+        warnings: [],
+      };
 
-      // Try to complete again
+      // Complete job first via webhook
+      await completeComposeJobViaWebhook(testJobId, testToken, true, {
+        result: originalResult,
+      });
+
+      // Try to complete again with different result
       const request = createTestRequest(
         "http://localhost:3000/api/webhooks/compose/complete",
         {
@@ -323,27 +400,20 @@ describe("POST /api/webhooks/compose/complete", () => {
       const data = await response.json();
       expect(data.success).toBe(true);
 
-      // Verify original result was not changed
-      const [job] = await globalThis.services.db
-        .select()
-        .from(composeJobs)
-        .where(eq(composeJobs.id, testJobId));
+      // Verify original result was not changed via API
+      mockClerk({ userId: user.userId }); // Re-enable auth for GET
+      const job = await getTestComposeJobViaApi(testJobId);
 
-      expect(job?.result?.composeId).toBe("original-compose-id");
+      expect(job.result?.composeId).toBe("original-compose-id");
     });
 
     it("should accept duplicate failed completion", async () => {
-      // Mark job as failed first
-      await globalThis.services.db
-        .update(composeJobs)
-        .set({
-          status: "failed",
-          completedAt: new Date(),
-          error: "Original error",
-        })
-        .where(eq(composeJobs.id, testJobId));
+      // Fail job first via webhook
+      await completeComposeJobViaWebhook(testJobId, testToken, false, {
+        error: "Original error",
+      });
 
-      // Try to fail again
+      // Try to fail again with different error
       const request = createTestRequest(
         "http://localhost:3000/api/webhooks/compose/complete",
         {
@@ -366,13 +436,11 @@ describe("POST /api/webhooks/compose/complete", () => {
       const data = await response.json();
       expect(data.success).toBe(true);
 
-      // Verify original error was not changed
-      const [job] = await globalThis.services.db
-        .select()
-        .from(composeJobs)
-        .where(eq(composeJobs.id, testJobId));
+      // Verify original error was not changed via API
+      mockClerk({ userId: user.userId }); // Re-enable auth for GET
+      const job = await getTestComposeJobViaApi(testJobId);
 
-      expect(job?.error).toBe("Original error");
+      expect(job.error).toBe("Original error");
     });
   });
 
