@@ -145,8 +145,8 @@ describe("Slack Link Actions", () => {
       mockClerk({ userId: userLink.vm0UserId });
 
       // Simulate logout - delete the user link (this orphans the binding)
-      // Note: Direct DB operation is acceptable here because there's no API
-      // endpoint for "unlink" — this simulates an internal state transition.
+      // No API endpoint for "unlink" — direct DB is the only way to simulate this state transition.
+      // eslint-disable-next-line web/no-direct-db-in-tests -- approved by e7h4n
       await globalThis.services.db
         .delete(slackUserLinks)
         .where(
@@ -156,8 +156,8 @@ describe("Slack Link Actions", () => {
           ),
         );
 
-      // Verify binding is now orphaned (DB assertion justified — orphan state
-      // is not observable through any API)
+      // Verify binding is now orphaned — orphan state is not observable through any API
+      // eslint-disable-next-line web/no-direct-db-in-tests -- approved by e7h4n
       const [orphanedBinding] = await globalThis.services.db
         .select()
         .from(slackBindings)
@@ -178,7 +178,8 @@ describe("Slack Link Actions", () => {
       );
       expect(result.success).toBe(true);
 
-      // Verify binding is restored to the new user link
+      // Verify binding is restored to the new user link — not observable through API
+      // eslint-disable-next-line web/no-direct-db-in-tests -- approved by e7h4n
       const [restoredBinding] = await globalThis.services.db
         .select()
         .from(slackBindings)

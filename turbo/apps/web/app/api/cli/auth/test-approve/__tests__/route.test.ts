@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "../route";
+import { POST as createDeviceRoute } from "../../device/route";
 import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
-import { deviceCodes } from "../../../../../../src/db/schema/device-codes";
-import { eq } from "drizzle-orm";
 
 // Mock external dependencies
 vi.mock("@clerk/nextjs/server");
@@ -25,47 +24,17 @@ vi.mock("@clerk/nextjs/server", () => ({
 
 const context = testContext();
 
-// Characters used in device codes (excluding confusing ones like 0/O, 1/I/L)
-const CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-
-// Generate a unique 9-character device code (XXXX-XXXX format)
-function generateUniqueCode(): string {
-  let code = "";
-  for (let i = 0; i < 8; i++) {
-    if (i === 4) code += "-";
-    code += CHARS[Math.floor(Math.random() * CHARS.length)];
-  }
-  return code;
-}
-
-// Helper to create a device code in the database
-async function createTestDeviceCode(options?: {
-  status?: "pending" | "authenticated" | "expired" | "denied";
-  expiresAt?: Date;
-}) {
-  const code = generateUniqueCode();
-  const status = options?.status ?? "pending";
-  const expiresAt = options?.expiresAt ?? new Date(Date.now() + 15 * 60 * 1000); // 15 min default
-
-  await globalThis.services.db.insert(deviceCodes).values({
-    code,
-    status,
-    expiresAt,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  });
-
-  return { code, status, expiresAt };
-}
-
-// Helper to get device code from database
-async function getDeviceCode(code: string) {
-  const [result] = await globalThis.services.db
-    .select()
-    .from(deviceCodes)
-    .where(eq(deviceCodes.code, code))
-    .limit(1);
-  return result;
+/**
+ * Create a device code via the device endpoint
+ */
+async function createTestDeviceCode(): Promise<string> {
+  const request = createTestRequest(
+    "http://localhost:3000/api/cli/auth/device",
+    { method: "POST" },
+  );
+  const response = await createDeviceRoute(request);
+  const data = await response.json();
+  return data.device_code;
 }
 
 describe("/api/cli/auth/test-approve", () => {
@@ -148,10 +117,21 @@ describe("/api/cli/auth/test-approve", () => {
 
   describe("device code status", () => {
     it("should return 400 when device code is not pending", async () => {
-      const { code } = await createTestDeviceCode({
-        status: "authenticated",
-      });
+      // Create and approve a device code first
+      const code = await createTestDeviceCode();
+      mockGetUserList.mockResolvedValue({ data: [{ id: "user_setup" }] });
 
+      const approveRequest = createTestRequest(
+        "http://localhost:3000/api/cli/auth/test-approve",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ device_code: code }),
+        },
+      );
+      await POST(approveRequest);
+
+      // Now try to approve again — should fail
       const request = createTestRequest(
         "http://localhost:3000/api/cli/auth/test-approve",
         {
@@ -169,9 +149,11 @@ describe("/api/cli/auth/test-approve", () => {
     });
 
     it("should return 400 when device code is expired", async () => {
-      const { code } = await createTestDeviceCode({
-        expiresAt: new Date(Date.now() - 1000), // Expired 1 second ago
-      });
+      const code = await createTestDeviceCode();
+
+      // Advance time past the 15-minute expiration
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 16 * 60 * 1000);
 
       const request = createTestRequest(
         "http://localhost:3000/api/cli/auth/test-approve",
@@ -191,13 +173,13 @@ describe("/api/cli/auth/test-approve", () => {
   });
 
   describe("successful authentication", () => {
-    it("should approve device code and update database", async () => {
+    it("should approve device code and return success", async () => {
       const testUserId = "user_test123";
       mockGetUserList.mockResolvedValue({
         data: [{ id: testUserId }],
       });
 
-      const { code } = await createTestDeviceCode();
+      const code = await createTestDeviceCode();
 
       const request = createTestRequest(
         "http://localhost:3000/api/cli/auth/test-approve",
@@ -214,11 +196,6 @@ describe("/api/cli/auth/test-approve", () => {
       expect(response.status).toBe(200);
       expect(data.success).toBe(true);
       expect(data.userId).toBe(testUserId);
-
-      // Verify database was updated
-      const deviceCode = await getDeviceCode(code);
-      expect(deviceCode?.status).toBe("authenticated");
-      expect(deviceCode?.userId).toBe(testUserId);
     });
 
     it("should handle case-insensitive device codes", async () => {
@@ -227,7 +204,7 @@ describe("/api/cli/auth/test-approve", () => {
         data: [{ id: testUserId }],
       });
 
-      const { code } = await createTestDeviceCode();
+      const code = await createTestDeviceCode();
 
       const request = createTestRequest(
         "http://localhost:3000/api/cli/auth/test-approve",
@@ -253,7 +230,7 @@ describe("/api/cli/auth/test-approve", () => {
         data: [],
       });
 
-      const { code } = await createTestDeviceCode();
+      const code = await createTestDeviceCode();
 
       const request = createTestRequest(
         "http://localhost:3000/api/cli/auth/test-approve",
@@ -276,7 +253,7 @@ describe("/api/cli/auth/test-approve", () => {
         data: [{ id: "user_test789" }],
       });
 
-      const { code } = await createTestDeviceCode();
+      const code = await createTestDeviceCode();
 
       const request = createTestRequest(
         "http://localhost:3000/api/cli/auth/test-approve",

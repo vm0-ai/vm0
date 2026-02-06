@@ -1,11 +1,16 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createHmac } from "crypto";
-import { eq } from "drizzle-orm";
 import { POST } from "../route";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
-import { server } from "../../../../../src/mocks/server";
-import { slackBindings } from "../../../../../src/db/schema/slack-binding";
-import { listSecrets } from "../../../../../src/lib/secret/secret-service";
+import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import {
+  createTestCompose,
+  listTestSecrets,
+} from "../../../../../src/__tests__/api-test-helpers";
+import {
+  givenLinkedSlackUser,
+  givenUserHasAgent,
+} from "../../../../../src/__tests__/slack/api-helpers";
 
 // Mock only external dependencies (third-party packages)
 vi.mock("@clerk/nextjs/server");
@@ -63,10 +68,6 @@ function buildInteractiveBody(payload: Record<string, unknown>): string {
 describe("POST /api/slack/interactive", () => {
   beforeEach(() => {
     context.setupMocks();
-  });
-
-  afterEach(() => {
-    server.resetHandlers();
   });
 
   describe("Signature Verification", () => {
@@ -196,7 +197,6 @@ describe("POST /api/slack/interactive", () => {
     });
 
     it("returns error when agent is not found in database", async () => {
-      // Use a valid UUID that doesn't exist in the database
       const body = buildInteractiveBody({
         type: "view_submission",
         user: { id: "U123", username: "testuser", team_id: "T123" },
@@ -228,18 +228,16 @@ describe("POST /api/slack/interactive", () => {
     });
 
     it("returns error when user is not linked", async () => {
-      // Create a compose first so we can reference it
-      const { composeId } = await context.createSlackBinding(
-        // Create a user link first just to get a compose
-        (await context.createSlackInstallation({ withUserLink: true })).userLink
-          .id,
-        { agentName: "temp-agent" },
-      );
+      // Create a linked user to get a valid compose
+      const { userLink } = await givenLinkedSlackUser();
+      mockClerk({ userId: userLink.vm0UserId });
+      const { composeId } = await createTestCompose("unlinked-test");
 
+      // Submit from a different, unlinked Slack user
       const body = buildInteractiveBody({
         type: "view_submission",
-        user: { id: "U-unlinked", username: "testuser", team_id: "T-test" },
-        team: { id: "T-test", domain: "test" },
+        user: { id: "U-unlinked", username: "testuser", team_id: "T-unlinked" },
+        team: { id: "T-unlinked", domain: "test" },
         view: {
           id: "V123",
           callback_id: "agent_add_modal",
@@ -263,25 +261,13 @@ describe("POST /api/slack/interactive", () => {
     });
 
     it("returns error when agent is already added", async () => {
-      const { installation, userLink } = await context.createSlackInstallation({
-        withUserLink: true,
+      // Create linked user with an agent binding
+      const { userLink, installation } = await givenLinkedSlackUser();
+      const { compose } = await givenUserHasAgent(userLink, {
+        agentName: "existing-agent",
       });
-      // Create a binding - this creates a compose with name "compose-existing-agent"
-      // and a binding with agentName "existing-agent"
-      const { composeId, agentName } = await context.createSlackBinding(
-        userLink.id,
-        {
-          agentName: "existing-agent",
-        },
-      );
 
-      // Update the binding's agentName to match the compose name (compose-existing-agent)
-      // since the implementation uses compose.name as the agentName
-      await globalThis.services.db
-        .update(slackBindings)
-        .set({ agentName: `compose-${agentName}` })
-        .where(eq(slackBindings.slackUserLinkId, userLink.id));
-
+      // Try to add the same compose again
       const body = buildInteractiveBody({
         type: "view_submission",
         user: {
@@ -296,7 +282,9 @@ describe("POST /api/slack/interactive", () => {
           state: {
             values: {
               agent_select: {
-                agent_select_action: { selected_option: { value: composeId } },
+                agent_select_action: {
+                  selected_option: { value: compose.id },
+                },
               },
             },
           },
@@ -313,17 +301,9 @@ describe("POST /api/slack/interactive", () => {
     });
 
     it("creates binding successfully", async () => {
-      const { installation, userLink } = await context.createSlackInstallation({
-        withUserLink: true,
-      });
-      // Create a compose (via binding helper) to get a compose ID, then delete the binding
-      const { composeId } = await context.createSlackBinding(userLink.id, {
-        agentName: "temp-to-delete",
-      });
-      // Delete this binding so we can create a new one
-      await globalThis.services.db
-        .delete(slackBindings)
-        .where(eq(slackBindings.slackUserLinkId, userLink.id));
+      const { userLink, installation } = await givenLinkedSlackUser();
+      mockClerk({ userId: userLink.vm0UserId });
+      const { composeId } = await createTestCompose("new-agent");
 
       const body = buildInteractiveBody({
         type: "view_submission",
@@ -356,17 +336,9 @@ describe("POST /api/slack/interactive", () => {
     });
 
     it("saves secrets to user scope when provided", async () => {
-      const { installation, userLink } = await context.createSlackInstallation({
-        withUserLink: true,
-      });
-      // Create a compose (via binding helper) to get a compose ID, then delete the binding
-      const { composeId } = await context.createSlackBinding(userLink.id, {
-        agentName: "secret-agent",
-      });
-      // Delete this binding so we can create a new one
-      await globalThis.services.db
-        .delete(slackBindings)
-        .where(eq(slackBindings.slackUserLinkId, userLink.id));
+      const { userLink, installation } = await givenLinkedSlackUser();
+      mockClerk({ userId: userLink.vm0UserId });
+      const { composeId } = await createTestCompose("secret-agent");
 
       const body = buildInteractiveBody({
         type: "view_submission",
@@ -401,8 +373,8 @@ describe("POST /api/slack/interactive", () => {
       // Success returns empty 200 to close the modal
       expect(response.status).toBe(200);
 
-      // Verify secrets were saved to user's scope
-      const savedSecrets = await listSecrets(userLink.vm0UserId);
+      // Verify secrets were saved via API
+      const savedSecrets = await listTestSecrets();
       const secretNames = savedSecrets.map((s) => s.name);
 
       expect(secretNames).toContain("API_KEY");

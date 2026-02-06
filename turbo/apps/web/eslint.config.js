@@ -1,4 +1,5 @@
 import { nextJsConfig } from "@vm0/eslint-config/next-js";
+import webPlugin from "./custom-eslint/index.ts";
 
 /** @type {import("eslint").Linter.Config} */
 export default [
@@ -19,5 +20,17 @@ export default [
         },
       ],
     },
+  },
+  {
+    files: ["**/*.test.ts", "**/*.test.tsx"],
+    plugins: {
+      web: webPlugin,
+    },
+    rules: {
+      "web/no-direct-db-in-tests": "error",
+    },
+  },
+  {
+    ignores: ["custom-eslint/**"],
   },
 ];
