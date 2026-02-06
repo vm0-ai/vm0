@@ -42,10 +42,14 @@ const OPERATIONAL_ERROR_PATTERNS = [
   /concurrent run limit/i,
   // Network issues (transient, not bugs)
   /network error/i,
+  /network issue/i,
   /connection refused/i,
   /timeout/i,
   /ECONNREFUSED/i,
   /ETIMEDOUT/i,
+  // Permission/access errors (operational, not bugs)
+  /forbidden/i,
+  /access denied/i,
 ];
 
 /**

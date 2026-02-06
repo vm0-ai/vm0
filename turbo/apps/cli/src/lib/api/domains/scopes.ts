@@ -34,7 +34,7 @@ export async function createScope(body: {
     return result.body;
   }
 
-  handleError(result, "Failed to create scope");
+  handleError(result, "Failed to create scope", { useServerMessage: true });
 }
 
 /**
@@ -53,5 +53,5 @@ export async function updateScope(body: {
     return result.body;
   }
 
-  handleError(result, "Failed to update scope");
+  handleError(result, "Failed to update scope", { useServerMessage: true });
 }
