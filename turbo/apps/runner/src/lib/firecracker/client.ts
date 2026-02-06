@@ -271,21 +271,15 @@ export class FirecrackerClient {
   private waitForSocketFile(timeoutMs: number): Promise<void> {
     return new Promise((resolve, reject) => {
       const socketDir = path.dirname(this.socketPath);
-      const socketName = path.basename(this.socketPath);
       let settled = false;
 
       logger.log(`Waiting for socket file: ${this.socketPath}`);
 
-      const cleanup = (watcher: fs.FSWatcher, timer: NodeJS.Timeout) => {
-        if (settled) return false;
-        settled = true;
-        clearTimeout(timer);
-        watcher.close();
-        return true;
-      };
-
+      const watcher = fs.watch(socketDir);
       const timer = setTimeout(() => {
-        if (cleanup(watcher, timer)) {
+        if (!settled) {
+          settled = true;
+          watcher.close();
           reject(
             new Error(
               `Socket file not created after ${timeoutMs}ms: ${this.socketPath}`,
@@ -294,20 +288,27 @@ export class FirecrackerClient {
         }
       }, timeoutMs);
 
-      const watcher = fs.watch(socketDir, (_event, filename) => {
-        if (filename === socketName && fs.existsSync(this.socketPath)) {
-          if (cleanup(watcher, timer)) {
-            resolve();
-          }
+      const checkAndResolve = () => {
+        if (!settled && fs.existsSync(this.socketPath)) {
+          settled = true;
+          clearTimeout(timer);
+          watcher.close();
+          resolve();
+        }
+      };
+
+      watcher.on("change", checkAndResolve);
+      watcher.on("error", (err) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          watcher.close();
+          reject(err);
         }
       });
 
-      // Check again in case file was created between existsSync and watch
-      if (fs.existsSync(this.socketPath)) {
-        if (cleanup(watcher, timer)) {
-          resolve();
-        }
-      }
+      // Check in case file was created between existsSync and watch
+      checkAndResolve();
     });
   }
 
