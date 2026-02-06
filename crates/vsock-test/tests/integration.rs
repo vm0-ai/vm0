@@ -1,4 +1,5 @@
 use std::io;
+use std::ops::{Deref, DerefMut};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
@@ -32,9 +33,11 @@ fn retry_connect(path: &str) -> io::Result<std::os::unix::net::UnixStream> {
 }
 
 /// Test harness: creates temp dir, starts guest thread, connects host.
+///
+/// Implements `Drop` to clean up temp dirs and join guest threads even on panic.
 struct Harness {
     dir: std::path::PathBuf,
-    host: VsockHost,
+    host: Option<VsockHost>,
     guest: Option<JoinHandle<io::Result<()>>>,
 }
 
@@ -54,24 +57,46 @@ impl Harness {
 
         Self {
             dir,
-            host,
+            host: Some(host),
             guest: Some(guest),
         }
     }
 
     fn finish(mut self) {
-        drop(self.host);
+        drop(self.host.take());
         if let Some(g) = self.guest.take() {
             g.join()
                 .expect("guest thread panicked")
                 .expect("guest returned error");
         }
-        let _ = std::fs::remove_dir_all(&self.dir);
     }
 
     /// Finish without asserting guest result (for shutdown tests where guest exits differently)
     fn finish_ignore_guest(mut self) {
-        drop(self.host);
+        drop(self.host.take());
+        if let Some(g) = self.guest.take() {
+            let _ = g.join();
+        }
+    }
+}
+
+impl Deref for Harness {
+    type Target = VsockHost;
+    fn deref(&self) -> &VsockHost {
+        self.host.as_ref().unwrap()
+    }
+}
+
+impl DerefMut for Harness {
+    fn deref_mut(&mut self) -> &mut VsockHost {
+        self.host.as_mut().unwrap()
+    }
+}
+
+impl Drop for Harness {
+    fn drop(&mut self) {
+        // Drop host first to close the connection, then join guest thread.
+        drop(self.host.take());
         if let Some(g) = self.guest.take() {
             let _ = g.join();
         }
@@ -85,7 +110,7 @@ impl Harness {
 async fn test_exec() {
     let mut h = Harness::new().await;
 
-    let result = h.host.exec("echo hello", 5000).await.expect("exec failed");
+    let result = h.exec("echo hello", 5000).await.expect("exec failed");
 
     assert_eq!(result.exit_code, 0);
     assert_eq!(result.stdout, b"hello\n");
@@ -98,7 +123,6 @@ async fn test_exec_stderr() {
     let mut h = Harness::new().await;
 
     let result = h
-        .host
         .exec("echo error >&2 && exit 1", 5000)
         .await
         .expect("exec failed");
@@ -113,7 +137,6 @@ async fn test_exec_multiline() {
     let mut h = Harness::new().await;
 
     let result = h
-        .host
         .exec("printf 'line1\\nline2\\nline3\\n'", 5000)
         .await
         .expect("exec failed");
@@ -128,7 +151,6 @@ async fn test_exec_pipe_chain() {
     let mut h = Harness::new().await;
 
     let result = h
-        .host
         .exec("echo 'hello world' | tr 'a-z' 'A-Z'", 5000)
         .await
         .expect("exec failed");
@@ -143,7 +165,6 @@ async fn test_exec_env_vars() {
     let mut h = Harness::new().await;
 
     let result = h
-        .host
         .exec("export TEST_VAR=hello; echo $TEST_VAR", 5000)
         .await
         .expect("exec failed");
@@ -157,7 +178,7 @@ async fn test_exec_env_vars() {
 async fn test_exec_timeout() {
     let mut h = Harness::new().await;
 
-    let result = h.host.exec("sleep 10", 100).await.expect("exec failed");
+    let result = h.exec("sleep 10", 100).await.expect("exec failed");
 
     assert_eq!(result.exit_code, 124);
     assert!(result.stderr.starts_with(b"Timeout"));
@@ -170,7 +191,6 @@ async fn test_exec_sequential() {
 
     for i in 0..5 {
         let result = h
-            .host
             .exec(&format!("echo {i}"), 5000)
             .await
             .expect("exec failed");
@@ -190,14 +210,12 @@ async fn test_write_file() {
     let file_path_str = file_path.to_string_lossy().to_string();
     let content = b"hello from vsock-test";
 
-    h.host
-        .write_file(&file_path_str, content, false)
+    h.write_file(&file_path_str, content, false)
         .await
         .expect("write_file failed");
 
     // Verify by reading the file back via exec
     let result = h
-        .host
         .exec(&format!("cat '{file_path_str}'"), 5000)
         .await
         .expect("exec cat failed");
@@ -215,8 +233,7 @@ async fn test_write_file_special_characters() {
     let file_path_str = file_path.to_string_lossy().to_string();
     let content = b"Line1\nLine2\tTabbed\n\"Quoted\"";
 
-    h.host
-        .write_file(&file_path_str, content, false)
+    h.write_file(&file_path_str, content, false)
         .await
         .expect("write_file failed");
 
@@ -233,8 +250,7 @@ async fn test_write_file_creates_parent_dirs() {
     let file_path_str = file_path.to_string_lossy().to_string();
     let content = b"nested content";
 
-    h.host
-        .write_file(&file_path_str, content, false)
+    h.write_file(&file_path_str, content, false)
         .await
         .expect("write_file failed");
 
@@ -250,14 +266,12 @@ async fn test_spawn_watch() {
     let mut h = Harness::new().await;
 
     let pid = h
-        .host
         .spawn_watch("echo done", 5000)
         .await
         .expect("spawn_watch failed");
     assert!(pid > 0);
 
     let event = h
-        .host
         .wait_for_exit(pid, Duration::from_secs(5))
         .await
         .expect("wait_for_exit failed");
@@ -273,13 +287,11 @@ async fn test_spawn_watch_exit_code() {
     let mut h = Harness::new().await;
 
     let pid = h
-        .host
         .spawn_watch("exit 42", 5000)
         .await
         .expect("spawn_watch failed");
 
     let event = h
-        .host
         .wait_for_exit(pid, Duration::from_secs(5))
         .await
         .expect("wait_for_exit failed");
@@ -293,13 +305,11 @@ async fn test_spawn_watch_stderr() {
     let mut h = Harness::new().await;
 
     let pid = h
-        .host
         .spawn_watch("echo error >&2 && exit 1", 5000)
         .await
         .expect("spawn_watch failed");
 
     let event = h
-        .host
         .wait_for_exit(pid, Duration::from_secs(5))
         .await
         .expect("wait_for_exit failed");
@@ -314,13 +324,11 @@ async fn test_spawn_watch_both_stdout_stderr() {
     let mut h = Harness::new().await;
 
     let pid = h
-        .host
         .spawn_watch("echo out && echo err >&2 && exit 2", 5000)
         .await
         .expect("spawn_watch failed");
 
     let event = h
-        .host
         .wait_for_exit(pid, Duration::from_secs(5))
         .await
         .expect("wait_for_exit failed");
@@ -336,13 +344,11 @@ async fn test_spawn_watch_no_output() {
     let mut h = Harness::new().await;
 
     let pid = h
-        .host
         .spawn_watch("true", 5000)
         .await
         .expect("spawn_watch failed");
 
     let event = h
-        .host
         .wait_for_exit(pid, Duration::from_secs(5))
         .await
         .expect("wait_for_exit failed");
@@ -359,12 +365,10 @@ async fn test_spawn_watch_concurrent() {
 
     // Spawn two processes — second finishes first
     let pid1 = h
-        .host
         .spawn_watch("sleep 0.1 && echo first", 5000)
         .await
         .expect("spawn_watch 1 failed");
     let pid2 = h
-        .host
         .spawn_watch("echo second", 5000)
         .await
         .expect("spawn_watch 2 failed");
@@ -373,12 +377,10 @@ async fn test_spawn_watch_concurrent() {
 
     // Wait in reverse order to exercise cached exit events
     let event2 = h
-        .host
         .wait_for_exit(pid2, Duration::from_secs(5))
         .await
         .expect("wait_for_exit 2 failed");
     let event1 = h
-        .host
         .wait_for_exit(pid1, Duration::from_secs(5))
         .await
         .expect("wait_for_exit 1 failed");
@@ -395,13 +397,11 @@ async fn test_spawn_watch_timeout() {
     let mut h = Harness::new().await;
 
     let pid = h
-        .host
         .spawn_watch("sleep 10", 100)
         .await
         .expect("spawn_watch failed");
 
     let event = h
-        .host
         .wait_for_exit(pid, Duration::from_secs(5))
         .await
         .expect("wait_for_exit failed");
@@ -416,7 +416,6 @@ async fn test_spawn_watch_cached_exit() {
     let mut h = Harness::new().await;
 
     let pid = h
-        .host
         .spawn_watch("echo cached", 5000)
         .await
         .expect("spawn_watch failed");
@@ -428,7 +427,6 @@ async fn test_spawn_watch_cached_exit() {
     sleep(Duration::from_millis(300)).await;
 
     let event = h
-        .host
         .wait_for_exit(pid, Duration::from_secs(5))
         .await
         .expect("wait_for_exit failed");
@@ -443,13 +441,11 @@ async fn test_spawn_watch_multiline() {
     let mut h = Harness::new().await;
 
     let pid = h
-        .host
         .spawn_watch("printf 'line1\\nline2\\nline3\\n'", 5000)
         .await
         .expect("spawn_watch failed");
 
     let event = h
-        .host
         .wait_for_exit(pid, Duration::from_secs(5))
         .await
         .expect("wait_for_exit failed");
@@ -464,7 +460,6 @@ async fn test_spawn_watch_large_output() {
     let mut h = Harness::new().await;
 
     let pid = h
-        .host
         .spawn_watch(
             "dd if=/dev/zero bs=1024 count=10 2>/dev/null | base64",
             5000,
@@ -473,7 +468,6 @@ async fn test_spawn_watch_large_output() {
         .expect("spawn_watch failed");
 
     let event = h
-        .host
         .wait_for_exit(pid, Duration::from_secs(10))
         .await
         .expect("wait_for_exit failed");
@@ -488,13 +482,11 @@ async fn test_spawn_watch_delayed_output() {
     let mut h = Harness::new().await;
 
     let pid = h
-        .host
         .spawn_watch("sleep 0.2 && echo delayed", 5000)
         .await
         .expect("spawn_watch failed");
 
     let event = h
-        .host
         .wait_for_exit(pid, Duration::from_secs(5))
         .await
         .expect("wait_for_exit failed");
@@ -510,7 +502,6 @@ async fn test_spawn_watch_sigterm() {
 
     // Use `exec` to replace shell so the PID we get is the actual sleep process
     let pid = h
-        .host
         .spawn_watch("exec sleep 60", 0)
         .await
         .expect("spawn_watch failed");
@@ -520,16 +511,14 @@ async fn test_spawn_watch_sigterm() {
     sleep(Duration::from_millis(100)).await;
 
     // Kill process group with SIGTERM
-    h.host
-        .exec(
-            &format!("kill -15 -{pid} 2>/dev/null || kill -15 {pid}"),
-            5000,
-        )
-        .await
-        .expect("kill failed");
+    h.exec(
+        &format!("kill -15 -{pid} 2>/dev/null || kill -15 {pid}"),
+        5000,
+    )
+    .await
+    .expect("kill failed");
 
     let event = h
-        .host
         .wait_for_exit(pid, Duration::from_secs(5))
         .await
         .expect("wait_for_exit failed");
@@ -543,7 +532,6 @@ async fn test_spawn_watch_sigkill() {
     let mut h = Harness::new().await;
 
     let pid = h
-        .host
         .spawn_watch("exec sleep 60", 0)
         .await
         .expect("spawn_watch failed");
@@ -551,16 +539,14 @@ async fn test_spawn_watch_sigkill() {
     // Wait for the process to be fully running before sending signal.
     sleep(Duration::from_millis(100)).await;
 
-    h.host
-        .exec(
-            &format!("kill -9 -{pid} 2>/dev/null || kill -9 {pid}"),
-            5000,
-        )
-        .await
-        .expect("kill failed");
+    h.exec(
+        &format!("kill -9 -{pid} 2>/dev/null || kill -9 {pid}"),
+        5000,
+    )
+    .await
+    .expect("kill failed");
 
     let event = h
-        .host
         .wait_for_exit(pid, Duration::from_secs(5))
         .await
         .expect("wait_for_exit failed");
@@ -576,7 +562,6 @@ async fn test_spawn_watch_rapid_multiple() {
     let mut pids = Vec::new();
     for i in 0..5 {
         let pid = h
-            .host
             .spawn_watch(&format!("echo p{i}"), 5000)
             .await
             .expect("spawn_watch failed");
@@ -590,7 +575,6 @@ async fn test_spawn_watch_rapid_multiple() {
     // All should complete successfully with correct output
     for (i, &pid) in pids.iter().enumerate() {
         let event = h
-            .host
             .wait_for_exit(pid, Duration::from_secs(5))
             .await
             .expect("wait_for_exit failed");
@@ -605,13 +589,11 @@ async fn test_spawn_watch_nonexistent_command() {
     let mut h = Harness::new().await;
 
     let pid = h
-        .host
         .spawn_watch("nonexistent_command_12345 2>&1", 5000)
         .await
         .expect("spawn_watch failed");
 
     let event = h
-        .host
         .wait_for_exit(pid, Duration::from_secs(5))
         .await
         .expect("wait_for_exit failed");
@@ -632,13 +614,11 @@ async fn test_spawn_watch_unicode() {
     let mut h = Harness::new().await;
 
     let pid = h
-        .host
         .spawn_watch("printf '你好世界\\nこんにちは\\n🎉emoji🚀'", 5000)
         .await
         .expect("spawn_watch failed");
 
     let event = h
-        .host
         .wait_for_exit(pid, Duration::from_secs(5))
         .await
         .expect("wait_for_exit failed");
@@ -656,7 +636,6 @@ async fn test_spawn_watch_interleaved_output() {
     let mut h = Harness::new().await;
 
     let pid = h
-        .host
         .spawn_watch(
             "echo out1 && echo err1 >&2 && echo out2 && echo err2 >&2",
             5000,
@@ -665,7 +644,6 @@ async fn test_spawn_watch_interleaved_output() {
         .expect("spawn_watch failed");
 
     let event = h
-        .host
         .wait_for_exit(pid, Duration::from_secs(5))
         .await
         .expect("wait_for_exit failed");
@@ -689,8 +667,7 @@ async fn test_write_file_large() {
     // 100KB content
     let content = vec![b'x'; 100_000];
 
-    h.host
-        .write_file(&file_path_str, &content, false)
+    h.write_file(&file_path_str, &content, false)
         .await
         .expect("write_file failed");
 
@@ -710,7 +687,7 @@ async fn test_shutdown() {
     // guest's post-handshake read loop setup.
     sleep(Duration::from_millis(50)).await;
 
-    let acked = h.host.shutdown(Duration::from_secs(5)).await;
+    let acked = h.shutdown(Duration::from_secs(5)).await;
     assert!(acked);
 
     h.finish_ignore_guest();
@@ -721,10 +698,10 @@ async fn test_shutdown_after_exec() {
     let mut h = Harness::new().await;
 
     // Run a command first, then shutdown
-    let result = h.host.exec("echo before", 5000).await.expect("exec failed");
+    let result = h.exec("echo before", 5000).await.expect("exec failed");
     assert_eq!(result.exit_code, 0);
 
-    let acked = h.host.shutdown(Duration::from_secs(5)).await;
+    let acked = h.shutdown(Duration::from_secs(5)).await;
     assert!(acked);
 
     h.finish_ignore_guest();

@@ -221,7 +221,8 @@ impl VsockHost {
         let resp = self.request(MSG_EXEC, &payload, timeout).await?;
 
         if resp.msg_type == MSG_ERROR {
-            let msg = vsock_proto::decode_error(&resp.payload).unwrap_or("unknown error");
+            let msg = vsock_proto::decode_error(&resp.payload)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
             return Ok(ExecResult {
                 exit_code: 1,
                 stdout: Vec::new(),
@@ -254,7 +255,8 @@ impl VsockHost {
         let resp = self.request(MSG_WRITE_FILE, &payload, timeout).await?;
 
         if resp.msg_type == MSG_ERROR {
-            let msg = vsock_proto::decode_error(&resp.payload).unwrap_or("unknown error");
+            let msg = vsock_proto::decode_error(&resp.payload)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
             return Err(io::Error::other(msg));
         }
 
@@ -286,7 +288,8 @@ impl VsockHost {
             .await?;
 
         if resp.msg_type == MSG_ERROR {
-            let msg = vsock_proto::decode_error(&resp.payload).unwrap_or("unknown error");
+            let msg = vsock_proto::decode_error(&resp.payload)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
             return Err(io::Error::other(msg));
         }
 
