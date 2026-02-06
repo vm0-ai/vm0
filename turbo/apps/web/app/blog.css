@@ -506,6 +506,16 @@
   padding-left: 24px;
 }
 
+.blog-post-content ul {
+  list-style-type: disc;
+  list-style-position: outside;
+}
+
+.blog-post-content ol {
+  list-style-type: decimal;
+  list-style-position: outside;
+}
+
 .blog-post-content li {
   font-family: "Noto Sans", sans-serif;
   font-size: 16px;
@@ -513,6 +523,7 @@
   line-height: 1.8;
   color: var(--text-secondary);
   margin-bottom: 12px;
+  padding-left: 8px;
 }
 
 .blog-post-content code {
