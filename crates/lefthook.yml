@@ -10,7 +10,3 @@ pre-commit:
       root: crates/
       run: cargo clippy --all-targets --all-features
       glob: "crates/**/*.{rs,toml}"
-    cargo-check:
-      root: crates/
-      run: cargo check --all-targets
-      glob: "crates/**/*.{rs,toml}"
