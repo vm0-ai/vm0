@@ -82,7 +82,7 @@ To run the web application locally with HTTPS:
 
 2. **Start the dev server** (inside dev container):
    ```bash
-   cd turbo && pnpm install && pnpm dev
+   bash scripts/prepare.sh && cd turbo && pnpm dev
    ```
 
 3. **Access the application**:
