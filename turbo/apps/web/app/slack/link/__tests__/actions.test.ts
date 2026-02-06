@@ -3,11 +3,10 @@ import { eq, and, isNull } from "drizzle-orm";
 import { checkLinkStatus, linkSlackAccount } from "../actions";
 import { testContext } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
-import { initServices } from "../../../../src/lib/init-services";
-import { slackInstallations } from "../../../../src/db/schema/slack-installation";
 import { slackUserLinks } from "../../../../src/db/schema/slack-user-link";
 import { slackBindings } from "../../../../src/db/schema/slack-binding";
 import {
+  givenSlackWorkspaceInstalled,
   givenLinkedSlackUser,
   givenUserHasAgent,
 } from "../../../../src/__tests__/slack/api-helpers";
@@ -46,28 +45,14 @@ describe("Slack Link Actions", () => {
     });
 
     it("should return isLinked: true with workspace name when link exists", async () => {
-      const user = await context.setupUser();
-      initServices();
-
-      const workspaceId = `T-test-${Date.now()}`;
-      const slackUserId = `U-test-${Date.now()}`;
-
-      // Create installation
-      await globalThis.services.db.insert(slackInstallations).values({
-        slackWorkspaceId: workspaceId,
-        slackWorkspaceName: "Test Workspace",
-        encryptedBotToken: "encrypted-token",
-        botUserId: "B123456",
+      const { userLink, installation } = await givenLinkedSlackUser({
+        workspaceName: "Test Workspace",
       });
 
-      // Create user link
-      await globalThis.services.db.insert(slackUserLinks).values({
-        slackUserId,
-        slackWorkspaceId: workspaceId,
-        vm0UserId: user.userId,
-      });
-
-      const result = await checkLinkStatus(slackUserId, workspaceId);
+      const result = await checkLinkStatus(
+        userLink.slackUserId,
+        installation.slackWorkspaceId,
+      );
 
       expect(result.isLinked).toBe(true);
       expect(result.workspaceName).toBe("Test Workspace");
@@ -98,53 +83,33 @@ describe("Slack Link Actions", () => {
 
     it("should successfully link a new Slack account", async () => {
       await context.setupUser();
-      initServices();
+      const { installation } = await givenSlackWorkspaceInstalled();
 
-      const workspaceId = `T-link-test-${Date.now()}`;
       const slackUserId = `U-link-test-${Date.now()}`;
 
-      // Create installation
-      await globalThis.services.db.insert(slackInstallations).values({
-        slackWorkspaceId: workspaceId,
-        slackWorkspaceName: "Link Test Workspace",
-        encryptedBotToken: "encrypted-token",
-        botUserId: "B123456",
-      });
-
-      const result = await linkSlackAccount(slackUserId, workspaceId);
+      const result = await linkSlackAccount(
+        slackUserId,
+        installation.slackWorkspaceId,
+      );
 
       expect(result.success).toBe(true);
       expect(result.alreadyLinked).toBeUndefined();
 
-      // Verify link was created
-      const status = await checkLinkStatus(slackUserId, workspaceId);
+      // Verify link was created via the server action
+      const status = await checkLinkStatus(
+        slackUserId,
+        installation.slackWorkspaceId,
+      );
       expect(status.isLinked).toBe(true);
     });
 
     it("should return alreadyLinked: true when re-linking same user", async () => {
-      const user = await context.setupUser();
-      initServices();
+      const { userLink, installation } = await givenLinkedSlackUser();
 
-      const workspaceId = `T-relink-test-${Date.now()}`;
-      const slackUserId = `U-relink-test-${Date.now()}`;
-
-      // Create installation
-      await globalThis.services.db.insert(slackInstallations).values({
-        slackWorkspaceId: workspaceId,
-        slackWorkspaceName: "Relink Test Workspace",
-        encryptedBotToken: "encrypted-token",
-        botUserId: "B123456",
-      });
-
-      // Create initial link
-      await globalThis.services.db.insert(slackUserLinks).values({
-        slackUserId,
-        slackWorkspaceId: workspaceId,
-        vm0UserId: user.userId,
-      });
-
-      // Try to link again
-      const result = await linkSlackAccount(slackUserId, workspaceId);
+      const result = await linkSlackAccount(
+        userLink.slackUserId,
+        installation.slackWorkspaceId,
+      );
 
       expect(result.success).toBe(true);
       expect(result.alreadyLinked).toBe(true);
@@ -152,31 +117,15 @@ describe("Slack Link Actions", () => {
 
     it("should return error when Slack account is linked to different VM0 user", async () => {
       // Create first user and link
-      const user1 = await context.setupUser({ prefix: "user1" });
-      initServices();
-
-      const workspaceId = `T-conflict-test-${Date.now()}`;
-      const slackUserId = `U-conflict-test-${Date.now()}`;
-
-      // Create installation
-      await globalThis.services.db.insert(slackInstallations).values({
-        slackWorkspaceId: workspaceId,
-        slackWorkspaceName: "Conflict Test Workspace",
-        encryptedBotToken: "encrypted-token",
-        botUserId: "B123456",
-      });
-
-      // Create link for user1
-      await globalThis.services.db.insert(slackUserLinks).values({
-        slackUserId,
-        slackWorkspaceId: workspaceId,
-        vm0UserId: user1.userId,
-      });
+      const { userLink, installation } = await givenLinkedSlackUser();
 
       // Create second user and try to link same Slack account
       await context.setupUser({ prefix: "user2" });
 
-      const result = await linkSlackAccount(slackUserId, workspaceId);
+      const result = await linkSlackAccount(
+        userLink.slackUserId,
+        installation.slackWorkspaceId,
+      );
 
       expect(result.success).toBe(false);
       expect(result.error).toContain(
@@ -185,7 +134,7 @@ describe("Slack Link Actions", () => {
     });
 
     it("should restore orphaned bindings when user re-links after logout", async () => {
-      // Given a linked user with an agent
+      // Given a linked user with an agent (via API helpers)
       const { userLink, installation } = await givenLinkedSlackUser();
       const { binding } = await givenUserHasAgent(userLink, {
         agentName: "test-agent",
@@ -194,9 +143,10 @@ describe("Slack Link Actions", () => {
 
       // Mock Clerk to return the same vm0UserId
       mockClerk({ userId: userLink.vm0UserId });
-      initServices();
 
       // Simulate logout - delete the user link (this orphans the binding)
+      // Note: Direct DB operation is acceptable here because there's no API
+      // endpoint for "unlink" — this simulates an internal state transition.
       await globalThis.services.db
         .delete(slackUserLinks)
         .where(
@@ -206,7 +156,8 @@ describe("Slack Link Actions", () => {
           ),
         );
 
-      // Verify binding is now orphaned
+      // Verify binding is now orphaned (DB assertion justified — orphan state
+      // is not observable through any API)
       const [orphanedBinding] = await globalThis.services.db
         .select()
         .from(slackBindings)

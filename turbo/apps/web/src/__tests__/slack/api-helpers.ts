@@ -118,7 +118,7 @@ function createSlackOAuthMock(options: {
  * Given a Slack workspace has installed the VM0 app.
  * Creates installation via OAuth callback endpoint.
  */
-async function givenSlackWorkspaceInstalled(
+export async function givenSlackWorkspaceInstalled(
   options: WorkspaceInstallationOptions = {},
 ): Promise<WorkspaceInstallationResult> {
   const workspaceId = options.workspaceId ?? uniqueId("T");
