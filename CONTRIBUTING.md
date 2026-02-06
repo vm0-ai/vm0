@@ -74,8 +74,6 @@ The script will ask if you have 1Password access:
 | [Cloudflare R2](https://www.cloudflare.com/products/r2/) | Object storage for user files and artifacts | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_USER_STORAGES_BUCKET_NAME` | [dash.cloudflare.com](https://dash.cloudflare.com) |
 | [Slack API](https://api.slack.com) | Slack app integration for notifications and commands | `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_SIGNING_SECRET` | [api.slack.com/apps](https://api.slack.com/apps) |
 
-> **Troubleshooting**: If you see `❌ Invalid environment variables` when running `pnpm dev`, re-run `scripts/sync-env.sh` to fill in the missing values.
-
 ### Local Web Development
 
 To run the web application locally with HTTPS:
