@@ -1,4 +1,4 @@
-//! Host-side vsock client for Firecracker VM communication.
+//! Host-side vsock endpoint for Firecracker VM communication.
 //!
 //! Connects to a guest agent via Unix domain socket (Firecracker forwards
 //! vsock connections to `{vsock_path}_{port}` UDS files).
@@ -45,12 +45,12 @@ pub struct ProcessExitEvent {
     pub stderr: Vec<u8>,
 }
 
-/// Host-side vsock client.
+/// Host-side vsock endpoint.
 ///
 /// Maintains a persistent connection to the guest agent and provides
 /// high-level methods for command execution, file operations, and
 /// process lifecycle management.
-pub struct VsockClient {
+pub struct VsockHost {
     stream: UnixStream,
     decoder: Decoder,
     next_seq: u32,
@@ -60,7 +60,7 @@ pub struct VsockClient {
     read_buf: Box<[u8; READ_BUF_SIZE]>,
 }
 
-impl VsockClient {
+impl VsockHost {
     /// Wait for a guest to connect on the vsock UDS path.
     ///
     /// Creates a UDS listener at `{vsock_path}_{port}`, accepts the first
@@ -87,7 +87,7 @@ impl VsockClient {
             )
         })??;
 
-        let mut client = Self {
+        let mut host = Self {
             stream,
             decoder: Decoder::new(),
             next_seq: 1,
@@ -95,9 +95,9 @@ impl VsockClient {
             read_buf: Box::new([0u8; READ_BUF_SIZE]),
         };
 
-        client.handshake(deadline).await?;
+        host.handshake(deadline).await?;
 
-        Ok(client)
+        Ok(host)
     }
 
     /// Read one batch of messages from the stream.
@@ -362,8 +362,8 @@ mod tests {
         stream.write_all(&pong).await.unwrap();
     }
 
-    async fn client_from_stream(stream: UnixStream) -> io::Result<VsockClient> {
-        let mut client = VsockClient {
+    async fn host_from_stream(stream: UnixStream) -> io::Result<VsockHost> {
+        let mut host = VsockHost {
             stream,
             decoder: Decoder::new(),
             next_seq: 1,
@@ -372,13 +372,13 @@ mod tests {
         };
 
         let deadline = Instant::now() + Duration::from_secs(5);
-        client.handshake(deadline).await?;
-        Ok(client)
+        host.handshake(deadline).await?;
+        Ok(host)
     }
 
     #[tokio::test]
     async fn test_exec() {
-        let (host, mut guest) = make_pair();
+        let (host_stream, mut guest) = make_pair();
 
         tokio::spawn(async move {
             let mut decoder = Decoder::new();
@@ -398,8 +398,8 @@ mod tests {
             guest.write_all(&resp).await.unwrap();
         });
 
-        let mut client = client_from_stream(host).await.unwrap();
-        let result = client.exec("echo hello", 5000).await.unwrap();
+        let mut host = host_from_stream(host_stream).await.unwrap();
+        let result = host.exec("echo hello", 5000).await.unwrap();
         assert_eq!(result.exit_code, 0);
         assert_eq!(result.stdout, b"hello\n");
         assert!(result.stderr.is_empty());
@@ -407,7 +407,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_exec_error_response() {
-        let (host, mut guest) = make_pair();
+        let (host_stream, mut guest) = make_pair();
 
         tokio::spawn(async move {
             let mut decoder = Decoder::new();
@@ -422,15 +422,15 @@ mod tests {
             guest.write_all(&resp).await.unwrap();
         });
 
-        let mut client = client_from_stream(host).await.unwrap();
-        let result = client.exec("badcmd", 5000).await.unwrap();
+        let mut host = host_from_stream(host_stream).await.unwrap();
+        let result = host.exec("badcmd", 5000).await.unwrap();
         assert_eq!(result.exit_code, 1);
         assert_eq!(result.stderr, b"command not found");
     }
 
     #[tokio::test]
     async fn test_write_file() {
-        let (host, mut guest) = make_pair();
+        let (host_stream, mut guest) = make_pair();
 
         tokio::spawn(async move {
             let mut decoder = Decoder::new();
@@ -451,16 +451,15 @@ mod tests {
             guest.write_all(&resp).await.unwrap();
         });
 
-        let mut client = client_from_stream(host).await.unwrap();
-        client
-            .write_file("/tmp/test.txt", b"hello", false)
+        let mut host = host_from_stream(host_stream).await.unwrap();
+        host.write_file("/tmp/test.txt", b"hello", false)
             .await
             .unwrap();
     }
 
     #[tokio::test]
     async fn test_write_file_failure() {
-        let (host, mut guest) = make_pair();
+        let (host_stream, mut guest) = make_pair();
 
         tokio::spawn(async move {
             let mut decoder = Decoder::new();
@@ -475,8 +474,8 @@ mod tests {
             guest.write_all(&resp).await.unwrap();
         });
 
-        let mut client = client_from_stream(host).await.unwrap();
-        let err = client
+        let mut host = host_from_stream(host_stream).await.unwrap();
+        let err = host
             .write_file("/etc/shadow", b"bad", false)
             .await
             .unwrap_err();
@@ -485,7 +484,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_spawn_watch_and_wait() {
-        let (host, mut guest) = make_pair();
+        let (host_stream, mut guest) = make_pair();
 
         tokio::spawn(async move {
             let mut decoder = Decoder::new();
@@ -507,15 +506,15 @@ mod tests {
             let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, 0, &exit_payload);
             guest.write_all(&exit_msg).await.unwrap();
 
-            // Keep connection alive until client reads the exit event
+            // Keep connection alive until host reads the exit event
             tokio::time::sleep(Duration::from_secs(1)).await;
         });
 
-        let mut client = client_from_stream(host).await.unwrap();
-        let pid = client.spawn_watch("sleep 1", 0).await.unwrap();
+        let mut host = host_from_stream(host_stream).await.unwrap();
+        let pid = host.spawn_watch("sleep 1", 0).await.unwrap();
         assert_eq!(pid, 42);
 
-        let event = client
+        let event = host
             .wait_for_exit(42, Duration::from_secs(5))
             .await
             .unwrap();
@@ -526,7 +525,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_cached_exit_event() {
-        let (host, mut guest) = make_pair();
+        let (host_stream, mut guest) = make_pair();
 
         tokio::spawn(async move {
             let mut decoder = Decoder::new();
@@ -553,11 +552,11 @@ mod tests {
             tokio::time::sleep(Duration::from_secs(1)).await;
         });
 
-        let mut client = client_from_stream(host).await.unwrap();
-        let pid = client.spawn_watch("false", 0).await.unwrap();
+        let mut host = host_from_stream(host_stream).await.unwrap();
+        let pid = host.spawn_watch("false", 0).await.unwrap();
         assert_eq!(pid, 99);
 
-        let event = client
+        let event = host
             .wait_for_exit(99, Duration::from_secs(5))
             .await
             .unwrap();
@@ -567,7 +566,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_shutdown() {
-        let (host, mut guest) = make_pair();
+        let (host_stream, mut guest) = make_pair();
 
         tokio::spawn(async move {
             let mut decoder = Decoder::new();
@@ -582,7 +581,7 @@ mod tests {
             guest.write_all(&resp).await.unwrap();
         });
 
-        let mut client = client_from_stream(host).await.unwrap();
-        assert!(client.shutdown(Duration::from_secs(2)).await);
+        let mut host = host_from_stream(host_stream).await.unwrap();
+        assert!(host.shutdown(Duration::from_secs(2)).await);
     }
 }
