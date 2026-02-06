@@ -30,7 +30,7 @@ RUN npm install -g pnpm@10.15.0 lefthook@1.12.3
 FROM toolchain AS toolchain-rust
 
 # Install Rust toolchain with ARM64 cross-compilation support
-# Used for building vm-init for Firecracker VMs (ARM64 metal runners)
+# Used for building guest-init for Firecracker VMs (ARM64 metal runners)
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH

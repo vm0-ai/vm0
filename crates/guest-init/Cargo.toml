@@ -1,8 +1,8 @@
 [package]
-name = "vm-init"
+name = "guest-init"
 version = "0.1.0"
 edition = "2024"
-description = "VM init process for Firecracker - filesystem setup, PID 1, and vsock-guest"
+description = "Guest init process for Firecracker - filesystem setup, PID 1, and vsock-guest"
 
 [dependencies]
 libc.workspace = true

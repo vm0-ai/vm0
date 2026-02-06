@@ -1,6 +1,6 @@
 //! Filesystem initialization for VM boot.
 //!
-//! This module implements the functionality of vm-init.sh in Rust:
+//! This module implements the filesystem initialization in Rust:
 //! 1. Mount squashfs base filesystem
 //! 2. Mount ext4 overlay filesystem
 //! 3. Setup overlayfs
@@ -15,9 +15,9 @@ use std::path::Path;
 
 /// Initialize filesystem and perform pivot_root.
 ///
-/// This replaces the vm-init.sh shell script with direct syscalls.
+/// This uses direct syscalls for filesystem initialization.
 pub fn init_filesystem() -> Result<(), InitError> {
-    eprintln!("[vm-init] Starting filesystem initialization");
+    eprintln!("[guest-init] Starting filesystem initialization");
 
     // 1. Mount squashfs (read-only base filesystem from /dev/vda)
     mount(
@@ -31,7 +31,7 @@ pub fn init_filesystem() -> Result<(), InitError> {
         target: "/rom".into(),
         source: e,
     })?;
-    eprintln!("[vm-init] Mounted squashfs on /rom");
+    eprintln!("[guest-init] Mounted squashfs on /rom");
 
     // 2. Mount ext4 (read-write overlay from /dev/vdb)
     mount(
@@ -45,7 +45,7 @@ pub fn init_filesystem() -> Result<(), InitError> {
         target: "/rw".into(),
         source: e,
     })?;
-    eprintln!("[vm-init] Mounted ext4 on /rw");
+    eprintln!("[guest-init] Mounted ext4 on /rw");
 
     // 3. Create overlay directories
     fs::create_dir_all("/rw/upper").map_err(|e| InitError::Mkdir {
@@ -69,7 +69,7 @@ pub fn init_filesystem() -> Result<(), InitError> {
         target: "/mnt/root".into(),
         source: e,
     })?;
-    eprintln!("[vm-init] Mounted overlayfs on /mnt/root");
+    eprintln!("[guest-init] Mounted overlayfs on /mnt/root");
 
     // 5. Prepare pivot_root
     fs::create_dir_all("/mnt/root/oldroot").map_err(|e| InitError::Mkdir {
@@ -84,7 +84,7 @@ pub fn init_filesystem() -> Result<(), InitError> {
     })?;
 
     pivot_root(".", "oldroot").map_err(InitError::PivotRoot)?;
-    eprintln!("[vm-init] pivot_root complete");
+    eprintln!("[guest-init] pivot_root complete");
 
     // 7. Move mounts from old root
     // Create mount points if they don't exist
@@ -157,7 +157,7 @@ pub fn init_filesystem() -> Result<(), InitError> {
         target: "/sys".into(),
         source: e,
     })?;
-    eprintln!("[vm-init] Virtual filesystems mounted");
+    eprintln!("[guest-init] Virtual filesystems mounted");
 
     // 10. Set environment variables
     // SAFETY: We are the init process, no other threads are running yet
@@ -174,7 +174,7 @@ pub fn init_filesystem() -> Result<(), InitError> {
     // 11. Change to home directory
     let _ = std::env::set_current_dir("/home/user");
 
-    eprintln!("[vm-init] Filesystem initialization complete");
+    eprintln!("[guest-init] Filesystem initialization complete");
     Ok(())
 }
 

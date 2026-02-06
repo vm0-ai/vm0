@@ -1,12 +1,15 @@
 [package]
-name = "vm-common"
+name = "guest-download"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-chrono.workspace = true
+flate2.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tar.workspace = true
+ureq.workspace = true
+guest-common.workspace = true
 
 [lints]
 workspace = true

@@ -64,12 +64,12 @@ interface FirecrackerConfigParams {
  *   - numa=off: disable NUMA (single node)
  *   - mitigations=off: disable CPU vulnerability mitigations
  *   - noresume: skip hibernation resume check
- *   - init=/sbin/vm-init: use vm-init (Rust binary) for filesystem setup and vsock-guest
+ *   - init=/sbin/guest-init: use guest-init (Rust binary) for filesystem setup and vsock-guest
  *   - ip=...: network configuration (fixed IPs from SNAPSHOT_NETWORK)
  */
 export function buildBootArgs(): string {
   const networkBootArgs = generateSnapshotNetworkBootArgs();
-  return `console=ttyS0 reboot=k panic=1 pci=off nomodules random.trust_cpu=on quiet loglevel=0 nokaslr audit=0 numa=off mitigations=off noresume init=/sbin/vm-init ${networkBootArgs}`;
+  return `console=ttyS0 reboot=k panic=1 pci=off nomodules random.trust_cpu=on quiet loglevel=0 nokaslr audit=0 numa=off mitigations=off noresume init=/sbin/guest-init ${networkBootArgs}`;
 }
 
 /**
@@ -98,7 +98,7 @@ export function buildFirecrackerConfig(
       },
       // Overlay drive (ext4, read-write, per-VM)
       // Mounted as /dev/vdb inside the VM
-      // The vm-init script combines these using overlayfs
+      // The guest-init binary combines these using overlayfs
       {
         drive_id: "overlay",
         path_on_host: params.overlayPath,

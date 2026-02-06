@@ -4,11 +4,11 @@
  * These are statically compiled binaries for performance-critical operations.
  * Only used in Firecracker runner (not E2B).
  */
-export const VM_BINARY_PATHS = {
+export const GUEST_BINARY_PATHS = {
   /** PID 1 init process - sets up overlayfs and spawns vsock-guest */
-  vmInit: "/sbin/vm-init",
+  guestInit: "/sbin/guest-init",
   /** Storage download - parallel downloads with streaming extraction */
-  vmDownload: "/usr/local/bin/vm-download",
+  guestDownload: "/usr/local/bin/guest-download",
 } as const;
 
 /**

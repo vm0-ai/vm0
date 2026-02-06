@@ -1,16 +1,16 @@
-//! VM Download Script - Downloads and extracts storage archives.
+//! Guest Download Script - Downloads and extracts storage archives.
 //!
 //! Features:
 //! - Parallel downloads using std::thread (max 4 concurrent)
 //! - Streaming extraction (no temp files)
 //! - Retry logic with 3 attempts
 
+use guest_common::{log_error, log_info, log_warn, telemetry::record_sandbox_op};
 use serde::Deserialize;
 use std::fs;
 use std::sync::LazyLock;
 use std::thread;
 use std::time::{Duration, Instant};
-use vm_common::{log_error, log_info, log_warn, telemetry::record_sandbox_op};
 
 const LOG_TAG: &str = "sandbox:download";
 
@@ -67,7 +67,7 @@ fn main() {
     let manifest_path = match args.get(1) {
         Some(p) => p,
         None => {
-            log_error!(LOG_TAG, "Usage: vm-download <manifest_path>");
+            log_error!(LOG_TAG, "Usage: guest-download <manifest_path>");
             std::process::exit(1);
         }
     };

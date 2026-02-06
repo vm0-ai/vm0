@@ -1128,13 +1128,13 @@ jobs:
         run: cd turbo && pnpm turbo run build --filter=@vm0/core
 
       # Cross-compile Rust binaries for ARM64 (metal runners are ARM64)
-      - name: Build vm-init and vm-download for ARM64
+      - name: Build guest-init and guest-download for ARM64
         run: |
           cd crates
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc \
-            cargo build --release --target aarch64-unknown-linux-musl -p vm-init -p vm-download
-          ls -la target/aarch64-unknown-linux-musl/release/vm-init
-          ls -la target/aarch64-unknown-linux-musl/release/vm-download
+            cargo build --release --target aarch64-unknown-linux-musl -p guest-init -p guest-download
+          ls -la target/aarch64-unknown-linux-musl/release/guest-init
+          ls -la target/aarch64-unknown-linux-musl/release/guest-download
 
       - name: Build runner bundle
         run: |

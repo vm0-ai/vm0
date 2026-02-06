@@ -1,4 +1,4 @@
-//! VM init process for Firecracker.
+//! Guest init process for Firecracker.
 //!
 //! This binary runs as PID 1 inside a Firecracker VM and:
 //! 1. Initializes the filesystem (mounts, overlayfs, pivot_root)
@@ -12,17 +12,17 @@ use std::thread;
 use std::time::Duration;
 
 fn main() {
-    eprintln!("[vm-init] Starting...");
+    eprintln!("[guest-init] Starting...");
 
     // Step 1: Initialize filesystem
     if let Err(e) = init::init_filesystem() {
-        eprintln!("[vm-init] FATAL: Filesystem init failed: {}", e);
+        eprintln!("[guest-init] FATAL: Filesystem init failed: {}", e);
         std::process::exit(1);
     }
 
     // Step 2: Setup PID 1 signal handlers
     pid1::setup_signal_handlers();
-    eprintln!("[vm-init] PID 1 signal handlers installed");
+    eprintln!("[guest-init] PID 1 signal handlers installed");
 
     // Step 3: Start background thread for zombie reaping
     // This runs continuously while vsock-guest handles messages
@@ -32,7 +32,7 @@ fn main() {
 
             // Check for shutdown signal
             if pid1::shutdown_requested() {
-                eprintln!("[vm-init] Shutdown requested");
+                eprintln!("[guest-init] Shutdown requested");
                 std::process::exit(0);
             }
 

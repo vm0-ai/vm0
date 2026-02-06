@@ -2,7 +2,7 @@
 //!
 //! This library provides the core functionality for host-guest IPC via vsock
 //! or Unix sockets. It can be used standalone or embedded in other binaries
-//! like vm-init.
+//! like guest-init.
 //!
 //! Protocol encoding/decoding is handled by the `vsock-proto` crate.
 

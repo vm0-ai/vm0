@@ -170,6 +170,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "guest-common"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "guest-download"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "guest-common",
+ "serde",
+ "serde_json",
+ "tar",
+ "ureq",
+]
+
+[[package]]
+name = "guest-init"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "nix",
+ "vsock-guest",
+]
+
+[[package]]
 name = "http"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -709,36 +739,6 @@ name = "utf-8"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
-
-[[package]]
-name = "vm-common"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "vm-download"
-version = "0.1.0"
-dependencies = [
- "flate2",
- "serde",
- "serde_json",
- "tar",
- "ureq",
- "vm-common",
-]
-
-[[package]]
-name = "vm-init"
-version = "0.1.0"
-dependencies = [
- "libc",
- "nix",
- "vsock-guest",
-]
 
 [[package]]
 name = "vsock-guest"
