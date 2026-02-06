@@ -226,7 +226,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       .limit(1);
 
     if (!userLink) {
-      // 3. User not logged in - post ephemeral login message (only visible to user)
+      // 3. User not connected - post ephemeral connect message (only visible to user)
       const loginUrl = buildLoginUrl(
         context.workspaceId,
         context.userId,
@@ -236,7 +236,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       await client.chat.postEphemeral({
         channel: context.channelId,
         user: context.userId,
-        text: "Please login first",
+        text: "Please connect your account first",
         blocks: buildLoginPromptMessage(loginUrl),
       });
       return;

@@ -161,7 +161,7 @@ async function handleAgentCommand(
 }
 
 /**
- * Handle /vm0 login command
+ * Handle /vm0 connect command
  */
 function handleLoginCommand(
   payload: SlackCommandPayload,
@@ -169,12 +169,12 @@ function handleLoginCommand(
   userLink: { id: string; vm0UserId: string } | undefined,
   requestUrl: string,
 ): NextResponse {
-  // Already logged in
+  // Already connected
   if (userLink) {
     return NextResponse.json({
       response_type: "ephemeral",
       blocks: buildSuccessMessage(
-        "You are already logged in.\n\nUse `/vm0 agent link` to link an agent or `/vm0 help` for more commands.",
+        "You are already connected.\n\nUse `/vm0 agent link` to link an agent or `/vm0 help` for more commands.",
       ),
     });
   }
@@ -199,7 +199,7 @@ function handleLoginCommand(
 }
 
 /**
- * Handle /vm0 logout command
+ * Handle /vm0 disconnect command
  */
 async function handleLogoutCommand(
   userLink: { id: string } | undefined,
@@ -207,7 +207,7 @@ async function handleLogoutCommand(
   if (!userLink) {
     return NextResponse.json({
       response_type: "ephemeral",
-      blocks: buildErrorMessage("You are not logged in."),
+      blocks: buildErrorMessage("You are not connected."),
     });
   }
   // Delete user link only - bindings will be orphaned (slackUserLinkId set to NULL)
@@ -218,7 +218,7 @@ async function handleLogoutCommand(
   return NextResponse.json({
     response_type: "ephemeral",
     blocks: buildSuccessMessage(
-      "You have been logged out successfully.\n\nYour agent configurations have been preserved and will be restored when you log in again.",
+      "You have been disconnected successfully.\n\nYour agent configurations have been preserved and will be restored when you connect again.",
     ),
   });
 }
@@ -290,7 +290,7 @@ export async function POST(request: Request) {
     : [];
 
   // Handle login command
-  if (subCommand === "login") {
+  if (subCommand === "connect") {
     return handleLoginCommand(payload, installation, userLink, request.url);
   }
 
@@ -309,7 +309,7 @@ export async function POST(request: Request) {
   const client = createSlackClient(botToken);
 
   // Handle logout command
-  if (subCommand === "logout") {
+  if (subCommand === "disconnect") {
     return handleLogoutCommand(userLink);
   }
 
@@ -342,7 +342,7 @@ export async function POST(request: Request) {
         return NextResponse.json({
           response_type: "ephemeral",
           blocks: buildErrorMessage(
-            "Your Slack app authorization has expired.\n\nPlease use `/vm0 login` to reconnect.",
+            "Your Slack app authorization has expired.\n\nPlease use `/vm0 connect` to reconnect.",
           ),
         });
       }
