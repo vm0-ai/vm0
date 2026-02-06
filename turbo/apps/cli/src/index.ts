@@ -20,6 +20,7 @@ import { variableCommand } from "./commands/variable";
 import { modelProviderCommand } from "./commands/model-provider";
 import { onboardCommand } from "./commands/onboard";
 import { setupClaudeCommand } from "./commands/setup-claude";
+import { devToolCommand } from "./commands/dev-tool";
 
 const program = new Command();
 
@@ -49,6 +50,7 @@ program.addCommand(variableCommand);
 program.addCommand(modelProviderCommand);
 program.addCommand(onboardCommand);
 program.addCommand(setupClaudeCommand);
+program.addCommand(devToolCommand, { hidden: true });
 
 export { program };
 
