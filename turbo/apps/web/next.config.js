@@ -1,7 +1,12 @@
 import { withSentryConfig } from "@sentry/nextjs";
 import createNextIntlPlugin from "next-intl/plugin";
+import { env } from "./src/env.ts";
 
 const withNextIntl = createNextIntlPlugin("./i18n.ts");
+
+// Force environment validation at build time
+// This ensures all required environment variables are present before deployment
+env();
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
