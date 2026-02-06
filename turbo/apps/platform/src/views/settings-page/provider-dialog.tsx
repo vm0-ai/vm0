@@ -16,10 +16,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@vm0/ui/components/ui/select";
-import { IconLock } from "@tabler/icons-react";
 import {
   MODEL_PROVIDER_TYPES,
-  getProviderShape,
   getAuthMethodsForType,
   getSecretsForAuthMethod,
   getModels,
@@ -28,6 +26,13 @@ import {
   allowsCustomModel,
   getCustomModelPlaceholder,
 } from "@vm0/core";
+import {
+  getProviderShape,
+  getUILabel,
+  getUIDefaultModel,
+  getUISecretField,
+  getUIAuthMethodLabel,
+} from "./provider-ui-config.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
@@ -41,6 +46,7 @@ import {
   updateFormAuthMethod$,
   updateFormSecretField$,
   submitDialog$,
+  updateFormUseDefaultModel$,
 } from "../../signals/settings-page/model-providers.ts";
 import { ClaudeCodeSetupPrompt } from "./setup-prompt.tsx";
 
@@ -55,14 +61,17 @@ export function ProviderDialog() {
   const setAuthMethod = useSet(updateFormAuthMethod$);
   const setSecretField = useSet(updateFormSecretField$);
   const submit = useSet(submitDialog$);
+  const setUseDefaultModel = useSet(updateFormUseDefaultModel$);
   const pageSignal = useGet(pageSignal$);
 
   if (!dialog.providerType) {
     return (
       <Dialog open={dialog.open} onOpenChange={() => close()}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Model Provider</DialogTitle>
+            <DialogTitle className="font-normal leading-7">
+              Model Provider
+            </DialogTitle>
           </DialogHeader>
         </DialogContent>
       </Dialog>
@@ -74,23 +83,41 @@ export function ProviderDialog() {
   const shape = getProviderShape(providerType);
   const isLoading = actionStatus.state === "loading";
   const isEdit = dialog.mode === "edit";
+  const label = getUILabel(providerType);
+  const secretLabel = "secretLabel" in config ? config.secretLabel : undefined;
+  const subtitleSuffix =
+    secretLabel && !label.toLowerCase().includes(secretLabel.toLowerCase())
+      ? ` ${secretLabel.toLowerCase()}`
+      : "";
 
   const handleSubmit = () => {
     detach(submit(pageSignal), Reason.DomCallback);
   };
 
+  const isMultiAuth = shape === "multi-auth";
+  const providerHelpText = "helpText" in config ? config.helpText : undefined;
+  const titleText = isMultiAuth
+    ? `${isEdit ? "Edit" : "Add"} ${label} provider configuration`
+    : isEdit
+      ? `Edit your ${label}`
+      : `Add your ${label}`;
+  const descriptionText =
+    isMultiAuth && providerHelpText
+      ? providerHelpText.replace(/\n/g, " ")
+      : isEdit
+        ? `Update your ${label}${subtitleSuffix}`
+        : `Add your ${label}${subtitleSuffix} to start using the integration`;
+
   return (
     <Dialog open={dialog.open} onOpenChange={() => close()}>
-      <DialogContent>
+      <DialogContent className={isMultiAuth ? "max-w-3xl" : "max-w-2xl"}>
         <DialogHeader>
-          <DialogTitle>
-            {isEdit ? `Edit ${config.label}` : `Add ${config.label}`}
+          <DialogTitle className="font-normal leading-7">
+            {titleText}
           </DialogTitle>
-          {"helpText" in config && config.helpText && (
-            <DialogDescription className="whitespace-pre-line">
-              {config.helpText}
-            </DialogDescription>
-          )}
+          <DialogDescription className="break-words">
+            {descriptionText}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
@@ -99,7 +126,6 @@ export function ProviderDialog() {
               secret={formValues.secret}
               onSecretChange={setSecret}
               error={errors["secret"]}
-              isEdit={isEdit}
               isLoading={isLoading}
             />
           )}
@@ -109,8 +135,10 @@ export function ProviderDialog() {
               providerType={providerType}
               secret={formValues.secret}
               selectedModel={formValues.selectedModel}
+              useDefaultModel={formValues.useDefaultModel}
               onSecretChange={setSecret}
               onModelChange={setModel}
+              onUseDefaultModelChange={setUseDefaultModel}
               error={errors["secret"]}
               isEdit={isEdit}
               isLoading={isLoading}
@@ -123,9 +151,11 @@ export function ProviderDialog() {
               authMethod={formValues.authMethod}
               secrets={formValues.secrets}
               selectedModel={formValues.selectedModel}
+              useDefaultModel={formValues.useDefaultModel}
               onAuthMethodChange={setAuthMethod}
               onSecretFieldChange={setSecretField}
               onModelChange={setModel}
+              onUseDefaultModelChange={setUseDefaultModel}
               errors={errors}
               isLoading={isLoading}
             />
@@ -141,7 +171,7 @@ export function ProviderDialog() {
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={isLoading}>
-            {isLoading ? "Saving..." : "Save"}
+            {isLoading ? "Saving..." : isEdit ? "Save changes" : "Add"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -153,29 +183,25 @@ function OAuthFields({
   secret,
   onSecretChange,
   error,
-  isEdit,
   isLoading,
 }: {
   secret: string;
   onSecretChange: (value: string) => void;
   error?: string;
-  isEdit: boolean;
   isLoading: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-2">
-      <label className="text-sm font-medium text-foreground">OAuth token</label>
-      <div className="relative flex items-center">
-        <IconLock className="absolute left-3 h-4 w-4 text-muted-foreground pointer-events-none" />
-        <Input
-          value={secret}
-          placeholder={isEdit ? "Enter new token to update" : "sk-ant-oat-..."}
-          onChange={(e) => onSecretChange(e.target.value)}
-          readOnly={isLoading}
-          className={`pl-9 font-mono ${error ? "border-destructive" : ""}`}
-          style={{ fontFamily: "'JetBrains Mono', monospace" }}
-        />
-      </div>
+    <div className="flex flex-col gap-3">
+      <label className="text-sm font-medium text-foreground">
+        Claude code OAuth token
+      </label>
+      <Input
+        value={secret}
+        placeholder="sk-ant-XXXXXXX"
+        onChange={(e) => onSecretChange(e.target.value)}
+        readOnly={isLoading}
+        className={error ? "border-destructive" : ""}
+      />
       {error && <p className="text-xs text-destructive">{error}</p>}
       <ClaudeCodeSetupPrompt />
     </div>
@@ -186,8 +212,10 @@ function ApiKeyFields({
   providerType,
   secret,
   selectedModel,
+  useDefaultModel,
   onSecretChange,
   onModelChange,
+  onUseDefaultModelChange,
   error,
   isEdit,
   isLoading,
@@ -195,43 +223,48 @@ function ApiKeyFields({
   providerType: string;
   secret: string;
   selectedModel: string;
+  useDefaultModel: boolean;
   onSecretChange: (value: string) => void;
   onModelChange: (value: string) => void;
+  onUseDefaultModelChange: (value: boolean) => void;
   error?: string;
   isEdit: boolean;
   isLoading: boolean;
 }) {
   const config =
     MODEL_PROVIDER_TYPES[providerType as keyof typeof MODEL_PROVIDER_TYPES];
-  const secretLabel = "secretLabel" in config ? config.secretLabel : "API key";
+  const fieldSecretLabel =
+    "secretLabel" in config ? config.secretLabel : "API key";
+  const helpText = "helpText" in config ? config.helpText : undefined;
 
   return (
     <>
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-3">
         <label className="text-sm font-medium text-foreground">
-          {secretLabel}
+          {fieldSecretLabel}
         </label>
-        <div className="relative flex items-center">
-          <IconLock className="absolute left-3 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input
-            value={secret}
-            placeholder={
-              isEdit
-                ? `Enter new ${secretLabel} to update`
-                : `Enter your ${secretLabel}`
-            }
-            onChange={(e) => onSecretChange(e.target.value)}
-            readOnly={isLoading}
-            className={`pl-9 font-mono ${error ? "border-destructive" : ""}`}
-            style={{ fontFamily: "'JetBrains Mono', monospace" }}
-          />
-        </div>
+        <Input
+          value={secret}
+          placeholder={
+            isEdit
+              ? `Enter new ${fieldSecretLabel} to update`
+              : `Enter your ${fieldSecretLabel}`
+          }
+          onChange={(e) => onSecretChange(e.target.value)}
+          readOnly={isLoading}
+          className={error ? "border-destructive" : ""}
+        />
         {error && <p className="text-xs text-destructive">{error}</p>}
+        {helpText && (
+          <p className="text-xs text-muted-foreground">{helpText}</p>
+        )}
       </div>
       <ModelSelector
         providerType={providerType}
         selectedModel={selectedModel}
+        useDefaultModel={useDefaultModel}
         onModelChange={onModelChange}
+        onUseDefaultModelChange={onUseDefaultModelChange}
       />
     </>
   );
@@ -242,9 +275,11 @@ function MultiAuthFields({
   authMethod,
   secrets,
   selectedModel,
+  useDefaultModel,
   onAuthMethodChange,
   onSecretFieldChange,
   onModelChange,
+  onUseDefaultModelChange,
   errors,
   isLoading,
 }: {
@@ -252,9 +287,11 @@ function MultiAuthFields({
   authMethod: string;
   secrets: Record<string, string>;
   selectedModel: string;
+  useDefaultModel: boolean;
   onAuthMethodChange: (value: string) => void;
   onSecretFieldChange: (key: string, value: string) => void;
   onModelChange: (value: string) => void;
+  onUseDefaultModelChange: (value: boolean) => void;
   errors: Record<string, string>;
   isLoading: boolean;
 }) {
@@ -273,9 +310,9 @@ function MultiAuthFields({
   return (
     <>
       {authMethodEntries.length > 1 && (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-3">
           <label className="text-sm font-medium text-foreground">
-            Authentication method
+            Select authentication method
           </label>
           <Select value={authMethod} onValueChange={onAuthMethodChange}>
             <SelectTrigger>
@@ -284,7 +321,7 @@ function MultiAuthFields({
             <SelectContent>
               {authMethodEntries.map(([key, method]) => (
                 <SelectItem key={key} value={key}>
-                  {method.label}
+                  {getUIAuthMethodLabel(type, key, method.label)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -293,43 +330,39 @@ function MultiAuthFields({
       )}
 
       {currentSecrets &&
-        Object.entries(currentSecrets).map(([key, fieldConfig]) => (
-          <div key={key} className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-foreground">
-              {fieldConfig.label}
-              {!fieldConfig.required && (
-                <span className="text-muted-foreground font-normal">
-                  {" "}
-                  (optional)
-                </span>
-              )}
-            </label>
-            <div className="relative flex items-center">
-              <IconLock className="absolute left-3 h-4 w-4 text-muted-foreground pointer-events-none" />
+        Object.entries(currentSecrets).map(([key, coreFieldConfig]) => {
+          const field = getUISecretField(type, key, coreFieldConfig);
+          return (
+            <div key={key} className="flex flex-col gap-3">
+              <label className="text-sm font-medium text-foreground">
+                {field.label}
+                {!field.required && (
+                  <span className="text-muted-foreground font-normal">
+                    {" "}
+                    (optional)
+                  </span>
+                )}
+              </label>
               <Input
                 value={secrets[key] ?? ""}
-                placeholder={fieldConfig.placeholder ?? ""}
+                placeholder={field.placeholder ?? ""}
                 onChange={(e) => onSecretFieldChange(key, e.target.value)}
                 readOnly={isLoading}
-                className={`pl-9 font-mono ${errors[key] ? "border-destructive" : ""}`}
-                style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                className={errors[key] ? "border-destructive" : ""}
               />
+              {errors[key] && (
+                <p className="text-xs text-destructive">{errors[key]}</p>
+              )}
             </div>
-            {fieldConfig.helpText && (
-              <p className="text-xs text-muted-foreground">
-                {fieldConfig.helpText}
-              </p>
-            )}
-            {errors[key] && (
-              <p className="text-xs text-destructive">{errors[key]}</p>
-            )}
-          </div>
-        ))}
+          );
+        })}
 
       <ModelSelector
         providerType={providerType}
         selectedModel={selectedModel}
+        useDefaultModel={useDefaultModel}
         onModelChange={onModelChange}
+        onUseDefaultModelChange={onUseDefaultModelChange}
       />
     </>
   );
@@ -338,11 +371,15 @@ function MultiAuthFields({
 function ModelSelector({
   providerType,
   selectedModel,
+  useDefaultModel,
   onModelChange,
+  onUseDefaultModelChange,
 }: {
   providerType: string;
   selectedModel: string;
+  useDefaultModel: boolean;
   onModelChange: (value: string) => void;
+  onUseDefaultModelChange: (value: boolean) => void;
 }) {
   const type = providerType as keyof typeof MODEL_PROVIDER_TYPES;
 
@@ -351,28 +388,59 @@ function ModelSelector({
   }
 
   const models = getModels(type) ?? [];
-  const defaultModel = getDefaultModel(type) ?? "";
+  const defaultModel = getUIDefaultModel(type) ?? getDefaultModel(type) ?? "";
   const canCustom = allowsCustomModel(type);
   const placeholder = getCustomModelPlaceholder(type) ?? "Enter model name";
 
   if (canCustom && models.length === 0) {
     return (
-      <div className="flex flex-col gap-2">
-        <label className="text-sm font-medium text-foreground">Model</label>
-        <Input
-          value={selectedModel}
-          placeholder={placeholder}
-          onChange={(e) => onModelChange(e.target.value)}
-          className="font-mono"
-          style={{ fontFamily: "'JetBrains Mono', monospace" }}
-        />
-      </div>
+      <>
+        <div className="flex flex-col gap-3">
+          <label className="text-sm font-medium text-foreground">Model</label>
+          <div className="flex items-center justify-between rounded-lg border border-border p-4">
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-foreground">
+                Default model
+              </span>
+              <span className="text-sm text-muted-foreground">
+                When enabled, this uses the default model. Disable it to
+                configure a custom one.
+              </span>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={useDefaultModel}
+              onClick={() => onUseDefaultModelChange(!useDefaultModel)}
+              className={`relative ml-4 inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors ${useDefaultModel ? "bg-primary" : "bg-muted"}`}
+            >
+              <span
+                className={`pointer-events-none inline-block size-5 rounded-full bg-white shadow-sm ring-0 transition-transform ${useDefaultModel ? "translate-x-5" : "translate-x-0.5"} mt-0.5`}
+              />
+            </button>
+          </div>
+        </div>
+        {!useDefaultModel && (
+          <div className="flex flex-col gap-3">
+            <label className="text-sm font-medium text-foreground">
+              Custom model ID
+            </label>
+            <Input
+              value={selectedModel}
+              placeholder={placeholder}
+              onChange={(e) => onModelChange(e.target.value)}
+            />
+          </div>
+        )}
+      </>
     );
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <label className="text-sm font-medium text-foreground">Model</label>
+    <div className="flex flex-col gap-3">
+      <label className="text-sm font-medium text-foreground">
+        Select model
+      </label>
       <Select
         value={selectedModel || defaultModel}
         onValueChange={onModelChange}

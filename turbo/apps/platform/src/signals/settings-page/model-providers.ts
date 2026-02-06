@@ -61,6 +61,7 @@ interface DialogFormValues {
   selectedModel: string;
   authMethod: string;
   secrets: Record<string, string>;
+  useDefaultModel: boolean;
 }
 
 const internalFormValues$ = state<DialogFormValues>({
@@ -68,6 +69,7 @@ const internalFormValues$ = state<DialogFormValues>({
   selectedModel: "",
   authMethod: "",
   secrets: {},
+  useDefaultModel: true,
 });
 
 export const dialogFormValues$ = computed((get) => get(internalFormValues$));
@@ -128,6 +130,7 @@ export const openAddDialog$ = command(
       selectedModel: defaultModel,
       authMethod: defaultAuth,
       secrets: {},
+      useDefaultModel: true,
     });
     set(internalFormErrors$, {});
     set(internalDialogState$, {
@@ -145,6 +148,7 @@ export const openEditDialog$ = command(
       selectedModel: provider.selectedModel ?? "",
       authMethod: provider.authMethod ?? "",
       secrets: {},
+      useDefaultModel: !provider.selectedModel,
     });
     set(internalFormErrors$, {});
     set(internalDialogState$, {
@@ -162,6 +166,7 @@ export const closeDialog$ = command(({ set }) => {
     selectedModel: "",
     authMethod: "",
     secrets: {},
+    useDefaultModel: true,
   });
   set(internalFormErrors$, {});
 });
@@ -181,6 +186,14 @@ export const updateFormSecret$ = command(({ set }, value: string) => {
 
 export const updateFormModel$ = command(({ set }, value: string) => {
   set(internalFormValues$, (prev) => ({ ...prev, selectedModel: value }));
+});
+
+export const updateFormUseDefaultModel$ = command(({ set }, value: boolean) => {
+  set(internalFormValues$, (prev) => ({
+    ...prev,
+    useDefaultModel: value,
+    selectedModel: value ? "" : prev.selectedModel,
+  }));
 });
 
 export const updateFormAuthMethod$ = command(({ set }, value: string) => {
@@ -263,7 +276,11 @@ export const submitDialog$ = command(
       request.secret = formValues.secret;
     }
 
-    if (hasModelSelection(providerType) && formValues.selectedModel) {
+    if (
+      hasModelSelection(providerType) &&
+      !formValues.useDefaultModel &&
+      formValues.selectedModel
+    ) {
       request.selectedModel = formValues.selectedModel;
     }
 
@@ -283,6 +300,7 @@ export const submitDialog$ = command(
         selectedModel: "",
         authMethod: "",
         secrets: {},
+        useDefaultModel: true,
       });
       set(internalFormErrors$, {});
     })();

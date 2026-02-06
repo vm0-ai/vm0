@@ -5,38 +5,41 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@vm0/ui/components/ui/popover";
-import { MODEL_PROVIDER_TYPES, type ModelProviderResponse } from "@vm0/core";
+import type { ModelProviderResponse } from "@vm0/core";
+import { getUILabel, getUIDescription } from "./provider-ui-config.ts";
 import {
   openEditDialog$,
   openDeleteDialog$,
 } from "../../signals/settings-page/model-providers.ts";
 import { ProviderIcon } from "./provider-icons.tsx";
 
-export function ProviderRow({ provider }: { provider: ModelProviderResponse }) {
+export function ProviderRow({
+  provider,
+  isFirst,
+}: {
+  provider: ModelProviderResponse;
+  isFirst: boolean;
+}) {
   const openEdit = useSet(openEditDialog$);
   const openDelete = useSet(openDeleteDialog$);
-  const config = MODEL_PROVIDER_TYPES[provider.type];
+  const label = getUILabel(provider.type);
+  const description = getUIDescription(provider.type);
 
   return (
-    <div className="flex items-center gap-3 px-4 py-3 border-b border-border last:border-b-0">
+    <div
+      className={`flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 last:border-b last:rounded-b-xl ${isFirst ? "rounded-t-xl" : ""}`}
+    >
       <div className="shrink-0">
-        <ProviderIcon type={provider.type} size={20} />
+        <ProviderIcon type={provider.type} size={28} />
       </div>
-      <div className="flex-1 min-w-0">
+      <div className="flex flex-1 flex-col gap-1 min-w-0">
         <div className="text-sm font-medium text-foreground">
-          {config.label}
+          {label}
         </div>
-        {provider.selectedModel && (
-          <div className="text-xs text-muted-foreground truncate">
-            {provider.selectedModel}
-          </div>
+        {description && (
+          <div className="text-sm text-muted-foreground">{description}</div>
         )}
       </div>
-      {provider.isDefault && (
-        <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full shrink-0">
-          Default
-        </span>
-      )}
       <Popover>
         <PopoverTrigger asChild>
           <button

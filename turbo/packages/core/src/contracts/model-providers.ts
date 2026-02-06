@@ -424,27 +424,6 @@ export function getCustomModelPlaceholder(
 }
 
 /**
- * Provider dialog shape: determines which dialog UI to render
- * - "oauth": Single token input with lock icon (claude-code-oauth-token)
- * - "api-key": API key input + optional model selector (anthropic, openrouter, etc.)
- * - "multi-auth": Auth method selector + dynamic secret fields + model selector (azure, bedrock)
- */
-export type ProviderShape = "oauth" | "api-key" | "multi-auth";
-
-/**
- * Get the dialog shape for a model provider type
- */
-export function getProviderShape(type: ModelProviderType): ProviderShape {
-  if (type === "claude-code-oauth-token") {
-    return "oauth";
-  }
-  if (hasAuthMethods(type)) {
-    return "multi-auth";
-  }
-  return "api-key";
-}
-
-/**
  * Model provider response
  */
 export const modelProviderResponseSchema = z.object({

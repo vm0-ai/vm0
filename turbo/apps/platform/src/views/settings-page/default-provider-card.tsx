@@ -7,7 +7,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@vm0/ui/components/ui/select";
-import { MODEL_PROVIDER_TYPES, type ModelProviderType } from "@vm0/core";
+import type { ModelProviderType } from "@vm0/core";
+import { getUILabel } from "./provider-ui-config.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
@@ -40,7 +41,7 @@ export function DefaultProviderCard() {
         Default model provider
       </h3>
       <Card className="p-4">
-        <div className="flex items-center gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
           <div className="flex flex-1 flex-col gap-1">
             <span className="text-sm font-medium text-foreground">
               Default model provider
@@ -53,7 +54,7 @@ export function DefaultProviderCard() {
             value={defaultProvider?.type ?? ""}
             onValueChange={handleChange}
           >
-            <SelectTrigger className="w-[280px] shrink-0">
+            <SelectTrigger className="w-full sm:w-[280px] shrink-0">
               <SelectValue placeholder="Select a default provider" />
             </SelectTrigger>
             <SelectContent>
@@ -61,9 +62,7 @@ export function DefaultProviderCard() {
                 <SelectItem key={provider.type} value={provider.type}>
                   <div className="flex items-center gap-2">
                     <ProviderIcon type={provider.type} size={16} />
-                    <span>
-                      {MODEL_PROVIDER_TYPES[provider.type].label}
-                    </span>
+                    <span>{getUILabel(provider.type)}</span>
                   </div>
                 </SelectItem>
               ))}
