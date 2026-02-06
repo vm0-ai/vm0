@@ -501,6 +501,199 @@ async fn test_spawn_watch_delayed_output() {
     h.finish();
 }
 
+#[tokio::test]
+async fn test_spawn_watch_sigterm() {
+    let mut h = Harness::new().await;
+
+    // Use `exec` to replace shell so the PID we get is the actual sleep process
+    let pid = h
+        .host
+        .spawn_watch("exec sleep 60", 0)
+        .await
+        .expect("spawn_watch failed");
+
+    sleep(Duration::from_millis(100)).await;
+
+    // Kill process group with SIGTERM
+    h.host
+        .exec(
+            &format!("kill -15 -{pid} 2>/dev/null || kill -15 {pid}"),
+            5000,
+        )
+        .await
+        .expect("kill failed");
+
+    let event = h
+        .host
+        .wait_for_exit(pid, Duration::from_secs(5))
+        .await
+        .expect("wait_for_exit failed");
+
+    assert_eq!(event.exit_code, 143); // 128 + SIGTERM(15)
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_spawn_watch_sigkill() {
+    let mut h = Harness::new().await;
+
+    let pid = h
+        .host
+        .spawn_watch("exec sleep 60", 0)
+        .await
+        .expect("spawn_watch failed");
+
+    sleep(Duration::from_millis(100)).await;
+
+    h.host
+        .exec(
+            &format!("kill -9 -{pid} 2>/dev/null || kill -9 {pid}"),
+            5000,
+        )
+        .await
+        .expect("kill failed");
+
+    let event = h
+        .host
+        .wait_for_exit(pid, Duration::from_secs(5))
+        .await
+        .expect("wait_for_exit failed");
+
+    assert_eq!(event.exit_code, 137); // 128 + SIGKILL(9)
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_spawn_watch_rapid_multiple() {
+    let mut h = Harness::new().await;
+
+    let mut pids = Vec::new();
+    for i in 0..5 {
+        let pid = h
+            .host
+            .spawn_watch(&format!("echo p{i}"), 5000)
+            .await
+            .expect("spawn_watch failed");
+        pids.push(pid);
+    }
+
+    // All PIDs should be unique
+    let unique: std::collections::HashSet<_> = pids.iter().collect();
+    assert_eq!(unique.len(), 5);
+
+    // All should complete successfully with correct output
+    for (i, &pid) in pids.iter().enumerate() {
+        let event = h
+            .host
+            .wait_for_exit(pid, Duration::from_secs(5))
+            .await
+            .expect("wait_for_exit failed");
+        assert_eq!(event.exit_code, 0);
+        assert_eq!(event.stdout, format!("p{i}\n").as_bytes());
+    }
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_spawn_watch_nonexistent_command() {
+    let mut h = Harness::new().await;
+
+    let pid = h
+        .host
+        .spawn_watch("nonexistent_command_12345 2>&1", 5000)
+        .await
+        .expect("spawn_watch failed");
+
+    let event = h
+        .host
+        .wait_for_exit(pid, Duration::from_secs(5))
+        .await
+        .expect("wait_for_exit failed");
+
+    assert_ne!(event.exit_code, 0);
+    let output = if event.stderr.is_empty() {
+        &event.stdout
+    } else {
+        &event.stderr
+    };
+    let output_lower = String::from_utf8_lossy(output).to_lowercase();
+    assert!(output_lower.contains("not found"));
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_spawn_watch_unicode() {
+    let mut h = Harness::new().await;
+
+    let pid = h
+        .host
+        .spawn_watch("printf '你好世界\\nこんにちは\\n🎉emoji🚀'", 5000)
+        .await
+        .expect("spawn_watch failed");
+
+    let event = h
+        .host
+        .wait_for_exit(pid, Duration::from_secs(5))
+        .await
+        .expect("wait_for_exit failed");
+
+    assert_eq!(event.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&event.stdout);
+    assert!(stdout.contains("你好世界"));
+    assert!(stdout.contains("こんにちは"));
+    assert!(stdout.contains("🎉emoji🚀"));
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_spawn_watch_interleaved_output() {
+    let mut h = Harness::new().await;
+
+    let pid = h
+        .host
+        .spawn_watch(
+            "echo out1 && echo err1 >&2 && echo out2 && echo err2 >&2",
+            5000,
+        )
+        .await
+        .expect("spawn_watch failed");
+
+    let event = h
+        .host
+        .wait_for_exit(pid, Duration::from_secs(5))
+        .await
+        .expect("wait_for_exit failed");
+
+    assert_eq!(event.exit_code, 0);
+    assert!(event.stdout.windows(4).any(|w| w == b"out1"));
+    assert!(event.stdout.windows(4).any(|w| w == b"out2"));
+    assert!(event.stderr.windows(4).any(|w| w == b"err1"));
+    assert!(event.stderr.windows(4).any(|w| w == b"err2"));
+    h.finish();
+}
+
+// ── write_file (large) ──────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_write_file_large() {
+    let mut h = Harness::new().await;
+
+    let file_path = h.dir.join("large.txt");
+    let file_path_str = file_path.to_string_lossy().to_string();
+    // 100KB content
+    let content = vec![b'x'; 100_000];
+
+    h.host
+        .write_file(&file_path_str, &content, false)
+        .await
+        .expect("write_file failed");
+
+    let written = std::fs::read(&file_path).expect("failed to read written file");
+    assert_eq!(written.len(), 100_000);
+    assert_eq!(written, content);
+    h.finish();
+}
+
 // ── shutdown ─────────────────────────────────────────────────────────
 
 #[tokio::test]
