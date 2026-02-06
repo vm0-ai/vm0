@@ -46,12 +46,20 @@ const RETRY_DELAY: Duration = Duration::from_secs(1);
 const TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_CONCURRENT: usize = 4;
 
-/// Global HTTP agent with timeout configuration (created once, reused).
+/// Global HTTP agent with timeout and system certificate verification.
+/// Uses platform verifier to trust system CA certificates (including proxy CA).
 static HTTP_AGENT: LazyLock<ureq::Agent> = LazyLock::new(|| {
-    let config = ureq::Agent::config_builder()
+    use ureq::tls::{RootCerts, TlsConfig};
+
+    ureq::Agent::config_builder()
         .timeout_global(Some(TIMEOUT))
-        .build();
-    config.into()
+        .tls_config(
+            TlsConfig::builder()
+                .root_certs(RootCerts::PlatformVerifier)
+                .build(),
+        )
+        .build()
+        .new_agent()
 });
 
 fn main() {
