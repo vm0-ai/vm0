@@ -502,14 +502,14 @@ mod tests {
             let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &payload).unwrap();
             guest.write_all(&resp).await.unwrap();
 
-            // After a short delay, send process_exit (unsolicited, seq=0)
-            tokio::time::sleep(Duration::from_millis(50)).await;
+            // Send process_exit (unsolicited, seq=0)
             let exit_payload = vsock_proto::encode_process_exit(42, 0, b"done", b"");
             let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, 0, &exit_payload).unwrap();
             guest.write_all(&exit_msg).await.unwrap();
 
-            // Keep connection alive until host reads the exit event
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            // Keep connection alive until host drops
+            let mut discard = [0u8; 1];
+            let _ = guest.read(&mut discard).await;
         });
 
         let mut host = host_from_stream(host_stream).await.unwrap();
@@ -550,8 +550,9 @@ mod tests {
             combined.extend_from_slice(&exit_msg);
             guest.write_all(&combined).await.unwrap();
 
-            // Keep connection alive
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            // Keep connection alive until host drops
+            let mut discard = [0u8; 1];
+            let _ = guest.read(&mut discard).await;
         });
 
         let mut host = host_from_stream(host_stream).await.unwrap();

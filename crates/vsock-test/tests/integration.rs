@@ -3,7 +3,6 @@ use std::ops::{Deref, DerefMut};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use tokio::time::sleep;
 use vsock_host::VsockHost;
 
 /// Spawn a guest agent in a background OS thread that connects to the given socket path.
@@ -420,11 +419,10 @@ async fn test_spawn_watch_cached_exit() {
         .await
         .expect("spawn_watch failed");
 
-    // Wait for the exit event to arrive and be cached by the host before calling
-    // wait_for_exit. This tests the cache-hit path (event already in HashMap).
-    // 300ms is generous — the echo command finishes in <10ms, but the exit event must
-    // travel: guest thread → mutex write → Unix socket → tokio read → decode → cache.
-    sleep(Duration::from_millis(300)).await;
+    // Use an exec round-trip as a synchronization barrier: by the time exec
+    // returns, the exit event from "echo cached" has arrived and been cached
+    // by read_and_dispatch. This tests the cache-hit path without any sleep.
+    h.exec("true", 5000).await.expect("barrier exec failed");
 
     let event = h
         .wait_for_exit(pid, Duration::from_secs(5))
@@ -506,10 +504,6 @@ async fn test_spawn_watch_sigterm() {
         .await
         .expect("spawn_watch failed");
 
-    // Wait for the process to be fully running before sending signal.
-    // Without this, kill may arrive before exec replaces the shell.
-    sleep(Duration::from_millis(100)).await;
-
     // Kill process group with SIGTERM
     h.exec(
         &format!("kill -15 -{pid} 2>/dev/null || kill -15 {pid}"),
@@ -535,9 +529,6 @@ async fn test_spawn_watch_sigkill() {
         .spawn_watch("exec sleep 60", 0)
         .await
         .expect("spawn_watch failed");
-
-    // Wait for the process to be fully running before sending signal.
-    sleep(Duration::from_millis(100)).await;
 
     h.exec(
         &format!("kill -9 -{pid} 2>/dev/null || kill -9 {pid}"),
@@ -682,10 +673,6 @@ async fn test_write_file_large() {
 #[tokio::test]
 async fn test_shutdown() {
     let mut h = Harness::new().await;
-    // Brief pause to ensure the handshake is fully settled on both sides
-    // before sending shutdown. Without this, shutdown can race with the
-    // guest's post-handshake read loop setup.
-    sleep(Duration::from_millis(50)).await;
 
     let acked = h.shutdown(Duration::from_secs(5)).await;
     assert!(acked);
