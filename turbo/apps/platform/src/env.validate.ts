@@ -3,10 +3,7 @@
  * This ensures all necessary variables are present before deployment.
  */
 
-const requiredEnvVars = [
-  "VITE_CLERK_PUBLISHABLE_KEY",
-  "VITE_API_URL",
-] as const;
+const requiredEnvVars = ["VITE_CLERK_PUBLISHABLE_KEY", "VITE_API_URL"] as const;
 
 export function validateEnv() {
   const missing: string[] = [];
@@ -23,6 +20,4 @@ export function validateEnv() {
         `Please ensure these are set in your .env.local file or CI environment.`,
     );
   }
-
-  console.log("✓ All required environment variables are present");
 }
