@@ -16,7 +16,7 @@ export async function getScope(): Promise<ScopeResponse> {
     return result.body;
   }
 
-  handleError(result, "Failed to get scope");
+  handleError(result, "Failed to get scope", { useServerMessage: true });
 }
 
 /**
