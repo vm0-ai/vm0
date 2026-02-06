@@ -428,7 +428,7 @@ jobs:
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build
         env:
-          DEFAULT_SENTRY_DSN: ${{ secrets.SENTRY_DSN_CLI }}
+          DEFAULT_SENTRY_DSN: ${{ vars.SENTRY_DSN_CLI }}
 
       - name: Publish to npm with OIDC
         run: cd turbo/apps/cli/dist && npm publish --access public
