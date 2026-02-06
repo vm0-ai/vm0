@@ -27,10 +27,8 @@ export const SCRIPT_PATHS = {
   baseDir: "/usr/local/bin/vm0-agent",
   /** Main agent orchestrator - handles CLI execution, events, checkpoints */
   runAgent: "/usr/local/bin/vm0-agent/run-agent.mjs",
-  /** Storage download (TypeScript) - downloads volumes/artifacts from S3 via presigned URLs */
+  /** Storage download - downloads volumes/artifacts from S3 via presigned URLs */
   download: "/usr/local/bin/vm0-agent/download.mjs",
-  /** Storage download (Rust) - parallel downloads with streaming extraction */
-  vmDownload: "/usr/local/bin/vm-download",
   /** Mock Claude CLI for testing - executes prompt as bash, outputs Claude-compatible JSONL */
   mockClaude: "/usr/local/bin/vm0-agent/mock-claude.mjs",
   /** Environment loader for runner - loads env from JSON file before running agent */
