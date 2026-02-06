@@ -70,7 +70,7 @@ export async function GET(
   const env = globalThis.services.env;
 
   // Check if GitHub OAuth is configured
-  if (!env.GITHUB_OAUTH_CLIENT_ID || !env.GITHUB_OAUTH_CLIENT_SECRET) {
+  if (!env.GH_OAUTH_CLIENT_ID || !env.GH_OAUTH_CLIENT_SECRET) {
     return redirectWithError(url.origin, type, "GitHub OAuth not configured");
   }
 
@@ -125,8 +125,8 @@ export async function GET(
 
     // Exchange code for token
     const { accessToken, scopes } = await exchangeGitHubCode(
-      env.GITHUB_OAUTH_CLIENT_ID,
-      env.GITHUB_OAUTH_CLIENT_SECRET,
+      env.GH_OAUTH_CLIENT_ID,
+      env.GH_OAUTH_CLIENT_SECRET,
       code,
       redirectUri,
     );

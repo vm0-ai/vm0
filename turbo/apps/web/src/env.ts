@@ -37,8 +37,8 @@ function initEnv() {
       // LLM API
       OPENROUTER_API_KEY: z.string().min(1).optional(), // OpenRouter API key for logged-in users
       // GitHub OAuth (for connector)
-      GITHUB_OAUTH_CLIENT_ID: z.string().min(1).optional(),
-      GITHUB_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      GH_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      GH_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // Sentry
       SENTRY_DSN: z.string().url().optional(),
       SENTRY_AUTH_TOKEN: z.string().min(1).optional(),
@@ -73,8 +73,8 @@ function initEnv() {
       SLACK_SIGNING_SECRET: process.env.SLACK_SIGNING_SECRET,
       SLACK_REDIRECT_BASE_URL: process.env.SLACK_REDIRECT_BASE_URL,
       OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
-      GITHUB_OAUTH_CLIENT_ID: process.env.GITHUB_OAUTH_CLIENT_ID,
-      GITHUB_OAUTH_CLIENT_SECRET: process.env.GITHUB_OAUTH_CLIENT_SECRET,
+      GH_OAUTH_CLIENT_ID: process.env.GH_OAUTH_CLIENT_ID,
+      GH_OAUTH_CLIENT_SECRET: process.env.GH_OAUTH_CLIENT_SECRET,
       SENTRY_DSN: process.env.SENTRY_DSN,
       SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
       SENTRY_ORG: process.env.SENTRY_ORG,

@@ -74,7 +74,7 @@ export async function GET(
   const env = globalThis.services.env;
 
   // Check if GitHub OAuth is configured
-  if (!env.GITHUB_OAUTH_CLIENT_ID || !env.GITHUB_OAUTH_CLIENT_SECRET) {
+  if (!env.GH_OAUTH_CLIENT_ID || !env.GH_OAUTH_CLIENT_SECRET) {
     return NextResponse.json(
       { error: "GitHub OAuth is not configured" },
       { status: 503 },
@@ -90,7 +90,7 @@ export async function GET(
 
   // Build authorization URL
   const authUrl = buildGitHubAuthorizationUrl(
-    env.GITHUB_OAUTH_CLIENT_ID,
+    env.GH_OAUTH_CLIENT_ID,
     redirectUri,
     state,
   );
