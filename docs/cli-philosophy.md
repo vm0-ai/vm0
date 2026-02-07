@@ -20,7 +20,7 @@ Complex workflows are not built into single commands. Instead, they emerge from 
 
 ```bash
 # Each step is one atomic command. The agent decides the order and combination.
-vm0 secret set OPENAI_KEY --body "sk-..."
+vm0 secret set MY_API_KEY --body "sk-..."
 vm0 compose vm0.yaml
 vm0 run my-agent "analyze the dataset"
 vm0 logs <run-id>
