@@ -41,25 +41,25 @@ export function LogsTableRow({ entry }: LogsTableRowProps) {
       className="h-[53px] cursor-pointer hover:bg-muted/50"
       onClick={handleRowClick}
     >
-      <TableCell className="px-3 py-2 text-sm font-medium w-[20%] min-w-[80px]">
+      <TableCell className="px-3 py-2 text-sm font-medium w-[20%] min-w-[120px]">
         <span className="block truncate whitespace-nowrap">{entry.id}</span>
       </TableCell>
-      <TableCell className="px-3 py-2 text-sm w-[20%] min-w-[80px]">
+      <TableCell className="px-3 py-2 text-sm w-[20%] min-w-[120px]">
         <span className="block truncate whitespace-nowrap">
           {entry.sessionId ?? "-"}
         </span>
       </TableCell>
-      <TableCell className="px-3 py-2 text-sm w-[15%] min-w-[80px]">
+      <TableCell className="px-3 py-2 text-sm w-[15%] min-w-[120px]">
         <span className="block truncate whitespace-nowrap">
           {entry.agentName}
         </span>
       </TableCell>
-      <TableCell className="px-3 py-2 text-sm w-[12%] min-w-[70px]">
+      <TableCell className="px-3 py-2 text-sm w-[12%] min-w-[120px]">
         <span className="block truncate whitespace-nowrap">
           {entry.framework ?? "-"}
         </span>
       </TableCell>
-      <TableCell className="px-3 py-2 w-[13%] min-w-[80px]">
+      <TableCell className="px-3 py-2 w-[13%] min-w-[120px]">
         <div className="truncate whitespace-nowrap">
           <StatusBadge status={entry.status} />
         </div>

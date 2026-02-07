@@ -22,10 +22,10 @@ const Table = React.forwardRef<
       `,
       }}
     />
-    <div className="table-wrapper">
+    <div className="table-wrapper overflow-x-auto">
       <table
         ref={ref}
-        className={cn("w-full caption-bottom text-sm table-fixed", className)}
+        className={cn("w-full caption-bottom text-sm", className)}
         {...props}
       />
     </div>

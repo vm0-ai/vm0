@@ -11,19 +11,19 @@ function LogsTableHeader() {
   return (
     <TableHeader className="bg-muted">
       <TableRow className="hover:bg-transparent">
-        <TableHead className="h-10 px-3 text-sm font-medium text-foreground w-[20%] min-w-[80px]">
+        <TableHead className="h-10 px-3 text-sm font-medium text-foreground w-[20%] min-w-[120px]">
           <span className="block truncate whitespace-nowrap">Run ID</span>
         </TableHead>
-        <TableHead className="h-10 px-3 text-sm font-medium text-foreground w-[20%] min-w-[80px]">
+        <TableHead className="h-10 px-3 text-sm font-medium text-foreground w-[20%] min-w-[120px]">
           <span className="block truncate whitespace-nowrap">Session ID</span>
         </TableHead>
-        <TableHead className="h-10 px-3 text-sm font-medium text-foreground w-[15%] min-w-[80px]">
+        <TableHead className="h-10 px-3 text-sm font-medium text-foreground w-[15%] min-w-[120px]">
           <span className="block truncate whitespace-nowrap">Agent</span>
         </TableHead>
-        <TableHead className="h-10 px-3 text-sm font-medium text-foreground w-[12%] min-w-[70px]">
+        <TableHead className="h-10 px-3 text-sm font-medium text-foreground w-[12%] min-w-[120px]">
           <span className="block truncate whitespace-nowrap">Framework</span>
         </TableHead>
-        <TableHead className="h-10 px-3 text-sm font-medium text-foreground w-[13%] min-w-[80px]">
+        <TableHead className="h-10 px-3 text-sm font-medium text-foreground w-[13%] min-w-[120px]">
           <span className="block truncate whitespace-nowrap">Status</span>
         </TableHead>
         <TableHead className="h-10 px-3 text-sm font-medium text-foreground w-[15%] min-w-[120px]">
