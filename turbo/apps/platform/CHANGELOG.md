@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.50.3](https://github.com/vm0-ai/vm0/compare/platform-v0.50.2...platform-v0.50.3) (2026-02-07)
+
+
+### Bug Fixes
+
+* **platform:** display actual model provider name in agents table ([#2524](https://github.com/vm0-ai/vm0/issues/2524)) ([99e3791](https://github.com/vm0-ai/vm0/commit/99e379185ea2ea0caf6d727c8ad065a232fd1ce6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.4.0
+
 ## [0.50.2](https://github.com/vm0-ai/vm0/compare/platform-v0.50.1...platform-v0.50.2) (2026-02-07)
 
 

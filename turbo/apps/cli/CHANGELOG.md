@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.24.0](https://github.com/vm0-ai/vm0/compare/cli-v9.23.0...cli-v9.24.0) (2026-02-07)
+
+
+### Features
+
+* **connector:** implement github oauth connector with cli support ([#2446](https://github.com/vm0-ai/vm0/issues/2446)) ([c12c97a](https://github.com/vm0-ai/vm0/commit/c12c97a2af0b74d8bdfd452e2cbe7000f9e24f34))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.4.0
+
 ## [9.23.0](https://github.com/vm0-ai/vm0/compare/cli-v9.22.0...cli-v9.23.0) (2026-02-07)
 
 

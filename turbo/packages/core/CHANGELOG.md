@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.4.0](https://github.com/vm0-ai/vm0/compare/core-v8.3.0...core-v8.4.0) (2026-02-07)
+
+
+### Features
+
+* **connector:** implement github oauth connector with cli support ([#2446](https://github.com/vm0-ai/vm0/issues/2446)) ([c12c97a](https://github.com/vm0-ai/vm0/commit/c12c97a2af0b74d8bdfd452e2cbe7000f9e24f34))
+
 ## [8.3.0](https://github.com/vm0-ai/vm0/compare/core-v8.2.2...core-v8.3.0) (2026-02-07)
 
 

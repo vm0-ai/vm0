@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.13.0](https://github.com/vm0-ai/vm0/compare/web-v12.12.0...web-v12.13.0) (2026-02-07)
+
+
+### Features
+
+* **connector:** implement github oauth connector with cli support ([#2446](https://github.com/vm0-ai/vm0/issues/2446)) ([c12c97a](https://github.com/vm0-ai/vm0/commit/c12c97a2af0b74d8bdfd452e2cbe7000f9e24f34))
+
+
+### Performance Improvements
+
+* **web:** add vm0-cli e2b template for faster compose jobs ([#2519](https://github.com/vm0-ai/vm0/issues/2519)) ([d560bde](https://github.com/vm0-ai/vm0/commit/d560bde2f2fb3fc3b71b7f2c125709ab6c66008a)), closes [#2516](https://github.com/vm0-ai/vm0/issues/2516)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.4.0
+
 ## [12.12.0](https://github.com/vm0-ai/vm0/compare/web-v12.11.0...web-v12.12.0) (2026-02-07)
 
 
