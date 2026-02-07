@@ -76,7 +76,6 @@ export const connectCommand = new Command()
 
     console.log(chalk.green("\nSession created"));
     console.log(chalk.cyan(`\nTo connect, visit: ${verificationUrl}`));
-    console.log(`Session code: ${chalk.bold(session.code)}`);
     console.log(
       `\nThe session expires in ${Math.floor(session.expiresIn / 60)} minutes.`,
     );
