@@ -4,6 +4,7 @@ import { generateComposeJobToken } from "../auth/sandbox-token";
 import { Sandbox } from "@e2b/code-interpreter";
 import { e2bConfig } from "../e2b/config";
 import { logger } from "../logger";
+import { notifySlackComposeComplete } from "../slack/handlers/compose-notification";
 
 const log = logger("compose:trigger");
 
@@ -237,14 +238,23 @@ async function spawnComposeJobSandbox(
       log.error(`  stdout: ${stdout}`);
       log.error(`  stderr: ${stderr}`);
 
+      const truncatedError = errorMessage.slice(0, 1000);
       await globalThis.services.db
         .update(composeJobs)
         .set({
           status: "failed",
-          error: errorMessage.slice(0, 1000),
+          error: truncatedError,
           completedAt: new Date(),
         })
         .where(eq(composeJobs.id, jobId));
+
+      await notifySlackComposeComplete(jobId, null, truncatedError).catch(
+        (notifyError) => {
+          log.warn("Failed to send Slack failure notification", {
+            notifyError,
+          });
+        },
+      );
     });
 
   log.debug(`Compose script started for job ${jobId}`);
@@ -317,15 +327,24 @@ export async function triggerComposeJob(params: {
   spawnComposeJobSandbox(jobId, githubUrl, userToken, webhookToken).catch(
     async (error) => {
       log.error(`Failed to spawn sandbox for job ${jobId}:`, error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to create sandbox";
       await globalThis.services.db
         .update(composeJobs)
         .set({
           status: "failed",
-          error:
-            error instanceof Error ? error.message : "Failed to create sandbox",
+          error: errorMessage,
           completedAt: new Date(),
         })
         .where(eq(composeJobs.id, jobId));
+
+      await notifySlackComposeComplete(jobId, null, errorMessage).catch(
+        (notifyError) => {
+          log.warn("Failed to send Slack failure notification", {
+            notifyError,
+          });
+        },
+      );
     },
   );
 

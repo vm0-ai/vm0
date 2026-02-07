@@ -15,6 +15,8 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { givenLinkedSlackUser } from "../../../../../../src/__tests__/slack/api-helpers";
+import { triggerComposeJob } from "../../../../../../src/lib/compose/trigger-compose-job";
+import { Sandbox } from "@e2b/code-interpreter";
 import { randomUUID } from "crypto";
 import { handlers, http } from "../../../../../../src/__tests__/msw";
 import { server } from "../../../../../../src/mocks/server";
@@ -600,6 +602,67 @@ describe("POST /api/webhooks/compose/complete", () => {
 
       // Verify Slack notification was NOT sent
       expect(postEphemeralCalled).toBe(false);
+    });
+
+    it("should send Slack failure notification when sandbox creation fails", async () => {
+      // Set up a linked Slack user
+      const { userLink, installation } = await givenLinkedSlackUser();
+
+      // Use a deferred promise so we can control when Sandbox.create rejects.
+      // This ensures the slack_compose_requests record is inserted before the
+      // failure handler runs.
+      let rejectSandbox!: (err: Error) => void;
+      const sandboxPromise = new Promise<never>((_resolve, reject) => {
+        rejectSandbox = reject;
+      });
+      const mockCreate = vi.mocked(Sandbox.create);
+      mockCreate.mockReturnValueOnce(sandboxPromise);
+
+      // Mock Slack API for notification
+      let postEphemeralCalled = false;
+      const slackMock = handlers({
+        postEphemeral: http.post(
+          "https://slack.com/api/chat.postEphemeral",
+          () => {
+            postEphemeralCalled = true;
+            return HttpResponse.json({
+              ok: true,
+              message_ts: `${Date.now()}.000000`,
+            });
+          },
+        ),
+      });
+      server.use(...slackMock.handlers);
+
+      // Trigger compose job (sandbox creation is pending)
+      const result = await triggerComposeJob({
+        userId: userLink.vm0UserId,
+        githubUrl: "https://github.com/owner/failing-repo",
+        userToken: "test-token",
+      });
+
+      // Insert slack_compose_requests record (simulating what Slack handler does)
+      await createTestSlackComposeRequest({
+        composeJobId: result.jobId,
+        slackWorkspaceId: installation.slackWorkspaceId,
+        slackUserId: userLink.slackUserId,
+        slackChannelId: "C-test-channel",
+      });
+
+      // Now reject the sandbox creation — this triggers the failure handler
+      rejectSandbox(new Error("E2B API unavailable"));
+
+      // Wait for the fire-and-forget catch handler to complete
+      await vi.waitFor(
+        () => {
+          expect(postEphemeralCalled).toBe(true);
+        },
+        { timeout: 5000 },
+      );
+
+      // Verify slack_compose_requests record was cleaned up
+      const remaining = await findTestSlackComposeRequest(result.jobId);
+      expect(remaining).toBeUndefined();
     });
   });
 
