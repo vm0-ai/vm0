@@ -35,7 +35,7 @@
 
 use std::collections::VecDeque;
 
-use tracing::{error, info};
+use tracing::{error, info, trace, warn};
 
 use crate::command::{Privilege, exec_command, exec_command_ignore_errors, sudo};
 
@@ -238,13 +238,17 @@ async fn delete_iptables_rules_by_comment(comment: &str) {
 }
 
 async fn delete_iptables_from_table(table: &str, comment: &str) {
-    let Ok(rules) = exec_command(
+    let rules = match exec_command(
         &format!("iptables-save -t {table} | grep -F -- \"{comment}\" || true"),
         Privilege::Sudo,
     )
     .await
-    else {
-        return;
+    {
+        Ok(rules) => rules,
+        Err(e) => {
+            trace!(table, error = %e, "failed to read iptables rules, skipping cleanup");
+            return;
+        }
     };
     // Sequential: xtables lock serializes writes to the same table anyway.
     for line in rules.lines().filter(|line| line.starts_with("-A ")) {
@@ -343,6 +347,14 @@ impl NetnsPool {
                     Err(e) => error!(error = %e, "namespace creation task panicked"),
                 }
             }
+        }
+
+        if pool.queue.len() < config.size {
+            warn!(
+                requested = config.size,
+                created = pool.queue.len(),
+                "namespace pool initialized with fewer namespaces than requested"
+            );
         }
 
         info!(available = pool.queue.len(), "namespace pool initialized");

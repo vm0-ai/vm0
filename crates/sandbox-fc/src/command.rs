@@ -2,6 +2,12 @@ use tokio::process::Command;
 use tracing::trace;
 
 /// Shorthand for `exec_command(&format!(...), Privilege::Sudo).await`.
+///
+/// # Safety (shell injection)
+///
+/// All callers format arguments from controlled sources only: hex-formatted
+/// indices, calculated IP addresses, and compile-time constants. No
+/// user-supplied strings are interpolated into shell commands.
 macro_rules! sudo {
     ($($arg:tt)*) => {
         $crate::command::exec_command(
