@@ -68,4 +68,7 @@ export {
 
 // Handlers
 export { handleDirectMessage } from "./handlers/direct-message";
-export { handleAppHomeOpened } from "./handlers/app-home-opened";
+export {
+  handleAppHomeOpened,
+  refreshAppHome,
+} from "./handlers/app-home-opened";

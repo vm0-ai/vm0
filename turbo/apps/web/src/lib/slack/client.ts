@@ -57,6 +57,48 @@ export async function postMessage(
 }
 
 /**
+ * Update an existing message in a Slack channel
+ *
+ * @param client - Slack WebClient
+ * @param channel - Channel ID
+ * @param ts - Timestamp of the message to update
+ * @param text - New message text (used as fallback for blocks)
+ * @param options - Additional options
+ */
+export async function updateMessage(
+  client: WebClient,
+  channel: string,
+  ts: string,
+  text: string,
+  options?: { blocks?: (Block | KnownBlock)[] },
+): Promise<void> {
+  await client.chat.update({
+    channel,
+    ts,
+    text,
+    blocks: options?.blocks,
+  });
+}
+
+/**
+ * Publish an App Home tab view for a user
+ *
+ * @param client - Slack WebClient
+ * @param userId - Slack user ID
+ * @param view - Home tab view definition
+ */
+export async function publishAppHome(
+  client: WebClient,
+  userId: string,
+  view: View,
+): Promise<void> {
+  await client.views.publish({
+    user_id: userId,
+    view,
+  });
+}
+
+/**
  * Open a modal in Slack
  *
  * @param client - Slack WebClient
@@ -103,48 +145,6 @@ export async function updateModal(
  * @param redirectUri - OAuth redirect URI
  * @returns OAuth response with tokens and team info
  */
-/**
- * Update an existing message in a Slack channel
- *
- * @param client - Slack WebClient
- * @param channel - Channel ID
- * @param ts - Timestamp of the message to update
- * @param text - New message text (used as fallback for blocks)
- * @param options - Additional options
- */
-export async function updateMessage(
-  client: WebClient,
-  channel: string,
-  ts: string,
-  text: string,
-  options?: { blocks?: (Block | KnownBlock)[] },
-): Promise<void> {
-  await client.chat.update({
-    channel,
-    ts,
-    text,
-    blocks: options?.blocks,
-  });
-}
-
-/**
- * Publish an App Home tab view for a user
- *
- * @param client - Slack WebClient
- * @param userId - Slack user ID
- * @param view - Home tab view definition
- */
-export async function publishAppHome(
-  client: WebClient,
-  userId: string,
-  view: View,
-): Promise<void> {
-  await client.views.publish({
-    user_id: userId,
-    view,
-  });
-}
-
 export async function exchangeOAuthCode(
   clientId: string,
   clientSecret: string,

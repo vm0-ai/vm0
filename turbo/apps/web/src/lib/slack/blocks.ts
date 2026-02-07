@@ -223,12 +223,6 @@ export function buildAgentAddModal(
   };
 }
 
-interface AppHomeBinding {
-  agentName: string;
-  description: string | null;
-  enabled: boolean;
-}
-
 /**
  * Build the App Home tab view
  *
@@ -238,7 +232,7 @@ interface AppHomeBinding {
 export function buildAppHomeView(options: {
   isLinked: boolean;
   vm0UserId?: string;
-  bindings?: AppHomeBinding[];
+  bindings?: BindingInfo[];
   loginUrl?: string;
 }): View {
   const blocks: (Block | KnownBlock)[] = [
@@ -296,6 +290,12 @@ export function buildAppHomeView(options: {
       });
     }
     blocks.push(...connectBlocks);
+
+    // Not connected — just show connect prompt, skip agents/commands
+    return {
+      type: "home",
+      blocks,
+    };
   }
 
   blocks.push({ type: "divider" });
@@ -338,7 +338,7 @@ export function buildAppHomeView(options: {
     type: "section",
     text: {
       type: "mrkdwn",
-      text: "*Commands*\n• `/vm0 help` — Show help\n• `/vm0 connect` — Connect your account\n• `/vm0 agent link` — Link an agent\n• `/vm0 agent unlink` — Unlink an agent\n• `/vm0 agent update` — Update agent configuration",
+      text: "*Commands*\n• `/vm0 help` — Show help\n• `/vm0 agent link` — Link an agent\n• `/vm0 agent unlink` — Unlink an agent\n• `/vm0 agent update` — Update agent configuration",
     },
   });
 

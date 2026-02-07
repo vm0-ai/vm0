@@ -297,11 +297,13 @@ export async function handleDirectMessage(
           context.channelId,
           thinkingTs,
           errorText,
-        ).catch(() => {});
+        ).catch((e) =>
+          log.warn("Failed to update error message", { error: e }),
+        );
       } else {
         await postMessage(client, context.channelId, errorText, {
           threadTs,
-        }).catch(() => {});
+        }).catch((e) => log.warn("Failed to post error message", { error: e }));
       }
     } finally {
       // 13. Remove thinking reaction
