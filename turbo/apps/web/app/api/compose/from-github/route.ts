@@ -79,7 +79,7 @@ function formatJobResponse(job: {
  * - Instructions file handling
  */
 const COMPOSE_SANDBOX_SCRIPT = `
-const { execSync, spawnSync } = require('child_process');
+const { spawnSync } = require('child_process');
 
 // Environment variables
 const JOB_ID = process.env.VM0_JOB_ID || '';
@@ -152,17 +152,8 @@ async function main() {
     process.exit(1);
   }
 
-  // Install vm0 CLI
-  log('INFO', 'Installing vm0 CLI...');
-  try {
-    execSync('npm install -g @vm0/cli@latest', { stdio: 'inherit', timeout: 120000 });
-    log('INFO', 'CLI installed successfully');
-  } catch (error) {
-    await reportCompletion(false, null, 'Failed to install vm0 CLI: ' + error.message);
-    process.exit(1);
-  }
-
   // Execute vm0 compose with --porcelain for structured output
+  // CLI is pre-installed in the vm0-cli template
   log('INFO', 'Running vm0 compose...');
   const result = spawnSync('vm0', [
     'compose',
@@ -241,7 +232,8 @@ async function spawnComposeJobSandbox(
   log.debug(`Creating sandbox for job ${jobId}...`);
 
   // Create sandbox with 5-minute timeout
-  const sandbox = await Sandbox.create(e2bConfig.defaultTemplate, {
+  // Use vm0-cli template which has CLI pre-installed for faster execution
+  const sandbox = await Sandbox.create(e2bConfig.cliTemplate, {
     timeoutMs: 5 * 60 * 1000, // 5 minutes
     envs: {
       VM0_JOB_ID: jobId,

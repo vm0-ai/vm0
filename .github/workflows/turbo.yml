@@ -1401,6 +1401,7 @@ jobs:
           pnpm e2b:build
           pnpm e2b:codex:build
           pnpm e2b:claude-code-github:build
+          pnpm e2b:cli:build
 
       - name: Build summary
         run: echo "✅ E2B templates built successfully (development account)"
