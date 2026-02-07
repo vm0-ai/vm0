@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.14.0](https://github.com/vm0-ai/vm0/compare/web-v12.13.2...web-v12.14.0) (2026-02-07)
+
+
+### Features
+
+* **slack:** add app home tab, welcome message, and DM improvements ([#2554](https://github.com/vm0-ai/vm0/issues/2554)) ([131b380](https://github.com/vm0-ai/vm0/commit/131b3807e6b056e71717c5b7e1e36ca3c04ed14f))
+
+
+### Bug Fixes
+
+* **schedule:** validate secrets/vars against platform tables ([#2558](https://github.com/vm0-ai/vm0/issues/2558)) ([f19d550](https://github.com/vm0-ai/vm0/commit/f19d5506e61f16536bf163e5884266d31326fe40))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.4.1
+
 ## [12.13.2](https://github.com/vm0-ai/vm0/compare/web-v12.13.1...web-v12.13.2) (2026-02-07)
 
 

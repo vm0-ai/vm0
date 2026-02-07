@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.52.0](https://github.com/vm0-ai/vm0/compare/platform-v0.51.2...platform-v0.52.0) (2026-02-07)
+
+
+### Features
+
+* **platform:** collapse consecutive same-type tool calls in log detail ([#2560](https://github.com/vm0-ai/vm0/issues/2560)) ([71091bc](https://github.com/vm0-ai/vm0/commit/71091bc1599fcfde7b1894563731ade9dbd9a680))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.4.1
+
 ## [0.51.2](https://github.com/vm0-ai/vm0/compare/platform-v0.51.1...platform-v0.51.2) (2026-02-07)
 
 

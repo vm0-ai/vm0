@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.24.1](https://github.com/vm0-ai/vm0/compare/cli-v9.24.0...cli-v9.24.1) (2026-02-07)
+
+
+### Bug Fixes
+
+* **schedule:** validate secrets/vars against platform tables ([#2558](https://github.com/vm0-ai/vm0/issues/2558)) ([f19d550](https://github.com/vm0-ai/vm0/commit/f19d5506e61f16536bf163e5884266d31326fe40))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.4.1
+
 ## [9.24.0](https://github.com/vm0-ai/vm0/compare/cli-v9.23.0...cli-v9.24.0) (2026-02-07)
 
 
