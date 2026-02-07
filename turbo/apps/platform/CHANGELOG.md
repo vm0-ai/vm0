@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.51.0](https://github.com/vm0-ai/vm0/compare/platform-v0.50.3...platform-v0.51.0) (2026-02-07)
+
+
+### Features
+
+* **platform:** display user prompt in log detail page ([#2535](https://github.com/vm0-ai/vm0/issues/2535)) ([80d1d37](https://github.com/vm0-ai/vm0/commit/80d1d37c6beefbf436ccacf0543e561981defee4))
+
 ## [0.50.3](https://github.com/vm0-ai/vm0/compare/platform-v0.50.2...platform-v0.50.3) (2026-02-07)
 
 

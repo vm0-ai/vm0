@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.13.1](https://github.com/vm0-ai/vm0/compare/web-v12.13.0...web-v12.13.1) (2026-02-07)
+
+
+### Bug Fixes
+
+* **web:** add missing job ID filter in cleanup-compose-jobs cron WHERE clause ([#2534](https://github.com/vm0-ai/vm0/issues/2534)) ([f6bea80](https://github.com/vm0-ai/vm0/commit/f6bea803423da0527386e0a890a245757d949d0f))
+
 ## [12.13.0](https://github.com/vm0-ai/vm0/compare/web-v12.12.0...web-v12.13.0) (2026-02-07)
 
 
