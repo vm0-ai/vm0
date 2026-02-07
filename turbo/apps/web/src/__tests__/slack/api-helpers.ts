@@ -285,10 +285,13 @@ export async function givenUserHasAgent(
     },
   };
 
-  // Mock Slack postEphemeral for confirmation message
+  // Mock Slack APIs used during agent add: confirmation message + App Home refresh
   const slackMock = handlers({
     postEphemeral: http.post(`${SLACK_API}/chat.postEphemeral`, () =>
       HttpResponse.json({ ok: true, message_ts: `${Date.now()}.000000` }),
+    ),
+    viewsPublish: http.post(`${SLACK_API}/views.publish`, () =>
+      HttpResponse.json({ ok: true }),
     ),
   });
   server.use(...slackMock.handlers);

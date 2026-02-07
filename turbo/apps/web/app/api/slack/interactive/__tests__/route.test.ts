@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createHmac } from "crypto";
+import { HttpResponse } from "msw";
 import { POST } from "../route";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
@@ -11,6 +12,8 @@ import {
   givenLinkedSlackUser,
   givenUserHasAgent,
 } from "../../../../../src/__tests__/slack/api-helpers";
+import { handlers, http } from "../../../../../src/__tests__/msw";
+import { server } from "../../../../../src/mocks/server";
 
 // Mock only external dependencies (third-party packages)
 vi.mock("@clerk/nextjs/server");
@@ -305,6 +308,14 @@ describe("POST /api/slack/interactive", () => {
       mockClerk({ userId: userLink.vm0UserId });
       const { composeId } = await createTestCompose("new-agent");
 
+      // Mock Slack API for App Home refresh after successful binding
+      const slackMock = handlers({
+        viewsPublish: http.post("https://slack.com/api/views.publish", () =>
+          HttpResponse.json({ ok: true }),
+        ),
+      });
+      server.use(...slackMock.handlers);
+
       const body = buildInteractiveBody({
         type: "view_submission",
         user: {
@@ -339,6 +350,14 @@ describe("POST /api/slack/interactive", () => {
       const { userLink, installation } = await givenLinkedSlackUser();
       mockClerk({ userId: userLink.vm0UserId });
       const { composeId } = await createTestCompose("secret-agent");
+
+      // Mock Slack API for App Home refresh after successful binding
+      const slackMock = handlers({
+        viewsPublish: http.post("https://slack.com/api/views.publish", () =>
+          HttpResponse.json({ ok: true }),
+        ),
+      });
+      server.use(...slackMock.handlers);
 
       const body = buildInteractiveBody({
         type: "view_submission",

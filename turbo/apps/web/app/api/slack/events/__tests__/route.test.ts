@@ -726,6 +726,10 @@ describe("POST /api/slack/events", () => {
         agentName: "my-helper",
         description: "A helpful assistant",
       });
+      // Reset runtime handlers from givenUserHasAgent so the test's own
+      // viewsPublish handler takes priority, then re-register test handlers.
+      server.resetHandlers();
+      server.use(...slackHandlers.handlers);
       vi.mocked(slackHandlers.mocked.viewsPublish).mockClear();
 
       // When I open the bot's Home tab
