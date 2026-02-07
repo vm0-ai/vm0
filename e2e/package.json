@@ -17,7 +17,7 @@
     "@clerk/testing": "^1.13.33",
     "@types/node": "^24.5.2",
     "dotenv": "^17.2.2",
-    "playwright": "^1.58.1"
+    "playwright": "^1.58.2"
   },
   "devDependencies": {
     "tsx": "^4.21.0"
