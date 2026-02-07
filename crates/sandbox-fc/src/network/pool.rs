@@ -60,12 +60,17 @@ const MAX_POOLS: u32 = 64;
 /// Maximum namespaces a single pool can own (index 0x00–0xff).
 const MAX_NAMESPACES: u32 = 256;
 
+// Compile-time check: all /30 subnets fit within `10.200.0.0/16`.
+// 64 pools × 256 ns × 4 addresses per /30 = 65536 = exactly 2^16.
+const _: () = assert!(MAX_POOLS * MAX_NAMESPACES * 4 <= 65536);
+
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
 
 /// A pooled network namespace resource.
 #[derive(Debug, Clone)]
+#[must_use]
 pub struct PooledNetns {
     /// Namespace name (e.g. `vm0-ns-00-00`).
     pub name: String,
