@@ -40,6 +40,7 @@ export async function getAgentSessionWithConversation(
     conversation: result.conversation
       ? {
           id: result.conversation.id,
+          runId: result.conversation.runId,
           cliAgentType: result.conversation.cliAgentType,
           cliAgentSessionId: result.conversation.cliAgentSessionId,
           cliAgentSessionHistory: result.conversation.cliAgentSessionHistory,

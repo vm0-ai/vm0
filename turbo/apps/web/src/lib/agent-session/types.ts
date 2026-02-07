@@ -33,6 +33,7 @@ export interface CreateAgentSessionInput {
 export interface AgentSessionWithConversation extends AgentSessionData {
   conversation: {
     id: string;
+    runId: string;
     cliAgentType: string;
     cliAgentSessionId: string;
     /** @deprecated Legacy TEXT storage - use cliAgentSessionHistoryHash instead */

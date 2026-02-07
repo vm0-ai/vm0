@@ -3,6 +3,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
+import { agentRuns } from "../../../db/schema/agent-run";
 import { notFound, unauthorized, badRequest } from "../../errors";
 import { logger } from "../../logger";
 import { getAgentSessionWithConversation } from "../../agent-session";
@@ -94,6 +95,16 @@ export async function resolveSession(
     session.conversation.cliAgentSessionHistory,
   );
 
+  // Read vars from the last run as fallback for continue operations
+  const [lastRun] = await globalThis.services.db
+    .select({ vars: agentRuns.vars })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, session.conversation.runId))
+    .limit(1);
+
+  const lastRunVars =
+    (lastRun?.vars as Record<string, string> | null) ?? undefined;
+
   return {
     conversationId: session.conversationId,
     agentComposeVersionId: versionId,
@@ -105,7 +116,7 @@ export async function resolveSession(
     },
     artifactName: session.artifactName ?? undefined,
     artifactVersion: session.artifactName ? "latest" : undefined,
-    vars: {},
+    vars: lastRunVars,
     secretNames: undefined,
     volumeVersions: undefined,
     buildResumeArtifact: !!session.artifactName,
