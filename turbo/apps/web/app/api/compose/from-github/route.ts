@@ -18,26 +18,25 @@ const log = logger("api:compose-from-github");
 
 /**
  * Get API URL for sandbox to call back.
- * Requires VM0_API_URL to be set, or VERCEL_URL in preview environments.
+ * Falls back based on environment: preview -> production -> localhost.
  */
 function getApiUrl(): string {
   const envVars = globalThis.services?.env;
   const vercelEnv = process.env.VERCEL_ENV;
   const vercelUrl = process.env.VERCEL_URL;
 
-  const apiUrl = envVars?.VM0_API_URL || process.env.VM0_API_URL;
-  if (apiUrl) {
-    return apiUrl;
+  let apiUrl = envVars?.VM0_API_URL || process.env.VM0_API_URL;
+  if (!apiUrl) {
+    if (vercelEnv === "preview" && vercelUrl) {
+      apiUrl = `https://${vercelUrl}`;
+    } else if (vercelEnv === "production") {
+      apiUrl = "https://www.vm0.ai";
+    } else {
+      apiUrl = "http://localhost:3000";
+    }
   }
 
-  // In Vercel preview deployments, derive URL from VERCEL_URL
-  if (vercelEnv === "preview" && vercelUrl) {
-    return `https://${vercelUrl}`;
-  }
-
-  throw new Error(
-    "VM0_API_URL environment variable is required for compose job webhooks",
-  );
+  return apiUrl;
 }
 
 /**
