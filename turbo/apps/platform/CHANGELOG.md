@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.51.1](https://github.com/vm0-ai/vm0/compare/platform-v0.51.0...platform-v0.51.1) (2026-02-07)
+
+
+### Bug Fixes
+
+* **platform:** improve onboarding modal layout and scrolling ([#2521](https://github.com/vm0-ai/vm0/issues/2521)) ([bbfe6aa](https://github.com/vm0-ai/vm0/commit/bbfe6aac1a10d3c7bee54a28fb9d6028a0d52985))
+
 ## [0.51.0](https://github.com/vm0-ai/vm0/compare/platform-v0.50.3...platform-v0.51.0) (2026-02-07)
 
 
