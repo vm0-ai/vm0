@@ -25,7 +25,7 @@ import {
 } from "@vm0/ui/components/ui/table";
 import { AppShell } from "../layout/app-shell.tsx";
 import { AgentsListSkeleton } from "./agents-list-skeleton.tsx";
-import { useGet } from "ccstate-react";
+import { useGet, useResolved } from "ccstate-react";
 import {
   agentsList$,
   agentsLoading$,
@@ -33,6 +33,8 @@ import {
   schedules$,
   getAgentScheduleStatus,
 } from "../../signals/agents-page/agents-list.ts";
+import { defaultModelProvider$ } from "../../signals/external/model-providers.ts";
+import { getUILabel } from "../settings-page/provider-ui-config.ts";
 import { Bed, Settings, Clock } from "lucide-react";
 import type { ComposeListItem } from "@vm0/core";
 
@@ -55,6 +57,7 @@ function AgentsListSection() {
   const schedules = useGet(schedules$);
   const loading = useGet(agentsLoading$);
   const error = useGet(agentsError$);
+  const defaultProvider = useResolved(defaultModelProvider$);
 
   if (loading) {
     return <AgentsListSkeleton />;
@@ -93,7 +96,7 @@ function AgentsListSection() {
       <TableHeader>
         <TableRow>
           <TableHead className="h-10">Your agents</TableHead>
-          <TableHead className="h-10">Provider</TableHead>
+          <TableHead className="h-10">Model provider</TableHead>
           <TableHead className="h-10">Schedule status</TableHead>
           <TableHead className="h-10">Last edit</TableHead>
           <TableHead className="h-10 w-12" />
@@ -107,6 +110,9 @@ function AgentsListSection() {
               key={agent.name}
               agent={agent}
               hasSchedule={hasSchedule}
+              modelProviderLabel={
+                defaultProvider ? getUILabel(defaultProvider.type) : "N/A"
+              }
             />
           );
         })}
@@ -118,9 +124,11 @@ function AgentsListSection() {
 function AgentRow({
   agent,
   hasSchedule,
+  modelProviderLabel,
 }: {
   agent: ComposeListItem;
   hasSchedule: boolean;
+  modelProviderLabel: string;
 }) {
   return (
     <Dialog>
@@ -132,7 +140,7 @@ function AgentRow({
         </DialogTrigger>
         <DialogTrigger asChild>
           <TableCell className="px-3 py-2 cursor-pointer">
-            <span className="text-sm">Claude code</span>
+            <span className="text-sm">{modelProviderLabel}</span>
           </TableCell>
         </DialogTrigger>
         <DialogTrigger asChild>
