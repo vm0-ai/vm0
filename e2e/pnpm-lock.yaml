@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@clerk/testing':
-        specifier: ^1.13.33
-        version: 1.13.33(react@19.2.0)
+        specifier: ^1.13.35
+        version: 1.13.35(react@19.2.0)
       '@types/node':
         specifier: ^24.5.2
         version: 24.10.1
@@ -27,8 +27,8 @@ importers:
 
 packages:
 
-  '@clerk/backend@2.29.7':
-    resolution: {integrity: sha512-OSfFQ85L0FV2wSzqlr0hRvluIu3Z5ClgLiBE6Qx7XjSGyJoqEvP5OP4fl5Nt5icgGvH0EwA1dljPGyQpaqbQEw==}
+  '@clerk/backend@2.30.1':
+    resolution: {integrity: sha512-GoxnJzVH0ycNPAGCDMfo3lPBFbo5nehpLSVFjgGEnzIRGGahBtAB8PQT7KM2zo58pD8apjb/+suhcB/WCiEasQ==}
     engines: {node: '>=18.17.0'}
 
   '@clerk/shared@3.44.0':
@@ -43,8 +43,8 @@ packages:
       react-dom:
         optional: true
 
-  '@clerk/testing@1.13.33':
-    resolution: {integrity: sha512-94xhYnamV/UH7BDKVmzkLcsrOvjALiWognTgfaHvU1nxNaUHStTjDEkpnpiFXEFvrQJWCpn7o5DfCisZkJjD9A==}
+  '@clerk/testing@1.13.35':
+    resolution: {integrity: sha512-y95kJZrMt0tvbNek1AWhWrNrgnOy+a53PSzHTHPF9d0kkOgzzu9l/Wq+Y0kBk6p64wtupYomeb7oVCQD7yCc0A==}
     engines: {node: '>=18.17.0'}
     peerDependencies:
       '@playwright/test': ^1
@@ -310,7 +310,7 @@ packages:
 
 snapshots:
 
-  '@clerk/backend@2.29.7(react@19.2.0)':
+  '@clerk/backend@2.30.1(react@19.2.0)':
     dependencies:
       '@clerk/shared': 3.44.0(react@19.2.0)
       '@clerk/types': 4.101.14(react@19.2.0)
@@ -331,9 +331,9 @@ snapshots:
     optionalDependencies:
       react: 19.2.0
 
-  '@clerk/testing@1.13.33(react@19.2.0)':
+  '@clerk/testing@1.13.35(react@19.2.0)':
     dependencies:
-      '@clerk/backend': 2.29.7(react@19.2.0)
+      '@clerk/backend': 2.30.1(react@19.2.0)
       '@clerk/shared': 3.44.0(react@19.2.0)
       '@clerk/types': 4.101.14(react@19.2.0)
       dotenv: 17.2.2

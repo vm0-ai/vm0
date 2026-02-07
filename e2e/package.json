@@ -14,7 +14,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@clerk/testing": "^1.13.33",
+    "@clerk/testing": "^1.13.35",
     "@types/node": "^24.5.2",
     "dotenv": "^17.2.2",
     "playwright": "^1.58.1"
