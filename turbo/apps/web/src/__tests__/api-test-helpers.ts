@@ -7,8 +7,12 @@
  */
 import { NextRequest } from "next/server";
 import type { AgentComposeYaml } from "../types/agent-compose";
-import { generateSandboxToken } from "../lib/auth/sandbox-token";
+import {
+  generateSandboxToken,
+  generateComposeJobToken,
+} from "../lib/auth/sandbox-token";
 import { cliTokens } from "../db/schema/cli-tokens";
+import { deviceCodes } from "../db/schema/device-codes";
 import { agentRuns } from "../db/schema/agent-run";
 import { eq } from "drizzle-orm";
 
@@ -39,6 +43,10 @@ import { DELETE as deleteModelProviderRoute } from "../../app/api/model-provider
 import { GET as listModelProvidersRoute } from "../../app/api/model-providers/route";
 import { GET as listSecretsRoute } from "../../app/api/secrets/route";
 import { POST as addPermissionRoute } from "../../app/api/agent/composes/[id]/permissions/route";
+import { connectors } from "../db/schema/connector";
+import { connectorSessions } from "../db/schema/connector-session";
+import { secrets } from "../db/schema/secret";
+import type { ConnectorType } from "@vm0/core";
 
 /**
  * Helper to create a NextRequest for testing.
@@ -129,6 +137,25 @@ export async function createTestSandboxToken(
   return generateSandboxToken(userId, runId);
 }
 
+// ============================================================================
+// CLI Token Test Helpers
+// ============================================================================
+
+/**
+ * Create a test compose job JWT token for webhook endpoints
+ * This generates a valid JWT that can be used to authenticate compose job sandbox requests
+ *
+ * @param userId - The user ID to encode in the token
+ * @param jobId - The compose job ID to encode in the token
+ * @returns A valid JWT token string
+ */
+export async function createTestComposeJobToken(
+  userId: string,
+  jobId: string,
+): Promise<string> {
+  return generateComposeJobToken(userId, jobId);
+}
+
 /**
  * Create a test CLI token in the database for authentication testing
  *
@@ -162,6 +189,74 @@ export async function deleteTestCliToken(token: string): Promise<void> {
   await globalThis.services.db
     .delete(cliTokens)
     .where(eq(cliTokens.token, token));
+}
+
+/**
+ * Create a test device code directly in the database.
+ * Uses direct DB insert because no API route exists for creating
+ * denied/expired device codes — the POST /api/cli/auth/device route
+ * always creates "pending" codes with server-controlled expiration.
+ *
+ * @param options - Device code options
+ * @param options.status - The device code status (default: "pending")
+ * @param options.userId - The user ID (required for "authenticated" status)
+ * @param options.expiresAt - When the code expires (default: 15 minutes from now)
+ * @returns The device code string
+ */
+export async function createTestDeviceCode(options?: {
+  status?: "pending" | "authenticated" | "expired" | "denied";
+  userId?: string;
+  expiresAt?: Date;
+}): Promise<string> {
+  const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  const part = () =>
+    Array.from(
+      { length: 4 },
+      () => chars[Math.floor(Math.random() * chars.length)],
+    ).join("");
+  const code = `${part()}-${part()}`;
+
+  const status = options?.status ?? "pending";
+  const expiresAt = options?.expiresAt ?? new Date(Date.now() + 15 * 60 * 1000);
+
+  await globalThis.services.db.insert(deviceCodes).values({
+    code,
+    status,
+    userId: options?.userId ?? null,
+    expiresAt,
+  });
+
+  return code;
+}
+
+/**
+ * Find a device code by its code string.
+ *
+ * @param code - The device code to look up
+ * @returns The device code row or undefined
+ */
+export async function findTestDeviceCode(code: string) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(deviceCodes)
+    .where(eq(deviceCodes.code, code))
+    .limit(1);
+  return row;
+}
+
+/**
+ * Find a CLI token by its token string.
+ *
+ * @param token - The token to look up
+ * @returns The CLI token row or undefined
+ */
+export async function findTestCliToken(token: string) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(cliTokens)
+    .where(eq(cliTokens.token, token))
+    .limit(1);
+  return row;
 }
 
 /**
@@ -1011,4 +1106,99 @@ export async function createTestPermission(
       `Failed to create permission: ${error.error?.message || response.status}`,
     );
   }
+}
+
+/**
+ * Create a test connector directly in the database.
+ * Used for setting up test data for connector API tests.
+ *
+ * @param scopeId - The scope ID to associate with the connector
+ * @param options - Optional overrides for connector properties
+ */
+export async function createTestConnector(
+  scopeId: string,
+  options?: {
+    type?: ConnectorType;
+    authMethod?: "oauth" | "pat";
+    externalId?: string;
+    externalUsername?: string;
+    externalEmail?: string;
+    oauthScopes?: string[];
+  },
+): Promise<typeof connectors.$inferSelect> {
+  const type = options?.type ?? "github";
+
+  const [connector] = await globalThis.services.db
+    .insert(connectors)
+    .values({
+      scopeId,
+      type,
+      authMethod: options?.authMethod ?? "oauth",
+      externalId: options?.externalId ?? "12345",
+      externalUsername: options?.externalUsername ?? "testuser",
+      externalEmail: options?.externalEmail ?? "test@example.com",
+      oauthScopes: JSON.stringify(options?.oauthScopes ?? ["repo"]),
+    })
+    .returning();
+
+  // Also create the associated secret
+  const secretName = `${type.toUpperCase()}_ACCESS_TOKEN`;
+  await globalThis.services.db.insert(secrets).values({
+    scopeId,
+    name: secretName,
+    type: "connector",
+    encryptedValue: "encrypted-test-token",
+    description: `OAuth token for ${type} connector`,
+  });
+
+  return connector!;
+}
+
+/**
+ * Generate a unique session code for testing (format: XXXX-XXXX, max 9 chars)
+ */
+function generateTestSessionCode(): string {
+  const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  let code = "";
+  for (let i = 0; i < 8; i++) {
+    if (i === 4) code += "-";
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return code;
+}
+
+/**
+ * Create a test connector session directly in the database.
+ * Used for setting up test data for session status tests.
+ *
+ * @param userId - The user ID to associate with the session
+ * @param type - The connector type
+ * @param options - Session configuration options
+ */
+export async function createTestConnectorSession(
+  userId: string,
+  type: ConnectorType,
+  options?: {
+    status?: "pending" | "complete" | "error";
+    errorMessage?: string;
+    expiresAt?: Date;
+    completedAt?: Date;
+  },
+): Promise<typeof connectorSessions.$inferSelect> {
+  const expiresAt = options?.expiresAt ?? new Date(Date.now() + 15 * 60 * 1000); // 15 minutes default
+
+  const [session] = await globalThis.services.db
+    .insert(connectorSessions)
+    .values({
+      code: generateTestSessionCode(),
+      type,
+      userId,
+      status: options?.status ?? "pending",
+      errorMessage: options?.errorMessage,
+      expiresAt,
+      completedAt: options?.completedAt,
+    })
+    .returning();
+
+  return session!;
 }

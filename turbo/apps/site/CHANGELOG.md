@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.2](https://github.com/vm0-ai/vm0/compare/site-v1.10.1...site-v1.10.2) (2026-02-07)
+
+
+### Bug Fixes
+
+* **site:** override canonical URL on blog pages to fix Safari sharing ([#2512](https://github.com/vm0-ai/vm0/issues/2512)) ([7dedcd0](https://github.com/vm0-ai/vm0/commit/7dedcd0981e49dd665ce94c1e542082733d7f7df))
+
 ## [1.10.1](https://github.com/vm0-ai/vm0/compare/site-v1.10.0...site-v1.10.1) (2026-02-04)
 
 

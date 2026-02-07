@@ -8,7 +8,7 @@
 
 import type { GuestClient } from "../firecracker/guest.js";
 import type { StorageManifest, ResumeSession } from "../api.js";
-import { VM_BINARY_PATHS } from "../scripts/index.js";
+import { GUEST_BINARY_PATHS } from "../scripts/index.js";
 import { createLogger } from "../logger.js";
 
 const logger = createLogger("VMSetup");
@@ -42,7 +42,7 @@ export async function downloadStorages(
 
   // Run download script (Rust binary for parallel downloads)
   const result = await guest.exec(
-    `${VM_BINARY_PATHS.vmDownload} /tmp/storage-manifest.json`,
+    `${GUEST_BINARY_PATHS.guestDownload} /tmp/storage-manifest.json`,
   );
 
   if (result.exitCode !== 0) {

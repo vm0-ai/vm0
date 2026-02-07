@@ -1,6 +1,6 @@
 {
   "name": "@vm0/core",
-  "version": "8.2.1",
+  "version": "8.4.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -30,6 +30,7 @@
   },
   "dependencies": {
     "@ts-rest/core": "3.53.0-rc.1",
+    "yaml": "^2.8.1",
     "zod": "^4.1.12"
   }
 }

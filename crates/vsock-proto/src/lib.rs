@@ -80,6 +80,29 @@ impl std::fmt::Display for ProtocolError {
 
 impl std::error::Error for ProtocolError {}
 
+/// Read a `u8` from `data` at `offset`. Returns `None` if out of bounds.
+fn read_u8_at(data: &[u8], offset: usize) -> Option<u8> {
+    data.get(offset).copied()
+}
+
+/// Read a `u16` from `data` at `offset`. Returns `None` if out of bounds.
+fn read_u16_at(data: &[u8], offset: usize) -> Option<u16> {
+    let bytes: [u8; 2] = data.get(offset..offset + 2)?.try_into().ok()?;
+    Some(u16::from_be_bytes(bytes))
+}
+
+/// Read a `u32` from `data` at `offset`. Returns `None` if out of bounds.
+fn read_u32_at(data: &[u8], offset: usize) -> Option<u32> {
+    let bytes: [u8; 4] = data.get(offset..offset + 4)?.try_into().ok()?;
+    Some(u32::from_be_bytes(bytes))
+}
+
+/// Read an `i32` from `data` at `offset`. Returns `None` if out of bounds.
+fn read_i32_at(data: &[u8], offset: usize) -> Option<i32> {
+    let bytes: [u8; 4] = data.get(offset..offset + 4)?.try_into().ok()?;
+    Some(i32::from_be_bytes(bytes))
+}
+
 /// A raw decoded message.
 #[derive(Debug, Clone)]
 pub struct RawMessage {
@@ -155,7 +178,8 @@ pub fn encode_write_file_result(success: bool, error: &str) -> Vec<u8> {
     let mut p = Vec::with_capacity(3 + err_len as usize);
     p.push(u8::from(success));
     p.extend_from_slice(&err_len.to_be_bytes());
-    p.extend_from_slice(&err[..err_len as usize]);
+    // err_len <= err.len() is guaranteed by .min() above
+    p.extend_from_slice(err.get(..err_len as usize).unwrap_or(err));
     p
 }
 
@@ -184,7 +208,8 @@ pub fn encode_error(message: &str) -> Vec<u8> {
     let msg_len = msg.len().min(u16::MAX as usize) as u16;
     let mut p = Vec::with_capacity(2 + msg_len as usize);
     p.extend_from_slice(&msg_len.to_be_bytes());
-    p.extend_from_slice(&msg[..msg_len as usize]);
+    // msg_len <= msg.len() is guaranteed by .min() above
+    p.extend_from_slice(msg.get(..msg_len as usize).unwrap_or(msg));
     p
 }
 
@@ -194,102 +219,86 @@ pub fn encode_error(message: &str) -> Vec<u8> {
 
 /// Decode exec payload.
 pub fn decode_exec(payload: &[u8]) -> Result<(u32, &str), ProtocolError> {
-    if payload.len() < 8 {
-        return Err(ProtocolError::InvalidPayload("exec payload too short"));
-    }
-    let timeout_ms = u32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]);
-    let cmd_len = u32::from_be_bytes([payload[4], payload[5], payload[6], payload[7]]) as usize;
-    if payload.len() < 8 + cmd_len {
-        return Err(ProtocolError::InvalidPayload("exec command truncated"));
-    }
-    let command = std::str::from_utf8(&payload[8..8 + cmd_len])
-        .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in command"))?;
+    let timeout_ms =
+        read_u32_at(payload, 0).ok_or(ProtocolError::InvalidPayload("exec payload too short"))?;
+    let cmd_len = read_u32_at(payload, 4)
+        .ok_or(ProtocolError::InvalidPayload("exec payload too short"))? as usize;
+    let command = std::str::from_utf8(
+        payload
+            .get(8..8 + cmd_len)
+            .ok_or(ProtocolError::InvalidPayload("exec command truncated"))?,
+    )
+    .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in command"))?;
     Ok((timeout_ms, command))
 }
 
 /// Decode exec_result payload. Returns `(exit_code, stdout, stderr)`.
 pub fn decode_exec_result(payload: &[u8]) -> Result<(i32, &[u8], &[u8]), ProtocolError> {
-    if payload.len() < 12 {
-        return Err(ProtocolError::InvalidPayload("exec_result too short"));
-    }
-    let exit_code = i32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]);
-    let stdout_len = u32::from_be_bytes([payload[4], payload[5], payload[6], payload[7]]) as usize;
+    let exit_code =
+        read_i32_at(payload, 0).ok_or(ProtocolError::InvalidPayload("exec_result too short"))?;
+    let stdout_len = read_u32_at(payload, 4)
+        .ok_or(ProtocolError::InvalidPayload("exec_result too short"))?
+        as usize;
     let stderr_off = 8 + stdout_len;
-    if payload.len() < stderr_off + 4 {
-        return Err(ProtocolError::InvalidPayload(
+    let stdout = payload
+        .get(8..stderr_off)
+        .ok_or(ProtocolError::InvalidPayload(
             "exec_result stdout truncated",
-        ));
-    }
-    let stdout = &payload[8..stderr_off];
-    let stderr_len = u32::from_be_bytes([
-        payload[stderr_off],
-        payload[stderr_off + 1],
-        payload[stderr_off + 2],
-        payload[stderr_off + 3],
-    ]) as usize;
-    if payload.len() < stderr_off + 4 + stderr_len {
-        return Err(ProtocolError::InvalidPayload(
+        ))?;
+    let stderr_len = read_u32_at(payload, stderr_off)
+        .ok_or(ProtocolError::InvalidPayload("exec_result too short"))?
+        as usize;
+    let stderr = payload
+        .get(stderr_off + 4..stderr_off + 4 + stderr_len)
+        .ok_or(ProtocolError::InvalidPayload(
             "exec_result stderr truncated",
-        ));
-    }
-    let stderr = &payload[stderr_off + 4..stderr_off + 4 + stderr_len];
+        ))?;
     Ok((exit_code, stdout, stderr))
 }
 
 /// Decode write_file payload. Returns `(path, content, sudo)`.
 pub fn decode_write_file(payload: &[u8]) -> Result<(&str, &[u8], bool), ProtocolError> {
-    if payload.len() < 7 {
-        return Err(ProtocolError::InvalidPayload("write_file too short"));
-    }
-    let path_len = u16::from_be_bytes([payload[0], payload[1]]) as usize;
-    if payload.len() < 2 + path_len + 1 + 4 {
-        return Err(ProtocolError::InvalidPayload("write_file path truncated"));
-    }
-    let path = std::str::from_utf8(&payload[2..2 + path_len])
-        .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in path"))?;
-    let flags = payload[2 + path_len];
-    let content_len = u32::from_be_bytes([
-        payload[3 + path_len],
-        payload[4 + path_len],
-        payload[5 + path_len],
-        payload[6 + path_len],
-    ]) as usize;
-    if payload.len() < 7 + path_len + content_len {
-        return Err(ProtocolError::InvalidPayload(
+    let path_len = read_u16_at(payload, 0)
+        .ok_or(ProtocolError::InvalidPayload("write_file too short"))? as usize;
+    let path = std::str::from_utf8(
+        payload
+            .get(2..2 + path_len)
+            .ok_or(ProtocolError::InvalidPayload("write_file path truncated"))?,
+    )
+    .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in path"))?;
+    let flags = read_u8_at(payload, 2 + path_len)
+        .ok_or(ProtocolError::InvalidPayload("write_file too short"))?;
+    let content_len = read_u32_at(payload, 3 + path_len)
+        .ok_or(ProtocolError::InvalidPayload("write_file too short"))?
+        as usize;
+    let content = payload
+        .get(7 + path_len..7 + path_len + content_len)
+        .ok_or(ProtocolError::InvalidPayload(
             "write_file content truncated",
-        ));
-    }
-    let content = &payload[7 + path_len..7 + path_len + content_len];
+        ))?;
     Ok((path, content, (flags & FLAG_SUDO) != 0))
 }
 
 /// Decode write_file_result payload. Returns `(success, error)`.
 pub fn decode_write_file_result(payload: &[u8]) -> Result<(bool, &str), ProtocolError> {
-    if payload.len() < 3 {
-        return Err(ProtocolError::InvalidPayload("write_file_result too short"));
-    }
-    let success = payload[0] == 1;
-    let err_len = u16::from_be_bytes([payload[1], payload[2]]) as usize;
-    if payload.len() < 3 + err_len {
-        return Err(ProtocolError::InvalidPayload(
-            "write_file_result error truncated",
-        ));
-    }
-    let error = std::str::from_utf8(&payload[3..3 + err_len])
-        .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in error"))?;
+    let success = read_u8_at(payload, 0)
+        .ok_or(ProtocolError::InvalidPayload("write_file_result too short"))?
+        == 1;
+    let err_len = read_u16_at(payload, 1)
+        .ok_or(ProtocolError::InvalidPayload("write_file_result too short"))?
+        as usize;
+    let error = std::str::from_utf8(payload.get(3..3 + err_len).ok_or(
+        ProtocolError::InvalidPayload("write_file_result error truncated"),
+    )?)
+    .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in error"))?;
     Ok((success, error))
 }
 
 /// Decode spawn_watch_result payload. Returns `pid`.
 pub fn decode_spawn_watch_result(payload: &[u8]) -> Result<u32, ProtocolError> {
-    if payload.len() < 4 {
-        return Err(ProtocolError::InvalidPayload(
-            "spawn_watch_result too short",
-        ));
-    }
-    Ok(u32::from_be_bytes([
-        payload[0], payload[1], payload[2], payload[3],
-    ]))
+    read_u32_at(payload, 0).ok_or(ProtocolError::InvalidPayload(
+        "spawn_watch_result too short",
+    ))
 }
 
 /// Decoded process_exit fields: `(pid, exit_code, stdout, stderr)`.
@@ -297,46 +306,41 @@ pub type ProcessExit<'a> = (u32, i32, &'a [u8], &'a [u8]);
 
 /// Decode process_exit payload. Returns `(pid, exit_code, stdout, stderr)`.
 pub fn decode_process_exit(payload: &[u8]) -> Result<ProcessExit<'_>, ProtocolError> {
-    if payload.len() < 16 {
-        return Err(ProtocolError::InvalidPayload("process_exit too short"));
-    }
-    let pid = u32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]);
-    let exit_code = i32::from_be_bytes([payload[4], payload[5], payload[6], payload[7]]);
-    let stdout_len =
-        u32::from_be_bytes([payload[8], payload[9], payload[10], payload[11]]) as usize;
+    let pid =
+        read_u32_at(payload, 0).ok_or(ProtocolError::InvalidPayload("process_exit too short"))?;
+    let exit_code =
+        read_i32_at(payload, 4).ok_or(ProtocolError::InvalidPayload("process_exit too short"))?;
+    let stdout_len = read_u32_at(payload, 8)
+        .ok_or(ProtocolError::InvalidPayload("process_exit too short"))?
+        as usize;
     let stderr_off = 12 + stdout_len;
-    if payload.len() < stderr_off + 4 {
-        return Err(ProtocolError::InvalidPayload(
+    let stdout = payload
+        .get(12..stderr_off)
+        .ok_or(ProtocolError::InvalidPayload(
             "process_exit stdout truncated",
-        ));
-    }
-    let stdout = &payload[12..stderr_off];
-    let stderr_len = u32::from_be_bytes([
-        payload[stderr_off],
-        payload[stderr_off + 1],
-        payload[stderr_off + 2],
-        payload[stderr_off + 3],
-    ]) as usize;
-    if payload.len() < stderr_off + 4 + stderr_len {
-        return Err(ProtocolError::InvalidPayload(
+        ))?;
+    let stderr_len = read_u32_at(payload, stderr_off)
+        .ok_or(ProtocolError::InvalidPayload("process_exit too short"))?
+        as usize;
+    let stderr = payload
+        .get(stderr_off + 4..stderr_off + 4 + stderr_len)
+        .ok_or(ProtocolError::InvalidPayload(
             "process_exit stderr truncated",
-        ));
-    }
-    let stderr = &payload[stderr_off + 4..stderr_off + 4 + stderr_len];
+        ))?;
     Ok((pid, exit_code, stdout, stderr))
 }
 
 /// Decode error payload. Returns the error message.
 pub fn decode_error(payload: &[u8]) -> Result<&str, ProtocolError> {
-    if payload.len() < 2 {
-        return Err(ProtocolError::InvalidPayload("error payload too short"));
-    }
-    let msg_len = u16::from_be_bytes([payload[0], payload[1]]) as usize;
-    if payload.len() < 2 + msg_len {
-        return Err(ProtocolError::InvalidPayload("error message truncated"));
-    }
-    std::str::from_utf8(&payload[2..2 + msg_len])
-        .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in error"))
+    let msg_len = read_u16_at(payload, 0)
+        .ok_or(ProtocolError::InvalidPayload("error payload too short"))?
+        as usize;
+    std::str::from_utf8(
+        payload
+            .get(2..2 + msg_len)
+            .ok_or(ProtocolError::InvalidPayload("error message truncated"))?,
+    )
+    .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in error"))
 }
 
 // ---------------------------------------------------------------------------
@@ -362,12 +366,10 @@ impl Decoder {
         let mut offset = 0;
 
         while offset + HEADER_SIZE <= self.buf.len() {
-            let length = u32::from_be_bytes([
-                self.buf[offset],
-                self.buf[offset + 1],
-                self.buf[offset + 2],
-                self.buf[offset + 3],
-            ]) as usize;
+            let length = match read_u32_at(&self.buf, offset) {
+                Some(v) => v as usize,
+                None => break,
+            };
 
             if length > MAX_MESSAGE_SIZE {
                 self.buf.clear();
@@ -383,14 +385,19 @@ impl Decoder {
                 break;
             }
 
-            let msg_type = self.buf[offset + HEADER_SIZE];
-            let seq = u32::from_be_bytes([
-                self.buf[offset + HEADER_SIZE + 1],
-                self.buf[offset + HEADER_SIZE + 2],
-                self.buf[offset + HEADER_SIZE + 3],
-                self.buf[offset + HEADER_SIZE + 4],
-            ]);
-            let payload = self.buf[offset + HEADER_SIZE + MIN_BODY_SIZE..offset + total].to_vec();
+            let msg_type = match read_u8_at(&self.buf, offset + HEADER_SIZE) {
+                Some(v) => v,
+                None => break,
+            };
+            let seq = match read_u32_at(&self.buf, offset + HEADER_SIZE + 1) {
+                Some(v) => v,
+                None => break,
+            };
+            let payload = self
+                .buf
+                .get(offset + HEADER_SIZE + MIN_BODY_SIZE..offset + total)
+                .unwrap_or_default()
+                .to_vec();
 
             messages.push(RawMessage {
                 msg_type,

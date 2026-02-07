@@ -39,6 +39,14 @@ export const hasAnyModelProvider$ = computed(async (get) => {
 });
 
 /**
+ * Get the default model provider.
+ */
+export const defaultModelProvider$ = computed(async (get) => {
+  const { modelProviders } = await get(modelProviders$);
+  return modelProviders.find((p) => p.isDefault);
+});
+
+/**
  * Trigger a reload of model providers data.
  */
 export const reloadModelProviders$ = command(({ set }) => {

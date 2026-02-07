@@ -1,3 +1,11 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::unreachable
+)]
+
 use std::io;
 use std::ops::{Deref, DerefMut};
 use std::thread::{self, JoinHandle};

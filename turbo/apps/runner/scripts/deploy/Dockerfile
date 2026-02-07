@@ -1,5 +1,5 @@
 # Firecracker VM rootfs image (Universal)
-# Based on Node.js 24 with Python 3.11+, vm-init, and agent CLIs
+# Based on Node.js 24 with Python 3.11+, guest-init, and agent CLIs
 #
 # This is a universal image that supports all frameworks and apps:
 # - Claude Code CLI (@anthropic-ai/claude-code) for framework: claude-code
@@ -78,8 +78,8 @@ RUN userdel -r node 2>/dev/null || true \
 # NOTE: DNS configuration is handled in build-rootfs.sh after export
 # /etc/resolv.conf is read-only during Docker build
 
-# Create directories for vm-init (squashfs is read-only at boot)
-# These are needed by /sbin/vm-init to set up overlayfs
+# Create directories for guest-init (squashfs is read-only at boot)
+# These are needed by /sbin/guest-init to set up overlayfs
 RUN mkdir -p /rom /rw /mnt/root
 
 # Create vm0-agent directory for scripts installed by build-rootfs.sh

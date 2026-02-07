@@ -21,6 +21,8 @@ import * as slackUserLinkSchema from "./schema/slack-user-link";
 import * as slackBindingSchema from "./schema/slack-binding";
 import * as slackThreadSessionSchema from "./schema/slack-thread-session";
 import * as variableSchema from "./schema/variable";
+import * as composeJobSchema from "./schema/compose-job";
+import * as connectorSchema from "./schema/connector";
 
 export const schema = {
   ...userSchema,
@@ -46,4 +48,6 @@ export const schema = {
   ...slackBindingSchema,
   ...slackThreadSessionSchema,
   ...variableSchema,
+  ...composeJobSchema,
+  ...connectorSchema,
 };

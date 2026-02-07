@@ -85,7 +85,8 @@
         "src/**/*.{test,spec}.ts"
       ],
       "project": ["src/**/*.ts", "scripts/**/*.ts"],
-      "ignore": ["src/sandbox/scripts/src/**"]
+      "ignore": ["src/sandbox/scripts/src/**"],
+      "ignoreDependencies": ["yaml"]
     },
     "packages/ui": {
       "entry": [
@@ -140,7 +141,8 @@
     "apps/cli/src/lib/api/api-client.ts",
     "apps/cli/src/commands/cook/cook.ts",
     "packages/core/src/contracts/public/agents.ts",
-    "apps/web/src/lib/slack/**"
+    "apps/web/src/lib/slack/**",
+    "apps/web/src/lib/auth/sandbox-token.ts"
   ],
   "ignoreDependencies": ["@commitlint/cli"],
   "ignoreWorkspaces": [],

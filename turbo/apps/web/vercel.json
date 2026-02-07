@@ -10,6 +10,10 @@
     {
       "path": "/api/cron/execute-schedules",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/cleanup-compose-jobs",
+      "schedule": "0 0 * * *"
     }
   ]
 }

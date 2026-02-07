@@ -40,6 +40,8 @@ vi.hoisted(() => {
   // OpenRouter API key for LLM chat
   vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-api-key");
   vi.stubEnv("SLACK_REDIRECT_BASE_URL", "https://test.example.com");
+  // API URL for compose job webhooks
+  vi.stubEnv("VM0_API_URL", "http://localhost:3000");
 });
 
 // Mock server-only package (no-op in tests)
@@ -52,6 +54,23 @@ vi.mock("@clerk/nextjs/server", () => ({
   clerkClient: vi.fn(),
   clerkMiddleware: vi.fn(),
   createRouteMatcher: vi.fn(),
+}));
+
+// Mock Axiom packages
+// The @axiomhq/logging Logger class needs proper method implementations
+vi.mock("@axiomhq/js", () => ({
+  Axiom: vi.fn(),
+}));
+
+vi.mock("@axiomhq/logging", () => ({
+  Logger: vi.fn().mockImplementation(() => ({
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    flush: vi.fn().mockResolvedValue(undefined),
+  })),
+  AxiomJSTransport: vi.fn(),
 }));
 
 // MSW server lifecycle

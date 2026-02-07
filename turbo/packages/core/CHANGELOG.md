@@ -1,5 +1,26 @@
 # Changelog
 
+## [8.4.0](https://github.com/vm0-ai/vm0/compare/core-v8.3.0...core-v8.4.0) (2026-02-07)
+
+
+### Features
+
+* **connector:** implement github oauth connector with cli support ([#2446](https://github.com/vm0-ai/vm0/issues/2446)) ([c12c97a](https://github.com/vm0-ai/vm0/commit/c12c97a2af0b74d8bdfd452e2cbe7000f9e24f34))
+
+## [8.3.0](https://github.com/vm0-ai/vm0/compare/core-v8.2.2...core-v8.3.0) (2026-02-07)
+
+
+### Features
+
+* **web:** add server-side github compose api ([#2473](https://github.com/vm0-ai/vm0/issues/2473)) ([9ab1f23](https://github.com/vm0-ai/vm0/commit/9ab1f2344f11086fd0f4c30036d04c72fab61b68))
+
+## [8.2.2](https://github.com/vm0-ai/vm0/compare/core-v8.2.1...core-v8.2.2) (2026-02-06)
+
+
+### Bug Fixes
+
+* **docs:** update aws bedrock setup guide url ([#2495](https://github.com/vm0-ai/vm0/issues/2495)) ([8026a4a](https://github.com/vm0-ai/vm0/commit/8026a4a185ebea25738d580ebe8cda5ea067d59e))
+
 ## [8.2.1](https://github.com/vm0-ai/vm0/compare/core-v8.2.0...core-v8.2.1) (2026-02-06)
 
 

@@ -56,6 +56,11 @@ interface AgentDefinition {
   working_dir?: string; // Optional when framework supports auto-config
   environment?: Record<string, string>; // Environment variables using ${{ vars.X }}, ${{ secrets.X }} syntax
   /**
+   * Apps configuration for determining image variant.
+   * Format: "app" or "app:tag" (tag is ignored, always uses :latest)
+   */
+  apps?: string[];
+  /**
    * Path to instructions file (e.g., AGENTS.md).
    * Auto-uploaded as volume and mounted at /home/user/.claude/CLAUDE.md
    */

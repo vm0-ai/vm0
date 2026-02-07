@@ -381,5 +381,55 @@ export {
   type TokenUsage,
 } from "./llm";
 
+export {
+  composeJobsMainContract,
+  composeJobsByIdContract,
+  webhookComposeCompleteContract,
+  composeJobStatusSchema,
+  composeJobResultSchema,
+  createComposeJobRequestSchema,
+  composeJobResponseSchema,
+  type ComposeJobsMainContract,
+  type ComposeJobsByIdContract,
+  type WebhookComposeCompleteContract,
+  type ComposeJobStatus,
+  type ComposeJobResult,
+  type CreateComposeJobRequest,
+  type ComposeJobResponse,
+} from "./compose-jobs";
+
+export {
+  connectorsMainContract,
+  connectorsByTypeContract,
+  connectorSessionsContract,
+  connectorSessionByIdContract,
+  connectorTypeSchema,
+  connectorSessionStatusSchema,
+  connectorResponseSchema,
+  connectorListResponseSchema,
+  connectorSessionResponseSchema,
+  connectorSessionStatusResponseSchema,
+  CONNECTOR_TYPES,
+  getConnectorAuthMethods,
+  getConnectorDefaultAuthMethod,
+  getConnectorSecretsForAuthMethod,
+  getConnectorSecretNames,
+  getConnectorEnvironmentMapping,
+  getConnectorOAuthConfig,
+  type ConnectorsMainContract,
+  type ConnectorsByTypeContract,
+  type ConnectorSessionsContract,
+  type ConnectorSessionByIdContract,
+  type ConnectorType,
+  type ConnectorSessionStatus,
+  type ConnectorResponse,
+  type ConnectorListResponse,
+  type ConnectorSessionResponse,
+  type ConnectorSessionStatusResponse,
+  type ConnectorSecretConfig,
+  type ConnectorAuthMethodConfig,
+  type ConnectorOAuthConfig,
+} from "./connectors";
+
 // Public API v1 contracts (developer-friendly external API)
 export * from "./public";

@@ -25,7 +25,7 @@ import {
 } from "@vm0/ui/components/ui/table";
 import { AppShell } from "../layout/app-shell.tsx";
 import { AgentsListSkeleton } from "./agents-list-skeleton.tsx";
-import { useGet } from "ccstate-react";
+import { useGet, useResolved } from "ccstate-react";
 import {
   agentsList$,
   agentsLoading$,
@@ -33,6 +33,8 @@ import {
   schedules$,
   getAgentScheduleStatus,
 } from "../../signals/agents-page/agents-list.ts";
+import { defaultModelProvider$ } from "../../signals/external/model-providers.ts";
+import { getUILabel } from "../settings-page/provider-ui-config.ts";
 import { Bed, Settings, Clock } from "lucide-react";
 import type { ComposeListItem } from "@vm0/core";
 
@@ -43,7 +45,7 @@ export function AgentsPage() {
       title="Agents"
       subtitle="Your agents, their schedules, and when they were last updated"
     >
-      <div className="flex flex-col gap-5 px-6 pb-8">
+      <div className="flex flex-col gap-5 px-4 sm:px-6 pb-8">
         <AgentsListSection />
       </div>
     </AppShell>
@@ -55,6 +57,7 @@ function AgentsListSection() {
   const schedules = useGet(schedules$);
   const loading = useGet(agentsLoading$);
   const error = useGet(agentsError$);
+  const defaultProvider = useResolved(defaultModelProvider$);
 
   if (loading) {
     return <AgentsListSkeleton />;
@@ -92,10 +95,24 @@ function AgentsListSection() {
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead className="h-10">Your agents</TableHead>
-          <TableHead className="h-10">Provider</TableHead>
-          <TableHead className="h-10">Schedule status</TableHead>
-          <TableHead className="h-10">Last edit</TableHead>
+          <TableHead className="h-10 px-3 w-[25%] min-w-[120px]">
+            <span className="block truncate whitespace-nowrap">
+              Your agents
+            </span>
+          </TableHead>
+          <TableHead className="h-10 px-3 w-[25%] min-w-[120px]">
+            <span className="block truncate whitespace-nowrap">
+              Model provider
+            </span>
+          </TableHead>
+          <TableHead className="h-10 px-3 w-[20%] min-w-[120px]">
+            <span className="block truncate whitespace-nowrap">
+              Schedule status
+            </span>
+          </TableHead>
+          <TableHead className="h-10 pl-3 pr-6 w-[20%] min-w-[100px]">
+            <span className="block truncate whitespace-nowrap">Last edit</span>
+          </TableHead>
           <TableHead className="h-10 w-12" />
         </TableRow>
       </TableHeader>
@@ -107,6 +124,9 @@ function AgentsListSection() {
               key={agent.name}
               agent={agent}
               hasSchedule={hasSchedule}
+              modelProviderLabel={
+                defaultProvider ? getUILabel(defaultProvider.type) : "N/A"
+              }
             />
           );
         })}
@@ -118,41 +138,49 @@ function AgentsListSection() {
 function AgentRow({
   agent,
   hasSchedule,
+  modelProviderLabel,
 }: {
   agent: ComposeListItem;
   hasSchedule: boolean;
+  modelProviderLabel: string;
 }) {
   return (
     <Dialog>
       <TableRow className="h-[53px]">
         <DialogTrigger asChild>
-          <TableCell className="px-3 py-2 cursor-pointer">
-            <span className="font-medium">{agent.name}</span>
+          <TableCell className="px-3 py-2 cursor-pointer w-[25%] min-w-[120px]">
+            <span className="block truncate whitespace-nowrap font-medium">
+              {agent.name}
+            </span>
           </TableCell>
         </DialogTrigger>
         <DialogTrigger asChild>
-          <TableCell className="px-3 py-2 cursor-pointer">
-            <span className="text-sm">Claude code</span>
+          <TableCell className="px-3 py-2 cursor-pointer w-[25%] min-w-[120px]">
+            <span className="block truncate whitespace-nowrap text-sm">
+              {modelProviderLabel}
+            </span>
           </TableCell>
         </DialogTrigger>
         <DialogTrigger asChild>
-          <TableCell className="px-3 py-2 cursor-pointer">
-            {hasSchedule ? (
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
-                <Clock className="h-3 w-3 text-sky-600" />
-                Scheduled
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
-                <Bed className="h-3 w-3 text-sky-600" />
-                No schedule
-              </span>
-            )}
+          <TableCell className="px-3 py-2 cursor-pointer w-[20%] min-w-[120px]">
+            <div className="truncate whitespace-nowrap">
+              {hasSchedule ? (
+                <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
+                  <Clock className="h-3 w-3 text-sky-600" />
+                  Scheduled
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
+                  <Bed className="h-3 w-3 text-sky-600" />
+                  No schedule
+                </span>
+              )}
+            </div>
           </TableCell>
         </DialogTrigger>
         <DialogTrigger asChild>
-          <TableCell className="pl-3 pr-6 py-2 cursor-pointer">
-            <span className="text-sm">
+          <TableCell className="pl-3 pr-6 py-2 cursor-pointer w-[20%] min-w-[100px]">
+            <span className="block truncate whitespace-nowrap text-sm">
               {new Date(agent.updatedAt).toLocaleDateString("en-US", {
                 month: "short",
                 day: "numeric",
@@ -161,7 +189,7 @@ function AgentRow({
             </span>
           </TableCell>
         </DialogTrigger>
-        <TableCell className="pl-0 pr-4 py-2">
+        <TableCell className="pl-0 pr-4 py-2 w-12">
           <TooltipProvider>
             <Tooltip>
               <DialogTrigger asChild>

@@ -12,4 +12,6 @@ export const e2bConfig = {
   defaultTimeout: 0,
   /** Default E2B template for Claude Code CLI sandbox */
   defaultTemplate: "vm0-claude-code",
+  /** E2B template with vm0 CLI pre-installed for compose jobs */
+  cliTemplate: "vm0-cli",
 } as const;

@@ -1,0 +1,13 @@
+[package]
+name = "guest-init"
+version = "0.1.0"
+edition = "2024"
+description = "Guest init process for Firecracker - filesystem setup, PID 1, and vsock-guest"
+
+[dependencies]
+libc.workspace = true
+nix.workspace = true
+vsock-guest.workspace = true
+
+[lints]
+workspace = true

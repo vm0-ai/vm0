@@ -73,7 +73,7 @@ Configure these in your GitHub repository settings (Settings → Secrets and var
   - Find in Vercel project settings → General → Project ID
 - `NEON_PROJECT_ID`: Your Neon project ID (Optional but Recommended)
   - Find in Neon console → Project Settings → General
-- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`: Your Clerk publishable key (Required)
+- `CLERK_PUBLISHABLE_KEY`: Your Clerk publishable key (Required)
   - Get from: https://dashboard.clerk.com
 - `PREVIEW_DOMAIN`: Domain for stable preview URLs (Optional)
   - Example: `vm6.ai`
@@ -113,7 +113,7 @@ This uses Drizzle Kit to push your schema defined in `turbo/apps/web/src/db/sche
 These must be configured for the application to work:
 
 - **CLERK_SECRET_KEY**: Required for user authentication
-- **NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY**: Required for Clerk client-side SDK
+- **CLERK_PUBLISHABLE_KEY**: Clerk publishable key (injected as NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY for web/site, VITE_CLERK_PUBLISHABLE_KEY for platform)
 - **DATABASE_URL**: Automatically injected by the workflow from Neon
 
 ### Optional E2B Configuration

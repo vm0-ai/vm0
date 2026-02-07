@@ -19,7 +19,8 @@
     "check-certs": "node packages/proxy/scripts/check-certs.js",
     "e2b:build": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-claude-code/build.ts",
     "e2b:codex:build": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-codex/build.ts",
-    "e2b:claude-code-github:build": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-claude-code-github/build.ts"
+    "e2b:claude-code-github:build": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-claude-code-github/build.ts",
+    "e2b:cli:build": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-cli/build.ts"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.8.1",

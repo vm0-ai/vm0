@@ -119,15 +119,15 @@ create_squashfs_image() {
     echo "nameserver 8.8.4.4" | sudo tee -a "$EXTRACT_DIR/etc/resolv.conf" > /dev/null
     echo "nameserver 1.1.1.1" | sudo tee -a "$EXTRACT_DIR/etc/resolv.conf" > /dev/null
 
-    # Install vm-init binary (PID 1) - directly as /sbin/vm-init
-    echo "[INSTALL] Installing vm-init..."
-    sudo cp "$SCRIPT_DIR/vm-init" "$EXTRACT_DIR/sbin/vm-init"
-    sudo chmod 755 "$EXTRACT_DIR/sbin/vm-init"
+    # Install guest-init binary (PID 1) - directly as /sbin/guest-init
+    echo "[INSTALL] Installing guest-init..."
+    sudo cp "$SCRIPT_DIR/guest-init" "$EXTRACT_DIR/sbin/guest-init"
+    sudo chmod 755 "$EXTRACT_DIR/sbin/guest-init"
 
-    # Install vm-download binary (storage downloader) - to /usr/local/bin
-    echo "[INSTALL] Installing vm-download..."
-    sudo cp "$SCRIPT_DIR/vm-download" "$EXTRACT_DIR/usr/local/bin/vm-download"
-    sudo chmod 755 "$EXTRACT_DIR/usr/local/bin/vm-download"
+    # Install guest-download binary (storage downloader) - to /usr/local/bin
+    echo "[INSTALL] Installing guest-download..."
+    sudo cp "$SCRIPT_DIR/guest-download" "$EXTRACT_DIR/usr/local/bin/guest-download"
+    sudo chmod 755 "$EXTRACT_DIR/usr/local/bin/guest-download"
 
     # Install agent files (ESM scripts)
     echo "[INSTALL] Installing agent files..."
@@ -192,18 +192,18 @@ verify_rootfs() {
         echo "  Python: ${PYTHON_VERSION}"
     fi
 
-    if [ ! -f "$MOUNT_POINT/sbin/vm-init" ]; then
-        echo "ERROR: vm-init binary not found in rootfs"
+    if [ ! -f "$MOUNT_POINT/sbin/guest-init" ]; then
+        echo "ERROR: guest-init binary not found in rootfs"
         ERRORS=$((ERRORS + 1))
     else
-        echo "  vm-init: installed (Rust binary at /sbin/vm-init)"
+        echo "  guest-init: installed (Rust binary at /sbin/guest-init)"
     fi
 
-    if [ ! -f "$MOUNT_POINT/usr/local/bin/vm-download" ]; then
-        echo "ERROR: vm-download binary not found in rootfs"
+    if [ ! -f "$MOUNT_POINT/usr/local/bin/guest-download" ]; then
+        echo "ERROR: guest-download binary not found in rootfs"
         ERRORS=$((ERRORS + 1))
     else
-        echo "  vm-download: installed (Rust binary at /usr/local/bin/vm-download)"
+        echo "  guest-download: installed (Rust binary at /usr/local/bin/guest-download)"
     fi
 
     # Check for agent scripts

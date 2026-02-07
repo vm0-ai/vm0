@@ -118,7 +118,8 @@ impl VsockHost {
 
         let messages = self
             .decoder
-            .decode(&self.read_buf[..n])
+            // n <= read_buf.len() is guaranteed by read()
+            .decode(self.read_buf.get(..n).unwrap_or_default())
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
 
         // Cache all unsolicited process_exit events, return remaining messages.

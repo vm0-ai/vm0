@@ -21,6 +21,9 @@ export async function generateMetadata({
   return {
     title: t("title"),
     description: t("description"),
+    alternates: {
+      canonical: `https://vm0.ai/${locale}/blog`,
+    },
     openGraph: {
       title: `VM0 ${t("title")}`,
       description: t("description"),

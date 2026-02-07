@@ -434,7 +434,7 @@ jobs:
           environment-variables: |
             DATABASE_URL=${{ steps.branch.outputs.database-url }}
             NEXT_PUBLIC_BASE_URL=https://www.vm0.ai
-            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
             E2B_API_KEY=${{ secrets.E2B_API_KEY }}
             R2_ACCOUNT_ID=${{ vars.R2_ACCOUNT_ID }}
@@ -562,7 +562,7 @@ jobs:
           deployment-env: site
           environment-variables: |
             WEB_APP_URL=${{ needs.prepare.outputs.web-preview-url }}
-            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
           meta-branch: ${{ github.head_ref || github.ref_name }}
           meta-pr: ${{ needs.prepare.outputs.job-ref }}
@@ -607,7 +607,7 @@ jobs:
           environment: preview
           deployment-env: platform
           environment-variables: |
-            VITE_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+            VITE_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             VITE_API_URL=${{ needs.prepare.outputs.web-preview-url }}
             VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN_PLATFORM }}
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -681,7 +681,7 @@ jobs:
           cd e2e && npm run auth
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
@@ -1128,13 +1128,13 @@ jobs:
         run: cd turbo && pnpm turbo run build --filter=@vm0/core
 
       # Cross-compile Rust binaries for ARM64 (metal runners are ARM64)
-      - name: Build vm-init and vm-download for ARM64
+      - name: Build guest-init and guest-download for ARM64
         run: |
           cd crates
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc \
-            cargo build --release --target aarch64-unknown-linux-musl -p vm-init -p vm-download
-          ls -la target/aarch64-unknown-linux-musl/release/vm-init
-          ls -la target/aarch64-unknown-linux-musl/release/vm-download
+            cargo build --release --target aarch64-unknown-linux-musl -p guest-init -p guest-download
+          ls -la target/aarch64-unknown-linux-musl/release/guest-init
+          ls -la target/aarch64-unknown-linux-musl/release/guest-download
 
       - name: Build runner bundle
         run: |
@@ -1401,6 +1401,7 @@ jobs:
           pnpm e2b:build
           pnpm e2b:codex:build
           pnpm e2b:claude-code-github:build
+          pnpm e2b:cli:build
 
       - name: Build summary
         run: echo "✅ E2B templates built successfully (development account)"

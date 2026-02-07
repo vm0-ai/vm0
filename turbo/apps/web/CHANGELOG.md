@@ -1,5 +1,62 @@
 # Changelog
 
+## [12.13.0](https://github.com/vm0-ai/vm0/compare/web-v12.12.0...web-v12.13.0) (2026-02-07)
+
+
+### Features
+
+* **connector:** implement github oauth connector with cli support ([#2446](https://github.com/vm0-ai/vm0/issues/2446)) ([c12c97a](https://github.com/vm0-ai/vm0/commit/c12c97a2af0b74d8bdfd452e2cbe7000f9e24f34))
+
+
+### Performance Improvements
+
+* **web:** add vm0-cli e2b template for faster compose jobs ([#2519](https://github.com/vm0-ai/vm0/issues/2519)) ([d560bde](https://github.com/vm0-ai/vm0/commit/d560bde2f2fb3fc3b71b7f2c125709ab6c66008a)), closes [#2516](https://github.com/vm0-ai/vm0/issues/2516)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.4.0
+
+## [12.12.0](https://github.com/vm0-ai/vm0/compare/web-v12.11.0...web-v12.12.0) (2026-02-07)
+
+
+### Features
+
+* **web:** add server-side github compose api ([#2473](https://github.com/vm0-ai/vm0/issues/2473)) ([9ab1f23](https://github.com/vm0-ai/vm0/commit/9ab1f2344f11086fd0f4c30036d04c72fab61b68))
+
+
+### Performance Improvements
+
+* **web:** replace N+1 queries with JOIN in runs list endpoint ([#2501](https://github.com/vm0-ai/vm0/issues/2501)) ([e426b59](https://github.com/vm0-ai/vm0/commit/e426b595771fc6348a45d5fe843e68c2134af358))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.3.0
+
+## [12.11.0](https://github.com/vm0-ai/vm0/compare/web-v12.10.0...web-v12.11.0) (2026-02-06)
+
+
+### Features
+
+* **cli:** add --porcelain option to compose command ([#2494](https://github.com/vm0-ai/vm0/issues/2494)) ([f5f5a3f](https://github.com/vm0-ai/vm0/commit/f5f5a3fad10cff2a2cc7e962d40062f9c004fd88))
+
+
+### Bug Fixes
+
+* **web:** exclude stale pending runs from concurrency check ([#2445](https://github.com/vm0-ai/vm0/issues/2445)) ([0dc7427](https://github.com/vm0-ai/vm0/commit/0dc7427a10d4faa382d771664a09b1b0739231c6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.2.2
+
 ## [12.10.0](https://github.com/vm0-ai/vm0/compare/web-v12.9.0...web-v12.10.0) (2026-02-06)
 
 
