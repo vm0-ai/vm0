@@ -726,6 +726,7 @@ describe("POST /api/slack/events", () => {
         agentName: "my-helper",
         description: "A helpful assistant",
       });
+      vi.mocked(slackHandlers.mocked.viewsPublish).mockClear();
 
       // When I open the bot's Home tab
       const request = createSlackAppHomeOpenedRequest({
@@ -747,7 +748,7 @@ describe("POST /api/slack/events", () => {
         blocks: Array<{
           type: string;
           text?: { text: string };
-          accessory?: { action_id?: string };
+          elements?: Array<{ action_id?: string }>;
         }>;
       };
       expect(view.type).toBe("home");
@@ -757,12 +758,14 @@ describe("POST /api/slack/events", () => {
             b.type === "section" && !!b.text,
         )
         .map((b) => b.text.text);
-      expect(texts.some((t) => t.includes("Account connected"))).toBe(true);
+      expect(texts.some((t) => t.includes("Connected to VM0"))).toBe(true);
       expect(texts.some((t) => t.includes("my-helper"))).toBe(true);
 
       // Disconnect button should be present
       const disconnectBlock = view.blocks.find(
-        (b) => b.accessory?.action_id === "home_disconnect",
+        (b) =>
+          b.type === "section" &&
+          b.text?.text.includes("Disconnect VM0 Account"),
       );
       expect(disconnectBlock).toBeDefined();
     });
@@ -800,8 +803,8 @@ describe("POST /api/slack/events", () => {
             b.type === "section" && !!b.text,
         )
         .map((b) => b.text.text);
-      expect(texts.some((t) => t.includes("Account connected"))).toBe(true);
-      expect(texts.some((t) => t.includes("No agents linked yet"))).toBe(true);
+      expect(texts.some((t) => t.includes("Connected to VM0"))).toBe(true);
+      expect(texts.some((t) => t.includes("No agent linked yet"))).toBe(true);
     });
   });
 });

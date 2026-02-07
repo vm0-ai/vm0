@@ -475,28 +475,197 @@ async function handleBlockActions(
 ): Promise<Response> {
   const action = payload.actions?.[0];
 
-  // Handle agent selection in add modal
-  if (action?.action_id === "agent_select_action" && payload.view) {
-    const selectedAgentId = action.selected_option?.value;
-    if (selectedAgentId) {
-      await handleAgentAddSelection(payload, selectedAgentId);
-    }
-  }
-
-  // Handle agent selection in update modal
-  if (action?.action_id === "agent_update_select_action" && payload.view) {
-    const selectedAgentId = action.selected_option?.value;
-    if (selectedAgentId) {
-      await handleAgentUpdateSelection(payload, selectedAgentId);
-    }
-  }
-
-  // Handle disconnect button on App Home
-  if (action?.action_id === "home_disconnect") {
-    await handleHomeDisconnect(payload);
+  if (action) {
+    await dispatchBlockAction(payload, action);
   }
 
   return new Response("", { status: 200 });
+}
+
+/**
+ * Dispatch a single block action to the appropriate handler
+ */
+async function dispatchBlockAction(
+  payload: SlackInteractivePayload,
+  action: NonNullable<SlackInteractivePayload["actions"]>[0],
+): Promise<void> {
+  switch (action.action_id) {
+    case "agent_select_action":
+      if (payload.view && action.selected_option?.value) {
+        await handleAgentAddSelection(payload, action.selected_option.value);
+      }
+      break;
+    case "agent_update_select_action":
+      if (payload.view && action.selected_option?.value) {
+        await handleAgentUpdateSelection(payload, action.selected_option.value);
+      }
+      break;
+    case "home_agent_update":
+      if (action.value && payload.trigger_id) {
+        await handleHomeAgentConfigure(payload, action.value);
+      }
+      break;
+    case "home_agent_unlink":
+      if (action.value) {
+        await handleHomeAgentUnlink(payload, action.value);
+      }
+      break;
+    case "home_agent_link":
+      if (payload.trigger_id) {
+        await handleHomeAgentLink(payload);
+      }
+      break;
+    case "home_disconnect":
+      await handleHomeDisconnect(payload);
+      break;
+  }
+}
+
+/**
+ * Refresh App Home for a user given workspace and encryption key
+ */
+async function refreshAppHomeForUser(
+  workspaceId: string,
+  slackUserId: string,
+  encryptionKey: string,
+): Promise<void> {
+  const [installation] = await globalThis.services.db
+    .select()
+    .from(slackInstallations)
+    .where(eq(slackInstallations.slackWorkspaceId, workspaceId))
+    .limit(1);
+
+  if (!installation) return;
+
+  const botToken = decryptCredentialValue(
+    installation.encryptedBotToken,
+    encryptionKey,
+  );
+  const client = createSlackClient(botToken);
+  await refreshAppHome(client, workspaceId, slackUserId);
+}
+
+/**
+ * Handle agent configure select from App Home
+ *
+ * Opens the agent update modal pre-selected with the chosen agent.
+ */
+async function handleHomeAgentConfigure(
+  payload: SlackInteractivePayload,
+  bindingId: string,
+): Promise<void> {
+  const { SECRETS_ENCRYPTION_KEY } = env();
+
+  const [installation] = await globalThis.services.db
+    .select()
+    .from(slackInstallations)
+    .where(eq(slackInstallations.slackWorkspaceId, payload.team.id))
+    .limit(1);
+
+  if (!installation) return;
+
+  const [userLink] = await globalThis.services.db
+    .select()
+    .from(slackUserLinks)
+    .where(
+      and(
+        eq(slackUserLinks.slackUserId, payload.user.id),
+        eq(slackUserLinks.slackWorkspaceId, payload.team.id),
+      ),
+    )
+    .limit(1);
+
+  if (!userLink) return;
+
+  const botToken = decryptCredentialValue(
+    installation.encryptedBotToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+  const client = createSlackClient(botToken);
+  const agents = await fetchBoundAgents(userLink.vm0UserId, userLink.id);
+  const modal = buildAgentUpdateModal(agents, bindingId);
+
+  await client.views.open({
+    trigger_id: payload.trigger_id!,
+    view: modal,
+  });
+}
+
+/**
+ * Handle agent unlink button from App Home
+ *
+ * Deletes the binding and refreshes the Home tab.
+ */
+async function handleHomeAgentUnlink(
+  payload: SlackInteractivePayload,
+  bindingId: string,
+): Promise<void> {
+  const { SECRETS_ENCRYPTION_KEY } = env();
+
+  await globalThis.services.db
+    .delete(slackBindings)
+    .where(eq(slackBindings.id, bindingId));
+
+  // Refresh App Home
+  const [installation] = await globalThis.services.db
+    .select()
+    .from(slackInstallations)
+    .where(eq(slackInstallations.slackWorkspaceId, payload.team.id))
+    .limit(1);
+
+  if (!installation) return;
+
+  const botToken = decryptCredentialValue(
+    installation.encryptedBotToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+  const client = createSlackClient(botToken);
+  await refreshAppHome(client, payload.team.id, payload.user.id);
+}
+
+/**
+ * Handle agent link button from App Home
+ *
+ * Opens the agent add modal.
+ */
+async function handleHomeAgentLink(
+  payload: SlackInteractivePayload,
+): Promise<void> {
+  const { SECRETS_ENCRYPTION_KEY } = env();
+
+  const [installation] = await globalThis.services.db
+    .select()
+    .from(slackInstallations)
+    .where(eq(slackInstallations.slackWorkspaceId, payload.team.id))
+    .limit(1);
+
+  if (!installation) return;
+
+  const [userLink] = await globalThis.services.db
+    .select()
+    .from(slackUserLinks)
+    .where(
+      and(
+        eq(slackUserLinks.slackUserId, payload.user.id),
+        eq(slackUserLinks.slackWorkspaceId, payload.team.id),
+      ),
+    )
+    .limit(1);
+
+  if (!userLink) return;
+
+  const botToken = decryptCredentialValue(
+    installation.encryptedBotToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+  const client = createSlackClient(botToken);
+  const agents = await fetchAvailableAgents(userLink.vm0UserId, userLink.id);
+  const modal = buildAgentAddModal(agents);
+
+  await client.views.open({
+    trigger_id: payload.trigger_id!,
+    view: modal,
+  });
 }
 
 /**
@@ -865,6 +1034,9 @@ async function handleAgentAddSubmission(
     });
   }
 
+  // Refresh App Home to show newly linked agent
+  await refreshAppHomeForUser(payload.team.id, payload.user.id, encryptionKey);
+
   // Close modal
   return new Response("", { status: 200 });
 }
@@ -930,6 +1102,9 @@ async function handleAgentRemoveSubmission(
       });
     });
   }
+
+  // Refresh App Home to reflect removed agents
+  await refreshAppHomeForUser(payload.team.id, payload.user.id, encryptionKey);
 
   // Close modal
   return new Response("", { status: 200 });
@@ -1135,6 +1310,9 @@ async function handleAgentUpdateSubmission(
       });
     });
   }
+
+  // Refresh App Home to reflect updated agent
+  await refreshAppHomeForUser(payload.team.id, payload.user.id, encryptionKey);
 
   return new Response("", { status: 200 });
 }

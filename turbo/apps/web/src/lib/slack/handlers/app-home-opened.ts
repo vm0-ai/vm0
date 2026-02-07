@@ -79,6 +79,7 @@ export async function refreshAppHome(
   // Get user's bindings
   const bindings = await globalThis.services.db
     .select({
+      id: slackBindings.id,
       agentName: slackBindings.agentName,
       description: slackBindings.description,
       enabled: slackBindings.enabled,

@@ -16,6 +16,7 @@ interface AgentOption {
 }
 
 interface BindingInfo {
+  id?: string;
   agentName: string;
   description: string | null;
   enabled: boolean;
@@ -240,7 +241,7 @@ export function buildAppHomeView(options: {
       type: "header",
       text: {
         type: "plain_text",
-        text: "Welcome to VM0!",
+        text: "Welcome to VM0! :wave:",
       },
     },
     {
@@ -259,25 +260,7 @@ export function buildAppHomeView(options: {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `:white_check_mark: *Account connected*\n\`${options.vm0UserId}\``,
-      },
-      accessory: {
-        type: "button",
-        text: {
-          type: "plain_text",
-          text: "Disconnect",
-        },
-        action_id: "home_disconnect",
-        style: "danger",
-        confirm: {
-          title: { type: "plain_text", text: "Disconnect account?" },
-          text: {
-            type: "mrkdwn",
-            text: "This will unlink your VM0 account and remove all agent bindings.",
-          },
-          confirm: { type: "plain_text", text: "Disconnect" },
-          deny: { type: "plain_text", text: "Cancel" },
-        },
+        text: `:white_check_mark: *Connected to VM0*\nAccount: ${options.vm0UserId}`,
       },
     });
   } else {
@@ -323,29 +306,63 @@ export function buildAppHomeView(options: {
     type: "section",
     text: {
       type: "mrkdwn",
-      text: "*Your Agents*",
+      text: ":robot_face: *Your Linked Agent*",
     },
   });
 
   if (options.bindings && options.bindings.length > 0) {
     for (const binding of options.bindings) {
-      const status = binding.enabled ? ":white_check_mark:" : ":x:";
-      const description = binding.description ?? "_No description_";
+      let agentText = `AgentName: *${binding.agentName}*`;
+      if (binding.description) {
+        agentText += `\nDescription: ${binding.description}`;
+      }
       blocks.push({
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `${status} *${binding.agentName}*\n${description}`,
+          text: agentText,
         },
       });
+
+      if (binding.id) {
+        blocks.push({
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Update" },
+              action_id: "home_agent_update",
+              value: binding.id,
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Unlink" },
+              action_id: "home_agent_unlink",
+              value: binding.id,
+              style: "danger",
+            },
+          ],
+        });
+      }
     }
   } else {
     blocks.push({
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "_No agents linked yet._ Use `/vm0 agent link` to link one.",
+        text: "_No agent linked yet._",
       },
+    });
+    blocks.push({
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Link Agent" },
+          action_id: "home_agent_link",
+          style: "primary",
+        },
+      ],
     });
   }
 
@@ -356,18 +373,52 @@ export function buildAppHomeView(options: {
     type: "section",
     text: {
       type: "mrkdwn",
-      text: "*Commands*\n• `/vm0 help` — Show help\n• `/vm0 agent link` — Link an agent\n• `/vm0 agent unlink` — Unlink an agent\n• `/vm0 agent update` — Update agent configuration",
+      text: ":bulb: *Here are some things you can do:*",
     },
   });
 
   blocks.push({
-    type: "context",
-    elements: [
-      {
-        type: "mrkdwn",
-        text: "Send me a DM or `@VM0` in any channel to start chatting with your agents!",
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: "*Chat with your agents*\nSend a DM or `@VM0` in any channel\n`@VM0 [your message]`",
+    },
+  });
+
+  blocks.push({
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: "*Link and manage agents*\nLink an agent\n`/vm0 agent link`\nUnlink an agent\n`/vm0 agent unlink`\nUpdate agent configuration\n`/vm0 agent update`",
+    },
+  });
+
+  blocks.push({ type: "divider" });
+
+  blocks.push({
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: "*Disconnect VM0 Account*\nThis will remove your VM0 account connection",
+    },
+    accessory: {
+      type: "button",
+      text: {
+        type: "plain_text",
+        text: "Disconnect",
       },
-    ],
+      action_id: "home_disconnect",
+      style: "danger",
+      confirm: {
+        title: { type: "plain_text", text: "Disconnect VM0 Account" },
+        text: {
+          type: "plain_text",
+          text: "This will remove your VM0 account connection",
+        },
+        confirm: { type: "plain_text", text: "Disconnect" },
+        deny: { type: "plain_text", text: "Cancel" },
+      },
+    },
   });
 
   return {
@@ -656,7 +707,7 @@ export function buildAgentListMessage(
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "*Your Linked Agent*",
+        text: ":robot_face: *Your Linked Agent*",
       },
     },
     {
