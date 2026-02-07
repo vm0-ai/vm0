@@ -5,8 +5,6 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tracing::{error, info, warn};
 
-use crate::command::{Privilege, exec_command};
-
 use super::error::{OverlayError, Result};
 
 // ---------------------------------------------------------------------------
@@ -51,8 +49,22 @@ impl OverlayCreator for Ext4Creator {
             .await
             .map_err(|e| OverlayError::FileCreation(format!("truncate {path_str}: {e}")))?;
 
-        let cmd = format!("mkfs.ext4 -F -q \"{path_str}\"");
-        exec_command(&cmd, Privilege::User).await?;
+        // Use Command directly to avoid shell injection via path.
+        let output = tokio::process::Command::new("mkfs.ext4")
+            .args(["-F", "-q"])
+            .arg(path)
+            .output()
+            .await
+            .map_err(|e| OverlayError::FileCreation(format!("mkfs.ext4: {e}")))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(OverlayError::FileCreation(format!(
+                "mkfs.ext4 failed: {}",
+                stderr.trim()
+            )));
+        }
+
         Ok(())
     }
 }
@@ -175,6 +187,9 @@ impl OverlayPool {
         }
 
         let available = queue.len();
+        if available == 0 && config.size > 0 {
+            return Err(OverlayError::PreWarmFailed);
+        }
         if available < config.size {
             warn!(
                 requested = config.size,
@@ -291,6 +306,18 @@ impl OverlayPool {
         }
         if needed > 0 {
             info!(needed, "spawned overlay replenish tasks");
+        }
+    }
+}
+
+impl Drop for OverlayPool {
+    fn drop(&mut self) {
+        if self.active {
+            warn!(
+                queued = self.queue.len(),
+                pending = self.pending.len(),
+                "OverlayPool dropped without calling cleanup()"
+            );
         }
     }
 }
@@ -431,6 +458,27 @@ mod tests {
         // This should create on-demand.
         let on_demand = pool.acquire().await.expect("acquire on-demand");
         assert!(on_demand.exists());
+    }
+
+    #[tokio::test]
+    async fn acquire_from_replenished_pending() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        // size=2, threshold=2: acquiring the first file triggers replenishment,
+        // so the second acquire should come from a pending task (Tier 2).
+        let mut pool = OverlayPool::create(test_config(tmp.path(), 2, 2))
+            .await
+            .expect("create");
+
+        let first = pool.acquire().await.expect("acquire 1 (pooled)");
+        assert!(first.exists());
+
+        // Queue is now empty, but maybe_replenish() should have spawned tasks.
+        // The second acquire hits Tier 2 (pending JoinSet).
+        let second = pool.acquire().await.expect("acquire 2 (replenished)");
+        assert!(second.exists());
+        assert_ne!(first, second);
+
+        pool.cleanup().await;
     }
 
     #[tokio::test]
