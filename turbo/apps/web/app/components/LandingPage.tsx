@@ -2287,42 +2287,6 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
                               <p className="m-0">
                                 {"      "}
                                 <span className="text-[#3b82f6]">
-                                  GITHUB_TOKEN
-                                </span>
-                                <span className="text-[#827d77]">:</span>{" "}
-                                <span className="text-foreground">$</span>
-                                <span className="text-[#827d77]">
-                                  &#123;&#123;
-                                </span>
-                                <span className="text-foreground">
-                                  {" "}
-                                  secrets.GITHUB_TOKEN{" "}
-                                </span>
-                                <span className="text-[#827d77]">
-                                  &#125;&#125;
-                                </span>
-                              </p>
-                              <p className="m-0">
-                                {"      "}
-                                <span className="text-[#3b82f6]">
-                                  PLAUSIBLE_API_KEY
-                                </span>
-                                <span className="text-[#827d77]">:</span>{" "}
-                                <span className="text-foreground">$</span>
-                                <span className="text-[#827d77]">
-                                  &#123;&#123;
-                                </span>
-                                <span className="text-foreground">
-                                  {" "}
-                                  secrets.PLAUSIBLE_API_KEY{" "}
-                                </span>
-                                <span className="text-[#827d77]">
-                                  &#125;&#125;
-                                </span>
-                              </p>
-                              <p className="m-0">
-                                {"      "}
-                                <span className="text-[#3b82f6]">
                                   PLAUSIBLE_SITE_ID
                                 </span>
                                 <span className="text-[#827d77]">:</span>{" "}
@@ -2332,43 +2296,7 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
                                 </span>
                                 <span className="text-foreground">
                                   {" "}
-                                  secrets.PLAUSIBLE_SITE_ID{" "}
-                                </span>
-                                <span className="text-[#827d77]">
-                                  &#125;&#125;
-                                </span>
-                              </p>
-                              <p className="m-0">
-                                {"      "}
-                                <span className="text-[#3b82f6]">
-                                  NOTION_API_KEY
-                                </span>
-                                <span className="text-[#827d77]">:</span>{" "}
-                                <span className="text-foreground">$</span>
-                                <span className="text-[#827d77]">
-                                  &#123;&#123;
-                                </span>
-                                <span className="text-foreground">
-                                  {" "}
-                                  secrets.NOTION_API_KEY{" "}
-                                </span>
-                                <span className="text-[#827d77]">
-                                  &#125;&#125;
-                                </span>
-                              </p>
-                              <p className="m-0">
-                                {"      "}
-                                <span className="text-[#3b82f6]">
-                                  SLACK_BOT_TOKEN
-                                </span>
-                                <span className="text-[#827d77]">:</span>{" "}
-                                <span className="text-foreground">$</span>
-                                <span className="text-[#827d77]">
-                                  &#123;&#123;
-                                </span>
-                                <span className="text-foreground">
-                                  {" "}
-                                  secrets.SLACK_BOT_TOKEN{" "}
+                                  vars.PLAUSIBLE_SITE_ID{" "}
                                 </span>
                                 <span className="text-[#827d77]">
                                   &#125;&#125;
@@ -2386,25 +2314,7 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
                                 </span>
                                 <span className="text-foreground">
                                   {" "}
-                                  secrets.SLACK_CHANNEL_ID{" "}
-                                </span>
-                                <span className="text-[#827d77]">
-                                  &#125;&#125;
-                                </span>
-                              </p>
-                              <p className="m-0">
-                                {"      "}
-                                <span className="text-[#3b82f6]">
-                                  CLERK_SECRET_KEY
-                                </span>
-                                <span className="text-[#827d77]">:</span>{" "}
-                                <span className="text-foreground">$</span>
-                                <span className="text-[#827d77]">
-                                  &#123;&#123;
-                                </span>
-                                <span className="text-foreground">
-                                  {" "}
-                                  secrets.CLERK_SECRET_KEY{" "}
+                                  vars.SLACK_CHANNEL_ID{" "}
                                 </span>
                                 <span className="text-[#827d77]">
                                   &#125;&#125;
