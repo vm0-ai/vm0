@@ -132,14 +132,22 @@ fn generate_veth_ip_pair(pool_idx: u32, ns_idx: u32) -> (String, String) {
     (host_ip, peer_ip)
 }
 
-/// Parse a namespace name into (pool_idx, ns_idx) strings.
+/// Parse a namespace name into (pool_idx, ns_idx) hex strings.
+///
+/// Returns `None` if the name doesn't match the expected format
+/// `vm0-ns-{XX}-{XX}` where each index is exactly 2 hex characters.
 fn parse_ns_name(name: &str) -> Option<(&str, &str)> {
     let suffix = name.strip_prefix(NS_PREFIX)?;
     let (pool_idx, ns_idx) = suffix.split_once('-')?;
-    if pool_idx.is_empty() || ns_idx.is_empty() {
+    if !is_hex2(pool_idx) || !is_hex2(ns_idx) {
         return None;
     }
     Some((pool_idx, ns_idx))
+}
+
+/// Check that a string is exactly 2 lowercase hex characters.
+fn is_hex2(s: &str) -> bool {
+    s.len() == 2 && s.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 // ---------------------------------------------------------------------------
@@ -396,7 +404,11 @@ impl NetnsPool {
     pub async fn release(&mut self, ns: PooledNetns) -> Result<()> {
         if !self.active {
             delete_namespace_resources(&ns.name, &ns.host_device).await;
-            self.acquired_count = self.acquired_count.saturating_sub(1);
+            debug_assert!(
+                self.acquired_count > 0,
+                "release called without matching acquire"
+            );
+            self.acquired_count -= 1;
             return Ok(());
         }
 
@@ -404,7 +416,11 @@ impl NetnsPool {
             info!(name = %ns.name, "namespace already in pool, ignoring");
             return Ok(());
         }
-        self.acquired_count = self.acquired_count.saturating_sub(1);
+        debug_assert!(
+            self.acquired_count > 0,
+            "release called without matching acquire"
+        );
+        self.acquired_count -= 1;
         info!(
             name = %ns.name,
             available = self.queue.len() + 1,
@@ -760,10 +776,9 @@ mod tests {
     }
 
     #[test]
-    fn parse_ns_name_extra_hyphens() {
-        // split_once('-') returns ("00", "0a-extra") — ns_idx includes trailing parts
-        let result = parse_ns_name("vm0-ns-00-0a-extra");
-        assert_eq!(result, Some(("00", "0a-extra")));
+    fn parse_ns_name_extra_hyphens_rejected() {
+        // Rejects malformed names that could produce device names exceeding IFNAMSIZ
+        assert_eq!(parse_ns_name("vm0-ns-00-0a-extra"), None);
     }
 
     #[test]

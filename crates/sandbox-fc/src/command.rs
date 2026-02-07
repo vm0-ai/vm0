@@ -72,7 +72,16 @@ pub async fn exec_command_ignore_errors(cmd: &str, privilege: Privilege) {
         Privilege::User => ("sh", &["-c", cmd]),
     };
 
-    let _ = Command::new(prog).args(args).output().await;
+    match Command::new(prog).args(args).output().await {
+        Ok(output) if !output.status.success() => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            trace!(cmd, stderr = %stderr.trim(), "command failed (ignored)");
+        }
+        Err(e) => {
+            trace!(cmd, error = %e, "command failed to spawn (ignored)");
+        }
+        _ => {}
+    }
 }
 
 #[cfg(test)]
