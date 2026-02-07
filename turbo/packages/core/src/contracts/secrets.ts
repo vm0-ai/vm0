@@ -24,7 +24,7 @@ export const secretNameSchema = z
 /**
  * Secret type schema
  */
-export const secretTypeSchema = z.enum(["user", "model-provider"]);
+export const secretTypeSchema = z.enum(["user", "model-provider", "connector"]);
 
 export type SecretType = z.infer<typeof secretTypeSchema>;
 

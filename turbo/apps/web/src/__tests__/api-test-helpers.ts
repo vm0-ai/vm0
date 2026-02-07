@@ -52,6 +52,7 @@ import { POST as addPermissionRoute } from "../../app/api/agent/composes/[id]/pe
 import { connectors } from "../db/schema/connector";
 import { connectorSessions } from "../db/schema/connector-session";
 import { secrets } from "../db/schema/secret";
+import { encryptCredentialValue } from "../lib/crypto/secrets-encryption";
 import type { ConnectorType } from "@vm0/core";
 
 /**
@@ -1240,6 +1241,7 @@ export async function createTestConnector(
     externalUsername?: string;
     externalEmail?: string;
     oauthScopes?: string[];
+    accessToken?: string;
   },
 ): Promise<typeof connectors.$inferSelect> {
   const type = options?.type ?? "github";
@@ -1257,13 +1259,17 @@ export async function createTestConnector(
     })
     .returning();
 
-  // Also create the associated secret
+  // Also create the associated secret with proper encryption
   const secretName = `${type.toUpperCase()}_ACCESS_TOKEN`;
+  const tokenValue = options?.accessToken ?? "test-github-token";
+  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
+  const encryptedValue = encryptCredentialValue(tokenValue, encryptionKey);
+
   await globalThis.services.db.insert(secrets).values({
     scopeId,
     name: secretName,
     type: "connector",
-    encryptedValue: "encrypted-test-token",
+    encryptedValue,
     description: `OAuth token for ${type} connector`,
   });
 

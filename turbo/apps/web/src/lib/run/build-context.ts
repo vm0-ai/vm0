@@ -8,6 +8,7 @@ import {
   getDefaultModel,
   hasAuthMethods,
   getSecretNamesForAuthMethod,
+  getConnectorEnvironmentMapping,
   MODEL_PROVIDER_TYPES,
   type ModelProviderType,
   type ModelProviderFramework,
@@ -28,6 +29,7 @@ import { getUserScopeByClerkId } from "../scope/scope-service";
 import { getSecretValue, getSecretValues } from "../secret/secret-service";
 import { getVariableValues } from "../variable/variable-service";
 import { getDefaultModelProvider } from "../model-provider/model-provider-service";
+import { listConnectors } from "../connector/connector-service";
 
 const log = logger("run:build-context");
 
@@ -302,6 +304,70 @@ async function resolveModelProviderCredential(
   );
 
   return { credentials, injectedEnvVars };
+}
+
+/**
+ * Result of connector credential resolution
+ */
+interface ConnectorCredentialResult {
+  credentials: Record<string, string> | undefined;
+  /** Environment variables to inject from connected connectors */
+  injectedEnvVars: Record<string, string> | undefined;
+}
+
+/**
+ * Resolve and inject connector credentials if any connectors are connected.
+ * For each connected connector, resolves its environmentMapping to produce
+ * environment variables (e.g., GH_TOKEN, GITHUB_TOKEN for GitHub connector).
+ */
+async function resolveConnectorCredentials(
+  userId: string,
+  existingCredentials: Record<string, string> | undefined,
+): Promise<ConnectorCredentialResult> {
+  let credentials = existingCredentials;
+
+  const userConnectors = await listConnectors(userId);
+  if (userConnectors.length === 0) {
+    return { credentials, injectedEnvVars: undefined };
+  }
+
+  const userScope = await getUserScopeByClerkId(userId);
+  if (!userScope) {
+    return { credentials, injectedEnvVars: undefined };
+  }
+
+  const connectorSecrets = await getSecretValues(userScope.id, "connector");
+  if (Object.keys(connectorSecrets).length === 0) {
+    return { credentials, injectedEnvVars: undefined };
+  }
+
+  const allInjectedEnvVars: Record<string, string> = {};
+
+  for (const connector of userConnectors) {
+    const mapping = getConnectorEnvironmentMapping(connector.type);
+
+    for (const [envVar, valueRef] of Object.entries(mapping)) {
+      if (valueRef.startsWith("$secrets.")) {
+        const secretName = valueRef.slice("$secrets.".length);
+        const secretValue = connectorSecrets[secretName];
+        if (secretValue) {
+          allInjectedEnvVars[envVar] = secretValue;
+          credentials = credentials || {};
+          credentials[secretName] = secretValue;
+        }
+      } else {
+        allInjectedEnvVars[envVar] = valueRef;
+      }
+    }
+  }
+
+  if (Object.keys(allInjectedEnvVars).length > 0) {
+    log.debug(
+      `Resolved connector env vars: ${Object.keys(allInjectedEnvVars).join(", ")}`,
+    );
+  }
+
+  return { credentials, injectedEnvVars: allInjectedEnvVars };
 }
 
 /**
@@ -626,7 +692,15 @@ export async function buildExecutionContext(
     params.modelProvider,
   );
   credentials = modelProviderResult.credentials;
-  const injectedEnvVars = modelProviderResult.injectedEnvVars;
+  const modelProviderEnvVars = modelProviderResult.injectedEnvVars;
+
+  // Step 4b2: Connector credential injection (auto-inject GH_TOKEN, GITHUB_TOKEN, etc.)
+  const connectorResult = await resolveConnectorCredentials(
+    params.userId,
+    credentials,
+  );
+  credentials = connectorResult.credentials;
+  const connectorEnvVars = connectorResult.injectedEnvVars;
 
   // Step 4c: Fetch server-stored variables and merge with CLI vars
   // Priority: CLI --vars > server-stored variables
@@ -643,11 +717,13 @@ export async function buildExecutionContext(
     params.runId,
   );
 
-  // Step 5b: Auto-inject model provider env vars into environment
-  const environment = autoInjectEnvVarsToEnvironment(
+  // Step 5b: Auto-inject model provider and connector env vars into environment
+  // User-defined environment takes precedence over auto-injected values
+  let environment = autoInjectEnvVarsToEnvironment(
     expandedEnvironment,
-    injectedEnvVars,
+    modelProviderEnvVars,
   );
+  environment = autoInjectEnvVarsToEnvironment(environment, connectorEnvVars);
 
   // Step 6: Merge credentials into secrets for client-side log masking
   // Credentials are server-stored user-level secrets and must be masked like CLI secrets
