@@ -8,7 +8,6 @@ import { env } from "../../../env";
 import {
   createSlackClient,
   postMessage,
-  updateMessage,
   buildLoginPromptMessage,
   buildErrorMessage,
   buildAgentResponseMessage,
@@ -140,14 +139,6 @@ export async function handleDirectMessage(
       .then(() => true)
       .catch(() => false);
 
-    // 7. Post thinking message
-    const thinkingTs = await postMessage(
-      client,
-      context.channelId,
-      "_Thinking..._",
-      { threadTs },
-    );
-
     // Use message text directly (no mention prefix to strip in DMs)
     const messageContent = context.messageText;
 
@@ -160,7 +151,7 @@ export async function handleDirectMessage(
       botToken,
     );
 
-    // 8. Route to agent (with context for LLM routing)
+    // 7. Route to agent (with context for LLM routing)
     const routeResult = await routeMessageToAgent(
       messageContent,
       bindings,
@@ -175,20 +166,10 @@ export async function handleDirectMessage(
       selectedAgentName = bindings[0]!.agentName;
       promptText = messageContent;
     } else if (routeResult.type === "failure") {
-      if (thinkingTs) {
-        await updateMessage(
-          client,
-          context.channelId,
-          thinkingTs,
-          routeResult.error,
-          { blocks: buildErrorMessage(routeResult.error) },
-        );
-      } else {
-        await postMessage(client, context.channelId, routeResult.error, {
-          threadTs,
-          blocks: buildErrorMessage(routeResult.error),
-        });
-      }
+      await postMessage(client, context.channelId, routeResult.error, {
+        threadTs,
+        blocks: buildErrorMessage(routeResult.error),
+      });
       if (reactionAdded) {
         await removeThinkingReaction(
           client,
@@ -214,7 +195,7 @@ export async function handleDirectMessage(
       return;
     }
 
-    // 9. Find existing thread session
+    // 8. Find existing thread session
     let existingSessionId: string | undefined;
     if (threadTs) {
       const [threadSession] = await globalThis.services.db
@@ -233,7 +214,7 @@ export async function handleDirectMessage(
     }
 
     try {
-      // 10. Execute agent
+      // 9. Execute agent
       const {
         response: agentResponse,
         sessionId: newSessionId,
@@ -246,7 +227,7 @@ export async function handleDirectMessage(
         userId: userLink.vm0UserId,
       });
 
-      // 11. Create thread session mapping if new thread
+      // 10. Create thread session mapping if new thread
       if (threadTs && !existingSessionId && newSessionId) {
         await globalThis.services.db
           .insert(slackThreadSessions)
@@ -259,54 +240,28 @@ export async function handleDirectMessage(
           .onConflictDoNothing();
       }
 
-      // 12. Replace thinking message with agent response
+      // 11. Post response message
       const logsUrl = runId ? buildLogsUrl(runId) : undefined;
-      if (thinkingTs) {
-        await updateMessage(
-          client,
-          context.channelId,
-          thinkingTs,
+      await postMessage(client, context.channelId, agentResponse, {
+        threadTs,
+        blocks: buildAgentResponseMessage(
           agentResponse,
-          {
-            blocks: buildAgentResponseMessage(
-              agentResponse,
-              selectedAgentName,
-              logsUrl,
-            ),
-          },
-        );
-      } else {
-        await postMessage(client, context.channelId, agentResponse, {
-          threadTs,
-          blocks: buildAgentResponseMessage(
-            agentResponse,
-            selectedAgentName,
-            logsUrl,
-          ),
-        });
-      }
+          selectedAgentName,
+          logsUrl,
+        ),
+      });
     } catch (innerError) {
       log.error("Error posting response or creating session", {
         error: innerError,
       });
-      const errorText =
-        "Sorry, an error occurred while sending the response. Please try again.";
-      if (thinkingTs) {
-        await updateMessage(
-          client,
-          context.channelId,
-          thinkingTs,
-          errorText,
-        ).catch((e) =>
-          log.warn("Failed to update error message", { error: e }),
-        );
-      } else {
-        await postMessage(client, context.channelId, errorText, {
-          threadTs,
-        }).catch((e) => log.warn("Failed to post error message", { error: e }));
-      }
+      await postMessage(
+        client,
+        context.channelId,
+        "Sorry, an error occurred while sending the response. Please try again.",
+        { threadTs },
+      ).catch((e) => log.warn("Failed to post error message", { error: e }));
     } finally {
-      // 13. Remove thinking reaction
+      // 12. Remove thinking reaction
       if (reactionAdded) {
         await removeThinkingReaction(
           client,

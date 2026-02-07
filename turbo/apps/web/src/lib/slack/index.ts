@@ -34,7 +34,6 @@ export { verifySlackSignature, getSlackSignatureHeaders } from "./verify";
 export {
   createSlackClient,
   postMessage,
-  updateMessage,
   openModal,
   updateModal,
   publishAppHome,

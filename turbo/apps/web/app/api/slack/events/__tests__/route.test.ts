@@ -552,7 +552,7 @@ describe("POST /api/slack/events", () => {
   });
 
   describe("Scenario: DM bot with single agent", () => {
-    it("should post thinking message then update with agent response", async () => {
+    it("should execute agent and post response", async () => {
       // Given I am a linked Slack user with one agent
       const { userLink, installation } = await givenLinkedSlackUser();
       await givenUserHasAgent(userLink, {
@@ -576,17 +576,12 @@ describe("POST /api/slack/events", () => {
       // 1. Thinking reaction should be added
       expect(slackHandlers.mocked.reactionsAdd).toHaveBeenCalledTimes(1);
 
-      // 2. Thinking message should be posted first
+      // 2. Response message should be posted
       expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
-      const thinkingData = await getFormData(slackHandlers.mocked.postMessage);
-      expect(thinkingData.text).toBe("_Thinking..._");
 
-      // 3. chatUpdate should replace thinking message with agent response
-      expect(slackHandlers.mocked.chatUpdate).toHaveBeenCalledTimes(1);
-      const updateData = await getFormData(slackHandlers.mocked.chatUpdate);
-      const blocks = JSON.parse(
-        (updateData.blocks as string) ?? "[]",
-      ) as Array<{
+      // 3. Response should include agent name in context block
+      const data = await getFormData(slackHandlers.mocked.postMessage);
+      const blocks = JSON.parse((data.blocks as string) ?? "[]") as Array<{
         type: string;
         elements?: Array<{ text?: string }>;
       }>;
@@ -621,22 +616,17 @@ describe("POST /api/slack/events", () => {
       expect(response.status).toBe(200);
       await flushAfterCallbacks();
 
-      // Then thinking message should be posted first
+      // Then the message should be routed to the agent (not show welcome card)
       expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
-      const thinkingData = await getFormData(slackHandlers.mocked.postMessage);
-      expect(thinkingData.text).toBe("_Thinking..._");
 
-      // And chatUpdate should replace it with agent response (not welcome card)
-      expect(slackHandlers.mocked.chatUpdate).toHaveBeenCalledTimes(1);
-      const updateData = await getFormData(slackHandlers.mocked.chatUpdate);
-      const blocks = JSON.parse(
-        (updateData.blocks as string) ?? "[]",
-      ) as Array<{
+      const data = await getFormData(slackHandlers.mocked.postMessage);
+      const blocks = JSON.parse((data.blocks as string) ?? "[]") as Array<{
         type: string;
         elements?: Array<{ text?: string }>;
       }>;
       const contextBlocks = blocks.filter((b) => b.type === "context");
       expect(contextBlocks.length).toBeGreaterThanOrEqual(1);
+      // Agent name should be in the response (not a welcome card)
       const agentContext = contextBlocks[0]!.elements?.[0]?.text;
       expect(agentContext).toContain("my-helper");
     });
