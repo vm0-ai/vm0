@@ -7,6 +7,7 @@ use sandbox::{
 use vsock_host::VsockHost;
 
 use crate::config::FirecrackerConfig;
+use crate::network::PooledNetns;
 
 pub struct FirecrackerSandbox {
     id: String,
@@ -20,7 +21,7 @@ pub struct FirecrackerSandbox {
     #[allow(dead_code)]
     guest: Option<tokio::sync::Mutex<VsockHost>>,
     #[allow(dead_code)]
-    network: Option<()>,
+    network: Option<PooledNetns>,
 }
 
 impl FirecrackerSandbox {

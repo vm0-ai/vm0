@@ -23,6 +23,7 @@ tar = "0.4"
 thiserror = "2"
 tokio = { version = "1", features = ["net", "io-util", "time", "rt", "macros", "process", "sync"] }
 uuid = { version = "1", features = ["v4"] }
+tracing = "0.1"
 which = "7"
 ureq = { version = "3", features = ["platform-verifier"] }
 
