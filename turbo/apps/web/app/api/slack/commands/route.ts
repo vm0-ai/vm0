@@ -32,6 +32,9 @@ import {
   buildAgentRemoveModal,
   buildAgentUpdateModal,
 } from "../../../../src/lib/slack/blocks";
+import { logger } from "../../../../src/lib/logger";
+
+const log = logger("slack:commands");
 
 /**
  * Slack Slash Commands Endpoint
@@ -221,9 +224,9 @@ async function handleLogoutCommand(
     .where(eq(slackUserLinks.id, userLink.id));
 
   // Refresh App Home tab to reflect disconnected state
-  await refreshAppHome(client, workspaceId, slackUserId).catch(() => {
-    // Best-effort — don't fail the disconnect response
-  });
+  await refreshAppHome(client, workspaceId, slackUserId).catch((e) =>
+    log.warn("Failed to refresh App Home after disconnect", { error: e }),
+  );
 
   return NextResponse.json({
     response_type: "ephemeral",
