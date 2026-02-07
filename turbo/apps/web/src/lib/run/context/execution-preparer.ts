@@ -15,6 +15,7 @@ import {
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
 import type { ExperimentalFirewall as CoreExperimentalFirewall } from "@vm0/core";
+import { extractCliAgentType } from "../utils";
 
 const log = logger("context:preparer");
 
@@ -143,16 +144,6 @@ function extractWorkingDir(agentCompose: unknown): string {
     );
   }
   return workingDir;
-}
-
-/**
- * Extract CLI agent type from agent compose config
- */
-function extractCliAgentType(agentCompose: unknown): string {
-  const compose = agentCompose as AgentComposeYaml | undefined;
-  if (!compose?.agents) return "claude-code";
-  const agents = Object.values(compose.agents);
-  return agents[0]?.framework || "claude-code";
 }
 
 /**

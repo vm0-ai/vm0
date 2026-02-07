@@ -498,6 +498,13 @@
       "when": 1769500000000,
       "tag": "0070_create_connector_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1769600000000,
+      "tag": "0071_simplify_agent_sessions",
+      "breakpoints": true
     }
   ]
 }

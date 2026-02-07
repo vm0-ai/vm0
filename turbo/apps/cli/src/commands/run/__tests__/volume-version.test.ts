@@ -270,8 +270,8 @@ describe("--volume-version option", () => {
     });
   });
 
-  describe("continue command with --volume-version", () => {
-    it("should pass volume versions to API", async () => {
+  describe("continue command does not support --volume-version", () => {
+    it("should not send volumeVersions in API request for continue", async () => {
       let capturedBody: unknown;
       server.use(
         http.post(
@@ -289,48 +289,16 @@ describe("--volume-version option", () => {
         "continue",
         testSessionId,
         "test prompt",
-        "--volume-version",
-        "data-volume=xyz789",
       ]);
 
       expect(capturedBody).toEqual(
         expect.objectContaining({
           sessionId: testSessionId,
-          volumeVersions: { "data-volume": "xyz789" },
         }),
       );
-    });
-
-    it("should pass multiple volume versions to API", async () => {
-      let capturedBody: unknown;
-      server.use(
-        http.post(
-          "http://localhost:3000/api/agent/runs",
-          async ({ request }) => {
-            capturedBody = await request.json();
-            return HttpResponse.json(defaultRunResponse, { status: 201 });
-          },
-        ),
-      );
-
-      await runCommand.parseAsync([
-        "node",
-        "cli",
-        "continue",
-        testSessionId,
-        "test prompt",
-        "--volume-version",
-        "vol1=v1",
-        "--volume-version",
-        "vol2=v2",
-      ]);
-
-      expect(capturedBody).toEqual(
-        expect.objectContaining({
-          sessionId: testSessionId,
-          volumeVersions: { vol1: "v1", vol2: "v2" },
-        }),
-      );
+      expect(
+        (capturedBody as Record<string, unknown>).volumeVersions,
+      ).toBeUndefined();
     });
   });
 

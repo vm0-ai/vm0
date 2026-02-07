@@ -446,16 +446,9 @@ const router = tsr.router(runsMainContract, {
         };
       }
 
-      agentComposeVersionId =
-        sessionData.agentComposeVersionId || compose.headVersionId;
+      // Always use HEAD compose version for session continue
+      agentComposeVersionId = compose.headVersionId;
       agentComposeName = compose.name || undefined;
-
-      if (!body.vars && sessionData.vars) {
-        varsFromSource = sessionData.vars;
-      }
-      if (!body.secrets && sessionData.secretNames) {
-        secretNamesFromSource = sessionData.secretNames;
-      }
     }
 
     log.debug(`Resolved agentComposeVersionId: ${agentComposeVersionId}`);

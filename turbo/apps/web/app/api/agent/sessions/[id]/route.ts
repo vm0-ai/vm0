@@ -3,10 +3,18 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { sessionsByIdContract } from "@vm0/core";
+import {
+  sessionsByIdContract,
+  extractVariableReferences,
+  groupVariablesBySource,
+} from "@vm0/core";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentSessions } from "../../../../../src/db/schema/agent-session";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "../../../../../src/db/schema/agent-compose";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 
 const router = tsr.router(sessionsByIdContract, {
@@ -51,17 +59,37 @@ const router = tsr.router(sessionsByIdContract, {
       };
     }
 
+    // Extract secret names from HEAD compose content
+    let secretNames: string[] | null = null;
+    const [compose] = await globalThis.services.db
+      .select()
+      .from(agentComposes)
+      .where(eq(agentComposes.id, session.agentComposeId))
+      .limit(1);
+
+    if (compose?.headVersionId) {
+      const [version] = await globalThis.services.db
+        .select()
+        .from(agentComposeVersions)
+        .where(eq(agentComposeVersions.id, compose.headVersionId))
+        .limit(1);
+
+      if (version?.content) {
+        const refs = extractVariableReferences(version.content);
+        const grouped = groupVariablesBySource(refs);
+        const names = grouped.secrets.map((ref) => ref.name);
+        secretNames = names.length > 0 ? names : null;
+      }
+    }
+
     return {
       status: 200 as const,
       body: {
         id: session.id,
         agentComposeId: session.agentComposeId,
-        agentComposeVersionId: session.agentComposeVersionId,
         conversationId: session.conversationId,
         artifactName: session.artifactName,
-        vars: session.vars,
-        secretNames: session.secretNames,
-        volumeVersions: session.volumeVersions,
+        secretNames,
         createdAt: session.createdAt.toISOString(),
         updatedAt: session.updatedAt.toISOString(),
       },

@@ -170,7 +170,7 @@ export async function validateCheckpoint(
  *
  * @param agentSessionId Agent session ID to validate
  * @param userId User ID for authorization check
- * @returns Session data with agentComposeId, vars, and secretNames
+ * @returns Session data with agentComposeId
  * @throws NotFoundError if session doesn't exist
  * @throws UnauthorizedError if session doesn't belong to user
  */
@@ -179,10 +179,6 @@ export async function validateAgentSession(
   userId: string,
 ): Promise<{
   agentComposeId: string;
-  agentComposeVersionId: string | null;
-  vars: Record<string, string> | null;
-  secretNames: string[] | null;
-  volumeVersions: Record<string, string> | null;
 }> {
   log.debug(`Validating agent session ${agentSessionId} for user ${userId}`);
 
@@ -205,16 +201,10 @@ export async function validateAgentSession(
     );
   }
 
-  log.debug(
-    `Session validated: agentComposeId=${session.agentComposeId}, agentComposeVersionId=${session.agentComposeVersionId}`,
-  );
+  log.debug(`Session validated: agentComposeId=${session.agentComposeId}`);
 
   return {
     agentComposeId: session.agentComposeId,
-    agentComposeVersionId: session.agentComposeVersionId,
-    vars: session.vars,
-    secretNames: session.secretNames,
-    volumeVersions: session.volumeVersions,
   };
 }
 

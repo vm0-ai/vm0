@@ -49,7 +49,6 @@ describe("GET /api/agent/sessions/:id", () => {
     expect(response.status).toBe(200);
     expect(data.id).toBe(agentSessionId);
     expect(data.agentComposeId).toBe(testComposeId);
-    expect(data.agentComposeVersionId).toBeDefined();
     expect(data.createdAt).toBeDefined();
     expect(data.updatedAt).toBeDefined();
   });

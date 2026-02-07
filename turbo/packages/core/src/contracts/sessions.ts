@@ -11,12 +11,9 @@ const c = initContract();
 const sessionResponseSchema = z.object({
   id: z.string(),
   agentComposeId: z.string(),
-  agentComposeVersionId: z.string().nullable(),
   conversationId: z.string().nullable(),
   artifactName: z.string().nullable(),
-  vars: z.record(z.string(), z.string()).nullable(),
   secretNames: z.array(z.string()).nullable(),
-  volumeVersions: z.record(z.string(), z.string()).nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
