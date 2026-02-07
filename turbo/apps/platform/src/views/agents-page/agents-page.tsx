@@ -148,33 +148,39 @@ function AgentRow({
     <Dialog>
       <TableRow className="h-[53px]">
         <DialogTrigger asChild>
-          <TableCell className="px-3 py-2 cursor-pointer">
-            <span className="font-medium">{agent.name}</span>
+          <TableCell className="px-3 py-2 cursor-pointer w-[25%] min-w-[120px]">
+            <span className="block truncate whitespace-nowrap font-medium">
+              {agent.name}
+            </span>
           </TableCell>
         </DialogTrigger>
         <DialogTrigger asChild>
-          <TableCell className="px-3 py-2 cursor-pointer">
-            <span className="text-sm">{modelProviderLabel}</span>
+          <TableCell className="px-3 py-2 cursor-pointer w-[25%] min-w-[120px]">
+            <span className="block truncate whitespace-nowrap text-sm">
+              {modelProviderLabel}
+            </span>
           </TableCell>
         </DialogTrigger>
         <DialogTrigger asChild>
-          <TableCell className="px-3 py-2 cursor-pointer">
-            {hasSchedule ? (
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
-                <Clock className="h-3 w-3 text-sky-600" />
-                Scheduled
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
-                <Bed className="h-3 w-3 text-sky-600" />
-                No schedule
-              </span>
-            )}
+          <TableCell className="px-3 py-2 cursor-pointer w-[20%] min-w-[120px]">
+            <div className="truncate whitespace-nowrap">
+              {hasSchedule ? (
+                <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
+                  <Clock className="h-3 w-3 text-sky-600" />
+                  Scheduled
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
+                  <Bed className="h-3 w-3 text-sky-600" />
+                  No schedule
+                </span>
+              )}
+            </div>
           </TableCell>
         </DialogTrigger>
         <DialogTrigger asChild>
-          <TableCell className="pl-3 pr-6 py-2 cursor-pointer">
-            <span className="text-sm">
+          <TableCell className="pl-3 pr-6 py-2 cursor-pointer w-[20%] min-w-[100px]">
+            <span className="block truncate whitespace-nowrap text-sm">
               {new Date(agent.updatedAt).toLocaleDateString("en-US", {
                 month: "short",
                 day: "numeric",
@@ -183,7 +189,7 @@ function AgentRow({
             </span>
           </TableCell>
         </DialogTrigger>
-        <TableCell className="pl-0 pr-4 py-2">
+        <TableCell className="pl-0 pr-4 py-2 w-12">
           <TooltipProvider>
             <Tooltip>
               <DialogTrigger asChild>
