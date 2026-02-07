@@ -545,3 +545,119 @@ pub async fn cleanup_namespaces_by_index(index: u32) {
     }
     while set.join_next().await.is_some() {}
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_hex_index_zero() {
+        assert_eq!(format_hex_index(0), "00");
+    }
+
+    #[test]
+    fn format_hex_index_single_digit() {
+        assert_eq!(format_hex_index(10), "0a");
+    }
+
+    #[test]
+    fn format_hex_index_two_digits() {
+        assert_eq!(format_hex_index(63), "3f");
+    }
+
+    #[test]
+    fn make_ns_name_formats_correctly() {
+        assert_eq!(make_ns_name("00", "0a"), "vm0-ns-00-0a");
+    }
+
+    #[test]
+    fn make_host_device_formats_correctly() {
+        assert_eq!(make_host_device("01", "ff"), "vm0-ve-01-ff");
+    }
+
+    #[test]
+    fn generate_veth_ip_pair_first_namespace() {
+        let (host, peer) = generate_veth_ip_pair(0, 0);
+        assert_eq!(host, "10.200.0.1");
+        assert_eq!(peer, "10.200.0.2");
+    }
+
+    #[test]
+    fn generate_veth_ip_pair_second_namespace() {
+        let (host, peer) = generate_veth_ip_pair(0, 1);
+        assert_eq!(host, "10.200.0.5");
+        assert_eq!(peer, "10.200.0.6");
+    }
+
+    #[test]
+    fn generate_veth_ip_pair_crosses_octet3_boundary() {
+        // ns_index=64 → octet3 bumps by 1
+        let (host, peer) = generate_veth_ip_pair(0, 64);
+        assert_eq!(host, "10.200.1.1");
+        assert_eq!(peer, "10.200.1.2");
+    }
+
+    #[test]
+    fn generate_veth_ip_pair_second_pool() {
+        let (host, peer) = generate_veth_ip_pair(1, 0);
+        assert_eq!(host, "10.200.4.1");
+        assert_eq!(peer, "10.200.4.2");
+    }
+
+    #[test]
+    fn generate_veth_ip_pair_max_values() {
+        let (host, peer) = generate_veth_ip_pair(63, 255);
+        assert_eq!(host, "10.200.255.253");
+        assert_eq!(peer, "10.200.255.254");
+    }
+
+    #[test]
+    fn generate_veth_ip_pair_no_overlap_across_pools() {
+        let (host_0_last, _) = generate_veth_ip_pair(0, 255);
+        let (host_1_first, _) = generate_veth_ip_pair(1, 0);
+        assert_ne!(host_0_last, host_1_first);
+    }
+
+    #[test]
+    fn generate_veth_ip_pair_no_overlap_within_pool() {
+        let mut seen = std::collections::HashSet::new();
+        for ns in 0..MAX_NAMESPACES {
+            let (host, peer) = generate_veth_ip_pair(0, ns);
+            assert!(seen.insert(host.clone()), "duplicate host IP: {host}");
+            assert!(seen.insert(peer.clone()), "duplicate peer IP: {peer}");
+        }
+    }
+
+    #[test]
+    fn parse_ns_name_valid() {
+        assert_eq!(parse_ns_name("vm0-ns-00-0a"), Some(("00", "0a")));
+        assert_eq!(parse_ns_name("vm0-ns-3f-ff"), Some(("3f", "ff")));
+    }
+
+    #[test]
+    fn parse_ns_name_wrong_prefix() {
+        assert_eq!(parse_ns_name("other-00-0a"), None);
+    }
+
+    #[test]
+    fn parse_ns_name_missing_separator() {
+        assert_eq!(parse_ns_name("vm0-ns-000a"), None);
+    }
+
+    #[test]
+    fn parse_ns_name_empty_parts() {
+        assert_eq!(parse_ns_name("vm0-ns--0a"), None);
+        assert_eq!(parse_ns_name("vm0-ns-00-"), None);
+    }
+
+    #[test]
+    fn names_roundtrip() {
+        let pool_idx = format_hex_index(5);
+        let ns_idx = format_hex_index(42);
+        let name = make_ns_name(&pool_idx, &ns_idx);
+        let (pi, ni) = parse_ns_name(&name).expect("should parse");
+        assert_eq!(pi, "05");
+        assert_eq!(ni, "2a");
+        assert_eq!(make_host_device(pi, ni), "vm0-ve-05-2a");
+    }
+}
