@@ -95,10 +95,18 @@ function AgentsListSection() {
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead className="h-10 px-3">Your agents</TableHead>
-          <TableHead className="h-10 px-3">Model provider</TableHead>
-          <TableHead className="h-10 px-3">Schedule status</TableHead>
-          <TableHead className="h-10 pl-3 pr-6">Last edit</TableHead>
+          <TableHead className="h-10 px-3 whitespace-nowrap">
+            Your agents
+          </TableHead>
+          <TableHead className="h-10 px-3 whitespace-nowrap">
+            Model provider
+          </TableHead>
+          <TableHead className="h-10 px-3 whitespace-nowrap">
+            Schedule status
+          </TableHead>
+          <TableHead className="h-10 pl-3 pr-6 whitespace-nowrap">
+            Last edit
+          </TableHead>
           <TableHead className="h-10 w-12" />
         </TableRow>
       </TableHeader>
@@ -134,13 +142,15 @@ function AgentRow({
     <Dialog>
       <TableRow className="h-[53px]">
         <DialogTrigger asChild>
-          <TableCell className="px-3 py-2 cursor-pointer">
-            <span className="font-medium">{agent.name}</span>
+          <TableCell className="px-3 py-2 cursor-pointer max-w-[200px]">
+            <span className="font-medium truncate block">{agent.name}</span>
           </TableCell>
         </DialogTrigger>
         <DialogTrigger asChild>
           <TableCell className="px-3 py-2 cursor-pointer">
-            <span className="text-sm">{modelProviderLabel}</span>
+            <span className="text-sm whitespace-nowrap">
+              {modelProviderLabel}
+            </span>
           </TableCell>
         </DialogTrigger>
         <DialogTrigger asChild>
@@ -160,7 +170,7 @@ function AgentRow({
         </DialogTrigger>
         <DialogTrigger asChild>
           <TableCell className="pl-3 pr-6 py-2 cursor-pointer">
-            <span className="text-sm">
+            <span className="text-sm whitespace-nowrap">
               {new Date(agent.updatedAt).toLocaleDateString("en-US", {
                 month: "short",
                 day: "numeric",
