@@ -92,42 +92,46 @@ function AgentsListSection() {
   }
 
   return (
-    <div className="overflow-x-auto">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="h-10 px-3 whitespace-nowrap w-[30%] min-w-[150px]">
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead className="h-10 px-3 w-[25%] min-w-[120px]">
+            <span className="block truncate whitespace-nowrap">
               Your agents
-            </TableHead>
-            <TableHead className="h-10 px-3 whitespace-nowrap w-[25%] min-w-[150px]">
+            </span>
+          </TableHead>
+          <TableHead className="h-10 px-3 w-[25%] min-w-[120px]">
+            <span className="block truncate whitespace-nowrap">
               Model provider
-            </TableHead>
-            <TableHead className="h-10 px-3 whitespace-nowrap w-[20%] min-w-[140px]">
+            </span>
+          </TableHead>
+          <TableHead className="h-10 px-3 w-[20%] min-w-[120px]">
+            <span className="block truncate whitespace-nowrap">
               Schedule status
-            </TableHead>
-            <TableHead className="h-10 pl-3 pr-6 whitespace-nowrap w-[20%] min-w-[120px]">
-              Last edit
-            </TableHead>
-            <TableHead className="h-10 w-[5%] min-w-[48px]" />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {agents.map((agent) => {
-            const hasSchedule = getAgentScheduleStatus(agent.name, schedules);
-            return (
-              <AgentRow
-                key={agent.name}
-                agent={agent}
-                hasSchedule={hasSchedule}
-                modelProviderLabel={
-                  defaultProvider ? getUILabel(defaultProvider.type) : "N/A"
-                }
-              />
-            );
-          })}
-        </TableBody>
-      </Table>
-    </div>
+            </span>
+          </TableHead>
+          <TableHead className="h-10 pl-3 pr-6 w-[20%] min-w-[100px]">
+            <span className="block truncate whitespace-nowrap">Last edit</span>
+          </TableHead>
+          <TableHead className="h-10 w-12" />
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {agents.map((agent) => {
+          const hasSchedule = getAgentScheduleStatus(agent.name, schedules);
+          return (
+            <AgentRow
+              key={agent.name}
+              agent={agent}
+              hasSchedule={hasSchedule}
+              modelProviderLabel={
+                defaultProvider ? getUILabel(defaultProvider.type) : "N/A"
+              }
+            />
+          );
+        })}
+      </TableBody>
+    </Table>
   );
 }
 
@@ -145,16 +149,12 @@ function AgentRow({
       <TableRow className="h-[53px]">
         <DialogTrigger asChild>
           <TableCell className="px-3 py-2 cursor-pointer">
-            <div className="truncate">
-              <span className="font-medium">{agent.name}</span>
-            </div>
+            <span className="font-medium">{agent.name}</span>
           </TableCell>
         </DialogTrigger>
         <DialogTrigger asChild>
           <TableCell className="px-3 py-2 cursor-pointer">
-            <span className="text-sm whitespace-nowrap">
-              {modelProviderLabel}
-            </span>
+            <span className="text-sm">{modelProviderLabel}</span>
           </TableCell>
         </DialogTrigger>
         <DialogTrigger asChild>
@@ -174,7 +174,7 @@ function AgentRow({
         </DialogTrigger>
         <DialogTrigger asChild>
           <TableCell className="pl-3 pr-6 py-2 cursor-pointer">
-            <span className="text-sm whitespace-nowrap">
+            <span className="text-sm">
               {new Date(agent.updatedAt).toLocaleDateString("en-US", {
                 month: "short",
                 day: "numeric",
