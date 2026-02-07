@@ -16,7 +16,7 @@ interface AgentOption {
 }
 
 interface BindingInfo {
-  id?: string;
+  id: string;
   agentName: string;
   description: string | null;
   enabled: boolean;
@@ -324,26 +324,24 @@ export function buildAppHomeView(options: {
         },
       });
 
-      if (binding.id) {
-        blocks.push({
-          type: "actions",
-          elements: [
-            {
-              type: "button",
-              text: { type: "plain_text", text: "Update" },
-              action_id: "home_agent_update",
-              value: binding.id,
-            },
-            {
-              type: "button",
-              text: { type: "plain_text", text: "Unlink" },
-              action_id: "home_agent_unlink",
-              value: binding.id,
-              style: "danger",
-            },
-          ],
-        });
-      }
+      blocks.push({
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: { type: "plain_text", text: "Update" },
+            action_id: "home_agent_update",
+            value: binding.id,
+          },
+          {
+            type: "button",
+            text: { type: "plain_text", text: "Unlink" },
+            action_id: "home_agent_unlink",
+            value: binding.id,
+            style: "danger",
+          },
+        ],
+      });
     }
   } else {
     blocks.push({

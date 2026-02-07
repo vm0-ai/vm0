@@ -160,11 +160,17 @@ describe("buildAgentListMessage", () => {
   it("should list bindings with status", () => {
     const bindings = [
       {
+        id: "binding-1",
         agentName: "my-coder",
         description: "Helps with coding",
         enabled: true,
       },
-      { agentName: "my-analyst", description: null, enabled: false },
+      {
+        id: "binding-2",
+        agentName: "my-analyst",
+        description: null,
+        enabled: false,
+      },
     ];
 
     const blocks = buildAgentListMessage(bindings);

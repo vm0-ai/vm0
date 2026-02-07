@@ -152,6 +152,144 @@ describe("POST /api/slack/interactive", () => {
     });
   });
 
+  describe("Block Actions - Home Tab", () => {
+    it("opens agent add modal when home_agent_link is clicked", async () => {
+      const { userLink, installation } = await givenLinkedSlackUser();
+      mockClerk({ userId: userLink.vm0UserId });
+      await createTestCompose("available-agent");
+
+      const slackMock = handlers({
+        viewsOpen: http.post("https://slack.com/api/views.open", () =>
+          HttpResponse.json({ ok: true, view: { id: "V123" } }),
+        ),
+      });
+      server.use(...slackMock.handlers);
+
+      const body = buildInteractiveBody({
+        type: "block_actions",
+        user: {
+          id: userLink.slackUserId,
+          username: "testuser",
+          team_id: installation.slackWorkspaceId,
+        },
+        team: { id: installation.slackWorkspaceId, domain: "test" },
+        trigger_id: "trigger-123",
+        actions: [{ action_id: "home_agent_link", block_id: "block-1" }],
+      });
+      const request = createSignedSlackRequest(body);
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      expect(slackMock.mocked.viewsOpen).toHaveBeenCalled();
+    });
+
+    it("opens agent update modal when home_agent_update is clicked", async () => {
+      const { userLink, installation } = await givenLinkedSlackUser();
+      const { binding } = await givenUserHasAgent(userLink, {
+        agentName: "my-agent",
+      });
+
+      const slackMock = handlers({
+        viewsOpen: http.post("https://slack.com/api/views.open", () =>
+          HttpResponse.json({ ok: true, view: { id: "V123" } }),
+        ),
+      });
+      server.use(...slackMock.handlers);
+
+      const body = buildInteractiveBody({
+        type: "block_actions",
+        user: {
+          id: userLink.slackUserId,
+          username: "testuser",
+          team_id: installation.slackWorkspaceId,
+        },
+        team: { id: installation.slackWorkspaceId, domain: "test" },
+        trigger_id: "trigger-456",
+        actions: [
+          {
+            action_id: "home_agent_update",
+            block_id: "block-1",
+            value: binding.id,
+          },
+        ],
+      });
+      const request = createSignedSlackRequest(body);
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      expect(slackMock.mocked.viewsOpen).toHaveBeenCalled();
+    });
+
+    it("deletes binding and refreshes home when home_agent_unlink is clicked", async () => {
+      const { userLink, installation } = await givenLinkedSlackUser();
+      const { binding } = await givenUserHasAgent(userLink, {
+        agentName: "unlink-agent",
+      });
+
+      const slackMock = handlers({
+        viewsPublish: http.post("https://slack.com/api/views.publish", () =>
+          HttpResponse.json({ ok: true }),
+        ),
+      });
+      server.use(...slackMock.handlers);
+
+      const body = buildInteractiveBody({
+        type: "block_actions",
+        user: {
+          id: userLink.slackUserId,
+          username: "testuser",
+          team_id: installation.slackWorkspaceId,
+        },
+        team: { id: installation.slackWorkspaceId, domain: "test" },
+        actions: [
+          {
+            action_id: "home_agent_unlink",
+            block_id: "block-1",
+            value: binding.id,
+          },
+        ],
+      });
+      const request = createSignedSlackRequest(body);
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      // App Home was refreshed after unlink
+      expect(slackMock.mocked.viewsPublish).toHaveBeenCalled();
+    });
+
+    it("disconnects user and refreshes home when home_disconnect is clicked", async () => {
+      const { userLink, installation } = await givenLinkedSlackUser();
+
+      const slackMock = handlers({
+        viewsPublish: http.post("https://slack.com/api/views.publish", () =>
+          HttpResponse.json({ ok: true }),
+        ),
+      });
+      server.use(...slackMock.handlers);
+
+      const body = buildInteractiveBody({
+        type: "block_actions",
+        user: {
+          id: userLink.slackUserId,
+          username: "testuser",
+          team_id: installation.slackWorkspaceId,
+        },
+        team: { id: installation.slackWorkspaceId, domain: "test" },
+        actions: [{ action_id: "home_disconnect", block_id: "block-1" }],
+      });
+      const request = createSignedSlackRequest(body);
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      // App Home was refreshed after disconnect
+      expect(slackMock.mocked.viewsPublish).toHaveBeenCalled();
+    });
+  });
+
   describe("View Submission - Agent Add Modal", () => {
     it("returns error when form values are missing", async () => {
       const body = buildInteractiveBody({

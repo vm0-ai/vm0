@@ -91,7 +91,7 @@ interface SlackInteractivePayload {
 }
 
 export async function POST(request: Request) {
-  const { SLACK_SIGNING_SECRET, SECRETS_ENCRYPTION_KEY } = env();
+  const { SLACK_SIGNING_SECRET } = env();
 
   if (!SLACK_SIGNING_SECRET) {
     return NextResponse.json(
@@ -143,7 +143,7 @@ export async function POST(request: Request) {
   // Handle different interaction types
   switch (payload.type) {
     case "view_submission":
-      return handleViewSubmission(payload, SECRETS_ENCRYPTION_KEY);
+      return handleViewSubmission(payload);
 
     case "block_actions":
       return handleBlockActions(payload);
@@ -364,44 +364,62 @@ async function updateModalView(
 }
 
 /**
+ * Get an authenticated Slack client for a workspace
+ */
+async function getSlackClientForWorkspace(
+  workspaceId: string,
+): Promise<ReturnType<typeof createSlackClient> | null> {
+  const { SECRETS_ENCRYPTION_KEY } = env();
+  const [installation] = await globalThis.services.db
+    .select()
+    .from(slackInstallations)
+    .where(eq(slackInstallations.slackWorkspaceId, workspaceId))
+    .limit(1);
+
+  if (!installation) return null;
+
+  const botToken = decryptCredentialValue(
+    installation.encryptedBotToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+  return createSlackClient(botToken);
+}
+
+/**
+ * Get a user link by Slack user ID and workspace ID
+ */
+async function getUserLink(slackUserId: string, workspaceId: string) {
+  const [userLink] = await globalThis.services.db
+    .select()
+    .from(slackUserLinks)
+    .where(
+      and(
+        eq(slackUserLinks.slackUserId, slackUserId),
+        eq(slackUserLinks.slackWorkspaceId, workspaceId),
+      ),
+    )
+    .limit(1);
+  return userLink ?? null;
+}
+
+/**
  * Handle agent selection in add modal
  */
 async function handleAgentAddSelection(
   payload: SlackInteractivePayload,
   selectedAgentId: string,
 ): Promise<void> {
-  const { SECRETS_ENCRYPTION_KEY } = env();
   const privateMetadata = payload.view?.private_metadata;
   const { channelId } = privateMetadata
     ? (JSON.parse(privateMetadata) as { channelId?: string })
     : { channelId: undefined };
 
-  const [installation] = await globalThis.services.db
-    .select()
-    .from(slackInstallations)
-    .where(eq(slackInstallations.slackWorkspaceId, payload.team.id))
-    .limit(1);
+  const client = await getSlackClientForWorkspace(payload.team.id);
+  if (!client) return;
 
-  if (!installation) return;
-
-  const [userLink] = await globalThis.services.db
-    .select()
-    .from(slackUserLinks)
-    .where(
-      and(
-        eq(slackUserLinks.slackUserId, payload.user.id),
-        eq(slackUserLinks.slackWorkspaceId, payload.team.id),
-      ),
-    )
-    .limit(1);
-
+  const userLink = await getUserLink(payload.user.id, payload.team.id);
   if (!userLink) return;
 
-  const botToken = decryptCredentialValue(
-    installation.encryptedBotToken,
-    SECRETS_ENCRYPTION_KEY,
-  );
-  const client = createSlackClient(botToken);
   const agents = await fetchAvailableAgents(userLink.vm0UserId, userLink.id);
   const updatedModal = buildAgentAddModal(agents, selectedAgentId, channelId);
 
@@ -420,38 +438,17 @@ async function handleAgentUpdateSelection(
   payload: SlackInteractivePayload,
   selectedAgentId: string,
 ): Promise<void> {
-  const { SECRETS_ENCRYPTION_KEY } = env();
   const privateMetadata = payload.view?.private_metadata;
   const { channelId } = privateMetadata
     ? (JSON.parse(privateMetadata) as { channelId?: string })
     : { channelId: undefined };
 
-  const [installation] = await globalThis.services.db
-    .select()
-    .from(slackInstallations)
-    .where(eq(slackInstallations.slackWorkspaceId, payload.team.id))
-    .limit(1);
+  const client = await getSlackClientForWorkspace(payload.team.id);
+  if (!client) return;
 
-  if (!installation) return;
-
-  const [userLink] = await globalThis.services.db
-    .select()
-    .from(slackUserLinks)
-    .where(
-      and(
-        eq(slackUserLinks.slackUserId, payload.user.id),
-        eq(slackUserLinks.slackWorkspaceId, payload.team.id),
-      ),
-    )
-    .limit(1);
-
+  const userLink = await getUserLink(payload.user.id, payload.team.id);
   if (!userLink) return;
 
-  const botToken = decryptCredentialValue(
-    installation.encryptedBotToken,
-    SECRETS_ENCRYPTION_KEY,
-  );
-  const client = createSlackClient(botToken);
   const agents = await fetchBoundAgents(userLink.vm0UserId, userLink.id);
   const updatedModal = buildAgentUpdateModal(
     agents,
@@ -502,7 +499,11 @@ async function dispatchBlockAction(
       break;
     case "home_agent_update":
       if (action.value && payload.trigger_id) {
-        await handleHomeAgentConfigure(payload, action.value);
+        await handleHomeAgentConfigure(
+          payload,
+          action.value,
+          payload.trigger_id,
+        );
       }
       break;
     case "home_agent_unlink":
@@ -512,7 +513,7 @@ async function dispatchBlockAction(
       break;
     case "home_agent_link":
       if (payload.trigger_id) {
-        await handleHomeAgentLink(payload);
+        await handleHomeAgentLink(payload, payload.trigger_id);
       }
       break;
     case "home_disconnect":
@@ -522,26 +523,14 @@ async function dispatchBlockAction(
 }
 
 /**
- * Refresh App Home for a user given workspace and encryption key
+ * Refresh App Home for a user given workspace ID
  */
 async function refreshAppHomeForUser(
   workspaceId: string,
   slackUserId: string,
-  encryptionKey: string,
 ): Promise<void> {
-  const [installation] = await globalThis.services.db
-    .select()
-    .from(slackInstallations)
-    .where(eq(slackInstallations.slackWorkspaceId, workspaceId))
-    .limit(1);
-
-  if (!installation) return;
-
-  const botToken = decryptCredentialValue(
-    installation.encryptedBotToken,
-    encryptionKey,
-  );
-  const client = createSlackClient(botToken);
+  const client = await getSlackClientForWorkspace(workspaceId);
+  if (!client) return;
   await refreshAppHome(client, workspaceId, slackUserId);
 }
 
@@ -553,40 +542,19 @@ async function refreshAppHomeForUser(
 async function handleHomeAgentConfigure(
   payload: SlackInteractivePayload,
   bindingId: string,
+  triggerId: string,
 ): Promise<void> {
-  const { SECRETS_ENCRYPTION_KEY } = env();
+  const client = await getSlackClientForWorkspace(payload.team.id);
+  if (!client) return;
 
-  const [installation] = await globalThis.services.db
-    .select()
-    .from(slackInstallations)
-    .where(eq(slackInstallations.slackWorkspaceId, payload.team.id))
-    .limit(1);
-
-  if (!installation) return;
-
-  const [userLink] = await globalThis.services.db
-    .select()
-    .from(slackUserLinks)
-    .where(
-      and(
-        eq(slackUserLinks.slackUserId, payload.user.id),
-        eq(slackUserLinks.slackWorkspaceId, payload.team.id),
-      ),
-    )
-    .limit(1);
-
+  const userLink = await getUserLink(payload.user.id, payload.team.id);
   if (!userLink) return;
 
-  const botToken = decryptCredentialValue(
-    installation.encryptedBotToken,
-    SECRETS_ENCRYPTION_KEY,
-  );
-  const client = createSlackClient(botToken);
   const agents = await fetchBoundAgents(userLink.vm0UserId, userLink.id);
   const modal = buildAgentUpdateModal(agents, bindingId);
 
   await client.views.open({
-    trigger_id: payload.trigger_id!,
+    trigger_id: triggerId,
     view: modal,
   });
 }
@@ -600,27 +568,11 @@ async function handleHomeAgentUnlink(
   payload: SlackInteractivePayload,
   bindingId: string,
 ): Promise<void> {
-  const { SECRETS_ENCRYPTION_KEY } = env();
-
   await globalThis.services.db
     .delete(slackBindings)
     .where(eq(slackBindings.id, bindingId));
 
-  // Refresh App Home
-  const [installation] = await globalThis.services.db
-    .select()
-    .from(slackInstallations)
-    .where(eq(slackInstallations.slackWorkspaceId, payload.team.id))
-    .limit(1);
-
-  if (!installation) return;
-
-  const botToken = decryptCredentialValue(
-    installation.encryptedBotToken,
-    SECRETS_ENCRYPTION_KEY,
-  );
-  const client = createSlackClient(botToken);
-  await refreshAppHome(client, payload.team.id, payload.user.id);
+  await refreshAppHomeForUser(payload.team.id, payload.user.id);
 }
 
 /**
@@ -630,41 +582,20 @@ async function handleHomeAgentUnlink(
  */
 async function handleHomeAgentLink(
   payload: SlackInteractivePayload,
+  triggerId: string,
 ): Promise<void> {
-  const { SECRETS_ENCRYPTION_KEY } = env();
+  const client = await getSlackClientForWorkspace(payload.team.id);
+  if (!client) return;
 
-  const [installation] = await globalThis.services.db
-    .select()
-    .from(slackInstallations)
-    .where(eq(slackInstallations.slackWorkspaceId, payload.team.id))
-    .limit(1);
-
-  if (!installation) return;
-
-  const [userLink] = await globalThis.services.db
-    .select()
-    .from(slackUserLinks)
-    .where(
-      and(
-        eq(slackUserLinks.slackUserId, payload.user.id),
-        eq(slackUserLinks.slackWorkspaceId, payload.team.id),
-      ),
-    )
-    .limit(1);
-
+  const userLink = await getUserLink(payload.user.id, payload.team.id);
   if (!userLink) return;
 
-  const botToken = decryptCredentialValue(
-    installation.encryptedBotToken,
-    SECRETS_ENCRYPTION_KEY,
-  );
-  const client = createSlackClient(botToken);
   const agents = await fetchAvailableAgents(userLink.vm0UserId, userLink.id);
   const channelId = payload.channel?.id;
   const modal = buildAgentAddModal(agents, undefined, channelId);
 
   await client.views.open({
-    trigger_id: payload.trigger_id!,
+    trigger_id: triggerId,
     view: modal,
   });
 }
@@ -675,19 +606,7 @@ async function handleHomeAgentLink(
 async function handleHomeDisconnect(
   payload: SlackInteractivePayload,
 ): Promise<void> {
-  const { SECRETS_ENCRYPTION_KEY } = env();
-
-  const [userLink] = await globalThis.services.db
-    .select()
-    .from(slackUserLinks)
-    .where(
-      and(
-        eq(slackUserLinks.slackUserId, payload.user.id),
-        eq(slackUserLinks.slackWorkspaceId, payload.team.id),
-      ),
-    )
-    .limit(1);
-
+  const userLink = await getUserLink(payload.user.id, payload.team.id);
   if (!userLink) return;
 
   // Delete user link (cascades to bindings)
@@ -696,20 +615,7 @@ async function handleHomeDisconnect(
     .where(eq(slackUserLinks.id, userLink.id));
 
   // Refresh App Home to show disconnected state
-  const [installation] = await globalThis.services.db
-    .select()
-    .from(slackInstallations)
-    .where(eq(slackInstallations.slackWorkspaceId, payload.team.id))
-    .limit(1);
-
-  if (!installation) return;
-
-  const botToken = decryptCredentialValue(
-    installation.encryptedBotToken,
-    SECRETS_ENCRYPTION_KEY,
-  );
-  const client = createSlackClient(botToken);
-  await refreshAppHome(client, payload.team.id, payload.user.id);
+  await refreshAppHomeForUser(payload.team.id, payload.user.id);
 }
 
 /**
@@ -717,20 +623,19 @@ async function handleHomeDisconnect(
  */
 async function handleViewSubmission(
   payload: SlackInteractivePayload,
-  encryptionKey: string,
 ): Promise<Response> {
   const callbackId = payload.view?.callback_id;
 
   if (callbackId === "agent_add_modal") {
-    return handleAgentAddSubmission(payload, encryptionKey);
+    return handleAgentAddSubmission(payload);
   }
 
   if (callbackId === "agent_remove_modal") {
-    return handleAgentRemoveSubmission(payload, encryptionKey);
+    return handleAgentRemoveSubmission(payload);
   }
 
   if (callbackId === "agent_update_modal") {
-    return handleAgentUpdateSubmission(payload, encryptionKey);
+    return handleAgentUpdateSubmission(payload);
   }
 
   // Unknown callback - just acknowledge
@@ -843,23 +748,9 @@ async function sendConfirmationMessage(
   savedVarNames: string[],
   channelId: string,
   slackUserId: string,
-  encryptionKey: string,
 ): Promise<void> {
-  const [installation] = await globalThis.services.db
-    .select()
-    .from(slackInstallations)
-    .where(eq(slackInstallations.slackWorkspaceId, workspaceId))
-    .limit(1);
-
-  if (!installation) {
-    return;
-  }
-
-  const botToken = decryptCredentialValue(
-    installation.encryptedBotToken,
-    encryptionKey,
-  );
-  const client = createSlackClient(botToken);
+  const client = await getSlackClientForWorkspace(workspaceId);
+  if (!client) return;
 
   let messageText = `:white_check_mark: *Agent \`${agentName}\` has been added successfully!*`;
 
@@ -896,7 +787,6 @@ async function sendConfirmationMessage(
  */
 async function handleAgentAddSubmission(
   payload: SlackInteractivePayload,
-  encryptionKey: string,
 ): Promise<Response> {
   const values = payload.view?.state?.values;
 
@@ -1029,14 +919,13 @@ async function handleAgentAddSubmission(
       savedVarNames,
       channelId,
       payload.user.id,
-      encryptionKey,
     ).catch((error) => {
       log.warn("Failed to send confirmation message (non-critical)", { error });
     });
   }
 
   // Refresh App Home to show newly linked agent
-  await refreshAppHomeForUser(payload.team.id, payload.user.id, encryptionKey);
+  await refreshAppHomeForUser(payload.team.id, payload.user.id);
 
   // Close modal
   return new Response("", { status: 200 });
@@ -1047,7 +936,6 @@ async function handleAgentAddSubmission(
  */
 async function handleAgentRemoveSubmission(
   payload: SlackInteractivePayload,
-  encryptionKey: string,
 ): Promise<Response> {
   const values = payload.view?.state?.values;
 
@@ -1096,7 +984,6 @@ async function handleAgentRemoveSubmission(
       agentNames,
       channelId,
       payload.user.id,
-      encryptionKey,
     ).catch((error) => {
       log.warn("Failed to send removal confirmation message (non-critical)", {
         error,
@@ -1105,7 +992,7 @@ async function handleAgentRemoveSubmission(
   }
 
   // Refresh App Home to reflect removed agents
-  await refreshAppHomeForUser(payload.team.id, payload.user.id, encryptionKey);
+  await refreshAppHomeForUser(payload.team.id, payload.user.id);
 
   // Close modal
   return new Response("", { status: 200 });
@@ -1119,23 +1006,9 @@ async function sendRemovalConfirmationMessage(
   agentNames: string[],
   channelId: string,
   slackUserId: string,
-  encryptionKey: string,
 ): Promise<void> {
-  const [installation] = await globalThis.services.db
-    .select()
-    .from(slackInstallations)
-    .where(eq(slackInstallations.slackWorkspaceId, workspaceId))
-    .limit(1);
-
-  if (!installation) {
-    return;
-  }
-
-  const botToken = decryptCredentialValue(
-    installation.encryptedBotToken,
-    encryptionKey,
-  );
-  const client = createSlackClient(botToken);
+  const client = await getSlackClientForWorkspace(workspaceId);
+  if (!client) return;
 
   const agentList = agentNames.map((n) => `\`${n}\``).join(", ");
   const plural = agentNames.length > 1 ? "s" : "";
@@ -1230,7 +1103,6 @@ async function saveVarsAndSecrets(
  */
 async function handleAgentUpdateSubmission(
   payload: SlackInteractivePayload,
-  encryptionKey: string,
 ): Promise<Response> {
   const values = payload.view?.state?.values;
   if (!values) {
@@ -1304,7 +1176,6 @@ async function handleAgentUpdateSubmission(
       descriptionChanged,
       channelId,
       payload.user.id,
-      encryptionKey,
     ).catch((error) => {
       log.warn("Failed to send update confirmation message (non-critical)", {
         error,
@@ -1313,7 +1184,7 @@ async function handleAgentUpdateSubmission(
   }
 
   // Refresh App Home to reflect updated agent
-  await refreshAppHomeForUser(payload.team.id, payload.user.id, encryptionKey);
+  await refreshAppHomeForUser(payload.team.id, payload.user.id);
 
   return new Response("", { status: 200 });
 }
@@ -1329,23 +1200,9 @@ async function sendUpdateConfirmationMessage(
   descriptionUpdated: boolean,
   channelId: string,
   slackUserId: string,
-  encryptionKey: string,
 ): Promise<void> {
-  const [installation] = await globalThis.services.db
-    .select()
-    .from(slackInstallations)
-    .where(eq(slackInstallations.slackWorkspaceId, workspaceId))
-    .limit(1);
-
-  if (!installation) {
-    return;
-  }
-
-  const botToken = decryptCredentialValue(
-    installation.encryptedBotToken,
-    encryptionKey,
-  );
-  const client = createSlackClient(botToken);
+  const client = await getSlackClientForWorkspace(workspaceId);
+  if (!client) return;
 
   // Build update summary
   const updates: string[] = [];
