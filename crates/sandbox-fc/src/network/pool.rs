@@ -83,8 +83,8 @@ pub struct NetnsPoolConfig {
     pub index: u32,
     /// Number of namespaces to pre-create.
     pub size: usize,
-    /// Proxy port for HTTP/HTTPS redirect.
-    pub proxy_port: u16,
+    /// Proxy port for HTTP/HTTPS redirect (only adds redirect rules when set).
+    pub proxy_port: Option<u16>,
 }
 
 // ---------------------------------------------------------------------------
@@ -195,7 +195,7 @@ async fn setup_host_iptables(
     name: &str,
     host_device: &str,
     peer_ip: &str,
-    proxy_port: u16,
+    proxy_port: Option<u16>,
     default_iface: &str,
 ) -> Result<()> {
     sudo!(
@@ -207,12 +207,14 @@ async fn setup_host_iptables(
     sudo!(
         "iptables -A FORWARD -i {default_iface} -o {host_device} -m state --state RELATED,ESTABLISHED -j ACCEPT -m comment --comment \"{name}\""
     )?;
-    sudo!(
-        "iptables -t nat -A PREROUTING -s {peer_ip}/30 -p tcp --dport 80 -j REDIRECT --to-port {proxy_port} -m comment --comment \"{name}\""
-    )?;
-    sudo!(
-        "iptables -t nat -A PREROUTING -s {peer_ip}/30 -p tcp --dport 443 -j REDIRECT --to-port {proxy_port} -m comment --comment \"{name}\""
-    )?;
+    if let Some(port) = proxy_port {
+        sudo!(
+            "iptables -t nat -A PREROUTING -s {peer_ip}/30 -p tcp --dport 80 -j REDIRECT --to-port {port} -m comment --comment \"{name}\""
+        )?;
+        sudo!(
+            "iptables -t nat -A PREROUTING -s {peer_ip}/30 -p tcp --dport 443 -j REDIRECT --to-port {port} -m comment --comment \"{name}\""
+        )?;
+    }
     Ok(())
 }
 
@@ -274,7 +276,7 @@ pub struct NetnsPool {
     queue: VecDeque<PooledNetns>,
     next_ns_index: u32,
     pool_index: u32,
-    proxy_port: u16,
+    proxy_port: Option<u16>,
     default_iface: String,
 }
 
@@ -437,7 +439,7 @@ impl NetnsPool {
 async fn create_single_namespace(
     pool_index: u32,
     ns_index: u32,
-    proxy_port: u16,
+    proxy_port: Option<u16>,
     default_iface: String,
 ) -> Result<PooledNetns> {
     if ns_index >= MAX_NAMESPACES {
@@ -490,7 +492,7 @@ async fn create_namespace_inner(
     host_device: &str,
     host_ip: &str,
     peer_ip: &str,
-    proxy_port: u16,
+    proxy_port: Option<u16>,
     sn: &super::GuestNetwork,
     default_iface: &str,
 ) -> Result<()> {
