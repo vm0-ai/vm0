@@ -19,13 +19,33 @@ const Table = React.forwardRef<
         .table-wrapper thead tr {
           border-bottom: 0 !important;
         }
+        .table-wrapper {
+          scrollbar-width: thin;
+          scrollbar-color: hsl(var(--muted-foreground) / 0.2) transparent;
+        }
+        .table-wrapper::-webkit-scrollbar {
+          height: 6px;
+        }
+        .table-wrapper::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .table-wrapper::-webkit-scrollbar-thumb {
+          background-color: hsl(var(--muted-foreground) / 0.2);
+          border-radius: 3px;
+        }
+        .table-wrapper::-webkit-scrollbar-thumb:hover {
+          background-color: hsl(var(--muted-foreground) / 0.3);
+        }
       `,
       }}
     />
     <div className="table-wrapper overflow-x-auto">
       <table
         ref={ref}
-        className={cn("w-full caption-bottom text-sm table-fixed", className)}
+        className={cn(
+          "w-full min-w-[764px] caption-bottom text-sm table-fixed",
+          className,
+        )}
         {...props}
       />
     </div>
