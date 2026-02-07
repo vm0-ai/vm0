@@ -10,7 +10,7 @@ import { upsertOAuthConnector } from "../../../../../src/lib/connector/connector
 import { connectorSessions } from "../../../../../src/db/schema/connector-session";
 import { logger } from "../../../../../src/lib/logger";
 import { getOrigin } from "../../../../../src/lib/request/get-origin";
-import type { ConnectorType } from "@vm0/core";
+import { connectorTypeSchema } from "@vm0/core";
 
 const log = logger("api:connectors:callback");
 
@@ -61,10 +61,12 @@ export async function GET(
   const url = new URL(request.url);
   const origin = getOrigin(request);
 
-  // Validate connector type
-  if (type !== "github") {
+  // Validate connector type using Zod schema for runtime type safety
+  const typeResult = connectorTypeSchema.safeParse(type);
+  if (!typeResult.success) {
     return redirectWithError(origin, type, "Unknown connector type");
   }
+  const connectorType = typeResult.data;
 
   // Verify user is authenticated
   const userId = await getUserIdFromRequest(request);
@@ -145,7 +147,7 @@ export async function GET(
     // Store connector and secret
     const { created } = await upsertOAuthConnector(
       userId,
-      type as ConnectorType,
+      connectorType,
       accessToken,
       userInfo,
       scopes,
