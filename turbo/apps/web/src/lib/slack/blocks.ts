@@ -61,60 +61,51 @@ function buildValueInputBlock(
 }
 
 /**
- * Build the "Add Agent" modal view
- *
- * @param agents - List of available agents
- * @param selectedAgentId - Currently selected agent ID
- * @param channelId - Channel ID to send confirmation message to
- * @returns Modal view definition
+ * Build blocks for the "existing agent" mode in the add modal
  */
-export function buildAgentAddModal(
+function buildExistingAgentBlocks(
   agents: AgentOption[],
   selectedAgentId?: string,
-  channelId?: string,
-): View {
-  // Find selected agent or default to first
+): (Block | KnownBlock)[] {
+  const blocks: (Block | KnownBlock)[] = [];
   const selectedAgent = selectedAgentId
     ? agents.find((a) => a.id === selectedAgentId)
     : undefined;
 
-  const blocks: (Block | KnownBlock)[] = [
-    {
-      type: "input",
-      block_id: "agent_select",
-      dispatch_action: true,
-      element: {
-        type: "static_select",
-        action_id: "agent_select_action",
-        placeholder: {
-          type: "plain_text",
-          text: "Select an agent",
+  blocks.push({
+    type: "input",
+    block_id: "agent_select",
+    dispatch_action: true,
+    element: {
+      type: "static_select",
+      action_id: "agent_select_action",
+      placeholder: {
+        type: "plain_text",
+        text: "Select an agent",
+      },
+      options: agents.map((agent) => ({
+        text: {
+          type: "plain_text" as const,
+          text: agent.name,
         },
-        options: agents.map((agent) => ({
+        value: agent.id,
+      })),
+      ...(selectedAgentId && {
+        initial_option: {
           text: {
             type: "plain_text" as const,
-            text: agent.name,
+            text: selectedAgent?.name ?? "",
           },
-          value: agent.id,
-        })),
-        ...(selectedAgentId && {
-          initial_option: {
-            text: {
-              type: "plain_text" as const,
-              text: selectedAgent?.name ?? "",
-            },
-            value: selectedAgentId,
-          },
-        }),
-      },
-      label: {
-        type: "plain_text",
-        text: "Agent",
-      },
+          value: selectedAgentId,
+        },
+      }),
     },
-  ];
+    label: {
+      type: "plain_text",
+      text: "Agent",
+    },
+  });
 
-  // Add description field only after agent is selected
   if (selectedAgent) {
     blocks.push({
       type: "input",
@@ -139,7 +130,6 @@ export function buildAgentAddModal(
     });
   }
 
-  // Add variables fields if agent is selected and has required vars
   if (selectedAgent && selectedAgent.requiredVars.length > 0) {
     blocks.push({ type: "divider" });
     blocks.push({
@@ -160,7 +150,6 @@ export function buildAgentAddModal(
     }
   }
 
-  // Add secrets fields if agent is selected and has required secrets
   if (selectedAgent && selectedAgent.requiredSecrets.length > 0) {
     blocks.push({ type: "divider" });
     blocks.push({
@@ -181,7 +170,6 @@ export function buildAgentAddModal(
     }
   }
 
-  // Show message if no variables or secrets required
   if (
     selectedAgent &&
     selectedAgent.requiredVars.length === 0 &&
@@ -204,17 +192,127 @@ export function buildAgentAddModal(
     });
   }
 
+  return blocks;
+}
+
+/**
+ * Build blocks for the "GitHub URL" mode in the add modal
+ */
+function buildGithubUrlBlocks(hasAgents: boolean): (Block | KnownBlock)[] {
+  const blocks: (Block | KnownBlock)[] = [];
+
+  if (!hasAgents) {
+    blocks.push({
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: "You don't have any agents yet. Enter a GitHub URL to compose one.",
+        },
+      ],
+    });
+  }
+
+  blocks.push({
+    type: "input",
+    block_id: "github_url_input",
+    element: {
+      type: "plain_text_input",
+      action_id: "github_url_value",
+      placeholder: {
+        type: "plain_text",
+        text: "https://github.com/owner/repo",
+      },
+    },
+    label: {
+      type: "plain_text",
+      text: "GitHub URL",
+    },
+    hint: {
+      type: "plain_text",
+      text: "The repository must contain a vm0.yaml file",
+    },
+  });
+
+  return blocks;
+}
+
+/**
+ * Build the "Add Agent" modal view
+ *
+ * Supports two modes:
+ * - "existing": Select from existing agents (default when agents are available)
+ * - "github": Enter a GitHub URL to compose a new agent
+ *
+ * @param agents - List of available agents
+ * @param selectedAgentId - Currently selected agent ID
+ * @param channelId - Channel ID to send confirmation message to
+ * @param mode - Which mode to display ("existing" or "github")
+ * @returns Modal view definition
+ */
+export function buildAgentAddModal(
+  agents: AgentOption[],
+  selectedAgentId?: string,
+  channelId?: string,
+  mode?: "existing" | "github",
+): View {
+  const hasAgents = agents.length > 0;
+  const effectiveMode = mode ?? (hasAgents ? "existing" : "github");
+
+  const blocks: (Block | KnownBlock)[] = [];
+
+  // Show mode selector only when user has existing agents
+  if (hasAgents) {
+    blocks.push({
+      type: "actions",
+      block_id: "link_mode_select",
+      elements: [
+        {
+          type: "radio_buttons",
+          action_id: "link_mode_action",
+          options: [
+            {
+              text: { type: "plain_text", text: "Select existing agent" },
+              value: "existing",
+            },
+            {
+              text: { type: "plain_text", text: "Compose from GitHub URL" },
+              value: "github",
+            },
+          ],
+          initial_option: {
+            text: {
+              type: "plain_text",
+              text:
+                effectiveMode === "existing"
+                  ? "Select existing agent"
+                  : "Compose from GitHub URL",
+            },
+            value: effectiveMode,
+          },
+        },
+      ],
+    });
+    blocks.push({ type: "divider" });
+  }
+
+  if (effectiveMode === "github") {
+    blocks.push(...buildGithubUrlBlocks(hasAgents));
+  } else {
+    blocks.push(...buildExistingAgentBlocks(agents, selectedAgentId));
+  }
+
   return {
     type: "modal",
     callback_id: "agent_add_modal",
-    private_metadata: JSON.stringify({ channelId }),
+    private_metadata: JSON.stringify({ channelId, mode: effectiveMode }),
     title: {
       type: "plain_text",
-      text: "Add Agent",
+      text: effectiveMode === "github" ? "Compose Agent" : "Add Agent",
     },
     submit: {
       type: "plain_text",
-      text: "Add",
+      text: effectiveMode === "github" ? "Compose" : "Add",
     },
     close: {
       type: "plain_text",
@@ -897,7 +995,7 @@ export function buildHelpMessage(): (Block | KnownBlock)[] {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "*Agent*\n• `/vm0 agent link` - Link an agent\n• `/vm0 agent unlink` - Unlink your agent\n• `/vm0 agent update` - Update agent configuration",
+        text: "*Agent*\n• `/vm0 agent link` - Link an agent or compose from GitHub URL\n• `/vm0 agent unlink` - Unlink your agent\n• `/vm0 agent update` - Update agent configuration",
       },
     },
     {

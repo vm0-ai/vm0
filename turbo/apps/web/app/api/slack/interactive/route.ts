@@ -33,6 +33,9 @@ import {
   setVariable,
 } from "../../../../src/lib/variable/variable-service";
 import { logger } from "../../../../src/lib/logger";
+import { slackComposeRequests } from "../../../../src/db/schema/slack-compose-request";
+import { generateEphemeralCliToken } from "../../../../src/lib/auth/cli-token-service";
+import { triggerComposeJob } from "../../../../src/lib/compose/trigger-compose-job";
 
 const log = logger("slack:interactive");
 
@@ -465,6 +468,71 @@ async function handleAgentUpdateSelection(
 }
 
 /**
+ * Handle mode switching in add agent modal (existing agent vs GitHub URL)
+ */
+async function handleLinkModeSwitch(
+  payload: SlackInteractivePayload,
+  selectedMode: string,
+): Promise<void> {
+  const { SECRETS_ENCRYPTION_KEY } = env();
+  const privateMetadata = payload.view?.private_metadata;
+  const { channelId } = privateMetadata
+    ? (JSON.parse(privateMetadata) as { channelId?: string })
+    : { channelId: undefined };
+
+  const [installation] = await globalThis.services.db
+    .select()
+    .from(slackInstallations)
+    .where(eq(slackInstallations.slackWorkspaceId, payload.team.id))
+    .limit(1);
+
+  if (!installation) return;
+
+  const botToken = decryptCredentialValue(
+    installation.encryptedBotToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+  const client = createSlackClient(botToken);
+
+  const mode = selectedMode === "github" ? "github" : "existing";
+
+  // Fetch agents for "existing" mode
+  const agents =
+    mode === "existing" ? await fetchAgentsForModeSwitch(payload) : [];
+
+  const updatedModal = buildAgentAddModal(agents, undefined, channelId, mode);
+
+  await updateModalView(
+    client,
+    payload.view!.id,
+    updatedModal,
+    payload.team.id,
+  );
+}
+
+/**
+ * Fetch available agents for mode switch (helper to avoid full re-fetch when switching to github mode)
+ */
+async function fetchAgentsForModeSwitch(
+  payload: SlackInteractivePayload,
+): ReturnType<typeof fetchAvailableAgents> {
+  const [userLink] = await globalThis.services.db
+    .select()
+    .from(slackUserLinks)
+    .where(
+      and(
+        eq(slackUserLinks.slackUserId, payload.user.id),
+        eq(slackUserLinks.slackWorkspaceId, payload.team.id),
+      ),
+    )
+    .limit(1);
+
+  if (!userLink) return [];
+
+  return fetchAvailableAgents(userLink.vm0UserId, userLink.id);
+}
+
+/**
  * Handle block actions (e.g., agent selection change)
  */
 async function handleBlockActions(
@@ -480,6 +548,27 @@ async function handleBlockActions(
 }
 
 /**
+ * Dispatch modal-related block actions (link mode, agent select, agent update select)
+ */
+async function dispatchModalAction(
+  payload: SlackInteractivePayload,
+  actionId: string,
+  value: string,
+): Promise<void> {
+  switch (actionId) {
+    case "link_mode_action":
+      await handleLinkModeSwitch(payload, value);
+      break;
+    case "agent_select_action":
+      await handleAgentAddSelection(payload, value);
+      break;
+    case "agent_update_select_action":
+      await handleAgentUpdateSelection(payload, value);
+      break;
+  }
+}
+
+/**
  * Dispatch a single block action to the appropriate handler
  */
 async function dispatchBlockAction(
@@ -487,14 +576,15 @@ async function dispatchBlockAction(
   action: NonNullable<SlackInteractivePayload["actions"]>[0],
 ): Promise<void> {
   switch (action.action_id) {
+    case "link_mode_action":
     case "agent_select_action":
-      if (payload.view && action.selected_option?.value) {
-        await handleAgentAddSelection(payload, action.selected_option.value);
-      }
-      break;
     case "agent_update_select_action":
       if (payload.view && action.selected_option?.value) {
-        await handleAgentUpdateSelection(payload, action.selected_option.value);
+        await dispatchModalAction(
+          payload,
+          action.action_id,
+          action.selected_option.value,
+        );
       }
       break;
     case "home_agent_update":
@@ -783,6 +873,100 @@ async function sendConfirmationMessage(
 }
 
 /**
+ * Handle GitHub URL submission from the agent add modal
+ */
+async function handleGithubUrlSubmission(
+  payload: SlackInteractivePayload,
+  githubUrl: string,
+): Promise<Response> {
+  // Validate URL format
+  if (!githubUrl.startsWith("https://github.com/")) {
+    return NextResponse.json({
+      response_action: "errors",
+      errors: {
+        github_url_input:
+          "Please enter a valid GitHub URL (https://github.com/...)",
+      },
+    });
+  }
+
+  // Get user link
+  const [userLink] = await globalThis.services.db
+    .select()
+    .from(slackUserLinks)
+    .where(
+      and(
+        eq(slackUserLinks.slackUserId, payload.user.id),
+        eq(slackUserLinks.slackWorkspaceId, payload.team.id),
+      ),
+    )
+    .limit(1);
+
+  if (!userLink) {
+    return NextResponse.json({
+      response_action: "errors",
+      errors: {
+        github_url_input:
+          "Your account is not linked. Please run /vm0 connect first.",
+      },
+    });
+  }
+
+  // Generate ephemeral CLI token
+  const userToken = await generateEphemeralCliToken(userLink.vm0UserId);
+
+  // Trigger compose job
+  const result = await triggerComposeJob({
+    userId: userLink.vm0UserId,
+    githubUrl,
+    userToken,
+  });
+
+  // Insert slack_compose_requests record
+  const channelId = extractChannelIdFromMetadata(
+    payload.view?.private_metadata,
+  );
+
+  await globalThis.services.db.insert(slackComposeRequests).values({
+    composeJobId: result.jobId,
+    slackWorkspaceId: payload.team.id,
+    slackUserId: payload.user.id,
+    slackChannelId: channelId ?? payload.user.id,
+  });
+
+  // Send "composing..." ephemeral message
+  if (channelId) {
+    const client = await getSlackClientForWorkspace(payload.team.id);
+
+    if (client) {
+      await client.chat
+        .postEphemeral({
+          channel: channelId,
+          user: payload.user.id,
+          text: `Composing agent from ${githubUrl}...`,
+          blocks: [
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: `:hourglass_flowing_sand: *Composing agent from* \`${githubUrl}\`...\n\nThis may take a few minutes. You'll be notified when it's ready.`,
+              },
+            },
+          ],
+        })
+        .catch((error) => {
+          log.warn("Failed to send composing message (non-critical)", {
+            error,
+          });
+        });
+    }
+  }
+
+  // Close modal
+  return new Response("", { status: 200 });
+}
+
+/**
  * Handle agent add modal submission
  */
 async function handleAgentAddSubmission(
@@ -795,6 +979,12 @@ async function handleAgentAddSubmission(
       response_action: "errors",
       errors: { agent_select: "Missing form values" },
     });
+  }
+
+  // Check if this is a GitHub URL submission
+  const githubUrl = values.github_url_input?.github_url_value?.value?.trim();
+  if (githubUrl) {
+    return handleGithubUrlSubmission(payload, githubUrl);
   }
 
   // Extract channelId from private_metadata

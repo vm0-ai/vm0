@@ -458,12 +458,20 @@ async function handleAgentAdd(
     .where(eq(agentComposes.userId, vm0UserId));
 
   if (composes.length === 0) {
-    return NextResponse.json({
-      response_type: "ephemeral",
-      blocks: buildErrorMessage(
-        "You don't have any agents in VM0 yet.\n\nCreate one first with the VM0 CLI: `vm0 build`",
-      ),
+    // No existing agents — open modal in GitHub URL mode so user can compose one
+    const modal = buildAgentAddModal(
+      [],
+      undefined,
+      payload.channel_id,
+      "github",
+    );
+
+    await client.views.open({
+      trigger_id: payload.trigger_id,
+      view: modal,
     });
+
+    return new NextResponse(null, { status: 200 });
   }
 
   // Get already bound agent names

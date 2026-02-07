@@ -7,6 +7,9 @@ import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import {
   createTestCompose,
   listTestSecrets,
+  findTestComposeJobsByUser,
+  findTestSlackComposeRequest,
+  findTestCliTokensByUser,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   givenLinkedSlackUser,
@@ -536,6 +539,149 @@ describe("POST /api/slack/interactive", () => {
 
       expect(secretNames).toContain("API_KEY");
       expect(secretNames).toContain("OTHER_SECRET");
+    });
+  });
+
+  describe("View Submission - GitHub URL Compose", () => {
+    it("triggers compose job when GitHub URL is submitted", async () => {
+      const { userLink, installation } = await givenLinkedSlackUser();
+
+      const body = buildInteractiveBody({
+        type: "view_submission",
+        user: {
+          id: userLink.slackUserId,
+          username: "testuser",
+          team_id: installation.slackWorkspaceId,
+        },
+        team: { id: installation.slackWorkspaceId, domain: "test" },
+        view: {
+          id: "V123",
+          callback_id: "agent_add_modal",
+          state: {
+            values: {
+              github_url_input: {
+                github_url_value: {
+                  type: "plain_text_input",
+                  value: "https://github.com/owner/test-repo",
+                },
+              },
+            },
+          },
+          private_metadata: JSON.stringify({ channelId: "C123" }),
+        },
+      });
+      const request = createSignedSlackRequest(body);
+
+      const response = await POST(request);
+
+      // Success returns empty 200 to close the modal
+      expect(response.status).toBe(200);
+      const text = await response.text();
+      expect(text).toBe("");
+
+      // Verify compose job was created
+      const jobs = await findTestComposeJobsByUser(userLink.vm0UserId);
+      expect(jobs.length).toBe(1);
+      expect(jobs[0]!.githubUrl).toBe("https://github.com/owner/test-repo");
+
+      // Verify slack_compose_requests record was created
+      const slackRequest = await findTestSlackComposeRequest(jobs[0]!.id);
+      expect(slackRequest).toBeDefined();
+      expect(slackRequest!.slackUserId).toBe(userLink.slackUserId);
+      expect(slackRequest!.slackWorkspaceId).toBe(
+        installation.slackWorkspaceId,
+      );
+      expect(slackRequest!.slackChannelId).toBe("C123");
+
+      // Verify ephemeral CLI token was created
+      const tokens = await findTestCliTokensByUser(
+        userLink.vm0UserId,
+        "slack-compose-ephemeral",
+      );
+      expect(tokens.length).toBe(1);
+    });
+
+    it("rejects invalid GitHub URL", async () => {
+      const { userLink, installation } = await givenLinkedSlackUser();
+
+      const body = buildInteractiveBody({
+        type: "view_submission",
+        user: {
+          id: userLink.slackUserId,
+          username: "testuser",
+          team_id: installation.slackWorkspaceId,
+        },
+        team: { id: installation.slackWorkspaceId, domain: "test" },
+        view: {
+          id: "V123",
+          callback_id: "agent_add_modal",
+          state: {
+            values: {
+              github_url_input: {
+                github_url_value: {
+                  type: "plain_text_input",
+                  value: "https://gitlab.com/owner/repo",
+                },
+              },
+            },
+          },
+          private_metadata: JSON.stringify({ channelId: "C123" }),
+        },
+      });
+      const request = createSignedSlackRequest(body);
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.response_action).toBe("errors");
+      expect(data.errors.github_url_input).toContain("valid GitHub URL");
+    });
+
+    it("existing agent selection still works alongside GitHub URL mode", async () => {
+      const { userLink, installation } = await givenLinkedSlackUser();
+      mockClerk({ userId: userLink.vm0UserId });
+      const { composeId } = await createTestCompose("normal-agent");
+
+      // Mock Slack API for App Home refresh after successful binding
+      const slackMock = handlers({
+        viewsPublish: http.post("https://slack.com/api/views.publish", () =>
+          HttpResponse.json({ ok: true }),
+        ),
+      });
+      server.use(...slackMock.handlers);
+
+      // Submit with agent_select (no github_url_input) — existing flow
+      const body = buildInteractiveBody({
+        type: "view_submission",
+        user: {
+          id: userLink.slackUserId,
+          username: "testuser",
+          team_id: installation.slackWorkspaceId,
+        },
+        team: { id: installation.slackWorkspaceId, domain: "test" },
+        view: {
+          id: "V123",
+          callback_id: "agent_add_modal",
+          state: {
+            values: {
+              agent_select: {
+                agent_select_action: {
+                  selected_option: { value: composeId },
+                },
+              },
+            },
+          },
+          private_metadata: JSON.stringify({ channelId: "C123" }),
+        },
+      });
+      const request = createSignedSlackRequest(body);
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const text = await response.text();
+      expect(text).toBe("");
     });
   });
 

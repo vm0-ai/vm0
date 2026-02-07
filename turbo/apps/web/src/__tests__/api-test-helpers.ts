@@ -17,6 +17,7 @@ import { agentRuns } from "../db/schema/agent-run";
 import { composeJobs } from "../db/schema/compose-job";
 import { storages, storageVersions } from "../db/schema/storage";
 import { usageDaily } from "../db/schema/usage-daily";
+import { slackComposeRequests } from "../db/schema/slack-compose-request";
 import { and, eq } from "drizzle-orm";
 
 // Route handlers - imported here so callers don't need to pass them
@@ -1411,5 +1412,57 @@ export async function findUsageDaily(
     })
     .from(usageDaily)
     .where(and(eq(usageDaily.userId, userId), eq(usageDaily.date, date)));
+  return row;
+}
+
+/**
+ * Find compose jobs by userId for verification.
+ */
+export async function findTestComposeJobsByUser(userId: string) {
+  return globalThis.services.db
+    .select()
+    .from(composeJobs)
+    .where(eq(composeJobs.userId, userId));
+}
+
+/**
+ * Find CLI tokens by userId and optional name filter.
+ */
+export async function findTestCliTokensByUser(userId: string, name?: string) {
+  const conditions = [eq(cliTokens.userId, userId)];
+  if (name) {
+    conditions.push(eq(cliTokens.name, name));
+  }
+  return globalThis.services.db
+    .select()
+    .from(cliTokens)
+    .where(and(...conditions));
+}
+
+/**
+ * Insert a slack_compose_requests record for test setup.
+ */
+export async function createTestSlackComposeRequest(options: {
+  composeJobId: string;
+  slackWorkspaceId: string;
+  slackUserId: string;
+  slackChannelId: string;
+}) {
+  const [row] = await globalThis.services.db
+    .insert(slackComposeRequests)
+    .values(options)
+    .returning();
+  return row!;
+}
+
+/**
+ * Find slack_compose_requests by composeJobId for verification.
+ */
+export async function findTestSlackComposeRequest(composeJobId: string) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(slackComposeRequests)
+    .where(eq(slackComposeRequests.composeJobId, composeJobId))
+    .limit(1);
   return row;
 }
