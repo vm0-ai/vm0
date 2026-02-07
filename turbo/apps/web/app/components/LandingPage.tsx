@@ -378,7 +378,7 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
                         setCopiedHero(true);
                         setTimeout(() => setCopiedHero(false), 2000);
                       }}
-                      className="bg-[#f0ebe5] dark:bg-[#292a2e] hover:bg-[#e5dfd8] dark:hover:bg-[#3a3a3e] h-[40px] w-[40px] flex items-center justify-center rounded-[10px] transition-colors shrink-0"
+                      className="h-[40px] w-[40px] flex items-center justify-center transition-colors shrink-0 rounded-[10px] hover:bg-[#f0ebe5] dark:hover:bg-[#292a2e]"
                     >
                       <svg
                         width="18"
@@ -2953,7 +2953,7 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
                   {/* Command flow visualization */}
                   <div className="bg-[#f9f4ef] dark:bg-[#292a2e] flex-1 min-h-px min-w-px p-[24px]">
                     <div className="flex flex-col justify-between items-center h-full w-full">
-                      <div className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] px-[10px] py-[8px] w-full flex-1 flex items-center justify-center">
+                      <div className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] px-[10px] py-[10px] sm:py-[12px] md:py-[16px] w-full flex-1 flex items-center justify-center">
                         <div className="flex gap-[10px] items-center justify-center">
                           <svg
                             width="16"
@@ -2990,7 +2990,7 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
                         </svg>
                       </div>
 
-                      <div className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] px-[10px] py-[8px] w-full flex-1 flex items-center justify-center">
+                      <div className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] px-[10px] py-[10px] sm:py-[12px] md:py-[16px] w-full flex-1 flex items-center justify-center">
                         <div className="flex gap-[10px] items-center justify-center">
                           <svg
                             width="16"
@@ -3028,7 +3028,7 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
                         </svg>
                       </div>
 
-                      <div className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] px-[10px] py-[8px] w-full flex-1 flex items-center justify-center">
+                      <div className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] px-[10px] py-[10px] sm:py-[12px] md:py-[16px] w-full flex-1 flex items-center justify-center">
                         <div className="flex gap-[10px] items-center justify-center">
                           <svg
                             width="16"
@@ -3393,7 +3393,7 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
               {/* Row 1: n8n & Dify vs VM0 */}
               <div className="flex flex-col md:flex-row md:relative gap-[10px] md:gap-0 md:h-[114px] w-full max-w-full">
                 <div
-                  className="md:absolute md:left-0 md:top-0 w-full md:w-[calc(50%-34px)] md:max-w-[536px] md:h-[114px]"
+                  className="md:absolute md:left-0 md:top-0 w-full md:w-[calc(50%-34px)] md:max-w-[536px] md:h-[114px] rounded-[12px] overflow-hidden"
                   style={{
                     boxShadow:
                       "0px 20px 25px 0px rgba(0,0,0,0.1), 0px 8px 10px 0px rgba(0,0,0,0.1)",
@@ -3445,7 +3445,7 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
                   </div>
                 </div>
                 <div
-                  className="md:absolute md:right-0 md:top-0 w-full md:w-[calc(50%-34px)] md:max-w-[536px] md:h-[114px]"
+                  className="md:absolute md:right-0 md:top-0 w-full md:w-[calc(50%-34px)] md:max-w-[536px] md:h-[114px] rounded-[12px] overflow-hidden"
                   style={{
                     boxShadow:
                       "0px 20px 25px 0px rgba(0,0,0,0.1), 0px 8px 10px 0px rgba(0,0,0,0.1)",
@@ -3516,7 +3516,7 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
               {/* Row 2: E2B vs VM0 */}
               <div className="flex flex-col md:flex-row md:relative gap-[10px] md:gap-0 md:h-[114px] w-full max-w-full">
                 <div
-                  className="md:absolute md:left-0 md:top-0 w-full md:w-[calc(50%-34px)] md:max-w-[536px] md:h-[114px]"
+                  className="md:absolute md:left-0 md:top-0 w-full md:w-[calc(50%-34px)] md:max-w-[536px] md:h-[114px] rounded-[12px] overflow-hidden"
                   style={{
                     boxShadow:
                       "0px 20px 25px 0px rgba(0,0,0,0.1), 0px 8px 10px 0px rgba(0,0,0,0.1)",
@@ -3546,7 +3546,7 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
                   </div>
                 </div>
                 <div
-                  className="md:absolute md:right-0 md:top-0 w-full md:w-[calc(50%-34px)] md:max-w-[536px] md:h-[114px]"
+                  className="md:absolute md:right-0 md:top-0 w-full md:w-[calc(50%-34px)] md:max-w-[536px] md:h-[114px] rounded-[12px] overflow-hidden"
                   style={{
                     boxShadow:
                       "0px 20px 25px 0px rgba(0,0,0,0.1), 0px 8px 10px 0px rgba(0,0,0,0.1)",
@@ -3617,7 +3617,7 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
               {/* Row 3: LangGraph vs VM0 */}
               <div className="flex flex-col md:flex-row md:relative gap-[10px] md:gap-0 md:h-[114px] w-full max-w-full">
                 <div
-                  className="md:absolute md:left-0 md:top-0 w-full md:w-[calc(50%-34px)] md:max-w-[536px] md:h-[114px]"
+                  className="md:absolute md:left-0 md:top-0 w-full md:w-[calc(50%-34px)] md:max-w-[536px] md:h-[114px] rounded-[12px] overflow-hidden"
                   style={{
                     boxShadow:
                       "0px 20px 25px 0px rgba(0,0,0,0.1), 0px 8px 10px 0px rgba(0,0,0,0.1)",
@@ -3647,7 +3647,7 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
                   </div>
                 </div>
                 <div
-                  className="md:absolute md:right-0 md:top-0 w-full md:w-[calc(50%-34px)] md:max-w-[536px] md:h-[114px]"
+                  className="md:absolute md:right-0 md:top-0 w-full md:w-[calc(50%-34px)] md:max-w-[536px] md:h-[114px] rounded-[12px] overflow-hidden"
                   style={{
                     boxShadow:
                       "0px 20px 25px 0px rgba(0,0,0,0.1), 0px 8px 10px 0px rgba(0,0,0,0.1)",
@@ -3731,8 +3731,8 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
             <div className="flex flex-col lg:flex-row gap-[12px] w-full">
               {/* Left Card - Developers */}
               <div className="flex-1 bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] flex flex-col gap-[24px] overflow-hidden min-h-px min-w-px">
-                <div className="flex flex-col gap-[10px] h-[232px] p-[24px]">
-                  <div className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] flex-1 flex items-center px-[24px] py-[4px] sm:py-[6px] md:py-[8px] min-h-px min-w-0 opacity-60">
+                <div className="flex flex-col gap-[10px] h-auto lg:h-[232px] p-[24px]">
+                  <div className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] flex-1 flex items-center px-[24px] py-[10px] sm:py-[12px] md:py-[16px] min-h-px min-w-0 opacity-60">
                     <div className="flex-1 flex gap-[24px] items-center min-h-px min-w-0">
                       <Image
                         src="/landing/check-icon.svg"
@@ -3750,7 +3750,7 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
                     </div>
                   </div>
                   <div
-                    className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] flex-1 flex items-center px-[24px] py-[4px] sm:py-[6px] md:py-[8px] min-h-px min-w-0"
+                    className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] flex-1 flex items-center px-[24px] py-[10px] sm:py-[12px] md:py-[16px] min-h-px min-w-0"
                     style={{
                       boxShadow:
                         "0px 10px 15px 0px rgba(0,0,0,0.1), 0px 4px 6px 0px rgba(0,0,0,0.1)",
@@ -3772,7 +3772,7 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
                       </p>
                     </div>
                   </div>
-                  <div className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] flex-1 flex items-center px-[24px] py-[4px] sm:py-[6px] md:py-[8px] min-h-px min-w-0 opacity-30">
+                  <div className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] flex-1 flex items-center px-[24px] py-[10px] sm:py-[12px] md:py-[16px] min-h-px min-w-0 opacity-30">
                     <div className="flex-1 flex gap-[24px] items-center min-h-px min-w-0">
                       <Image
                         src="/landing/check-icon.svg"
@@ -3809,8 +3809,8 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
 
               {/* Right Card - Teams */}
               <div className="flex-1 bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] flex flex-col gap-[24px] overflow-hidden min-h-px min-w-px">
-                <div className="flex flex-col gap-[10px] h-[232px] p-[24px]">
-                  <div className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] flex-1 flex items-center px-[24px] py-[4px] sm:py-[6px] md:py-[8px] min-h-px min-w-0 opacity-60">
+                <div className="flex flex-col gap-[10px] h-auto lg:h-[232px] p-[24px]">
+                  <div className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] flex-1 flex items-center px-[24px] py-[10px] sm:py-[12px] md:py-[16px] min-h-px min-w-0 opacity-60">
                     <div className="flex-1 flex gap-[24px] items-center min-h-px min-w-0">
                       <Image
                         src="/landing/check-icon.svg"
@@ -3828,7 +3828,7 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
                     </div>
                   </div>
                   <div
-                    className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] flex-1 flex items-center px-[24px] py-[4px] sm:py-[6px] md:py-[8px] min-h-px min-w-0"
+                    className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] flex-1 flex items-center px-[24px] py-[10px] sm:py-[12px] md:py-[16px] min-h-px min-w-0"
                     style={{
                       boxShadow:
                         "0px 10px 15px 0px rgba(0,0,0,0.1), 0px 4px 6px 0px rgba(0,0,0,0.1)",
@@ -3850,7 +3850,7 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
                       </p>
                     </div>
                   </div>
-                  <div className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] flex-1 flex items-center px-[24px] py-[4px] sm:py-[6px] md:py-[8px] min-h-px min-w-0 opacity-30">
+                  <div className="bg-white border border-[#f5eae1] dark:border-[#2f2f32] rounded-[10px] flex-1 flex items-center px-[24px] py-[10px] sm:py-[12px] md:py-[16px] min-h-px min-w-0 opacity-30">
                     <div className="flex-1 flex gap-[24px] items-center min-h-px min-w-0">
                       <Image
                         src="/landing/check-icon.svg"
@@ -3956,7 +3956,7 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
                         setCopiedFooter(true);
                         setTimeout(() => setCopiedFooter(false), 2000);
                       }}
-                      className="bg-[#f0ebe5] dark:bg-[#292a2e] hover:bg-[#e5dfd8] dark:hover:bg-[#3a3a3e] rounded-[10px] w-[40px] h-[36px] flex items-center justify-center shrink-0 transition-colors"
+                      className="rounded-[10px] w-[40px] h-[40px] flex items-center justify-center shrink-0 transition-colors hover:bg-[#f0ebe5] dark:hover:bg-[#292a2e]"
                     >
                       <svg
                         width="16"
