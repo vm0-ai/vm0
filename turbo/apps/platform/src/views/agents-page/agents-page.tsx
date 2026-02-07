@@ -92,40 +92,42 @@ function AgentsListSection() {
   }
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead className="h-10 px-3 whitespace-nowrap">
-            Your agents
-          </TableHead>
-          <TableHead className="h-10 px-3 whitespace-nowrap">
-            Model provider
-          </TableHead>
-          <TableHead className="h-10 px-3 whitespace-nowrap">
-            Schedule status
-          </TableHead>
-          <TableHead className="h-10 pl-3 pr-6 whitespace-nowrap">
-            Last edit
-          </TableHead>
-          <TableHead className="h-10 w-12" />
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {agents.map((agent) => {
-          const hasSchedule = getAgentScheduleStatus(agent.name, schedules);
-          return (
-            <AgentRow
-              key={agent.name}
-              agent={agent}
-              hasSchedule={hasSchedule}
-              modelProviderLabel={
-                defaultProvider ? getUILabel(defaultProvider.type) : "N/A"
-              }
-            />
-          );
-        })}
-      </TableBody>
-    </Table>
+    <div className="overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="h-10 px-3 whitespace-nowrap w-[30%] min-w-[150px]">
+              Your agents
+            </TableHead>
+            <TableHead className="h-10 px-3 whitespace-nowrap w-[25%] min-w-[150px]">
+              Model provider
+            </TableHead>
+            <TableHead className="h-10 px-3 whitespace-nowrap w-[20%] min-w-[140px]">
+              Schedule status
+            </TableHead>
+            <TableHead className="h-10 pl-3 pr-6 whitespace-nowrap w-[20%] min-w-[120px]">
+              Last edit
+            </TableHead>
+            <TableHead className="h-10 w-[5%] min-w-[48px]" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {agents.map((agent) => {
+            const hasSchedule = getAgentScheduleStatus(agent.name, schedules);
+            return (
+              <AgentRow
+                key={agent.name}
+                agent={agent}
+                hasSchedule={hasSchedule}
+                modelProviderLabel={
+                  defaultProvider ? getUILabel(defaultProvider.type) : "N/A"
+                }
+              />
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
   );
 }
 
