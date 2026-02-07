@@ -11,6 +11,9 @@ import {
   handleAppHomeOpened,
   handleMessagesTabOpened,
 } from "../../../../src/lib/slack/handlers/app-home-opened";
+import { logger } from "../../../../src/lib/logger";
+
+const log = logger("slack:events");
 
 /**
  * Slack Events API Endpoint
@@ -153,7 +156,7 @@ export async function POST(request: Request) {
           messageTs: event.ts,
           threadTs: event.thread_ts,
         }).catch((error) => {
-          console.error("Error handling app_mention:", error);
+          log.error("Error handling app_mention", { error });
         }),
       );
     }
@@ -176,7 +179,7 @@ export async function POST(request: Request) {
           messageTs: event.ts,
           threadTs: event.thread_ts,
         }).catch((error) => {
-          console.error("Error handling direct_message:", error);
+          log.error("Error handling direct_message", { error });
         }),
       );
     }
@@ -190,7 +193,7 @@ export async function POST(request: Request) {
           workspaceId: payload.team_id,
           userId: event.user,
         }).catch((error) => {
-          console.error("Error handling app_home_opened:", error);
+          log.error("Error handling app_home_opened", { error });
         }),
       );
     }
@@ -199,13 +202,15 @@ export async function POST(request: Request) {
     if (event.type === "app_home_opened" && event.tab === "messages") {
       initServices();
 
-      await handleMessagesTabOpened({
-        workspaceId: payload.team_id,
-        userId: event.user,
-        channelId: event.channel,
-      }).catch((error) => {
-        console.error("Error handling messages_tab_opened:", error);
-      });
+      after(
+        handleMessagesTabOpened({
+          workspaceId: payload.team_id,
+          userId: event.user,
+          channelId: event.channel,
+        }).catch((error) => {
+          log.error("Error handling messages_tab_opened", { error });
+        }),
+      );
     }
 
     // Return 200 OK immediately

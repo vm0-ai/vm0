@@ -9,6 +9,9 @@ import { slackInstallations } from "../../../src/db/schema/slack-installation";
 import { slackBindings } from "../../../src/db/schema/slack-binding";
 import { decryptCredentialValue } from "../../../src/lib/crypto/secrets-encryption";
 import { createSlackClient, refreshAppHome } from "../../../src/lib/slack";
+import { logger } from "../../../src/lib/logger";
+
+const log = logger("slack:link");
 
 interface LinkResult {
   success: boolean;
@@ -117,7 +120,7 @@ export async function linkSlackAccount(
           channelId,
           slackUserId,
         ).catch((error) => {
-          console.error("Error sending Slack message:", error);
+          log.warn("Failed to send success message", { error });
         });
       }
       return { success: true, alreadyLinked: true };
@@ -153,9 +156,11 @@ export async function linkSlackAccount(
       .then((result) => result.rowCount ?? 0);
 
     if (restoredCount > 0) {
-      console.log(
-        `Restored ${restoredCount} orphaned bindings for user ${userId} in workspace ${workspaceId}`,
-      );
+      log.info("Restored orphaned bindings", {
+        count: restoredCount,
+        userId,
+        workspaceId,
+      });
     }
   }
 
@@ -167,7 +172,7 @@ export async function linkSlackAccount(
       channelId,
       slackUserId,
     ).catch((error) => {
-      console.error("Error sending Slack message:", error);
+      log.warn("Failed to send success message", { error });
     });
   }
 
@@ -179,7 +184,7 @@ export async function linkSlackAccount(
   );
   const client = createSlackClient(botToken);
   await refreshAppHome(client, workspaceId, slackUserId).catch((error) => {
-    console.error("Error refreshing App Home after link:", error);
+    log.warn("Failed to refresh App Home after link", { error });
   });
 
   return { success: true };

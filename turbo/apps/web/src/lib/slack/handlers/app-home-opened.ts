@@ -12,9 +12,6 @@ import {
   buildWelcomeMessage,
 } from "../index";
 import { buildLoginUrl } from "./shared";
-import { logger } from "../../logger";
-
-const log = logger("slack:app-home");
 
 interface AppHomeOpenedContext {
   workspaceId: string;
@@ -121,9 +118,6 @@ interface MessagesTabOpenedContext {
 export async function handleMessagesTabOpened(
   context: MessagesTabOpenedContext,
 ): Promise<void> {
-  const start = Date.now();
-  log.debug("messages_tab_opened start", { userId: context.userId });
-
   const { SECRETS_ENCRYPTION_KEY } = env();
 
   // 1. Get workspace installation
@@ -132,11 +126,6 @@ export async function handleMessagesTabOpened(
     .from(slackInstallations)
     .where(eq(slackInstallations.slackWorkspaceId, context.workspaceId))
     .limit(1);
-
-  log.debug("messages_tab_opened installation lookup", {
-    found: !!installation,
-    elapsed: Date.now() - start,
-  });
 
   if (!installation) {
     return;
@@ -154,11 +143,6 @@ export async function handleMessagesTabOpened(
     )
     .limit(1);
 
-  log.debug("messages_tab_opened user link lookup", {
-    found: !!userLink,
-    elapsed: Date.now() - start,
-  });
-
   if (!userLink) {
     return;
   }
@@ -174,11 +158,6 @@ export async function handleMessagesTabOpened(
       ),
     );
 
-  log.debug("messages_tab_opened atomic update", {
-    rowCount: updated.rowCount,
-    elapsed: Date.now() - start,
-  });
-
   if (updated.rowCount === 0) {
     // Already sent — skip
     return;
@@ -193,11 +172,6 @@ export async function handleMessagesTabOpened(
     .from(slackBindings)
     .where(eq(slackBindings.slackUserLinkId, userLink.id));
 
-  log.debug("messages_tab_opened bindings lookup", {
-    count: bindings.length,
-    elapsed: Date.now() - start,
-  });
-
   // 5. Send welcome message
   const botToken = decryptCredentialValue(
     installation.encryptedBotToken,
@@ -211,8 +185,4 @@ export async function handleMessagesTabOpened(
     "Hi! I'm VM0. I can connect you to AI agents to help with your tasks.",
     { blocks: buildWelcomeMessage(bindings) },
   );
-
-  log.debug("messages_tab_opened complete", {
-    elapsed: Date.now() - start,
-  });
 }
