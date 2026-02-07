@@ -13,5 +13,8 @@ uuid.workspace = true
 vsock-host.workspace = true
 which.workspace = true
 
+[dev-dependencies]
+tempfile.workspace = true
+
 [lints]
 workspace = true
