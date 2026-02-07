@@ -178,13 +178,13 @@ EOF
     assert_success
 
     # Set secret via platform
-    run $CLI_COMMAND secret set SCHEDULE_TEST_API_KEY "test-api-key-value"
+    run $CLI_COMMAND secret set SCHEDULE_TEST_API_KEY --body "test-api-key-value"
     assert_success
 
     # Set vars via platform
-    run $CLI_COMMAND var set SCHEDULE_TEST_API_URL "https://api.example.com"
+    run $CLI_COMMAND variable set SCHEDULE_TEST_API_URL "https://api.example.com"
     assert_success
-    run $CLI_COMMAND var set SCHEDULE_TEST_DEBUG "true"
+    run $CLI_COMMAND variable set SCHEDULE_TEST_DEBUG "true"
     assert_success
 
     # Setup schedule (secrets and vars come from platform tables, not CLI flags)
@@ -202,8 +202,8 @@ EOF
 
     # Clean up
     $CLI_COMMAND schedule delete "$CONFIG_AGENT_NAME" --force 2>/dev/null || true
-    $CLI_COMMAND secret delete SCHEDULE_TEST_API_KEY --force 2>/dev/null || true
-    $CLI_COMMAND var delete SCHEDULE_TEST_API_URL --force 2>/dev/null || true
-    $CLI_COMMAND var delete SCHEDULE_TEST_DEBUG --force 2>/dev/null || true
+    $CLI_COMMAND secret delete SCHEDULE_TEST_API_KEY -y 2>/dev/null || true
+    $CLI_COMMAND variable delete SCHEDULE_TEST_API_URL -y 2>/dev/null || true
+    $CLI_COMMAND variable delete SCHEDULE_TEST_DEBUG -y 2>/dev/null || true
     rm -rf "$CONFIG_TEST_DIR"
 }
