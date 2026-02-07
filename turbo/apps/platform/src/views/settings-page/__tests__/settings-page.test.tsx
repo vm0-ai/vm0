@@ -1,10 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { server } from "../../../mocks/server";
+import { describe, expect, it, vi } from "vitest";
+import { server } from "../../../mocks/server.ts";
 import { http, HttpResponse } from "msw";
-import { setupPage } from "../../../__tests__/page-helper";
-import { testContext } from "../../../signals/__tests__/test-helpers";
-import { pathname$ } from "../../../signals/route";
-import { screen, within, waitFor } from "@testing-library/react";
+import { setupPage } from "../../../__tests__/page-helper.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { pathname$ } from "../../../signals/route.ts";
+import { screen, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 
 const context = testContext();
@@ -51,9 +51,32 @@ describe("settings page", () => {
   });
 
   it("can add a new provider via the dialog", async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+
     server.use(
       http.get("/api/model-providers", () => {
         return HttpResponse.json({ modelProviders: [] });
+      }),
+      http.put("/api/model-providers", async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(
+          {
+            provider: {
+              id: crypto.randomUUID(),
+              type: capturedBody.type,
+              framework: "claude-code",
+              secretName: "ANTHROPIC_API_KEY",
+              authMethod: null,
+              secretNames: null,
+              isDefault: true,
+              selectedModel: null,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+            created: true,
+          },
+          { status: 201 },
+        );
       }),
     );
 
@@ -84,13 +107,28 @@ describe("settings page", () => {
     });
     await user.click(addProviderButton);
 
-    // Dialog should close after save
-    await waitFor(() => {
+    // Verify request was sent with correct data and dialog closed
+    await vi.waitFor(() => {
+      expect(capturedBody).toBeTruthy();
+    });
+    expect(capturedBody!.type).toBe("anthropic-api-key");
+    expect(capturedBody!.secret).toBe("sk-ant-api-key-12345");
+
+    await vi.waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
 
   it("can delete a provider via kebab menu", async () => {
+    let deletedType: string | null = null;
+
+    server.use(
+      http.delete("/api/model-providers/:type", ({ params }) => {
+        deletedType = params.type as string;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
     await setupPage({ context, path: "/settings" });
 
     // Open kebab menu for the existing provider
@@ -112,8 +150,12 @@ describe("settings page", () => {
     });
     await user.click(confirmButton);
 
-    // Dialog should close
-    await waitFor(() => {
+    // Verify delete API was called with correct provider type and dialog closed
+    await vi.waitFor(() => {
+      expect(deletedType).toBe("claude-code-oauth-token");
+    });
+
+    await vi.waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
