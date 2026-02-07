@@ -361,4 +361,28 @@
   .icon-button {
     @apply flex items-center justify-center size-9 hover:bg-muted rounded-lg transition-colors;
   }
+
+  /* Custom scrollbar for dialog content - Slack-style */
+  .dialog-scrollable {
+    scrollbar-width: thin; /* Firefox */
+    scrollbar-color: rgba(128, 128, 128, 0.3) transparent;
+  }
+
+  .dialog-scrollable::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .dialog-scrollable::-webkit-scrollbar-track {
+    background: transparent;
+    margin: 4px 0;
+  }
+
+  .dialog-scrollable::-webkit-scrollbar-thumb {
+    background-color: rgba(128, 128, 128, 0.3);
+    border-radius: 3px;
+  }
+
+  .dialog-scrollable::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(128, 128, 128, 0.5);
+  }
 }

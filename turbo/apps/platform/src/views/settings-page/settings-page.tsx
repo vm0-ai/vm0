@@ -11,7 +11,7 @@ export function SettingsPage() {
       title="Settings"
       subtitle="Configure your model providers and project preferences"
     >
-      <div className="flex flex-col gap-6 px-8 pb-8">
+      <div className="flex flex-col gap-6 px-6 pb-8">
         <DefaultProviderCard />
         <ProviderList />
         <ProviderDialog />

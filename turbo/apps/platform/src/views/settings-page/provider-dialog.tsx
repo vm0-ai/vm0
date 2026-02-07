@@ -9,6 +9,7 @@ import {
 } from "@vm0/ui/components/ui/dialog";
 import { Button } from "@vm0/ui/components/ui/button";
 import { Input } from "@vm0/ui/components/ui/input";
+import { Switch } from "@vm0/ui/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -191,7 +192,7 @@ function OAuthFields({
   isLoading: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2">
       <label className="text-sm font-medium text-foreground">
         Claude code OAuth token
       </label>
@@ -239,7 +240,7 @@ function ApiKeyFields({
 
   return (
     <>
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-2">
         <label className="text-sm font-medium text-foreground">
           {fieldSecretLabel}
         </label>
@@ -310,7 +311,7 @@ function MultiAuthFields({
   return (
     <>
       {authMethodEntries.length > 1 && (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2">
           <label className="text-sm font-medium text-foreground">
             Select authentication method
           </label>
@@ -333,7 +334,7 @@ function MultiAuthFields({
         Object.entries(currentSecrets).map(([key, coreFieldConfig]) => {
           const field = getUISecretField(type, key, coreFieldConfig);
           return (
-            <div key={key} className="flex flex-col gap-3">
+            <div key={key} className="flex flex-col gap-2">
               <label className="text-sm font-medium text-foreground">
                 {field.label}
                 {!field.required && (
@@ -395,7 +396,7 @@ function ModelSelector({
   if (canCustom && models.length === 0) {
     return (
       <>
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2">
           <label className="text-sm font-medium text-foreground">Model</label>
           <div className="flex items-center justify-between rounded-lg border border-border p-4">
             <div className="flex flex-col gap-1">
@@ -407,21 +408,15 @@ function ModelSelector({
                 configure a custom one.
               </span>
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={useDefaultModel}
-              onClick={() => onUseDefaultModelChange(!useDefaultModel)}
-              className={`relative ml-4 inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors ${useDefaultModel ? "bg-primary" : "bg-muted"}`}
-            >
-              <span
-                className={`pointer-events-none inline-block size-5 rounded-full bg-white shadow-sm ring-0 transition-transform ${useDefaultModel ? "translate-x-5" : "translate-x-0.5"} mt-0.5`}
-              />
-            </button>
+            <Switch
+              checked={useDefaultModel}
+              onCheckedChange={onUseDefaultModelChange}
+              className="ml-4"
+            />
           </div>
         </div>
         {!useDefaultModel && (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2">
             <label className="text-sm font-medium text-foreground">
               Custom model ID
             </label>
@@ -437,7 +432,7 @@ function ModelSelector({
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2">
       <label className="text-sm font-medium text-foreground">
         Select model
       </label>
