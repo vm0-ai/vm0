@@ -4,6 +4,7 @@ import {
   connectorsByTypeContract,
   type ConnectorType,
   type ConnectorListResponse,
+  type ConnectorResponse,
 } from "@vm0/core";
 import { getClientConfig, handleError } from "../core/client-factory";
 
@@ -39,4 +40,30 @@ export async function deleteConnector(type: ConnectorType): Promise<void> {
   }
 
   handleError(result, `Connector "${type}" not found`);
+}
+
+/**
+ * Get a connector by type
+ * Returns null if not connected (404 response)
+ */
+export async function getConnector(
+  type: ConnectorType,
+): Promise<ConnectorResponse | null> {
+  const config = await getClientConfig();
+  const client = initClient(connectorsByTypeContract, config);
+
+  const result = await client.get({
+    params: { type },
+  });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  // 404 means not connected - return null instead of throwing
+  if (result.status === 404) {
+    return null;
+  }
+
+  handleError(result, `Failed to get connector "${type}"`);
 }

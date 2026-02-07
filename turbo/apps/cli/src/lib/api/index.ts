@@ -70,7 +70,11 @@ export {
 } from "./domains/model-providers";
 
 // Domain modules - Connectors
-export { listConnectors, deleteConnector } from "./domains/connectors";
+export {
+  listConnectors,
+  deleteConnector,
+  getConnector,
+} from "./domains/connectors";
 
 // Domain modules - Usage
 export { getUsage } from "./domains/usage";
