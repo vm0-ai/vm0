@@ -278,6 +278,8 @@ pub struct NetnsPool {
     pool_index: u32,
     proxy_port: Option<u16>,
     default_iface: String,
+    /// Number of namespaces currently acquired (out of the pool).
+    acquired_count: usize,
 }
 
 impl NetnsPool {
@@ -315,6 +317,7 @@ impl NetnsPool {
             pool_index: config.index,
             proxy_port: config.proxy_port,
             default_iface,
+            acquired_count: 0,
         };
 
         // Create all namespaces in parallel via JoinSet
@@ -349,6 +352,7 @@ impl NetnsPool {
     /// Acquire a namespace from the pool, or create one on-demand if empty.
     pub async fn acquire(&mut self) -> Result<PooledNetns> {
         if let Some(pooled) = self.queue.pop_front() {
+            self.acquired_count += 1;
             info!(
                 name = %pooled.name,
                 remaining = self.queue.len(),
@@ -365,19 +369,22 @@ impl NetnsPool {
             });
         }
         self.next_ns_index += 1;
-        create_single_namespace(
+        let ns = create_single_namespace(
             self.pool_index,
             ns_index,
             self.proxy_port,
             self.default_iface.clone(),
         )
-        .await
+        .await?;
+        self.acquired_count += 1;
+        Ok(ns)
     }
 
     /// Return a namespace to the pool, or delete it if the pool is inactive.
     pub async fn release(&mut self, ns: PooledNetns) -> Result<()> {
         if !self.active {
             delete_namespace_resources(&ns.name, &ns.host_device).await;
+            self.acquired_count = self.acquired_count.saturating_sub(1);
             return Ok(());
         }
 
@@ -385,6 +392,7 @@ impl NetnsPool {
             info!(name = %ns.name, "namespace already in pool, ignoring");
             return Ok(());
         }
+        self.acquired_count = self.acquired_count.saturating_sub(1);
         info!(
             name = %ns.name,
             available = self.queue.len() + 1,
@@ -404,6 +412,13 @@ impl NetnsPool {
             return Ok(());
         }
         self.active = false;
+
+        if self.acquired_count > 0 {
+            error!(
+                count = self.acquired_count,
+                "namespaces still acquired at cleanup, they will become orphans"
+            );
+        }
 
         let count = self.queue.len();
         info!(count, "cleaning up namespace pool");
