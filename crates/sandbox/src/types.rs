@@ -1,0 +1,25 @@
+use std::collections::HashMap;
+
+pub struct ExecRequest<'a> {
+    pub cmd: &'a str,
+    pub timeout_ms: u64,
+    pub working_dir: Option<&'a str>,
+    pub env: Option<&'a HashMap<String, String>>,
+}
+
+pub struct ExecResult {
+    pub exit_code: i32,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+pub struct SpawnHandle {
+    pub pid: u32,
+}
+
+pub struct ProcessExit {
+    pub pid: u32,
+    pub exit_code: i32,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+}

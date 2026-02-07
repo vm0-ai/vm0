@@ -1,15 +1,17 @@
 [workspace]
 resolver = "2"
-members = ["vsock-guest", "vsock-proto", "vsock-host", "vsock-test", "guest-init", "guest-common", "guest-download"]
+members = ["vsock-guest", "vsock-proto", "vsock-host", "vsock-test", "guest-init", "guest-common", "guest-download", "sandbox"]
 
 [workspace.dependencies]
 # Internal crates
 guest-common = { path = "guest-common" }
+sandbox = { path = "sandbox" }
 vsock-guest = { path = "vsock-guest" }
 vsock-host = { path = "vsock-host" }
 vsock-proto = { path = "vsock-proto" }
 
 # External dependencies
+async-trait = "0.1"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 flate2 = "1"
 libc = "0.2"
@@ -17,6 +19,7 @@ nix = { version = "0.31", default-features = false, features = ["mount", "fs"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tar = "0.4"
+thiserror = "2"
 tokio = { version = "1", features = ["net", "io-util", "time", "rt", "macros"] }
 ureq = { version = "3", features = ["platform-verifier"] }
 
