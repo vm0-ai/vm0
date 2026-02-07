@@ -110,10 +110,10 @@ function AgentsListSection() {
               Schedule status
             </span>
           </TableHead>
-          <TableHead className="h-10 pl-3 pr-6 w-[20%] min-w-[100px]">
+          <TableHead className="h-10 px-3 w-[20%] min-w-[100px]">
             <span className="block truncate whitespace-nowrap">Last edit</span>
           </TableHead>
-          <TableHead className="h-10 w-12" />
+          <TableHead className="h-10 w-12 px-2" />
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -179,7 +179,7 @@ function AgentRow({
           </TableCell>
         </DialogTrigger>
         <DialogTrigger asChild>
-          <TableCell className="pl-3 pr-6 py-2 cursor-pointer w-[20%] min-w-[100px]">
+          <TableCell className="px-3 py-2 cursor-pointer w-[20%] min-w-[100px]">
             <span className="block truncate whitespace-nowrap text-sm">
               {new Date(agent.updatedAt).toLocaleDateString("en-US", {
                 month: "short",
@@ -189,7 +189,7 @@ function AgentRow({
             </span>
           </TableCell>
         </DialogTrigger>
-        <TableCell className="pl-0 pr-4 py-2 w-12">
+        <TableCell className="w-12 px-2 py-2">
           <TooltipProvider>
             <Tooltip>
               <DialogTrigger asChild>
