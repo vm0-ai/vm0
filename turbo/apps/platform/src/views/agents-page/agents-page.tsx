@@ -142,8 +142,10 @@ function AgentRow({
     <Dialog>
       <TableRow className="h-[53px]">
         <DialogTrigger asChild>
-          <TableCell className="px-3 py-2 cursor-pointer max-w-[200px]">
-            <span className="font-medium truncate block">{agent.name}</span>
+          <TableCell className="px-3 py-2 cursor-pointer">
+            <div className="truncate">
+              <span className="font-medium">{agent.name}</span>
+            </div>
           </TableCell>
         </DialogTrigger>
         <DialogTrigger asChild>
