@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.3.0](https://github.com/vm0-ai/vm0/compare/core-v8.2.2...core-v8.3.0) (2026-02-07)
+
+
+### Features
+
+* **web:** add server-side github compose api ([#2473](https://github.com/vm0-ai/vm0/issues/2473)) ([9ab1f23](https://github.com/vm0-ai/vm0/commit/9ab1f2344f11086fd0f4c30036d04c72fab61b68))
+
 ## [8.2.2](https://github.com/vm0-ai/vm0/compare/core-v8.2.1...core-v8.2.2) (2026-02-06)
 
 

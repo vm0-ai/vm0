@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.12.0](https://github.com/vm0-ai/vm0/compare/web-v12.11.0...web-v12.12.0) (2026-02-07)
+
+
+### Features
+
+* **web:** add server-side github compose api ([#2473](https://github.com/vm0-ai/vm0/issues/2473)) ([9ab1f23](https://github.com/vm0-ai/vm0/commit/9ab1f2344f11086fd0f4c30036d04c72fab61b68))
+
+
+### Performance Improvements
+
+* **web:** replace N+1 queries with JOIN in runs list endpoint ([#2501](https://github.com/vm0-ai/vm0/issues/2501)) ([e426b59](https://github.com/vm0-ai/vm0/commit/e426b595771fc6348a45d5fe843e68c2134af358))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.3.0
+
 ## [12.11.0](https://github.com/vm0-ai/vm0/compare/web-v12.10.0...web-v12.11.0) (2026-02-06)
 
 

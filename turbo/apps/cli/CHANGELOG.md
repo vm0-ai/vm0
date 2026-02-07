@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.23.0](https://github.com/vm0-ai/vm0/compare/cli-v9.22.0...cli-v9.23.0) (2026-02-07)
+
+
+### Features
+
+* **web:** add server-side github compose api ([#2473](https://github.com/vm0-ai/vm0/issues/2473)) ([9ab1f23](https://github.com/vm0-ai/vm0/commit/9ab1f2344f11086fd0f4c30036d04c72fab61b68))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.3.0
+
 ## [9.22.0](https://github.com/vm0-ai/vm0/compare/cli-v9.21.0...cli-v9.22.0) (2026-02-06)
 
 
