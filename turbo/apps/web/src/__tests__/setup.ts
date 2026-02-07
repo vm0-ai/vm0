@@ -56,6 +56,23 @@ vi.mock("@clerk/nextjs/server", () => ({
   createRouteMatcher: vi.fn(),
 }));
 
+// Mock Axiom packages
+// The @axiomhq/logging Logger class needs proper method implementations
+vi.mock("@axiomhq/js", () => ({
+  Axiom: vi.fn(),
+}));
+
+vi.mock("@axiomhq/logging", () => ({
+  Logger: vi.fn().mockImplementation(() => ({
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    flush: vi.fn().mockResolvedValue(undefined),
+  })),
+  AxiomJSTransport: vi.fn(),
+}));
+
 // MSW server lifecycle
 // Note: Using "bypass" because some test files have their own MSW server setup
 // (e.g., strapi.test.ts). The "error" strategy would conflict with those.
