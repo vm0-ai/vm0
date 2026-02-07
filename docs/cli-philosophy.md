@@ -16,6 +16,18 @@ When commands are atomic, agents can freely compose them to fulfill their own in
 
 Complex workflows are not built into single commands. Instead, they emerge from agents orchestrating atomic commands in whatever order and combination serves their goal.
 
+**Example — an agent deploying and running an agent:**
+
+```bash
+# Each step is one atomic command. The agent decides the order and combination.
+vm0 secret set OPENAI_KEY --body "sk-..."
+vm0 compose vm0.yaml
+vm0 run my-agent "analyze the dataset"
+vm0 logs <run-id>
+```
+
+The agent composes these atomic commands based on its own intent. It might skip `secret set` if the secret already exists, or run `vm0 logs` only if the run fails. The CLI does not impose a fixed workflow — the agent does.
+
 **Guidelines:**
 - One command, one operation
 - Do not combine unrelated operations into a single command
@@ -27,6 +39,28 @@ Complex workflows are not built into single commands. Instead, they emerge from 
 Every command must work in both TTY (interactive terminal) and non-TTY (programmatic) modes.
 
 AI agents like Claude Code operate in non-TTY mode — they spawn CLI processes, pass arguments, and read output. They cannot respond to interactive prompts. If a command only works interactively, agents cannot use it.
+
+**Example — the same command in both modes:**
+
+TTY mode (human at terminal):
+```
+$ vm0 secret set API_KEY
+? Enter secret value: ********
+✓ Secret "API_KEY" saved
+```
+
+Non-TTY mode (agent or CI/CD):
+```
+$ vm0 secret set API_KEY --body "sk-..."
+✓ Secret "API_KEY" saved
+```
+
+If the agent forgets the `--body` flag in non-TTY mode:
+```
+$ vm0 secret set API_KEY
+✗ --body is required in non-interactive mode
+  Usage: vm0 secret set <name> --body "your-secret-value"
+```
 
 **Guidelines:**
 - All required inputs must be expressible as flags or arguments
