@@ -95,12 +95,12 @@ function AgentsListSection() {
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead className="h-10 px-3 w-[25%] min-w-[120px]">
+          <TableHead className="h-10 px-3 w-[30%] min-w-[120px]">
             <span className="block truncate whitespace-nowrap">
               Your agents
             </span>
           </TableHead>
-          <TableHead className="h-10 px-3 w-[25%] min-w-[120px]">
+          <TableHead className="h-10 px-3 w-[30%] min-w-[120px]">
             <span className="block truncate whitespace-nowrap">
               Model provider
             </span>
@@ -113,7 +113,7 @@ function AgentsListSection() {
           <TableHead className="h-10 px-3 w-[20%] min-w-[100px]">
             <span className="block truncate whitespace-nowrap">Last edit</span>
           </TableHead>
-          <TableHead className="h-10 w-12 px-2" />
+          <TableHead className="h-10 w-[44px] px-2" />
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -148,14 +148,14 @@ function AgentRow({
     <Dialog>
       <TableRow className="h-[53px]">
         <DialogTrigger asChild>
-          <TableCell className="px-3 py-2 cursor-pointer w-[25%] min-w-[120px]">
+          <TableCell className="px-3 py-2 cursor-pointer w-[30%] min-w-[120px]">
             <span className="block truncate whitespace-nowrap font-medium">
               {agent.name}
             </span>
           </TableCell>
         </DialogTrigger>
         <DialogTrigger asChild>
-          <TableCell className="px-3 py-2 cursor-pointer w-[25%] min-w-[120px]">
+          <TableCell className="px-3 py-2 cursor-pointer w-[30%] min-w-[120px]">
             <span className="block truncate whitespace-nowrap text-sm">
               {modelProviderLabel}
             </span>
@@ -189,7 +189,7 @@ function AgentRow({
             </span>
           </TableCell>
         </DialogTrigger>
-        <TableCell className="w-12 px-2 py-2">
+        <TableCell className="w-[44px] px-2 py-2">
           <TooltipProvider>
             <Tooltip>
               <DialogTrigger asChild>
