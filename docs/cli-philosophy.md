@@ -6,7 +6,7 @@ This does not mean the CLI is hostile to humans. It means that when an AI agent 
 
 Every CLI design decision should be evaluated through this lens: **Can an AI agent use this command effectively?**
 
-## The Three Pillars
+## The Three Principles
 
 ### 1. Atomic Command
 
