@@ -6,7 +6,7 @@ pub struct FirecrackerConfig {
     pub kernel_path: PathBuf,
     pub rootfs_path: PathBuf,
     pub workspaces_dir: PathBuf,
-    pub proxy_port: u16,
+    pub proxy_port: Option<u16>,
     pub snapshot: Option<SnapshotConfig>,
 }
 
