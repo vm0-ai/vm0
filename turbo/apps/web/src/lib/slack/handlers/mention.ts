@@ -251,6 +251,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       // 10. Execute agent with session continuation
       log.debug("Calling runAgentForSlack", { existingSessionId });
       const {
+        status: runStatus,
         response: agentResponse,
         sessionId: newSessionId,
         runId,
@@ -261,7 +262,11 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
         threadContext: formattedContext,
         userId: userLink.vm0UserId,
       });
-      log.debug("runAgentForSlack returned", { newSessionId, runId });
+      log.debug("runAgentForSlack returned", {
+        runStatus,
+        newSessionId,
+        runId,
+      });
 
       // 11. Create thread session mapping if this is a new thread (no existing session)
       if (threadTs && !existingSessionId && newSessionId) {
@@ -282,10 +287,14 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
 
       // 12. Post response message with agent name and logs link
       const logsUrl = runId ? buildLogsUrl(runId) : undefined;
-      await postMessage(client, context.channelId, agentResponse, {
+      const responseText =
+        runStatus === "timeout"
+          ? `:warning: *Agent timed out*\n${agentResponse}`
+          : agentResponse;
+      await postMessage(client, context.channelId, responseText, {
         threadTs,
         blocks: buildAgentResponseMessage(
-          agentResponse,
+          responseText,
           selectedAgentName,
           logsUrl,
         ),

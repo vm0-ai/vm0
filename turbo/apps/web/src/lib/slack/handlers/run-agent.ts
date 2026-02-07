@@ -37,6 +37,7 @@ interface WaitResult {
 }
 
 interface RunAgentResult {
+  status: "completed" | "failed" | "timeout";
   response: string;
   sessionId: string | undefined;
   runId: string | undefined;
@@ -62,6 +63,7 @@ export async function runAgentForSlack(
 
     if (!compose) {
       return {
+        status: "failed",
         response: "Error: Agent configuration not found.",
         sessionId,
         runId: undefined,
@@ -80,6 +82,7 @@ export async function runAgentForSlack(
 
       if (!latestVersion) {
         return {
+          status: "failed",
           response: "Error: Agent has no versions configured.",
           sessionId,
           runId: undefined,
@@ -115,6 +118,7 @@ export async function runAgentForSlack(
 
     if (!run) {
       return {
+        status: "failed",
         response: "Error: Failed to create run.",
         sessionId,
         runId: undefined,
@@ -171,20 +175,23 @@ export async function runAgentForSlack(
 
     if (result.status === "completed") {
       return {
+        status: "completed",
         response: result.output ?? "Task completed successfully.",
         sessionId: resultSessionId,
         runId: run.id,
       };
     } else if (result.status === "failed") {
       return {
+        status: "failed",
         response: `Error: ${result.error ?? "Agent execution failed."}`,
         sessionId: resultSessionId,
         runId: run.id,
       };
     } else {
       return {
+        status: "timeout",
         response:
-          "The agent is still working on your request. Check back later.",
+          "The agent timed out after 30 minutes. You can check the logs for more details.",
         sessionId: resultSessionId,
         runId: run.id,
       };
@@ -193,6 +200,7 @@ export async function runAgentForSlack(
     log.error("Error running agent for Slack:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
     return {
+      status: "failed",
       response: `Error executing agent: ${message}`,
       sessionId,
       runId: undefined,
