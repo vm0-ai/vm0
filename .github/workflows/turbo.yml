@@ -329,16 +329,6 @@ jobs:
         working-directory: turbo
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
-          CLERK_SECRET_KEY: sk_test_mock_secret_key_for_testing
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_mock_instance.clerk.accounts.dev$
-          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
-          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_USER_STORAGES_BUCKET_NAME: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
-          SECRETS_ENCRYPTION_KEY: ${{ secrets.SECRETS_ENCRYPTION_KEY }}
-          AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: pnpm vitest run --project=web
 
   test-cli:
@@ -433,7 +423,7 @@ jobs:
           deployment-env: web
           environment-variables: |
             DATABASE_URL=${{ steps.branch.outputs.database-url }}
-            NEXT_PUBLIC_BASE_URL=https://www.vm0.ai
+            NEXT_PUBLIC_BASE_URL=${{ needs.prepare.outputs.web-preview-url }}
             NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
             E2B_API_KEY=${{ secrets.E2B_API_KEY }}
@@ -694,7 +684,7 @@ jobs:
     if: "${{ (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) && needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.web-changed == 'true' }}"
     timeout-minutes: 5
     permissions:
-      actions: read  # Required to query cache API
+      actions: read # Required to query cache API
     steps:
       - uses: actions/checkout@v6
         with:
@@ -744,7 +734,7 @@ jobs:
       )
     timeout-minutes: 5
     permissions:
-      actions: read  # Required to query cache API
+      actions: read # Required to query cache API
     steps:
       - uses: actions/checkout@v6
         with:
