@@ -519,7 +519,11 @@ pub fn handle_connection(stream: UnixStream) -> io::Result<()> {
             break;
         }
 
-        for msg in decoder.decode(&buf[..n]).map_err(to_io_error)? {
+        // n <= buf.len() is guaranteed by read()
+        for msg in decoder
+            .decode(buf.get(..n).unwrap_or_default())
+            .map_err(to_io_error)?
+        {
             // Handle spawn_watch separately since it needs the writer Arc
             let response = if msg.msg_type == MSG_SPAWN_WATCH {
                 let (timeout_ms, command) =

@@ -113,9 +113,9 @@ fn run(manifest_path: &str) -> bool {
 
     // Download artifact if present (after storages complete)
     if let Some(artifact) = &manifest.artifact
-        && is_valid_url(&artifact.archive_url)
+        && let Some(url) = &artifact.archive_url
+        && url != "null"
     {
-        let url = artifact.archive_url.as_ref().unwrap();
         let start = Instant::now();
         log_info!(LOG_TAG, "Downloading artifact to {}", artifact.mount_path);
 
@@ -146,7 +146,11 @@ fn download_storages_parallel(storages: &[Storage]) -> bool {
         .iter()
         .enumerate()
         .filter(|(_, s)| is_valid_url(&s.archive_url))
-        .map(|(i, s)| (i, s.archive_url.clone().unwrap(), s.mount_path.clone()))
+        .filter_map(|(i, s)| {
+            s.archive_url
+                .clone()
+                .map(|url| (i, url, s.mount_path.clone()))
+        })
         .collect();
 
     if download_tasks.is_empty() {
