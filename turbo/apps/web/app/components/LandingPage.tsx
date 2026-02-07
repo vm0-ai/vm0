@@ -555,7 +555,7 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
                               {claudeCodeVersion && ` ${claudeCodeVersion}`}
                             </p>
                             <p className="m-0 text-[#827d77]">
-                              Sonnet 4.5 · Claude API
+                              Opus 4.6 · Claude API
                             </p>
                             <p className="m-0 text-[#827d77]">/Users/ming</p>
                           </div>
@@ -1606,7 +1606,9 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
                             const content =
                               activeTab === "agents"
                                 ? `Agent Instructions\n\nYou are a specialized agent for ${selectedAgent}.`
-                                : `name: ${selectedAgent}\nversion: 1.0.0`;
+                                : selectedAgent === "hackernews"
+                                  ? `version: "1.0"\n\nagents:\n  201-hackernews:\n    description: "Daily HackerNews curator that fetches and analyzes top stories"\n    framework: claude-code\n    instructions: AGENTS.md\n    skills:\n      - https://github.com/vm0-ai/vm0-skills/tree/main/hackernews`
+                                  : `version: "1.0"\n\nagents:\n  ${selectedAgent}:\n    description: "Agent for ${selectedAgent}"\n    framework: claude-code\n    instructions: AGENTS.md`;
                             navigator.clipboard
                               .writeText(content)
                               .catch(() => {});
@@ -1727,6 +1729,17 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
                                   201-hackernews
                                 </span>
                                 <span className="text-[#827d77]">:</span>
+                              </p>
+                              <p className="m-0">
+                                {"    "}
+                                <span className="text-[#3b82f6]">
+                                  description
+                                </span>
+                                <span className="text-[#827d77]">:</span>{" "}
+                                <span className="text-[#22c55e]">
+                                  &quot;Daily HackerNews curator that fetches
+                                  and analyzes top stories&quot;
+                                </span>
                               </p>
                               <p className="m-0">
                                 {"    "}
@@ -2582,7 +2595,7 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
                             {claudeCodeVersion && ` ${claudeCodeVersion}`}
                           </p>
                           <p className="m-0 text-[#827d77]">
-                            Sonnet 4.5 · Claude API
+                            Opus 4.6 · Claude API
                           </p>
                           <p className="m-0 text-[#827d77]">/Users/ming</p>
                         </div>
