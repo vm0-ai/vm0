@@ -1,5 +1,25 @@
 # Changelog
 
+## [9.25.0](https://github.com/vm0-ai/vm0/compare/cli-v9.24.1...cli-v9.25.0) (2026-02-07)
+
+
+### Features
+
+* **cli:** add connector list and disconnect commands ([#2570](https://github.com/vm0-ai/vm0/issues/2570)) ([aec1120](https://github.com/vm0-ai/vm0/commit/aec1120600d0ab0709803f643038493ecc6f8bb9))
+* **cli:** add connector status command for detailed connector view ([#2582](https://github.com/vm0-ai/vm0/issues/2582)) ([c342888](https://github.com/vm0-ai/vm0/commit/c342888a913edb0d7e382bc4b76b91e136decf6b)), closes [#2571](https://github.com/vm0-ai/vm0/issues/2571)
+
+
+### Bug Fixes
+
+* **cli:** remove session code display from connector connect ([#2569](https://github.com/vm0-ai/vm0/issues/2569)) ([2a8fae3](https://github.com/vm0-ai/vm0/commit/2a8fae30b90764d089140fde15cbf3df021c7563))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.4.2
+
 ## [9.24.1](https://github.com/vm0-ai/vm0/compare/cli-v9.24.0...cli-v9.24.1) (2026-02-07)
 
 

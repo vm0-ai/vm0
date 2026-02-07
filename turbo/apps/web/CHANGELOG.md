@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.14.1](https://github.com/vm0-ai/vm0/compare/web-v12.14.0...web-v12.14.1) (2026-02-07)
+
+
+### Bug Fixes
+
+* **web:** inject connector secrets into agent execution environment ([#2584](https://github.com/vm0-ai/vm0/issues/2584)) ([f483b5b](https://github.com/vm0-ai/vm0/commit/f483b5b0c0c94e45a149f99b8f108c3fc74399a4))
+* **web:** make storage download ambiguous-prefix test deterministic ([#2572](https://github.com/vm0-ai/vm0/issues/2572)) ([e48f09e](https://github.com/vm0-ai/vm0/commit/e48f09ebf9c341c8e3647adba05b6b50e968eee4)), closes [#2562](https://github.com/vm0-ai/vm0/issues/2562)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.4.2
+
 ## [12.14.0](https://github.com/vm0-ai/vm0/compare/web-v12.13.2...web-v12.14.0) (2026-02-07)
 
 
