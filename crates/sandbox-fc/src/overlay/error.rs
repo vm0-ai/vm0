@@ -7,7 +7,4 @@ pub enum OverlayError {
 
     #[error("failed to create overlay file: {0}")]
     FileCreation(String),
-
-    #[error("all pre-warm tasks failed")]
-    PreWarmFailed,
 }

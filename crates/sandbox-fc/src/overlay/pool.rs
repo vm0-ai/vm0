@@ -187,9 +187,6 @@ impl OverlayPool {
         }
 
         let available = queue.len();
-        if available == 0 && config.size > 0 {
-            return Err(OverlayError::PreWarmFailed);
-        }
         if available < config.size {
             warn!(
                 requested = config.size,
