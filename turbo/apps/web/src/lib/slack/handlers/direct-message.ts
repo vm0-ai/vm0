@@ -216,6 +216,7 @@ export async function handleDirectMessage(
     try {
       // 9. Execute agent
       const {
+        status: runStatus,
         response: agentResponse,
         sessionId: newSessionId,
         runId,
@@ -242,10 +243,14 @@ export async function handleDirectMessage(
 
       // 11. Post response message
       const logsUrl = runId ? buildLogsUrl(runId) : undefined;
-      await postMessage(client, context.channelId, agentResponse, {
+      const responseText =
+        runStatus === "timeout"
+          ? `:warning: *Agent timed out*\n${agentResponse}`
+          : agentResponse;
+      await postMessage(client, context.channelId, responseText, {
         threadTs,
         blocks: buildAgentResponseMessage(
-          agentResponse,
+          responseText,
           selectedAgentName,
           logsUrl,
         ),
