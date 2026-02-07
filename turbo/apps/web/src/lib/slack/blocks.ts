@@ -261,6 +261,24 @@ export function buildAppHomeView(options: {
         type: "mrkdwn",
         text: `:white_check_mark: *Account connected*\n\`${options.vm0UserId}\``,
       },
+      accessory: {
+        type: "button",
+        text: {
+          type: "plain_text",
+          text: "Disconnect",
+        },
+        action_id: "home_disconnect",
+        style: "danger",
+        confirm: {
+          title: { type: "plain_text", text: "Disconnect account?" },
+          text: {
+            type: "mrkdwn",
+            text: "This will unlink your VM0 account and remove all agent bindings.",
+          },
+          confirm: { type: "plain_text", text: "Disconnect" },
+          deny: { type: "plain_text", text: "Cancel" },
+        },
+      },
     });
   } else {
     const connectBlocks: (Block | KnownBlock)[] = [

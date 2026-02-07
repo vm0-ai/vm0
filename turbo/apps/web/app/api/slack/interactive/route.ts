@@ -22,6 +22,7 @@ import { decryptCredentialValue } from "../../../../src/lib/crypto/secrets-encry
 import {
   createSlackClient,
   isSlackInvalidAuthError,
+  refreshAppHome,
 } from "../../../../src/lib/slack";
 import {
   listSecrets,
@@ -490,7 +491,55 @@ async function handleBlockActions(
     }
   }
 
+  // Handle disconnect button on App Home
+  if (action?.action_id === "home_disconnect") {
+    await handleHomeDisconnect(payload);
+  }
+
   return new Response("", { status: 200 });
+}
+
+/**
+ * Handle disconnect button click from App Home
+ */
+async function handleHomeDisconnect(
+  payload: SlackInteractivePayload,
+): Promise<void> {
+  const { SECRETS_ENCRYPTION_KEY } = env();
+
+  const [userLink] = await globalThis.services.db
+    .select()
+    .from(slackUserLinks)
+    .where(
+      and(
+        eq(slackUserLinks.slackUserId, payload.user.id),
+        eq(slackUserLinks.slackWorkspaceId, payload.team.id),
+      ),
+    )
+    .limit(1);
+
+  if (!userLink) return;
+
+  // Delete user link (cascades to bindings)
+  await globalThis.services.db
+    .delete(slackUserLinks)
+    .where(eq(slackUserLinks.id, userLink.id));
+
+  // Refresh App Home to show disconnected state
+  const [installation] = await globalThis.services.db
+    .select()
+    .from(slackInstallations)
+    .where(eq(slackInstallations.slackWorkspaceId, payload.team.id))
+    .limit(1);
+
+  if (!installation) return;
+
+  const botToken = decryptCredentialValue(
+    installation.encryptedBotToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+  const client = createSlackClient(botToken);
+  await refreshAppHome(client, payload.team.id, payload.user.id);
 }
 
 /**

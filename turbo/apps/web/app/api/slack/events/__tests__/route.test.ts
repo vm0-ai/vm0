@@ -747,6 +747,7 @@ describe("POST /api/slack/events", () => {
         blocks: Array<{
           type: string;
           text?: { text: string };
+          accessory?: { action_id?: string };
         }>;
       };
       expect(view.type).toBe("home");
@@ -758,6 +759,12 @@ describe("POST /api/slack/events", () => {
         .map((b) => b.text.text);
       expect(texts.some((t) => t.includes("Account connected"))).toBe(true);
       expect(texts.some((t) => t.includes("my-helper"))).toBe(true);
+
+      // Disconnect button should be present
+      const disconnectBlock = view.blocks.find(
+        (b) => b.accessory?.action_id === "home_disconnect",
+      );
+      expect(disconnectBlock).toBeDefined();
     });
   });
 
