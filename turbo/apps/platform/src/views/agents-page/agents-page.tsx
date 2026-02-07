@@ -95,10 +95,10 @@ function AgentsListSection() {
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead className="h-10">Your agents</TableHead>
-          <TableHead className="h-10">Model provider</TableHead>
-          <TableHead className="h-10">Schedule status</TableHead>
-          <TableHead className="h-10">Last edit</TableHead>
+          <TableHead className="h-10 px-3">Your agents</TableHead>
+          <TableHead className="h-10 px-3">Model provider</TableHead>
+          <TableHead className="h-10 px-3">Schedule status</TableHead>
+          <TableHead className="h-10 pl-3 pr-6">Last edit</TableHead>
           <TableHead className="h-10 w-12" />
         </TableRow>
       </TableHeader>
