@@ -15,7 +15,4 @@ pub enum NetworkError {
 
     #[error("failed to detect default network interface from: {0}")]
     NoDefaultInterface(String),
-
-    #[error("internal error: {0}")]
-    Internal(String),
 }

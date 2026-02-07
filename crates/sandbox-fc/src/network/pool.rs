@@ -394,7 +394,11 @@ impl NetnsPool {
         Ok(())
     }
 
-    /// Delete all namespaces owned by this pool.
+    /// Delete all namespaces currently in the pool queue.
+    ///
+    /// Namespaces that have been acquired but not yet released are **not**
+    /// cleaned up here — they will be caught by orphan cleanup on the next
+    /// [`NetnsPool::create`] call with the same index.
     pub async fn cleanup(&mut self) -> Result<()> {
         if !self.active {
             return Ok(());

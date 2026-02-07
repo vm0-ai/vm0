@@ -1,9 +1,7 @@
 use std::path::PathBuf;
 
 use async_trait::async_trait;
-use sandbox::{
-    ExecRequest, ExecResult, ProcessExit, Sandbox, SandboxConfig, SandboxError, SpawnHandle,
-};
+use sandbox::{ExecRequest, ExecResult, ProcessExit, Sandbox, SandboxConfig, SpawnHandle};
 use vsock_host::VsockHost;
 
 use crate::config::FirecrackerConfig;
@@ -62,30 +60,30 @@ impl Sandbox for FirecrackerSandbox {
     }
 
     async fn start(&mut self) -> sandbox::Result<()> {
-        Err(SandboxError::StartFailed("not yet implemented".into()))
+        todo!()
     }
 
     async fn exec(&self, _request: &ExecRequest<'_>) -> sandbox::Result<ExecResult> {
-        Err(SandboxError::ExecFailed("not yet implemented".into()))
+        todo!()
     }
 
     async fn write_file(&self, _path: &str, _content: &[u8]) -> sandbox::Result<()> {
-        Err(SandboxError::ExecFailed("not yet implemented".into()))
+        todo!()
     }
 
     async fn spawn_watch(&self, _request: &ExecRequest<'_>) -> sandbox::Result<SpawnHandle> {
-        Err(SandboxError::ExecFailed("not yet implemented".into()))
+        todo!()
     }
 
     async fn wait_exit(&self, _handle: SpawnHandle) -> sandbox::Result<ProcessExit> {
-        Err(SandboxError::ExecFailed("not yet implemented".into()))
+        todo!()
     }
 
     async fn stop(&mut self) -> sandbox::Result<()> {
-        Err(SandboxError::ExecFailed("not yet implemented".into()))
+        todo!()
     }
 
     async fn kill(&mut self) -> sandbox::Result<()> {
-        Err(SandboxError::ExecFailed("not yet implemented".into()))
+        todo!()
     }
 }
