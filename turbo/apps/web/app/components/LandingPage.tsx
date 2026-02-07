@@ -555,7 +555,7 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
                               {claudeCodeVersion && ` ${claudeCodeVersion}`}
                             </p>
                             <p className="m-0 text-[#827d77]">
-                              Sonnet 4.5 · Claude API
+                              Opus 4.6 · Claude API
                             </p>
                             <p className="m-0 text-[#827d77]">/Users/ming</p>
                           </div>
@@ -2582,7 +2582,7 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
                             {claudeCodeVersion && ` ${claudeCodeVersion}`}
                           </p>
                           <p className="m-0 text-[#827d77]">
-                            Sonnet 4.5 · Claude API
+                            Opus 4.6 · Claude API
                           </p>
                           <p className="m-0 text-[#827d77]">/Users/ming</p>
                         </div>
