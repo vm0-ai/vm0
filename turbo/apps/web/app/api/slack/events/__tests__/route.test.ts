@@ -651,6 +651,88 @@ describe("POST /api/slack/events", () => {
       // 4. Thinking reaction should be removed
       expect(slackHandlers.mocked.reactionsRemove).toHaveBeenCalledTimes(1);
     });
+
+    it("should not include timeout warning prefix when agent fails", async () => {
+      // Given I am a linked Slack user with one agent
+      const { userLink, installation } = await givenLinkedSlackUser();
+      await givenUserHasAgent(userLink, {
+        agentName: "my-helper",
+        description: "A helpful assistant",
+      });
+
+      // When I send a DM to the bot (agent will fail due to test environment)
+      const request = createSlackDmEventRequest({
+        teamId: installation.slackWorkspaceId,
+        channelId: "D123",
+        userId: userLink.slackUserId,
+        text: "help me with this code",
+        ts: "1234567890.123456",
+      });
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      // Then the response should contain an error message (failed status)
+      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+      const data = await getFormData(slackHandlers.mocked.postMessage);
+      const text = (data.text as string) ?? "";
+      expect(text).toContain("Error");
+
+      // And the response should NOT include the timeout warning prefix
+      expect(text).not.toContain(":warning:");
+      expect(text).not.toContain("Agent timed out");
+    });
+
+    it("should include timeout warning prefix when agent times out", async () => {
+      // Given I am a linked Slack user with one agent
+      const { userLink, installation } = await givenLinkedSlackUser();
+      await givenUserHasAgent(userLink, {
+        agentName: "my-helper",
+        description: "A helpful assistant",
+      });
+
+      // And runAgentForSlack returns a timeout result
+      vi.spyOn(runAgentModule, "runAgentForSlack").mockResolvedValueOnce({
+        status: "timeout",
+        response:
+          "The agent timed out after 30 minutes. You can check the logs for more details.",
+        sessionId: undefined,
+        runId: "test-run-id",
+      });
+
+      // When I send a DM to the bot
+      const request = createSlackDmEventRequest({
+        teamId: installation.slackWorkspaceId,
+        channelId: "D123",
+        userId: userLink.slackUserId,
+        text: "help me with this code",
+        ts: "1234567890.123456",
+      });
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      // Then the response should include the timeout warning prefix
+      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+      const data = await getFormData(slackHandlers.mocked.postMessage);
+      const text = (data.text as string) ?? "";
+      expect(text).toContain(":warning:");
+      expect(text).toContain("Agent timed out");
+      expect(text).toContain("timed out after 30 minutes");
+
+      // And the blocks should contain the agent name and logs link
+      const blocks = JSON.parse((data.blocks as string) ?? "[]") as Array<{
+        type: string;
+        elements?: Array<{ text?: string }>;
+      }>;
+      const contextBlocks = blocks.filter((b) => b.type === "context");
+      expect(contextBlocks[0]!.elements?.[0]?.text).toContain("my-helper");
+      const logsBlock = contextBlocks[contextBlocks.length - 1]!;
+      expect(logsBlock.elements?.[0]?.text).toContain("test-run-id");
+
+      // And the thinking reaction should still be removed
+      expect(slackHandlers.mocked.reactionsRemove).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("Scenario: DM bot with greeting message", () => {
