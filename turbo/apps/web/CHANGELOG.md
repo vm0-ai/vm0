@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.13.2](https://github.com/vm0-ai/vm0/compare/web-v12.13.1...web-v12.13.2) (2026-02-07)
+
+
+### Bug Fixes
+
+* **web:** add api url fallback for compose job webhooks ([#2553](https://github.com/vm0-ai/vm0/issues/2553)) ([361e3b7](https://github.com/vm0-ai/vm0/commit/361e3b799d529d02a7c2e6082f13723d5262bd81)), closes [#2550](https://github.com/vm0-ai/vm0/issues/2550)
+
 ## [12.13.1](https://github.com/vm0-ai/vm0/compare/web-v12.13.0...web-v12.13.1) (2026-02-07)
 
 
