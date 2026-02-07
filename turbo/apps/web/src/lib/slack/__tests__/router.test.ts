@@ -5,9 +5,10 @@ import { testContext } from "../../../__tests__/test-helpers";
 import { reloadEnv } from "../../../env";
 import { routeToAgent, keywordMatch, type RouteResult } from "../router";
 
-// Ensure Axiom logger is disabled in tests by unsetting AXIOM_TOKEN
+// Ensure Axiom logger is disabled in tests by unsetting Axiom tokens
 vi.hoisted(() => {
-  vi.stubEnv("AXIOM_TOKEN", "");
+  vi.stubEnv("AXIOM_TOKEN_SESSIONS", "");
+  vi.stubEnv("AXIOM_TOKEN_TELEMETRY", "");
 });
 
 // Mock external dependencies

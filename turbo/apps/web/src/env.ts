@@ -27,7 +27,8 @@ function initEnv() {
       R2_USER_STORAGES_BUCKET_NAME: z.string().min(1),
       SECRETS_ENCRYPTION_KEY: z.string().length(64), // 32-byte hex key for AES-256
       OFFICIAL_RUNNER_SECRET: z.string().length(64).optional(), // 32-byte hex key for official runner auth
-      AXIOM_TOKEN: z.string().min(1).optional(),
+      AXIOM_TOKEN_SESSIONS: z.string().min(1).optional(), // Scoped token for agent-run-events
+      AXIOM_TOKEN_TELEMETRY: z.string().min(1).optional(), // Scoped token for all other datasets
       AXIOM_DATASET_SUFFIX: z.enum(["dev", "prod"]).optional(), // Explicit control for Axiom dataset suffix
       // Slack integration
       SLACK_CLIENT_ID: z.string().min(1),
@@ -66,7 +67,8 @@ function initEnv() {
       R2_USER_STORAGES_BUCKET_NAME: process.env.R2_USER_STORAGES_BUCKET_NAME,
       SECRETS_ENCRYPTION_KEY: process.env.SECRETS_ENCRYPTION_KEY,
       OFFICIAL_RUNNER_SECRET: process.env.OFFICIAL_RUNNER_SECRET,
-      AXIOM_TOKEN: process.env.AXIOM_TOKEN,
+      AXIOM_TOKEN_SESSIONS: process.env.AXIOM_TOKEN_SESSIONS,
+      AXIOM_TOKEN_TELEMETRY: process.env.AXIOM_TOKEN_TELEMETRY,
       AXIOM_DATASET_SUFFIX: process.env.AXIOM_DATASET_SUFFIX,
       SLACK_CLIENT_ID: process.env.SLACK_CLIENT_ID,
       SLACK_CLIENT_SECRET: process.env.SLACK_CLIENT_SECRET,

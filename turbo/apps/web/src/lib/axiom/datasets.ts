@@ -22,3 +22,20 @@ export const DATASETS = {
   REQUEST_LOG: "request-log",
   SANDBOX_OP_LOG: "sandbox-op-log",
 } as const;
+
+/**
+ * Datasets that belong to the "sessions" token scope.
+ * All other datasets use the "telemetry" token scope.
+ */
+const SESSIONS_DATASET_BASES: ReadonlySet<string> = new Set([
+  DATASETS.AGENT_RUN_EVENTS,
+]);
+
+/**
+ * Check if a full dataset name (e.g., "vm0-agent-run-events-prod") belongs to the sessions scope.
+ */
+export function isSessionsDataset(datasetName: string): boolean {
+  return Array.from(SESSIONS_DATASET_BASES).some((base) =>
+    datasetName.includes(base),
+  );
+}

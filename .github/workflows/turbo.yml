@@ -433,7 +433,8 @@ jobs:
             R2_USER_STORAGES_BUCKET_NAME=${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
             SECRETS_ENCRYPTION_KEY=${{ secrets.SECRETS_ENCRYPTION_KEY }}
             OFFICIAL_RUNNER_SECRET=${{ secrets.OFFICIAL_RUNNER_SECRET }}
-            AXIOM_TOKEN=${{ secrets.AXIOM_TOKEN }}
+            AXIOM_TOKEN_SESSIONS=${{ secrets.AXIOM_TOKEN_SESSIONS }}
+            AXIOM_TOKEN_TELEMETRY=${{ secrets.AXIOM_TOKEN_TELEMETRY }}
             AXIOM_DATASET_SUFFIX=dev
             USE_MOCK_CLAUDE=true
             CRON_SECRET=${{ secrets.CRON_SECRET }}
@@ -1291,7 +1292,6 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-          AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
         run: |
           mkdir -p "$HOME/.ssh"
           echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
@@ -1315,7 +1315,7 @@ jobs:
             -e "rootfs_path=${RUNNER_DIR}/rootfs.squashfs" \
             -e "snapshot_path=${RUNNER_DIR}/snapshot" \
             -e "proxy_port=${PROXY_PORT}" \
-            -e '{"extra_env": {"VERCEL_AUTOMATION_BYPASS_SECRET": "'"${VERCEL_BYPASS}"'", "USE_MOCK_CLAUDE": "true", "AXIOM_TOKEN": "'"${AXIOM_TOKEN}"'", "AXIOM_DATASET_SUFFIX": "dev"}}' \
+            -e '{"extra_env": {"VERCEL_AUTOMATION_BYPASS_SECRET": "'"${VERCEL_BYPASS}"'", "USE_MOCK_CLAUDE": "true"}}' \
             -v
 
           echo "runner-deployed=true" >> $GITHUB_OUTPUT

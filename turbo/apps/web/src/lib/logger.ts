@@ -21,7 +21,7 @@
  *   - Preview deployments: VM0_DEBUG=* is set via GitHub Actions workflow
  *
  * Axiom Integration:
- *   - When AXIOM_TOKEN is configured, logs are also sent to Axiom
+ *   - When AXIOM_TOKEN_TELEMETRY is configured, logs are also sent to Axiom
  *   - Logs are sent as structured JSON with context and fields
  *   - Console output is preserved for Vercel logs (dual-write)
  */
@@ -48,13 +48,14 @@ let axiomInitialized = false;
 /**
  * Get or create the Axiom logger for web logs.
  * Uses a separate Axiom client instance to avoid circular dependency with axiom/client.ts.
- * Returns null if AXIOM_TOKEN is not configured.
+ * Uses AXIOM_TOKEN_TELEMETRY for the telemetry scope.
+ * Returns null if no token is configured.
  */
 function getAxiomLogger(): AxiomLogger | null {
   if (axiomInitialized) return axiomLogger;
   axiomInitialized = true;
 
-  const token = process.env.AXIOM_TOKEN;
+  const token = process.env.AXIOM_TOKEN_TELEMETRY;
   if (!token) {
     return null;
   }

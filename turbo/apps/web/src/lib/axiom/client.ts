@@ -1,28 +1,79 @@
 import "server-only";
 import { Axiom, Entry } from "@axiomhq/js";
 import { logger } from "../logger";
-import { getDatasetName, DATASETS } from "./datasets";
+import { getDatasetName, DATASETS, isSessionsDataset } from "./datasets";
 
 const log = logger("axiom");
 
-let axiomClient: Axiom | null = null;
+let sessionsClient: Axiom | null = null;
+let telemetryClient: Axiom | null = null;
+let sessionsInitialized = false;
+let telemetryInitialized = false;
 
 /**
- * Get the Axiom client singleton.
- * Returns null if AXIOM_TOKEN is not configured.
+ * Resolve the token for the sessions scope (agent-run-events).
  */
-function getAxiomClient(): Axiom | null {
-  const token = process.env.AXIOM_TOKEN;
-  if (!token) {
-    return null;
-  }
+function getSessionsToken(): string | undefined {
+  return process.env.AXIOM_TOKEN_SESSIONS;
+}
 
-  if (!axiomClient) {
-    axiomClient = new Axiom({ token });
-    log.debug("Axiom client initialized");
-  }
+/**
+ * Resolve the token for the telemetry scope (all other datasets).
+ */
+function getTelemetryToken(): string | undefined {
+  return process.env.AXIOM_TOKEN_TELEMETRY;
+}
 
-  return axiomClient;
+/**
+ * Get the Axiom client for the sessions scope (agent-run-events).
+ * Returns null if no token is configured.
+ */
+function getSessionsClient(): Axiom | null {
+  if (sessionsInitialized) return sessionsClient;
+  sessionsInitialized = true;
+
+  const token = getSessionsToken();
+  if (!token) return null;
+
+  sessionsClient = new Axiom({ token });
+  log.debug("Axiom sessions client initialized");
+  return sessionsClient;
+}
+
+/**
+ * Get the Axiom client for the telemetry scope (all other datasets).
+ * Returns null if no token is configured.
+ */
+function getTelemetryClient(): Axiom | null {
+  if (telemetryInitialized) return telemetryClient;
+  telemetryInitialized = true;
+
+  const token = getTelemetryToken();
+  if (!token) return null;
+
+  telemetryClient = new Axiom({ token });
+  log.debug("Axiom telemetry client initialized");
+  return telemetryClient;
+}
+
+/**
+ * Get the appropriate Axiom client for a dataset name.
+ * Routes to sessions client for agent-run-events, telemetry client for everything else.
+ */
+function getClientForDataset(dataset: string): Axiom | null {
+  return isSessionsDataset(dataset)
+    ? getSessionsClient()
+    : getTelemetryClient();
+}
+
+/**
+ * Extract the dataset name from an APL query string.
+ * APL queries always start with ['dataset-name'].
+ * Returns null if extraction fails.
+ */
+function extractDatasetFromApl(apl: string): string | null {
+  const match = apl.match(/\['([^']+)'\]/);
+  return match?.[1] ?? null;
 }
 
 /**
@@ -33,7 +84,7 @@ export async function ingestToAxiom(
   dataset: string,
   events: Record<string, unknown>[],
 ): Promise<boolean> {
-  const client = getAxiomClient();
+  const client = getClientForDataset(dataset);
   if (!client) {
     log.debug("Axiom not configured, skipping ingest");
     return false;
@@ -52,12 +103,15 @@ export async function ingestToAxiom(
 
 /**
  * Query events from Axiom dataset using APL.
+ * Automatically routes to the correct client based on the dataset in the APL query.
  * Returns null if Axiom is not configured or query fails.
  */
 export async function queryAxiom<T = Record<string, unknown>>(
   apl: string,
 ): Promise<T[] | null> {
-  const client = getAxiomClient();
+  const dataset = extractDatasetFromApl(apl);
+  // If we can't determine the dataset, default to telemetry client (broader scope)
+  const client = dataset ? getClientForDataset(dataset) : getTelemetryClient();
   if (!client) {
     log.debug("Axiom not configured, skipping query");
     return null;
@@ -92,7 +146,7 @@ interface RequestLogEntry {
  * Fire-and-forget - doesn't block the response.
  */
 export function ingestRequestLog(entry: RequestLogEntry): void {
-  const client = getAxiomClient();
+  const client = getTelemetryClient();
   if (!client) {
     return;
   }
@@ -119,7 +173,7 @@ interface SandboxOpLogEntry {
  * Fire-and-forget - doesn't block the response.
  */
 export function ingestSandboxOpLog(entry: SandboxOpLogEntry): void {
-  const client = getAxiomClient();
+  const client = getTelemetryClient();
   if (!client) {
     return;
   }

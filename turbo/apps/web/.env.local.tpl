@@ -13,7 +13,8 @@ R2_SECRET_ACCESS_KEY=op://Development/vm0-env-local/r2_secret_access_key
 R2_USER_STORAGES_BUCKET_NAME=op://Development/vm0-env-local/r2_user_storages_bucket_name
 
 # Optional: Observability (Axiom)
-AXIOM_TOKEN=op://Development/vm0-env-local/axiom_token
+AXIOM_TOKEN_SESSIONS=op://Development/vm0-env-local/axiom_token_sessions
+AXIOM_TOKEN_TELEMETRY=op://Development/vm0-env-local/axiom_token_telemetry
 AXIOM_DATASET_SUFFIX=dev
 
 SECRETS_ENCRYPTION_KEY=op://Development/vm0-env-local/SECRETS_ENCRYPTION_KEY
