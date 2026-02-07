@@ -1918,49 +1918,6 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
                                 https://github.com/vm0-ai/vm0-skills/tree/main/notion
                               </span>
                             </p>
-                            <p className="m-0">
-                              {"    "}
-                              <span className="text-[#3b82f6]">
-                                environment
-                              </span>
-                              <span className="text-[#827d77]">:</span>
-                            </p>
-                            <p className="m-0">
-                              {"      "}
-                              <span className="text-[#3b82f6]">
-                                BRIGHTDATA_API_KEY
-                              </span>
-                              <span className="text-[#827d77]">:</span>{" "}
-                              <span className="text-foreground">$</span>
-                              <span className="text-[#827d77]">
-                                &#123;&#123;
-                              </span>
-                              <span className="text-foreground">
-                                {" "}
-                                secrets.BRIGHTDATA_API_KEY{" "}
-                              </span>
-                              <span className="text-[#827d77]">
-                                &#125;&#125;
-                              </span>
-                            </p>
-                            <p className="m-0">
-                              {"      "}
-                              <span className="text-[#3b82f6]">
-                                NOTION_API_KEY
-                              </span>
-                              <span className="text-[#827d77]">:</span>{" "}
-                              <span className="text-foreground">$</span>
-                              <span className="text-[#827d77]">
-                                &#123;&#123;
-                              </span>
-                              <span className="text-foreground">
-                                {" "}
-                                secrets.NOTION_API_KEY{" "}
-                              </span>
-                              <span className="text-[#827d77]">
-                                &#125;&#125;
-                              </span>
-                            </p>
                           </div>
                         )}
 
