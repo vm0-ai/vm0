@@ -7,7 +7,10 @@ import {
 } from "../../../../src/lib/slack/verify";
 import { handleAppMention } from "../../../../src/lib/slack/handlers/mention";
 import { handleDirectMessage } from "../../../../src/lib/slack/handlers/direct-message";
-import { handleAppHomeOpened } from "../../../../src/lib/slack/handlers/app-home-opened";
+import {
+  handleAppHomeOpened,
+  handleMessagesTabOpened,
+} from "../../../../src/lib/slack/handlers/app-home-opened";
 
 /**
  * Slack Events API Endpoint
@@ -57,6 +60,7 @@ interface SlackAppHomeOpenedEvent {
   type: "app_home_opened";
   user: string;
   tab: "home" | "messages";
+  channel: string;
 }
 
 interface SlackEventCallback {
@@ -177,7 +181,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Handle app_home_opened events
+    // Handle app_home_opened events (Home tab)
     if (event.type === "app_home_opened" && event.tab === "home") {
       initServices();
 
@@ -189,6 +193,19 @@ export async function POST(request: Request) {
           console.error("Error handling app_home_opened:", error);
         }),
       );
+    }
+
+    // Handle app_home_opened events (Messages tab)
+    if (event.type === "app_home_opened" && event.tab === "messages") {
+      initServices();
+
+      await handleMessagesTabOpened({
+        workspaceId: payload.team_id,
+        userId: event.user,
+        channelId: event.channel,
+      }).catch((error) => {
+        console.error("Error handling messages_tab_opened:", error);
+      });
     }
 
     // Return 200 OK immediately

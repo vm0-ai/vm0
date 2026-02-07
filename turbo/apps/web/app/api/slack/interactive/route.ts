@@ -660,7 +660,8 @@ async function handleHomeAgentLink(
   );
   const client = createSlackClient(botToken);
   const agents = await fetchAvailableAgents(userLink.vm0UserId, userLink.id);
-  const modal = buildAgentAddModal(agents);
+  const channelId = payload.channel?.id;
+  const modal = buildAgentAddModal(agents, undefined, channelId);
 
   await client.views.open({
     trigger_id: payload.trigger_id!,

@@ -799,16 +799,9 @@ interface WelcomeAgentInfo {
 export function buildWelcomeMessage(
   agents: WelcomeAgentInfo[],
 ): (Block | KnownBlock)[] {
-  const agentList =
-    agents.length > 0
-      ? agents
-          .map(
-            (a) => `• \`${a.agentName}\`: ${a.description ?? "No description"}`,
-          )
-          .join("\n")
-      : "_No agents configured yet._";
+  const hasAgents = agents.length > 0;
 
-  return [
+  const blocks: (Block | KnownBlock)[] = [
     {
       type: "section",
       text: {
@@ -819,21 +812,63 @@ export function buildWelcomeMessage(
     {
       type: "divider",
     },
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: `*Your Available Agents*\n${agentList}`,
-      },
-    },
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: "*How to Use*\n• Just describe what you need help with\n• Or use `@VM0 use <agent> <message>` to specify an agent",
-      },
-    },
   ];
+
+  if (hasAgents) {
+    const agentList = agents
+      .map((a) => `• \`${a.agentName}\`: ${a.description ?? "No description"}`)
+      .join("\n");
+
+    blocks.push(
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `*Your Linked Agent*\n${agentList}`,
+        },
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "*How to Use*\n• Just describe what you need help with",
+        },
+      },
+    );
+  } else {
+    blocks.push(
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "*Your Linked Agent*\n_No agent linked yet._ Use the button below to link one.",
+        },
+      },
+      {
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: {
+              type: "plain_text",
+              text: "Link Agent",
+            },
+            action_id: "home_agent_link",
+            style: "primary",
+          },
+        ],
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "*How to Use*\n• Link an agent first, then describe what you need help with",
+        },
+      },
+    );
+  }
+
+  return blocks;
 }
 
 /**

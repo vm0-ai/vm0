@@ -69,5 +69,6 @@ export {
 export { handleDirectMessage } from "./handlers/direct-message";
 export {
   handleAppHomeOpened,
+  handleMessagesTabOpened,
   refreshAppHome,
 } from "./handlers/app-home-opened";

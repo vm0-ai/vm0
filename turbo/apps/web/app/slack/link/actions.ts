@@ -8,7 +8,7 @@ import { slackUserLinks } from "../../../src/db/schema/slack-user-link";
 import { slackInstallations } from "../../../src/db/schema/slack-installation";
 import { slackBindings } from "../../../src/db/schema/slack-binding";
 import { decryptCredentialValue } from "../../../src/lib/crypto/secrets-encryption";
-import { createSlackClient } from "../../../src/lib/slack";
+import { createSlackClient, refreshAppHome } from "../../../src/lib/slack";
 
 interface LinkResult {
   success: boolean;
@@ -170,6 +170,17 @@ export async function linkSlackAccount(
       console.error("Error sending Slack message:", error);
     });
   }
+
+  // Refresh App Home to show linked state
+  const { SECRETS_ENCRYPTION_KEY } = env();
+  const botToken = decryptCredentialValue(
+    installation.encryptedBotToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+  const client = createSlackClient(botToken);
+  await refreshAppHome(client, workspaceId, slackUserId).catch((error) => {
+    console.error("Error refreshing App Home after link:", error);
+  });
 
   return { success: true };
 }

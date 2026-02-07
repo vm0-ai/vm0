@@ -139,6 +139,8 @@ function createSlackDmEventRequest(event: {
 function createSlackAppHomeOpenedRequest(event: {
   teamId: string;
   userId: string;
+  tab?: "home" | "messages";
+  channelId?: string;
 }): Request {
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const payload = {
@@ -149,7 +151,8 @@ function createSlackAppHomeOpenedRequest(event: {
     event: {
       type: "app_home_opened",
       user: event.userId,
-      tab: "home",
+      tab: event.tab ?? "home",
+      channel: event.channelId ?? "D000",
     },
     event_id: "Ev789",
     event_time: parseInt(timestamp),
@@ -809,6 +812,116 @@ describe("POST /api/slack/events", () => {
         .map((b) => b.text.text);
       expect(texts.some((t) => t.includes("Connected to VM0"))).toBe(true);
       expect(texts.some((t) => t.includes("No agent linked yet"))).toBe(true);
+    });
+  });
+
+  describe("Scenario: Messages tab opened by linked user with agent", () => {
+    it("should send welcome message with agent info", async () => {
+      // Given I am a linked Slack user with one agent
+      const { userLink, installation } = await givenLinkedSlackUser();
+      await givenUserHasAgent(userLink, {
+        agentName: "my-helper",
+        description: "A helpful assistant",
+      });
+
+      // Reset and re-register test handlers
+      server.resetHandlers();
+      server.use(...slackHandlers.handlers);
+      vi.mocked(slackHandlers.mocked.postMessage).mockClear();
+
+      // When I open the Messages tab
+      const request = createSlackAppHomeOpenedRequest({
+        teamId: installation.slackWorkspaceId,
+        userId: userLink.slackUserId,
+        tab: "messages",
+        channelId: "D-dm-channel",
+      });
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      // Then a welcome message should be posted
+      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+
+      const data = await getFormData(slackHandlers.mocked.postMessage);
+      expect(data.channel).toBe("D-dm-channel");
+
+      // Blocks should include agent info
+      const blocks = JSON.parse((data.blocks as string) ?? "[]") as Array<{
+        type: string;
+        text?: { text: string };
+      }>;
+      const texts = blocks
+        .filter(
+          (b): b is { type: string; text: { text: string } } =>
+            b.type === "section" && !!b.text,
+        )
+        .map((b) => b.text.text);
+      expect(texts.some((t) => t.includes("my-helper"))).toBe(true);
+    });
+  });
+
+  describe("Scenario: Messages tab opened a second time (no duplicate)", () => {
+    it("should not send welcome message again", async () => {
+      // Given I am a linked Slack user with one agent
+      const { userLink, installation } = await givenLinkedSlackUser();
+      await givenUserHasAgent(userLink, {
+        agentName: "my-helper",
+        description: "A helpful assistant",
+      });
+
+      // Reset and re-register test handlers
+      server.resetHandlers();
+      server.use(...slackHandlers.handlers);
+      vi.mocked(slackHandlers.mocked.postMessage).mockClear();
+
+      // When I open the Messages tab the first time
+      const request1 = createSlackAppHomeOpenedRequest({
+        teamId: installation.slackWorkspaceId,
+        userId: userLink.slackUserId,
+        tab: "messages",
+        channelId: "D-dm-channel",
+      });
+      await POST(request1);
+      await flushAfterCallbacks();
+
+      // Then the welcome message should be sent once
+      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+
+      // When I open the Messages tab again
+      vi.mocked(slackHandlers.mocked.postMessage).mockClear();
+      const request2 = createSlackAppHomeOpenedRequest({
+        teamId: installation.slackWorkspaceId,
+        userId: userLink.slackUserId,
+        tab: "messages",
+        channelId: "D-dm-channel",
+      });
+      await POST(request2);
+      await flushAfterCallbacks();
+
+      // Then no duplicate message should be sent
+      expect(slackHandlers.mocked.postMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Scenario: Messages tab opened by unlinked user", () => {
+    it("should not send any message", async () => {
+      // Given I am a Slack user without a linked account
+      const { installation } = await givenSlackWorkspaceInstalled();
+
+      // When I open the Messages tab
+      const request = createSlackAppHomeOpenedRequest({
+        teamId: installation.slackWorkspaceId,
+        userId: "U-unlinked-user",
+        tab: "messages",
+        channelId: "D-dm-channel",
+      });
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      // Then no message should be sent
+      expect(slackHandlers.mocked.postMessage).not.toHaveBeenCalled();
     });
   });
 });

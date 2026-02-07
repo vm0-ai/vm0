@@ -4,8 +4,17 @@ import { slackUserLinks } from "../../../db/schema/slack-user-link";
 import { slackBindings } from "../../../db/schema/slack-binding";
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
-import { createSlackClient, publishAppHome, buildAppHomeView } from "../index";
+import {
+  createSlackClient,
+  publishAppHome,
+  buildAppHomeView,
+  postMessage,
+  buildWelcomeMessage,
+} from "../index";
 import { buildLoginUrl } from "./shared";
+import { logger } from "../../logger";
+
+const log = logger("slack:app-home");
 
 interface AppHomeOpenedContext {
   workspaceId: string;
@@ -94,4 +103,116 @@ export async function refreshAppHome(
     bindings,
   });
   await publishAppHome(client, userId, view);
+}
+
+interface MessagesTabOpenedContext {
+  workspaceId: string;
+  userId: string;
+  channelId: string;
+}
+
+/**
+ * Handle an app_home_opened event with tab === "messages"
+ *
+ * Sends a one-time welcome message to linked users when they first open
+ * the Messages tab. Uses an atomic UPDATE to prevent duplicate sends.
+ * Unlinked users are skipped — they already get a login prompt on first DM.
+ */
+export async function handleMessagesTabOpened(
+  context: MessagesTabOpenedContext,
+): Promise<void> {
+  const start = Date.now();
+  log.debug("messages_tab_opened start", { userId: context.userId });
+
+  const { SECRETS_ENCRYPTION_KEY } = env();
+
+  // 1. Get workspace installation
+  const [installation] = await globalThis.services.db
+    .select()
+    .from(slackInstallations)
+    .where(eq(slackInstallations.slackWorkspaceId, context.workspaceId))
+    .limit(1);
+
+  log.debug("messages_tab_opened installation lookup", {
+    found: !!installation,
+    elapsed: Date.now() - start,
+  });
+
+  if (!installation) {
+    return;
+  }
+
+  // 2. Check if user is linked (unlinked users skip — they get a login prompt on first DM)
+  const [userLink] = await globalThis.services.db
+    .select({ id: slackUserLinks.id })
+    .from(slackUserLinks)
+    .where(
+      and(
+        eq(slackUserLinks.slackUserId, context.userId),
+        eq(slackUserLinks.slackWorkspaceId, context.workspaceId),
+      ),
+    )
+    .limit(1);
+
+  log.debug("messages_tab_opened user link lookup", {
+    found: !!userLink,
+    elapsed: Date.now() - start,
+  });
+
+  if (!userLink) {
+    return;
+  }
+
+  // 3. Atomic UPDATE — only sets dm_welcome_sent if it was false
+  const updated = await globalThis.services.db
+    .update(slackUserLinks)
+    .set({ dmWelcomeSent: true })
+    .where(
+      and(
+        eq(slackUserLinks.id, userLink.id),
+        eq(slackUserLinks.dmWelcomeSent, false),
+      ),
+    );
+
+  log.debug("messages_tab_opened atomic update", {
+    rowCount: updated.rowCount,
+    elapsed: Date.now() - start,
+  });
+
+  if (updated.rowCount === 0) {
+    // Already sent — skip
+    return;
+  }
+
+  // 4. Fetch user's agent bindings
+  const bindings = await globalThis.services.db
+    .select({
+      agentName: slackBindings.agentName,
+      description: slackBindings.description,
+    })
+    .from(slackBindings)
+    .where(eq(slackBindings.slackUserLinkId, userLink.id));
+
+  log.debug("messages_tab_opened bindings lookup", {
+    count: bindings.length,
+    elapsed: Date.now() - start,
+  });
+
+  // 5. Send welcome message
+  const botToken = decryptCredentialValue(
+    installation.encryptedBotToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+  const client = createSlackClient(botToken);
+
+  await postMessage(
+    client,
+    context.channelId,
+    "Hi! I'm VM0. I can connect you to AI agents to help with your tasks.",
+    { blocks: buildWelcomeMessage(bindings) },
+  );
+
+  log.debug("messages_tab_opened complete", {
+    elapsed: Date.now() - start,
+  });
 }
