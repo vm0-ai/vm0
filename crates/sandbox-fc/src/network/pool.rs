@@ -660,4 +660,81 @@ mod tests {
         assert_eq!(ni, "2a");
         assert_eq!(make_host_device(pi, ni), "vm0-ve-05-2a");
     }
+
+    #[test]
+    fn generate_veth_ip_pair_no_overlap_all_pools() {
+        let mut seen = std::collections::HashSet::new();
+        for pool in 0..MAX_POOLS {
+            for ns in 0..MAX_NAMESPACES {
+                let (host, peer) = generate_veth_ip_pair(pool, ns);
+                assert!(
+                    seen.insert(host.clone()),
+                    "dup host: {host} (pool={pool}, ns={ns})"
+                );
+                assert!(
+                    seen.insert(peer.clone()),
+                    "dup peer: {peer} (pool={pool}, ns={ns})"
+                );
+            }
+        }
+        // 64 pools × 256 ns × 2 addrs = 32768 unique IPs
+        assert_eq!(seen.len(), 32768);
+    }
+
+    #[test]
+    fn generate_veth_ip_pair_valid_slash30_alignment() {
+        // In a /30 subnet: base is divisible by 4, host=base+1, peer=base+2
+        for pool in [0, 1, 31, 63] {
+            for ns in [0, 1, 63, 64, 127, 128, 255] {
+                let (host, peer) = generate_veth_ip_pair(pool, ns);
+                let host_octet4: u32 = host.rsplit('.').next().unwrap().parse().unwrap();
+                let peer_octet4: u32 = peer.rsplit('.').next().unwrap().parse().unwrap();
+                assert_eq!(
+                    host_octet4 % 4,
+                    1,
+                    "host octet4 {host_octet4} not base+1 (pool={pool}, ns={ns})"
+                );
+                assert_eq!(
+                    peer_octet4 % 4,
+                    2,
+                    "peer octet4 {peer_octet4} not base+2 (pool={pool}, ns={ns})"
+                );
+                assert_eq!(peer_octet4, host_octet4 + 1);
+            }
+        }
+    }
+
+    #[test]
+    fn generate_veth_ip_pair_octets_in_range() {
+        for pool in 0..MAX_POOLS {
+            for ns in 0..MAX_NAMESPACES {
+                let (host, _) = generate_veth_ip_pair(pool, ns);
+                let octets: Vec<u32> = host.split('.').map(|o| o.parse().unwrap()).collect();
+                assert_eq!(octets[0], 10);
+                assert_eq!(octets[1], 200);
+                assert!(
+                    octets[2] <= 255,
+                    "octet3 out of range: {} (pool={pool}, ns={ns})",
+                    octets[2]
+                );
+                assert!(
+                    octets[3] <= 255,
+                    "octet4 out of range: {} (pool={pool}, ns={ns})",
+                    octets[3]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn parse_ns_name_extra_hyphens() {
+        // split_once('-') returns ("00", "0a-extra") — ns_idx includes trailing parts
+        let result = parse_ns_name("vm0-ns-00-0a-extra");
+        assert_eq!(result, Some(("00", "0a-extra")));
+    }
+
+    #[test]
+    fn parse_ns_name_bare_prefix() {
+        assert_eq!(parse_ns_name("vm0-ns-"), None);
+    }
 }
