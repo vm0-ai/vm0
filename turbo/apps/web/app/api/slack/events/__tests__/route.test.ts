@@ -326,6 +326,50 @@ describe("POST /api/slack/events", () => {
       // 4. Thinking reaction should be removed
       expect(slackHandlers.mocked.reactionsRemove).toHaveBeenCalledTimes(1);
     });
+
+    it("should not include timeout warning prefix when agent fails", async () => {
+      // Given I am a linked Slack user with one agent
+      const { userLink, installation } = await givenLinkedSlackUser();
+      await givenUserHasAgent(userLink, {
+        agentName: "my-helper",
+        description: "A helpful assistant",
+      });
+
+      // When I @mention the VM0 bot (agent will fail due to test environment)
+      const request = createSlackEventRequest({
+        teamId: installation.slackWorkspaceId,
+        channelId: "C123",
+        userId: userLink.slackUserId,
+        text: `<@${installation.botUserId}> help me with this code`,
+        ts: "1234567890.123456",
+      });
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      // Then the response should contain an error message (failed status)
+      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+      const data = await getFormData(slackHandlers.mocked.postMessage);
+      const text = (data.text as string) ?? "";
+      expect(text).toContain("Error");
+
+      // And the response should NOT include the timeout warning prefix
+      // (timeout prefix ":warning: *Agent timed out*" is only added for timeout status)
+      expect(text).not.toContain(":warning:");
+      expect(text).not.toContain("Agent timed out");
+
+      // And the blocks should also not contain timeout warning
+      const blocks = JSON.parse((data.blocks as string) ?? "[]") as Array<{
+        type: string;
+        text?: { text?: string };
+      }>;
+      const sectionTexts = blocks
+        .filter((b) => b.type === "section")
+        .map((b) => b.text?.text ?? "")
+        .join("");
+      expect(sectionTexts).not.toContain(":warning:");
+      expect(sectionTexts).not.toContain("Agent timed out");
+    });
   });
 
   describe("Scenario: Mention bot with multiple agents (explicit selection)", () => {
