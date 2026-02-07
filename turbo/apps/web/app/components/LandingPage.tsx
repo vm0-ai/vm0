@@ -1434,7 +1434,7 @@ export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
                                 <p className="m-0">
                                   <span className="text-[#22c55e]">⏺</span>{" "}
                                   <span className="text-secondary-foreground">
-                                    Gathering user data from Clerk...
+                                    Gathering user registration data...
                                   </span>
                                 </p>
                                 <p className="m-0 text-[#827d77]">
