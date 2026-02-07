@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import { CONNECTOR_TYPES, connectorTypeSchema } from "@vm0/core";
 import { deleteConnector } from "../../lib/api";
 
 export const disconnectCommand = new Command()
@@ -9,7 +9,8 @@ export const disconnectCommand = new Command()
   .argument("<type>", "Connector type to disconnect (e.g., github)")
   .action(async (type: string) => {
     try {
-      if (!Object.keys(CONNECTOR_TYPES).includes(type)) {
+      const parseResult = connectorTypeSchema.safeParse(type);
+      if (!parseResult.success) {
         console.error(chalk.red(`✗ Unknown connector type: ${type}`));
         console.log();
         console.log("Available connectors:");
@@ -19,7 +20,7 @@ export const disconnectCommand = new Command()
         process.exit(1);
       }
 
-      await deleteConnector(type as ConnectorType);
+      await deleteConnector(parseResult.data);
       console.log(chalk.green(`✓ Disconnected ${type}`));
     } catch (error) {
       if (error instanceof Error) {

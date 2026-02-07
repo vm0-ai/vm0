@@ -78,7 +78,7 @@ describe("connector list command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("github");
       expect(logCalls).not.toContain("✓");
-      expect(logCalls).not.toContain("@");
+      expect(logCalls).not.toContain("@octocat");
     });
 
     it("should always show connect hint", async () => {

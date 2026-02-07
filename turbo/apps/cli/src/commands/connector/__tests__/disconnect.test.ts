@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { disconnectCommand } from "../disconnect";
+import chalk from "chalk";
 
 describe("connector disconnect command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -23,6 +24,7 @@ describe("connector disconnect command", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
   });
@@ -106,6 +108,31 @@ describe("connector disconnect command", () => {
 
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Not authenticated"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should handle generic API error", async () => {
+      server.use(
+        http.delete("http://localhost:3000/api/connectors/:type", () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message: "Internal server error",
+                code: "SERVER_ERROR",
+              },
+            },
+            { status: 500 },
+          );
+        }),
+      );
+
+      await expect(async () => {
+        await disconnectCommand.parseAsync(["node", "cli", "github"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Internal server error"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
