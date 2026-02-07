@@ -590,7 +590,6 @@ jobs:
           AWS_METAL_RUNNER_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           AWS_METAL_RUNNER_SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
         run: |
           # Setup SSH key
           mkdir -p ~/.ssh
@@ -607,7 +606,6 @@ jobs:
             -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
             -e "api_url=https://www.vm0.ai" \
             -e "runner_bundle_path=/tmp/vm0-runner-bundle.tar.gz" \
-            -e '{"extra_env": {"AXIOM_TOKEN": "'"${AXIOM_TOKEN}"'", "AXIOM_DATASET_SUFFIX": "prod"}}' \
             -v
 
       - name: Notify Slack - Success
