@@ -9,6 +9,7 @@ import {
   hasAuthMethods,
   getSecretNamesForAuthMethod,
   getConnectorEnvironmentMapping,
+  connectorTypeSchema,
   MODEL_PROVIDER_TYPES,
   type ModelProviderType,
   type ModelProviderFramework,
@@ -29,7 +30,7 @@ import { getUserScopeByClerkId } from "../scope/scope-service";
 import { getSecretValue, getSecretValues } from "../secret/secret-service";
 import { getVariableValues } from "../variable/variable-service";
 import { getDefaultModelProvider } from "../model-provider/model-provider-service";
-import { listConnectors } from "../connector/connector-service";
+import { connectors } from "../../db/schema/connector";
 
 const log = logger("run:build-context");
 
@@ -319,6 +320,9 @@ interface ConnectorCredentialResult {
  * Resolve and inject connector credentials if any connectors are connected.
  * For each connected connector, resolves its environmentMapping to produce
  * environment variables (e.g., GH_TOKEN, GITHUB_TOKEN for GitHub connector).
+ *
+ * Resolves scope once and queries both connectors and secrets directly,
+ * avoiding redundant getUserScopeByClerkId calls.
  */
 async function resolveConnectorCredentials(
   userId: string,
@@ -326,13 +330,18 @@ async function resolveConnectorCredentials(
 ): Promise<ConnectorCredentialResult> {
   let credentials = existingCredentials;
 
-  const userConnectors = await listConnectors(userId);
-  if (userConnectors.length === 0) {
+  const userScope = await getUserScopeByClerkId(userId);
+  if (!userScope) {
     return { credentials, injectedEnvVars: undefined };
   }
 
-  const userScope = await getUserScopeByClerkId(userId);
-  if (!userScope) {
+  // Query connected connectors directly (only need the type for environmentMapping)
+  const userConnectors = await globalThis.services.db
+    .select({ type: connectors.type })
+    .from(connectors)
+    .where(eq(connectors.scopeId, userScope.id));
+
+  if (userConnectors.length === 0) {
     return { credentials, injectedEnvVars: undefined };
   }
 
@@ -344,7 +353,12 @@ async function resolveConnectorCredentials(
   const allInjectedEnvVars: Record<string, string> = {};
 
   for (const connector of userConnectors) {
-    const mapping = getConnectorEnvironmentMapping(connector.type);
+    const connectorType = connectorTypeSchema.safeParse(connector.type);
+    if (!connectorType.success) {
+      continue;
+    }
+
+    const mapping = getConnectorEnvironmentMapping(connectorType.data);
 
     for (const [envVar, valueRef] of Object.entries(mapping)) {
       if (valueRef.startsWith("$secrets.")) {
@@ -421,14 +435,17 @@ function mergeSecrets(
 }
 
 /**
- * Auto-inject model provider environment variables into environment
- * Returns the potentially modified environment
+ * Auto-inject environment variables from a provider source (model provider, connector, etc.)
+ * Returns the potentially modified environment.
  *
- * Only injects variables not already set (user-defined environment takes precedence)
+ * Only injects variables not already set (user-defined environment takes precedence).
+ *
+ * @param source - Label for logging (e.g., "model provider", "connector")
  */
 function autoInjectEnvVarsToEnvironment(
   environment: Record<string, string> | undefined,
   injectedEnvVars: Record<string, string> | undefined,
+  source: string = "provider",
 ): Record<string, string> | undefined {
   if (!injectedEnvVars || Object.keys(injectedEnvVars).length === 0) {
     return environment;
@@ -447,7 +464,7 @@ function autoInjectEnvVarsToEnvironment(
 
   if (injectedKeys.length > 0) {
     log.debug(
-      `Auto-injected model provider env vars to environment: ${injectedKeys.join(", ")}`,
+      `Auto-injected ${source} env vars to environment: ${injectedKeys.join(", ")}`,
     );
   }
 
@@ -718,12 +735,17 @@ export async function buildExecutionContext(
   );
 
   // Step 5b: Auto-inject model provider and connector env vars into environment
-  // User-defined environment takes precedence over auto-injected values
+  // Precedence: user-defined env > model provider > connector
   let environment = autoInjectEnvVarsToEnvironment(
     expandedEnvironment,
     modelProviderEnvVars,
+    "model provider",
   );
-  environment = autoInjectEnvVarsToEnvironment(environment, connectorEnvVars);
+  environment = autoInjectEnvVarsToEnvironment(
+    environment,
+    connectorEnvVars,
+    "connector",
+  );
 
   // Step 6: Merge credentials into secrets for client-side log masking
   // Credentials are server-stored user-level secrets and must be masked like CLI secrets
