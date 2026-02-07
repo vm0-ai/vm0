@@ -229,6 +229,9 @@ describe("POST /api/slack/events", () => {
   beforeEach(() => {
     context.setupMocks();
     server.use(...slackHandlers.handlers);
+
+    // Clear viewsPublish mock so each test starts with a clean call count
+    vi.mocked(slackHandlers.mocked.viewsPublish).mockClear();
   });
 
   describe("Scenario: Mention bot as unlinked user", () => {
@@ -782,6 +785,10 @@ describe("POST /api/slack/events", () => {
     it("should publish home view with link prompt", async () => {
       // Given I am a linked Slack user with no agents
       const { userLink, installation } = await givenLinkedSlackUser();
+
+      // Clear viewsPublish calls from givenLinkedSlackUser (which refreshes
+      // App Home after linking) so we can assert on only the test's call.
+      vi.mocked(slackHandlers.mocked.viewsPublish).mockClear();
 
       // When I open the bot's Home tab
       const request = createSlackAppHomeOpenedRequest({
