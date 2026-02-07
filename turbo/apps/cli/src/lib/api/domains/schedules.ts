@@ -15,6 +15,7 @@ import type {
 
 /**
  * Deploy schedule (create or update)
+ * Note: vars and secrets are now managed via platform tables (vm0 secret set, vm0 var set)
  */
 export async function deploySchedule(body: {
   name: string;
@@ -22,8 +23,7 @@ export async function deploySchedule(body: {
   atTime?: string;
   timezone?: string;
   prompt: string;
-  vars?: Record<string, string>;
-  secrets?: Record<string, string>;
+  // vars and secrets removed - now managed via platform tables
   artifactName?: string;
   artifactVersion?: string;
   volumeVersions?: Record<string, string>;

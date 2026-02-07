@@ -14,7 +14,6 @@ import {
   getTomorrowDateLocal,
   getCurrentTimeLocal,
   toISODateTime,
-  extractRequiredConfiguration,
   type ScheduleFrequency,
 } from "../../lib/domain/schedule-utils";
 import {
@@ -24,7 +23,6 @@ import {
   enableSchedule,
   ApiRequestError,
 } from "../../lib/api";
-import { gatherConfiguration } from "./gather-configuration";
 
 const FREQUENCY_CHOICES = [
   { title: "Daily", value: "daily" as const, description: "Run every day" },
@@ -83,37 +81,6 @@ function parseDayOption(
 }
 
 /**
- * Expand environment variables in a string
- * Supports ${VAR} syntax
- */
-function expandEnvVars(value: string): string {
-  return value.replace(/\$\{([^}]+)\}/g, (match, varName: string) => {
-    const envValue = process.env[varName];
-    if (envValue === undefined) {
-      console.warn(
-        chalk.yellow(`  Warning: Environment variable ${varName} not set`),
-      );
-      return match;
-    }
-    return envValue;
-  });
-}
-
-/**
- * Expand env vars in an object
- */
-function expandEnvVarsInObject(
-  obj: Record<string, string> | undefined,
-): Record<string, string> | undefined {
-  if (!obj) return undefined;
-  const result: Record<string, string> = {};
-  for (const [key, value] of Object.entries(obj)) {
-    result[key] = expandEnvVars(value);
-  }
-  return result;
-}
-
-/**
  * Format an ISO date string in a specific timezone as YYYY-MM-DD HH:MM
  */
 function formatInTimezone(isoDate: string, timezone: string): string {
@@ -155,20 +122,12 @@ function parseFrequencyFromCron(
   return null;
 }
 
-/**
- * Collect function for repeatable options
- */
-function collect(value: string, previous: string[]): string[] {
-  return previous.concat([value]);
-}
-
 interface SetupOptions {
   frequency?: string;
   time?: string;
   day?: string;
   timezone?: string;
   prompt?: string;
-  var?: string[];
   artifactName: string;
   enable?: boolean;
 }
@@ -498,6 +457,8 @@ interface DeployResult {
 
 /**
  * Build and deploy schedule
+ * Note: vars and secrets are now managed via platform tables (vm0 secret set, vm0 var set)
+ * Schedule only defines "when" to run, not configuration
  */
 async function buildAndDeploy(params: {
   scheduleName: string;
@@ -509,8 +470,6 @@ async function buildAndDeploy(params: {
   atTime: string | undefined;
   timezone: string;
   prompt: string;
-  vars: Record<string, string> | undefined;
-  secrets: Record<string, string> | undefined;
   artifactName: string;
 }): Promise<DeployResult> {
   let cronExpression: string | undefined;
@@ -526,9 +485,6 @@ async function buildAndDeploy(params: {
     );
   }
 
-  const expandedVars = expandEnvVarsInObject(params.vars);
-  const expandedSecrets = expandEnvVarsInObject(params.secrets);
-
   console.log(
     `\nDeploying schedule for agent ${chalk.cyan(params.agentName)}...`,
   );
@@ -540,8 +496,6 @@ async function buildAndDeploy(params: {
     atTime: atTimeISO,
     timezone: params.timezone,
     prompt: params.prompt,
-    vars: expandedVars,
-    secrets: expandedSecrets,
     artifactName: params.artifactName,
   });
 
@@ -683,17 +637,14 @@ export const setupCommand = new Command()
   .option("-d, --day <day>", "Day of week (mon-sun) or day of month (1-31)")
   .option("-z, --timezone <tz>", "IANA timezone")
   .option("-p, --prompt <text>", "Prompt to run")
-  .option("--var <name=value>", "Variable (can be repeated)", collect, [])
   .option("--artifact-name <name>", "Artifact name", "artifact")
   .option("-e, --enable", "Enable schedule immediately after creation")
   .action(async (agentName: string, options: SetupOptions) => {
     try {
       // 1. Resolve agent to composeId and get content
-      const { composeId, scheduleName, composeContent } =
-        await resolveAgent(agentName);
-
-      // Extract required configuration from compose
-      const requiredConfig = extractRequiredConfiguration(composeContent);
+      // Note: composeContent is resolved but validation of required secrets/vars
+      // is now done server-side against platform tables
+      const { composeId, scheduleName } = await resolveAgent(agentName);
 
       // 2. Check for existing schedule
       const existingSchedule = await findExistingSchedule(agentName);
@@ -746,18 +697,9 @@ export const setupCommand = new Command()
         return;
       }
 
-      // 7. Gather vars configuration (secrets are now managed via platform)
-      const config = await gatherConfiguration({
-        required: requiredConfig,
-        optionSecrets: [], // Secrets are no longer passed via CLI
-        optionVars: options.var || [],
-        existingSchedule,
-      });
-
-      // 8. Build trigger and deploy
-      // Secrets are managed via platform (vm0 secret set), not via schedule
-      // If preserveExistingSecrets is true, we pass undefined to keep existing secrets
-      // Otherwise we also pass undefined (no new secrets can be added via CLI)
+      // 7. Build trigger and deploy
+      // Secrets and vars are managed via platform (vm0 secret set, vm0 var set)
+      // Schedule only defines "when" to run, not configuration
       const deployResult = await buildAndDeploy({
         scheduleName,
         composeId,
@@ -768,8 +710,6 @@ export const setupCommand = new Command()
         atTime,
         timezone,
         prompt: promptText_,
-        vars: Object.keys(config.vars).length > 0 ? config.vars : undefined,
-        secrets: undefined, // Secrets managed via platform, not schedule
         artifactName: options.artifactName,
       });
 

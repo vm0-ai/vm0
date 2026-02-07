@@ -42,7 +42,11 @@ import { POST as storagePrepareRoute } from "../../app/api/storages/prepare/rout
 import { POST as storageCommitRoute } from "../../app/api/storages/commit/route";
 import { DELETE as deleteModelProviderRoute } from "../../app/api/model-providers/[type]/route";
 import { GET as listModelProvidersRoute } from "../../app/api/model-providers/route";
-import { GET as listSecretsRoute } from "../../app/api/secrets/route";
+import {
+  GET as listSecretsRoute,
+  PUT as setSecretRoute,
+} from "../../app/api/secrets/route";
+import { PUT as setVariableRoute } from "../../app/api/variables/route";
 import { POST as addPermissionRoute } from "../../app/api/agent/composes/[id]/permissions/route";
 import { connectors } from "../db/schema/connector";
 import { connectorSessions } from "../db/schema/connector-session";
@@ -577,6 +581,10 @@ export async function completeTestRun(
  * @param options - Optional schedule parameters
  * @returns The created schedule response
  */
+/**
+ * Create a test schedule via API route handler.
+ * Note: vars and secrets are now managed via platform tables (vm0 secret set, vm0 var set)
+ */
 export async function createTestSchedule(
   composeId: string,
   name: string,
@@ -585,8 +593,7 @@ export async function createTestSchedule(
     atTime?: string;
     timezone?: string;
     prompt?: string;
-    vars?: Record<string, string>;
-    secrets?: Record<string, string>;
+    // vars and secrets removed - now managed via platform tables
   },
 ): Promise<ScheduleResponse> {
   // Default to cron if neither trigger specified
@@ -607,8 +614,7 @@ export async function createTestSchedule(
         prompt: options?.prompt ?? "Test schedule prompt",
         cronExpression: options?.cronExpression,
         atTime: options?.atTime,
-        vars: options?.vars,
-        secrets: options?.secrets,
+        // vars and secrets no longer sent - managed via platform tables
         ...trigger,
       }),
     },
@@ -1011,6 +1017,41 @@ export async function listTestModelProviders(): Promise<
 // ============================================================================
 
 /**
+ * Create or update a platform secret via API route handler.
+ *
+ * @param name - The secret name (uppercase with underscores)
+ * @param value - The secret value
+ * @param description - Optional description
+ * @returns The created/updated secret info
+ */
+export async function createTestSecret(
+  name: string,
+  value: string,
+  description?: string,
+): Promise<{
+  id: string;
+  name: string;
+  description: string | null;
+  type: string;
+  createdAt: string;
+  updatedAt: string;
+}> {
+  const request = createTestRequest("http://localhost:3000/api/secrets", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, value, description }),
+  });
+  const response = await setSecretRoute(request);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `Failed to create secret: ${error.error?.message || response.status}`,
+    );
+  }
+  return response.json();
+}
+
+/**
  * List all secrets via API route handler.
  *
  * @returns Array of secret info
@@ -1036,6 +1077,47 @@ export async function listTestSecrets(): Promise<
   const data = await response.json();
   return data.secrets;
 }
+
+// Variable Test Helpers
+// ============================================================================
+
+/**
+ * Create or update a platform variable via API route handler.
+ *
+ * @param name - The variable name (uppercase with underscores)
+ * @param value - The variable value
+ * @param description - Optional description
+ * @returns The created/updated variable info
+ */
+export async function createTestVariable(
+  name: string,
+  value: string,
+  description?: string,
+): Promise<{
+  id: string;
+  name: string;
+  value: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+}> {
+  const request = createTestRequest("http://localhost:3000/api/variables", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, value, description }),
+  });
+  const response = await setVariableRoute(request);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `Failed to create variable: ${error.error?.message || response.status}`,
+    );
+  }
+  return response.json();
+}
+
+// Direct Database Test Helpers
+// ============================================================================
 
 /**
  * Insert a stale pending run directly into the database.

@@ -1,5 +1,4 @@
 export {
-  encryptSecretsMap,
   decryptSecretsMap,
   encryptCredentialValue,
   decryptCredentialValue,

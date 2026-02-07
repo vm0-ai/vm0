@@ -55,6 +55,8 @@ const router = tsr.router(schedulesMainContract, {
     log.debug(`Deploying schedule ${body.name} for compose ${body.composeId}`);
 
     try {
+      // Note: vars and secrets are no longer accepted via API
+      // They must be managed via platform tables (vm0 secret set, vm0 var set)
       const result = await deploySchedule(userId, {
         name: body.name,
         composeId: body.composeId,
@@ -62,8 +64,7 @@ const router = tsr.router(schedulesMainContract, {
         atTime: body.atTime,
         timezone: body.timezone,
         prompt: body.prompt,
-        vars: body.vars,
-        secrets: body.secrets,
+        // vars and secrets removed - now managed via platform tables
         artifactName: body.artifactName,
         artifactVersion: body.artifactVersion,
         volumeVersions: body.volumeVersions,
