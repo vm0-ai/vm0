@@ -340,6 +340,16 @@ mod tests {
         }
     }
 
+    /// Creator that always fails — for testing pre-warm failure degradation.
+    struct FailingCreator;
+
+    #[async_trait]
+    impl OverlayCreator for FailingCreator {
+        async fn create(&self, _path: &Path) -> Result<()> {
+            Err(OverlayError::FileCreation("intentional failure".into()))
+        }
+    }
+
     fn test_config(dir: &Path, size: usize, threshold: usize) -> OverlayPoolConfig {
         OverlayPoolConfig {
             size,
@@ -378,7 +388,7 @@ mod tests {
     #[tokio::test]
     async fn create_prewarms_files() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let pool = OverlayPool::create(test_config(tmp.path(), 3, 1))
+        let mut pool = OverlayPool::create(test_config(tmp.path(), 3, 1))
             .await
             .expect("create");
 
@@ -392,6 +402,8 @@ mod tests {
         for entry in &entries {
             assert!(is_overlay_file(&entry.file_name().to_string_lossy()));
         }
+
+        pool.cleanup().await;
     }
 
     #[tokio::test]
@@ -403,13 +415,15 @@ mod tests {
         std::fs::write(&stale, b"stale").expect("write");
         assert!(stale.exists());
 
-        let pool = OverlayPool::create(test_config(tmp.path(), 1, 1))
+        let mut pool = OverlayPool::create(test_config(tmp.path(), 1, 1))
             .await
             .expect("create");
 
         // Stale file should be gone; only the newly created one remains.
         assert_eq!(pool.available_count(), 1);
         assert!(!stale.exists());
+
+        pool.cleanup().await;
     }
 
     #[tokio::test]
@@ -424,6 +438,8 @@ mod tests {
         assert!(is_overlay_file(
             path.file_name().expect("file_name").to_str().expect("str")
         ));
+
+        pool.cleanup().await;
     }
 
     #[tokio::test]
@@ -440,6 +456,8 @@ mod tests {
         assert_ne!(a, b);
         assert_ne!(b, c);
         assert_ne!(a, c);
+
+        pool.cleanup().await;
     }
 
     #[tokio::test]
@@ -455,6 +473,8 @@ mod tests {
         // This should create on-demand.
         let on_demand = pool.acquire().await.expect("acquire on-demand");
         assert!(on_demand.exists());
+
+        pool.cleanup().await;
     }
 
     #[tokio::test]
@@ -474,6 +494,39 @@ mod tests {
         let second = pool.acquire().await.expect("acquire 2 (replenished)");
         assert!(second.exists());
         assert_ne!(first, second);
+
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn create_with_size_zero() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut pool = OverlayPool::create(test_config(tmp.path(), 0, 0))
+            .await
+            .expect("create");
+
+        assert_eq!(pool.available_count(), 0);
+
+        // acquire still works via on-demand (Tier 3).
+        let path = pool.acquire().await.expect("acquire on-demand");
+        assert!(path.exists());
+
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn create_succeeds_when_all_prewarm_fail() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let config = OverlayPoolConfig {
+            size: 3,
+            replenish_threshold: 1,
+            pool_dir: tmp.path().to_path_buf(),
+            creator: Box::new(FailingCreator),
+        };
+        let mut pool = OverlayPool::create(config).await.expect("create");
+
+        // Pool created successfully but with zero pre-warmed files.
+        assert_eq!(pool.available_count(), 0);
 
         pool.cleanup().await;
     }
