@@ -27,6 +27,9 @@ vi.mock("os", async (importOriginal) => {
 
 describe("auth status", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+  const mockConsoleError = vi
+    .spyOn(console, "error")
+    .mockImplementation(() => {});
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -39,6 +42,7 @@ describe("auth status", () => {
 
   afterEach(async () => {
     mockConsoleLog.mockClear();
+    mockConsoleError.mockClear();
     vi.unstubAllEnvs();
 
     // Clean up config
@@ -71,10 +75,10 @@ describe("auth status", () => {
     it("should show not authenticated when no token exists", async () => {
       await statusCommand.parseAsync(["node", "cli"]);
 
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Not authenticated"),
       );
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("vm0 auth login"),
       );
     });

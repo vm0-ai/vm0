@@ -198,7 +198,7 @@ describe("auth login", () => {
         await loginCommand.parseAsync(["node", "cli"]);
       }).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("expired"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
@@ -227,7 +227,7 @@ describe("auth login", () => {
         await loginCommand.parseAsync(["node", "cli"]);
       }).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Authentication failed"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
