@@ -2086,19 +2086,19 @@ describe("run command", () => {
         ]);
       }).rejects.toThrow("process.exit called");
 
-      const allLogs = mockConsoleLog.mock.calls
+      const allErrors = mockConsoleError.mock.calls
         .map((call) => call[0])
         .filter((log): log is string => typeof log === "string");
 
-      expect(allLogs.some((log) => log.includes("Run failed"))).toBe(true);
+      expect(allErrors.some((log) => log.includes("Run failed"))).toBe(true);
       expect(
-        allLogs.some((log) => log.includes("Could not resume session")),
+        allErrors.some((log) => log.includes("Could not resume session")),
       ).toBe(true);
       expect(
-        allLogs.some((log) => log.includes("Session history file not found")),
+        allErrors.some((log) => log.includes("Session history file not found")),
       ).toBe(true);
       expect(
-        allLogs.some((log) => log.includes("Agent exited with code 1")),
+        allErrors.some((log) => log.includes("Agent exited with code 1")),
       ).toBe(false);
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -2126,12 +2126,12 @@ describe("run command", () => {
         ]);
       }).rejects.toThrow("process.exit called");
 
-      const allLogs = mockConsoleLog.mock.calls
+      const allErrors = mockConsoleError.mock.calls
         .map((call) => call[0])
         .filter((log): log is string => typeof log === "string");
 
       expect(
-        allLogs.some((log) =>
+        allErrors.some((log) =>
           log.includes(`vm0 logs ${errorTestRunId} --system`),
         ),
       ).toBe(true);
@@ -2164,11 +2164,11 @@ describe("run command", () => {
         ]);
       }).rejects.toThrow("process.exit called");
 
-      const allLogs = mockConsoleLog.mock.calls
+      const allErrors = mockConsoleError.mock.calls
         .map((call) => call[0])
         .filter((log): log is string => typeof log === "string");
 
-      expect(allLogs.some((log) => log.includes("Unknown error"))).toBe(true);
+      expect(allErrors.some((log) => log.includes("Unknown error"))).toBe(true);
     });
 
     it("should display various error patterns correctly", async () => {
@@ -2213,11 +2213,11 @@ describe("run command", () => {
           ]);
         }).rejects.toThrow("process.exit called");
 
-        const allLogs = mockConsoleLog.mock.calls
+        const allErrors = mockConsoleError.mock.calls
           .map((call) => call[0])
           .filter((log): log is string => typeof log === "string");
 
-        expect(allLogs.some((log) => log.includes(expected))).toBe(true);
+        expect(allErrors.some((log) => log.includes(expected))).toBe(true);
       }
     });
   });
