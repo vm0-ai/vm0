@@ -122,6 +122,53 @@ export function getConnectorEnvironmentMapping(
 }
 
 /**
+ * Get connector label and derived env var names for a connector secret.
+ * Performs a reverse lookup from secret name to the connector type and
+ * environment mapping that references it.
+ *
+ * Example: getConnectorDerivedNames("GITHUB_ACCESS_TOKEN")
+ * → { connectorLabel: "GitHub", envVarNames: ["GH_TOKEN", "GITHUB_TOKEN"] }
+ */
+export function getConnectorDerivedNames(
+  secretName: string,
+): { connectorLabel: string; envVarNames: string[] } | null {
+  const allTypes = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
+
+  for (const type of allTypes) {
+    const config = CONNECTOR_TYPES[type];
+
+    // Check if this secret belongs to any auth method of this connector
+    const authMethods = config.authMethods as Record<
+      string,
+      ConnectorAuthMethodConfig
+    >;
+    let found = false;
+    for (const method of Object.values(authMethods)) {
+      if (method.secrets && secretName in method.secrets) {
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) {
+      continue;
+    }
+
+    // Find all env var names that reference this secret
+    const mapping = config.environmentMapping as Record<string, string>;
+    const envVarNames = Object.entries(mapping)
+      .filter(([, valueRef]) => valueRef === `$secrets.${secretName}`)
+      .map(([envVar]) => envVar);
+
+    if (envVarNames.length > 0) {
+      return { connectorLabel: config.label, envVarNames };
+    }
+  }
+
+  return null;
+}
+
+/**
  * Get OAuth configuration for a connector type
  */
 export function getConnectorOAuthConfig(

@@ -105,6 +105,105 @@ describe("secret list command", () => {
     });
   });
 
+  describe("connector secrets", () => {
+    it("should display connector secret with derived env var names", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/secrets", () => {
+          return HttpResponse.json({
+            secrets: [
+              {
+                id: "1",
+                name: "GITHUB_ACCESS_TOKEN",
+                description: null,
+                type: "connector",
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
+            ],
+          });
+        }),
+      );
+
+      await listCommand.parseAsync(["node", "cli"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("GITHUB_ACCESS_TOKEN");
+      expect(logCalls).toContain("[GitHub connector]");
+      expect(logCalls).toContain("Available as: GH_TOKEN, GITHUB_TOKEN");
+    });
+
+    it("should display connector secret without derived names when no mapping found", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/secrets", () => {
+          return HttpResponse.json({
+            secrets: [
+              {
+                id: "1",
+                name: "UNKNOWN_CONNECTOR_SECRET",
+                description: null,
+                type: "connector",
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
+            ],
+          });
+        }),
+      );
+
+      await listCommand.parseAsync(["node", "cli"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("UNKNOWN_CONNECTOR_SECRET");
+      expect(logCalls).toContain("[connector]");
+      expect(logCalls).not.toContain("Available as:");
+    });
+
+    it("should display mixed secret types correctly", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/secrets", () => {
+          return HttpResponse.json({
+            secrets: [
+              {
+                id: "1",
+                name: "MY_API_KEY",
+                description: "User secret",
+                type: "user",
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
+              {
+                id: "2",
+                name: "ANTHROPIC_API_KEY",
+                description: null,
+                type: "model-provider",
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
+              {
+                id: "3",
+                name: "GITHUB_ACCESS_TOKEN",
+                description: null,
+                type: "connector",
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
+            ],
+          });
+        }),
+      );
+
+      await listCommand.parseAsync(["node", "cli"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("MY_API_KEY");
+      expect(logCalls).not.toContain("MY_API_KEY [");
+      expect(logCalls).toContain("[model-provider]");
+      expect(logCalls).toContain("[GitHub connector]");
+      expect(logCalls).toContain("Available as: GH_TOKEN, GITHUB_TOKEN");
+      expect(logCalls).toContain("Total: 3 secret(s)");
+    });
+  });
+
   describe("error handling", () => {
     it("should handle authentication error", async () => {
       server.use(

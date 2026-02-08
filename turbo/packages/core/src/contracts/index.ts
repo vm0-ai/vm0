@@ -415,6 +415,7 @@ export {
   getConnectorSecretsForAuthMethod,
   getConnectorSecretNames,
   getConnectorEnvironmentMapping,
+  getConnectorDerivedNames,
   getConnectorOAuthConfig,
   type ConnectorsMainContract,
   type ConnectorsByTypeContract,
