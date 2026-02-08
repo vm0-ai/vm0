@@ -19,6 +19,7 @@ import {
   createSlackClient,
   getSlackRedirectBaseUrl,
   isSlackInvalidAuthError,
+  refreshAppHome,
 } from "../../../../src/lib/slack";
 import { listSecrets } from "../../../../src/lib/secret/secret-service";
 import { listVariables } from "../../../../src/lib/variable/variable-service";
@@ -31,6 +32,9 @@ import {
   buildAgentRemoveModal,
   buildAgentUpdateModal,
 } from "../../../../src/lib/slack/blocks";
+import { logger } from "../../../../src/lib/logger";
+
+const log = logger("slack:commands");
 
 /**
  * Slack Slash Commands Endpoint
@@ -203,6 +207,9 @@ function handleLoginCommand(
  */
 async function handleLogoutCommand(
   userLink: { id: string } | undefined,
+  client: ReturnType<typeof createSlackClient>,
+  workspaceId: string,
+  slackUserId: string,
 ): Promise<NextResponse> {
   if (!userLink) {
     return NextResponse.json({
@@ -215,6 +222,12 @@ async function handleLogoutCommand(
   await globalThis.services.db
     .delete(slackUserLinks)
     .where(eq(slackUserLinks.id, userLink.id));
+
+  // Refresh App Home tab to reflect disconnected state
+  await refreshAppHome(client, workspaceId, slackUserId).catch((e) =>
+    log.warn("Failed to refresh App Home after disconnect", { error: e }),
+  );
+
   return NextResponse.json({
     response_type: "ephemeral",
     blocks: buildSuccessMessage(
@@ -310,7 +323,12 @@ export async function POST(request: Request) {
 
   // Handle logout command
   if (subCommand === "disconnect") {
-    return handleLogoutCommand(userLink);
+    return handleLogoutCommand(
+      userLink,
+      client,
+      payload.team_id,
+      payload.user_id,
+    );
   }
 
   // Check if user needs to link account

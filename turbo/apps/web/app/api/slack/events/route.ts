@@ -7,6 +7,13 @@ import {
 } from "../../../../src/lib/slack/verify";
 import { handleAppMention } from "../../../../src/lib/slack/handlers/mention";
 import { handleDirectMessage } from "../../../../src/lib/slack/handlers/direct-message";
+import {
+  handleAppHomeOpened,
+  handleMessagesTabOpened,
+} from "../../../../src/lib/slack/handlers/app-home-opened";
+import { logger } from "../../../../src/lib/logger";
+
+const log = logger("slack:events");
 
 /**
  * Slack Events API Endpoint
@@ -52,12 +59,22 @@ interface SlackDirectMessageEvent {
   bot_id?: string;
 }
 
+interface SlackAppHomeOpenedEvent {
+  type: "app_home_opened";
+  user: string;
+  tab: "home" | "messages";
+  channel: string;
+}
+
 interface SlackEventCallback {
   type: "event_callback";
   token: string;
   team_id: string;
   api_app_id: string;
-  event: SlackAppMentionEvent | SlackDirectMessageEvent;
+  event:
+    | SlackAppMentionEvent
+    | SlackDirectMessageEvent
+    | SlackAppHomeOpenedEvent;
   event_id: string;
   event_time: number;
   authorizations?: Array<{
@@ -139,7 +156,7 @@ export async function POST(request: Request) {
           messageTs: event.ts,
           threadTs: event.thread_ts,
         }).catch((error) => {
-          console.error("Error handling app_mention:", error);
+          log.error("Error handling app_mention", { error });
         }),
       );
     }
@@ -162,7 +179,36 @@ export async function POST(request: Request) {
           messageTs: event.ts,
           threadTs: event.thread_ts,
         }).catch((error) => {
-          console.error("Error handling direct_message:", error);
+          log.error("Error handling direct_message", { error });
+        }),
+      );
+    }
+
+    // Handle app_home_opened events (Home tab)
+    if (event.type === "app_home_opened" && event.tab === "home") {
+      initServices();
+
+      after(
+        handleAppHomeOpened({
+          workspaceId: payload.team_id,
+          userId: event.user,
+        }).catch((error) => {
+          log.error("Error handling app_home_opened", { error });
+        }),
+      );
+    }
+
+    // Handle app_home_opened events (Messages tab)
+    if (event.type === "app_home_opened" && event.tab === "messages") {
+      initServices();
+
+      after(
+        handleMessagesTabOpened({
+          workspaceId: payload.team_id,
+          userId: event.user,
+          channelId: event.channel,
+        }).catch((error) => {
+          log.error("Error handling messages_tab_opened", { error });
         }),
       );
     }

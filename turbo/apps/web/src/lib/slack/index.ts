@@ -36,6 +36,7 @@ export {
   postMessage,
   openModal,
   updateModal,
+  publishAppHome,
   exchangeOAuthCode,
   isSlackInvalidAuthError,
 } from "./client";
@@ -44,6 +45,7 @@ export {
 export {
   buildAgentAddModal,
   buildAgentListMessage,
+  buildAppHomeView,
   buildErrorMessage,
   buildLoginPromptMessage,
   buildHelpMessage,
@@ -65,3 +67,8 @@ export {
 
 // Handlers
 export { handleDirectMessage } from "./handlers/direct-message";
+export {
+  handleAppHomeOpened,
+  handleMessagesTabOpened,
+  refreshAppHome,
+} from "./handlers/app-home-opened";

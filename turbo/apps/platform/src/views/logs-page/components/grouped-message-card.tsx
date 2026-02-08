@@ -1,6 +1,6 @@
 import { IconCheck, IconCircleDashed, IconLoader } from "@tabler/icons-react";
 import MarkdownPreview from "@uiw/react-markdown-preview";
-import type { GroupedMessage } from "../log-detail/utils.ts";
+import type { GroupedMessage, ToolOperation } from "../log-detail/utils.ts";
 import { ToolSummary } from "./tool-summary.tsx";
 import {
   SystemInitContent,
@@ -340,6 +340,93 @@ function Connector({ isDashed }: { isDashed: boolean }) {
   );
 }
 
+interface ToolGroup {
+  toolName: string;
+  operations: ToolOperation[];
+}
+
+/**
+ * Group consecutive tool operations by tool name.
+ * Non-consecutive operations of the same type stay in separate groups.
+ */
+export function groupConsecutiveTools(
+  operations: ToolOperation[],
+): ToolGroup[] {
+  const groups: ToolGroup[] = [];
+  for (const op of operations) {
+    const last = groups[groups.length - 1];
+    if (last && last.toolName === op.toolName) {
+      last.operations.push(op);
+    } else {
+      groups.push({ toolName: op.toolName, operations: [op] });
+    }
+  }
+  return groups;
+}
+
+function CollapsedToolGroup({
+  group,
+  searchTerm,
+  currentMatchIndex,
+  matchStartIndex,
+  timestamp,
+  showConnector,
+  isDashed,
+}: {
+  group: ToolGroup;
+  searchTerm?: string;
+  currentMatchIndex?: number;
+  matchStartIndex?: number;
+  timestamp: string;
+  showConnector: boolean;
+  isDashed: boolean;
+}) {
+  const count = group.operations.length;
+  const label =
+    group.toolName === "Read"
+      ? `${count} files`
+      : group.toolName === "Grep"
+        ? `${count} searches`
+        : `${count} calls`;
+
+  return (
+    <div className={`${MESSAGE_SPACING} relative`}>
+      {showConnector && <Connector isDashed={isDashed} />}
+      <div className="relative">
+        <details className="group">
+          <summary className="cursor-pointer list-none w-full text-left">
+            <div className="flex items-center gap-2">
+              <StatusDot variant="success" />
+              <span className="font-semibold text-sm text-foreground shrink-0">
+                {group.toolName}
+              </span>
+              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                {label}
+              </span>
+              {timestamp && (
+                <span className="text-xs text-muted-foreground shrink-0 ml-auto whitespace-nowrap hidden sm:inline">
+                  {timestamp}
+                </span>
+              )}
+            </div>
+          </summary>
+          <div className="mt-1 ml-5 space-y-1">
+            {group.operations.map((op) => (
+              <ToolSummary
+                key={op.toolUseId}
+                operation={op}
+                searchTerm={searchTerm}
+                currentMatchIndex={currentMatchIndex}
+                matchStartIndex={matchStartIndex}
+              />
+            ))}
+          </div>
+        </details>
+      </div>
+    </div>
+  );
+}
+
 function AssistantMessageCard({
   message,
   searchTerm,
@@ -401,17 +488,15 @@ function AssistantMessageCard({
     );
   }
 
-  // Tool operations - each independent with its own timestamp
+  // Tool operations - group consecutive same-type tools
   if (hasTools) {
-    for (let i = 0; i < toolOperations.length; i++) {
-      const op = toolOperations[i];
-      const toolMatchStart = currentOffset + textBeforeMatches;
-      const isLastTool = i === toolOperations.length - 1;
-      const isLastElement = isLastTool && !textAfter;
+    const toolGroups = groupConsecutiveTools(toolOperations);
+    const toolMatchStart = currentOffset + textBeforeMatches;
 
-      // Check if next tool is the same type (only for dashed line decision)
-      const nextOp = toolOperations[i + 1];
-      const isSameToolTypeAsNext = nextOp && nextOp.toolName === op.toolName;
+    for (let gi = 0; gi < toolGroups.length; gi++) {
+      const group = toolGroups[gi]!;
+      const isLastGroup = gi === toolGroups.length - 1;
+      const isLastElement = isLastGroup && !textAfter;
 
       const { showConnector: showConnectorHere } = shouldShowAssistantConnector(
         {
@@ -420,23 +505,44 @@ function AssistantMessageCard({
         },
       );
 
-      // Use dashed line ONLY if next tool is the same type
-      const isDashed = isSameToolTypeAsNext;
+      // Dashed line if next group is the same tool type
+      const nextGroup = toolGroups[gi + 1];
+      const isDashed = nextGroup
+        ? nextGroup.toolName === group.toolName
+        : false;
 
-      elements.push(
-        <div key={op.toolUseId} className={`${MESSAGE_SPACING} relative`}>
-          {showConnectorHere && <Connector isDashed={isDashed} />}
-          <div className="relative">
-            <ToolSummary
-              operation={op}
-              searchTerm={searchTerm}
-              currentMatchIndex={currentMatchIndex}
-              matchStartIndex={toolMatchStart}
-              timestamp={formatEventTime(message.createdAt)}
-            />
-          </div>
-        </div>,
-      );
+      if (group.operations.length === 1) {
+        // Single operation: render as before
+        const op = group.operations[0]!;
+        elements.push(
+          <div key={op.toolUseId} className={`${MESSAGE_SPACING} relative`}>
+            {showConnectorHere && <Connector isDashed={isDashed} />}
+            <div className="relative">
+              <ToolSummary
+                operation={op}
+                searchTerm={searchTerm}
+                currentMatchIndex={currentMatchIndex}
+                matchStartIndex={toolMatchStart}
+                timestamp={formatEventTime(message.createdAt)}
+              />
+            </div>
+          </div>,
+        );
+      } else {
+        // Multiple consecutive same-type operations: render collapsed group
+        elements.push(
+          <CollapsedToolGroup
+            key={`group-${group.operations[0]!.toolUseId}`}
+            group={group}
+            searchTerm={searchTerm}
+            currentMatchIndex={currentMatchIndex}
+            matchStartIndex={toolMatchStart}
+            timestamp={formatEventTime(message.createdAt)}
+            showConnector={showConnectorHere}
+            isDashed={isDashed}
+          />,
+        );
+      }
     }
   }
 

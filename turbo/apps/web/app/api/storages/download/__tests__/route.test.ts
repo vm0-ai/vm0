@@ -3,8 +3,12 @@ import { GET } from "../route";
 import {
   createTestRequest,
   createTestArtifact,
+  insertStorageVersion,
 } from "../../../../../src/__tests__/api-test-helpers";
-import { testContext } from "../../../../../src/__tests__/test-helpers";
+import {
+  testContext,
+  uniqueId,
+} from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 
 vi.mock("@clerk/nextjs/server");
@@ -74,7 +78,7 @@ describe("GET /api/storages/download", () => {
 
   it("should return 404 when storage does not exist", async () => {
     const request = createTestRequest(
-      `http://localhost:3000/api/storages/download?name=nonexistent-${Date.now()}&type=volume`,
+      `http://localhost:3000/api/storages/download?name=${uniqueId("nonexistent")}&type=volume`,
     );
 
     const response = await GET(request);
@@ -82,7 +86,7 @@ describe("GET /api/storages/download", () => {
   });
 
   it("should return 404 when storage has no versions", async () => {
-    const storageName = `no-versions-${Date.now()}`;
+    const storageName = uniqueId("no-versions");
 
     // Create storage without committing (via prepare only with skipCommit)
     await createTestArtifact(storageName, { skipCommit: true });
@@ -99,7 +103,7 @@ describe("GET /api/storages/download", () => {
   });
 
   it("should return empty=true for empty storage", async () => {
-    const storageName = `empty-${Date.now()}`;
+    const storageName = uniqueId("empty");
 
     // Create empty artifact (no files)
     const { versionId } = await createTestArtifact(storageName, {
@@ -121,7 +125,7 @@ describe("GET /api/storages/download", () => {
   });
 
   it("should return presigned URL for non-empty storage", async () => {
-    const storageName = `with-files-${Date.now()}`;
+    const storageName = uniqueId("with-files");
     const files = [
       { path: "file1.txt", hash: "a".repeat(64), size: 500 },
       { path: "file2.txt", hash: "b".repeat(64), size: 500 },
@@ -146,7 +150,7 @@ describe("GET /api/storages/download", () => {
   });
 
   it("should return presigned URL for specific version", async () => {
-    const storageName = `specific-version-${Date.now()}`;
+    const storageName = uniqueId("specific-version");
     const files1 = [{ path: "file1.txt", hash: "c".repeat(64), size: 500 }];
     const files2 = [
       { path: "file1.txt", hash: "c".repeat(64), size: 500 },
@@ -177,7 +181,7 @@ describe("GET /api/storages/download", () => {
 
   describe("version prefix resolution", () => {
     it("should resolve version by short prefix (8+ characters)", async () => {
-      const storageName = `prefix-resolve-${Date.now()}`;
+      const storageName = uniqueId("prefix-resolve");
       const files = [{ path: "test.txt", hash: "e".repeat(64), size: 100 }];
 
       // Create artifact
@@ -198,7 +202,7 @@ describe("GET /api/storages/download", () => {
     });
 
     it("should return 400 when version prefix is too short", async () => {
-      const storageName = `prefix-short-${Date.now()}`;
+      const storageName = uniqueId("prefix-short");
       const files = [{ path: "test.txt", hash: "f".repeat(64), size: 100 }];
 
       // Create artifact
@@ -220,60 +224,30 @@ describe("GET /api/storages/download", () => {
     });
 
     it("should return 400 when version prefix is ambiguous", async () => {
-      const storageName = `prefix-ambiguous-${Date.now()}`;
+      const storageName = uniqueId("prefix-ambiguous");
+      const files = [{ path: "v1.txt", hash: "1".repeat(64), size: 100 }];
 
-      // Create two versions with files that produce hashes starting with same prefix
-      // We create versions with different content - the hash algorithm makes it unlikely
-      // they share the same prefix, but we can test the error handling by using
-      // a prefix that doesn't match anything uniquely
-      const files1 = [{ path: "v1.txt", hash: "1".repeat(64), size: 100 }];
-      const files2 = [{ path: "v2.txt", hash: "2".repeat(64), size: 200 }];
+      // Create first version via API
+      const { versionId } = await createTestArtifact(storageName, { files });
 
-      const { versionId: v1 } = await createTestArtifact(storageName, {
-        files: files1,
-      });
-      const { versionId: v2 } = await createTestArtifact(storageName, {
-        files: files2,
-      });
+      // Insert a second version that shares the same 8-char prefix
+      const ambiguousId = versionId.slice(0, 8) + "0".repeat(56);
+      await insertStorageVersion(storageName, ambiguousId);
 
-      // If by chance both versions share the same first 8 chars, test ambiguity
-      // Otherwise, verify that a non-matching prefix returns 404
-      const prefix1 = v1.slice(0, 8);
-      const prefix2 = v2.slice(0, 8);
+      const prefix = versionId.slice(0, 8);
+      const request = createTestRequest(
+        `http://localhost:3000/api/storages/download?name=${storageName}&type=artifact&version=${prefix}`,
+      );
 
-      if (prefix1 === prefix2) {
-        // Rare case: both hashes share prefix - test ambiguity error
-        const request = createTestRequest(
-          `http://localhost:3000/api/storages/download?name=${storageName}&type=artifact&version=${prefix1}`,
-        );
+      const response = await GET(request);
+      expect(response.status).toBe(400);
 
-        const response = await GET(request);
-        expect(response.status).toBe(400);
-
-        const json = await response.json();
-        expect(json.error.message).toContain("Ambiguous");
-      } else {
-        // Common case: different prefixes - verify each resolves correctly
-        const request1 = createTestRequest(
-          `http://localhost:3000/api/storages/download?name=${storageName}&type=artifact&version=${prefix1}`,
-        );
-        const response1 = await GET(request1);
-        expect(response1.status).toBe(200);
-        const json1 = await response1.json();
-        expect(json1.versionId).toBe(v1);
-
-        const request2 = createTestRequest(
-          `http://localhost:3000/api/storages/download?name=${storageName}&type=artifact&version=${prefix2}`,
-        );
-        const response2 = await GET(request2);
-        expect(response2.status).toBe(200);
-        const json2 = await response2.json();
-        expect(json2.versionId).toBe(v2);
-      }
+      const json = await response.json();
+      expect(json.error.message).toContain("Ambiguous");
     });
 
     it("should return 400 when version prefix contains invalid characters", async () => {
-      const storageName = `prefix-invalid-${Date.now()}`;
+      const storageName = uniqueId("prefix-invalid");
       const files = [{ path: "test.txt", hash: "0".repeat(64), size: 100 }];
 
       // Create artifact
@@ -295,7 +269,7 @@ describe("GET /api/storages/download", () => {
     });
 
     it("should return 404 when version prefix does not match any version", async () => {
-      const storageName = `prefix-nomatch-${Date.now()}`;
+      const storageName = uniqueId("prefix-nomatch");
       const files = [{ path: "test.txt", hash: "9".repeat(64), size: 100 }];
 
       // Create artifact

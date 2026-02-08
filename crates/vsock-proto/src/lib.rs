@@ -53,6 +53,9 @@ pub const MSG_SHUTDOWN: u8 = 0x0A;
 pub const MSG_SHUTDOWN_ACK: u8 = 0x0B;
 pub const MSG_ERROR: u8 = 0xFF;
 
+/// Default vsock port for host-guest communication.
+pub const VSOCK_PORT: u32 = 1000;
+
 /// Write-file flag: execute write with sudo.
 pub const FLAG_SUDO: u8 = 0x01;
 

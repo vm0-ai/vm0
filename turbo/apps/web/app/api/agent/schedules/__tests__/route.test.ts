@@ -6,6 +6,8 @@ import {
   createTestCompose,
   createTestSchedule,
   listTestSchedules,
+  createTestSecret,
+  createTestVariable,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -457,5 +459,163 @@ describe("GET /api/agent/schedules - List Schedules", () => {
 
     expect(response.status).toBe(401);
     expect(data.error.message).toContain("Not authenticated");
+  });
+});
+
+describe("POST /api/agent/schedules - Platform Configuration Validation", () => {
+  beforeEach(async () => {
+    context.setupMocks();
+    await context.setupUser();
+  });
+
+  it("should accept schedule when required secrets exist in platform", async () => {
+    // Create compose with secret reference in environment
+    const { composeId } = await createTestCompose(uniqueId("secret-agent"), {
+      overrides: {
+        environment: {
+          MY_API_KEY: "${{ secrets.MY_API_KEY }}",
+        },
+      },
+    });
+
+    // Create platform secret
+    await createTestSecret("MY_API_KEY", "test-secret-value");
+
+    // Create schedule without passing secrets (should use platform secrets)
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/schedules",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          composeId,
+          name: "secret-test-schedule",
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Test with platform secrets",
+        }),
+      },
+    );
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(data.created).toBe(true);
+    expect(data.schedule.name).toBe("secret-test-schedule");
+  });
+
+  it("should reject schedule when required secrets missing from platform", async () => {
+    // Create compose with secret reference that doesn't exist in platform
+    const { composeId } = await createTestCompose(
+      uniqueId("missing-secret-agent"),
+      {
+        overrides: {
+          environment: {
+            MISSING_SECRET: "${{ secrets.MISSING_SECRET }}",
+          },
+        },
+      },
+    );
+
+    // Do NOT create the platform secret
+
+    // Try to create schedule - should fail
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/schedules",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          composeId,
+          name: "missing-secret-schedule",
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Test with missing secrets",
+        }),
+      },
+    );
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(data.error.message).toContain("Missing required configuration");
+    expect(data.error.message).toContain("MISSING_SECRET");
+  });
+
+  it("should accept schedule when required vars exist in platform", async () => {
+    // Create compose with var reference in environment
+    const { composeId } = await createTestCompose(uniqueId("var-agent"), {
+      overrides: {
+        environment: {
+          MY_VAR: "${{ vars.MY_VAR }}",
+        },
+      },
+    });
+
+    // Create platform variable
+    await createTestVariable("MY_VAR", "test-var-value");
+
+    // Create schedule without passing vars (should use platform vars)
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/schedules",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          composeId,
+          name: "var-test-schedule",
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Test with platform vars",
+        }),
+      },
+    );
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(data.created).toBe(true);
+  });
+
+  it("should reject schedule when required vars missing from platform", async () => {
+    // Create compose with var reference that doesn't exist in platform
+    const { composeId } = await createTestCompose(
+      uniqueId("missing-var-agent"),
+      {
+        overrides: {
+          environment: {
+            MISSING_VAR: "${{ vars.MISSING_VAR }}",
+          },
+        },
+      },
+    );
+
+    // Do NOT create the platform variable
+
+    // Try to create schedule - should fail
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/schedules",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          composeId,
+          name: "missing-var-schedule",
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Test with missing vars",
+        }),
+      },
+    );
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(data.error.message).toContain("Missing required configuration");
+    expect(data.error.message).toContain("MISSING_VAR");
   });
 });

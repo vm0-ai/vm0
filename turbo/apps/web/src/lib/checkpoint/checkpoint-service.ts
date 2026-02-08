@@ -173,14 +173,11 @@ export async function createCheckpoint(
   log.debug(`Checkpoint created successfully: ${checkpoint.id}`);
 
   // Find or create agent session
-  // Sessions now store compose version ID for reproducibility
+  // Sessions are lightweight compose ↔ conversation associations
   // artifactSnapshot may be undefined for runs without artifact
-  // Note: secrets values are NEVER stored - only names for validation
   const artifactSnapshot = request.artifactSnapshot as
     | ArtifactSnapshot
     | undefined;
-  const vars = (run.vars as Record<string, string>) || undefined;
-  const secretNames = (run.secretNames as string[]) || undefined;
   const volumeSnapshot = request.volumeVersionsSnapshot as
     | VolumeVersionsSnapshot
     | undefined;
@@ -189,10 +186,6 @@ export async function createCheckpoint(
     version.composeId,
     artifactSnapshot?.artifactName, // May be undefined for runs without artifact
     conversation.id,
-    vars,
-    secretNames,
-    run.agentComposeVersionId, // Pass version ID to fix at session creation
-    volumeSnapshot?.versions, // Pass volume versions to fix at session creation
   );
 
   log.debug(`Agent session updated/created: ${agentSession.id}`);

@@ -113,7 +113,7 @@ describe("schedule setup command", () => {
       expect(output).toContain("--day");
       expect(output).toContain("--timezone");
       expect(output).toContain("--prompt");
-      expect(output).toContain("--var");
+      // --var option removed - vars now managed via platform tables
       expect(output).toContain("--enable");
 
       mockStdoutWrite.mockRestore();
@@ -306,52 +306,8 @@ describe("schedule setup command", () => {
       expect(logCalls).toContain("Updated schedule");
     });
 
-    it("should pass vars to API", async () => {
-      const compose = createMockCompose();
-      const schedule = createMockSchedule();
-      let deployPayload: Record<string, unknown> | undefined;
-
-      server.use(
-        http.get("http://localhost:3000/api/agent/composes", () => {
-          return HttpResponse.json(compose);
-        }),
-        http.get("http://localhost:3000/api/agent/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
-        }),
-        http.post(
-          "http://localhost:3000/api/agent/schedules",
-          async ({ request }) => {
-            deployPayload = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json(
-              { created: true, schedule },
-              { status: 201 },
-            );
-          },
-        ),
-      );
-
-      await setupCommand.parseAsync([
-        "node",
-        "cli",
-        "test-agent",
-        "--frequency",
-        "daily",
-        "--time",
-        "09:00",
-        "--prompt",
-        "Task with config",
-        "--var",
-        "ENV=production",
-        "--var",
-        "DEBUG=false",
-      ]);
-
-      expect(deployPayload).toBeDefined();
-      expect(deployPayload!.vars).toEqual({
-        ENV: "production",
-        DEBUG: "false",
-      });
-    });
+    // Test removed: --var option no longer supported
+    // vars are now managed via platform tables (vm0 var set)
 
     it("should enable schedule with --enable flag", async () => {
       const compose = createMockCompose();

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { composeJobs } from "../../../../src/db/schema/compose-job";
-import { and, lt, inArray } from "drizzle-orm";
+import { and, eq, lt, inArray } from "drizzle-orm";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("cron:cleanup-compose-jobs");
@@ -77,8 +77,8 @@ export async function GET(request: Request): Promise<Response> {
         })
         .where(
           and(
+            eq(composeJobs.id, job.id),
             inArray(composeJobs.status, ["pending", "running"]),
-            lt(composeJobs.createdAt, cutoffTime),
           ),
         );
 

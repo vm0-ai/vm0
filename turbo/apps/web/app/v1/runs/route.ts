@@ -224,8 +224,8 @@ const router = tsr.router(publicRunsListContract, {
         };
       }
 
-      agentComposeVersionId =
-        sessionData.agentComposeVersionId || compose.headVersionId;
+      // Always use HEAD compose version for session continue
+      agentComposeVersionId = compose.headVersionId;
       agentCompose = compose;
     } else if (body.agentId) {
       // Find by agent ID

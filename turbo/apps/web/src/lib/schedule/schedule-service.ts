@@ -8,7 +8,7 @@ import {
 } from "../../db/schema/agent-compose";
 import { agentRuns } from "../../db/schema/agent-run";
 import { scopes } from "../../db/schema/scope";
-import { encryptSecretsMap, decryptSecretsMap } from "../crypto";
+import { decryptSecretsMap } from "../crypto";
 import {
   notFound,
   badRequest,
@@ -23,6 +23,9 @@ import {
   prepareAndDispatchRun,
 } from "../run/run-service";
 import { generateSandboxToken } from "../auth/sandbox-token";
+import { getUserScopeByClerkId } from "../scope/scope-service";
+import { getSecretValues } from "../secret/secret-service";
+import { getVariableValues } from "../variable/variable-service";
 
 const log = logger("service:schedule");
 
@@ -69,6 +72,7 @@ interface RunSummary {
 
 /**
  * Deploy schedule request data
+ * Note: vars and secrets are no longer accepted - they must be managed via platform tables
  */
 interface DeployScheduleRequest {
   name: string;
@@ -77,8 +81,7 @@ interface DeployScheduleRequest {
   atTime?: string;
   timezone: string;
   prompt: string;
-  vars?: Record<string, string>;
-  secrets?: Record<string, string>;
+  // vars and secrets removed - now managed via platform tables
   artifactName?: string;
   artifactVersion?: string;
   volumeVersions?: Record<string, string>;
@@ -286,7 +289,9 @@ export async function deploySchedule(
     }
   }
 
-  // Validate required secrets/vars/credentials against compose content
+  // Validate required secrets/vars against platform tables
+  // Secrets and vars are now managed via platform (vm0 secret set / vm0 var set),
+  // not passed via schedule creation
   if (compose.headVersionId) {
     const [version] = await globalThis.services.db
       .select()
@@ -297,37 +302,30 @@ export async function deploySchedule(
     if (version) {
       const required = extractRequiredConfiguration(version.content);
 
-      // Determine effective secrets for validation:
-      // - If request.secrets is provided, use those
-      // - If request.secrets is undefined AND updating, use existing schedule's secrets
-      const providedSecrets = request.secrets
-        ? Object.keys(request.secrets)
-        : [];
+      // Fetch platform-managed secrets and vars
+      const userScope = await getUserScopeByClerkId(userId);
+      let platformSecretNames: string[] = [];
+      let platformVarNames: string[] = [];
 
-      // Extract existing secret names from encrypted secrets
-      let existingSecretNames: string[] = [];
-      if (existing?.encryptedSecrets) {
-        const decrypted = decryptSecretsMap(
-          existing.encryptedSecrets,
-          globalThis.services.env.SECRETS_ENCRYPTION_KEY,
+      if (userScope) {
+        const platformSecrets = await getSecretValues(userScope.id, "user");
+        platformSecretNames = Object.keys(platformSecrets);
+        log.debug(
+          `Fetched ${platformSecretNames.length} platform secret(s) for validation`,
         );
-        if (decrypted) {
-          existingSecretNames = Object.keys(decrypted);
-        }
+
+        const platformVars = await getVariableValues(userScope.id);
+        platformVarNames = Object.keys(platformVars);
+        log.debug(
+          `Fetched ${platformVarNames.length} platform variable(s) for validation`,
+        );
       }
 
-      const effectiveSecretNames =
-        request.secrets === undefined && existing
-          ? existingSecretNames
-          : providedSecrets;
-
       const missingSecrets = required.secrets.filter(
-        (name) => !effectiveSecretNames.includes(name),
+        (name) => !platformSecretNames.includes(name),
       );
-
-      const providedVars = request.vars ? Object.keys(request.vars) : [];
       const missingVars = required.vars.filter(
-        (name) => !providedVars.includes(name),
+        (name) => !platformVarNames.includes(name),
       );
       // Credentials are not provided via schedule setup (they come from platform)
       // so we don't validate them here
@@ -344,14 +342,9 @@ export async function deploySchedule(
     }
   }
 
-  // Encrypt secrets if provided, or preserve existing secrets if updating without new secrets
-  const encryptedSecrets =
-    request.secrets !== undefined
-      ? encryptSecretsMap(
-          request.secrets,
-          globalThis.services.env.SECRETS_ENCRYPTION_KEY,
-        )
-      : (existing?.encryptedSecrets ?? null);
+  // Note: vars and encryptedSecrets are no longer stored in schedule table
+  // They are now managed via platform tables (secrets, variables)
+  // We set them to null for new schedules to maintain schema compatibility
 
   // Calculate next run time
   let nextRunAt: Date | null = null;
@@ -372,8 +365,8 @@ export async function deploySchedule(
         atTime: request.atTime ? new Date(request.atTime) : null,
         timezone: request.timezone,
         prompt: request.prompt,
-        vars: request.vars ?? null,
-        encryptedSecrets,
+        vars: null, // Vars now come from platform tables
+        encryptedSecrets: null, // Secrets now come from platform tables
         artifactName: request.artifactName ?? null,
         artifactVersion: request.artifactVersion ?? null,
         volumeVersions: request.volumeVersions ?? null,
@@ -404,8 +397,8 @@ export async function deploySchedule(
         atTime: request.atTime ? new Date(request.atTime) : null,
         timezone: request.timezone,
         prompt: request.prompt,
-        vars: request.vars ?? null,
-        encryptedSecrets,
+        vars: null, // Vars now come from platform tables
+        encryptedSecrets: null, // Secrets now come from platform tables
         artifactName: request.artifactName ?? null,
         artifactVersion: request.artifactVersion ?? null,
         volumeVersions: request.volumeVersions ?? null,
@@ -907,11 +900,8 @@ async function executeSchedule(
     throw error;
   }
 
-  // Decrypt secrets
-  const secrets = decryptSecretsMap(
-    schedule.encryptedSecrets,
-    globalThis.services.env.SECRETS_ENCRYPTION_KEY,
-  );
+  // Note: vars and secrets are no longer stored in schedule table
+  // They are fetched from platform tables by buildExecutionContext
 
   // Create run record first
   const [run] = await globalThis.services.db
@@ -922,8 +912,8 @@ async function executeSchedule(
       scheduleId: schedule.id,
       status: "pending",
       prompt: schedule.prompt,
-      vars: schedule.vars,
-      secretNames: secrets ? Object.keys(secrets) : null,
+      vars: null, // Vars come from platform tables
+      secretNames: null, // Secret names come from platform tables
       createdAt: new Date(Date.now()),
     })
     .returning();
@@ -945,14 +935,15 @@ async function executeSchedule(
     const sandboxToken = await generateSandboxToken(compose.userId, run.id);
 
     // Build execution context and dispatch
+    // Note: vars and secrets are fetched from platform tables by buildExecutionContext
     const context = await buildExecutionContext({
       runId: run.id,
       agentComposeVersionId: compose.headVersionId,
       prompt: schedule.prompt,
       sandboxToken,
       userId: compose.userId,
-      vars: schedule.vars ?? undefined,
-      secrets: secrets ?? undefined,
+      // vars: undefined - fetched from platform tables by buildExecutionContext
+      // secrets: undefined - fetched from platform tables by buildExecutionContext
       artifactName: schedule.artifactName ?? undefined,
       artifactVersion: schedule.artifactVersion ?? undefined,
       volumeVersions: schedule.volumeVersions ?? undefined,

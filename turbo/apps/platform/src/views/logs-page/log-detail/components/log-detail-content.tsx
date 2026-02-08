@@ -124,6 +124,20 @@ export function LogDetailContent({ logId }: { logId: string }) {
         </div>
       )}
 
+      {/* Prompt Section */}
+      {detail.prompt.trim().length > 0 && (
+        <div className="px-4 sm:px-8">
+          <div className="shrink-0 px-4 py-3 bg-card rounded-lg border border-border">
+            <span className="text-sm font-medium text-muted-foreground">
+              Prompt
+            </span>
+            <p className="mt-1 text-sm text-foreground whitespace-pre-wrap break-words">
+              {detail.prompt}
+            </p>
+          </div>
+        </div>
+      )}
+
       <AgentEventsCard
         logId={logId}
         framework={detail.framework}

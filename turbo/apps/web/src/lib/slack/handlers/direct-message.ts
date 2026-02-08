@@ -259,9 +259,7 @@ export async function handleDirectMessage(
         context.channelId,
         "Sorry, an error occurred while sending the response. Please try again.",
         { threadTs },
-      ).catch(() => {
-        // If even the error message fails, we can't do anything more
-      });
+      ).catch((e) => log.warn("Failed to post error message", { error: e }));
     } finally {
       // 12. Remove thinking reaction
       if (reactionAdded) {

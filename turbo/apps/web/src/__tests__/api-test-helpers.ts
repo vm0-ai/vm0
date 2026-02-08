@@ -14,6 +14,8 @@ import {
 import { cliTokens } from "../db/schema/cli-tokens";
 import { deviceCodes } from "../db/schema/device-codes";
 import { agentRuns } from "../db/schema/agent-run";
+import { composeJobs } from "../db/schema/compose-job";
+import { storages, storageVersions } from "../db/schema/storage";
 import { eq } from "drizzle-orm";
 
 // Route handlers - imported here so callers don't need to pass them
@@ -41,11 +43,16 @@ import { POST as storagePrepareRoute } from "../../app/api/storages/prepare/rout
 import { POST as storageCommitRoute } from "../../app/api/storages/commit/route";
 import { DELETE as deleteModelProviderRoute } from "../../app/api/model-providers/[type]/route";
 import { GET as listModelProvidersRoute } from "../../app/api/model-providers/route";
-import { GET as listSecretsRoute } from "../../app/api/secrets/route";
+import {
+  GET as listSecretsRoute,
+  PUT as setSecretRoute,
+} from "../../app/api/secrets/route";
+import { PUT as setVariableRoute } from "../../app/api/variables/route";
 import { POST as addPermissionRoute } from "../../app/api/agent/composes/[id]/permissions/route";
 import { connectors } from "../db/schema/connector";
 import { connectorSessions } from "../db/schema/connector-session";
 import { secrets } from "../db/schema/secret";
+import { encryptCredentialValue } from "../lib/crypto/secrets-encryption";
 import type { ConnectorType } from "@vm0/core";
 
 /**
@@ -576,6 +583,10 @@ export async function completeTestRun(
  * @param options - Optional schedule parameters
  * @returns The created schedule response
  */
+/**
+ * Create a test schedule via API route handler.
+ * Note: vars and secrets are now managed via platform tables (vm0 secret set, vm0 var set)
+ */
 export async function createTestSchedule(
   composeId: string,
   name: string,
@@ -584,8 +595,7 @@ export async function createTestSchedule(
     atTime?: string;
     timezone?: string;
     prompt?: string;
-    vars?: Record<string, string>;
-    secrets?: Record<string, string>;
+    // vars and secrets removed - now managed via platform tables
   },
 ): Promise<ScheduleResponse> {
   // Default to cron if neither trigger specified
@@ -606,8 +616,7 @@ export async function createTestSchedule(
         prompt: options?.prompt ?? "Test schedule prompt",
         cronExpression: options?.cronExpression,
         atTime: options?.atTime,
-        vars: options?.vars,
-        secrets: options?.secrets,
+        // vars and secrets no longer sent - managed via platform tables
         ...trigger,
       }),
     },
@@ -951,6 +960,38 @@ export async function createTestVolume(
   return createTestStorage(name, { ...options, type: "volume" });
 }
 
+/**
+ * Insert an extra storage version record with a controlled ID.
+ * Used to create deterministic ambiguous-prefix test scenarios where
+ * two versions share the same prefix but the content hash is different.
+ *
+ * @param storageName - Name of an existing storage (must already have a version)
+ * @param versionId - The 64-char hex version ID to insert
+ */
+export async function insertStorageVersion(
+  storageName: string,
+  versionId: string,
+): Promise<void> {
+  const [storage] = await globalThis.services.db
+    .select()
+    .from(storages)
+    .where(eq(storages.name, storageName))
+    .limit(1);
+
+  if (!storage) {
+    throw new Error(`Storage "${storageName}" not found`);
+  }
+
+  await globalThis.services.db.insert(storageVersions).values({
+    id: versionId,
+    storageId: storage.id,
+    s3Key: `test/${versionId}`,
+    size: 0,
+    fileCount: 0,
+    createdBy: "test",
+  });
+}
+
 // ============================================================================
 // Model Provider Test Helpers
 // ============================================================================
@@ -1010,6 +1051,41 @@ export async function listTestModelProviders(): Promise<
 // ============================================================================
 
 /**
+ * Create or update a platform secret via API route handler.
+ *
+ * @param name - The secret name (uppercase with underscores)
+ * @param value - The secret value
+ * @param description - Optional description
+ * @returns The created/updated secret info
+ */
+export async function createTestSecret(
+  name: string,
+  value: string,
+  description?: string,
+): Promise<{
+  id: string;
+  name: string;
+  description: string | null;
+  type: string;
+  createdAt: string;
+  updatedAt: string;
+}> {
+  const request = createTestRequest("http://localhost:3000/api/secrets", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, value, description }),
+  });
+  const response = await setSecretRoute(request);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `Failed to create secret: ${error.error?.message || response.status}`,
+    );
+  }
+  return response.json();
+}
+
+/**
  * List all secrets via API route handler.
  *
  * @returns Array of secret info
@@ -1035,6 +1111,47 @@ export async function listTestSecrets(): Promise<
   const data = await response.json();
   return data.secrets;
 }
+
+// Variable Test Helpers
+// ============================================================================
+
+/**
+ * Create or update a platform variable via API route handler.
+ *
+ * @param name - The variable name (uppercase with underscores)
+ * @param value - The variable value
+ * @param description - Optional description
+ * @returns The created/updated variable info
+ */
+export async function createTestVariable(
+  name: string,
+  value: string,
+  description?: string,
+): Promise<{
+  id: string;
+  name: string;
+  value: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+}> {
+  const request = createTestRequest("http://localhost:3000/api/variables", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, value, description }),
+  });
+  const response = await setVariableRoute(request);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `Failed to create variable: ${error.error?.message || response.status}`,
+    );
+  }
+  return response.json();
+}
+
+// Direct Database Test Helpers
+// ============================================================================
 
 /**
  * Insert a stale pending run directly into the database.
@@ -1124,6 +1241,7 @@ export async function createTestConnector(
     externalUsername?: string;
     externalEmail?: string;
     oauthScopes?: string[];
+    accessToken?: string;
   },
 ): Promise<typeof connectors.$inferSelect> {
   const type = options?.type ?? "github";
@@ -1141,13 +1259,17 @@ export async function createTestConnector(
     })
     .returning();
 
-  // Also create the associated secret
+  // Also create the associated secret with proper encryption
   const secretName = `${type.toUpperCase()}_ACCESS_TOKEN`;
+  const tokenValue = options?.accessToken ?? "test-github-token";
+  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
+  const encryptedValue = encryptCredentialValue(tokenValue, encryptionKey);
+
   await globalThis.services.db.insert(secrets).values({
     scopeId,
     name: secretName,
     type: "connector",
-    encryptedValue: "encrypted-test-token",
+    encryptedValue,
     description: `OAuth token for ${type} connector`,
   });
 
@@ -1201,4 +1323,45 @@ export async function createTestConnectorSession(
     .returning();
 
   return session!;
+}
+
+// ============================================================================
+// Compose Job Test Helpers
+// ============================================================================
+
+/**
+ * Insert a compose job directly into DB for test setup.
+ * Uses direct DB insert because compose jobs are created by internal
+ * server logic (sandbox spawn), not by a user-facing API route.
+ *
+ * @returns The compose job ID
+ */
+export async function createTestComposeJob(options: {
+  status: string;
+  createdAt: Date;
+  userId?: string;
+}): Promise<string> {
+  const [row] = await globalThis.services.db
+    .insert(composeJobs)
+    .values({
+      userId: options.userId ?? "test-user",
+      githubUrl: "https://github.com/test/repo",
+      status: options.status,
+      createdAt: options.createdAt,
+    })
+    .returning({ id: composeJobs.id });
+  return row!.id;
+}
+
+/**
+ * Look up a compose job's status and error for verification.
+ */
+export async function findTestComposeJob(
+  jobId: string,
+): Promise<{ status: string; error: string | null } | undefined> {
+  const [row] = await globalThis.services.db
+    .select({ status: composeJobs.status, error: composeJobs.error })
+    .from(composeJobs)
+    .where(eq(composeJobs.id, jobId));
+  return row;
 }

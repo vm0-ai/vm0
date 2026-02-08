@@ -11,6 +11,7 @@ import {
   deleteTestCliToken,
   createTestModelProvider,
   createTestMultiAuthModelProvider,
+  createTestConnector,
   createTestRun,
   getTestRun,
   completeTestRun,
@@ -1276,6 +1277,69 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const data = await createTestRun(composeId, "Test with bedrock provider");
 
       // Should succeed (not fail due to missing model provider)
+      expect(data.status).toBe("running");
+    });
+  });
+
+  describe("Connector Injection", () => {
+    it("should auto-inject GH_TOKEN and GITHUB_TOKEN when GitHub connector is connected", async () => {
+      vi.mocked(Sandbox.create).mockClear();
+
+      // Create a GitHub connector for the test user
+      await createTestConnector(user.scopeId, {
+        accessToken: "ghp-test-connector-token",
+      });
+
+      // Create compose with model provider key but no GH_TOKEN
+      const { composeId } = await createTestCompose(uniqueId("gh-connector"));
+
+      const data = await createTestRun(composeId, "Test with GitHub connector");
+      expect(data.status).toBe("running");
+
+      // Verify Sandbox.create was called with GH_TOKEN and GITHUB_TOKEN
+      expect(Sandbox.create).toHaveBeenCalled();
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
+
+      expect(envs?.GH_TOKEN).toBe("ghp-test-connector-token");
+      expect(envs?.GITHUB_TOKEN).toBe("ghp-test-connector-token");
+    });
+
+    it("should not override user-defined GH_TOKEN with connector token", async () => {
+      vi.mocked(Sandbox.create).mockClear();
+
+      // Create a GitHub connector
+      await createTestConnector(user.scopeId, {
+        accessToken: "ghp-connector-token",
+      });
+
+      // Create compose with explicit GH_TOKEN
+      const { composeId } = await createTestCompose(uniqueId("gh-explicit"), {
+        overrides: {
+          environment: {
+            ANTHROPIC_API_KEY: "test-key",
+            GH_TOKEN: "user-defined-token",
+          },
+        },
+      });
+
+      const data = await createTestRun(composeId, "Test GH_TOKEN precedence");
+      expect(data.status).toBe("running");
+
+      // Verify user-defined GH_TOKEN takes precedence
+      expect(Sandbox.create).toHaveBeenCalled();
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
+
+      expect(envs?.GH_TOKEN).toBe("user-defined-token");
+    });
+
+    it("should work when no connectors are connected", async () => {
+      // No connector setup - verify run still works
+      const data = await createTestRun(
+        testComposeId,
+        "Test without connectors",
+      );
       expect(data.status).toBe("running");
     });
   });

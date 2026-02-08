@@ -8,6 +8,7 @@ import {
 } from "@vm0/ui/components/ui/dialog";
 import { Button } from "@vm0/ui/components/ui/button";
 import { Input } from "@vm0/ui/components/ui/input";
+import { Switch } from "@vm0/ui/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -94,25 +95,27 @@ export function OnboardingModal() {
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && closeModal()}>
       <DialogContent
-        className="flex max-h-[100dvh] flex-col gap-0 overflow-hidden sm:max-h-[85dvh] sm:max-w-[600px] p-6 border-border rounded-[10px] [&>button[aria-label=Close]:last-child]:hidden"
+        className="flex max-h-[100dvh] flex-col gap-0 overflow-hidden sm:max-h-[85dvh] sm:max-w-[600px] p-0 border-border rounded-[10px] [&>button[aria-label=Close]:last-child]:hidden"
         style={{
           backgroundImage: backgroundGradient,
         }}
       >
-        {/* Close button - absolute, outside scroll flow */}
-        <DialogClose asChild>
-          <button
-            className="absolute right-4 top-4 z-10 icon-button opacity-70 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-            aria-label="Close"
-          >
-            <IconX size={20} className="text-foreground" />
-          </button>
-        </DialogClose>
+        {/* Close button - top row */}
+        <div className="shrink-0 flex justify-end pr-4 pt-4">
+          <DialogClose asChild>
+            <button
+              className="icon-button opacity-70 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              aria-label="Close"
+            >
+              <IconX size={20} className="text-foreground" />
+            </button>
+          </DialogClose>
+        </div>
 
-        {/* Scrollable content area */}
-        <div className="!shrink -mx-1 min-h-0 overflow-y-auto px-1 flex flex-col gap-4">
+        {/* Fixed Header - Logo and Title */}
+        <div className="shrink-0 px-6 pb-4">
           {/* Logo */}
-          <div className="flex items-center justify-center gap-2 mt-[24px]">
+          <div className="flex items-center justify-center gap-2 mb-4">
             <img
               src={theme === "dark" ? "/logo_dark.svg" : "/logo_light.svg"}
               alt="VM0"
@@ -132,7 +135,10 @@ export function OnboardingModal() {
               Your model provider is required for sandboxed execution.
             </DialogDescription>
           </div>
+        </div>
 
+        {/* Scrollable content area */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 flex flex-col gap-6 dialog-scrollable">
           {/* Provider Type Selector */}
           <div className="flex flex-col gap-2">
             <label className="px-1 text-sm font-medium text-foreground">
@@ -196,8 +202,8 @@ export function OnboardingModal() {
           )}
         </div>
 
-        {/* Action Buttons - fixed outside scroll */}
-        <div className="shrink-0 flex justify-end gap-2 pt-6">
+        {/* Fixed Footer - Action Buttons */}
+        <div className="shrink-0 flex justify-end gap-2 px-6 pb-6 pt-4">
           <Button variant="outline" onClick={() => closeModal()}>
             Cancel
           </Button>
@@ -428,7 +434,7 @@ function OnboardingModelSelector({
           <label className="px-1 text-sm font-medium text-foreground">
             Model
           </label>
-          <div className="flex items-center justify-between rounded-lg border border-border p-4">
+          <div className="flex items-center justify-between rounded-lg border border-border bg-card p-4">
             <div className="flex flex-col gap-1">
               <span className="text-sm font-medium text-foreground">
                 Default model
@@ -438,17 +444,11 @@ function OnboardingModelSelector({
                 configure a custom one.
               </span>
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={useDefaultModel}
-              onClick={() => onUseDefaultModelChange(!useDefaultModel)}
-              className={`relative ml-4 inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${useDefaultModel ? "bg-primary" : "bg-muted"}`}
-            >
-              <span
-                className={`pointer-events-none inline-block size-5 rounded-full bg-white shadow-sm ring-0 transition-transform ${useDefaultModel ? "translate-x-5" : "translate-x-0.5"} mt-0.5`}
-              />
-            </button>
+            <Switch
+              checked={useDefaultModel}
+              onCheckedChange={onUseDefaultModelChange}
+              className="ml-4"
+            />
           </div>
         </div>
         {!useDefaultModel && (

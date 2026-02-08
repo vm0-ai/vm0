@@ -41,7 +41,7 @@ export function ProviderRow({
       <Popover>
         <PopoverTrigger asChild>
           <button
-            className="p-1 rounded-md hover:bg-muted transition-colors shrink-0"
+            className="icon-button shrink-0"
             aria-label="Provider options"
           >
             <IconDotsVertical
@@ -51,16 +51,16 @@ export function ProviderRow({
             />
           </button>
         </PopoverTrigger>
-        <PopoverContent align="end" className="w-36 p-0">
+        <PopoverContent align="end" className="flex flex-col gap-1 w-36 p-2">
           <button
             onClick={() => openEdit(provider)}
-            className="w-full px-3 py-2 text-sm text-left hover:bg-muted transition-colors"
+            className="w-full rounded-md px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors"
           >
             Edit
           </button>
           <button
             onClick={() => openDelete(provider.type)}
-            className="w-full px-3 py-2 text-sm text-left text-destructive hover:bg-muted transition-colors"
+            className="w-full rounded-md px-3 py-2 text-sm text-left text-destructive hover:bg-accent hover:text-accent-foreground transition-colors"
           >
             Delete
           </button>

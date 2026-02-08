@@ -633,13 +633,17 @@ function processUserEvent(
 export function groupEventsIntoMessages(
   events: AgentEvent[],
 ): GroupedMessage[] {
+  const sorted = [...events].sort(
+    (a, b) => a.sequenceNumber - b.sequenceNumber,
+  );
+
   const ctx: GroupingContext = {
     grouped: [],
     pendingToolUses: new Map(),
     todoState: new Map(),
   };
 
-  for (const event of events) {
+  for (const event of sorted) {
     const eventData = event.eventData as GroupingEventData;
 
     if (event.eventType === "system") {

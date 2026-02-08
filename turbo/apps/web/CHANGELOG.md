@@ -1,5 +1,53 @@
 # Changelog
 
+## [12.14.1](https://github.com/vm0-ai/vm0/compare/web-v12.14.0...web-v12.14.1) (2026-02-07)
+
+
+### Bug Fixes
+
+* **web:** inject connector secrets into agent execution environment ([#2584](https://github.com/vm0-ai/vm0/issues/2584)) ([f483b5b](https://github.com/vm0-ai/vm0/commit/f483b5b0c0c94e45a149f99b8f108c3fc74399a4))
+* **web:** make storage download ambiguous-prefix test deterministic ([#2572](https://github.com/vm0-ai/vm0/issues/2572)) ([e48f09e](https://github.com/vm0-ai/vm0/commit/e48f09ebf9c341c8e3647adba05b6b50e968eee4)), closes [#2562](https://github.com/vm0-ai/vm0/issues/2562)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.4.2
+
+## [12.14.0](https://github.com/vm0-ai/vm0/compare/web-v12.13.2...web-v12.14.0) (2026-02-07)
+
+
+### Features
+
+* **slack:** add app home tab, welcome message, and DM improvements ([#2554](https://github.com/vm0-ai/vm0/issues/2554)) ([131b380](https://github.com/vm0-ai/vm0/commit/131b3807e6b056e71717c5b7e1e36ca3c04ed14f))
+
+
+### Bug Fixes
+
+* **schedule:** validate secrets/vars against platform tables ([#2558](https://github.com/vm0-ai/vm0/issues/2558)) ([f19d550](https://github.com/vm0-ai/vm0/commit/f19d5506e61f16536bf163e5884266d31326fe40))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.4.1
+
+## [12.13.2](https://github.com/vm0-ai/vm0/compare/web-v12.13.1...web-v12.13.2) (2026-02-07)
+
+
+### Bug Fixes
+
+* **web:** add api url fallback for compose job webhooks ([#2553](https://github.com/vm0-ai/vm0/issues/2553)) ([361e3b7](https://github.com/vm0-ai/vm0/commit/361e3b799d529d02a7c2e6082f13723d5262bd81)), closes [#2550](https://github.com/vm0-ai/vm0/issues/2550)
+
+## [12.13.1](https://github.com/vm0-ai/vm0/compare/web-v12.13.0...web-v12.13.1) (2026-02-07)
+
+
+### Bug Fixes
+
+* **web:** add missing job ID filter in cleanup-compose-jobs cron WHERE clause ([#2534](https://github.com/vm0-ai/vm0/issues/2534)) ([f6bea80](https://github.com/vm0-ai/vm0/commit/f6bea803423da0527386e0a890a245757d949d0f))
+
 ## [12.13.0](https://github.com/vm0-ai/vm0/compare/web-v12.12.0...web-v12.13.0) (2026-02-07)
 
 

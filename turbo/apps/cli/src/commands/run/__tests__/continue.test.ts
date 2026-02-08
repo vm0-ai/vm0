@@ -150,7 +150,7 @@ describe("run continue command", () => {
       );
     });
 
-    it("should pass volume versions to API", async () => {
+    it("should not send volumeVersions in API request", async () => {
       let capturedBody: Record<string, unknown> | undefined;
 
       server.use(
@@ -168,15 +168,9 @@ describe("run continue command", () => {
         "cli",
         testSessionId,
         "test prompt",
-        "--volume-version",
-        "data=v1.0.0",
       ]);
 
-      expect(capturedBody).toEqual(
-        expect.objectContaining({
-          volumeVersions: { data: "v1.0.0" },
-        }),
-      );
+      expect(capturedBody).not.toHaveProperty("volumeVersions");
     });
 
     it("should pass model provider option to API", async () => {

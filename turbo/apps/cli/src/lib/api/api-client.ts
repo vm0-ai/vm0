@@ -793,6 +793,7 @@ class ApiClient {
 
   /**
    * Deploy schedule (create or update)
+   * Note: vars and secrets are now managed via platform tables (vm0 secret set, vm0 var set)
    */
   async deploySchedule(body: {
     name: string;
@@ -800,8 +801,7 @@ class ApiClient {
     atTime?: string;
     timezone?: string;
     prompt: string;
-    vars?: Record<string, string>;
-    secrets?: Record<string, string>;
+    // vars and secrets removed - now managed via platform tables
     artifactName?: string;
     artifactVersion?: string;
     volumeVersions?: Record<string, string>;

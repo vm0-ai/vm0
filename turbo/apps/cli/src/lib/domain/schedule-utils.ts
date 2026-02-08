@@ -305,7 +305,7 @@ export function toISODateTime(dateTimeStr: string): string {
 /**
  * Result of extracting required configuration from compose content
  */
-export interface RequiredConfiguration {
+interface RequiredConfiguration {
   secrets: string[];
   vars: string[];
   credentials: string[];

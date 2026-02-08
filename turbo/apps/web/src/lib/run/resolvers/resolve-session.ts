@@ -3,25 +3,26 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
+import { agentRuns } from "../../../db/schema/agent-run";
 import { notFound, unauthorized, badRequest } from "../../errors";
 import { logger } from "../../logger";
 import { getAgentSessionWithConversation } from "../../agent-session";
 import type { ConversationResolution } from "./types";
-import { extractWorkingDir } from "../utils";
+import { extractWorkingDir, extractCliAgentType } from "../utils";
 import { resolveSessionHistory } from "./resolve-session-history";
 
 const log = logger("run:resolve-session");
 
 /**
  * Resolve session to ConversationResolution
- * Uses session's fixed compose version if available, falls back to HEAD for backwards compatibility
+ * Always uses HEAD compose version — continue behaves like a new run + conversation history
  *
  * @param sessionId Agent session ID to resolve
  * @param userId User ID for authorization
  * @returns ConversationResolution with all data needed to build execution context
  * @throws NotFoundError if session or related data not found
  * @throws UnauthorizedError if session doesn't belong to user
- * @throws BadRequestError if session data is invalid
+ * @throws BadRequestError if session data is invalid or framework changed
  */
 export async function resolveSession(
   sessionId: string,
@@ -64,9 +65,8 @@ export async function resolveSession(
     throw badRequest("Agent compose has no versions. Run 'vm0 build' first.");
   }
 
-  // Use session's fixed compose version if available, fall back to HEAD for backwards compatibility
-  // This ensures reproducibility: continue uses the same compose version as the original run
-  const versionId = session.agentComposeVersionId || compose.headVersionId;
+  // Always use HEAD compose version — continue behaves like a new run + conversation history
+  const versionId = compose.headVersionId;
 
   // Get compose version content
   const [version] = await globalThis.services.db
@@ -79,14 +79,31 @@ export async function resolveSession(
     throw notFound(`Agent compose version ${versionId} not found`);
   }
 
-  // Get secret names from session (values are NEVER stored)
-  const secretNames = session.secretNames ?? undefined;
+  // Framework compatibility check: block continue if framework changed
+  const headFramework = extractCliAgentType(version.content);
+  const sessionFramework = session.conversation.cliAgentType;
+  if (headFramework !== sessionFramework) {
+    throw badRequest(
+      `Cannot continue session: framework changed from "${sessionFramework}" to "${headFramework}". ` +
+        `Start a new run instead.`,
+    );
+  }
 
   // Resolve session history from R2 hash or legacy TEXT field
   const sessionHistory = await resolveSessionHistory(
     session.conversation.cliAgentSessionHistoryHash,
     session.conversation.cliAgentSessionHistory,
   );
+
+  // Read vars from the last run as fallback for continue operations
+  const [lastRun] = await globalThis.services.db
+    .select({ vars: agentRuns.vars })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, session.conversation.runId))
+    .limit(1);
+
+  const lastRunVars =
+    (lastRun?.vars as Record<string, string> | null) ?? undefined;
 
   return {
     conversationId: session.conversationId,
@@ -97,12 +114,11 @@ export async function resolveSession(
       cliAgentSessionId: session.conversation.cliAgentSessionId,
       cliAgentSessionHistory: sessionHistory,
     },
-    artifactName: session.artifactName ?? undefined, // Convert null to undefined
-    artifactVersion: session.artifactName ? "latest" : undefined, // Only set version if artifact exists
-    vars: session.vars || {},
-    secretNames,
-    // Use session's volume versions if available for reproducibility
-    volumeVersions: session.volumeVersions || undefined,
-    buildResumeArtifact: !!session.artifactName, // Only build resumeArtifact if session has artifact
+    artifactName: session.artifactName ?? undefined,
+    artifactVersion: session.artifactName ? "latest" : undefined,
+    vars: lastRunVars,
+    secretNames: undefined,
+    volumeVersions: undefined,
+    buildResumeArtifact: !!session.artifactName,
   };
 }

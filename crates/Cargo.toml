@@ -1,11 +1,12 @@
 [workspace]
 resolver = "2"
-members = ["vsock-guest", "vsock-proto", "vsock-host", "vsock-test", "guest-init", "guest-common", "guest-download", "sandbox"]
+members = ["vsock-guest", "vsock-proto", "vsock-host", "vsock-test", "guest-init", "guest-common", "guest-download", "sandbox", "sandbox-fc"]
 
 [workspace.dependencies]
 # Internal crates
 guest-common = { path = "guest-common" }
 sandbox = { path = "sandbox" }
+sandbox-fc = { path = "sandbox-fc" }
 vsock-guest = { path = "vsock-guest" }
 vsock-host = { path = "vsock-host" }
 vsock-proto = { path = "vsock-proto" }
@@ -20,7 +21,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tar = "0.4"
 thiserror = "2"
-tokio = { version = "1", features = ["net", "io-util", "time", "rt", "macros"] }
+tokio = { version = "1", features = ["net", "io-util", "time", "rt", "macros", "process", "sync"] }
+uuid = { version = "1", features = ["v4"] }
+tracing = "0.1"
+which = "7"
 ureq = { version = "3", features = ["platform-verifier"] }
 
 [profile.release]

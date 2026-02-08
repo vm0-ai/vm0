@@ -51,13 +51,13 @@ export function AddProviderMenu({ isFirst }: { isFirst: boolean }) {
         </PopoverTrigger>
         <PopoverContent
           align="end"
-          className="w-[var(--radix-popover-trigger-width)] p-2"
+          className="flex flex-col gap-1 w-[var(--radix-popover-trigger-width)] p-2"
         >
           {availableTypes.map((type: ModelProviderType) => (
             <button
               key={type}
               onClick={() => openAdd(type)}
-              className="w-full flex cursor-pointer select-none items-center gap-2 rounded-md py-1.5 px-3 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors"
+              className="w-full flex cursor-pointer select-none items-center gap-2 rounded-md py-2 px-3 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors"
             >
               <ProviderIcon type={type} size={16} />
               <span>{getUILabel(type)}</span>

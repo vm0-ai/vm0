@@ -28,8 +28,6 @@ static SHUTDOWN_RECEIVED: AtomicBool = AtomicBool::new(false);
 
 // Vsock constants (only used on Linux)
 #[cfg(target_os = "linux")]
-const VSOCK_PORT: u32 = 1000;
-#[cfg(target_os = "linux")]
 const VSOCK_CID_HOST: u32 = 2;
 
 /// Read buffer size for the connection event loop (local tuning constant).
@@ -451,7 +449,7 @@ pub fn connect_vsock() -> io::Result<UnixStream> {
     let addr = libc::sockaddr_vm {
         svm_family: libc::AF_VSOCK as u16,
         svm_reserved1: 0,
-        svm_port: VSOCK_PORT,
+        svm_port: vsock_proto::VSOCK_PORT,
         svm_cid: VSOCK_CID_HOST,
         svm_zero: [0; 4],
     };

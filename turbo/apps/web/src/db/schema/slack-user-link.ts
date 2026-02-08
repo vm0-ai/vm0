@@ -1,4 +1,5 @@
 import {
+  boolean,
   pgTable,
   uuid,
   varchar,
@@ -20,6 +21,7 @@ export const slackUserLinks = pgTable(
     slackWorkspaceId: varchar("slack_workspace_id", { length: 255 }).notNull(),
     // VM0 user ID (Clerk user ID)
     vm0UserId: text("vm0_user_id").notNull(),
+    dmWelcomeSent: boolean("dm_welcome_sent").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [

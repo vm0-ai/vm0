@@ -9,8 +9,10 @@ import {
   groupEventsIntoMessages,
   getVisibleGroupedMessageText,
   groupedMessageMatchesSearch,
+  type ToolOperation,
 } from "../utils.ts";
 import type { AgentEvent } from "../../../../signals/logs-page/types.ts";
+import { groupConsecutiveTools } from "../../components/grouped-message-card.tsx";
 
 describe("log-detail utils", () => {
   describe("formatTime", () => {
@@ -542,6 +544,51 @@ describe("log-detail utils", () => {
       );
     });
 
+    it("should link tool_result to tool_use when events arrive out of order", () => {
+      const events: AgentEvent[] = [
+        {
+          sequenceNumber: 2,
+          eventType: "user",
+          eventData: {
+            message: {
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: "tool_bash_1",
+                  content: "file1.txt\nfile2.txt",
+                },
+              ],
+            },
+          },
+          createdAt: "2024-01-01T00:00:01Z",
+        },
+        {
+          sequenceNumber: 1,
+          eventType: "assistant",
+          eventData: {
+            message: {
+              content: [
+                {
+                  type: "tool_use",
+                  id: "tool_bash_1",
+                  name: "Bash",
+                  input: { command: "ls" },
+                },
+              ],
+            },
+          },
+          createdAt: "2024-01-01T00:00:00Z",
+        },
+      ];
+      const result = groupEventsIntoMessages(events);
+      const toolOp = result
+        .flatMap((m) => m.toolOperations ?? [])
+        .find((op) => op.toolUseId === "tool_bash_1");
+      expect(toolOp).toBeDefined();
+      expect(toolOp!.toolName).toBe("Bash");
+      expect(toolOp!.result?.content).toBe("file1.txt\nfile2.txt");
+    });
+
     it("should extract key param for file operations", () => {
       const events: AgentEvent[] = [
         {
@@ -869,5 +916,73 @@ describe("log-detail utils", () => {
       };
       expect(groupedMessageMatchesSearch(message, "nonexistent")).toBeFalsy();
     });
+  });
+});
+
+function makeOp(toolName: string, id?: string): ToolOperation {
+  return {
+    toolUseId: id ?? `tool_${Math.random().toString(36).slice(2)}`,
+    toolName,
+    keyParam: `/path/${toolName.toLowerCase()}`,
+    input: {},
+  };
+}
+
+describe("groupConsecutiveTools", () => {
+  it("should return empty array for empty input", () => {
+    expect(groupConsecutiveTools([])).toStrictEqual([]);
+  });
+
+  it("should keep single operations ungrouped", () => {
+    const ops = [makeOp("Read"), makeOp("Bash"), makeOp("Grep")];
+    const groups = groupConsecutiveTools(ops);
+    expect(groups).toHaveLength(3);
+    expect(groups[0]!.toolName).toBe("Read");
+    expect(groups[0]!.operations).toHaveLength(1);
+    expect(groups[1]!.toolName).toBe("Bash");
+    expect(groups[2]!.toolName).toBe("Grep");
+  });
+
+  it("should group consecutive same-type operations", () => {
+    const ops = [
+      makeOp("Read", "r1"),
+      makeOp("Read", "r2"),
+      makeOp("Read", "r3"),
+      makeOp("Bash", "b1"),
+    ];
+    const groups = groupConsecutiveTools(ops);
+    expect(groups).toHaveLength(2);
+    expect(groups[0]!.toolName).toBe("Read");
+    expect(groups[0]!.operations).toHaveLength(3);
+    expect(groups[1]!.toolName).toBe("Bash");
+    expect(groups[1]!.operations).toHaveLength(1);
+  });
+
+  it("should not group non-consecutive same-type operations", () => {
+    const ops = [
+      makeOp("Read", "r1"),
+      makeOp("Bash", "b1"),
+      makeOp("Read", "r2"),
+    ];
+    const groups = groupConsecutiveTools(ops);
+    expect(groups).toHaveLength(3);
+    expect(groups[0]!.toolName).toBe("Read");
+    expect(groups[1]!.toolName).toBe("Bash");
+    expect(groups[2]!.toolName).toBe("Read");
+  });
+
+  it("should preserve operation order within groups", () => {
+    const ops = [
+      makeOp("Grep", "g1"),
+      makeOp("Grep", "g2"),
+      makeOp("Grep", "g3"),
+    ];
+    const groups = groupConsecutiveTools(ops);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.operations.map((o) => o.toolUseId)).toStrictEqual([
+      "g1",
+      "g2",
+      "g3",
+    ]);
   });
 });

@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.52.1](https://github.com/vm0-ai/vm0/compare/platform-v0.52.0...platform-v0.52.1) (2026-02-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.4.2
+
+## [0.52.0](https://github.com/vm0-ai/vm0/compare/platform-v0.51.2...platform-v0.52.0) (2026-02-07)
+
+
+### Features
+
+* **platform:** collapse consecutive same-type tool calls in log detail ([#2560](https://github.com/vm0-ai/vm0/issues/2560)) ([71091bc](https://github.com/vm0-ai/vm0/commit/71091bc1599fcfde7b1894563731ade9dbd9a680))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.4.1
+
+## [0.51.2](https://github.com/vm0-ai/vm0/compare/platform-v0.51.1...platform-v0.51.2) (2026-02-07)
+
+
+### Bug Fixes
+
+* **platform:** sort events by sequenceNumber before grouping to fix unknown tool results ([#2556](https://github.com/vm0-ai/vm0/issues/2556)) ([430ddcb](https://github.com/vm0-ai/vm0/commit/430ddcbb99daf813617e68b4c38d821454cb62d8)), closes [#2549](https://github.com/vm0-ai/vm0/issues/2549)
+
+## [0.51.1](https://github.com/vm0-ai/vm0/compare/platform-v0.51.0...platform-v0.51.1) (2026-02-07)
+
+
+### Bug Fixes
+
+* **platform:** improve onboarding modal layout and scrolling ([#2521](https://github.com/vm0-ai/vm0/issues/2521)) ([bbfe6aa](https://github.com/vm0-ai/vm0/commit/bbfe6aac1a10d3c7bee54a28fb9d6028a0d52985))
+
+## [0.51.0](https://github.com/vm0-ai/vm0/compare/platform-v0.50.3...platform-v0.51.0) (2026-02-07)
+
+
+### Features
+
+* **platform:** display user prompt in log detail page ([#2535](https://github.com/vm0-ai/vm0/issues/2535)) ([80d1d37](https://github.com/vm0-ai/vm0/commit/80d1d37c6beefbf436ccacf0543e561981defee4))
+
 ## [0.50.3](https://github.com/vm0-ai/vm0/compare/platform-v0.50.2...platform-v0.50.3) (2026-02-07)
 
 

@@ -29,6 +29,69 @@ import { createTestScope } from "../api-test-helpers";
 const SLACK_API = "https://slack.com/api";
 
 /**
+ * Parse Slack Web API form-encoded body into an object.
+ * The `view` field is JSON-encoded within the form data.
+ */
+function parseSlackFormBody(body: string): Record<string, unknown> {
+  const params = new URLSearchParams(body);
+  const viewStr = params.get("view");
+  return {
+    user_id: params.get("user_id"),
+    view: viewStr ? JSON.parse(viewStr) : undefined,
+  };
+}
+
+/**
+ * Extract binding ID from a published App Home view by finding the Unlink button
+ * for a given agent name (the button value contains the binding UUID).
+ */
+function extractBindingIdFromView(
+  publishedView: Record<string, unknown> | undefined,
+  agentName: string,
+): string {
+  if (!publishedView) {
+    throw new Error("No App Home view was published during agent setup");
+  }
+
+  const view = publishedView.view as
+    | { blocks?: Array<Record<string, unknown>> }
+    | undefined;
+  const blocks = view?.blocks ?? [];
+
+  // Find the actions block that follows the agent's section block
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i]!;
+    if (
+      block.type === "section" &&
+      typeof block.text === "object" &&
+      block.text !== null &&
+      "text" in block.text &&
+      typeof block.text.text === "string" &&
+      block.text.text.includes(agentName)
+    ) {
+      // Next block should be actions with Update/Unlink buttons
+      const actionsBlock = blocks[i + 1];
+      if (actionsBlock?.type === "actions") {
+        const elements = actionsBlock.elements as Array<{
+          action_id: string;
+          value?: string;
+        }>;
+        const unlinkButton = elements?.find(
+          (el) => el.action_id === "home_agent_unlink",
+        );
+        if (unlinkButton?.value) {
+          return unlinkButton.value;
+        }
+      }
+    }
+  }
+
+  throw new Error(
+    `Could not find binding ID for agent "${agentName}" in published App Home view`,
+  );
+}
+
+/**
  * Result from givenSlackWorkspaceInstalled
  */
 interface WorkspaceInstallationResult {
@@ -56,6 +119,7 @@ interface LinkedUserResult extends WorkspaceInstallationResult {
  */
 interface AgentBindingResult {
   binding: {
+    id: string;
     agentName: string;
     composeId: string;
   };
@@ -285,10 +349,13 @@ export async function givenUserHasAgent(
     },
   };
 
-  // Mock Slack postEphemeral for confirmation message
+  // Mock Slack APIs used during agent add: confirmation message + App Home refresh
   const slackMock = handlers({
     postEphemeral: http.post(`${SLACK_API}/chat.postEphemeral`, () =>
       HttpResponse.json({ ok: true, message_ts: `${Date.now()}.000000` }),
+    ),
+    viewsPublish: http.post(`${SLACK_API}/views.publish`, () =>
+      HttpResponse.json({ ok: true }),
     ),
   });
   server.use(...slackMock.handlers);
@@ -301,8 +368,20 @@ export async function givenUserHasAgent(
     throw new Error(`Failed to create agent binding: ${error}`);
   }
 
+  // Extract binding ID from the published App Home view (captured by MSW mock)
+  const viewsPublishCall = slackMock.mocked.viewsPublish.mock.calls[0];
+  const publishedRequest = viewsPublishCall?.[0]?.request;
+  const publishedBody = publishedRequest
+    ? parseSlackFormBody(await publishedRequest.text())
+    : undefined;
+  const bindingId = extractBindingIdFromView(
+    publishedBody,
+    agentName.toLowerCase(),
+  );
+
   return {
     binding: {
+      id: bindingId,
       agentName: agentName.toLowerCase(),
       composeId,
     },

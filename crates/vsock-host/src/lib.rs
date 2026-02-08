@@ -25,7 +25,6 @@ use vsock_proto::{
     MSG_WRITE_FILE_RESULT, RawMessage,
 };
 
-const VSOCK_PORT: u32 = 1000;
 const READ_BUF_SIZE: usize = 64 * 1024;
 
 /// Result of executing a command on the guest.
@@ -66,7 +65,7 @@ impl VsockHost {
     /// Creates a UDS listener at `{vsock_path}_{port}`, accepts the first
     /// connection, and performs the ready/ping/pong handshake.
     pub async fn wait_for_connection(vsock_path: &str, timeout: Duration) -> io::Result<Self> {
-        let listener_path = format!("{vsock_path}_{VSOCK_PORT}");
+        let listener_path = format!("{vsock_path}_{}", vsock_proto::VSOCK_PORT);
 
         // Clean up stale socket
         let _ = std::fs::remove_file(&listener_path);

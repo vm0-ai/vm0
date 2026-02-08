@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.4.2](https://github.com/vm0-ai/vm0/compare/core-v8.4.1...core-v8.4.2) (2026-02-07)
+
+
+### Bug Fixes
+
+* **web:** inject connector secrets into agent execution environment ([#2584](https://github.com/vm0-ai/vm0/issues/2584)) ([f483b5b](https://github.com/vm0-ai/vm0/commit/f483b5b0c0c94e45a149f99b8f108c3fc74399a4))
+
+## [8.4.1](https://github.com/vm0-ai/vm0/compare/core-v8.4.0...core-v8.4.1) (2026-02-07)
+
+
+### Bug Fixes
+
+* **schedule:** validate secrets/vars against platform tables ([#2558](https://github.com/vm0-ai/vm0/issues/2558)) ([f19d550](https://github.com/vm0-ai/vm0/commit/f19d5506e61f16536bf163e5884266d31326fe40))
+
 ## [8.4.0](https://github.com/vm0-ai/vm0/compare/core-v8.3.0...core-v8.4.0) (2026-02-07)
 
 

@@ -16,6 +16,7 @@ interface AgentOption {
 }
 
 interface BindingInfo {
+  id: string;
   agentName: string;
   description: string | null;
   enabled: boolean;
@@ -219,6 +220,207 @@ export function buildAgentAddModal(
       type: "plain_text",
       text: "Cancel",
     },
+    blocks,
+  };
+}
+
+/**
+ * Build the App Home tab view
+ *
+ * @param options - Configuration for the home view
+ * @returns View definition for the Home tab
+ */
+export function buildAppHomeView(options: {
+  isLinked: boolean;
+  vm0UserId?: string;
+  bindings?: BindingInfo[];
+  loginUrl?: string;
+}): View {
+  const blocks: (Block | KnownBlock)[] = [
+    {
+      type: "header",
+      text: {
+        type: "plain_text",
+        text: "Welcome to VM0! :wave:",
+      },
+    },
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "Connect your AI agents to Slack and interact with them through messages.",
+      },
+    },
+    { type: "divider" },
+  ];
+
+  // Account status
+  if (options.isLinked) {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `:white_check_mark: *Connected to VM0*\nAccount: ${options.vm0UserId}`,
+      },
+    });
+  } else {
+    const connectBlocks: (Block | KnownBlock)[] = [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: ":x: *Account not connected*",
+        },
+      },
+    ];
+    if (options.loginUrl) {
+      connectBlocks.push({
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: {
+              type: "plain_text",
+              text: "Connect",
+            },
+            url: options.loginUrl,
+            action_id: "home_login_prompt",
+            style: "primary",
+          },
+        ],
+      });
+    }
+    blocks.push(...connectBlocks);
+
+    // Not connected — just show connect prompt, skip agents/commands
+    return {
+      type: "home",
+      blocks,
+    };
+  }
+
+  blocks.push({ type: "divider" });
+
+  // Linked agents
+  blocks.push({
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: ":robot_face: *Your Linked Agent*",
+    },
+  });
+
+  if (options.bindings && options.bindings.length > 0) {
+    for (const binding of options.bindings) {
+      let agentText = `AgentName: *${binding.agentName}*`;
+      if (binding.description) {
+        agentText += `\nDescription: ${binding.description}`;
+      }
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: agentText,
+        },
+      });
+
+      blocks.push({
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: { type: "plain_text", text: "Update" },
+            action_id: "home_agent_update",
+            value: binding.id,
+          },
+          {
+            type: "button",
+            text: { type: "plain_text", text: "Unlink" },
+            action_id: "home_agent_unlink",
+            value: binding.id,
+            style: "danger",
+          },
+        ],
+      });
+    }
+  } else {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "_No agent linked yet._",
+      },
+    });
+    blocks.push({
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Link Agent" },
+          action_id: "home_agent_link",
+          style: "primary",
+        },
+      ],
+    });
+  }
+
+  blocks.push({ type: "divider" });
+
+  // Help section
+  blocks.push({
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: ":bulb: *Here are some things you can do:*",
+    },
+  });
+
+  blocks.push({
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: "*Chat with your agents*\nSend a DM or `@VM0` in any channel\n`@VM0 [your message]`",
+    },
+  });
+
+  blocks.push({
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: "*Link and manage agents*\nLink an agent\n`/vm0 agent link`\nUnlink an agent\n`/vm0 agent unlink`\nUpdate agent configuration\n`/vm0 agent update`",
+    },
+  });
+
+  blocks.push({ type: "divider" });
+
+  blocks.push({
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: "*Disconnect VM0 Account*\nThis will remove your VM0 account connection",
+    },
+    accessory: {
+      type: "button",
+      text: {
+        type: "plain_text",
+        text: "Disconnect",
+      },
+      action_id: "home_disconnect",
+      style: "danger",
+      confirm: {
+        title: { type: "plain_text", text: "Disconnect VM0 Account" },
+        text: {
+          type: "plain_text",
+          text: "This will remove your VM0 account connection",
+        },
+        confirm: { type: "plain_text", text: "Disconnect" },
+        deny: { type: "plain_text", text: "Cancel" },
+      },
+    },
+  });
+
+  return {
+    type: "home",
     blocks,
   };
 }
@@ -503,7 +705,7 @@ export function buildAgentListMessage(
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "*Your Linked Agent*",
+        text: ":robot_face: *Your Linked Agent*",
       },
     },
     {
@@ -595,16 +797,9 @@ interface WelcomeAgentInfo {
 export function buildWelcomeMessage(
   agents: WelcomeAgentInfo[],
 ): (Block | KnownBlock)[] {
-  const agentList =
-    agents.length > 0
-      ? agents
-          .map(
-            (a) => `• \`${a.agentName}\`: ${a.description ?? "No description"}`,
-          )
-          .join("\n")
-      : "_No agents configured yet._";
+  const hasAgents = agents.length > 0;
 
-  return [
+  const blocks: (Block | KnownBlock)[] = [
     {
       type: "section",
       text: {
@@ -615,21 +810,63 @@ export function buildWelcomeMessage(
     {
       type: "divider",
     },
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: `*Your Available Agents*\n${agentList}`,
-      },
-    },
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: "*How to Use*\n• Just describe what you need help with\n• Or use `@VM0 use <agent> <message>` to specify an agent",
-      },
-    },
   ];
+
+  if (hasAgents) {
+    const agentList = agents
+      .map((a) => `• \`${a.agentName}\`: ${a.description ?? "No description"}`)
+      .join("\n");
+
+    blocks.push(
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `*Your Linked Agent*\n${agentList}`,
+        },
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "*How to Use*\n• Just describe what you need help with",
+        },
+      },
+    );
+  } else {
+    blocks.push(
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "*Your Linked Agent*\n_No agent linked yet._ Use the button below to link one.",
+        },
+      },
+      {
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: {
+              type: "plain_text",
+              text: "Link Agent",
+            },
+            action_id: "home_agent_link",
+            style: "primary",
+          },
+        ],
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "*How to Use*\n• Link an agent first, then describe what you need help with",
+        },
+      },
+    );
+  }
+
+  return blocks;
 }
 
 /**

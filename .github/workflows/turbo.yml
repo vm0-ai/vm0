@@ -329,16 +329,6 @@ jobs:
         working-directory: turbo
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
-          CLERK_SECRET_KEY: sk_test_mock_secret_key_for_testing
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_mock_instance.clerk.accounts.dev$
-          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
-          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_USER_STORAGES_BUCKET_NAME: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
-          SECRETS_ENCRYPTION_KEY: ${{ secrets.SECRETS_ENCRYPTION_KEY }}
-          AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: pnpm vitest run --project=web
 
   test-cli:
@@ -433,7 +423,7 @@ jobs:
           deployment-env: web
           environment-variables: |
             DATABASE_URL=${{ steps.branch.outputs.database-url }}
-            NEXT_PUBLIC_BASE_URL=https://www.vm0.ai
+            NEXT_PUBLIC_BASE_URL=${{ needs.prepare.outputs.web-preview-url }}
             NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
             E2B_API_KEY=${{ secrets.E2B_API_KEY }}
@@ -461,6 +451,8 @@ jobs:
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
             SENTRY_ORG=${{ vars.SENTRY_ORG }}
             SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_WEB }}
+            GH_OAUTH_CLIENT_ID=${{ vars.GH_OAUTH_CLIENT_ID }}
+            GH_OAUTH_CLIENT_SECRET=${{ secrets.GH_OAUTH_CLIENT_SECRET }}
           meta-branch: ${{ github.head_ref || github.ref_name }}
           meta-pr: ${{ needs.prepare.outputs.job-ref }}
           skip-finish: ${{ github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '' }}
@@ -694,7 +686,7 @@ jobs:
     if: "${{ (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) && needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.web-changed == 'true' }}"
     timeout-minutes: 5
     permissions:
-      actions: read  # Required to query cache API
+      actions: read # Required to query cache API
     steps:
       - uses: actions/checkout@v6
         with:
@@ -744,7 +736,7 @@ jobs:
       )
     timeout-minutes: 5
     permissions:
-      actions: read  # Required to query cache API
+      actions: read # Required to query cache API
     steps:
       - uses: actions/checkout@v6
         with:
@@ -1299,7 +1291,6 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-          AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
         run: |
           mkdir -p "$HOME/.ssh"
           echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
@@ -1323,7 +1314,7 @@ jobs:
             -e "rootfs_path=${RUNNER_DIR}/rootfs.squashfs" \
             -e "snapshot_path=${RUNNER_DIR}/snapshot" \
             -e "proxy_port=${PROXY_PORT}" \
-            -e '{"extra_env": {"VERCEL_AUTOMATION_BYPASS_SECRET": "'"${VERCEL_BYPASS}"'", "USE_MOCK_CLAUDE": "true", "AXIOM_TOKEN": "'"${AXIOM_TOKEN}"'", "AXIOM_DATASET_SUFFIX": "dev"}}' \
+            -e '{"extra_env": {"VERCEL_AUTOMATION_BYPASS_SECRET": "'"${VERCEL_BYPASS}"'", "USE_MOCK_CLAUDE": "true"}}' \
             -v
 
           echo "runner-deployed=true" >> $GITHUB_OUTPUT

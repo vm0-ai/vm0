@@ -4,7 +4,6 @@ import { getSession, createRun } from "../../lib/api";
 import { EventRenderer } from "../../lib/events/event-renderer";
 import {
   collectKeyValue,
-  collectVolumeVersions,
   isUUID,
   loadValues,
   pollEvents,
@@ -34,12 +33,6 @@ export const continueCommand = new Command()
     "--secrets <KEY=value>",
     "Secrets for ${{ secrets.xxx }} (repeatable, falls back to --env-file or env vars)",
     collectKeyValue,
-    {},
-  )
-  .option(
-    "--volume-version <name=version>",
-    "Volume version override (repeatable)",
-    collectVolumeVersions,
     {},
   )
   .option(
@@ -73,7 +66,6 @@ export const continueCommand = new Command()
         envFile?: string;
         vars: Record<string, string>;
         secrets: Record<string, string>;
-        volumeVersion: Record<string, string>;
         experimentalRealtime?: boolean;
         modelProvider?: string;
         verbose?: boolean;
@@ -110,10 +102,6 @@ export const continueCommand = new Command()
           prompt,
           vars: Object.keys(vars).length > 0 ? vars : undefined,
           secrets: loadedSecrets,
-          volumeVersions:
-            Object.keys(allOpts.volumeVersion).length > 0
-              ? allOpts.volumeVersion
-              : undefined,
           modelProvider: options.modelProvider || allOpts.modelProvider,
           debugNoMockClaude:
             options.debugNoMockClaude || allOpts.debugNoMockClaude || undefined,

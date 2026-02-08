@@ -150,13 +150,14 @@ setup() {
 # ============================================================
 # Secrets/Vars Integration Test
 # Uses a separate agent with configuration requirements
+# Secrets and vars are now managed via platform tables
 # ============================================================
 
-@test "vm0 schedule setup with vars integration" {
+@test "vm0 schedule setup with platform secrets and vars" {
     local CONFIG_AGENT_NAME="schedule-config-${UNIQUE_ID}"
     local CONFIG_TEST_DIR="$(mktemp -d)"
 
-    # Create agent with vars requirements (secrets are managed separately via vm0 secret set)
+    # Create agent with secrets and vars requirements
     cat > "$CONFIG_TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -167,33 +168,42 @@ agents:
     image: "vm0/claude-code:dev"
     working_dir: /home/user/workspace
     environment:
-      API_URL: "\${{ vars.API_URL }}"
-      DEBUG: "\${{ vars.DEBUG }}"
+      SCHEDULE_TEST_API_KEY: "\${{ secrets.SCHEDULE_TEST_API_KEY }}"
+      SCHEDULE_TEST_API_URL: "\${{ vars.SCHEDULE_TEST_API_URL }}"
+      SCHEDULE_TEST_DEBUG: "\${{ vars.SCHEDULE_TEST_DEBUG }}"
 EOF
 
     cd "$CONFIG_TEST_DIR"
     run $CLI_COMMAND compose vm0.yaml
     assert_success
 
-    # Setup schedule with vars
+    # Set secret via platform
+    run $CLI_COMMAND secret set SCHEDULE_TEST_API_KEY --body "test-api-key-value"
+    assert_success
+
+    # Set vars via platform
+    run $CLI_COMMAND variable set SCHEDULE_TEST_API_URL "https://api.example.com"
+    assert_success
+    run $CLI_COMMAND variable set SCHEDULE_TEST_DEBUG "true"
+    assert_success
+
+    # Setup schedule (secrets and vars come from platform tables, not CLI flags)
     run $CLI_COMMAND schedule setup "$CONFIG_AGENT_NAME" \
         --frequency daily \
         --time "09:00" \
         --timezone "UTC" \
-        --prompt "Task with config" \
-        --var "API_URL=https://api.example.com" \
-        --var "DEBUG=true"
+        --prompt "Task with config"
     assert_success
     assert_output --partial "Created schedule"
 
-    # Verify configuration in status
+    # Verify schedule was created
     run $CLI_COMMAND schedule status "$CONFIG_AGENT_NAME"
     assert_success
-    assert_output --partial "Variables:"
-    assert_output --partial "API_URL"
-    assert_output --partial "DEBUG"
 
-    # Clean up this separate agent
+    # Clean up
     $CLI_COMMAND schedule delete "$CONFIG_AGENT_NAME" --force 2>/dev/null || true
+    $CLI_COMMAND secret delete SCHEDULE_TEST_API_KEY -y 2>/dev/null || true
+    $CLI_COMMAND variable delete SCHEDULE_TEST_API_URL -y 2>/dev/null || true
+    $CLI_COMMAND variable delete SCHEDULE_TEST_DEBUG -y 2>/dev/null || true
     rm -rf "$CONFIG_TEST_DIR"
 }
