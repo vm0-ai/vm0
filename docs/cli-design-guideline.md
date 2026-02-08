@@ -120,46 +120,87 @@ To add a secret:
 
 ---
 
-## Output Conventions
+## Colors & Symbols
 
-### Symbols
+### Symbol Standards
 
-| Symbol | Color | Usage |
-|--------|-------|-------|
-| `✓` | `chalk.green` | Success, completion |
-| `✗` | `chalk.red` | Error, failure |
-| `⚠` | `chalk.yellow` | Warning, deprecation |
-| `▶` | `chalk.bold` | Operation started |
+The CLI uses Unicode symbols for visual feedback. **Never use ASCII alternatives.**
 
-Always use Unicode symbols. Never use ASCII alternatives like `x`, `Error:`, or `[OK]`.
-
-### Colors
-
-| Color | Usage |
-|-------|-------|
-| `chalk.red()` | Errors only |
-| `chalk.green()` | Success only |
-| `chalk.yellow()` | Warnings, disabled status |
-| `chalk.cyan()` | Commands, code examples |
-| `chalk.dim()` | Secondary info, hints, timestamps, table headers |
-| `chalk.bold()` | Section headers |
-
-### Message Formatting
+| Symbol | Unicode | Color | Usage |
+|--------|---------|-------|-------|
+| `✓` | U+2713 | `chalk.green` | Success, completion |
+| `✗` | U+2717 | `chalk.red` | Error, failure |
+| `⚠` | U+26A0 | `chalk.yellow` | Warning, deprecation |
+| `▶` | U+25B6 | `chalk.bold` | Operation started |
 
 ```typescript
-// Success
+// ✅ Correct
+console.log(chalk.green("✓ Created successfully"));
+console.error(chalk.red("✗ Not authenticated"));
+console.log(chalk.yellow("⚠ Field 'image' is deprecated"));
+console.log(chalk.bold("▶ Run started"));
+
+// ❌ Wrong — ASCII alternatives
+console.error(chalk.red("x Not authenticated"));       // lowercase x
+console.error(chalk.red("Error: Not authenticated"));   // "Error:" prefix
+console.error(chalk.red("[ERROR] Not authenticated"));  // bracket prefix
+console.error(chalk.red("FAILED: Not authenticated"));  // "FAILED:" prefix
+console.log(chalk.green("Done Created item"));          // "Done" instead of ✓
+console.log(chalk.green("[OK] Created item"));           // bracket prefix
+console.log(chalk.yellow("Warning: deprecated"));        // "Warning:" prefix
+console.log(chalk.bold("Starting run..."));              // no symbol
+```
+
+### Color Semantics
+
+| Color | Usage | Example |
+|-------|-------|---------|
+| `chalk.red()` | Errors only | `✗ Authentication failed` |
+| `chalk.green()` | Success only | `✓ Deployed successfully` |
+| `chalk.yellow()` | Warnings, disabled status | `⚠ API key will expire soon` |
+| `chalk.cyan()` | Commands, code examples | `vm0 auth login` |
+| `chalk.dim()` | Secondary info, hints, timestamps, table headers | `Version: abc12345` |
+| `chalk.bold()` | Section headers | `▶ Run started` |
+
+```typescript
+// ❌ Wrong — using red for non-errors
+console.log(chalk.red("Important notice"));  // Use yellow for warnings
+
+// ❌ Wrong — using green for non-success
+console.log(chalk.green("Processing..."));   // Use dim for progress
+
+// ❌ Wrong — overusing colors
+console.log(chalk.blue("Name: ") + chalk.green(name) + chalk.cyan(" (active)"));
+
+// ✅ Correct — minimal coloring
+console.log(`Name: ${name} ${chalk.green("(active)")}`);
+```
+
+### Combined Patterns
+
+```typescript
+// Success with details
 console.log(chalk.green(`✓ Created: ${name}`));
+console.log(chalk.dim(`  Version: ${version}`));
+console.log(chalk.dim(`  Size: ${formatBytes(size)}`));
 
 // Error with suggestion
-console.error(chalk.red(`✗ Not found: ${name}`));
+console.error(chalk.red("✗ Not authenticated"));
 console.error(chalk.dim("  Run: vm0 auth login"));
 
-// Warning
-console.log(chalk.yellow(`⚠ Field deprecated`));
+// Warning with context
+console.log(chalk.yellow(`⚠ Agent "${name}": 'image' field is deprecated`));
+console.log(chalk.dim("  Use 'apps' instead"));
 
-// Empty state
-console.log(chalk.dim("No items found"));
+// Status indicators in tables
+const status = item.enabled
+  ? chalk.green("enabled")
+  : chalk.yellow("disabled");
 ```
+
+---
+
+## Output Formatting
 
 ### Spacing Rules
 
@@ -168,13 +209,116 @@ console.log(chalk.dim("No items found"));
 - **No trailing periods** on messages
 
 ```typescript
-console.log(chalk.green("✓ Created successfully"));
-console.log(chalk.dim("  Version: abc12345"));     // 2 spaces
+// ✅ Correct — consistent 2-space indent
+console.log(chalk.green("✓ Success"));
+console.log(chalk.dim("  Version: abc"));   // 2 spaces
+console.log(chalk.dim("  Size: 1 MB"));     // 2 spaces
 
+// ❌ Wrong — mixed indentation
+console.log(chalk.dim(" Version: abc"));    // 1 space
+console.log(chalk.dim("   Size: 1 MB"));    // 3 spaces
+```
+
+```typescript
+// ✅ Correct — clear sections
+console.log(chalk.green("✓ Created"));
 console.log();  // Blank line between sections
-
 console.log("Next steps:");
 console.log(chalk.cyan("  vm0 run my-agent"));
+
+// ❌ Wrong — cramped output
+console.log(chalk.green("✓ Created"));
+console.log("Next steps:");
+```
+
+```typescript
+// ✅ Correct
+console.log(chalk.dim("No items found"));
+console.log(chalk.dim("Cancelled"));
+
+// ❌ Wrong — trailing periods
+console.log(chalk.dim("No items found."));
+console.log(chalk.dim("Cancelled."));
+```
+
+### Message Patterns
+
+```typescript
+// Success — simple
+console.log(chalk.green("✓ Created successfully"));
+
+// Success — with name
+console.log(chalk.green(`✓ Created: ${name}`));
+
+// Success — with action context
+console.log(chalk.green(`✓ Initialized volume: ${volumeName}`));
+
+// Error — simple
+console.error(chalk.red("✗ Operation failed"));
+
+// Error — with context
+console.error(chalk.red(`✗ Not found: ${name}`));
+
+// Error — with suggestion
+console.error(chalk.red("✗ Not authenticated"));
+console.error(chalk.dim("  Run: vm0 auth login"));
+
+// Error — with examples
+console.error(chalk.red(`✗ Invalid format: ${value}`));
+console.log();
+console.log("Valid formats:");
+console.log(chalk.dim("  daily, weekly, monthly, once"));
+
+// Progress
+console.log(`Uploading: ${filename}`);
+console.log(chalk.dim("Getting download URL..."));
+console.log(chalk.green(`✓ Downloaded ${formatBytes(size)}`));
+
+// Next steps
+console.log();
+console.log("Next steps:");
+console.log(`  1. Edit ${chalk.cyan("AGENTS.md")} to customize your agent`);
+console.log(`  2. Run: ${chalk.cyan('vm0 cook "your prompt"')}`);
+
+// Command examples in cyan
+console.log("Run:");
+console.log(chalk.cyan("  vm0 auth login"));
+
+// YAML/code examples in cyan
+console.log("Use in vm0.yaml:");
+console.log(chalk.cyan("  environment:"));
+console.log(chalk.cyan(`    KEY: \${{ secrets.KEY }}`));
+```
+
+### Formatting Utilities
+
+Always import from shared utilities instead of creating local implementations:
+
+```typescript
+import { formatBytes, formatRelativeTime } from "../../lib/utils/file-utils";
+import { formatDuration } from "../../lib/utils/duration-formatter";
+
+// ✅ Correct — use shared utility
+console.log(`Size: ${formatBytes(size)}`);
+
+// ❌ Wrong — hardcoded formatting
+console.log(`Size: ${(size / 1024).toFixed(2)} KB`);
+```
+
+### Version Display
+
+SHA-256 hashes (64 chars) are shortened to 8 characters for display:
+
+```typescript
+const shortVersion = versionId.slice(0, 8);  // "abc12345"
+```
+
+### Timestamp Formatting
+
+```typescript
+// ISO format without milliseconds
+const formatted = timestamp.toISOString().replace(/\.\d{3}Z$/, "Z");
+// Result: "2024-01-15T10:30:00Z"
 ```
 
 ---
@@ -197,6 +341,20 @@ import {
 
 Never use `readline` directly or import the `prompts` library directly.
 
+```typescript
+// ❌ Wrong — custom readline
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+rl.question("Confirm? (y/N)", (answer) => { ... });
+
+// ❌ Wrong — direct prompts import
+import prompts from "prompts";
+const response = await prompts({ type: "confirm", name: "value", message: "Continue?" });
+
+// ✅ Correct — use shared utility
+import { promptConfirm } from "../../lib/utils/prompt-utils";
+const confirmed = await promptConfirm("Continue?");
+```
+
 ### Interactive Mode Pattern
 
 ```typescript
@@ -216,11 +374,137 @@ if (options.name) {
 }
 ```
 
+### Prompt Types
+
+**Text Input:**
+
+```typescript
+const name = await promptText(
+  "Enter agent name",       // Message
+  defaultValue,             // Optional default
+  (value) => {              // Optional validation
+    if (!isValid(value)) return "Must be 3-64 characters";
+    return true;
+  }
+);
+if (name === undefined) {
+  console.log(chalk.dim("Cancelled"));
+  return;
+}
+```
+
+**Confirmation:**
+
+```typescript
+const confirmed = await promptConfirm(
+  "Delete this item?",  // Message
+  false                  // Default value (false = No)
+);
+if (!confirmed) {
+  console.log(chalk.dim("Cancelled"));
+  return;
+}
+```
+
+**Selection:**
+
+```typescript
+const choice = await promptSelect(
+  "Select frequency:",
+  [
+    { title: "Daily", value: "daily", description: "Run every day" },
+    { title: "Weekly", value: "weekly", description: "Run once per week" },
+    { title: "Monthly", value: "monthly" },
+  ],
+  0  // Default index
+);
+if (choice === undefined) {
+  console.log(chalk.dim("Cancelled"));
+  return;
+}
+```
+
+**Password Input:**
+
+```typescript
+const secret = await promptPassword("Enter API key:");
+if (!secret) {
+  console.log(chalk.dim("Cancelled"));
+  return;
+}
+```
+
 ### Cancellation
 
-All prompts return `undefined` when cancelled. Handle consistently:
+All prompts return `undefined` when cancelled (Ctrl+C). Handle consistently:
 - Message: `"Cancelled"` (no period, not "Aborted")
 - Exit: `return` gracefully, do not `process.exit(1)`
+
+```typescript
+// ❌ Wrong — inconsistent cancellation
+console.log(chalk.dim("Cancelled."));   // Period
+console.log(chalk.dim("Aborted."));     // Different word
+
+// ✅ Correct
+console.log(chalk.dim("Cancelled"));
+```
+
+### Validation
+
+**Inline validation** (in prompt callback):
+
+```typescript
+const name = await promptText("Enter name", undefined, (value) => {
+  if (value.length < 3) return "Name must be at least 3 characters";
+  if (!/^[a-z0-9-]+$/.test(value)) return "Name must be lowercase alphanumeric with hyphens";
+  return true;
+});
+```
+
+**Validation after prompt:**
+
+```typescript
+const name = await promptText("Enter name");
+if (name === undefined) {
+  console.log(chalk.dim("Cancelled"));
+  return;
+}
+if (!isValidName(name)) {
+  console.error(chalk.red(`✗ Invalid name: "${name}"`));
+  console.error(chalk.dim("  Names must be 3-64 characters, lowercase"));
+  process.exit(1);
+}
+```
+
+### Non-Interactive Command Definition
+
+For CI/CD and scripting, all required values must be providable via flags:
+
+```typescript
+export const initCommand = new Command()
+  .name("init")
+  .description("Initialize a volume")
+  .option("-n, --name <name>", "Volume name (required in non-interactive mode)")
+  .action(async (options) => {
+    let volumeName: string;
+
+    if (options.name) {
+      volumeName = options.name;
+    } else if (!isInteractive()) {
+      console.error(chalk.red("✗ --name flag is required in non-interactive mode"));
+      console.error(chalk.dim("  Usage: vm0 volume init --name <volume-name>"));
+      process.exit(1);
+    } else {
+      const name = await promptText("Enter volume name", defaultName);
+      if (name === undefined) {
+        console.log(chalk.dim("Cancelled"));
+        return;
+      }
+      volumeName = name;
+    }
+    // Continue with volumeName...
+  });
+```
 
 ---
 
@@ -237,7 +521,12 @@ try {
       console.error(chalk.red("✗ Not authenticated. Run: vm0 auth login"));
     } else if (error.message.includes("not found")) {
       console.error(chalk.red(`✗ Not found: ${identifier}`));
+      console.error(chalk.dim("  Check the name and try again"));
       console.error(chalk.dim("  Run: vm0 agent list"));
+    } else if (error.message.includes("already exists")) {
+      // Handle duplicate
+    } else if (error.message.includes("reserved")) {
+      // Handle reserved name
     } else {
       console.error(chalk.red(`✗ ${error.message}`));
     }
@@ -248,20 +537,139 @@ try {
 }
 ```
 
+### Error Message Structure
+
+```typescript
+// Basic error
+console.error(chalk.red("✗ Operation failed"));
+process.exit(1);
+
+// Error with details
+console.error(chalk.red("✗ Operation failed"));
+console.error(chalk.dim(`  ${error.message}`));
+process.exit(1);
+
+// Error with suggestion
+console.error(chalk.red("✗ Not authenticated"));
+console.error(chalk.dim("  Run: vm0 auth login"));
+process.exit(1);
+
+// Error with examples
+console.error(chalk.red(`✗ Invalid format: ${value}`));
+console.log();
+console.log("Valid formats:");
+console.log(chalk.dim("  YYYY-MM-DD (e.g., 2024-01-15)"));
+console.log(chalk.dim("  Relative (e.g., 7d, 30d)"));
+process.exit(1);
+```
+
+### Common Error Types
+
+```typescript
+// Authentication
+if (error.message.includes("Not authenticated")) {
+  console.error(chalk.red("✗ Not authenticated. Run: vm0 auth login"));
+}
+
+// Not found
+if (error.message.includes("not found")) {
+  console.error(chalk.red(`✗ Agent not found: ${name}`));
+  console.error(chalk.dim("  Make sure you've composed the agent first"));
+  console.error(chalk.dim("  Run: vm0 agent list"));
+}
+
+// Validation
+if (!isValid(value)) {
+  console.error(chalk.red(`✗ Invalid value: "${value}"`));
+  console.error(chalk.dim("  Must be 3-64 characters, lowercase alphanumeric with hyphens"));
+  console.error(chalk.dim("  Example: my-dataset, user-data-v2"));
+  process.exit(1);
+}
+
+// Configuration
+if (error.message.includes("No scope configured")) {
+  console.log(chalk.yellow("No scope configured"));
+  console.log();
+  console.log("Set your scope with:");
+  console.log(chalk.cyan("  vm0 scope set <slug>"));
+  console.log();
+  console.log("Example:");
+  console.log(chalk.dim("  vm0 scope set myusername"));
+}
+
+// File system
+if (!existsSync(configPath)) {
+  console.error(chalk.red(`✗ Config file not found: ${configPath}`));
+  process.exit(1);
+}
+```
+
+### Validate Early
+
+Validate user input before performing operations:
+
+```typescript
+// Name format
+if (!isValidStorageName(name)) {
+  console.error(chalk.red(`✗ Invalid volume name: "${name}"`));
+  console.error(chalk.dim("  Must be 3-64 characters, lowercase alphanumeric with hyphens"));
+  console.error(chalk.dim("  Example: my-dataset, user-data-v2, training-set-2024"));
+  process.exit(1);
+}
+
+// File exists
+if (!existsSync(configFile)) {
+  console.error(chalk.red(`✗ Config file not found: ${configFile}`));
+  process.exit(1);
+}
+
+// UUID format
+if (!isUUID(checkpointId)) {
+  console.error(chalk.red(`✗ Invalid checkpoint ID format: ${checkpointId}`));
+  console.error(chalk.dim("  Checkpoint ID must be a valid UUID"));
+  process.exit(1);
+}
+```
+
 ### Exit Codes
 
 - `process.exit(1)` on all errors
 - `return` (implicit exit 0) on success or user cancellation
 
-### Validate Early
+### Anti-Patterns
 
 ```typescript
-if (!isValidStorageName(name)) {
-  console.error(chalk.red(`✗ Invalid volume name: "${name}"`));
-  console.error(chalk.dim("  Must be 3-64 characters, lowercase alphanumeric with hyphens"));
-  console.error(chalk.dim("  Example: my-dataset, user-data-v2"));
-  process.exit(1);
+// ❌ Wrong — missing exit code
+console.error(chalk.red("✗ Failed"));
+// Code continues...
+
+// ✅ Correct
+console.error(chalk.red("✗ Failed"));
+process.exit(1);
+```
+
+```typescript
+// ❌ Wrong — swallowing errors
+try {
+  await operation();
+} catch {
+  // Do nothing
 }
+
+// ✅ Correct — let error propagate
+await operation();
+```
+
+```typescript
+// ❌ Wrong — inconsistent error formats
+console.error(chalk.red("✗ Error A"));
+console.error(chalk.red("Error: Error B"));  // Different format!
+console.error(chalk.red("x Error C"));        // Different symbol!
+
+// ✅ Correct — consistent format
+console.error(chalk.red("✗ Error A"));
+console.error(chalk.red("✗ Error B"));
+console.error(chalk.red("✗ Error C"));
 ```
 
 ---
@@ -308,11 +716,108 @@ for (const item of items) {
 - Column spacing: always two spaces (`.join("  ")`)
 - Missing values: use `chalk.dim("-")`
 
+### Status Columns
+
+```typescript
+const status = schedule.enabled
+  ? chalk.green("enabled")
+  : chalk.yellow("disabled");
+
+const row = [
+  schedule.name.padEnd(nameWidth),
+  status.padEnd(statusWidth),
+  schedule.cron.padEnd(cronWidth),
+  nextRun,
+].join("  ");
+```
+
+### Summary Rows
+
+```typescript
+// Print separator
+console.log(chalk.dim("─".repeat(totalWidth)));
+
+// Print totals
+console.log(
+  `${"TOTAL".padEnd(nameWidth)}${totalCount.padStart(countWidth)}    ${totalTime}`
+);
+```
+
+### Alternative List Format
+
+For hierarchical data, use an indented list format instead of a table:
+
+```typescript
+console.log(chalk.bold("Model Providers:"));
+console.log();
+
+for (const [framework, providers] of Object.entries(byFramework)) {
+  console.log(`  ${chalk.cyan(framework)}:`);
+  for (const provider of providers) {
+    const defaultMark = provider.isDefault ? chalk.green(" (default)") : "";
+    console.log(`    - ${provider.type}${defaultMark}`);
+  }
+}
+
+console.log();
+console.log(chalk.dim(`Total: ${count} provider(s)`));
+```
+
+Standard table format is preferred for flat lists. Use this format only for hierarchical data.
+
+### Anti-Patterns
+
+```typescript
+// ❌ Wrong — hardcoded widths
+const row = `${name.padEnd(20)}  ${size.padStart(10)}`;
+
+// ✅ Correct — dynamic widths
+const nameWidth = Math.max(4, ...items.map((i) => i.name.length));
+const row = `${name.padEnd(nameWidth)}  ${size.padStart(sizeWidth)}`;
+```
+
+```typescript
+// ❌ Wrong — inconsistent spacing
+const row = `${col1} ${col2}   ${col3}`;
+
+// ✅ Correct — consistent two-space
+const row = [col1, col2, col3].join("  ");
+```
+
+```typescript
+// ❌ Wrong — missing empty state (crashes on empty array)
+const nameWidth = Math.max(4, ...items.map((i) => i.name.length));
+
+// ✅ Correct — check first
+if (items.length === 0) {
+  console.log(chalk.dim("No items found"));
+  return;
+}
+```
+
+```typescript
+// ❌ Wrong — header same style as data
+console.log("NAME  SIZE  UPDATED");
+
+// ✅ Correct — header in dim
+console.log(chalk.dim("NAME  SIZE  UPDATED"));
+```
+
 ---
 
 ## Shared Utilities
 
 Always import from shared utilities. Never create local implementations.
+
+```typescript
+// ❌ Wrong — local formatBytes
+function formatBytes(bytes: number): string {
+  // ... implementation
+}
+
+// ✅ Correct — import shared
+import { formatBytes } from "../../lib/utils/file-utils";
+```
 
 ### Prompt Utilities (`lib/utils/prompt-utils.ts`)
 
