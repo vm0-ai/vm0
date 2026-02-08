@@ -131,14 +131,12 @@ The CLI uses Unicode symbols for visual feedback. **Never use ASCII alternatives
 | `✓` | U+2713 | `chalk.green` | Success, completion |
 | `✗` | U+2717 | `chalk.red` | Error, failure |
 | `⚠` | U+26A0 | `chalk.yellow` | Warning, deprecation |
-| `▶` | U+25B6 | `chalk.bold` | Operation started |
 
 ```typescript
 // ✅ Correct
 console.log(chalk.green("✓ Created successfully"));
 console.error(chalk.red("✗ Not authenticated"));
 console.log(chalk.yellow("⚠ Field 'image' is deprecated"));
-console.log(chalk.bold("▶ Run started"));
 
 // ❌ Wrong — ASCII alternatives
 console.error(chalk.red("x Not authenticated"));       // lowercase x
@@ -148,7 +146,6 @@ console.error(chalk.red("FAILED: Not authenticated"));  // "FAILED:" prefix
 console.log(chalk.green("Done Created item"));          // "Done" instead of ✓
 console.log(chalk.green("[OK] Created item"));           // bracket prefix
 console.log(chalk.yellow("Warning: deprecated"));        // "Warning:" prefix
-console.log(chalk.bold("Starting run..."));              // no symbol
 ```
 
 ### Color Semantics
@@ -159,8 +156,8 @@ console.log(chalk.bold("Starting run..."));              // no symbol
 | `chalk.green()` | Success only | `✓ Deployed successfully` |
 | `chalk.yellow()` | Warnings, disabled status | `⚠ API key will expire soon` |
 | `chalk.cyan()` | Commands, code examples | `vm0 auth login` |
-| `chalk.dim()` | Secondary info, hints, timestamps, table headers | `Version: abc12345` |
-| `chalk.bold()` | Section headers | `▶ Run started` |
+| `chalk.dim()` | Secondary info, hints, timestamps, table headers, progress messages | `Downloading...` |
+| `chalk.bold()` | Section headers | `Scope Information:` |
 
 ```typescript
 // ❌ Wrong — using red for non-errors
