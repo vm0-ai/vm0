@@ -12,8 +12,8 @@ importers:
         specifier: ^1.13.35
         version: 1.13.35(react@19.2.0)
       '@types/node':
-        specifier: ^24.5.2
-        version: 24.10.1
+        specifier: ^25.2.2
+        version: 25.2.2
       dotenv:
         specifier: ^17.2.2
         version: 17.2.3
@@ -218,8 +218,8 @@ packages:
   '@stablelib/base64@1.0.1':
     resolution: {integrity: sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ==}
 
-  '@types/node@24.10.1':
-    resolution: {integrity: sha512-GNWcUTRBgIRJD5zj+Tq0fKOJ5XZajIiBroOF0yvj2bSU1WvNdYS/dn9UxwsujGW4JX06dnHyjV2y9rRaybH0iQ==}
+  '@types/node@25.2.2':
+    resolution: {integrity: sha512-BkmoP5/FhRYek5izySdkOneRyXYN35I860MFAGupTdebyE66uZaR+bXLHq8k4DirE5DwQi3NuhvRU1jqTVwUrQ==}
 
   csstype@3.1.3:
     resolution: {integrity: sha512-M1uQkMl8rQK/szD0LNhtqxIPLpimGm8sOBwU7lLnCpSbTyY3yeU1Vc7l4KT5zT4s/yOxHH5O7tIuuLOCnLADRw==}
@@ -428,7 +428,7 @@ snapshots:
 
   '@stablelib/base64@1.0.1': {}
 
-  '@types/node@24.10.1':
+  '@types/node@25.2.2':
     dependencies:
       undici-types: 7.16.0
 
