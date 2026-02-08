@@ -5,10 +5,10 @@ edition = "2024"
 
 [dependencies]
 flate2.workspace = true
-serde.workspace = true
+serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 tar.workspace = true
-ureq.workspace = true
+ureq = { workspace = true, features = ["platform-verifier"] }
 guest-common.workspace = true
 
 [lints]

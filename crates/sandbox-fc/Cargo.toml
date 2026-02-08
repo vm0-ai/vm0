@@ -7,9 +7,9 @@ edition = "2024"
 async-trait.workspace = true
 sandbox.workspace = true
 thiserror.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["process", "fs", "rt", "macros", "sync"] }
 tracing.workspace = true
-uuid.workspace = true
+uuid = { workspace = true, features = ["v4"] }
 vsock-host.workspace = true
 which.workspace = true
 

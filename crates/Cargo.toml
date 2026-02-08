@@ -13,20 +13,20 @@ vsock-proto = { path = "vsock-proto" }
 
 # External dependencies
 async-trait = "0.1"
-chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+chrono = { version = "0.4", default-features = false }
 flate2 = "1"
 libc = "0.2"
-nix = { version = "0.31", default-features = false, features = ["mount", "fs"] }
-serde = { version = "1", features = ["derive"] }
+nix = { version = "0.31", default-features = false }
+serde = "1"
 serde_json = "1"
 tar = "0.4"
 thiserror = "2"
 tempfile = "3"
-tokio = { version = "1", features = ["net", "io-util", "time", "rt", "macros", "process", "sync", "fs"] }
-uuid = { version = "1", features = ["v4"] }
+tokio = "1"
+uuid = "1"
 tracing = "0.1"
 which = "7"
-ureq = { version = "3", features = ["platform-verifier"] }
+ureq = "3"
 
 [profile.release]
 lto = true

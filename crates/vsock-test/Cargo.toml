@@ -6,7 +6,7 @@ edition = "2024"
 [dev-dependencies]
 vsock-guest.workspace = true
 vsock-host.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["rt", "macros"] }
 
 [lints]
 workspace = true

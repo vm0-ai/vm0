@@ -5,7 +5,7 @@ edition = "2024"
 description = "Vsock host client for Firecracker VM communication"
 
 [dependencies]
-tokio.workspace = true
+tokio = { workspace = true, features = ["net", "io-util", "time", "rt", "macros", "sync"] }
 vsock-proto.workspace = true
 
 [lints]
