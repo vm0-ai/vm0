@@ -238,6 +238,36 @@ console.log(chalk.dim("  Name: MY_API_KEY"));
 console.log(chalk.red("✗ Not authenticated"));
 ```
 
+### Machine-Readable Output (--json)
+
+For commands where scripts need to parse the result, provide a `--json` flag. This flag:
+
+- **Suppresses progress messages** — no "Uploading...", "Processing..." output
+- **Outputs only the final result** — in JSON format
+- **Writes to stdout** — so it can be captured or piped
+
+```bash
+# Human-readable (default)
+$ vm0 compose vm0.yaml
+Uploading compose...
+✓ Compose created: user/my-agent:a1b2c3d4
+
+Run your agent:
+  vm0 run user/my-agent:a1b2c3d4 "your prompt"
+
+# Machine-readable
+$ vm0 compose vm0.yaml --json
+{"composeId":"user/my-agent:a1b2c3d4","version":"a1b2c3d4"}
+```
+
+**When to add --json:**
+
+- Commands that create resources (return the created ID)
+- Commands that query data (return structured results)
+- Commands where scripts need to extract specific values
+
+**Note:** AI agents can read human-readable output effectively, so `--json` is optional and only needed when traditional scripts require structured parsing.
+
 ### Spacing Rules
 
 - **Two-space indentation** for all secondary information

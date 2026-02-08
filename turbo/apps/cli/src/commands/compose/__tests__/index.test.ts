@@ -1534,7 +1534,7 @@ agents:
     });
   });
 
-  describe("--porcelain option", () => {
+  describe("--json option", () => {
     it("should output JSON result on success", async () => {
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
@@ -1555,7 +1555,7 @@ agents:
         }),
       );
 
-      await composeCommand.parseAsync(["node", "cli", "--porcelain"]);
+      await composeCommand.parseAsync(["node", "cli", "--json"]);
 
       // Find the JSON output call
       const jsonOutputCall = mockConsoleLog.mock.calls.find((call) => {
@@ -1579,7 +1579,7 @@ agents:
       });
     });
 
-    it("should suppress intermediate output in porcelain mode", async () => {
+    it("should suppress intermediate output in JSON mode", async () => {
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
         `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code\n    working_dir: /`,
@@ -1599,7 +1599,7 @@ agents:
         }),
       );
 
-      await composeCommand.parseAsync(["node", "cli", "--porcelain"]);
+      await composeCommand.parseAsync(["node", "cli", "--json"]);
 
       // Should not have "Uploading compose..." or "Compose created:" messages
       const allLogs = mockConsoleLog.mock.calls
@@ -1618,7 +1618,7 @@ agents:
     it("should output JSON error on failure", async () => {
       // No vm0.yaml file exists
       await expect(async () => {
-        await composeCommand.parseAsync(["node", "cli", "--porcelain"]);
+        await composeCommand.parseAsync(["node", "cli", "--json"]);
       }).rejects.toThrow("process.exit called");
 
       // Find the JSON error output
@@ -1636,8 +1636,8 @@ agents:
       expect(result.error).toContain("Config file not found");
     });
 
-    it("should imply --yes flag in porcelain mode", async () => {
-      // Simple test: verify --porcelain mode sets options.yes = true internally
+    it("should imply --yes flag in JSON mode", async () => {
+      // Simple test: verify --json mode sets options.yes = true internally
       // by checking that no confirmation prompts appear in JSON output
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
@@ -1658,7 +1658,7 @@ agents:
         }),
       );
 
-      await composeCommand.parseAsync(["node", "cli", "--porcelain"]);
+      await composeCommand.parseAsync(["node", "cli", "--json"]);
 
       // No prompt-related output should appear
       const allLogs = mockConsoleLog.mock.calls
@@ -1669,7 +1669,7 @@ agents:
       expect(allLogs.some((log) => log.includes("Approve"))).toBe(false);
     });
 
-    it("should skip auto-update in porcelain mode", async () => {
+    it("should skip auto-update in JSON mode", async () => {
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
         `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code\n    working_dir: /`,
@@ -1694,10 +1694,42 @@ agents:
         }),
       );
 
+      await composeCommand.parseAsync(["node", "cli", "--json"]);
+
+      // spawn should NOT be called for auto-update in JSON mode
+      expect(mockSpawn).not.toHaveBeenCalled();
+    });
+
+    it("should show deprecation warning for --porcelain", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code\n    working_dir: /`,
+      );
+      server.use(
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            composeId: "cmp-123",
+            name: "test-agent",
+            versionId:
+              "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
+            action: "created",
+          });
+        }),
+        http.get("http://localhost:3000/api/scope", () => {
+          return HttpResponse.json(scopeResponse);
+        }),
+      );
+
       await composeCommand.parseAsync(["node", "cli", "--porcelain"]);
 
-      // spawn should NOT be called for auto-update in porcelain mode
-      expect(mockSpawn).not.toHaveBeenCalled();
+      // Should show deprecation warning
+      const errorCalls = mockConsoleError.mock.calls
+        .map((call) => call[0])
+        .filter((log): log is string => typeof log === "string");
+
+      expect(
+        errorCalls.some((log) => log.includes("--porcelain is deprecated")),
+      ).toBe(true);
     });
   });
 });
@@ -2419,7 +2451,7 @@ agents:
     });
   });
 
-  describe("--porcelain option with GitHub URL", () => {
+  describe("--json option with GitHub URL", () => {
     it("should output JSON result for GitHub URL compose", async () => {
       const tempRoot = path.join(tempDir, "github-download");
       const cookbookDir = createMockCookbookDir(
@@ -2460,7 +2492,7 @@ agents:
         "cli",
         "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
         "--experimental-shared-compose",
-        "--porcelain",
+        "--json",
       ]);
 
       // Find the JSON output
@@ -2484,7 +2516,7 @@ agents:
       });
     });
 
-    it("should suppress intermediate output for GitHub URL in porcelain mode", async () => {
+    it("should suppress intermediate output for GitHub URL in JSON mode", async () => {
       const tempRoot = path.join(tempDir, "github-download");
       const cookbookDir = createMockCookbookDir(
         tempRoot,
@@ -2524,7 +2556,7 @@ agents:
         "cli",
         "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
         "--experimental-shared-compose",
-        "--porcelain",
+        "--json",
       ]);
 
       // Should not have "Downloading from GitHub..." message
@@ -2556,7 +2588,7 @@ agents:
           "cli",
           "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
           "--experimental-shared-compose",
-          "--porcelain",
+          "--json",
         ]);
       }).rejects.toThrow("process.exit called");
 
