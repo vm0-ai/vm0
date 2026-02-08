@@ -18,7 +18,7 @@ function formatRunStatus(status: RunStatus, width?: number): string {
     case "pending":
       return chalk.yellow(paddedStatus);
     case "completed":
-      return chalk.blue(paddedStatus);
+      return chalk.dim(paddedStatus);
     case "failed":
     case "timeout":
       return chalk.red(paddedStatus);
@@ -41,6 +41,7 @@ export const listCommand = new Command()
 
       if (activeRuns.length === 0) {
         console.log(chalk.dim("No active runs"));
+        console.log(chalk.dim('  Run: vm0 run <agent> "<prompt>"'));
         return;
       }
 

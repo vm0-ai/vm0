@@ -756,9 +756,7 @@ agents:
         .filter((log): log is string => typeof log === "string");
 
       expect(
-        allLogs.some((log) =>
-          log.includes("Warning: Could not check for updates"),
-        ),
+        allLogs.some((log) => log.includes("⚠ Could not check for updates")),
       ).toBe(true);
     });
 

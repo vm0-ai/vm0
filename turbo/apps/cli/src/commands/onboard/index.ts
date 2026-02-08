@@ -50,7 +50,7 @@ async function handleAuthentication(ctx: OnboardContext): Promise<void> {
     }
 
     if (!ctx.interactive) {
-      console.error(chalk.red("Error: Not authenticated"));
+      console.error(chalk.red("✗ Not authenticated"));
       console.error("Run 'vm0 auth login' first or set VM0_TOKEN");
       process.exit(1);
     }
@@ -71,7 +71,7 @@ async function handleAuthentication(ctx: OnboardContext): Promise<void> {
         // Will be shown as completed step
       },
       onError: (error) => {
-        console.error(chalk.red(`\n${error.message}`));
+        console.error(chalk.red(`\n✗ ${error.message}`));
         process.exit(1);
       },
     });
@@ -86,7 +86,7 @@ async function handleModelProvider(ctx: OnboardContext): Promise<void> {
     }
 
     if (!ctx.interactive) {
-      console.error(chalk.red("Error: No model provider configured"));
+      console.error(chalk.red("✗ No model provider configured"));
       console.error("Run 'vm0 model-provider setup' first");
       process.exit(1);
     }
@@ -222,7 +222,7 @@ async function handleAgentCreation(ctx: OnboardContext): Promise<string> {
       }
 
       if (existsSync(agentName)) {
-        console.error(chalk.red(`${agentName}/ already exists`));
+        console.error(chalk.red(`✗ ${agentName}/ already exists`));
         console.error();
         console.error("Remove it first or choose a different name:");
         console.error(chalk.cyan(`  rm -rf ${agentName}`));

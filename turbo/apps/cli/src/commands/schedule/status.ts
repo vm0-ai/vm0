@@ -43,7 +43,7 @@ function formatRunStatus(status: RunStatus): string {
     case "timeout":
       return chalk.red(status);
     case "running":
-      return chalk.blue(status);
+      return chalk.cyan(status);
     case "pending":
       return chalk.yellow(status);
     default:

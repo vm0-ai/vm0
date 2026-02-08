@@ -71,9 +71,9 @@ async function runClaudeCommand(
  */
 export function handlePluginError(error: unknown, context?: string): never {
   const displayContext = context ?? "Claude plugin";
-  console.error(chalk.red(`Failed to install ${displayContext}`));
+  console.error(chalk.red(`✗ Failed to install ${displayContext}`));
   if (error instanceof Error) {
-    console.error(chalk.red(error.message));
+    console.error(chalk.red(`✗ ${error.message}`));
   }
   console.error(
     chalk.dim("Please ensure Claude CLI is installed and accessible."),

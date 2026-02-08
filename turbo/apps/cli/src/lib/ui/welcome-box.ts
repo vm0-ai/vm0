@@ -41,7 +41,7 @@ function renderVm0Banner(): void {
 export function renderOnboardWelcome(): void {
   renderVm0Banner();
   console.log(`  Build agentic workflows using natural language.`);
-  console.log(`  ${chalk.dim("Currently in beta, enjoy it free.")}`);
+  console.log(`  ${chalk.dim("Currently in beta, enjoy it free")}`);
   console.log(
     `  ${chalk.dim("Star us on GitHub: https://github.com/vm0-ai/vm0")}`,
   );

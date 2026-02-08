@@ -509,7 +509,7 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
   // Handle existing model-provider secret
   if (checkResult.exists) {
     console.log();
-    console.log(`"${type}" is already configured.`);
+    console.log(`"${type}" is already configured`);
     console.log();
 
     const actionResponse = await prompts(
@@ -582,7 +582,8 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
 function handleSetupError(error: unknown): never {
   if (error instanceof Error) {
     if (error.message.includes("Not authenticated")) {
-      console.error(chalk.red("✗ Not authenticated. Run: vm0 auth login"));
+      console.error(chalk.red("✗ Not authenticated"));
+      console.error(chalk.dim("  Run: vm0 auth login"));
     } else {
       console.error(chalk.red(`✗ ${error.message}`));
     }

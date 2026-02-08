@@ -391,16 +391,17 @@ async function showNetworkLogs(
 function handleError(error: unknown, runId: string): void {
   if (error instanceof Error) {
     if (error.message.includes("Not authenticated")) {
-      console.error(chalk.red("Not authenticated. Run: vm0 auth login"));
+      console.error(chalk.red("✗ Not authenticated"));
+      console.error(chalk.dim("  Run: vm0 auth login"));
     } else if (error.message.includes("not found")) {
-      console.error(chalk.red(`Run not found: ${runId}`));
+      console.error(chalk.red(`✗ Run not found: ${runId}`));
     } else if (error.message.includes("Invalid time format")) {
-      console.error(chalk.red(error.message));
+      console.error(chalk.red(`✗ ${error.message}`));
     } else {
-      console.error(chalk.red("Failed to fetch logs"));
+      console.error(chalk.red("✗ Failed to fetch logs"));
       console.error(chalk.dim(`  ${error.message}`));
     }
   } else {
-    console.error(chalk.red("An unexpected error occurred"));
+    console.error(chalk.red("✗ An unexpected error occurred"));
   }
 }

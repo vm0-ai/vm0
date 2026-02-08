@@ -129,7 +129,7 @@ export async function authenticate(apiUrl?: string): Promise<void> {
       });
 
       console.log(chalk.green("\nAuthentication successful!"));
-      console.log("Your credentials have been saved.");
+      console.log("Your credentials have been saved");
       return;
     }
 
@@ -141,7 +141,7 @@ export async function authenticate(apiUrl?: string): Promise<void> {
 
     // Handle other errors
     if (tokenResult.error === "expired_token") {
-      console.error(chalk.red("\n✗ Device code expired. Please try again"));
+      console.error(chalk.red("\n✗ Device code expired, please try again"));
       process.exit(1);
     }
 
@@ -156,14 +156,14 @@ export async function authenticate(apiUrl?: string): Promise<void> {
   }
 
   // Timeout
-  console.error(chalk.red("\n✗ Authentication timed out. Please try again"));
+  console.error(chalk.red("\n✗ Authentication timed out, please try again"));
   process.exit(1);
 }
 
 export async function logout(): Promise<void> {
   await clearConfig();
   console.log(chalk.green("✓ Successfully logged out"));
-  console.log("Your credentials have been cleared.");
+  console.log("Your credentials have been cleared");
 }
 
 export async function checkAuthStatus(): Promise<void> {

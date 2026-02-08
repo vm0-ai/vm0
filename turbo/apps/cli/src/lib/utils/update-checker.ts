@@ -162,7 +162,7 @@ export async function checkAndUpgrade(
 
   // If we couldn't check, warn and continue
   if (latestVersion === null) {
-    console.log(chalk.yellow("Warning: Could not check for updates"));
+    console.log(chalk.yellow("⚠ Could not check for updates"));
     console.log();
     return false;
   }

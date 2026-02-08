@@ -40,7 +40,7 @@ export const connectCommand = new Command()
     // Validate connector type with runtime validation
     const parseResult = connectorTypeSchema.safeParse(type);
     if (!parseResult.success) {
-      console.error(chalk.red(`Unknown connector type: ${type}`));
+      console.error(chalk.red(`✗ Unknown connector type: ${type}`));
       console.error("Available connectors: github");
       process.exit(1);
     }
@@ -66,7 +66,7 @@ export const connectCommand = new Command()
     if (createResult.status !== 200) {
       const errorBody = createResult.body as ApiErrorResponse;
       console.error(
-        chalk.red(`Failed to create session: ${errorBody.error?.message}`),
+        chalk.red(`✗ Failed to create session: ${errorBody.error?.message}`),
       );
       process.exit(1);
     }
@@ -109,7 +109,7 @@ export const connectCommand = new Command()
       if (statusResult.status !== 200) {
         const errorBody = statusResult.body as ApiErrorResponse;
         console.error(
-          chalk.red(`\nFailed to check status: ${errorBody.error?.message}`),
+          chalk.red(`\n✗ Failed to check status: ${errorBody.error?.message}`),
         );
         process.exit(1);
       }
@@ -122,7 +122,7 @@ export const connectCommand = new Command()
           return;
 
         case "expired":
-          console.error(chalk.red("\n✗ Session expired. Please try again"));
+          console.error(chalk.red("\n✗ Session expired, please try again"));
           process.exit(1);
           break;
 
@@ -143,6 +143,6 @@ export const connectCommand = new Command()
     }
 
     // Timeout
-    console.error(chalk.red("\n✗ Session timed out. Please try again"));
+    console.error(chalk.red("\n✗ Session timed out, please try again"));
     process.exit(1);
   });
