@@ -1282,7 +1282,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
   });
 
   describe("Connector Injection", () => {
-    it("should auto-inject GH_TOKEN and GITHUB_TOKEN when GitHub connector is connected", async () => {
+    it("should satisfy ${{ secrets.GH_TOKEN }} from connector when user has no GH_TOKEN secret", async () => {
       vi.mocked(Sandbox.create).mockClear();
 
       // Create a GitHub connector for the test user
@@ -1290,22 +1290,28 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         accessToken: "ghp-test-connector-token",
       });
 
-      // Create compose with model provider key but no GH_TOKEN
-      const { composeId } = await createTestCompose(uniqueId("gh-connector"));
+      // Create compose with explicit ${{ secrets.GH_TOKEN }} reference (real-world scenario from skills)
+      const { composeId } = await createTestCompose(uniqueId("gh-connector"), {
+        overrides: {
+          environment: {
+            ANTHROPIC_API_KEY: "test-key",
+            GH_TOKEN: "${{ secrets.GH_TOKEN }}",
+          },
+        },
+      });
 
       const data = await createTestRun(composeId, "Test with GitHub connector");
       expect(data.status).toBe("running");
 
-      // Verify Sandbox.create was called with GH_TOKEN and GITHUB_TOKEN
+      // Verify Sandbox.create was called with the connector's token as GH_TOKEN
       expect(Sandbox.create).toHaveBeenCalled();
       const createCall = vi.mocked(Sandbox.create).mock.calls[0];
       const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
 
       expect(envs?.GH_TOKEN).toBe("ghp-test-connector-token");
-      expect(envs?.GITHUB_TOKEN).toBe("ghp-test-connector-token");
     });
 
-    it("should not override user-defined GH_TOKEN with connector token", async () => {
+    it("should not override user-provided GH_TOKEN secret with connector token", async () => {
       vi.mocked(Sandbox.create).mockClear();
 
       // Create a GitHub connector
@@ -1313,25 +1319,51 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         accessToken: "ghp-connector-token",
       });
 
-      // Create compose with explicit GH_TOKEN
+      // Create compose with ${{ secrets.GH_TOKEN }} reference
       const { composeId } = await createTestCompose(uniqueId("gh-explicit"), {
         overrides: {
           environment: {
             ANTHROPIC_API_KEY: "test-key",
-            GH_TOKEN: "user-defined-token",
+            GH_TOKEN: "${{ secrets.GH_TOKEN }}",
           },
         },
       });
 
-      const data = await createTestRun(composeId, "Test GH_TOKEN precedence");
+      // Provide GH_TOKEN via CLI secrets — should take precedence over connector
+      const data = await createTestRun(composeId, "Test GH_TOKEN precedence", {
+        secrets: { GH_TOKEN: "user-provided-token" },
+      });
       expect(data.status).toBe("running");
 
-      // Verify user-defined GH_TOKEN takes precedence
+      // Verify user-provided secret takes precedence
       expect(Sandbox.create).toHaveBeenCalled();
       const createCall = vi.mocked(Sandbox.create).mock.calls[0];
       const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
 
-      expect(envs?.GH_TOKEN).toBe("user-defined-token");
+      expect(envs?.GH_TOKEN).toBe("user-provided-token");
+    });
+
+    it("should not inject connector secrets when compose does not reference them", async () => {
+      vi.mocked(Sandbox.create).mockClear();
+
+      // Create a GitHub connector
+      await createTestConnector(user.scopeId, {
+        accessToken: "ghp-should-not-appear",
+      });
+
+      // Create compose WITHOUT any GH_TOKEN reference
+      const { composeId } = await createTestCompose(uniqueId("gh-no-ref"));
+
+      const data = await createTestRun(composeId, "Test no GH_TOKEN ref");
+      expect(data.status).toBe("running");
+
+      // Verify GH_TOKEN is NOT in sandbox envs
+      expect(Sandbox.create).toHaveBeenCalled();
+      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
+
+      expect(envs?.GH_TOKEN).toBeUndefined();
+      expect(envs?.GITHUB_TOKEN).toBeUndefined();
     });
 
     it("should work when no connectors are connected", async () => {

@@ -472,6 +472,55 @@ function autoInjectEnvVarsToEnvironment(
 }
 
 /**
+ * Merge connector-resolved secrets into the secrets pool, but ONLY for secrets
+ * that the compose explicitly references via ${{ secrets.* }}.
+ *
+ * This ensures connector secrets are only injected when the compose asks for them
+ * (via skills declaring vm0_secrets), not unconditionally.
+ *
+ * Precedence: user/CLI secrets > connector secrets (connector only fills gaps).
+ */
+function mergeConnectorSecretsForReferences(
+  composeEnvironment: Record<string, string> | undefined,
+  existingSecrets: Record<string, string> | undefined,
+  connectorEnvVars: Record<string, string> | undefined,
+): Record<string, string> | undefined {
+  if (!composeEnvironment || !connectorEnvVars) {
+    return existingSecrets;
+  }
+
+  // Extract ${{ secrets.* }} references from compose environment
+  const refs = extractVariableReferences(composeEnvironment);
+  const grouped = groupVariablesBySource(refs);
+
+  if (grouped.secrets.length === 0) {
+    return existingSecrets;
+  }
+
+  const referencedSecretNames = new Set(grouped.secrets.map((r) => r.name));
+  let merged = existingSecrets;
+
+  for (const name of referencedSecretNames) {
+    // Skip if already provided by user/CLI secrets
+    if (merged?.[name]) {
+      continue;
+    }
+
+    // Check if connector can satisfy this secret
+    const connectorValue = connectorEnvVars[name];
+    if (connectorValue) {
+      merged = merged || {};
+      merged[name] = connectorValue;
+      log.debug(
+        `Connector secret satisfying ${"$"}{{ secrets.${name} }} reference`,
+      );
+    }
+  }
+
+  return merged;
+}
+
+/**
  * Fetch server-stored variables and merge with CLI-provided vars
  * Priority: CLI vars > server-stored vars
  *
@@ -583,6 +632,92 @@ async function loadAgentComposeForNewRun(
 }
 
 /**
+ * Resolve all credentials (user, model provider, connector) and expand environment.
+ * Extracted from buildExecutionContext to reduce complexity.
+ */
+async function resolveCredentialsAndEnvironment(
+  userId: string,
+  agentCompose: unknown,
+  firstAgent:
+    | { environment?: Record<string, string>; framework?: string }
+    | undefined,
+  vars: Record<string, string> | undefined,
+  cliSecrets: Record<string, string> | undefined,
+  modelProvider: string | undefined,
+  runId: string,
+): Promise<{
+  secrets: Record<string, string> | undefined;
+  credentials: Record<string, string> | undefined;
+  environment: Record<string, string> | undefined;
+}> {
+  // Fetch secrets/credentials referenced in environment
+  const dbSecrets = await fetchReferencedCredentials(
+    userId,
+    firstAgent?.environment,
+  );
+
+  // Merge DB secrets with CLI secrets (CLI takes priority)
+  let secrets = mergeSecrets(dbSecrets, cliSecrets);
+
+  // credentials is used for backwards compatibility with credentials.* syntax
+  let credentials: Record<string, string> | undefined = dbSecrets;
+
+  // Model provider credential injection
+  const hasExplicitModelProviderConfig = MODEL_PROVIDER_ENV_VARS.some(
+    (v) => firstAgent?.environment?.[v] !== undefined,
+  );
+  const framework = firstAgent?.framework || "claude-code";
+
+  const modelProviderResult = await resolveModelProviderCredential(
+    userId,
+    framework,
+    hasExplicitModelProviderConfig,
+    credentials,
+    modelProvider,
+  );
+  credentials = modelProviderResult.credentials;
+  const modelProviderEnvVars = modelProviderResult.injectedEnvVars;
+
+  // Resolve connector credentials (GH_TOKEN, GITHUB_TOKEN, etc.)
+  const connectorResult = await resolveConnectorCredentials(
+    userId,
+    credentials,
+  );
+  credentials = connectorResult.credentials;
+  const connectorEnvVars = connectorResult.injectedEnvVars;
+
+  // Merge connector secrets into secrets pool for explicit ${{ secrets.* }} references only.
+  // Connector secrets only fill gaps — user/CLI secrets take precedence.
+  secrets = mergeConnectorSecretsForReferences(
+    firstAgent?.environment,
+    secrets,
+    connectorEnvVars,
+  );
+
+  // Fetch server-stored variables and merge with CLI vars
+  const mergedVars = await fetchAndMergeVariables(userId, vars);
+
+  // Expand environment variables from compose config
+  const { environment: expandedEnvironment } = expandEnvironmentFromCompose(
+    agentCompose,
+    mergedVars,
+    secrets,
+    credentials,
+    userId,
+    runId,
+  );
+
+  // Auto-inject model provider env vars into environment
+  const environment = autoInjectEnvVarsToEnvironment(
+    expandedEnvironment,
+    modelProviderEnvVars,
+    "model provider",
+  );
+
+  return { secrets, credentials, environment };
+}
+
+/**
  * Build unified execution context from various parameter sources
  * Supports: new run, checkpoint resume, session continue
  *
@@ -683,74 +818,28 @@ export async function buildExecutionContext(
     ? Object.values(compose.agents)[0]
     : undefined;
 
-  // Fetch secrets/credentials referenced in environment
-  const dbSecrets = await fetchReferencedCredentials(
+  // Step 4: Resolve all credentials and secrets, then expand environment
+  const {
+    secrets: resolvedSecrets,
+    credentials: resolvedCredentials,
+    environment,
+  } = await resolveCredentialsAndEnvironment(
     params.userId,
-    firstAgent?.environment,
-  );
-
-  // Merge DB secrets with CLI secrets (CLI takes priority)
-  secrets = mergeSecrets(dbSecrets, params.secrets);
-
-  // credentials is used for backwards compatibility with credentials.* syntax
-  let credentials: Record<string, string> | undefined = dbSecrets;
-
-  // Step 4b: Model provider credential injection
-  const hasExplicitModelProviderConfig = MODEL_PROVIDER_ENV_VARS.some(
-    (v) => firstAgent?.environment?.[v] !== undefined,
-  );
-  const framework = firstAgent?.framework || "claude-code";
-
-  const modelProviderResult = await resolveModelProviderCredential(
-    params.userId,
-    framework,
-    hasExplicitModelProviderConfig,
-    credentials,
-    params.modelProvider,
-  );
-  credentials = modelProviderResult.credentials;
-  const modelProviderEnvVars = modelProviderResult.injectedEnvVars;
-
-  // Step 4b2: Connector credential injection (auto-inject GH_TOKEN, GITHUB_TOKEN, etc.)
-  const connectorResult = await resolveConnectorCredentials(
-    params.userId,
-    credentials,
-  );
-  credentials = connectorResult.credentials;
-  const connectorEnvVars = connectorResult.injectedEnvVars;
-
-  // Step 4c: Fetch server-stored variables and merge with CLI vars
-  // Priority: CLI --vars > server-stored variables
-  const mergedVars = await fetchAndMergeVariables(params.userId, vars);
-
-  // Step 5: Expand environment variables from compose config using vars, secrets, and credentials
-  // When experimental_firewall.experimental_seal_secrets is enabled, secrets are encrypted
-  const { environment: expandedEnvironment } = expandEnvironmentFromCompose(
     agentCompose,
-    mergedVars,
-    secrets,
-    credentials,
-    params.userId,
+    firstAgent,
+    vars,
+    params.secrets,
+    params.modelProvider,
     params.runId,
   );
+  secrets = resolvedSecrets;
 
-  // Step 5b: Auto-inject model provider and connector env vars into environment
-  // Precedence: user-defined env > model provider > connector
-  let environment = autoInjectEnvVarsToEnvironment(
-    expandedEnvironment,
-    modelProviderEnvVars,
-    "model provider",
-  );
-  environment = autoInjectEnvVarsToEnvironment(
-    environment,
-    connectorEnvVars,
-    "connector",
-  );
-
-  // Step 6: Merge credentials into secrets for client-side log masking
+  // Step 5: Merge credentials into secrets for client-side log masking
   // Credentials are server-stored user-level secrets and must be masked like CLI secrets
   // Priority: CLI --secrets > credentials (platform-stored)
-  const mergedSecrets = credentials ? { ...credentials, ...secrets } : secrets;
+  const mergedSecrets = resolvedCredentials
+    ? { ...resolvedCredentials, ...secrets }
+    : secrets;
 
   // Build final execution context
   return {
