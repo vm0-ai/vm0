@@ -122,14 +122,14 @@ export const connectCommand = new Command()
           return;
 
         case "expired":
-          console.log(chalk.red("\nSession expired. Please try again."));
+          console.error(chalk.red("\n✗ Session expired. Please try again"));
           process.exit(1);
           break;
 
         case "error":
-          console.log(
+          console.error(
             chalk.red(
-              `\nConnection failed: ${status.errorMessage || "Unknown error"}`,
+              `\n✗ Connection failed: ${status.errorMessage || "Unknown error"}`,
             ),
           );
           process.exit(1);
@@ -143,6 +143,6 @@ export const connectCommand = new Command()
     }
 
     // Timeout
-    console.log(chalk.red("\nSession timed out. Please try again."));
+    console.error(chalk.red("\n✗ Session timed out. Please try again"));
     process.exit(1);
   });
