@@ -145,10 +145,10 @@ export class EventRenderer {
    */
   static renderRunFailed(error: string | undefined, runId: string): void {
     // Visual separator to distinguish from event stream
-    console.log("");
-    console.log(chalk.red("✗ Run failed"));
-    console.log(`  Error: ${chalk.red(error || "Unknown error")}`);
-    console.log(
+    console.error("");
+    console.error(chalk.red("✗ Run failed"));
+    console.error(`  Error: ${chalk.red(error || "Unknown error")}`);
+    console.error(
       chalk.dim(`  (use "vm0 logs ${runId} --system" to view system logs)`),
     );
   }

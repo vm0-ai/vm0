@@ -306,8 +306,8 @@ describe("run command with --experimental-realtime", () => {
       await expect(runPromise).rejects.toThrow("process.exit called");
 
       expect(mockExit).toHaveBeenCalledWith(1);
-      // Error message is rendered via EventRenderer.renderRunFailed using console.log
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      // Error message is rendered via EventRenderer.renderRunFailed using console.error
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Something went wrong"),
       );
     });
