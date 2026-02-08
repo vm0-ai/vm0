@@ -141,16 +141,14 @@ export async function authenticate(apiUrl?: string): Promise<void> {
 
     // Handle other errors
     if (tokenResult.error === "expired_token") {
-      console.log(
-        chalk.red("\nThe device code has expired. Please try again."),
-      );
+      console.error(chalk.red("\n✗ Device code expired. Please try again"));
       process.exit(1);
     }
 
     if (tokenResult.error) {
-      console.log(
+      console.error(
         chalk.red(
-          `\nAuthentication failed: ${tokenResult.error_description ?? tokenResult.error}`,
+          `\n✗ Authentication failed: ${tokenResult.error_description ?? tokenResult.error}`,
         ),
       );
       process.exit(1);
@@ -158,7 +156,7 @@ export async function authenticate(apiUrl?: string): Promise<void> {
   }
 
   // Timeout
-  console.log(chalk.red("\nAuthentication timed out. Please try again."));
+  console.error(chalk.red("\n✗ Authentication timed out. Please try again"));
   process.exit(1);
 }
 
@@ -175,8 +173,8 @@ export async function checkAuthStatus(): Promise<void> {
     console.log(chalk.green("✓ Authenticated"));
     console.log("You are logged in to VM0.");
   } else {
-    console.log(chalk.red("✗ Not authenticated"));
-    console.log("Run 'vm0 auth login' to authenticate.");
+    console.error(chalk.red("✗ Not authenticated"));
+    console.error(chalk.dim("  Run: vm0 auth login"));
   }
 
   // Also check for environment variable
