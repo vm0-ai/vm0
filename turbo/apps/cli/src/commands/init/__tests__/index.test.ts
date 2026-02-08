@@ -56,10 +56,10 @@ describe("init command", () => {
         await initCommand.parseAsync(["node", "cli", "--name", "my-agent"]);
       }).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("vm0.yaml already exists"),
       );
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("vm0 init --force"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
@@ -72,7 +72,7 @@ describe("init command", () => {
         await initCommand.parseAsync(["node", "cli", "--name", "my-agent"]);
       }).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("AGENTS.md already exists"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
@@ -86,10 +86,10 @@ describe("init command", () => {
         await initCommand.parseAsync(["node", "cli", "--name", "my-agent"]);
       }).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("vm0.yaml already exists"),
       );
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("AGENTS.md already exists"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
@@ -102,7 +102,7 @@ describe("init command", () => {
         await initCommand.parseAsync(["node", "cli", "--name", "ab"]);
       }).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Invalid agent name"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
@@ -113,7 +113,7 @@ describe("init command", () => {
         await initCommand.parseAsync(["node", "cli", "--name", "my_agent"]);
       }).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Invalid agent name"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
@@ -124,7 +124,7 @@ describe("init command", () => {
         await initCommand.parseAsync(["node", "cli", "--name", "-my-agent"]);
       }).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Invalid agent name"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
@@ -135,7 +135,7 @@ describe("init command", () => {
         await initCommand.parseAsync(["node", "cli", "--name", "ab"]);
       }).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("3-64 characters"),
       );
     });
@@ -279,7 +279,7 @@ describe("init command", () => {
         await initCommand.parseAsync(["node", "cli", "--name", "ab"]);
       }).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Invalid agent name"),
       );
     });

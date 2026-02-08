@@ -54,10 +54,10 @@ export const initCommand = new Command()
     const existingFiles = checkExistingFiles();
     if (existingFiles.length > 0 && !options.force) {
       for (const file of existingFiles) {
-        console.log(chalk.red(`✗ ${file} already exists`));
+        console.error(chalk.red(`✗ ${file} already exists`));
       }
-      console.log();
-      console.log(`To overwrite: ${chalk.cyan("vm0 init --force")}`);
+      console.error();
+      console.error(`To overwrite: ${chalk.cyan("vm0 init --force")}`);
       process.exit(1);
     }
 
@@ -99,11 +99,11 @@ export const initCommand = new Command()
 
     // Validate agent name
     if (!agentName || !validateAgentName(agentName)) {
-      console.log(chalk.red("✗ Invalid agent name"));
-      console.log(
+      console.error(chalk.red("✗ Invalid agent name"));
+      console.error(
         chalk.dim("  Must be 3-64 characters, alphanumeric and hyphens only"),
       );
-      console.log(chalk.dim("  Must start and end with letter or number"));
+      console.error(chalk.dim("  Must start and end with letter or number"));
       process.exit(1);
     }
 
