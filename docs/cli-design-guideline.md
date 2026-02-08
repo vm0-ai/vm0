@@ -192,6 +192,13 @@ console.error(chalk.dim("  Run: vm0 auth login"));
 console.log(chalk.yellow(`⚠ Agent "${name}": 'image' field is deprecated`));
 console.log(chalk.dim("  Use 'apps' instead"));
 
+// Yellow for noteworthy-but-not-error
+console.log(chalk.yellow(`Volume already initialized: ${name}`));
+
+// Bold for section headers
+console.log(chalk.bold("Scope Information:"));
+console.log(chalk.bold("Processing volumes:"));
+
 // Status indicators in tables
 const status = item.enabled
   ? chalk.green("enabled")
@@ -432,6 +439,21 @@ if (!secret) {
 }
 ```
 
+### Missing Interactive Check
+
+```typescript
+// ❌ Wrong — no interactive check, fails in CI
+const name = await promptText("Enter name");
+
+// ✅ Correct — check first
+if (!isInteractive()) {
+  console.error(chalk.red("✗ --name required in non-interactive mode"));
+  console.error(chalk.dim("  Usage: vm0 init --name <name>"));
+  process.exit(1);
+}
+const name = await promptText("Enter name");
+```
+
 ### Cancellation
 
 All prompts return `undefined` when cancelled (Ctrl+C). Handle consistently:
@@ -638,6 +660,16 @@ if (!isUUID(checkpointId)) {
 - `process.exit(1)` on all errors
 - `return` (implicit exit 0) on success or user cancellation
 
+**Exception**: Normal cancellation (Ctrl+C on prompts) should return without exit:
+
+```typescript
+const name = await promptText("Enter name");
+if (name === undefined) {
+  console.log(chalk.dim("Cancelled"));
+  return;  // Don't exit with error code
+}
+```
+
 ### Anti-Patterns
 
 ```typescript
@@ -717,6 +749,45 @@ for (const item of items) {
 - Numeric columns: right-aligned with `padStart`
 - Column spacing: always two spaces (`.join("  ")`)
 - Missing values: use `chalk.dim("-")`
+
+```typescript
+const version = item.headVersionId
+  ? item.headVersionId.slice(0, 8)
+  : chalk.dim("-");
+```
+
+### Complete Example
+
+```typescript
+export async function listVolumes(): Promise<void> {
+  const volumes = await getVolumes();
+
+  if (volumes.length === 0) {
+    console.log(chalk.dim("No volumes found"));
+    console.log(chalk.dim("  Create one with: vm0 volume init && vm0 volume push"));
+    return;
+  }
+
+  const nameWidth = Math.max(4, ...volumes.map((v) => v.name.length));
+  const sizeWidth = Math.max(4, ...volumes.map((v) => formatBytes(v.size).length));
+
+  const header = [
+    "NAME".padEnd(nameWidth),
+    "SIZE".padStart(sizeWidth),
+    "UPDATED",
+  ].join("  ");
+  console.log(chalk.dim(header));
+
+  for (const volume of volumes) {
+    const row = [
+      volume.name.padEnd(nameWidth),
+      formatBytes(volume.size).padStart(sizeWidth),
+      formatRelativeTime(volume.updatedAt),
+    ].join("  ");
+    console.log(row);
+  }
+}
+```
 
 ### Status Columns
 
