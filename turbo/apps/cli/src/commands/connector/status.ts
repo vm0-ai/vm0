@@ -15,10 +15,10 @@ export const statusCommand = new Command()
       const parseResult = connectorTypeSchema.safeParse(type);
       if (!parseResult.success) {
         console.error(chalk.red(`✗ Unknown connector type: ${type}`));
-        console.log();
-        console.log("Available connectors:");
+        console.error();
+        console.error("Available connectors:");
         for (const [t, config] of Object.entries(CONNECTOR_TYPES)) {
-          console.log(`  ${chalk.cyan(t)} - ${config.label}`);
+          console.error(`  ${chalk.cyan(t)} - ${config.label}`);
         }
         process.exit(1);
       }

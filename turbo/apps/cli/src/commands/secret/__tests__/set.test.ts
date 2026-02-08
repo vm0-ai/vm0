@@ -226,8 +226,8 @@ describe("secret set command", () => {
         await setCommand.parseAsync(["node", "cli", "MY_API_KEY"]);
       }).rejects.toThrow("process.exit called");
 
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("vm0 secret set MY_API_KEY --body");
+      const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+      expect(errorCalls).toContain("vm0 secret set MY_API_KEY --body");
     });
   });
 

@@ -153,7 +153,7 @@ function validateEnvVariables(
     const missingVars = checkMissingVariables(requiredVarNames, envFile);
 
     if (missingVars.length > 0) {
-      console.log();
+      console.error();
       console.error(chalk.red("✗ Missing required variables:"));
       for (const varName of missingVars) {
         console.error(chalk.red(`  ${varName}`));

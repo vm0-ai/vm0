@@ -593,18 +593,20 @@ agents:
         await cookCommand.parseAsync(["node", "cli", "test prompt"]);
       }).rejects.toThrow("process.exit called");
 
-      const allLogs = mockConsoleLog.mock.calls
+      const allErrors = mockConsoleError.mock.calls
         .map((call) => call[0])
         .filter((log): log is string => typeof log === "string");
 
       // Should show upgrade failed message
-      expect(allLogs.some((log) => log.includes("Upgrade failed"))).toBe(true);
+      expect(allErrors.some((log) => log.includes("Upgrade failed"))).toBe(
+        true,
+      );
       // Should show manual command
       expect(
-        allLogs.some((log) => log.includes("npm install -g @vm0/cli@latest")),
+        allErrors.some((log) => log.includes("npm install -g @vm0/cli@latest")),
       ).toBe(true);
       // Should show re-run command
-      expect(allLogs.some((log) => log.includes("vm0 cook"))).toBe(true);
+      expect(allErrors.some((log) => log.includes("vm0 cook"))).toBe(true);
     });
 
     it("should escape special characters in rerun command", async () => {

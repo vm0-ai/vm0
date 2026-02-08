@@ -59,7 +59,7 @@ describe("connector disconnect command", () => {
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Unknown connector type: invalid-type"),
       );
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Available connectors:"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);

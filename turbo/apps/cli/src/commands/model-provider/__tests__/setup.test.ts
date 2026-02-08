@@ -64,7 +64,7 @@ describe("model-provider setup command", () => {
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining('Invalid type "invalid-type"'),
       );
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Valid types:"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
@@ -115,7 +115,7 @@ describe("model-provider setup command", () => {
       }).rejects.toThrow("process.exit called");
 
       // Should show anthropic-api-key as a valid type
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("anthropic-api-key"),
       );
     });
@@ -391,7 +391,7 @@ describe("model-provider setup command", () => {
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining('Invalid model "invalid-model"'),
       );
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Valid models:"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
@@ -453,10 +453,10 @@ describe("model-provider setup command", () => {
       }).rejects.toThrow("process.exit called");
 
       // Should show valid models
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("kimi-k2.5"),
       );
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("kimi-k2-thinking-turbo"),
       );
     });
@@ -563,7 +563,7 @@ describe("model-provider setup command", () => {
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining('Invalid model "invalid/model"'),
       );
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Valid models:"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
@@ -584,13 +584,13 @@ describe("model-provider setup command", () => {
       }).rejects.toThrow("process.exit called");
 
       // Should show available Anthropic models
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("anthropic/claude-sonnet-4.5"),
       );
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("anthropic/claude-opus-4.5"),
       );
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("anthropic/claude-haiku-4.5"),
       );
     });

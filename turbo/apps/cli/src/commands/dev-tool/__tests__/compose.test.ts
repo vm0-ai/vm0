@@ -184,7 +184,7 @@ describe("dev-tool compose command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
 
       // Should show error message
-      expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Compose failed"),
       );
     });

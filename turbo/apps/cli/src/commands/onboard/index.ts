@@ -223,9 +223,9 @@ async function handleAgentCreation(ctx: OnboardContext): Promise<string> {
 
       if (existsSync(agentName)) {
         console.error(chalk.red(`${agentName}/ already exists`));
-        console.log();
-        console.log("Remove it first or choose a different name:");
-        console.log(chalk.cyan(`  rm -rf ${agentName}`));
+        console.error();
+        console.error("Remove it first or choose a different name:");
+        console.error(chalk.cyan(`  rm -rf ${agentName}`));
         process.exit(1);
       }
     }

@@ -219,12 +219,12 @@ export async function checkAndUpgrade(
   }
 
   // Upgrade failed - show manual instructions
-  console.log();
-  console.log(chalk.red("Upgrade failed. Please run manually:"));
-  console.log(chalk.cyan(`  ${getManualUpgradeCommand(packageManager)}`));
-  console.log();
-  console.log("Then re-run:");
-  console.log(chalk.cyan(`  ${buildRerunCommand(prompt)}`));
+  console.error();
+  console.error(chalk.red("✗ Upgrade failed. Please run manually:"));
+  console.error(chalk.cyan(`  ${getManualUpgradeCommand(packageManager)}`));
+  console.error();
+  console.error("Then re-run:");
+  console.error(chalk.cyan(`  ${buildRerunCommand(prompt)}`));
   return true;
 }
 

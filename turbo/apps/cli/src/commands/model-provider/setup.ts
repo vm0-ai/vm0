@@ -37,10 +37,10 @@ interface SetupInput {
 function validateProviderType(typeStr: string): ModelProviderType {
   if (!Object.keys(MODEL_PROVIDER_TYPES).includes(typeStr)) {
     console.error(chalk.red(`✗ Invalid type "${typeStr}"`));
-    console.log();
-    console.log("Valid types:");
+    console.error();
+    console.error("Valid types:");
     for (const [t, config] of Object.entries(MODEL_PROVIDER_TYPES)) {
-      console.log(`  ${chalk.cyan(t)} - ${config.label}`);
+      console.error(`  ${chalk.cyan(t)} - ${config.label}`);
     }
     process.exit(1);
   }
@@ -60,10 +60,10 @@ function validateModel(
 
   if (models && !models.includes(modelStr)) {
     console.error(chalk.red(`✗ Invalid model "${modelStr}"`));
-    console.log();
-    console.log("Valid models:");
+    console.error();
+    console.error("Valid models:");
     for (const m of models) {
-      console.log(`  ${chalk.cyan(m)}`);
+      console.error(`  ${chalk.cyan(m)}`);
     }
     process.exit(1);
   }
@@ -77,11 +77,11 @@ function validateAuthMethod(
   const authMethods = getAuthMethodsForType(type);
   if (!authMethods || !(authMethodStr in authMethods)) {
     console.error(chalk.red(`✗ Invalid auth method "${authMethodStr}"`));
-    console.log();
-    console.log("Valid auth methods:");
+    console.error();
+    console.error("Valid auth methods:");
     if (authMethods) {
       for (const [method, config] of Object.entries(authMethods)) {
-        console.log(`  ${chalk.cyan(method)} - ${config.label}`);
+        console.error(`  ${chalk.cyan(method)} - ${config.label}`);
       }
     }
     process.exit(1);
@@ -115,11 +115,11 @@ function parseSecrets(
       console.error(
         chalk.red("✗ Must use KEY=VALUE format for multi-secret auth methods"),
       );
-      console.log();
-      console.log("Required secrets:");
+      console.error();
+      console.error("Required secrets:");
       for (const [name, fieldConfig] of Object.entries(secretsConfig)) {
         const requiredNote = fieldConfig.required ? " (required)" : "";
-        console.log(`  ${chalk.cyan(name)}${requiredNote}`);
+        console.error(`  ${chalk.cyan(name)}${requiredNote}`);
       }
       process.exit(1);
     }
@@ -137,8 +137,8 @@ function parseSecrets(
     const eqIndex = arg.indexOf("=");
     if (eqIndex === -1) {
       console.error(chalk.red(`✗ Invalid secret format "${arg}"`));
-      console.log();
-      console.log("Use KEY=VALUE format (e.g., AWS_REGION=us-east-1)");
+      console.error();
+      console.error("Use KEY=VALUE format (e.g., AWS_REGION=us-east-1)");
       process.exit(1);
     }
     const key = arg.slice(0, eqIndex);
@@ -166,11 +166,11 @@ function validateSecrets(
   for (const [name, fieldConfig] of Object.entries(secretsConfig)) {
     if (fieldConfig.required && !secrets[name]) {
       console.error(chalk.red(`✗ Missing required secret: ${name}`));
-      console.log();
-      console.log("Required secrets:");
+      console.error();
+      console.error("Required secrets:");
       for (const [n, fc] of Object.entries(secretsConfig)) {
         if (fc.required) {
-          console.log(`  ${chalk.cyan(n)} - ${fc.label}`);
+          console.error(`  ${chalk.cyan(n)} - ${fc.label}`);
         }
       }
       process.exit(1);
@@ -181,11 +181,11 @@ function validateSecrets(
   for (const name of Object.keys(secrets)) {
     if (!(name in secretsConfig)) {
       console.error(chalk.red(`✗ Unknown secret: ${name}`));
-      console.log();
-      console.log("Valid secrets:");
+      console.error();
+      console.error("Valid secrets:");
       for (const [n, fc] of Object.entries(secretsConfig)) {
         const requiredNote = fc.required ? " (required)" : " (optional)";
-        console.log(`  ${chalk.cyan(n)}${requiredNote}`);
+        console.error(`  ${chalk.cyan(n)}${requiredNote}`);
       }
       process.exit(1);
     }
@@ -233,17 +233,17 @@ function handleNonInteractiveMode(options: {
             `✗ --auth-method is required for "${type}" (multiple auth methods available)`,
           ),
         );
-        console.log();
-        console.log("Available auth methods:");
+        console.error();
+        console.error("Available auth methods:");
         for (const [method, config] of Object.entries(authMethods)) {
           const defaultNote = method === defaultAuthMethod ? " (default)" : "";
-          console.log(
+          console.error(
             `  ${chalk.cyan(method)} - ${config.label}${defaultNote}`,
           );
         }
-        console.log();
-        console.log("Example:");
-        console.log(
+        console.error();
+        console.error("Example:");
+        console.error(
           chalk.cyan(
             `  vm0 model-provider setup --type ${type} --auth-method ${authMethodNames[0]} --secret KEY=VALUE`,
           ),
@@ -460,9 +460,9 @@ async function promptForSecrets(
 async function handleInteractiveMode(): Promise<SetupInput | null> {
   if (!isInteractive()) {
     console.error(chalk.red("✗ Interactive mode requires a TTY"));
-    console.log();
-    console.log("Use non-interactive mode:");
-    console.log(
+    console.error();
+    console.error("Use non-interactive mode:");
+    console.error(
       chalk.cyan('  vm0 model-provider setup --type <type> --secret "<value>"'),
     );
     process.exit(1);

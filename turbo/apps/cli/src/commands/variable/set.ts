@@ -30,11 +30,11 @@ export const setCommand = new Command()
             );
           } else if (error.message.includes("must contain only uppercase")) {
             console.error(chalk.red(`✗ ${error.message}`));
-            console.log();
-            console.log("Examples of valid variable names:");
-            console.log(chalk.dim("  MY_VAR"));
-            console.log(chalk.dim("  API_URL"));
-            console.log(chalk.dim("  DEBUG_MODE"));
+            console.error();
+            console.error("Examples of valid variable names:");
+            console.error(chalk.dim("  MY_VAR"));
+            console.error(chalk.dim("  API_URL"));
+            console.error(chalk.dim("  DEBUG_MODE"));
           } else {
             console.error(chalk.red(`✗ ${error.message}`));
           }

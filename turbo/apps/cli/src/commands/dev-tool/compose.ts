@@ -244,9 +244,9 @@ function displayResult(job: {
       }
     }
   } else if (job.status === "failed") {
-    console.log(chalk.red("✗ Compose failed!"));
+    console.error(chalk.red("✗ Compose failed"));
     if (job.error) {
-      console.log(`  Error: ${chalk.red(job.error)}`);
+      console.error(`  Error: ${chalk.red(job.error)}`);
     }
   } else {
     console.log(`Status: ${job.status}`);

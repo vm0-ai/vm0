@@ -174,9 +174,9 @@ describe("connector status command", () => {
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Unknown connector type: invalid"),
       );
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Available connectors:");
-      expect(logCalls).toContain("github");
+      const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+      expect(errorCalls).toContain("Available connectors:");
+      expect(errorCalls).toContain("github");
       expect(mockExit).toHaveBeenCalledWith(1);
     });
   });
