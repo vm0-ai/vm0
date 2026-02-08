@@ -25,7 +25,7 @@ tempfile = "3"
 tokio = "1"
 uuid = "1"
 tracing = "0.1"
-which = "7"
+which = "8"
 ureq = "3"
 
 [profile.release]
