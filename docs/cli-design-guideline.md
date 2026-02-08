@@ -209,6 +209,38 @@ const status = item.enabled
 
 ## Output Formatting
 
+### stdout vs stderr
+
+Unix separates output into two streams: **stdout** (fd 1) for program data, **stderr** (fd 2) for diagnostic messages. This separation is critical because agents and scripts often capture stdout to parse data — if errors go to stdout, they corrupt the data stream.
+
+```bash
+# stdout is redirected to file, stderr still shows in terminal
+vm0 run list > runs.txt
+
+# Pipe only carries stdout — error messages must not pollute it
+vm0 agent list | wc -l
+```
+
+**Rules:**
+
+| Stream | Node.js API | Content |
+|--------|-------------|---------|
+| stdout | `console.log()` | Primary output: success messages, tables, data, next-step guidance |
+| stderr | `console.error()` | Errors, warnings, diagnostic messages |
+
+```typescript
+// ✅ Correct — errors go to stderr
+console.error(chalk.red("✗ Not authenticated"));
+console.error(chalk.dim("  Run: vm0 auth login"));
+
+// ✅ Correct — success and data go to stdout
+console.log(chalk.green("✓ Secret saved"));
+console.log(chalk.dim("  Name: MY_API_KEY"));
+
+// ❌ Wrong — error on stdout corrupts piped data
+console.log(chalk.red("✗ Not authenticated"));
+```
+
 ### Spacing Rules
 
 - **Two-space indentation** for all secondary information
