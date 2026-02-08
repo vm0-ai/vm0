@@ -253,15 +253,13 @@ console.log(chalk.green(`✓ Created: ${name}`));
 // Success — with action context
 console.log(chalk.green(`✓ Initialized volume: ${volumeName}`));
 
-// Error — simple
-console.error(chalk.red("✗ Operation failed"));
-
-// Error — with context
-console.error(chalk.red(`✗ Not found: ${name}`));
-
 // Error — with suggestion
 console.error(chalk.red("✗ Not authenticated"));
 console.error(chalk.dim("  Run: vm0 auth login"));
+
+// Error — with context and suggestion
+console.error(chalk.red(`✗ Not found: ${name}`));
+console.error(chalk.dim("  Run: vm0 agent list"));
 
 // Error — with examples
 console.error(chalk.red(`✗ Invalid format: ${value}`));
@@ -529,9 +527,11 @@ try {
       // Handle reserved name
     } else {
       console.error(chalk.red(`✗ ${error.message}`));
+      console.error(chalk.dim("  See: vm0 <command> --help"));
     }
   } else {
     console.error(chalk.red("✗ An unexpected error occurred"));
+    console.error(chalk.dim("  Try again or check: vm0 auth status"));
   }
   process.exit(1);
 }
@@ -539,19 +539,18 @@ try {
 
 ### Error Message Structure
 
+Every error message must include a remediation hint (per Guided Flow principle).
+
 ```typescript
-// Basic error
-console.error(chalk.red("✗ Operation failed"));
-process.exit(1);
-
-// Error with details
-console.error(chalk.red("✗ Operation failed"));
-console.error(chalk.dim(`  ${error.message}`));
-process.exit(1);
-
 // Error with suggestion
 console.error(chalk.red("✗ Not authenticated"));
 console.error(chalk.dim("  Run: vm0 auth login"));
+process.exit(1);
+
+// Error with details and suggestion
+console.error(chalk.red("✗ Compose failed"));
+console.error(chalk.dim(`  ${error.message}`));
+console.error(chalk.dim("  Check your vm0.yaml and try again"));
 process.exit(1);
 
 // Error with examples
@@ -600,6 +599,7 @@ if (error.message.includes("No scope configured")) {
 // File system
 if (!existsSync(configPath)) {
   console.error(chalk.red(`✗ Config file not found: ${configPath}`));
+  console.error(chalk.dim("  Run: vm0 init"));
   process.exit(1);
 }
 ```
@@ -620,6 +620,7 @@ if (!isValidStorageName(name)) {
 // File exists
 if (!existsSync(configFile)) {
   console.error(chalk.red(`✗ Config file not found: ${configFile}`));
+  console.error(chalk.dim("  Create one with: vm0 init"));
   process.exit(1);
 }
 
@@ -627,6 +628,7 @@ if (!existsSync(configFile)) {
 if (!isUUID(checkpointId)) {
   console.error(chalk.red(`✗ Invalid checkpoint ID format: ${checkpointId}`));
   console.error(chalk.dim("  Checkpoint ID must be a valid UUID"));
+  console.error(chalk.dim("  Run: vm0 run list"));
   process.exit(1);
 }
 ```
@@ -788,9 +790,10 @@ const row = [col1, col2, col3].join("  ");
 // ❌ Wrong — missing empty state (crashes on empty array)
 const nameWidth = Math.max(4, ...items.map((i) => i.name.length));
 
-// ✅ Correct — check first
+// ✅ Correct — check first and guide to creation
 if (items.length === 0) {
   console.log(chalk.dim("No items found"));
+  console.log(chalk.dim("  Create one with: vm0 <resource> create"));
   return;
 }
 ```
