@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.14.2](https://github.com/vm0-ai/vm0/compare/web-v12.14.1...web-v12.14.2) (2026-02-08)
+
+
+### Bug Fixes
+
+* **web:** improve responsive padding for landing page cards ([#2573](https://github.com/vm0-ai/vm0/issues/2573)) ([ed9f8ea](https://github.com/vm0-ai/vm0/commit/ed9f8ea828a1aeef64d156fc90295d810aee8bfe))
+* **web:** inject connector secrets only for explicit ${{ secrets.* }} references ([#2599](https://github.com/vm0-ai/vm0/issues/2599)) ([281baa0](https://github.com/vm0-ai/vm0/commit/281baa07e0451371f176d4546c7a7b8f6d3059f2)), closes [#2598](https://github.com/vm0-ai/vm0/issues/2598)
+
 ## [12.14.1](https://github.com/vm0-ai/vm0/compare/web-v12.14.0...web-v12.14.1) (2026-02-07)
 
 
