@@ -1,21 +1,68 @@
+import { useGet, useSet } from "ccstate-react";
+import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import { AppShell } from "../layout/app-shell.tsx";
+import {
+  activeTab$,
+  setActiveTab$,
+  type SettingsTab,
+} from "../../signals/settings-page/settings-tabs.ts";
 import { DefaultProviderCard } from "./default-provider-card.tsx";
 import { ProviderList } from "./provider-list.tsx";
 import { ProviderDialog } from "./provider-dialog.tsx";
 import { DeleteProviderDialog } from "./delete-provider-dialog.tsx";
+import { SecretList } from "./secret-list.tsx";
+import { SecretDialog } from "./secret-dialog.tsx";
+import { DeleteSecretDialog } from "./delete-secret-dialog.tsx";
+import { VariableList } from "./variable-list.tsx";
+import { VariableDialog } from "./variable-dialog.tsx";
+import { DeleteVariableDialog } from "./delete-variable-dialog.tsx";
 
 export function SettingsPage() {
+  const tab = useGet(activeTab$);
+  const setTab = useSet(setActiveTab$);
+
   return (
     <AppShell
       breadcrumb={["Settings"]}
       title="Settings"
-      subtitle="Configure your model providers and project preferences"
+      subtitle="Configure your model providers, secrets, and variables"
     >
       <div className="flex flex-col gap-6 px-6 pb-8">
-        <DefaultProviderCard />
-        <ProviderList />
-        <ProviderDialog />
-        <DeleteProviderDialog />
+        <Tabs
+          value={tab}
+          onValueChange={(value) => setTab(value as SettingsTab)}
+        >
+          <TabsList>
+            <TabsTrigger value="providers">Model Providers</TabsTrigger>
+            <TabsTrigger value="secrets">Secrets</TabsTrigger>
+            <TabsTrigger value="variables">Variables</TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        {tab === "providers" && (
+          <>
+            <DefaultProviderCard />
+            <ProviderList />
+            <ProviderDialog />
+            <DeleteProviderDialog />
+          </>
+        )}
+
+        {tab === "secrets" && (
+          <>
+            <SecretList />
+            <SecretDialog />
+            <DeleteSecretDialog />
+          </>
+        )}
+
+        {tab === "variables" && (
+          <>
+            <VariableList />
+            <VariableDialog />
+            <DeleteVariableDialog />
+          </>
+        )}
       </div>
     </AppShell>
   );
