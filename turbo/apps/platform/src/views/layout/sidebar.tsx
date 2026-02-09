@@ -1,5 +1,10 @@
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
-import { IconDotsVertical, IconUser, IconLogout } from "@tabler/icons-react";
+import {
+  IconDotsVertical,
+  IconUser,
+  IconLogout,
+  IconSquare,
+} from "@tabler/icons-react";
 import {
   NAVIGATION_CONFIG,
   FOOTER_NAV_ITEMS,
@@ -43,22 +48,26 @@ function SidebarContent({ collapsed }: { collapsed: boolean }) {
         <div
           className={`flex items-center h-8 ${collapsed ? "justify-center" : "gap-2.5 p-1.5"}`}
         >
-          <div className="inline-grid grid-cols-[max-content] grid-rows-[max-content] items-start justify-items-start leading-[0] shrink-0">
-            <img
-              src={theme === "dark" ? "/logo_dark.svg" : "/logo_light.svg"}
-              alt="VM0"
-              className="col-1 row-1 block max-w-none"
-              style={
-                collapsed
-                  ? { width: "32px", height: "32px" }
-                  : { width: "81px", height: "24px" }
-              }
+          {collapsed ? (
+            <IconSquare
+              size={24}
+              stroke={1.5}
+              className="text-sidebar-foreground shrink-0"
             />
-          </div>
-          {!collapsed && (
-            <p className="text-xl font-normal leading-7 text-foreground shrink-0">
-              Platform
-            </p>
+          ) : (
+            <>
+              <div className="inline-grid grid-cols-[max-content] grid-rows-[max-content] items-start justify-items-start leading-[0] shrink-0">
+                <img
+                  src={theme === "dark" ? "/logo_dark.svg" : "/logo_light.svg"}
+                  alt="VM0"
+                  className="col-1 row-1 block max-w-none"
+                  style={{ width: "81px", height: "24px" }}
+                />
+              </div>
+              <p className="text-xl font-normal leading-7 text-foreground shrink-0">
+                Platform
+              </p>
+            </>
           )}
         </div>
       </div>
