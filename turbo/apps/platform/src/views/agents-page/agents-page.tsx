@@ -30,7 +30,8 @@ import {
 } from "@vm0/ui/components/ui/table";
 import { AppShell } from "../layout/app-shell.tsx";
 import { AgentsListSkeleton } from "./agents-list-skeleton.tsx";
-import { useGet, useResolved } from "ccstate-react";
+import { SecretDialog } from "../settings-page/secret-dialog.tsx";
+import { useGet, useResolved, useSet } from "ccstate-react";
 import {
   agentsList$,
   agentsLoading$,
@@ -39,10 +40,12 @@ import {
   agentsWithMissingSecrets$,
   getAgentScheduleStatus,
 } from "../../signals/agents-page/agents-list.ts";
+import { openAddSecretDialog$ } from "../../signals/settings-page/secrets.ts";
 import { defaultModelProvider$ } from "../../signals/external/model-providers.ts";
 import { getUILabel } from "../settings-page/provider-ui-config.ts";
-import { Bed, Settings, Clock, AlertTriangle } from "lucide-react";
+import { Bed, Settings, Clock, AlertTriangle, Plus } from "lucide-react";
 import type { ComposeListItem } from "@vm0/core";
+import { detach, Reason } from "../../signals/utils.ts";
 
 export function AgentsPage() {
   return (
@@ -55,6 +58,7 @@ export function AgentsPage() {
         <MissingSecretsWarning />
         <AgentsListSection />
       </div>
+      <SecretDialog />
     </AppShell>
   );
 }
@@ -145,6 +149,7 @@ function AgentsListSection() {
 function MissingSecretsWarning() {
   const agentsWithMissingSecrets = useGet(agentsWithMissingSecrets$);
   const loading = useGet(agentsLoading$);
+  const openAddDialog = useSet(openAddSecretDialog$);
 
   // Don't show warning if still loading or no missing secrets
   if (loading || agentsWithMissingSecrets.length === 0) {
@@ -155,6 +160,10 @@ function MissingSecretsWarning() {
     (sum, agent) => sum + agent.missingSecrets.length,
     0,
   );
+
+  const handleAddSecret = (secretName: string) => {
+    detach(openAddDialog(secretName), Reason.DomCallback);
+  };
 
   return (
     <Alert variant="destructive">
@@ -167,18 +176,27 @@ function MissingSecretsWarning() {
           {totalMissingSecrets} required secret
           {totalMissingSecrets > 1 ? "s" : ""} and will fail to run:
         </p>
-        <ul className="list-disc list-inside space-y-1">
+        <ul className="list-disc list-inside space-y-2">
           {agentsWithMissingSecrets.map((agent) => (
             <li key={agent.composeId} className="text-sm">
               <strong>{agent.agentName}</strong> is missing:{" "}
-              <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                {agent.missingSecrets.join(", ")}
-              </code>
+              <span className="inline-flex flex-wrap gap-2 ml-1">
+                {agent.missingSecrets.map((secret) => (
+                  <button
+                    key={secret}
+                    onClick={() => handleAddSecret(secret)}
+                    className="inline-flex items-center gap-1 text-xs bg-muted hover:bg-muted/80 px-2 py-1 rounded border border-border transition-colors"
+                  >
+                    <Plus className="h-3 w-3" />
+                    <code>{secret}</code>
+                  </button>
+                ))}
+              </span>
             </li>
           ))}
         </ul>
         <p className="text-sm">
-          To fix this, add the required secrets in{" "}
+          Click on a secret name above to add it, or go to{" "}
           <a href="/settings" className="underline font-medium">
             Settings → Secrets
           </a>
