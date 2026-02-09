@@ -20,7 +20,10 @@
  */
 export function getPlatformUrl(): string {
   if (typeof window === "undefined") {
-    // Fallback for server-side rendering
+    // Server-side: use Caddy proxy in dev, production URL otherwise
+    if (process.env.NODE_ENV === "development") {
+      return "https://platform.vm7.ai:8443";
+    }
     return "https://platform.vm0.ai";
   }
 
