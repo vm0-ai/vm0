@@ -26,47 +26,59 @@ export const logsCommand = new Command()
       tail?: string;
       head?: string;
     }) => {
-      const state = await loadCookState();
-      if (!state.lastRunId) {
-        console.error(chalk.red("✗ No previous run found"));
-        console.error(chalk.dim("  Run 'vm0 cook <prompt>' first"));
+      try {
+        const state = await loadCookState();
+        if (!state.lastRunId) {
+          console.error(chalk.red("✗ No previous run found"));
+          console.error(chalk.dim("  Run 'vm0 cook <prompt>' first"));
+          process.exit(1);
+        }
+
+        // Build command args
+        const args = ["logs", state.lastRunId];
+        const displayArgs = [`vm0 logs ${state.lastRunId}`];
+
+        if (options.agent) {
+          args.push("--agent");
+          displayArgs.push("--agent");
+        }
+        if (options.system) {
+          args.push("--system");
+          displayArgs.push("--system");
+        }
+        if (options.metrics) {
+          args.push("--metrics");
+          displayArgs.push("--metrics");
+        }
+        if (options.network) {
+          args.push("--network");
+          displayArgs.push("--network");
+        }
+        if (options.since) {
+          args.push("--since", options.since);
+          displayArgs.push(`--since ${options.since}`);
+        }
+        if (options.tail) {
+          args.push("--tail", options.tail);
+          displayArgs.push(`--tail ${options.tail}`);
+        }
+        if (options.head) {
+          args.push("--head", options.head);
+          displayArgs.push(`--head ${options.head}`);
+        }
+
+        printCommand(displayArgs.join(" "));
+        await execVm0Command(args);
+      } catch (error) {
+        if (error instanceof Error) {
+          console.error(chalk.red(`✗ ${error.message}`));
+          if (error.cause instanceof Error) {
+            console.error(chalk.dim(`  Cause: ${error.cause.message}`));
+          }
+        } else {
+          console.error(chalk.red("✗ An unexpected error occurred"));
+        }
         process.exit(1);
       }
-
-      // Build command args
-      const args = ["logs", state.lastRunId];
-      const displayArgs = [`vm0 logs ${state.lastRunId}`];
-
-      if (options.agent) {
-        args.push("--agent");
-        displayArgs.push("--agent");
-      }
-      if (options.system) {
-        args.push("--system");
-        displayArgs.push("--system");
-      }
-      if (options.metrics) {
-        args.push("--metrics");
-        displayArgs.push("--metrics");
-      }
-      if (options.network) {
-        args.push("--network");
-        displayArgs.push("--network");
-      }
-      if (options.since) {
-        args.push("--since", options.since);
-        displayArgs.push(`--since ${options.since}`);
-      }
-      if (options.tail) {
-        args.push("--tail", options.tail);
-        displayArgs.push(`--tail ${options.tail}`);
-      }
-      if (options.head) {
-        args.push("--head", options.head);
-        displayArgs.push(`--head ${options.head}`);
-      }
-
-      printCommand(displayArgs.join(" "));
-      await execVm0Command(args);
     },
   );
