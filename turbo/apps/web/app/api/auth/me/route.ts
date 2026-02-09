@@ -1,7 +1,7 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { authContract } from "@vm0/core";
-import { clerkClient } from "@clerk/nextjs/server";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 
 const router = tsr.router(authContract, {
   me: async ({ headers }) => {
@@ -16,27 +16,13 @@ const router = tsr.router(authContract, {
       };
     }
 
-    const client = await clerkClient();
-    const user = await client.users.getUser(userId);
-
-    if (!user) {
-      return {
-        status: 404 as const,
-        body: {
-          error: { message: "User not found", code: "NOT_FOUND" },
-        },
-      };
-    }
-
-    const email = user.emailAddresses.find(
-      (e) => e.id === user.primaryEmailAddressId,
-    )?.emailAddress;
+    const email = await getUserEmail(userId);
 
     return {
       status: 200 as const,
       body: {
-        userId: user.id,
-        email: email || "",
+        userId,
+        email,
       },
     };
   },

@@ -1,22 +1,38 @@
 import { NextResponse } from "next/server";
-import { clerkClient } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { deviceCodes } from "../../../../../src/db/schema/device-codes";
+import { isSelfHosted } from "../../../../../src/env";
+import { SELF_HOSTED_USER_ID } from "../../../../../src/lib/auth/auth-provider";
+
+/**
+ * Resolve the test user ID based on the deployment mode.
+ *
+ * - Self-hosted: uses the well-known default user ID (no external service needed)
+ * - SaaS: queries Clerk Backend API for the e2e test user
+ */
+async function resolveTestUserId(): Promise<string | null> {
+  if (isSelfHosted) {
+    return SELF_HOSTED_USER_ID;
+  }
+
+  const { clerkClient } = await import("@clerk/nextjs/server");
+  const clerk = await clerkClient();
+  const { data: users } = await clerk.users.getUserList({
+    emailAddress: ["e2e+clerk_test@vm0.ai"],
+  });
+  return users[0]?.id ?? null;
+}
 
 /**
  * Test-only endpoint to approve device codes without browser automation.
  * Only available when USE_MOCK_CLAUDE is set to "true" (CI/test environments).
  *
  * This endpoint:
- * 1. Looks up the test user via Clerk Backend API (e2e+clerk_test@vm0.ai)
+ * 1. Resolves the test user (via Clerk in SaaS, via default user in self-hosted)
  * 2. Updates the device code status to "authenticated" with the test user ID
- *
- * This replaces Playwright browser automation in CI, removing ~200MB Chromium
- * dependency and making E2E auth faster and more reliable.
  */
 export async function POST(req: Request) {
-  // Only enabled in test environment
   if (process.env.USE_MOCK_CLAUDE !== "true") {
     return new NextResponse("Not found", { status: 404 });
   }
@@ -33,10 +49,8 @@ export async function POST(req: Request) {
     );
   }
 
-  // Normalize device code to uppercase for case-insensitive matching
   const normalizedCode = deviceCode.toUpperCase();
 
-  // Verify device code exists and is pending
   const [session] = await globalThis.services.db
     .select()
     .from(deviceCodes)
@@ -54,7 +68,6 @@ export async function POST(req: Request) {
     );
   }
 
-  // Check if expired
   if (new Date() > session.expiresAt) {
     return NextResponse.json(
       { error: "Device code has expired" },
@@ -62,20 +75,11 @@ export async function POST(req: Request) {
     );
   }
 
-  // Get test user ID using Clerk Backend API
-  const clerk = await clerkClient();
-  const { data: users } = await clerk.users.getUserList({
-    emailAddress: ["e2e+clerk_test@vm0.ai"],
-  });
-
-  const testUser = users[0];
-  if (!testUser) {
+  const testUserId = await resolveTestUserId();
+  if (!testUserId) {
     return NextResponse.json({ error: "Test user not found" }, { status: 500 });
   }
 
-  const testUserId = testUser.id;
-
-  // Update device code to authenticated
   await globalThis.services.db
     .update(deviceCodes)
     .set({

@@ -1,6 +1,6 @@
 "use server";
 
-import { auth } from "@clerk/nextjs/server";
+import { getAuthProvider } from "../../../src/lib/auth/auth-provider";
 import { eq, and } from "drizzle-orm";
 import { initServices } from "../../../src/lib/init-services";
 import { env } from "../../../src/env";
@@ -36,7 +36,7 @@ export async function checkLinkStatus(
   slackUserId: string,
   workspaceId: string,
 ): Promise<LinkStatus> {
-  const { userId } = await auth();
+  const userId = await getAuthProvider().getUserId();
 
   if (!userId) {
     return { isLinked: false };
@@ -81,7 +81,7 @@ export async function linkSlackAccount(
   workspaceId: string,
   channelId?: string | null,
 ): Promise<LinkResult> {
-  const { userId } = await auth();
+  const userId = await getAuthProvider().getUserId();
 
   if (!userId) {
     return { success: false, error: "Not authenticated" };

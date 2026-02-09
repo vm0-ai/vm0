@@ -9,7 +9,7 @@ describe("getUserId", () => {
     vi.clearAllMocks();
   });
 
-  it("should return userId when user is authenticated via Clerk", async () => {
+  it("should return userId from auth provider session", async () => {
     const testUserId = "user_123";
     mockAuth.mockResolvedValue({
       userId: testUserId,
@@ -18,10 +18,9 @@ describe("getUserId", () => {
     const result = await getUserId();
 
     expect(result).toBe(testUserId);
-    expect(mockAuth).toHaveBeenCalledOnce();
   });
 
-  it("should return null when user is not authenticated", async () => {
+  it("should return null when no session and no auth header", async () => {
     mockAuth.mockResolvedValue({
       userId: null,
     } as Awaited<ReturnType<typeof auth>>);
@@ -29,10 +28,9 @@ describe("getUserId", () => {
     const result = await getUserId();
 
     expect(result).toBeNull();
-    expect(mockAuth).toHaveBeenCalledOnce();
   });
 
-  it("should fall back to Clerk auth when Authorization header is not Bearer", async () => {
+  it("should return userId from session even with non-Bearer auth header", async () => {
     const testUserId = "clerk_user_789";
     mockAuth.mockResolvedValue({
       userId: testUserId,
@@ -41,18 +39,15 @@ describe("getUserId", () => {
     const result = await getUserId("Basic sometoken");
 
     expect(result).toBe(testUserId);
-    expect(mockAuth).toHaveBeenCalledOnce();
   });
 
-  it("should fall back to Clerk auth when no authHeader is provided", async () => {
-    const testUserId = "clerk_user_default";
+  it("should return null when no session and non-Bearer auth header", async () => {
     mockAuth.mockResolvedValue({
-      userId: testUserId,
+      userId: null,
     } as Awaited<ReturnType<typeof auth>>);
 
-    const result = await getUserId();
+    const result = await getUserId("Basic sometoken");
 
-    expect(result).toBe(testUserId);
-    expect(mockAuth).toHaveBeenCalledOnce();
+    expect(result).toBeNull();
   });
 });

@@ -1,9 +1,9 @@
 "use server";
 
-import { auth } from "@clerk/nextjs/server";
 import { eq, and } from "drizzle-orm";
 import { initServices } from "../../src/lib/init-services";
 import { deviceCodes } from "../../src/db/schema/device-codes";
+import { getAuthProvider } from "../../src/lib/auth/auth-provider";
 
 interface VerifyResult {
   success: boolean;
@@ -11,7 +11,7 @@ interface VerifyResult {
 }
 
 export async function verifyDeviceAction(code: string): Promise<VerifyResult> {
-  const { userId } = await auth();
+  const userId = await getAuthProvider().getUserId();
 
   if (!userId) {
     return { success: false, error: "Not authenticated" };
