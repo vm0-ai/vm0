@@ -48,6 +48,7 @@ export {
   buildAppHomeView,
   buildErrorMessage,
   buildLoginPromptMessage,
+  buildWelcomeMessage,
   buildHelpMessage,
   buildSuccessMessage,
   buildMarkdownMessage,

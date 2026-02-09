@@ -780,6 +780,82 @@ export function buildLoginPromptMessage(
 }
 
 /**
+ * Build a welcome message for the Messages tab
+ */
+export function buildWelcomeMessage(
+  agents: { agentName: string }[],
+): (Block | KnownBlock)[] {
+  const hasAgents = agents.length > 0;
+
+  const blocks: (Block | KnownBlock)[] = [
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: ":wave: *Hi! I'm VM0.*\n\nI can connect you to AI agents to help with your tasks.",
+      },
+    },
+    {
+      type: "divider",
+    },
+  ];
+
+  if (hasAgents) {
+    const agentList = agents.map((a) => `• \`${a.agentName}\``).join("\n");
+
+    blocks.push(
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `*Your Linked Agent*\n${agentList}`,
+        },
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "*How to Use*\n• Just describe what you need help with",
+        },
+      },
+    );
+  } else {
+    blocks.push(
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "*Your Linked Agent*\n_No agent linked yet._ Use the button below to link one.",
+        },
+      },
+      {
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: {
+              type: "plain_text",
+              text: "Link Agent",
+            },
+            action_id: "home_agent_link",
+            style: "primary",
+          },
+        ],
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "*How to Use*\n• Link an agent first, then describe what you need help with",
+        },
+      },
+    );
+  }
+
+  return blocks;
+}
+
+/**
  * Build a help message
  *
  * @returns Block Kit blocks

@@ -10,7 +10,7 @@ import {
   publishAppHome,
   buildAppHomeView,
   postMessage,
-  buildHelpMessage,
+  buildWelcomeMessage,
 } from "../index";
 import { buildLoginUrl } from "./shared";
 
@@ -167,7 +167,15 @@ export async function handleMessagesTabOpened(
     return;
   }
 
-  // 4. Send welcome message
+  // 4. Fetch user's agent bindings
+  const bindings = await globalThis.services.db
+    .select({
+      agentName: slackBindings.agentName,
+    })
+    .from(slackBindings)
+    .where(eq(slackBindings.slackUserLinkId, userLink.id));
+
+  // 5. Send welcome message
   const botToken = decryptCredentialValue(
     installation.encryptedBotToken,
     SECRETS_ENCRYPTION_KEY,
@@ -178,6 +186,6 @@ export async function handleMessagesTabOpened(
     client,
     context.channelId,
     "Hi! I'm VM0. I can connect you to AI agents to help with your tasks.",
-    { blocks: buildHelpMessage() },
+    { blocks: buildWelcomeMessage(bindings) },
   );
 }

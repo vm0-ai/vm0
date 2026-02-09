@@ -896,7 +896,7 @@ describe("POST /api/slack/events", () => {
   });
 
   describe("Scenario: Messages tab opened by linked user with agent", () => {
-    it("should send welcome message with help info", async () => {
+    it("should send welcome message with agent info", async () => {
       // Given I am a linked Slack user with one agent
       const { userLink, installation } = await givenLinkedSlackUser();
       await givenUserHasAgent(userLink, {
@@ -925,12 +925,18 @@ describe("POST /api/slack/events", () => {
       const data = await getFormData(slackHandlers.mocked.postMessage);
       expect(data.channel).toBe("D-dm-channel");
 
-      // Blocks should include help content
+      // Blocks should include agent info
       const blocks = JSON.parse((data.blocks as string) ?? "[]") as Array<{
         type: string;
         text?: { text: string };
       }>;
-      expect(blocks.length).toBeGreaterThan(0);
+      const texts = blocks
+        .filter(
+          (b): b is { type: string; text: { text: string } } =>
+            b.type === "section" && !!b.text,
+        )
+        .map((b) => b.text.text);
+      expect(texts.some((t) => t.includes("my-helper"))).toBe(true);
     });
   });
 
