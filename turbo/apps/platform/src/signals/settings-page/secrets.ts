@@ -23,9 +23,13 @@ export const secrets$ = computed(async (get) => {
   const fetchFn = get(fetch$);
   const resp = await fetchFn("/api/secrets");
   const data = (await resp.json()) as SecretListResponse;
-  return data.secrets.sort(
-    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-  );
+  // Filter out model-provider secrets (only show user and connector secrets)
+  return data.secrets
+    .filter((s) => s.type !== "model-provider")
+    .sort(
+      (a, b) =>
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
 });
 
 /**
@@ -44,7 +48,7 @@ export const missingSecrets$ = computed(async (get) => {
 /**
  * Information about a missing secret and which schedules need it.
  */
-export interface ScheduleMissingSecret {
+interface ScheduleMissingSecret {
   secretName: string;
   affectedSchedules: {
     composeName: string;
