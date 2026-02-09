@@ -62,12 +62,15 @@ services:
   cron:
     image: curlimages/curl:latest
     restart: unless-stopped
+    stop_signal: SIGTERM
+    stop_grace_period: 3s
     entrypoint: /bin/sh
     command: >
-      -c "while true; do
-        sleep 60;
+      -c "trap 'kill $! 2>/dev/null; exit 0' TERM INT;
+      while true; do
         curl -sf http://web:3000/api/cron/execute-schedules || true;
         curl -sf http://web:3000/api/cron/cleanup-sandboxes || true;
+        sleep 60 & wait $!;
       done"
     networks:
       - vm0
