@@ -1,5 +1,4 @@
 import { chromium } from "playwright";
-import { clerk, clerkSetup } from "@clerk/testing/playwright";
 import { spawn, ChildProcess } from "child_process";
 import * as dotenv from "dotenv";
 
@@ -132,27 +131,38 @@ export async function automateCliAuth(apiHost?: string) {
     const context = await browser.newContext();
     const page = await context.newPage();
 
-    // Step 4: Setup Clerk authentication
-    await clerkSetup();
-
-    // Step 5: Login to Clerk
-    // Use configured API URL
+    // Step 4: Login via Clerk email + OTP code
     const baseUrl = apiUrl;
 
     // If Vercel bypass secret is available, set bypass cookie via query parameter
     // This avoids CORS issues that occur when using HTTP headers
     const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-    let initialUrl = baseUrl;
     if (bypassSecret) {
-      initialUrl = `${baseUrl}?x-vercel-set-bypass-cookie=samesitenone&x-vercel-protection-bypass=${bypassSecret}`;
+      const bypassUrl = `${baseUrl}?x-vercel-set-bypass-cookie=samesitenone&x-vercel-protection-bypass=${bypassSecret}`;
       console.log("🔓 Setting Vercel bypass cookie via query parameter");
+      await page.goto(bypassUrl);
     }
 
-    await page.goto(initialUrl);
-    await clerk.signIn({
-      page,
-      emailAddress: "e2e+clerk_test@vm0.ai",
-    });
+    // Navigate to sign-in page
+    await page.goto(`${baseUrl}/sign-in`);
+    await page.waitForLoadState("networkidle");
+
+    // Enter email address
+    const emailInput = page.locator('input[name="identifier"]');
+    await emailInput.waitFor({ state: "visible", timeout: 10000 });
+    await emailInput.fill("e2e+clerk_test@vm0.ai");
+    console.log("📧 Entered email address");
+
+    // Click Continue button
+    await page.locator('.cl-formButtonPrimary').click();
+    console.log("➡️ Clicked Continue");
+
+    // Wait for OTP code input to appear and enter test code
+    const otpInput = page.locator('.cl-otpCodeFieldInput input').first();
+    await otpInput.waitFor({ state: "visible", timeout: 10000 });
+    // Type the code character by character to trigger Clerk's OTP input handling
+    await page.keyboard.type("424242");
+    console.log("🔢 Entered OTP code");
 
     console.log("✅ Clerk login successful");
     console.log(`🔗 Visiting auth page: ${baseUrl}/cli-auth`);
