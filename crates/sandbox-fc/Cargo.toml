@@ -7,7 +7,7 @@ edition.workspace = true
 async-trait.workspace = true
 clap = { workspace = true, features = ["derive"] }
 libc.workspace = true
-nix = { workspace = true, features = ["user", "inotify"] }
+nix = { workspace = true, features = ["user", "inotify", "fs"] }
 sandbox.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

@@ -208,7 +208,6 @@ async fn run_exec(
         kernel_path: kernel,
         rootfs_path: rootfs,
         base_dir,
-        instance_index: 0,
         concurrency: 1,
         proxy_port: None,
         snapshot,

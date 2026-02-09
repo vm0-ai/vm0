@@ -17,10 +17,6 @@ const API_READY_TIMEOUT: Duration = Duration::from_secs(5);
 /// Timeout for waiting for the guest to connect via vsock after start.
 const VSOCK_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Network namespace pool index used for snapshot creation (63 = last slot,
-/// avoids collision with running sandbox instances that use lower indices).
-const SNAPSHOT_POOL_INDEX: u32 = 63;
-
 /// Configuration for creating a snapshot.
 #[derive(Debug, Clone)]
 pub struct SnapshotCreateConfig {
@@ -98,9 +94,8 @@ pub async fn create_snapshot(
 
     info!("overlay created");
 
-    // 3. Create network namespace (pool of 1, index 63 to avoid collision).
+    // 3. Create network namespace (pool of 1, index auto-allocated via flock).
     let mut netns_pool = NetnsPool::create(NetnsPoolConfig {
-        index: SNAPSHOT_POOL_INDEX,
         size: 1,
         proxy_port: None,
     })

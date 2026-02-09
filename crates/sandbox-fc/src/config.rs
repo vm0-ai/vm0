@@ -7,8 +7,6 @@ pub struct FirecrackerConfig {
     pub rootfs_path: PathBuf,
     /// Base directory for runtime data (workspaces, overlays, etc.).
     pub base_dir: PathBuf,
-    /// Per-host unique index (0–63) for network isolation. Can be reused after shutdown.
-    pub instance_index: u32,
     /// Number of VMs that can run concurrently (determines pool pre-warm size).
     pub concurrency: usize,
     /// Port of the HTTP/HTTPS proxy. When set, iptables rules redirect traffic through it.

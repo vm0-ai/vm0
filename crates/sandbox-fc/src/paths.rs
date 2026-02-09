@@ -1,5 +1,9 @@
 use std::path::{Path, PathBuf};
 
+/// Directory for flock-based pool index allocation.
+/// `/var/lock` is the FHS-standard location for lock files (mode 1777).
+pub const LOCK_DIR: &str = "/var/lock";
+
 /// Factory-level paths derived from the base directory.
 pub struct FactoryPaths {
     base_dir: PathBuf,
