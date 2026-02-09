@@ -209,11 +209,6 @@ impl FirecrackerSandbox {
 
         let username = current_username()?;
 
-        let actual_vsock_dir = self.paths.vsock_dir().display().to_string();
-        let actual_overlay = self.overlay.display().to_string();
-        let bind_vsock_dir = snapshot.vsock_bind_dir.display().to_string();
-        let bind_overlay = snapshot.overlay_bind_path.display().to_string();
-
         // Ensure bind mount target directories exist.
         tokio::fs::create_dir_all(&snapshot.vsock_bind_dir)
             .await
@@ -226,10 +221,13 @@ impl FirecrackerSandbox {
         }
 
         // Create empty file as bind mount target for the overlay.
-        if !tokio::fs::try_exists(&snapshot.overlay_bind_path)
+        let exists = tokio::fs::try_exists(&snapshot.overlay_bind_path)
             .await
-            .unwrap_or(false)
-        {
+            .unwrap_or_else(|e| {
+                warn!(error = %e, "failed to check overlay mount target");
+                false
+            });
+        if !exists {
             tokio::fs::write(&snapshot.overlay_bind_path, b"")
                 .await
                 .map_err(|e| {
@@ -237,19 +235,19 @@ impl FirecrackerSandbox {
                 })?;
         }
 
-        // unshare --mount bash -c "bind mounts && ip netns exec {ns} sudo -u {user} firecracker --api-sock {path}"
-        let fc_binary = self.factory_config.binary_path.display().to_string();
-        let api_sock = self.paths.api_sock().display().to_string();
-        let ns_name = &self.network.name;
-
-        let inner_cmd = format!(
-            "mount --bind \"{actual_vsock_dir}\" \"{bind_vsock_dir}\" && \
-             mount --bind \"{actual_overlay}\" \"{bind_overlay}\" && \
-             ip netns exec \"{ns_name}\" sudo -u \"{username}\" \"{fc_binary}\" --api-sock \"{api_sock}\""
-        );
+        // Use positional args ($1..$8) to avoid shell injection from paths.
+        let inner_cmd = r#"mount --bind "$1" "$2" && mount --bind "$3" "$4" && exec ip netns exec "$5" sudo -u "$6" "$7" --api-sock "$8""#;
 
         let mut child = tokio::process::Command::new("sudo")
-            .args(["unshare", "--mount", "bash", "-c", &inner_cmd])
+            .args(["unshare", "--mount", "bash", "-c", inner_cmd, "_"])
+            .arg(self.paths.vsock_dir()) // $1
+            .arg(&snapshot.vsock_bind_dir) // $2
+            .arg(&self.overlay) // $3
+            .arg(&snapshot.overlay_bind_path) // $4
+            .arg(&self.network.name) // $5
+            .arg(&username) // $6
+            .arg(&self.factory_config.binary_path) // $7
+            .arg(self.paths.api_sock()) // $8
             .current_dir(self.paths.workspace())
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
