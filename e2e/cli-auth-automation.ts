@@ -145,7 +145,7 @@ export async function automateCliAuth(apiHost?: string) {
 
     // Navigate to sign-in page
     await page.goto(`${baseUrl}/sign-in`);
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
 
     // Enter email address
     const emailInput = page.locator('input[name="identifier"]');
@@ -157,19 +157,37 @@ export async function automateCliAuth(apiHost?: string) {
     await page.locator('.cl-formButtonPrimary').click();
     console.log("➡️ Clicked Continue");
 
-    // Wait for OTP code input to appear and enter test code
-    const otpInput = page.locator('.cl-otpCodeFieldInput input').first();
-    await otpInput.waitFor({ state: "visible", timeout: 10000 });
-    // Type the code character by character to trigger Clerk's OTP input handling
+    // Clerk shows password by default; switch to email code method
+    const useAnotherMethod = page.locator('a:has-text("Use another method"), button:has-text("Use another method")');
+    await useAnotherMethod.waitFor({ state: "visible", timeout: 10000 });
+    await useAnotherMethod.click();
+    console.log("🔄 Clicked 'Use another method'");
+
+    // Select email code option
+    const emailCodeOption = page.locator('button:has-text("Email code")');
+    await emailCodeOption.waitFor({ state: "visible", timeout: 10000 });
+    await emailCodeOption.click();
+    console.log("📧 Selected 'Email code'");
+
+    // Wait for OTP input to appear and Clerk to finish sending the code
+    const otpInput = page.locator('input[data-input-otp="true"]');
+    await otpInput.waitFor({ state: "attached", timeout: 10000 });
+    // Wait for Clerk to complete the "prepare" step (sending the email)
+    await page.waitForTimeout(2000);
+
+    // Enter test OTP code 424242 (Clerk accepts this in development mode)
+    await otpInput.focus();
     await page.keyboard.type("424242");
     console.log("🔢 Entered OTP code");
 
-    console.log("✅ Clerk login successful");
+    // Wait for Clerk to complete authentication (should redirect away from /sign-in)
+    await page.waitForURL((url) => !url.pathname.includes('/sign-in'), { timeout: 15000 });
+    console.log(`✅ Clerk login successful (redirected to ${page.url()})`);
     console.log(`🔗 Visiting auth page: ${baseUrl}/cli-auth`);
 
     // Step 6: Visit CLI auth page
     await page.goto(`${baseUrl}/cli-auth`);
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
 
     // Step 7: Enter device code
     // Device code format: XXXX-XXXX, entered into 8 separate input boxes
