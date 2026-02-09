@@ -5,17 +5,16 @@ import Image from "next/image";
 import { Link } from "../../navigation";
 import { useTranslations } from "next-intl";
 import { useTheme } from "./ThemeProvider";
-import { useUser, useClerk } from "@clerk/nextjs";
 import { IconArrowRight } from "@tabler/icons-react";
 import ThemeToggle from "./ThemeToggle";
 import LanguageSwitcher from "./LanguageSwitcher";
 import { getPlatformUrl } from "../../src/lib/url";
+import { useAuth } from "../hooks/use-auth";
 
 export default function Navbar() {
   const { theme } = useTheme();
   const t = useTranslations("nav");
-  const { isSignedIn } = useUser();
-  const { signOut } = useClerk();
+  const { isSignedIn, signOut } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Close mobile menu on resize to desktop

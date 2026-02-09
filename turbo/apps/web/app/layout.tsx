@@ -8,12 +8,11 @@ import {
 } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { getClerkPublishableKey } from "../src/lib/clerk-config";
+import { isSelfHosted } from "../src/env";
 import { ThemeProvider } from "./components/ThemeProvider";
 import "./globals.css";
 import "./landing.css";
 import "./blog.css";
-
-const bypassAuth = process.env.BYPASS_AUTH === "true";
 
 const notoSans = Noto_Sans({
   subsets: ["latin"],
@@ -134,13 +133,17 @@ export default function RootLayout({
   const content = (
     <html lang="en" data-theme="dark" suppressHydrationWarning>
       <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
-        <link rel="dns-prefetch" href="https://plausible.io" />
+        {!isSelfHosted && (
+          <>
+            <link rel="preconnect" href="https://fonts.googleapis.com" />
+            <link
+              rel="preconnect"
+              href="https://fonts.gstatic.com"
+              crossOrigin="anonymous"
+            />
+            <link rel="dns-prefetch" href="https://plausible.io" />
+          </>
+        )}
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -157,18 +160,22 @@ export default function RootLayout({
               `,
           }}
         />
-        <Script
-          src="https://plausible.io/js/pa-eEj_2G8vS8xPlTUzW2A3U.js"
-          data-domain="vm0.ai"
-          strategy="afterInteractive"
-          async
-        />
-        <Script id="plausible-init" strategy="afterInteractive">
-          {`
-              window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
-              plausible.init({domain:"vm0.ai"})
-            `}
-        </Script>
+        {!isSelfHosted && (
+          <>
+            <Script
+              src="https://plausible.io/js/pa-eEj_2G8vS8xPlTUzW2A3U.js"
+              data-domain="vm0.ai"
+              strategy="afterInteractive"
+              async
+            />
+            <Script id="plausible-init" strategy="afterInteractive">
+              {`
+                window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
+                plausible.init({domain:"vm0.ai"})
+              `}
+            </Script>
+          </>
+        )}
       </head>
       <body
         className={`${notoSans.variable} ${firaCode.variable} ${firaMono.variable} ${jetBrainsMono.variable}`}
@@ -241,7 +248,7 @@ export default function RootLayout({
     </html>
   );
 
-  if (bypassAuth) {
+  if (isSelfHosted) {
     return content;
   }
 

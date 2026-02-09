@@ -4,11 +4,11 @@ import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { IconChevronDown, IconFile } from "@tabler/icons-react";
-import { useUser } from "@clerk/nextjs";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
 import AnnouncementBanner from "./AnnouncementBanner";
 import { getPlatformUrl } from "../../src/lib/url";
+import { useAuth } from "../hooks/use-auth";
 
 const TYPED_TEXT = "Help me build an agent for tech news aggregation";
 const RUN_TYPED_TEXT = {
@@ -24,7 +24,7 @@ interface LandingPageProps {
 
 // eslint-disable-next-line complexity
 export default function LandingPage({ claudeCodeVersion }: LandingPageProps) {
-  const { isSignedIn } = useUser();
+  const { isSignedIn } = useAuth();
   const [activeTab, setActiveTab] = useState<"agents" | "yaml">("agents");
   const [selectedAgent, setSelectedAgent] = useState<
     "hackernews" | "tiktok" | "blog" | "daily-report"

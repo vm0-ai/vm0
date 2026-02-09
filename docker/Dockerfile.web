@@ -35,6 +35,8 @@ RUN sed -i 's/const nextConfig = {/const nextConfig = {\n  output: "standalone",
 ENV SKIP_ENV_VALIDATION=true
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_BASE_URL=http://localhost
+ENV SELF_HOSTED=true
+
 # Point Strapi to the build-time mock server (see below)
 ENV NEXT_PUBLIC_STRAPI_URL=http://localhost:1337
 

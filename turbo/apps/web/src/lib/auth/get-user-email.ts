@@ -1,15 +1,9 @@
-import { clerkClient } from "@clerk/nextjs/server";
+import { getAuthProvider } from "./auth-provider";
 
 /**
- * Get user's primary email address from Clerk
+ * Get user's primary email address
  */
 export async function getUserEmail(userId: string): Promise<string> {
-  const client = await clerkClient();
-  const user = await client.users.getUser(userId);
-
-  const email = user.emailAddresses.find(
-    (e) => e.id === user.primaryEmailAddressId,
-  )?.emailAddress;
-
-  return email || "";
+  const provider = getAuthProvider();
+  return provider.getUserEmail(userId);
 }

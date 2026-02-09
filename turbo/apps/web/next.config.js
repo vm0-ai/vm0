@@ -51,6 +51,9 @@ const nextConfig = {
   },
   allowedDevOrigins: ["*.vm7.ai"],
   serverExternalPackages: ["ably"],
+  env: {
+    NEXT_PUBLIC_SELF_HOSTED: process.env.SELF_HOSTED || "false",
+  },
 };
 
 const isProduction = process.env.VERCEL_ENV === "production";

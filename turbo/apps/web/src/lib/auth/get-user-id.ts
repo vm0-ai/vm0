@@ -1,14 +1,14 @@
-import { auth } from "@clerk/nextjs/server";
 import { eq, and, gt } from "drizzle-orm";
 import { cliTokens } from "../../db/schema/cli-tokens";
 import { isSandboxToken } from "./sandbox-token";
+import { getAuthProvider } from "./auth-provider";
 import { logger } from "../logger";
 
 const log = logger("auth:user");
 
 /**
- * Get the current user ID from CLI token or Clerk session
- * Returns null if not authenticated
+ * Get the current user ID from CLI token or auth provider session.
+ * Returns null if not authenticated.
  *
  * @param authHeader - The Authorization header value (optional)
  *
@@ -17,7 +17,9 @@ const log = logger("auth:user");
  * This ensures sandbox tokens cannot access normal user APIs.
  */
 export async function getUserId(authHeader?: string): Promise<string | null> {
-  const { userId } = await auth();
+  // Session auth via provider (Clerk or local single-user)
+  const provider = getAuthProvider();
+  const userId = await provider.getUserId();
   if (userId) {
     return userId;
   }
