@@ -24,20 +24,30 @@ impl FormatTime for Elapsed {
 #[derive(Parser)]
 #[command(name = "sandbox-fc")]
 struct Cli {
+    /// Path to the Firecracker binary
+    #[arg(long)]
+    firecracker: PathBuf,
+    /// Path to the guest kernel image
+    #[arg(long)]
+    kernel: PathBuf,
+    /// Path to the root filesystem image
+    #[arg(long)]
+    rootfs: PathBuf,
     #[command(subcommand)]
     command: Command,
+}
+
+#[derive(Debug)]
+struct SharedPaths {
+    firecracker: PathBuf,
+    kernel: PathBuf,
+    rootfs: PathBuf,
 }
 
 #[derive(Subcommand)]
 enum Command {
     /// Create a snapshot from a fresh VM boot
     Snapshot {
-        /// Path to the Firecracker binary
-        firecracker: PathBuf,
-        /// Path to the guest kernel image
-        kernel: PathBuf,
-        /// Path to the root filesystem image
-        rootfs: PathBuf,
         /// Directory where snapshot artifacts will be written
         output_dir: PathBuf,
         /// Number of vCPUs for the VM
@@ -49,19 +59,23 @@ enum Command {
     },
     /// Boot a VM and execute a command
     Exec {
-        /// Path to the Firecracker binary
-        firecracker: PathBuf,
-        /// Path to the guest kernel image
-        kernel: PathBuf,
-        /// Path to the root filesystem image
-        rootfs: PathBuf,
-        /// Base directory for runtime data
-        base_dir: PathBuf,
         /// Command to execute inside the VM
         cmd: String,
+        /// Base directory for runtime data
+        #[arg(long)]
+        base_dir: PathBuf,
         /// Snapshot directory to restore from (created by `snapshot` subcommand)
         #[arg(long)]
         snapshot_dir: Option<PathBuf>,
+        /// Number of vCPUs for the VM
+        #[arg(long, default_value_t = 1)]
+        vcpu_count: u32,
+        /// Memory size in MiB for the VM
+        #[arg(long, default_value_t = 256)]
+        memory_mb: u32,
+        /// Execution timeout in milliseconds
+        #[arg(long, default_value_t = 5000)]
+        timeout: u32,
     },
 }
 
@@ -73,33 +87,37 @@ async fn main() -> ExitCode {
 
     let cli = Cli::parse();
 
+    let paths = SharedPaths {
+        firecracker: cli.firecracker,
+        kernel: cli.kernel,
+        rootfs: cli.rootfs,
+    };
+
     let result = match cli.command {
         Command::Snapshot {
-            firecracker,
-            kernel,
-            rootfs,
             output_dir,
             vcpu_count,
             memory_mb,
+        } => run_snapshot(paths, output_dir, vcpu_count, memory_mb).await,
+        Command::Exec {
+            cmd,
+            base_dir,
+            snapshot_dir,
+            vcpu_count,
+            memory_mb,
+            timeout,
         } => {
-            run_snapshot(
-                firecracker,
-                kernel,
-                rootfs,
-                output_dir,
+            run_exec(
+                paths,
+                base_dir,
+                &cmd,
+                snapshot_dir,
                 vcpu_count,
                 memory_mb,
+                timeout,
             )
             .await
         }
-        Command::Exec {
-            firecracker,
-            kernel,
-            rootfs,
-            base_dir,
-            cmd,
-            snapshot_dir,
-        } => run_exec(firecracker, kernel, rootfs, base_dir, &cmd, snapshot_dir).await,
     };
 
     if let Err(e) = result {
@@ -125,17 +143,15 @@ async fn resolve_or_create(path: PathBuf) -> Result<PathBuf, Box<dyn std::error:
 }
 
 async fn run_snapshot(
-    firecracker: PathBuf,
-    kernel: PathBuf,
-    rootfs: PathBuf,
+    paths: SharedPaths,
     output_dir: PathBuf,
     vcpu_count: u32,
     memory_mb: u32,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let config = sandbox_fc::SnapshotCreateConfig {
-        binary_path: resolve_path(firecracker).await?,
-        kernel_path: resolve_path(kernel).await?,
-        rootfs_path: resolve_path(rootfs).await?,
+        binary_path: resolve_path(paths.firecracker).await?,
+        kernel_path: resolve_path(paths.kernel).await?,
+        rootfs_path: resolve_path(paths.rootfs).await?,
         output_dir: resolve_or_create(output_dir).await?,
         vcpu_count,
         memory_mb,
@@ -153,16 +169,17 @@ async fn run_snapshot(
 }
 
 async fn run_exec(
-    firecracker: PathBuf,
-    kernel: PathBuf,
-    rootfs: PathBuf,
+    paths: SharedPaths,
     base_dir: PathBuf,
     cmd: &str,
     snapshot_dir: Option<PathBuf>,
+    vcpu_count: u32,
+    memory_mb: u32,
+    timeout: u32,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let firecracker = resolve_path(firecracker).await?;
-    let kernel = resolve_path(kernel).await?;
-    let rootfs = resolve_path(rootfs).await?;
+    let firecracker = resolve_path(paths.firecracker).await?;
+    let kernel = resolve_path(paths.kernel).await?;
+    let rootfs = resolve_path(paths.rootfs).await?;
     let base_dir = resolve_or_create(base_dir).await?;
     let snapshot_dir = match snapshot_dir {
         Some(d) => Some(resolve_path(d).await?),
@@ -197,8 +214,9 @@ async fn run_exec(
     let sandbox_config = SandboxConfig {
         id: Uuid::new_v4(),
         resources: ResourceLimits {
-            cpu_count: 1,
-            memory_mb: 256,
+            cpu_count: vcpu_count,
+            memory_mb,
+            // Sandbox-level lifetime cap (distinct from per-exec timeout_ms).
             timeout_secs: 30,
         },
     };
@@ -209,7 +227,7 @@ async fn run_exec(
     let result = sandbox
         .exec(&ExecRequest {
             cmd,
-            timeout_ms: 5000,
+            timeout_ms: timeout,
         })
         .await?;
 
