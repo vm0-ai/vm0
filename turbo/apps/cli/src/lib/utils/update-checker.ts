@@ -1,4 +1,4 @@
-import { spawn } from "child_process";
+import { spawn, ChildProcess } from "child_process";
 import chalk from "chalk";
 
 const PACKAGE_NAME = "@vm0/cli";
@@ -6,6 +6,18 @@ const NPM_REGISTRY_URL = `https://registry.npmjs.org/${encodeURIComponent(PACKAG
 const TIMEOUT_MS = 5000;
 
 type PackageManager = "npm" | "pnpm" | "bun" | "yarn" | "unknown";
+
+/**
+ * Internal state for pending upgrade process
+ */
+interface UpgradeHandle {
+  promise: Promise<boolean>;
+  child: ChildProcess;
+  packageManager: "npm" | "pnpm";
+}
+
+// Module-level state for pending upgrade
+let pendingUpgrade: UpgradeHandle | null = null;
 
 /**
  * Detect which package manager was used to install the CLI
@@ -229,18 +241,19 @@ export async function checkAndUpgrade(
 }
 
 /**
- * Perform silent upgrade after command completion.
- * - Checks for new version
- * - Spawns upgrade process
- * - Waits up to 5s for result
- * - Shows whisper message only on failure
+ * Start silent upgrade in background.
+ * Call this at command start. Does NOT block after spawning.
+ * The upgrade runs in parallel with command execution.
  *
  * @param currentVersion - Current CLI version
- * @returns Promise that resolves when upgrade check/attempt is complete
+ * @returns Promise that resolves after starting upgrade (or determining no upgrade needed)
  */
-export async function silentUpgradeAfterCommand(
+export async function startSilentUpgrade(
   currentVersion: string,
 ): Promise<void> {
+  // Reset any previous state
+  pendingUpgrade = null;
+
   // Check for new version
   const latestVersion = await getLatestVersion();
 
@@ -257,7 +270,7 @@ export async function silentUpgradeAfterCommand(
     return;
   }
 
-  // Spawn upgrade process and wait for result with timeout
+  // Spawn upgrade process (don't wait for completion)
   const isWindows = process.platform === "win32";
   const command = isWindows ? `${packageManager}.cmd` : packageManager;
   const args =
@@ -265,33 +278,51 @@ export async function silentUpgradeAfterCommand(
       ? ["add", "-g", `${PACKAGE_NAME}@latest`]
       : ["install", "-g", `${PACKAGE_NAME}@latest`];
 
-  const upgradeResult = await new Promise<boolean>((resolve) => {
-    const child = spawn(command, args, {
-      stdio: "pipe", // Capture output instead of inheriting
-      shell: isWindows,
-      detached: !isWindows, // Detach on non-Windows
-      windowsHide: true,
-    });
-
-    // Set up timeout - kill child process to prevent orphaned processes
-    const timeoutId = setTimeout(() => {
-      child.kill();
-      resolve(false); // Timeout = failure
-    }, TIMEOUT_MS);
-
-    child.on("close", (code) => {
-      clearTimeout(timeoutId);
-      resolve(code === 0);
-    });
-
-    child.on("error", () => {
-      clearTimeout(timeoutId);
-      resolve(false);
-    });
+  const child = spawn(command, args, {
+    stdio: "pipe", // Capture output instead of inheriting
+    shell: isWindows,
+    detached: !isWindows, // Detach on non-Windows
+    windowsHide: true,
   });
 
+  const promise = new Promise<boolean>((resolve) => {
+    child.on("close", (code) => resolve(code === 0));
+    child.on("error", () => resolve(false));
+  });
+
+  pendingUpgrade = { promise, child, packageManager };
+}
+
+/**
+ * Wait for pending upgrade to complete and show warning if failed.
+ * Call this at command end.
+ *
+ * @param timeout - Max time to wait if upgrade still running (ms)
+ * @returns Promise that resolves when upgrade completes or times out
+ */
+export async function waitForSilentUpgrade(
+  timeout: number = TIMEOUT_MS,
+): Promise<void> {
+  if (!pendingUpgrade) {
+    return;
+  }
+
+  const { promise, child, packageManager } = pendingUpgrade;
+  pendingUpgrade = null; // Clear state
+
+  // Race between upgrade completion and timeout
+  const result = await Promise.race([
+    promise,
+    new Promise<false>((resolve) => {
+      setTimeout(() => {
+        child.kill();
+        resolve(false);
+      }, timeout);
+    }),
+  ]);
+
   // Show whisper message only on failure
-  if (!upgradeResult) {
+  if (!result) {
     console.log(
       chalk.yellow(
         `\n⚠ vm0 auto upgrade failed. Please run: ${getManualUpgradeCommand(packageManager)}`,

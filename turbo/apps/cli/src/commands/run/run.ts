@@ -21,7 +21,10 @@ import {
   showNextSteps,
   handleRunError,
 } from "./shared";
-import { silentUpgradeAfterCommand } from "../../lib/utils/update-checker";
+import {
+  startSilentUpgrade,
+  waitForSilentUpgrade,
+} from "../../lib/utils/update-checker";
 
 declare const __CLI_VERSION__: string;
 
@@ -100,6 +103,11 @@ export const mainRunCommand = new Command()
       },
     ) => {
       try {
+        // Start upgrade in background at command start (runs in parallel)
+        if (options.autoUpdate !== false) {
+          await startSilentUpgrade(__CLI_VERSION__);
+        }
+
         // 1. Parse identifier for optional scope and version specifier
         const { scope, name, version } = parseIdentifier(identifier);
 
@@ -231,9 +239,9 @@ export const mainRunCommand = new Command()
         }
         showNextSteps(result);
 
-        // Silent upgrade after successful command completion
+        // Wait for upgrade at command end (shows warning if failed)
         if (options.autoUpdate !== false) {
-          await silentUpgradeAfterCommand(__CLI_VERSION__);
+          await waitForSilentUpgrade();
         }
       } catch (error) {
         handleRunError(error, identifier);

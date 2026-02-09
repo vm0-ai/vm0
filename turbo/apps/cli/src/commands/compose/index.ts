@@ -22,7 +22,10 @@ import {
   type SkillUploadResult,
 } from "../../lib/storage/system-storage";
 import { isInteractive, promptConfirm } from "../../lib/utils/prompt-utils";
-import { silentUpgradeAfterCommand } from "../../lib/utils/update-checker";
+import {
+  startSilentUpgrade,
+  waitForSilentUpgrade,
+} from "../../lib/utils/update-checker";
 
 declare const __CLI_VERSION__: string;
 
@@ -438,9 +441,9 @@ async function finalizeCompose(
     );
   }
 
-  // Silent upgrade after successful command completion
+  // Wait for upgrade at command end (shows warning if failed)
   if (options.autoUpdate !== false) {
-    await silentUpgradeAfterCommand(__CLI_VERSION__);
+    await waitForSilentUpgrade();
   }
 
   return result;
@@ -626,6 +629,11 @@ export const composeCommand = new Command()
       if (options.json) {
         options.yes = true;
         options.autoUpdate = false;
+      }
+
+      // Start upgrade in background at command start (runs in parallel)
+      if (options.autoUpdate !== false) {
+        await startSilentUpgrade(__CLI_VERSION__);
       }
 
       try {

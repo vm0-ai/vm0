@@ -1340,7 +1340,7 @@ agents:
     });
   });
 
-  describe("silent auto-upgrade after successful compose", () => {
+  describe("parallel auto-upgrade", () => {
     const originalArgv = process.argv;
 
     beforeEach(async () => {
