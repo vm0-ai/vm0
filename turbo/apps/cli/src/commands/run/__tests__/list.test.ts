@@ -242,6 +242,23 @@ describe("run list command", () => {
       expect(capturedUrl?.searchParams.get("status")).toBe("failed");
     });
 
+    it("should pass --until as ISO timestamp to API", async () => {
+      let capturedUrl: URL | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs", ({ request }) => {
+          capturedUrl = new URL(request.url);
+          return HttpResponse.json({ runs: [] });
+        }),
+      );
+
+      await listCommand.parseAsync(["node", "cli", "--until", "1h"]);
+
+      const until = capturedUrl?.searchParams.get("until");
+      expect(until).toBeTruthy();
+      // Should be a valid ISO timestamp
+      expect(new Date(until!).toISOString()).toBe(until);
+    });
+
     it("should show 'No runs found matching filters' when filters used and no results", async () => {
       server.use(
         http.get("http://localhost:3000/api/agent/runs", () => {
@@ -285,9 +302,20 @@ describe("run list command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should error when --limit is out of range", async () => {
+    it("should error when --limit exceeds maximum", async () => {
       await expect(async () => {
         await listCommand.parseAsync(["node", "cli", "--limit", "200"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--limit must be between 1 and 100"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should error when --limit is zero or negative", async () => {
+      await expect(async () => {
+        await listCommand.parseAsync(["node", "cli", "--limit", "0"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
