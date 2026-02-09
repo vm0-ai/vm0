@@ -92,6 +92,20 @@ async fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// Resolve a path to absolute. Creates parent directories for `output_dir`-style
+/// paths that may not exist yet — callers should use [`resolve_or_create`] for those.
+async fn resolve_path(path: PathBuf) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    Ok(tokio::fs::canonicalize(&path)
+        .await
+        .map_err(|e| format!("resolve path {}: {e}", path.display()))?)
+}
+
+/// Create the directory if needed, then resolve to absolute.
+async fn resolve_or_create(path: PathBuf) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    tokio::fs::create_dir_all(&path).await?;
+    resolve_path(path).await
+}
+
 async fn run_snapshot(
     firecracker: PathBuf,
     kernel: PathBuf,
@@ -99,10 +113,10 @@ async fn run_snapshot(
     output_dir: PathBuf,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let config = sandbox_fc::SnapshotCreateConfig {
-        binary_path: firecracker,
-        kernel_path: kernel,
-        rootfs_path: rootfs,
-        output_dir,
+        binary_path: resolve_path(firecracker).await?,
+        kernel_path: resolve_path(kernel).await?,
+        rootfs_path: resolve_path(rootfs).await?,
+        output_dir: resolve_or_create(output_dir).await?,
         vcpu_count: 1,
         memory_mb: 256,
     };
@@ -126,6 +140,15 @@ async fn run_exec(
     cmd: &str,
     snapshot_dir: Option<PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let firecracker = resolve_path(firecracker).await?;
+    let kernel = resolve_path(kernel).await?;
+    let rootfs = resolve_path(rootfs).await?;
+    let base_dir = resolve_or_create(base_dir).await?;
+    let snapshot_dir = match snapshot_dir {
+        Some(d) => Some(resolve_path(d).await?),
+        None => None,
+    };
+
     let snapshot = snapshot_dir.map(|dir| {
         let output = sandbox_fc::SnapshotOutputPaths::new(dir.clone());
         let work = sandbox_fc::SandboxPaths::new(dir.join("work"));

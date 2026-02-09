@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use tokio::io::AsyncBufReadExt;
 use tracing::info;
 
 use crate::api::ApiClient;
@@ -126,6 +127,14 @@ async fn run_snapshot_workflow(
     let api_sock = paths.api_sock();
     let username = process::current_username().map_err(|e| SnapshotError::Setup(e.to_string()))?;
 
+    info!(
+        netns = %network.name,
+        binary = %config.binary_path.display(),
+        api_sock = %api_sock.display(),
+        user = %username,
+        "spawning firecracker"
+    );
+
     let mut child = tokio::process::Command::new("sudo")
         .arg("ip")
         .arg("netns")
@@ -139,10 +148,32 @@ async fn run_snapshot_workflow(
         .arg(&api_sock)
         .current_dir(paths.workspace())
         .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| SnapshotError::Process(format!("spawn firecracker: {e}")))?;
+
+    // Stream stdout/stderr lines to tracing (same pattern as sandbox.rs).
+    if let Some(stdout) = child.stdout.take() {
+        tokio::spawn(async move {
+            let mut lines = tokio::io::BufReader::new(stdout).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                if !line.is_empty() {
+                    info!(target: "firecracker", "{line}");
+                }
+            }
+        });
+    }
+    if let Some(stderr) = child.stderr.take() {
+        tokio::spawn(async move {
+            let mut lines = tokio::io::BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                if !line.is_empty() {
+                    tracing::warn!(target: "firecracker", "stderr: {line}");
+                }
+            }
+        });
+    }
 
     // Guard: ensure process cleanup on any exit path.
     let result = run_with_firecracker(config, paths).await;
