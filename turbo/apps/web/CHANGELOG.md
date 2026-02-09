@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.22.0](https://github.com/vm0-ai/vm0/compare/web-v12.21.0...web-v12.22.0) (2026-02-09)
+
+
+### Features
+
+* **web:** add db:reset script for local development ([#2676](https://github.com/vm0-ai/vm0/issues/2676)) ([2dd6429](https://github.com/vm0-ai/vm0/commit/2dd64297c5982da0f7d4c02a4726f82e49630619))
+
 ## [12.21.0](https://github.com/vm0-ai/vm0/compare/web-v12.20.0...web-v12.21.0) (2026-02-09)
 
 
