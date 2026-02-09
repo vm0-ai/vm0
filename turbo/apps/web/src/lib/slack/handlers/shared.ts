@@ -1,11 +1,14 @@
+import { eq, and } from "drizzle-orm";
 import {
   createSlackClient,
   fetchThreadContext,
   fetchChannelContext,
+  formatContextForAgent,
   formatContextForAgentWithImages,
   parseExplicitAgentSelection,
   getSlackRedirectBaseUrl,
 } from "../index";
+import { slackThreadSessions } from "../../../db/schema/slack-thread-session";
 import { routeToAgent, type RouteResult } from "../router";
 import { getPlatformUrl } from "../../url";
 
@@ -48,37 +51,59 @@ export async function removeThinkingReaction(
 }
 
 /**
- * Fetch conversation context for the agent with uploaded images
- * Images are uploaded to R2 and presigned URLs are provided in the context
+ * Fetch conversation context with deduplication support.
+ * Returns separate contexts for routing (text-only, full history) and
+ * execution (with images, only new messages since lastProcessedMessageTs).
+ *
+ * Single Slack API call — messages are fetched once and filtered in-memory.
  */
-export async function fetchConversationContext(
+export async function fetchConversationContexts(
   client: SlackClient,
   channelId: string,
   threadTs: string | undefined,
   botUserId: string,
   botToken: string,
-): Promise<string> {
-  // Use channel-thread as session ID for organizing uploaded images
+  lastProcessedMessageTs?: string,
+  currentMessageTs?: string,
+): Promise<{ routingContext: string; executionContext: string }> {
   const imageSessionId = `${channelId}-${threadTs ?? "channel"}`;
+  const contextType = threadTs ? "thread" : "channel";
 
-  if (threadTs) {
-    const messages = await fetchThreadContext(client, channelId, threadTs);
-    return formatContextForAgentWithImages(
-      messages,
-      botToken,
-      imageSessionId,
-      botUserId,
-      "thread",
-    );
-  }
-  const messages = await fetchChannelContext(client, channelId, 10);
-  return formatContextForAgentWithImages(
-    messages,
-    botToken,
-    imageSessionId,
+  // Fetch all messages once (single Slack API call)
+  const allMessages = threadTs
+    ? await fetchThreadContext(client, channelId, threadTs)
+    : await fetchChannelContext(client, channelId, 10);
+
+  // Exclude the current message (it's already sent as the prompt)
+  const contextMessages = currentMessageTs
+    ? allMessages.filter((m) => m.ts !== currentMessageTs)
+    : allMessages;
+
+  // Text-only full context for routing (no image uploads needed)
+  const routingContext = formatContextForAgent(
+    contextMessages,
     botUserId,
-    "channel",
+    contextType,
   );
+
+  // Filter to only new messages for execution context
+  const executionMessages = lastProcessedMessageTs
+    ? contextMessages.filter((m) => !m.ts || m.ts > lastProcessedMessageTs)
+    : contextMessages;
+
+  // Format execution context with images (only uploads images for new messages)
+  const executionContext =
+    executionMessages.length > 0
+      ? await formatContextForAgentWithImages(
+          executionMessages,
+          botToken,
+          imageSessionId,
+          botUserId,
+          contextType,
+        )
+      : "";
+
+  return { routingContext, executionContext };
 }
 
 /**
@@ -142,6 +167,102 @@ export async function routeMessageToAgent(
       };
     }
   }
+}
+
+interface ThreadSessionLookup {
+  existingSessionId: string | undefined;
+  lastProcessedMessageTs: string | undefined;
+}
+
+/**
+ * Look up an existing thread session by channel + thread.
+ * Optionally refines with bindingId if provided.
+ */
+export async function lookupThreadSession(
+  channelId: string,
+  threadTs: string,
+  bindingId?: string,
+): Promise<ThreadSessionLookup> {
+  const conditions = bindingId
+    ? [
+        eq(slackThreadSessions.slackBindingId, bindingId),
+        eq(slackThreadSessions.slackChannelId, channelId),
+        eq(slackThreadSessions.slackThreadTs, threadTs),
+      ]
+    : [
+        eq(slackThreadSessions.slackChannelId, channelId),
+        eq(slackThreadSessions.slackThreadTs, threadTs),
+      ];
+
+  const [session] = await globalThis.services.db
+    .select({
+      agentSessionId: slackThreadSessions.agentSessionId,
+      lastProcessedMessageTs: slackThreadSessions.lastProcessedMessageTs,
+    })
+    .from(slackThreadSessions)
+    .where(and(...conditions))
+    .limit(1);
+
+  return {
+    existingSessionId: session?.agentSessionId,
+    lastProcessedMessageTs: session?.lastProcessedMessageTs ?? undefined,
+  };
+}
+
+/**
+ * Create or update a thread session mapping after agent execution.
+ */
+export async function saveThreadSession(opts: {
+  bindingId: string;
+  channelId: string;
+  threadTs: string;
+  existingSessionId: string | undefined;
+  newSessionId: string | undefined;
+  messageTs: string;
+  runStatus: string;
+}): Promise<void> {
+  const {
+    bindingId,
+    channelId,
+    threadTs,
+    existingSessionId,
+    newSessionId,
+    messageTs,
+    runStatus,
+  } = opts;
+
+  if (!existingSessionId && newSessionId) {
+    // New thread — create mapping
+    await globalThis.services.db
+      .insert(slackThreadSessions)
+      .values({
+        slackBindingId: bindingId,
+        slackChannelId: channelId,
+        slackThreadTs: threadTs,
+        agentSessionId: newSessionId,
+        lastProcessedMessageTs: messageTs,
+      })
+      .onConflictDoNothing();
+  } else if (
+    existingSessionId &&
+    (runStatus === "completed" || runStatus === "timeout")
+  ) {
+    // Existing thread, successful run — update lastProcessedMessageTs
+    await globalThis.services.db
+      .update(slackThreadSessions)
+      .set({
+        lastProcessedMessageTs: messageTs,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(slackThreadSessions.slackBindingId, bindingId),
+          eq(slackThreadSessions.slackChannelId, channelId),
+          eq(slackThreadSessions.slackThreadTs, threadTs),
+        ),
+      );
+  }
+  // Failed runs — do not update lastProcessedMessageTs (allows retry with same context)
 }
 
 /**

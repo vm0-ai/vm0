@@ -11,6 +11,7 @@ import {
 } from "../../../../../src/__tests__/slack/api-helpers";
 import { handlers, http } from "../../../../../src/__tests__/msw";
 import { POST } from "../route";
+import { createTestAgentSession } from "../../../../../src/__tests__/api-test-helpers";
 import * as runAgentModule from "../../../../../src/lib/slack/handlers/run-agent";
 
 vi.mock("@clerk/nextjs/server");
@@ -1088,6 +1089,288 @@ describe("POST /api/slack/events", () => {
 
       // Then no duplicate message should be sent
       expect(slackHandlers.mocked.postMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Scenario: Context deduplication across thread turns", () => {
+    it("should send only new messages on second turn in same thread", async () => {
+      // Given I am a linked Slack user with one agent
+      const { userLink, installation } = await givenLinkedSlackUser();
+      const { binding } = await givenUserHasAgent(userLink, {
+        agentName: "my-helper",
+        description: "A helpful assistant",
+      });
+
+      // Use unique channel/thread IDs to avoid collisions with stale DB data
+      const channelId = `C-dedup-${Date.now()}`;
+      const threadTs = "1000000000.000000";
+
+      // Create an agent session so the FK constraint is satisfied
+      const agentSession = await createTestAgentSession(
+        userLink.vm0UserId,
+        binding.composeId,
+      );
+
+      // And runAgentForSlack returns a completed result with that session ID
+      const runAgentSpy = vi
+        .spyOn(runAgentModule, "runAgentForSlack")
+        .mockResolvedValue({
+          status: "completed",
+          response: "Done!",
+          sessionId: agentSession.id,
+          runId: "test-run-id",
+        });
+
+      // And the thread has 2 messages
+      const repliesHandler1 = http.post(
+        "https://slack.com/api/conversations.replies",
+        () =>
+          HttpResponse.json({
+            ok: true,
+            messages: [
+              { user: "U111", text: "First message", ts: "1000000000.000000" },
+              {
+                user: userLink.slackUserId,
+                text: "Second message",
+                ts: "1000000001.000000",
+              },
+            ],
+          }),
+      );
+      server.use(repliesHandler1.handler);
+
+      // When I send the first mention in a thread
+      const request1 = createSlackEventRequest({
+        teamId: installation.slackWorkspaceId,
+        channelId,
+        userId: userLink.slackUserId,
+        text: `<@${installation.botUserId}> help me`,
+        ts: "1000000001.000000",
+        threadTs,
+      });
+      await POST(request1);
+      await flushAfterCallbacks();
+
+      // Then the agent should receive context excluding the current message
+      // (current message is already sent as the prompt)
+      expect(runAgentSpy).toHaveBeenCalledTimes(1);
+      const firstCallContext = runAgentSpy.mock.calls[0]![0].threadContext;
+      expect(firstCallContext).toContain("First message");
+      expect(firstCallContext).not.toContain("Second message");
+
+      // Reset mocks for second turn
+      runAgentSpy.mockClear();
+      vi.mocked(slackHandlers.mocked.postMessage).mockClear();
+      vi.mocked(slackHandlers.mocked.reactionsAdd).mockClear();
+      vi.mocked(slackHandlers.mocked.reactionsRemove).mockClear();
+
+      // And the thread now has 3 messages (one new)
+      const repliesHandler2 = http.post(
+        "https://slack.com/api/conversations.replies",
+        () =>
+          HttpResponse.json({
+            ok: true,
+            messages: [
+              { user: "U111", text: "First message", ts: "1000000000.000000" },
+              {
+                user: userLink.slackUserId,
+                text: "Second message",
+                ts: "1000000001.000000",
+              },
+              {
+                user: userLink.slackUserId,
+                text: "Third message",
+                ts: "1000000002.000000",
+              },
+            ],
+          }),
+      );
+      server.use(repliesHandler2.handler);
+
+      // When I send the second mention in the same thread
+      const request2 = createSlackEventRequest({
+        teamId: installation.slackWorkspaceId,
+        channelId,
+        userId: userLink.slackUserId,
+        text: `<@${installation.botUserId}> do more`,
+        ts: "1000000002.000000",
+        threadTs,
+      });
+      await POST(request2);
+      await flushAfterCallbacks();
+
+      // Then the agent should receive empty context (all prior messages already processed,
+      // and "Third message" is the current mention excluded from context)
+      expect(runAgentSpy).toHaveBeenCalledTimes(1);
+      const secondCallContext = runAgentSpy.mock.calls[0]![0].threadContext;
+      expect(secondCallContext).not.toContain("First message");
+      expect(secondCallContext).not.toContain("Second message");
+      expect(secondCallContext).not.toContain("Third message");
+    });
+
+    it("should not update lastProcessedMessageTs when agent run fails", async () => {
+      // Given I am a linked Slack user with one agent
+      const { userLink, installation } = await givenLinkedSlackUser();
+      const { binding } = await givenUserHasAgent(userLink, {
+        agentName: "my-helper",
+        description: "A helpful assistant",
+      });
+
+      // Use unique channel/thread IDs to avoid collisions with stale DB data
+      const channelId = `C-dedup-fail-${Date.now()}`;
+      const threadTs = "2000000000.000000";
+
+      // Create an agent session so the FK constraint is satisfied
+      const agentSession = await createTestAgentSession(
+        userLink.vm0UserId,
+        binding.composeId,
+      );
+
+      // And runAgentForSlack returns completed on first call, failed on second
+      const runAgentSpy = vi.spyOn(runAgentModule, "runAgentForSlack");
+      runAgentSpy.mockResolvedValueOnce({
+        status: "completed",
+        response: "Done!",
+        sessionId: agentSession.id,
+        runId: "test-run-id-1",
+      });
+
+      // Thread has 1 message
+      const repliesHandler = http.post(
+        "https://slack.com/api/conversations.replies",
+        () =>
+          HttpResponse.json({
+            ok: true,
+            messages: [
+              {
+                user: userLink.slackUserId,
+                text: "First message",
+                ts: "2000000000.000000",
+              },
+            ],
+          }),
+      );
+      server.use(repliesHandler.handler);
+
+      // First turn (succeeds) — establishes lastProcessedMessageTs
+      const request1 = createSlackEventRequest({
+        teamId: installation.slackWorkspaceId,
+        channelId,
+        userId: userLink.slackUserId,
+        text: `<@${installation.botUserId}> help`,
+        ts: "2000000000.000000",
+        threadTs,
+      });
+      await POST(request1);
+      await flushAfterCallbacks();
+
+      // Now runAgentForSlack fails on the second call
+      runAgentSpy.mockResolvedValueOnce({
+        status: "failed",
+        response: "Error: something broke",
+        sessionId: agentSession.id,
+        runId: "test-run-id-2",
+      });
+
+      // Thread now has 2 messages
+      const repliesHandler2 = http.post(
+        "https://slack.com/api/conversations.replies",
+        () =>
+          HttpResponse.json({
+            ok: true,
+            messages: [
+              {
+                user: userLink.slackUserId,
+                text: "First message",
+                ts: "2000000000.000000",
+              },
+              {
+                user: userLink.slackUserId,
+                text: "Second message",
+                ts: "2000000001.000000",
+              },
+            ],
+          }),
+      );
+      server.use(repliesHandler2.handler);
+
+      // Reset spy for second turn
+      runAgentSpy.mockClear();
+      runAgentSpy.mockResolvedValueOnce({
+        status: "failed",
+        response: "Error: something broke",
+        sessionId: agentSession.id,
+        runId: "test-run-id-2",
+      });
+
+      // Second turn (fails)
+      const request2 = createSlackEventRequest({
+        teamId: installation.slackWorkspaceId,
+        channelId,
+        userId: userLink.slackUserId,
+        text: `<@${installation.botUserId}> help again`,
+        ts: "2000000001.000000",
+        threadTs,
+      });
+      await POST(request2);
+      await flushAfterCallbacks();
+
+      // Reset for third turn
+      runAgentSpy.mockClear();
+      runAgentSpy.mockResolvedValueOnce({
+        status: "completed",
+        response: "Done!",
+        sessionId: agentSession.id,
+        runId: "test-run-id-3",
+      });
+
+      // Thread now has 3 messages
+      const repliesHandler3 = http.post(
+        "https://slack.com/api/conversations.replies",
+        () =>
+          HttpResponse.json({
+            ok: true,
+            messages: [
+              {
+                user: userLink.slackUserId,
+                text: "First message",
+                ts: "2000000000.000000",
+              },
+              {
+                user: userLink.slackUserId,
+                text: "Second message",
+                ts: "2000000001.000000",
+              },
+              {
+                user: userLink.slackUserId,
+                text: "Third message",
+                ts: "2000000002.000000",
+              },
+            ],
+          }),
+      );
+      server.use(repliesHandler3.handler);
+
+      // Third turn — should include "Second message" since the failed run didn't update the ts
+      const request3 = createSlackEventRequest({
+        teamId: installation.slackWorkspaceId,
+        channelId,
+        userId: userLink.slackUserId,
+        text: `<@${installation.botUserId}> retry`,
+        ts: "2000000002.000000",
+        threadTs,
+      });
+      await POST(request3);
+      await flushAfterCallbacks();
+
+      expect(runAgentSpy).toHaveBeenCalledTimes(1);
+      const thirdCallContext = runAgentSpy.mock.calls[0]![0].threadContext;
+      // Second message should be resent since the failed run didn't update lastProcessedMessageTs
+      expect(thirdCallContext).toContain("Second message");
+      // Third message is the current mention, excluded from context (sent as prompt)
+      expect(thirdCallContext).not.toContain("Third message");
+      // First message was already processed in the successful first turn
+      expect(thirdCallContext).not.toContain("First message");
     });
   });
 

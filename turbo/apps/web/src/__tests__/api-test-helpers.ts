@@ -56,6 +56,7 @@ import { connectorSessions } from "../db/schema/connector-session";
 import { secrets } from "../db/schema/secret";
 import { encryptCredentialValue } from "../lib/crypto/secrets-encryption";
 import type { ConnectorType } from "@vm0/core";
+import { agentSessions } from "../db/schema/agent-session";
 
 /**
  * Helper to create a NextRequest for testing.
@@ -411,6 +412,17 @@ export async function createTestMultiAuthModelProvider(
  * @param options - Optional run parameters
  * @returns The created run with runId and status
  */
+export async function createTestAgentSession(
+  userId: string,
+  agentComposeId: string,
+): Promise<{ id: string }> {
+  const [session] = await globalThis.services.db
+    .insert(agentSessions)
+    .values({ userId, agentComposeId })
+    .returning({ id: agentSessions.id });
+  return session!;
+}
+
 export async function createTestRun(
   agentComposeId: string,
   prompt: string,

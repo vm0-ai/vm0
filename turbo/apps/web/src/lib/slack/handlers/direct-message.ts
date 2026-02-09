@@ -2,7 +2,6 @@ import { eq, and } from "drizzle-orm";
 import { slackInstallations } from "../../../db/schema/slack-installation";
 import { slackUserLinks } from "../../../db/schema/slack-user-link";
 import { slackBindings } from "../../../db/schema/slack-binding";
-import { slackThreadSessions } from "../../../db/schema/slack-thread-session";
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
 import {
@@ -15,8 +14,10 @@ import {
 import { runAgentForSlack } from "./run-agent";
 import {
   removeThinkingReaction,
-  fetchConversationContext,
+  fetchConversationContexts,
   routeMessageToAgent,
+  lookupThreadSession,
+  saveThreadSession,
   buildLoginUrl,
   buildLogsUrl,
 } from "./shared";
@@ -142,20 +143,37 @@ export async function handleDirectMessage(
     // Use message text directly (no mention prefix to strip in DMs)
     const messageContent = context.messageText;
 
-    // Fetch Slack context early (needed for routing and agent execution)
-    const formattedContext = await fetchConversationContext(
-      client,
-      context.channelId,
-      context.threadTs,
-      botUserId,
-      botToken,
-    );
+    // 7. Look up existing thread session for deduplication
+    let existingSessionId: string | undefined;
+    let lastProcessedMessageTs: string | undefined;
+    if (threadTs) {
+      const session = await lookupThreadSession(context.channelId, threadTs);
+      existingSessionId = session.existingSessionId;
+      lastProcessedMessageTs = session.lastProcessedMessageTs;
+      log.debug("Thread session lookup", {
+        existingSessionId,
+        lastProcessedMessageTs,
+      });
+    }
 
-    // 7. Route to agent (with context for LLM routing)
+    // Fetch context: routing gets full text, execution gets deduplicated with images
+    // Pass currentMessageTs to exclude it from context (it's already the prompt)
+    const { routingContext, executionContext } =
+      await fetchConversationContexts(
+        client,
+        context.channelId,
+        context.threadTs,
+        botUserId,
+        botToken,
+        lastProcessedMessageTs,
+        context.messageTs,
+      );
+
+    // 8. Route to agent (with full context for LLM routing)
     const routeResult = await routeMessageToAgent(
       messageContent,
       bindings,
-      formattedContext,
+      routingContext,
     );
 
     // In DMs, not_request routes to the first/single agent (user deliberately DM'd the bot)
@@ -195,26 +213,18 @@ export async function handleDirectMessage(
       return;
     }
 
-    // 8. Find existing thread session
-    let existingSessionId: string | undefined;
-    if (threadTs) {
-      const [threadSession] = await globalThis.services.db
-        .select({ agentSessionId: slackThreadSessions.agentSessionId })
-        .from(slackThreadSessions)
-        .where(
-          and(
-            eq(slackThreadSessions.slackBindingId, selectedBinding.id),
-            eq(slackThreadSessions.slackChannelId, context.channelId),
-            eq(slackThreadSessions.slackThreadTs, threadTs),
-          ),
-        )
-        .limit(1);
-
-      existingSessionId = threadSession?.agentSessionId;
+    // Refine session lookup with binding ID if not yet matched
+    if (threadTs && !existingSessionId) {
+      const refined = await lookupThreadSession(
+        context.channelId,
+        threadTs,
+        selectedBinding.id,
+      );
+      existingSessionId = refined.existingSessionId;
     }
 
     try {
-      // 9. Execute agent
+      // 9. Execute agent with deduplicated context
       const {
         status: runStatus,
         response: agentResponse,
@@ -224,21 +234,21 @@ export async function handleDirectMessage(
         binding: selectedBinding,
         sessionId: existingSessionId,
         prompt: promptText,
-        threadContext: formattedContext,
+        threadContext: executionContext,
         userId: userLink.vm0UserId,
       });
 
-      // 10. Create thread session mapping if new thread
-      if (threadTs && !existingSessionId && newSessionId) {
-        await globalThis.services.db
-          .insert(slackThreadSessions)
-          .values({
-            slackBindingId: selectedBinding.id,
-            slackChannelId: context.channelId,
-            slackThreadTs: threadTs,
-            agentSessionId: newSessionId,
-          })
-          .onConflictDoNothing();
+      // 10. Create or update thread session mapping
+      if (threadTs) {
+        await saveThreadSession({
+          bindingId: selectedBinding.id,
+          channelId: context.channelId,
+          threadTs,
+          existingSessionId,
+          newSessionId,
+          messageTs: context.messageTs,
+          runStatus,
+        });
       }
 
       // 11. Post response message

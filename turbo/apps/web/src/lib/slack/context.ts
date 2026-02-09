@@ -309,6 +309,35 @@ function formatAttachmentImage(attachment: SlackAttachment): string | null {
 }
 
 /**
+ * Format a single message with structured metadata
+ */
+function formatMessageWithMetadata(
+  msg: SlackMessage,
+  relativeIndex: number,
+  fileParts: string[],
+): string {
+  const senderId = msg.bot_id ? "BOT" : (msg.user ?? "unknown");
+  const msgId = msg.ts ?? "unknown";
+  const text = msg.text ?? "";
+
+  const parts: string[] = [
+    "---",
+    "",
+    `- RELATIVE_INDEX: ${relativeIndex}`,
+    `- MSG_ID: ${msgId}`,
+    `- SENDER_ID: ${senderId}`,
+    "",
+    text,
+  ];
+
+  if (fileParts.length > 0) {
+    parts.push(...fileParts);
+  }
+
+  return parts.join("\n");
+}
+
+/**
  * Format messages into context for agent prompt (sync version, metadata only)
  *
  * @param messages - Array of Slack messages
@@ -321,17 +350,22 @@ export function formatContextForAgent(
   botUserId?: string,
   contextType: "thread" | "channel" = "thread",
 ): string {
-  // Include all messages (don't filter bot messages)
-  const formattedMessages = messages.map((msg) => {
-    const user = msg.bot_id ? "bot" : (msg.user ?? "unknown");
-    const text = msg.text ?? "";
+  if (messages.length === 0) {
+    return "";
+  }
 
-    const parts: string[] = [`[${user}]: ${text}`];
+  const totalMessages = messages.length;
+
+  // Include all messages (don't filter bot messages)
+  const formattedMessages = messages.map((msg, index) => {
+    const relativeIndex = index - totalMessages;
+
+    const fileParts: string[] = [];
 
     // Format files (uploaded images, documents, etc.)
     if (msg.files && msg.files.length > 0) {
       for (const file of msg.files) {
-        parts.push(formatFileInfo(file));
+        fileParts.push(formatFileInfo(file));
       }
     }
 
@@ -340,24 +374,20 @@ export function formatContextForAgent(
       for (const attachment of msg.attachments) {
         const attachmentInfo = formatAttachmentImage(attachment);
         if (attachmentInfo) {
-          parts.push(attachmentInfo);
+          fileParts.push(attachmentInfo);
         }
       }
     }
 
-    return parts.join("\n");
+    return formatMessageWithMetadata(msg, relativeIndex, fileParts);
   });
-
-  if (formattedMessages.length === 0) {
-    return "";
-  }
 
   const header =
     contextType === "thread"
-      ? "## Slack Thread Context"
-      : "## Recent Channel Messages";
+      ? "# Slack Thread Context"
+      : "# Recent Channel Messages";
 
-  const result = `${header}\n\n${formattedMessages.join("\n\n")}`;
+  const result = `${header}\n\n${formattedMessages.join("\n\n")}\n\n---`;
   log.debug("Formatted messages for context", {
     messageCount: formattedMessages.length,
     contextType,
@@ -384,13 +414,18 @@ export async function formatContextForAgentWithImages(
   botUserId?: string,
   contextType: "thread" | "channel" = "thread",
 ): Promise<string> {
+  if (messages.length === 0) {
+    return "";
+  }
+
+  const totalMessages = messages.length;
+
   // Include all messages (don't filter bot messages)
   const formattedMessages = await Promise.all(
-    messages.map(async (msg) => {
-      const user = msg.bot_id ? "bot" : (msg.user ?? "unknown");
-      const text = msg.text ?? "";
+    messages.map(async (msg, index) => {
+      const relativeIndex = index - totalMessages;
 
-      const parts: string[] = [`[${user}]: ${text}`];
+      const fileParts: string[] = [];
 
       // Format files with image upload
       if (msg.files && msg.files.length > 0) {
@@ -400,7 +435,7 @@ export async function formatContextForAgentWithImages(
             botToken,
             sessionId,
           );
-          parts.push(fileInfo);
+          fileParts.push(fileInfo);
         }
       }
 
@@ -409,25 +444,21 @@ export async function formatContextForAgentWithImages(
         for (const attachment of msg.attachments) {
           const attachmentInfo = formatAttachmentImage(attachment);
           if (attachmentInfo) {
-            parts.push(attachmentInfo);
+            fileParts.push(attachmentInfo);
           }
         }
       }
 
-      return parts.join("\n");
+      return formatMessageWithMetadata(msg, relativeIndex, fileParts);
     }),
   );
 
-  if (formattedMessages.length === 0) {
-    return "";
-  }
-
   const header =
     contextType === "thread"
-      ? "## Slack Thread Context"
-      : "## Recent Channel Messages";
+      ? "# Slack Thread Context"
+      : "# Recent Channel Messages";
 
-  const result = `${header}\n\n${formattedMessages.join("\n\n")}`;
+  const result = `${header}\n\n${formattedMessages.join("\n\n")}\n\n---`;
   log.debug("Formatted messages for context with images", {
     messageCount: formattedMessages.length,
     contextType,

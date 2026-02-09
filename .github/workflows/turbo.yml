@@ -21,7 +21,6 @@ jobs:
       job-ref: ${{ steps.set-job-ref.outputs.job-ref }}
       web-preview-url: ${{ steps.preview-urls.outputs.web-url }}
       web-changed: ${{ steps.detect.outputs.web-changed }}
-      site-changed: ${{ steps.detect.outputs.site-changed }}
       docs-changed: ${{ steps.detect.outputs.docs-changed }}
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
       runner-changed: ${{ steps.detect.outputs.runner-changed }}
@@ -231,7 +230,7 @@ jobs:
           fi
 
           # Filter out whitelisted files
-          FILTERED_FILES=$(echo "$CHANGED_FILES" | grep -v -E '^turbo/apps/(web|site)/public/(og-image\.png|assets/(cta-ellipse\.png|code_illustration\.svg))$' || true)
+          FILTERED_FILES=$(echo "$CHANGED_FILES" | grep -v -E '^turbo/apps/web/public/(og-image\.png|assets/(cta-ellipse\.png|code_illustration\.svg))$' || true)
 
           if [ -z "$FILTERED_FILES" ]; then
             echo "All changed files are whitelisted"
@@ -373,7 +372,7 @@ jobs:
         run: cargo build --manifest-path crates/Cargo.toml -p vsock-guest
       - name: Test Other Packages
         working-directory: turbo
-        run: pnpm vitest run --project=@vm0/runner --project=@vm0/core --project=@vm0/ui --project=site
+        run: pnpm vitest run --project=@vm0/runner --project=@vm0/core --project=@vm0/ui
 
   # Deploy web application with database
   deploy-web:
@@ -381,14 +380,13 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260203
     needs: [prepare]
-    # Deploy if job-ref is set (PR or main), not a release-please commit, and web, CLI, runner, site, or platform changed
+    # Deploy if job-ref is set (PR or main), not a release-please commit, and web, CLI, runner, or platform changed
     if: |
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
         needs.prepare.outputs.runner-changed == 'true' ||
-        needs.prepare.outputs.site-changed == 'true' ||
         needs.prepare.outputs.platform-changed == 'true'
       )
     outputs:
@@ -523,52 +521,6 @@ jobs:
           vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
           deployment-url: ${{ steps.deploy.outputs.url }}
           app-name: docs
-          job-ref: ${{ needs.prepare.outputs.job-ref }}
-          preview-domain: ${{ vars.PREVIEW_DOMAIN }}
-          deployment-id: ${{ steps.deploy.outputs.deployment-id }}
-          deployment-env: ${{ steps.deploy.outputs.deployment-env }}
-
-  # Deploy site application (SEO landing pages)
-  deploy-site:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
-    needs: [prepare]
-    # Deploy if job-ref is set (PR or main), not a release-please commit, and site changed
-    if: "${{ (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) && needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.site-changed == 'true' }}"
-    permissions:
-      contents: read
-      pull-requests: write
-      deployments: write
-    steps:
-      - uses: actions/checkout@v6
-      - uses: ./.github/actions/toolchain-init
-
-      - name: Deploy Site to Vercel
-        id: deploy
-        uses: ./.github/actions/vercel-deploy
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_SITE }}
-          environment: preview
-          deployment-env: site
-          environment-variables: |
-            WEB_APP_URL=${{ needs.prepare.outputs.web-preview-url }}
-            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
-            CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
-          meta-branch: ${{ github.head_ref || github.ref_name }}
-          meta-pr: ${{ needs.prepare.outputs.job-ref }}
-          skip-finish: ${{ github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '' }}
-
-      - name: Create Vercel Alias
-        if: vars.PREVIEW_DOMAIN != ''
-        uses: ./.github/actions/vercel-alias
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          deployment-url: ${{ steps.deploy.outputs.url }}
-          app-name: site
           job-ref: ${{ needs.prepare.outputs.job-ref }}
           preview-domain: ${{ vars.PREVIEW_DOMAIN }}
           deployment-id: ${{ steps.deploy.outputs.deployment-id }}

@@ -1,5 +1,4 @@
 import { chromium } from "playwright";
-import { clerk, clerkSetup } from "@clerk/testing/playwright";
 import { spawn, ChildProcess } from "child_process";
 import * as dotenv from "dotenv";
 
@@ -132,34 +131,63 @@ export async function automateCliAuth(apiHost?: string) {
     const context = await browser.newContext();
     const page = await context.newPage();
 
-    // Step 4: Setup Clerk authentication
-    await clerkSetup();
-
-    // Step 5: Login to Clerk
-    // Use configured API URL
+    // Step 4: Login via Clerk email + OTP code
     const baseUrl = apiUrl;
 
     // If Vercel bypass secret is available, set bypass cookie via query parameter
     // This avoids CORS issues that occur when using HTTP headers
     const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-    let initialUrl = baseUrl;
     if (bypassSecret) {
-      initialUrl = `${baseUrl}?x-vercel-set-bypass-cookie=samesitenone&x-vercel-protection-bypass=${bypassSecret}`;
+      const bypassUrl = `${baseUrl}?x-vercel-set-bypass-cookie=samesitenone&x-vercel-protection-bypass=${bypassSecret}`;
       console.log("🔓 Setting Vercel bypass cookie via query parameter");
+      await page.goto(bypassUrl);
     }
 
-    await page.goto(initialUrl);
-    await clerk.signIn({
-      page,
-      emailAddress: "e2e+clerk_test@vm0.ai",
-    });
+    // Navigate to sign-in page
+    await page.goto(`${baseUrl}/sign-in`);
+    await page.waitForLoadState("domcontentloaded");
 
-    console.log("✅ Clerk login successful");
+    // Enter email address
+    const emailInput = page.locator('input[name="identifier"]');
+    await emailInput.waitFor({ state: "visible", timeout: 10000 });
+    await emailInput.fill("e2e+clerk_test@vm0.ai");
+    console.log("📧 Entered email address");
+
+    // Click Continue button
+    await page.locator('.cl-formButtonPrimary').click();
+    console.log("➡️ Clicked Continue");
+
+    // Clerk shows password by default; switch to email code method
+    const useAnotherMethod = page.locator('a:has-text("Use another method"), button:has-text("Use another method")');
+    await useAnotherMethod.waitFor({ state: "visible", timeout: 10000 });
+    await useAnotherMethod.click();
+    console.log("🔄 Clicked 'Use another method'");
+
+    // Select email code option
+    const emailCodeOption = page.locator('button:has-text("Email code")');
+    await emailCodeOption.waitFor({ state: "visible", timeout: 10000 });
+    await emailCodeOption.click();
+    console.log("📧 Selected 'Email code'");
+
+    // Wait for OTP input to appear and Clerk to finish sending the code
+    const otpInput = page.locator('input[data-input-otp="true"]');
+    await otpInput.waitFor({ state: "attached", timeout: 10000 });
+    // Wait for Clerk to complete the "prepare" step (sending the email)
+    await page.waitForTimeout(2000);
+
+    // Enter test OTP code 424242 (Clerk accepts this in development mode)
+    await otpInput.focus();
+    await page.keyboard.type("424242");
+    console.log("🔢 Entered OTP code");
+
+    // Wait for Clerk to complete authentication (should redirect away from /sign-in)
+    await page.waitForURL((url) => !url.pathname.includes('/sign-in'), { timeout: 15000 });
+    console.log(`✅ Clerk login successful (redirected to ${page.url()})`);
     console.log(`🔗 Visiting auth page: ${baseUrl}/cli-auth`);
 
     // Step 6: Visit CLI auth page
     await page.goto(`${baseUrl}/cli-auth`);
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
 
     // Step 7: Enter device code
     // Device code format: XXXX-XXXX, entered into 8 separate input boxes
