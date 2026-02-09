@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
+      releases_created: ${{ steps.release.outputs.releases_created }}
       cli_release_created: ${{ steps.release.outputs['turbo/apps/cli--release_created'] }}
       web_release_created: ${{ steps.release.outputs['turbo/apps/web--release_created'] }}
       site_release_created: ${{ steps.release.outputs['turbo/apps/site--release_created'] }}
@@ -638,7 +638,7 @@ jobs:
   build-e2b-template-production:
     needs: [release-please]
     # Build when any release is created
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260203
