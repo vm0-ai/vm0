@@ -2,6 +2,9 @@
 resolver = "2"
 members = ["vsock-guest", "vsock-proto", "vsock-host", "vsock-test", "guest-init", "guest-common", "guest-download", "sandbox", "sandbox-fc"]
 
+[workspace.package]
+edition = "2024"
+
 [workspace.dependencies]
 # Internal crates
 guest-common = { path = "guest-common" }
