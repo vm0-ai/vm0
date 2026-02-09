@@ -62,6 +62,8 @@ function isOperationalError(error: unknown): boolean {
 if (DSN) {
   Sentry.init({
     dsn: DSN,
+    environment: process.env.SENTRY_ENVIRONMENT || "production",
+    release: __CLI_VERSION__,
     sendDefaultPii: false,
     tracesSampleRate: 0,
     shutdownTimeout: 500,

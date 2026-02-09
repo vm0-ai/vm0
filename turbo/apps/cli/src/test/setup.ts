@@ -10,6 +10,7 @@ beforeAll(() => {
 beforeEach(() => {
   vi.stubEnv("VM0_API_URL", undefined);
   vi.stubEnv("VM0_TOKEN", "");
+  vi.stubEnv("SENTRY_DSN", "");
 });
 
 // Reset handlers after each test
