@@ -4,6 +4,7 @@ import { slackUserLinks } from "../../../db/schema/slack-user-link";
 import { slackBindings } from "../../../db/schema/slack-binding";
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
+import { getUserEmail } from "../../auth/get-user-email";
 import {
   createSlackClient,
   publishAppHome,
@@ -93,10 +94,14 @@ export async function refreshAppHome(
     .from(slackBindings)
     .where(eq(slackBindings.slackUserLinkId, userLink.id));
 
+  // Fetch user email for display
+  const userEmail = await getUserEmail(userLink.vm0UserId);
+
   // Build and publish home view
   const view = buildAppHomeView({
     isLinked: true,
     vm0UserId: userLink.vm0UserId,
+    userEmail,
     bindings,
   });
   await publishAppHome(client, userId, view);

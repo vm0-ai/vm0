@@ -233,6 +233,7 @@ export function buildAgentAddModal(
 export function buildAppHomeView(options: {
   isLinked: boolean;
   vm0UserId?: string;
+  userEmail?: string;
   bindings?: BindingInfo[];
   loginUrl?: string;
 }): View {
@@ -260,7 +261,7 @@ export function buildAppHomeView(options: {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `:white_check_mark: *Connected to VM0*\nAccount: ${options.vm0UserId}`,
+        text: `:white_check_mark: *Connected to VM0*\nAccount: ${options.userEmail || options.vm0UserId}`,
       },
     });
   } else {
