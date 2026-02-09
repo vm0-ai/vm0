@@ -23,33 +23,167 @@ impl fmt::Display for ApiError {
 
 impl std::error::Error for ApiError {}
 
-/// Wait for the Firecracker API socket to accept connections.
-///
-/// Uses inotify to wait for the socket file, then polls GET / until 200.
-pub async fn wait_for_ready(socket_path: &Path, timeout: Duration) -> Result<(), ApiError> {
-    let deadline = tokio::time::Instant::now() + timeout;
+/// Per-request timeout matching the TS client (30s).
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
-    // Phase 1: wait for socket file via inotify.
-    if !tokio::fs::try_exists(socket_path).await.unwrap_or(false) {
-        tokio::time::timeout_at(deadline, wait_for_socket_file(socket_path))
-            .await
-            .map_err(|_| ApiError {
-                status: 0,
-                body: format!("timed out after {timeout:?} waiting for socket file"),
-            })??;
+/// Minimal HTTP-over-Unix-socket client for the Firecracker API.
+pub struct ApiClient<'a> {
+    socket_path: &'a Path,
+}
+
+impl<'a> ApiClient<'a> {
+    pub fn new(socket_path: &'a Path) -> Self {
+        Self { socket_path }
     }
 
-    // Phase 2: poll GET / until the API responds with success.
-    loop {
-        match tokio::time::timeout_at(deadline, request(socket_path, "GET", "/", None)).await {
-            Ok(Ok(_)) => return Ok(()),
-            Ok(Err(_)) => tokio::time::sleep(Duration::from_millis(10)).await,
-            Err(_) => {
-                return Err(ApiError {
+    /// Wait for the Firecracker API socket to accept connections.
+    ///
+    /// Uses inotify to wait for the socket file, then polls GET / until 200.
+    pub async fn wait_for_ready(&self, timeout: Duration) -> Result<(), ApiError> {
+        let deadline = tokio::time::Instant::now() + timeout;
+
+        // Phase 1: wait for socket file via inotify.
+        if !tokio::fs::try_exists(self.socket_path)
+            .await
+            .unwrap_or(false)
+        {
+            tokio::time::timeout_at(deadline, wait_for_socket_file(self.socket_path))
+                .await
+                .map_err(|_| ApiError {
                     status: 0,
-                    body: format!("timed out after {timeout:?} waiting for API ready"),
-                });
+                    body: format!("timed out after {timeout:?} waiting for socket file"),
+                })??;
+        }
+
+        // Phase 2: poll GET / until the API responds with success.
+        loop {
+            match tokio::time::timeout_at(deadline, self.request("GET", "/", None)).await {
+                Ok(Ok(_)) => return Ok(()),
+                Ok(Err(_)) => tokio::time::sleep(Duration::from_millis(10)).await,
+                Err(_) => {
+                    return Err(ApiError {
+                        status: 0,
+                        body: format!("timed out after {timeout:?} waiting for API ready"),
+                    });
+                }
             }
+        }
+    }
+
+    /// Load a snapshot and resume the VM via PUT /snapshot/load.
+    pub async fn load_snapshot(&self, snapshot_path: &str, mem_path: &str) -> Result<(), ApiError> {
+        let body = serde_json::to_string(&serde_json::json!({
+            "snapshot_path": snapshot_path,
+            "mem_backend": {
+                "backend_type": "File",
+                "backend_path": mem_path,
+            },
+            "resume_vm": true,
+        }))
+        .map_err(|e| ApiError {
+            status: 0,
+            body: format!("serialize request: {e}"),
+        })?;
+
+        tokio::time::timeout(
+            REQUEST_TIMEOUT,
+            self.request("PUT", "/snapshot/load", Some(body.as_bytes())),
+        )
+        .await
+        .map_err(|_| ApiError {
+            status: 0,
+            body: format!("request timed out after {REQUEST_TIMEOUT:?}"),
+        })??;
+
+        Ok(())
+    }
+
+    /// Send a raw HTTP/1.1 request over a Unix domain socket.
+    ///
+    /// Returns the response body on 2xx success, or an `ApiError` containing the
+    /// status code and Firecracker `fault_message` on failure.
+    async fn request(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<&[u8]>,
+    ) -> Result<String, ApiError> {
+        let mut stream = UnixStream::connect(self.socket_path)
+            .await
+            .map_err(|e| ApiError {
+                status: 0,
+                body: format!("connect: {e}"),
+            })?;
+
+        let header = if let Some(b) = body {
+            format!(
+                "{method} {path} HTTP/1.1\r\n\
+                 Host: localhost\r\n\
+                 Accept: application/json\r\n\
+                 Content-Type: application/json\r\n\
+                 Content-Length: {}\r\n\
+                 Connection: close\r\n\
+                 \r\n",
+                b.len(),
+            )
+        } else {
+            format!(
+                "{method} {path} HTTP/1.1\r\n\
+                 Host: localhost\r\n\
+                 Accept: application/json\r\n\
+                 Connection: close\r\n\
+                 \r\n"
+            )
+        };
+
+        stream
+            .write_all(header.as_bytes())
+            .await
+            .map_err(|e| ApiError {
+                status: 0,
+                body: format!("write header: {e}"),
+            })?;
+
+        if let Some(b) = body {
+            stream.write_all(b).await.map_err(|e| ApiError {
+                status: 0,
+                body: format!("write body: {e}"),
+            })?;
+        }
+
+        let mut buf = Vec::with_capacity(4096);
+        stream.read_to_end(&mut buf).await.map_err(|e| ApiError {
+            status: 0,
+            body: format!("read response: {e}"),
+        })?;
+
+        let response = String::from_utf8_lossy(&buf);
+
+        // Parse status code from "HTTP/1.1 204 No Content\r\n..."
+        let status = response
+            .get(9..12)
+            .and_then(|s| s.parse::<u16>().ok())
+            .unwrap_or(0);
+
+        // Extract body after the \r\n\r\n header separator.
+        let body_str = response
+            .find("\r\n\r\n")
+            .and_then(|i| response.get(i + 4..))
+            .unwrap_or_default()
+            .to_string();
+
+        if (200..300).contains(&status) {
+            Ok(body_str)
+        } else {
+            // Try to extract fault_message from Firecracker error JSON.
+            let message = serde_json::from_str::<serde_json::Value>(&body_str)
+                .ok()
+                .and_then(|v| v.get("fault_message")?.as_str().map(String::from))
+                .unwrap_or(body_str);
+            Err(ApiError {
+                status,
+                body: message,
+            })
         }
     }
 }
@@ -117,130 +251,6 @@ fn drain_inotify_fd(fd: std::os::fd::BorrowedFd<'_>) {
     }
 }
 
-/// Per-request timeout matching the TS client (30s).
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
-
-/// Load a snapshot and resume the VM via PUT /snapshot/load.
-pub async fn load_snapshot(
-    socket_path: &Path,
-    snapshot_path: &str,
-    mem_path: &str,
-) -> Result<(), ApiError> {
-    let body = serde_json::to_string(&serde_json::json!({
-        "snapshot_path": snapshot_path,
-        "mem_backend": {
-            "backend_type": "File",
-            "backend_path": mem_path,
-        },
-        "resume_vm": true,
-    }))
-    .map_err(|e| ApiError {
-        status: 0,
-        body: format!("serialize request: {e}"),
-    })?;
-
-    tokio::time::timeout(
-        REQUEST_TIMEOUT,
-        request(socket_path, "PUT", "/snapshot/load", Some(body.as_bytes())),
-    )
-    .await
-    .map_err(|_| ApiError {
-        status: 0,
-        body: format!("request timed out after {REQUEST_TIMEOUT:?}"),
-    })??;
-
-    Ok(())
-}
-
-/// Send a raw HTTP/1.1 request over a Unix domain socket.
-///
-/// Returns the response body on 2xx success, or an `ApiError` containing the
-/// status code and Firecracker `fault_message` on failure.
-async fn request(
-    socket_path: &Path,
-    method: &str,
-    path: &str,
-    body: Option<&[u8]>,
-) -> Result<String, ApiError> {
-    let mut stream = UnixStream::connect(socket_path)
-        .await
-        .map_err(|e| ApiError {
-            status: 0,
-            body: format!("connect: {e}"),
-        })?;
-
-    let header = if let Some(b) = body {
-        format!(
-            "{method} {path} HTTP/1.1\r\n\
-             Host: localhost\r\n\
-             Accept: application/json\r\n\
-             Content-Type: application/json\r\n\
-             Content-Length: {}\r\n\
-             Connection: close\r\n\
-             \r\n",
-            b.len(),
-        )
-    } else {
-        format!(
-            "{method} {path} HTTP/1.1\r\n\
-             Host: localhost\r\n\
-             Accept: application/json\r\n\
-             Connection: close\r\n\
-             \r\n"
-        )
-    };
-
-    stream
-        .write_all(header.as_bytes())
-        .await
-        .map_err(|e| ApiError {
-            status: 0,
-            body: format!("write header: {e}"),
-        })?;
-
-    if let Some(b) = body {
-        stream.write_all(b).await.map_err(|e| ApiError {
-            status: 0,
-            body: format!("write body: {e}"),
-        })?;
-    }
-
-    let mut buf = Vec::with_capacity(4096);
-    stream.read_to_end(&mut buf).await.map_err(|e| ApiError {
-        status: 0,
-        body: format!("read response: {e}"),
-    })?;
-
-    let response = String::from_utf8_lossy(&buf);
-
-    // Parse status code from "HTTP/1.1 204 No Content\r\n..."
-    let status = response
-        .get(9..12)
-        .and_then(|s| s.parse::<u16>().ok())
-        .unwrap_or(0);
-
-    // Extract body after the \r\n\r\n header separator.
-    let body_str = response
-        .find("\r\n\r\n")
-        .and_then(|i| response.get(i + 4..))
-        .unwrap_or_default()
-        .to_string();
-
-    if (200..300).contains(&status) {
-        Ok(body_str)
-    } else {
-        // Try to extract fault_message from Firecracker error JSON.
-        let message = serde_json::from_str::<serde_json::Value>(&body_str)
-            .ok()
-            .and_then(|v| v.get("fault_message")?.as_str().map(String::from))
-            .unwrap_or(body_str);
-        Err(ApiError {
-            status,
-            body: message,
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -271,14 +281,16 @@ mod tests {
             }
         });
 
-        let result = wait_for_ready(&sock_path, Duration::from_secs(2)).await;
+        let client = ApiClient::new(&sock_path);
+        let result = client.wait_for_ready(Duration::from_secs(2)).await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn wait_for_ready_times_out_on_missing_socket() {
         let path = PathBuf::from("/tmp/nonexistent-test-socket.sock");
-        let result = wait_for_ready(&path, Duration::from_millis(50)).await;
+        let client = ApiClient::new(&path);
+        let result = client.wait_for_ready(Duration::from_millis(50)).await;
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.body.contains("timed out"), "got: {err}");
@@ -309,7 +321,8 @@ mod tests {
             let _ = stream.write_all(response.as_bytes()).await;
         });
 
-        let result = load_snapshot(&sock_path, "/snap/state", "/snap/memory").await;
+        let client = ApiClient::new(&sock_path);
+        let result = client.load_snapshot("/snap/state", "/snap/memory").await;
         assert!(result.is_ok());
     }
 
@@ -336,7 +349,8 @@ mod tests {
             }
         });
 
-        let result = wait_for_ready(&sock_path, Duration::from_secs(2)).await;
+        let client = ApiClient::new(&sock_path);
+        let result = client.wait_for_ready(Duration::from_secs(2)).await;
         assert!(result.is_ok());
     }
 
@@ -368,7 +382,8 @@ mod tests {
             }
         });
 
-        let result = wait_for_ready(&sock_path, Duration::from_secs(2)).await;
+        let client = ApiClient::new(&sock_path);
+        let result = client.wait_for_ready(Duration::from_secs(2)).await;
         assert!(result.is_ok());
     }
 
@@ -397,7 +412,8 @@ mod tests {
             let _ = stream.write_all(response.as_bytes()).await;
         });
 
-        let result = load_snapshot(&sock_path, "/snap/state", "/snap/memory").await;
+        let client = ApiClient::new(&sock_path);
+        let result = client.load_snapshot("/snap/state", "/snap/memory").await;
         let err = result.unwrap_err();
         assert_eq!(err.status, 500);
         assert_eq!(err.body, "plain text error");
@@ -427,7 +443,8 @@ mod tests {
             let _ = stream.write_all(response.as_bytes()).await;
         });
 
-        let result = load_snapshot(&sock_path, "/snap/state", "/snap/memory").await;
+        let client = ApiClient::new(&sock_path);
+        let result = client.load_snapshot("/snap/state", "/snap/memory").await;
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(err.status, 400);

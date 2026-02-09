@@ -1,4 +1,4 @@
-mod api_client;
+mod api;
 mod command;
 mod config;
 mod factory;

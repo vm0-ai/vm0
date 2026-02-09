@@ -270,14 +270,17 @@ impl FirecrackerSandbox {
 
         // Wait for Firecracker API to be ready.
         let api_sock = self.paths.api_sock();
-        crate::api_client::wait_for_ready(&api_sock, API_READY_TIMEOUT)
+        let client = crate::api::ApiClient::new(&api_sock);
+        client
+            .wait_for_ready(API_READY_TIMEOUT)
             .await
             .map_err(|e| SandboxError::StartFailed(format!("API not ready: {e}")))?;
 
         // Load snapshot and resume VM.
         let snapshot_str = snapshot.snapshot_path.display().to_string();
         let memory_str = snapshot.memory_path.display().to_string();
-        crate::api_client::load_snapshot(&api_sock, &snapshot_str, &memory_str)
+        client
+            .load_snapshot(&snapshot_str, &memory_str)
             .await
             .map_err(|e| SandboxError::StartFailed(format!("snapshot load failed: {e}")))?;
 
