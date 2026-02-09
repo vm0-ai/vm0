@@ -424,11 +424,6 @@ export function buildAppHomeView(options: {
           action_id: "home_agent_link",
           style: "primary",
         },
-        {
-          type: "button",
-          text: { type: "plain_text", text: "Compose Agent" },
-          action_id: "home_agent_compose",
-        },
       ],
     });
   }
