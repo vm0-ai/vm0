@@ -5,6 +5,8 @@ use async_trait::async_trait;
 use crate::error::Result;
 use crate::types::{ExecRequest, ExecResult, ProcessExit, SpawnHandle};
 
+/// The `Any` bound allows `SandboxFactory::destroy()` to downcast
+/// `Box<dyn Sandbox>` back to the concrete type for backend-specific cleanup.
 #[async_trait]
 pub trait Sandbox: Send + Sync + Any {
     async fn start(&mut self) -> Result<()>;

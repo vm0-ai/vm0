@@ -32,6 +32,7 @@ enum SandboxState {
 
 impl SandboxState {
     fn from_u8(v: u8) -> Self {
+        debug_assert!(v <= 3, "invalid SandboxState: {v}");
         match v {
             0 => Self::Created,
             1 => Self::Running,
