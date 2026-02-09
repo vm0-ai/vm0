@@ -26,6 +26,9 @@ export const slackThreadSessions = pgTable(
     agentSessionId: uuid("agent_session_id")
       .notNull()
       .references(() => agentSessions.id, { onDelete: "cascade" }),
+    lastProcessedMessageTs: varchar("last_processed_message_ts", {
+      length: 255,
+    }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
