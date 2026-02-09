@@ -125,14 +125,8 @@ impl SandboxFactory for FirecrackerFactory {
 
         info!(id = %id, "sandbox created");
 
-        let sandbox = FirecrackerSandbox::new(
-            id,
-            config,
-            self.config.clone(),
-            sandbox_paths,
-            network,
-            overlay,
-        );
+        let sandbox =
+            FirecrackerSandbox::new(config, self.config.clone(), sandbox_paths, network, overlay);
 
         Ok(Box::new(sandbox))
     }

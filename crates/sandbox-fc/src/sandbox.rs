@@ -53,10 +53,10 @@ impl std::fmt::Display for SandboxState {
 }
 
 pub struct FirecrackerSandbox {
-    /// Sandbox identifier (used by factory for resource cleanup).
-    pub(crate) id: String,
     config: SandboxConfig,
     factory_config: FirecrackerConfig,
+    /// Cached `config.id.to_string()`.
+    pub(crate) id: String,
     /// Workspace paths (used by factory to delete workspace on destroy).
     pub(crate) paths: SandboxPaths,
     /// Pooled network namespace (returned to pool on destroy).
@@ -73,17 +73,17 @@ pub struct FirecrackerSandbox {
 
 impl FirecrackerSandbox {
     pub(crate) fn new(
-        id: String,
         config: SandboxConfig,
         factory_config: FirecrackerConfig,
         paths: SandboxPaths,
         network: PooledNetns,
         overlay: PathBuf,
     ) -> Self {
+        let id = config.id.to_string();
         Self {
-            id,
             config,
             factory_config,
+            id,
             paths,
             network,
             overlay,
