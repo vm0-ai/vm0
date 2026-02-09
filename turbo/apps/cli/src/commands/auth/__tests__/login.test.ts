@@ -218,6 +218,26 @@ describe("auth login", () => {
       fetchSpy.mockRestore();
     });
 
+    it("should show user-friendly message for 403 Forbidden", async () => {
+      server.use(
+        http.post("http://localhost:3000/api/cli/auth/device", () => {
+          return new HttpResponse(null, { status: 403 });
+        }),
+      );
+
+      await expect(async () => {
+        await loginCommand.parseAsync(["node", "cli"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Login failed"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("An unexpected network issue occurred"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
     it("should handle expired token error", async () => {
       server.use(
         http.post("http://localhost:3000/api/cli/auth/device", () => {

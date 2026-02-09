@@ -50,6 +50,9 @@ async function requestDeviceCode(apiUrl: string): Promise<DeviceCodeResponse> {
   });
 
   if (!response.ok) {
+    if (response.status === 403) {
+      throw new Error("An unexpected network issue occurred");
+    }
     throw new Error(`Failed to request device code: ${response.statusText}`);
   }
 
