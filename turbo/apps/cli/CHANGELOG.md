@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.29.1](https://github.com/vm0-ai/vm0/compare/cli-v9.29.0...cli-v9.29.1) (2026-02-09)
+
+
+### Bug Fixes
+
+* **cli:** display error.cause for fetch failures and fix onboard auth error handling ([#2669](https://github.com/vm0-ai/vm0/issues/2669)) ([658e998](https://github.com/vm0-ai/vm0/commit/658e9985705229cd8500f90c2183f1af8923cad9))
+
 ## [9.29.0](https://github.com/vm0-ai/vm0/compare/cli-v9.28.0...cli-v9.29.0) (2026-02-09)
 
 
