@@ -526,6 +526,13 @@
       "when": 1769900000000,
       "tag": "0074_add_slack_compose_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1770000000000,
+      "tag": "0075_add_last_processed_message_ts",
+      "breakpoints": true
     }
   ]
 }
