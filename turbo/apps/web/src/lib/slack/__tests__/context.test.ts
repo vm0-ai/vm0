@@ -20,49 +20,71 @@ const context = testContext();
 
 describe("Feature: Format Context For Agent", () => {
   describe("Scenario: Format thread messages into context string", () => {
-    it("should include all messages with user IDs", () => {
+    it("should include all messages with structured metadata", () => {
       const messages = [
-        { user: "U123", text: "Hello, can you help me?" },
-        { user: "U456", text: "Sure, what do you need?" },
+        { user: "U123", text: "Hello, can you help me?", ts: "1234567890.001" },
+        { user: "U456", text: "Sure, what do you need?", ts: "1234567890.002" },
       ];
 
       const result = formatContextForAgent(messages);
 
-      expect(result).toContain("## Slack Thread Context");
-      expect(result).toContain("[U123]: Hello, can you help me?");
-      expect(result).toContain("[U456]: Sure, what do you need?");
+      expect(result).toContain("# Slack Thread Context");
+      expect(result).toContain("- RELATIVE_INDEX: -2");
+      expect(result).toContain("- MSG_ID: 1234567890.001");
+      expect(result).toContain("- SENDER_ID: U123");
+      expect(result).toContain("Hello, can you help me?");
+      expect(result).toContain("- RELATIVE_INDEX: -1");
+      expect(result).toContain("- MSG_ID: 1234567890.002");
+      expect(result).toContain("- SENDER_ID: U456");
+      expect(result).toContain("Sure, what do you need?");
+    });
+
+    it("should use --- separators between messages", () => {
+      const messages = [
+        { user: "U123", text: "First", ts: "1234567890.001" },
+        { user: "U456", text: "Second", ts: "1234567890.002" },
+      ];
+
+      const result = formatContextForAgent(messages);
+
+      // Each message starts with --- and the output ends with ---
+      expect(result).toMatch(/---\n\n- RELATIVE_INDEX: -2/);
+      expect(result).toMatch(/---\n\n- RELATIVE_INDEX: -1/);
+      expect(result).toMatch(/\n\n---$/);
     });
   });
 
   describe("Scenario: Include bot messages in context", () => {
-    it("should include bot messages labeled as 'bot'", () => {
+    it("should include bot messages with SENDER_ID: BOT", () => {
       const messages = [
-        { user: "U123", text: "Hello" },
-        { bot_id: "BBOT123", text: "Bot response" },
-        { user: "U456", text: "Thanks" },
+        { user: "U123", text: "Hello", ts: "1234567890.001" },
+        { bot_id: "BBOT123", text: "Bot response", ts: "1234567890.002" },
+        { user: "U456", text: "Thanks", ts: "1234567890.003" },
       ];
 
       const result = formatContextForAgent(messages);
 
-      expect(result).toContain("[U123]: Hello");
-      expect(result).toContain("[bot]: Bot response");
-      expect(result).toContain("[U456]: Thanks");
+      expect(result).toContain("- SENDER_ID: U123");
+      expect(result).toContain("- SENDER_ID: BOT");
+      expect(result).toContain("Bot response");
+      expect(result).toContain("- SENDER_ID: U456");
     });
 
     it("should not filter out any messages even when botUserId is provided", () => {
       const botUserId = "BBOT123";
       const messages = [
-        { user: "U123", text: "User message 1" },
-        { user: "BBOT123", text: "Bot message" },
-        { user: "U456", text: "User message 2" },
+        { user: "U123", text: "User message 1", ts: "1234567890.001" },
+        { user: "BBOT123", text: "Bot message", ts: "1234567890.002" },
+        { user: "U456", text: "User message 2", ts: "1234567890.003" },
       ];
 
       const result = formatContextForAgent(messages, botUserId);
 
       // All messages should be included
-      expect(result).toContain("[U123]: User message 1");
-      expect(result).toContain("[BBOT123]: Bot message");
-      expect(result).toContain("[U456]: User message 2");
+      expect(result).toContain("User message 1");
+      expect(result).toContain("- SENDER_ID: BBOT123");
+      expect(result).toContain("Bot message");
+      expect(result).toContain("User message 2");
     });
   });
 
@@ -78,19 +100,24 @@ describe("Feature: Format Context For Agent", () => {
 
       const result = formatContextForAgent(messages);
 
-      expect(result).toContain("[unknown]: No user");
-      expect(result).toContain("[U123]: ");
+      expect(result).toContain("- SENDER_ID: unknown");
+      expect(result).toContain("No user");
+      expect(result).toContain("- SENDER_ID: U123");
+      expect(result).toContain("- MSG_ID: unknown");
     });
   });
 
   describe("Scenario: Format channel messages", () => {
     it("should use channel context header", () => {
-      const messages = [{ user: "U123", text: "Recent message" }];
+      const messages = [
+        { user: "U123", text: "Recent message", ts: "1234567890.001" },
+      ];
 
       const result = formatContextForAgent(messages, undefined, "channel");
 
-      expect(result).toContain("## Recent Channel Messages");
-      expect(result).toContain("[U123]: Recent message");
+      expect(result).toContain("# Recent Channel Messages");
+      expect(result).toContain("- SENDER_ID: U123");
+      expect(result).toContain("Recent message");
     });
   });
 
@@ -100,6 +127,7 @@ describe("Feature: Format Context For Agent", () => {
         {
           user: "U123",
           text: "Check out this screenshot",
+          ts: "1234567890.001",
           files: [
             {
               name: "screenshot.png",
@@ -114,7 +142,7 @@ describe("Feature: Format Context For Agent", () => {
 
       const result = formatContextForAgent(messages);
 
-      expect(result).toContain("[U123]: Check out this screenshot");
+      expect(result).toContain("Check out this screenshot");
       expect(result).toContain("[file]: screenshot.png (PNG Image)");
       expect(result).toContain("Dimensions: 1920x1080");
       expect(result).toContain(
@@ -127,6 +155,7 @@ describe("Feature: Format Context For Agent", () => {
         {
           user: "U123",
           text: "Here are the files",
+          ts: "1234567890.001",
           files: [
             {
               name: "image1.png",
@@ -153,6 +182,7 @@ describe("Feature: Format Context For Agent", () => {
         {
           user: "U123",
           text: "Private image",
+          ts: "1234567890.001",
           files: [
             {
               name: "private.png",
@@ -176,6 +206,7 @@ describe("Feature: Format Context For Agent", () => {
         {
           user: "U123",
           text: "A document",
+          ts: "1234567890.001",
           files: [
             {
               name: "report.docx",
@@ -199,6 +230,7 @@ describe("Feature: Format Context For Agent", () => {
         {
           user: "U123",
           text: "Check this article",
+          ts: "1234567890.001",
           attachments: [
             {
               title: "Article Preview",
@@ -212,7 +244,7 @@ describe("Feature: Format Context For Agent", () => {
 
       const result = formatContextForAgent(messages);
 
-      expect(result).toContain("[U123]: Check this article");
+      expect(result).toContain("Check this article");
       expect(result).toContain("[image]: Article Preview");
       expect(result).toContain("Dimensions: 800x600");
       expect(result).toContain("URL: https://example.com/preview.jpg");
@@ -223,6 +255,7 @@ describe("Feature: Format Context For Agent", () => {
         {
           user: "U123",
           text: "Link",
+          ts: "1234567890.001",
           attachments: [
             {
               fallback: "Preview image",
@@ -243,6 +276,7 @@ describe("Feature: Format Context For Agent", () => {
         {
           user: "U123",
           text: "Text only attachment",
+          ts: "1234567890.001",
           attachments: [
             {
               title: "No image here",
@@ -254,7 +288,7 @@ describe("Feature: Format Context For Agent", () => {
 
       const result = formatContextForAgent(messages);
 
-      expect(result).toContain("[U123]: Text only attachment");
+      expect(result).toContain("Text only attachment");
       expect(result).not.toContain("[image]:");
     });
   });
@@ -262,10 +296,15 @@ describe("Feature: Format Context For Agent", () => {
   describe("Scenario: Mixed content in thread", () => {
     it("should format thread with text, files, and attachments", () => {
       const messages = [
-        { user: "U123", text: "Here is the error screenshot" },
+        {
+          user: "U123",
+          text: "Here is the error screenshot",
+          ts: "1234567890.001",
+        },
         {
           user: "U456",
           text: "I see the issue",
+          ts: "1234567890.002",
           files: [
             {
               name: "fix.png",
@@ -279,6 +318,7 @@ describe("Feature: Format Context For Agent", () => {
         {
           user: "U123",
           text: "Related article",
+          ts: "1234567890.003",
           attachments: [
             {
               title: "Bug Report",
@@ -290,12 +330,31 @@ describe("Feature: Format Context For Agent", () => {
 
       const result = formatContextForAgent(messages);
 
-      expect(result).toContain("[U123]: Here is the error screenshot");
-      expect(result).toContain("[U456]: I see the issue");
+      expect(result).toContain("- RELATIVE_INDEX: -3");
+      expect(result).toContain("Here is the error screenshot");
+      expect(result).toContain("- RELATIVE_INDEX: -2");
+      expect(result).toContain("I see the issue");
       expect(result).toContain("[file]: fix.png (PNG Image)");
       expect(result).toContain("Dimensions: 640x480");
-      expect(result).toContain("[U123]: Related article");
+      expect(result).toContain("- RELATIVE_INDEX: -1");
+      expect(result).toContain("Related article");
       expect(result).toContain("[image]: Bug Report");
+    });
+  });
+
+  describe("Scenario: Relative index calculation", () => {
+    it("should calculate relative index from the end of messages", () => {
+      const messages = [
+        { user: "U1", text: "First", ts: "1.0" },
+        { user: "U2", text: "Second", ts: "2.0" },
+        { user: "U3", text: "Third", ts: "3.0" },
+      ];
+
+      const result = formatContextForAgent(messages);
+
+      expect(result).toContain("- RELATIVE_INDEX: -3");
+      expect(result).toContain("- RELATIVE_INDEX: -2");
+      expect(result).toContain("- RELATIVE_INDEX: -1");
     });
   });
 });
@@ -369,6 +428,7 @@ describe("Feature: Format Context With Image Upload", () => {
         {
           user: "U123",
           text: "Check this screenshot",
+          ts: "1234567890.001",
           files: [
             {
               id: "F123",
@@ -402,6 +462,8 @@ describe("Feature: Format Context With Image Upload", () => {
       expect(result).toContain("[file]: screenshot.png (image/png)");
       expect(result).toContain("Dimensions: 1920x1080");
       expect(result).toContain("Image URL: https://mock-presigned-url");
+      expect(result).toContain("- SENDER_ID: U123");
+      expect(result).toContain("- MSG_ID: 1234567890.001");
     });
 
     it("should upload JPEG images to R2", async () => {
@@ -426,6 +488,7 @@ describe("Feature: Format Context With Image Upload", () => {
         {
           user: "U123",
           text: "Photo",
+          ts: "1234567890.001",
           files: [
             {
               id: "F456",
@@ -460,6 +523,7 @@ describe("Feature: Format Context With Image Upload", () => {
         {
           user: "U123",
           text: "Document",
+          ts: "1234567890.001",
           files: [
             {
               name: "report.pdf",
@@ -499,6 +563,7 @@ describe("Feature: Format Context With Image Upload", () => {
         {
           user: "U123",
           text: "Screenshot",
+          ts: "1234567890.001",
           files: [
             {
               id: "F123",
@@ -535,6 +600,7 @@ describe("Feature: Format Context With Image Upload", () => {
         {
           user: "U123",
           text: "Screenshot",
+          ts: "1234567890.001",
           files: [
             {
               name: "screenshot.png",
@@ -575,6 +641,7 @@ describe("Feature: Format Context With Image Upload", () => {
         {
           user: "U123",
           text: "Screenshot",
+          ts: "1234567890.001",
           files: [
             {
               id: "F123",
@@ -615,6 +682,7 @@ describe("Feature: Format Context With Image Upload", () => {
         {
           user: "U123",
           text: "Screenshot",
+          ts: "1234567890.001",
           files: [
             {
               id: "F123",
@@ -646,6 +714,7 @@ describe("Feature: Format Context With Image Upload", () => {
         {
           user: "U123",
           text: "Large image",
+          ts: "1234567890.001",
           files: [
             {
               name: "large.png",
@@ -677,6 +746,7 @@ describe("Feature: Format Context With Image Upload", () => {
         {
           user: "U123",
           text: "Old image",
+          ts: "1234567890.001",
           files: [
             {
               name: "old.png",
@@ -726,6 +796,7 @@ describe("Feature: Format Context With Image Upload", () => {
         {
           user: "U123",
           text: "Two images",
+          ts: "1234567890.001",
           files: [
             {
               id: "F1",
@@ -754,6 +825,44 @@ describe("Feature: Format Context With Image Upload", () => {
       expect(result).toContain("[file]: img2.png");
       // Both should have presigned URLs
       expect((result.match(/Image URL:/g) || []).length).toBe(2);
+    });
+  });
+
+  describe("Scenario: Structured format for image context", () => {
+    it("should include metadata in image context format", async () => {
+      const messages = [
+        {
+          user: "U123",
+          text: "Document",
+          ts: "1234567890.001",
+          files: [
+            {
+              name: "report.pdf",
+              mimetype: "application/pdf",
+              permalink: "https://slack.com/files/report.pdf",
+            },
+          ],
+        },
+        {
+          user: "U456",
+          text: "Response",
+          ts: "1234567890.002",
+        },
+      ];
+
+      const result = await formatContextForAgentWithImages(
+        messages,
+        "xoxb-test-token",
+        "test-session-123",
+      );
+
+      expect(result).toContain("# Slack Thread Context");
+      expect(result).toContain("- RELATIVE_INDEX: -2");
+      expect(result).toContain("- MSG_ID: 1234567890.001");
+      expect(result).toContain("- SENDER_ID: U123");
+      expect(result).toContain("- RELATIVE_INDEX: -1");
+      expect(result).toContain("- MSG_ID: 1234567890.002");
+      expect(result).toContain("- SENDER_ID: U456");
     });
   });
 });
