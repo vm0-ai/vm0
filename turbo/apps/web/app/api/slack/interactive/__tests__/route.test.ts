@@ -312,6 +312,47 @@ describe("POST /api/slack/interactive", () => {
     });
   });
 
+  describe("Block Actions - Model Provider Refresh", () => {
+    it("re-checks provider status and updates modal", async () => {
+      const { userLink, installation } = await givenLinkedSlackUser();
+      mockClerk({ userId: userLink.vm0UserId });
+      await createTestCompose("test-agent");
+
+      const slackMock = handlers({
+        viewsUpdate: http.post("https://slack.com/api/views.update", () =>
+          HttpResponse.json({ ok: true, view: { id: "V123" } }),
+        ),
+      });
+      server.use(...slackMock.handlers);
+
+      const body = buildInteractiveBody({
+        type: "block_actions",
+        user: {
+          id: userLink.slackUserId,
+          username: "testuser",
+          team_id: installation.slackWorkspaceId,
+        },
+        team: { id: installation.slackWorkspaceId, domain: "test" },
+        view: {
+          id: "V123",
+          private_metadata: JSON.stringify({ channelId: "C123" }),
+          state: {
+            values: {
+              agent_select: { agent_select_action: {} },
+            },
+          },
+        },
+        actions: [{ action_id: "model_provider_refresh", block_id: "block-1" }],
+      });
+      const request = createSignedSlackRequest(body);
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      expect(slackMock.mocked.viewsUpdate).toHaveBeenCalled();
+    });
+  });
+
   describe("View Submission - Agent Add Modal", () => {
     it("returns error when form values are missing", async () => {
       const body = buildInteractiveBody({

@@ -426,7 +426,9 @@ export async function ensureScopeAndArtifact(vm0UserId: string): Promise<void> {
       await globalThis.services.db
         .delete(storages)
         .where(and(eq(storages.id, storageId), isNull(storages.headVersionId)))
-        .catch(() => {});
+        .catch((cleanupErr) => {
+          log.error("Failed to clean up headless storage", { cleanupErr });
+        });
     }),
   );
 }
