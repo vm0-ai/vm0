@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.54.0](https://github.com/vm0-ai/vm0/compare/platform-v0.53.1...platform-v0.54.0) (2026-02-09)
+
+
+### Features
+
+* **platform:** add secret/variable settings page with tabs and url deep-linking ([#2624](https://github.com/vm0-ai/vm0/issues/2624)) ([dac5bad](https://github.com/vm0-ai/vm0/commit/dac5badf4773b7602ceca837a224eb58220f4b5e))
+
 ## [0.53.1](https://github.com/vm0-ai/vm0/compare/platform-v0.53.0...platform-v0.53.1) (2026-02-09)
 
 

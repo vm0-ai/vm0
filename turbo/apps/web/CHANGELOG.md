@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.19.0](https://github.com/vm0-ai/vm0/compare/web-v12.18.0...web-v12.19.0) (2026-02-09)
+
+
+### Features
+
+* **platform:** add secret/variable settings page with tabs and url deep-linking ([#2624](https://github.com/vm0-ai/vm0/issues/2624)) ([dac5bad](https://github.com/vm0-ai/vm0/commit/dac5badf4773b7602ceca837a224eb58220f4b5e))
+
 ## [12.18.0](https://github.com/vm0-ai/vm0/compare/web-v12.17.0...web-v12.18.0) (2026-02-09)
 
 
