@@ -167,27 +167,38 @@ function AgentRow({
 
   return (
     <Dialog>
-      <TableRow className="h-[53px]">
+      <TableRow
+        className={
+          missingSecrets && missingSecrets.length > 0 ? "h-auto" : "h-[53px]"
+        }
+      >
         <DialogTrigger asChild>
           <TableCell className="px-3 py-2 cursor-pointer w-[25%] min-w-[120px]">
-            <div className="flex items-center gap-2">
-              <span className="block truncate whitespace-nowrap font-medium">
-                {agent.name}
-              </span>
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2">
+                <span className="block truncate whitespace-nowrap font-medium">
+                  {agent.name}
+                </span>
+                {missingSecrets && missingSecrets.length > 0 && (
+                  <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0" />
+                )}
+              </div>
               {missingSecrets && missingSecrets.length > 0 && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0" />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>
-                        Missing {missingSecrets.length} required secret
-                        {missingSecrets.length > 1 ? "s" : ""}
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                <div className="flex flex-wrap gap-1.5">
+                  {missingSecrets.map((secret) => (
+                    <button
+                      key={secret}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleAddSecret(secret);
+                      }}
+                      className="inline-flex items-center gap-1 text-xs bg-destructive/10 hover:bg-destructive/20 text-destructive px-1.5 py-0.5 rounded border border-destructive/30 transition-colors"
+                    >
+                      <Plus className="h-3 w-3" />
+                      <code className="font-mono">{secret}</code>
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
           </TableCell>
