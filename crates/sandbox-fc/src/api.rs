@@ -257,7 +257,6 @@ impl<'a> ApiClient<'a> {
                  Accept: application/json\r\n\
                  Content-Type: application/json\r\n\
                  Content-Length: {}\r\n\
-                 Connection: close\r\n\
                  \r\n",
                 b.len(),
             )
@@ -266,7 +265,6 @@ impl<'a> ApiClient<'a> {
                 "{method} {path} HTTP/1.1\r\n\
                  Host: localhost\r\n\
                  Accept: application/json\r\n\
-                 Connection: close\r\n\
                  \r\n"
             )
         };
@@ -286,37 +284,39 @@ impl<'a> ApiClient<'a> {
             })?;
         }
 
-        // Read response headers (up to \r\n\r\n). We read byte-by-byte into
-        // a buffer and stop as soon as we see the end-of-headers marker.  This
-        // avoids blocking on `read_to_end` when the server uses keep-alive.
+        // Read response into a buffer. Firecracker uses keep-alive so we
+        // cannot rely on connection close; instead we read until we find the
+        // header/body boundary (\r\n\r\n), parse Content-Length, then read
+        // exactly that many remaining body bytes.
+        let mut reader = tokio::io::BufReader::new(stream);
         let mut buf = Vec::with_capacity(4096);
-        let mut header_end = None;
+
+        // Phase 1: read until we have the full header block.
         loop {
-            let mut byte = [0u8; 1];
-            let n = stream.read(&mut byte).await.map_err(|e| ApiError {
+            let n = reader.read_buf(&mut buf).await.map_err(|e| ApiError {
                 status: 0,
                 body: format!("read response: {e}"),
             })?;
-            if n == 0 {
-                break; // connection closed
-            }
-            buf.push(byte[0]);
-            if buf.len() >= 4 && buf.get(buf.len() - 4..) == Some(b"\r\n\r\n".as_slice()) {
-                header_end = Some(buf.len());
+            if n == 0 || buf.windows(4).any(|w| w == b"\r\n\r\n") {
                 break;
             }
         }
 
-        let headers = String::from_utf8_lossy(&buf);
+        let response = String::from_utf8_lossy(&buf);
+
+        // Find where headers end.
+        let header_end = response.find("\r\n\r\n").unwrap_or(response.len());
 
         // Parse status code from "HTTP/1.1 204 No Content\r\n..."
-        let status = headers
+        let status = response
             .get(9..12)
             .and_then(|s| s.parse::<u16>().ok())
             .unwrap_or(0);
 
-        // Parse Content-Length and read body if present.
-        let content_length = headers
+        // Parse Content-Length from headers.
+        let content_length = response
+            .get(..header_end)
+            .unwrap_or_default()
             .lines()
             .find_map(|line| {
                 let (key, value) = line.split_once(':')?;
@@ -328,16 +328,22 @@ impl<'a> ApiClient<'a> {
             })
             .unwrap_or(0);
 
-        let body_str = if content_length > 0 && header_end.is_some() {
-            let mut body_buf = vec![0u8; content_length];
-            stream
-                .read_exact(&mut body_buf)
-                .await
-                .map_err(|e| ApiError {
+        // Body bytes already read (past the \r\n\r\n separator).
+        let body_start = header_end + 4;
+        let already_read = buf.len().saturating_sub(body_start);
+        let body_str = if content_length > 0 {
+            if already_read < content_length {
+                // Need to read remaining body bytes from the stream.
+                let remaining = content_length - already_read;
+                let mut tail = vec![0u8; remaining];
+                reader.read_exact(&mut tail).await.map_err(|e| ApiError {
                     status: 0,
                     body: format!("read body: {e}"),
                 })?;
-            String::from_utf8_lossy(&body_buf).to_string()
+                buf.extend_from_slice(&tail);
+            }
+            let end = body_start + content_length;
+            String::from_utf8_lossy(buf.get(body_start..end).unwrap_or_default()).to_string()
         } else {
             String::new()
         };
