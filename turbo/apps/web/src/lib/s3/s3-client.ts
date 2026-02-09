@@ -12,18 +12,26 @@ import type { S3Object, S3StorageManifest } from "./types";
 import { s3DownloadError, s3UploadError } from "./types";
 
 /**
- * Get S3 client instance configured for Cloudflare R2
+ * Get S3 client instance configured for S3-compatible storage.
+ * Defaults to Cloudflare R2; set S3_ENDPOINT to use MinIO or other providers.
  */
 function getS3Client(): S3Client {
   const envVars = env();
 
+  const endpoint =
+    process.env.S3_ENDPOINT ||
+    `https://${envVars.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
+  const region = process.env.S3_REGION || "auto";
+  const forcePathStyle = process.env.S3_FORCE_PATH_STYLE === "true";
+
   return new S3Client({
-    region: "auto",
-    endpoint: `https://${envVars.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    region,
+    endpoint,
     credentials: {
       accessKeyId: envVars.R2_ACCESS_KEY_ID,
       secretAccessKey: envVars.R2_SECRET_ACCESS_KEY,
     },
+    forcePathStyle,
   });
 }
 
