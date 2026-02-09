@@ -21,6 +21,8 @@ impl fmt::Display for ApiError {
     }
 }
 
+impl std::error::Error for ApiError {}
+
 /// Wait for the Firecracker API socket to accept connections.
 ///
 /// Uses inotify to wait for the socket file, then polls GET / until 200.
@@ -105,6 +107,9 @@ async fn wait_for_socket_file(socket_path: &Path) -> Result<(), ApiError> {
 fn drain_inotify_fd(fd: std::os::fd::BorrowedFd<'_>) {
     let mut buf = [0u8; 4096];
     loop {
+        // SAFETY: `fd` is a valid non-blocking inotify file descriptor borrowed
+        // from AsyncFd. `buf` is a stack-allocated array with known length.
+        // Non-blocking mode guarantees read returns immediately with EAGAIN when empty.
         let rc = unsafe { libc::read(fd.as_raw_fd(), buf.as_mut_ptr().cast(), buf.len()) };
         if rc <= 0 {
             break;
@@ -217,8 +222,9 @@ async fn request(
     // Extract body after the \r\n\r\n header separator.
     let body_str = response
         .find("\r\n\r\n")
-        .map(|i| response[i + 4..].to_string())
-        .unwrap_or_default();
+        .and_then(|i| response.get(i + 4..))
+        .unwrap_or_default()
+        .to_string();
 
     if (200..300).contains(&status) {
         Ok(body_str)
@@ -243,9 +249,8 @@ mod tests {
 
     #[tokio::test]
     async fn wait_for_ready_succeeds_on_200() {
-        let dir = tempfile::tempdir().ok();
-        let dir = dir.as_ref().map(|d| d.path()).unwrap_or(Path::new("/tmp"));
-        let sock_path = dir.join("test-ready.sock");
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        let sock_path = dir.path().join("test-ready.sock");
 
         let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
             panic!("bind {}: {e}", sock_path.display());
@@ -281,9 +286,8 @@ mod tests {
 
     #[tokio::test]
     async fn load_snapshot_succeeds_on_204() {
-        let dir = tempfile::tempdir().ok();
-        let dir = dir.as_ref().map(|d| d.path()).unwrap_or(Path::new("/tmp"));
-        let sock_path = dir.join("test-snapshot.sock");
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        let sock_path = dir.path().join("test-snapshot.sock");
 
         let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
             panic!("bind {}: {e}", sock_path.display());
@@ -338,9 +342,8 @@ mod tests {
 
     #[tokio::test]
     async fn wait_for_ready_retries_until_success() {
-        let dir = tempfile::tempdir().ok();
-        let dir = dir.as_ref().map(|d| d.path()).unwrap_or(Path::new("/tmp"));
-        let sock_path = dir.join("test-retry.sock");
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        let sock_path = dir.path().join("test-retry.sock");
 
         let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
             panic!("bind {}: {e}", sock_path.display());
@@ -371,9 +374,8 @@ mod tests {
 
     #[tokio::test]
     async fn load_snapshot_error_falls_back_to_raw_body() {
-        let dir = tempfile::tempdir().ok();
-        let dir = dir.as_ref().map(|d| d.path()).unwrap_or(Path::new("/tmp"));
-        let sock_path = dir.join("test-raw-err.sock");
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        let sock_path = dir.path().join("test-raw-err.sock");
 
         let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
             panic!("bind {}: {e}", sock_path.display());
@@ -403,9 +405,8 @@ mod tests {
 
     #[tokio::test]
     async fn load_snapshot_returns_error_on_non_204() {
-        let dir = tempfile::tempdir().ok();
-        let dir = dir.as_ref().map(|d| d.path()).unwrap_or(Path::new("/tmp"));
-        let sock_path = dir.join("test-snapshot-err.sock");
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        let sock_path = dir.path().join("test-snapshot-err.sock");
 
         let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
             panic!("bind {}: {e}", sock_path.display());
