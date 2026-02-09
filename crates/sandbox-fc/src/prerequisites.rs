@@ -3,13 +3,14 @@ use std::path::Path;
 
 use sandbox::SandboxError;
 
+use crate::command::{Privilege, exec};
 use crate::config::FirecrackerConfig;
 
 /// Verify that all required system prerequisites are present before creating the factory.
 ///
 /// Checks firecracker binary, kernel, rootfs, `/dev/kvm`, network commands, and sudo access.
 /// Collects all failures and returns them in a single `BackendNotAvailable` error.
-pub fn check_prerequisites(config: &FirecrackerConfig) -> Result<(), SandboxError> {
+pub async fn check_prerequisites(config: &FirecrackerConfig) -> Result<(), SandboxError> {
     let mut errors = Vec::new();
 
     check_file_exists(&config.binary_path, "firecracker binary", &mut errors);
@@ -23,7 +24,7 @@ pub fn check_prerequisites(config: &FirecrackerConfig) -> Result<(), SandboxErro
     }
     check_kvm(&mut errors);
     check_required_commands(config, &mut errors);
-    check_sudo(&mut errors);
+    check_sudo(&mut errors).await;
 
     if errors.is_empty() {
         Ok(())
@@ -65,14 +66,11 @@ fn check_required_commands(config: &FirecrackerConfig, errors: &mut Vec<String>)
     }
 }
 
-fn check_sudo(errors: &mut Vec<String>) {
-    let sudo_ok = std::process::Command::new("sudo")
-        .args(["-n", "true"])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success());
-    if !sudo_ok {
+async fn check_sudo(errors: &mut Vec<String>) {
+    if exec("sudo", &["-n", "true"], Privilege::User)
+        .await
+        .is_err()
+    {
         errors.push(
             "root/sudo access required for network configuration; \
              please run with sudo or configure sudoers"

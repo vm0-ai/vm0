@@ -338,14 +338,11 @@ fn monitor_process(
 
 /// Recursively kill a process and all its descendants (depth-first).
 async fn kill_process_tree(pid: u32) {
+    use crate::command::{Privilege, exec};
+
     // Find child PIDs.
     let pid_str = pid.to_string();
-    if let Ok(output) = tokio::process::Command::new("pgrep")
-        .args(["-P", &pid_str])
-        .output()
-        .await
-    {
-        let stdout = String::from_utf8_lossy(&output.stdout);
+    if let Ok(stdout) = exec("pgrep", &["-P", &pid_str], Privilege::User).await {
         for line in stdout.lines() {
             if let Ok(child_pid) = line.trim().parse::<u32>() {
                 Box::pin(kill_process_tree(child_pid)).await;
@@ -354,10 +351,7 @@ async fn kill_process_tree(pid: u32) {
     }
 
     // Kill this process.
-    let _ = tokio::process::Command::new("sudo")
-        .args(["kill", "-9", &pid_str])
-        .output()
-        .await;
+    let _ = exec("kill", &["-9", &pid_str], Privilege::Sudo).await;
 }
 
 /// Get the current username via `getuid()`.

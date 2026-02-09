@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use tracing::{error, info, warn};
 
 use super::error::{OverlayError, Result};
+use crate::command::{Privilege, exec};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -49,21 +50,9 @@ impl OverlayCreator for Ext4Creator {
             .await
             .map_err(|e| OverlayError::FileCreation(format!("truncate {path_str}: {e}")))?;
 
-        // Use Command directly to avoid shell injection via path.
-        let output = tokio::process::Command::new("mkfs.ext4")
-            .args(["-F", "-q"])
-            .arg(path)
-            .output()
+        exec("mkfs.ext4", &["-F", "-q", &path_str], Privilege::User)
             .await
-            .map_err(|e| OverlayError::FileCreation(format!("mkfs.ext4: {e}")))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(OverlayError::FileCreation(format!(
-                "mkfs.ext4 failed: {}",
-                stderr.trim()
-            )));
-        }
+            .map_err(|e| OverlayError::FileCreation(e.to_string()))?;
 
         Ok(())
     }
@@ -84,21 +73,16 @@ impl SnapshotCopyCreator {
 #[async_trait]
 impl OverlayCreator for SnapshotCopyCreator {
     async fn create(&self, path: &Path) -> Result<()> {
-        let output = tokio::process::Command::new("cp")
-            .arg("--sparse=always")
-            .arg(&self.source)
-            .arg(path)
-            .output()
-            .await
-            .map_err(|e| OverlayError::FileCreation(format!("cp: {e}")))?;
+        let source_str = self.source.to_string_lossy();
+        let dest_str = path.to_string_lossy();
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(OverlayError::FileCreation(format!(
-                "cp failed: {}",
-                stderr.trim()
-            )));
-        }
+        exec(
+            "cp",
+            &["--sparse=always", &source_str, &dest_str],
+            Privilege::User,
+        )
+        .await
+        .map_err(|e| OverlayError::FileCreation(e.to_string()))?;
 
         Ok(())
     }

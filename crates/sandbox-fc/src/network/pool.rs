@@ -37,7 +37,7 @@ use std::collections::VecDeque;
 
 use tracing::{error, info, trace, warn};
 
-use crate::command::{Privilege, exec_command, exec_command_ignore_errors, sudo};
+use crate::command::{Privilege, exec, exec_ignore_errors};
 
 use super::GUEST_NETWORK;
 use super::error::{NetworkError, Result};
@@ -152,8 +152,20 @@ fn is_hex2(s: &str) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Network operations (exec_command wrappers)
+// Network operations
 // ---------------------------------------------------------------------------
+
+/// Shorthand: run `sudo ip <args>`, discard stdout.
+async fn sudo_ip(args: &[&str]) -> Result<()> {
+    exec("ip", args, Privilege::Sudo).await?;
+    Ok(())
+}
+
+/// Shorthand: run `sudo iptables <args>`, discard stdout.
+async fn sudo_iptables(args: &[&str]) -> Result<()> {
+    exec("iptables", args, Privilege::Sudo).await?;
+    Ok(())
+}
 
 /// Create a network namespace with a TAP device.
 async fn create_netns_with_tap(
@@ -161,11 +173,28 @@ async fn create_netns_with_tap(
     tap_name: &str,
     gateway_ip_with_prefix: &str,
 ) -> Result<()> {
-    sudo!("ip netns add {ns_name}")?;
-    sudo!("ip netns exec {ns_name} ip tuntap add {tap_name} mode tap")?;
-    sudo!("ip netns exec {ns_name} ip addr add {gateway_ip_with_prefix} dev {tap_name}")?;
-    sudo!("ip netns exec {ns_name} ip link set {tap_name} up")?;
-    sudo!("ip netns exec {ns_name} ip link set lo up")?;
+    sudo_ip(&["netns", "add", ns_name]).await?;
+    sudo_ip(&[
+        "netns", "exec", ns_name, "ip", "tuntap", "add", tap_name, "mode", "tap",
+    ])
+    .await?;
+    sudo_ip(&[
+        "netns",
+        "exec",
+        ns_name,
+        "ip",
+        "addr",
+        "add",
+        gateway_ip_with_prefix,
+        "dev",
+        tap_name,
+    ])
+    .await?;
+    sudo_ip(&[
+        "netns", "exec", ns_name, "ip", "link", "set", tap_name, "up",
+    ])
+    .await?;
+    sudo_ip(&["netns", "exec", ns_name, "ip", "link", "set", "lo", "up"]).await?;
     Ok(())
 }
 
@@ -176,11 +205,46 @@ async fn setup_veth_pair(
     host_ip: &str,
     peer_ip: &str,
 ) -> Result<()> {
-    sudo!("ip link add {host_device} type veth peer name {PEER_DEVICE} netns {name}")?;
-    sudo!("ip netns exec {name} ip addr add {peer_ip}/30 dev {PEER_DEVICE}")?;
-    sudo!("ip netns exec {name} ip link set {PEER_DEVICE} up")?;
-    sudo!("ip addr add {host_ip}/30 dev {host_device}")?;
-    sudo!("ip link set {host_device} up")?;
+    let peer_cidr = format!("{peer_ip}/30");
+    let host_cidr = format!("{host_ip}/30");
+    sudo_ip(&[
+        "link",
+        "add",
+        host_device,
+        "type",
+        "veth",
+        "peer",
+        "name",
+        PEER_DEVICE,
+        "netns",
+        name,
+    ])
+    .await?;
+    sudo_ip(&[
+        "netns",
+        "exec",
+        name,
+        "ip",
+        "addr",
+        "add",
+        &peer_cidr,
+        "dev",
+        PEER_DEVICE,
+    ])
+    .await?;
+    sudo_ip(&[
+        "netns",
+        "exec",
+        name,
+        "ip",
+        "link",
+        "set",
+        PEER_DEVICE,
+        "up",
+    ])
+    .await?;
+    sudo_ip(&["addr", "add", &host_cidr, "dev", host_device]).await?;
+    sudo_ip(&["link", "set", host_device, "up"]).await?;
     Ok(())
 }
 
@@ -191,11 +255,37 @@ async fn setup_namespace_routing(
     gateway_ip: &str,
     prefix_len: u8,
 ) -> Result<()> {
-    sudo!("ip netns exec {name} ip route add default via {host_ip}")?;
-    sudo!(
-        "ip netns exec {name} iptables -t nat -A POSTROUTING -s {gateway_ip}/{prefix_len} -o {PEER_DEVICE} -j MASQUERADE"
-    )?;
-    sudo!("ip netns exec {name} sysctl -w net.ipv4.ip_forward=1")?;
+    let src = format!("{gateway_ip}/{prefix_len}");
+    sudo_ip(&[
+        "netns", "exec", name, "ip", "route", "add", "default", "via", host_ip,
+    ])
+    .await?;
+    sudo_ip(&[
+        "netns",
+        "exec",
+        name,
+        "iptables",
+        "-t",
+        "nat",
+        "-A",
+        "POSTROUTING",
+        "-s",
+        &src,
+        "-o",
+        PEER_DEVICE,
+        "-j",
+        "MASQUERADE",
+    ])
+    .await?;
+    sudo_ip(&[
+        "netns",
+        "exec",
+        name,
+        "sysctl",
+        "-w",
+        "net.ipv4.ip_forward=1",
+    ])
+    .await?;
     Ok(())
 }
 
@@ -207,28 +297,108 @@ async fn setup_host_iptables(
     proxy_port: Option<u16>,
     default_iface: &str,
 ) -> Result<()> {
-    sudo!(
-        "iptables -t nat -A POSTROUTING -s {peer_ip}/30 -o {default_iface} -j MASQUERADE -m comment --comment \"{name}\""
-    )?;
-    sudo!(
-        "iptables -A FORWARD -i {host_device} -o {default_iface} -j ACCEPT -m comment --comment \"{name}\""
-    )?;
-    sudo!(
-        "iptables -A FORWARD -i {default_iface} -o {host_device} -m state --state RELATED,ESTABLISHED -j ACCEPT -m comment --comment \"{name}\""
-    )?;
+    let src = format!("{peer_ip}/30");
+    sudo_iptables(&[
+        "-t",
+        "nat",
+        "-A",
+        "POSTROUTING",
+        "-s",
+        &src,
+        "-o",
+        default_iface,
+        "-j",
+        "MASQUERADE",
+        "-m",
+        "comment",
+        "--comment",
+        name,
+    ])
+    .await?;
+    sudo_iptables(&[
+        "-A",
+        "FORWARD",
+        "-i",
+        host_device,
+        "-o",
+        default_iface,
+        "-j",
+        "ACCEPT",
+        "-m",
+        "comment",
+        "--comment",
+        name,
+    ])
+    .await?;
+    sudo_iptables(&[
+        "-A",
+        "FORWARD",
+        "-i",
+        default_iface,
+        "-o",
+        host_device,
+        "-m",
+        "state",
+        "--state",
+        "RELATED,ESTABLISHED",
+        "-j",
+        "ACCEPT",
+        "-m",
+        "comment",
+        "--comment",
+        name,
+    ])
+    .await?;
     if let Some(port) = proxy_port {
-        sudo!(
-            "iptables -t nat -A PREROUTING -s {peer_ip}/30 -p tcp --dport 80 -j REDIRECT --to-port {port} -m comment --comment \"{name}\""
-        )?;
-        sudo!(
-            "iptables -t nat -A PREROUTING -s {peer_ip}/30 -p tcp --dport 443 -j REDIRECT --to-port {port} -m comment --comment \"{name}\""
-        )?;
+        let port_str = port.to_string();
+        sudo_iptables(&[
+            "-t",
+            "nat",
+            "-A",
+            "PREROUTING",
+            "-s",
+            &src,
+            "-p",
+            "tcp",
+            "--dport",
+            "80",
+            "-j",
+            "REDIRECT",
+            "--to-port",
+            &port_str,
+            "-m",
+            "comment",
+            "--comment",
+            name,
+        ])
+        .await?;
+        sudo_iptables(&[
+            "-t",
+            "nat",
+            "-A",
+            "PREROUTING",
+            "-s",
+            &src,
+            "-p",
+            "tcp",
+            "--dport",
+            "443",
+            "-j",
+            "REDIRECT",
+            "--to-port",
+            &port_str,
+            "-m",
+            "comment",
+            "--comment",
+            name,
+        ])
+        .await?;
     }
     Ok(())
 }
 
 async fn get_default_interface() -> Result<String> {
-    let result = exec_command("ip route get 8.8.8.8", Privilege::User).await?;
+    let result = exec("ip", &["route", "get", "8.8.8.8"], Privilege::User).await?;
     let iface = result
         .split_whitespace()
         .skip_while(|&w| w != "dev")
@@ -247,22 +417,26 @@ async fn delete_iptables_rules_by_comment(comment: &str) {
 }
 
 async fn delete_iptables_from_table(table: &str, comment: &str) {
-    let rules = match exec_command(
-        &format!("iptables-save -t {table} | grep -F -- \"{comment}\" || true"),
-        Privilege::Sudo,
-    )
-    .await
-    {
-        Ok(rules) => rules,
+    let output = match exec("iptables-save", &["-t", table], Privilege::Sudo).await {
+        Ok(output) => output,
         Err(e) => {
             trace!(table, error = %e, "failed to read iptables rules, skipping cleanup");
             return;
         }
     };
     // Sequential: xtables lock serializes writes to the same table anyway.
-    for line in rules.lines().filter(|line| line.starts_with("-A ")) {
+    // Note: split_whitespace + trim_matches('"') is safe because namespace
+    // comment values (e.g. "vm0-ns-00-0a") never contain spaces. If they
+    // did, iptables-save would quote them as `--comment "foo bar"` and the
+    // split would incorrectly break the value into separate arguments.
+    for line in output
+        .lines()
+        .filter(|line| line.starts_with("-A ") && line.contains(comment))
+    {
         let rule = line.replacen("-A ", "-D ", 1);
-        exec_command_ignore_errors(&format!("iptables -t {table} {rule}"), Privilege::Sudo).await;
+        let mut args: Vec<&str> = vec!["-t", table];
+        args.extend(rule.split_whitespace().map(|t| t.trim_matches('"')));
+        exec_ignore_errors("iptables", &args, Privilege::Sudo).await;
     }
 }
 
@@ -270,11 +444,11 @@ async fn delete_iptables_from_table(table: &str, comment: &str) {
 async fn delete_namespace_resources(ns_name: &str, host_device: &str) {
     info!(name = %ns_name, "deleting namespace");
     delete_iptables_rules_by_comment(ns_name).await;
-    let del_link = format!("ip link del {host_device}");
-    let del_ns = format!("ip netns del {ns_name}");
+    let del_link_args = ["link", "del", host_device];
+    let del_ns_args = ["netns", "del", ns_name];
     tokio::join!(
-        exec_command_ignore_errors(&del_link, Privilege::Sudo),
-        exec_command_ignore_errors(&del_ns, Privilege::Sudo),
+        exec_ignore_errors("ip", &del_link_args, Privilege::Sudo),
+        exec_ignore_errors("ip", &del_ns_args, Privilege::Sudo),
     );
     info!(name = %ns_name, "namespace deleted");
 }
@@ -314,7 +488,7 @@ impl NetnsPool {
         );
 
         // Enable host-level IP forwarding (idempotent, needed once per host).
-        sudo!("sysctl -w net.ipv4.ip_forward=1")?;
+        exec("sysctl", &["-w", "net.ipv4.ip_forward=1"], Privilege::Sudo).await?;
 
         // Clean up orphaned namespaces from a previous process that used the same index.
         cleanup_namespaces_by_index(config.index).await;
@@ -545,12 +719,13 @@ pub async fn cleanup_namespaces_by_index(index: u32) {
     let prefix = format!("{NS_PREFIX}{idx_str}-");
 
     // 1. Clean orphaned host iptables rules whose comment matches this pool index.
-    //    grep -F does substring matching, so the prefix matches all namespaces in this pool.
-    //    This catches rules left behind even if the namespace itself was already deleted.
+    //    The Rust-side `contains()` does substring matching, so the prefix matches
+    //    all namespaces in this pool. This catches rules left behind even if the
+    //    namespace itself was already deleted.
     delete_iptables_rules_by_comment(&prefix).await;
 
     // 2. Discover and delete any remaining namespaces (+ their veth devices).
-    let Ok(output) = exec_command("ip netns list", Privilege::Sudo).await else {
+    let Ok(output) = exec("ip", &["netns", "list"], Privilege::Sudo).await else {
         error!(index, "failed to list namespaces for cleanup");
         return;
     };

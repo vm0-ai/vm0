@@ -1,24 +1,7 @@
 use tokio::process::Command;
 use tracing::trace;
 
-/// Shorthand for `exec_command(&format!(...), Privilege::Sudo).await`.
-///
-/// # Safety (shell injection)
-///
-/// All callers format arguments from controlled sources only: hex-formatted
-/// indices, calculated IP addresses, and compile-time constants. No
-/// user-supplied strings are interpolated into shell commands.
-macro_rules! sudo {
-    ($($arg:tt)*) => {
-        $crate::command::exec_command(
-            &format!($($arg)*),
-            $crate::command::Privilege::Sudo,
-        ).await
-    };
-}
-pub(crate) use sudo;
-
-/// Error from a failed shell command.
+/// Error from a failed command.
 #[derive(Debug, thiserror::Error)]
 #[error("command failed: {command}\n{detail}")]
 pub struct CommandError {
@@ -26,28 +9,49 @@ pub struct CommandError {
     pub detail: String,
 }
 
-/// How a shell command should be executed.
+/// How a command should be executed.
 #[derive(Debug, Clone, Copy)]
 pub enum Privilege {
-    /// Run via `sudo sh -c <cmd>`.
+    /// Prefix with `sudo`.
     Sudo,
-    /// Run via `sh -c <cmd>` as the current user.
+    /// Run as the current user.
     User,
 }
 
-/// Execute a shell command.
+/// Format a human-readable display string for a direct command invocation.
+fn format_command_display(program: &str, args: &[&str], privilege: Privilege) -> String {
+    let mut parts = Vec::with_capacity(args.len() + 2);
+    if matches!(privilege, Privilege::Sudo) {
+        parts.push("sudo");
+    }
+    parts.push(program);
+    parts.extend_from_slice(args);
+    parts.join(" ")
+}
+
+/// Execute a command.
 ///
+/// Invokes the program binary directly with the given arguments.
 /// Returns trimmed stdout on success.
-pub async fn exec_command(cmd: &str, privilege: Privilege) -> Result<String, CommandError> {
-    trace!(cmd, ?privilege, "exec_command");
+pub async fn exec(
+    program: &str,
+    args: &[&str],
+    privilege: Privilege,
+) -> Result<String, CommandError> {
+    let cmd_display = format_command_display(program, args, privilege);
+    trace!(command = %cmd_display, "exec");
 
     let output = match privilege {
-        Privilege::Sudo => Command::new("sudo").args(["sh", "-c", cmd]).output().await,
-        Privilege::User => Command::new("sh").args(["-c", cmd]).output().await,
+        Privilege::Sudo => {
+            let mut sudo_args = vec![program];
+            sudo_args.extend_from_slice(args);
+            Command::new("sudo").args(&sudo_args).output().await
+        }
+        Privilege::User => Command::new(program).args(args).output().await,
     };
 
     let output = output.map_err(|e| CommandError {
-        command: cmd.to_string(),
+        command: cmd_display.clone(),
         detail: e.to_string(),
     })?;
 
@@ -57,28 +61,33 @@ pub async fn exec_command(cmd: &str, privilege: Privilege) -> Result<String, Com
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         Err(CommandError {
-            command: cmd.to_string(),
+            command: cmd_display,
             detail: stderr,
         })
     }
 }
 
-/// Execute a shell command, ignoring any errors.
-pub async fn exec_command_ignore_errors(cmd: &str, privilege: Privilege) {
-    trace!(cmd, ?privilege, "exec_command_ignore_errors");
+/// Execute a command, ignoring any errors.
+pub async fn exec_ignore_errors(program: &str, args: &[&str], privilege: Privilege) {
+    let cmd_display = format_command_display(program, args, privilege);
+    trace!(command = %cmd_display, "exec_ignore_errors");
 
-    let (prog, args): (&str, &[&str]) = match privilege {
-        Privilege::Sudo => ("sudo", &["sh", "-c", cmd]),
-        Privilege::User => ("sh", &["-c", cmd]),
+    let output = match privilege {
+        Privilege::Sudo => {
+            let mut sudo_args = vec![program];
+            sudo_args.extend_from_slice(args);
+            Command::new("sudo").args(&sudo_args).output().await
+        }
+        Privilege::User => Command::new(program).args(args).output().await,
     };
 
-    match Command::new(prog).args(args).output().await {
-        Ok(output) if !output.status.success() => {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            trace!(cmd, stderr = %stderr.trim(), "command failed (ignored)");
+    match output {
+        Ok(o) if !o.status.success() => {
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            trace!(command = %cmd_display, stderr = %stderr.trim(), "command failed (ignored)");
         }
         Err(e) => {
-            trace!(cmd, error = %e, "command failed to spawn (ignored)");
+            trace!(command = %cmd_display, error = %e, "command failed to spawn (ignored)");
         }
         _ => {}
     }
@@ -88,43 +97,65 @@ pub async fn exec_command_ignore_errors(cmd: &str, privilege: Privilege) {
 mod tests {
     use super::*;
 
+    #[test]
+    fn format_command_display_user() {
+        let display = format_command_display("mkfs.ext4", &["-F", "-q", "/tmp/x"], Privilege::User);
+        assert_eq!(display, "mkfs.ext4 -F -q /tmp/x");
+    }
+
+    #[test]
+    fn format_command_display_sudo() {
+        let display = format_command_display("kill", &["-9", "1234"], Privilege::Sudo);
+        assert_eq!(display, "sudo kill -9 1234");
+    }
+
     #[tokio::test]
-    async fn exec_command_returns_trimmed_stdout() {
-        let output = exec_command("echo '  hello  '", Privilege::User)
-            .await
-            .unwrap();
+    async fn exec_returns_trimmed_stdout() {
+        let output = exec("echo", &["hello"], Privilege::User).await.unwrap();
         assert_eq!(output, "hello");
     }
 
     #[tokio::test]
-    async fn exec_command_captures_multiline_output() {
-        let output = exec_command("printf 'a\\nb\\nc'", Privilege::User)
+    async fn exec_captures_multiline_output() {
+        let output = exec("printf", &["a\\nb\\nc"], Privilege::User)
             .await
             .unwrap();
         assert_eq!(output, "a\nb\nc");
     }
 
     #[tokio::test]
-    async fn exec_command_returns_error_on_failure() {
-        let err = exec_command("exit 1", Privilege::User).await.unwrap_err();
-        assert_eq!(err.command, "exit 1");
+    async fn exec_returns_error_on_failure() {
+        let err = exec("false", &[], Privilege::User).await.unwrap_err();
+        assert!(
+            err.command.contains("false"),
+            "command was: {}",
+            err.command
+        );
     }
 
     #[tokio::test]
-    async fn exec_command_error_contains_stderr() {
-        let err = exec_command("echo oops >&2; exit 1", Privilege::User)
+    async fn exec_error_contains_stderr() {
+        let err = exec("bash", &["-c", "echo oops >&2; exit 1"], Privilege::User)
             .await
             .unwrap_err();
         assert!(err.detail.contains("oops"), "detail was: {}", err.detail);
     }
 
     #[tokio::test]
-    async fn exec_command_ignore_errors_does_not_panic_on_failure() {
-        exec_command_ignore_errors("exit 1", Privilege::User).await;
+    async fn exec_passes_multiple_args() {
+        let output = exec("printf", &["%s-%s", "a", "b"], Privilege::User)
+            .await
+            .unwrap();
+        assert_eq!(output, "a-b");
     }
 
     #[tokio::test]
-    async fn exec_command_ignore_errors_does_not_panic_on_success() {
-        exec_command_ignore_errors("true", Privilege::User).await;
+    async fn exec_ignore_errors_does_not_panic_on_failure() {
+        exec_ignore_errors("false", &[], Privilege::User).await;
+    }
+
+    #[tokio::test]
+    async fn exec_ignore_errors_does_not_panic_on_success() {
+        exec_ignore_errors("true", &[], Privilege::User).await;
     }
 }
