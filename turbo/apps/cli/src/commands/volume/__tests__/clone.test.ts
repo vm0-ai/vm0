@@ -46,7 +46,6 @@ describe("volume clone", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
-    vi.unstubAllEnvs();
   });
 
   describe("argument handling", () => {

@@ -31,7 +31,6 @@ describe("agent list command", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
-    vi.unstubAllEnvs();
   });
 
   describe("successful list", () => {
@@ -104,9 +103,8 @@ describe("agent list command", () => {
 
   describe("error handling", () => {
     it("should handle authentication error", async () => {
-      vi.unstubAllEnvs();
-      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
-      // No token set
+      vi.stubEnv("VM0_TOKEN", "");
+      vi.stubEnv("HOME", "/tmp/test-no-config");
 
       await expect(async () => {
         await listCommand.parseAsync(["node", "cli"]);

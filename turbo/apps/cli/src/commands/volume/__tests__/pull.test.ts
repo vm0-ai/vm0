@@ -48,7 +48,6 @@ describe("volume pull", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
-    vi.unstubAllEnvs();
   });
 
   /**

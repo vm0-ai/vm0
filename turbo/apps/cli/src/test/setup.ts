@@ -6,8 +6,10 @@ beforeAll(() => {
   server.listen({ onUnhandledRequest: "error" });
 });
 
+// Baseline: no auth, no API URL. Test files override in their own beforeEach.
 beforeEach(() => {
   vi.stubEnv("VM0_API_URL", undefined);
+  vi.stubEnv("VM0_TOKEN", "");
 });
 
 // Reset handlers after each test

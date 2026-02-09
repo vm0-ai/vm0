@@ -123,7 +123,6 @@ describe("run command", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
-    vi.unstubAllEnvs();
   });
 
   describe("composeId validation", () => {

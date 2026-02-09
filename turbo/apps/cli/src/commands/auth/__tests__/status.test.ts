@@ -43,7 +43,6 @@ describe("auth status", () => {
   afterEach(async () => {
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
-    vi.unstubAllEnvs();
 
     // Clean up config
     const configDir = path.join(TEST_HOME, ".vm0");

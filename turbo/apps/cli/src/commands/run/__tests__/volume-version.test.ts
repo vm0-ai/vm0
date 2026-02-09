@@ -142,7 +142,6 @@ describe("--volume-version option", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
-    vi.unstubAllEnvs();
   });
 
   describe("collectVolumeVersions", () => {

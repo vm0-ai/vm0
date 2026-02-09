@@ -19,9 +19,7 @@ describe("dev-tool compose command", () => {
     vi.stubEnv("VM0_TOKEN", "test-token");
   });
 
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
+  afterEach(() => {});
 
   describe("successful compose", () => {
     it("should create job and poll until completed", async () => {

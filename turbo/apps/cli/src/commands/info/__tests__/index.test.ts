@@ -41,7 +41,6 @@ describe("info command", () => {
 
   afterEach(() => {
     mockConsoleLog.mockClear();
-    vi.unstubAllEnvs();
 
     // Cleanup temp directory
     rmSync(tempDir, { recursive: true, force: true });

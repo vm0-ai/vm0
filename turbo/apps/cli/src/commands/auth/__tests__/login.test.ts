@@ -54,7 +54,6 @@ describe("auth login", () => {
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
     mockStdoutWrite.mockClear();
-    vi.unstubAllEnvs();
 
     // Clean up config
     const configDir = path.join(TEST_HOME, ".vm0");

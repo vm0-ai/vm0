@@ -33,7 +33,6 @@ describe("variable set command", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
-    vi.unstubAllEnvs();
   });
 
   describe("successful set", () => {

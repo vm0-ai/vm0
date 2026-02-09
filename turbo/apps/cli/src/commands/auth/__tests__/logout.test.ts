@@ -38,7 +38,6 @@ describe("auth logout", () => {
 
   afterEach(async () => {
     mockConsoleLog.mockClear();
-    vi.unstubAllEnvs();
 
     // Clean up config
     const configDir = path.join(TEST_HOME, ".vm0");

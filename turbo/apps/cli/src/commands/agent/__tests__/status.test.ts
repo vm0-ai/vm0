@@ -31,7 +31,6 @@ describe("agent status command", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
-    vi.unstubAllEnvs();
   });
 
   describe("successful status", () => {
@@ -212,9 +211,8 @@ describe("agent status command", () => {
     });
 
     it("should handle authentication error", async () => {
-      vi.unstubAllEnvs();
-      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
-      // No token set
+      vi.stubEnv("VM0_TOKEN", "");
+      vi.stubEnv("HOME", "/tmp/test-no-config");
 
       await expect(async () => {
         await statusCommand.parseAsync([
