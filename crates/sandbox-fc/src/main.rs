@@ -222,7 +222,7 @@ async fn run_exec(
             cpu_count: vcpu_count,
             memory_mb,
             // Sandbox-level lifetime cap (distinct from per-exec timeout_ms).
-            timeout_secs: 30,
+            timeout_ms: 30_000,
         },
     };
 

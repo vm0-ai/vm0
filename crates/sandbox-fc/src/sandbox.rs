@@ -474,7 +474,7 @@ impl Sandbox for FirecrackerSandbox {
             )));
         };
 
-        let timeout = Duration::from_secs(self.config.resources.timeout_secs);
+        let timeout = Duration::from_millis(u64::from(self.config.resources.timeout_ms));
         let event = guest
             .wait_for_exit(handle.pid, timeout)
             .await
