@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.22.1](https://github.com/vm0-ai/vm0/compare/web-v12.22.0...web-v12.22.1) (2026-02-09)
+
+
+### Bug Fixes
+
+* **slack:** return caddy proxy address for platform in dev environment ([#2687](https://github.com/vm0-ai/vm0/issues/2687)) ([d2fa6e4](https://github.com/vm0-ai/vm0/commit/d2fa6e4c278dc021b490087c505ca43e7beea603))
+* **test:** remove vi.unstubAllEnvs from CLI tests and fix compose job race condition ([#2695](https://github.com/vm0-ai/vm0/issues/2695)) ([04ab29b](https://github.com/vm0-ai/vm0/commit/04ab29bf89201bb921d6a2f63b9ea4e3f2ab899d))
+
 ## [12.22.0](https://github.com/vm0-ai/vm0/compare/web-v12.21.0...web-v12.22.0) (2026-02-09)
 
 
