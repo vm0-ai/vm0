@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.29.4](https://github.com/vm0-ai/vm0/compare/cli-v9.29.3...cli-v9.29.4) (2026-02-09)
+
+
+### Bug Fixes
+
+* **web:** disable json query to fix flaky ambiguous-prefix test ([#2701](https://github.com/vm0-ai/vm0/issues/2701)) ([a5f8e8a](https://github.com/vm0-ai/vm0/commit/a5f8e8a375a3a84c46518780201b66f75ea845a3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.6.1
+
 ## [9.29.3](https://github.com/vm0-ai/vm0/compare/cli-v9.29.2...cli-v9.29.3) (2026-02-09)
 
 

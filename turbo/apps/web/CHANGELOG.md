@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.22.2](https://github.com/vm0-ai/vm0/compare/web-v12.22.1...web-v12.22.2) (2026-02-09)
+
+
+### Bug Fixes
+
+* **web:** disable json query to fix flaky ambiguous-prefix test ([#2701](https://github.com/vm0-ai/vm0/issues/2701)) ([a5f8e8a](https://github.com/vm0-ai/vm0/commit/a5f8e8a375a3a84c46518780201b66f75ea845a3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.6.1
+
 ## [12.22.1](https://github.com/vm0-ai/vm0/compare/web-v12.22.0...web-v12.22.1) (2026-02-09)
 
 
