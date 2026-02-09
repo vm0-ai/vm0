@@ -64,6 +64,7 @@ export async function fetchConversationContexts(
   botUserId: string,
   botToken: string,
   lastProcessedMessageTs?: string,
+  currentMessageTs?: string,
 ): Promise<{ routingContext: string; executionContext: string }> {
   const imageSessionId = `${channelId}-${threadTs ?? "channel"}`;
   const contextType = threadTs ? "thread" : "channel";
@@ -73,17 +74,22 @@ export async function fetchConversationContexts(
     ? await fetchThreadContext(client, channelId, threadTs)
     : await fetchChannelContext(client, channelId, 10);
 
+  // Exclude the current message (it's already sent as the prompt)
+  const contextMessages = currentMessageTs
+    ? allMessages.filter((m) => m.ts !== currentMessageTs)
+    : allMessages;
+
   // Text-only full context for routing (no image uploads needed)
   const routingContext = formatContextForAgent(
-    allMessages,
+    contextMessages,
     botUserId,
     contextType,
   );
 
   // Filter to only new messages for execution context
   const executionMessages = lastProcessedMessageTs
-    ? allMessages.filter((m) => !m.ts || m.ts > lastProcessedMessageTs)
-    : allMessages;
+    ? contextMessages.filter((m) => !m.ts || m.ts > lastProcessedMessageTs)
+    : contextMessages;
 
   // Format execution context with images (only uploads images for new messages)
   const executionContext =

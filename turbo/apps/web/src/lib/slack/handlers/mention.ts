@@ -170,6 +170,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
     }
 
     // Fetch context: routing gets full text, execution gets deduplicated with images
+    // Pass currentMessageTs to exclude it from context (it's already the prompt)
     const { routingContext, executionContext } =
       await fetchConversationContexts(
         client,
@@ -178,6 +179,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
         botUserId,
         botToken,
         lastProcessedMessageTs,
+        context.messageTs,
       );
 
     // 8. Route to agent (with full context for LLM routing)

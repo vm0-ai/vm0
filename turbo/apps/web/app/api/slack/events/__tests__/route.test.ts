@@ -1151,11 +1151,12 @@ describe("POST /api/slack/events", () => {
       await POST(request1);
       await flushAfterCallbacks();
 
-      // Then the agent should receive full context (both messages)
+      // Then the agent should receive context excluding the current message
+      // (current message is already sent as the prompt)
       expect(runAgentSpy).toHaveBeenCalledTimes(1);
       const firstCallContext = runAgentSpy.mock.calls[0]![0].threadContext;
       expect(firstCallContext).toContain("First message");
-      expect(firstCallContext).toContain("Second message");
+      expect(firstCallContext).not.toContain("Second message");
 
       // Reset mocks for second turn
       runAgentSpy.mockClear();
@@ -1198,12 +1199,13 @@ describe("POST /api/slack/events", () => {
       await POST(request2);
       await flushAfterCallbacks();
 
-      // Then the agent should receive only the new message (deduplication)
+      // Then the agent should receive empty context (all prior messages already processed,
+      // and "Third message" is the current mention excluded from context)
       expect(runAgentSpy).toHaveBeenCalledTimes(1);
       const secondCallContext = runAgentSpy.mock.calls[0]![0].threadContext;
       expect(secondCallContext).not.toContain("First message");
       expect(secondCallContext).not.toContain("Second message");
-      expect(secondCallContext).toContain("Third message");
+      expect(secondCallContext).not.toContain("Third message");
     });
 
     it("should not update lastProcessedMessageTs when agent run fails", async () => {
@@ -1365,7 +1367,8 @@ describe("POST /api/slack/events", () => {
       const thirdCallContext = runAgentSpy.mock.calls[0]![0].threadContext;
       // Second message should be resent since the failed run didn't update lastProcessedMessageTs
       expect(thirdCallContext).toContain("Second message");
-      expect(thirdCallContext).toContain("Third message");
+      // Third message is the current mention, excluded from context (sent as prompt)
+      expect(thirdCallContext).not.toContain("Third message");
       // First message was already processed in the successful first turn
       expect(thirdCallContext).not.toContain("First message");
     });
