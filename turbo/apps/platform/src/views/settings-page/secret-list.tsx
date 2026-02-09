@@ -1,9 +1,5 @@
 import { useLastResolved, useSet } from "ccstate-react";
-import {
-  IconPlus,
-  IconDotsVertical,
-  IconAlertTriangle,
-} from "@tabler/icons-react";
+import { IconPlus, IconDotsVertical } from "@tabler/icons-react";
 import {
   Popover,
   PopoverContent,
@@ -14,7 +10,6 @@ import type { SecretResponse } from "@vm0/core";
 import {
   secrets$,
   missingSecrets$,
-  scheduleMissingSecrets$,
   openAddSecretDialog$,
   openEditSecretDialog$,
   openDeleteSecretDialog$,
@@ -114,64 +109,6 @@ function MissingSecretsBanner({ names }: { names: string[] }) {
   );
 }
 
-function ScheduleMissingSecretsBanner() {
-  const scheduleMissing = useLastResolved(scheduleMissingSecrets$);
-  const openAdd = useSet(openAddSecretDialog$);
-
-  if (!scheduleMissing || scheduleMissing.length === 0) {
-    return null;
-  }
-
-  const totalAffected = new Set(
-    scheduleMissing.flatMap((m) =>
-      m.affectedSchedules.map((s) => s.scheduleName),
-    ),
-  ).size;
-
-  return (
-    <div className="rounded-xl border border-red-500/50 bg-red-500/5 p-4">
-      <div className="flex items-start gap-3 mb-3">
-        <IconAlertTriangle
-          size={20}
-          stroke={1.5}
-          className="text-red-600 dark:text-red-400 shrink-0 mt-0.5"
-        />
-        <div className="flex-1 min-w-0">
-          <h4 className="text-sm font-medium text-foreground mb-1">
-            Active schedules require missing secrets
-          </h4>
-          <p className="text-sm text-muted-foreground">
-            {totalAffected} active schedule{totalAffected > 1 ? "s" : ""} may
-            fail due to missing secrets. Configure these secrets to ensure your
-            schedules run correctly.
-          </p>
-        </div>
-      </div>
-      <div className="flex flex-col gap-2">
-        {scheduleMissing.map(({ secretName, affectedSchedules }) => (
-          <div
-            key={secretName}
-            className="flex items-start gap-3 bg-background/50 rounded-lg p-3"
-          >
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium font-mono text-foreground mb-1">
-                {secretName}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                Used by:{" "}
-                {affectedSchedules.map((s) => s.composeName).join(", ")}
-              </div>
-            </div>
-            <Button size="sm" onClick={() => openAdd(secretName)}>
-              Add secret
-            </Button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export function SecretList() {
   const secretsList = useLastResolved(secrets$);
   const missing = useLastResolved(missingSecrets$);
@@ -187,10 +124,6 @@ export function SecretList() {
         </p>
       </div>
 
-      {/* Schedule-based missing secrets warning (higher priority) */}
-      <ScheduleMissingSecretsBanner />
-
-      {/* URL param missing secrets */}
       {missing && missing.length > 0 && (
         <MissingSecretsBanner names={missing} />
       )}

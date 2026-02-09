@@ -3,7 +3,6 @@ import type {
   SecretListResponse,
   SecretResponse,
   SetSecretRequest,
-  ScheduleListResponse,
 } from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
 import { requiredItems$ } from "./settings-tabs.ts";
@@ -43,75 +42,6 @@ export const missingSecrets$ = computed(async (get) => {
   const existing = await get(secrets$);
   const existingNames = new Set(existing.map((s) => s.name));
   return required.filter((name) => !existingNames.has(name));
-});
-
-/**
- * Information about a missing secret and which schedules need it.
- */
-interface ScheduleMissingSecret {
-  secretName: string;
-  affectedSchedules: {
-    composeName: string;
-    scheduleName: string;
-    enabled: boolean;
-  }[];
-}
-
-/**
- * Secrets required by active schedules but not yet configured.
- * Returns an array of missing secrets with the schedules that need them.
- */
-export const scheduleMissingSecrets$ = computed(async (get) => {
-  get(internalReloadSecrets$); // Re-compute when secrets change
-
-  // Fetch all schedules
-  const fetchFn = get(fetch$);
-  const schedulesResp = await fetchFn("/api/agent/schedules");
-
-  if (!schedulesResp.ok) {
-    return [];
-  }
-
-  const data = (await schedulesResp.json()) as ScheduleListResponse;
-
-  // Get existing secrets
-  const existing = await get(secrets$);
-  const existingNames = new Set(existing.map((s) => s.name));
-
-  // Find active schedules with missing secrets
-  const missingBySecret = new Map<
-    string,
-    { composeName: string; scheduleName: string; enabled: boolean }[]
-  >();
-
-  for (const schedule of data.schedules) {
-    if (!schedule.enabled || !schedule.secretNames) {
-      continue;
-    }
-
-    for (const secretName of schedule.secretNames) {
-      if (existingNames.has(secretName)) {
-        continue;
-      }
-
-      if (!missingBySecret.has(secretName)) {
-        missingBySecret.set(secretName, []);
-      }
-
-      missingBySecret.get(secretName)!.push({
-        composeName: schedule.composeName,
-        scheduleName: schedule.name,
-        enabled: schedule.enabled,
-      });
-    }
-  }
-
-  return Array.from(missingBySecret.entries()).map(
-    ([secretName, affectedSchedules]): ScheduleMissingSecret => ({
-      secretName,
-      affectedSchedules,
-    }),
-  );
 });
 
 // ---------------------------------------------------------------------------
