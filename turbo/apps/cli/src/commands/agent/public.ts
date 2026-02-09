@@ -8,50 +8,73 @@ import {
 } from "../../lib/api";
 
 export const publicCommand = new Command()
-  .name("experimental-public")
+  .name("public")
   .description("Make an agent public (accessible to all authenticated users)")
   .argument("<name>", "Agent name")
-  .action(async (name: string) => {
-    try {
-      // Resolve compose by name
-      const compose = await getComposeByName(name);
-      if (!compose) {
-        console.error(chalk.red(`✗ Agent not found: ${name}`));
+  .option(
+    "--experimental-shared-agent",
+    "Enable experimental agent sharing feature",
+  )
+  .action(
+    async (name: string, options: { experimentalSharedAgent?: boolean }) => {
+      // Validate experimental flag
+      if (!options.experimentalSharedAgent) {
+        console.error(
+          chalk.red("✗ This command requires --experimental-shared-agent flag"),
+        );
+        console.error();
+        console.error(chalk.dim("  Agent sharing is an experimental feature."));
+        console.error();
+        console.error("Example:");
+        console.error(
+          chalk.cyan(`  vm0 agent public ${name} --experimental-shared-agent`),
+        );
         process.exit(1);
       }
 
-      // Get scope for display
-      const scope = await getScope();
-
-      // Add public permission
-      const response = await httpPost(
-        `/api/agent/composes/${compose.id}/permissions`,
-        { granteeType: "public" },
-      );
-
-      if (!response.ok) {
-        const error = (await response.json()) as ApiError;
-        if (response.status === 409) {
-          console.log(chalk.yellow(`Agent "${name}" is already public`));
-          return;
+      try {
+        // Resolve compose by name
+        const compose = await getComposeByName(name);
+        if (!compose) {
+          console.error(chalk.red(`✗ Agent not found: ${name}`));
+          process.exit(1);
         }
-        throw new Error(error.error?.message || "Failed to make agent public");
-      }
 
-      const fullName = `${scope.slug}/${name}`;
-      console.log(chalk.green(`✓ Agent "${name}" is now public`));
-      console.log();
-      console.log("Others can now run your agent with:");
-      console.log(
-        chalk.cyan(
-          `  vm0 run ${fullName} --experimental-shared-agent "your prompt"`,
-        ),
-      );
-    } catch (error) {
-      console.error(chalk.red("✗ Failed to make agent public"));
-      if (error instanceof Error) {
-        console.error(chalk.dim(`  ${error.message}`));
+        // Get scope for display
+        const scope = await getScope();
+
+        // Add public permission
+        const response = await httpPost(
+          `/api/agent/composes/${compose.id}/permissions`,
+          { granteeType: "public" },
+        );
+
+        if (!response.ok) {
+          const error = (await response.json()) as ApiError;
+          if (response.status === 409) {
+            console.log(chalk.yellow(`Agent "${name}" is already public`));
+            return;
+          }
+          throw new Error(
+            error.error?.message || "Failed to make agent public",
+          );
+        }
+
+        const fullName = `${scope.slug}/${name}`;
+        console.log(chalk.green(`✓ Agent "${name}" is now public`));
+        console.log();
+        console.log("Others can now run your agent with:");
+        console.log(
+          chalk.cyan(
+            `  vm0 run ${fullName} --experimental-shared-agent "your prompt"`,
+          ),
+        );
+      } catch (error) {
+        console.error(chalk.red("✗ Failed to make agent public"));
+        if (error instanceof Error) {
+          console.error(chalk.dim(`  ${error.message}`));
+        }
+        process.exit(1);
       }
-      process.exit(1);
-    }
-  });
+    },
+  );
