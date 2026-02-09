@@ -451,7 +451,7 @@ export function buildAppHomeView(options: {
     type: "section",
     text: {
       type: "mrkdwn",
-      text: "*Compose and manage agents*\nCompose an agent from GitHub URL\n`/vm0 agent compose`\nLink an agent\n`/vm0 agent link`\nUnlink an agent\n`/vm0 agent unlink`\nUpdate agent configuration\n`/vm0 agent update`",
+      text: "*Link and manage agents*\nLink an agent\n`/vm0 agent link`\nUnlink an agent\n`/vm0 agent unlink`\nUpdate agent configuration\n`/vm0 agent update`\nCompose an agent from GitHub URL\n`/vm0 agent compose`",
     },
   });
 
@@ -961,7 +961,7 @@ export function buildHelpMessage(): (Block | KnownBlock)[] {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "*Agent*\n• `/vm0 agent compose` - Compose an agent from GitHub URL\n• `/vm0 agent link` - Link an agent\n• `/vm0 agent unlink` - Unlink your agent\n• `/vm0 agent update` - Update agent configuration",
+        text: "*Agent*\n• `/vm0 agent link` - Link an agent\n• `/vm0 agent unlink` - Unlink your agent\n• `/vm0 agent update` - Update agent configuration\n• `/vm0 agent compose` - Compose an agent from GitHub URL",
       },
     },
     {
