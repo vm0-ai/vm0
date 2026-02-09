@@ -72,6 +72,9 @@ async function handleAuthentication(ctx: OnboardContext): Promise<void> {
       },
       onError: (error) => {
         console.error(chalk.red(`\n✗ ${error.message}`));
+        if (error.cause instanceof Error) {
+          console.error(chalk.dim(`  Cause: ${error.cause.message}`));
+        }
         process.exit(1);
       },
     });

@@ -12,6 +12,9 @@ export const loginCommand = new Command()
       if (error instanceof Error) {
         console.error(chalk.red(`✗ Login failed`));
         console.error(chalk.dim(`  ${error.message}`));
+        if (error.cause instanceof Error) {
+          console.error(chalk.dim(`  Cause: ${error.cause.message}`));
+        }
       } else {
         console.error(chalk.red("✗ An unexpected error occurred"));
       }
