@@ -1,5 +1,13 @@
 # Changelog
 
+## [9.29.2](https://github.com/vm0-ai/vm0/compare/cli-v9.29.1...cli-v9.29.2) (2026-02-09)
+
+
+### Bug Fixes
+
+* **cli:** add error handling to connector connect and display error.cause ([#2682](https://github.com/vm0-ai/vm0/issues/2682)) ([d19a29e](https://github.com/vm0-ai/vm0/commit/d19a29e5e2134de5fd7b28bb1ee16467cb6d7046))
+* **cli:** map 403 forbidden to user-friendly message in auth flow ([#2673](https://github.com/vm0-ai/vm0/issues/2673)) ([959d79d](https://github.com/vm0-ai/vm0/commit/959d79d7a99c91e38a97756f5acccd5045905e1c))
+
 ## [9.29.1](https://github.com/vm0-ai/vm0/compare/cli-v9.29.0...cli-v9.29.1) (2026-02-09)
 
 
