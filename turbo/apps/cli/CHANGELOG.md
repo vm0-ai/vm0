@@ -1,5 +1,29 @@
 # Changelog
 
+## [9.26.0](https://github.com/vm0-ai/vm0/compare/cli-v9.25.0...cli-v9.26.0) (2026-02-09)
+
+
+### Features
+
+* **cli:** add --json flag and deprecate --porcelain ([#2613](https://github.com/vm0-ai/vm0/issues/2613)) ([f4fcdb1](https://github.com/vm0-ai/vm0/commit/f4fcdb19b1766386fc89fc69d0f82901fb06db26))
+* **cli:** show connector-derived secret names in secret list ([#2602](https://github.com/vm0-ai/vm0/issues/2602)) ([877a318](https://github.com/vm0-ai/vm0/commit/877a31858cf10b7d3d6060d6e10e606c22cd2a83)), closes [#2601](https://github.com/vm0-ai/vm0/issues/2601)
+
+
+### Bug Fixes
+
+* **cli:** align error symbols, color semantics, and message formatting with design guideline ([#2615](https://github.com/vm0-ai/vm0/issues/2615)) ([1e70bc2](https://github.com/vm0-ai/vm0/commit/1e70bc23b917c9b8f5132b11029941030e17d4c1))
+* **cli:** route error messages and hints to stderr across all commands ([#2614](https://github.com/vm0-ai/vm0/issues/2614)) ([4d7d406](https://github.com/vm0-ai/vm0/commit/4d7d406481f86ab39d17333b9ac550b943b6ea8f))
+* **cli:** route error messages to stderr in init command ([#2612](https://github.com/vm0-ai/vm0/issues/2612)) ([93af64e](https://github.com/vm0-ai/vm0/commit/93af64efbe0c8b891e8387ec21089508c02adcf4))
+* **cli:** route error messages to stderr per CLI design guideline ([#2609](https://github.com/vm0-ai/vm0/issues/2609)) ([a993299](https://github.com/vm0-ai/vm0/commit/a993299c2705bf945d7309cf5c42148c38cd1a29))
+* **cli:** route run-failed output to stderr ([#2610](https://github.com/vm0-ai/vm0/issues/2610)) ([97e1081](https://github.com/vm0-ai/vm0/commit/97e1081e72c1b44501450c106e3bb6a94a6abd39))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.5.0
+
 ## [9.25.0](https://github.com/vm0-ai/vm0/compare/cli-v9.24.1...cli-v9.25.0) (2026-02-07)
 
 

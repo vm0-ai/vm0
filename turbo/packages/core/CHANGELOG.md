@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.5.0](https://github.com/vm0-ai/vm0/compare/core-v8.4.2...core-v8.5.0) (2026-02-09)
+
+
+### Features
+
+* **cli:** show connector-derived secret names in secret list ([#2602](https://github.com/vm0-ai/vm0/issues/2602)) ([877a318](https://github.com/vm0-ai/vm0/commit/877a31858cf10b7d3d6060d6e10e606c22cd2a83)), closes [#2601](https://github.com/vm0-ai/vm0/issues/2601)
+
 ## [8.4.2](https://github.com/vm0-ai/vm0/compare/core-v8.4.1...core-v8.4.2) (2026-02-07)
 
 

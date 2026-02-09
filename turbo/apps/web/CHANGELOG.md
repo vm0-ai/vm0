@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.15.0](https://github.com/vm0-ai/vm0/compare/web-v12.14.2...web-v12.15.0) (2026-02-09)
+
+
+### Features
+
+* **web:** add usage_daily aggregation with dual-path on-demand caching ([#2587](https://github.com/vm0-ai/vm0/issues/2587)) ([5fbacc5](https://github.com/vm0-ai/vm0/commit/5fbacc5e68c93c5445c40ab98f6ed59c982663be))
+* **web:** handle agent timeout with user notification in Slack threads ([#2563](https://github.com/vm0-ai/vm0/issues/2563)) ([00456d8](https://github.com/vm0-ai/vm0/commit/00456d841dde7fed7e848cbab41bb6236c34ffe7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.5.0
+
 ## [12.14.2](https://github.com/vm0-ai/vm0/compare/web-v12.14.1...web-v12.14.2) (2026-02-08)
 
 

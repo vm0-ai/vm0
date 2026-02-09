@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.53.0](https://github.com/vm0-ai/vm0/compare/platform-v0.52.1...platform-v0.53.0) (2026-02-09)
+
+
+### Features
+
+* **platform:** optimize logs page navigation for instant feedback ([#2577](https://github.com/vm0-ai/vm0/issues/2577)) ([f874e37](https://github.com/vm0-ai/vm0/commit/f874e375b8091c9fe006c021d307021a5d161995))
+* **web:** handle agent timeout with user notification in Slack threads ([#2563](https://github.com/vm0-ai/vm0/issues/2563)) ([00456d8](https://github.com/vm0-ai/vm0/commit/00456d841dde7fed7e848cbab41bb6236c34ffe7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.5.0
+
 ## [0.52.1](https://github.com/vm0-ai/vm0/compare/platform-v0.52.0...platform-v0.52.1) (2026-02-07)
 
 
