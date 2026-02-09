@@ -12,7 +12,7 @@ type PackageManager = "npm" | "pnpm" | "bun" | "yarn" | "unknown";
  * by checking the executable path for known package manager patterns.
  * Returns "unknown" if no known pattern is matched.
  */
-function detectPackageManager(): PackageManager {
+export function detectPackageManager(): PackageManager {
   const execPath = process.argv[1] ?? "";
 
   // Check for pnpm (supported for auto-upgrade)

@@ -2,6 +2,7 @@
   "$schema": "https://turborepo.com/schema.json",
   "ui": "tui",
   "globalEnv": [
+    "SHELL",
     "DATABASE_URL",
     "DB_POOL_MAX",
     "DB_POOL_IDLE_TIMEOUT_MS",
