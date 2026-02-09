@@ -34,6 +34,8 @@ import {
   buildAgentUpdateModal,
 } from "../../../../src/lib/slack/blocks";
 import { logger } from "../../../../src/lib/logger";
+import { listModelProviders } from "../../../../src/lib/model-provider/model-provider-service";
+import { ensureScopeAndArtifact } from "../../../../src/lib/slack/handlers/shared";
 
 const log = logger("slack:commands");
 
@@ -553,11 +555,19 @@ async function handleAgentAdd(
     };
   });
 
+  // Ensure scope + artifact exist
+  await ensureScopeAndArtifact(vm0UserId);
+
+  // Check model provider status
+  const providers = await listModelProviders(vm0UserId);
+  const hasModelProvider = providers.length > 0;
+
   // Open modal with channel_id for confirmation message
   const modal = buildAgentAddModal(
     agentsWithSecrets,
     undefined,
     payload.channel_id,
+    hasModelProvider,
   );
 
   await client.views.open({

@@ -9,8 +9,17 @@ import {
   getSlackRedirectBaseUrl,
 } from "../index";
 import { slackThreadSessions } from "../../../db/schema/slack-thread-session";
+import { storages } from "../../../db/schema/storage";
 import { routeToAgent, type RouteResult } from "../router";
 import { getPlatformUrl } from "../../url";
+import {
+  getUserScopeByClerkId,
+  createUserScope,
+  generateDefaultScopeSlug,
+} from "../../scope/scope-service";
+import { logger } from "../../logger";
+
+const log = logger("slack:shared");
 
 export type SlackClient = ReturnType<typeof createSlackClient>;
 
@@ -287,4 +296,47 @@ export function buildLoginUrl(
  */
 export function buildLogsUrl(runId: string): string {
   return `${getPlatformUrl()}/logs/${runId}`;
+}
+
+/**
+ * Ensure scope and artifact storage exist for a user.
+ * Safety net for all agent link paths (App Home button, slash command, submission).
+ */
+export async function ensureScopeAndArtifact(vm0UserId: string): Promise<void> {
+  let scope = await getUserScopeByClerkId(vm0UserId);
+  if (!scope) {
+    scope = await createUserScope(
+      vm0UserId,
+      generateDefaultScopeSlug(vm0UserId),
+    );
+    log.info("Auto-created scope for Slack user", { userId: vm0UserId });
+  }
+
+  const [existingArtifact] = await globalThis.services.db
+    .select({ id: storages.id })
+    .from(storages)
+    .where(
+      and(
+        eq(storages.scopeId, scope.id),
+        eq(storages.name, "artifact"),
+        eq(storages.type, "artifact"),
+      ),
+    )
+    .limit(1);
+
+  if (!existingArtifact) {
+    await globalThis.services.db
+      .insert(storages)
+      .values({
+        scopeId: scope.id,
+        name: "artifact",
+        type: "artifact",
+        userId: vm0UserId,
+        s3Prefix: `${scope.slug}/artifact/artifact`,
+        size: 0,
+        fileCount: 0,
+      })
+      .onConflictDoNothing();
+    log.info("Auto-created artifact storage", { userId: vm0UserId });
+  }
 }

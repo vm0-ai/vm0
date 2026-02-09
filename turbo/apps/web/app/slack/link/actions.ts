@@ -9,6 +9,11 @@ import { slackInstallations } from "../../../src/db/schema/slack-installation";
 import { slackBindings } from "../../../src/db/schema/slack-binding";
 import { decryptCredentialValue } from "../../../src/lib/crypto/secrets-encryption";
 import { createSlackClient, refreshAppHome } from "../../../src/lib/slack";
+import {
+  getUserScopeByClerkId,
+  createUserScope,
+  generateDefaultScopeSlug,
+} from "../../../src/lib/scope/scope-service";
 import { logger } from "../../../src/lib/logger";
 
 const log = logger("slack:link");
@@ -83,6 +88,13 @@ export async function linkSlackAccount(
   }
 
   initServices();
+
+  // Auto-create scope if user doesn't have one
+  const existingScope = await getUserScopeByClerkId(userId);
+  if (!existingScope) {
+    await createUserScope(userId, generateDefaultScopeSlug(userId));
+    log.info("Auto-created scope for Slack user", { userId });
+  }
 
   // Check if the workspace installation exists
   const [installation] = await globalThis.services.db
