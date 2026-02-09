@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.5.1](https://github.com/vm0-ai/vm0/compare/core-v8.5.0...core-v8.5.1) (2026-02-09)
+
+
+### Bug Fixes
+
+* **sandbox:** remove prompt content from agent execution logs ([#2653](https://github.com/vm0-ai/vm0/issues/2653)) ([cfc8b2d](https://github.com/vm0-ai/vm0/commit/cfc8b2dfecb0120d3e83bb0b7568e0b9916b3414))
+
 ## [8.5.0](https://github.com/vm0-ai/vm0/compare/core-v8.4.2...core-v8.5.0) (2026-02-09)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.27.2](https://github.com/vm0-ai/vm0/compare/cli-v9.27.1...cli-v9.27.2) (2026-02-09)
+
+
+### Bug Fixes
+
+* **cli:** add homebrew arm64 path detection for auto-upgrade ([#2648](https://github.com/vm0-ai/vm0/issues/2648)) ([870c74a](https://github.com/vm0-ai/vm0/commit/870c74ac3f8aae4cab08adbcea4dcc0c26ae0393)), closes [#2637](https://github.com/vm0-ai/vm0/issues/2637)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.5.1
+
 ## [9.27.1](https://github.com/vm0-ai/vm0/compare/cli-v9.27.0...cli-v9.27.1) (2026-02-09)
 
 
