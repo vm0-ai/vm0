@@ -64,7 +64,13 @@ export function LogDetailContent({ logId }: { logId: string }) {
             </span>
           </InfoItem>
 
-          <InfoItem label="Duration" showDivider={false}>
+          <InfoItem label="Model Provider" showDivider={false}>
+            <span className="text-foreground truncate">
+              {detail.modelProvider || "-"}
+            </span>
+          </InfoItem>
+
+          <InfoItem label="Duration" showDivider>
             <span className="text-foreground whitespace-nowrap">
               {formatDuration(detail.startedAt, detail.completedAt)}
             </span>
@@ -91,7 +97,7 @@ export function LogDetailContent({ logId }: { logId: string }) {
             <CopyableId value={detail.sessionId || detail.id} />
           </InfoItem>
 
-          <InfoItem label="Run ID" showDivider>
+          <InfoItem label="Run ID" showDivider={false}>
             <CopyableId value={detail.id} />
           </InfoItem>
 

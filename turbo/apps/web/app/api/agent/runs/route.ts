@@ -468,6 +468,7 @@ const router = tsr.router(runsMainContract, {
         prompt: body.prompt,
         vars: varsToStore,
         secretNames: secretNamesToStore,
+        modelProvider: body.modelProvider || null,
         resumedFromCheckpointId: body.checkpointId || null,
         lastHeartbeatAt: new Date(),
       })

@@ -35,6 +35,8 @@ export const agentRuns = pgTable(
     vars: jsonb("vars"),
     // Secret names for validation (values never stored - must be provided at runtime)
     secretNames: jsonb("secret_names").$type<string[]>(),
+    // Model provider name for automatic credential injection
+    modelProvider: varchar("model_provider", { length: 255 }),
     sandboxId: varchar("sandbox_id", { length: 255 }),
     result: jsonb("result"),
     error: text("error"),
