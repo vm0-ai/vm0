@@ -468,71 +468,6 @@ async function handleAgentUpdateSelection(
 }
 
 /**
- * Handle mode switching in add agent modal (existing agent vs GitHub URL)
- */
-async function handleLinkModeSwitch(
-  payload: SlackInteractivePayload,
-  selectedMode: string,
-): Promise<void> {
-  const { SECRETS_ENCRYPTION_KEY } = env();
-  const privateMetadata = payload.view?.private_metadata;
-  const { channelId } = privateMetadata
-    ? (JSON.parse(privateMetadata) as { channelId?: string })
-    : { channelId: undefined };
-
-  const [installation] = await globalThis.services.db
-    .select()
-    .from(slackInstallations)
-    .where(eq(slackInstallations.slackWorkspaceId, payload.team.id))
-    .limit(1);
-
-  if (!installation) return;
-
-  const botToken = decryptCredentialValue(
-    installation.encryptedBotToken,
-    SECRETS_ENCRYPTION_KEY,
-  );
-  const client = createSlackClient(botToken);
-
-  const mode = selectedMode === "github" ? "github" : "existing";
-
-  // Fetch agents for "existing" mode
-  const agents =
-    mode === "existing" ? await fetchAgentsForModeSwitch(payload) : [];
-
-  const updatedModal = buildAgentAddModal(agents, undefined, channelId, mode);
-
-  await updateModalView(
-    client,
-    payload.view!.id,
-    updatedModal,
-    payload.team.id,
-  );
-}
-
-/**
- * Fetch available agents for mode switch (helper to avoid full re-fetch when switching to github mode)
- */
-async function fetchAgentsForModeSwitch(
-  payload: SlackInteractivePayload,
-): ReturnType<typeof fetchAvailableAgents> {
-  const [userLink] = await globalThis.services.db
-    .select()
-    .from(slackUserLinks)
-    .where(
-      and(
-        eq(slackUserLinks.slackUserId, payload.user.id),
-        eq(slackUserLinks.slackWorkspaceId, payload.team.id),
-      ),
-    )
-    .limit(1);
-
-  if (!userLink) return [];
-
-  return fetchAvailableAgents(userLink.vm0UserId, userLink.id);
-}
-
-/**
  * Handle block actions (e.g., agent selection change)
  */
 async function handleBlockActions(
@@ -548,7 +483,7 @@ async function handleBlockActions(
 }
 
 /**
- * Dispatch modal-related block actions (link mode, agent select, agent update select)
+ * Dispatch modal-related block actions (agent select, agent update select)
  */
 async function dispatchModalAction(
   payload: SlackInteractivePayload,
@@ -556,9 +491,6 @@ async function dispatchModalAction(
   value: string,
 ): Promise<void> {
   switch (actionId) {
-    case "link_mode_action":
-      await handleLinkModeSwitch(payload, value);
-      break;
     case "agent_select_action":
       await handleAgentAddSelection(payload, value);
       break;
@@ -576,7 +508,6 @@ async function dispatchBlockAction(
   action: NonNullable<SlackInteractivePayload["actions"]>[0],
 ): Promise<void> {
   switch (action.action_id) {
-    case "link_mode_action":
     case "agent_select_action":
     case "agent_update_select_action":
       if (payload.view && action.selected_option?.value) {
@@ -715,6 +646,10 @@ async function handleViewSubmission(
   payload: SlackInteractivePayload,
 ): Promise<Response> {
   const callbackId = payload.view?.callback_id;
+
+  if (callbackId === "agent_compose_modal") {
+    return handleAgentComposeSubmission(payload);
+  }
 
   if (callbackId === "agent_add_modal") {
     return handleAgentAddSubmission(payload);
@@ -873,7 +808,28 @@ async function sendConfirmationMessage(
 }
 
 /**
- * Handle GitHub URL submission from the agent add modal
+ * Handle agent compose modal submission
+ */
+async function handleAgentComposeSubmission(
+  payload: SlackInteractivePayload,
+): Promise<Response> {
+  const githubUrl =
+    payload.view?.state?.values?.github_url_input?.github_url_value?.value?.trim();
+
+  if (!githubUrl) {
+    return NextResponse.json({
+      response_action: "errors",
+      errors: {
+        github_url_input: "Please enter a GitHub URL",
+      },
+    });
+  }
+
+  return handleGithubUrlSubmission(payload, githubUrl);
+}
+
+/**
+ * Handle GitHub URL submission from the agent compose modal
  */
 async function handleGithubUrlSubmission(
   payload: SlackInteractivePayload,
@@ -979,12 +935,6 @@ async function handleAgentAddSubmission(
       response_action: "errors",
       errors: { agent_select: "Missing form values" },
     });
-  }
-
-  // Check if this is a GitHub URL submission
-  const githubUrl = values.github_url_input?.github_url_value?.value?.trim();
-  if (githubUrl) {
-    return handleGithubUrlSubmission(payload, githubUrl);
   }
 
   // Extract channelId from private_metadata

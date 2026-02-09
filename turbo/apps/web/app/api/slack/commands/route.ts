@@ -25,6 +25,7 @@ import { listSecrets } from "../../../../src/lib/secret/secret-service";
 import { listVariables } from "../../../../src/lib/variable/variable-service";
 import {
   buildAgentAddModal,
+  buildAgentComposeModal,
   buildHelpMessage,
   buildErrorMessage,
   buildSuccessMessage,
@@ -126,6 +127,9 @@ async function handleAgentCommand(
   vm0UserId: string,
 ): Promise<NextResponse> {
   switch (action) {
+    case "compose":
+      return handleAgentCompose(client, payload);
+
     case "link":
       return handleAgentLink(client, payload, vm0UserId, userLinkId);
 
@@ -158,7 +162,7 @@ async function handleAgentCommand(
       return NextResponse.json({
         response_type: "ephemeral",
         blocks: buildErrorMessage(
-          `Unknown agent command: \`${action}\`\n\nAvailable commands:\n• \`/vm0 agent link\`\n• \`/vm0 agent unlink\`\n• \`/vm0 agent update\``,
+          `Unknown agent command: \`${action}\`\n\nAvailable commands:\n• \`/vm0 agent compose\`\n• \`/vm0 agent link\`\n• \`/vm0 agent unlink\`\n• \`/vm0 agent update\``,
         ),
       });
   }
@@ -376,6 +380,23 @@ export async function POST(request: Request) {
 }
 
 /**
+ * Handle /vm0 agent compose - Open modal to compose agent from GitHub URL
+ */
+async function handleAgentCompose(
+  client: ReturnType<typeof createSlackClient>,
+  payload: SlackCommandPayload,
+): Promise<NextResponse> {
+  const modal = buildAgentComposeModal(payload.channel_id);
+
+  await client.views.open({
+    trigger_id: payload.trigger_id,
+    view: modal,
+  });
+
+  return new NextResponse(null, { status: 200 });
+}
+
+/**
  * Handle /vm0 agent link - Link an agent (single binding mode)
  */
 async function handleAgentLink(
@@ -458,20 +479,12 @@ async function handleAgentAdd(
     .where(eq(agentComposes.userId, vm0UserId));
 
   if (composes.length === 0) {
-    // No existing agents — open modal in GitHub URL mode so user can compose one
-    const modal = buildAgentAddModal(
-      [],
-      undefined,
-      payload.channel_id,
-      "github",
-    );
-
-    await client.views.open({
-      trigger_id: payload.trigger_id,
-      view: modal,
+    return NextResponse.json({
+      response_type: "ephemeral",
+      blocks: buildErrorMessage(
+        "You don't have any agents yet.\n\nUse `/vm0 agent compose` to create one from a GitHub URL first.",
+      ),
     });
-
-    return new NextResponse(null, { status: 200 });
   }
 
   // Get already bound agent names
