@@ -28,6 +28,7 @@ tempfile = "3"
 tokio = "1"
 uuid = "1"
 tracing = "0.1"
+tracing-subscriber = "0.3"
 which = "8"
 ureq = "3"
 
