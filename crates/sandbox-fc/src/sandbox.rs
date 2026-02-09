@@ -8,7 +8,7 @@ use sandbox::{
     ExecRequest, ExecResult, ProcessExit, Sandbox, SandboxConfig, SandboxError, SpawnHandle,
 };
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 use vsock_host::VsockHost;
 
 use crate::config::FirecrackerConfig;
@@ -311,7 +311,7 @@ fn monitor_process(
             let mut lines = BufReader::new(stdout).lines();
             while let Ok(Some(line)) = lines.next_line().await {
                 if !line.is_empty() {
-                    debug!(id = %id, "{line}");
+                    info!(id = %id, "{line}");
                 }
             }
             // Pipe closed — process exited.
