@@ -37,112 +37,126 @@ export const connectCommand = new Command()
   .description("Connect a third-party service (e.g., GitHub)")
   .argument("<type>", "Connector type (e.g., github)")
   .action(async (type: string) => {
-    // Validate connector type with runtime validation
-    const parseResult = connectorTypeSchema.safeParse(type);
-    if (!parseResult.success) {
-      console.error(chalk.red(`✗ Unknown connector type: ${type}`));
-      console.error("Available connectors: github");
-      process.exit(1);
-    }
-
-    const connectorType = parseResult.data;
-    const apiUrl = await getApiUrl();
-    const headers = await getHeaders();
-
-    console.log(`Connecting ${chalk.cyan(type)}...`);
-
-    // Create session
-    const sessionsClient = initClient(connectorSessionsContract, {
-      baseUrl: apiUrl,
-      baseHeaders: headers,
-      jsonQuery: true,
-    });
-
-    const createResult = await sessionsClient.create({
-      params: { type: connectorType },
-      body: {},
-    });
-
-    if (createResult.status !== 200) {
-      const errorBody = createResult.body as ApiErrorResponse;
-      console.error(
-        chalk.red(`✗ Failed to create session: ${errorBody.error?.message}`),
-      );
-      process.exit(1);
-    }
-
-    const session = createResult.body;
-    const verificationUrl = `${apiUrl}${session.verificationUrl}`;
-
-    console.log(chalk.green("\nSession created"));
-    console.log(chalk.cyan(`\nTo connect, visit: ${verificationUrl}`));
-    console.log(
-      `\nThe session expires in ${Math.floor(session.expiresIn / 60)} minutes.`,
-    );
-
-    console.log("\nWaiting for authorization...");
-
-    // Poll for completion
-    const sessionClient = initClient(connectorSessionByIdContract, {
-      baseUrl: apiUrl,
-      baseHeaders: headers,
-      jsonQuery: true,
-    });
-
-    const startTime = Date.now();
-    const maxWaitTime = session.expiresIn * 1000;
-    const pollInterval = (session.interval || 5) * 1000;
-
-    let isFirstPoll = true;
-
-    while (Date.now() - startTime < maxWaitTime) {
-      // Skip delay on first poll
-      if (!isFirstPoll) {
-        await delay(pollInterval);
+    try {
+      // Validate connector type with runtime validation
+      const parseResult = connectorTypeSchema.safeParse(type);
+      if (!parseResult.success) {
+        console.error(chalk.red(`✗ Unknown connector type: ${type}`));
+        console.error("Available connectors: github");
+        process.exit(1);
       }
-      isFirstPoll = false;
 
-      const statusResult = await sessionClient.get({
-        params: { type: connectorType, sessionId: session.id },
+      const connectorType = parseResult.data;
+      const apiUrl = await getApiUrl();
+      const headers = await getHeaders();
+
+      console.log(`Connecting ${chalk.cyan(type)}...`);
+
+      // Create session
+      const sessionsClient = initClient(connectorSessionsContract, {
+        baseUrl: apiUrl,
+        baseHeaders: headers,
+        jsonQuery: true,
       });
 
-      if (statusResult.status !== 200) {
-        const errorBody = statusResult.body as ApiErrorResponse;
+      const createResult = await sessionsClient.create({
+        params: { type: connectorType },
+        body: {},
+      });
+
+      if (createResult.status !== 200) {
+        const errorBody = createResult.body as ApiErrorResponse;
         console.error(
-          chalk.red(`\n✗ Failed to check status: ${errorBody.error?.message}`),
+          chalk.red(`✗ Failed to create session: ${errorBody.error?.message}`),
         );
         process.exit(1);
       }
 
-      const status = statusResult.body;
+      const session = createResult.body;
+      const verificationUrl = `${apiUrl}${session.verificationUrl}`;
 
-      switch (status.status) {
-        case "complete":
-          console.log(chalk.green(`\n\n${type} connected successfully!`));
-          return;
+      console.log(chalk.green("\nSession created"));
+      console.log(chalk.cyan(`\nTo connect, visit: ${verificationUrl}`));
+      console.log(
+        `\nThe session expires in ${Math.floor(session.expiresIn / 60)} minutes.`,
+      );
 
-        case "expired":
-          console.error(chalk.red("\n✗ Session expired, please try again"));
-          process.exit(1);
-          break;
+      console.log("\nWaiting for authorization...");
 
-        case "error":
+      // Poll for completion
+      const sessionClient = initClient(connectorSessionByIdContract, {
+        baseUrl: apiUrl,
+        baseHeaders: headers,
+        jsonQuery: true,
+      });
+
+      const startTime = Date.now();
+      const maxWaitTime = session.expiresIn * 1000;
+      const pollInterval = (session.interval || 5) * 1000;
+
+      let isFirstPoll = true;
+
+      while (Date.now() - startTime < maxWaitTime) {
+        // Skip delay on first poll
+        if (!isFirstPoll) {
+          await delay(pollInterval);
+        }
+        isFirstPoll = false;
+
+        const statusResult = await sessionClient.get({
+          params: { type: connectorType, sessionId: session.id },
+        });
+
+        if (statusResult.status !== 200) {
+          const errorBody = statusResult.body as ApiErrorResponse;
           console.error(
             chalk.red(
-              `\n✗ Connection failed: ${status.errorMessage || "Unknown error"}`,
+              `\n✗ Failed to check status: ${errorBody.error?.message}`,
             ),
           );
           process.exit(1);
-          break;
+        }
 
-        case "pending":
-          // Still waiting
-          process.stdout.write(chalk.dim("."));
-          break;
+        const status = statusResult.body;
+
+        switch (status.status) {
+          case "complete":
+            console.log(chalk.green(`\n\n${type} connected successfully!`));
+            return;
+
+          case "expired":
+            console.error(chalk.red("\n✗ Session expired, please try again"));
+            process.exit(1);
+            break;
+
+          case "error":
+            console.error(
+              chalk.red(
+                `\n✗ Connection failed: ${status.errorMessage || "Unknown error"}`,
+              ),
+            );
+            process.exit(1);
+            break;
+
+          case "pending":
+            // Still waiting
+            process.stdout.write(chalk.dim("."));
+            break;
+        }
       }
-    }
 
-    // Timeout
-    console.error(chalk.red("\n✗ Session timed out, please try again"));
-    process.exit(1);
+      // Timeout
+      console.error(chalk.red("\n✗ Session timed out, please try again"));
+      process.exit(1);
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error(chalk.red(`✗ ${error.message}`));
+        if (error.cause instanceof Error) {
+          console.error(chalk.dim(`  Cause: ${error.cause.message}`));
+        }
+      } else {
+        console.error(chalk.red("✗ An unexpected error occurred"));
+      }
+      process.exit(1);
+    }
   });
