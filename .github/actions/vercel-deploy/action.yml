@@ -45,6 +45,10 @@ inputs:
     description: "Skip finishing the deployment (use when you need to set a custom env_url later)"
     required: false
     default: "false"
+  prebuilt:
+    description: "Build locally and deploy prebuilt artifacts (skips remote build on Vercel)"
+    required: false
+    default: "false"
 
 runs:
   using: "composite"
@@ -70,30 +74,75 @@ runs:
       id: deploy
       shell: bash
       run: |
-        # Build deployment command
-        DEPLOY_CMD="vercel deploy --token=${{ inputs.vercel-token }}"
-
-        # Add production flag if needed
-        if [ "${{ inputs.environment }}" == "production" ]; then
-          DEPLOY_CMD="$DEPLOY_CMD --prod"
-        fi
-
-        # Add environment variables for both build-time and runtime
         ENV_VARS="${{ inputs.environment-variables }}"
-        if [ -n "$ENV_VARS" ]; then
-          echo "Adding environment variables for build and runtime..."
-          while IFS= read -r line; do
-            # Skip empty lines
-            line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            if [ -n "$line" ]; then
-              # Extract key and value
-              KEY="${line%%=*}"
-              VALUE="${line#*=}"
-              echo "Adding env: $KEY"
-              # Add as both build-time and runtime environment variable
-              DEPLOY_CMD="$DEPLOY_CMD --build-env $KEY=\"$VALUE\" --env $KEY=\"$VALUE\""
-            fi
-          done <<< "$ENV_VARS"
+
+        if [ "${{ inputs.prebuilt }}" == "true" ]; then
+          # === Prebuilt mode: build locally, deploy artifacts only ===
+
+          # Export environment variables for local build
+          if [ -n "$ENV_VARS" ]; then
+            echo "Exporting environment variables for local build..."
+            while IFS= read -r line; do
+              line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+              if [ -n "$line" ]; then
+                KEY="${line%%=*}"
+                VALUE="${line#*=}"
+                echo "Exporting env: $KEY"
+                export "$KEY=$VALUE"
+              fi
+            done <<< "$ENV_VARS"
+          fi
+
+          # Build locally using Vercel CLI
+          echo "Building locally with vercel build..."
+          BUILD_CMD="vercel build --token=${{ inputs.vercel-token }}"
+          if [ "${{ inputs.environment }}" == "production" ]; then
+            BUILD_CMD="$BUILD_CMD --prod"
+          fi
+          eval $BUILD_CMD
+
+          # Deploy prebuilt artifacts (no remote build)
+          echo "Deploying prebuilt artifacts..."
+          DEPLOY_CMD="vercel deploy --prebuilt --token=${{ inputs.vercel-token }}"
+
+          if [ "${{ inputs.environment }}" == "production" ]; then
+            DEPLOY_CMD="$DEPLOY_CMD --prod"
+          fi
+
+          # Add runtime environment variables
+          if [ -n "$ENV_VARS" ]; then
+            echo "Adding runtime environment variables..."
+            while IFS= read -r line; do
+              line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+              if [ -n "$line" ]; then
+                KEY="${line%%=*}"
+                VALUE="${line#*=}"
+                echo "Adding runtime env: $KEY"
+                DEPLOY_CMD="$DEPLOY_CMD --env $KEY=\"$VALUE\""
+              fi
+            done <<< "$ENV_VARS"
+          fi
+        else
+          # === Standard mode: remote build on Vercel ===
+          DEPLOY_CMD="vercel deploy --token=${{ inputs.vercel-token }}"
+
+          if [ "${{ inputs.environment }}" == "production" ]; then
+            DEPLOY_CMD="$DEPLOY_CMD --prod"
+          fi
+
+          # Add environment variables for both build-time and runtime
+          if [ -n "$ENV_VARS" ]; then
+            echo "Adding environment variables for build and runtime..."
+            while IFS= read -r line; do
+              line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+              if [ -n "$line" ]; then
+                KEY="${line%%=*}"
+                VALUE="${line#*=}"
+                echo "Adding env: $KEY"
+                DEPLOY_CMD="$DEPLOY_CMD --build-env $KEY=\"$VALUE\" --env $KEY=\"$VALUE\""
+              fi
+            done <<< "$ENV_VARS"
+          fi
         fi
 
         # Add metadata if provided

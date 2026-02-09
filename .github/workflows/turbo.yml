@@ -419,6 +419,7 @@ jobs:
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_WEB }}
           environment: preview
           deployment-env: web
+          prebuilt: "true"
           environment-variables: |
             DATABASE_URL=${{ steps.branch.outputs.database-url }}
             NEXT_PUBLIC_BASE_URL=${{ needs.prepare.outputs.web-preview-url }}
@@ -452,6 +453,7 @@ jobs:
             SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_WEB }}
             GH_OAUTH_CLIENT_ID=${{ vars.GH_OAUTH_CLIENT_ID }}
             GH_OAUTH_CLIENT_SECRET=${{ secrets.GH_OAUTH_CLIENT_SECRET }}
+            NEXT_PUBLIC_STRAPI_URL=${{ vars.NEXT_PUBLIC_STRAPI_URL }}
           meta-branch: ${{ github.head_ref || github.ref_name }}
           meta-pr: ${{ needs.prepare.outputs.job-ref }}
           skip-finish: ${{ github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '' }}

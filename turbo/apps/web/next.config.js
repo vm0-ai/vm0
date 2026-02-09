@@ -43,6 +43,8 @@ const nextConfig = {
   serverExternalPackages: ["ably"],
 };
 
+const isProduction = process.env.VERCEL_ENV === "production";
+
 export default withSentryConfig(withNextIntl(nextConfig), {
   // Sentry organization and project
   org: process.env.SENTRY_ORG,
@@ -59,4 +61,9 @@ export default withSentryConfig(withNextIntl(nextConfig), {
 
   // Disable telemetry
   telemetry: false,
+
+  // Skip source map upload for non-production builds (preview deploys)
+  sourcemaps: {
+    disable: !isProduction,
+  },
 });
