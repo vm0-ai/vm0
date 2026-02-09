@@ -2,6 +2,11 @@ import { Card } from "@vm0/ui/components/ui/card";
 import { CopyButton } from "@vm0/ui/components/ui/copy-button";
 import { Button } from "@vm0/ui/components/ui/button";
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@vm0/ui/components/ui/alert";
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -246,32 +251,30 @@ function AgentRow({
           </DialogDescription>
         </DialogHeader>
         {missingSecrets && missingSecrets.length > 0 && (
-          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="h-5 w-5 text-destructive mt-0.5 flex-shrink-0" />
-              <div className="flex-1 space-y-2">
-                <p className="text-sm font-medium text-destructive">
-                  Missing required secrets
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  This agent requires {missingSecrets.length} secret
-                  {missingSecrets.length > 1 ? "s" : ""} to run. Click to add:
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {missingSecrets.map((secret) => (
-                    <button
-                      key={secret}
-                      onClick={() => handleAddSecret(secret)}
-                      className="inline-flex items-center gap-1.5 text-xs bg-background hover:bg-muted px-2.5 py-1.5 rounded border border-border transition-colors"
-                    >
-                      <Plus className="h-3 w-3" />
-                      <code className="font-mono">{secret}</code>
-                    </button>
-                  ))}
-                </div>
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Missing required secrets</AlertTitle>
+            <AlertDescription>
+              <p className="mb-3">
+                This agent requires {missingSecrets.length} secret
+                {missingSecrets.length > 1 ? "s" : ""} to run. Click to add:
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {missingSecrets.map((secret) => (
+                  <Button
+                    key={secret}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleAddSecret(secret)}
+                    className="h-auto py-1.5 px-2.5 text-xs border-destructive text-destructive hover:bg-destructive/10"
+                  >
+                    <Plus className="h-3 w-3" />
+                    <code className="font-mono">{secret}</code>
+                  </Button>
+                ))}
               </div>
-            </div>
-          </div>
+            </AlertDescription>
+          </Alert>
         )}
         <AgentCommandsSection agent={agent} />
       </DialogContent>
