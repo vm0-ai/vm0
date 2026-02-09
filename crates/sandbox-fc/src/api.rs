@@ -1,4 +1,3 @@
-use std::fmt;
 use std::os::fd::{AsFd, AsRawFd, OwnedFd};
 use std::path::Path;
 use std::time::Duration;
@@ -9,19 +8,28 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 
 /// Error from Firecracker API calls.
-#[derive(Debug)]
-pub struct ApiError {
-    status: u16,
-    body: String,
+#[derive(Debug, thiserror::Error)]
+pub enum ApiError {
+    /// Failed to connect to the Unix domain socket.
+    #[error("connect: {0}")]
+    Connect(std::io::Error),
+    /// Firecracker returned a non-2xx HTTP response.
+    #[error("HTTP {status}: {body}")]
+    Http { status: u16, body: String },
+    /// Other failure (I/O during request, timeout, setup).
+    #[error("{0}")]
+    Other(String),
 }
 
-impl fmt::Display for ApiError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "HTTP {}: {}", self.status, self.body)
+impl ApiError {
+    /// Whether this error is transient and worth retrying during readiness polling.
+    fn is_retryable(&self) -> bool {
+        match self {
+            Self::Connect(e) => e.kind() == std::io::ErrorKind::ConnectionRefused,
+            Self::Http { .. } | Self::Other(_) => true,
+        }
     }
 }
-
-impl std::error::Error for ApiError {}
 
 /// Per-request timeout matching the TS client (30s).
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
@@ -49,22 +57,27 @@ impl<'a> ApiClient<'a> {
         {
             tokio::time::timeout_at(deadline, wait_for_socket_file(self.socket_path))
                 .await
-                .map_err(|_| ApiError {
-                    status: 0,
-                    body: format!("timed out after {timeout:?} waiting for socket file"),
+                .map_err(|_| {
+                    ApiError::Other(format!(
+                        "timed out after {timeout:?} waiting for socket file"
+                    ))
                 })??;
         }
 
         // Phase 2: poll GET / until the API responds with success.
+        // Non-retryable errors (e.g. PermissionDenied on connect) fail immediately
+        // instead of spinning until timeout.
         loop {
             match tokio::time::timeout_at(deadline, self.request("GET", "/", None)).await {
                 Ok(Ok(_)) => return Ok(()),
-                Ok(Err(_)) => tokio::time::sleep(Duration::from_millis(10)).await,
+                Ok(Err(e)) if e.is_retryable() => {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+                Ok(Err(e)) => return Err(e),
                 Err(_) => {
-                    return Err(ApiError {
-                        status: 0,
-                        body: format!("timed out after {timeout:?} waiting for API ready"),
-                    });
+                    return Err(ApiError::Other(format!(
+                        "timed out after {timeout:?} waiting for API ready"
+                    )));
                 }
             }
         }
@@ -216,19 +229,16 @@ impl<'a> ApiClient<'a> {
     ) -> Result<(), ApiError> {
         tokio::time::timeout(REQUEST_TIMEOUT, self.request(method, path, body))
             .await
-            .map_err(|_| ApiError {
-                status: 0,
-                body: format!("request timed out after {REQUEST_TIMEOUT:?}"),
+            .map_err(|_| {
+                ApiError::Other(format!("request timed out after {REQUEST_TIMEOUT:?}"))
             })??;
         Ok(())
     }
 
     /// Serialize a JSON value and PUT it to the given path.
     async fn put_json(&self, path: &str, value: &serde_json::Value) -> Result<(), ApiError> {
-        let body = serde_json::to_string(value).map_err(|e| ApiError {
-            status: 0,
-            body: format!("serialize request: {e}"),
-        })?;
+        let body =
+            serde_json::to_string(value).map_err(|e| ApiError::Other(format!("json: {e}")))?;
         self.request_with_timeout("PUT", path, Some(body.as_bytes()))
             .await
     }
@@ -245,10 +255,7 @@ impl<'a> ApiClient<'a> {
     ) -> Result<String, ApiError> {
         let mut stream = UnixStream::connect(self.socket_path)
             .await
-            .map_err(|e| ApiError {
-                status: 0,
-                body: format!("connect: {e}"),
-            })?;
+            .map_err(ApiError::Connect)?;
 
         let header = if let Some(b) = body {
             format!(
@@ -272,16 +279,13 @@ impl<'a> ApiClient<'a> {
         stream
             .write_all(header.as_bytes())
             .await
-            .map_err(|e| ApiError {
-                status: 0,
-                body: format!("write header: {e}"),
-            })?;
+            .map_err(|e| ApiError::Other(format!("write header: {e}")))?;
 
         if let Some(b) = body {
-            stream.write_all(b).await.map_err(|e| ApiError {
-                status: 0,
-                body: format!("write body: {e}"),
-            })?;
+            stream
+                .write_all(b)
+                .await
+                .map_err(|e| ApiError::Other(format!("write body: {e}")))?;
         }
 
         // Read response into a buffer. Firecracker uses keep-alive so we
@@ -293,10 +297,10 @@ impl<'a> ApiClient<'a> {
 
         // Phase 1: read until we have the full header block.
         loop {
-            let n = reader.read_buf(&mut buf).await.map_err(|e| ApiError {
-                status: 0,
-                body: format!("read response: {e}"),
-            })?;
+            let n = reader
+                .read_buf(&mut buf)
+                .await
+                .map_err(|e| ApiError::Other(format!("read response: {e}")))?;
             if n == 0 || buf.windows(4).any(|w| w == b"\r\n\r\n") {
                 break;
             }
@@ -336,10 +340,10 @@ impl<'a> ApiClient<'a> {
                 // Need to read remaining body bytes from the stream.
                 let remaining = content_length - already_read;
                 let mut tail = vec![0u8; remaining];
-                reader.read_exact(&mut tail).await.map_err(|e| ApiError {
-                    status: 0,
-                    body: format!("read body: {e}"),
-                })?;
+                reader
+                    .read_exact(&mut tail)
+                    .await
+                    .map_err(|e| ApiError::Other(format!("read body: {e}")))?;
                 buf.extend_from_slice(&tail);
             }
             let end = body_start + content_length;
@@ -356,7 +360,7 @@ impl<'a> ApiClient<'a> {
                 .ok()
                 .and_then(|v| v.get("fault_message")?.as_str().map(String::from))
                 .unwrap_or(body_str);
-            Err(ApiError {
+            Err(ApiError::Http {
                 status,
                 body: message,
             })
@@ -366,22 +370,16 @@ impl<'a> ApiClient<'a> {
 
 /// Wait for a file to appear using inotify (event-driven, no polling).
 async fn wait_for_socket_file(socket_path: &Path) -> Result<(), ApiError> {
-    let dir = socket_path.parent().ok_or_else(|| ApiError {
-        status: 0,
-        body: "socket path has no parent directory".into(),
-    })?;
+    let dir = socket_path
+        .parent()
+        .ok_or_else(|| ApiError::Other("socket path has no parent directory".into()))?;
 
-    let inotify = Inotify::init(InitFlags::IN_NONBLOCK).map_err(|e| ApiError {
-        status: 0,
-        body: format!("inotify init: {e}"),
-    })?;
+    let inotify = Inotify::init(InitFlags::IN_NONBLOCK)
+        .map_err(|e| ApiError::Other(format!("inotify init: {e}")))?;
 
     inotify
         .add_watch(dir, AddWatchFlags::IN_CREATE | AddWatchFlags::IN_MOVED_TO)
-        .map_err(|e| ApiError {
-            status: 0,
-            body: format!("inotify watch: {e}"),
-        })?;
+        .map_err(|e| ApiError::Other(format!("inotify watch: {e}")))?;
 
     // Re-check after watch is set (race: file may have appeared between the
     // caller's try_exists and our add_watch — same pattern as TS client).
@@ -391,16 +389,13 @@ async fn wait_for_socket_file(socket_path: &Path) -> Result<(), ApiError> {
 
     // Inotify implements AsFd but not AsRawFd; convert to OwnedFd for AsyncFd.
     let fd: OwnedFd = inotify.into();
-    let async_fd = AsyncFd::new(fd).map_err(|e| ApiError {
-        status: 0,
-        body: format!("AsyncFd: {e}"),
-    })?;
+    let async_fd = AsyncFd::new(fd).map_err(|e| ApiError::Other(format!("AsyncFd: {e}")))?;
 
     loop {
-        let mut guard = async_fd.readable().await.map_err(|e| ApiError {
-            status: 0,
-            body: format!("inotify readable: {e}"),
-        })?;
+        let mut guard = async_fd
+            .readable()
+            .await
+            .map_err(|e| ApiError::Other(format!("inotify readable: {e}")))?;
 
         // Drain inotify events to avoid a busy-loop on level-triggered epoll.
         drain_inotify_fd(async_fd.get_ref().as_fd());
@@ -469,7 +464,7 @@ mod tests {
         let result = client.wait_for_ready(Duration::from_millis(50)).await;
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.body.contains("timed out"), "got: {err}");
+        assert!(err.to_string().contains("timed out"), "got: {err}");
     }
 
     #[tokio::test]
@@ -590,9 +585,11 @@ mod tests {
 
         let client = ApiClient::new(&sock_path);
         let result = client.load_snapshot("/snap/state", "/snap/memory").await;
-        let err = result.unwrap_err();
-        assert_eq!(err.status, 500);
-        assert_eq!(err.body, "plain text error");
+        let ApiError::Http { status, body } = result.unwrap_err() else {
+            panic!("expected Http error");
+        };
+        assert_eq!(status, 500);
+        assert_eq!(body, "plain text error");
     }
 
     #[tokio::test]
@@ -621,11 +618,12 @@ mod tests {
 
         let client = ApiClient::new(&sock_path);
         let result = client.load_snapshot("/snap/state", "/snap/memory").await;
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert_eq!(err.status, 400);
+        let ApiError::Http { status, body } = result.unwrap_err() else {
+            panic!("expected Http error");
+        };
+        assert_eq!(status, 400);
         // fault_message is extracted from JSON response (matches TS behavior).
-        assert_eq!(err.body, "bad snapshot");
+        assert_eq!(body, "bad snapshot");
     }
 
     #[tokio::test]
@@ -721,9 +719,11 @@ mod tests {
         });
 
         let client = ApiClient::new(&sock_path);
-        let err = client.pause().await.unwrap_err();
-        assert_eq!(err.status, 400);
-        assert_eq!(err.body, "cannot pause");
+        let ApiError::Http { status, body } = client.pause().await.unwrap_err() else {
+            panic!("expected Http error");
+        };
+        assert_eq!(status, 400);
+        assert_eq!(body, "cannot pause");
     }
 
     #[tokio::test]
@@ -927,5 +927,41 @@ mod tests {
         let client = ApiClient::new(&sock_path);
         let result = client.start_instance().await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn wait_for_ready_fails_fast_on_permission_denied() {
+        // Root bypasses file permissions; skip this test.
+        if nix::unistd::getuid().is_root() {
+            return;
+        }
+
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        let sock_path = dir.path().join("test-perm.sock");
+
+        // Create a socket then remove all permissions so connect gets PermissionDenied.
+        let _listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
+            panic!("bind {}: {e}", sock_path.display());
+        });
+
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&sock_path, std::fs::Permissions::from_mode(0o000))
+            .unwrap_or_else(|e| panic!("set_permissions: {e}"));
+
+        let client = ApiClient::new(&sock_path);
+        let start = std::time::Instant::now();
+        let result = client.wait_for_ready(Duration::from_secs(5)).await;
+        let elapsed = start.elapsed();
+
+        // Should fail immediately, not spin for 5 seconds.
+        assert!(result.is_err(), "expected error");
+        assert!(
+            elapsed < Duration::from_secs(1),
+            "should fail fast, took {elapsed:?}"
+        );
+        let ApiError::Connect(ref io_err) = result.unwrap_err() else {
+            panic!("expected Connect error");
+        };
+        assert_eq!(io_err.kind(), std::io::ErrorKind::PermissionDenied);
     }
 }
