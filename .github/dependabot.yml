@@ -39,7 +39,7 @@ updates:
 
   # Docker base images - toolchain
   - package-ecosystem: "docker"
-    directory: "/.docker/toolchain"
+    directory: "/docker/toolchain"
     schedule:
       interval: "weekly"
 

@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - '.docker/toolchain/**'
+      - 'docker/toolchain/**'
       - 'docker/**'
       - 'turbo/**'
       - '.github/workflows/docker-*.yml'
@@ -50,8 +50,8 @@ jobs:
       - name: Build and push toolchain image
         uses: docker/build-push-action@v6
         with:
-          context: ./.docker/toolchain
-          file: ./.docker/toolchain/Dockerfile
+          context: ./docker/toolchain
+          file: ./docker/toolchain/Dockerfile
           target: toolchain
           platforms: linux/amd64,linux/arm64
           push: true
@@ -68,8 +68,8 @@ jobs:
       - name: Build and push toolchain-rust image
         uses: docker/build-push-action@v6
         with:
-          context: ./.docker/toolchain
-          file: ./.docker/toolchain/Dockerfile
+          context: ./docker/toolchain
+          file: ./docker/toolchain/Dockerfile
           target: toolchain-rust
           platforms: linux/amd64,linux/arm64
           push: true
@@ -86,8 +86,8 @@ jobs:
       - name: Build and push development image
         uses: docker/build-push-action@v6
         with:
-          context: ./.docker/toolchain
-          file: ./.docker/toolchain/Dockerfile
+          context: ./docker/toolchain
+          file: ./docker/toolchain/Dockerfile
           target: development
           platforms: linux/amd64,linux/arm64
           push: true
