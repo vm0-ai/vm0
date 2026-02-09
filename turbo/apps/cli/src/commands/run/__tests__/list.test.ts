@@ -341,6 +341,17 @@ describe("run list command", () => {
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
+
+    it("should error on invalid time format", async () => {
+      await expect(async () => {
+        await listCommand.parseAsync(["node", "cli", "--since", "invalid"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid --since format"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
   });
 
   describe("error handling", () => {
