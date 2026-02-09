@@ -70,7 +70,7 @@ jobs:
       - name: Build web image
         uses: docker/build-push-action@v6
         with:
-          context: ./turbo
+          context: .
           file: docker/Dockerfile.web
           push: false
           tags: vm0:test

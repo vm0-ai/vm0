@@ -129,7 +129,7 @@ jobs:
       - name: Build and push web image
         uses: docker/build-push-action@v6
         with:
-          context: ./turbo
+          context: .
           file: docker/Dockerfile.web
           platforms: linux/amd64,linux/arm64
           push: true

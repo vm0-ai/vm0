@@ -1,4 +1,5 @@
 import { isSelfHosted } from "../../env";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 
 /**
  * Authentication provider interface.
@@ -17,13 +18,11 @@ export interface AuthProvider {
 function createClerkAuthProvider(): AuthProvider {
   return {
     async getUserId() {
-      const { auth } = await import("@clerk/nextjs/server");
       const { userId } = await auth();
       return userId;
     },
 
     async getUserEmail(userId: string) {
-      const { clerkClient } = await import("@clerk/nextjs/server");
       const client = await clerkClient();
       const user = await client.users.getUser(userId);
       const email = user.emailAddresses.find(
@@ -66,4 +65,9 @@ export function getAuthProvider(): AuthProvider {
       : createClerkAuthProvider();
   }
   return _provider;
+}
+
+/** @internal Clear cached provider (for tests only). */
+export function resetAuthProvider(): void {
+  _provider = undefined;
 }

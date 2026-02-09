@@ -67,6 +67,8 @@ function initEnv() {
       SENTRY_AUTH_TOKEN: z.string().min(1).optional(),
       SENTRY_ORG: z.string().min(1).optional(),
       SENTRY_PROJECT: z.string().min(1).optional(),
+      // Run concurrency (0 = no limit, undefined = default of 1)
+      CONCURRENT_RUN_LIMIT: z.coerce.number().int().nonnegative().optional(),
     },
     client: {
       NEXT_PUBLIC_SELF_HOSTED: z.enum(["true", "false"]).optional(),
@@ -111,6 +113,7 @@ function initEnv() {
       SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
       SENTRY_ORG: process.env.SENTRY_ORG,
       SENTRY_PROJECT: process.env.SENTRY_PROJECT,
+      CONCURRENT_RUN_LIMIT: process.env.CONCURRENT_RUN_LIMIT,
       NEXT_PUBLIC_SELF_HOSTED: process.env.SELF_HOSTED,
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
         process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,

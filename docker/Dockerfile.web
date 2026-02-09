@@ -54,6 +54,11 @@ RUN apk add --no-cache openssl curl
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Non-root user for security (created before COPY so --chown can reference it)
+RUN addgroup --system --gid 1001 nodejs \
+    && adduser --system --uid 1001 nextjs \
+    && mkdir -p /app/data && chown nextjs:nodejs /app/data
+
 # Migration script runtime dependencies
 # tsx is a CLI tool -> install globally
 # drizzle-orm, postgres, drizzle-kit are imported by migrate.ts -> install locally
@@ -61,18 +66,20 @@ RUN npm install -g tsx \
     && cd /app && npm install --no-save drizzle-orm postgres drizzle-kit
 
 # Standalone output includes required node_modules
-COPY --from=builder /app/apps/web/.next/standalone ./
-COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
-COPY --from=builder /app/apps/web/public ./apps/web/public
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
 
 # Database migration files
-COPY --from=builder /app/apps/web/src/db/migrations ./apps/web/src/db/migrations
-COPY --from=builder /app/apps/web/drizzle.config.ts ./apps/web/drizzle.config.ts
-COPY --from=builder /app/apps/web/scripts/migrate.ts ./apps/web/scripts/migrate.ts
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/src/db/migrations ./apps/web/src/db/migrations
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/drizzle.config.ts ./apps/web/drizzle.config.ts
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/scripts/migrate.ts ./apps/web/scripts/migrate.ts
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/scripts/self-hosted-init.ts ./apps/web/scripts/self-hosted-init.ts
 
 # Entrypoint
-COPY docker/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+COPY --chmod=755 docker/entrypoint.sh /entrypoint.sh
+
+USER nextjs
 
 EXPOSE 3000
 

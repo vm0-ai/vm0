@@ -32,6 +32,13 @@ DATABASE_URL="$DATABASE_URL" tsx scripts/migrate.ts
 cd /app
 echo "[VM0] Migrations complete"
 
-# 4. Start application
+# 4. Initialize self-hosted data (default user, scope)
+echo "[VM0] Running self-hosted initialization..."
+cd /app/apps/web
+DATABASE_URL="$DATABASE_URL" tsx scripts/self-hosted-init.ts
+cd /app
+echo "[VM0] Initialization complete"
+
+# 5. Start application
 echo "[VM0] Starting web server..."
 exec node apps/web/server.js

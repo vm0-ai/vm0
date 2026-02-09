@@ -2,7 +2,7 @@
 	auto_https off
 }
 
-:80 {
+{$DOMAIN::80} {
 	# API routes
 	handle /api/* {
 		reverse_proxy web:3000

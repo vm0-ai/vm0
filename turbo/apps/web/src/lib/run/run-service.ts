@@ -19,6 +19,7 @@ import {
   buildExecutionContext as buildContext,
   type BuildContextParams,
 } from "./build-context";
+import { env } from "../../env";
 
 const log = logger("service:run");
 
@@ -42,22 +43,14 @@ export async function checkRunConcurrencyLimit(
   limit?: number,
 ): Promise<void> {
   // Use provided limit, or env var, or default to 1
-  // Note: 0 means no limit (for testing), so we need explicit undefined check
-  const envLimit = process.env.CONCURRENT_RUN_LIMIT;
+  // Note: 0 means no limit, so we need explicit undefined check
+  const envLimit = env().CONCURRENT_RUN_LIMIT;
   let effectiveLimit = 1; // Default
 
   if (limit !== undefined) {
     effectiveLimit = limit;
   } else if (envLimit !== undefined) {
-    const parsed = Number(envLimit);
-    // Only use env var if it's a valid non-negative number
-    if (!Number.isNaN(parsed) && parsed >= 0) {
-      effectiveLimit = parsed;
-    } else {
-      log.warn(
-        `Invalid CONCURRENT_RUN_LIMIT value "${envLimit}", using default of 1`,
-      );
-    }
+    effectiveLimit = envLimit;
   }
 
   // Skip check if limit is 0 (no limit)

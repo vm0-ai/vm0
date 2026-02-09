@@ -1,4 +1,6 @@
 import { NextFetchEvent, NextRequest } from "next/server";
+import clerkMiddleware from "./middleware.clerk";
+import localMiddleware from "./middleware.local";
 
 export { config } from "./middleware.config";
 
@@ -9,10 +11,8 @@ export default async function middleware(
   event: NextFetchEvent,
 ) {
   if (isSelfHosted) {
-    const { default: handler } = await import("./middleware.local");
-    return handler(request);
+    return localMiddleware(request);
   }
 
-  const { default: handler } = await import("./middleware.clerk");
-  return handler(request, event);
+  return clerkMiddleware(request, event);
 }
