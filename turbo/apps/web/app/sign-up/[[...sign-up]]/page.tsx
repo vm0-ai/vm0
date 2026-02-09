@@ -106,10 +106,10 @@ export default function SignUpPage() {
 
         /* Input focus state */
         .cl-formFieldInput:focus,
-        .cl-formFieldInput input:focus,
-        .cl-card input:focus,
+        .cl-formFieldInput input:not([data-input-otp]):focus,
+        .cl-card input:not([data-input-otp]):focus,
         .cl-card [class*="formFieldInput"]:focus,
-        .cl-card [class*="formFieldInput"] input:focus {
+        .cl-card [class*="formFieldInput"] input:not([data-input-otp]):focus {
           border: 1px solid hsl(var(--primary)) !important;
           box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1) !important;
           outline: none !important;
@@ -264,9 +264,7 @@ export default function SignUpPage() {
         }
 
         /* OTP/Verification Code Input Boxes - Match cli-auth style */
-        .cl-otpCodeFieldInput,
-        input[data-input-otp],
-        [data-input-otp] input {
+        .cl-otpCodeFieldInput {
           height: 36px !important;
           width: 36px !important;
           background-color: hsl(var(--input)) !important;
@@ -279,11 +277,14 @@ export default function SignUpPage() {
         }
 
         /* OTP Input Focus State */
-        .cl-otpCodeFieldInput:focus,
-        input[data-input-otp]:focus,
-        [data-input-otp] input:focus {
+        .cl-otpCodeFieldInput[data-focus-within="true"] {
           border-color: hsl(var(--primary)) !important;
           box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1) !important;
+        }
+
+        /* OTP caret color */
+        .cl-otpCodeFieldInput[data-focus-within="true"] > div > div {
+          background-color: hsl(var(--foreground)) !important;
         }
 
         /* "Didn't receive a code" text color */
@@ -312,19 +313,19 @@ export default function SignUpPage() {
       `}</style>
       <div className="relative flex min-h-screen items-center justify-center bg-background p-6 overflow-hidden">
         {/* Background grid pattern - medium grid with subtle visibility */}
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--primary)/0.06)_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--primary)/0.06)_1px,transparent_1px)] bg-[size:3rem_3rem]" />
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--primary)/0.06)_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--primary)/0.06)_1px,transparent_1px)] bg-[size:3rem_3rem]" />
 
         {/* Gradient glow overlay - using the palette colors */}
-        <div className="absolute inset-0 bg-gradient-to-r from-[#FFC8B0]/20 via-[#A6DEFF]/15 to-[#FFE7A2]/20 blur-3xl" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#FFC8B0]/20 via-[#A6DEFF]/15 to-[#FFE7A2]/20 blur-3xl" />
 
         {/* Radial glow - peach tone left */}
-        <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-[#FFC8B0]/15 blur-3xl" />
+        <div className="pointer-events-none absolute -top-40 -left-40 h-96 w-96 rounded-full bg-[#FFC8B0]/15 blur-3xl" />
 
         {/* Radial glow - blue tone center */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[600px] w-[600px] rounded-full bg-[#A6DEFF]/10 blur-3xl" />
+        <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[600px] w-[600px] rounded-full bg-[#A6DEFF]/10 blur-3xl" />
 
         {/* Radial glow - yellow tone right */}
-        <div className="absolute -bottom-40 -right-40 h-96 w-96 rounded-full bg-[#FFE7A2]/15 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-40 -right-40 h-96 w-96 rounded-full bg-[#FFE7A2]/15 blur-3xl" />
 
         {/* Theme Toggle Button */}
         <button

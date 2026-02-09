@@ -1,5 +1,36 @@
 # Changelog
 
+## [9.29.4](https://github.com/vm0-ai/vm0/compare/cli-v9.29.3...cli-v9.29.4) (2026-02-09)
+
+
+### Bug Fixes
+
+* **web:** disable json query to fix flaky ambiguous-prefix test ([#2701](https://github.com/vm0-ai/vm0/issues/2701)) ([a5f8e8a](https://github.com/vm0-ai/vm0/commit/a5f8e8a375a3a84c46518780201b66f75ea845a3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.6.1
+
+## [9.29.3](https://github.com/vm0-ai/vm0/compare/cli-v9.29.2...cli-v9.29.3) (2026-02-09)
+
+
+### Bug Fixes
+
+* **cli:** add missing try/catch to auth and cook commands ([#2690](https://github.com/vm0-ai/vm0/issues/2690)) ([216758d](https://github.com/vm0-ai/vm0/commit/216758de8f0a860dde5c5b69df9ea15e0eddccb7))
+* **cli:** add missing try/catch to onboard command ([#2699](https://github.com/vm0-ai/vm0/issues/2699)) ([cec0044](https://github.com/vm0-ai/vm0/commit/cec00445c45b0ce6ff2cc8a5e83191442b85d126))
+* **test:** remove vi.unstubAllEnvs from CLI tests and fix compose job race condition ([#2695](https://github.com/vm0-ai/vm0/issues/2695)) ([04ab29b](https://github.com/vm0-ai/vm0/commit/04ab29bf89201bb921d6a2f63b9ea4e3f2ab899d))
+
+## [9.29.2](https://github.com/vm0-ai/vm0/compare/cli-v9.29.1...cli-v9.29.2) (2026-02-09)
+
+
+### Bug Fixes
+
+* **cli:** add error handling to connector connect and display error.cause ([#2682](https://github.com/vm0-ai/vm0/issues/2682)) ([d19a29e](https://github.com/vm0-ai/vm0/commit/d19a29e5e2134de5fd7b28bb1ee16467cb6d7046))
+* **cli:** map 403 forbidden to user-friendly message in auth flow ([#2673](https://github.com/vm0-ai/vm0/issues/2673)) ([959d79d](https://github.com/vm0-ai/vm0/commit/959d79d7a99c91e38a97756f5acccd5045905e1c))
+
 ## [9.29.1](https://github.com/vm0-ai/vm0/compare/cli-v9.29.0...cli-v9.29.1) (2026-02-09)
 
 

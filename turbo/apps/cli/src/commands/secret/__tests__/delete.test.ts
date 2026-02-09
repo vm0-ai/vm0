@@ -33,7 +33,6 @@ describe("secret delete command", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
-    vi.unstubAllEnvs();
   });
 
   describe("successful delete", () => {

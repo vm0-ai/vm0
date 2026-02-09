@@ -216,7 +216,7 @@ async function spawnComposeJobSandbox(
       status: "running",
       startedAt: new Date(),
     })
-    .where(eq(composeJobs.id, jobId));
+    .where(and(eq(composeJobs.id, jobId), eq(composeJobs.status, "pending")));
 
   const scriptPath = "/tmp/compose-github.js";
   await sandbox.files.write(scriptPath, COMPOSE_SANDBOX_SCRIPT);

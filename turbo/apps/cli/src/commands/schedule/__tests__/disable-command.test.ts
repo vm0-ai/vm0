@@ -58,7 +58,6 @@ describe("schedule disable command", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
-    vi.unstubAllEnvs();
   });
 
   describe("help text", () => {

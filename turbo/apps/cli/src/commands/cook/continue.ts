@@ -31,54 +31,66 @@ export const continueCommand = new Command()
         debugNoMockClaude?: boolean;
       },
     ) => {
-      const state = await loadCookState();
-      if (!state.lastSessionId) {
-        console.error(chalk.red("✗ No previous session found"));
-        console.error(chalk.dim("  Run 'vm0 cook <prompt>' first"));
-        process.exit(1);
-      }
-
-      const cwd = process.cwd();
-      const artifactDir = path.join(cwd, ARTIFACT_DIR);
-
-      const envFileArg = options.envFile
-        ? ` --env-file ${options.envFile}`
-        : "";
-      printCommand(
-        `vm0 run continue${envFileArg} ${state.lastSessionId} "${prompt}"`,
-      );
-      console.log();
-
-      let runOutput: string;
       try {
-        runOutput = await execVm0RunWithCapture(
-          [
-            "run",
-            "continue",
-            ...(options.envFile ? ["--env-file", options.envFile] : []),
-            ...(options.verbose ? ["--verbose"] : []),
-            state.lastSessionId,
-            ...(options.debugNoMockClaude ? ["--debug-no-mock-claude"] : []),
-            prompt,
-          ],
-          { cwd },
+        const state = await loadCookState();
+        if (!state.lastSessionId) {
+          console.error(chalk.red("✗ No previous session found"));
+          console.error(chalk.dim("  Run 'vm0 cook <prompt>' first"));
+          process.exit(1);
+        }
+
+        const cwd = process.cwd();
+        const artifactDir = path.join(cwd, ARTIFACT_DIR);
+
+        const envFileArg = options.envFile
+          ? ` --env-file ${options.envFile}`
+          : "";
+        printCommand(
+          `vm0 run continue${envFileArg} ${state.lastSessionId} "${prompt}"`,
         );
-      } catch {
-        // Error already displayed by vm0 run
+        console.log();
+
+        let runOutput: string;
+        try {
+          runOutput = await execVm0RunWithCapture(
+            [
+              "run",
+              "continue",
+              ...(options.envFile ? ["--env-file", options.envFile] : []),
+              ...(options.verbose ? ["--verbose"] : []),
+              state.lastSessionId,
+              ...(options.debugNoMockClaude ? ["--debug-no-mock-claude"] : []),
+              prompt,
+            ],
+            { cwd },
+          );
+        } catch {
+          // Error already displayed by vm0 run
+          process.exit(1);
+        }
+
+        // Update state with new IDs
+        const newIds = parseRunIdsFromOutput(runOutput);
+        if (newIds.runId || newIds.sessionId || newIds.checkpointId) {
+          await saveCookState({
+            lastRunId: newIds.runId,
+            lastSessionId: newIds.sessionId,
+            lastCheckpointId: newIds.checkpointId,
+          });
+        }
+
+        // Auto-pull artifact
+        await autoPullArtifact(runOutput, artifactDir);
+      } catch (error) {
+        if (error instanceof Error) {
+          console.error(chalk.red(`✗ ${error.message}`));
+          if (error.cause instanceof Error) {
+            console.error(chalk.dim(`  Cause: ${error.cause.message}`));
+          }
+        } else {
+          console.error(chalk.red("✗ An unexpected error occurred"));
+        }
         process.exit(1);
       }
-
-      // Update state with new IDs
-      const newIds = parseRunIdsFromOutput(runOutput);
-      if (newIds.runId || newIds.sessionId || newIds.checkpointId) {
-        await saveCookState({
-          lastRunId: newIds.runId,
-          lastSessionId: newIds.sessionId,
-          lastCheckpointId: newIds.checkpointId,
-        });
-      }
-
-      // Auto-pull artifact
-      await autoPullArtifact(runOutput, artifactDir);
     },
   );

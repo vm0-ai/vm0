@@ -10,6 +10,7 @@ import {
   findTestComposeJobsByUser,
   findTestSlackComposeRequest,
   findTestCliTokensByUser,
+  findTestArtifactStorage,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   givenLinkedSlackUser,
@@ -24,6 +25,24 @@ vi.mock("@e2b/code-interpreter");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
+
+// Mock Next.js after() to capture promises instead of deferring
+const afterPromises: Promise<unknown>[] = [];
+vi.mock("next/server", async (importOriginal) => {
+  const original = await importOriginal<typeof import("next/server")>();
+  return {
+    ...original,
+    after: (promise: Promise<unknown>) => {
+      afterPromises.push(promise);
+    },
+  };
+});
+
+/** Wait for all after() callbacks to complete */
+async function flushAfterCallbacks() {
+  await Promise.all(afterPromises);
+  afterPromises.length = 0;
+}
 
 const context = testContext();
 
@@ -290,6 +309,47 @@ describe("POST /api/slack/interactive", () => {
       expect(response.status).toBe(200);
       // App Home was refreshed after disconnect
       expect(slackMock.mocked.viewsPublish).toHaveBeenCalled();
+    });
+  });
+
+  describe("Block Actions - Model Provider Refresh", () => {
+    it("re-checks provider status and updates modal", async () => {
+      const { userLink, installation } = await givenLinkedSlackUser();
+      mockClerk({ userId: userLink.vm0UserId });
+      await createTestCompose("test-agent");
+
+      const slackMock = handlers({
+        viewsUpdate: http.post("https://slack.com/api/views.update", () =>
+          HttpResponse.json({ ok: true, view: { id: "V123" } }),
+        ),
+      });
+      server.use(...slackMock.handlers);
+
+      const body = buildInteractiveBody({
+        type: "block_actions",
+        user: {
+          id: userLink.slackUserId,
+          username: "testuser",
+          team_id: installation.slackWorkspaceId,
+        },
+        team: { id: installation.slackWorkspaceId, domain: "test" },
+        view: {
+          id: "V123",
+          private_metadata: JSON.stringify({ channelId: "C123" }),
+          state: {
+            values: {
+              agent_select: { agent_select_action: {} },
+            },
+          },
+        },
+        actions: [{ action_id: "model_provider_refresh", block_id: "block-1" }],
+      });
+      const request = createSignedSlackRequest(body);
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      expect(slackMock.mocked.viewsUpdate).toHaveBeenCalled();
     });
   });
 
@@ -714,6 +774,89 @@ describe("POST /api/slack/interactive", () => {
       expect(response.status).toBe(200);
       const text = await response.text();
       expect(text).toBe("");
+    });
+  });
+
+  describe("Auto-setup: scope and artifact", () => {
+    it("creates artifact storage with HEAD version when home_agent_link is clicked", async () => {
+      const { userLink, installation } = await givenLinkedSlackUser();
+      mockClerk({ userId: userLink.vm0UserId });
+      await createTestCompose("test-agent");
+
+      const slackMock = handlers({
+        viewsOpen: http.post("https://slack.com/api/views.open", () =>
+          HttpResponse.json({ ok: true, view: { id: "V123" } }),
+        ),
+      });
+      server.use(...slackMock.handlers);
+
+      const body = buildInteractiveBody({
+        type: "block_actions",
+        user: {
+          id: userLink.slackUserId,
+          username: "testuser",
+          team_id: installation.slackWorkspaceId,
+        },
+        team: { id: installation.slackWorkspaceId, domain: "test" },
+        trigger_id: "trigger-123",
+        actions: [{ action_id: "home_agent_link", block_id: "block-1" }],
+      });
+      const request = createSignedSlackRequest(body);
+
+      await POST(request);
+
+      // Wait for after() callback to complete
+      await flushAfterCallbacks();
+
+      // Verify artifact storage was created with a HEAD version
+      const result = await findTestArtifactStorage(userLink.scopeId);
+
+      expect(result).not.toBeNull();
+      expect(result!.storage.headVersionId).toBeTruthy();
+      expect(result!.version).not.toBeNull();
+      expect(result!.version!.fileCount).toBe(0);
+      expect(result!.version!.storageId).toBe(result!.storage.id);
+    });
+
+    it("does not duplicate artifact when called twice", async () => {
+      const { userLink, installation } = await givenLinkedSlackUser();
+      mockClerk({ userId: userLink.vm0UserId });
+      await createTestCompose("test-agent-2");
+
+      const slackMock = handlers({
+        viewsOpen: http.post("https://slack.com/api/views.open", () =>
+          HttpResponse.json({ ok: true, view: { id: "V123" } }),
+        ),
+      });
+      server.use(...slackMock.handlers);
+
+      const buildRequest = () => {
+        const reqBody = buildInteractiveBody({
+          type: "block_actions",
+          user: {
+            id: userLink.slackUserId,
+            username: "testuser",
+            team_id: installation.slackWorkspaceId,
+          },
+          team: { id: installation.slackWorkspaceId, domain: "test" },
+          trigger_id: "trigger-456",
+          actions: [{ action_id: "home_agent_link", block_id: "block-1" }],
+        });
+        return createSignedSlackRequest(reqBody);
+      };
+
+      // Call twice
+      await POST(buildRequest());
+      await flushAfterCallbacks();
+      await POST(buildRequest());
+      await flushAfterCallbacks();
+
+      // Verify only one artifact storage exists with HEAD version
+      const result = await findTestArtifactStorage(userLink.scopeId);
+
+      expect(result).not.toBeNull();
+      expect(result!.storage.headVersionId).toBeTruthy();
+      expect(result!.version).not.toBeNull();
     });
   });
 

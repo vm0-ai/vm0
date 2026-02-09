@@ -31,13 +31,16 @@
 //! - Pool creates fixed number of namespaces at init (parallel)
 //! - [`NetnsPool::acquire`] returns a namespace from pool, or creates on-demand as fallback
 //! - [`NetnsPool::release`] returns the namespace to the pool
-//! - Caller is responsible for index allocation and multi-runner coordination
+//! - Pool index (0–63) is auto-allocated via flock on `/var/lock`
 
 use std::collections::VecDeque;
+use std::fs::File;
 
+use nix::fcntl::{Flock, FlockArg};
 use tracing::{error, info, trace, warn};
 
 use crate::command::{Privilege, exec, exec_ignore_errors};
+use crate::paths::LOCK_DIR;
 
 use super::GUEST_NETWORK;
 use super::error::{NetworkError, Result};
@@ -80,8 +83,6 @@ pub struct PooledNetns {
 
 /// Configuration for creating a [`NetnsPool`].
 pub struct NetnsPoolConfig {
-    /// Unique index for this pool instance (0–63), provided by caller.
-    pub index: u32,
     /// Number of namespaces to pre-create.
     pub size: usize,
     /// Proxy port for HTTP/HTTPS redirect (only adds redirect rules when set).
@@ -454,6 +455,44 @@ async fn delete_namespace_resources(ns_name: &str, host_device: &str) {
 }
 
 // ---------------------------------------------------------------------------
+// Pool index lock
+// ---------------------------------------------------------------------------
+
+/// Lock file prefix inside the lock directory.
+const LOCK_PREFIX: &str = "vm0-netns-pool-";
+
+/// Try to acquire an exclusive flock on a pool index file (0..MAX_POOLS).
+///
+/// Returns the first successfully locked `(index, Flock<File>)`. The lock is
+/// held for the lifetime of the returned `Flock` — when the process exits or
+/// the `Flock` is dropped, the OS releases the lock automatically.
+fn acquire_pool_lock(lock_dir: &str) -> Result<(u32, Flock<File>)> {
+    for index in 0..MAX_POOLS {
+        let path = format!("{lock_dir}/{LOCK_PREFIX}{index}.lock");
+        let file = File::options()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&path)
+            .map_err(|e| NetworkError::LockOpen(format!("{path}: {e}")))?;
+        match Flock::lock(file, FlockArg::LockExclusiveNonblock) {
+            Ok(lock) => {
+                info!(index, "acquired pool index lock");
+                return Ok((index, lock));
+            }
+            Err((_, errno)) => {
+                if errno != nix::errno::Errno::EWOULDBLOCK {
+                    warn!(index, %errno, "unexpected flock error, skipping index");
+                }
+                continue;
+            }
+        }
+    }
+
+    Err(NetworkError::NoPoolIndexAvailable)
+}
+
+// ---------------------------------------------------------------------------
 // NetnsPool
 // ---------------------------------------------------------------------------
 
@@ -465,33 +504,26 @@ pub struct NetnsPool {
     pool_index: u32,
     proxy_port: Option<u16>,
     default_iface: String,
+    /// Held for the lifetime of the pool to reserve the pool index.
+    _lock: Flock<File>,
 }
 
 impl NetnsPool {
     /// Create a new pool, pre-warming `config.size` namespaces.
     ///
-    /// Enables host IP forwarding and cleans up orphaned resources from the
-    /// same index before creating new namespaces. The caller is responsible
-    /// for assigning a unique `config.index`.
+    /// Automatically acquires a unique pool index (0–63) via flock. Enables
+    /// host IP forwarding and cleans up orphaned resources from the acquired
+    /// index before creating new namespaces.
     pub async fn create(config: NetnsPoolConfig) -> Result<Self> {
-        if config.index >= MAX_POOLS {
-            return Err(NetworkError::IndexOutOfRange {
-                index: config.index,
-                max: MAX_POOLS,
-            });
-        }
+        let (index, lock) = acquire_pool_lock(LOCK_DIR)?;
 
-        info!(
-            index = config.index,
-            size = config.size,
-            "initializing namespace pool"
-        );
+        info!(index, size = config.size, "initializing namespace pool");
 
         // Enable host-level IP forwarding (idempotent, needed once per host).
         exec("sysctl", &["-w", "net.ipv4.ip_forward=1"], Privilege::Sudo).await?;
 
         // Clean up orphaned namespaces from a previous process that used the same index.
-        cleanup_namespaces_by_index(config.index).await;
+        cleanup_namespaces_by_index(index).await;
 
         let default_iface = get_default_interface().await?;
 
@@ -499,9 +531,10 @@ impl NetnsPool {
             active: true,
             queue: VecDeque::with_capacity(config.size),
             next_ns_index: 0,
-            pool_index: config.index,
+            pool_index: index,
             proxy_port: config.proxy_port,
             default_iface,
+            _lock: lock,
         };
 
         // Create all namespaces in parallel via JoinSet
@@ -942,5 +975,62 @@ mod tests {
     #[test]
     fn parse_ns_name_bare_prefix() {
         assert_eq!(parse_ns_name("vm0-ns-"), None);
+    }
+
+    #[test]
+    fn acquire_pool_lock_returns_first_available() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock_dir = dir.path().to_str().unwrap();
+
+        let (index, _lock) = acquire_pool_lock(lock_dir).unwrap();
+        assert_eq!(index, 0);
+    }
+
+    #[test]
+    fn acquire_pool_lock_skips_held_indices() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock_dir = dir.path().to_str().unwrap();
+
+        let (i0, _hold0) = acquire_pool_lock(lock_dir).unwrap();
+        let (i1, _hold1) = acquire_pool_lock(lock_dir).unwrap();
+        let (i2, _hold2) = acquire_pool_lock(lock_dir).unwrap();
+
+        assert_eq!(i0, 0);
+        assert_eq!(i1, 1);
+        assert_eq!(i2, 2);
+    }
+
+    #[test]
+    fn acquire_pool_lock_reuses_released_index() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock_dir = dir.path().to_str().unwrap();
+
+        let (i0, hold0) = acquire_pool_lock(lock_dir).unwrap();
+        let (i1, _hold1) = acquire_pool_lock(lock_dir).unwrap();
+        assert_eq!(i0, 0);
+        assert_eq!(i1, 1);
+
+        // Drop lock 0 → index 0 becomes available again.
+        drop(hold0);
+
+        let (reused, _hold) = acquire_pool_lock(lock_dir).unwrap();
+        assert_eq!(reused, 0);
+    }
+
+    #[test]
+    fn acquire_pool_lock_exhausted() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock_dir = dir.path().to_str().unwrap();
+
+        // Hold all 64 slots.
+        let _locks: Vec<_> = (0..MAX_POOLS)
+            .map(|_| acquire_pool_lock(lock_dir).unwrap())
+            .collect();
+
+        let err = acquire_pool_lock(lock_dir).unwrap_err();
+        assert!(
+            matches!(err, NetworkError::NoPoolIndexAvailable),
+            "expected NoPoolIndexAvailable, got: {err}"
+        );
     }
 }

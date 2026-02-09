@@ -300,31 +300,43 @@ export const onboardCommand = new Command()
   .option("-y, --yes", "Skip confirmation prompts")
   .option("--name <name>", `Agent name (default: ${DEFAULT_AGENT_NAME})`)
   .action(async (options: OnboardOptions) => {
-    const interactive = isInteractive();
+    try {
+      const interactive = isInteractive();
 
-    // Clear screen and print welcome banner at the start
-    if (interactive) {
-      process.stdout.write("\x1b[2J\x1b[H");
-      console.log();
-      renderOnboardWelcome();
-      console.log();
+      // Clear screen and print welcome banner at the start
+      if (interactive) {
+        process.stdout.write("\x1b[2J\x1b[H");
+        console.log();
+        renderOnboardWelcome();
+        console.log();
+      }
+
+      const runner = createStepRunner({
+        interactive,
+        header: interactive ? renderOnboardWelcome : undefined,
+      });
+      const ctx: OnboardContext = { interactive, options, runner };
+
+      await handleAuthentication(ctx);
+      await handleModelProvider(ctx);
+      const agentName = await handleAgentCreation(ctx);
+      const pluginInstalled = await handlePluginInstallation(ctx, agentName);
+
+      // Final step
+      await ctx.runner.finalStep("Completed", async () => {
+        // Empty - just marks completion
+      });
+
+      printNextSteps(agentName, pluginInstalled);
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error(chalk.red(`✗ ${error.message}`));
+        if (error.cause instanceof Error) {
+          console.error(chalk.dim(`  Cause: ${error.cause.message}`));
+        }
+      } else {
+        console.error(chalk.red("✗ An unexpected error occurred"));
+      }
+      process.exit(1);
     }
-
-    const runner = createStepRunner({
-      interactive,
-      header: interactive ? renderOnboardWelcome : undefined,
-    });
-    const ctx: OnboardContext = { interactive, options, runner };
-
-    await handleAuthentication(ctx);
-    await handleModelProvider(ctx);
-    const agentName = await handleAgentCreation(ctx);
-    const pluginInstalled = await handlePluginInstallation(ctx, agentName);
-
-    // Final step
-    await ctx.runner.finalStep("Completed", async () => {
-      // Empty - just marks completion
-    });
-
-    printNextSteps(agentName, pluginInstalled);
   });

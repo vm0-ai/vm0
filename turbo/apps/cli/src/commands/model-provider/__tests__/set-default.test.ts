@@ -27,9 +27,7 @@ describe("model-provider set-default command", () => {
     vi.stubEnv("VM0_TOKEN", "test-token");
   });
 
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
+  afterEach(() => {});
 
   describe("successful set-default", () => {
     it("should show success message on successful set-default", async () => {

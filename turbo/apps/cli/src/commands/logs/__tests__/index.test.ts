@@ -31,7 +31,6 @@ describe("logs command", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
-    vi.unstubAllEnvs();
   });
 
   describe("agent events (default)", () => {

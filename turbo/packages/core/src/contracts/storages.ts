@@ -12,19 +12,12 @@ const storageTypeSchema = z.enum(["volume", "artifact"]);
 /**
  * Version ID query parameter schema
  *
- * Handles jsonQuery edge case where hex strings like "846e3519"
- * are parsed as JavaScript scientific notation numbers (e.g., 846e3519 = Infinity).
- *
- * The preprocess step converts any non-null/undefined value to string,
- * then validates it matches hex format (8-64 characters).
+ * Validates hex format (8-64 characters). Used for version prefix resolution.
  */
-const versionQuerySchema = z.preprocess(
-  (val) => (val === undefined || val === null ? undefined : String(val)),
-  z
-    .string()
-    .regex(/^[a-f0-9]{8,64}$/i, "Version must be 8-64 hex characters")
-    .optional(),
-);
+const versionQuerySchema = z
+  .string()
+  .regex(/^[a-f0-9]{8,64}$/i, "Version must be 8-64 hex characters")
+  .optional();
 
 /**
  * Upload storage response schema (JSON part of POST response)

@@ -99,7 +99,7 @@ export async function runAgentForSlack(
 
     // Build the full prompt with thread context
     const fullPrompt = threadContext
-      ? `${threadContext}\n\n---\n\nUser: ${prompt}`
+      ? `${threadContext}\n\n# User Prompt\n\n${prompt}`
       : prompt;
 
     // Create run record in database

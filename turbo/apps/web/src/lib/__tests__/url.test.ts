@@ -51,8 +51,16 @@ describe("url", () => {
       expect(getPlatformUrl()).toBe("http://platform.localhost:3000");
     });
 
-    it("returns fallback URL when window is undefined (SSR)", () => {
+    it("returns Caddy URL when window is undefined in development", () => {
       vi.stubGlobal("window", undefined);
+      vi.stubEnv("NODE_ENV", "development");
+
+      expect(getPlatformUrl()).toBe("https://platform.vm7.ai:8443");
+    });
+
+    it("returns production URL when window is undefined in production", () => {
+      vi.stubGlobal("window", undefined);
+      vi.stubEnv("NODE_ENV", "production");
 
       expect(getPlatformUrl()).toBe("https://platform.vm0.ai");
     });

@@ -36,6 +36,8 @@ import { logger } from "../../../../src/lib/logger";
 import { slackComposeRequests } from "../../../../src/db/schema/slack-compose-request";
 import { generateEphemeralCliToken } from "../../../../src/lib/auth/cli-token-service";
 import { triggerComposeJob } from "../../../../src/lib/compose/trigger-compose-job";
+import { listModelProviders } from "../../../../src/lib/model-provider/model-provider-service";
+import { ensureScopeAndArtifact } from "../../../../src/lib/slack/handlers/shared";
 
 const log = logger("slack:interactive");
 
@@ -413,9 +415,12 @@ async function handleAgentAddSelection(
   selectedAgentId: string,
 ): Promise<void> {
   const privateMetadata = payload.view?.private_metadata;
-  const { channelId } = privateMetadata
-    ? (JSON.parse(privateMetadata) as { channelId?: string })
-    : { channelId: undefined };
+  const { channelId, hasModelProvider } = privateMetadata
+    ? (JSON.parse(privateMetadata) as {
+        channelId?: string;
+        hasModelProvider?: boolean;
+      })
+    : { channelId: undefined, hasModelProvider: true };
 
   const client = await getSlackClientForWorkspace(payload.team.id);
   if (!client) return;
@@ -424,7 +429,12 @@ async function handleAgentAddSelection(
   if (!userLink) return;
 
   const agents = await fetchAvailableAgents(userLink.vm0UserId, userLink.id);
-  const updatedModal = buildAgentAddModal(agents, selectedAgentId, channelId);
+  const updatedModal = buildAgentAddModal(
+    agents,
+    selectedAgentId,
+    channelId,
+    hasModelProvider ?? true,
+  );
 
   await updateModalView(
     client,
@@ -537,6 +547,11 @@ async function dispatchBlockAction(
         await handleHomeAgentLink(payload, payload.trigger_id);
       }
       break;
+    case "model_provider_refresh":
+      if (payload.view) {
+        await handleModelProviderRefresh(payload);
+      }
+      break;
     case "home_disconnect":
       await handleHomeDisconnect(payload);
       break;
@@ -599,7 +614,8 @@ async function handleHomeAgentUnlink(
 /**
  * Handle agent link button from App Home
  *
- * Opens the agent add modal.
+ * Ensures scope and artifact storage exist, checks model provider status,
+ * then opens the agent add modal.
  */
 async function handleHomeAgentLink(
   payload: SlackInteractivePayload,
@@ -611,14 +627,70 @@ async function handleHomeAgentLink(
   const userLink = await getUserLink(payload.user.id, payload.team.id);
   if (!userLink) return;
 
+  await ensureScopeAndArtifact(userLink.vm0UserId);
+
+  // Check model provider status
+  const providers = await listModelProviders(userLink.vm0UserId);
+  const hasModelProvider = providers.length > 0;
+
   const agents = await fetchAvailableAgents(userLink.vm0UserId, userLink.id);
   const channelId = payload.channel?.id;
-  const modal = buildAgentAddModal(agents, undefined, channelId);
+  const modal = buildAgentAddModal(
+    agents,
+    undefined,
+    channelId,
+    hasModelProvider,
+  );
 
   await client.views.open({
     trigger_id: triggerId,
     view: modal,
   });
+}
+
+/**
+ * Handle model provider refresh button in the agent add modal
+ *
+ * Re-checks model provider status and updates the modal view.
+ */
+async function handleModelProviderRefresh(
+  payload: SlackInteractivePayload,
+): Promise<void> {
+  const client = await getSlackClientForWorkspace(payload.team.id);
+  if (!client) return;
+
+  const userLink = await getUserLink(payload.user.id, payload.team.id);
+  if (!userLink) return;
+
+  // Re-check model provider status
+  const providers = await listModelProviders(userLink.vm0UserId);
+  const hasModelProvider = providers.length > 0;
+
+  // Parse existing metadata
+  const privateMetadata = payload.view?.private_metadata;
+  const { channelId } = privateMetadata
+    ? (JSON.parse(privateMetadata) as { channelId?: string })
+    : { channelId: undefined };
+
+  // Get current agent selection from view state
+  const selectedAgentId =
+    payload.view?.state?.values?.agent_select?.agent_select_action
+      ?.selected_option?.value;
+
+  const agents = await fetchAvailableAgents(userLink.vm0UserId, userLink.id);
+  const updatedModal = buildAgentAddModal(
+    agents,
+    selectedAgentId,
+    channelId,
+    hasModelProvider,
+  );
+
+  await updateModalView(
+    client,
+    payload.view!.id,
+    updatedModal,
+    payload.team.id,
+  );
 }
 
 /**
@@ -789,7 +861,7 @@ async function sendConfirmationMessage(
     messageText += `\n\nSecrets saved to your account: ${secretsList}`;
   }
 
-  messageText += `\n\nYou can now use it by mentioning \`@VM0 use ${agentName} <message>\``;
+  messageText += `\n\nYou can now use it by mentioning \`@VM0 <message>\``;
 
   await client.chat.postEphemeral({
     channel: channelId,

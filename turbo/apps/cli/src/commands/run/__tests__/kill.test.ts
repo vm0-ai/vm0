@@ -29,9 +29,7 @@ describe("run kill command", () => {
     vi.stubEnv("VM0_TOKEN", "test-token");
   });
 
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
+  afterEach(() => {});
 
   describe("successful kill", () => {
     it("should cancel a run successfully", async () => {

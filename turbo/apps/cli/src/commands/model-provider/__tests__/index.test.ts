@@ -15,9 +15,7 @@ describe("model-provider command", () => {
     vi.clearAllMocks();
   });
 
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
+  afterEach(() => {});
 
   describe("help text", () => {
     it("should show command description and subcommands", async () => {

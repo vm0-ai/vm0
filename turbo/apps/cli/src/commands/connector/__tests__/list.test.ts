@@ -29,9 +29,7 @@ describe("connector list command", () => {
     vi.stubEnv("VM0_TOKEN", "test-token");
   });
 
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
+  afterEach(() => {});
 
   describe("successful list", () => {
     it("should show connected connector with status and account", async () => {

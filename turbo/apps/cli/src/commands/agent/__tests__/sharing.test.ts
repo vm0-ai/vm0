@@ -65,9 +65,7 @@ describe("Agent Sharing Commands", () => {
     );
   });
 
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
+  afterEach(() => {});
 
   describe("vm0 agent experimental-public", () => {
     it("should make agent public successfully", async () => {

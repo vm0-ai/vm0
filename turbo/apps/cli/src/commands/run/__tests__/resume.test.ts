@@ -82,9 +82,7 @@ describe("run resume command", () => {
     );
   });
 
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
+  afterEach(() => {});
 
   describe("successful resume", () => {
     it("should resume from checkpoint with prompt", async () => {

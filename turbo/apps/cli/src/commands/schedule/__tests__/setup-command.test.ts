@@ -89,7 +89,6 @@ describe("schedule setup command", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
-    vi.unstubAllEnvs();
   });
 
   describe("help text", () => {

@@ -18,9 +18,7 @@ describe("model-provider delete command", () => {
     vi.stubEnv("VM0_TOKEN", "test-token");
   });
 
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
+  afterEach(() => {});
 
   describe("successful deletion", () => {
     it("should show success message on successful deletion", async () => {

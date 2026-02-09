@@ -29,9 +29,7 @@ describe("run list command", () => {
     vi.stubEnv("VM0_TOKEN", "test-token");
   });
 
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
+  afterEach(() => {});
 
   describe("successful list", () => {
     it("should list active runs with formatted output", async () => {

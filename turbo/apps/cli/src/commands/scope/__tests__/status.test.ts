@@ -26,9 +26,8 @@ describe("scope status command", () => {
 
   describe("authentication", () => {
     it("should exit with error if not authenticated", async () => {
-      vi.unstubAllEnvs();
-      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
-      // VM0_TOKEN not set - simulates unauthenticated state
+      vi.stubEnv("VM0_TOKEN", "");
+      vi.stubEnv("HOME", "/tmp/test-no-config");
 
       await expect(async () => {
         await statusCommand.parseAsync(["node", "cli"]);

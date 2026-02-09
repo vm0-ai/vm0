@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.6.1](https://github.com/vm0-ai/vm0/compare/core-v8.6.0...core-v8.6.1) (2026-02-09)
+
+
+### Bug Fixes
+
+* **web:** disable json query to fix flaky ambiguous-prefix test ([#2701](https://github.com/vm0-ai/vm0/issues/2701)) ([a5f8e8a](https://github.com/vm0-ai/vm0/commit/a5f8e8a375a3a84c46518780201b66f75ea845a3))
+
 ## [8.6.0](https://github.com/vm0-ai/vm0/compare/core-v8.5.1...core-v8.6.0) (2026-02-09)
 
 

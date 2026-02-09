@@ -58,7 +58,7 @@ jobs:
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.postMessage
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             text: "*Database Migration* starting..."
@@ -85,7 +85,7 @@ jobs:
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.update
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
@@ -96,7 +96,7 @@ jobs:
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.update
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
@@ -126,7 +126,7 @@ jobs:
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.postMessage
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             text: "*Web App* deploying to production..."
@@ -186,7 +186,7 @@ jobs:
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.update
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
@@ -197,7 +197,7 @@ jobs:
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.update
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
@@ -224,7 +224,7 @@ jobs:
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.postMessage
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             text: "*Docs* deploying to production..."
@@ -244,7 +244,7 @@ jobs:
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.update
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
@@ -255,7 +255,7 @@ jobs:
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.update
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
@@ -282,7 +282,7 @@ jobs:
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.postMessage
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             text: "*Platform* deploying to production..."
@@ -309,7 +309,7 @@ jobs:
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.update
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
@@ -320,7 +320,7 @@ jobs:
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.update
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
@@ -343,7 +343,7 @@ jobs:
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.postMessage
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             text: "*CLI* publishing to npm..."
@@ -378,7 +378,7 @@ jobs:
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.update
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
@@ -389,7 +389,7 @@ jobs:
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.update
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
@@ -412,7 +412,7 @@ jobs:
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.postMessage
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             text: "*Runner* publishing to npm..."
@@ -445,7 +445,7 @@ jobs:
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.update
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
@@ -456,7 +456,7 @@ jobs:
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.update
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
@@ -487,7 +487,7 @@ jobs:
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.postMessage
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             text: "*Runner* deploying to production servers..."
@@ -553,7 +553,7 @@ jobs:
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.update
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
@@ -564,7 +564,7 @@ jobs:
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.update
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"

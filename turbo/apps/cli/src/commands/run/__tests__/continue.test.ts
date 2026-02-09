@@ -81,9 +81,7 @@ describe("run continue command", () => {
     );
   });
 
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
+  afterEach(() => {});
 
   describe("successful continue", () => {
     it("should continue from session with prompt", async () => {

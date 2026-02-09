@@ -155,7 +155,6 @@ describe("onboard command", () => {
     process.chdir(originalCwd);
     rmSync(tempDir, { recursive: true, force: true });
     process.exit = originalExit;
-    vi.unstubAllEnvs();
     vi.restoreAllMocks();
 
     // Restore TTY state
@@ -216,9 +215,8 @@ describe("onboard command", () => {
     });
 
     it("should show error in non-interactive mode when no token", async () => {
-      vi.unstubAllEnvs();
-      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
-      delete process.env.VM0_TOKEN;
+      vi.stubEnv("VM0_TOKEN", "");
+      vi.stubEnv("HOME", "/tmp/test-no-config");
 
       // Set non-interactive mode
       Object.defineProperty(process.stdout, "isTTY", {

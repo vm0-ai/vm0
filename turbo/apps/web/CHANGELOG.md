@@ -1,5 +1,40 @@
 # Changelog
 
+## [12.22.2](https://github.com/vm0-ai/vm0/compare/web-v12.22.1...web-v12.22.2) (2026-02-09)
+
+
+### Bug Fixes
+
+* **web:** disable json query to fix flaky ambiguous-prefix test ([#2701](https://github.com/vm0-ai/vm0/issues/2701)) ([a5f8e8a](https://github.com/vm0-ai/vm0/commit/a5f8e8a375a3a84c46518780201b66f75ea845a3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.6.1
+
+## [12.22.1](https://github.com/vm0-ai/vm0/compare/web-v12.22.0...web-v12.22.1) (2026-02-09)
+
+
+### Bug Fixes
+
+* **slack:** return caddy proxy address for platform in dev environment ([#2687](https://github.com/vm0-ai/vm0/issues/2687)) ([d2fa6e4](https://github.com/vm0-ai/vm0/commit/d2fa6e4c278dc021b490087c505ca43e7beea603))
+* **test:** remove vi.unstubAllEnvs from CLI tests and fix compose job race condition ([#2695](https://github.com/vm0-ai/vm0/issues/2695)) ([04ab29b](https://github.com/vm0-ai/vm0/commit/04ab29bf89201bb921d6a2f63b9ea4e3f2ab899d))
+
+## [12.22.0](https://github.com/vm0-ai/vm0/compare/web-v12.21.0...web-v12.22.0) (2026-02-09)
+
+
+### Features
+
+* **slack:** deduplicate context messages across thread turns ([#2641](https://github.com/vm0-ai/vm0/issues/2641)) ([f0159cb](https://github.com/vm0-ai/vm0/commit/f0159cbccb96089a6379735617836ca930a247ca))
+* **web:** add db:reset script for local development ([#2676](https://github.com/vm0-ai/vm0/issues/2676)) ([2dd6429](https://github.com/vm0-ai/vm0/commit/2dd64297c5982da0f7d4c02a4726f82e49630619))
+
+
+### Bug Fixes
+
+* **web:** add pointer-events-none to auth page overlays and fix otp input styles ([#2683](https://github.com/vm0-ai/vm0/issues/2683)) ([aca61f1](https://github.com/vm0-ai/vm0/commit/aca61f16767942d6bd9b5ab4922bd5d22ae258e7))
+
 ## [12.21.0](https://github.com/vm0-ai/vm0/compare/web-v12.20.0...web-v12.21.0) (2026-02-09)
 
 

@@ -125,7 +125,6 @@ describe("compose command", () => {
   afterEach(() => {
     process.chdir(originalCwd);
     rmSync(tempDir, { recursive: true, force: true });
-    vi.unstubAllEnvs();
   });
 
   describe("file validation", () => {
@@ -1784,7 +1783,6 @@ describe("GitHub URL compose", () => {
   afterEach(() => {
     process.chdir(originalCwd);
     rmSync(tempDir, { recursive: true, force: true });
-    vi.unstubAllEnvs();
   });
 
   it("should show security warning when GitHub URL used without --experimental-shared-compose flag", async () => {

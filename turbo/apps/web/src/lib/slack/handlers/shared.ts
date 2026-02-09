@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import {
   createSlackClient,
   fetchThreadContext,
@@ -9,8 +9,21 @@ import {
   getSlackRedirectBaseUrl,
 } from "../index";
 import { slackThreadSessions } from "../../../db/schema/slack-thread-session";
+import { storages, storageVersions } from "../../../db/schema/storage";
 import { routeToAgent, type RouteResult } from "../router";
 import { getPlatformUrl } from "../../url";
+import {
+  getUserScopeByClerkId,
+  createUserScope,
+  generateDefaultScopeSlug,
+} from "../../scope/scope-service";
+import { computeContentHashFromHashes } from "../../storage/content-hash";
+import { putS3Object } from "../../s3/s3-client";
+import { env } from "../../../env";
+import { after } from "next/server";
+import { logger } from "../../logger";
+
+const log = logger("slack:shared");
 
 export type SlackClient = ReturnType<typeof createSlackClient>;
 
@@ -287,4 +300,135 @@ export function buildLoginUrl(
  */
 export function buildLogsUrl(runId: string): string {
   return `${getPlatformUrl()}/logs/${runId}`;
+}
+
+/**
+ * Ensure scope and artifact storage exist for a user.
+ * Safety net for all agent link paths (App Home button, slash command, submission).
+ *
+ * Follows the same prepare/commit pattern as `vm0 cook`:
+ * 1. Find-or-create storage record
+ * 2. If no HEAD version, create an empty initial version (upload manifest to S3 + commit)
+ */
+export async function ensureScopeAndArtifact(vm0UserId: string): Promise<void> {
+  let scope = await getUserScopeByClerkId(vm0UserId);
+  if (!scope) {
+    scope = await createUserScope(
+      vm0UserId,
+      generateDefaultScopeSlug(vm0UserId),
+    );
+    log.info("Auto-created scope for Slack user", { userId: vm0UserId });
+  }
+
+  // Find or create storage record
+  let [storage] = await globalThis.services.db
+    .select()
+    .from(storages)
+    .where(
+      and(
+        eq(storages.scopeId, scope.id),
+        eq(storages.name, "artifact"),
+        eq(storages.type, "artifact"),
+      ),
+    )
+    .limit(1);
+
+  if (!storage) {
+    const [newStorage] = await globalThis.services.db
+      .insert(storages)
+      .values({
+        scopeId: scope.id,
+        name: "artifact",
+        type: "artifact",
+        userId: vm0UserId,
+        s3Prefix: `${scope.slug}/artifact/artifact`,
+        size: 0,
+        fileCount: 0,
+      })
+      .onConflictDoNothing()
+      .returning();
+
+    if (!newStorage) {
+      // Race condition: another request created it. Re-fetch.
+      const [existing] = await globalThis.services.db
+        .select()
+        .from(storages)
+        .where(
+          and(
+            eq(storages.scopeId, scope.id),
+            eq(storages.name, "artifact"),
+            eq(storages.type, "artifact"),
+          ),
+        )
+        .limit(1);
+      storage = existing;
+    } else {
+      storage = newStorage;
+    }
+    log.info("Auto-created artifact storage", { userId: vm0UserId });
+  }
+
+  if (!storage) return;
+
+  // If HEAD version already exists, nothing more to do
+  if (storage.headVersionId) return;
+
+  // Create initial empty version via after() — runs after response is sent
+  // but keeps the serverless function alive until completion.
+  const storageId = storage.id;
+  const scopeSlug = scope.slug;
+  after(
+    (async () => {
+      const versionId = computeContentHashFromHashes(storageId, []);
+      const s3Key = `${scopeSlug}/artifact/artifact/${versionId}`;
+      const manifestKey = `${s3Key}/manifest.json`;
+      const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
+
+      await putS3Object(
+        bucketName,
+        manifestKey,
+        JSON.stringify({ files: [] }),
+        "application/json",
+      );
+
+      await globalThis.services.db.transaction(async (tx) => {
+        await tx
+          .insert(storageVersions)
+          .values({
+            id: versionId,
+            storageId,
+            s3Key,
+            size: 0,
+            fileCount: 0,
+            message: "Initial empty artifact (auto-created via Slack)",
+            createdBy: "user",
+          })
+          .onConflictDoNothing();
+
+        await tx
+          .update(storages)
+          .set({
+            headVersionId: versionId,
+            size: 0,
+            fileCount: 0,
+            updatedAt: new Date(),
+          })
+          .where(eq(storages.id, storageId));
+      });
+
+      log.info("Auto-created initial artifact version", {
+        userId: vm0UserId,
+        versionId,
+      });
+    })().catch(async (err) => {
+      log.error("Failed to create initial artifact version", { err });
+      // Clean up the headless storage so the next call can retry
+      await globalThis.services.db
+        .delete(storages)
+        .where(and(eq(storages.id, storageId), isNull(storages.headVersionId)))
+        .catch((cleanupErr) => {
+          log.error("Failed to clean up headless storage", { cleanupErr });
+        });
+    }),
+  );
 }

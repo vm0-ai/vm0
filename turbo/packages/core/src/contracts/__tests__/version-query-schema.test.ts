@@ -3,32 +3,23 @@ import { z } from "zod";
 
 /**
  * Version ID query parameter schema (copied from storages.ts for testing)
- *
- * Handles jsonQuery edge case where hex strings like "846e3519"
- * are parsed as JavaScript scientific notation numbers.
  */
-const versionQuerySchema = z.preprocess(
-  (val) => (val === undefined || val === null ? undefined : String(val)),
-  z
-    .string()
-    .regex(/^[a-f0-9]{8,64}$/i, "Version must be 8-64 hex characters")
-    .optional(),
-);
+const versionQuerySchema = z
+  .string()
+  .regex(/^[a-f0-9]{8,64}$/i, "Version must be 8-64 hex characters")
+  .optional();
 
 /**
  * Compose version query schema (copied from composes.ts for testing)
  * Also accepts "latest" tag
  */
-const composeVersionQuerySchema = z.preprocess(
-  (val) => (val === undefined || val === null ? undefined : String(val)),
-  z
-    .string()
-    .min(1, "Missing version query parameter")
-    .regex(
-      /^[a-f0-9]{8,64}$|^latest$/i,
-      "Version must be 8-64 hex characters or 'latest'",
-    ),
-);
+const composeVersionQuerySchema = z
+  .string()
+  .min(1, "Missing version query parameter")
+  .regex(
+    /^[a-f0-9]{8,64}$|^latest$/i,
+    "Version must be 8-64 hex characters or 'latest'",
+  );
 
 describe("versionQuerySchema (storages)", () => {
   describe("valid inputs", () => {
@@ -46,10 +37,6 @@ describe("versionQuerySchema (storages)", () => {
       expect(versionQuerySchema.parse(undefined)).toBeUndefined();
     });
 
-    it("should accept null (converts to undefined)", () => {
-      expect(versionQuerySchema.parse(null)).toBeUndefined();
-    });
-
     it("should accept uppercase hex characters", () => {
       expect(versionQuerySchema.parse("ABCD1234")).toBe("ABCD1234");
     });
@@ -58,56 +45,17 @@ describe("versionQuerySchema (storages)", () => {
       expect(versionQuerySchema.parse("AbCd1234")).toBe("AbCd1234");
     });
 
-    it("should handle scientific notation hex strings correctly", () => {
-      // This is the exact case that caused the flaky test
-      // "846e3519" looks like scientific notation to JSON.parse
+    it("should accept hex strings that resemble scientific notation", () => {
+      // "846e3519" looks like scientific notation to JSON.parse but is valid hex
       expect(versionQuerySchema.parse("846e3519")).toBe("846e3519");
     });
 
-    it("should handle another scientific notation pattern", () => {
+    it("should accept another scientific notation pattern", () => {
       expect(versionQuerySchema.parse("123e4567")).toBe("123e4567");
     });
   });
 
-  describe("invalid inputs - numbers from JSON.parse", () => {
-    it("should convert Infinity (from JSON.parse) to string and reject", () => {
-      // JSON.parse("846e3519") returns Infinity
-      expect(() => versionQuerySchema.parse(Infinity)).toThrow(
-        "Version must be 8-64 hex characters",
-      );
-    });
-
-    it("should reject scientific notation number (the flaky test root cause)", () => {
-      // JSON.parse("52999e37") returns 5.2999e+41 (not Infinity, but a large number)
-      // String(5.2999e+41) = "5.2999e+41" which is NOT valid hex
-      // This is the exact bug that caused the flaky cli-e2e-02-parallel test
-      const parsedNumber = JSON.parse("52999e37"); // 5.2999e+41
-      expect(() => versionQuerySchema.parse(parsedNumber)).toThrow(
-        "Version must be 8-64 hex characters",
-      );
-    });
-
-    it("should convert plain number to string - valid if 8+ hex digits", () => {
-      // JSON.parse("12345678") returns 12345678
-      // String(12345678) = "12345678" which IS valid hex (0-9 are hex chars)
-      expect(versionQuerySchema.parse(12345678)).toBe("12345678");
-    });
-
-    it("should convert short number to string and reject", () => {
-      // String(1234567) = "1234567" (7 chars, too short)
-      expect(() => versionQuerySchema.parse(1234567)).toThrow(
-        "Version must be 8-64 hex characters",
-      );
-    });
-
-    it("should convert NaN to string and reject", () => {
-      expect(() => versionQuerySchema.parse(NaN)).toThrow(
-        "Version must be 8-64 hex characters",
-      );
-    });
-  });
-
-  describe("invalid inputs - bad format", () => {
+  describe("invalid inputs", () => {
     it("should reject strings shorter than 8 chars", () => {
       expect(() => versionQuerySchema.parse("abc1234")).toThrow(
         "Version must be 8-64 hex characters",
@@ -155,41 +103,12 @@ describe("composeVersionQuerySchema (composes)", () => {
       expect(composeVersionQuerySchema.parse("LATEST")).toBe("LATEST");
     });
 
-    it("should handle scientific notation hex strings correctly", () => {
+    it("should accept hex strings that resemble scientific notation", () => {
       expect(composeVersionQuerySchema.parse("846e3519")).toBe("846e3519");
     });
   });
 
-  describe("invalid inputs - numbers from JSON.parse", () => {
-    it("should convert Infinity to string and reject", () => {
-      expect(() => composeVersionQuerySchema.parse(Infinity)).toThrow(
-        "Version must be 8-64 hex characters or 'latest'",
-      );
-    });
-
-    it("should reject scientific notation number (the flaky test root cause)", () => {
-      // JSON.parse("52999e37") returns 5.2999e+41 (not Infinity, but a large number)
-      // String(5.2999e+41) = "5.2999e+41" which is NOT valid hex
-      // This is the exact bug that caused the flaky cli-e2e-02-parallel test
-      const parsedNumber = JSON.parse("52999e37"); // 5.2999e+41
-      expect(() => composeVersionQuerySchema.parse(parsedNumber)).toThrow(
-        "Version must be 8-64 hex characters or 'latest'",
-      );
-    });
-
-    it("should convert plain number to string - valid if 8+ hex digits", () => {
-      // String(12345678) = "12345678" which IS valid hex
-      expect(composeVersionQuerySchema.parse(12345678)).toBe("12345678");
-    });
-
-    it("should convert short number to string and reject", () => {
-      expect(() => composeVersionQuerySchema.parse(1234567)).toThrow(
-        "Version must be 8-64 hex characters or 'latest'",
-      );
-    });
-  });
-
-  describe("invalid inputs - bad format", () => {
+  describe("invalid inputs", () => {
     it("should reject undefined (required field)", () => {
       expect(() => composeVersionQuerySchema.parse(undefined)).toThrow();
     });

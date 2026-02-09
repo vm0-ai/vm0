@@ -12,6 +12,18 @@ vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
 
+// Mock Next.js after() to capture promises instead of deferring
+vi.mock("next/server", async (importOriginal) => {
+  const original = await importOriginal<typeof import("next/server")>();
+  return {
+    ...original,
+    after: (promise: Promise<unknown>) => {
+      // Let the promise run but don't block
+      promise.catch(() => {});
+    },
+  };
+});
+
 const context = testContext();
 
 // Use the same signing secret as configured in setup.ts

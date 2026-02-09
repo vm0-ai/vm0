@@ -26,7 +26,6 @@ impl FirecrackerFactory {
         let paths = FactoryPaths::new(config.base_dir.clone());
 
         let mut netns_pool = NetnsPool::create(NetnsPoolConfig {
-            index: config.instance_index,
             size: concurrency,
             proxy_port: config.proxy_port,
         })

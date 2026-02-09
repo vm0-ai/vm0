@@ -29,9 +29,7 @@ describe("connector disconnect command", () => {
     vi.stubEnv("VM0_TOKEN", "test-token");
   });
 
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
+  afterEach(() => {});
 
   describe("successful disconnect", () => {
     it("should show success message on successful disconnect", async () => {

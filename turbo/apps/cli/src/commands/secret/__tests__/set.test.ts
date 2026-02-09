@@ -39,7 +39,6 @@ describe("secret set command", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
-    vi.unstubAllEnvs();
 
     // Restore TTY state
     Object.defineProperty(process.stdout, "isTTY", {

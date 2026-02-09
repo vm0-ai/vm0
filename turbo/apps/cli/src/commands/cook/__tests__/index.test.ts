@@ -93,7 +93,6 @@ describe("cook command", () => {
     } catch {
       // File may not exist
     }
-    vi.unstubAllEnvs();
   });
 
   describe("config file validation", () => {

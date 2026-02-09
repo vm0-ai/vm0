@@ -37,7 +37,6 @@ describe("agent clone command", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
-    vi.unstubAllEnvs();
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
@@ -382,9 +381,8 @@ describe("agent clone command", () => {
     });
 
     it("should handle authentication error", async () => {
-      vi.unstubAllEnvs();
-      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
-      // No token set
+      vi.stubEnv("VM0_TOKEN", "");
+      vi.stubEnv("HOME", "/tmp/test-no-config");
 
       const dest = path.join(tempDir, "test-agent");
       await expect(async () => {

@@ -145,7 +145,6 @@ describe("run command with --experimental-realtime", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
-    vi.unstubAllEnvs();
   });
 
   describe("successful streaming", () => {

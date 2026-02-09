@@ -7,12 +7,15 @@ pub enum NetworkError {
     #[error(transparent)]
     Command(#[from] CommandError),
 
-    #[error("pool index {index} out of range (max {max})")]
-    IndexOutOfRange { index: u32, max: u32 },
+    #[error("no pool index available (all slots are locked by other processes)")]
+    NoPoolIndexAvailable,
 
     #[error("namespace limit reached: max {max} namespaces allowed")]
     NamespaceLimitReached { max: u32 },
 
     #[error("failed to detect default network interface from: {0}")]
     NoDefaultInterface(String),
+
+    #[error("failed to open lock file: {0}")]
+    LockOpen(String),
 }

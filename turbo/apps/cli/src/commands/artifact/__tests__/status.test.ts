@@ -47,7 +47,6 @@ describe("artifact status", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
-    vi.unstubAllEnvs();
   });
 
   describe("config validation", () => {

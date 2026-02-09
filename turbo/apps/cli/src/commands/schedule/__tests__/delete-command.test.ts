@@ -64,7 +64,6 @@ describe("schedule delete command", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
-    vi.unstubAllEnvs();
 
     // Restore TTY state
     Object.defineProperty(process.stdout, "isTTY", {

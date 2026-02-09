@@ -49,7 +49,6 @@ describe("auth setup-token", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
-    vi.unstubAllEnvs();
 
     // Clean up config
     const configDir = path.join(TEST_HOME, ".vm0");

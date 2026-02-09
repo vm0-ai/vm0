@@ -5,6 +5,7 @@ import type {
   View,
   SectionBlock,
 } from "@slack/web-api";
+import { getPlatformUrl } from "../url";
 
 interface AgentOption {
   id: string;
@@ -66,6 +67,7 @@ function buildValueInputBlock(
 function buildExistingAgentBlocks(
   agents: AgentOption[],
   selectedAgentId?: string,
+  hasModelProvider?: boolean,
 ): (Block | KnownBlock)[] {
   const blocks: (Block | KnownBlock)[] = [];
   const selectedAgent = selectedAgentId
@@ -128,6 +130,16 @@ function buildExistingAgentBlocks(
         text: "Helps route messages to the right agent when you have multiple agents",
       },
     });
+
+    // Model provider status (shown after agent selection, like vars/secrets)
+    if (hasModelProvider !== undefined) {
+      blocks.push({ type: "divider" });
+      blocks.push({
+        type: "section",
+        text: { type: "mrkdwn", text: "*Model Provider*" },
+      });
+      blocks.push(...buildModelProviderStatusBlocks(hasModelProvider));
+    }
   }
 
   if (selectedAgent && selectedAgent.requiredVars.length > 0) {
@@ -253,6 +265,52 @@ export function buildAgentComposeModal(channelId?: string): View {
 }
 
 /**
+ * Build model provider status blocks for the agent add modal
+ */
+function buildModelProviderStatusBlocks(
+  hasModelProvider: boolean,
+): (Block | KnownBlock)[] {
+  if (hasModelProvider) {
+    return [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: ":white_check_mark: Configured",
+        },
+      },
+    ];
+  }
+
+  const platformUrl = getPlatformUrl();
+  return [
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: ":warning: Not configured\nYou need to configure a model provider before your agent can run.",
+      },
+    },
+    {
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Go to Settings" },
+          url: `${platformUrl}/settings`,
+          action_id: "model_provider_settings",
+        },
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Refresh" },
+          action_id: "model_provider_refresh",
+        },
+      ],
+    },
+  ];
+}
+
+/**
  * Build the "Add Agent" modal view
  *
  * Shows a dropdown to select from existing agents and configure secrets/vars.
@@ -260,17 +318,19 @@ export function buildAgentComposeModal(channelId?: string): View {
  * @param agents - List of available agents
  * @param selectedAgentId - Currently selected agent ID
  * @param channelId - Channel ID to send confirmation message to
+ * @param hasModelProvider - Whether the user has a model provider configured
  * @returns Modal view definition
  */
 export function buildAgentAddModal(
   agents: AgentOption[],
   selectedAgentId?: string,
   channelId?: string,
+  hasModelProvider = true,
 ): View {
   return {
     type: "modal",
     callback_id: "agent_add_modal",
-    private_metadata: JSON.stringify({ channelId }),
+    private_metadata: JSON.stringify({ channelId, hasModelProvider }),
     title: {
       type: "plain_text",
       text: "Link Agent",
@@ -283,7 +343,7 @@ export function buildAgentAddModal(
       type: "plain_text",
       text: "Cancel",
     },
-    blocks: buildExistingAgentBlocks(agents, selectedAgentId),
+    blocks: buildExistingAgentBlocks(agents, selectedAgentId, hasModelProvider),
   };
 }
 
