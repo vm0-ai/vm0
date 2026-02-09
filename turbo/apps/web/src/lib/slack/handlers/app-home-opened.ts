@@ -94,8 +94,9 @@ export async function refreshAppHome(
     .from(slackBindings)
     .where(eq(slackBindings.slackUserLinkId, userLink.id));
 
-  // Fetch user email for display
-  const userEmail = await getUserEmail(userLink.vm0UserId);
+  // Fetch user email for display (fallback to empty string if Clerk API fails,
+  // so the home tab still renders using vm0UserId as fallback)
+  const userEmail = await getUserEmail(userLink.vm0UserId).catch(() => "");
 
   // Build and publish home view
   const view = buildAppHomeView({
