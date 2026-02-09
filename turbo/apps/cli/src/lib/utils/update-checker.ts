@@ -31,9 +31,10 @@ function detectPackageManager(): PackageManager {
   }
 
   // Check for npm (supported for auto-upgrade)
-  // Common npm paths: /usr/local/, nvm, fnm, volta, nodenv, n, or node_modules
+  // Common npm paths: Homebrew, nvm, fnm, volta, nodenv, n, or node_modules
   if (
-    execPath.includes("/usr/local/") ||
+    execPath.includes("/usr/local/") || // Homebrew on Intel Mac
+    execPath.includes("/opt/homebrew/") || // Homebrew on arm64 Mac
     execPath.includes("/.nvm/") ||
     execPath.includes("/.fnm/") ||
     execPath.includes("/.volta/") ||
