@@ -36,6 +36,7 @@ const OPERATIONAL_ERROR_PATTERNS = [
   // Network issues (transient, not bugs)
   /network error/i,
   /network issue/i,
+  /fetch failed/i,
   /connection refused/i,
   /timeout/i,
   /ECONNREFUSED/i,

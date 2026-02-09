@@ -168,11 +168,29 @@ describe("auth login", () => {
 
       await expect(async () => {
         await loginCommand.parseAsync(["node", "cli"]);
-      }).rejects.toThrow();
+      }).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Initiating authentication"),
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Login failed"),
       );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should handle network failure", async () => {
+      server.use(
+        http.post("http://localhost:3000/api/cli/auth/device", () => {
+          return HttpResponse.error();
+        }),
+      );
+
+      await expect(async () => {
+        await loginCommand.parseAsync(["node", "cli"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Login failed"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
     });
 
     it("should handle expired token error", async () => {

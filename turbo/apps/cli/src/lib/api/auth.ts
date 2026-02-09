@@ -141,23 +141,18 @@ export async function authenticate(apiUrl?: string): Promise<void> {
 
     // Handle other errors
     if (tokenResult.error === "expired_token") {
-      console.error(chalk.red("\n✗ Device code expired, please try again"));
-      process.exit(1);
+      throw new Error("Device code expired, please try again");
     }
 
     if (tokenResult.error) {
-      console.error(
-        chalk.red(
-          `\n✗ Authentication failed: ${tokenResult.error_description ?? tokenResult.error}`,
-        ),
+      throw new Error(
+        `Authentication failed: ${tokenResult.error_description ?? tokenResult.error}`,
       );
-      process.exit(1);
     }
   }
 
   // Timeout
-  console.error(chalk.red("\n✗ Authentication timed out, please try again"));
-  process.exit(1);
+  throw new Error("Authentication timed out, please try again");
 }
 
 export async function logout(): Promise<void> {
