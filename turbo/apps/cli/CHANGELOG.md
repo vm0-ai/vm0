@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.27.1](https://github.com/vm0-ai/vm0/compare/cli-v9.27.0...cli-v9.27.1) (2026-02-09)
+
+
+### Bug Fixes
+
+* **cli:** remove client-side env validation from cook command ([#2626](https://github.com/vm0-ai/vm0/issues/2626)) ([7d8c4c8](https://github.com/vm0-ai/vm0/commit/7d8c4c890fe96e1ca38f08a7a4dbfa5687997224))
+
 ## [9.27.0](https://github.com/vm0-ai/vm0/compare/cli-v9.26.0...cli-v9.27.0) (2026-02-09)
 
 
