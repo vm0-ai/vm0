@@ -56,7 +56,7 @@ export const connectCommand = new Command()
       const sessionsClient = initClient(connectorSessionsContract, {
         baseUrl: apiUrl,
         baseHeaders: headers,
-        jsonQuery: true,
+        jsonQuery: false,
       });
 
       const createResult = await sessionsClient.create({
@@ -87,7 +87,7 @@ export const connectCommand = new Command()
       const sessionClient = initClient(connectorSessionByIdContract, {
         baseUrl: apiUrl,
         baseHeaders: headers,
-        jsonQuery: true,
+        jsonQuery: false,
       });
 
       const startTime = Date.now();

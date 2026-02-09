@@ -56,11 +56,11 @@ export async function getBaseUrl(): Promise<string> {
 export async function getClientConfig(): Promise<{
   baseUrl: string;
   baseHeaders: Record<string, string>;
-  jsonQuery: true;
+  jsonQuery: false;
 }> {
   const baseUrl = await getBaseUrl();
   const baseHeaders = await getHeaders();
-  return { baseUrl, baseHeaders, jsonQuery: true };
+  return { baseUrl, baseHeaders, jsonQuery: false };
 }
 
 /**

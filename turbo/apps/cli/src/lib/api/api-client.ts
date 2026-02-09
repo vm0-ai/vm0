@@ -162,7 +162,7 @@ class ApiClient {
     const client = initClient(composesMainContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.getByName({
@@ -191,7 +191,7 @@ class ApiClient {
     const client = initClient(composesByIdContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.getById({
@@ -221,11 +221,10 @@ class ApiClient {
     const headers = await this.getHeaders();
 
     // Create ts-rest client with config
-    // Note: jsonQuery: true handles scientific notation edge cases automatically
     const client = initClient(composesVersionsContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.resolveVersion({
@@ -256,7 +255,7 @@ class ApiClient {
     const client = initClient(composesMainContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.create({
@@ -305,7 +304,7 @@ class ApiClient {
     const client = initClient(runsMainContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.create({ body });
@@ -333,7 +332,7 @@ class ApiClient {
     const client = initClient(runEventsContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.getEvents({
@@ -366,7 +365,7 @@ class ApiClient {
     const client = initClient(runSystemLogContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.getSystemLog({
@@ -400,7 +399,7 @@ class ApiClient {
     const client = initClient(runMetricsContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.getMetrics({
@@ -434,7 +433,7 @@ class ApiClient {
     const client = initClient(runAgentEventsContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.getAgentEvents({
@@ -468,7 +467,7 @@ class ApiClient {
     const client = initClient(runNetworkLogsContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.getNetworkLogs({
@@ -502,7 +501,7 @@ class ApiClient {
     const client = initClient(scopeContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.get({ headers: {} });
@@ -532,7 +531,7 @@ class ApiClient {
     const client = initClient(scopeContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.create({ body });
@@ -562,7 +561,7 @@ class ApiClient {
     const client = initClient(scopeContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.update({ body });
@@ -590,7 +589,7 @@ class ApiClient {
     const client = initClient(sessionsByIdContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.getById({
@@ -621,7 +620,7 @@ class ApiClient {
     const client = initClient(checkpointsByIdContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.getById({
@@ -662,7 +661,7 @@ class ApiClient {
     const client = initClient(storagesPrepareContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.prepare({ body });
@@ -698,7 +697,7 @@ class ApiClient {
     const client = initClient(storagesCommitContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.commit({ body });
@@ -739,7 +738,7 @@ class ApiClient {
     const client = initClient(storagesDownloadContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.download({
@@ -777,7 +776,7 @@ class ApiClient {
     const client = initClient(storagesListContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.list({ query });
@@ -813,7 +812,7 @@ class ApiClient {
     const client = initClient(schedulesMainContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.deploy({ body });
@@ -837,7 +836,7 @@ class ApiClient {
     const client = initClient(schedulesMainContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.list({ headers: {} });
@@ -864,7 +863,7 @@ class ApiClient {
     const client = initClient(schedulesByNameContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.getByName({
@@ -895,7 +894,7 @@ class ApiClient {
     const client = initClient(schedulesByNameContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.delete({
@@ -927,7 +926,7 @@ class ApiClient {
     const client = initClient(schedulesEnableContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.enable({
@@ -958,7 +957,7 @@ class ApiClient {
     const client = initClient(schedulesEnableContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.disable({
@@ -990,7 +989,7 @@ class ApiClient {
     const client = initClient(scheduleRunsContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.listRuns({
@@ -1029,7 +1028,7 @@ class ApiClient {
     const client = initClient(publicAgentsListContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.list({ query: query ?? {} });
@@ -1059,7 +1058,7 @@ class ApiClient {
     const client = initClient(publicArtifactsListContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.list({ query: query ?? {} });
@@ -1083,7 +1082,7 @@ class ApiClient {
     const client = initClient(publicArtifactByIdContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.get({ params: { id } });
@@ -1113,7 +1112,7 @@ class ApiClient {
     const client = initClient(publicVolumesListContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.list({ query: query ?? {} });
@@ -1137,7 +1136,7 @@ class ApiClient {
     const client = initClient(publicVolumeByIdContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.get({ params: { id } });
@@ -1189,7 +1188,7 @@ class ApiClient {
     const client = initClient(credentialsMainContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.list({ headers: {} });
@@ -1213,7 +1212,7 @@ class ApiClient {
     const client = initClient(credentialsByNameContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.get({
@@ -1244,7 +1243,7 @@ class ApiClient {
     const client = initClient(credentialsMainContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.set({ body });
@@ -1268,7 +1267,7 @@ class ApiClient {
     const client = initClient(credentialsByNameContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.delete({
@@ -1295,7 +1294,7 @@ class ApiClient {
     const client = initClient(realtimeTokenContract, {
       baseUrl,
       baseHeaders: headers,
-      jsonQuery: true,
+      jsonQuery: false,
     });
 
     const result = await client.create({
