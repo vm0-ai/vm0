@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.16.0](https://github.com/vm0-ai/vm0/compare/web-v12.15.0...web-v12.16.0) (2026-02-09)
+
+
+### Features
+
+* **slack:** allow composing agents from github in agent link command ([#2567](https://github.com/vm0-ai/vm0/issues/2567)) ([66ea133](https://github.com/vm0-ai/vm0/commit/66ea13371e3b28525e82019a483d8503d6cdd8dc))
+
 ## [12.15.0](https://github.com/vm0-ai/vm0/compare/web-v12.14.2...web-v12.15.0) (2026-02-09)
 
 
