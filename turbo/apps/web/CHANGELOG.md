@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.18.0](https://github.com/vm0-ai/vm0/compare/web-v12.17.0...web-v12.18.0) (2026-02-09)
+
+
+### Features
+
+* **slack:** display user email instead of user ID on app home page ([#2618](https://github.com/vm0-ai/vm0/issues/2618)) ([5963097](https://github.com/vm0-ai/vm0/commit/5963097e89ded2dd8b76b562dc03ef210c2db494))
+
 ## [12.17.0](https://github.com/vm0-ai/vm0/compare/web-v12.16.0...web-v12.17.0) (2026-02-09)
 
 

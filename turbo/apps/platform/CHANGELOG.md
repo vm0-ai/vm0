@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.53.1](https://github.com/vm0-ai/vm0/compare/platform-v0.53.0...platform-v0.53.1) (2026-02-09)
+
+
+### Bug Fixes
+
+* **platform:** use simple box icon for collapsed sidebar logo ([#2623](https://github.com/vm0-ai/vm0/issues/2623)) ([1b26059](https://github.com/vm0-ai/vm0/commit/1b26059ce80ceec9ce1b282249334d30b9554c9a))
+
 ## [0.53.0](https://github.com/vm0-ai/vm0/compare/platform-v0.52.1...platform-v0.53.0) (2026-02-09)
 
 
