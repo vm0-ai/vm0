@@ -172,7 +172,6 @@ jobs:
             SLACK_CLIENT_SECRET=${{ secrets.SLACK_CLIENT_SECRET }}
             SLACK_SIGNING_SECRET=${{ secrets.SLACK_SIGNING_SECRET }}
             SLACK_REDIRECT_BASE_URL=${{ vars.SLACK_REDIRECT_BASE_URL }}
-            OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
             SENTRY_DSN=${{ secrets.SENTRY_DSN_WEB }}
             NEXT_PUBLIC_SENTRY_DSN=${{ secrets.SENTRY_DSN_WEB }}
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}

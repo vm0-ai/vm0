@@ -480,24 +480,3 @@ export function extractMessageContent(text: string, botUserId: string): string {
   const mentionPattern = new RegExp(`^<@${botUserId}>\\s*`, "i");
   return text.replace(mentionPattern, "").trim();
 }
-
-/**
- * Check if message contains explicit agent selection
- * Pattern: "use <agent-name> <message>"
- *
- * @param message - Message content (after removing bot mention)
- * @returns Agent name and remaining message, or null if no explicit selection
- */
-export function parseExplicitAgentSelection(
-  message: string,
-): { agentName: string; remainingMessage: string } | null {
-  const match = message.match(/^use\s+(\S+)\s*(.*)/i);
-  if (!match || !match[1]) {
-    return null;
-  }
-
-  return {
-    agentName: match[1],
-    remainingMessage: (match[2] ?? "").trim(),
-  };
-}

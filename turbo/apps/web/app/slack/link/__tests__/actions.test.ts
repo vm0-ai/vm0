@@ -138,7 +138,6 @@ describe("Slack Link Actions", () => {
       const { userLink, installation } = await givenLinkedSlackUser();
       const { binding } = await givenUserHasAgent(userLink, {
         agentName: "test-agent",
-        description: "A test agent",
       });
 
       // Mock Clerk to return the same vm0UserId

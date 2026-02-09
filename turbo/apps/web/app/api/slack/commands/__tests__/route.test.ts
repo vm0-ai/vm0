@@ -209,7 +209,7 @@ describe("POST /api/slack/commands", () => {
   });
 
   describe("Agent Remove Command", () => {
-    it("returns error when user has no agents", async () => {
+    it("returns deprecation message", async () => {
       const { installation, userLink } = await context.createSlackInstallation({
         withUserLink: true,
       });
@@ -227,35 +227,8 @@ describe("POST /api/slack/commands", () => {
       expect(response.status).toBe(200);
       expect(data.response_type).toBe("ephemeral");
       const blockStr = JSON.stringify(data.blocks);
-      expect(blockStr).toContain("don't have any agents");
-    });
-
-    it("opens modal when user has agents", async () => {
-      // Mock Slack views.open API
-      server.use(
-        http.post("https://slack.com/api/views.open", () => {
-          return HttpResponse.json({ ok: true, view: { id: "V123" } });
-        }),
-      );
-
-      const { installation, userLink } = await context.createSlackInstallation({
-        withUserLink: true,
-      });
-      await context.createSlackBinding(userLink.id, { agentName: "to-remove" });
-
-      const body = buildCommandBody(
-        "agent remove",
-        installation.slackWorkspaceId,
-        userLink.slackUserId,
-      );
-      const request = createSignedSlackRequest(body);
-
-      const response = await POST(request);
-
-      // When opening a modal, Slack expects empty 200 response
-      expect(response.status).toBe(200);
-      const text = await response.text();
-      expect(text).toBe("");
+      expect(blockStr).toContain("remove");
+      expect(blockStr).toContain("agent unlink");
     });
   });
 

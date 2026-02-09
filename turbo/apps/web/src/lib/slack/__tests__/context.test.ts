@@ -4,7 +4,6 @@ import {
   formatContextForAgent,
   formatContextForAgentWithImages,
   extractMessageContent,
-  parseExplicitAgentSelection,
 } from "../context";
 import { testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
@@ -863,61 +862,6 @@ describe("Feature: Format Context With Image Upload", () => {
       expect(result).toContain("- RELATIVE_INDEX: -1");
       expect(result).toContain("- MSG_ID: 1234567890.002");
       expect(result).toContain("- SENDER_ID: U456");
-    });
-  });
-});
-
-describe("Feature: Parse Explicit Agent Selection", () => {
-  describe("Scenario: Parse 'use <agent>' pattern", () => {
-    it("should parse agent name and remaining message", () => {
-      const message = "use my-coder fix this bug";
-
-      const result = parseExplicitAgentSelection(message);
-
-      expect(result).toEqual({
-        agentName: "my-coder",
-        remainingMessage: "fix this bug",
-      });
-    });
-
-    it("should be case insensitive", () => {
-      const message = "USE My-Agent do something";
-
-      const result = parseExplicitAgentSelection(message);
-
-      expect(result).toEqual({
-        agentName: "My-Agent",
-        remainingMessage: "do something",
-      });
-    });
-
-    it("should handle agent name only (no remaining message)", () => {
-      const message = "use github-agent";
-
-      const result = parseExplicitAgentSelection(message);
-
-      expect(result).toEqual({
-        agentName: "github-agent",
-        remainingMessage: "",
-      });
-    });
-  });
-
-  describe("Scenario: Handle invalid patterns", () => {
-    it("should return null for messages without 'use' pattern", () => {
-      const message = "just a regular message";
-
-      const result = parseExplicitAgentSelection(message);
-
-      expect(result).toBeNull();
-    });
-
-    it("should return null for 'use' without agent name", () => {
-      const message = "use ";
-
-      const result = parseExplicitAgentSelection(message);
-
-      expect(result).toBeNull();
     });
   });
 });

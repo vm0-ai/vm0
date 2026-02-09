@@ -9,15 +9,12 @@ import {
   postMessage,
   extractMessageContent,
   buildLoginPromptMessage,
-  buildErrorMessage,
   buildAgentResponseMessage,
-  buildWelcomeMessage,
 } from "../index";
 import { runAgentForSlack } from "./run-agent";
 import {
   removeThinkingReaction,
   fetchConversationContexts,
-  routeMessageToAgent,
   lookupThreadSession,
   saveThreadSession,
   buildLoginUrl,
@@ -43,16 +40,15 @@ interface MentionContext {
  * 1. Get workspace installation and decrypt bot token
  * 2. Check if user is linked
  * 3. If not linked, post link message
- * 4. Get user's bindings
- * 5. If no bindings, prompt to add agent
- * 6. Add thinking reaction (emoji only)
- * 7. Route to agent (explicit or LLM)
- * 8. Find existing thread session (for session continuation)
- * 9. Fetch thread context
- * 10. Execute agent with session continuation
- * 11. Create thread session mapping (if new thread)
- * 12. Post response message
- * 13. Remove thinking reaction
+ * 4. Get user's binding (single binding per user)
+ * 5. If no binding, prompt to add agent
+ * 6. Add thinking reaction
+ * 7. Look up existing thread session
+ * 8. Fetch conversation context
+ * 9. Execute agent
+ * 10. Create/update thread session mapping
+ * 11. Post response message
+ * 12. Remove thinking reaction
  */
 export async function handleAppMention(context: MentionContext): Promise<void> {
   const { SECRETS_ENCRYPTION_KEY } = env();
@@ -102,7 +98,6 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
         context.userId,
         context.channelId,
       );
-      // Note: Don't include thread_ts for ephemeral messages - they don't appear correctly in threads
       await client.chat.postEphemeral({
         channel: context.channelId,
         user: context.userId,
@@ -112,12 +107,11 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       return;
     }
 
-    // 4. Get user's bindings
-    const bindings = await globalThis.services.db
+    // 4. Get user's binding (single binding per user)
+    const [binding] = await globalThis.services.db
       .select({
         id: slackBindings.id,
         agentName: slackBindings.agentName,
-        description: slackBindings.description,
         composeId: slackBindings.composeId,
         enabled: slackBindings.enabled,
       })
@@ -127,10 +121,11 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
           eq(slackBindings.slackUserLinkId, userLink.id),
           eq(slackBindings.enabled, true),
         ),
-      );
+      )
+      .limit(1);
 
-    if (bindings.length === 0) {
-      // 5. No bindings - prompt to link agent
+    if (!binding) {
+      // 5. No binding - prompt to link agent
       await postMessage(
         client,
         context.channelId,
@@ -160,7 +155,11 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
     let existingSessionId: string | undefined;
     let lastProcessedMessageTs: string | undefined;
     if (threadTs) {
-      const session = await lookupThreadSession(context.channelId, threadTs);
+      const session = await lookupThreadSession(
+        context.channelId,
+        threadTs,
+        binding.id,
+      );
       existingSessionId = session.existingSessionId;
       lastProcessedMessageTs = session.lastProcessedMessageTs;
       log.debug("Thread session lookup", {
@@ -169,81 +168,16 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       });
     }
 
-    // Fetch context: routing gets full text, execution gets deduplicated with images
-    // Pass currentMessageTs to exclude it from context (it's already the prompt)
-    const { routingContext, executionContext } =
-      await fetchConversationContexts(
-        client,
-        context.channelId,
-        context.threadTs,
-        botUserId,
-        botToken,
-        lastProcessedMessageTs,
-        context.messageTs,
-      );
-
-    // 8. Route to agent (with full context for LLM routing)
-    const routeResult = await routeMessageToAgent(
-      messageContent,
-      bindings,
-      routingContext,
+    // 8. Fetch context: execution gets deduplicated with images
+    const { executionContext } = await fetchConversationContexts(
+      client,
+      context.channelId,
+      context.threadTs,
+      botUserId,
+      botToken,
+      lastProcessedMessageTs,
+      context.messageTs,
     );
-
-    if (routeResult.type === "not_request") {
-      // User is not requesting agent assistance (greeting, casual chat)
-      await postMessage(client, context.channelId, "Welcome to VM0!", {
-        threadTs,
-        blocks: buildWelcomeMessage(bindings),
-      });
-      if (reactionAdded) {
-        await removeThinkingReaction(
-          client,
-          context.channelId,
-          context.messageTs,
-        );
-      }
-      return;
-    }
-
-    if (routeResult.type === "failure") {
-      // Post error message
-      await postMessage(client, context.channelId, routeResult.error, {
-        threadTs,
-        blocks: buildErrorMessage(routeResult.error),
-      });
-      if (reactionAdded) {
-        await removeThinkingReaction(
-          client,
-          context.channelId,
-          context.messageTs,
-        );
-      }
-      return;
-    }
-
-    const { agentName: selectedAgentName, promptText } = routeResult;
-
-    // Get the selected binding (guaranteed to exist since routeResult.success is true)
-    const selectedBinding = bindings.find(
-      (b) => b.agentName === selectedAgentName,
-    );
-    if (!selectedBinding) {
-      log.error("Selected binding not found after successful route", {
-        selectedAgentName,
-        availableBindings: bindings.map((b) => b.agentName),
-      });
-      return;
-    }
-
-    // Refine session lookup with binding ID if not yet matched
-    if (threadTs && !existingSessionId) {
-      const refined = await lookupThreadSession(
-        context.channelId,
-        threadTs,
-        selectedBinding.id,
-      );
-      existingSessionId = refined.existingSessionId;
-    }
 
     try {
       // 9. Execute agent with deduplicated context
@@ -254,9 +188,9 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
         sessionId: newSessionId,
         runId,
       } = await runAgentForSlack({
-        binding: selectedBinding,
+        binding,
         sessionId: existingSessionId,
-        prompt: promptText,
+        prompt: messageContent,
         threadContext: executionContext,
         userId: userLink.vm0UserId,
       });
@@ -264,7 +198,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       // 10. Create or update thread session mapping
       if (threadTs) {
         await saveThreadSession({
-          bindingId: selectedBinding.id,
+          bindingId: binding.id,
           channelId: context.channelId,
           threadTs,
           existingSessionId,
@@ -284,7 +218,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
         threadTs,
         blocks: buildAgentResponseMessage(
           responseText,
-          selectedAgentName,
+          binding.agentName,
           logsUrl,
         ),
       });
@@ -302,7 +236,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
         // If even the error message fails, we can't do anything more
       });
     } finally {
-      // 13. Remove thinking reaction
+      // 12. Remove thinking reaction
       if (reactionAdded) {
         await removeThinkingReaction(
           client,

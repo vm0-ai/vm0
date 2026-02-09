@@ -37,8 +37,6 @@ vi.hoisted(() => {
     "OFFICIAL_RUNNER_SECRET",
     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   );
-  // OpenRouter API key for LLM chat
-  vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-api-key");
   vi.stubEnv("SLACK_REDIRECT_BASE_URL", "https://test.example.com");
   // API URL for compose job webhooks
   vi.stubEnv("VM0_API_URL", "http://localhost:3000");

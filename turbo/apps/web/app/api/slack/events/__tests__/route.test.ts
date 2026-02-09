@@ -7,7 +7,6 @@ import {
   givenLinkedSlackUser,
   givenSlackWorkspaceInstalled,
   givenUserHasAgent,
-  givenUserHasMultipleAgents,
 } from "../../../../../src/__tests__/slack/api-helpers";
 import { handlers, http } from "../../../../../src/__tests__/msw";
 import { POST } from "../route";
@@ -336,7 +335,6 @@ describe("POST /api/slack/events", () => {
       const { userLink, installation } = await givenLinkedSlackUser();
       await givenUserHasAgent(userLink, {
         agentName: "my-helper",
-        description: "A helpful assistant",
       });
 
       // When I @mention the VM0 bot
@@ -380,7 +378,6 @@ describe("POST /api/slack/events", () => {
       const { userLink, installation } = await givenLinkedSlackUser();
       await givenUserHasAgent(userLink, {
         agentName: "my-helper",
-        description: "A helpful assistant",
       });
 
       // When I @mention the VM0 bot (agent will fail due to test environment)
@@ -424,7 +421,6 @@ describe("POST /api/slack/events", () => {
       const { userLink, installation } = await givenLinkedSlackUser();
       await givenUserHasAgent(userLink, {
         agentName: "my-helper",
-        description: "A helpful assistant",
       });
 
       // And runAgentForSlack returns a timeout result
@@ -470,105 +466,6 @@ describe("POST /api/slack/events", () => {
 
       // And the thinking reaction should still be removed
       expect(slackHandlers.mocked.reactionsRemove).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe("Scenario: Mention bot with multiple agents (explicit selection)", () => {
-    it("should use explicitly selected agent", async () => {
-      // Given I have agents "coder" and "reviewer"
-      const { userLink, installation } = await givenLinkedSlackUser();
-      await givenUserHasMultipleAgents(userLink, [
-        { name: "coder", description: "Writes code" },
-        { name: "reviewer", description: "Reviews code" },
-      ]);
-
-      // When I say "use coder fix this bug"
-      const request = createSlackEventRequest({
-        teamId: installation.slackWorkspaceId,
-        channelId: "C123",
-        userId: userLink.slackUserId,
-        text: `<@${installation.botUserId}> use coder fix this bug`,
-        ts: "1234567890.123456",
-      });
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-      await flushAfterCallbacks();
-
-      // Then "coder" should be selected (verified by agent name in response)
-      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
-      const data = await getFormData(slackHandlers.mocked.postMessage);
-      const blocks = JSON.parse((data.blocks as string) ?? "[]") as Array<{
-        type: string;
-        elements?: Array<{ text?: string }>;
-      }>;
-      const contextBlocks = blocks.filter((b) => b.type === "context");
-      expect(contextBlocks.length).toBeGreaterThanOrEqual(1);
-      const agentContext = contextBlocks[0]!.elements?.[0]?.text;
-      expect(agentContext).toContain("coder");
-    });
-  });
-
-  describe("Scenario: Mention bot with multiple agents (ambiguous)", () => {
-    it("should show list of available agents when routing is ambiguous", async () => {
-      // Given I have similar agents
-      const { userLink, installation } = await givenLinkedSlackUser();
-      await givenUserHasMultipleAgents(userLink, [
-        { name: "agent-a", description: "A friendly helper" },
-        { name: "agent-b", description: "Another friendly helper" },
-      ]);
-
-      // When I say "hello" (ambiguous - could be for either agent)
-      const request = createSlackEventRequest({
-        teamId: installation.slackWorkspaceId,
-        channelId: "C123",
-        userId: userLink.slackUserId,
-        text: `<@${installation.botUserId}> hello`,
-        ts: "1234567890.123456",
-      });
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-      await flushAfterCallbacks();
-
-      // Then I should see list of available agents
-      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
-
-      const data = await getFormData(slackHandlers.mocked.postMessage);
-      const text = (data.text as string) ?? "";
-      expect(text).toContain("couldn't determine which agent");
-      expect(text).toContain("agent-a");
-      expect(text).toContain("agent-b");
-    });
-  });
-
-  describe("Scenario: Explicit selection of non-existent agent", () => {
-    it("should show error when selected agent does not exist", async () => {
-      // Given I have agent "coder"
-      const { userLink, installation } = await givenLinkedSlackUser();
-      await givenUserHasAgent(userLink, {
-        agentName: "coder",
-        description: "Writes code",
-      });
-
-      // When I say "use writer help me"
-      const request = createSlackEventRequest({
-        teamId: installation.slackWorkspaceId,
-        channelId: "C123",
-        userId: userLink.slackUserId,
-        text: `<@${installation.botUserId}> use writer help me`,
-        ts: "1234567890.123456",
-      });
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-      await flushAfterCallbacks();
-
-      // Then I should see error that "writer" not found
-      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
-
-      const data = await getFormData(slackHandlers.mocked.postMessage);
-      const text = (data.text as string) ?? "";
-      expect(text).toContain('"writer" not found');
-      // And I should see list of available agents
-      expect(text).toContain("coder");
     });
   });
 
@@ -662,7 +559,6 @@ describe("POST /api/slack/events", () => {
       const { userLink, installation } = await givenLinkedSlackUser();
       await givenUserHasAgent(userLink, {
         agentName: "my-helper",
-        description: "A helpful assistant",
       });
 
       // When I send a DM to the bot
@@ -704,7 +600,6 @@ describe("POST /api/slack/events", () => {
       const { userLink, installation } = await givenLinkedSlackUser();
       await givenUserHasAgent(userLink, {
         agentName: "my-helper",
-        description: "A helpful assistant",
       });
 
       // When I send a DM to the bot (agent will fail due to test environment)
@@ -735,7 +630,6 @@ describe("POST /api/slack/events", () => {
       const { userLink, installation } = await givenLinkedSlackUser();
       await givenUserHasAgent(userLink, {
         agentName: "my-helper",
-        description: "A helpful assistant",
       });
 
       // And runAgentForSlack returns a timeout result
@@ -788,7 +682,6 @@ describe("POST /api/slack/events", () => {
       const { userLink, installation } = await givenLinkedSlackUser();
       await givenUserHasAgent(userLink, {
         agentName: "my-helper",
-        description: "A helpful assistant",
       });
 
       // When I send "hello" in DM (a greeting that triggers not_request in mentions)
@@ -911,7 +804,6 @@ describe("POST /api/slack/events", () => {
       const { userLink, installation } = await givenLinkedSlackUser();
       await givenUserHasAgent(userLink, {
         agentName: "my-helper",
-        description: "A helpful assistant",
       });
       // Reset runtime handlers from givenUserHasAgent so the test's own
       // viewsPublish handler takes priority, then re-register test handlers.
@@ -1004,12 +896,11 @@ describe("POST /api/slack/events", () => {
   });
 
   describe("Scenario: Messages tab opened by linked user with agent", () => {
-    it("should send welcome message with agent info", async () => {
+    it("should send welcome message with help info", async () => {
       // Given I am a linked Slack user with one agent
       const { userLink, installation } = await givenLinkedSlackUser();
       await givenUserHasAgent(userLink, {
         agentName: "my-helper",
-        description: "A helpful assistant",
       });
 
       // Reset and re-register test handlers
@@ -1034,18 +925,12 @@ describe("POST /api/slack/events", () => {
       const data = await getFormData(slackHandlers.mocked.postMessage);
       expect(data.channel).toBe("D-dm-channel");
 
-      // Blocks should include agent info
+      // Blocks should include help content
       const blocks = JSON.parse((data.blocks as string) ?? "[]") as Array<{
         type: string;
         text?: { text: string };
       }>;
-      const texts = blocks
-        .filter(
-          (b): b is { type: string; text: { text: string } } =>
-            b.type === "section" && !!b.text,
-        )
-        .map((b) => b.text.text);
-      expect(texts.some((t) => t.includes("my-helper"))).toBe(true);
+      expect(blocks.length).toBeGreaterThan(0);
     });
   });
 
@@ -1055,7 +940,6 @@ describe("POST /api/slack/events", () => {
       const { userLink, installation } = await givenLinkedSlackUser();
       await givenUserHasAgent(userLink, {
         agentName: "my-helper",
-        description: "A helpful assistant",
       });
 
       // Reset and re-register test handlers
@@ -1098,7 +982,6 @@ describe("POST /api/slack/events", () => {
       const { userLink, installation } = await givenLinkedSlackUser();
       const { binding } = await givenUserHasAgent(userLink, {
         agentName: "my-helper",
-        description: "A helpful assistant",
       });
 
       // Use unique channel/thread IDs to avoid collisions with stale DB data
@@ -1213,7 +1096,6 @@ describe("POST /api/slack/events", () => {
       const { userLink, installation } = await givenLinkedSlackUser();
       const { binding } = await givenUserHasAgent(userLink, {
         agentName: "my-helper",
-        description: "A helpful assistant",
       });
 
       // Use unique channel/thread IDs to avoid collisions with stale DB data

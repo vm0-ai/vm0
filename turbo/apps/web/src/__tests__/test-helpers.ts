@@ -165,7 +165,6 @@ interface SlackInstallationResult {
 
 interface SlackBindingOptions {
   agentName?: string;
-  description?: string | null;
   enabled?: boolean;
 }
 
@@ -519,11 +518,7 @@ export function testContext(): TestContext {
     userLinkId: string,
     options: SlackBindingOptions = {},
   ): Promise<{ id: string; agentName: string; composeId: string }> {
-    const {
-      agentName = uniqueId("test-agent"),
-      description = null,
-      enabled = true,
-    } = options;
+    const { agentName = uniqueId("test-agent"), enabled = true } = options;
 
     initServices();
 
@@ -575,7 +570,6 @@ export function testContext(): TestContext {
         slackWorkspaceId: link.slackWorkspaceId,
         composeId: compose.id,
         agentName,
-        description,
         enabled,
       })
       .returning();

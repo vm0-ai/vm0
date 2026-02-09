@@ -10,7 +10,7 @@ import {
   publishAppHome,
   buildAppHomeView,
   postMessage,
-  buildWelcomeMessage,
+  buildHelpMessage,
 } from "../index";
 import { buildLoginUrl } from "./shared";
 
@@ -88,7 +88,6 @@ export async function refreshAppHome(
     .select({
       id: slackBindings.id,
       agentName: slackBindings.agentName,
-      description: slackBindings.description,
       enabled: slackBindings.enabled,
     })
     .from(slackBindings)
@@ -168,16 +167,7 @@ export async function handleMessagesTabOpened(
     return;
   }
 
-  // 4. Fetch user's agent bindings
-  const bindings = await globalThis.services.db
-    .select({
-      agentName: slackBindings.agentName,
-      description: slackBindings.description,
-    })
-    .from(slackBindings)
-    .where(eq(slackBindings.slackUserLinkId, userLink.id));
-
-  // 5. Send welcome message
+  // 4. Send welcome message
   const botToken = decryptCredentialValue(
     installation.encryptedBotToken,
     SECRETS_ENCRYPTION_KEY,
@@ -188,6 +178,6 @@ export async function handleMessagesTabOpened(
     client,
     context.channelId,
     "Hi! I'm VM0. I can connect you to AI agents to help with your tasks.",
-    { blocks: buildWelcomeMessage(bindings) },
+    { blocks: buildHelpMessage() },
   );
 }
