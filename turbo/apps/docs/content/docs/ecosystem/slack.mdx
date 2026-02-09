@@ -30,17 +30,9 @@ A workspace administrator must [install the VM0 app](https://www.vm0.ai/api/slac
 - Handle slash commands
 - Read user information and shared files
 
-### 2. Invite VM0 to a Channel
+### 2. Connect Your VM0 Account
 
-VM0 is not added to channels automatically. Invite it to any channel where you want to use it:
-
-```
-/invite @VM0
-```
-
-### 3. Connect Your VM0 Account
-
-Connect your Slack identity with your VM0 account. You can do this either by running the slash command in any channel where VM0 is present:
+After the app is installed, connect your VM0 account in Slack. You can do this either by running the slash command in any channel where VM0 is present:
 
 ```
 /vm0 connect
@@ -50,7 +42,7 @@ Or by opening the VM0 App Home in Slack and clicking the **Connect** button.
 
 Both options open a browser flow to complete the authentication.
 
-### 4. Link an Agent
+### 3. Link an Agent
 
 Link an agent from your VM0 account to your Slack workspace:
 
@@ -63,14 +55,14 @@ This opens a dialog where you select an agent. If the agent requires secrets or 
 Once linked, the agent is available to you in any channel where `@VM0` is present.
 
 <Callout type="info">
-Don't have an agent yet? Run `/vm0 agent compose` to create one from any public GitHub URL, like [this Hacker News agent](https://github.com/vm0-ai/vm0-cookbooks/tree/main/examples/201-hackernews).
+Don't have an agent yet? Run `/vm0 agent compose` to create one from any public GitHub URL. The repository must contain a [`vm0.yaml`](/docs/reference/configuration/vm0-yaml) configuration file. See the [Quick Start](/docs/quick-start) guide for more details on creating agents.
 </Callout>
 
 ## How It Works
 
 ### Mention in Channels
 
-Mention `@VM0` in any channel with your message. Your linked agent processes the request and replies in the same thread.
+Mention `@VM0` in any channel with your message.
 
 ```
 @VM0 summarize the latest support tickets
@@ -92,7 +84,7 @@ When you mention `@VM0` in a thread, it gathers context from all messages in tha
 | :--- | :--- |
 | `/vm0 connect` | Connect your Slack account to VM0 |
 | `/vm0 disconnect` | Disconnect your VM0 account |
-| `/vm0 agent compose` | Compose an agent from a GitHub URL |
+| `/vm0 agent compose` | Compose an agent from a public GitHub URL containing a [`vm0.yaml`](/docs/reference/configuration/vm0-yaml) (e.g. `https://github.com/vm0-ai/vm0-cookbooks/tree/main/examples/201-hackernews`) |
 | `/vm0 agent link` | Link an existing agent |
 | `/vm0 agent unlink` | Unlink an agent |
 | `/vm0 agent update` | Update agent configuration |
@@ -107,8 +99,7 @@ The App Home tab in Slack shows your connection status, linked agents, and quick
 ### Agent not responding
 
 1. Verify your VM0 account is connected — run `/vm0 connect`
-2. Check that you have at least one agent linked — run `/vm0 agent link`
-3. Make sure `@VM0` has been invited to the channel
+2. Check that your agent is linked — run `/vm0 agent link`
 
 ### Authentication errors
 
