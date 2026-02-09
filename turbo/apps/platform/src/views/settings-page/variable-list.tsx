@@ -128,11 +128,13 @@ export function VariableList() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="text-base font-medium text-foreground">Variables</h3>
-      <p className="text-sm text-muted-foreground">
-        Plaintext configuration values used by your agents. Values are visible
-        after saving.
-      </p>
+      <div className="flex flex-col gap-1">
+        <h3 className="text-base font-medium text-foreground">Variables</h3>
+        <p className="text-sm text-muted-foreground">
+          Plaintext configuration values used by your agents. Values are visible
+          after saving.
+        </p>
+      </div>
 
       {missing && missing.length > 0 && (
         <MissingVariablesBanner names={missing} />
@@ -149,19 +151,33 @@ export function VariableList() {
           ))}
 
         <div
-          className={`flex items-center gap-4 border border-border bg-card p-4 rounded-b-xl ${!variablesList || variablesList.length === 0 ? "rounded-t-xl" : ""}`}
+          className={`flex flex-col gap-4 border border-border bg-card p-4 rounded-b-xl sm:flex-row sm:items-center ${!variablesList || variablesList.length === 0 ? "rounded-t-xl" : ""}`}
         >
           <div className="flex flex-1 items-center gap-4 min-w-0">
-            <IconPlus size={20} stroke={1.5} className="text-foreground" />
-            <span className="text-sm text-muted-foreground">
-              {!variablesList || variablesList.length === 0
-                ? "No variables configured yet"
-                : "Add another variable"}
-            </span>
+            <div className="flex shrink-0 items-center justify-center size-[28px]">
+              <IconPlus size={24} stroke={1.5} className="text-foreground" />
+            </div>
+            <div className="flex flex-1 flex-col gap-1 min-w-0">
+              <div className="text-sm font-medium text-foreground">
+                {!variablesList || variablesList.length === 0
+                  ? "No variables configured yet"
+                  : "New variable"}
+              </div>
+              <div className="text-sm text-muted-foreground">
+                {!variablesList || variablesList.length === 0
+                  ? "Add your first configuration value"
+                  : "Add a new configuration value for your agents"}
+              </div>
+            </div>
           </div>
-          <Button size="sm" variant="outline" onClick={() => openAdd()}>
-            Add variable
-          </Button>
+          <button
+            onClick={() => openAdd()}
+            className="flex items-center self-start shrink-0 rounded-lg border border-border bg-background overflow-hidden hover:bg-muted transition-colors"
+          >
+            <span className="px-4 py-2 text-sm font-medium text-foreground">
+              Add variable
+            </span>
+          </button>
         </div>
       </div>
     </div>
