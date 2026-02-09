@@ -226,7 +226,6 @@ async function run(): Promise<[number, string]> {
 
   // Execute CLI agent with JSONL output
   logInfo(`Starting ${CLI_AGENT_TYPE} execution...`);
-  logInfo(`Prompt: ${PROMPT}`);
 
   // Build command based on CLI agent type
   const useMock = process.env.USE_MOCK_CLAUDE === "true";
