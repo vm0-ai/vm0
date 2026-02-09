@@ -53,6 +53,9 @@ enum Command {
         base_dir: PathBuf,
         /// Command to execute inside the VM
         cmd: String,
+        /// Snapshot directory to restore from (created by `snapshot` subcommand)
+        #[arg(long)]
+        snapshot_dir: Option<PathBuf>,
     },
 }
 
@@ -77,7 +80,8 @@ async fn main() -> ExitCode {
             rootfs,
             base_dir,
             cmd,
-        } => run_exec(firecracker, kernel, rootfs, base_dir, &cmd).await,
+            snapshot_dir,
+        } => run_exec(firecracker, kernel, rootfs, base_dir, &cmd, snapshot_dir).await,
     };
 
     if let Err(e) = result {
@@ -120,7 +124,20 @@ async fn run_exec(
     rootfs: PathBuf,
     base_dir: PathBuf,
     cmd: &str,
+    snapshot_dir: Option<PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let snapshot = snapshot_dir.map(|dir| {
+        let output = sandbox_fc::SnapshotOutputPaths::new(dir.clone());
+        let work = sandbox_fc::SandboxPaths::new(dir.join("work"));
+        sandbox_fc::SnapshotConfig {
+            snapshot_path: output.snapshot(),
+            memory_path: output.memory(),
+            overlay_path: output.overlay(),
+            overlay_bind_path: work.overlay(),
+            vsock_bind_dir: work.vsock_dir(),
+        }
+    });
+
     let config = sandbox_fc::FirecrackerConfig {
         binary_path: firecracker,
         kernel_path: kernel,
@@ -129,7 +146,7 @@ async fn run_exec(
         instance_index: 0,
         concurrency: 1,
         proxy_port: None,
-        snapshot: None,
+        snapshot,
     };
 
     let factory = sandbox_fc::FirecrackerFactory::new(config).await?;

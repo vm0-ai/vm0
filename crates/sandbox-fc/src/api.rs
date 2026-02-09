@@ -286,26 +286,61 @@ impl<'a> ApiClient<'a> {
             })?;
         }
 
+        // Read response headers (up to \r\n\r\n). We read byte-by-byte into
+        // a buffer and stop as soon as we see the end-of-headers marker.  This
+        // avoids blocking on `read_to_end` when the server uses keep-alive.
         let mut buf = Vec::with_capacity(4096);
-        stream.read_to_end(&mut buf).await.map_err(|e| ApiError {
-            status: 0,
-            body: format!("read response: {e}"),
-        })?;
+        let mut header_end = None;
+        loop {
+            let mut byte = [0u8; 1];
+            let n = stream.read(&mut byte).await.map_err(|e| ApiError {
+                status: 0,
+                body: format!("read response: {e}"),
+            })?;
+            if n == 0 {
+                break; // connection closed
+            }
+            buf.push(byte[0]);
+            if buf.len() >= 4 && buf.get(buf.len() - 4..) == Some(b"\r\n\r\n".as_slice()) {
+                header_end = Some(buf.len());
+                break;
+            }
+        }
 
-        let response = String::from_utf8_lossy(&buf);
+        let headers = String::from_utf8_lossy(&buf);
 
         // Parse status code from "HTTP/1.1 204 No Content\r\n..."
-        let status = response
+        let status = headers
             .get(9..12)
             .and_then(|s| s.parse::<u16>().ok())
             .unwrap_or(0);
 
-        // Extract body after the \r\n\r\n header separator.
-        let body_str = response
-            .find("\r\n\r\n")
-            .and_then(|i| response.get(i + 4..))
-            .unwrap_or_default()
-            .to_string();
+        // Parse Content-Length and read body if present.
+        let content_length = headers
+            .lines()
+            .find_map(|line| {
+                let (key, value) = line.split_once(':')?;
+                if key.trim().eq_ignore_ascii_case("content-length") {
+                    value.trim().parse::<usize>().ok()
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+
+        let body_str = if content_length > 0 && header_end.is_some() {
+            let mut body_buf = vec![0u8; content_length];
+            stream
+                .read_exact(&mut body_buf)
+                .await
+                .map_err(|e| ApiError {
+                    status: 0,
+                    body: format!("read body: {e}"),
+                })?;
+            String::from_utf8_lossy(&body_buf).to_string()
+        } else {
+            String::new()
+        };
 
         if (200..300).contains(&status) {
             Ok(body_str)
