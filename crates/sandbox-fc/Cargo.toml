@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 async-trait.workspace = true
+clap = { workspace = true, features = ["derive"] }
 libc.workspace = true
 nix = { workspace = true, features = ["user", "inotify"] }
 sandbox.workspace = true

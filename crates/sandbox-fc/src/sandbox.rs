@@ -12,7 +12,7 @@ use tracing::{info, warn};
 use vsock_host::VsockHost;
 
 use crate::config::FirecrackerConfig;
-use crate::network::{GUEST_NETWORK, PooledNetns, generate_guest_network_boot_args};
+use crate::network::{GUEST_NETWORK, PooledNetns, generate_boot_args};
 use crate::paths::SandboxPaths;
 
 /// Timeout for waiting for the guest to connect via vsock after start.
@@ -116,12 +116,7 @@ impl FirecrackerSandbox {
         let overlay_path = self.overlay.display().to_string();
         let vsock_path = self.paths.vsock().display().to_string();
 
-        let boot_args = format!(
-            "console=ttyS0 reboot=k panic=1 pci=off nomodules random.trust_cpu=on \
-             quiet loglevel=0 nokaslr audit=0 numa=off mitigations=off noresume \
-             init=/sbin/guest-init {network}",
-            network = generate_guest_network_boot_args(),
-        );
+        let boot_args = generate_boot_args();
 
         serde_json::json!({
             "boot-source": {
@@ -298,7 +293,7 @@ impl FirecrackerSandbox {
         };
 
         if let Some(pid) = child.id() {
-            kill_process_tree(pid).await;
+            crate::process::kill_process_tree(pid).await;
         }
 
         // Reap the zombie process.
@@ -350,31 +345,9 @@ fn monitor_process(
     }
 }
 
-/// Recursively kill a process and all its descendants (depth-first).
-async fn kill_process_tree(pid: u32) {
-    use crate::command::{Privilege, exec};
-
-    // Find child PIDs.
-    let pid_str = pid.to_string();
-    if let Ok(stdout) = exec("pgrep", &["-P", &pid_str], Privilege::User).await {
-        for line in stdout.lines() {
-            if let Ok(child_pid) = line.trim().parse::<u32>() {
-                Box::pin(kill_process_tree(child_pid)).await;
-            }
-        }
-    }
-
-    // Kill this process.
-    let _ = exec("kill", &["-9", &pid_str], Privilege::Sudo).await;
-}
-
 /// Get the current username via `getuid()`.
 fn current_username() -> sandbox::Result<String> {
-    let uid = nix::unistd::getuid();
-    let user = nix::unistd::User::from_uid(uid)
-        .map_err(|e| SandboxError::StartFailed(format!("lookup uid {uid}: {e}")))?
-        .ok_or_else(|| SandboxError::StartFailed(format!("no user for uid {uid}")))?;
-    Ok(user.name)
+    crate::process::current_username().map_err(|e| SandboxError::StartFailed(e.to_string()))
 }
 
 #[async_trait]

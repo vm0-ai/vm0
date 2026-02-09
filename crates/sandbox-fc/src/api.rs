@@ -72,90 +72,165 @@ impl<'a> ApiClient<'a> {
 
     /// Load a snapshot and resume the VM via PUT /snapshot/load.
     pub async fn load_snapshot(&self, snapshot_path: &str, mem_path: &str) -> Result<(), ApiError> {
-        let body = serde_json::to_string(&serde_json::json!({
-            "snapshot_path": snapshot_path,
-            "mem_backend": {
-                "backend_type": "File",
-                "backend_path": mem_path,
-            },
-            "resume_vm": true,
-        }))
-        .map_err(|e| ApiError {
-            status: 0,
-            body: format!("serialize request: {e}"),
-        })?;
-
-        tokio::time::timeout(
-            REQUEST_TIMEOUT,
-            self.request("PUT", "/snapshot/load", Some(body.as_bytes())),
+        self.put_json(
+            "/snapshot/load",
+            &serde_json::json!({
+                "snapshot_path": snapshot_path,
+                "mem_backend": {
+                    "backend_type": "File",
+                    "backend_path": mem_path,
+                },
+                "resume_vm": true,
+            }),
         )
         .await
-        .map_err(|_| ApiError {
-            status: 0,
-            body: format!("request timed out after {REQUEST_TIMEOUT:?}"),
-        })??;
-
-        Ok(())
     }
 
     /// Pause the VM via PATCH /vm.
     ///
     /// The VM must be paused before creating a snapshot.
-    #[allow(dead_code)]
     pub async fn pause(&self) -> Result<(), ApiError> {
-        let body = br#"{"state":"Paused"}"#;
-        tokio::time::timeout(REQUEST_TIMEOUT, self.request("PATCH", "/vm", Some(body)))
+        self.request_with_timeout("PATCH", "/vm", Some(br#"{"state":"Paused"}"#))
             .await
-            .map_err(|_| ApiError {
-                status: 0,
-                body: format!("request timed out after {REQUEST_TIMEOUT:?}"),
-            })??;
-        Ok(())
-    }
-
-    /// Resume the VM via PATCH /vm.
-    #[allow(dead_code)]
-    pub async fn resume(&self) -> Result<(), ApiError> {
-        let body = br#"{"state":"Resumed"}"#;
-        tokio::time::timeout(REQUEST_TIMEOUT, self.request("PATCH", "/vm", Some(body)))
-            .await
-            .map_err(|_| ApiError {
-                status: 0,
-                body: format!("request timed out after {REQUEST_TIMEOUT:?}"),
-            })??;
-        Ok(())
     }
 
     /// Create a snapshot via PUT /snapshot/create.
     ///
     /// The VM must be paused first (see [`Self::pause`]).
-    #[allow(dead_code)]
     pub async fn create_snapshot(
         &self,
         snapshot_path: &str,
         mem_path: &str,
     ) -> Result<(), ApiError> {
-        let body = serde_json::to_string(&serde_json::json!({
-            "snapshot_type": "Full",
-            "snapshot_path": snapshot_path,
-            "mem_file_path": mem_path,
-        }))
-        .map_err(|e| ApiError {
+        self.put_json(
+            "/snapshot/create",
+            &serde_json::json!({
+                "snapshot_type": "Full",
+                "snapshot_path": snapshot_path,
+                "mem_file_path": mem_path,
+            }),
+        )
+        .await
+    }
+
+    /// Configure the machine (vCPU count and memory) via PUT /machine-config.
+    pub async fn configure_machine(
+        &self,
+        vcpu_count: u32,
+        mem_size_mib: u32,
+    ) -> Result<(), ApiError> {
+        self.put_json(
+            "/machine-config",
+            &serde_json::json!({
+                "vcpu_count": vcpu_count,
+                "mem_size_mib": mem_size_mib,
+            }),
+        )
+        .await
+    }
+
+    /// Configure the boot source via PUT /boot-source.
+    pub async fn configure_boot_source(
+        &self,
+        kernel_image_path: &str,
+        boot_args: &str,
+    ) -> Result<(), ApiError> {
+        self.put_json(
+            "/boot-source",
+            &serde_json::json!({
+                "kernel_image_path": kernel_image_path,
+                "boot_args": boot_args,
+            }),
+        )
+        .await
+    }
+
+    /// Configure a drive via PUT /drives/{drive_id}.
+    pub async fn configure_drive(
+        &self,
+        drive_id: &str,
+        path_on_host: &str,
+        is_root_device: bool,
+        is_read_only: bool,
+    ) -> Result<(), ApiError> {
+        let path = format!("/drives/{drive_id}");
+        self.put_json(
+            &path,
+            &serde_json::json!({
+                "drive_id": drive_id,
+                "path_on_host": path_on_host,
+                "is_root_device": is_root_device,
+                "is_read_only": is_read_only,
+            }),
+        )
+        .await
+    }
+
+    /// Configure a network interface via PUT /network-interfaces/{iface_id}.
+    pub async fn configure_network_interface(
+        &self,
+        iface_id: &str,
+        guest_mac: &str,
+        host_dev_name: &str,
+    ) -> Result<(), ApiError> {
+        let path = format!("/network-interfaces/{iface_id}");
+        self.put_json(
+            &path,
+            &serde_json::json!({
+                "iface_id": iface_id,
+                "guest_mac": guest_mac,
+                "host_dev_name": host_dev_name,
+            }),
+        )
+        .await
+    }
+
+    /// Configure the vsock device via PUT /vsock.
+    pub async fn configure_vsock(&self, guest_cid: u32, uds_path: &str) -> Result<(), ApiError> {
+        self.put_json(
+            "/vsock",
+            &serde_json::json!({
+                "guest_cid": guest_cid,
+                "uds_path": uds_path,
+            }),
+        )
+        .await
+    }
+
+    /// Start the VM instance via PUT /actions.
+    pub async fn start_instance(&self) -> Result<(), ApiError> {
+        self.request_with_timeout(
+            "PUT",
+            "/actions",
+            Some(br#"{"action_type":"InstanceStart"}"#),
+        )
+        .await
+    }
+
+    /// Send a request with the standard timeout, discarding the response body.
+    async fn request_with_timeout(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<&[u8]>,
+    ) -> Result<(), ApiError> {
+        tokio::time::timeout(REQUEST_TIMEOUT, self.request(method, path, body))
+            .await
+            .map_err(|_| ApiError {
+                status: 0,
+                body: format!("request timed out after {REQUEST_TIMEOUT:?}"),
+            })??;
+        Ok(())
+    }
+
+    /// Serialize a JSON value and PUT it to the given path.
+    async fn put_json(&self, path: &str, value: &serde_json::Value) -> Result<(), ApiError> {
+        let body = serde_json::to_string(value).map_err(|e| ApiError {
             status: 0,
             body: format!("serialize request: {e}"),
         })?;
-
-        tokio::time::timeout(
-            REQUEST_TIMEOUT,
-            self.request("PUT", "/snapshot/create", Some(body.as_bytes())),
-        )
-        .await
-        .map_err(|_| ApiError {
-            status: 0,
-            body: format!("request timed out after {REQUEST_TIMEOUT:?}"),
-        })??;
-
-        Ok(())
+        self.request_with_timeout("PUT", path, Some(body.as_bytes()))
+            .await
     }
 
     /// Send a raw HTTP/1.1 request over a Unix domain socket.
@@ -545,38 +620,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resume_succeeds_on_204() {
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
-        let sock_path = dir.path().join("test-resume.sock");
-
-        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
-            panic!("bind {}: {e}", sock_path.display());
-        });
-
-        tokio::spawn(async move {
-            let Ok((mut stream, _)) = listener.accept().await else {
-                return;
-            };
-            let mut buf = vec![0u8; 4096];
-            let _ = stream.read(&mut buf).await;
-
-            let req = String::from_utf8_lossy(&buf);
-            assert!(req.starts_with("PATCH /vm"), "got: {req}");
-            assert!(
-                req.contains(r#""state":"Resumed""#),
-                "missing Resumed in: {req}"
-            );
-
-            let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
-            let _ = stream.write_all(response.as_bytes()).await;
-        });
-
-        let client = ApiClient::new(&sock_path);
-        let result = client.resume().await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
     async fn create_snapshot_succeeds_on_204() {
         let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
         let sock_path = dir.path().join("test-create-snap.sock");
@@ -640,5 +683,208 @@ mod tests {
         let err = client.pause().await.unwrap_err();
         assert_eq!(err.status, 400);
         assert_eq!(err.body, "cannot pause");
+    }
+
+    #[tokio::test]
+    async fn configure_machine_succeeds_on_204() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        let sock_path = dir.path().join("test-machine.sock");
+
+        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
+            panic!("bind {}: {e}", sock_path.display());
+        });
+
+        tokio::spawn(async move {
+            let Ok((mut stream, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buf = vec![0u8; 4096];
+            let _ = stream.read(&mut buf).await;
+
+            let req = String::from_utf8_lossy(&buf);
+            assert!(req.starts_with("PUT /machine-config"), "got: {req}");
+            assert!(req.contains("vcpu_count"), "missing vcpu_count in: {req}");
+            assert!(
+                req.contains("mem_size_mib"),
+                "missing mem_size_mib in: {req}"
+            );
+
+            let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
+            let _ = stream.write_all(response.as_bytes()).await;
+        });
+
+        let client = ApiClient::new(&sock_path);
+        let result = client.configure_machine(2, 256).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn configure_boot_source_succeeds_on_204() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        let sock_path = dir.path().join("test-boot.sock");
+
+        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
+            panic!("bind {}: {e}", sock_path.display());
+        });
+
+        tokio::spawn(async move {
+            let Ok((mut stream, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buf = vec![0u8; 4096];
+            let _ = stream.read(&mut buf).await;
+
+            let req = String::from_utf8_lossy(&buf);
+            assert!(req.starts_with("PUT /boot-source"), "got: {req}");
+            assert!(
+                req.contains("kernel_image_path"),
+                "missing kernel_image_path in: {req}"
+            );
+            assert!(req.contains("boot_args"), "missing boot_args in: {req}");
+
+            let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
+            let _ = stream.write_all(response.as_bytes()).await;
+        });
+
+        let client = ApiClient::new(&sock_path);
+        let result = client
+            .configure_boot_source("/path/to/kernel", "console=ttyS0")
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn configure_drive_succeeds_on_204() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        let sock_path = dir.path().join("test-drive.sock");
+
+        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
+            panic!("bind {}: {e}", sock_path.display());
+        });
+
+        tokio::spawn(async move {
+            let Ok((mut stream, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buf = vec![0u8; 4096];
+            let _ = stream.read(&mut buf).await;
+
+            let req = String::from_utf8_lossy(&buf);
+            assert!(req.starts_with("PUT /drives/rootfs"), "got: {req}");
+            assert!(req.contains("drive_id"), "missing drive_id in: {req}");
+            assert!(
+                req.contains("path_on_host"),
+                "missing path_on_host in: {req}"
+            );
+
+            let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
+            let _ = stream.write_all(response.as_bytes()).await;
+        });
+
+        let client = ApiClient::new(&sock_path);
+        let result = client
+            .configure_drive("rootfs", "/path/to/rootfs", true, true)
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn configure_network_interface_succeeds_on_204() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        let sock_path = dir.path().join("test-netif.sock");
+
+        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
+            panic!("bind {}: {e}", sock_path.display());
+        });
+
+        tokio::spawn(async move {
+            let Ok((mut stream, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buf = vec![0u8; 4096];
+            let _ = stream.read(&mut buf).await;
+
+            let req = String::from_utf8_lossy(&buf);
+            assert!(
+                req.starts_with("PUT /network-interfaces/eth0"),
+                "got: {req}"
+            );
+            assert!(req.contains("guest_mac"), "missing guest_mac in: {req}");
+            assert!(
+                req.contains("host_dev_name"),
+                "missing host_dev_name in: {req}"
+            );
+
+            let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
+            let _ = stream.write_all(response.as_bytes()).await;
+        });
+
+        let client = ApiClient::new(&sock_path);
+        let result = client
+            .configure_network_interface("eth0", "02:00:00:00:00:01", "vm0-tap")
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn configure_vsock_succeeds_on_204() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        let sock_path = dir.path().join("test-vsock.sock");
+
+        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
+            panic!("bind {}: {e}", sock_path.display());
+        });
+
+        tokio::spawn(async move {
+            let Ok((mut stream, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buf = vec![0u8; 4096];
+            let _ = stream.read(&mut buf).await;
+
+            let req = String::from_utf8_lossy(&buf);
+            assert!(req.starts_with("PUT /vsock"), "got: {req}");
+            assert!(req.contains("guest_cid"), "missing guest_cid in: {req}");
+            assert!(req.contains("uds_path"), "missing uds_path in: {req}");
+
+            let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
+            let _ = stream.write_all(response.as_bytes()).await;
+        });
+
+        let client = ApiClient::new(&sock_path);
+        let result = client.configure_vsock(3, "/tmp/vsock.sock").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn start_instance_succeeds_on_204() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        let sock_path = dir.path().join("test-start.sock");
+
+        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
+            panic!("bind {}: {e}", sock_path.display());
+        });
+
+        tokio::spawn(async move {
+            let Ok((mut stream, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buf = vec![0u8; 4096];
+            let _ = stream.read(&mut buf).await;
+
+            let req = String::from_utf8_lossy(&buf);
+            assert!(req.starts_with("PUT /actions"), "got: {req}");
+            assert!(
+                req.contains("InstanceStart"),
+                "missing InstanceStart in: {req}"
+            );
+
+            let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
+            let _ = stream.write_all(response.as_bytes()).await;
+        });
+
+        let client = ApiClient::new(&sock_path);
+        let result = client.start_instance().await;
+        assert!(result.is_ok());
     }
 }

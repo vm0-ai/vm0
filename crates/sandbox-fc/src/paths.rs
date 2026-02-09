@@ -49,7 +49,34 @@ impl SandboxPaths {
         self.vsock_dir().join("vsock.sock")
     }
 
+    pub fn overlay(&self) -> PathBuf {
+        self.workspace.join("overlay.ext4")
+    }
+
     pub fn api_sock(&self) -> PathBuf {
         self.workspace.join("api.sock")
+    }
+}
+
+/// Paths for snapshot output artifacts within an output directory.
+pub struct SnapshotOutputPaths {
+    output_dir: PathBuf,
+}
+
+impl SnapshotOutputPaths {
+    pub fn new(output_dir: PathBuf) -> Self {
+        Self { output_dir }
+    }
+
+    pub fn snapshot(&self) -> PathBuf {
+        self.output_dir.join("snapshot.bin")
+    }
+
+    pub fn memory(&self) -> PathBuf {
+        self.output_dir.join("memory.bin")
+    }
+
+    pub fn overlay(&self) -> PathBuf {
+        self.output_dir.join("overlay.ext4")
     }
 }

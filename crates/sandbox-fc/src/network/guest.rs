@@ -34,6 +34,16 @@ pub fn generate_guest_network_boot_args() -> String {
     )
 }
 
+/// Generate the full kernel boot args string (base flags + network config).
+pub fn generate_boot_args() -> String {
+    format!(
+        "console=ttyS0 reboot=k panic=1 pci=off nomodules random.trust_cpu=on \
+         quiet loglevel=0 nokaslr audit=0 numa=off mitigations=off noresume \
+         init=/sbin/guest-init {}",
+        generate_guest_network_boot_args(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

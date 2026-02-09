@@ -3,11 +3,10 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Instant;
 
+use clap::{Parser, Subcommand};
 use sandbox::{ExecRequest, ResourceLimits, SandboxConfig, SandboxFactory};
 use tracing_subscriber::fmt::time::FormatTime;
 use uuid::Uuid;
-
-use sandbox_fc::FirecrackerConfig;
 
 struct Elapsed(Instant);
 
@@ -22,20 +21,66 @@ impl FormatTime for Elapsed {
     }
 }
 
-/// Usage: sandbox-fc <firecracker> <kernel> <rootfs> <base_dir> <cmd>
+#[derive(Parser)]
+#[command(name = "sandbox-fc")]
+struct Cli {
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Create a snapshot from a fresh VM boot
+    Snapshot {
+        /// Path to the Firecracker binary
+        firecracker: PathBuf,
+        /// Path to the guest kernel image
+        kernel: PathBuf,
+        /// Path to the root filesystem image
+        rootfs: PathBuf,
+        /// Directory where snapshot artifacts will be written
+        output_dir: PathBuf,
+    },
+    /// Boot a VM and execute a command
+    Exec {
+        /// Path to the Firecracker binary
+        firecracker: PathBuf,
+        /// Path to the guest kernel image
+        kernel: PathBuf,
+        /// Path to the root filesystem image
+        rootfs: PathBuf,
+        /// Base directory for runtime data
+        base_dir: PathBuf,
+        /// Command to execute inside the VM
+        cmd: String,
+    },
+}
+
 #[tokio::main]
 async fn main() -> ExitCode {
     tracing_subscriber::fmt()
         .with_timer(Elapsed(Instant::now()))
         .init();
 
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.len() < 5 {
-        eprintln!("usage: sandbox-fc <firecracker> <kernel> <rootfs> <base_dir> <cmd>");
-        return ExitCode::FAILURE;
-    }
+    let cli = Cli::parse();
 
-    if let Err(e) = run(&args).await {
+    let result = match cli.command {
+        Command::Snapshot {
+            firecracker,
+            kernel,
+            rootfs,
+            output_dir,
+        } => run_snapshot(firecracker, kernel, rootfs, output_dir).await,
+        Command::Exec {
+            firecracker,
+            kernel,
+            rootfs,
+            base_dir,
+            cmd,
+        } => run_exec(firecracker, kernel, rootfs, base_dir, &cmd).await,
+    };
+
+    if let Err(e) = result {
         eprintln!("error: {e}");
         return ExitCode::FAILURE;
     }
@@ -43,22 +88,49 @@ async fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn arg(args: &[String], idx: usize) -> Result<&String, &'static str> {
-    args.get(idx).ok_or("missing argument")
+async fn run_snapshot(
+    firecracker: PathBuf,
+    kernel: PathBuf,
+    rootfs: PathBuf,
+    output_dir: PathBuf,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let config = sandbox_fc::SnapshotCreateConfig {
+        binary_path: firecracker,
+        kernel_path: kernel,
+        rootfs_path: rootfs,
+        output_dir,
+        vcpu_count: 1,
+        memory_mb: 256,
+    };
+
+    let snapshot = sandbox_fc::create_snapshot(config).await?;
+
+    println!("snapshot:       {}", snapshot.snapshot_path.display());
+    println!("memory:         {}", snapshot.memory_path.display());
+    println!("overlay:        {}", snapshot.overlay_path.display());
+    println!("overlay_bind:   {}", snapshot.overlay_bind_path.display());
+    println!("vsock_bind_dir: {}", snapshot.vsock_bind_dir.display());
+
+    Ok(())
 }
 
-async fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
-    let config = FirecrackerConfig {
-        binary_path: PathBuf::from(arg(args, 0)?),
-        kernel_path: PathBuf::from(arg(args, 1)?),
-        rootfs_path: PathBuf::from(arg(args, 2)?),
-        base_dir: PathBuf::from(arg(args, 3)?),
+async fn run_exec(
+    firecracker: PathBuf,
+    kernel: PathBuf,
+    rootfs: PathBuf,
+    base_dir: PathBuf,
+    cmd: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let config = sandbox_fc::FirecrackerConfig {
+        binary_path: firecracker,
+        kernel_path: kernel,
+        rootfs_path: rootfs,
+        base_dir,
         instance_index: 0,
         concurrency: 1,
         proxy_port: None,
         snapshot: None,
     };
-    let cmd = arg(args, 4)?;
 
     let factory = sandbox_fc::FirecrackerFactory::new(config).await?;
 

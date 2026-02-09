@@ -16,6 +16,7 @@ vsock-proto = { path = "vsock-proto" }
 
 # External dependencies
 async-trait = "0.1"
+clap = "4"
 chrono = { version = "0.4", default-features = false }
 flate2 = "1"
 libc = "0.2"
