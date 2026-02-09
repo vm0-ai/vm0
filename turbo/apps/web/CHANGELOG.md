@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.23.0](https://github.com/vm0-ai/vm0/compare/web-v12.22.2...web-v12.23.0) (2026-02-09)
+
+
+### Features
+
+* **slack:** auto-setup scope, model provider check, and artifact during link flow ([#2697](https://github.com/vm0-ai/vm0/issues/2697)) ([846f90d](https://github.com/vm0-ai/vm0/commit/846f90d652a63bb9c1487768f79cf637f9fa3798))
+
 ## [12.22.2](https://github.com/vm0-ai/vm0/compare/web-v12.22.1...web-v12.22.2) (2026-02-09)
 
 
