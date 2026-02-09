@@ -180,75 +180,6 @@ describe("cook command", () => {
     });
   });
 
-  describe("environment variable validation", () => {
-    it("should exit with error when required variables are missing", async () => {
-      // Use a unique timestamp to ensure variable doesn't exist in env
-      const uniqueVar = `COOK_TEST_VAR_${Date.now()}`;
-
-      await fs.writeFile(
-        path.join(tempDir, "vm0.yaml"),
-        `version: "1.0"
-agents:
-  test-agent:
-    framework: claude-code
-    working_dir: /workspace
-    environment:
-      MY_VAR: "\${{ vars.${uniqueVar} }}"
-`,
-      );
-
-      await expect(async () => {
-        await cookCommand.parseAsync([
-          "node",
-          "cli",
-          "test prompt",
-          "--no-auto-update",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Missing required variables"),
-      );
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining(uniqueVar),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-
-    it("should exit with error when --env-file does not exist", async () => {
-      // Use a unique timestamp to ensure variable doesn't exist in env
-      const uniqueVar = `COOK_TEST_VAR_${Date.now()}`;
-
-      await fs.writeFile(
-        path.join(tempDir, "vm0.yaml"),
-        `version: "1.0"
-agents:
-  test-agent:
-    framework: claude-code
-    working_dir: /workspace
-    environment:
-      MY_VAR: "\${{ vars.${uniqueVar} }}"
-`,
-      );
-
-      await expect(async () => {
-        await cookCommand.parseAsync([
-          "node",
-          "cli",
-          "test prompt",
-          "--env-file",
-          "nonexistent.env",
-          "--no-auto-update",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Environment file not found"),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-  });
-
   describe("logs subcommand", () => {
     it("should exit with error when no previous run exists", async () => {
       // No cook.json file exists (no prior run)
@@ -1180,10 +1111,8 @@ volumes:
     });
   });
 
-  describe("environment variable loading", () => {
-    it("should load variables from --env-file", async () => {
-      const uniqueVar = `COOK_TEST_VAR_${Date.now()}`;
-
+  describe("env-file passthrough", () => {
+    it("should pass --env-file to vm0 run subprocess", async () => {
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
         `version: "1.0"
@@ -1191,61 +1120,16 @@ agents:
   test-agent:
     framework: claude-code
     working_dir: /workspace
-    environment:
-      MY_VAR: "\${{ vars.${uniqueVar} }}"
-`,
-      );
-
-      // Create .env file with the required variable
-      await fs.writeFile(
-        path.join(tempDir, "test.env"),
-        `${uniqueVar}=test-value`,
-      );
-
-      vi.mocked(spawn).mockImplementation(() => {
-        return createMockChildProcessWithOutput(0, "Success") as ReturnType<
-          typeof spawn
-        >;
-      });
-
-      // Should succeed with env file
-      await cookCommand.parseAsync([
-        "node",
-        "cli",
-        "--env-file",
-        "test.env",
-        "--no-auto-update",
-      ]);
-
-      // No error should be thrown
-      expect(mockExit).not.toHaveBeenCalled();
-    });
-
-    it("should prefer CLI env over file env", async () => {
-      const uniqueVar = `COOK_TEST_VAR_${Date.now()}`;
-
-      await fs.writeFile(
-        path.join(tempDir, "vm0.yaml"),
-        `version: "1.0"
-agents:
-  test-agent:
-    framework: claude-code
-    working_dir: /workspace
-    environment:
-      MY_VAR: "\${{ vars.${uniqueVar} }}"
 `,
       );
 
       // Create .env file
-      await fs.writeFile(
-        path.join(tempDir, "test.env"),
-        `${uniqueVar}=file-value`,
-      );
+      await fs.writeFile(path.join(tempDir, "test.env"), "SOME_VAR=some-value");
 
-      // Set environment variable (higher priority)
-      vi.stubEnv(uniqueVar, "cli-env-value");
+      const spawnCalls: string[][] = [];
 
-      vi.mocked(spawn).mockImplementation(() => {
+      vi.mocked(spawn).mockImplementation((cmd, args) => {
+        spawnCalls.push([cmd as string, ...(args as string[])]);
         return createMockChildProcessWithOutput(0, "Success") as ReturnType<
           typeof spawn
         >;
@@ -1254,13 +1138,17 @@ agents:
       await cookCommand.parseAsync([
         "node",
         "cli",
+        "test prompt",
         "--env-file",
         "test.env",
         "--no-auto-update",
       ]);
 
-      // Should succeed - env var takes precedence
-      expect(mockExit).not.toHaveBeenCalled();
+      // Find the vm0 run call (has "run" as the second element, after "vm0")
+      const runCall = spawnCalls.find((call) => call[1] === "run");
+      expect(runCall).toBeDefined();
+      expect(runCall).toContain("--env-file");
+      expect(runCall).toContain("test.env");
     });
   });
 

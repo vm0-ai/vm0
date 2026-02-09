@@ -4,8 +4,6 @@ import { readFile, mkdir } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
 import { parse as parseYaml } from "yaml";
-import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
-import { config as dotenvConfig } from "dotenv";
 import { validateAgentCompose } from "../../lib/domain/yaml-validator";
 import { readStorageConfig } from "../../lib/storage/storage-utils";
 import { checkAndUpgrade } from "../../lib/utils/update-checker";
@@ -40,54 +38,6 @@ interface AgentComposeConfig {
   version: string;
   agents: Record<string, AgentConfig>;
   volumes?: Record<string, VolumeConfig>;
-}
-
-/**
- * Extract all required variable names from compose config
- * Returns unique names from both vars and secrets references
- */
-export function extractRequiredVarNames(config: AgentComposeConfig): string[] {
-  const refs = extractVariableReferences(config);
-  const grouped = groupVariablesBySource(refs);
-  // Combine vars and secrets names (both are loaded from .env)
-  const varNames = grouped.vars.map((r) => r.name);
-  const secretNames = grouped.secrets.map((r) => r.name);
-  return [...new Set([...varNames, ...secretNames])];
-}
-
-/**
- * Check which variables are missing from environment and optional --env-file
- * @param varNames - Variable names to check
- * @param envFilePath - Optional path to env file (only checked if explicitly provided)
- * @returns Array of missing variable names
- */
-export function checkMissingVariables(
-  varNames: string[],
-  envFilePath?: string,
-): string[] {
-  // Load env file if explicitly provided
-  let fileValues: Record<string, string> = {};
-  if (envFilePath) {
-    if (!existsSync(envFilePath)) {
-      throw new Error(`Environment file not found: ${envFilePath}`);
-    }
-    const result = dotenvConfig({ path: envFilePath, quiet: true });
-    if (result.parsed) {
-      fileValues = result.parsed;
-    }
-  }
-
-  // Check which variables are missing (priority: file > env)
-  const missing: string[] = [];
-  for (const name of varNames) {
-    const inEnv = process.env[name] !== undefined;
-    const inFile = fileValues[name] !== undefined;
-    if (!inEnv && !inFile) {
-      missing.push(name);
-    }
-  }
-
-  return missing;
 }
 
 interface LoadedConfig {
@@ -135,42 +85,6 @@ async function loadAndValidateConfig(): Promise<LoadedConfig> {
   );
 
   return { config, agentName, volumeCount };
-}
-
-/**
- * Validate environment variables and exit if any are missing.
- */
-function validateEnvVariables(
-  config: AgentComposeConfig,
-  envFile?: string,
-): void {
-  const requiredVarNames = extractRequiredVarNames(config);
-  if (requiredVarNames.length === 0) {
-    return;
-  }
-
-  try {
-    const missingVars = checkMissingVariables(requiredVarNames, envFile);
-
-    if (missingVars.length > 0) {
-      console.error();
-      console.error(chalk.red("✗ Missing required variables:"));
-      for (const varName of missingVars) {
-        console.error(chalk.red(`  ${varName}`));
-      }
-      console.error(
-        chalk.dim(
-          "\n  Provide via --env-file, or set as environment variables",
-        ),
-      );
-      process.exit(1);
-    }
-  } catch (error) {
-    if (error instanceof Error) {
-      console.error(chalk.red(`✗ ${error.message}`));
-    }
-    process.exit(1);
-  }
 }
 
 /**
@@ -304,7 +218,11 @@ async function runAgent(
   artifactDir: string,
   prompt: string,
   cwd: string,
-  options: { verbose?: boolean; debugNoMockClaude?: boolean },
+  options: {
+    envFile?: string;
+    verbose?: boolean;
+    debugNoMockClaude?: boolean;
+  },
 ): Promise<void> {
   console.log();
   console.log(chalk.bold("Running agent:"));
@@ -320,6 +238,7 @@ async function runAgent(
       agentName,
       "--artifact-name",
       ARTIFACT_DIR,
+      ...(options.envFile ? ["--env-file", options.envFile] : []),
       ...(options.verbose ? ["--verbose"] : []),
       ...(options.debugNoMockClaude ? ["--debug-no-mock-claude"] : []),
       prompt,
@@ -381,21 +300,19 @@ export const cookAction = new Command()
       // Step 1: Load and validate config
       const { config, agentName } = await loadAndValidateConfig();
 
-      // Step 2: Validate environment variables
-      validateEnvVariables(config, options.envFile);
-
-      // Step 3: Process volumes
+      // Step 2: Process volumes
       await processVolumes(config, cwd);
 
-      // Step 4: Process artifact
+      // Step 3: Process artifact
       const artifactDir = await processArtifact(cwd);
 
-      // Step 5: Compose agent
+      // Step 4: Compose agent
       await composeAgent(cwd, options.yes ?? false);
 
-      // Step 6: Run agent (if prompt provided)
+      // Step 5: Run agent (if prompt provided)
       if (prompt) {
         await runAgent(agentName, artifactDir, prompt, cwd, {
+          envFile: options.envFile,
           verbose: options.verbose,
           debugNoMockClaude: options.debugNoMockClaude,
         });
