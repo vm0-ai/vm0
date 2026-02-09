@@ -77,6 +77,12 @@ function setupScopeRequiredPageWrapper(
     command(async ({ get, set }, signal: AbortSignal) => {
       L.debug("enter setupScopeRequiredPageWrapper");
 
+      // First, immediately render the page to provide instant visual feedback
+      // The page components will show loading skeletons while data fetches
+      await set(fn, signal);
+      signal.throwIfAborted();
+
+      // Then check scope in background (after page is already displayed)
       const scopeExists = await get(hasScope$);
       signal.throwIfAborted();
       L.debug("scopeExists", scopeExists);
@@ -86,9 +92,6 @@ function setupScopeRequiredPageWrapper(
         set(navigateInReact$, "/");
         return;
       }
-
-      await set(fn, signal);
-      signal.throwIfAborted();
     }),
   );
 }

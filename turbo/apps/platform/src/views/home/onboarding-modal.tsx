@@ -95,13 +95,13 @@ export function OnboardingModal() {
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && closeModal()}>
       <DialogContent
-        className="flex max-h-[100dvh] flex-col gap-0 overflow-hidden sm:max-h-[85dvh] sm:max-w-[600px] p-0 border-border rounded-[10px] [&>button[aria-label=Close]:last-child]:hidden"
+        className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden sm:max-h-[85dvh] sm:max-w-[600px] p-0 border-border rounded-[10px] [&>button[aria-label=Close]:last-child]:hidden"
         style={{
           backgroundImage: backgroundGradient,
         }}
       >
         {/* Close button - top row */}
-        <div className="shrink-0 flex justify-end pr-4 pt-4">
+        <div className="shrink-0 flex justify-end pr-3 pt-3 sm:pr-4 sm:pt-4">
           <DialogClose asChild>
             <button
               className="icon-button opacity-70 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
@@ -113,32 +113,32 @@ export function OnboardingModal() {
         </div>
 
         {/* Fixed Header - Logo and Title */}
-        <div className="shrink-0 px-6 pb-4">
+        <div className="shrink-0 px-4 pb-3 sm:px-6 sm:pb-4">
           {/* Logo */}
-          <div className="flex items-center justify-center gap-2 mb-4">
+          <div className="flex items-center justify-center gap-2 mb-3 sm:mb-4">
             <img
               src={theme === "dark" ? "/logo_dark.svg" : "/logo_light.svg"}
               alt="VM0"
-              className="h-[40px] w-auto"
+              className="h-[32px] sm:h-[40px] w-auto"
             />
-            <span className="text-4xl font-normal text-foreground">
+            <span className="text-3xl sm:text-4xl font-normal text-foreground">
               Platform
             </span>
           </div>
 
           {/* Header */}
           <div className="text-center">
-            <DialogTitle className="text-lg font-medium leading-7 text-foreground">
+            <DialogTitle className="text-base sm:text-lg font-medium leading-6 sm:leading-7 text-foreground">
               Define your model provider
             </DialogTitle>
-            <DialogDescription className="text-sm text-foreground mt-[10px]">
+            <DialogDescription className="text-sm text-foreground mt-2">
               Your model provider is required for sandboxed execution.
             </DialogDescription>
           </div>
         </div>
 
         {/* Scrollable content area */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 flex flex-col gap-6 dialog-scrollable">
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6 flex flex-col gap-4 sm:gap-6 dialog-scrollable">
           {/* Provider Type Selector */}
           <div className="flex flex-col gap-2">
             <label className="px-1 text-sm font-medium text-foreground">
@@ -203,7 +203,7 @@ export function OnboardingModal() {
         </div>
 
         {/* Fixed Footer - Action Buttons */}
-        <div className="shrink-0 flex justify-end gap-2 px-6 pb-6 pt-4">
+        <div className="shrink-0 flex justify-end gap-2 px-4 pb-4 pt-3 sm:px-6 sm:pb-6 sm:pt-4 border-t border-border/50">
           <Button variant="outline" onClick={() => closeModal()}>
             Cancel
           </Button>

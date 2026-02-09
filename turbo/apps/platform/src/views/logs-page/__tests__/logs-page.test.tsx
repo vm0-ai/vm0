@@ -223,4 +223,53 @@ describe("logs page", () => {
       expect(screen.getByText(/Failed to fetch logs/)).toBeInTheDocument();
     });
   });
+
+  it("should show skeleton loading state while fetching data", async () => {
+    let resolveRequest: ((value: unknown) => void) | undefined;
+    const requestPromise = new Promise((resolve) => {
+      resolveRequest = resolve;
+    });
+
+    server.use(
+      http.get("*/api/platform/logs", async () => {
+        await requestPromise;
+        return HttpResponse.json({
+          data: [
+            {
+              id: "run_test",
+              sessionId: "session_test",
+              agentName: "Test Agent",
+              framework: "claude-code",
+              status: "completed",
+              createdAt: "2024-01-01T00:00:00Z",
+            },
+          ],
+          pagination: { hasMore: false, nextCursor: null },
+        });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/logs",
+    });
+
+    // Should show skeleton while loading
+    // Skeleton rows have specific test structure - check for multiple skeleton elements
+    const table = screen.getByRole("table");
+    const skeletonElements = within(table).getAllByRole("row");
+    // Should have header row + multiple skeleton rows (8 in LogsTableSkeleton)
+    expect(skeletonElements.length).toBeGreaterThan(1);
+
+    // Resolve the request to show actual data
+    resolveRequest?.(true);
+
+    // Wait for actual data to appear
+    await waitFor(() => {
+      expect(screen.getByText("Test Agent")).toBeInTheDocument();
+    });
+
+    // Verify skeleton is replaced with actual data
+    expect(screen.getByText("session_test")).toBeInTheDocument();
+  });
 });
