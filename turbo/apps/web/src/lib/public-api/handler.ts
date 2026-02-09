@@ -55,7 +55,9 @@ export function createPublicApiHandler<T extends AppRouter>(
 ) {
   return createNextHandler(contract, router, {
     handlerType: "app-router",
-    jsonQuery: true,
+    // jsonQuery is intentionally disabled: JSON.parse() misinterprets hex strings
+    // like "846e3519" as scientific notation, corrupting version query params (#2666)
+    jsonQuery: false,
     errorHandler: options?.errorHandler ?? publicApiErrorHandler,
     requestMiddleware: [
       (request) => {

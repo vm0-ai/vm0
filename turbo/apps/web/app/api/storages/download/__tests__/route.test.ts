@@ -246,6 +246,34 @@ describe("GET /api/storages/download", () => {
       expect(json.error.message).toContain("Ambiguous");
     });
 
+    /**
+     * Guard test: version prefix that resembles scientific notation.
+     *
+     * jsonQuery is intentionally disabled in ts-rest-handler.ts (#2666).
+     * The hex prefix "846e3519" looks like scientific notation to JSON.parse(),
+     * which returns Infinity and corrupts the value before Zod validation.
+     * If someone re-enables jsonQuery, this test will fail.
+     */
+    it("should resolve version prefix that resembles scientific notation (jsonQuery guard)", async () => {
+      const storageName = uniqueId("sci-notation");
+      const sciNotationPrefix = "846e3519";
+      const fullVersionId = sciNotationPrefix + "b".repeat(56);
+
+      // Create storage without committing, then insert a version with the known prefix
+      await createTestArtifact(storageName, { skipCommit: true });
+      await insertStorageVersion(storageName, fullVersionId);
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/storages/download?name=${storageName}&type=artifact&version=${sciNotationPrefix}`,
+      );
+
+      const response = await GET(request);
+      expect(response.status).toBe(200);
+
+      const json = await response.json();
+      expect(json.versionId).toBe(fullVersionId);
+    });
+
     it("should return 400 when version prefix contains invalid characters", async () => {
       const storageName = uniqueId("prefix-invalid");
       const files = [{ path: "test.txt", hash: "0".repeat(64), size: 100 }];

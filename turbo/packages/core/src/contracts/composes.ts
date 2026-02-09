@@ -8,21 +8,15 @@ const c = initContract();
 /**
  * Version query parameter schema for compose versions
  *
- * Handles jsonQuery edge case where hex strings like "846e3519"
- * are parsed as JavaScript scientific notation numbers (e.g., 846e3519 = Infinity).
- *
  * Accepts: "latest" tag or 8-64 hex character version hash
  */
-const composeVersionQuerySchema = z.preprocess(
-  (val) => (val === undefined || val === null ? undefined : String(val)),
-  z
-    .string()
-    .min(1, "Missing version query parameter")
-    .regex(
-      /^[a-f0-9]{8,64}$|^latest$/i,
-      "Version must be 8-64 hex characters or 'latest'",
-    ),
-);
+const composeVersionQuerySchema = z
+  .string()
+  .min(1, "Missing version query parameter")
+  .regex(
+    /^[a-f0-9]{8,64}$|^latest$/i,
+    "Version must be 8-64 hex characters or 'latest'",
+  );
 
 /**
  * Agent name validation schema
