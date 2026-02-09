@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.17.0](https://github.com/vm0-ai/vm0/compare/web-v12.16.0...web-v12.17.0) (2026-02-09)
+
+
+### Features
+
+* **web:** split axiom token into scoped tokens for least-privilege access ([#2578](https://github.com/vm0-ai/vm0/issues/2578)) ([bb8eded](https://github.com/vm0-ai/vm0/commit/bb8ededd238e504cf9ccf79867205d115259aec2)), closes [#2564](https://github.com/vm0-ai/vm0/issues/2564)
+
 ## [12.16.0](https://github.com/vm0-ai/vm0/compare/web-v12.15.0...web-v12.16.0) (2026-02-09)
 
 

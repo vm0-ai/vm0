@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.27.0](https://github.com/vm0-ai/vm0/compare/cli-v9.26.0...cli-v9.27.0) (2026-02-09)
+
+
+### Features
+
+* **cli:** add dashboard command with guided help ([#2574](https://github.com/vm0-ai/vm0/issues/2574)) ([4e1d37a](https://github.com/vm0-ai/vm0/commit/4e1d37ad35046bb8d4cfbcec3e7028415e2339e5))
+
 ## [9.26.0](https://github.com/vm0-ai/vm0/compare/cli-v9.25.0...cli-v9.26.0) (2026-02-09)
 
 
