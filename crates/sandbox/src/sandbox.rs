@@ -1,10 +1,12 @@
+use std::any::Any;
+
 use async_trait::async_trait;
 
 use crate::error::Result;
 use crate::types::{ExecRequest, ExecResult, ProcessExit, SpawnHandle};
 
 #[async_trait]
-pub trait Sandbox: Send + Sync {
+pub trait Sandbox: Send + Sync + Any {
     async fn start(&mut self) -> Result<()>;
     async fn exec(&self, request: &ExecRequest<'_>) -> Result<ExecResult>;
     async fn write_file(&self, path: &str, content: &[u8]) -> Result<()>;

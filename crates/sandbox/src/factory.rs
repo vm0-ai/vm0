@@ -8,5 +8,5 @@ use crate::sandbox::Sandbox;
 pub trait SandboxFactory: Send + Sync {
     fn name(&self) -> &str;
     async fn create(&self, config: SandboxConfig) -> Result<Box<dyn Sandbox>>;
-    fn is_available(&self) -> bool;
+    async fn destroy(&self, sandbox: Box<dyn Sandbox>);
 }

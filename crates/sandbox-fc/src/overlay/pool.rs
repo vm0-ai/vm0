@@ -33,7 +33,7 @@ pub trait OverlayCreator: Send + Sync {
     async fn create(&self, path: &Path) -> Result<()>;
 }
 
-/// Default creator: sparse file + `mkfs.ext4`.
+/// Fresh-boot creator: sparse file + `mkfs.ext4`.
 pub struct Ext4Creator;
 
 #[async_trait]
@@ -61,6 +61,41 @@ impl OverlayCreator for Ext4Creator {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(OverlayError::FileCreation(format!(
                 "mkfs.ext4 failed: {}",
+                stderr.trim()
+            )));
+        }
+
+        Ok(())
+    }
+}
+
+/// Snapshot creator: sparse-copies the golden overlay so the VM resumes
+/// with the disk state captured in the snapshot.
+pub struct SnapshotCopyCreator {
+    source: PathBuf,
+}
+
+impl SnapshotCopyCreator {
+    pub fn new(source: PathBuf) -> Self {
+        Self { source }
+    }
+}
+
+#[async_trait]
+impl OverlayCreator for SnapshotCopyCreator {
+    async fn create(&self, path: &Path) -> Result<()> {
+        let output = tokio::process::Command::new("cp")
+            .arg("--sparse=always")
+            .arg(&self.source)
+            .arg(path)
+            .output()
+            .await
+            .map_err(|e| OverlayError::FileCreation(format!("cp: {e}")))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(OverlayError::FileCreation(format!(
+                "cp failed: {}",
                 stderr.trim()
             )));
         }
@@ -249,6 +284,16 @@ impl OverlayPool {
         Ok(path)
     }
 
+    /// Release an overlay file back to the pool by deleting it.
+    ///
+    /// Unlike network namespaces, overlay files are not reusable — each VM
+    /// writes unique data. This simply removes the file from disk.
+    pub async fn release(&mut self, path: PathBuf) {
+        if let Err(e) = tokio::fs::remove_file(&path).await {
+            warn!(path = %path.display(), error = %e, "failed to delete overlay");
+        }
+    }
+
     /// Delete all queued overlay files and cancel in-flight creations.
     pub async fn cleanup(&mut self) {
         if !self.active {
@@ -282,6 +327,7 @@ impl OverlayPool {
     }
 
     /// Number of overlay files ready for immediate use.
+    #[cfg(test)]
     pub fn available_count(&self) -> usize {
         self.queue.len()
     }
@@ -461,7 +507,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn acquire_on_demand_when_exhausted() {
+    async fn acquire_when_queue_exhausted() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let mut pool = OverlayPool::create(test_config(tmp.path(), 1, 1))
             .await
@@ -470,9 +516,10 @@ mod tests {
         let _first = pool.acquire().await.expect("acquire pooled");
         assert_eq!(pool.available_count(), 0);
 
-        // This should create on-demand.
-        let on_demand = pool.acquire().await.expect("acquire on-demand");
-        assert!(on_demand.exists());
+        // Queue is empty but maybe_replenish spawned a pending task,
+        // so the second acquire comes from Tier 2 (pending).
+        let second = pool.acquire().await.expect("acquire from pending");
+        assert!(second.exists());
 
         pool.cleanup().await;
     }

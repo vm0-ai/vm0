@@ -574,6 +574,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "thiserror 2.0.18",
+ "uuid",
 ]
 
 [[package]]
@@ -581,7 +582,9 @@ name = "sandbox-fc"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "nix",
  "sandbox",
+ "serde_json",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",

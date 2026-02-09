@@ -5,9 +5,11 @@ edition = "2024"
 
 [dependencies]
 async-trait.workspace = true
+nix = { workspace = true, features = ["user"] }
 sandbox.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["process", "fs", "rt", "macros", "sync"] }
+tokio = { workspace = true, features = ["process", "fs", "rt", "macros", "sync", "io-util"] }
 tracing.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 vsock-host.workspace = true

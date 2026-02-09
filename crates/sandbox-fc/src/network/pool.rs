@@ -76,10 +76,6 @@ pub struct PooledNetns {
     pub name: String,
     /// Host-side veth device name (e.g. `vm0-ve-00-00`).
     pub host_device: String,
-    /// Host-side veth IP (e.g. `10.200.0.1`).
-    pub host_ip: String,
-    /// Namespace-side veth IP (e.g. `10.200.0.2`).
-    pub peer_ip: String,
 }
 
 /// Configuration for creating a [`NetnsPool`].
@@ -295,8 +291,6 @@ pub struct NetnsPool {
     pool_index: u32,
     proxy_port: Option<u16>,
     default_iface: String,
-    /// Number of namespaces currently acquired (out of the pool).
-    acquired_count: usize,
 }
 
 impl NetnsPool {
@@ -334,7 +328,6 @@ impl NetnsPool {
             pool_index: config.index,
             proxy_port: config.proxy_port,
             default_iface,
-            acquired_count: 0,
         };
 
         // Create all namespaces in parallel via JoinSet
@@ -377,7 +370,6 @@ impl NetnsPool {
     /// Acquire a namespace from the pool, or create one on-demand if empty.
     pub async fn acquire(&mut self) -> Result<PooledNetns> {
         if let Some(pooled) = self.queue.pop_front() {
-            self.acquired_count += 1;
             info!(
                 name = %pooled.name,
                 remaining = self.queue.len(),
@@ -401,7 +393,6 @@ impl NetnsPool {
             self.default_iface.clone(),
         )
         .await?;
-        self.acquired_count += 1;
         Ok(ns)
     }
 
@@ -409,11 +400,6 @@ impl NetnsPool {
     pub async fn release(&mut self, ns: PooledNetns) -> Result<()> {
         if !self.active {
             delete_namespace_resources(&ns.name, &ns.host_device).await;
-            debug_assert!(
-                self.acquired_count > 0,
-                "release called without matching acquire"
-            );
-            self.acquired_count -= 1;
             return Ok(());
         }
 
@@ -421,11 +407,6 @@ impl NetnsPool {
             info!(name = %ns.name, "namespace already in pool, ignoring");
             return Ok(());
         }
-        debug_assert!(
-            self.acquired_count > 0,
-            "release called without matching acquire"
-        );
-        self.acquired_count -= 1;
         info!(
             name = %ns.name,
             available = self.queue.len() + 1,
@@ -445,13 +426,6 @@ impl NetnsPool {
             return Ok(());
         }
         self.active = false;
-
-        if self.acquired_count > 0 {
-            error!(
-                count = self.acquired_count,
-                "namespaces still acquired at cleanup, they will become orphans"
-            );
-        }
 
         let count = self.queue.len();
         info!(count, "cleaning up namespace pool");
@@ -474,10 +448,16 @@ impl NetnsPool {
         info!("namespace pool cleanup complete");
         Ok(())
     }
+}
 
-    /// Number of namespaces available in the queue.
-    pub fn available_count(&self) -> usize {
-        self.queue.len()
+impl Drop for NetnsPool {
+    fn drop(&mut self) {
+        if self.active {
+            warn!(
+                queued = self.queue.len(),
+                "NetnsPool dropped without calling cleanup()"
+            );
+        }
     }
 }
 
@@ -526,8 +506,6 @@ async fn create_single_namespace(
             Ok(PooledNetns {
                 name: ns_name,
                 host_device,
-                host_ip,
-                peer_ip,
             })
         }
         Err(e) => {
