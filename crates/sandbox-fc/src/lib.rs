@@ -1,3 +1,4 @@
+mod api;
 mod command;
 mod config;
 mod factory;

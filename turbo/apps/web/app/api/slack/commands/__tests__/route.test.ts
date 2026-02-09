@@ -247,6 +247,35 @@ describe("POST /api/slack/commands", () => {
     });
   });
 
+  describe("Agent Compose Command", () => {
+    it("opens compose modal", async () => {
+      // Mock Slack views.open API
+      server.use(
+        http.post("https://slack.com/api/views.open", () => {
+          return HttpResponse.json({ ok: true, view: { id: "V123" } });
+        }),
+      );
+
+      const { installation, userLink } = await context.createSlackInstallation({
+        withUserLink: true,
+      });
+
+      const body = buildCommandBody(
+        "agent compose",
+        installation.slackWorkspaceId,
+        userLink.slackUserId,
+      );
+      const request = createSignedSlackRequest(body);
+
+      const response = await POST(request);
+
+      // When opening a modal, Slack expects empty 200 response
+      expect(response.status).toBe(200);
+      const text = await response.text();
+      expect(text).toBe("");
+    });
+  });
+
   describe("Agent Link Command", () => {
     it("opens modal when user has no binding", async () => {
       // Mock Slack views.open API
@@ -277,6 +306,29 @@ describe("POST /api/slack/commands", () => {
       expect(response.status).toBe(200);
       const text = await response.text();
       expect(text).toBe("");
+    });
+
+    it("returns error when user has no agents", async () => {
+      const { installation, userLink } = await context.createSlackInstallation({
+        withUserLink: true,
+      });
+      // Don't create any agent composes
+
+      const body = buildCommandBody(
+        "agent link",
+        installation.slackWorkspaceId,
+        userLink.slackUserId,
+      );
+      const request = createSignedSlackRequest(body);
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.response_type).toBe("ephemeral");
+      const blockStr = JSON.stringify(data.blocks);
+      expect(blockStr).toContain("don't have any agents");
+      expect(blockStr).toContain("/vm0 agent compose");
     });
 
     it("returns error with agent name when user already has a binding", async () => {

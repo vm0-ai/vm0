@@ -110,6 +110,250 @@ describe("run list command", () => {
     });
   });
 
+  describe("filtering options", () => {
+    it("should pass --status filter to API", async () => {
+      let capturedUrl: URL | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs", ({ request }) => {
+          capturedUrl = new URL(request.url);
+          return HttpResponse.json({ runs: [] });
+        }),
+      );
+
+      await listCommand.parseAsync(["node", "cli", "--status", "completed"]);
+
+      expect(capturedUrl?.searchParams.get("status")).toBe("completed");
+    });
+
+    it("should pass multiple statuses as comma-separated", async () => {
+      let capturedUrl: URL | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs", ({ request }) => {
+          capturedUrl = new URL(request.url);
+          return HttpResponse.json({ runs: [] });
+        }),
+      );
+
+      await listCommand.parseAsync([
+        "node",
+        "cli",
+        "--status",
+        "completed,failed",
+      ]);
+
+      expect(capturedUrl?.searchParams.get("status")).toBe("completed,failed");
+    });
+
+    it("should pass all statuses when --all is used", async () => {
+      let capturedUrl: URL | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs", ({ request }) => {
+          capturedUrl = new URL(request.url);
+          return HttpResponse.json({ runs: [] });
+        }),
+      );
+
+      await listCommand.parseAsync(["node", "cli", "--all"]);
+
+      expect(capturedUrl?.searchParams.get("status")).toBe(
+        "pending,running,completed,failed,timeout",
+      );
+    });
+
+    it("should pass --agent filter to API", async () => {
+      let capturedUrl: URL | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs", ({ request }) => {
+          capturedUrl = new URL(request.url);
+          return HttpResponse.json({ runs: [] });
+        }),
+      );
+
+      await listCommand.parseAsync(["node", "cli", "--agent", "my-agent"]);
+
+      expect(capturedUrl?.searchParams.get("agent")).toBe("my-agent");
+    });
+
+    it("should pass --limit to API", async () => {
+      let capturedUrl: URL | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs", ({ request }) => {
+          capturedUrl = new URL(request.url);
+          return HttpResponse.json({ runs: [] });
+        }),
+      );
+
+      await listCommand.parseAsync(["node", "cli", "--limit", "10"]);
+
+      expect(capturedUrl?.searchParams.get("limit")).toBe("10");
+    });
+
+    it("should pass --since as ISO timestamp to API", async () => {
+      let capturedUrl: URL | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs", ({ request }) => {
+          capturedUrl = new URL(request.url);
+          return HttpResponse.json({ runs: [] });
+        }),
+      );
+
+      await listCommand.parseAsync(["node", "cli", "--since", "7d"]);
+
+      const since = capturedUrl?.searchParams.get("since");
+      expect(since).toBeTruthy();
+      // Should be a valid ISO timestamp
+      expect(new Date(since!).toISOString()).toBe(since);
+    });
+
+    it("should use all statuses implicitly when --since is used", async () => {
+      let capturedUrl: URL | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs", ({ request }) => {
+          capturedUrl = new URL(request.url);
+          return HttpResponse.json({ runs: [] });
+        }),
+      );
+
+      await listCommand.parseAsync(["node", "cli", "--since", "7d"]);
+
+      expect(capturedUrl?.searchParams.get("status")).toBe(
+        "pending,running,completed,failed,timeout",
+      );
+    });
+
+    it("should allow explicit --status to override --since default", async () => {
+      let capturedUrl: URL | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs", ({ request }) => {
+          capturedUrl = new URL(request.url);
+          return HttpResponse.json({ runs: [] });
+        }),
+      );
+
+      await listCommand.parseAsync([
+        "node",
+        "cli",
+        "--since",
+        "7d",
+        "--status",
+        "failed",
+      ]);
+
+      expect(capturedUrl?.searchParams.get("status")).toBe("failed");
+    });
+
+    it("should pass --until as ISO timestamp to API", async () => {
+      let capturedUrl: URL | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs", ({ request }) => {
+          capturedUrl = new URL(request.url);
+          return HttpResponse.json({ runs: [] });
+        }),
+      );
+
+      await listCommand.parseAsync(["node", "cli", "--until", "1h"]);
+
+      const until = capturedUrl?.searchParams.get("until");
+      expect(until).toBeTruthy();
+      // Should be a valid ISO timestamp
+      expect(new Date(until!).toISOString()).toBe(until);
+    });
+
+    it("should show 'No runs found matching filters' when filters used and no results", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs", () => {
+          return HttpResponse.json({ runs: [] });
+        }),
+      );
+
+      await listCommand.parseAsync(["node", "cli", "--status", "completed"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("No runs found matching filters");
+    });
+  });
+
+  describe("validation errors", () => {
+    it("should error when --all and --status are both specified", async () => {
+      await expect(async () => {
+        await listCommand.parseAsync([
+          "node",
+          "cli",
+          "--all",
+          "--status",
+          "running",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--all and --status are mutually exclusive"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should error on invalid status value", async () => {
+      await expect(async () => {
+        await listCommand.parseAsync(["node", "cli", "--status", "invalid"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining('Invalid status "invalid"'),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should error when --limit exceeds maximum", async () => {
+      await expect(async () => {
+        await listCommand.parseAsync(["node", "cli", "--limit", "200"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--limit must be between 1 and 100"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should error when --limit is zero or negative", async () => {
+      await expect(async () => {
+        await listCommand.parseAsync(["node", "cli", "--limit", "0"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--limit must be between 1 and 100"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should error when --since is after --until", async () => {
+      await expect(async () => {
+        await listCommand.parseAsync([
+          "node",
+          "cli",
+          "--since",
+          "1d",
+          "--until",
+          "7d",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--since must be before --until"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should error on invalid time format", async () => {
+      await expect(async () => {
+        await listCommand.parseAsync(["node", "cli", "--since", "invalid"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid --since format"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+  });
+
   describe("error handling", () => {
     it("should handle authentication error", async () => {
       server.use(

@@ -542,7 +542,7 @@ describe("POST /api/slack/interactive", () => {
     });
   });
 
-  describe("View Submission - GitHub URL Compose", () => {
+  describe("View Submission - Agent Compose Modal", () => {
     it("triggers compose job when GitHub URL is submitted", async () => {
       const { userLink, installation } = await givenLinkedSlackUser();
 
@@ -556,7 +556,7 @@ describe("POST /api/slack/interactive", () => {
         team: { id: installation.slackWorkspaceId, domain: "test" },
         view: {
           id: "V123",
-          callback_id: "agent_add_modal",
+          callback_id: "agent_compose_modal",
           state: {
             values: {
               github_url_input: {
@@ -614,7 +614,7 @@ describe("POST /api/slack/interactive", () => {
         team: { id: installation.slackWorkspaceId, domain: "test" },
         view: {
           id: "V123",
-          callback_id: "agent_add_modal",
+          callback_id: "agent_compose_modal",
           state: {
             values: {
               github_url_input: {
@@ -638,7 +638,39 @@ describe("POST /api/slack/interactive", () => {
       expect(data.errors.github_url_input).toContain("valid GitHub URL");
     });
 
-    it("existing agent selection still works alongside GitHub URL mode", async () => {
+    it("returns error when GitHub URL is empty", async () => {
+      const body = buildInteractiveBody({
+        type: "view_submission",
+        user: { id: "U123", username: "testuser", team_id: "T123" },
+        team: { id: "T123", domain: "test" },
+        view: {
+          id: "V123",
+          callback_id: "agent_compose_modal",
+          state: {
+            values: {
+              github_url_input: {
+                github_url_value: {
+                  type: "plain_text_input",
+                  value: "",
+                },
+              },
+            },
+          },
+        },
+      });
+      const request = createSignedSlackRequest(body);
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.response_action).toBe("errors");
+      expect(data.errors.github_url_input).toContain("enter a GitHub URL");
+    });
+  });
+
+  describe("View Submission - Agent Add Modal (existing agent)", () => {
+    it("existing agent selection works correctly", async () => {
       const { userLink, installation } = await givenLinkedSlackUser();
       mockClerk({ userId: userLink.vm0UserId });
       const { composeId } = await createTestCompose("normal-agent");

@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.6.0](https://github.com/vm0-ai/vm0/compare/core-v8.5.1...core-v8.6.0) (2026-02-09)
+
+
+### Features
+
+* **cli:** add filtering options to run list command ([#2646](https://github.com/vm0-ai/vm0/issues/2646)) ([73c3509](https://github.com/vm0-ai/vm0/commit/73c3509380b5038eb5b97df6ab50106d41ea7358))
+
 ## [8.5.1](https://github.com/vm0-ai/vm0/compare/core-v8.5.0...core-v8.5.1) (2026-02-09)
 
 

@@ -5,7 +5,6 @@ import {
   runsCancelContract,
   type RunsListResponse,
   type CancelRunResponse,
-  type RunStatus,
 } from "@vm0/core";
 import { getClientConfig, handleError } from "../core/client-factory";
 import type { CreateRunResponse, GetEventsResponse } from "../core/types";
@@ -70,10 +69,13 @@ export async function getEvents(
 }
 
 /**
- * List runs with optional status filter
+ * List runs with optional filters
  */
 export async function listRuns(params?: {
-  status?: RunStatus;
+  status?: string; // comma-separated: "pending,running"
+  agent?: string;
+  since?: string; // ISO timestamp
+  until?: string; // ISO timestamp
   limit?: number;
 }): Promise<RunsListResponse> {
   const config = await getClientConfig();
@@ -82,6 +84,9 @@ export async function listRuns(params?: {
   const result = await client.list({
     query: {
       status: params?.status,
+      agent: params?.agent,
+      since: params?.since,
+      until: params?.until,
       limit: params?.limit ?? 50,
     },
   });

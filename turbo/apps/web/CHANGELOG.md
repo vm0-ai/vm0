@@ -1,5 +1,26 @@
 # Changelog
 
+## [12.21.0](https://github.com/vm0-ai/vm0/compare/web-v12.20.0...web-v12.21.0) (2026-02-09)
+
+
+### Features
+
+* **cli:** add filtering options to run list command ([#2646](https://github.com/vm0-ai/vm0/issues/2646)) ([73c3509](https://github.com/vm0-ai/vm0/commit/73c3509380b5038eb5b97df6ab50106d41ea7358))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.6.0
+
+## [12.20.0](https://github.com/vm0-ai/vm0/compare/web-v12.19.1...web-v12.20.0) (2026-02-09)
+
+
+### Features
+
+* **slack:** extract /vm0 agent compose as standalone command ([#2638](https://github.com/vm0-ai/vm0/issues/2638)) ([bb0ee22](https://github.com/vm0-ai/vm0/commit/bb0ee22df4d72a0e4cd09c06f51f975c56eefc12))
+
 ## [12.19.1](https://github.com/vm0-ai/vm0/compare/web-v12.19.0...web-v12.19.1) (2026-02-09)
 
 

@@ -153,18 +153,18 @@ export async function runAuthFlow(
 
   callbacks?.onInitiating?.();
 
-  const deviceAuth = await requestDeviceCode(targetApiUrl);
-
-  const verificationUrl = `${targetApiUrl}${deviceAuth.verification_path}`;
-  const expiresInMinutes = Math.floor(deviceAuth.expires_in / 60);
-
-  callbacks?.onDeviceCodeReady?.(
-    verificationUrl,
-    deviceAuth.user_code,
-    expiresInMinutes,
-  );
-
   try {
+    const deviceAuth = await requestDeviceCode(targetApiUrl);
+
+    const verificationUrl = `${targetApiUrl}${deviceAuth.verification_path}`;
+    const expiresInMinutes = Math.floor(deviceAuth.expires_in / 60);
+
+    callbacks?.onDeviceCodeReady?.(
+      verificationUrl,
+      deviceAuth.user_code,
+      expiresInMinutes,
+    );
+
     const accessToken = await pollForToken(targetApiUrl, deviceAuth, callbacks);
 
     await saveConfig({

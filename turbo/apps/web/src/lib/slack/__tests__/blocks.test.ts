@@ -41,12 +41,12 @@ describe("buildAgentAddModal", () => {
     expect(modalWithoutSelection.callback_id).toBe("agent_add_modal");
     expect(modalWithoutSelection.title).toEqual({
       type: "plain_text",
-      text: "Add Agent",
+      text: "Link Agent",
     });
     // Submit button is always shown (required for input blocks)
     expect(modalWithoutSelection.submit).toEqual({
       type: "plain_text",
-      text: "Add",
+      text: "Link",
     });
     expect(modalWithoutSelection.close).toEqual({
       type: "plain_text",
@@ -60,7 +60,7 @@ describe("buildAgentAddModal", () => {
     ) as ModalView;
     expect(modalWithSelection.submit).toEqual({
       type: "plain_text",
-      text: "Add",
+      text: "Link",
     });
   });
 

@@ -1,5 +1,31 @@
 # Changelog
 
+## [9.29.1](https://github.com/vm0-ai/vm0/compare/cli-v9.29.0...cli-v9.29.1) (2026-02-09)
+
+
+### Bug Fixes
+
+* **cli:** display error.cause for fetch failures and fix onboard auth error handling ([#2669](https://github.com/vm0-ai/vm0/issues/2669)) ([658e998](https://github.com/vm0-ai/vm0/commit/658e9985705229cd8500f90c2183f1af8923cad9))
+
+## [9.29.0](https://github.com/vm0-ai/vm0/compare/cli-v9.28.0...cli-v9.29.0) (2026-02-09)
+
+
+### Features
+
+* **cli:** add filtering options to run list command ([#2646](https://github.com/vm0-ai/vm0/issues/2646)) ([73c3509](https://github.com/vm0-ai/vm0/commit/73c3509380b5038eb5b97df6ab50106d41ea7358))
+
+
+### Bug Fixes
+
+* **cli:** add error handling to login command and fix sentry filter ([#2650](https://github.com/vm0-ai/vm0/issues/2650)) ([8145fab](https://github.com/vm0-ai/vm0/commit/8145fab77f22cec51dd8b69ec4508d33f440b42c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.6.0
+
 ## [9.28.0](https://github.com/vm0-ai/vm0/compare/cli-v9.27.2...cli-v9.28.0) (2026-02-09)
 
 
