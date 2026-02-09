@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { initClient } from "@ts-rest/core";
 import { composeJobsMainContract, composeJobsByIdContract } from "@vm0/core";
 import { getClientConfig } from "../../lib/api/core/client-factory";
+import { withErrorHandler } from "../../lib/command";
 
 /**
  * Sleep for specified milliseconds
@@ -143,19 +144,19 @@ export const composeCommand = new Command()
   )
   .option("--json", "Output result as JSON")
   .action(
-    async (
-      githubUrl: string,
-      options: {
-        overwrite: boolean;
-        interval: number;
-        timeout: number;
-        json?: boolean;
-      },
-    ) => {
-      const intervalMs = options.interval * 1000;
-      const timeoutMs = options.timeout * 1000;
+    withErrorHandler(
+      async (
+        githubUrl: string,
+        options: {
+          overwrite: boolean;
+          interval: number;
+          timeout: number;
+          json?: boolean;
+        },
+      ) => {
+        const intervalMs = options.interval * 1000;
+        const timeoutMs = options.timeout * 1000;
 
-      try {
         // Create job
         if (!options.json) {
           console.log("Creating compose job...");
@@ -199,23 +200,8 @@ export const composeCommand = new Command()
         }
 
         process.exit(finalJob.status === "completed" ? 0 : 1);
-      } catch (error) {
-        if (options.json) {
-          console.log(
-            JSON.stringify({
-              error: error instanceof Error ? error.message : String(error),
-            }),
-          );
-        } else {
-          console.error(
-            chalk.red(
-              `✗ ${error instanceof Error ? error.message : String(error)}`,
-            ),
-          );
-        }
-        process.exit(1);
-      }
-    },
+      },
+    ),
   );
 
 /**

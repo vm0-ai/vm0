@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { readStorageConfig } from "../../lib/storage/storage-utils";
 import { directUpload } from "../../lib/storage/direct-upload";
 import { formatBytes } from "../../lib/utils/file-utils";
+import { withErrorHandler } from "../../lib/command";
 
 export const pushCommand = new Command()
   .name("push")
@@ -11,8 +12,8 @@ export const pushCommand = new Command()
     "-f, --force",
     "Force upload even if content unchanged (recreate archive)",
   )
-  .action(async (options: { force?: boolean }) => {
-    try {
+  .action(
+    withErrorHandler(async (options: { force?: boolean }) => {
       const cwd = process.cwd();
 
       // Read storage config
@@ -46,15 +47,5 @@ export const pushCommand = new Command()
       console.log(chalk.dim(`  Version: ${shortVersion}`));
       console.log(chalk.dim(`  Files: ${result.fileCount.toLocaleString()}`));
       console.log(chalk.dim(`  Size: ${formatBytes(result.size)}`));
-    } catch (error) {
-      console.error(chalk.red("✗ Push failed"));
-      if (error instanceof Error) {
-        if (error.message.includes("Not authenticated")) {
-          console.error(chalk.dim("  Run: vm0 auth login"));
-        } else {
-          console.error(chalk.dim(`  ${error.message}`));
-        }
-      }
-      process.exit(1);
-    }
-  });
+    }),
+  );

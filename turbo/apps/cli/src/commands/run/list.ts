@@ -4,6 +4,7 @@ import { listRuns } from "../../lib/api";
 import { formatRelativeTime } from "../../lib/utils/file-utils";
 import { parseTime } from "../../lib/utils/time-parser";
 import { ALL_RUN_STATUSES, type RunStatus, type RunListItem } from "@vm0/core";
+import { withErrorHandler } from "../../lib/command";
 
 /** Standard UUID string length (with hyphens) */
 const UUID_LENGTH = 36;
@@ -159,8 +160,8 @@ export const listCommand = new Command()
   .option("--since <date>", "Start time (ISO format or relative: 1h, 7d, 30d)")
   .option("--until <date>", "End time (defaults to now)")
   .option("--limit <n>", "Maximum number of results (default: 50, max: 100)")
-  .action(async (options: ListOptions) => {
-    try {
+  .action(
+    withErrorHandler(async (options: ListOptions) => {
       // Validate mutual exclusion
       if (options.all && options.status) {
         console.error(
@@ -208,15 +209,5 @@ export const listCommand = new Command()
       }
 
       displayRuns(runs);
-    } catch (error) {
-      console.error(chalk.red("✗ Failed to list runs"));
-      if (error instanceof Error) {
-        if (error.message.includes("Not authenticated")) {
-          console.error(chalk.dim("  Run: vm0 auth login"));
-        } else {
-          console.error(chalk.dim(`  ${error.message}`));
-        }
-      }
-      process.exit(1);
-    }
-  });
+    }),
+  );

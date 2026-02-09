@@ -177,7 +177,7 @@ describe("setup-claude command", () => {
       ).rejects.toThrow("process.exit called");
 
       expect(console.error).toHaveBeenCalledWith(
-        expect.stringContaining("Claude CLI"),
+        expect.stringContaining("spawn ENOENT"),
       );
     });
   });

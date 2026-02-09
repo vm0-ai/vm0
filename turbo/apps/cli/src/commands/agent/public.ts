@@ -6,13 +6,14 @@ import {
   httpPost,
   type ApiError,
 } from "../../lib/api";
+import { withErrorHandler } from "../../lib/command";
 
 export const publicCommand = new Command()
   .name("experimental-public")
   .description("Make an agent public (accessible to all authenticated users)")
   .argument("<name>", "Agent name")
-  .action(async (name: string) => {
-    try {
+  .action(
+    withErrorHandler(async (name: string) => {
       // Resolve compose by name
       const compose = await getComposeByName(name);
       if (!compose) {
@@ -47,11 +48,5 @@ export const publicCommand = new Command()
           `  vm0 run ${fullName} --experimental-shared-agent "your prompt"`,
         ),
       );
-    } catch (error) {
-      console.error(chalk.red("✗ Failed to make agent public"));
-      if (error instanceof Error) {
-        console.error(chalk.dim(`  ${error.message}`));
-      }
-      process.exit(1);
-    }
-  });
+    }),
+  );

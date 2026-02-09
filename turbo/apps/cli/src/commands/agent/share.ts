@@ -6,14 +6,15 @@ import {
   httpPost,
   type ApiError,
 } from "../../lib/api";
+import { withErrorHandler } from "../../lib/command";
 
 export const shareCommand = new Command()
   .name("experimental-share")
   .description("Share an agent with a user by email")
   .argument("<name>", "Agent name")
   .requiredOption("--email <email>", "Email address to share with")
-  .action(async (name: string, options: { email: string }) => {
-    try {
+  .action(
+    withErrorHandler(async (name: string, options: { email: string }) => {
       // Resolve compose by name
       const compose = await getComposeByName(name);
       if (!compose) {
@@ -54,11 +55,5 @@ export const shareCommand = new Command()
           `  vm0 run ${fullName} --experimental-shared-agent "your prompt"`,
         ),
       );
-    } catch (error) {
-      console.error(chalk.red("✗ Failed to share agent"));
-      if (error instanceof Error) {
-        console.error(chalk.dim(`  ${error.message}`));
-      }
-      process.exit(1);
-    }
-  });
+    }),
+  );

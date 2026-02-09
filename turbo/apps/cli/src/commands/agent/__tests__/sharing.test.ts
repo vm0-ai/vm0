@@ -388,7 +388,7 @@ describe("Agent Sharing Commands", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to list permissions"),
+        expect.stringContaining("Not authenticated"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

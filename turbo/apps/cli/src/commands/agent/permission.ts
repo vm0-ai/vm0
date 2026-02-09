@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { getComposeByName, httpGet, type ApiError } from "../../lib/api";
+import { withErrorHandler } from "../../lib/command";
 import { formatRelativeTime } from "../../lib/utils/file-utils";
 
 interface Permission {
@@ -20,8 +21,8 @@ export const permissionCommand = new Command()
   .name("experimental-permission")
   .description("List all permissions for an agent")
   .argument("<name>", "Agent name")
-  .action(async (name: string) => {
-    try {
+  .action(
+    withErrorHandler(async (name: string) => {
       // Resolve compose by name
       const compose = await getComposeByName(name);
       if (!compose) {
@@ -66,11 +67,5 @@ export const permissionCommand = new Command()
         const granted = formatRelativeTime(p.createdAt);
         console.log(`${type}  ${email}  ${permission}  ${granted}`);
       }
-    } catch (error) {
-      console.error(chalk.red("✗ Failed to list permissions"));
-      if (error instanceof Error) {
-        console.error(chalk.dim(`  ${error.message}`));
-      }
-      process.exit(1);
-    }
-  });
+    }),
+  );

@@ -114,7 +114,7 @@ describe("agent list command", () => {
 
       expect(mockExit).toHaveBeenCalledWith(1);
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to list"),
+        expect.stringContaining("Not authenticated"),
       );
     });
 
@@ -134,7 +134,7 @@ describe("agent list command", () => {
 
       expect(mockExit).toHaveBeenCalledWith(1);
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to list"),
+        expect.stringContaining("Internal server error"),
       );
     });
   });

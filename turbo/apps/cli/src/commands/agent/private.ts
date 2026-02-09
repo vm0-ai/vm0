@@ -1,13 +1,14 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { getComposeByName, httpDelete, type ApiError } from "../../lib/api";
+import { withErrorHandler } from "../../lib/command";
 
 export const privateCommand = new Command()
   .name("experimental-private")
   .description("Make an agent private (remove public access)")
   .argument("<name>", "Agent name")
-  .action(async (name: string) => {
-    try {
+  .action(
+    withErrorHandler(async (name: string) => {
       // Resolve compose by name
       const compose = await getComposeByName(name);
       if (!compose) {
@@ -30,11 +31,5 @@ export const privateCommand = new Command()
       }
 
       console.log(chalk.green(`✓ Agent "${name}" is now private`));
-    } catch (error) {
-      console.error(chalk.red("✗ Failed to make agent private"));
-      if (error instanceof Error) {
-        console.error(chalk.dim(`  ${error.message}`));
-      }
-      process.exit(1);
-    }
-  });
+    }),
+  );

@@ -249,10 +249,10 @@ describe("schedule list command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to list schedules"),
+        expect.stringContaining("Not authenticated"),
       );
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 auth login"),
+        expect.stringContaining("Run: vm0 auth login"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -277,7 +277,7 @@ describe("schedule list command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to list schedules"),
+        expect.stringContaining("Internal server error"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

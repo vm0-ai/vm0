@@ -21,7 +21,7 @@ export class ApiRequestError extends Error {
 export async function getHeaders(): Promise<Record<string, string>> {
   const token = await getToken();
   if (!token) {
-    throw new Error("Not authenticated. Run: vm0 auth login");
+    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
   }
 
   // Note: Don't set Content-Type here - ts-rest automatically adds it for requests with body.
@@ -66,33 +66,14 @@ export async function getClientConfig(): Promise<{
 /**
  * Handle API error responses and throw appropriate error.
  *
- * By default, 401/403 responses are mapped to user-friendly messages.
- * Pass `useServerMessage: true` to preserve the original server error
- * message (e.g., for domain-specific 403 like "slug is reserved").
+ * Parses the server error response and throws an ApiRequestError
+ * with the server's message and code. Falls back to defaultMessage
+ * if the server response doesn't include an error message.
  */
 export function handleError(
   result: { status: number; body: unknown },
   defaultMessage: string,
-  options?: { useServerMessage?: boolean },
 ): never {
-  if (!options?.useServerMessage) {
-    if (result.status === 401) {
-      throw new ApiRequestError(
-        "Not authenticated. Run: vm0 auth login",
-        "UNAUTHORIZED",
-        401,
-      );
-    }
-
-    if (result.status === 403) {
-      throw new ApiRequestError(
-        "An unexpected network issue occurred",
-        "FORBIDDEN",
-        403,
-      );
-    }
-  }
-
   const errorBody = result.body as ApiErrorResponse;
   const message = errorBody.error?.message || defaultMessage;
   const code = errorBody.error?.code || "UNKNOWN";
