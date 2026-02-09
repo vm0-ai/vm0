@@ -51,6 +51,8 @@ fn check_kvm(errors: &mut Vec<String>) {
     let kvm = Path::new("/dev/kvm");
     if !kvm.exists() {
         errors.push("/dev/kvm not found (KVM not available)".to_string());
+    } else if let Err(e) = std::fs::File::options().read(true).write(true).open(kvm) {
+        errors.push(format!("/dev/kvm not accessible: {e}"));
     }
 }
 
