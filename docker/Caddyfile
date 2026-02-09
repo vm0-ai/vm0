@@ -1,0 +1,27 @@
+{$DOMAIN:localhost} {
+	# API routes
+	handle /api/* {
+		reverse_proxy web:3000
+	}
+
+	# Public API
+	handle /v1/* {
+		reverse_proxy web:3000
+	}
+
+	# Auth
+	handle /sign-in* {
+		reverse_proxy web:3000
+	}
+	handle /sign-up* {
+		reverse_proxy web:3000
+	}
+	handle /cli-auth* {
+		reverse_proxy web:3000
+	}
+
+	# Default
+	handle {
+		reverse_proxy web:3000
+	}
+}

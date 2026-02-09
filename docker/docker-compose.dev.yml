@@ -1,0 +1,16 @@
+# VM0 Dev (Build from Source)
+# Usage: docker compose -f docker-compose.dev.yml up -d --build
+
+include:
+  - docker-compose.base.yml
+
+services:
+  web:
+    extends:
+      file: docker-compose.web-base.yml
+      service: web-base
+    image: vm0-web:dev
+    pull_policy: build
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.web
