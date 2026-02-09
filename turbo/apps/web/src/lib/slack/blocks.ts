@@ -273,11 +273,11 @@ export function buildAgentAddModal(
     private_metadata: JSON.stringify({ channelId }),
     title: {
       type: "plain_text",
-      text: "Add Agent",
+      text: "Link Agent",
     },
     submit: {
       type: "plain_text",
-      text: "Add",
+      text: "Link",
     },
     close: {
       type: "plain_text",
