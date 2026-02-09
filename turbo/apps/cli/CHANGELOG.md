@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.28.0](https://github.com/vm0-ai/vm0/compare/cli-v9.27.2...cli-v9.28.0) (2026-02-09)
+
+
+### Features
+
+* **cli:** enhance vm0 info command with debug-focused output ([#2643](https://github.com/vm0-ai/vm0/issues/2643)) ([cc9ed3c](https://github.com/vm0-ai/vm0/commit/cc9ed3c25fb7f0cc18cadf37b7944fe2720f5808)), closes [#2639](https://github.com/vm0-ai/vm0/issues/2639)
+
 ## [9.27.2](https://github.com/vm0-ai/vm0/compare/cli-v9.27.1...cli-v9.27.2) (2026-02-09)
 
 
