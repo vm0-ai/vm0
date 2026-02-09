@@ -806,9 +806,9 @@ describe("POST /api/slack/interactive", () => {
 
       // Call twice
       await POST(buildRequest());
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await flushAfterCallbacks();
       await POST(buildRequest());
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await flushAfterCallbacks();
 
       // Verify only one artifact storage exists with HEAD version
       const result = await findTestArtifactStorage(userLink.scopeId);

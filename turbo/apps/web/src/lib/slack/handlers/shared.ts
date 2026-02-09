@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import {
   createSlackClient,
   fetchThreadContext,
@@ -420,8 +420,13 @@ export async function ensureScopeAndArtifact(vm0UserId: string): Promise<void> {
         userId: vm0UserId,
         versionId,
       });
-    })().catch((err) => {
+    })().catch(async (err) => {
       log.error("Failed to create initial artifact version", { err });
+      // Clean up the headless storage so the next call can retry
+      await globalThis.services.db
+        .delete(storages)
+        .where(and(eq(storages.id, storageId), isNull(storages.headVersionId)))
+        .catch(() => {});
     }),
   );
 }
