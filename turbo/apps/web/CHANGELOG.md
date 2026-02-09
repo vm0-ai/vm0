@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.20.0](https://github.com/vm0-ai/vm0/compare/web-v12.19.1...web-v12.20.0) (2026-02-09)
+
+
+### Features
+
+* **slack:** extract /vm0 agent compose as standalone command ([#2638](https://github.com/vm0-ai/vm0/issues/2638)) ([bb0ee22](https://github.com/vm0-ai/vm0/commit/bb0ee22df4d72a0e4cd09c06f51f975c56eefc12))
+
 ## [12.19.1](https://github.com/vm0-ai/vm0/compare/web-v12.19.0...web-v12.19.1) (2026-02-09)
 
 
