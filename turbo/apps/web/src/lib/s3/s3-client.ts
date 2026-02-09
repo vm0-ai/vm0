@@ -266,6 +266,33 @@ export async function generatePresignedPutUrl(
 }
 
 /**
+ * Upload content directly to S3 (server-side).
+ * Use this instead of presigned URLs when uploading from the server itself.
+ *
+ * @param bucket - S3 bucket name
+ * @param key - S3 object key
+ * @param body - Content to upload
+ * @param contentType - MIME type of the content
+ */
+export async function putS3Object(
+  bucket: string,
+  key: string,
+  body: string | Buffer,
+  contentType: string,
+): Promise<void> {
+  const client = getS3Client();
+
+  await client.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+    }),
+  );
+}
+
+/**
  * Check if an S3 object exists using HeadObject
  * Does not download the object content, only checks metadata
  *

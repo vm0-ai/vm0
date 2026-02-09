@@ -1470,6 +1470,37 @@ export async function createTestSlackComposeRequest(options: {
 /**
  * Find slack_compose_requests by composeJobId for verification.
  */
+/**
+ * Find artifact storage for a scope, including its HEAD version details.
+ */
+export async function findTestArtifactStorage(scopeId: string) {
+  const [storage] = await globalThis.services.db
+    .select()
+    .from(storages)
+    .where(
+      and(
+        eq(storages.scopeId, scopeId),
+        eq(storages.name, "artifact"),
+        eq(storages.type, "artifact"),
+      ),
+    )
+    .limit(1);
+
+  if (!storage) return null;
+
+  const version = storage.headVersionId
+    ? (
+        await globalThis.services.db
+          .select()
+          .from(storageVersions)
+          .where(eq(storageVersions.id, storage.headVersionId))
+          .limit(1)
+      )[0]
+    : null;
+
+  return { storage, version: version ?? null };
+}
+
 export async function findTestSlackComposeRequest(composeJobId: string) {
   const [row] = await globalThis.services.db
     .select()

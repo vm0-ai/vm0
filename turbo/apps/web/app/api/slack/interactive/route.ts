@@ -861,7 +861,7 @@ async function sendConfirmationMessage(
     messageText += `\n\nSecrets saved to your account: ${secretsList}`;
   }
 
-  messageText += `\n\nYou can now use it by mentioning \`@VM0 use ${agentName} <message>\``;
+  messageText += `\n\nYou can now use it by mentioning \`@VM0 <message>\``;
 
   await client.chat.postEphemeral({
     channel: channelId,
@@ -1082,9 +1082,6 @@ async function handleAgentAddSubmission(
       },
     });
   }
-
-  // Ensure scope + artifact exist (safety net for all entry paths)
-  await ensureScopeAndArtifact(userLink.vm0UserId);
 
   // Save variables to user's scope
   const savedVarNames: string[] = [];
