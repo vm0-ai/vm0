@@ -1,8 +1,0 @@
-{
-  "buildCommand": "cd ../.. && pnpm run build --filter=site",
-  "installCommand": "cd ../.. && pnpm install",
-  "outputDirectory": ".next",
-  "rewrites": [
-    { "source": "/:path*", "destination": "https://api.vm0.ai/:path*" }
-  ]
-}

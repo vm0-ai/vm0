@@ -27,12 +27,6 @@ platform.vm7.ai:8443 {
   reverse_proxy localhost:3002
 }
 
-# Site application
-site.vm7.ai:8443 {
-  tls ../../../.certs/site.vm7.ai.pem ../../../.certs/site.vm7.ai-key.pem
-  reverse_proxy localhost:3003
-}
-
 # HTTP redirects to HTTPS
 http://vm7.ai:8080 {
   redir https://www.vm7.ai:8443{uri} permanent
@@ -50,6 +44,3 @@ http://platform.vm7.ai:8080 {
   redir https://platform.vm7.ai:8443{uri} permanent
 }
 
-http://site.vm7.ai:8080 {
-  redir https://site.vm7.ai:8443{uri} permanent
-}
