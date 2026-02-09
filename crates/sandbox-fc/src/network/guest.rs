@@ -27,7 +27,7 @@ pub const GUEST_NETWORK: GuestNetwork = GuestNetwork {
 };
 
 /// Generate kernel boot args for guest network configuration.
-pub fn generate_guest_network_boot_args() -> String {
+pub(crate) fn generate_guest_network_boot_args() -> String {
     format!(
         "ip={}::{}:{}:vm0-guest:eth0:off",
         GUEST_NETWORK.guest_ip, GUEST_NETWORK.gateway_ip, GUEST_NETWORK.netmask,

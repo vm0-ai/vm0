@@ -40,6 +40,12 @@ enum Command {
         rootfs: PathBuf,
         /// Directory where snapshot artifacts will be written
         output_dir: PathBuf,
+        /// Number of vCPUs for the VM
+        #[arg(long, default_value_t = 1)]
+        vcpu_count: u32,
+        /// Memory size in MiB for the VM
+        #[arg(long, default_value_t = 256)]
+        memory_mb: u32,
     },
     /// Boot a VM and execute a command
     Exec {
@@ -73,7 +79,19 @@ async fn main() -> ExitCode {
             kernel,
             rootfs,
             output_dir,
-        } => run_snapshot(firecracker, kernel, rootfs, output_dir).await,
+            vcpu_count,
+            memory_mb,
+        } => {
+            run_snapshot(
+                firecracker,
+                kernel,
+                rootfs,
+                output_dir,
+                vcpu_count,
+                memory_mb,
+            )
+            .await
+        }
         Command::Exec {
             firecracker,
             kernel,
@@ -111,14 +129,16 @@ async fn run_snapshot(
     kernel: PathBuf,
     rootfs: PathBuf,
     output_dir: PathBuf,
+    vcpu_count: u32,
+    memory_mb: u32,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let config = sandbox_fc::SnapshotCreateConfig {
         binary_path: resolve_path(firecracker).await?,
         kernel_path: resolve_path(kernel).await?,
         rootfs_path: resolve_path(rootfs).await?,
         output_dir: resolve_or_create(output_dir).await?,
-        vcpu_count: 1,
-        memory_mb: 256,
+        vcpu_count,
+        memory_mb,
     };
 
     let snapshot = sandbox_fc::create_snapshot(config).await?;
