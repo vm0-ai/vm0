@@ -1,10 +1,6 @@
-use std::collections::HashMap;
-
 pub struct ExecRequest<'a> {
     pub cmd: &'a str,
-    pub timeout_ms: u64,
-    pub working_dir: Option<&'a str>,
-    pub env: Option<&'a HashMap<String, String>>,
+    pub timeout_ms: u32,
 }
 
 pub struct ExecResult {

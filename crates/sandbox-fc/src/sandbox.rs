@@ -437,9 +437,8 @@ impl Sandbox for FirecrackerSandbox {
             )));
         };
 
-        let timeout_ms = u32::try_from(request.timeout_ms).unwrap_or(u32::MAX);
         let result = guest
-            .exec(request.cmd, timeout_ms)
+            .exec(request.cmd, request.timeout_ms)
             .await
             .map_err(|e| SandboxError::ExecFailed(e.to_string()))?;
 
@@ -476,9 +475,8 @@ impl Sandbox for FirecrackerSandbox {
             )));
         };
 
-        let timeout_ms = u32::try_from(request.timeout_ms).unwrap_or(u32::MAX);
         let pid = guest
-            .spawn_watch(request.cmd, timeout_ms)
+            .spawn_watch(request.cmd, request.timeout_ms)
             .await
             .map_err(|e| SandboxError::ExecFailed(e.to_string()))?;
 
