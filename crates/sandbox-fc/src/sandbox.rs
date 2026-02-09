@@ -21,6 +21,9 @@ const VSOCK_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 /// Timeout for graceful shutdown via vsock.
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Timeout for Firecracker API socket readiness after process spawn.
+const API_READY_TIMEOUT: Duration = Duration::from_secs(5);
+
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SandboxState {
@@ -265,13 +268,21 @@ impl FirecrackerSandbox {
         self.process = Some(child);
         info!(id = %self.id, "firecracker started (snapshot restore)");
 
-        // TODO: Wait for API socket ready, then load snapshot via Firecracker HTTP API.
-        // This requires a Firecracker API client (HTTP over Unix socket).
-        // For now, kill the process we just spawned and return an error.
-        self.kill_process().await;
-        Err(SandboxError::StartFailed(
-            "snapshot restore not yet implemented".into(),
-        ))
+        // Wait for Firecracker API to be ready.
+        let api_sock = self.paths.api_sock();
+        crate::api_client::wait_for_ready(&api_sock, API_READY_TIMEOUT)
+            .await
+            .map_err(|e| SandboxError::StartFailed(format!("API not ready: {e}")))?;
+
+        // Load snapshot and resume VM.
+        let snapshot_str = snapshot.snapshot_path.display().to_string();
+        let memory_str = snapshot.memory_path.display().to_string();
+        crate::api_client::load_snapshot(&api_sock, &snapshot_str, &memory_str)
+            .await
+            .map_err(|e| SandboxError::StartFailed(format!("snapshot load failed: {e}")))?;
+
+        info!(id = %self.id, "snapshot loaded and resumed");
+        Ok(())
     }
 
     /// Kill the process tree.
