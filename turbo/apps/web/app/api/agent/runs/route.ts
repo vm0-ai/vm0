@@ -3,14 +3,14 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../src/lib/ts-rest-handler";
-import { runsMainContract, type RunStatus } from "@vm0/core";
+import { runsMainContract, ALL_RUN_STATUSES, type RunStatus } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
-import { and, eq, inArray, desc } from "drizzle-orm";
+import { and, eq, inArray, desc, gte, lte } from "drizzle-orm";
 import {
   checkRunConcurrencyLimit,
   validateCheckpoint,
@@ -46,14 +46,68 @@ const router = tsr.router(runsMainContract, {
       };
     }
 
+    // Parse and validate status values
+    const statusValues: string[] = query.status
+      ? query.status.split(",").map((s) => s.trim())
+      : ["pending", "running"]; // default
+
+    // Validate each status value
+    for (const status of statusValues) {
+      if (!ALL_RUN_STATUSES.includes(status as RunStatus)) {
+        return {
+          status: 400 as const,
+          body: {
+            error: {
+              message: `Invalid status: ${status}. Valid values: ${ALL_RUN_STATUSES.join(", ")}`,
+              code: "BAD_REQUEST",
+            },
+          },
+        };
+      }
+    }
+
     // Build query conditions
     const conditions = [eq(agentRuns.userId, userId)];
 
-    // Filter by status if provided, otherwise return pending and running
-    if (query.status) {
-      conditions.push(eq(agentRuns.status, query.status));
-    } else {
-      conditions.push(inArray(agentRuns.status, ["pending", "running"]));
+    // Filter by status
+    conditions.push(inArray(agentRuns.status, statusValues));
+
+    // Filter by agent name
+    if (query.agent) {
+      conditions.push(eq(agentComposes.name, query.agent));
+    }
+
+    // Filter by time range
+    if (query.since) {
+      const sinceDate = new Date(query.since);
+      if (isNaN(sinceDate.getTime())) {
+        return {
+          status: 400 as const,
+          body: {
+            error: {
+              message: "Invalid since timestamp format",
+              code: "BAD_REQUEST",
+            },
+          },
+        };
+      }
+      conditions.push(gte(agentRuns.createdAt, sinceDate));
+    }
+
+    if (query.until) {
+      const untilDate = new Date(query.until);
+      if (isNaN(untilDate.getTime())) {
+        return {
+          status: 400 as const,
+          body: {
+            error: {
+              message: "Invalid until timestamp format",
+              code: "BAD_REQUEST",
+            },
+          },
+        };
+      }
+      conditions.push(lte(agentRuns.createdAt, untilDate));
     }
 
     // Query runs with compose name via JOIN (single query instead of 3)

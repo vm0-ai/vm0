@@ -5,15 +5,20 @@ import { apiErrorSchema } from "./errors";
 const c = initContract();
 
 /**
- * Run status enum
+ * All valid run status values
  */
-const runStatusSchema = z.enum([
+export const ALL_RUN_STATUSES = [
   "pending",
   "running",
   "completed",
   "failed",
   "timeout",
-]);
+] as const;
+
+/**
+ * Run status enum
+ */
+const runStatusSchema = z.enum(ALL_RUN_STATUSES);
 
 /**
  * Unified run request schema - supports all run modes via optional parameters
@@ -152,11 +157,15 @@ export const runsMainContract = c.router({
     path: "/api/agent/runs",
     headers: authHeadersSchema,
     query: z.object({
-      status: runStatusSchema.optional(),
+      status: z.string().optional(), // comma-separated: "pending,running"
+      agent: z.string().optional(), // agent name filter
+      since: z.string().optional(), // ISO timestamp
+      until: z.string().optional(), // ISO timestamp
       limit: z.coerce.number().min(1).max(100).default(50),
     }),
     responses: {
       200: runsListResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
     },
     summary: "List agent runs",
