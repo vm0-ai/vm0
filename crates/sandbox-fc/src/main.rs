@@ -85,6 +85,11 @@ async fn main() -> ExitCode {
         .with_timer(Elapsed(Instant::now()))
         .init();
 
+    if nix::unistd::getuid().is_root() {
+        eprintln!("error: sandbox-fc must not be run as root (it calls sudo internally as needed)");
+        return ExitCode::FAILURE;
+    }
+
     let cli = Cli::parse();
 
     let paths = SharedPaths {

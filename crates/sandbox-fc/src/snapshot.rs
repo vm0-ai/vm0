@@ -72,10 +72,18 @@ pub enum SnapshotError {
 pub async fn create_snapshot(
     config: SnapshotCreateConfig,
 ) -> Result<SnapshotConfig, SnapshotError> {
-    // 1. Create work directory under output_dir.
+    // 1. Clean and create work directory under output_dir.
     //    Paths inside this directory get baked into the snapshot and are used
     //    as bind-mount targets during restore, so they must be deterministic.
+    //    Remove any stale work dir from a previous run (leftover sockets,
+    //    root-owned files from an accidental sudo invocation, etc.).
     let work = config.output_dir.join("work");
+    if work.exists() {
+        let work_str = work.display().to_string();
+        crate::command::exec("rm", &["-rf", &work_str], crate::command::Privilege::Sudo)
+            .await
+            .map_err(|e| SnapshotError::Setup(format!("clean stale work dir: {e}")))?;
+    }
     tokio::fs::create_dir_all(&work).await?;
 
     let paths = SandboxPaths::new(work);
