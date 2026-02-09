@@ -20,6 +20,8 @@ pub struct FirecrackerFactory {
 impl FirecrackerFactory {
     /// Create a new factory, pre-warming the network namespace and overlay pools.
     pub async fn new(config: FirecrackerConfig) -> Result<Self, SandboxError> {
+        crate::prerequisites::check_prerequisites(&config)?;
+
         let concurrency = config.concurrency.max(1);
         let paths = FactoryPaths::new(config.base_dir.clone());
 

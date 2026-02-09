@@ -4,6 +4,7 @@ mod factory;
 mod network;
 mod overlay;
 mod paths;
+mod prerequisites;
 mod sandbox;
 
 pub use config::{FirecrackerConfig, SnapshotConfig};
