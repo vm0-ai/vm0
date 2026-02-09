@@ -13,6 +13,8 @@ This workspace contains Rust crates for running code inside Firecracker microVMs
 | **guest-init** | Init process (PID 1) for Firecracker VMs — filesystem setup, signal handling, vsock-guest |
 | **guest-common** | Shared utilities for guest-init and guest-download |
 | **guest-download** | Downloads and extracts storage archives based on manifest — parallel downloads with retry logic |
+| **sandbox** | Sandbox trait and shared types — `SandboxConfig`, `ExecRequest`, `SandboxFactory` |
+| **sandbox-fc** | Firecracker sandbox implementation — VM lifecycle, network namespace pool, overlay FS, snapshots |
 
 ## Architecture
 
@@ -27,7 +29,10 @@ This workspace contains Rust crates for running code inside Firecracker microVMs
                    │
 ┌──────────────────┼───────────────────────┐
 │  Host (Runner)   │                       │
-│     VsockHost (Rust) / VsockClient (TS)  │
+│                  │                       │
+│  sandbox-fc ── vsock-host                │
+│       │                                  │
+│  sandbox (trait)                         │
 └──────────────────────────────────────────┘
 ```
 
