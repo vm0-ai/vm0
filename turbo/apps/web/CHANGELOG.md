@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.25.0](https://github.com/vm0-ai/vm0/compare/web-v12.24.2...web-v12.25.0) (2026-02-10)
+
+
+### Features
+
+* **slack:** add documentation link to app home and help command ([#2744](https://github.com/vm0-ai/vm0/issues/2744)) ([17145af](https://github.com/vm0-ai/vm0/commit/17145af4512ad4181a7d368bc1b8d931fbf46355))
+
 ## [12.24.2](https://github.com/vm0-ai/vm0/compare/web-v12.24.1...web-v12.24.2) (2026-02-10)
 
 
