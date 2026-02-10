@@ -80,6 +80,7 @@ export const mainRunCommand = new Command()
     "--experimental-shared-agent",
     "Allow running agents shared by other users (required when running scope/agent format)",
   )
+  .option("--check-env", "Validate secrets and vars before running")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .addOption(new Option("--no-auto-update").hideHelp())
   .action(
@@ -98,6 +99,7 @@ export const mainRunCommand = new Command()
         modelProvider?: string;
         verbose?: boolean;
         experimentalSharedAgent?: boolean;
+        checkEnv?: boolean;
         debugNoMockClaude?: boolean;
         autoUpdate?: boolean;
       },
@@ -210,6 +212,7 @@ export const mainRunCommand = new Command()
               : undefined,
           conversationId: options.conversation,
           modelProvider: options.modelProvider,
+          checkEnv: options.checkEnv || undefined,
           debugNoMockClaude: options.debugNoMockClaude || undefined,
         });
 

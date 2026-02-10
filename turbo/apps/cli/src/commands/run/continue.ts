@@ -44,6 +44,7 @@ export const continueCommand = new Command()
     "Override model provider (e.g., anthropic-api-key)",
   )
   .option("--verbose", "Show full tool inputs and outputs")
+  .option("--check-env", "Validate secrets and vars before running")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .action(
     async (
@@ -56,6 +57,7 @@ export const continueCommand = new Command()
         experimentalRealtime?: boolean;
         modelProvider?: string;
         verbose?: boolean;
+        checkEnv?: boolean;
         debugNoMockClaude?: boolean;
       },
       command: { optsWithGlobals: () => Record<string, unknown> },
@@ -69,6 +71,7 @@ export const continueCommand = new Command()
         experimentalRealtime?: boolean;
         modelProvider?: string;
         verbose?: boolean;
+        checkEnv?: boolean;
         debugNoMockClaude?: boolean;
       };
 
@@ -103,6 +106,7 @@ export const continueCommand = new Command()
           vars: Object.keys(vars).length > 0 ? vars : undefined,
           secrets: loadedSecrets,
           modelProvider: options.modelProvider || allOpts.modelProvider,
+          checkEnv: options.checkEnv || allOpts.checkEnv || undefined,
           debugNoMockClaude:
             options.debugNoMockClaude || allOpts.debugNoMockClaude || undefined,
         });

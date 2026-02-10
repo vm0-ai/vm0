@@ -31,6 +31,7 @@ interface ExpandedEnvironmentResult {
  * @param credentials Credentials for expansion (from platform credential store)
  * @param userId User ID for token binding
  * @param runId Run ID for token binding (required for seal_secrets)
+ * @param checkEnv When true, validates that all required secrets/vars are provided
  * @returns Expanded environment variables and seal_secrets flag
  */
 // eslint-disable-next-line complexity -- TODO: refactor complex function
@@ -41,6 +42,7 @@ export function expandEnvironmentFromCompose(
   credentials: Record<string, string> | undefined,
   userId: string,
   runId: string,
+  checkEnv?: boolean,
 ): ExpandedEnvironmentResult {
   const compose = agentCompose as AgentComposeYaml | undefined;
   if (!compose?.agents) {
@@ -82,14 +84,16 @@ export function expandEnvironmentFromCompose(
   if (grouped.secrets.length > 0) {
     const secretNames = grouped.secrets.map((r) => r.name);
 
-    // Check for missing secrets
-    const missingSecrets = secretNames.filter(
-      (name) => !passedSecrets || !passedSecrets[name],
-    );
-    if (missingSecrets.length > 0) {
-      throw badRequest(
-        `Missing required secrets: ${missingSecrets.join(", ")}. Use '--secrets ${missingSecrets[0]}=<value>' or '--env-file <path>' to provide them.`,
+    // Check for missing secrets (only when checkEnv is enabled)
+    if (checkEnv) {
+      const missingSecrets = secretNames.filter(
+        (name) => !passedSecrets || !passedSecrets[name],
       );
+      if (missingSecrets.length > 0) {
+        throw badRequest(
+          `Missing required secrets: ${missingSecrets.join(", ")}. Use '--secrets ${missingSecrets[0]}=<value>' or '--env-file <path>' to provide them.`,
+        );
+      }
     }
 
     // If seal_secrets is enabled, encrypt secrets into proxy tokens
@@ -119,16 +123,19 @@ export function expandEnvironmentFromCompose(
   if (grouped.credentials.length > 0) {
     const credentialNames = grouped.credentials.map((r) => r.name);
 
-    // Check for missing credentials
-    const missingCredentials = credentialNames.filter(
-      (name) => !credentials || !credentials[name],
-    );
-    if (missingCredentials.length > 0) {
-      const platformUrl = process.env.PLATFORM_URL ?? "https://platform.vm0.ai";
-      const settingsUrl = `${platformUrl}/settings?tab=secrets&required=${missingCredentials.join(",")}`;
-      throw badRequest(
-        `Missing required secrets: ${missingCredentials.join(", ")}. Use 'vm0 secret set ${missingCredentials[0]} <value>' or add them at: ${settingsUrl}`,
+    // Check for missing credentials (only when checkEnv is enabled)
+    if (checkEnv) {
+      const missingCredentials = credentialNames.filter(
+        (name) => !credentials || !credentials[name],
       );
+      if (missingCredentials.length > 0) {
+        const platformUrl =
+          process.env.PLATFORM_URL ?? "https://platform.vm0.ai";
+        const settingsUrl = `${platformUrl}/settings?tab=secrets&required=${missingCredentials.join(",")}`;
+        throw badRequest(
+          `Missing required secrets: ${missingCredentials.join(", ")}. Use 'vm0 secret set ${missingCredentials[0]} <value>' or add them at: ${settingsUrl}`,
+        );
+      }
     }
 
     // If seal_secrets is enabled, encrypt credentials into proxy tokens
@@ -186,14 +193,16 @@ export function expandEnvironmentFromCompose(
   // Expand all variables
   const { result, missingVars } = expandVariables(environment, sources);
 
-  // Check for missing vars (secrets and credentials already checked above)
-  const missingVarNames = missingVars
-    .filter((v) => v.source === "vars")
-    .map((v) => v.name);
-  if (missingVarNames.length > 0) {
-    throw badRequest(
-      `Missing required variables: ${missingVarNames.join(", ")}. Use '--vars ${missingVarNames[0]}=<value>' or '--env-file <path>' to provide them.`,
-    );
+  // Check for missing vars (only when checkEnv is enabled)
+  if (checkEnv) {
+    const missingVarNames = missingVars
+      .filter((v) => v.source === "vars")
+      .map((v) => v.name);
+    if (missingVarNames.length > 0) {
+      throw badRequest(
+        `Missing required variables: ${missingVarNames.join(", ")}. Use '--vars ${missingVarNames[0]}=<value>' or '--env-file <path>' to provide them.`,
+      );
+    }
   }
 
   return { environment: result, sealSecretsEnabled };
