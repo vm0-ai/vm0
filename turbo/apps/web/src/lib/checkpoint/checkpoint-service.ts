@@ -40,6 +40,14 @@ export async function createCheckpoint(
     throw notFound("Agent run not found");
   }
 
+  // agentComposeVersionId may be null if agent was deleted (historical runs)
+  // but during active run execution it should always be present
+  if (!run.agentComposeVersionId) {
+    throw notFound(
+      "Agent compose version not found (agent may have been deleted)",
+    );
+  }
+
   // Fetch agent compose version to get composeId for session
   const [version] = await globalThis.services.db
     .select()

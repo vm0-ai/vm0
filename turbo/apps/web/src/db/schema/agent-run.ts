@@ -21,9 +21,9 @@ export const agentRuns = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(), // Clerk user ID - owner of this run
-    agentComposeVersionId: varchar("agent_compose_version_id", { length: 64 })
-      .references(() => agentComposeVersions.id)
-      .notNull(),
+    agentComposeVersionId: varchar("agent_compose_version_id", {
+      length: 64,
+    }).references(() => agentComposeVersions.id, { onDelete: "set null" }),
     resumedFromCheckpointId: uuid("resumed_from_checkpoint_id"),
     // References agent_schedules.id if this run was triggered by a schedule
     scheduleId: uuid("schedule_id").references(

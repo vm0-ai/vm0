@@ -13,6 +13,7 @@ export {
   getComposeById,
   getComposeVersion,
   createOrUpdateCompose,
+  deleteCompose,
 } from "./domains/composes";
 
 // Domain modules - Runs

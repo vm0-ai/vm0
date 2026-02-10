@@ -269,6 +269,28 @@ export const composesByIdContract = c.router({
     },
     summary: "Get agent compose by ID",
   },
+
+  /**
+   * DELETE /api/agent/composes/:id
+   * Delete agent compose and all associated resources (versions, schedules, permissions, etc.)
+   * Returns 409 Conflict if agent has running or pending runs
+   */
+  delete: {
+    method: "DELETE",
+    path: "/api/agent/composes/:id",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      id: z.string().uuid("Compose ID is required"),
+    }),
+    body: c.noBody(),
+    responses: {
+      204: c.noBody(),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+    },
+    summary: "Delete agent compose",
+  },
 });
 
 /**

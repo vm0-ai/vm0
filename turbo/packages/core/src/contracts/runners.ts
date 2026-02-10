@@ -46,7 +46,7 @@ export const runnerGroupSchema = z
 export const jobSchema = z.object({
   runId: z.string().uuid(),
   prompt: z.string(),
-  agentComposeVersionId: z.string(),
+  agentComposeVersionId: z.string().nullable(),
   vars: z.record(z.string(), z.string()).nullable(),
   secretNames: z.array(z.string()).nullable(),
   checkpointId: z.string().uuid().nullable(),
@@ -138,7 +138,7 @@ export const storedExecutionContextSchema = z.object({
 export const executionContextSchema = z.object({
   runId: z.string().uuid(),
   prompt: z.string(),
-  agentComposeVersionId: z.string(),
+  agentComposeVersionId: z.string().nullable(),
   vars: z.record(z.string(), z.string()).nullable(),
   secretNames: z.array(z.string()).nullable(),
   checkpointId: z.string().uuid().nullable(),

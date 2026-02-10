@@ -89,3 +89,22 @@ export async function createOrUpdateCompose(body: {
 
   handleError(result, "Failed to create compose");
 }
+
+/**
+ * Delete an agent compose by ID
+ * Returns void on success, throws on error
+ */
+export async function deleteCompose(id: string): Promise<void> {
+  const config = await getClientConfig();
+  const client = initClient(composesByIdContract, config);
+
+  const result = await client.delete({
+    params: { id },
+  });
+
+  if (result.status === 204) {
+    return;
+  }
+
+  handleError(result, "Failed to delete agent");
+}

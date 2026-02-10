@@ -66,7 +66,7 @@ const createRunResponseSchema = z.object({
  */
 const getRunResponseSchema = z.object({
   runId: z.string(),
-  agentComposeVersionId: z.string(),
+  agentComposeVersionId: z.string().nullable(),
   status: runStatusSchema,
   prompt: z.string(),
   vars: z.record(z.string(), z.string()).optional(),
