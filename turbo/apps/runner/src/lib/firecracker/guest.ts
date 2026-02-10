@@ -37,8 +37,13 @@ export interface ProcessExitEvent {
  * Common interface for VM communication clients.
  * Allows swapping communication protocols without affecting consumers.
  */
+/**
+ * Environment variables to pass to a guest command.
+ */
+export type EnvVars = Record<string, string>;
+
 export interface GuestClient {
-  exec(command: string, timeoutMs?: number): Promise<ExecResult>;
+  exec(command: string, timeoutMs?: number, env?: EnvVars): Promise<ExecResult>;
   execOrThrow(command: string): Promise<string>;
   writeFile(remotePath: string, content: string): Promise<void>;
   writeFileWithSudo(remotePath: string, content: string): Promise<void>;
@@ -55,7 +60,11 @@ export interface GuestClient {
    * Returns immediately with the PID. Use waitForExit() to wait for completion.
    * When the process exits, the agent sends an unsolicited notification.
    */
-  spawnAndWatch(command: string, timeoutMs?: number): Promise<SpawnResult>;
+  spawnAndWatch(
+    command: string,
+    timeoutMs?: number,
+    env?: EnvVars,
+  ): Promise<SpawnResult>;
 
   /**
    * Wait for a spawned process to exit
