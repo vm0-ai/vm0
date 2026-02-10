@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.30.0](https://github.com/vm0-ai/vm0/compare/cli-v9.29.5...cli-v9.30.0) (2026-02-10)
+
+
+### Features
+
+* **cli:** enable GitHub URL compose without experimental flag ([#2728](https://github.com/vm0-ai/vm0/issues/2728)) ([3158138](https://github.com/vm0-ai/vm0/commit/315813840b9590aca5d5f52575dcb24ddfebbae2)), closes [#2724](https://github.com/vm0-ai/vm0/issues/2724)
+
 ## [9.29.5](https://github.com/vm0-ai/vm0/compare/cli-v9.29.4...cli-v9.29.5) (2026-02-09)
 
 
