@@ -82,7 +82,4 @@ RUN userdel -r node 2>/dev/null || true \
 # These are needed by /sbin/guest-init to set up overlayfs
 RUN mkdir -p /rom /rw /mnt/root
 
-# Create vm0-agent directory for scripts installed by build-rootfs.sh
-RUN mkdir -p /usr/local/bin/vm0-agent
-
 ENV LANG=C.UTF-8
