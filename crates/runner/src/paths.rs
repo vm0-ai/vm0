@@ -4,7 +4,7 @@ use std::path::PathBuf;
 pub mod guest {
     pub const STORAGE_MANIFEST: &str = "/tmp/storage-manifest.json";
     pub const DOWNLOAD_BIN: &str = "/usr/local/bin/guest-download";
-    pub const RUN_AGENT: &str = "/usr/local/bin/vm0-agent/run-agent.mjs";
+    pub const RUN_AGENT: &str = "/usr/local/bin/guest-agent";
 }
 
 /// Runner-level paths derived from the base directory.

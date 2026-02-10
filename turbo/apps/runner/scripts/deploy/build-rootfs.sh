@@ -129,10 +129,13 @@ create_squashfs_image() {
     sudo cp "$SCRIPT_DIR/guest-download" "$EXTRACT_DIR/usr/local/bin/guest-download"
     sudo chmod 755 "$EXTRACT_DIR/usr/local/bin/guest-download"
 
+    # Install guest-agent binary (sandbox agent orchestrator) - to /usr/local/bin
+    echo "[INSTALL] Installing guest-agent..."
+    sudo cp "$SCRIPT_DIR/guest-agent" "$EXTRACT_DIR/usr/local/bin/guest-agent"
+    sudo chmod 755 "$EXTRACT_DIR/usr/local/bin/guest-agent"
+
     # Install agent files (ESM scripts)
     echo "[INSTALL] Installing agent files..."
-    sudo cp "$SCRIPT_DIR/run-agent.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
-    sudo cp "$SCRIPT_DIR/download.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
     sudo cp "$SCRIPT_DIR/mock-claude.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
     sudo chmod +x "$EXTRACT_DIR/usr/local/bin/vm0-agent/"*
 
@@ -205,12 +208,11 @@ verify_rootfs() {
         echo "  guest-download: installed (Rust binary at /usr/local/bin/guest-download)"
     fi
 
-    # Check for agent scripts
-    if [ ! -f "$MOUNT_POINT/usr/local/bin/vm0-agent/run-agent.mjs" ]; then
-        echo "ERROR: run-agent.mjs not found in rootfs"
+    if [ ! -f "$MOUNT_POINT/usr/local/bin/guest-agent" ]; then
+        echo "ERROR: guest-agent binary not found in rootfs"
         ERRORS=$((ERRORS + 1))
     else
-        echo "  agent scripts: installed"
+        echo "  guest-agent: installed (Rust binary at /usr/local/bin/guest-agent)"
     fi
 
     # Check for Codex CLI (for framework: codex)

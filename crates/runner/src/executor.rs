@@ -126,7 +126,7 @@ async fn run_in_sandbox(
 
     // 5. Spawn agent
     let log_file = format!("/tmp/vm0-main-{}.log", context.run_id);
-    let agent_cmd = format!("node {} > {log_file} 2>&1", guest::RUN_AGENT);
+    let agent_cmd = format!("{} > {log_file} 2>&1", guest::RUN_AGENT);
     info!(run_id = %context.run_id, "spawning agent");
 
     // JOB_TIMEOUT is used for both spawn_watch (guest-side kill) and wait_exit

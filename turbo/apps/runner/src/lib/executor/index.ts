@@ -20,7 +20,7 @@ import { VsockClient } from "../firecracker/vsock.js";
 import type { ExecutionContext } from "../api.js";
 import type { RunnerConfig } from "../config.js";
 import { runnerPaths, vmPaths } from "../paths.js";
-import { RUN_AGENT_PATH } from "../scripts/index.js";
+import { GUEST_BINARY_PATHS } from "../scripts/index.js";
 import { getVMRegistry } from "../proxy/index.js";
 import {
   withSandboxTiming,
@@ -208,15 +208,15 @@ export async function executeJob(
     // Build the command to run
     let command: string;
     if (options.benchmarkMode) {
-      // Benchmark mode: run prompt directly as bash command (skip run-agent.mjs)
+      // Benchmark mode: run prompt directly as bash command (skip guest-agent)
       logger.log(`Running command directly (benchmark mode)...`);
       command = `${context.prompt} > ${systemLogFile} 2>&1`;
     } else {
-      // Production mode: run run-agent.mjs directly with env vars passed via vsock protocol
+      // Production mode: run guest-agent directly with env vars passed via vsock protocol
       logger.log(
         `Running agent via vsock with ${Object.keys(envVars).length} env vars...`,
       );
-      command = `node ${RUN_AGENT_PATH} > ${systemLogFile} 2>&1`;
+      command = `${GUEST_BINARY_PATHS.guestAgent} > ${systemLogFile} 2>&1`;
     }
 
     // Spawn process and get PID (returns immediately)

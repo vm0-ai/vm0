@@ -9,10 +9,6 @@ export const GUEST_BINARY_PATHS = {
   guestInit: "/sbin/guest-init",
   /** Storage download - parallel downloads with streaming extraction */
   guestDownload: "/usr/local/bin/guest-download",
+  /** Agent orchestrator - handles CLI execution, events, checkpoints */
+  guestAgent: "/usr/local/bin/guest-agent",
 } as const;
-
-/**
- * Run-agent script path
- * Main agent orchestrator that handles CLI execution, events, checkpoints.
- */
-export const RUN_AGENT_PATH = "/usr/local/bin/vm0-agent/run-agent.mjs";
