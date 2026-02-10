@@ -1,9 +1,20 @@
 //! Telemetry recording for sandbox operations.
 
-use crate::{log, paths};
+use crate::log;
 use serde::Serialize;
 use std::fs::OpenOptions;
 use std::io::Write;
+use std::sync::LazyLock;
+
+static RUN_ID: LazyLock<String> = LazyLock::new(|| std::env::var("VM0_RUN_ID").unwrap_or_default());
+
+static SANDBOX_OPS_LOG: LazyLock<String> =
+    LazyLock::new(|| format!("/tmp/vm0-sandbox-ops-{}.jsonl", &*RUN_ID));
+
+/// Path to sandbox operations log file (JSONL format).
+pub fn sandbox_ops_log() -> &'static str {
+    &SANDBOX_OPS_LOG
+}
 
 #[derive(Serialize)]
 struct SandboxOpEntry {
@@ -31,7 +42,7 @@ pub fn record_sandbox_op(action_type: &str, duration_ms: u64, success: bool, err
     let Ok(mut file) = OpenOptions::new()
         .create(true)
         .append(true)
-        .open(paths::sandbox_ops_log())
+        .open(sandbox_ops_log())
     else {
         return; // Silently fail if can't open log
     };
