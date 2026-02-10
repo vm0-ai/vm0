@@ -151,7 +151,14 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       );
 
       // Try to create run WITHOUT providing required secrets
-      const data = await createTestRun(secretComposeId, "Test without secrets");
+      // Pass checkEnv: true to enable server-side validation
+      const data = await createTestRun(
+        secretComposeId,
+        "Test without secrets",
+        {
+          checkEnv: true,
+        },
+      );
 
       // Route creates run first, then fails during preparation
       expect(data.status).toBe("failed");
@@ -180,10 +187,11 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       );
 
       // Try to create run with only one secret
+      // Pass checkEnv: true to enable server-side validation
       const data = await createTestRun(
         multiSecretComposeId,
         "Test with partial secrets",
-        { secrets: { SECRET_A: "value-a" } }, // Missing SECRET_B
+        { secrets: { SECRET_A: "value-a" }, checkEnv: true }, // Missing SECRET_B
       );
 
       // Route creates run first, then fails during preparation
