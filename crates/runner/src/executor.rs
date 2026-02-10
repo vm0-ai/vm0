@@ -46,13 +46,13 @@ pub async fn execute_job(
     info!(run_id = %run_id, exit_code, "job finished, reporting completion");
 
     if let Err(e) = api
-        .complete(&context.sandbox_token, run_id, exit_code, err.clone())
+        .complete(&context.sandbox_token, run_id, exit_code, err.as_deref())
         .await
     {
         warn!(run_id = %run_id, error = %e, "completion report failed, retrying");
         tokio::time::sleep(Duration::from_secs(2)).await;
         if let Err(e) = api
-            .complete(&context.sandbox_token, run_id, exit_code, err)
+            .complete(&context.sandbox_token, run_id, exit_code, err.as_deref())
             .await
         {
             error!(run_id = %run_id, error = %e, "failed to report completion after retry");
@@ -321,4 +321,118 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
     }
 
     env
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{ArtifactEntry, ResumeSession, StorageEntry, StorageManifest};
+
+    fn minimal_context() -> ExecutionContext {
+        ExecutionContext {
+            run_id: Uuid::nil(),
+            prompt: "test prompt".into(),
+            vars: None,
+            sandbox_token: "tok".into(),
+            working_dir: "/workspace".into(),
+            storage_manifest: None,
+            environment: None,
+            resume_session: None,
+            secret_values: None,
+            cli_agent_type: String::new(),
+            api_start_time: None,
+        }
+    }
+
+    #[test]
+    fn build_env_json_required_keys() {
+        let ctx = minimal_context();
+        let env = build_env_json(&ctx, "https://api.example.com");
+
+        assert_eq!(env.get("VM0_API_URL").unwrap(), "https://api.example.com");
+        assert_eq!(env.get("VM0_RUN_ID").unwrap(), &Uuid::nil().to_string());
+        assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
+        assert_eq!(env.get("VM0_PROMPT").unwrap(), "test prompt");
+        assert_eq!(env.get("VM0_WORKING_DIR").unwrap(), "/workspace");
+    }
+
+    #[test]
+    fn build_env_json_empty_cli_agent_type_defaults_to_claude_code() {
+        let ctx = minimal_context();
+        let env = build_env_json(&ctx, "http://localhost");
+        assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "claude-code");
+    }
+
+    #[test]
+    fn build_env_json_custom_cli_agent_type() {
+        let mut ctx = minimal_context();
+        ctx.cli_agent_type = "custom-agent".into();
+        let env = build_env_json(&ctx, "http://localhost");
+        assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "custom-agent");
+    }
+
+    #[test]
+    fn build_env_json_with_artifact() {
+        let mut ctx = minimal_context();
+        ctx.storage_manifest = Some(StorageManifest {
+            storages: vec![StorageEntry {
+                mount_path: "/data".into(),
+                archive_url: None,
+            }],
+            artifact: Some(ArtifactEntry {
+                mount_path: "/artifacts".into(),
+                archive_url: None,
+                vas_storage_name: "my-vol".into(),
+                vas_version_id: "v1".into(),
+            }),
+        });
+
+        let env = build_env_json(&ctx, "http://localhost");
+        assert_eq!(env.get("VM0_ARTIFACT_DRIVER").unwrap(), "vas");
+        assert_eq!(env.get("VM0_ARTIFACT_MOUNT_PATH").unwrap(), "/artifacts");
+        assert_eq!(env.get("VM0_ARTIFACT_VOLUME_NAME").unwrap(), "my-vol");
+        assert_eq!(env.get("VM0_ARTIFACT_VERSION_ID").unwrap(), "v1");
+    }
+
+    #[test]
+    fn build_env_json_with_secrets() {
+        let mut ctx = minimal_context();
+        ctx.secret_values = Some(vec!["secret1".into(), "secret2".into()]);
+
+        let env = build_env_json(&ctx, "http://localhost");
+        let val = env.get("VM0_SECRET_VALUES").unwrap();
+
+        use base64::Engine as _;
+        let parts: Vec<&str> = val.split(',').collect();
+        assert_eq!(parts.len(), 2);
+        let decoded0 = base64::engine::general_purpose::STANDARD
+            .decode(parts[0])
+            .unwrap();
+        assert_eq!(decoded0, b"secret1");
+    }
+
+    #[test]
+    fn build_env_json_with_resume_session() {
+        let mut ctx = minimal_context();
+        ctx.resume_session = Some(ResumeSession {
+            session_id: "sess-123".into(),
+            session_history: "{}".into(),
+        });
+
+        let env = build_env_json(&ctx, "http://localhost");
+        assert_eq!(env.get("VM0_RESUME_SESSION_ID").unwrap(), "sess-123");
+    }
+
+    #[test]
+    fn build_env_json_user_vars_override() {
+        let mut ctx = minimal_context();
+        ctx.vars = Some(HashMap::from([
+            ("VM0_PROMPT".into(), "overridden".into()),
+            ("CUSTOM".into(), "value".into()),
+        ]));
+
+        let env = build_env_json(&ctx, "http://localhost");
+        assert_eq!(env.get("VM0_PROMPT").unwrap(), "overridden");
+        assert_eq!(env.get("CUSTOM").unwrap(), "value");
+    }
 }

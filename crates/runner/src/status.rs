@@ -110,3 +110,90 @@ impl StatusTracker {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn read_status(path: &std::path::Path) -> serde_json::Value {
+        let content = std::fs::read_to_string(path).unwrap();
+        serde_json::from_str(&content).unwrap()
+    }
+
+    #[tokio::test]
+    async fn write_initial_creates_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        let tracker = StatusTracker::new(path.clone());
+
+        tracker.write_initial().await;
+
+        let status = read_status(&path);
+        assert_eq!(status["mode"], "running");
+        assert_eq!(status["active_runs"], 0);
+        assert!(status["active_run_ids"].as_array().unwrap().is_empty());
+        assert!(status["started_at"].as_str().is_some());
+        assert!(status["updated_at"].as_str().is_some());
+    }
+
+    #[tokio::test]
+    async fn set_mode_updates_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        let tracker = StatusTracker::new(path.clone());
+
+        tracker.write_initial().await;
+        tracker.set_mode(RunnerMode::Draining).await;
+
+        let status = read_status(&path);
+        assert_eq!(status["mode"], "draining");
+    }
+
+    #[tokio::test]
+    async fn add_and_remove_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        let tracker = StatusTracker::new(path.clone());
+
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+
+        tracker.write_initial().await;
+        tracker.add_run(id1).await;
+        tracker.add_run(id2).await;
+
+        let status = read_status(&path);
+        assert_eq!(status["active_runs"], 2);
+        assert_eq!(status["active_run_ids"].as_array().unwrap().len(), 2);
+
+        tracker.remove_run(id1).await;
+
+        let status = read_status(&path);
+        assert_eq!(status["active_runs"], 1);
+
+        let ids: Vec<String> = status["active_run_ids"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect();
+        assert!(ids.contains(&id2.to_string()));
+        assert!(!ids.contains(&id1.to_string()));
+    }
+
+    #[tokio::test]
+    async fn timestamps_are_iso8601() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        let tracker = StatusTracker::new(path.clone());
+
+        tracker.write_initial().await;
+
+        let status = read_status(&path);
+        let started = status["started_at"].as_str().unwrap();
+        // ISO 8601 format: YYYY-MM-DDTHH:MM:SS.mmmZ
+        assert!(started.ends_with('Z'));
+        assert!(started.contains('T'));
+        assert_eq!(started.len(), 24); // "2026-02-10T12:34:56.789Z"
+    }
+}

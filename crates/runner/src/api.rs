@@ -98,7 +98,7 @@ impl ApiClient {
         sandbox_token: &str,
         run_id: uuid::Uuid,
         exit_code: i32,
-        error: Option<String>,
+        error: Option<&str>,
     ) -> RunnerResult<()> {
         let url = format!("{}/api/webhooks/agent/complete", self.api_url);
         debug!(url = %url, "completing job");
@@ -106,7 +106,7 @@ impl ApiClient {
         let body = CompleteRequest {
             run_id,
             exit_code,
-            error,
+            error: error.map(String::from),
         };
 
         let resp = self
