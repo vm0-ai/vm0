@@ -45,7 +45,7 @@ export async function postMessage(
     threadTs?: string;
     blocks?: (Block | KnownBlock)[];
   },
-): Promise<string | undefined> {
+): Promise<{ ts: string | undefined; channel: string | undefined }> {
   const result = await client.chat.postMessage({
     channel,
     text,
@@ -53,7 +53,7 @@ export async function postMessage(
     blocks: options?.blocks,
   });
 
-  return result.ts;
+  return { ts: result.ts, channel: result.channel };
 }
 
 /**

@@ -108,7 +108,7 @@ export async function notifyScheduleRunComplete(
         : output
       : "Task completed successfully.";
 
-    const messageTs = await postMessage(
+    const { ts: messageTs, channel: dmChannelId } = await postMessage(
       client,
       userLink.slackUserId,
       `Scheduled run for "${compose.name}" completed`,
@@ -145,10 +145,10 @@ export async function notifyScheduleRunComplete(
     const result = run.result as RunResult | null;
     const agentSessionId = result?.agentSessionId;
 
-    if (messageTs && agentSessionId) {
+    if (messageTs && dmChannelId && agentSessionId) {
       await saveThreadSession({
         bindingId: undefined,
-        channelId: userLink.slackUserId,
+        channelId: dmChannelId,
         threadTs: messageTs,
         existingSessionId: undefined,
         newSessionId: agentSessionId,
