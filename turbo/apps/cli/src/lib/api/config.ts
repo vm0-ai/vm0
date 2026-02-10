@@ -6,6 +6,7 @@ import { existsSync } from "fs";
 interface CliConfig {
   token?: string;
   apiUrl?: string;
+  scope?: string;
 }
 
 // Use functions for lazy evaluation (enables testing with mocked homedir)
@@ -67,4 +68,37 @@ export async function clearConfig(): Promise<void> {
   if (existsSync(configFile)) {
     await unlink(configFile);
   }
+}
+
+/**
+ * Get the current scope from config
+ * Returns undefined if no scope is set (uses personal scope)
+ */
+export async function getScope(): Promise<string | undefined> {
+  // Check environment variable first
+  if (process.env.VM0_SCOPE) {
+    return process.env.VM0_SCOPE;
+  }
+
+  const config = await loadConfig();
+  return config.scope;
+}
+
+/**
+ * Set the current scope in config
+ */
+export async function setScope(scope: string): Promise<void> {
+  await saveConfig({ scope });
+}
+
+/**
+ * Clear the scope from config (switch back to personal)
+ */
+export async function clearScope(): Promise<void> {
+  const config = await loadConfig();
+  delete config.scope;
+  const configDir = getConfigDir();
+  const configFile = getConfigFile();
+  await mkdir(configDir, { recursive: true });
+  await writeFile(configFile, JSON.stringify(config, null, 2), "utf8");
 }

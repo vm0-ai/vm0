@@ -44,7 +44,7 @@ import {
   type AblyTokenRequest,
 } from "@vm0/core";
 import type { z } from "zod";
-import { getApiUrl, getToken } from "./config";
+import { getApiUrl, getToken, getScope } from "./config";
 
 // Import types from @vm0/core contracts
 import type {
@@ -133,6 +133,12 @@ class ApiClient {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${token}`,
     };
+
+    // Add scope header if configured (for org scope access)
+    const scope = await getScope();
+    if (scope) {
+      headers["X-VM0-Scope"] = scope;
+    }
 
     // Add Vercel bypass secret if available (for CI/preview deployments)
     const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;

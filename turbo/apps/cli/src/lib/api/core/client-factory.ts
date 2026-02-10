@@ -1,4 +1,4 @@
-import { getApiUrl, getToken } from "../config";
+import { getApiUrl, getToken, getScope } from "../config";
 import type { ApiErrorResponse } from "@vm0/core";
 
 /**
@@ -29,6 +29,12 @@ export async function getHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
   };
+
+  // Add scope header if configured (for org scope access)
+  const scope = await getScope();
+  if (scope) {
+    headers["X-VM0-Scope"] = scope;
+  }
 
   // Add Vercel bypass secret if available (for CI/preview deployments)
   const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;

@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { eq, and } from "drizzle-orm";
 import { scopes } from "../../db/schema/scope";
+import { orgMemberships } from "../../db/schema/org-membership";
 import { badRequest, notFound, forbidden } from "../errors";
 import { logger } from "../logger";
 import type { ScopeType } from "../../db/schema/scope";
@@ -210,7 +211,7 @@ export async function updateScopeSlug(
 /**
  * Check if a user can access a scope (read)
  * - Personal scopes: only owner
- * - Organization scopes: members (future)
+ * - Organization scopes: members
  * - System scopes: everyone
  */
 export async function canAccessScope(
@@ -228,8 +229,71 @@ export async function canAccessScope(
     return scope.ownerId === clerkUserId;
   }
 
-  // Organization scopes: check membership (future)
+  // Organization scopes: check membership
+  if (scope.type === "organization") {
+    const membership = await globalThis.services.db
+      .select()
+      .from(orgMemberships)
+      .where(
+        and(
+          eq(orgMemberships.scopeId, scopeId),
+          eq(orgMemberships.userId, clerkUserId),
+        ),
+      )
+      .limit(1);
+    return membership.length > 0;
+  }
+
   return false;
+}
+
+/**
+ * Get all scopes accessible by a user (personal + orgs they are member of)
+ */
+export async function getUserAccessibleScopes(clerkUserId: string) {
+  // Get personal scope
+  const personalScope = await getUserScopeByClerkId(clerkUserId);
+
+  // Get org scopes user is a member of
+  const orgScopes = await globalThis.services.db
+    .select({
+      scope: scopes,
+      role: orgMemberships.role,
+    })
+    .from(orgMemberships)
+    .innerJoin(scopes, eq(scopes.id, orgMemberships.scopeId))
+    .where(
+      and(
+        eq(orgMemberships.userId, clerkUserId),
+        eq(scopes.type, "organization"),
+      ),
+    );
+
+  const result: Array<{
+    id: string;
+    slug: string;
+    type: ScopeType;
+    role?: string;
+  }> = [];
+
+  if (personalScope) {
+    result.push({
+      id: personalScope.id,
+      slug: personalScope.slug,
+      type: personalScope.type,
+    });
+  }
+
+  for (const { scope, role } of orgScopes) {
+    result.push({
+      id: scope.id,
+      slug: scope.slug,
+      type: scope.type,
+      role,
+    });
+  }
+
+  return result;
 }
 
 /**

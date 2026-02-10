@@ -79,3 +79,19 @@ export {
 
 // Domain modules - Usage
 export { getUsage } from "./domains/usage";
+
+// Domain modules - Organizations
+export {
+  createOrg,
+  getOrgStatus,
+  createInviteLink,
+  removeOrgMember,
+  leaveOrg,
+  listScopes,
+} from "./domains/org";
+export type {
+  OrgResponse,
+  OrgStatusResponse,
+  InviteLinkResponse,
+  ScopeListItem,
+} from "./domains/org";

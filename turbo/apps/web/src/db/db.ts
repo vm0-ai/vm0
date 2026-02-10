@@ -25,6 +25,8 @@ import * as variableSchema from "./schema/variable";
 import * as composeJobSchema from "./schema/compose-job";
 import * as connectorSchema from "./schema/connector";
 import * as usageDailySchema from "./schema/usage-daily";
+import * as orgMembershipSchema from "./schema/org-membership";
+import * as orgInvitationSchema from "./schema/org-invitation";
 
 export const schema = {
   ...userSchema,
@@ -54,4 +56,6 @@ export const schema = {
   ...composeJobSchema,
   ...connectorSchema,
   ...usageDailySchema,
+  ...orgMembershipSchema,
+  ...orgInvitationSchema,
 };
