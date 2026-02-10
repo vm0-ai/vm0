@@ -1,4 +1,4 @@
-import { CONNECTOR_TYPES, getConnectorOAuthConfig } from "@vm0/core";
+import { getConnectorOAuthConfig } from "@vm0/core";
 
 interface NotionUserInfo {
   id: string;
@@ -168,17 +168,10 @@ export async function refreshNotionToken(
 }
 
 /**
- * Get secret name for Notion connector
+ * Get the primary secret name for Notion connector (the access token).
+ * Uses an explicit key rather than Object.keys() ordering to avoid
+ * fragile dependency on property insertion order.
  */
 export function getNotionSecretName(): string {
-  const oauthMethod = CONNECTOR_TYPES.notion.authMethods.oauth;
-  if (!oauthMethod) {
-    throw new Error("Notion OAuth auth method not found");
-  }
-  const secretNames = Object.keys(oauthMethod.secrets);
-  const firstSecret = secretNames[0];
-  if (!firstSecret) {
-    throw new Error("Notion OAuth secrets not configured");
-  }
-  return firstSecret;
+  return "NOTION_ACCESS_TOKEN";
 }
