@@ -67,13 +67,17 @@ export async function GET(
   }
   const connectorType = typeResult.data;
 
+  // Resolve origin early (handles forwarded host behind proxy/tunnel)
+  const url = new URL(request.url);
+  const origin = getOrigin(request);
+
   // Verify user is authenticated
   const userId = await getUserIdFromRequest(request);
   if (!userId) {
-    // Redirect to login page
-    const url = new URL(request.url);
-    const loginUrl = new URL("/sign-in", url.origin);
-    loginUrl.searchParams.set("redirect_url", request.url);
+    // Redirect to login page using correct origin (not localhost behind tunnel)
+    const loginUrl = new URL("/sign-in", origin);
+    const authorizeUrl = new URL(url.pathname + url.search, origin);
+    loginUrl.searchParams.set("redirect_url", authorizeUrl.toString());
     return NextResponse.redirect(loginUrl.toString());
   }
 
@@ -104,9 +108,7 @@ export async function GET(
   // Generate state for CSRF protection
   const state = generateState();
 
-  // Build redirect URI (use forwarded host if behind proxy/tunnel)
-  const url = new URL(request.url);
-  const origin = getOrigin(request);
+  // Build redirect URI
   const redirectUri = `${origin}/api/connectors/${type}/callback`;
 
   // Check for session parameter (CLI device flow)
