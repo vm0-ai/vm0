@@ -7,7 +7,7 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
  * Abstracts over the auth backend (Clerk for SaaS, local for self-hosted).
  * This enables easy switching and future additions (e.g., JWT-based multi-user).
  */
-export interface AuthProvider {
+interface AuthProvider {
   getUserId(): Promise<string | null>;
   getUserEmail(userId: string): Promise<string>;
 }

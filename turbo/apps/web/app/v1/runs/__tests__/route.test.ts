@@ -418,7 +418,6 @@ describe("Public API v1 - Runs Endpoints", () => {
 
   describe("Concurrent Run Limit", () => {
     it("should return 429 when concurrent run limit is reached", async () => {
-      // Set limit to 1
       vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
 
       try {
@@ -448,7 +447,6 @@ describe("Public API v1 - Runs Endpoints", () => {
     });
 
     it("should allow unlimited runs when limit is 0", async () => {
-      // Set limit to 0 (no limit)
       vi.stubEnv("CONCURRENT_RUN_LIMIT", "0");
 
       try {

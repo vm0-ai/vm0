@@ -38,6 +38,12 @@ describe("agents-list signals", () => {
         http.get("http://localhost:3000/api/agent/schedules", () => {
           return HttpResponse.json({ schedules: mockSchedules });
         }),
+        http.get(
+          "http://localhost:3000/api/agent/schedules/missing-secrets",
+          () => {
+            return HttpResponse.json({ agents: [] });
+          },
+        ),
       );
 
       await setupPage({ context, path: "/" });
@@ -91,6 +97,12 @@ describe("agents-list signals", () => {
             { status: 500 },
           );
         }),
+        http.get(
+          "http://localhost:3000/api/agent/schedules/missing-secrets",
+          () => {
+            return HttpResponse.json({ agents: [] });
+          },
+        ),
       );
 
       await setupPage({ context, path: "/" });

@@ -998,14 +998,20 @@ export async function insertStorageVersion(
     throw new Error(`Storage "${storageName}" not found`);
   }
 
-  await globalThis.services.db.insert(storageVersions).values({
-    id: versionId,
-    storageId: storage.id,
-    s3Key: `test/${versionId}`,
-    size: 0,
-    fileCount: 0,
-    createdBy: "test",
-  });
+  await globalThis.services.db
+    .insert(storageVersions)
+    .values({
+      id: versionId,
+      storageId: storage.id,
+      s3Key: `test/${versionId}`,
+      size: 0,
+      fileCount: 0,
+      createdBy: "test",
+    })
+    .onConflictDoUpdate({
+      target: storageVersions.id,
+      set: { storageId: storage.id },
+    });
 }
 
 // ============================================================================

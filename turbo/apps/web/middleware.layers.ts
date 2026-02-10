@@ -30,7 +30,7 @@ const STATIC_FILE_RE = /\.(ico|png|jpg|jpeg|svg|gif|webp|woff|woff2|ttf|eot)$/i;
  * - "skip"  : non-API routes that should bypass i18n (static, auth pages, etc.)
  * - "page"  : normal page routes that need i18n + auth
  */
-export type RouteKind = "api" | "skip" | "page";
+type RouteKind = "api" | "skip" | "page";
 
 export function classifyRoute(pathname: string): RouteKind {
   if (pathname.startsWith("/api/") || pathname.startsWith("/v1/")) {
@@ -76,7 +76,7 @@ export { intlMiddleware };
 // Middleware layer types
 // ---------------------------------------------------------------------------
 
-export type MiddlewareContext = {
+type MiddlewareContext = {
   request: NextRequest;
   routeKind: RouteKind;
 };
