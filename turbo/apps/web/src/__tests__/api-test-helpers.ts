@@ -1546,3 +1546,22 @@ export async function createTestThreadSession(params: {
     .returning({ id: slackThreadSessions.id });
   return row!;
 }
+
+export async function findTestThreadSession(channelId: string): Promise<{
+  id: string;
+  slackChannelId: string;
+  slackBindingId: string | null;
+  agentSessionId: string | null;
+} | null> {
+  const [row] = await globalThis.services.db
+    .select({
+      id: slackThreadSessions.id,
+      slackChannelId: slackThreadSessions.slackChannelId,
+      slackBindingId: slackThreadSessions.slackBindingId,
+      agentSessionId: slackThreadSessions.agentSessionId,
+    })
+    .from(slackThreadSessions)
+    .where(eq(slackThreadSessions.slackChannelId, channelId))
+    .limit(1);
+  return row ?? null;
+}

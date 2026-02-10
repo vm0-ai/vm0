@@ -1330,6 +1330,12 @@ describe("POST /api/slack/events", () => {
       expect(runAgentSpy.mock.calls[0]![0].sessionId).toBe(agentSession.id);
       expect(runAgentSpy.mock.calls[0]![0].composeId).toBe(binding.composeId);
 
+      // And Slack context should be skipped (session checkpoint has full history)
+      expect(runAgentSpy.mock.calls[0]![0].threadContext).toBe("");
+
+      // And no Slack conversation history should be fetched
+      expect(slackHandlers.mocked.conversationsReplies).not.toHaveBeenCalled();
+
       // And a response should be posted
       expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
     });

@@ -9,6 +9,7 @@ import {
   completeTestRun,
   createTestSchedule,
   linkRunToSchedule,
+  findTestThreadSession,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -48,16 +49,21 @@ const context = testContext();
 
 const SLACK_API = "https://slack.com/api";
 
+// Simulate real Slack behavior: when posting to a user ID (U...),
+// Slack returns the actual DM channel ID (D...) in the response.
+const MOCK_DM_CHANNEL_ID = "D-mock-dm-channel";
+
 const slackHandlers = handlers({
   postMessage: http.post(
     `${SLACK_API}/chat.postMessage`,
     async ({ request }) => {
       const body = await request.formData();
       const data = Object.fromEntries(body.entries());
+      const channel = String(data.channel);
       return HttpResponse.json({
         ok: true,
         ts: `${Date.now()}.000000`,
-        channel: data.channel,
+        channel: channel.startsWith("U") ? MOCK_DM_CHANNEL_ID : channel,
       });
     },
   ),
@@ -525,6 +531,13 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(sectionTexts.some((t) => t.includes("scheduled-agent"))).toBe(
         true,
       );
+
+      // Thread session should be saved with the real DM channel ID (D...),
+      // not the Slack user ID (U...) that was used to send the message
+      const threadSession = await findTestThreadSession(MOCK_DM_CHANNEL_ID);
+      expect(threadSession).not.toBeNull();
+      expect(threadSession!.slackBindingId).toBeNull();
+      expect(threadSession!.agentSessionId).toBeDefined();
     });
 
     it("should send error notification when scheduled run fails", async () => {
