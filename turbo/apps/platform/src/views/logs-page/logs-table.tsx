@@ -1,11 +1,9 @@
 import { useLoadable } from "ccstate-react";
-import type { Computed } from "ccstate";
 import { currentPageLogs$ } from "../../signals/logs-page/logs-signals.ts";
 import { LogsTableRow } from "./logs-table-row.tsx";
 import { LogsEmptyState } from "./logs-empty-state.tsx";
 import { LogsTableSkeleton } from "./logs-table-skeleton.tsx";
 import { Table, TableHeader, TableBody, TableHead, TableRow } from "@vm0/ui";
-import type { LogsListResponse } from "../../signals/logs-page/types.ts";
 
 function LogsTableHeader() {
   return (
@@ -37,21 +35,17 @@ function LogsTableHeader() {
   );
 }
 
-function LoadingTable() {
-  return <LogsTableSkeleton />;
-}
-
 export function LogsTable() {
-  const currentPage = useLoadable(currentPageLogs$);
+  const logsLoadable = useLoadable(currentPageLogs$);
 
-  if (currentPage.state === "loading") {
-    return <LoadingTable />;
+  if (logsLoadable.state === "loading") {
+    return <LogsTableSkeleton />;
   }
 
-  if (currentPage.state === "hasError") {
+  if (logsLoadable.state === "hasError") {
     const errorMessage =
-      currentPage.error instanceof Error
-        ? currentPage.error.message
+      logsLoadable.error instanceof Error
+        ? logsLoadable.error.message
         : "Failed to load logs";
     return (
       <Table>
@@ -67,44 +61,7 @@ export function LogsTable() {
     );
   }
 
-  if (currentPage.data === null) {
-    return <LoadingTable />;
-  }
-
-  return <LogsTableData pageComputed={currentPage.data} />;
-}
-
-interface LogsTableDataProps {
-  pageComputed: Computed<Promise<LogsListResponse>>;
-}
-
-function LogsTableData({ pageComputed }: LogsTableDataProps) {
-  const dataLoadable = useLoadable(pageComputed);
-
-  if (dataLoadable.state === "loading") {
-    return <LoadingTable />;
-  }
-
-  if (dataLoadable.state === "hasError") {
-    const errorMessage =
-      dataLoadable.error instanceof Error
-        ? dataLoadable.error.message
-        : "Failed to load logs";
-    return (
-      <Table>
-        <LogsTableHeader />
-        <TableBody>
-          <TableRow>
-            <td colSpan={7} className="p-4 text-center text-destructive">
-              Error: {errorMessage}
-            </td>
-          </TableRow>
-        </TableBody>
-      </Table>
-    );
-  }
-
-  if (dataLoadable.data.data.length === 0) {
+  if (logsLoadable.data.data.length === 0) {
     return <LogsEmptyState />;
   }
 
@@ -112,7 +69,7 @@ function LogsTableData({ pageComputed }: LogsTableDataProps) {
     <Table>
       <LogsTableHeader />
       <TableBody>
-        {dataLoadable.data.data.map((entry) => (
+        {logsLoadable.data.data.map((entry) => (
           <LogsTableRow key={entry.id} entry={entry} />
         ))}
       </TableBody>

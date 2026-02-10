@@ -1,6 +1,4 @@
-import type { Computed } from "ccstate";
 import { useSet, useLoadable, useGet } from "ccstate-react";
-import type { LogsListResponse } from "../../signals/logs-page/types.ts";
 import {
   currentPageLogs$,
   hasPrevPage$,
@@ -12,12 +10,11 @@ import {
   rowsPerPageValue$,
   currentPageNumber$,
 } from "../../signals/logs-page/logs-signals.ts";
-import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Pagination } from "../components/pagination.tsx";
 
 export function LogsPagination() {
-  const currentPageLoadable = useLoadable(currentPageLogs$);
+  const logsLoadable = useLoadable(currentPageLogs$);
   const hasPrev = useGet(hasPrevPage$);
   const currentPage = useGet(currentPageNumber$);
   const rowsPerPage = useGet(rowsPerPageValue$);
@@ -26,96 +23,34 @@ export function LogsPagination() {
   const goForwardTwo = useSet(goForwardTwoPages$);
   const goBackTwo = useSet(goBackTwoPages$);
   const setRowsPerPageFn = useSet(setRowsPerPage$);
-  const pageSignal = useGet(pageSignal$);
+
+  const hasNext =
+    logsLoadable.state === "hasData" && logsLoadable.data.pagination.hasMore;
+  const isLoading = logsLoadable.state === "loading";
+  const totalPages =
+    logsLoadable.state === "hasData"
+      ? logsLoadable.data.pagination.totalPages
+      : undefined;
 
   const handleNextPage = () => {
-    detach(goToNext(pageSignal), Reason.DomCallback);
+    detach(goToNext(), Reason.DomCallback);
   };
 
   const handlePrevPage = () => {
-    detach(goToPrev(pageSignal), Reason.DomCallback);
+    goToPrev();
   };
 
   const handleForwardTwoPages = () => {
-    detach(goForwardTwo(pageSignal), Reason.DomCallback);
+    detach(goForwardTwo(), Reason.DomCallback);
   };
 
   const handleBackTwoPages = () => {
-    detach(goBackTwo(pageSignal), Reason.DomCallback);
+    goBackTwo();
   };
 
   const handleRowsPerPageChange = (limit: number) => {
-    detach(setRowsPerPageFn({ limit, signal: pageSignal }), Reason.DomCallback);
+    setRowsPerPageFn(limit);
   };
-
-  // Get the page computed, then load its data
-  const pageComputed =
-    currentPageLoadable.state === "hasData" ? currentPageLoadable.data : null;
-
-  if (!pageComputed) {
-    return (
-      <Pagination
-        currentPage={currentPage}
-        rowsPerPage={rowsPerPage}
-        hasNext={false}
-        hasPrev={hasPrev}
-        isLoading
-        onNextPage={handleNextPage}
-        onPrevPage={handlePrevPage}
-        onForwardTwoPages={handleForwardTwoPages}
-        onBackTwoPages={handleBackTwoPages}
-        onRowsPerPageChange={handleRowsPerPageChange}
-      />
-    );
-  }
-
-  return (
-    <LogsPaginationWithData
-      pageComputed={pageComputed}
-      currentPage={currentPage}
-      rowsPerPage={rowsPerPage}
-      hasPrev={hasPrev}
-      onNextPage={handleNextPage}
-      onPrevPage={handlePrevPage}
-      onForwardTwoPages={handleForwardTwoPages}
-      onBackTwoPages={handleBackTwoPages}
-      onRowsPerPageChange={handleRowsPerPageChange}
-    />
-  );
-}
-
-interface LogsPaginationWithDataProps {
-  pageComputed: Computed<Promise<LogsListResponse>>;
-  currentPage: number;
-  rowsPerPage: number;
-  hasPrev: boolean;
-  onNextPage: () => void;
-  onPrevPage: () => void;
-  onForwardTwoPages: () => void;
-  onBackTwoPages: () => void;
-  onRowsPerPageChange: (limit: number) => void;
-}
-
-function LogsPaginationWithData({
-  pageComputed,
-  currentPage,
-  rowsPerPage,
-  hasPrev,
-  onNextPage,
-  onPrevPage,
-  onForwardTwoPages,
-  onBackTwoPages,
-  onRowsPerPageChange,
-}: LogsPaginationWithDataProps) {
-  const dataLoadable = useLoadable(pageComputed);
-
-  const hasNext =
-    dataLoadable.state === "hasData" && dataLoadable.data.pagination.hasMore;
-  const isLoading = dataLoadable.state === "loading";
-  const totalPages =
-    dataLoadable.state === "hasData"
-      ? dataLoadable.data.pagination.totalPages
-      : undefined;
 
   return (
     <Pagination
@@ -125,11 +60,11 @@ function LogsPaginationWithData({
       hasNext={hasNext}
       hasPrev={hasPrev}
       isLoading={isLoading}
-      onNextPage={onNextPage}
-      onPrevPage={onPrevPage}
-      onForwardTwoPages={onForwardTwoPages}
-      onBackTwoPages={onBackTwoPages}
-      onRowsPerPageChange={onRowsPerPageChange}
+      onNextPage={handleNextPage}
+      onPrevPage={handlePrevPage}
+      onForwardTwoPages={handleForwardTwoPages}
+      onBackTwoPages={handleBackTwoPages}
+      onRowsPerPageChange={handleRowsPerPageChange}
     />
   );
 }

@@ -5,31 +5,21 @@ import {
   setSearch$,
   searchQueryValue$,
 } from "../../signals/logs-page/logs-signals.ts";
-import { pageSignal$ } from "../../signals/page-signal.ts";
-import { detach, Reason } from "../../signals/utils.ts";
 
 export function LogsSearch() {
   const searchQuery = useGet(searchQueryValue$);
   const setSearchFn = useSet(setSearch$);
-  const pageSignal = useGet(pageSignal$);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
-      const value = e.currentTarget.value;
-      detach(
-        setSearchFn({ search: value, signal: pageSignal }),
-        Reason.DomCallback,
-      );
+      setSearchFn(e.currentTarget.value);
     }
   };
 
   const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
     const value = e.currentTarget.value;
     if (value !== searchQuery) {
-      detach(
-        setSearchFn({ search: value, signal: pageSignal }),
-        Reason.DomCallback,
-      );
+      setSearchFn(value);
     }
   };
 
