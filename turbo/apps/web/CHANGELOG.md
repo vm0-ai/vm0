@@ -1,5 +1,21 @@
 # Changelog
 
+## [12.27.0](https://github.com/vm0-ai/vm0/compare/web-v12.26.0...web-v12.27.0) (2026-02-10)
+
+
+### Features
+
+* **cli:** add --check-env flag to vm0 run commands ([#2760](https://github.com/vm0-ai/vm0/issues/2760)) ([f6711e0](https://github.com/vm0-ai/vm0/commit/f6711e0d047aa872c76f97c8cfaf1257d2f35fb0))
+* **slack:** send DM notification when scheduled agent run completes ([#2720](https://github.com/vm0-ai/vm0/issues/2720)) ([77cf47b](https://github.com/vm0-ai/vm0/commit/77cf47b9911a28394bd0b851d75183ea22764bab))
+* **web:** add Notion OAuth connector support ([#2738](https://github.com/vm0-ai/vm0/issues/2738)) ([a201b5d](https://github.com/vm0-ai/vm0/commit/a201b5d7ffdd081b4a9f299297bad0e06fa890b1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.8.0
+
 ## [12.26.0](https://github.com/vm0-ai/vm0/compare/web-v12.25.0...web-v12.26.0) (2026-02-10)
 
 

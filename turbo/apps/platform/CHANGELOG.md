@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.56.2](https://github.com/vm0-ai/vm0/compare/platform-v0.56.1...platform-v0.56.2) (2026-02-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.8.0
+
 ## [0.56.1](https://github.com/vm0-ai/vm0/compare/platform-v0.56.0...platform-v0.56.1) (2026-02-10)
 
 
