@@ -3,9 +3,16 @@ set -e
 
 echo "[VM0] Starting initialization..."
 
-# 1. Wait for database
+# 1. Wait for database (max 60 attempts = ~60 seconds)
 echo "[VM0] Waiting for database..."
+DB_RETRIES=0
+DB_MAX_RETRIES=60
 until nc -z postgres 5432 2>/dev/null; do
+  DB_RETRIES=$((DB_RETRIES + 1))
+  if [ "$DB_RETRIES" -ge "$DB_MAX_RETRIES" ]; then
+    echo "[VM0] ERROR: Database not reachable after ${DB_MAX_RETRIES}s, aborting"
+    exit 1
+  fi
   sleep 1
 done
 echo "[VM0] Database is ready"

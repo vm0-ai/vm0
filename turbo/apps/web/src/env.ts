@@ -41,6 +41,10 @@ function initEnv() {
       R2_ACCESS_KEY_ID: z.string().min(1),
       R2_SECRET_ACCESS_KEY: z.string().min(1),
       R2_USER_STORAGES_BUCKET_NAME: z.string().min(1),
+      // S3-compatible storage overrides (MinIO, AWS S3, etc.)
+      S3_ENDPOINT: z.string().url().optional(),
+      S3_REGION: z.string().min(1).optional(),
+      S3_FORCE_PATH_STYLE: z.enum(["true", "false"]).optional(),
       SECRETS_ENCRYPTION_KEY: z.string().length(64), // 32-byte hex key for AES-256
       OFFICIAL_RUNNER_SECRET: z.string().length(64).optional(), // 32-byte hex key for official runner auth
       AXIOM_TOKEN_SESSIONS: z.string().min(1).optional(), // Scoped token for agent-run-events
@@ -92,6 +96,9 @@ function initEnv() {
       R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
       R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,
       R2_USER_STORAGES_BUCKET_NAME: process.env.R2_USER_STORAGES_BUCKET_NAME,
+      S3_ENDPOINT: process.env.S3_ENDPOINT,
+      S3_REGION: process.env.S3_REGION,
+      S3_FORCE_PATH_STYLE: process.env.S3_FORCE_PATH_STYLE,
       SECRETS_ENCRYPTION_KEY: process.env.SECRETS_ENCRYPTION_KEY,
       OFFICIAL_RUNNER_SECRET: process.env.OFFICIAL_RUNNER_SECRET,
       AXIOM_TOKEN_SESSIONS: process.env.AXIOM_TOKEN_SESSIONS,

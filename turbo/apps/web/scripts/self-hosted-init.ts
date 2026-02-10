@@ -11,42 +11,12 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { eq, sql as sqlTag } from "drizzle-orm";
 import postgres from "postgres";
 
-// Inline table references to avoid importing the full app schema
-// (this script runs standalone in the Docker container).
+import { scopes } from "../src/db/schema/scope";
+import { users } from "../src/db/schema/user";
 import {
-  pgTable,
-  uuid,
-  text,
-  varchar,
-  timestamp,
-  pgEnum,
-} from "drizzle-orm/pg-core";
-
-const scopeTypeEnum = pgEnum("scope_type", [
-  "personal",
-  "organization",
-  "system",
-]);
-
-const scopes = pgTable("scopes", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  slug: varchar("slug", { length: 64 }).notNull().unique(),
-  type: scopeTypeEnum("type").notNull().default("personal"),
-  ownerId: text("owner_id"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-
-const users = pgTable("users", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  scopeId: uuid("scope_id").references(() => scopes.id),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-
-// Must match SELF_HOSTED_USER_ID in auth-provider.ts
-const SELF_HOSTED_USER_ID = "00000000-0000-0000-0000-000000000000";
-const SELF_HOSTED_SCOPE_SLUG = "self-hosted";
+  SELF_HOSTED_USER_ID,
+  SELF_HOSTED_SCOPE_SLUG,
+} from "../src/lib/auth/constants";
 
 async function main() {
   if (!process.env.DATABASE_URL) {

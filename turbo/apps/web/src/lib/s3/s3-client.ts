@@ -19,10 +19,10 @@ function getS3Client(): S3Client {
   const envVars = env();
 
   const endpoint =
-    process.env.S3_ENDPOINT ||
+    envVars.S3_ENDPOINT ||
     `https://${envVars.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
-  const region = process.env.S3_REGION || "auto";
-  const forcePathStyle = process.env.S3_FORCE_PATH_STYLE === "true";
+  const region = envVars.S3_REGION || "auto";
+  const forcePathStyle = envVars.S3_FORCE_PATH_STYLE === "true";
 
   return new S3Client({
     region,

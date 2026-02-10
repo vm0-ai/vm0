@@ -1,11 +1,16 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import {
+  clerkMiddleware,
+  createRouteMatcher,
+  type ClerkMiddlewareAuth,
+} from "@clerk/nextjs/server";
 import { NextRequest } from "next/server";
 import {
-  classifyRoute,
+  runLayers,
+  corsLayer,
+  i18nLayer,
+  MiddlewareLayer,
   isProtectedSkipRoute,
-  intlMiddleware,
 } from "./middleware.layers";
-import { handleCors } from "./middleware.cors";
 
 // ---------------------------------------------------------------------------
 // Clerk-specific route config
@@ -34,35 +39,42 @@ const isPublicRoute = createRouteMatcher([
 ]);
 
 // ---------------------------------------------------------------------------
+// Clerk auth layer
+// ---------------------------------------------------------------------------
+
+/**
+ * Captured Clerk `auth` handle. Set by the clerkMiddleware wrapper before
+ * `runLayers` is invoked, so authLayer can call `auth.protect()`.
+ */
+let _clerkAuth: ClerkMiddlewareAuth;
+
+const clerkAuthLayer: MiddlewareLayer = async (ctx) => {
+  if (ctx.routeKind === "skip") {
+    if (isProtectedSkipRoute(ctx.request.nextUrl.pathname)) {
+      await _clerkAuth.protect();
+    }
+    return null;
+  }
+
+  // Page routes: protect non-public routes
+  if (ctx.routeKind === "page") {
+    if (!isPublicRoute(ctx.request)) {
+      await _clerkAuth.protect();
+    }
+  }
+
+  return null;
+};
+
+// ---------------------------------------------------------------------------
 // Clerk middleware
 //
-// clerkMiddleware wraps the whole handler, so the onion model is implemented
-// inside its callback. The shared layers (CORS, i18n) are called explicitly,
-// while Clerk's `auth` object provides the auth layer.
+// clerkMiddleware wraps the whole handler. Inside its callback we capture
+// the `auth` handle and delegate to `runLayers` for uniform layer ordering.
 // ---------------------------------------------------------------------------
 
 export default clerkMiddleware(async (auth, request: NextRequest) => {
-  const routeKind = classifyRoute(request.nextUrl.pathname);
+  _clerkAuth = auth;
 
-  // Layer 1: API routes - CORS + optional CLI token bypass
-  if (routeKind === "api") {
-    return handleCors(request);
-  }
-
-  // Layer 2: Skip-i18n routes (static files, auth pages, etc.)
-  if (routeKind === "skip") {
-    if (isProtectedSkipRoute(request.nextUrl.pathname)) {
-      await auth.protect();
-    }
-    return undefined;
-  }
-
-  // Layer 3: Page routes - i18n + Clerk auth
-  const response = intlMiddleware(request);
-
-  if (!isPublicRoute(request)) {
-    await auth.protect();
-  }
-
-  return response;
+  return runLayers(request, [corsLayer, clerkAuthLayer, i18nLayer]);
 });

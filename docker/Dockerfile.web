@@ -63,7 +63,7 @@ RUN addgroup --system --gid 1001 nodejs \
 # tsx is a CLI tool -> install globally
 # drizzle-orm, postgres, drizzle-kit are imported by migrate.ts -> install locally
 RUN npm install -g tsx \
-    && cd /app && npm install --no-save drizzle-orm postgres drizzle-kit
+    && cd /app && npm install --no-save drizzle-orm@0.44.5 postgres@3.4.7 drizzle-kit@0.31.4
 
 # Standalone output includes required node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./

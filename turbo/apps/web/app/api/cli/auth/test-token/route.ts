@@ -8,27 +8,7 @@ import {
   generateDefaultScopeSlug,
 } from "../../../../../src/lib/scope/scope-service";
 import { isBadRequest } from "../../../../../src/lib/errors";
-import { isSelfHosted } from "../../../../../src/env";
-import { SELF_HOSTED_USER_ID } from "../../../../../src/lib/auth/auth-provider";
-
-/**
- * Resolve the test user ID based on the deployment mode.
- *
- * - Self-hosted: uses the well-known default user ID (no external service needed)
- * - SaaS: queries Clerk Backend API for the e2e test user
- */
-async function resolveTestUserId(): Promise<string | null> {
-  if (isSelfHosted) {
-    return SELF_HOSTED_USER_ID;
-  }
-
-  const { clerkClient } = await import("@clerk/nextjs/server");
-  const clerk = await clerkClient();
-  const { data: users } = await clerk.users.getUserList({
-    emailAddress: ["e2e+clerk_test@vm0.ai"],
-  });
-  return users[0]?.id ?? null;
-}
+import { resolveTestUserId } from "../../../../../src/lib/auth/test-user";
 
 /**
  * Check if test-token endpoint is allowed based on environment.

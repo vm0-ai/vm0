@@ -43,16 +43,12 @@ export async function checkRunConcurrencyLimit(
 ): Promise<void> {
   // Use provided limit, or env var, or default to 1
   // Note: 0 means no limit, so we need explicit undefined check
-  const rawEnvLimit = process.env.CONCURRENT_RUN_LIMIT;
-  const envLimit =
-    rawEnvLimit !== undefined && rawEnvLimit !== ""
-      ? parseInt(rawEnvLimit, 10)
-      : undefined;
+  const envLimit = globalThis.services.env.CONCURRENT_RUN_LIMIT;
   let effectiveLimit = 1; // Default
 
   if (limit !== undefined) {
     effectiveLimit = limit;
-  } else if (envLimit !== undefined && !isNaN(envLimit)) {
+  } else if (envLimit !== undefined) {
     effectiveLimit = envLimit;
   }
 

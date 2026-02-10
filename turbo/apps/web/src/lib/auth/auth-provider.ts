@@ -1,5 +1,8 @@
 import { isSelfHosted } from "../../env";
 import { auth, clerkClient } from "@clerk/nextjs/server";
+import { SELF_HOSTED_USER_ID, SELF_HOSTED_USER_EMAIL } from "./constants";
+
+export { SELF_HOSTED_USER_ID } from "./constants";
 
 /**
  * Authentication provider interface.
@@ -32,14 +35,6 @@ function createClerkAuthProvider(): AuthProvider {
     },
   };
 }
-
-/**
- * Default user ID for single-user self-hosted mode.
- * This is a well-known constant so that the init script can
- * create a user row with this exact ID on first boot.
- */
-export const SELF_HOSTED_USER_ID = "00000000-0000-0000-0000-000000000000";
-const SELF_HOSTED_USER_EMAIL = "admin@localhost";
 
 /**
  * Self-hosted single-user mode: always returns the default user.

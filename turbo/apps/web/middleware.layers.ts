@@ -32,7 +32,7 @@ const STATIC_FILE_RE = /\.(ico|png|jpg|jpeg|svg|gif|webp|woff|woff2|ttf|eot)$/i;
  */
 type RouteKind = "api" | "skip" | "page";
 
-export function classifyRoute(pathname: string): RouteKind {
+function classifyRoute(pathname: string): RouteKind {
   if (pathname.startsWith("/api/") || pathname.startsWith("/v1/")) {
     return "api";
   }
@@ -69,8 +69,6 @@ const intlMiddleware = createIntlMiddleware({
   localePrefix: "always",
   localeDetection: true,
 });
-
-export { intlMiddleware };
 
 // ---------------------------------------------------------------------------
 // Middleware layer types
