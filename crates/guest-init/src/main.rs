@@ -1,9 +1,18 @@
 //! Guest init process for Firecracker.
 //!
-//! This binary runs as PID 1 inside a Firecracker VM and:
-//! 1. Initializes the filesystem (mounts, overlayfs, pivot_root)
-//! 2. Handles PID 1 responsibilities (signal forwarding, zombie reaping)
-//! 3. Runs the vsock-guest for host-guest communication
+//! Runs as PID 1 inside a Firecracker VM. PID 1 signal handling and zombie
+//! reaping follow the same patterns as [tini](https://github.com/krallin/tini).
+//!
+//! Unlike tini (which forks a single child and supervises it), guest-init runs
+//! vsock-guest directly in the PID 1 process. This is intentional: the VM agent
+//! receives and executes multiple commands over its lifetime, rather than
+//! supervising a single program.
+//!
+//! Startup sequence:
+//! 1. Initialize filesystem (mounts, overlayfs, pivot_root)
+//! 2. Install PID 1 signal handlers (SIGTERM/SIGINT for shutdown, ignore SIGTTIN/SIGTTOU/SIGPIPE)
+//! 3. Start background zombie reaper thread
+//! 4. Run vsock-guest event loop for host-guest communication
 
 mod init;
 mod pid1;
