@@ -462,6 +462,23 @@ export function buildAppHomeView(options: {
 
   blocks.push({ type: "divider" });
 
+  // Compose section
+  blocks.push({
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: ":rocket: *Compose Agent*\nCreate a new agent from a GitHub repository.",
+    },
+    accessory: {
+      type: "button",
+      text: { type: "plain_text", text: "Compose" },
+      action_id: "home_agent_compose",
+      style: "primary",
+    },
+  });
+
+  blocks.push({ type: "divider" });
+
   // Help section
   blocks.push({
     type: "section",

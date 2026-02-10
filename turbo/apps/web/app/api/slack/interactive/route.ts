@@ -16,6 +16,7 @@ import {
 } from "../../../../src/db/schema/agent-compose";
 import {
   buildAgentAddModal,
+  buildAgentComposeModal,
   buildAgentUpdateModal,
 } from "../../../../src/lib/slack/blocks";
 import { decryptCredentialValue } from "../../../../src/lib/crypto/secrets-encryption";
@@ -548,6 +549,11 @@ async function dispatchBlockAction(
         await handleModelProviderRefresh(payload);
       }
       break;
+    case "home_agent_compose":
+      if (payload.trigger_id) {
+        await handleHomeAgentCompose(payload, payload.trigger_id);
+      }
+      break;
     case "home_disconnect":
       await handleHomeDisconnect(payload);
       break;
@@ -635,6 +641,26 @@ async function handleHomeAgentLink(
     channelId,
     hasModelProvider,
   );
+
+  await client.views.open({
+    trigger_id: triggerId,
+    view: modal,
+  });
+}
+
+/**
+ * Handle compose button on App Home
+ */
+async function handleHomeAgentCompose(
+  payload: SlackInteractivePayload,
+  triggerId: string,
+): Promise<void> {
+  const client = await getSlackClientForWorkspace(payload.team.id);
+  if (!client) {
+    return;
+  }
+
+  const modal = buildAgentComposeModal();
 
   await client.views.open({
     trigger_id: triggerId,
