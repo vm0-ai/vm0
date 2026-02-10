@@ -63,9 +63,7 @@ export const permissionCommand = new Command()
 
         if (!response.ok) {
           const error = (await response.json()) as ApiError;
-          throw new Error(
-            error.error?.message || "Failed to list permissions",
-          );
+          throw new Error(error.error?.message || "Failed to list permissions");
         }
 
         const data = (await response.json()) as PermissionsResponse;
