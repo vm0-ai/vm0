@@ -21,14 +21,6 @@ static HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| {
         .unwrap_or_else(|_| Client::new())
 });
 
-static UPLOAD_CLIENT: LazyLock<Client> = LazyLock::new(|| {
-    Client::builder()
-        .connect_timeout(Duration::from_secs(constants::HTTP_CONNECT_TIMEOUT_SECS))
-        .timeout(Duration::from_secs(constants::HTTP_UPLOAD_TIMEOUT_SECS))
-        .build()
-        .unwrap_or_else(|_| Client::new())
-});
-
 /// POST JSON to a webhook endpoint with Bearer auth, Vercel bypass, and retry.
 ///
 /// Returns the parsed JSON response on success, or `None` if the response body
@@ -90,14 +82,15 @@ pub async fn post_json(
 /// PUT raw bytes to a presigned S3 URL with retry.
 ///
 /// No auth headers — the URL itself carries the authorization.
-/// Uses a dedicated upload client with longer timeout.
+/// Uses a per-request timeout override for longer uploads.
 /// Accepts `Bytes` for O(1) clone on retry.
 pub async fn put_presigned(url: &str, data: Bytes, content_type: &str) -> Result<(), AgentError> {
     let max_retries = constants::HTTP_MAX_RETRIES;
 
     for attempt in 1..=max_retries {
-        match UPLOAD_CLIENT
+        match HTTP_CLIENT
             .put(url)
+            .timeout(Duration::from_secs(constants::HTTP_UPLOAD_TIMEOUT_SECS))
             .header("Content-Type", content_type)
             .body(data.clone())
             .send()
