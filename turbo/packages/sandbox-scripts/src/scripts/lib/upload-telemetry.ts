@@ -10,11 +10,9 @@ import {
   TELEMETRY_INTERVAL,
   SYSTEM_LOG_FILE,
   METRICS_LOG_FILE,
-  NETWORK_LOG_FILE,
   SANDBOX_OPS_LOG_FILE,
   TELEMETRY_LOG_POS_FILE,
   TELEMETRY_METRICS_POS_FILE,
-  TELEMETRY_NETWORK_POS_FILE,
   TELEMETRY_SANDBOX_OPS_POS_FILE,
 } from "./common.js";
 import { logInfo, logError, logDebug, logWarn } from "./log.js";
@@ -127,13 +125,6 @@ function readMetricsFromPosition(posFile: string): [JsonEntry[], number] {
 }
 
 /**
- * Read new network logs from JSONL file starting from last position.
- */
-function readNetworkLogsFromPosition(posFile: string): [JsonEntry[], number] {
-  return readJsonlFromPosition(NETWORK_LOG_FILE, posFile);
-}
-
-/**
  * Read new sandbox operations from JSONL file starting from last position.
  */
 function readSandboxOpsFromPosition(posFile: string): [JsonEntry[], number] {
@@ -157,45 +148,30 @@ async function uploadTelemetry(): Promise<boolean> {
     TELEMETRY_METRICS_POS_FILE,
   );
 
-  // Read new network logs
-  const [networkLogs, networkPos] = readNetworkLogsFromPosition(
-    TELEMETRY_NETWORK_POS_FILE,
-  );
-
   // Read new sandbox operations
   const [sandboxOps, sandboxOpsPos] = readSandboxOpsFromPosition(
     TELEMETRY_SANDBOX_OPS_POS_FILE,
   );
 
   // Skip if nothing new
-  if (
-    !systemLog &&
-    metrics.length === 0 &&
-    networkLogs.length === 0 &&
-    sandboxOps.length === 0
-  ) {
+  if (!systemLog && metrics.length === 0 && sandboxOps.length === 0) {
     logDebug("No new telemetry data to upload");
     return true;
   }
 
   // Mask secrets in telemetry data before sending
   const maskedSystemLog = systemLog ? maskData(systemLog) : "";
-  const maskedNetworkLogs =
-    networkLogs.length > 0
-      ? maskData(networkLogs as unknown as Record<string, unknown>[])
-      : [];
 
   // Upload to API
   const payload = {
     runId: RUN_ID,
     systemLog: maskedSystemLog,
     metrics, // Metrics don't contain secrets (just numbers)
-    networkLogs: maskedNetworkLogs,
     sandboxOperations: sandboxOps, // Sandbox ops don't contain secrets (just timing data)
   };
 
   logDebug(
-    `Uploading telemetry: ${systemLog.length} bytes log, ${metrics.length} metrics, ${networkLogs.length} network logs, ${sandboxOps.length} sandbox ops`,
+    `Uploading telemetry: ${systemLog.length} bytes log, ${metrics.length} metrics, ${sandboxOps.length} sandbox ops`,
   );
 
   const result = await httpPostJson(TELEMETRY_URL, payload, 1);
@@ -204,7 +180,6 @@ async function uploadTelemetry(): Promise<boolean> {
     // Save positions only on successful upload
     savePosition(TELEMETRY_LOG_POS_FILE, logPos);
     savePosition(TELEMETRY_METRICS_POS_FILE, metricsPos);
-    savePosition(TELEMETRY_NETWORK_POS_FILE, networkPos);
     savePosition(TELEMETRY_SANDBOX_OPS_POS_FILE, sandboxOpsPos);
     logDebug(
       `Telemetry uploaded successfully: ${(result as { id?: string }).id ?? "unknown"}`,

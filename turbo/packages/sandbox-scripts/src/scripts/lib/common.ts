@@ -68,13 +68,9 @@ export const AGENT_LOG_FILE = `/tmp/vm0-agent-${RUN_ID}.log`;
 // Metrics log file for system resource metrics (JSONL format)
 export const METRICS_LOG_FILE = `/tmp/vm0-metrics-${RUN_ID}.jsonl`;
 
-// Network log file for proxy request logs (JSONL format)
-export const NETWORK_LOG_FILE = `/tmp/vm0-network-${RUN_ID}.jsonl`;
-
 // Telemetry position tracking files (to avoid duplicate uploads)
 export const TELEMETRY_LOG_POS_FILE = `/tmp/vm0-telemetry-log-pos-${RUN_ID}.txt`;
 export const TELEMETRY_METRICS_POS_FILE = `/tmp/vm0-telemetry-metrics-pos-${RUN_ID}.txt`;
-export const TELEMETRY_NETWORK_POS_FILE = `/tmp/vm0-telemetry-network-pos-${RUN_ID}.txt`;
 export const TELEMETRY_SANDBOX_OPS_POS_FILE = `/tmp/vm0-telemetry-sandbox-ops-pos-${RUN_ID}.txt`;
 
 // Sandbox operations log file (JSONL format)

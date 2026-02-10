@@ -80,21 +80,13 @@ async fn upload_telemetry(masker: &SecretMasker) -> Result<(), AgentError> {
         paths::metrics_log_file(),
         paths::telemetry_metrics_pos_file(),
     );
-    let (network_logs, network_pos) = read_jsonl_delta(
-        paths::network_log_file(),
-        paths::telemetry_network_pos_file(),
-    );
     let (sandbox_ops, sandbox_ops_pos) = read_jsonl_delta(
         guest_common::telemetry::sandbox_ops_log(),
         paths::telemetry_sandbox_ops_pos_file(),
     );
 
     // Nothing new
-    if system_log.is_empty()
-        && metrics.is_empty()
-        && network_logs.is_empty()
-        && sandbox_ops.is_empty()
-    {
+    if system_log.is_empty() && metrics.is_empty() && sandbox_ops.is_empty() {
         return Ok(());
     }
 
@@ -105,19 +97,10 @@ async fn upload_telemetry(masker: &SecretMasker) -> Result<(), AgentError> {
         masker.mask_string(&system_log)
     };
 
-    let masked_network: Vec<Value> = network_logs
-        .into_iter()
-        .map(|mut v| {
-            masker.mask_value(&mut v);
-            v
-        })
-        .collect();
-
     let payload = json!({
         "runId": env::run_id(),
         "systemLog": masked_log,
         "metrics": metrics,
-        "networkLogs": masked_network,
         "sandboxOperations": sandbox_ops,
     });
 
@@ -126,7 +109,6 @@ async fn upload_telemetry(masker: &SecretMasker) -> Result<(), AgentError> {
         Ok(_) => {
             save_position(paths::telemetry_log_pos_file(), log_pos);
             save_position(paths::telemetry_metrics_pos_file(), metrics_pos);
-            save_position(paths::telemetry_network_pos_file(), network_pos);
             save_position(paths::telemetry_sandbox_ops_pos_file(), sandbox_ops_pos);
             Ok(())
         }
