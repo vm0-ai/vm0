@@ -136,19 +136,25 @@ export async function handleDirectMessage(
     // Use message text directly (no mention prefix to strip in DMs)
     const messageContent = context.messageText;
 
-    // 7. Fetch context: execution gets deduplicated with images
-    const { executionContext } = await fetchConversationContexts(
-      client,
-      context.channelId,
-      context.threadTs,
-      botUserId,
-      botToken,
-      lastProcessedMessageTs,
-      context.messageTs,
-    );
+    // 7. Fetch context — skip when resuming an existing session (DMs only).
+    //    The session checkpoint already contains the full conversation history,
+    //    so Slack message context would be redundant.
+    const threadContext = existingSessionId
+      ? ""
+      : (
+          await fetchConversationContexts(
+            client,
+            context.channelId,
+            context.threadTs,
+            botUserId,
+            botToken,
+            lastProcessedMessageTs,
+            context.messageTs,
+          )
+        ).executionContext;
 
     try {
-      // 8. Execute agent with deduplicated context
+      // 8. Execute agent with context
       const {
         status: runStatus,
         response: agentResponse,
@@ -159,7 +165,7 @@ export async function handleDirectMessage(
         bindingId,
         sessionId: existingSessionId,
         prompt: messageContent,
-        threadContext: executionContext,
+        threadContext,
         userId: userLink.vm0UserId,
       });
 
