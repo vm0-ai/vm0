@@ -123,6 +123,9 @@ pub fn setup_codex() -> Result<(), AgentError> {
             child.wait_with_output()
         });
 
+    // Login failure is non-fatal: OPENAI_API_KEY is already in the environment
+    // and `codex exec` will use it directly. Some Codex versions may not support
+    // the `login` subcommand. We log + record the failure but continue.
     let success = match &output {
         Ok(o) if o.status.success() => {
             log_info!(LOG_TAG, "Codex authenticated with API key");

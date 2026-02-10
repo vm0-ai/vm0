@@ -156,3 +156,82 @@ pub async fn final_upload(masker: &SecretMasker) -> Result<(), AgentError> {
     log_info!(LOG_TAG, "Performing final telemetry upload...");
     upload_telemetry(masker).await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn read_file_delta_from_start() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("log.txt");
+        let pos = dir.path().join("log.pos");
+        fs::write(&file, "hello world").unwrap();
+
+        let (content, new_pos) = read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap());
+        assert_eq!(content, "hello world");
+        assert_eq!(new_pos, 11);
+    }
+
+    #[test]
+    fn read_file_delta_incremental() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("log.txt");
+        let pos = dir.path().join("log.pos");
+        fs::write(&file, "hello world").unwrap();
+        // Simulate having already read 6 bytes
+        fs::write(&pos, "6").unwrap();
+
+        let (content, new_pos) = read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap());
+        assert_eq!(content, "world");
+        assert_eq!(new_pos, 11);
+    }
+
+    #[test]
+    fn read_file_delta_no_new_data() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("log.txt");
+        let pos = dir.path().join("log.pos");
+        fs::write(&file, "done").unwrap();
+        fs::write(&pos, "4").unwrap();
+
+        let (content, new_pos) = read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap());
+        assert!(content.is_empty());
+        assert_eq!(new_pos, 4);
+    }
+
+    #[test]
+    fn read_file_delta_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("missing.txt");
+        let pos = dir.path().join("missing.pos");
+
+        let (content, new_pos) = read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap());
+        assert!(content.is_empty());
+        assert_eq!(new_pos, 0);
+    }
+
+    #[test]
+    fn read_jsonl_delta_parses_valid_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("data.jsonl");
+        let pos = dir.path().join("data.pos");
+        fs::write(&file, "{\"a\":1}\n{\"b\":2}\ninvalid\n").unwrap();
+
+        let (entries, new_pos) = read_jsonl_delta(file.to_str().unwrap(), pos.to_str().unwrap());
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0]["a"], 1);
+        assert_eq!(entries[1]["b"], 2);
+        assert!(new_pos > 0);
+    }
+
+    #[test]
+    fn save_position_and_read_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let pos = dir.path().join("test.pos");
+        save_position(pos.to_str().unwrap(), 42);
+        let val: u64 = fs::read_to_string(&pos).unwrap().trim().parse().unwrap();
+        assert_eq!(val, 42);
+    }
+}

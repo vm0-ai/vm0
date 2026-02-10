@@ -304,3 +304,59 @@ fn walk_jsonl(dir: &str, out: &mut Vec<String>) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn find_codex_session_by_id_in_filename() {
+        let dir = tempfile::tempdir().unwrap();
+        let sub = dir.path().join("2026-02-10");
+        fs::create_dir_all(&sub).unwrap();
+        fs::write(sub.join("abc123.jsonl"), "{}").unwrap();
+        fs::write(sub.join("other.jsonl"), "{}").unwrap();
+
+        let result = find_codex_session_file(dir.path().to_str().unwrap(), "abc123");
+        assert_eq!(
+            result.as_deref(),
+            Some(sub.join("abc123.jsonl").to_str().unwrap())
+        );
+    }
+
+    #[test]
+    fn find_codex_session_falls_back_to_most_recent() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("old.jsonl"), "{}").unwrap();
+        // Ensure different mtime
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        fs::write(dir.path().join("new.jsonl"), "{}").unwrap();
+
+        let result = find_codex_session_file(dir.path().to_str().unwrap(), "nonexistent");
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("new.jsonl"));
+    }
+
+    #[test]
+    fn find_codex_session_empty_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = find_codex_session_file(dir.path().to_str().unwrap(), "any");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn find_jsonl_files_recursive() {
+        let dir = tempfile::tempdir().unwrap();
+        let sub = dir.path().join("a").join("b");
+        fs::create_dir_all(&sub).unwrap();
+        fs::write(dir.path().join("root.jsonl"), "{}").unwrap();
+        fs::write(sub.join("nested.jsonl"), "{}").unwrap();
+        fs::write(dir.path().join("skip.txt"), "").unwrap();
+
+        let files = find_jsonl_files(dir.path().to_str().unwrap());
+        assert_eq!(files.len(), 2);
+        assert!(files.iter().any(|f| f.contains("root.jsonl")));
+        assert!(files.iter().any(|f| f.contains("nested.jsonl")));
+    }
+}
