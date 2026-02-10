@@ -366,14 +366,6 @@ async function run(): Promise<[number, string]> {
           // Valid JSONL - send immediately with sequence number (0-based)
           await sendEvent(event, eventSequence);
           eventSequence++;
-
-          // Extract result from "result" event for stdout
-          if (event.type === "result") {
-            const resultContent = event.result as string | undefined;
-            if (resultContent) {
-              console.log(resultContent);
-            }
-          }
         } catch {
           // Not valid JSON - log at debug level and skip
           logDebug(`Non-JSON line from agent: ${stripped.slice(0, 100)}`);
@@ -454,7 +446,7 @@ async function run(): Promise<[number, string]> {
       } else if (stderrLines.length > 0) {
         // Captured stderr from agent process
         errorMessage = stderrLines.map((line) => line.trim()).join(" ");
-        logInfo(`Captured stderr: ${errorMessage}`);
+        logInfo(`Captured ${stderrLines.length} stderr lines`);
       } else {
         errorMessage = `Agent exited with code ${agentExitCode}`;
       }
