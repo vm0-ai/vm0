@@ -18,13 +18,11 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 ///
 /// On the init event, extracts and persists the session ID and
 /// session history path.
-///
-/// Returns `true` on success.
 pub async fn send_event(
     event: &mut Value,
     seq: u32,
     masker: &SecretMasker,
-) -> Result<bool, AgentError> {
+) -> Result<(), AgentError> {
     // Extract session ID from init event
     extract_session_id(event);
 
@@ -49,7 +47,7 @@ pub async fn send_event(
     )
     .await
     {
-        Ok(_) => Ok(true),
+        Ok(_) => Ok(()),
         Err(e) => {
             log_error!(LOG_TAG, "Failed to send event after retries");
             // Write error flag
