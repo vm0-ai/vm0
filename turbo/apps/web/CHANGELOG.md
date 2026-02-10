@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.24.1](https://github.com/vm0-ai/vm0/compare/web-v12.24.0...web-v12.24.1) (2026-02-10)
+
+
+### Performance Improvements
+
+* **ci:** speed up preview deploy with vercel prebuilt and skip sentry source maps ([#2712](https://github.com/vm0-ai/vm0/issues/2712)) ([bf2fdfd](https://github.com/vm0-ai/vm0/commit/bf2fdfdb9c10137bcafe3099f8c107bece82eee6))
+
 ## [12.24.0](https://github.com/vm0-ai/vm0/compare/web-v12.23.0...web-v12.24.0) (2026-02-10)
 
 
