@@ -435,4 +435,35 @@ mod tests {
         assert_eq!(env.get("VM0_PROMPT").unwrap(), "overridden");
         assert_eq!(env.get("CUSTOM").unwrap(), "value");
     }
+
+    #[test]
+    fn build_env_json_with_environment() {
+        let mut ctx = minimal_context();
+        ctx.environment = Some(HashMap::from([
+            ("MY_VAR".into(), "123".into()),
+            ("OTHER".into(), "abc".into()),
+        ]));
+
+        let env = build_env_json(&ctx, "http://localhost");
+        assert_eq!(env.get("MY_VAR").unwrap(), "123");
+        assert_eq!(env.get("OTHER").unwrap(), "abc");
+    }
+
+    #[test]
+    fn build_env_json_with_api_start_time() {
+        let mut ctx = minimal_context();
+        ctx.api_start_time = Some(1_700_000_000.5);
+
+        let env = build_env_json(&ctx, "http://localhost");
+        assert_eq!(env.get("VM0_API_START_TIME").unwrap(), "1700000000.5");
+    }
+
+    #[test]
+    fn build_env_json_empty_secrets_omitted() {
+        let mut ctx = minimal_context();
+        ctx.secret_values = Some(vec![]);
+
+        let env = build_env_json(&ctx, "http://localhost");
+        assert!(!env.contains_key("VM0_SECRET_VALUES"));
+    }
 }

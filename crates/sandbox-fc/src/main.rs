@@ -1,11 +1,9 @@
 use std::fmt;
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use clap::{Parser, Subcommand};
-use std::time::Duration;
-
 use sandbox::{ExecRequest, ResourceLimits, SandboxConfig, SandboxFactory};
 use tracing_subscriber::fmt::time::FormatTime;
 use uuid::Uuid;
