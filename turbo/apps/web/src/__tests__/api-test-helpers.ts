@@ -1525,24 +1525,6 @@ export async function linkRunToSchedule(
 }
 
 /**
- * Mark a test run as completed or failed.
- */
-export async function updateTestRunStatus(
-  runId: string,
-  status: "completed" | "failed",
-  options?: { error?: string },
-): Promise<void> {
-  await globalThis.services.db
-    .update(agentRuns)
-    .set({
-      status,
-      completedAt: new Date(),
-      error: options?.error,
-    })
-    .where(eq(agentRuns.id, runId));
-}
-
-/**
  * Create a thread session for testing (e.g., notification-created sessions with null bindingId).
  */
 export async function createTestThreadSession(params: {

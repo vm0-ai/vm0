@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { HttpResponse } from "msw";
 import { POST } from "../route";
 import {
   createTestRequest,
@@ -6,6 +7,8 @@ import {
   createTestRun,
   createTestSandboxToken,
   completeTestRun,
+  createTestSchedule,
+  linkRunToSchedule,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -15,8 +18,61 @@ import {
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
 import { POST as checkpointWebhook } from "../../checkpoints/route";
+import {
+  givenLinkedSlackUser,
+  givenUserHasAgent,
+} from "../../../../../../src/__tests__/slack/api-helpers";
+import { handlers, http } from "../../../../../../src/__tests__/msw";
+import { server } from "../../../../../../src/mocks/server";
+
+// Mock Next.js after() to capture callbacks for synchronous execution in tests
+const afterCallbacks: Array<() => Promise<unknown>> = [];
+vi.mock("next/server", async (importOriginal) => {
+  const original = await importOriginal<typeof import("next/server")>();
+  return {
+    ...original,
+    after: (fn: () => Promise<unknown>) => {
+      afterCallbacks.push(fn);
+    },
+  };
+});
+
+/** Execute all captured after() callbacks */
+async function flushAfterCallbacks() {
+  const callbacks = [...afterCallbacks];
+  afterCallbacks.length = 0;
+  await Promise.all(callbacks.map((fn) => fn()));
+}
+
 
 const context = testContext();
+
+const SLACK_API = "https://slack.com/api";
+
+const slackHandlers = handlers({
+  postMessage: http.post(
+    `${SLACK_API}/chat.postMessage`,
+    async ({ request }) => {
+      const body = await request.formData();
+      const data = Object.fromEntries(body.entries());
+      return HttpResponse.json({
+        ok: true,
+        ts: `${Date.now()}.000000`,
+        channel: data.channel,
+      });
+    },
+  ),
+});
+
+/** Helper to get form data from a mock's call */
+async function getFormData(
+  mock: { mock: { calls: Array<[{ request: Request }]> } },
+  callIndex = 0,
+): Promise<Record<string, FormDataEntryValue>> {
+  const request = mock.mock.calls[callIndex]![0].request;
+  const body = await request.formData();
+  return Object.fromEntries(body.entries());
+}
 
 describe("POST /api/webhooks/agent/complete", () => {
   let user: UserContext;
@@ -26,6 +82,7 @@ describe("POST /api/webhooks/agent/complete", () => {
 
   beforeEach(async () => {
     context.setupMocks();
+    afterCallbacks.length = 0;
     user = await context.setupUser();
 
     // Create compose for test runs
@@ -387,6 +444,219 @@ describe("POST /api/webhooks/agent/complete", () => {
       const data = await response.json();
       expect(data.success).toBe(true);
       expect(data.status).toBe("failed");
+    });
+  });
+
+  describe("Schedule Notification", () => {
+    it("should send Slack DM when scheduled run completes successfully", async () => {
+      // Given a linked Slack user with an agent and a schedule
+      const { userLink } = await givenLinkedSlackUser();
+      const { binding } = await givenUserHasAgent(userLink, {
+        agentName: "scheduled-agent",
+      });
+
+      mockClerk({ userId: userLink.vm0UserId });
+      const schedule = await createTestSchedule(
+        binding.composeId,
+        uniqueId("sched"),
+      );
+
+      // And a run linked to the schedule
+      const { runId } = await createTestRun(
+        binding.composeId,
+        "Scheduled task",
+      );
+      await linkRunToSchedule(runId, schedule.id);
+
+      // Create checkpoint (required for successful completion)
+      const token = await createTestSandboxToken(userLink.vm0UserId, runId);
+      mockClerk({ userId: null });
+      const checkpointRequest = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            runId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "test-session",
+            cliAgentSessionHistory: JSON.stringify({ type: "test" }),
+          }),
+        },
+      );
+      await checkpointWebhook(checkpointRequest);
+
+      // Register Slack API handler
+      server.use(...slackHandlers.handlers);
+
+      // When the run completes
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ runId, exitCode: 0 }),
+        },
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      // Then the after() callback should send a Slack DM
+      await flushAfterCallbacks();
+
+      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+      const data = await getFormData(slackHandlers.mocked.postMessage);
+      // DM is sent to the Slack user ID
+      expect(data.channel).toBe(userLink.slackUserId);
+      // Message should contain the agent name and success indicator
+      const blocks = JSON.parse((data.blocks as string) ?? "[]") as Array<{
+        type: string;
+        text?: { text: string };
+      }>;
+      const sectionTexts = blocks
+        .filter((b) => b.type === "section")
+        .map((b) => b.text?.text ?? "");
+      expect(sectionTexts.some((t) => t.includes("completed"))).toBe(true);
+      expect(sectionTexts.some((t) => t.includes("scheduled-agent"))).toBe(
+        true,
+      );
+    });
+
+    it("should send error notification when scheduled run fails", async () => {
+      // Given a linked Slack user with an agent and a schedule
+      const { userLink } = await givenLinkedSlackUser();
+      const { binding } = await givenUserHasAgent(userLink, {
+        agentName: "my-agent",
+      });
+
+      mockClerk({ userId: userLink.vm0UserId });
+      const schedule = await createTestSchedule(
+        binding.composeId,
+        uniqueId("sched"),
+      );
+
+      // And a run linked to the schedule
+      const { runId } = await createTestRun(
+        binding.composeId,
+        "Scheduled task",
+      );
+      await linkRunToSchedule(runId, schedule.id);
+      mockClerk({ userId: null });
+
+      const token = await createTestSandboxToken(userLink.vm0UserId, runId);
+
+      // Register Slack API handler
+      server.use(...slackHandlers.handlers);
+
+      // When the run fails
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            runId,
+            exitCode: 1,
+            error: "Agent crashed",
+          }),
+        },
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      // Then the after() callback should send an error notification
+      await flushAfterCallbacks();
+
+      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+      const data = await getFormData(slackHandlers.mocked.postMessage);
+      expect(data.channel).toBe(userLink.slackUserId);
+      // Message should contain error info
+      const blocks = JSON.parse((data.blocks as string) ?? "[]") as Array<{
+        type: string;
+        text?: { text: string };
+      }>;
+      const sectionTexts = blocks
+        .filter((b) => b.type === "section")
+        .map((b) => b.text?.text ?? "");
+      expect(sectionTexts.some((t) => t.includes("failed"))).toBe(true);
+      expect(sectionTexts.some((t) => t.includes("Agent crashed"))).toBe(true);
+    });
+
+    it("should not send notification when user has no Slack link", async () => {
+      // Given a schedule for the existing test compose (user has NO Slack link)
+      mockClerk({ userId: user.userId });
+      const schedule = await createTestSchedule(
+        testComposeId,
+        uniqueId("sched"),
+      );
+      mockClerk({ userId: null });
+
+      // Link the existing test run to the schedule
+      await linkRunToSchedule(testRunId, schedule.id);
+
+      // Register Slack API handler
+      server.use(...slackHandlers.handlers);
+
+      // When the run fails
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 1,
+            error: "Agent crashed",
+          }),
+        },
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      // Then no Slack DM should be sent (user has no Slack link)
+      await flushAfterCallbacks();
+
+      expect(slackHandlers.mocked.postMessage).not.toHaveBeenCalled();
+    });
+
+    it("should not send notification for non-scheduled runs", async () => {
+      // Register Slack API handler
+      server.use(...slackHandlers.handlers);
+
+      // When a non-scheduled run completes (testRunId has no scheduleId)
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 1,
+            error: "Some error",
+          }),
+        },
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      // Then no after() callback should be registered (no scheduleId)
+      expect(afterCallbacks).toHaveLength(0);
+      expect(slackHandlers.mocked.postMessage).not.toHaveBeenCalled();
     });
   });
 });
