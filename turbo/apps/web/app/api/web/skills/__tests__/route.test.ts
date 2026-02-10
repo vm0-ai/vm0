@@ -1,33 +1,31 @@
-import { describe, it, expect, beforeAll, afterEach, afterAll } from "vitest";
-import { setupServer } from "msw/node";
+import { describe, it, expect, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
+import { server } from "../../../../../src/mocks/server";
 import { GET } from "../route";
 
-// Set up MSW server to intercept GitHub API requests
-const server = setupServer(
-  // Mock GitHub API - get repo contents
-  http.get("https://api.github.com/repos/vm0-ai/vm0-skills/contents", () => {
-    return HttpResponse.json([
-      { name: "slack", type: "dir" },
-      { name: "github", type: "dir" },
-      { name: "notion", type: "dir" },
-      { name: "docs", type: "dir" }, // Should be filtered out
-      { name: "README.md", type: "file" }, // Should be filtered out
-    ]);
-  }),
+beforeEach(() => {
+  // Register base handlers for GitHub API
+  server.use(
+    // Mock GitHub API - get repo contents
+    http.get("https://api.github.com/repos/vm0-ai/vm0-skills/contents", () => {
+      return HttpResponse.json([
+        { name: "slack", type: "dir" },
+        { name: "github", type: "dir" },
+        { name: "notion", type: "dir" },
+        { name: "docs", type: "dir" }, // Should be filtered out
+        { name: "README.md", type: "file" }, // Should be filtered out
+      ]);
+    }),
 
-  // Mock GitHub raw content - SKILL.md files
-  http.get(
-    "https://raw.githubusercontent.com/vm0-ai/vm0-skills/main/:skillName/SKILL.md",
-    () => {
-      return HttpResponse.text("Test skill description", { status: 404 });
-    },
-  ),
-);
-
-beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
-afterEach(() => server.resetHandlers());
-afterAll(() => server.close());
+    // Mock GitHub raw content - SKILL.md files
+    http.get(
+      "https://raw.githubusercontent.com/vm0-ai/vm0-skills/main/:skillName/SKILL.md",
+      () => {
+        return HttpResponse.text("Test skill description", { status: 404 });
+      },
+    ),
+  );
+});
 
 describe("GET /api/web/skills", () => {
   it("should return skills list with metadata", async () => {

@@ -4,12 +4,12 @@
  * These helpers create Slack test fixtures through HTTP endpoints instead of
  * direct database operations, following web testing principles.
  *
- * External APIs (Slack OAuth, Slack Web API) are mocked via MSW.
+ * External APIs (Slack OAuth, Slack Web API) are mocked via vi.mock("@slack/web-api")
+ * in setup.ts — all `new WebClient()` calls return the same singleton mock object.
  */
 import crypto from "crypto";
-import { HttpResponse } from "msw";
-import { handlers, http } from "../msw";
-import { server } from "../../mocks/server";
+import { vi } from "vitest";
+import { WebClient } from "@slack/web-api";
 import { mockClerk } from "../clerk-mock";
 import { createTestCompose } from "../api-test-helpers";
 import { uniqueId } from "../test-helpers";
@@ -25,21 +25,6 @@ import { linkSlackAccount } from "../../../app/slack/link/actions";
 
 // Import API helpers
 import { createTestScope } from "../api-test-helpers";
-
-const SLACK_API = "https://slack.com/api";
-
-/**
- * Parse Slack Web API form-encoded body into an object.
- * The `view` field is JSON-encoded within the form data.
- */
-function parseSlackFormBody(body: string): Record<string, unknown> {
-  const params = new URLSearchParams(body);
-  const viewStr = params.get("view");
-  return {
-    user_id: params.get("user_id"),
-    view: viewStr ? JSON.parse(viewStr) : undefined,
-  };
-}
 
 /**
  * Extract binding ID from a published App Home view by finding the Unlink button
@@ -154,30 +139,6 @@ interface AgentBindingOptions {
 }
 
 /**
- * Create Slack OAuth mock handlers for installation flow
- */
-function createSlackOAuthMock(options: {
-  workspaceId: string;
-  workspaceName: string;
-  botUserId: string;
-  accessToken: string;
-}) {
-  return handlers({
-    oauthAccess: http.post(`${SLACK_API}/oauth.v2.access`, () =>
-      HttpResponse.json({
-        ok: true,
-        access_token: options.accessToken,
-        bot_user_id: options.botUserId,
-        team: {
-          id: options.workspaceId,
-          name: options.workspaceName,
-        },
-      }),
-    ),
-  });
-}
-
-/**
  * Given a Slack workspace has installed the VM0 app.
  * Creates installation via OAuth callback endpoint.
  */
@@ -189,14 +150,14 @@ export async function givenSlackWorkspaceInstalled(
   const botUserId = options.botUserId ?? uniqueId("B");
   const accessToken = `xoxb-test-${uniqueId("token")}`;
 
-  // Mock Slack OAuth API
-  const oauthMock = createSlackOAuthMock({
-    workspaceId,
-    workspaceName,
-    botUserId,
-    accessToken,
-  });
-  server.use(...oauthMock.handlers);
+  // Configure the WebClient singleton's oauth.v2.access to return expected values
+  const mockClient = vi.mocked(new WebClient(), true);
+  mockClient.oauth.v2.access.mockResolvedValueOnce({
+    ok: true,
+    access_token: accessToken,
+    bot_user_id: botUserId,
+    team: { id: workspaceId, name: workspaceName },
+  } as never);
 
   // Call OAuth callback endpoint with a mock code
   const callbackUrl = new URL("http://localhost/api/slack/oauth/callback");
@@ -341,16 +302,9 @@ export async function givenUserHasAgent(
     },
   };
 
-  // Mock Slack APIs used during agent add: confirmation message + App Home refresh
-  const slackMock = handlers({
-    postEphemeral: http.post(`${SLACK_API}/chat.postEphemeral`, () =>
-      HttpResponse.json({ ok: true, message_ts: `${Date.now()}.000000` }),
-    ),
-    viewsPublish: http.post(`${SLACK_API}/views.publish`, () =>
-      HttpResponse.json({ ok: true }),
-    ),
-  });
-  server.use(...slackMock.handlers);
+  // Clear views.publish mock so we can capture only the call from this route
+  const mockClient = vi.mocked(new WebClient(), true);
+  mockClient.views.publish.mockClear();
 
   const request = createSlackInteractiveRequest(interactivePayload);
   const response = await interactiveRoute(request);
@@ -360,14 +314,12 @@ export async function givenUserHasAgent(
     throw new Error(`Failed to create agent binding: ${error}`);
   }
 
-  // Extract binding ID from the published App Home view (captured by MSW mock)
-  const viewsPublishCall = slackMock.mocked.viewsPublish.mock.calls[0];
-  const publishedRequest = viewsPublishCall?.[0]?.request;
-  const publishedBody = publishedRequest
-    ? parseSlackFormBody(await publishedRequest.text())
-    : undefined;
+  // Extract binding ID from the published App Home view (captured by module mock)
+  const publishCall = mockClient.views.publish.mock.lastCall?.[0] as
+    | Record<string, unknown>
+    | undefined;
   const bindingId = extractBindingIdFromView(
-    publishedBody,
+    publishCall,
     agentName.toLowerCase(),
   );
 

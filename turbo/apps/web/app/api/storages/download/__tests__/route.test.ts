@@ -251,7 +251,11 @@ describe("GET /api/storages/download", () => {
     it("should resolve version prefix that resembles scientific notation (jsonQuery guard)", async () => {
       const storageName = uniqueId("sci-notation");
       const sciNotationPrefix = "846e3519";
-      const fullVersionId = sciNotationPrefix + "b".repeat(56);
+      const uniqueSuffix = uniqueId("")
+        .replace(/[^0-9a-f]/gi, "0")
+        .slice(0, 56)
+        .padEnd(56, "0");
+      const fullVersionId = sciNotationPrefix + uniqueSuffix;
 
       // Create storage without committing, then insert a version with the known prefix
       await createTestArtifact(storageName, { skipCommit: true });

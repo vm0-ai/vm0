@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { HttpResponse } from "msw";
+import { WebClient } from "@slack/web-api";
 import { POST } from "../route";
 import {
   createTestRequest,
@@ -23,8 +23,6 @@ import {
   givenLinkedSlackUser,
   givenUserHasAgent,
 } from "../../../../../../src/__tests__/slack/api-helpers";
-import { handlers, http } from "../../../../../../src/__tests__/msw";
-import { server } from "../../../../../../src/mocks/server";
 
 // Mock Next.js after() to capture callbacks for synchronous execution in tests
 const afterCallbacks: Array<() => Promise<unknown>> = [];
@@ -47,37 +45,9 @@ async function flushAfterCallbacks() {
 
 const context = testContext();
 
-const SLACK_API = "https://slack.com/api";
-
 // Simulate real Slack behavior: when posting to a user ID (U...),
 // Slack returns the actual DM channel ID (D...) in the response.
 const MOCK_DM_CHANNEL_ID = "D-mock-dm-channel";
-
-const slackHandlers = handlers({
-  postMessage: http.post(
-    `${SLACK_API}/chat.postMessage`,
-    async ({ request }) => {
-      const body = await request.formData();
-      const data = Object.fromEntries(body.entries());
-      const channel = String(data.channel);
-      return HttpResponse.json({
-        ok: true,
-        ts: `${Date.now()}.000000`,
-        channel: channel.startsWith("U") ? MOCK_DM_CHANNEL_ID : channel,
-      });
-    },
-  ),
-});
-
-/** Helper to get form data from a mock's call */
-async function getFormData(
-  mock: { mock: { calls: Array<[{ request: Request }]> } },
-  callIndex = 0,
-): Promise<Record<string, FormDataEntryValue>> {
-  const request = mock.mock.calls[callIndex]![0].request;
-  const body = await request.formData();
-  return Object.fromEntries(body.entries());
-}
 
 describe("POST /api/webhooks/agent/complete", () => {
   let user: UserContext;
@@ -494,8 +464,17 @@ describe("POST /api/webhooks/agent/complete", () => {
       );
       await checkpointWebhook(checkpointRequest);
 
-      // Register Slack API handler
-      server.use(...slackHandlers.handlers);
+      // Configure WebClient mock to return DM channel ID
+      const mockClient = vi.mocked(new WebClient(), true);
+      mockClient.chat.postMessage.mockClear();
+      mockClient.chat.postMessage.mockImplementation((args) => {
+        const channel = String(args.channel ?? "");
+        return Promise.resolve({
+          ok: true,
+          ts: `${Date.now()}.000000`,
+          channel: channel.startsWith("U") ? MOCK_DM_CHANNEL_ID : channel,
+        }) as never;
+      });
 
       // When the run completes
       const request = createTestRequest(
@@ -515,16 +494,15 @@ describe("POST /api/webhooks/agent/complete", () => {
       // Then the after() callback should send a Slack DM
       await flushAfterCallbacks();
 
-      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
-      const data = await getFormData(slackHandlers.mocked.postMessage);
+      expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
+      const callArgs = mockClient.chat.postMessage.mock.calls[0]![0] as {
+        channel: string;
+        blocks: Array<{ type: string; text?: { text: string } }>;
+      };
       // DM is sent to the Slack user ID
-      expect(data.channel).toBe(userLink.slackUserId);
+      expect(callArgs.channel).toBe(userLink.slackUserId);
       // Message should contain the agent name and success indicator
-      const blocks = JSON.parse((data.blocks as string) ?? "[]") as Array<{
-        type: string;
-        text?: { text: string };
-      }>;
-      const sectionTexts = blocks
+      const sectionTexts = callArgs.blocks
         .filter((b) => b.type === "section")
         .map((b) => b.text?.text ?? "");
       expect(sectionTexts.some((t) => t.includes("completed"))).toBe(true);
@@ -563,8 +541,9 @@ describe("POST /api/webhooks/agent/complete", () => {
 
       const token = await createTestSandboxToken(userLink.vm0UserId, runId);
 
-      // Register Slack API handler
-      server.use(...slackHandlers.handlers);
+      // Configure WebClient mock
+      const mockClient = vi.mocked(new WebClient(), true);
+      mockClient.chat.postMessage.mockClear();
 
       // When the run fails
       const request = createTestRequest(
@@ -588,15 +567,14 @@ describe("POST /api/webhooks/agent/complete", () => {
       // Then the after() callback should send an error notification
       await flushAfterCallbacks();
 
-      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
-      const data = await getFormData(slackHandlers.mocked.postMessage);
-      expect(data.channel).toBe(userLink.slackUserId);
+      expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
+      const callArgs = mockClient.chat.postMessage.mock.calls[0]![0] as {
+        channel: string;
+        blocks: Array<{ type: string; text?: { text: string } }>;
+      };
+      expect(callArgs.channel).toBe(userLink.slackUserId);
       // Message should contain error info
-      const blocks = JSON.parse((data.blocks as string) ?? "[]") as Array<{
-        type: string;
-        text?: { text: string };
-      }>;
-      const sectionTexts = blocks
+      const sectionTexts = callArgs.blocks
         .filter((b) => b.type === "section")
         .map((b) => b.text?.text ?? "");
       expect(sectionTexts.some((t) => t.includes("failed"))).toBe(true);
@@ -615,8 +593,8 @@ describe("POST /api/webhooks/agent/complete", () => {
       // Link the existing test run to the schedule
       await linkRunToSchedule(testRunId, schedule.id);
 
-      // Register Slack API handler
-      server.use(...slackHandlers.handlers);
+      const mockClient = vi.mocked(new WebClient(), true);
+      mockClient.chat.postMessage.mockClear();
 
       // When the run fails
       const request = createTestRequest(
@@ -640,12 +618,12 @@ describe("POST /api/webhooks/agent/complete", () => {
       // Then no Slack DM should be sent (user has no Slack link)
       await flushAfterCallbacks();
 
-      expect(slackHandlers.mocked.postMessage).not.toHaveBeenCalled();
+      expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
     });
 
     it("should not send notification for non-scheduled runs", async () => {
-      // Register Slack API handler
-      server.use(...slackHandlers.handlers);
+      const mockClient = vi.mocked(new WebClient(), true);
+      mockClient.chat.postMessage.mockClear();
 
       // When a non-scheduled run completes (testRunId has no scheduleId)
       const request = createTestRequest(
@@ -668,7 +646,7 @@ describe("POST /api/webhooks/agent/complete", () => {
 
       // Then no after() callback should be registered (no scheduleId)
       expect(afterCallbacks).toHaveLength(0);
-      expect(slackHandlers.mocked.postMessage).not.toHaveBeenCalled();
+      expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
     });
   });
 });

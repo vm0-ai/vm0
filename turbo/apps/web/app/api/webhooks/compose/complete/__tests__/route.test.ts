@@ -18,9 +18,7 @@ import { givenLinkedSlackUser } from "../../../../../../src/__tests__/slack/api-
 import { triggerComposeJob } from "../../../../../../src/lib/compose/trigger-compose-job";
 import { Sandbox } from "@e2b/code-interpreter";
 import { randomUUID } from "crypto";
-import { handlers, http } from "../../../../../../src/__tests__/msw";
-import { server } from "../../../../../../src/mocks/server";
-import { HttpResponse } from "msw";
+import { WebClient } from "@slack/web-api";
 
 const context = testContext();
 
@@ -493,27 +491,8 @@ describe("POST /api/webhooks/compose/complete", () => {
         slackChannelId: "C-test-channel",
       });
 
-      // Mock Slack API for notification
-      let postEphemeralCalled = false;
-      let postEphemeralPayload: Record<string, unknown> = {};
-      const slackMock = handlers({
-        postEphemeral: http.post(
-          "https://slack.com/api/chat.postEphemeral",
-          async ({ request }) => {
-            postEphemeralCalled = true;
-            const body = await request.formData();
-            postEphemeralPayload = {
-              channel: body.get("channel"),
-              user: body.get("user"),
-            };
-            return HttpResponse.json({
-              ok: true,
-              message_ts: `${Date.now()}.000000`,
-            });
-          },
-        ),
-      });
-      server.use(...slackMock.handlers);
+      const mockClient = vi.mocked(new WebClient(), true);
+      mockClient.chat.postEphemeral.mockClear();
 
       // Complete the job via webhook
       const token = await createTestComposeJobToken(userLink.vm0UserId, jobId);
@@ -542,9 +521,12 @@ describe("POST /api/webhooks/compose/complete", () => {
       expect(response.status).toBe(200);
 
       // Verify Slack notification was sent
-      expect(postEphemeralCalled).toBe(true);
-      expect(postEphemeralPayload.channel).toBe("C-test-channel");
-      expect(postEphemeralPayload.user).toBe(userLink.slackUserId);
+      expect(mockClient.chat.postEphemeral).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel: "C-test-channel",
+          user: userLink.slackUserId,
+        }),
+      );
 
       // Verify slack_compose_requests record was cleaned up
       const remaining = await findTestSlackComposeRequest(jobId);
@@ -560,20 +542,8 @@ describe("POST /api/webhooks/compose/complete", () => {
         warnings: [],
       };
 
-      let postEphemeralCalled = false;
-      const slackMock = handlers({
-        postEphemeral: http.post(
-          "https://slack.com/api/chat.postEphemeral",
-          () => {
-            postEphemeralCalled = true;
-            return HttpResponse.json({
-              ok: true,
-              message_ts: `${Date.now()}.000000`,
-            });
-          },
-        ),
-      });
-      server.use(...slackMock.handlers);
+      const mockClient = vi.mocked(new WebClient(), true);
+      mockClient.chat.postEphemeral.mockClear();
 
       const request = createTestRequest(
         "http://localhost:3000/api/webhooks/compose/complete",
@@ -595,7 +565,7 @@ describe("POST /api/webhooks/compose/complete", () => {
       expect(response.status).toBe(200);
 
       // Verify Slack notification was NOT sent
-      expect(postEphemeralCalled).toBe(false);
+      expect(mockClient.chat.postEphemeral).not.toHaveBeenCalled();
     });
 
     it("should send Slack failure notification when sandbox creation fails", async () => {
@@ -612,21 +582,8 @@ describe("POST /api/webhooks/compose/complete", () => {
       const mockCreate = vi.mocked(Sandbox.create);
       mockCreate.mockReturnValueOnce(sandboxPromise);
 
-      // Mock Slack API for notification
-      let postEphemeralCalled = false;
-      const slackMock = handlers({
-        postEphemeral: http.post(
-          "https://slack.com/api/chat.postEphemeral",
-          () => {
-            postEphemeralCalled = true;
-            return HttpResponse.json({
-              ok: true,
-              message_ts: `${Date.now()}.000000`,
-            });
-          },
-        ),
-      });
-      server.use(...slackMock.handlers);
+      const mockClient = vi.mocked(new WebClient(), true);
+      mockClient.chat.postEphemeral.mockClear();
 
       // Trigger compose job (sandbox creation is pending)
       const result = await triggerComposeJob({
@@ -649,7 +606,7 @@ describe("POST /api/webhooks/compose/complete", () => {
       // Wait for the fire-and-forget catch handler to complete
       await vi.waitFor(
         () => {
-          expect(postEphemeralCalled).toBe(true);
+          expect(mockClient.chat.postEphemeral).toHaveBeenCalled();
         },
         { timeout: 5000 },
       );

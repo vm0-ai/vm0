@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeAll, afterEach, afterAll } from "vitest";
-import { setupServer } from "msw/node";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { http, HttpResponse } from "msw";
+import { server } from "../../../../src/mocks/server";
 
 const STRAPI_URL = "https://test-strapi.example.com";
 
@@ -26,64 +26,40 @@ const mockCategories = [
   { id: 3, name: "Lifestyle", slug: "lifestyle" },
 ];
 
-// Set up MSW server to intercept Strapi API requests
-const server = setupServer(
-  // Mock GET /api/articles
-  http.get(`${STRAPI_URL}/api/articles`, ({ request }) => {
-    const url = new URL(request.url);
-    const slug = url.searchParams.get("filters[slug][$eq]");
-    const limit = url.searchParams.get("pagination[limit]");
+beforeEach(() => {
+  vi.stubEnv("NEXT_PUBLIC_STRAPI_URL", STRAPI_URL);
+  vi.stubEnv("NEXT_PUBLIC_DATA_SOURCE", "strapi");
 
-    // If filtering by slug
-    if (slug) {
-      if (slug === "test-post") {
+  // Register base handlers for Strapi API
+  server.use(
+    // Mock GET /api/articles
+    http.get(`${STRAPI_URL}/api/articles`, ({ request }) => {
+      const url = new URL(request.url);
+      const slug = url.searchParams.get("filters[slug][$eq]");
+      const limit = url.searchParams.get("pagination[limit]");
+
+      // If filtering by slug
+      if (slug) {
+        if (slug === "test-post") {
+          return HttpResponse.json({ data: [mockArticle], meta: {} });
+        }
+        return HttpResponse.json({ data: [], meta: {} });
+      }
+
+      // If requesting featured (limit=1)
+      if (limit === "1") {
         return HttpResponse.json({ data: [mockArticle], meta: {} });
       }
-      return HttpResponse.json({ data: [], meta: {} });
-    }
 
-    // If requesting featured (limit=1)
-    if (limit === "1") {
+      // Default: return all articles
       return HttpResponse.json({ data: [mockArticle], meta: {} });
-    }
+    }),
 
-    // Default: return all articles
-    return HttpResponse.json({ data: [mockArticle], meta: {} });
-  }),
-
-  // Mock GET /api/categories
-  http.get(`${STRAPI_URL}/api/categories`, () => {
-    return HttpResponse.json({ data: mockCategories, meta: {} });
-  }),
-);
-
-// Store original env values
-const originalStrapiUrl = process.env.NEXT_PUBLIC_STRAPI_URL;
-const originalDataSource = process.env.NEXT_PUBLIC_DATA_SOURCE;
-
-beforeAll(() => {
-  process.env.NEXT_PUBLIC_STRAPI_URL = STRAPI_URL;
-  process.env.NEXT_PUBLIC_DATA_SOURCE = "strapi";
-  server.listen({ onUnhandledRequest: "error" });
-});
-
-afterEach(() => {
-  server.resetHandlers();
-});
-
-afterAll(() => {
-  server.close();
-  // Restore original env values
-  if (originalStrapiUrl !== undefined) {
-    process.env.NEXT_PUBLIC_STRAPI_URL = originalStrapiUrl;
-  } else {
-    delete process.env.NEXT_PUBLIC_STRAPI_URL;
-  }
-  if (originalDataSource !== undefined) {
-    process.env.NEXT_PUBLIC_DATA_SOURCE = originalDataSource;
-  } else {
-    delete process.env.NEXT_PUBLIC_DATA_SOURCE;
-  }
+    // Mock GET /api/categories
+    http.get(`${STRAPI_URL}/api/categories`, () => {
+      return HttpResponse.json({ data: mockCategories, meta: {} });
+    }),
+  );
 });
 
 describe("blog/data-source", () => {

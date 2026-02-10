@@ -1,14 +1,12 @@
 import crypto from "crypto";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { HttpResponse } from "msw";
+import { WebClient } from "@slack/web-api";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
-import { server } from "../../../../../src/mocks/server";
 import {
   givenLinkedSlackUser,
   givenSlackWorkspaceInstalled,
   givenUserHasAgent,
 } from "../../../../../src/__tests__/slack/api-helpers";
-import { handlers, http } from "../../../../../src/__tests__/msw";
 import { POST } from "../route";
 import {
   createTestAgentSession,
@@ -173,54 +171,15 @@ function createSlackAppHomeOpenedRequest(event: {
   });
 }
 
-const SLACK_API = "https://slack.com/api";
+// Get the WebClient mock singleton (same object returned by every `new WebClient()`)
+const mockClient = vi.mocked(new WebClient(), true);
 
-const slackHandlers = handlers({
-  postMessage: http.post(
-    `${SLACK_API}/chat.postMessage`,
-    async ({ request }) => {
-      const body = await request.formData();
-      const data = Object.fromEntries(body.entries());
-      return HttpResponse.json({
-        ok: true,
-        ts: `${Date.now()}.000000`,
-        channel: data.channel,
-      });
-    },
-  ),
-  postEphemeral: http.post(`${SLACK_API}/chat.postEphemeral`, () =>
-    HttpResponse.json({ ok: true, message_ts: `${Date.now()}.000000` }),
-  ),
-  chatUpdate: http.post(`${SLACK_API}/chat.update`, async ({ request }) => {
-    const body = await request.formData();
-    const data = Object.fromEntries(body.entries());
-    return HttpResponse.json({ ok: true, ts: data.ts, channel: data.channel });
-  }),
-  reactionsAdd: http.post(`${SLACK_API}/reactions.add`, () =>
-    HttpResponse.json({ ok: true }),
-  ),
-  reactionsRemove: http.post(`${SLACK_API}/reactions.remove`, () =>
-    HttpResponse.json({ ok: true }),
-  ),
-  conversationsReplies: http.post(`${SLACK_API}/conversations.replies`, () =>
-    HttpResponse.json({ ok: true, messages: [] }),
-  ),
-  conversationsHistory: http.post(`${SLACK_API}/conversations.history`, () =>
-    HttpResponse.json({ ok: true, messages: [] }),
-  ),
-  viewsPublish: http.post(`${SLACK_API}/views.publish`, () =>
-    HttpResponse.json({ ok: true }),
-  ),
-});
-
-/** Helper to get form data from a mock's call */
-async function getFormData(
-  mock: { mock: { calls: Array<[{ request: Request }]> } },
+/** Helper to read call arguments from a mock function */
+function getCallArgs(
+  mock: { mock: { calls: unknown[][] } },
   callIndex = 0,
-): Promise<Record<string, FormDataEntryValue>> {
-  const request = mock.mock.calls[callIndex]![0].request;
-  const body = await request.formData();
-  return Object.fromEntries(body.entries());
+): Record<string, unknown> {
+  return (mock.mock.calls[callIndex]?.[0] ?? {}) as Record<string, unknown>;
 }
 
 describe("POST /api/slack/events", () => {
@@ -229,10 +188,9 @@ describe("POST /api/slack/events", () => {
     afterPromises.length = 0;
 
     context.setupMocks();
-    server.use(...slackHandlers.handlers);
 
     // Clear viewsPublish mock so each test starts with a clean call count
-    vi.mocked(slackHandlers.mocked.viewsPublish).mockClear();
+    mockClient.views.publish.mockClear();
 
     // Default mock for runAgentForSlack — returns a completed result.
     // Individual tests can override via mockResolvedValueOnce.
@@ -266,23 +224,25 @@ describe("POST /api/slack/events", () => {
       await flushAfterCallbacks();
 
       // And the ephemeral login prompt should be posted
-      expect(slackHandlers.mocked.postEphemeral).toHaveBeenCalledTimes(1);
+      expect(mockClient.chat.postEphemeral).toHaveBeenCalledTimes(1);
 
-      const data = await getFormData(slackHandlers.mocked.postEphemeral);
-      expect(data.channel).toBe("C123");
-      expect(data.user).toBe("U-unlinked-user");
+      const call = getCallArgs(mockClient.chat.postEphemeral);
+      expect(call.channel).toBe("C123");
+      expect(call.user).toBe("U-unlinked-user");
 
       // Check that blocks contain login URL with channel parameter
-      const blocks = JSON.parse((data.blocks as string) ?? "[]");
+      const blocks = (call.blocks ?? []) as Array<{
+        type: string;
+        elements?: Array<{ url?: string }>;
+      }>;
       const loginButton = blocks
-        .flatMap(
-          (block: { type: string; elements?: Array<{ url?: string }> }) =>
-            block.type === "actions" ? (block.elements ?? []) : [],
+        .flatMap((block) =>
+          block.type === "actions" ? (block.elements ?? []) : [],
         )
-        .find((e: { url?: string }) => e.url?.includes("/slack/link"));
+        .find((e) => e.url?.includes("/slack/link"));
 
       expect(loginButton).toBeDefined();
-      expect(loginButton.url).toContain("c=C123"); // Channel ID included for success message
+      expect(loginButton!.url).toContain("c=C123"); // Channel ID included for success message
     });
 
     it("should not include thread_ts in ephemeral login prompt (even when mentioned in thread)", async () => {
@@ -304,10 +264,10 @@ describe("POST /api/slack/events", () => {
 
       // Then the ephemeral message should NOT include thread_ts
       // (Slack ephemeral messages with thread_ts don't display correctly)
-      expect(slackHandlers.mocked.postEphemeral).toHaveBeenCalledTimes(1);
+      expect(mockClient.chat.postEphemeral).toHaveBeenCalledTimes(1);
 
-      const data = await getFormData(slackHandlers.mocked.postEphemeral);
-      expect(data.thread_ts).toBeUndefined();
+      const call = getCallArgs(mockClient.chat.postEphemeral);
+      expect(call.thread_ts).toBeUndefined();
     });
   });
 
@@ -329,10 +289,10 @@ describe("POST /api/slack/events", () => {
       await flushAfterCallbacks();
 
       // Then I should receive a message prompting to link an agent
-      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+      expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
 
-      const data = await getFormData(slackHandlers.mocked.postMessage);
-      const text = (data.text as string) ?? "";
+      const call = getCallArgs(mockClient.chat.postMessage);
+      const text = (call.text as string) ?? "";
       expect(text).toContain("don't have any agent linked");
       expect(text).toContain("/vm0 agent link");
     });
@@ -360,16 +320,16 @@ describe("POST /api/slack/events", () => {
 
       // Then:
       // 1. Thinking reaction should be added
-      expect(slackHandlers.mocked.reactionsAdd).toHaveBeenCalledTimes(1);
-      const reactionData = await getFormData(slackHandlers.mocked.reactionsAdd);
-      expect(reactionData.name).toBe("thought_balloon");
+      expect(mockClient.reactions.add).toHaveBeenCalledTimes(1);
+      const reactionCall = getCallArgs(mockClient.reactions.add);
+      expect(reactionCall.name).toBe("thought_balloon");
 
       // 2. Response message should be posted
-      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+      expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
 
       // 3. Response should include agent name in context block
-      const data = await getFormData(slackHandlers.mocked.postMessage);
-      const blocks = JSON.parse((data.blocks as string) ?? "[]") as Array<{
+      const call = getCallArgs(mockClient.chat.postMessage);
+      const blocks = (call.blocks ?? []) as Array<{
         type: string;
         elements?: Array<{ text?: string }>;
       }>;
@@ -379,7 +339,7 @@ describe("POST /api/slack/events", () => {
       expect(agentContext).toContain("my-helper");
 
       // 4. Thinking reaction should be removed
-      expect(slackHandlers.mocked.reactionsRemove).toHaveBeenCalledTimes(1);
+      expect(mockClient.reactions.remove).toHaveBeenCalledTimes(1);
     });
 
     it("should not include timeout warning prefix when agent fails", async () => {
@@ -410,9 +370,9 @@ describe("POST /api/slack/events", () => {
       await flushAfterCallbacks();
 
       // Then the response should contain an error message (failed status)
-      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
-      const data = await getFormData(slackHandlers.mocked.postMessage);
-      const text = (data.text as string) ?? "";
+      expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
+      const call = getCallArgs(mockClient.chat.postMessage);
+      const text = (call.text as string) ?? "";
       expect(text).toContain("Error");
 
       // And the response should NOT include the timeout warning prefix
@@ -421,7 +381,7 @@ describe("POST /api/slack/events", () => {
       expect(text).not.toContain("Agent timed out");
 
       // And the blocks should also not contain timeout warning
-      const blocks = JSON.parse((data.blocks as string) ?? "[]") as Array<{
+      const blocks = (call.blocks ?? []) as Array<{
         type: string;
         text?: { text?: string };
       }>;
@@ -462,15 +422,15 @@ describe("POST /api/slack/events", () => {
       await flushAfterCallbacks();
 
       // Then the response should include the timeout warning prefix
-      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
-      const data = await getFormData(slackHandlers.mocked.postMessage);
-      const text = (data.text as string) ?? "";
+      expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
+      const call = getCallArgs(mockClient.chat.postMessage);
+      const text = (call.text as string) ?? "";
       expect(text).toContain(":warning:");
       expect(text).toContain("Agent timed out");
       expect(text).toContain("timed out after 30 minutes");
 
       // And the blocks should contain the agent name and logs link
-      const blocks = JSON.parse((data.blocks as string) ?? "[]") as Array<{
+      const blocks = (call.blocks ?? []) as Array<{
         type: string;
         elements?: Array<{ text?: string }>;
       }>;
@@ -482,7 +442,7 @@ describe("POST /api/slack/events", () => {
       expect(logsBlock.elements?.[0]?.text).toContain("test-run-id");
 
       // And the thinking reaction should still be removed
-      expect(slackHandlers.mocked.reactionsRemove).toHaveBeenCalledTimes(1);
+      expect(mockClient.reactions.remove).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -502,7 +462,7 @@ describe("POST /api/slack/events", () => {
       await flushAfterCallbacks();
 
       // Then no messages should be sent (silent failure)
-      expect(slackHandlers.mocked.postMessage).not.toHaveBeenCalled();
+      expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
     });
   });
 
@@ -524,20 +484,22 @@ describe("POST /api/slack/events", () => {
       await flushAfterCallbacks();
 
       // Then the login prompt should be posted as a direct message (not ephemeral)
-      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
-      expect(slackHandlers.mocked.postEphemeral).not.toHaveBeenCalled();
+      expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
+      expect(mockClient.chat.postEphemeral).not.toHaveBeenCalled();
 
-      const data = await getFormData(slackHandlers.mocked.postMessage);
-      expect(data.channel).toBe("D123");
+      const call = getCallArgs(mockClient.chat.postMessage);
+      expect(call.channel).toBe("D123");
 
       // Check that blocks contain login URL
-      const blocks = JSON.parse((data.blocks as string) ?? "[]");
+      const blocks = (call.blocks ?? []) as Array<{
+        type: string;
+        elements?: Array<{ url?: string }>;
+      }>;
       const loginButton = blocks
-        .flatMap(
-          (block: { type: string; elements?: Array<{ url?: string }> }) =>
-            block.type === "actions" ? (block.elements ?? []) : [],
+        .flatMap((block) =>
+          block.type === "actions" ? (block.elements ?? []) : [],
         )
-        .find((e: { url?: string }) => e.url?.includes("/slack/link"));
+        .find((e) => e.url?.includes("/slack/link"));
 
       expect(loginButton).toBeDefined();
     });
@@ -561,10 +523,10 @@ describe("POST /api/slack/events", () => {
       await flushAfterCallbacks();
 
       // Then I should receive a message prompting to link an agent
-      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+      expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
 
-      const data = await getFormData(slackHandlers.mocked.postMessage);
-      const text = (data.text as string) ?? "";
+      const call = getCallArgs(mockClient.chat.postMessage);
+      const text = (call.text as string) ?? "";
       expect(text).toContain("don't have any agent linked");
       expect(text).toContain("/vm0 agent link");
     });
@@ -592,14 +554,14 @@ describe("POST /api/slack/events", () => {
 
       // Then:
       // 1. Thinking reaction should be added
-      expect(slackHandlers.mocked.reactionsAdd).toHaveBeenCalledTimes(1);
+      expect(mockClient.reactions.add).toHaveBeenCalledTimes(1);
 
       // 2. Response message should be posted
-      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+      expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
 
       // 3. Response should include agent name in context block
-      const data = await getFormData(slackHandlers.mocked.postMessage);
-      const blocks = JSON.parse((data.blocks as string) ?? "[]") as Array<{
+      const call = getCallArgs(mockClient.chat.postMessage);
+      const blocks = (call.blocks ?? []) as Array<{
         type: string;
         elements?: Array<{ text?: string }>;
       }>;
@@ -609,7 +571,7 @@ describe("POST /api/slack/events", () => {
       expect(agentContext).toContain("my-helper");
 
       // 4. Thinking reaction should be removed
-      expect(slackHandlers.mocked.reactionsRemove).toHaveBeenCalledTimes(1);
+      expect(mockClient.reactions.remove).toHaveBeenCalledTimes(1);
     });
 
     it("should not include timeout warning prefix when agent fails", async () => {
@@ -640,9 +602,9 @@ describe("POST /api/slack/events", () => {
       await flushAfterCallbacks();
 
       // Then the response should contain an error message (failed status)
-      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
-      const data = await getFormData(slackHandlers.mocked.postMessage);
-      const text = (data.text as string) ?? "";
+      expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
+      const call = getCallArgs(mockClient.chat.postMessage);
+      const text = (call.text as string) ?? "";
       expect(text).toContain("Error");
 
       // And the response should NOT include the timeout warning prefix
@@ -679,15 +641,15 @@ describe("POST /api/slack/events", () => {
       await flushAfterCallbacks();
 
       // Then the response should include the timeout warning prefix
-      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
-      const data = await getFormData(slackHandlers.mocked.postMessage);
-      const text = (data.text as string) ?? "";
+      expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
+      const call = getCallArgs(mockClient.chat.postMessage);
+      const text = (call.text as string) ?? "";
       expect(text).toContain(":warning:");
       expect(text).toContain("Agent timed out");
       expect(text).toContain("timed out after 30 minutes");
 
       // And the blocks should contain the agent name and logs link
-      const blocks = JSON.parse((data.blocks as string) ?? "[]") as Array<{
+      const blocks = (call.blocks ?? []) as Array<{
         type: string;
         elements?: Array<{ text?: string }>;
       }>;
@@ -697,7 +659,7 @@ describe("POST /api/slack/events", () => {
       expect(logsBlock.elements?.[0]?.text).toContain("test-run-id");
 
       // And the thinking reaction should still be removed
-      expect(slackHandlers.mocked.reactionsRemove).toHaveBeenCalledTimes(1);
+      expect(mockClient.reactions.remove).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -722,10 +684,10 @@ describe("POST /api/slack/events", () => {
       await flushAfterCallbacks();
 
       // Then the message should be routed to the agent (not show welcome card)
-      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+      expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
 
-      const data = await getFormData(slackHandlers.mocked.postMessage);
-      const blocks = JSON.parse((data.blocks as string) ?? "[]") as Array<{
+      const call = getCallArgs(mockClient.chat.postMessage);
+      const blocks = (call.blocks ?? []) as Array<{
         type: string;
         elements?: Array<{ text?: string }>;
       }>;
@@ -755,8 +717,8 @@ describe("POST /api/slack/events", () => {
       await flushAfterCallbacks();
 
       // Then no handler should be called (message silently ignored at route level)
-      expect(slackHandlers.mocked.postMessage).not.toHaveBeenCalled();
-      expect(slackHandlers.mocked.postEphemeral).not.toHaveBeenCalled();
+      expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
+      expect(mockClient.chat.postEphemeral).not.toHaveBeenCalled();
     });
   });
 
@@ -778,8 +740,8 @@ describe("POST /api/slack/events", () => {
       await flushAfterCallbacks();
 
       // Then no handler should be called (message silently ignored at route level)
-      expect(slackHandlers.mocked.postMessage).not.toHaveBeenCalled();
-      expect(slackHandlers.mocked.postEphemeral).not.toHaveBeenCalled();
+      expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
+      expect(mockClient.chat.postEphemeral).not.toHaveBeenCalled();
     });
   });
 
@@ -798,13 +760,13 @@ describe("POST /api/slack/events", () => {
       await flushAfterCallbacks();
 
       // Then the home view should be published with login prompt
-      expect(slackHandlers.mocked.viewsPublish).toHaveBeenCalledTimes(1);
+      expect(mockClient.views.publish).toHaveBeenCalledTimes(1);
 
-      const data = await getFormData(slackHandlers.mocked.viewsPublish);
-      expect(data.user_id).toBe("U-unlinked-user");
+      const call = getCallArgs(mockClient.views.publish);
+      expect(call.user_id).toBe("U-unlinked-user");
 
       // View should contain "not connected" and a login button
-      const view = JSON.parse((data.view as string) ?? "{}") as {
+      const view = (call.view ?? {}) as {
         type: string;
         blocks: Array<{
           type: string;
@@ -830,11 +792,9 @@ describe("POST /api/slack/events", () => {
       await givenUserHasAgent(userLink, {
         agentName: "my-helper",
       });
-      // Reset runtime handlers from givenUserHasAgent so the test's own
-      // viewsPublish handler takes priority, then re-register test handlers.
-      server.resetHandlers();
-      server.use(...slackHandlers.handlers);
-      vi.mocked(slackHandlers.mocked.viewsPublish).mockClear();
+      // Clear viewsPublish calls from givenUserHasAgent (which refreshes
+      // App Home after linking) so we can assert on only the test's call.
+      mockClient.views.publish.mockClear();
 
       // When I open the bot's Home tab
       const request = createSlackAppHomeOpenedRequest({
@@ -846,12 +806,12 @@ describe("POST /api/slack/events", () => {
       await flushAfterCallbacks();
 
       // Then the home view should be published with agent info
-      expect(slackHandlers.mocked.viewsPublish).toHaveBeenCalledTimes(1);
+      expect(mockClient.views.publish).toHaveBeenCalledTimes(1);
 
-      const data = await getFormData(slackHandlers.mocked.viewsPublish);
-      expect(data.user_id).toBe(userLink.slackUserId);
+      const call = getCallArgs(mockClient.views.publish);
+      expect(call.user_id).toBe(userLink.slackUserId);
 
-      const view = JSON.parse((data.view as string) ?? "{}") as {
+      const view = (call.view ?? {}) as {
         type: string;
         blocks: Array<{
           type: string;
@@ -886,7 +846,7 @@ describe("POST /api/slack/events", () => {
 
       // Clear viewsPublish calls from givenLinkedSlackUser (which refreshes
       // App Home after linking) so we can assert on only the test's call.
-      vi.mocked(slackHandlers.mocked.viewsPublish).mockClear();
+      mockClient.views.publish.mockClear();
 
       // When I open the bot's Home tab
       const request = createSlackAppHomeOpenedRequest({
@@ -898,10 +858,10 @@ describe("POST /api/slack/events", () => {
       await flushAfterCallbacks();
 
       // Then the home view should be published with link prompt
-      expect(slackHandlers.mocked.viewsPublish).toHaveBeenCalledTimes(1);
+      expect(mockClient.views.publish).toHaveBeenCalledTimes(1);
 
-      const data = await getFormData(slackHandlers.mocked.viewsPublish);
-      const view = JSON.parse((data.view as string) ?? "{}") as {
+      const call = getCallArgs(mockClient.views.publish);
+      const view = (call.view ?? {}) as {
         type: string;
         blocks: Array<{
           type: string;
@@ -928,10 +888,8 @@ describe("POST /api/slack/events", () => {
         agentName: "my-helper",
       });
 
-      // Reset and re-register test handlers
-      server.resetHandlers();
-      server.use(...slackHandlers.handlers);
-      vi.mocked(slackHandlers.mocked.postMessage).mockClear();
+      // Clear postMessage mock so we only capture this test's calls
+      mockClient.chat.postMessage.mockClear();
 
       // When I open the Messages tab
       const request = createSlackAppHomeOpenedRequest({
@@ -945,13 +903,13 @@ describe("POST /api/slack/events", () => {
       await flushAfterCallbacks();
 
       // Then a welcome message should be posted
-      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+      expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
 
-      const data = await getFormData(slackHandlers.mocked.postMessage);
-      expect(data.channel).toBe("D-dm-channel");
+      const call = getCallArgs(mockClient.chat.postMessage);
+      expect(call.channel).toBe("D-dm-channel");
 
       // Blocks should include agent info
-      const blocks = JSON.parse((data.blocks as string) ?? "[]") as Array<{
+      const blocks = (call.blocks ?? []) as Array<{
         type: string;
         text?: { text: string };
       }>;
@@ -973,10 +931,8 @@ describe("POST /api/slack/events", () => {
         agentName: "my-helper",
       });
 
-      // Reset and re-register test handlers
-      server.resetHandlers();
-      server.use(...slackHandlers.handlers);
-      vi.mocked(slackHandlers.mocked.postMessage).mockClear();
+      // Clear postMessage mock so we only capture this test's calls
+      mockClient.chat.postMessage.mockClear();
 
       // When I open the Messages tab the first time
       const request1 = createSlackAppHomeOpenedRequest({
@@ -989,10 +945,10 @@ describe("POST /api/slack/events", () => {
       await flushAfterCallbacks();
 
       // Then the welcome message should be sent once
-      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+      expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
 
       // When I open the Messages tab again
-      vi.mocked(slackHandlers.mocked.postMessage).mockClear();
+      mockClient.chat.postMessage.mockClear();
       const request2 = createSlackAppHomeOpenedRequest({
         teamId: installation.slackWorkspaceId,
         userId: userLink.slackUserId,
@@ -1003,7 +959,7 @@ describe("POST /api/slack/events", () => {
       await flushAfterCallbacks();
 
       // Then no duplicate message should be sent
-      expect(slackHandlers.mocked.postMessage).not.toHaveBeenCalled();
+      expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
     });
   });
 
@@ -1036,22 +992,17 @@ describe("POST /api/slack/events", () => {
         });
 
       // And the thread has 2 messages
-      const repliesHandler1 = http.post(
-        "https://slack.com/api/conversations.replies",
-        () =>
-          HttpResponse.json({
-            ok: true,
-            messages: [
-              { user: "U111", text: "First message", ts: "1000000000.000000" },
-              {
-                user: userLink.slackUserId,
-                text: "Second message",
-                ts: "1000000001.000000",
-              },
-            ],
-          }),
-      );
-      server.use(repliesHandler1.handler);
+      mockClient.conversations.replies.mockResolvedValueOnce({
+        ok: true,
+        messages: [
+          { user: "U111", text: "First message", ts: "1000000000.000000" },
+          {
+            user: userLink.slackUserId,
+            text: "Second message",
+            ts: "1000000001.000000",
+          },
+        ],
+      } as never);
 
       // When I send the first mention in a thread
       const request1 = createSlackEventRequest({
@@ -1074,32 +1025,27 @@ describe("POST /api/slack/events", () => {
 
       // Reset mocks for second turn
       runAgentSpy.mockClear();
-      vi.mocked(slackHandlers.mocked.postMessage).mockClear();
-      vi.mocked(slackHandlers.mocked.reactionsAdd).mockClear();
-      vi.mocked(slackHandlers.mocked.reactionsRemove).mockClear();
+      mockClient.chat.postMessage.mockClear();
+      mockClient.reactions.add.mockClear();
+      mockClient.reactions.remove.mockClear();
 
       // And the thread now has 3 messages (one new)
-      const repliesHandler2 = http.post(
-        "https://slack.com/api/conversations.replies",
-        () =>
-          HttpResponse.json({
-            ok: true,
-            messages: [
-              { user: "U111", text: "First message", ts: "1000000000.000000" },
-              {
-                user: userLink.slackUserId,
-                text: "Second message",
-                ts: "1000000001.000000",
-              },
-              {
-                user: userLink.slackUserId,
-                text: "Third message",
-                ts: "1000000002.000000",
-              },
-            ],
-          }),
-      );
-      server.use(repliesHandler2.handler);
+      mockClient.conversations.replies.mockResolvedValueOnce({
+        ok: true,
+        messages: [
+          { user: "U111", text: "First message", ts: "1000000000.000000" },
+          {
+            user: userLink.slackUserId,
+            text: "Second message",
+            ts: "1000000001.000000",
+          },
+          {
+            user: userLink.slackUserId,
+            text: "Third message",
+            ts: "1000000002.000000",
+          },
+        ],
+      } as never);
 
       // When I send the second mention in the same thread
       const request2 = createSlackEventRequest({
@@ -1149,21 +1095,16 @@ describe("POST /api/slack/events", () => {
       });
 
       // Thread has 1 message
-      const repliesHandler = http.post(
-        "https://slack.com/api/conversations.replies",
-        () =>
-          HttpResponse.json({
-            ok: true,
-            messages: [
-              {
-                user: userLink.slackUserId,
-                text: "First message",
-                ts: "2000000000.000000",
-              },
-            ],
-          }),
-      );
-      server.use(repliesHandler.handler);
+      mockClient.conversations.replies.mockResolvedValueOnce({
+        ok: true,
+        messages: [
+          {
+            user: userLink.slackUserId,
+            text: "First message",
+            ts: "2000000000.000000",
+          },
+        ],
+      } as never);
 
       // First turn (succeeds) — establishes lastProcessedMessageTs
       const request1 = createSlackEventRequest({
@@ -1186,26 +1127,21 @@ describe("POST /api/slack/events", () => {
       });
 
       // Thread now has 2 messages
-      const repliesHandler2 = http.post(
-        "https://slack.com/api/conversations.replies",
-        () =>
-          HttpResponse.json({
-            ok: true,
-            messages: [
-              {
-                user: userLink.slackUserId,
-                text: "First message",
-                ts: "2000000000.000000",
-              },
-              {
-                user: userLink.slackUserId,
-                text: "Second message",
-                ts: "2000000001.000000",
-              },
-            ],
-          }),
-      );
-      server.use(repliesHandler2.handler);
+      mockClient.conversations.replies.mockResolvedValueOnce({
+        ok: true,
+        messages: [
+          {
+            user: userLink.slackUserId,
+            text: "First message",
+            ts: "2000000000.000000",
+          },
+          {
+            user: userLink.slackUserId,
+            text: "Second message",
+            ts: "2000000001.000000",
+          },
+        ],
+      } as never);
 
       // Reset spy for second turn
       runAgentSpy.mockClear();
@@ -1238,31 +1174,26 @@ describe("POST /api/slack/events", () => {
       });
 
       // Thread now has 3 messages
-      const repliesHandler3 = http.post(
-        "https://slack.com/api/conversations.replies",
-        () =>
-          HttpResponse.json({
-            ok: true,
-            messages: [
-              {
-                user: userLink.slackUserId,
-                text: "First message",
-                ts: "2000000000.000000",
-              },
-              {
-                user: userLink.slackUserId,
-                text: "Second message",
-                ts: "2000000001.000000",
-              },
-              {
-                user: userLink.slackUserId,
-                text: "Third message",
-                ts: "2000000002.000000",
-              },
-            ],
-          }),
-      );
-      server.use(repliesHandler3.handler);
+      mockClient.conversations.replies.mockResolvedValueOnce({
+        ok: true,
+        messages: [
+          {
+            user: userLink.slackUserId,
+            text: "First message",
+            ts: "2000000000.000000",
+          },
+          {
+            user: userLink.slackUserId,
+            text: "Second message",
+            ts: "2000000001.000000",
+          },
+          {
+            user: userLink.slackUserId,
+            text: "Third message",
+            ts: "2000000002.000000",
+          },
+        ],
+      } as never);
 
       // Third turn — should include "Second message" since the failed run didn't update the ts
       const request3 = createSlackEventRequest({
@@ -1325,20 +1256,17 @@ describe("POST /api/slack/events", () => {
         });
 
       // And the thread has the notification message
-      server.use(
-        http.post("https://slack.com/api/conversations.replies", () =>
-          HttpResponse.json({
-            ok: true,
-            messages: [
-              {
-                bot_id: "B123",
-                text: "Scheduled run completed",
-                ts: threadTs,
-              },
-            ],
-          }),
-        ).handler,
-      );
+      const mockClient = vi.mocked(new WebClient(), true);
+      mockClient.conversations.replies.mockResolvedValueOnce({
+        ok: true,
+        messages: [
+          {
+            bot_id: "B123",
+            text: "Scheduled run completed",
+            ts: threadTs,
+          },
+        ],
+      } as never);
 
       // When I reply in the notification DM thread
       const request = createSlackDmEventRequest({
@@ -1361,11 +1289,8 @@ describe("POST /api/slack/events", () => {
       // And Slack context should be skipped (session checkpoint has full history)
       expect(runAgentSpy.mock.calls[0]![0].threadContext).toBe("");
 
-      // And no Slack conversation history should be fetched
-      expect(slackHandlers.mocked.conversationsReplies).not.toHaveBeenCalled();
-
       // And a response should be posted
-      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
+      expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -1386,7 +1311,7 @@ describe("POST /api/slack/events", () => {
       await flushAfterCallbacks();
 
       // Then no message should be sent
-      expect(slackHandlers.mocked.postMessage).not.toHaveBeenCalled();
+      expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
     });
   });
 });

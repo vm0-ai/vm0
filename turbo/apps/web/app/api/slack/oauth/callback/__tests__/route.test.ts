@@ -1,10 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { http, HttpResponse } from "msw";
+import { WebClient } from "@slack/web-api";
 import { GET } from "../route";
 import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../../src/env";
-import { server } from "../../../../../../src/mocks/server";
 
 // Mock external dependencies required by testContext().setupMocks()
 
@@ -41,17 +40,13 @@ describe("/api/slack/oauth/callback", () => {
     });
 
     it("should redirect to success page on successful OAuth exchange", async () => {
-      // Mock Slack OAuth API response
-      server.use(
-        http.post("https://slack.com/api/oauth.v2.access", () => {
-          return HttpResponse.json({
-            ok: true,
-            access_token: "xoxb-test-token",
-            bot_user_id: "U123456",
-            team: { id: "T123456", name: "Test Workspace" },
-          });
-        }),
-      );
+      const mockClient = vi.mocked(new WebClient(), true);
+      mockClient.oauth.v2.access.mockResolvedValueOnce({
+        ok: true,
+        access_token: "xoxb-test-token",
+        bot_user_id: "U123456",
+        team: { id: "T123456", name: "Test Workspace" },
+      } as never);
 
       const request = createTestRequest(
         "http://localhost:3000/api/slack/oauth/callback?code=valid-code",
@@ -66,15 +61,11 @@ describe("/api/slack/oauth/callback", () => {
     });
 
     it("should redirect to failed page when OAuth exchange fails", async () => {
-      // Mock Slack OAuth API error response
-      server.use(
-        http.post("https://slack.com/api/oauth.v2.access", () => {
-          return HttpResponse.json({
-            ok: false,
-            error: "invalid_code",
-          });
-        }),
-      );
+      const mockClient = vi.mocked(new WebClient(), true);
+      mockClient.oauth.v2.access.mockResolvedValueOnce({
+        ok: false,
+        error: "invalid_code",
+      } as never);
 
       const request = createTestRequest(
         "http://localhost:3000/api/slack/oauth/callback?code=expired-code",
@@ -107,37 +98,27 @@ describe("/api/slack/oauth/callback", () => {
       vi.stubEnv("SLACK_REDIRECT_BASE_URL", "https://tunnel.example.com");
       reloadEnv();
 
-      let capturedRequest: Request | null = null;
-
-      // Mock Slack OAuth API and capture the request
-      server.use(
-        http.post(
-          "https://slack.com/api/oauth.v2.access",
-          async ({ request }) => {
-            capturedRequest = request.clone();
-            return HttpResponse.json({
-              ok: true,
-              access_token: "xoxb-test-token",
-              bot_user_id: "U123456",
-              team: { id: "T123456", name: "Test Workspace" },
-            });
-          },
-        ),
-      );
+      const mockClient = vi.mocked(new WebClient(), true);
+      mockClient.oauth.v2.access.mockResolvedValueOnce({
+        ok: true,
+        access_token: "xoxb-test-token",
+        bot_user_id: "U123456",
+        team: { id: "T123456", name: "Test Workspace" },
+      } as never);
 
       const request = createTestRequest(
         "http://localhost:3000/api/slack/oauth/callback?code=test-code",
       );
       await GET(request);
 
-      // Verify the request was made with correct parameters
-      expect(capturedRequest).not.toBeNull();
-      const formData = await capturedRequest!.formData();
-      expect(formData.get("client_id")).toBe("test-slack-client-id");
-      expect(formData.get("client_secret")).toBe("test-slack-client-secret");
-      expect(formData.get("code")).toBe("test-code");
-      expect(formData.get("redirect_uri")).toBe(
-        "https://tunnel.example.com/api/slack/oauth/callback",
+      // Verify the WebClient mock was called with correct parameters
+      expect(mockClient.oauth.v2.access).toHaveBeenCalledWith(
+        expect.objectContaining({
+          client_id: "test-slack-client-id",
+          client_secret: "test-slack-client-secret",
+          code: "test-code",
+          redirect_uri: "https://tunnel.example.com/api/slack/oauth/callback",
+        }),
       );
     });
   });

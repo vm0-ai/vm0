@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeAll, afterEach, afterAll } from "vitest";
-import { setupServer } from "msw/node";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { http, HttpResponse } from "msw";
+import { server } from "../../../../src/mocks/server";
 
 const STRAPI_URL = "https://test-strapi.example.com";
 
@@ -28,71 +28,53 @@ const mockArticles = [
   },
 ];
 
-// Set up MSW server to intercept Strapi API requests
-const server = setupServer(
-  // Mock GET /api/articles
-  http.get(`${STRAPI_URL}/api/articles`, ({ request }) => {
-    const url = new URL(request.url);
-    const slug = url.searchParams.get("filters[slug][$eq]");
-    const limit = url.searchParams.get("pagination[limit]");
+beforeEach(() => {
+  vi.stubEnv("NEXT_PUBLIC_STRAPI_URL", STRAPI_URL);
 
-    // If filtering by slug
-    if (slug) {
-      const article = mockArticles.find((a) => a.slug === slug);
+  // Register base handlers for Strapi API
+  server.use(
+    // Mock GET /api/articles
+    http.get(`${STRAPI_URL}/api/articles`, ({ request }) => {
+      const url = new URL(request.url);
+      const slug = url.searchParams.get("filters[slug][$eq]");
+      const limit = url.searchParams.get("pagination[limit]");
+
+      // If filtering by slug
+      if (slug) {
+        const article = mockArticles.find((a) => a.slug === slug);
+        return HttpResponse.json({
+          data: article ? [article] : [],
+          meta: {},
+        });
+      }
+
+      // If requesting featured (limit=1)
+      if (limit === "1") {
+        return HttpResponse.json({
+          data: mockArticles.slice(0, 1),
+          meta: {},
+        });
+      }
+
+      // Default: return all articles
       return HttpResponse.json({
-        data: article ? [article] : [],
+        data: mockArticles,
         meta: {},
       });
-    }
+    }),
 
-    // If requesting featured (limit=1)
-    if (limit === "1") {
+    // Mock GET /api/categories
+    http.get(`${STRAPI_URL}/api/categories`, () => {
       return HttpResponse.json({
-        data: mockArticles.slice(0, 1),
+        data: [
+          { id: 1, name: "Technology", slug: "technology" },
+          { id: 2, name: "Business", slug: "business" },
+          { id: 3, name: "Lifestyle", slug: "lifestyle" },
+        ],
         meta: {},
       });
-    }
-
-    // Default: return all articles
-    return HttpResponse.json({
-      data: mockArticles,
-      meta: {},
-    });
-  }),
-
-  // Mock GET /api/categories
-  http.get(`${STRAPI_URL}/api/categories`, () => {
-    return HttpResponse.json({
-      data: [
-        { id: 1, name: "Technology", slug: "technology" },
-        { id: 2, name: "Business", slug: "business" },
-        { id: 3, name: "Lifestyle", slug: "lifestyle" },
-      ],
-      meta: {},
-    });
-  }),
-);
-
-// Store original env value
-const originalEnv = process.env.NEXT_PUBLIC_STRAPI_URL;
-
-beforeAll(() => {
-  process.env.NEXT_PUBLIC_STRAPI_URL = STRAPI_URL;
-  server.listen({ onUnhandledRequest: "error" });
-});
-
-afterEach(() => {
-  server.resetHandlers();
-});
-
-afterAll(() => {
-  server.close();
-  // Restore original env
-  if (originalEnv !== undefined) {
-    process.env.NEXT_PUBLIC_STRAPI_URL = originalEnv;
-  } else {
-    delete process.env.NEXT_PUBLIC_STRAPI_URL;
-  }
+    }),
+  );
 });
 
 describe("blog/strapi", () => {

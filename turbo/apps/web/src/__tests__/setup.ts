@@ -78,6 +78,44 @@ vi.mock("@aws-sdk/s3-request-presigner", () => ({
   getSignedUrl: vi.fn(),
 }));
 
+// Mock Slack Web API — singleton pattern: every `new WebClient()` returns the same mock object.
+// `clearMocks: true` in vitest config only clears mock.calls/mock.results between tests,
+// so the implementations persist while call history resets automatically.
+vi.mock("@slack/web-api", () => {
+  const mockClient = {
+    chat: {
+      postMessage: vi.fn().mockResolvedValue({ ok: true, ts: "mock.ts" }),
+      postEphemeral: vi
+        .fn()
+        .mockResolvedValue({ ok: true, message_ts: "mock.ts" }),
+      update: vi.fn().mockResolvedValue({ ok: true }),
+    },
+    views: {
+      publish: vi.fn().mockResolvedValue({ ok: true }),
+      open: vi.fn().mockResolvedValue({ ok: true, view: { id: "V-mock" } }),
+      update: vi.fn().mockResolvedValue({ ok: true }),
+    },
+    oauth: {
+      v2: {
+        access: vi.fn().mockResolvedValue({ ok: true }),
+      },
+    },
+    conversations: {
+      replies: vi.fn().mockResolvedValue({ ok: true, messages: [] }),
+      history: vi.fn().mockResolvedValue({ ok: true, messages: [] }),
+    },
+    reactions: {
+      add: vi.fn().mockResolvedValue({ ok: true }),
+      remove: vi.fn().mockResolvedValue({ ok: true }),
+    },
+  };
+  return {
+    WebClient: vi.fn().mockImplementation(function () {
+      return mockClient;
+    }),
+  };
+});
+
 // Mock Axiom packages
 // The @axiomhq/logging Logger class needs proper method implementations
 vi.mock("@axiomhq/js", () => ({
@@ -96,11 +134,8 @@ vi.mock("@axiomhq/logging", () => ({
 }));
 
 // MSW server lifecycle
-// Note: Using "bypass" because some test files have their own MSW server setup
-// (e.g., strapi.test.ts). The "error" strategy would conflict with those.
-// Tests that want strict unhandled request checking should use their own server.
 beforeAll(() => {
-  server.listen({ onUnhandledRequest: "bypass" });
+  server.listen({ onUnhandledRequest: "error" });
 });
 
 afterEach(() => {

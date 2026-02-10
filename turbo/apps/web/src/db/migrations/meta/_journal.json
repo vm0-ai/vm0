@@ -547,6 +547,13 @@
       "when": 1770200000000,
       "tag": "0077_add_schedule_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1770300000000,
+      "tag": "0078_drop_stale_slack_binding_fk",
+      "breakpoints": true
     }
   ]
 }

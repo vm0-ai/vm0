@@ -1,9 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createHmac } from "crypto";
-import { http, HttpResponse } from "msw";
 import { POST } from "../route";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
-import { server } from "../../../../../src/mocks/server";
 
 // Mock only external dependencies (third-party packages)
 
@@ -83,10 +81,6 @@ function buildCommandBody(
 describe("POST /api/slack/commands", () => {
   beforeEach(() => {
     context.setupMocks();
-  });
-
-  afterEach(() => {
-    server.resetHandlers();
   });
 
   describe("Signature Verification", () => {
@@ -229,13 +223,6 @@ describe("POST /api/slack/commands", () => {
 
   describe("Agent Compose Command", () => {
     it("opens compose modal", async () => {
-      // Mock Slack views.open API
-      server.use(
-        http.post("https://slack.com/api/views.open", () => {
-          return HttpResponse.json({ ok: true, view: { id: "V123" } });
-        }),
-      );
-
       const { installation, userLink } = await context.createSlackInstallation({
         withUserLink: true,
       });
@@ -258,13 +245,6 @@ describe("POST /api/slack/commands", () => {
 
   describe("Agent Link Command", () => {
     it("opens modal when user has no binding", async () => {
-      // Mock Slack views.open API
-      server.use(
-        http.post("https://slack.com/api/views.open", () => {
-          return HttpResponse.json({ ok: true, view: { id: "V123" } });
-        }),
-      );
-
       const { installation, userLink } = await context.createSlackInstallation({
         withUserLink: true,
       });

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createHmac } from "crypto";
-import { HttpResponse } from "msw";
+import { WebClient } from "@slack/web-api";
 import { POST } from "../route";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
@@ -15,8 +15,6 @@ import {
   givenLinkedSlackUser,
   givenUserHasAgent,
 } from "../../../../../src/__tests__/slack/api-helpers";
-import { handlers, http } from "../../../../../src/__tests__/msw";
-import { server } from "../../../../../src/mocks/server";
 
 // Mock only external dependencies (third-party packages)
 
@@ -167,12 +165,8 @@ describe("POST /api/slack/interactive", () => {
       mockClerk({ userId: userLink.vm0UserId });
       await createTestCompose("available-agent");
 
-      const slackMock = handlers({
-        viewsOpen: http.post("https://slack.com/api/views.open", () =>
-          HttpResponse.json({ ok: true, view: { id: "V123" } }),
-        ),
-      });
-      server.use(...slackMock.handlers);
+      const mockClient = vi.mocked(new WebClient(), true);
+      mockClient.views.open.mockClear();
 
       const body = buildInteractiveBody({
         type: "block_actions",
@@ -190,7 +184,7 @@ describe("POST /api/slack/interactive", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(200);
-      expect(slackMock.mocked.viewsOpen).toHaveBeenCalled();
+      expect(mockClient.views.open).toHaveBeenCalled();
     });
 
     it("opens agent update modal when home_agent_update is clicked", async () => {
@@ -199,12 +193,8 @@ describe("POST /api/slack/interactive", () => {
         agentName: "my-agent",
       });
 
-      const slackMock = handlers({
-        viewsOpen: http.post("https://slack.com/api/views.open", () =>
-          HttpResponse.json({ ok: true, view: { id: "V123" } }),
-        ),
-      });
-      server.use(...slackMock.handlers);
+      const mockClient = vi.mocked(new WebClient(), true);
+      mockClient.views.open.mockClear();
 
       const body = buildInteractiveBody({
         type: "block_actions",
@@ -228,7 +218,7 @@ describe("POST /api/slack/interactive", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(200);
-      expect(slackMock.mocked.viewsOpen).toHaveBeenCalled();
+      expect(mockClient.views.open).toHaveBeenCalled();
     });
 
     it("deletes binding and refreshes home when home_agent_unlink is clicked", async () => {
@@ -237,12 +227,8 @@ describe("POST /api/slack/interactive", () => {
         agentName: "unlink-agent",
       });
 
-      const slackMock = handlers({
-        viewsPublish: http.post("https://slack.com/api/views.publish", () =>
-          HttpResponse.json({ ok: true }),
-        ),
-      });
-      server.use(...slackMock.handlers);
+      const mockClient = vi.mocked(new WebClient(), true);
+      mockClient.views.publish.mockClear();
 
       const body = buildInteractiveBody({
         type: "block_actions",
@@ -266,18 +252,14 @@ describe("POST /api/slack/interactive", () => {
 
       expect(response.status).toBe(200);
       // App Home was refreshed after unlink
-      expect(slackMock.mocked.viewsPublish).toHaveBeenCalled();
+      expect(mockClient.views.publish).toHaveBeenCalled();
     });
 
     it("opens compose modal when home_agent_compose is clicked", async () => {
       const { userLink, installation } = await givenLinkedSlackUser();
 
-      const slackMock = handlers({
-        viewsOpen: http.post("https://slack.com/api/views.open", () =>
-          HttpResponse.json({ ok: true, view: { id: "V123" } }),
-        ),
-      });
-      server.use(...slackMock.handlers);
+      const mockClient = vi.mocked(new WebClient(), true);
+      mockClient.views.open.mockClear();
 
       const body = buildInteractiveBody({
         type: "block_actions",
@@ -295,18 +277,14 @@ describe("POST /api/slack/interactive", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(200);
-      expect(slackMock.mocked.viewsOpen).toHaveBeenCalled();
+      expect(mockClient.views.open).toHaveBeenCalled();
     });
 
     it("disconnects user and refreshes home when home_disconnect is clicked", async () => {
       const { userLink, installation } = await givenLinkedSlackUser();
 
-      const slackMock = handlers({
-        viewsPublish: http.post("https://slack.com/api/views.publish", () =>
-          HttpResponse.json({ ok: true }),
-        ),
-      });
-      server.use(...slackMock.handlers);
+      const mockClient = vi.mocked(new WebClient(), true);
+      mockClient.views.publish.mockClear();
 
       const body = buildInteractiveBody({
         type: "block_actions",
@@ -324,7 +302,7 @@ describe("POST /api/slack/interactive", () => {
 
       expect(response.status).toBe(200);
       // App Home was refreshed after disconnect
-      expect(slackMock.mocked.viewsPublish).toHaveBeenCalled();
+      expect(mockClient.views.publish).toHaveBeenCalled();
     });
   });
 
@@ -334,12 +312,8 @@ describe("POST /api/slack/interactive", () => {
       mockClerk({ userId: userLink.vm0UserId });
       await createTestCompose("test-agent");
 
-      const slackMock = handlers({
-        viewsUpdate: http.post("https://slack.com/api/views.update", () =>
-          HttpResponse.json({ ok: true, view: { id: "V123" } }),
-        ),
-      });
-      server.use(...slackMock.handlers);
+      const mockClient = vi.mocked(new WebClient(), true);
+      mockClient.views.update.mockClear();
 
       const body = buildInteractiveBody({
         type: "block_actions",
@@ -365,7 +339,7 @@ describe("POST /api/slack/interactive", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(200);
-      expect(slackMock.mocked.viewsUpdate).toHaveBeenCalled();
+      expect(mockClient.views.update).toHaveBeenCalled();
     });
   });
 
@@ -525,14 +499,6 @@ describe("POST /api/slack/interactive", () => {
       mockClerk({ userId: userLink.vm0UserId });
       const { composeId } = await createTestCompose("new-agent");
 
-      // Mock Slack API for App Home refresh after successful binding
-      const slackMock = handlers({
-        viewsPublish: http.post("https://slack.com/api/views.publish", () =>
-          HttpResponse.json({ ok: true }),
-        ),
-      });
-      server.use(...slackMock.handlers);
-
       const body = buildInteractiveBody({
         type: "view_submission",
         user: {
@@ -567,14 +533,6 @@ describe("POST /api/slack/interactive", () => {
       const { userLink, installation } = await givenLinkedSlackUser();
       mockClerk({ userId: userLink.vm0UserId });
       const { composeId } = await createTestCompose("secret-agent");
-
-      // Mock Slack API for App Home refresh after successful binding
-      const slackMock = handlers({
-        viewsPublish: http.post("https://slack.com/api/views.publish", () =>
-          HttpResponse.json({ ok: true }),
-        ),
-      });
-      server.use(...slackMock.handlers);
 
       const body = buildInteractiveBody({
         type: "view_submission",
@@ -750,14 +708,6 @@ describe("POST /api/slack/interactive", () => {
       const { userLink, installation } = await givenLinkedSlackUser();
       mockClerk({ userId: userLink.vm0UserId });
       const { composeId } = await createTestCompose("normal-agent");
-
-      // Mock Slack API for App Home refresh after successful binding
-      const slackMock = handlers({
-        viewsPublish: http.post("https://slack.com/api/views.publish", () =>
-          HttpResponse.json({ ok: true }),
-        ),
-      });
-      server.use(...slackMock.handlers);
 
       // Submit with agent_select (no github_url_input) — existing flow
       const body = buildInteractiveBody({
