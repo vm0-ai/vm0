@@ -1,12 +1,1 @@
-pre-commit:
-  parallel: true
-  commands:
-    cargo-fmt:
-      root: crates/
-      run: cargo fmt --all
-      glob: "crates/**/*.{rs,toml}"
-      stage_fixed: true
-    cargo-clippy:
-      root: crates/
-      run: cargo clippy --all-targets --all-features
-      glob: "crates/**/*.{rs,toml}"
+# Pre-commit hooks moved to root lefthook.yml (jobs + group for execution control)

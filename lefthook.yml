@@ -1,8 +1,53 @@
-extends:
-  - ./turbo/lefthook.yml
-  - ./crates/lefthook.yml
-
 commit-msg:
   commands:
     commitlint:
       run: ./turbo/node_modules/.bin/commitlint --config commitlint.config.mjs --edit "{1}"
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: turbo
+      group:
+        piped: true
+        jobs:
+          - name: prettier
+            run: pnpm prettier --write --ignore-unknown {staged_files}
+            root: turbo/
+            glob: "turbo/**/*"
+            stage_fixed: true
+          - name: turbo-checks
+            run: pnpm turbo run lint check-types --filter='...[HEAD]' --ui=stream
+            root: turbo/
+            glob: "turbo/**/*.{js,ts,tsx,jsx,mjs,cjs}"
+          - name: knip
+            run: pnpm knip --cache
+            root: turbo/
+            glob: "turbo/**/*.{js,ts,tsx,jsx,json}"
+            skip:
+              - merge
+              - rebase
+            fail_text: "Knip found unused code. Run 'cd turbo && pnpm knip' to see details."
+            timeout: 60
+    - name: crates
+      group:
+        parallel: true
+        jobs:
+          - name: cargo-fmt
+            run: cargo fmt --all
+            root: crates/
+            glob: "crates/**/*.{rs,toml}"
+            stage_fixed: true
+          - name: cargo-clippy
+            run: cargo clippy --all-targets --all-features
+            root: crates/
+            glob: "crates/**/*.{rs,toml}"
+    - name: check-file-size
+      run: ./scripts/check-file-size.sh {staged_files}
+      glob: "**/*"
+      exclude:
+        - "turbo/apps/*/public/og-image.png"
+        - "turbo/apps/*/public/assets/cta-ellipse.png"
+        - "turbo/apps/*/public/assets/code_illustration.svg"
+      fail_text: |
+        File size check failed. Some staged files exceed the 1MB limit.
+        Run 'git diff --cached --name-only' to see staged files.
