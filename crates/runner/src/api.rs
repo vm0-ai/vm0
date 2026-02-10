@@ -6,8 +6,8 @@ use tracing::{debug, warn};
 use crate::error::{RunnerError, RunnerResult};
 use crate::types::{CompleteRequest, ExecutionContext, Job, PollResponse};
 
-/// Timeout for API requests.
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
+/// Timeout for API requests (covers large claim payloads).
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Async HTTP client for the vm0 API.
 #[derive(Clone)]

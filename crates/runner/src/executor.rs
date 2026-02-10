@@ -46,10 +46,17 @@ pub async fn execute_job(
     info!(run_id = %run_id, exit_code, "job finished, reporting completion");
 
     if let Err(e) = api
-        .complete(&context.sandbox_token, run_id, exit_code, err)
+        .complete(&context.sandbox_token, run_id, exit_code, err.clone())
         .await
     {
-        error!(run_id = %run_id, error = %e, "failed to report completion");
+        warn!(run_id = %run_id, error = %e, "completion report failed, retrying");
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        if let Err(e) = api
+            .complete(&context.sandbox_token, run_id, exit_code, err)
+            .await
+        {
+            error!(run_id = %run_id, error = %e, "failed to report completion after retry");
+        }
     }
 }
 
@@ -120,6 +127,8 @@ async fn run_in_sandbox(
     let agent_cmd = format!("node {} > {log_file} 2>&1", guest::ENV_LOADER);
     info!(run_id = %context.run_id, "spawning agent");
 
+    // JOB_TIMEOUT is used for both spawn_watch (guest-side kill) and wait_exit
+    // (host-side watchdog) so neither side outlives the other.
     let handle = sandbox
         .spawn_watch(&ExecRequest {
             cmd: &agent_cmd,
@@ -246,6 +255,7 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
             .map(|t| t.to_string())
             .unwrap_or_default(),
     );
+    // The API omits cli_agent_type for claude-code agents (the default).
     env.insert(
         "CLI_AGENT_TYPE".into(),
         if context.cli_agent_type.is_empty() {

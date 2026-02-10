@@ -15,6 +15,7 @@ use std::time::Instant;
 use clap::{Args, Parser, Subcommand};
 use tracing_subscriber::fmt::time::FormatTime;
 
+use crate::error::{RunnerError, RunnerResult};
 use crate::paths::RunnerPaths;
 use crate::runner::RunConfig;
 use crate::status::StatusTracker;
@@ -110,7 +111,7 @@ async fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-async fn run_start(args: StartArgs) -> Result<(), Box<dyn std::error::Error>> {
+async fn run_start(args: StartArgs) -> RunnerResult<()> {
     let firecracker = resolve_path(args.firecracker).await?;
     let kernel = resolve_path(args.kernel).await?;
     let rootfs = resolve_path(args.rootfs).await?;
@@ -161,13 +162,15 @@ async fn run_start(args: StartArgs) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn resolve_path(path: PathBuf) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    Ok(tokio::fs::canonicalize(&path)
+async fn resolve_path(path: PathBuf) -> RunnerResult<PathBuf> {
+    tokio::fs::canonicalize(&path)
         .await
-        .map_err(|e| format!("resolve path {}: {e}", path.display()))?)
+        .map_err(|e| RunnerError::Config(format!("resolve path {}: {e}", path.display())))
 }
 
-async fn resolve_or_create(path: PathBuf) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    tokio::fs::create_dir_all(&path).await?;
+async fn resolve_or_create(path: PathBuf) -> RunnerResult<PathBuf> {
+    tokio::fs::create_dir_all(&path)
+        .await
+        .map_err(|e| RunnerError::Config(format!("create dir {}: {e}", path.display())))?;
     resolve_path(path).await
 }

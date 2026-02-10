@@ -61,29 +61,29 @@ impl StatusTracker {
     pub async fn set_mode(&self, mode: RunnerMode) {
         let mut state = self.state.lock().await;
         state.mode = mode;
-        self.write_status(&state);
+        self.write_status(&state).await;
     }
 
     pub async fn add_run(&self, run_id: Uuid) {
         let mut state = self.state.lock().await;
         state.active_run_ids.insert(run_id);
-        self.write_status(&state);
+        self.write_status(&state).await;
     }
 
     pub async fn remove_run(&self, run_id: Uuid) {
         let mut state = self.state.lock().await;
         state.active_run_ids.remove(&run_id);
-        self.write_status(&state);
+        self.write_status(&state).await;
     }
 
     /// Write the initial status file.
     pub async fn write_initial(&self) {
         let state = self.state.lock().await;
-        self.write_status(&state);
+        self.write_status(&state).await;
     }
 
     /// Atomic write: write to a temp file in the same directory, then rename.
-    fn write_status(&self, state: &MutableState) {
+    async fn write_status(&self, state: &MutableState) {
         let status = RunnerStatus {
             mode: state.mode,
             active_runs: state.active_run_ids.len(),
@@ -101,11 +101,11 @@ impl StatusTracker {
         };
 
         let tmp = self.path.with_extension("tmp");
-        if let Err(e) = std::fs::write(&tmp, json.as_bytes()) {
+        if let Err(e) = tokio::fs::write(&tmp, json.as_bytes()).await {
             warn!(error = %e, path = %tmp.display(), "failed to write status temp file");
             return;
         }
-        if let Err(e) = std::fs::rename(&tmp, &self.path) {
+        if let Err(e) = tokio::fs::rename(&tmp, &self.path).await {
             warn!(error = %e, "failed to rename status file");
         }
     }

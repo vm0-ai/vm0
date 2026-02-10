@@ -9,6 +9,9 @@ pub enum RunnerError {
     #[error("sandbox error: {0}")]
     Sandbox(#[from] sandbox::SandboxError),
 
+    #[error("config error: {0}")]
+    Config(String),
+
     #[error("internal error: {0}")]
     Internal(String),
 
