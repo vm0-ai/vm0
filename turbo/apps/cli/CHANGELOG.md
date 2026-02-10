@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.33.0](https://github.com/vm0-ai/vm0/compare/cli-v9.32.0...cli-v9.33.0) (2026-02-10)
+
+
+### Features
+
+* **cli:** add agent delete command ([#2767](https://github.com/vm0-ai/vm0/issues/2767)) ([11d555a](https://github.com/vm0-ai/vm0/commit/11d555ad5432a9893ddc37e55f89a58e7dd5657c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.9.0
+
 ## [9.32.0](https://github.com/vm0-ai/vm0/compare/cli-v9.31.1...cli-v9.32.0) (2026-02-10)
 
 

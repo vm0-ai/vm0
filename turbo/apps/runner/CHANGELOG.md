@@ -1,5 +1,20 @@
 # Changelog
 
+## [3.18.0](https://github.com/vm0-ai/vm0/compare/runner-v3.17.2...runner-v3.18.0) (2026-02-10)
+
+
+### Features
+
+* **guest-agent:** implement rust guest-agent crate ([#2759](https://github.com/vm0-ai/vm0/issues/2759)) ([8a91042](https://github.com/vm0-ai/vm0/commit/8a910429b6adb47c86659638e69f5a6d024e4851))
+* **guest-mock-claude:** add rust mock-claude binary for firecracker vms ([#2783](https://github.com/vm0-ai/vm0/issues/2783)) ([d06b37a](https://github.com/vm0-ai/vm0/commit/d06b37a3c19449f049c83cf32b690bf40c6f77a5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.9.0
+
 ## [3.17.2](https://github.com/vm0-ai/vm0/compare/runner-v3.17.1...runner-v3.17.2) (2026-02-10)
 
 

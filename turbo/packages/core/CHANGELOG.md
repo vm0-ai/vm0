@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.9.0](https://github.com/vm0-ai/vm0/compare/core-v8.8.0...core-v8.9.0) (2026-02-10)
+
+
+### Features
+
+* **cli:** add agent delete command ([#2767](https://github.com/vm0-ai/vm0/issues/2767)) ([11d555a](https://github.com/vm0-ai/vm0/commit/11d555ad5432a9893ddc37e55f89a58e7dd5657c))
+
 ## [8.8.0](https://github.com/vm0-ai/vm0/compare/core-v8.7.1...core-v8.8.0) (2026-02-10)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.28.0](https://github.com/vm0-ai/vm0/compare/web-v12.27.0...web-v12.28.0) (2026-02-10)
+
+
+### Features
+
+* **cli:** add agent delete command ([#2767](https://github.com/vm0-ai/vm0/issues/2767)) ([11d555a](https://github.com/vm0-ai/vm0/commit/11d555ad5432a9893ddc37e55f89a58e7dd5657c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.9.0
+
 ## [12.27.0](https://github.com/vm0-ai/vm0/compare/web-v12.26.0...web-v12.27.0) (2026-02-10)
 
 
