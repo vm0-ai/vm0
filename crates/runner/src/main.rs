@@ -73,7 +73,7 @@ struct StartArgs {
     #[arg(long)]
     snapshot_dir: Option<PathBuf>,
     /// Maximum concurrent job executions
-    #[arg(long, default_value_t = 1)]
+    #[arg(long, default_value_t = 4)]
     max_concurrent: usize,
     /// vCPUs per sandbox
     #[arg(long, default_value_t = 2)]
