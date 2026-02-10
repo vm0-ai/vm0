@@ -12,7 +12,6 @@ import {
 import { runAgentForSlack } from "./run-agent";
 import {
   removeThinkingReaction,
-  fetchConversationContexts,
   saveThreadSession,
   resolveRunContext,
   buildLoginUrl,
@@ -64,11 +63,8 @@ export async function handleDirectMessage(
       SECRETS_ENCRYPTION_KEY,
     );
     const client = createSlackClient(botToken);
-    const botUserId = installation.botUserId;
-
-    // In DMs, only use thread_ts when replying within an existing thread.
-    // Top-level DM messages should get flat chat replies (no thread).
-    const threadTs = context.threadTs;
+    // Always reply in a thread so sessions persist across messages.
+    const threadTs = context.threadTs ?? context.messageTs;
 
     // 2. Check if user is linked
     const [userLink] = await globalThis.services.db
@@ -115,15 +111,9 @@ export async function handleDirectMessage(
       return;
     }
 
-    const {
-      composeId,
-      bindingId,
-      agentName,
-      existingSessionId,
-      lastProcessedMessageTs,
-    } = runCtx;
+    const { composeId, bindingId, agentName, existingSessionId } = runCtx;
 
-    // 6. Add thinking reaction
+    // 5. Add thinking reaction
     const reactionAdded = await client.reactions
       .add({
         channel: context.channelId,
@@ -136,25 +126,8 @@ export async function handleDirectMessage(
     // Use message text directly (no mention prefix to strip in DMs)
     const messageContent = context.messageText;
 
-    // 7. Fetch context — skip when resuming an existing session (DMs only).
-    //    The session checkpoint already contains the full conversation history,
-    //    so Slack message context would be redundant.
-    const threadContext = existingSessionId
-      ? ""
-      : (
-          await fetchConversationContexts(
-            client,
-            context.channelId,
-            context.threadTs,
-            botUserId,
-            botToken,
-            lastProcessedMessageTs,
-            context.messageTs,
-          )
-        ).executionContext;
-
     try {
-      // 8. Execute agent with context
+      // 6. Execute agent
       const {
         status: runStatus,
         response: agentResponse,
@@ -165,11 +138,11 @@ export async function handleDirectMessage(
         bindingId,
         sessionId: existingSessionId,
         prompt: messageContent,
-        threadContext,
+        threadContext: "",
         userId: userLink.vm0UserId,
       });
 
-      // 9. Create or update thread session mapping
+      // 7. Create or update thread session mapping
       if (threadTs) {
         await saveThreadSession({
           bindingId,
@@ -182,7 +155,7 @@ export async function handleDirectMessage(
         });
       }
 
-      // 10. Post response message
+      // 8. Post response message
       const logsUrl = runId ? buildLogsUrl(runId) : undefined;
       const responseText =
         runStatus === "timeout"
@@ -203,7 +176,7 @@ export async function handleDirectMessage(
         { threadTs },
       ).catch((e) => log.warn("Failed to post error message", { error: e }));
     } finally {
-      // 11. Remove thinking reaction
+      // 9. Remove thinking reaction
       if (reactionAdded) {
         await removeThinkingReaction(
           client,
