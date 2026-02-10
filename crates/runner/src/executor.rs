@@ -115,16 +115,18 @@ async fn run_in_sandbox(
         restore_session(sandbox, context, session).await?;
     }
 
-    // 4. Write env JSON
-    let env_json = build_env_json(context, &config.api_url);
-    let env_bytes = serde_json::to_vec(&env_json)
-        .map_err(|e| crate::error::RunnerError::Internal(format!("env json: {e}")))?;
-    sandbox.write_file(guest::ENV_JSON, &env_bytes).await?;
-    info!(run_id = %context.run_id, bytes = env_bytes.len(), "wrote env json");
+    // 4. Build env vars (passed directly via vsock protocol)
+    let env_map = build_env_json(context, &config.api_url);
+    let env_pairs: Vec<(String, String)> = env_map.into_iter().collect();
+    let env_refs: Vec<(&str, &str)> = env_pairs
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    info!(run_id = %context.run_id, count = env_refs.len(), "passing env vars via vsock");
 
     // 5. Spawn agent
     let log_file = format!("/tmp/vm0-main-{}.log", context.run_id);
-    let agent_cmd = format!("node {} > {log_file} 2>&1", guest::ENV_LOADER);
+    let agent_cmd = format!("node {} > {log_file} 2>&1", guest::RUN_AGENT);
     info!(run_id = %context.run_id, "spawning agent");
 
     // JOB_TIMEOUT is used for both spawn_watch (guest-side kill) and wait_exit
@@ -133,6 +135,7 @@ async fn run_in_sandbox(
         .spawn_watch(&ExecRequest {
             cmd: &agent_cmd,
             timeout: JOB_TIMEOUT,
+            env: &env_refs,
         })
         .await?;
 
@@ -171,6 +174,7 @@ async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
         .exec(&ExecRequest {
             cmd: &date_cmd,
             timeout: DEFAULT_EXEC_TIMEOUT,
+            env: &[],
         })
         .await?;
     Ok(())
@@ -194,6 +198,7 @@ async fn download_storages(
         .exec(&ExecRequest {
             cmd: &download_cmd,
             timeout: DEFAULT_EXEC_TIMEOUT,
+            env: &[],
         })
         .await?;
 
@@ -230,6 +235,7 @@ async fn restore_session(
         .exec(&ExecRequest {
             cmd: &mkdir_cmd,
             timeout: DEFAULT_EXEC_TIMEOUT,
+            env: &[],
         })
         .await?;
     sandbox

@@ -2,10 +2,9 @@ use std::path::PathBuf;
 
 /// Guest paths (must match rootfs layout).
 pub mod guest {
-    pub const ENV_JSON: &str = "/tmp/vm0-env.json";
     pub const STORAGE_MANIFEST: &str = "/tmp/storage-manifest.json";
     pub const DOWNLOAD_BIN: &str = "/usr/local/bin/guest-download";
-    pub const ENV_LOADER: &str = "/usr/local/bin/vm0-agent/env-loader.mjs";
+    pub const RUN_AGENT: &str = "/usr/local/bin/vm0-agent/run-agent.mjs";
 }
 
 /// Runner-level paths derived from the base directory.

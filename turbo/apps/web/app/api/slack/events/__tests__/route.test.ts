@@ -222,11 +222,23 @@ async function getFormData(
 
 describe("POST /api/slack/events", () => {
   beforeEach(() => {
+    // Clear pending after() promises from previous tests to prevent cross-test pollution
+    afterPromises.length = 0;
+
     context.setupMocks();
     server.use(...slackHandlers.handlers);
 
     // Clear viewsPublish mock so each test starts with a clean call count
     vi.mocked(slackHandlers.mocked.viewsPublish).mockClear();
+
+    // Default mock for runAgentForSlack — returns a completed result.
+    // Individual tests can override via mockResolvedValueOnce.
+    vi.spyOn(runAgentModule, "runAgentForSlack").mockResolvedValue({
+      status: "completed",
+      response: "I've completed the task.",
+      sessionId: undefined,
+      runId: "run-123",
+    });
   });
 
   describe("Scenario: Mention bot as unlinked user", () => {
@@ -374,7 +386,15 @@ describe("POST /api/slack/events", () => {
         agentName: "my-helper",
       });
 
-      // When I @mention the VM0 bot (agent will fail due to test environment)
+      // And runAgentForSlack returns a failed result
+      vi.spyOn(runAgentModule, "runAgentForSlack").mockResolvedValueOnce({
+        status: "failed",
+        response: "Error: Agent execution failed.",
+        sessionId: undefined,
+        runId: "test-run-id",
+      });
+
+      // When I @mention the VM0 bot
       const request = createSlackEventRequest({
         teamId: installation.slackWorkspaceId,
         channelId: "C123",
@@ -596,7 +616,15 @@ describe("POST /api/slack/events", () => {
         agentName: "my-helper",
       });
 
-      // When I send a DM to the bot (agent will fail due to test environment)
+      // And runAgentForSlack returns a failed result
+      vi.spyOn(runAgentModule, "runAgentForSlack").mockResolvedValueOnce({
+        status: "failed",
+        response: "Error: Agent execution failed.",
+        sessionId: undefined,
+        runId: "test-run-id",
+      });
+
+      // When I send a DM to the bot
       const request = createSlackDmEventRequest({
         teamId: installation.slackWorkspaceId,
         channelId: "D123",

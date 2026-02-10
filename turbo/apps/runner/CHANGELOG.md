@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.17.0](https://github.com/vm0-ai/vm0/compare/runner-v3.16.8...runner-v3.17.0) (2026-02-10)
+
+
+### Features
+
+* **vsock:** add environment variable support to exec/spawn_watch ([#2736](https://github.com/vm0-ai/vm0/issues/2736)) ([6f93486](https://github.com/vm0-ai/vm0/commit/6f9348601ae5736e20a8c32a2064ac394a70e70b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.7.0
+
 ## [3.16.8](https://github.com/vm0-ai/vm0/compare/runner-v3.16.7...runner-v3.16.8) (2026-02-09)
 
 

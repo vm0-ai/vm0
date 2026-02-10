@@ -37,7 +37,6 @@ import { slackComposeRequests } from "../../../../src/db/schema/slack-compose-re
 import { generateEphemeralCliToken } from "../../../../src/lib/auth/cli-token-service";
 import { triggerComposeJob } from "../../../../src/lib/compose/trigger-compose-job";
 import { listModelProviders } from "../../../../src/lib/model-provider/model-provider-service";
-import { ensureScopeAndArtifact } from "../../../../src/lib/slack/handlers/shared";
 
 const log = logger("slack:interactive");
 
@@ -623,8 +622,6 @@ async function handleHomeAgentLink(
 
   const userLink = await getUserLink(payload.user.id, payload.team.id);
   if (!userLink) return;
-
-  await ensureScopeAndArtifact(userLink.vm0UserId);
 
   // Check model provider status
   const providers = await listModelProviders(userLink.vm0UserId);

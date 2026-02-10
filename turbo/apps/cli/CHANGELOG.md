@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.31.0](https://github.com/vm0-ai/vm0/compare/cli-v9.30.1...cli-v9.31.0) (2026-02-10)
+
+
+### Features
+
+* **platform:** add environment variables setup page ([#2737](https://github.com/vm0-ai/vm0/issues/2737)) ([d33842a](https://github.com/vm0-ai/vm0/commit/d33842a2e5e72eb5bfebe66cd442135b49f35a51))
+
+## [9.30.1](https://github.com/vm0-ai/vm0/compare/cli-v9.30.0...cli-v9.30.1) (2026-02-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.7.0
+
 ## [9.30.0](https://github.com/vm0-ai/vm0/compare/cli-v9.29.5...cli-v9.30.0) (2026-02-10)
 
 

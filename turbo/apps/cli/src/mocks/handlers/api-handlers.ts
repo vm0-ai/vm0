@@ -42,6 +42,16 @@ export const apiHandlers = [
     return HttpResponse.json({ versionId: "default" }, { status: 200 });
   }),
 
+  // GET /api/secrets - listSecrets
+  http.get("http://localhost:3000/api/secrets", () => {
+    return HttpResponse.json({ secrets: [] }, { status: 200 });
+  }),
+
+  // GET /api/variables - listVariables
+  http.get("http://localhost:3000/api/variables", () => {
+    return HttpResponse.json({ variables: [] }, { status: 200 });
+  }),
+
   // GET /api/scope - getScope
   http.get("http://localhost:3000/api/scope", () => {
     return HttpResponse.json(

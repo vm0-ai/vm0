@@ -193,6 +193,31 @@ describe("VsockClient Integration Tests", () => {
       expect(result.stdout.trim()).toBe("fast");
     });
 
+    it("should pass env vars to command", async () => {
+      const result = await client!.exec("echo $MY_VAR", 5000, {
+        MY_VAR: "hello_env",
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe("hello_env");
+    });
+
+    it("should pass multiple env vars to command", async () => {
+      const result = await client!.exec("echo $A $B", 5000, {
+        A: "first",
+        B: "second",
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe("first second");
+    });
+
+    it("should handle env vars with special characters", async () => {
+      const result = await client!.exec("echo $VAL", 5000, {
+        VAL: 'it\'s a "test"',
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('it\'s a "test"');
+    });
+
     it("should return exit code 124 on timeout", async () => {
       // Command that sleeps longer than timeout (100ms timeout, 2s sleep)
       const result = await client!.exec("sleep 2", 100);
@@ -520,6 +545,16 @@ describe("VsockClient Integration Tests", () => {
 
       expect(exitEvent.exitCode).toBe(0);
       expect(exitEvent.stdout.trim()).toBe("hello_spawn");
+    });
+
+    it("should pass env vars to spawned process via protocol", async () => {
+      const { pid } = await client!.spawnAndWatch("echo $GREETING", 5000, {
+        GREETING: "hi_from_env",
+      });
+      const exitEvent = await client!.waitForExit(pid, 5000);
+
+      expect(exitEvent.exitCode).toBe(0);
+      expect(exitEvent.stdout.trim()).toBe("hi_from_env");
     });
 
     it("should handle process that outputs special characters", async () => {
