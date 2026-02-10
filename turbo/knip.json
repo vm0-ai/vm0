@@ -23,7 +23,8 @@
         "@types/tar",
         "@slack/web-api",
         "import-in-the-middle",
-        "require-in-the-middle"
+        "require-in-the-middle",
+        "cpu-features"
       ],
       "next": {
         "entry": ["next.config.{js,ts,mjs}"]

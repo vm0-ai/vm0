@@ -18,7 +18,7 @@ function createSelfHostedClerk(): Clerk {
       primaryEmailAddress: { emailAddress: "admin@localhost" },
     },
     session: {
-      getToken: async () => null,
+      getToken: () => Promise.resolve(null),
     },
     addListener: () => () => {},
     signOut: () => {

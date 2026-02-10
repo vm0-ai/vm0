@@ -15,6 +15,7 @@ import {
   DATASETS,
 } from "../../../../../src/lib/axiom";
 import { publishEvents } from "../../../../../src/lib/realtime/client";
+import { storeAgentEvents } from "../../../../../src/lib/telemetry/local-store";
 
 const log = logger("webhook:events");
 
@@ -76,7 +77,27 @@ const router = tsr.router(webhookEventsContract, {
 
     // Ingest events to Axiom
     const axiomDataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
-    await ingestToAxiom(axiomDataset, axiomEvents);
+    const ingested = await ingestToAxiom(axiomDataset, axiomEvents);
+
+    // DB fallback: store events locally when Axiom is not configured
+    if (!ingested) {
+      storeAgentEvents(
+        body.runId,
+        body.events.map(
+          (event: {
+            type: string;
+            sequenceNumber: number;
+            [key: string]: unknown;
+          }) => ({
+            sequenceNumber: event.sequenceNumber,
+            eventType: event.type,
+            eventData: event as Record<string, unknown>,
+          }),
+        ),
+      ).catch((err: unknown) => {
+        log.error("DB agent events store failed:", err);
+      });
+    }
 
     // Get first and last sequence numbers from the events
     // Note: events array is validated as non-empty by the contract

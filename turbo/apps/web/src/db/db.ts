@@ -11,6 +11,7 @@ import * as storageSchema from "./schema/storage";
 import * as blobSchema from "./schema/blob";
 import * as imageSchema from "./schema/image";
 import * as sandboxTelemetrySchema from "./schema/sandbox-telemetry";
+import * as agentRunEventsLocalSchema from "./schema/agent-run-events-local";
 import * as scopeSchema from "./schema/scope";
 import * as runnerSchema from "./schema/runner-job-queue";
 import * as agentScheduleSchema from "./schema/agent-schedule";
@@ -40,6 +41,7 @@ export const schema = {
   ...blobSchema,
   ...imageSchema,
   ...sandboxTelemetrySchema,
+  ...agentRunEventsLocalSchema,
   ...scopeSchema,
   ...runnerSchema,
   ...agentScheduleSchema,

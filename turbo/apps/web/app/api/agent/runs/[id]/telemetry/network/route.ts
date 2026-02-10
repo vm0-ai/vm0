@@ -13,6 +13,7 @@ import {
   getDatasetName,
   DATASETS,
 } from "../../../../../../../src/lib/axiom";
+import { queryNetworkLogs } from "../../../../../../../src/lib/telemetry/local-store";
 
 /**
  * Axiom network event supports two modes:
@@ -84,14 +85,16 @@ ${sinceFilter}
     // Query Axiom for network logs
     const events = await queryAxiom<AxiomNetworkEvent>(apl);
 
-    // If Axiom is not configured or query failed, return empty
+    // If Axiom is not configured or query failed, try DB fallback
     if (events === null) {
+      const dbResult = await queryNetworkLogs(params.id, {
+        since,
+        limit,
+        order,
+      });
       return {
         status: 200 as const,
-        body: {
-          networkLogs: [],
-          hasMore: false,
-        },
+        body: dbResult,
       };
     }
 

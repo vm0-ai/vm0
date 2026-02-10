@@ -568,6 +568,13 @@
       "when": 1770500000000,
       "tag": "0080_workspace_agent_model",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1770600000000,
+      "tag": "0081_add_agent_run_events_local",
+      "breakpoints": true
     }
   ]
 }

@@ -483,4 +483,81 @@ describe("POST /api/webhooks/agent/events", () => {
       );
     });
   });
+
+  describe("DB fallback (Axiom not configured)", () => {
+    beforeEach(() => {
+      // Simulate Axiom not configured
+      ingestToAxiomSpy.mockResolvedValue(false);
+    });
+
+    it("should store events to DB when Axiom is not configured", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/events",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            events: [
+              {
+                type: "tool_use",
+                sequenceNumber: 0,
+                timestamp: Date.now(),
+                data: { tool: "bash", command: "ls" },
+              },
+              {
+                type: "tool_result",
+                sequenceNumber: 1,
+                timestamp: Date.now(),
+                data: { exitCode: 0, stdout: "file1.txt" },
+              },
+            ],
+          }),
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.received).toBe(2);
+      expect(data.firstSequence).toBe(0);
+      expect(data.lastSequence).toBe(1);
+    });
+
+    it("should not store to DB when Axiom ingest succeeds", async () => {
+      ingestToAxiomSpy.mockResolvedValue(true);
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/events",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            events: [
+              {
+                type: "test",
+                sequenceNumber: 0,
+                timestamp: Date.now(),
+                data: {},
+              },
+            ],
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      // Axiom ingest returned true, DB fallback should not run
+      expect(ingestToAxiomSpy).toHaveBeenCalled();
+    });
+  });
 });

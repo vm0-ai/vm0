@@ -15,6 +15,40 @@ import {
   DATASETS,
 } from "../../../../../src/lib/axiom";
 import { recordSandboxInternalOperation } from "../../../../../src/lib/metrics";
+import { storeTelemetry } from "../../../../../src/lib/telemetry/local-store";
+
+/**
+ * Store telemetry data to PostgreSQL when Axiom is not configured.
+ */
+async function storeTelemetryFallback(body: {
+  runId: string;
+  systemLog?: string;
+  metrics?: Array<{
+    ts: string;
+    cpu: number;
+    mem_used: number;
+    mem_total: number;
+    disk_used: number;
+    disk_total: number;
+  }>;
+  networkLogs?: Array<Record<string, unknown>>;
+}): Promise<void> {
+  const hasData =
+    body.systemLog || body.metrics?.length || body.networkLogs?.length;
+  if (!hasData) return;
+
+  await storeTelemetry(body.runId, {
+    systemLog: body.systemLog,
+    metrics: body.metrics,
+    networkLogs: body.networkLogs as Array<{
+      timestamp: string;
+      mode?: "mitm" | "sni";
+      action?: "ALLOW" | "DENY";
+      host?: string;
+      port?: number;
+    }>,
+  });
+}
 
 const log = logger("webhooks:telemetry");
 
@@ -67,6 +101,7 @@ const router = tsr.router(webhookTelemetryContract, {
     // No server-side masking needed - secrets values are never stored
 
     // Ingest system log to Axiom (fire-and-forget - don't fail webhook if Axiom fails)
+    let axiomIngested = false;
     if (body.systemLog) {
       const axiomDataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_SYSTEM);
       const axiomEvent = {
@@ -75,9 +110,12 @@ const router = tsr.router(webhookTelemetryContract, {
         userId: auth.userId,
         log: body.systemLog, // Already masked by client
       };
-      ingestToAxiom(axiomDataset, [axiomEvent]).catch((err) => {
-        log.error("Axiom system log ingest failed:", err);
-      });
+      axiomIngested = await ingestToAxiom(axiomDataset, [axiomEvent]).catch(
+        (err) => {
+          log.error("Axiom system log ingest failed:", err);
+          return false;
+        },
+      );
     }
 
     // Ingest metrics to Axiom (fire-and-forget)
@@ -134,6 +172,13 @@ const router = tsr.router(webhookTelemetryContract, {
       );
       ingestToAxiom(axiomDataset, axiomEvents).catch((err) => {
         log.error("Axiom network logs ingest failed:", err);
+      });
+    }
+
+    // DB fallback: store telemetry locally when Axiom is not configured
+    if (!axiomIngested) {
+      storeTelemetryFallback(body).catch((err: unknown) => {
+        log.error("DB telemetry store failed:", err);
       });
     }
 

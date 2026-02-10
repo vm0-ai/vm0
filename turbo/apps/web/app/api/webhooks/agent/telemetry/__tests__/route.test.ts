@@ -474,4 +474,100 @@ describe("POST /api/webhooks/agent/telemetry", () => {
     // The E2B path is covered by the test above, and the logic for runner detection
     // (sandboxId === null) is a simple conditional in the route handler.
   });
+
+  describe("DB fallback (Axiom not configured)", () => {
+    beforeEach(() => {
+      // Simulate Axiom not configured
+      axiomIngestMock.mockResolvedValue(false);
+    });
+
+    it("should store systemLog to DB when Axiom is not configured", async () => {
+      const { runId } = await createRunForWebhook(testComposeId, "Test prompt");
+      const testToken = await createTestSandboxToken(user.userId, runId);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/webhooks/agent/telemetry",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId,
+            systemLog: "[2025-12-09T10:00:00Z] [INFO] DB fallback test\n",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+    });
+
+    it("should store metrics to DB when Axiom is not configured", async () => {
+      const { runId } = await createRunForWebhook(testComposeId, "Test prompt");
+      const testToken = await createTestSandboxToken(user.userId, runId);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/webhooks/agent/telemetry",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId,
+            metrics: [
+              {
+                ts: "2025-12-09T10:00:00Z",
+                cpu: 42.5,
+                mem_used: 100000000,
+                mem_total: 200000000,
+                disk_used: 500000000,
+                disk_total: 1000000000,
+              },
+            ],
+          }),
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+    });
+
+    it("should not store to DB when Axiom ingest succeeds", async () => {
+      axiomIngestMock.mockResolvedValue(true);
+
+      const { runId } = await createRunForWebhook(testComposeId, "Test prompt");
+      const testToken = await createTestSandboxToken(user.userId, runId);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/webhooks/agent/telemetry",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId,
+            systemLog: "[INFO] Axiom is configured\n",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      // Axiom ingest was called and returned true, so DB fallback should NOT run
+      expect(axiomIngestMock).toHaveBeenCalled();
+    });
+  });
 });

@@ -20,6 +20,7 @@ import type {
   RunState,
 } from "../../../../../../src/lib/run/types";
 import { filterConsecutiveEvents, type AxiomAgentEvent } from "./filter-events";
+import { queryAgentEventsBySequence } from "../../../../../../src/lib/telemetry/local-store";
 
 const router = tsr.router(runEventsContract, {
   getEvents: async ({ params, query, headers }) => {
@@ -81,11 +82,27 @@ const router = tsr.router(runEventsContract, {
     // Query Axiom for agent events
     const axiomEvents = await queryAxiom<AxiomAgentEvent>(apl);
 
-    // If Axiom is not configured or query failed, return empty
-    const rawEvents = axiomEvents ?? [];
+    // If Axiom is not configured or query failed, try DB fallback
+    let rawEvents: AxiomAgentEvent[];
+    if (axiomEvents !== null) {
+      rawEvents = axiomEvents;
+    } else {
+      const dbEvents = await queryAgentEventsBySequence(
+        params.id,
+        since,
+        limit,
+      );
+      rawEvents = dbEvents.map((e) => ({
+        _time: e.createdAt.toISOString(),
+        runId: params.id,
+        userId,
+        sequenceNumber: e.sequenceNumber,
+        eventType: e.eventType,
+        eventData: e.eventData,
+      }));
+    }
 
     // Filter to only consecutive events to handle Axiom's eventual consistency.
-    // This prevents permanently skipping events when they become queryable out of order.
     const events = filterConsecutiveEvents(rawEvents, since);
 
     // Calculate nextSequence and hasMore
