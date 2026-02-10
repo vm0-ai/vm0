@@ -1785,29 +1785,54 @@ describe("GitHub URL compose", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("should show security warning when GitHub URL used without --experimental-shared-compose flag", async () => {
-    await expect(async () => {
-      await composeCommand.parseAsync([
-        "node",
-        "cli",
-        "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
-      ]);
-    }).rejects.toThrow("process.exit called");
+  it("should accept deprecated --experimental-shared-compose flag without error", async () => {
+    // Setup mock for GitHub URL compose
+    const tempRoot = path.join(tempDir, "github-download");
+    const cookbookDir = createMockCookbookDir(
+      tempRoot,
+      "tutorials/101-intro",
+      `version: "1.0"
+agents:
+  intro:
+    framework: claude-code`,
+    );
+    mockDownloadGitHubDirectory.mockResolvedValue({
+      dir: cookbookDir,
+      tempRoot,
+    });
 
-    expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "Composing shared agents requires --experimental-shared-compose flag",
-      ),
+    // Setup API mocks
+    server.use(
+      http.get("http://localhost:3000/api/agent/composes", () => {
+        return HttpResponse.json(
+          { error: { message: "Not found", code: "NOT_FOUND" } },
+          { status: 404 },
+        );
+      }),
+      http.post("http://localhost:3000/api/agent/composes", () => {
+        return HttpResponse.json({
+          composeId: "cmp-123",
+          name: "intro",
+          versionId: "a".repeat(64),
+          action: "created",
+        });
+      }),
+      http.get("http://localhost:3000/api/scope", () => {
+        return HttpResponse.json(scopeResponse);
+      }),
     );
-    expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "Composing agents from other users carries security risks.",
-      ),
+
+    // Should work WITH the deprecated flag (backward compatibility)
+    await composeCommand.parseAsync([
+      "node",
+      "cli",
+      "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
+      "--experimental-shared-compose",
+    ]);
+
+    expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect.stringContaining("Compose created"),
     );
-    expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("Only compose agents from users you trust."),
-    );
-    expect(mockExit).toHaveBeenCalledWith(1);
   });
 
   it("should error when vm0.yaml not found in GitHub directory", async () => {
@@ -1822,7 +1847,6 @@ describe("GitHub URL compose", () => {
         "node",
         "cli",
         "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
-        "--experimental-shared-compose",
       ]);
     }).rejects.toThrow("process.exit called");
 
@@ -1860,7 +1884,6 @@ volumes:
         "node",
         "cli",
         "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/104-intro-volume",
-        "--experimental-shared-compose",
       ]);
     }).rejects.toThrow("process.exit called");
 
@@ -1915,7 +1938,6 @@ agents:
       "node",
       "cli",
       "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
-      "--experimental-shared-compose",
     ]);
 
     expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -1984,7 +2006,6 @@ agents:
       "node",
       "cli",
       "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
-      "--experimental-shared-compose",
     ]);
 
     expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -2038,7 +2059,6 @@ agents:
       "node",
       "cli",
       "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
-      "--experimental-shared-compose",
     ]);
 
     // The tempRoot should be fully cleaned up (including the .git folder)
@@ -2046,17 +2066,13 @@ agents:
   });
 
   it("should detect GitHub tree URLs correctly", async () => {
-    // Non-GitHub URL should not trigger experimental flag check
+    // Non-GitHub URL should show "not found" error
     await expect(async () => {
       await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
     }).rejects.toThrow("process.exit called");
 
-    // Should show "not found" error, not the experimental flag error
     expect(mockConsoleError).toHaveBeenCalledWith(
       expect.stringContaining("Config file not found"),
-    );
-    expect(mockConsoleError).not.toHaveBeenCalledWith(
-      expect.stringContaining("--experimental-shared-compose"),
     );
   });
 
@@ -2100,7 +2116,6 @@ agents:
         "node",
         "cli",
         "https://github.com/owner/repo",
-        "--experimental-shared-compose",
       ]);
 
       expect(mockDownloadGitHubDirectory).toHaveBeenCalledWith(
@@ -2150,25 +2165,10 @@ agents:
         "node",
         "cli",
         "https://github.com/owner/repo/tree/main",
-        "--experimental-shared-compose",
       ]);
 
       expect(mockDownloadGitHubDirectory).toHaveBeenCalledWith(
         "https://github.com/owner/repo/tree/main",
-      );
-    });
-
-    it("should require --experimental-shared-compose for plain repo URL", async () => {
-      await expect(async () => {
-        await composeCommand.parseAsync([
-          "node",
-          "cli",
-          "https://github.com/owner/repo",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("--experimental-shared-compose"),
       );
     });
 
@@ -2211,7 +2211,6 @@ agents:
         "node",
         "cli",
         "https://github.com/owner/repo/tree/main/",
-        "--experimental-shared-compose",
       ]);
 
       expect(mockDownloadGitHubDirectory).toHaveBeenCalledWith(
@@ -2262,7 +2261,6 @@ agents:
         "node",
         "cli",
         "https://github.com/owner/repo/tree/main/examples/101-intro/",
-        "--experimental-shared-compose",
       ]);
 
       expect(mockDownloadGitHubDirectory).toHaveBeenCalledWith(
@@ -2315,7 +2313,6 @@ agents:
           "node",
           "cli",
           "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
-          "--experimental-shared-compose",
         ]);
       }).rejects.toThrow("process.exit called");
 
@@ -2383,7 +2380,6 @@ agents:
         "node",
         "cli",
         "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
-        "--experimental-shared-compose",
         "--yes",
       ]);
 
@@ -2434,7 +2430,6 @@ agents:
         "node",
         "cli",
         "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
-        "--experimental-shared-compose",
       ]);
 
       // Should not show the "already exists" warning
@@ -2489,7 +2484,6 @@ agents:
         "node",
         "cli",
         "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
-        "--experimental-shared-compose",
         "--json",
       ]);
 
@@ -2553,7 +2547,6 @@ agents:
         "node",
         "cli",
         "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
-        "--experimental-shared-compose",
         "--json",
       ]);
 
@@ -2585,7 +2578,6 @@ agents:
           "node",
           "cli",
           "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
-          "--experimental-shared-compose",
           "--json",
         ]);
       }).rejects.toThrow("process.exit called");

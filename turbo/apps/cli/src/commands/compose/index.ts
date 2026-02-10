@@ -595,7 +595,7 @@ export const composeCommand = new Command()
   .option("-y, --yes", "Skip confirmation prompts for skill requirements")
   .option(
     "--experimental-shared-compose",
-    "Enable GitHub URL compose (experimental)",
+    "[deprecated] No longer required, kept for backward compatibility",
   )
   .option("--json", "Output JSON for scripts (suppresses interactive output)")
   .option(
@@ -641,33 +641,6 @@ export const composeCommand = new Command()
 
         // Branch based on input type
         if (isGitHubUrl(resolvedConfigFile)) {
-          // Require experimental flag for GitHub URLs
-          if (!options.experimentalSharedCompose) {
-            if (options.json) {
-              console.log(
-                JSON.stringify({
-                  error:
-                    "Composing shared agents requires --experimental-shared-compose flag",
-                }),
-              );
-            } else {
-              console.error(
-                chalk.red(
-                  "✗ Composing shared agents requires --experimental-shared-compose flag",
-                ),
-              );
-              console.error();
-              console.error(
-                chalk.dim(
-                  "  Composing agents from other users carries security risks.",
-                ),
-              );
-              console.error(
-                chalk.dim("  Only compose agents from users you trust."),
-              );
-            }
-            process.exit(1);
-          }
           result = await handleGitHubCompose(resolvedConfigFile, options);
         } else {
           // Existing local file flow
