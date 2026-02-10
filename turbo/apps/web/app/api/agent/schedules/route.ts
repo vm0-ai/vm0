@@ -68,6 +68,7 @@ const router = tsr.router(schedulesMainContract, {
         artifactName: body.artifactName,
         artifactVersion: body.artifactVersion,
         volumeVersions: body.volumeVersions,
+        notifications: body.notifications,
       });
 
       return {

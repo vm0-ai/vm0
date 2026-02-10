@@ -16,6 +16,7 @@ import {
   fetchConversationContexts,
   lookupThreadSession,
   saveThreadSession,
+  resolveSessionContext,
   buildLoginUrl,
   buildLogsUrl,
 } from "./shared";
@@ -99,32 +100,75 @@ export async function handleDirectMessage(
       return;
     }
 
-    // 4. Get user's binding (single binding per user)
-    const [binding] = await globalThis.services.db
-      .select({
-        id: slackBindings.id,
-        agentName: slackBindings.agentName,
-        composeId: slackBindings.composeId,
-        enabled: slackBindings.enabled,
-      })
-      .from(slackBindings)
-      .where(
-        and(
-          eq(slackBindings.slackUserLinkId, userLink.id),
-          eq(slackBindings.enabled, true),
-        ),
-      )
-      .limit(1);
+    // 4. Check thread session first (handles notification DM threads + existing conversations)
+    let composeId: string | undefined;
+    let bindingId: string | undefined;
+    let agentName: string | undefined;
+    let existingSessionId: string | undefined;
+    let lastProcessedMessageTs: string | undefined;
 
-    if (!binding) {
-      // 5. No binding - prompt to link agent
-      await postMessage(
-        client,
-        context.channelId,
-        "You don't have any agent linked. Use `/vm0 agent link` to link one.",
-        { threadTs },
-      );
-      return;
+    if (threadTs) {
+      const session = await lookupThreadSession(context.channelId, threadTs);
+      existingSessionId = session.existingSessionId;
+      lastProcessedMessageTs = session.lastProcessedMessageTs;
+
+      if (existingSessionId) {
+        // Resolve agent context from existing session
+        const sessionCtx = await resolveSessionContext(existingSessionId);
+        if (sessionCtx) {
+          composeId = sessionCtx.composeId;
+          agentName = sessionCtx.agentName;
+          log.debug("Resolved context from thread session", {
+            existingSessionId,
+            composeId,
+            agentName,
+          });
+        }
+      }
+    }
+
+    // 5. If no thread session resolved, fall back to binding lookup
+    if (!composeId) {
+      const [binding] = await globalThis.services.db
+        .select({
+          id: slackBindings.id,
+          agentName: slackBindings.agentName,
+          composeId: slackBindings.composeId,
+          enabled: slackBindings.enabled,
+        })
+        .from(slackBindings)
+        .where(
+          and(
+            eq(slackBindings.slackUserLinkId, userLink.id),
+            eq(slackBindings.enabled, true),
+          ),
+        )
+        .limit(1);
+
+      if (!binding) {
+        await postMessage(
+          client,
+          context.channelId,
+          "You don't have any agent linked. Use `/vm0 agent link` to link one.",
+          { threadTs },
+        );
+        return;
+      }
+
+      composeId = binding.composeId;
+      bindingId = binding.id;
+      agentName = binding.agentName;
+
+      // Look up thread session with binding for deduplication
+      if (threadTs && !existingSessionId) {
+        const session = await lookupThreadSession(
+          context.channelId,
+          threadTs,
+          binding.id,
+        );
+        existingSessionId = session.existingSessionId;
+        lastProcessedMessageTs = session.lastProcessedMessageTs;
+      }
     }
 
     // 6. Add thinking reaction
@@ -140,24 +184,7 @@ export async function handleDirectMessage(
     // Use message text directly (no mention prefix to strip in DMs)
     const messageContent = context.messageText;
 
-    // 7. Look up existing thread session for deduplication
-    let existingSessionId: string | undefined;
-    let lastProcessedMessageTs: string | undefined;
-    if (threadTs) {
-      const session = await lookupThreadSession(
-        context.channelId,
-        threadTs,
-        binding.id,
-      );
-      existingSessionId = session.existingSessionId;
-      lastProcessedMessageTs = session.lastProcessedMessageTs;
-      log.debug("Thread session lookup", {
-        existingSessionId,
-        lastProcessedMessageTs,
-      });
-    }
-
-    // 8. Fetch context: execution gets deduplicated with images
+    // 7. Fetch context: execution gets deduplicated with images
     const { executionContext } = await fetchConversationContexts(
       client,
       context.channelId,
@@ -169,24 +196,25 @@ export async function handleDirectMessage(
     );
 
     try {
-      // 9. Execute agent with deduplicated context
+      // 8. Execute agent with deduplicated context
       const {
         status: runStatus,
         response: agentResponse,
         sessionId: newSessionId,
         runId,
       } = await runAgentForSlack({
-        binding,
+        composeId,
+        bindingId,
         sessionId: existingSessionId,
         prompt: messageContent,
         threadContext: executionContext,
         userId: userLink.vm0UserId,
       });
 
-      // 10. Create or update thread session mapping
+      // 9. Create or update thread session mapping
       if (threadTs) {
         await saveThreadSession({
-          bindingId: binding.id,
+          bindingId,
           channelId: context.channelId,
           threadTs,
           existingSessionId,
@@ -196,7 +224,7 @@ export async function handleDirectMessage(
         });
       }
 
-      // 11. Post response message
+      // 10. Post response message
       const logsUrl = runId ? buildLogsUrl(runId) : undefined;
       const responseText =
         runStatus === "timeout"
@@ -206,7 +234,7 @@ export async function handleDirectMessage(
         threadTs,
         blocks: buildAgentResponseMessage(
           responseText,
-          binding.agentName,
+          agentName ?? "agent",
           logsUrl,
         ),
       });
@@ -221,7 +249,7 @@ export async function handleDirectMessage(
         { threadTs },
       ).catch((e) => log.warn("Failed to post error message", { error: e }));
     } finally {
-      // 12. Remove thinking reaction
+      // 11. Remove thinking reaction
       if (reactionAdded) {
         await removeThinkingReaction(
           client,

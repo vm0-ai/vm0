@@ -8,6 +8,8 @@ import {
   getSlackRedirectBaseUrl,
 } from "../index";
 import { slackThreadSessions } from "../../../db/schema/slack-thread-session";
+import { agentSessions } from "../../../db/schema/agent-session";
+import { agentComposes } from "../../../db/schema/agent-compose";
 import { storages, storageVersions } from "../../../db/schema/storage";
 import { getPlatformUrl } from "../../url";
 import {
@@ -142,9 +144,10 @@ export async function lookupThreadSession(
 
 /**
  * Create or update a thread session mapping after agent execution.
+ * bindingId is optional — notification-created thread sessions have no binding.
  */
 export async function saveThreadSession(opts: {
-  bindingId: string;
+  bindingId: string | undefined;
   channelId: string;
   threadTs: string;
   existingSessionId: string | undefined;
@@ -167,7 +170,7 @@ export async function saveThreadSession(opts: {
     await globalThis.services.db
       .insert(slackThreadSessions)
       .values({
-        slackBindingId: bindingId,
+        slackBindingId: bindingId ?? null,
         slackChannelId: channelId,
         slackThreadTs: threadTs,
         agentSessionId: newSessionId,
@@ -179,6 +182,10 @@ export async function saveThreadSession(opts: {
     (runStatus === "completed" || runStatus === "timeout")
   ) {
     // Existing thread, successful run — update lastProcessedMessageTs
+    const bindingCondition = bindingId
+      ? eq(slackThreadSessions.slackBindingId, bindingId)
+      : isNull(slackThreadSessions.slackBindingId);
+
     await globalThis.services.db
       .update(slackThreadSessions)
       .set({
@@ -187,13 +194,37 @@ export async function saveThreadSession(opts: {
       })
       .where(
         and(
-          eq(slackThreadSessions.slackBindingId, bindingId),
+          bindingCondition,
           eq(slackThreadSessions.slackChannelId, channelId),
           eq(slackThreadSessions.slackThreadTs, threadTs),
         ),
       );
   }
   // Failed runs — do not update lastProcessedMessageTs (allows retry with same context)
+}
+
+/**
+ * Resolve session context from an agent session ID.
+ * Returns the composeId and agentName for a session found via thread lookup.
+ */
+export async function resolveSessionContext(agentSessionId: string): Promise<{
+  composeId: string;
+  agentName: string;
+} | null> {
+  const [result] = await globalThis.services.db
+    .select({
+      composeId: agentComposes.id,
+      agentName: agentComposes.name,
+    })
+    .from(agentSessions)
+    .innerJoin(
+      agentComposes,
+      eq(agentSessions.agentComposeId, agentComposes.id),
+    )
+    .where(eq(agentSessions.id, agentSessionId))
+    .limit(1);
+
+  return result ?? null;
 }
 
 /**

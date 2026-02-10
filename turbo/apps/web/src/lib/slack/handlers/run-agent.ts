@@ -15,10 +15,8 @@ import { getSecretValues } from "../../secret/secret-service";
 const log = logger("slack:run-agent");
 
 interface RunAgentParams {
-  binding: {
-    id: string;
-    composeId: string;
-  };
+  composeId: string;
+  bindingId?: string;
   sessionId: string | undefined;
   prompt: string;
   threadContext: string;
@@ -51,14 +49,15 @@ interface RunAgentResult {
 export async function runAgentForSlack(
   params: RunAgentParams,
 ): Promise<RunAgentResult> {
-  const { binding, sessionId, prompt, threadContext, userId } = params;
+  const { composeId, bindingId, sessionId, prompt, threadContext, userId } =
+    params;
 
   try {
     // Get compose and latest version
     const [compose] = await globalThis.services.db
       .select()
       .from(agentComposes)
-      .where(eq(agentComposes.id, binding.composeId))
+      .where(eq(agentComposes.id, composeId))
       .limit(1);
 
     if (!compose) {
@@ -125,7 +124,7 @@ export async function runAgentForSlack(
       };
     }
 
-    log.debug(`Created run ${run.id} for Slack binding ${binding.id}`);
+    log.debug(`Created run ${run.id} for Slack`, { bindingId });
 
     // Generate sandbox token
     const sandboxToken = await generateSandboxToken(userId, run.id);
@@ -163,7 +162,7 @@ export async function runAgentForSlack(
         .where(
           and(
             eq(agentSessions.userId, userId),
-            eq(agentSessions.agentComposeId, binding.composeId),
+            eq(agentSessions.agentComposeId, composeId),
             gte(agentSessions.updatedAt, run.createdAt),
           ),
         )
@@ -254,7 +253,7 @@ async function waitForRunCompletion(
 /**
  * Query Axiom for the result event to get the agent's output text
  */
-async function getRunOutput(runId: string): Promise<string | undefined> {
+export async function getRunOutput(runId: string): Promise<string | undefined> {
   const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
   const apl = `['${dataset}']
 | where runId == "${runId}"

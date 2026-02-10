@@ -28,6 +28,7 @@ export async function deploySchedule(body: {
   artifactVersion?: string;
   volumeVersions?: Record<string, string>;
   composeId: string;
+  notifications?: "slack"[];
 }): Promise<DeployScheduleResponse> {
   const config = await getClientConfig();
   const client = initClient(schedulesMainContract, config);

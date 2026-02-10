@@ -18,9 +18,10 @@ export const slackThreadSessions = pgTable(
   "slack_thread_sessions",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    slackBindingId: uuid("slack_binding_id")
-      .notNull()
-      .references(() => slackBindings.id, { onDelete: "cascade" }),
+    slackBindingId: uuid("slack_binding_id").references(
+      () => slackBindings.id,
+      { onDelete: "cascade" },
+    ),
     slackChannelId: varchar("slack_channel_id", { length: 255 }).notNull(),
     slackThreadTs: varchar("slack_thread_ts", { length: 255 }).notNull(),
     agentSessionId: uuid("agent_session_id")

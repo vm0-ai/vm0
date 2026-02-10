@@ -10,7 +10,10 @@ import {
 } from "../../../../../src/__tests__/slack/api-helpers";
 import { handlers, http } from "../../../../../src/__tests__/msw";
 import { POST } from "../route";
-import { createTestAgentSession } from "../../../../../src/__tests__/api-test-helpers";
+import {
+  createTestAgentSession,
+  createTestThreadSession,
+} from "../../../../../src/__tests__/api-test-helpers";
 import * as runAgentModule from "../../../../../src/lib/slack/handlers/run-agent";
 
 // Mock Next.js after() to execute synchronously instead of deferring
@@ -1253,6 +1256,82 @@ describe("POST /api/slack/events", () => {
       expect(thirdCallContext).not.toContain("Third message");
       // First message was already processed in the successful first turn
       expect(thirdCallContext).not.toContain("First message");
+    });
+  });
+
+  describe("Scenario: Reply in notification DM thread (NULL bindingId)", () => {
+    it("should resolve agent from thread session and execute", async () => {
+      // Given I am a linked Slack user with one agent
+      const { userLink, installation } = await givenLinkedSlackUser();
+      const { binding } = await givenUserHasAgent(userLink, {
+        agentName: "my-scheduled-agent",
+      });
+
+      // Use unique channel/thread IDs
+      const channelId = `D-notif-${Date.now()}`;
+      const threadTs = "3000000000.000000";
+
+      // And an agent session exists for a previous scheduled run
+      const agentSession = await createTestAgentSession(
+        userLink.vm0UserId,
+        binding.composeId,
+      );
+
+      // And a thread session exists with NULL bindingId (created by notification)
+      await createTestThreadSession({
+        bindingId: null,
+        channelId,
+        threadTs,
+        agentSessionId: agentSession.id,
+        lastProcessedMessageTs: threadTs,
+      });
+
+      // And runAgentForSlack returns a completed result
+      const runAgentSpy = vi
+        .spyOn(runAgentModule, "runAgentForSlack")
+        .mockResolvedValueOnce({
+          status: "completed",
+          response: "Continued from schedule!",
+          sessionId: agentSession.id,
+          runId: "test-run-id",
+        });
+
+      // And the thread has the notification message
+      server.use(
+        http.post("https://slack.com/api/conversations.replies", () =>
+          HttpResponse.json({
+            ok: true,
+            messages: [
+              {
+                bot_id: "B123",
+                text: "Scheduled run completed",
+                ts: threadTs,
+              },
+            ],
+          }),
+        ).handler,
+      );
+
+      // When I reply in the notification DM thread
+      const request = createSlackDmEventRequest({
+        teamId: installation.slackWorkspaceId,
+        channelId,
+        userId: userLink.slackUserId,
+        text: "tell me more about the results",
+        ts: "3000000001.000000",
+        threadTs,
+      });
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await flushAfterCallbacks();
+
+      // Then the agent should execute with the existing session
+      expect(runAgentSpy).toHaveBeenCalledTimes(1);
+      expect(runAgentSpy.mock.calls[0]![0].sessionId).toBe(agentSession.id);
+      expect(runAgentSpy.mock.calls[0]![0].composeId).toBe(binding.composeId);
+
+      // And a response should be posted
+      expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
     });
   });
 

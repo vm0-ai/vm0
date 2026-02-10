@@ -533,6 +533,20 @@
       "when": 1770000000000,
       "tag": "0075_add_last_processed_message_ts",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1770100000000,
+      "tag": "0076_enforce_single_slack_binding",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1770200000000,
+      "tag": "0077_add_schedule_notifications",
+      "breakpoints": true
     }
   ]
 }

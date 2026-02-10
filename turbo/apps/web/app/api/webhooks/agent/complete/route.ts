@@ -15,6 +15,8 @@ import type { ArtifactSnapshot } from "../../../../../src/lib/checkpoint";
 import type { RunResult } from "../../../../../src/lib/run/types";
 import { logger } from "../../../../../src/lib/logger";
 import { publishStatus } from "../../../../../src/lib/realtime/client";
+import { notifyScheduleRunComplete } from "../../../../../src/lib/slack/handlers/schedule-notification";
+import { after } from "next/server";
 
 const log = logger("webhook:complete");
 
@@ -178,6 +180,19 @@ const router = tsr.router(webhookCompleteContract, {
 
       // Publish failure status to Ably for realtime streaming to CLI
       await publishStatus(body.runId, "failed", undefined, errorMessage);
+    }
+
+    // Send Slack DM notification for scheduled runs (non-blocking)
+    if (run.scheduleId) {
+      const errorMsg =
+        finalStatus === "failed"
+          ? (body.error ?? `Agent exited with code ${body.exitCode}`)
+          : undefined;
+      after(
+        notifyScheduleRunComplete(body.runId, finalStatus, errorMsg).catch(
+          (err) => log.error("Failed to send schedule notification", { err }),
+        ),
+      );
     }
 
     // Kill sandbox (wait for completion to ensure cleanup before response)
