@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { SecretMasker } from "../src/lib/secret-masker";
+import { SecretMasker } from "../scripts/lib/secret-masker";
 
 describe("secret-masker", () => {
   describe("SecretMasker class", () => {
@@ -169,7 +169,7 @@ describe("secret-masker", () => {
     it("should return empty masker when VM0_SECRET_VALUES is not set", async () => {
       delete process.env.VM0_SECRET_VALUES;
       const { getMasker: freshGetMasker } = await import(
-        "../src/lib/secret-masker"
+        "../scripts/lib/secret-masker"
       );
       const masker = freshGetMasker();
       expect(masker.mask("test secret")).toBe("test secret");
@@ -182,7 +182,7 @@ describe("secret-masker", () => {
       process.env.VM0_SECRET_VALUES = encoded;
 
       const { getMasker: freshGetMasker } = await import(
-        "../src/lib/secret-masker"
+        "../scripts/lib/secret-masker"
       );
       const masker = freshGetMasker();
       expect(masker.mask("my mySecret here")).toBe("my *** here");
@@ -196,7 +196,7 @@ describe("secret-masker", () => {
       process.env.VM0_SECRET_VALUES = `${encoded1},${encoded2}`;
 
       const { getMasker: freshGetMasker } = await import(
-        "../src/lib/secret-masker"
+        "../scripts/lib/secret-masker"
       );
       const masker = freshGetMasker();
       expect(masker.mask("secret1 and secret2")).toBe("*** and ***");
@@ -208,7 +208,7 @@ describe("secret-masker", () => {
       process.env.VM0_SECRET_VALUES = `  ${encoded}  ,  ${encoded}  `;
 
       const { getMasker: freshGetMasker } = await import(
-        "../src/lib/secret-masker"
+        "../scripts/lib/secret-masker"
       );
       const masker = freshGetMasker();
       expect(masker.mask("mySecret")).toBe("***");
@@ -221,7 +221,7 @@ describe("secret-masker", () => {
       process.env.VM0_SECRET_VALUES = `${validEncoded},not-valid-base64-!!!`;
 
       const { getMasker: freshGetMasker } = await import(
-        "../src/lib/secret-masker"
+        "../scripts/lib/secret-masker"
       );
       const masker = freshGetMasker();
       expect(masker.mask("validSecret")).toBe("***");

@@ -4,7 +4,7 @@
  * Bundles TypeScript source files into self-contained ESM modules (.mjs)
  * that can be deployed and executed in E2B sandbox or Firecracker VM.
  *
- * Output (in src/sandbox/scripts/dist/):
+ * Output (in src/dist/):
  * - *.mjs - Bundled scripts for deployment
  * - bundled.ts - Exports bundled JS as string constants for TypeScript imports
  */
@@ -12,8 +12,8 @@ import * as esbuild from "esbuild";
 import * as fs from "fs";
 import * as path from "path";
 
-const SCRIPTS_SRC = "src/sandbox/scripts/src";
-const SCRIPTS_DIST = "src/sandbox/scripts/dist";
+const SCRIPTS_SRC = "src/scripts";
+const SCRIPTS_DIST = "src/dist";
 const BUNDLED_TS = `${SCRIPTS_DIST}/bundled.ts`;
 
 async function build() {

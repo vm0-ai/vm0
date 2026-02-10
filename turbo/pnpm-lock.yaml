@@ -399,6 +399,9 @@ importers:
       '@vm0/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@vm0/sandbox-scripts':
+        specifier: workspace:*
+        version: link:../../packages/sandbox-scripts
       '@vm0/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -530,30 +533,18 @@ importers:
         specifier: ^4.1.12
         version: 4.1.12
     devDependencies:
-      '@types/node':
-        specifier: ^24.3.0
-        version: 24.3.0
       '@vm0/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
       '@vm0/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
-      esbuild:
-        specifier: ^0.24.0
-        version: 0.24.2
       eslint:
         specifier: ^9.34.0
         version: 9.34.0(jiti@2.6.1)
-      memfs:
-        specifier: ^4.56.10
-        version: 4.56.10
       oxlint:
         specifier: ^1.14.0
         version: 1.38.0
-      tsx:
-        specifier: ^4.20.6
-        version: 4.20.6
       typescript:
         specifier: 5.9.2
         version: 5.9.2
@@ -595,6 +586,39 @@ importers:
         version: 8.54.0(eslint@9.34.0(jiti@2.6.1))(typescript@5.9.2)
 
   packages/proxy: {}
+
+  packages/sandbox-scripts:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.3.0
+        version: 24.3.0
+      '@vm0/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@vm0/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      esbuild:
+        specifier: ^0.24.0
+        version: 0.24.2
+      eslint:
+        specifier: ^9.34.0
+        version: 9.34.0(jiti@2.6.1)
+      memfs:
+        specifier: ^4.56.10
+        version: 4.56.10
+      oxlint:
+        specifier: ^1.14.0
+        version: 1.38.0
+      tsx:
+        specifier: ^4.20.6
+        version: 4.20.6
+      typescript:
+        specifier: 5.9.2
+        version: 5.9.2
+      vitest:
+        specifier: ^4.0.18
+        version: 4.0.18(@opentelemetry/api@1.9.0)(@types/node@24.3.0)(@vitest/ui@4.0.18)(happy-dom@20.1.0)(jiti@2.6.1)(lightningcss@1.30.2)(msw@2.12.7(@types/node@24.3.0)(typescript@5.9.2))(tsx@4.20.6)(yaml@2.8.1)
 
   packages/typescript-config: {}
 

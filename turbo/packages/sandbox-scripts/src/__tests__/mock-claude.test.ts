@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { parseArgs, createSessionHistory } from "../src/mock-claude";
+import { parseArgs, createSessionHistory } from "../scripts/mock-claude";
 
 describe("mock-claude", () => {
   describe("parseArgs", () => {

@@ -33,6 +33,7 @@
     "@ts-rest/core": "3.53.0-rc.1",
     "@ts-rest/serverless": "3.53.0-rc.1",
     "@vm0/core": "workspace:*",
+    "@vm0/sandbox-scripts": "workspace:*",
     "@vm0/ui": "workspace:*",
     "ably": "^2.17.0",
     "croner": "^9.1.0",

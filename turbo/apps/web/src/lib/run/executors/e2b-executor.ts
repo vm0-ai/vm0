@@ -9,7 +9,7 @@ import {
   DOWNLOAD_SCRIPT,
   MOCK_CLAUDE_SCRIPT,
   SCRIPT_PATHS,
-} from "@vm0/core";
+} from "@vm0/sandbox-scripts";
 import { calculateSessionHistoryPath } from "../run-service";
 import { logger } from "../../logger";
 import { agentRuns } from "../../../db/schema/agent-run";

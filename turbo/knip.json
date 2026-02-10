@@ -70,9 +70,16 @@
         "src/**/__tests__/**/*.{test,spec}.ts",
         "src/**/*.{test,spec}.ts"
       ],
-      "project": ["src/**/*.ts", "scripts/**/*.ts"],
-      "ignore": ["src/sandbox/scripts/src/**"],
+      "project": ["src/**/*.ts"],
       "ignoreDependencies": ["yaml"]
+    },
+    "packages/sandbox-scripts": {
+      "entry": [
+        "src/**/__tests__/**/*.{test,spec}.ts",
+        "src/**/*.{test,spec}.ts"
+      ],
+      "project": ["src/**/*.ts", "scripts/**/*.ts"],
+      "ignore": ["src/scripts/**"]
     },
     "packages/ui": {
       "entry": [

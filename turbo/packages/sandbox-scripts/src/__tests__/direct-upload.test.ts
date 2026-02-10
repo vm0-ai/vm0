@@ -9,7 +9,7 @@ import {
   collectFileMetadata,
   createArchive,
   createManifest,
-} from "../src/lib/direct-upload";
+} from "../scripts/lib/direct-upload";
 
 describe("direct-upload", () => {
   let tempDir: string;

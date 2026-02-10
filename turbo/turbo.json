@@ -72,12 +72,7 @@
         "!**/vitest.config.ts",
         "!**/src/test/**"
       ],
-      "outputs": [
-        ".next/**",
-        "!.next/cache/**",
-        "dist/**",
-        "src/sandbox/scripts/dist/**"
-      ]
+      "outputs": [".next/**", "!.next/cache/**", "dist/**", "src/dist/**"]
     },
     "lint": {
       "dependsOn": ["^lint"]

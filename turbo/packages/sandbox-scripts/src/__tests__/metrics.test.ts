@@ -6,7 +6,7 @@ import {
   getMemoryInfo,
   getDiskInfo,
   collectMetrics,
-} from "../src/lib/metrics";
+} from "../scripts/lib/metrics";
 
 // Use memfs for /proc/stat simulation
 vi.mock("fs", async () => {
