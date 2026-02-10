@@ -2,8 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { auth } from "@clerk/nextjs/server";
 import { getUserId } from "../get-user-id";
 
-vi.mock("@clerk/nextjs/server");
-
 describe("getUserId", () => {
   const mockAuth = vi.mocked(auth);
 

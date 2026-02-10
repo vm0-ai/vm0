@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { POST } from "../route";
 import { createTestSandboxToken } from "../../../../../../src/__tests__/api-test-helpers";
@@ -10,11 +10,6 @@ import { NextRequest } from "next/server";
 import { server } from "../../../../../../src/mocks/server";
 
 // Mock external services (required by testContext)
-vi.mock("@clerk/nextjs/server");
-vi.mock("@e2b/code-interpreter");
-vi.mock("@aws-sdk/client-s3");
-vi.mock("@aws-sdk/s3-request-presigner");
-vi.mock("@axiomhq/js");
 
 const context = testContext();
 

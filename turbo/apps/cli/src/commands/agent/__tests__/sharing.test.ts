@@ -67,7 +67,18 @@ describe("Agent Sharing Commands", () => {
 
   afterEach(() => {});
 
-  describe("vm0 agent experimental-public", () => {
+  describe("vm0 agent public", () => {
+    it("should fail without --experimental-shared-agent flag", async () => {
+      await expect(async () => {
+        await publicCommand.parseAsync(["node", "cli", testAgentName]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--experimental-shared-agent"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
     it("should make agent public successfully", async () => {
       server.use(
         http.post(
@@ -86,7 +97,12 @@ describe("Agent Sharing Commands", () => {
         ),
       );
 
-      await publicCommand.parseAsync(["node", "cli", testAgentName]);
+      await publicCommand.parseAsync([
+        "node",
+        "cli",
+        testAgentName,
+        "--experimental-shared-agent",
+      ]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("now public"),
@@ -117,7 +133,12 @@ describe("Agent Sharing Commands", () => {
         ),
       );
 
-      await publicCommand.parseAsync(["node", "cli", testAgentName]);
+      await publicCommand.parseAsync([
+        "node",
+        "cli",
+        testAgentName,
+        "--experimental-shared-agent",
+      ]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("already public"),
@@ -137,7 +158,12 @@ describe("Agent Sharing Commands", () => {
       );
 
       await expect(async () => {
-        await publicCommand.parseAsync(["node", "cli", "nonexistent"]);
+        await publicCommand.parseAsync([
+          "node",
+          "cli",
+          "nonexistent",
+          "--experimental-shared-agent",
+        ]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
@@ -147,7 +173,18 @@ describe("Agent Sharing Commands", () => {
     });
   });
 
-  describe("vm0 agent experimental-private", () => {
+  describe("vm0 agent private", () => {
+    it("should fail without --experimental-shared-agent flag", async () => {
+      await expect(async () => {
+        await privateCommand.parseAsync(["node", "cli", testAgentName]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--experimental-shared-agent"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
     it("should make agent private successfully", async () => {
       server.use(
         http.delete(
@@ -160,7 +197,12 @@ describe("Agent Sharing Commands", () => {
         ),
       );
 
-      await privateCommand.parseAsync(["node", "cli", testAgentName]);
+      await privateCommand.parseAsync([
+        "node",
+        "cli",
+        testAgentName,
+        "--experimental-shared-agent",
+      ]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("now private"),
@@ -180,7 +222,12 @@ describe("Agent Sharing Commands", () => {
         ),
       );
 
-      await privateCommand.parseAsync(["node", "cli", testAgentName]);
+      await privateCommand.parseAsync([
+        "node",
+        "cli",
+        testAgentName,
+        "--experimental-shared-agent",
+      ]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("already private"),
@@ -188,7 +235,24 @@ describe("Agent Sharing Commands", () => {
     });
   });
 
-  describe("vm0 agent experimental-share", () => {
+  describe("vm0 agent share", () => {
+    it("should fail without --experimental-shared-agent flag", async () => {
+      await expect(async () => {
+        await shareCommand.parseAsync([
+          "node",
+          "cli",
+          testAgentName,
+          "--email",
+          "user@example.com",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--experimental-shared-agent"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
     it("should share agent with email successfully", async () => {
       const shareEmail = "user@example.com";
 
@@ -216,6 +280,7 @@ describe("Agent Sharing Commands", () => {
         testAgentName,
         "--email",
         shareEmail,
+        "--experimental-shared-agent",
       ]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -253,6 +318,7 @@ describe("Agent Sharing Commands", () => {
         testAgentName,
         "--email",
         "user@example.com",
+        "--experimental-shared-agent",
       ]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -261,7 +327,24 @@ describe("Agent Sharing Commands", () => {
     });
   });
 
-  describe("vm0 agent experimental-unshare", () => {
+  describe("vm0 agent unshare", () => {
+    it("should fail without --experimental-shared-agent flag", async () => {
+      await expect(async () => {
+        await unshareCommand.parseAsync([
+          "node",
+          "cli",
+          testAgentName,
+          "--email",
+          "user@example.com",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--experimental-shared-agent"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
     it("should unshare agent from email successfully", async () => {
       const unshareEmail = "user@example.com";
 
@@ -283,6 +366,7 @@ describe("Agent Sharing Commands", () => {
         testAgentName,
         "--email",
         unshareEmail,
+        "--experimental-shared-agent",
       ]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -309,6 +393,7 @@ describe("Agent Sharing Commands", () => {
         testAgentName,
         "--email",
         "user@example.com",
+        "--experimental-shared-agent",
       ]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -317,7 +402,18 @@ describe("Agent Sharing Commands", () => {
     });
   });
 
-  describe("vm0 agent experimental-permission", () => {
+  describe("vm0 agent permission", () => {
+    it("should fail without --experimental-shared-agent flag", async () => {
+      await expect(async () => {
+        await permissionCommand.parseAsync(["node", "cli", testAgentName]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--experimental-shared-agent"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
     it("should list permissions for agent", async () => {
       server.use(
         http.get(
@@ -347,7 +443,12 @@ describe("Agent Sharing Commands", () => {
         ),
       );
 
-      await permissionCommand.parseAsync(["node", "cli", testAgentName]);
+      await permissionCommand.parseAsync([
+        "node",
+        "cli",
+        testAgentName,
+        "--experimental-shared-agent",
+      ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("public");
@@ -364,7 +465,12 @@ describe("Agent Sharing Commands", () => {
         ),
       );
 
-      await permissionCommand.parseAsync(["node", "cli", testAgentName]);
+      await permissionCommand.parseAsync([
+        "node",
+        "cli",
+        testAgentName,
+        "--experimental-shared-agent",
+      ]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("No permissions"),
@@ -382,7 +488,12 @@ describe("Agent Sharing Commands", () => {
       );
 
       await expect(async () => {
-        await permissionCommand.parseAsync(["node", "cli", testAgentName]);
+        await permissionCommand.parseAsync([
+          "node",
+          "cli",
+          testAgentName,
+          "--experimental-shared-agent",
+        ]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(

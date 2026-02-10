@@ -15,9 +15,17 @@ interface Schedule {
   timezone: string;
 }
 
+interface AgentMissingSecrets {
+  composeId: string;
+  agentName: string;
+  requiredSecrets: string[];
+  missingSecrets: string[];
+}
+
 interface AgentsListState {
   agents: ComposeListItem[];
   schedules: Schedule[];
+  agentsWithMissingSecrets: AgentMissingSecrets[];
   loading: boolean;
   error: string | null;
 }
@@ -25,12 +33,16 @@ interface AgentsListState {
 const agentsListState$ = state<AgentsListState>({
   agents: [],
   schedules: [],
+  agentsWithMissingSecrets: [],
   loading: false,
   error: null,
 });
 
 export const agentsList$ = computed((get) => get(agentsListState$).agents);
 export const schedules$ = computed((get) => get(agentsListState$).schedules);
+export const agentsWithMissingSecrets$ = computed(
+  (get) => get(agentsListState$).agentsWithMissingSecrets,
+);
 export const agentsLoading$ = computed((get) => get(agentsListState$).loading);
 export const agentsError$ = computed((get) => get(agentsListState$).error);
 
@@ -77,9 +89,28 @@ export const fetchAgentsList$ = command(async ({ get, set }) => {
       L.error("Failed to fetch schedules:", error);
     }
 
+    // Fetch agents with missing secrets (optional)
+    let agentsWithMissingSecrets: AgentMissingSecrets[] = [];
+    try {
+      const missingSecretsResponse = await fetchFn(
+        "/api/agent/schedules/missing-secrets",
+      );
+      if (missingSecretsResponse.ok) {
+        const missingSecretsData = (await missingSecretsResponse.json()) as {
+          agents: AgentMissingSecrets[];
+        };
+        agentsWithMissingSecrets = missingSecretsData.agents;
+      }
+    } catch (error) {
+      throwIfAbort(error);
+      // Log missing secrets fetch errors for debugging, but don't fail the page
+      L.error("Failed to fetch agents with missing secrets:", error);
+    }
+
     set(agentsListState$, {
       agents: agentsData.composes,
       schedules,
+      agentsWithMissingSecrets,
       loading: false,
       error: null,
     });

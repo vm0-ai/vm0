@@ -29,10 +29,12 @@ vi.mock("ably", () => {
 
   return {
     default: {
-      Rest: vi.fn().mockImplementation(() => ({
-        channels: mockChannels,
-        auth: mockAuth,
-      })),
+      Rest: vi.fn().mockImplementation(function () {
+        return {
+          channels: mockChannels,
+          auth: mockAuth,
+        };
+      }),
     },
   };
 });
@@ -90,7 +92,7 @@ describe("realtime/client", () => {
       vi.stubEnv("ABLY_API_KEY", "test-api-key");
 
       // Make publish fail by re-mocking
-      vi.mocked(Ably.Rest).mockImplementationOnce(() => {
+      vi.mocked(Ably.Rest).mockImplementationOnce(function () {
         const failingChannel = {
           publish: vi.fn().mockRejectedValue(new Error("Publish failed")),
         };
@@ -171,7 +173,7 @@ describe("realtime/client", () => {
       vi.stubEnv("ABLY_API_KEY", "test-api-key");
 
       // Make token generation fail
-      vi.mocked(Ably.Rest).mockImplementationOnce(() => {
+      vi.mocked(Ably.Rest).mockImplementationOnce(function () {
         return {
           channels: { get: vi.fn() },
           auth: {
@@ -223,7 +225,7 @@ describe("realtime/client", () => {
     it("should return null when token generation fails", async () => {
       vi.stubEnv("ABLY_API_KEY", "test-api-key");
 
-      vi.mocked(Ably.Rest).mockImplementationOnce(() => {
+      vi.mocked(Ably.Rest).mockImplementationOnce(function () {
         return {
           channels: { get: vi.fn() },
           auth: {
@@ -271,7 +273,7 @@ describe("realtime/client", () => {
     it("should return false and not throw when publish fails", async () => {
       vi.stubEnv("ABLY_API_KEY", "test-api-key");
 
-      vi.mocked(Ably.Rest).mockImplementationOnce(() => {
+      vi.mocked(Ably.Rest).mockImplementationOnce(function () {
         const failingChannel = {
           publish: vi.fn().mockRejectedValue(new Error("Publish failed")),
         };

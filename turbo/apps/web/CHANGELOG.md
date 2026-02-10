@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.24.0](https://github.com/vm0-ai/vm0/compare/web-v12.23.0...web-v12.24.0) (2026-02-10)
+
+
+### Features
+
+* **platform:** detect and display missing secrets for agents ([#2664](https://github.com/vm0-ai/vm0/issues/2664)) ([e43fb63](https://github.com/vm0-ai/vm0/commit/e43fb63d574f3f614254e702c76270b59381fedf))
+
+## [12.23.0](https://github.com/vm0-ai/vm0/compare/web-v12.22.2...web-v12.23.0) (2026-02-09)
+
+
+### Features
+
+* **slack:** auto-setup scope, model provider check, and artifact during link flow ([#2697](https://github.com/vm0-ai/vm0/issues/2697)) ([846f90d](https://github.com/vm0-ai/vm0/commit/846f90d652a63bb9c1487768f79cf637f9fa3798))
+
 ## [12.22.2](https://github.com/vm0-ai/vm0/compare/web-v12.22.1...web-v12.22.2) (2026-02-09)
 
 

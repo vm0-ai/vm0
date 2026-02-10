@@ -10,12 +10,6 @@ import {
   findUsageDaily,
 } from "../../../../../src/__tests__/api-test-helpers";
 
-vi.mock("@clerk/nextjs/server");
-vi.mock("@e2b/code-interpreter");
-vi.mock("@aws-sdk/client-s3");
-vi.mock("@aws-sdk/s3-request-presigner");
-vi.mock("@axiomhq/js");
-
 vi.hoisted(() => {
   vi.stubEnv("CRON_SECRET", "test-cron-secret");
 });

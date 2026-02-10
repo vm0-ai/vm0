@@ -35,8 +35,6 @@ function initEnv() {
       SLACK_CLIENT_SECRET: z.string().min(1),
       SLACK_SIGNING_SECRET: z.string().min(1),
       SLACK_REDIRECT_BASE_URL: z.string().url(), // Override base URL for OAuth redirects (e.g., tunnel URL)
-      // LLM API
-      OPENROUTER_API_KEY: z.string().min(1).optional(), // OpenRouter API key for logged-in users
       // GitHub OAuth (for connector)
       GH_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       GH_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -76,7 +74,6 @@ function initEnv() {
       SLACK_CLIENT_SECRET: process.env.SLACK_CLIENT_SECRET,
       SLACK_SIGNING_SECRET: process.env.SLACK_SIGNING_SECRET,
       SLACK_REDIRECT_BASE_URL: process.env.SLACK_REDIRECT_BASE_URL,
-      OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
       GH_OAUTH_CLIENT_ID: process.env.GH_OAUTH_CLIENT_ID,
       GH_OAUTH_CLIENT_SECRET: process.env.GH_OAUTH_CLIENT_SECRET,
       PLATFORM_URL: process.env.PLATFORM_URL,

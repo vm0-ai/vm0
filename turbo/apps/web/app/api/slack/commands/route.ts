@@ -30,7 +30,6 @@ import {
   buildErrorMessage,
   buildSuccessMessage,
   buildLoginMessage,
-  buildAgentRemoveModal,
   buildAgentUpdateModal,
 } from "../../../../src/lib/slack/blocks";
 import { logger } from "../../../../src/lib/logger";
@@ -155,7 +154,12 @@ async function handleAgentCommand(
       });
 
     case "remove":
-      return handleAgentRemove(client, payload, userLinkId);
+      return NextResponse.json({
+        response_type: "ephemeral",
+        blocks: buildErrorMessage(
+          "The `remove` command has been replaced.\n\nUse `/vm0 agent unlink` instead.",
+        ),
+      });
 
     case "update":
       return handleAgentUpdate(client, payload, vm0UserId, userLinkId);
@@ -580,44 +584,6 @@ async function handleAgentAdd(
 }
 
 /**
- * Handle /vm0 agent remove - Open modal to select agents to remove
- */
-async function handleAgentRemove(
-  client: ReturnType<typeof createSlackClient>,
-  payload: SlackCommandPayload,
-  userLinkId: string,
-): Promise<NextResponse> {
-  // Get user's bound agents
-  const bindings = await globalThis.services.db
-    .select({
-      id: slackBindings.id,
-      agentName: slackBindings.agentName,
-    })
-    .from(slackBindings)
-    .where(eq(slackBindings.slackUserLinkId, userLinkId));
-
-  if (bindings.length === 0) {
-    return NextResponse.json({
-      response_type: "ephemeral",
-      blocks: buildErrorMessage(
-        "You don't have any agents to remove.\n\nUse `/vm0 agent link` to link one first.",
-      ),
-    });
-  }
-
-  // Open modal with multi-select
-  const modal = buildAgentRemoveModal(bindings, payload.channel_id);
-
-  await client.views.open({
-    trigger_id: payload.trigger_id,
-    view: modal,
-  });
-
-  // Return empty response (Slack expects this when opening modal)
-  return new NextResponse(null, { status: 200 });
-}
-
-/**
  * Handle /vm0 agent update - Open modal to update agent secrets
  */
 async function handleAgentUpdate(
@@ -631,7 +597,6 @@ async function handleAgentUpdate(
     .select({
       id: slackBindings.id,
       agentName: slackBindings.agentName,
-      description: slackBindings.description,
       composeId: slackBindings.composeId,
     })
     .from(slackBindings)
@@ -696,7 +661,6 @@ async function handleAgentUpdate(
     return {
       id: b.id,
       name: b.agentName,
-      description: b.description,
       requiredSecrets,
       existingSecrets: requiredSecrets.filter((name) =>
         existingSecretNames.has(name),

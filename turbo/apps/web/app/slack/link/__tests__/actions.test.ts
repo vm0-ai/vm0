@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { eq, and, isNull } from "drizzle-orm";
 import { checkLinkStatus, linkSlackAccount } from "../actions";
 import { testContext } from "../../../../src/__tests__/test-helpers";
@@ -10,13 +10,6 @@ import {
   givenLinkedSlackUser,
   givenUserHasAgent,
 } from "../../../../src/__tests__/slack/api-helpers";
-
-// Mock external dependencies
-vi.mock("@clerk/nextjs/server");
-vi.mock("@e2b/code-interpreter");
-vi.mock("@aws-sdk/client-s3");
-vi.mock("@aws-sdk/s3-request-presigner");
-vi.mock("@axiomhq/js");
 
 const context = testContext();
 
@@ -138,7 +131,6 @@ describe("Slack Link Actions", () => {
       const { userLink, installation } = await givenLinkedSlackUser();
       const { binding } = await givenUserHasAgent(userLink, {
         agentName: "test-agent",
-        description: "A test agent",
       });
 
       // Mock Clerk to return the same vm0UserId

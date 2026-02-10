@@ -19,7 +19,6 @@ interface AgentOption {
 interface BindingInfo {
   id: string;
   agentName: string;
-  description: string | null;
   enabled: boolean;
 }
 
@@ -108,38 +107,14 @@ function buildExistingAgentBlocks(
     },
   });
 
-  if (selectedAgent) {
+  // Model provider status (shown after agent selection, like vars/secrets)
+  if (selectedAgent && hasModelProvider !== undefined) {
+    blocks.push({ type: "divider" });
     blocks.push({
-      type: "input",
-      block_id: "agent_description",
-      optional: true,
-      element: {
-        type: "plain_text_input",
-        action_id: "description_input",
-        placeholder: {
-          type: "plain_text",
-          text: "e.g., Helps with code reviews and bug fixes",
-        },
-      },
-      label: {
-        type: "plain_text",
-        text: "Description",
-      },
-      hint: {
-        type: "plain_text",
-        text: "Helps route messages to the right agent when you have multiple agents",
-      },
+      type: "section",
+      text: { type: "mrkdwn", text: "*Model Provider*" },
     });
-
-    // Model provider status (shown after agent selection, like vars/secrets)
-    if (hasModelProvider !== undefined) {
-      blocks.push({ type: "divider" });
-      blocks.push({
-        type: "section",
-        text: { type: "mrkdwn", text: "*Model Provider*" },
-      });
-      blocks.push(...buildModelProviderStatusBlocks(hasModelProvider));
-    }
+    blocks.push(...buildModelProviderStatusBlocks(hasModelProvider));
   }
 
   if (selectedAgent && selectedAgent.requiredVars.length > 0) {
@@ -436,10 +411,7 @@ export function buildAppHomeView(options: {
 
   if (options.bindings && options.bindings.length > 0) {
     for (const binding of options.bindings) {
-      let agentText = `AgentName: *${binding.agentName}*`;
-      if (binding.description) {
-        agentText += `\nDescription: ${binding.description}`;
-      }
+      const agentText = `AgentName: *${binding.agentName}*`;
       blocks.push({
         type: "section",
         text: {
@@ -549,15 +521,9 @@ export function buildAppHomeView(options: {
   };
 }
 
-interface AgentBinding {
-  id: string;
-  agentName: string;
-}
-
 interface AgentUpdateOption {
   id: string;
   name: string;
-  description: string | null;
   requiredSecrets: string[];
   existingSecrets: string[];
   requiredVars: string[];
@@ -617,34 +583,6 @@ export function buildAgentUpdateModal(
       },
     },
   ];
-
-  // Add description field only after agent is selected
-  if (selectedAgent) {
-    blocks.push({
-      type: "input",
-      block_id: "agent_description",
-      optional: true,
-      element: {
-        type: "plain_text_input",
-        action_id: "description_input",
-        placeholder: {
-          type: "plain_text",
-          text: "e.g., Helps with code reviews and bug fixes",
-        },
-        ...(selectedAgent.description && {
-          initial_value: selectedAgent.description,
-        }),
-      },
-      label: {
-        type: "plain_text",
-        text: "Description",
-      },
-      hint: {
-        type: "plain_text",
-        text: "Helps route messages to the right agent when you have multiple agents",
-      },
-    });
-  }
 
   // Add variables fields if agent is selected and has required vars
   if (selectedAgent && selectedAgent.requiredVars.length > 0) {
@@ -740,70 +678,6 @@ export function buildAgentUpdateModal(
 }
 
 /**
- * Build the "Remove Agent" modal view with multi-select
- *
- * @param agents - List of bound agents
- * @param channelId - Channel ID to send confirmation message to
- * @returns Modal view definition
- */
-export function buildAgentRemoveModal(
-  agents: AgentBinding[],
-  channelId?: string,
-): View {
-  return {
-    type: "modal",
-    callback_id: "agent_remove_modal",
-    private_metadata: JSON.stringify({ channelId }),
-    title: {
-      type: "plain_text",
-      text: "Remove Agents",
-    },
-    submit: {
-      type: "plain_text",
-      text: "Remove",
-    },
-    close: {
-      type: "plain_text",
-      text: "Cancel",
-    },
-    blocks: [
-      {
-        type: "input",
-        block_id: "agents_select",
-        element: {
-          type: "multi_static_select",
-          action_id: "agents_select_action",
-          placeholder: {
-            type: "plain_text",
-            text: "Select agents to remove",
-          },
-          options: agents.map((agent) => ({
-            text: {
-              type: "plain_text" as const,
-              text: agent.agentName,
-            },
-            value: agent.id,
-          })),
-        },
-        label: {
-          type: "plain_text",
-          text: "Select agents to remove",
-        },
-      },
-      {
-        type: "context",
-        elements: [
-          {
-            type: "mrkdwn",
-            text: ":warning: This action cannot be undone.",
-          },
-        ],
-      },
-    ],
-  };
-}
-
-/**
  * Build a message listing bound agents
  *
  * @param bindings - List of agent bindings
@@ -839,13 +713,12 @@ export function buildAgentListMessage(
 
   for (const binding of bindings) {
     const status = binding.enabled ? ":white_check_mark:" : ":x:";
-    const description = binding.description ?? "_No description_";
 
     blocks.push({
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `${status} *${binding.agentName}*\n${description}`,
+        text: `${status} *${binding.agentName}*`,
       },
     });
   }
@@ -906,20 +779,11 @@ export function buildLoginPromptMessage(
   ];
 }
 
-interface WelcomeAgentInfo {
-  agentName: string;
-  description: string | null;
-}
-
 /**
- * Build a welcome message for non-agent requests (greetings, casual chat)
- * Explains what VM0 can do and lists available agents
- *
- * @param agents - User's available agents
- * @returns Block Kit blocks
+ * Build a welcome message for the Messages tab
  */
 export function buildWelcomeMessage(
-  agents: WelcomeAgentInfo[],
+  agents: { agentName: string }[],
 ): (Block | KnownBlock)[] {
   const hasAgents = agents.length > 0;
 
@@ -937,9 +801,7 @@ export function buildWelcomeMessage(
   ];
 
   if (hasAgents) {
-    const agentList = agents
-      .map((a) => `• \`${a.agentName}\`: ${a.description ?? "No description"}`)
-      .join("\n");
+    const agentList = agents.map((a) => `• \`${a.agentName}\``).join("\n");
 
     blocks.push(
       {

@@ -2,6 +2,11 @@ import { Card } from "@vm0/ui/components/ui/card";
 import { CopyButton } from "@vm0/ui/components/ui/copy-button";
 import { Button } from "@vm0/ui/components/ui/button";
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@vm0/ui/components/ui/alert";
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -25,18 +30,22 @@ import {
 } from "@vm0/ui/components/ui/table";
 import { AppShell } from "../layout/app-shell.tsx";
 import { AgentsListSkeleton } from "./agents-list-skeleton.tsx";
-import { useGet, useResolved } from "ccstate-react";
+import { SecretDialog } from "../settings-page/secret-dialog.tsx";
+import { useGet, useResolved, useSet } from "ccstate-react";
 import {
   agentsList$,
   agentsLoading$,
   agentsError$,
   schedules$,
+  agentsWithMissingSecrets$,
   getAgentScheduleStatus,
 } from "../../signals/agents-page/agents-list.ts";
+import { openAddSecretDialog$ } from "../../signals/settings-page/secrets.ts";
 import { defaultModelProvider$ } from "../../signals/external/model-providers.ts";
 import { getUILabel } from "../settings-page/provider-ui-config.ts";
-import { Bed, Settings, Clock } from "lucide-react";
+import { Bed, Settings, Clock, AlertTriangle, Plus } from "lucide-react";
 import type { ComposeListItem } from "@vm0/core";
+import { detach, Reason } from "../../signals/utils.ts";
 
 export function AgentsPage() {
   return (
@@ -48,6 +57,7 @@ export function AgentsPage() {
       <div className="flex flex-col gap-5 px-4 sm:px-6 pb-8">
         <AgentsListSection />
       </div>
+      <SecretDialog />
     </AppShell>
   );
 }
@@ -55,9 +65,15 @@ export function AgentsPage() {
 function AgentsListSection() {
   const agents = useGet(agentsList$);
   const schedules = useGet(schedules$);
+  const agentsWithMissingSecrets = useGet(agentsWithMissingSecrets$);
   const loading = useGet(agentsLoading$);
   const error = useGet(agentsError$);
   const defaultProvider = useResolved(defaultModelProvider$);
+
+  // Create a map for quick lookup of missing secrets
+  const missingSecretsMap = new Map(
+    agentsWithMissingSecrets.map((a) => [a.agentName, a.missingSecrets]),
+  );
 
   if (loading) {
     return <AgentsListSkeleton />;
@@ -119,11 +135,13 @@ function AgentsListSection() {
       <TableBody>
         {agents.map((agent) => {
           const hasSchedule = getAgentScheduleStatus(agent.name, schedules);
+          const missingSecrets = missingSecretsMap.get(agent.name);
           return (
             <AgentRow
               key={agent.name}
               agent={agent}
               hasSchedule={hasSchedule}
+              missingSecrets={missingSecrets}
               modelProviderLabel={
                 defaultProvider ? getUILabel(defaultProvider.type) : "N/A"
               }
@@ -138,20 +156,39 @@ function AgentsListSection() {
 function AgentRow({
   agent,
   hasSchedule,
+  missingSecrets,
   modelProviderLabel,
 }: {
   agent: ComposeListItem;
   hasSchedule: boolean;
+  missingSecrets?: string[];
   modelProviderLabel: string;
 }) {
+  const openAddDialog = useSet(openAddSecretDialog$);
+
+  const handleAddSecret = (secretName: string) => {
+    detach(openAddDialog(secretName), Reason.DomCallback);
+  };
+
   return (
     <Dialog>
       <TableRow className="h-[53px]">
         <DialogTrigger asChild>
           <TableCell className="px-3 py-2 cursor-pointer w-[25%] min-w-[120px]">
-            <span className="block truncate whitespace-nowrap font-medium">
-              {agent.name}
-            </span>
+            <div className="flex flex-col gap-1">
+              <span className="block truncate whitespace-nowrap font-medium">
+                {agent.name}
+              </span>
+              {missingSecrets && missingSecrets.length > 0 && (
+                <span className="inline-flex items-center gap-1.5 text-xs text-destructive">
+                  <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                  <span className="truncate">
+                    Missing {missingSecrets.length} secret
+                    {missingSecrets.length > 1 ? "s" : ""}
+                  </span>
+                </span>
+              )}
+            </div>
           </TableCell>
         </DialogTrigger>
         <DialogTrigger asChild>
@@ -213,6 +250,32 @@ function AgentRow({
             How to manage this agent in Claude Code
           </DialogDescription>
         </DialogHeader>
+        {missingSecrets && missingSecrets.length > 0 && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Missing required secrets</AlertTitle>
+            <AlertDescription>
+              <p className="mb-3">
+                This agent requires {missingSecrets.length} secret
+                {missingSecrets.length > 1 ? "s" : ""} to run. Click to add:
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {missingSecrets.map((secret) => (
+                  <Button
+                    key={secret}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleAddSecret(secret)}
+                    className="h-auto py-1.5 px-2.5 text-xs border-destructive text-destructive hover:bg-destructive/10"
+                  >
+                    <Plus className="h-3 w-3" />
+                    <code className="font-mono">{secret}</code>
+                  </Button>
+                ))}
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
         <AgentCommandsSection agent={agent} />
       </DialogContent>
     </Dialog>

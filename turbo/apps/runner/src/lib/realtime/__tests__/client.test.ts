@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { TokenRequest, ErrorInfo } from "ably";
 
+// Capture constructor arguments for assertions since class mock doesn't have mock.calls
+let lastConstructorArgs: unknown[] = [];
+
 // Mock Ably
+// Uses class syntax to ensure the mock survives esbuild's function-to-arrow transpilation,
+// which would break vitest v4's constructor detection (arrow functions can't be called with `new`).
 vi.mock("ably", () => {
   const mockConnection = {
     on: vi.fn(),
@@ -16,16 +21,19 @@ vi.mock("ably", () => {
 
   return {
     default: {
-      Realtime: vi.fn().mockImplementation(() => ({
-        connection: mockConnection,
-        channels: mockChannels,
-        close: vi.fn(),
-      })),
+      Realtime: class MockRealtime {
+        connection = mockConnection;
+        channels = mockChannels;
+        close = vi.fn();
+
+        constructor(...args: unknown[]) {
+          lastConstructorArgs = args;
+        }
+      },
     },
   };
 });
 
-import Ably from "ably";
 import { createRealtimeClient, getRunnerGroupChannelName } from "../client.js";
 
 type AuthCallbackOptions = {
@@ -38,6 +46,7 @@ type AuthCallbackOptions = {
 describe("realtime/client", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    lastConstructorArgs = [];
   });
 
   describe("getRunnerGroupChannelName", () => {
@@ -66,8 +75,8 @@ describe("realtime/client", () => {
 
       const client = createRealtimeClient(mockGetToken);
 
-      expect(Ably.Realtime).toHaveBeenCalledTimes(1);
-      expect(Ably.Realtime).toHaveBeenCalledWith({
+      expect(lastConstructorArgs).toHaveLength(1);
+      expect(lastConstructorArgs[0]).toEqual({
         authCallback: expect.any(Function),
       });
       expect(client).toBeDefined();
@@ -85,9 +94,8 @@ describe("realtime/client", () => {
 
       createRealtimeClient(mockGetToken);
 
-      // Get the authCallback from the Ably.Realtime constructor call
-      const constructorCall = vi.mocked(Ably.Realtime).mock.calls[0];
-      const options = constructorCall?.[0] as unknown as AuthCallbackOptions;
+      // Get the authCallback from the captured constructor arguments
+      const options = lastConstructorArgs[0] as AuthCallbackOptions;
       const authCallback = options.authCallback;
 
       // Invoke the authCallback
@@ -111,9 +119,8 @@ describe("realtime/client", () => {
 
       createRealtimeClient(mockGetToken);
 
-      // Get the authCallback
-      const constructorCall = vi.mocked(Ably.Realtime).mock.calls[0];
-      const options = constructorCall?.[0] as unknown as AuthCallbackOptions;
+      // Get the authCallback from the captured constructor arguments
+      const options = lastConstructorArgs[0] as AuthCallbackOptions;
       const authCallback = options.authCallback;
 
       // Invoke the authCallback
@@ -139,9 +146,8 @@ describe("realtime/client", () => {
 
       createRealtimeClient(mockGetToken);
 
-      // Get the authCallback
-      const constructorCall = vi.mocked(Ably.Realtime).mock.calls[0];
-      const options = constructorCall?.[0] as unknown as AuthCallbackOptions;
+      // Get the authCallback from the captured constructor arguments
+      const options = lastConstructorArgs[0] as AuthCallbackOptions;
       const authCallback = options.authCallback;
 
       // Invoke the authCallback

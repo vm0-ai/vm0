@@ -8,12 +8,6 @@ import {
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 
-vi.mock("@clerk/nextjs/server");
-vi.mock("@e2b/code-interpreter");
-vi.mock("@aws-sdk/client-s3");
-vi.mock("@aws-sdk/s3-request-presigner");
-vi.mock("@axiomhq/js");
-
 const { mockCreateTokenRequest } = vi.hoisted(() => {
   const mockCreateTokenRequest = vi.fn();
   vi.stubEnv("ABLY_API_KEY", "test-ably-key");
@@ -22,10 +16,12 @@ const { mockCreateTokenRequest } = vi.hoisted(() => {
 
 vi.mock("ably", () => ({
   default: {
-    Rest: vi.fn(() => ({
-      auth: { createTokenRequest: mockCreateTokenRequest },
-      channels: { get: () => ({ publish: vi.fn() }) },
-    })),
+    Rest: vi.fn(function () {
+      return {
+        auth: { createTokenRequest: mockCreateTokenRequest },
+        channels: { get: () => ({ publish: vi.fn() }) },
+      };
+    }),
   },
 }));
 

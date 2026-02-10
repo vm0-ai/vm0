@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.29.5](https://github.com/vm0-ai/vm0/compare/cli-v9.29.4...cli-v9.29.5) (2026-02-09)
+
+
+### Bug Fixes
+
+* **cli:** use nullish coalescing for sentry environment fallback ([#2709](https://github.com/vm0-ai/vm0/issues/2709)) ([b70248f](https://github.com/vm0-ai/vm0/commit/b70248fa7e0685091ddbbdd3de2f7a2747df23c8))
+
 ## [9.29.4](https://github.com/vm0-ai/vm0/compare/cli-v9.29.3...cli-v9.29.4) (2026-02-09)
 
 

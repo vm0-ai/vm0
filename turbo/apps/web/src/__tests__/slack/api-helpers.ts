@@ -151,7 +151,6 @@ interface LinkedUserOptions extends WorkspaceInstallationOptions {
  */
 interface AgentBindingOptions {
   agentName?: string;
-  description?: string | null;
 }
 
 /**
@@ -306,7 +305,6 @@ export async function givenUserHasAgent(
   options: AgentBindingOptions = {},
 ): Promise<AgentBindingResult> {
   const agentName = options.agentName ?? uniqueId("agent");
-  const description = options.description ?? null;
 
   // Mock Clerk auth for compose creation
   mockClerk({ userId: userLink.vm0UserId });
@@ -335,12 +333,6 @@ export async function givenUserHasAgent(
             agent_select_action: {
               type: "static_select",
               selected_option: { value: composeId },
-            },
-          },
-          agent_description: {
-            description_input: {
-              type: "plain_text_input",
-              value: description,
             },
           },
         },
@@ -390,24 +382,4 @@ export async function givenUserHasAgent(
       name: agentName,
     },
   };
-}
-
-/**
- * Given a user has multiple agents configured.
- */
-export async function givenUserHasMultipleAgents(
-  userLink: LinkedUserResult["userLink"],
-  agents: Array<{ name: string; description?: string | null }>,
-): Promise<AgentBindingResult[]> {
-  const results: AgentBindingResult[] = [];
-
-  for (const agent of agents) {
-    const result = await givenUserHasAgent(userLink, {
-      agentName: agent.name,
-      description: agent.description ?? null,
-    });
-    results.push(result);
-  }
-
-  return results;
 }

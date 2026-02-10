@@ -37,8 +37,6 @@ vi.hoisted(() => {
     "OFFICIAL_RUNNER_SECRET",
     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   );
-  // OpenRouter API key for LLM chat
-  vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-api-key");
   vi.stubEnv("SLACK_REDIRECT_BASE_URL", "https://test.example.com");
   // API URL for compose job webhooks
   vi.stubEnv("VM0_API_URL", "http://localhost:3000");
@@ -54,6 +52,30 @@ vi.mock("@clerk/nextjs/server", () => ({
   clerkClient: vi.fn(),
   clerkMiddleware: vi.fn(),
   createRouteMatcher: vi.fn(),
+}));
+
+// Mock E2B sandbox
+vi.mock("@e2b/code-interpreter", () => ({
+  Sandbox: {
+    create: vi.fn(),
+    connect: vi.fn(),
+  },
+}));
+
+// Mock AWS S3
+vi.mock("@aws-sdk/client-s3", () => ({
+  S3Client: vi.fn().mockImplementation(function () {
+    return { send: vi.fn() };
+  }),
+  ListObjectsV2Command: vi.fn(),
+  GetObjectCommand: vi.fn(),
+  PutObjectCommand: vi.fn(),
+  DeleteObjectsCommand: vi.fn(),
+  HeadObjectCommand: vi.fn(),
+}));
+
+vi.mock("@aws-sdk/s3-request-presigner", () => ({
+  getSignedUrl: vi.fn(),
 }));
 
 // Mock Axiom packages

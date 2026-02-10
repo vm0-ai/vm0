@@ -8,14 +8,12 @@ import {
   createSlackClient,
   postMessage,
   buildLoginPromptMessage,
-  buildErrorMessage,
   buildAgentResponseMessage,
 } from "../index";
 import { runAgentForSlack } from "./run-agent";
 import {
   removeThinkingReaction,
   fetchConversationContexts,
-  routeMessageToAgent,
   lookupThreadSession,
   saveThreadSession,
   buildLoginUrl,
@@ -40,7 +38,6 @@ interface DirectMessageContext {
  * Same flow as handleAppMention() with these differences:
  * 1. No mention prefix stripping — use messageText directly
  * 2. Login prompt uses postMessage instead of postEphemeral (DMs are already private)
- * 3. not_request result routes to agent (user deliberately DM'd the bot)
  */
 export async function handleDirectMessage(
   context: DirectMessageContext,
@@ -102,12 +99,11 @@ export async function handleDirectMessage(
       return;
     }
 
-    // 4. Get user's bindings
-    const bindings = await globalThis.services.db
+    // 4. Get user's binding (single binding per user)
+    const [binding] = await globalThis.services.db
       .select({
         id: slackBindings.id,
         agentName: slackBindings.agentName,
-        description: slackBindings.description,
         composeId: slackBindings.composeId,
         enabled: slackBindings.enabled,
       })
@@ -117,10 +113,11 @@ export async function handleDirectMessage(
           eq(slackBindings.slackUserLinkId, userLink.id),
           eq(slackBindings.enabled, true),
         ),
-      );
+      )
+      .limit(1);
 
-    if (bindings.length === 0) {
-      // 5. No bindings - prompt to link agent
+    if (!binding) {
+      // 5. No binding - prompt to link agent
       await postMessage(
         client,
         context.channelId,
@@ -147,7 +144,11 @@ export async function handleDirectMessage(
     let existingSessionId: string | undefined;
     let lastProcessedMessageTs: string | undefined;
     if (threadTs) {
-      const session = await lookupThreadSession(context.channelId, threadTs);
+      const session = await lookupThreadSession(
+        context.channelId,
+        threadTs,
+        binding.id,
+      );
       existingSessionId = session.existingSessionId;
       lastProcessedMessageTs = session.lastProcessedMessageTs;
       log.debug("Thread session lookup", {
@@ -156,72 +157,16 @@ export async function handleDirectMessage(
       });
     }
 
-    // Fetch context: routing gets full text, execution gets deduplicated with images
-    // Pass currentMessageTs to exclude it from context (it's already the prompt)
-    const { routingContext, executionContext } =
-      await fetchConversationContexts(
-        client,
-        context.channelId,
-        context.threadTs,
-        botUserId,
-        botToken,
-        lastProcessedMessageTs,
-        context.messageTs,
-      );
-
-    // 8. Route to agent (with full context for LLM routing)
-    const routeResult = await routeMessageToAgent(
-      messageContent,
-      bindings,
-      routingContext,
+    // 8. Fetch context: execution gets deduplicated with images
+    const { executionContext } = await fetchConversationContexts(
+      client,
+      context.channelId,
+      context.threadTs,
+      botUserId,
+      botToken,
+      lastProcessedMessageTs,
+      context.messageTs,
     );
-
-    // In DMs, not_request routes to the first/single agent (user deliberately DM'd the bot)
-    let selectedAgentName: string;
-    let promptText: string;
-
-    if (routeResult.type === "not_request") {
-      selectedAgentName = bindings[0]!.agentName;
-      promptText = messageContent;
-    } else if (routeResult.type === "failure") {
-      await postMessage(client, context.channelId, routeResult.error, {
-        threadTs,
-        blocks: buildErrorMessage(routeResult.error),
-      });
-      if (reactionAdded) {
-        await removeThinkingReaction(
-          client,
-          context.channelId,
-          context.messageTs,
-        );
-      }
-      return;
-    } else {
-      selectedAgentName = routeResult.agentName;
-      promptText = routeResult.promptText;
-    }
-
-    // Get the selected binding
-    const selectedBinding = bindings.find(
-      (b) => b.agentName === selectedAgentName,
-    );
-    if (!selectedBinding) {
-      log.error("Selected binding not found after successful route", {
-        selectedAgentName,
-        availableBindings: bindings.map((b) => b.agentName),
-      });
-      return;
-    }
-
-    // Refine session lookup with binding ID if not yet matched
-    if (threadTs && !existingSessionId) {
-      const refined = await lookupThreadSession(
-        context.channelId,
-        threadTs,
-        selectedBinding.id,
-      );
-      existingSessionId = refined.existingSessionId;
-    }
 
     try {
       // 9. Execute agent with deduplicated context
@@ -231,9 +176,9 @@ export async function handleDirectMessage(
         sessionId: newSessionId,
         runId,
       } = await runAgentForSlack({
-        binding: selectedBinding,
+        binding,
         sessionId: existingSessionId,
-        prompt: promptText,
+        prompt: messageContent,
         threadContext: executionContext,
         userId: userLink.vm0UserId,
       });
@@ -241,7 +186,7 @@ export async function handleDirectMessage(
       // 10. Create or update thread session mapping
       if (threadTs) {
         await saveThreadSession({
-          bindingId: selectedBinding.id,
+          bindingId: binding.id,
           channelId: context.channelId,
           threadTs,
           existingSessionId,
@@ -261,7 +206,7 @@ export async function handleDirectMessage(
         threadTs,
         blocks: buildAgentResponseMessage(
           responseText,
-          selectedAgentName,
+          binding.agentName,
           logsUrl,
         ),
       });

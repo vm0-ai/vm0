@@ -6,15 +6,14 @@ import {
   timestamp,
   boolean,
   uniqueIndex,
-  index,
 } from "drizzle-orm/pg-core";
 import { slackUserLinks } from "./slack-user-link";
 import { agentComposes } from "./agent-compose";
 
 /**
  * Slack Bindings table
- * Stores agent configurations for Slack users
- * Each binding allows a user to trigger a specific agent from Slack
+ * Stores agent configuration for Slack users
+ * Each user link can have at most one binding (enforced by unique index)
  */
 export const slackBindings = pgTable(
   "slack_bindings",
@@ -34,19 +33,14 @@ export const slackBindings = pgTable(
       .references(() => agentComposes.id, { onDelete: "cascade" }),
     // User-defined name for the agent in Slack
     agentName: varchar("agent_name", { length: 255 }).notNull(),
-    // Description for LLM routing
-    description: text("description"),
     enabled: boolean("enabled").default(true).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
-    // Agent name unique per user link
-    uniqueIndex("idx_slack_bindings_user_agent").on(
+    // Enforce single binding per user link
+    uniqueIndex("idx_slack_bindings_user_link_unique").on(
       table.slackUserLinkId,
-      table.agentName,
     ),
-    // Index for looking up bindings by user link
-    index("idx_slack_bindings_user_link").on(table.slackUserLinkId),
   ],
 );

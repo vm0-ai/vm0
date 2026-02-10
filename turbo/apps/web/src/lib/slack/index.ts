@@ -48,8 +48,8 @@ export {
   buildAppHomeView,
   buildErrorMessage,
   buildLoginPromptMessage,
-  buildHelpMessage,
   buildWelcomeMessage,
+  buildHelpMessage,
   buildSuccessMessage,
   buildMarkdownMessage,
   buildAgentResponseMessage,
@@ -62,7 +62,6 @@ export {
   formatContextForAgent,
   formatContextForAgentWithImages,
   extractMessageContent,
-  parseExplicitAgentSelection,
 } from "./context";
 
 // Handlers

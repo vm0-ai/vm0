@@ -440,7 +440,6 @@ jobs:
             CONCURRENT_RUN_LIMIT=0
             VM0_DEBUG=*
             CLAUDE_CODE_VERSION_URL=${{ vars.CLAUDE_CODE_VERSION_URL }}
-            OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
             SLACK_CLIENT_ID=${{ vars.SLACK_CLIENT_ID }}
             SLACK_CLIENT_SECRET=${{ secrets.SLACK_CLIENT_SECRET }}
             SLACK_SIGNING_SECRET=${{ secrets.SLACK_SIGNING_SECRET }}

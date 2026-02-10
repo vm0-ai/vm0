@@ -165,7 +165,6 @@ interface SlackInstallationResult {
 
 interface SlackBindingOptions {
   agentName?: string;
-  description?: string | null;
   enabled?: boolean;
 }
 
@@ -320,12 +319,9 @@ export function testContext(): TestContext {
       // Axiom not mocked, skip
     }
 
-    // Date.now mock - default implementation returns real time
+    // Date.now mock - spy passes through to real implementation by default
     // Tests can override with: context.mocks.dateNow.mockReturnValue(specificTime)
-    const originalDateNow = Date.now.bind(Date);
-    const dateNowMock = vi
-      .spyOn(Date, "now")
-      .mockImplementation(() => originalDateNow());
+    const dateNowMock = vi.spyOn(Date, "now");
 
     // Date constructor mock for controlling new Date()
     const RealDate = globalThis.Date;
@@ -355,7 +351,7 @@ export function testContext(): TestContext {
         );
       },
       useRealTime() {
-        dateNowMock.mockImplementation(() => originalDateNow());
+        dateNowMock.mockRestore();
         vi.unstubAllGlobals();
       },
     };
@@ -519,11 +515,7 @@ export function testContext(): TestContext {
     userLinkId: string,
     options: SlackBindingOptions = {},
   ): Promise<{ id: string; agentName: string; composeId: string }> {
-    const {
-      agentName = uniqueId("test-agent"),
-      description = null,
-      enabled = true,
-    } = options;
+    const { agentName = uniqueId("test-agent"), enabled = true } = options;
 
     initServices();
 
@@ -575,7 +567,6 @@ export function testContext(): TestContext {
         slackWorkspaceId: link.slackWorkspaceId,
         composeId: compose.id,
         agentName,
-        description,
         enabled,
       })
       .returning();

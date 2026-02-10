@@ -260,7 +260,6 @@ async function fetchBoundAgents(
   Array<{
     id: string;
     name: string;
-    description: string | null;
     requiredSecrets: string[];
     existingSecrets: string[];
     requiredVars: string[];
@@ -272,7 +271,6 @@ async function fetchBoundAgents(
     .select({
       id: slackBindings.id,
       agentName: slackBindings.agentName,
-      description: slackBindings.description,
       composeId: slackBindings.composeId,
     })
     .from(slackBindings)
@@ -332,7 +330,6 @@ async function fetchBoundAgents(
     return {
       id: b.id,
       name: b.agentName,
-      description: b.description,
       requiredSecrets,
       existingSecrets: requiredSecrets.filter((name) =>
         existingSecretNames.has(name),
@@ -727,10 +724,6 @@ async function handleViewSubmission(
     return handleAgentAddSubmission(payload);
   }
 
-  if (callbackId === "agent_remove_modal") {
-    return handleAgentRemoveSubmission(payload);
-  }
-
   if (callbackId === "agent_update_modal") {
     return handleAgentUpdateSubmission(payload);
   }
@@ -741,7 +734,6 @@ async function handleViewSubmission(
 
 interface AgentAddFormValues {
   composeId: string | undefined;
-  description: string | undefined;
   secrets: Record<string, string>;
   vars: Record<string, string>;
 }
@@ -749,7 +741,6 @@ interface AgentAddFormValues {
 /** Validated form values with required fields guaranteed */
 interface ValidatedAgentAddForm {
   composeId: string;
-  description: string | undefined;
   secrets: Record<string, string>;
   vars: Record<string, string>;
 }
@@ -783,13 +774,8 @@ function extractFormValues(values: ModalStateValues): AgentAddFormValues {
     }
   }
 
-  // Extract description
-  const description =
-    values.agent_description?.description_input?.value?.trim() || undefined;
-
   return {
     composeId: values.agent_select?.agent_select_action?.selected_option?.value,
-    description,
     secrets,
     vars,
   };
@@ -812,7 +798,6 @@ function validateAgentAddForm(
   // Return validated form with narrowed types
   return {
     composeId: formValues.composeId,
-    description: formValues.description,
     secrets: formValues.secrets,
     vars: formValues.vars,
   };
@@ -1118,7 +1103,6 @@ async function handleAgentAddSubmission(
     slackWorkspaceId: payload.team.id,
     composeId: formValues.composeId,
     agentName,
-    description: formValues.description ?? null,
     enabled: true,
   });
 
@@ -1141,105 +1125,6 @@ async function handleAgentAddSubmission(
 
   // Close modal
   return new Response("", { status: 200 });
-}
-
-/**
- * Handle agent remove modal submission
- */
-async function handleAgentRemoveSubmission(
-  payload: SlackInteractivePayload,
-): Promise<Response> {
-  const values = payload.view?.state?.values;
-
-  if (!values) {
-    return NextResponse.json({
-      response_action: "errors",
-      errors: { agents_select: "Missing form values" },
-    });
-  }
-
-  // Extract selected agent IDs
-  const selectedAgentIds =
-    values.agents_select?.agents_select_action?.selected_options?.map(
-      (opt: { value: string }) => opt.value,
-    ) ?? [];
-
-  if (selectedAgentIds.length === 0) {
-    return NextResponse.json({
-      response_action: "errors",
-      errors: { agents_select: "Please select at least one agent to remove" },
-    });
-  }
-
-  // Extract channelId from private_metadata
-  const channelId = extractChannelIdFromMetadata(
-    payload.view?.private_metadata,
-  );
-
-  // Get agent names before deleting (for confirmation message)
-  const agentsToRemove = await globalThis.services.db
-    .select({ id: slackBindings.id, agentName: slackBindings.agentName })
-    .from(slackBindings)
-    .where(inArray(slackBindings.id, selectedAgentIds));
-
-  const agentNames = agentsToRemove.map((a) => a.agentName);
-
-  // Delete selected bindings
-  await globalThis.services.db
-    .delete(slackBindings)
-    .where(inArray(slackBindings.id, selectedAgentIds));
-
-  // Await message to prevent serverless function from terminating before it's sent
-  if (channelId && agentNames.length > 0) {
-    await sendRemovalConfirmationMessage(
-      payload.team.id,
-      agentNames,
-      channelId,
-      payload.user.id,
-    ).catch((error) => {
-      log.warn("Failed to send removal confirmation message (non-critical)", {
-        error,
-      });
-    });
-  }
-
-  // Refresh App Home to reflect removed agents
-  await refreshAppHomeForUser(payload.team.id, payload.user.id);
-
-  // Close modal
-  return new Response("", { status: 200 });
-}
-
-/**
- * Send confirmation message to channel after agents are removed (ephemeral - only visible to the user)
- */
-async function sendRemovalConfirmationMessage(
-  workspaceId: string,
-  agentNames: string[],
-  channelId: string,
-  slackUserId: string,
-): Promise<void> {
-  const client = await getSlackClientForWorkspace(workspaceId);
-  if (!client) return;
-
-  const agentList = agentNames.map((n) => `\`${n}\``).join(", ");
-  const plural = agentNames.length > 1 ? "s" : "";
-  const verb = agentNames.length > 1 ? "have" : "has";
-
-  await client.chat.postEphemeral({
-    channel: channelId,
-    user: slackUserId,
-    text: `Agent${plural} ${agentList} ${verb} been removed.`,
-    blocks: [
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `:white_check_mark: *Agent${plural} ${agentList} ${verb} been removed.*`,
-        },
-      },
-    ],
-  });
 }
 
 /**
@@ -1352,24 +1237,14 @@ async function handleAgentUpdateSubmission(
 
   const newVars = extractVarsFromFormValues(values);
   const newSecrets = extractSecretsFromFormValues(values);
-  const newDescription =
-    values.agent_description?.description_input?.value?.trim() || null;
-  const descriptionChanged = newDescription !== binding.description;
   const hasVars = Object.keys(newVars).length > 0;
   const hasSecrets = Object.keys(newSecrets).length > 0;
 
-  if (!hasVars && !hasSecrets && !descriptionChanged) {
+  if (!hasVars && !hasSecrets) {
     return NextResponse.json({
       response_action: "errors",
       errors: { agent_select: "No changes to save" },
     });
-  }
-
-  if (descriptionChanged) {
-    await globalThis.services.db
-      .update(slackBindings)
-      .set({ description: newDescription })
-      .where(eq(slackBindings.id, bindingId));
   }
 
   const { savedVarNames, savedSecretNames } = await saveVarsAndSecrets(
@@ -1385,7 +1260,6 @@ async function handleAgentUpdateSubmission(
       binding.agentName,
       savedVarNames,
       savedSecretNames,
-      descriptionChanged,
       channelId,
       payload.user.id,
     ).catch((error) => {
@@ -1409,7 +1283,6 @@ async function sendUpdateConfirmationMessage(
   agentName: string,
   updatedVarNames: string[],
   updatedSecretNames: string[],
-  descriptionUpdated: boolean,
   channelId: string,
   slackUserId: string,
 ): Promise<void> {
@@ -1418,9 +1291,6 @@ async function sendUpdateConfirmationMessage(
 
   // Build update summary
   const updates: string[] = [];
-  if (descriptionUpdated) {
-    updates.push("description");
-  }
   if (updatedVarNames.length > 0) {
     const varList = updatedVarNames.map((n) => `\`${n}\``).join(", ");
     updates.push(

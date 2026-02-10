@@ -15,12 +15,6 @@ import * as metricsModule from "../../../../../../src/lib/metrics";
 import * as axiomClient from "../../../../../../src/lib/axiom/client";
 import type { MockInstance } from "vitest";
 
-vi.mock("@clerk/nextjs/server");
-vi.mock("@axiomhq/js");
-vi.mock("@e2b/code-interpreter");
-vi.mock("@aws-sdk/client-s3");
-vi.mock("@aws-sdk/s3-request-presigner");
-
 const context = testContext();
 
 describe("POST /api/webhooks/agent/telemetry", () => {

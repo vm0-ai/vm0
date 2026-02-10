@@ -4,10 +4,6 @@ import { createTestRequest } from "../../../../../../src/__tests__/api-test-help
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 
-vi.mock("@e2b/code-interpreter");
-vi.mock("@aws-sdk/client-s3");
-vi.mock("@aws-sdk/s3-request-presigner");
-
 const context = testContext();
 
 describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {

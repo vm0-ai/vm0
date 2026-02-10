@@ -5,12 +5,10 @@ import {
   fetchChannelContext,
   formatContextForAgent,
   formatContextForAgentWithImages,
-  parseExplicitAgentSelection,
   getSlackRedirectBaseUrl,
 } from "../index";
 import { slackThreadSessions } from "../../../db/schema/slack-thread-session";
 import { storages, storageVersions } from "../../../db/schema/storage";
-import { routeToAgent, type RouteResult } from "../router";
 import { getPlatformUrl } from "../../url";
 import {
   getUserScopeByClerkId,
@@ -26,23 +24,6 @@ import { logger } from "../../logger";
 const log = logger("slack:shared");
 
 export type SlackClient = ReturnType<typeof createSlackClient>;
-
-export interface AgentBinding {
-  id: string;
-  agentName: string;
-  description: string | null;
-  composeId: string;
-  enabled: boolean;
-}
-
-export type RouteSuccess = {
-  type: "success";
-  agentName: string;
-  promptText: string;
-};
-export type RouteFailure = { type: "failure"; error: string };
-export type RouteNotRequest = { type: "not_request" };
-export type RouteMessageResult = RouteSuccess | RouteFailure | RouteNotRequest;
 
 /**
  * Remove the thinking reaction from a message
@@ -117,69 +98,6 @@ export async function fetchConversationContexts(
       : "";
 
   return { routingContext, executionContext };
-}
-
-/**
- * Route message to the appropriate agent
- * Returns success with agent details, failure with error message, or not_request for greetings
- */
-export async function routeMessageToAgent(
-  messageContent: string,
-  bindings: AgentBinding[],
-  context?: string,
-): Promise<RouteMessageResult> {
-  const explicitSelection = parseExplicitAgentSelection(messageContent);
-
-  if (explicitSelection) {
-    // Explicit agent selection: "use <agent> <message>"
-    const matchingBinding = bindings.find(
-      (b) =>
-        b.agentName.toLowerCase() === explicitSelection.agentName.toLowerCase(),
-    );
-    if (!matchingBinding) {
-      return {
-        type: "failure",
-        error: `Agent "${explicitSelection.agentName}" not found. Available agents: ${bindings.map((b) => b.agentName).join(", ")}`,
-      };
-    }
-    return {
-      type: "success",
-      agentName: matchingBinding.agentName,
-      promptText: explicitSelection.remainingMessage || messageContent,
-    };
-  }
-
-  // Use the router (handles single agent, keyword matching, and LLM routing)
-  const routeResult: RouteResult = await routeToAgent(
-    messageContent,
-    bindings.map((b) => ({
-      agentName: b.agentName,
-      description: b.description,
-    })),
-    context,
-  );
-
-  switch (routeResult.type) {
-    case "matched":
-      return {
-        type: "success",
-        agentName: routeResult.agentName,
-        promptText: messageContent,
-      };
-    case "not_request":
-      return { type: "not_request" };
-    case "ambiguous": {
-      const agentList = bindings
-        .map(
-          (b) => `• \`${b.agentName}\`: ${b.description ?? "No description"}`,
-        )
-        .join("\n");
-      return {
-        type: "failure",
-        error: `I couldn't determine which agent to use. Please specify: \`@VM0 use <agent> <message>\`\n\nAvailable agents:\n${agentList}`,
-      };
-    }
-  }
 }
 
 interface ThreadSessionLookup {

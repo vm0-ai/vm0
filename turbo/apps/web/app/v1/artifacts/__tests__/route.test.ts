@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { GET as listArtifacts } from "../route";
 import { GET as getArtifact } from "../[id]/route";
 import { GET as listVersions } from "../[id]/versions/route";
@@ -9,11 +9,6 @@ import {
 import { testContext } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
-
-vi.mock("@clerk/nextjs/server");
-vi.mock("@e2b/code-interpreter");
-vi.mock("@aws-sdk/client-s3");
-vi.mock("@aws-sdk/s3-request-presigner");
 
 const context = testContext();
 

@@ -33,33 +33,41 @@ let mockClose: ReturnType<typeof vi.fn>;
 let mockConnectionOn: ReturnType<typeof vi.fn>;
 
 // Mock Ably (third-party external dependency)
+// Uses class syntax to ensure the mock survives esbuild's function-to-arrow transpilation,
+// which would break vitest v4's constructor detection (arrow functions can't be called with `new`).
 vi.mock("ably", () => {
   return {
     default: {
-      Realtime: vi.fn().mockImplementation(() => {
-        mockSubscribe = vi.fn().mockImplementation((handler) => {
-          capturedMessageHandler = handler;
-          return Promise.resolve();
-        });
-        mockUnsubscribe = vi.fn();
-        mockClose = vi.fn();
-        mockConnectionOn = vi.fn();
+      Realtime: class MockRealtime {
+        channels: { get: ReturnType<typeof vi.fn> };
+        connection: { on: ReturnType<typeof vi.fn> };
+        close: ReturnType<typeof vi.fn>;
 
-        const mockChannel = {
-          subscribe: mockSubscribe,
-          unsubscribe: mockUnsubscribe,
-        };
+        constructor() {
+          mockSubscribe = vi
+            .fn()
+            .mockImplementation((handler: (message: unknown) => void) => {
+              capturedMessageHandler = handler;
+              return Promise.resolve();
+            });
+          mockUnsubscribe = vi.fn();
+          mockClose = vi.fn();
+          mockConnectionOn = vi.fn();
 
-        return {
-          channels: {
+          const mockChannel = {
+            subscribe: mockSubscribe,
+            unsubscribe: mockUnsubscribe,
+          };
+
+          this.channels = {
             get: vi.fn().mockReturnValue(mockChannel),
-          },
-          connection: {
+          };
+          this.connection = {
             on: mockConnectionOn,
-          },
-          close: mockClose,
-        };
-      }),
+          };
+          this.close = mockClose;
+        }
+      },
     },
   };
 });

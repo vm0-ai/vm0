@@ -88,7 +88,6 @@ export async function refreshAppHome(
     .select({
       id: slackBindings.id,
       agentName: slackBindings.agentName,
-      description: slackBindings.description,
       enabled: slackBindings.enabled,
     })
     .from(slackBindings)
@@ -172,7 +171,6 @@ export async function handleMessagesTabOpened(
   const bindings = await globalThis.services.db
     .select({
       agentName: slackBindings.agentName,
-      description: slackBindings.description,
     })
     .from(slackBindings)
     .where(eq(slackBindings.slackUserLinkId, userLink.id));

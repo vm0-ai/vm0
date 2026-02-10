@@ -11,25 +11,37 @@ let connectionListeners: Map<
 let messageHandler: ((message: InboundMessage) => void) | null;
 
 // Mock Ably - this is an external dependency (third-party SDK)
+// Uses class syntax to ensure the mock survives esbuild's function-to-arrow transpilation,
+// which would break vitest v4's constructor detection (arrow functions can't be called with `new`).
 vi.mock("ably", () => {
   return {
     default: {
-      Realtime: vi.fn().mockImplementation(() => {
-        connectionListeners = new Map();
-        messageHandler = null;
+      Realtime: class MockRealtime {
+        connection: { on: ReturnType<typeof vi.fn> };
+        channels: { get: ReturnType<typeof vi.fn> };
+        close: ReturnType<typeof vi.fn>;
 
-        return {
-          connection: {
-            on: vi.fn((eventOrCallback, callback?) => {
-              if (typeof eventOrCallback === "string") {
-                connectionListeners.set(eventOrCallback, callback);
-              } else {
-                // Generic listener for all state changes
-                connectionListeners.set("*", eventOrCallback);
-              }
-            }),
-          },
-          channels: {
+        constructor() {
+          connectionListeners = new Map();
+          messageHandler = null;
+
+          this.connection = {
+            on: vi.fn(
+              (
+                eventOrCallback:
+                  | string
+                  | ((stateChange: ConnectionStateChange) => void),
+                callback?: (stateChange: ConnectionStateChange) => void,
+              ) => {
+                if (typeof eventOrCallback === "string") {
+                  connectionListeners.set(eventOrCallback, callback!);
+                } else {
+                  connectionListeners.set("*", eventOrCallback);
+                }
+              },
+            ),
+          };
+          this.channels = {
             get: vi.fn().mockReturnValue({
               subscribe: vi.fn((handler: (message: InboundMessage) => void) => {
                 messageHandler = handler;
@@ -37,10 +49,10 @@ vi.mock("ably", () => {
               }),
               unsubscribe: vi.fn(),
             }),
-          },
-          close: vi.fn(),
-        };
-      }),
+          };
+          this.close = vi.fn();
+        }
+      },
     },
   };
 });
