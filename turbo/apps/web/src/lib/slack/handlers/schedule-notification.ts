@@ -10,7 +10,6 @@ import { createSlackClient, postMessage } from "../client";
 import { getRunOutput } from "./run-agent";
 import { saveThreadSession, buildLogsUrl } from "./shared";
 import { logger } from "../../logger";
-import type { RunResult } from "../../run/types";
 
 const log = logger("slack:schedule-notification");
 
@@ -142,8 +141,14 @@ export async function notifyScheduleRunComplete(
     );
 
     // 7. Create thread session so user can reply to continue
-    const result = run.result as RunResult | null;
-    const agentSessionId = result?.agentSessionId;
+    const result = run.result;
+    const agentSessionId =
+      result &&
+      typeof result === "object" &&
+      "agentSessionId" in result &&
+      typeof result.agentSessionId === "string"
+        ? result.agentSessionId
+        : undefined;
 
     if (messageTs && dmChannelId && agentSessionId) {
       await saveThreadSession({
