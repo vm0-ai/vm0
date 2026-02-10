@@ -37,7 +37,6 @@ function createMockSchedule(overrides: Record<string, unknown> = {}) {
     artifactVersion: null,
     volumeVersions: null,
     enabled: false,
-    notifications: null,
     nextRunAt: new Date(Date.now() + 86400000).toISOString(),
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -308,48 +307,6 @@ describe("schedule setup command", () => {
 
     // Test removed: --var option no longer supported
     // vars are now managed via platform tables (vm0 var set)
-
-    it("should pass notifications when --notify slack is provided", async () => {
-      const compose = createMockCompose();
-      const schedule = createMockSchedule({ notifications: ["slack"] });
-      let deployPayload: Record<string, unknown> | undefined;
-
-      server.use(
-        http.get("http://localhost:3000/api/agent/composes", () => {
-          return HttpResponse.json(compose);
-        }),
-        http.get("http://localhost:3000/api/agent/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
-        }),
-        http.post(
-          "http://localhost:3000/api/agent/schedules",
-          async ({ request }) => {
-            deployPayload = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json(
-              { created: true, schedule },
-              { status: 201 },
-            );
-          },
-        ),
-      );
-
-      await setupCommand.parseAsync([
-        "node",
-        "cli",
-        "test-agent",
-        "--frequency",
-        "daily",
-        "--time",
-        "09:00",
-        "--prompt",
-        "Daily task",
-        "--notify",
-        "slack",
-      ]);
-
-      expect(deployPayload).toBeDefined();
-      expect(deployPayload!.notifications).toEqual(["slack"]);
-    });
 
     it("should enable schedule with --enable flag", async () => {
       const compose = createMockCompose();

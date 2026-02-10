@@ -610,7 +610,6 @@ export async function createTestSchedule(
     atTime?: string;
     timezone?: string;
     prompt?: string;
-    notifications?: "slack"[];
     // vars and secrets removed - now managed via platform tables
   },
 ): Promise<ScheduleResponse> {
@@ -632,7 +631,6 @@ export async function createTestSchedule(
         prompt: options?.prompt ?? "Test schedule prompt",
         cronExpression: options?.cronExpression,
         atTime: options?.atTime,
-        notifications: options?.notifications,
         // vars and secrets no longer sent - managed via platform tables
         ...trigger,
       }),

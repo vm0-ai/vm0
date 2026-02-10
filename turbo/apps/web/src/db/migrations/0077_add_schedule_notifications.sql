@@ -1,6 +1,3 @@
--- Add notifications column to agent_schedules
-ALTER TABLE "agent_schedules" ADD COLUMN "notifications" jsonb;
-
 -- Make slack_binding_id nullable on slack_thread_sessions
 ALTER TABLE "slack_thread_sessions" ALTER COLUMN "slack_binding_id" DROP NOT NULL;
 

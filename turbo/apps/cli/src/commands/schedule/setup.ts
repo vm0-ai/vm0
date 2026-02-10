@@ -123,19 +123,6 @@ function parseFrequencyFromCron(
   return null;
 }
 
-const NOTIFICATION_CHOICES = [
-  {
-    title: "Slack DM",
-    value: "slack" as const,
-    description: "Notify via Slack direct message",
-  },
-  {
-    title: "None",
-    value: "none" as const,
-    description: "No notifications",
-  },
-];
-
 interface SetupOptions {
   frequency?: string;
   time?: string;
@@ -144,7 +131,6 @@ interface SetupOptions {
   prompt?: string;
   artifactName: string;
   enable?: boolean;
-  notify?: string;
 }
 
 interface ExistingScheduleDefaults {
@@ -162,7 +148,6 @@ interface ScheduleListItem {
   vars?: Record<string, string> | null;
   secretNames?: string[] | null;
   enabled?: boolean;
-  notifications?: string[] | null;
 }
 
 /**
@@ -397,38 +382,6 @@ async function gatherPromptText(
 }
 
 /**
- * Gather notification channels from options or interactive prompt
- */
-async function gatherNotifications(
-  optionNotify: string | undefined,
-  existingNotifications: string[] | null | undefined,
-): Promise<"slack"[] | undefined> {
-  if (optionNotify) {
-    if (optionNotify === "none") return undefined;
-    return optionNotify.split(",").filter((c): c is "slack" => c === "slack");
-  }
-
-  if (!isInteractive()) {
-    const filtered = existingNotifications?.filter(
-      (c): c is "slack" => c === "slack",
-    );
-    return filtered && filtered.length > 0 ? filtered : undefined;
-  }
-
-  const defaultIndex =
-    existingNotifications && existingNotifications.includes("slack") ? 0 : 1;
-
-  const choice = await promptSelect(
-    "Notify on completion?",
-    NOTIFICATION_CHOICES,
-    defaultIndex,
-  );
-
-  if (choice === "slack") return ["slack"];
-  return undefined;
-}
-
-/**
  * Resolve agent and get composeId with content
  */
 async function resolveAgent(agentName: string): Promise<{
@@ -519,7 +472,6 @@ async function buildAndDeploy(params: {
   timezone: string;
   prompt: string;
   artifactName: string;
-  notifications: "slack"[] | undefined;
 }): Promise<DeployResult> {
   let cronExpression: string | undefined;
   let atTimeISO: string | undefined;
@@ -546,7 +498,6 @@ async function buildAndDeploy(params: {
     timezone: params.timezone,
     prompt: params.prompt,
     artifactName: params.artifactName,
-    notifications: params.notifications,
   });
 
   return deployResult;
@@ -673,7 +624,6 @@ export const setupCommand = new Command()
   .option("-z, --timezone <tz>", "IANA timezone")
   .option("-p, --prompt <text>", "Prompt to run")
   .option("--artifact-name <name>", "Artifact name", "artifact")
-  .option("-n, --notify <channels>", "Notification channels: slack|none")
   .option("-e, --enable", "Enable schedule immediately after creation")
   .action(
     withErrorHandler(async (agentName: string, options: SetupOptions) => {
@@ -733,13 +683,7 @@ export const setupCommand = new Command()
         return;
       }
 
-      // 7. Gather notifications
-      const notifications = await gatherNotifications(
-        options.notify,
-        existingSchedule?.notifications,
-      );
-
-      // 8. Build trigger and deploy
+      // 7. Build trigger and deploy
       // Secrets and vars are managed via platform (vm0 secret set, vm0 var set)
       // Schedule only defines "when" to run, not configuration
       const deployResult = await buildAndDeploy({
@@ -753,13 +697,12 @@ export const setupCommand = new Command()
         timezone,
         prompt: promptText_,
         artifactName: options.artifactName,
-        notifications,
       });
 
-      // 9. Display deployment result
+      // 8. Display deployment result
       displayDeployResult(agentName, deployResult);
 
-      // 10. Handle schedule enabling
+      // 9. Handle schedule enabling
       // Prompt if: new schedule OR updating a disabled schedule
       const shouldPromptEnable =
         deployResult.created ||

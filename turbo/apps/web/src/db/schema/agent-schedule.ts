@@ -55,9 +55,6 @@ export const agentSchedules = pgTable(
     // Tracks when retry cycle started for concurrency failures (null = not retrying)
     retryStartedAt: timestamp("retry_started_at"),
 
-    // Notification channels (e.g. ["slack"])
-    notifications: jsonb("notifications").$type<string[]>(),
-
     // Timestamps
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

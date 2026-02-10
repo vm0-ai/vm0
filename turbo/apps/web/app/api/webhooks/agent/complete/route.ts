@@ -188,7 +188,7 @@ const router = tsr.router(webhookCompleteContract, {
         finalStatus === "failed"
           ? (body.error ?? `Agent exited with code ${body.exitCode}`)
           : undefined;
-      after(
+      after(() =>
         notifyScheduleRunComplete(body.runId, finalStatus, errorMsg).catch(
           (err) => log.error("Failed to send schedule notification", { err }),
         ),

@@ -52,7 +52,6 @@ export interface ScheduleResponse {
   artifactVersion: string | null;
   volumeVersions: Record<string, string> | null;
   enabled: boolean;
-  notifications: string[] | null;
   nextRunAt: string | null;
   lastRunAt: string | null;
   retryStartedAt: string | null;
@@ -86,7 +85,6 @@ interface DeployScheduleRequest {
   artifactName?: string;
   artifactVersion?: string;
   volumeVersions?: Record<string, string>;
-  notifications?: string[];
 }
 
 /**
@@ -197,7 +195,6 @@ function toResponse(
     artifactVersion: schedule.artifactVersion,
     volumeVersions: schedule.volumeVersions,
     enabled: schedule.enabled,
-    notifications: schedule.notifications,
     nextRunAt: schedule.nextRunAt?.toISOString() ?? null,
     lastRunAt: schedule.lastRunAt?.toISOString() ?? null,
     retryStartedAt: schedule.retryStartedAt?.toISOString() ?? null,
@@ -373,7 +370,6 @@ export async function deploySchedule(
         artifactName: request.artifactName ?? null,
         artifactVersion: request.artifactVersion ?? null,
         volumeVersions: request.volumeVersions ?? null,
-        notifications: request.notifications ?? null,
         nextRunAt,
         updatedAt: now,
       })
@@ -406,7 +402,6 @@ export async function deploySchedule(
         artifactName: request.artifactName ?? null,
         artifactVersion: request.artifactVersion ?? null,
         volumeVersions: request.volumeVersions ?? null,
-        notifications: request.notifications ?? null,
         enabled: false,
         nextRunAt,
         createdAt: now,

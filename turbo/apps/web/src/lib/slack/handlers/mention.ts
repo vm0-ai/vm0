@@ -1,7 +1,6 @@
 import { eq, and } from "drizzle-orm";
 import { slackInstallations } from "../../../db/schema/slack-installation";
 import { slackUserLinks } from "../../../db/schema/slack-user-link";
-import { slackBindings } from "../../../db/schema/slack-binding";
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
 import {
@@ -15,9 +14,8 @@ import { runAgentForSlack } from "./run-agent";
 import {
   removeThinkingReaction,
   fetchConversationContexts,
-  lookupThreadSession,
   saveThreadSession,
-  resolveSessionContext,
+  resolveRunContext,
   buildLoginUrl,
   buildLogsUrl,
 } from "./shared";
@@ -108,75 +106,30 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       return;
     }
 
-    // 4. Check thread session first (handles notification threads + existing conversations)
-    let composeId: string | undefined;
-    let bindingId: string | undefined;
-    let agentName: string | undefined;
-    let existingSessionId: string | undefined;
-    let lastProcessedMessageTs: string | undefined;
+    // 4. Resolve which agent to run (thread session first, then binding fallback)
+    const runCtx = await resolveRunContext(
+      context.channelId,
+      threadTs,
+      userLink.id,
+    );
 
-    if (threadTs) {
-      const session = await lookupThreadSession(context.channelId, threadTs);
-      existingSessionId = session.existingSessionId;
-      lastProcessedMessageTs = session.lastProcessedMessageTs;
-
-      if (existingSessionId) {
-        const sessionCtx = await resolveSessionContext(existingSessionId);
-        if (sessionCtx) {
-          composeId = sessionCtx.composeId;
-          agentName = sessionCtx.agentName;
-          log.debug("Resolved context from thread session", {
-            existingSessionId,
-            composeId,
-            agentName,
-          });
-        }
-      }
+    if (!runCtx) {
+      await postMessage(
+        client,
+        context.channelId,
+        "You don't have any agent linked. Use `/vm0 agent link` to link one.",
+        { threadTs },
+      );
+      return;
     }
 
-    // 5. If no thread session resolved, fall back to binding lookup
-    if (!composeId) {
-      const [binding] = await globalThis.services.db
-        .select({
-          id: slackBindings.id,
-          agentName: slackBindings.agentName,
-          composeId: slackBindings.composeId,
-          enabled: slackBindings.enabled,
-        })
-        .from(slackBindings)
-        .where(
-          and(
-            eq(slackBindings.slackUserLinkId, userLink.id),
-            eq(slackBindings.enabled, true),
-          ),
-        )
-        .limit(1);
-
-      if (!binding) {
-        await postMessage(
-          client,
-          context.channelId,
-          "You don't have any agent linked. Use `/vm0 agent link` to link one.",
-          { threadTs },
-        );
-        return;
-      }
-
-      composeId = binding.composeId;
-      bindingId = binding.id;
-      agentName = binding.agentName;
-
-      // Look up thread session with binding for deduplication
-      if (threadTs && !existingSessionId) {
-        const session = await lookupThreadSession(
-          context.channelId,
-          threadTs,
-          binding.id,
-        );
-        existingSessionId = session.existingSessionId;
-        lastProcessedMessageTs = session.lastProcessedMessageTs;
-      }
-    }
+    const {
+      composeId,
+      bindingId,
+      agentName,
+      existingSessionId,
+      lastProcessedMessageTs,
+    } = runCtx;
 
     // 6. Add thinking reaction (emoji only, no message)
     const reactionAdded = await client.reactions
@@ -243,11 +196,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
           : agentResponse;
       await postMessage(client, context.channelId, responseText, {
         threadTs,
-        blocks: buildAgentResponseMessage(
-          responseText,
-          agentName ?? "agent",
-          logsUrl,
-        ),
+        blocks: buildAgentResponseMessage(responseText, agentName, logsUrl),
       });
     } catch (innerError) {
       // If postMessage or session creation fails, still try to notify the user

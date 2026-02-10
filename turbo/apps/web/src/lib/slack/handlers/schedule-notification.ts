@@ -37,11 +37,10 @@ export async function notifyScheduleRunComplete(
 
   if (!run?.scheduleId) return;
 
-  // 2. Get schedule with notifications config
+  // 2. Get schedule to find composeId
   const [schedule] = await globalThis.services.db
     .select({
       composeId: agentSchedules.composeId,
-      notifications: agentSchedules.notifications,
     })
     .from(agentSchedules)
     .where(eq(agentSchedules.id, run.scheduleId))
@@ -49,10 +48,7 @@ export async function notifyScheduleRunComplete(
 
   if (!schedule) return;
 
-  // 3. Check if slack notification is enabled
-  if (!schedule.notifications?.includes("slack")) return;
-
-  // 4. Get compose info (agent name + user)
+  // 3. Get compose info (agent name + user)
   const [compose] = await globalThis.services.db
     .select({
       userId: agentComposes.userId,
@@ -64,7 +60,7 @@ export async function notifyScheduleRunComplete(
 
   if (!compose) return;
 
-  // 5. Find slack user link for this VM0 user
+  // 4. Find slack user link for this VM0 user
   const [userLink] = await globalThis.services.db
     .select({
       slackUserId: slackUserLinks.slackUserId,
@@ -81,7 +77,7 @@ export async function notifyScheduleRunComplete(
     return;
   }
 
-  // 6. Get installation and decrypt bot token
+  // 5. Get installation and decrypt bot token
   const [installation] = await globalThis.services.db
     .select()
     .from(slackInstallations)
@@ -101,7 +97,7 @@ export async function notifyScheduleRunComplete(
   );
   const client = createSlackClient(botToken);
 
-  // 7. Build and send notification
+  // 6. Build and send notification
   const logsUrl = buildLogsUrl(runId);
 
   if (status === "completed") {
@@ -145,7 +141,7 @@ export async function notifyScheduleRunComplete(
       },
     );
 
-    // 8. Create thread session so user can reply to continue
+    // 7. Create thread session so user can reply to continue
     const result = run.result as RunResult | null;
     const agentSessionId = result?.agentSessionId;
 

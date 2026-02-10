@@ -64,8 +64,6 @@ const deployScheduleRequestSchema = z
     volumeVersions: z.record(z.string(), z.string()).optional(),
     // Resolved agent compose ID (CLI resolves scope/name:version → composeId)
     composeId: z.string().uuid("Invalid compose ID"),
-    // Notification channels (opt-in per schedule)
-    notifications: z.array(z.enum(["slack"])).optional(),
   })
   .refine(
     (data) =>
@@ -96,7 +94,6 @@ const scheduleResponseSchema = z.object({
   artifactVersion: z.string().nullable(),
   volumeVersions: z.record(z.string(), z.string()).nullable(),
   enabled: z.boolean(),
-  notifications: z.array(z.string()).nullable(),
   nextRunAt: z.string().nullable(),
   lastRunAt: z.string().nullable(),
   retryStartedAt: z.string().nullable(),

@@ -55,12 +55,11 @@ describe("notifyScheduleRunComplete", () => {
       agentName: "my-scheduled-agent",
     });
 
-    // And a schedule with slack notifications enabled
+    // And a schedule
     mockClerk({ userId: userLink.vm0UserId });
     const schedule = await createTestSchedule(
       binding.composeId,
       uniqueId("sched"),
-      { notifications: ["slack"] },
     );
 
     // And a completed run for this schedule
@@ -75,32 +74,6 @@ describe("notifyScheduleRunComplete", () => {
     expect(slackHandlers.mocked.postMessage).toHaveBeenCalledTimes(1);
   });
 
-  it("should skip notification when schedule has no slack notification", async () => {
-    // Given a linked Slack user with an agent
-    const { userLink } = await givenLinkedSlackUser();
-    const { binding } = await givenUserHasAgent(userLink, {
-      agentName: "my-agent",
-    });
-
-    // And a schedule without notifications
-    mockClerk({ userId: userLink.vm0UserId });
-    const schedule = await createTestSchedule(
-      binding.composeId,
-      uniqueId("sched"),
-    );
-
-    // And a completed run for this schedule
-    const { runId } = await createTestRun(binding.composeId, "Scheduled task");
-    await linkRunToSchedule(runId, schedule.id);
-    await updateTestRunStatus(runId, "completed");
-
-    // When notifyScheduleRunComplete is called
-    await notifyScheduleRunComplete(runId, "completed");
-
-    // Then no Slack message should be sent
-    expect(slackHandlers.mocked.postMessage).not.toHaveBeenCalled();
-  });
-
   it("should skip notification when user has no Slack link", async () => {
     // Given a different user with no Slack link
     await context.setupUser({ prefix: "no-slack-user" });
@@ -108,10 +81,8 @@ describe("notifyScheduleRunComplete", () => {
     // Create a compose for this user (who has no Slack link)
     const { composeId } = await createTestCompose(uniqueId("no-slack"));
 
-    // And a schedule with slack notifications enabled
-    const schedule = await createTestSchedule(composeId, uniqueId("sched"), {
-      notifications: ["slack"],
-    });
+    // And a schedule
+    const schedule = await createTestSchedule(composeId, uniqueId("sched"));
 
     // And a completed run
     const { runId } = await createTestRun(composeId, "Task");
@@ -132,12 +103,11 @@ describe("notifyScheduleRunComplete", () => {
       agentName: "my-agent",
     });
 
-    // And a schedule with slack notifications enabled
+    // And a schedule
     mockClerk({ userId: userLink.vm0UserId });
     const schedule = await createTestSchedule(
       binding.composeId,
       uniqueId("sched"),
-      { notifications: ["slack"] },
     );
 
     // And a failed run
