@@ -1,0 +1,314 @@
+use std::collections::HashMap;
+
+use sandbox::{ExecRequest, Sandbox, SandboxConfig, SandboxFactory};
+use tracing::{error, info, warn};
+use uuid::Uuid;
+
+/// Maximum wall-clock time for a single job (2 hours).
+const JOB_TIMEOUT_MS: u32 = 7_200_000;
+/// Default timeout for guest commands (5 minutes).
+const DEFAULT_EXEC_TIMEOUT_MS: u32 = 300_000;
+
+use crate::api::ApiClient;
+use crate::error::RunnerResult;
+use crate::paths::guest;
+use crate::types::ExecutionContext;
+
+/// Configuration for a single execution.
+pub struct ExecutorConfig {
+    pub api_url: String,
+    pub vcpu: u32,
+    pub memory_mb: u32,
+    pub is_snapshot: bool,
+}
+
+/// Execute a single job inside a Firecracker VM.
+///
+/// On failure before agent spawn, reports completion with `exit_code = 1`.
+/// Always calls `factory.destroy()` on the sandbox when done.
+pub async fn execute_job(
+    api: &ApiClient,
+    factory: &dyn SandboxFactory,
+    context: ExecutionContext,
+    config: &ExecutorConfig,
+) {
+    let run_id = context.run_id;
+
+    let (exit_code, err) = match execute_inner(factory, &context, config).await {
+        Ok((code, stderr)) => (code, stderr),
+        Err(e) => {
+            error!(run_id = %run_id, error = %e, "job execution failed");
+            (1, Some(e.to_string()))
+        }
+    };
+
+    info!(run_id = %run_id, exit_code, "job finished, reporting completion");
+
+    if let Err(e) = api
+        .complete(&context.sandbox_token, run_id, exit_code, err)
+        .await
+    {
+        error!(run_id = %run_id, error = %e, "failed to report completion");
+    }
+}
+
+async fn execute_inner(
+    factory: &dyn SandboxFactory,
+    context: &ExecutionContext,
+    config: &ExecutorConfig,
+) -> RunnerResult<(i32, Option<String>)> {
+    let sandbox_id = Uuid::new_v4();
+    let sandbox_config = SandboxConfig {
+        id: sandbox_id,
+        resources: sandbox::ResourceLimits {
+            cpu_count: config.vcpu,
+            memory_mb: config.memory_mb,
+            timeout_ms: JOB_TIMEOUT_MS,
+        },
+    };
+
+    // Create and start sandbox
+    info!(run_id = %context.run_id, sandbox_id = %sandbox_id, "creating sandbox");
+    let mut sandbox = factory.create(sandbox_config).await?;
+
+    if let Err(e) = sandbox.start().await {
+        factory.destroy(sandbox).await;
+        return Err(e.into());
+    }
+
+    // Run job inside sandbox, then destroy regardless of outcome
+    let result = run_in_sandbox(sandbox.as_ref(), context, config).await;
+
+    // Best-effort stop
+    if let Err(e) = sandbox.stop().await {
+        warn!(sandbox_id = %sandbox_id, error = %e, "sandbox stop failed");
+    }
+    factory.destroy(sandbox).await;
+
+    result
+}
+
+async fn run_in_sandbox(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+    config: &ExecutorConfig,
+) -> RunnerResult<(i32, Option<String>)> {
+    // 1. Fix guest clock after snapshot restore (must happen before HTTPS calls)
+    if config.is_snapshot {
+        fix_guest_clock(sandbox).await?;
+    }
+
+    // 2. Download storages
+    if let Some(manifest) = &context.storage_manifest {
+        download_storages(sandbox, context, manifest).await?;
+    }
+
+    // 3. Restore session history
+    if let Some(session) = &context.resume_session {
+        restore_session(sandbox, context, session).await?;
+    }
+
+    // 4. Write env JSON
+    let env_json = build_env_json(context, &config.api_url);
+    let env_bytes = serde_json::to_vec(&env_json)
+        .map_err(|e| crate::error::RunnerError::Internal(format!("env json: {e}")))?;
+    sandbox.write_file(guest::ENV_JSON, &env_bytes).await?;
+    info!(run_id = %context.run_id, bytes = env_bytes.len(), "wrote env json");
+
+    // 5. Spawn agent
+    let log_file = format!("/tmp/vm0-main-{}.log", context.run_id);
+    let agent_cmd = format!("node {} > {log_file} 2>&1", guest::ENV_LOADER);
+    info!(run_id = %context.run_id, "spawning agent");
+
+    let handle = sandbox
+        .spawn_watch(&ExecRequest {
+            cmd: &agent_cmd,
+            timeout_ms: JOB_TIMEOUT_MS, // 2 hours
+        })
+        .await?;
+
+    // 6. Wait for exit
+    let exit = sandbox.wait_exit(handle).await?;
+    let stderr = String::from_utf8_lossy(&exit.stderr).to_string();
+
+    info!(
+        run_id = %context.run_id,
+        exit_code = exit.exit_code,
+        "agent exited"
+    );
+
+    let error_msg = if exit.exit_code != 0 {
+        Some(stderr).filter(|s| !s.is_empty())
+    } else {
+        None
+    };
+
+    Ok((exit.exit_code, error_msg))
+}
+
+/// Sync guest clock to host time after snapshot restore.
+///
+/// Must run before any HTTPS calls — stale clock breaks TLS cert validation.
+async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
+    let timestamp = format!(
+        "{:.3}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs_f64()
+    );
+    let date_cmd = format!("sudo date -s \"@{timestamp}\"");
+    sandbox
+        .exec(&ExecRequest {
+            cmd: &date_cmd,
+            timeout_ms: DEFAULT_EXEC_TIMEOUT_MS,
+        })
+        .await?;
+    Ok(())
+}
+
+/// Download storage volumes into the guest.
+async fn download_storages(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+    manifest: &crate::types::StorageManifest,
+) -> RunnerResult<()> {
+    let manifest_json = serde_json::to_vec(manifest)
+        .map_err(|e| crate::error::RunnerError::Internal(format!("manifest json: {e}")))?;
+    sandbox
+        .write_file(guest::STORAGE_MANIFEST, &manifest_json)
+        .await?;
+
+    let download_cmd = format!("{} {}", guest::DOWNLOAD_BIN, guest::STORAGE_MANIFEST);
+    info!(run_id = %context.run_id, "downloading storages");
+    let result = sandbox
+        .exec(&ExecRequest {
+            cmd: &download_cmd,
+            timeout_ms: DEFAULT_EXEC_TIMEOUT_MS,
+        })
+        .await?;
+
+    if result.exit_code != 0 {
+        return Err(crate::error::RunnerError::Internal(format!(
+            "storage download failed: {}",
+            result.stderr
+        )));
+    }
+    Ok(())
+}
+
+/// Write Claude Code session history into the guest filesystem.
+///
+/// Only Claude Code uses `.jsonl` session files; other agent types are skipped.
+async fn restore_session(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+    session: &crate::types::ResumeSession,
+) -> RunnerResult<()> {
+    if !(context.cli_agent_type.is_empty() || context.cli_agent_type == "claude-code") {
+        return Ok(());
+    }
+
+    let project_name = context
+        .working_dir
+        .trim_start_matches('/')
+        .replace('/', "-");
+    let session_dir = format!("/home/user/.claude/projects/-{project_name}");
+    let session_path = format!("{session_dir}/{}.jsonl", session.session_id);
+
+    let mkdir_cmd = format!("mkdir -p \"{session_dir}\"");
+    sandbox
+        .exec(&ExecRequest {
+            cmd: &mkdir_cmd,
+            timeout_ms: DEFAULT_EXEC_TIMEOUT_MS,
+        })
+        .await?;
+    sandbox
+        .write_file(&session_path, session.session_history.as_bytes())
+        .await?;
+    info!(run_id = %context.run_id, path = %session_path, "restored session history");
+    Ok(())
+}
+
+/// Build the environment variables JSON, matching the TS `buildEnvironmentVariables`.
+fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, String> {
+    let mut env = HashMap::new();
+
+    env.insert("VM0_API_URL".into(), api_url.into());
+    env.insert("VM0_RUN_ID".into(), context.run_id.to_string());
+    env.insert("VM0_API_TOKEN".into(), context.sandbox_token.clone());
+    env.insert("VM0_PROMPT".into(), context.prompt.clone());
+    env.insert("VM0_WORKING_DIR".into(), context.working_dir.clone());
+    env.insert(
+        "VM0_API_START_TIME".into(),
+        context
+            .api_start_time
+            .map(|t| t.to_string())
+            .unwrap_or_default(),
+    );
+    env.insert(
+        "CLI_AGENT_TYPE".into(),
+        if context.cli_agent_type.is_empty() {
+            "claude-code".into()
+        } else {
+            context.cli_agent_type.clone()
+        },
+    );
+
+    // Vercel bypass
+    if let Ok(bypass) = std::env::var("VERCEL_AUTOMATION_BYPASS_SECRET") {
+        env.insert("VERCEL_PROTECTION_BYPASS".into(), bypass);
+    }
+
+    // Artifact config
+    if let Some(manifest) = &context.storage_manifest
+        && let Some(artifact) = &manifest.artifact
+    {
+        env.insert("VM0_ARTIFACT_DRIVER".into(), "vas".into());
+        env.insert(
+            "VM0_ARTIFACT_MOUNT_PATH".into(),
+            artifact.mount_path.clone(),
+        );
+        env.insert(
+            "VM0_ARTIFACT_VOLUME_NAME".into(),
+            artifact.vas_storage_name.clone(),
+        );
+        env.insert(
+            "VM0_ARTIFACT_VERSION_ID".into(),
+            artifact.vas_version_id.clone(),
+        );
+    }
+
+    // Resume session ID
+    if let Some(session) = &context.resume_session {
+        env.insert("VM0_RESUME_SESSION_ID".into(), session.session_id.clone());
+    }
+
+    // User environment variables
+    if let Some(user_env) = &context.environment {
+        for (k, v) in user_env {
+            env.insert(k.clone(), v.clone());
+        }
+    }
+
+    // Secret values (base64-encoded, comma-separated)
+    if let Some(secrets) = &context.secret_values
+        && !secrets.is_empty()
+    {
+        use base64::Engine as _;
+        let encoded: Vec<String> = secrets
+            .iter()
+            .map(|s| base64::engine::general_purpose::STANDARD.encode(s))
+            .collect();
+        env.insert("VM0_SECRET_VALUES".into(), encoded.join(","));
+    }
+
+    // User vars (may override anything above, matching TS behavior)
+    if let Some(vars) = &context.vars {
+        for (k, v) in vars {
+            env.insert(k.clone(), v.clone());
+        }
+    }
+
+    env
+}
