@@ -459,6 +459,80 @@ describe("log detail page", () => {
     });
   });
 
+  it("should load all events across multiple pages", async () => {
+    server.use(
+      http.get("*/api/platform/logs/:id", () => {
+        return HttpResponse.json({
+          id: "run-multi-page",
+          sessionId: null,
+          agentName: "Multi Page Agent",
+          framework: "claude-code",
+          status: "completed",
+          prompt: "Test",
+          error: null,
+          createdAt: "2024-01-01T00:00:00Z",
+          startedAt: "2024-01-01T00:00:01Z",
+          completedAt: "2024-01-01T00:00:10Z",
+          artifact: { name: null, version: null },
+        });
+      }),
+      http.get("*/api/agent/runs/:id/telemetry/agent", ({ request }) => {
+        const url = new URL(request.url);
+        const since = url.searchParams.get("since");
+
+        if (!since) {
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 1,
+                eventType: "assistant",
+                eventData: {
+                  message: {
+                    content: [{ type: "text", text: "First page event" }],
+                    role: "assistant",
+                  },
+                },
+                createdAt: "2024-01-01T00:00:02Z",
+              },
+            ],
+            hasMore: true,
+            framework: "claude-code",
+          });
+        }
+
+        return HttpResponse.json({
+          events: [
+            {
+              sequenceNumber: 2,
+              eventType: "assistant",
+              eventData: {
+                message: {
+                  content: [{ type: "text", text: "Second page event" }],
+                  role: "assistant",
+                },
+              },
+              createdAt: "2024-01-01T00:00:03Z",
+            },
+          ],
+          hasMore: false,
+          framework: "claude-code",
+        });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/logs/run-multi-page",
+    });
+
+    // Both pages should be loaded and rendered
+    await waitFor(() => {
+      expect(screen.getByText(/First page event/)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Second page event/)).toBeInTheDocument();
+    expect(screen.getByText("2 total")).toBeInTheDocument();
+  });
+
   describe("search functionality", () => {
     function createSearchTestResponse() {
       // User prompts are displayed in a separate section above the events card,

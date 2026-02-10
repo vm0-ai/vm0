@@ -16,7 +16,7 @@ export function LogDetailPage() {
     <AppShell breadcrumb={breadcrumb}>
       <div className="h-full flex flex-col">
         {logId ? (
-          <LogDetailContent logId={logId} />
+          <LogDetailContent />
         ) : (
           <div className="p-8 text-center text-muted-foreground">
             Can&apos;t find that run

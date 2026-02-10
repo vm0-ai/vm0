@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useGet, useSet, useLoadable } from "ccstate-react";
+import { runDetail$ } from "../../../../signals/logs-page/log-detail-signals.ts";
 import { CopyButton } from "@vm0/ui";
 import {
   Tooltip,
@@ -15,7 +16,6 @@ import {
 import { Button } from "@vm0/ui/components/ui/button";
 import { AlertTriangle, Plus } from "lucide-react";
 import { logDetailSearchTerm$ } from "../../../../signals/logs-page/log-detail-state.ts";
-import { getOrCreateLogDetail$ } from "../../../../signals/logs-page/logs-signals.ts";
 import { openAddSecretDialog$ } from "../../../../signals/settings-page/secrets.ts";
 import { StatusBadge } from "../../status-badge.tsx";
 import { ArtifactDownloadButton } from "./artifact-download-button.tsx";
@@ -41,14 +41,12 @@ function parseMissingSecrets(errorMessage: string): string[] {
     .filter((s) => s.length > 0);
 }
 
-export function LogDetailContent({ logId }: { logId: string }) {
-  const getOrCreateLogDetail = useSet(getOrCreateLogDetail$);
+export function LogDetailContent() {
   const searchTerm = useGet(logDetailSearchTerm$);
   const setSearchTerm = useSet(logDetailSearchTerm$);
   const openAddDialog = useSet(openAddSecretDialog$);
 
-  const detail$ = getOrCreateLogDetail(logId);
-  const loadable = useLoadable(detail$);
+  const loadable = useLoadable(runDetail$);
 
   const handleAddSecret = (secretName: string) => {
     detach(openAddDialog(secretName), Reason.DomCallback);
@@ -73,6 +71,9 @@ export function LogDetailContent({ logId }: { logId: string }) {
   }
 
   const detail = loadable.data;
+  if (!detail) {
+    return <LogDetailSkeleton />;
+  }
 
   // Parse missing secrets from error message
   const missingSecrets = detail.error ? parseMissingSecrets(detail.error) : [];
@@ -193,7 +194,6 @@ export function LogDetailContent({ logId }: { logId: string }) {
       )}
 
       <AgentEventsCard
-        logId={logId}
         framework={detail.framework}
         searchTerm={searchTerm}
         setSearchTerm={setSearchTerm}

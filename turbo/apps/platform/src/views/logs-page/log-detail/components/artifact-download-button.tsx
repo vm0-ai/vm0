@@ -3,7 +3,7 @@ import { IconDownload } from "@tabler/icons-react";
 import {
   downloadArtifact$,
   artifactDownloadPromise$,
-} from "../../../../signals/logs-page/logs-signals.ts";
+} from "../../../../signals/logs-page/log-detail-signals.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 
 export function ArtifactDownloadButton({

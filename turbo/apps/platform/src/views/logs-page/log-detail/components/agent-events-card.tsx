@@ -7,14 +7,7 @@ import {
   totalMatchCount$,
   type ViewMode,
 } from "../../../../signals/logs-page/log-detail-state.ts";
-import {
-  getOrCreateAgentEvents$,
-  loadMoreAgentEvents$,
-  agentEventsAccumulated$,
-  agentEventsHasMore$,
-  agentEventsIsLoadingMore$,
-  initAccumulatedEvents$,
-} from "../../../../signals/logs-page/logs-signals.ts";
+import { runEvents$ } from "../../../../signals/logs-page/log-detail-signals.ts";
 import { SearchNavigation } from "../../components/search-navigation.tsx";
 import { ViewModeToggle } from "./view-mode-toggle.tsx";
 import { RawJsonView } from "./raw-json-view.tsx";
@@ -24,32 +17,19 @@ import {
   scrollToMatch,
   EVENTS_CONTAINER_ID,
 } from "../utils.ts";
-import { detach, Reason } from "../../../../signals/utils.ts";
 
 export function AgentEventsCard({
-  logId,
   framework,
   searchTerm,
   setSearchTerm,
   className,
 }: {
-  logId: string;
   framework: string | null;
   searchTerm: string;
   setSearchTerm: (term: string) => void;
   className?: string;
 }) {
-  const isCodex = framework === "codex";
-  const getOrCreateAgentEvents = useSet(getOrCreateAgentEvents$);
-  const loadMoreAgentEvents = useSet(loadMoreAgentEvents$);
-  const initAccumulatedEvents = useSet(initAccumulatedEvents$);
-  const events$ = getOrCreateAgentEvents(logId);
-  const eventsLoadable = useLoadable(events$);
-
-  // Get accumulated events state
-  const accumulatedEvents = useGet(agentEventsAccumulated$);
-  const hasMore = useGet(agentEventsHasMore$);
-  const isLoadingMore = useGet(agentEventsIsLoadingMore$);
+  const eventsLoadable = useLoadable(runEvents$);
 
   const viewMode = useGet(viewMode$);
   const setViewMode = useSet(viewMode$);
@@ -59,18 +39,7 @@ export function AgentEventsCard({
   const totalMatches = useGet(totalMatchCount$);
   const setTotalMatches = useSet(totalMatchCount$);
 
-  // Initialize accumulated events when initial data loads
-  // This is safe to call during render as initAccumulatedEvents$ is idempotent
-  if (
-    eventsLoadable.state === "hasData" &&
-    accumulatedEvents.length === 0 &&
-    eventsLoadable.data.events.length > 0
-  ) {
-    initAccumulatedEvents({
-      events: eventsLoadable.data.events,
-      hasMore: eventsLoadable.data.hasMore,
-    });
-  }
+  const isCodex = framework === "codex";
 
   const scrollToMatchByIndex = (matchIndex: number) => {
     const container = document.getElementById(EVENTS_CONTAINER_ID);
@@ -119,41 +88,6 @@ export function AgentEventsCard({
     setCurrentMatchIdx(0);
   };
 
-  // Ref callback for infinite scroll sentinel with cleanup (React 19 feature)
-  // Uses key={events.length} to ensure fresh closure values after each load
-  const sentinelRef = (node: HTMLDivElement | null): (() => void) | void => {
-    if (!node) {
-      return;
-    }
-
-    // Create observer with current closure values
-    // The key-based remount ensures we always have fresh values
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && !isLoadingMore) {
-          if (accumulatedEvents.length > 0) {
-            const lastEvent = accumulatedEvents[accumulatedEvents.length - 1];
-            detach(
-              loadMoreAgentEvents({
-                runId: logId,
-                since: lastEvent.createdAt,
-              }),
-              Reason.DomCallback,
-            );
-          }
-        }
-      },
-      { threshold: 0.1 },
-    );
-
-    observer.observe(node);
-
-    // Return cleanup function - called when element is unmounted (React 19)
-    return () => {
-      observer.disconnect();
-    };
-  };
-
   if (eventsLoadable.state === "loading") {
     return (
       <div
@@ -179,21 +113,13 @@ export function AgentEventsCard({
     );
   }
 
-  // Use accumulated events for rendering (or initial if not yet accumulated)
-  const events =
-    accumulatedEvents.length > 0
-      ? accumulatedEvents
-      : eventsLoadable.data.events;
-  const showHasMore =
-    accumulatedEvents.length > 0 ? hasMore : eventsLoadable.data.hasMore;
+  const events = eventsLoadable.data;
 
   const matchingCount = searchTerm.trim()
     ? events.filter((e) => eventMatchesSearch(e, searchTerm)).length
     : events.length;
 
-  const totalCountDisplay = showHasMore
-    ? `${events.length}+`
-    : `${events.length}`;
+  const totalCountDisplay = `${events.length}`;
 
   return (
     <div className={`flex flex-col gap-4 ${className ?? ""}`}>
@@ -269,16 +195,6 @@ export function AgentEventsCard({
             />
           )}
         </div>
-
-        {showHasMore && (
-          <div
-            key={`sentinel-${events.length}`}
-            ref={sentinelRef}
-            className="flex items-center justify-center py-4"
-          >
-            <IconLoader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-          </div>
-        )}
       </div>
     </div>
   );
