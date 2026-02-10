@@ -298,3 +298,66 @@ EOF
     assert_output --partial "Credentials:"
     assert_output --partial "DB_URL"
 }
+
+# ============================================
+# Delete Command Tests
+# ============================================
+
+@test "vm0 agent delete removes agent with --yes flag" {
+    echo "# Step 1: Create vm0.yaml config file"
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    description: "Test agent for delete command"
+    framework: claude-code
+EOF
+
+    echo "# Step 2: Run vm0 compose to create the agent"
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    assert_success
+
+    echo "# Step 3: Verify agent exists in list"
+    run $CLI_COMMAND agent list
+    assert_success
+    assert_output --partial "$AGENT_NAME"
+
+    echo "# Step 4: Delete the agent with --yes flag"
+    run $CLI_COMMAND agent delete "$AGENT_NAME" --yes
+    assert_success
+    assert_output --partial "deleted"
+
+    echo "# Step 5: Verify agent no longer exists in list"
+    run $CLI_COMMAND agent list
+    assert_success
+    refute_output --partial "$AGENT_NAME"
+}
+
+@test "vm0 agent rm alias works for delete" {
+    echo "# Step 1: Create vm0.yaml config file"
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  $AGENT_NAME:
+    description: "Test agent for rm alias"
+    framework: claude-code
+EOF
+
+    echo "# Step 2: Run vm0 compose to create the agent"
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    assert_success
+
+    echo "# Step 3: Delete the agent using rm alias"
+    run $CLI_COMMAND agent rm "$AGENT_NAME" --yes
+    assert_success
+    assert_output --partial "deleted"
+}
+
+@test "vm0 agent delete fails for nonexistent agent" {
+    echo "# Step 1: Try to delete a nonexistent agent"
+    run $CLI_COMMAND agent delete "nonexistent-agent-$(cat /proc/sys/kernel/random/uuid | head -c 8)" --yes
+    assert_failure
+    assert_output --partial "not found"
+}
