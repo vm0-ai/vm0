@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.11.0](https://github.com/vm0-ai/vm0/compare/docs-v2.10.1...docs-v2.11.0) (2026-02-10)
+
+
+### Features
+
+* **docs:** add ecosystem section with slack integration guide ([#2635](https://github.com/vm0-ai/vm0/issues/2635)) ([3a0d45a](https://github.com/vm0-ai/vm0/commit/3a0d45a84e8bc834bb409d39d109e2dd7ef3a844))
+
 ## [2.10.1](https://github.com/vm0-ai/vm0/compare/docs-v2.10.0...docs-v2.10.1) (2026-02-06)
 
 
