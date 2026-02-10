@@ -137,47 +137,6 @@ setup_artifact() {
     assert_output --partial "SECRET=***"
 }
 
-@test "Runner env: continue requires secrets to be re-provided" {
-    echo "# Using shared runner with group: ${RUNNER_GROUP}"
-    setup_artifact
-
-    run $CLI_COMMAND compose "$TEST_CONFIG"
-    assert_success
-
-    echo "# Step 1: Initial run with secrets..."
-    run $CLI_COMMAND run "$AGENT_NAME" \
-        --vars "testVar=${VAR_VALUE}" \
-        --secrets "TEST_SECRET=${SECRET_VALUE}" \
-        --artifact-name "$ARTIFACT_NAME" \
-        --verbose \
-        "echo INITIAL && echo SECRET=\$TEST_SECRET"
-    assert_success
-    assert_output --partial "INITIAL"
-    assert_output --partial "SECRET=***"
-
-    echo "# Step 2: Extract session ID..."
-    SESSION_ID=$(echo "$output" | grep -oP 'Session:\s*\K[a-f0-9-]{36}' | head -1)
-    [ -n "$SESSION_ID" ] || {
-        echo "# Failed to extract session ID"
-        return 1
-    }
-    echo "# Session ID: $SESSION_ID"
-
-    echo "# Step 3: Continue WITHOUT secrets should fail..."
-    run $CLI_COMMAND run continue "$SESSION_ID" "echo CONTINUED"
-
-    echo "# Output:"
-    echo "$output"
-
-    assert_failure
-    assert_output --partial "Missing required secrets: TEST_SECRET"
-
-    echo "# Step 4: Continue WITH secrets should succeed..."
-    run $CLI_COMMAND run continue "$SESSION_ID" \
-        --secrets "TEST_SECRET=${SECRET_VALUE}" \
-        --verbose \
-        "echo CONTINUED && echo SECRET=\$TEST_SECRET"
-    assert_success
-    assert_output --partial "CONTINUED"
-    assert_output --partial "SECRET=***"
-}
+# Removed E2E test: "continue requires secrets to be re-provided"
+# Covered by route integration tests:
+#   turbo/apps/cli/src/commands/run/__tests__/continue.test.ts
