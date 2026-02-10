@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["vsock-guest", "vsock-proto", "vsock-host", "vsock-test", "guest-init", "guest-common", "guest-download", "sandbox", "sandbox-fc", "runner"]
+members = ["vsock-guest", "vsock-proto", "vsock-host", "vsock-test", "guest-init", "guest-common", "guest-download", "guest-agent", "sandbox", "sandbox-fc", "runner"]
 
 [workspace.package]
 edition = "2024"
@@ -17,6 +17,7 @@ vsock-proto = { path = "vsock-proto" }
 # External dependencies
 async-trait = "0.1"
 base64 = "0.22"
+bytes = "1"
 clap = "4"
 chrono = { version = "0.4", default-features = false }
 flate2 = "1"
@@ -34,6 +35,8 @@ tracing-subscriber = "0.3"
 which = "8"
 ureq = "3"
 reqwest = { version = "0.12", default-features = false }
+sha2 = "0.10"
+tokio-util = "0.7"
 
 [profile.release]
 lto = true
