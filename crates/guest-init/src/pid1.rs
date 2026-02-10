@@ -1,5 +1,8 @@
 //! PID 1 responsibilities: signal handling and zombie reaping.
 //!
+//! Based on [tini](https://github.com/krallin/tini) signal handling patterns.
+//! Uses `sigaction` (not `signal`) for reliable, non-resetting handlers.
+//!
 //! When running as PID 1 (init process), we must:
 //! 1. Handle signals properly (SIGTERM, SIGINT for graceful shutdown)
 //! 2. Reap zombie child processes to prevent resource leaks
@@ -14,6 +17,21 @@ pub fn shutdown_requested() -> bool {
     SHUTDOWN_REQUESTED.load(Ordering::SeqCst)
 }
 
+/// Install a `sigaction` handler for the given signal with `SA_RESTART`.
+///
+/// Unlike `signal()`, `sigaction()` does not reset the handler after first
+/// invocation and has well-defined behavior across platforms.
+fn set_handler(sig: libc::c_int, handler: libc::sighandler_t) {
+    // SAFETY: zeroed sigaction is valid; we fill sa_handler and sa_flags.
+    let mut sa: libc::sigaction = unsafe { std::mem::zeroed() };
+    sa.sa_sigaction = handler;
+    sa.sa_flags = libc::SA_RESTART;
+    // SAFETY: sa is properly initialized, sig is a valid signal number.
+    unsafe {
+        libc::sigaction(sig, &sa, std::ptr::null_mut());
+    }
+}
+
 /// Setup signal handlers for PID 1 operation.
 ///
 /// - SIGTERM/SIGINT: Set shutdown flag for graceful exit
@@ -25,16 +43,17 @@ pub fn shutdown_requested() -> bool {
 /// the kernel to auto-reap children, which can race with waitpid() calls in
 /// vsock-guest and cause them to fail with ECHILD.
 pub fn setup_signal_handlers() {
-    unsafe {
-        libc::signal(libc::SIGTERM, handle_shutdown_signal as *const () as usize);
-        libc::signal(libc::SIGINT, handle_shutdown_signal as *const () as usize);
-        // Ignore SIGTTIN/SIGTTOU to prevent blocking on TTY operations (like tini does)
-        libc::signal(libc::SIGTTIN, libc::SIG_IGN);
-        libc::signal(libc::SIGTTOU, libc::SIG_IGN);
-        // Ignore SIGPIPE to prevent termination when writing to closed pipes
-        libc::signal(libc::SIGPIPE, libc::SIG_IGN);
-        // Keep SIGCHLD at SIG_DFL - reap_zombies() will handle orphaned processes
-    }
+    set_handler(
+        libc::SIGTERM,
+        handle_shutdown_signal as *const () as libc::sighandler_t,
+    );
+    set_handler(
+        libc::SIGINT,
+        handle_shutdown_signal as *const () as libc::sighandler_t,
+    );
+    set_handler(libc::SIGTTIN, libc::SIG_IGN);
+    set_handler(libc::SIGTTOU, libc::SIG_IGN);
+    set_handler(libc::SIGPIPE, libc::SIG_IGN);
 }
 
 /// Signal handler that sets the shutdown flag

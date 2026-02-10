@@ -2,13 +2,14 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { listStorages } from "../../lib/api";
 import { formatBytes, formatRelativeTime } from "../../lib/utils/file-utils";
+import { withErrorHandler } from "../../lib/command";
 
 export const listCommand = new Command()
   .name("list")
   .alias("ls")
   .description("List all remote volumes")
-  .action(async () => {
-    try {
+  .action(
+    withErrorHandler(async () => {
       // Call API
       const items = await listStorages({ type: "volume" });
 
@@ -50,15 +51,5 @@ export const listCommand = new Command()
         ].join("  ");
         console.log(row);
       }
-    } catch (error) {
-      console.error(chalk.red("✗ Failed to list volumes"));
-      if (error instanceof Error) {
-        if (error.message.includes("Not authenticated")) {
-          console.error(chalk.dim("  Run: vm0 auth login"));
-        } else {
-          console.error(chalk.dim(`  ${error.message}`));
-        }
-      }
-      process.exit(1);
-    }
-  });
+    }),
+  );

@@ -21,11 +21,11 @@
  *   0x00 ready          G→H  (empty)
  *   0x01 ping           H→G  (empty)
  *   0x02 pong           G→H  (empty)
- *   0x03 exec           H→G  [4-byte timeout_ms][4-byte cmd_len][command]
+ *   0x03 exec           H→G  [4-byte timeout_ms][4-byte cmd_len][command]([4-byte env_count]([4-byte key_len][key][4-byte val_len][value])*)
  *   0x04 exec_result    G→H  [4-byte exit_code][4-byte stdout_len][stdout][4-byte stderr_len][stderr]
  *   0x05 write_file     H→G  [2-byte path_len][path][1-byte flags][4-byte content_len][content]
  *   0x06 write_file_result G→H [1-byte success][2-byte error_len][error]
- *   0x07 spawn_watch    H→G  [4-byte timeout_ms][4-byte cmd_len][command]
+ *   0x07 spawn_watch    H→G  [4-byte timeout_ms][4-byte cmd_len][command]([4-byte env_count]([4-byte key_len][key][4-byte val_len][value])*)
  *   0x08 spawn_watch_result G→H [4-byte pid]
  *   0x09 process_exit   G→H  [4-byte pid][4-byte exit_code][4-byte stdout_len][stdout][4-byte stderr_len][stderr]
  *   0x0A shutdown       H→G  (empty)
@@ -36,6 +36,7 @@
 import * as net from "node:net";
 import * as fs from "node:fs";
 import type {
+  EnvVars,
   ExecResult,
   GuestClient,
   SpawnResult,
@@ -107,14 +108,53 @@ function encode(
 }
 
 /**
- * Encode exec message payload
+ * Encode exec message payload.
+ *
+ * The optional env section is only appended when env has entries,
+ * keeping the payload backward-compatible with old decoders.
  */
-function encodeExecPayload(command: string, timeoutMs: number): Buffer {
+function encodeExecPayload(
+  command: string,
+  timeoutMs: number,
+  env?: EnvVars,
+): Buffer {
   const cmdBuf = Buffer.from(command, "utf-8");
-  const payload = Buffer.alloc(8 + cmdBuf.length);
+  const envEntries = env ? Object.entries(env) : [];
+
+  // Calculate env section size
+  let envSize = 0;
+  const encodedEntries: Array<[Buffer, Buffer]> = [];
+  if (envEntries.length > 0) {
+    envSize = 4; // env_count
+    for (const [key, val] of envEntries) {
+      const keyBuf = Buffer.from(key, "utf-8");
+      const valBuf = Buffer.from(val, "utf-8");
+      envSize += 4 + keyBuf.length + 4 + valBuf.length;
+      encodedEntries.push([keyBuf, valBuf]);
+    }
+  }
+
+  const payload = Buffer.alloc(8 + cmdBuf.length + envSize);
   payload.writeUInt32BE(timeoutMs, 0);
   payload.writeUInt32BE(cmdBuf.length, 4);
   cmdBuf.copy(payload, 8);
+
+  if (encodedEntries.length > 0) {
+    let offset = 8 + cmdBuf.length;
+    payload.writeUInt32BE(encodedEntries.length, offset);
+    offset += 4;
+    for (const [keyBuf, valBuf] of encodedEntries) {
+      payload.writeUInt32BE(keyBuf.length, offset);
+      offset += 4;
+      keyBuf.copy(payload, offset);
+      offset += keyBuf.length;
+      payload.writeUInt32BE(valBuf.length, offset);
+      offset += 4;
+      valBuf.copy(payload, offset);
+      offset += valBuf.length;
+    }
+  }
+
   return payload;
 }
 
@@ -412,11 +452,15 @@ export class VsockClient implements GuestClient {
   /**
    * Execute a command on the remote VM
    */
-  async exec(command: string, timeoutMs?: number): Promise<ExecResult> {
+  async exec(
+    command: string,
+    timeoutMs?: number,
+    env?: EnvVars,
+  ): Promise<ExecResult> {
     const actualTimeout = timeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS;
 
     try {
-      const payload = encodeExecPayload(command, actualTimeout);
+      const payload = encodeExecPayload(command, actualTimeout, env);
       const response = await this.request(
         MSG_EXEC,
         payload,
@@ -695,8 +739,9 @@ export class VsockClient implements GuestClient {
   async spawnAndWatch(
     command: string,
     timeoutMs: number = 0,
+    env?: EnvVars,
   ): Promise<SpawnResult> {
-    const payload = encodeExecPayload(command, timeoutMs);
+    const payload = encodeExecPayload(command, timeoutMs, env);
     const response = await this.request(
       MSG_SPAWN_WATCH,
       payload,

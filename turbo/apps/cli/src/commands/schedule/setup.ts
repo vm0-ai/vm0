@@ -23,6 +23,7 @@ import {
   enableSchedule,
   ApiRequestError,
 } from "../../lib/api";
+import { withErrorHandler } from "../../lib/command";
 
 const FREQUENCY_CHOICES = [
   { title: "Daily", value: "daily" as const, description: "Run every day" },
@@ -503,21 +504,6 @@ async function buildAndDeploy(params: {
 }
 
 /**
- * Handle setup command errors
- */
-function handleSetupError(error: unknown): never {
-  console.error(chalk.red("✗ Failed to setup schedule"));
-  if (error instanceof Error) {
-    if (error.message.includes("Not authenticated")) {
-      console.error(chalk.dim("  Run: vm0 auth login"));
-    } else {
-      console.error(chalk.dim(`  ${error.message}`));
-    }
-  }
-  process.exit(1);
-}
-
-/**
  * Display deployment result
  */
 function displayDeployResult(
@@ -639,8 +625,8 @@ export const setupCommand = new Command()
   .option("-p, --prompt <text>", "Prompt to run")
   .option("--artifact-name <name>", "Artifact name", "artifact")
   .option("-e, --enable", "Enable schedule immediately after creation")
-  .action(async (agentName: string, options: SetupOptions) => {
-    try {
+  .action(
+    withErrorHandler(async (agentName: string, options: SetupOptions) => {
       // 1. Resolve agent to composeId and get content
       // Note: composeContent is resolved but validation of required secrets/vars
       // is now done server-side against platform tables
@@ -729,7 +715,5 @@ export const setupCommand = new Command()
         enableFlag: options.enable ?? false,
         shouldPromptEnable,
       });
-    } catch (error) {
-      handleSetupError(error);
-    }
-  });
+    }),
+  );

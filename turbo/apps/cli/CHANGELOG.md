@@ -1,5 +1,42 @@
 # Changelog
 
+## [9.31.1](https://github.com/vm0-ai/vm0/compare/cli-v9.31.0...cli-v9.31.1) (2026-02-10)
+
+
+### Bug Fixes
+
+* exclude connector-provided secrets from missing-secrets checks ([#2752](https://github.com/vm0-ai/vm0/issues/2752)) ([3dc98d4](https://github.com/vm0-ai/vm0/commit/3dc98d47451a2084b50a9a6ebce2f2ccb31d2833)), closes [#2747](https://github.com/vm0-ai/vm0/issues/2747)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.7.1
+
+## [9.31.0](https://github.com/vm0-ai/vm0/compare/cli-v9.30.1...cli-v9.31.0) (2026-02-10)
+
+
+### Features
+
+* **platform:** add environment variables setup page ([#2737](https://github.com/vm0-ai/vm0/issues/2737)) ([d33842a](https://github.com/vm0-ai/vm0/commit/d33842a2e5e72eb5bfebe66cd442135b49f35a51))
+
+## [9.30.1](https://github.com/vm0-ai/vm0/compare/cli-v9.30.0...cli-v9.30.1) (2026-02-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.7.0
+
+## [9.30.0](https://github.com/vm0-ai/vm0/compare/cli-v9.29.5...cli-v9.30.0) (2026-02-10)
+
+
+### Features
+
+* **cli:** enable GitHub URL compose without experimental flag ([#2728](https://github.com/vm0-ai/vm0/issues/2728)) ([3158138](https://github.com/vm0-ai/vm0/commit/315813840b9590aca5d5f52575dcb24ddfebbae2)), closes [#2724](https://github.com/vm0-ai/vm0/issues/2724)
+
 ## [9.29.5](https://github.com/vm0-ai/vm0/compare/cli-v9.29.4...cli-v9.29.5) (2026-02-09)
 
 

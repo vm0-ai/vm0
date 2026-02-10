@@ -1,16 +1,20 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
+import { connectorTypeSchema } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserIdFromRequest } from "../../../../../src/lib/auth/get-user-id";
 import {
   exchangeGitHubCode,
   fetchGitHubUserInfo,
 } from "../../../../../src/lib/connector/providers/github";
-import { upsertOAuthConnector } from "../../../../../src/lib/connector/connector-service";
+import { exchangeNotionCode } from "../../../../../src/lib/connector/providers/notion";
+import {
+  upsertOAuthConnector,
+  upsertConnectorSecret,
+} from "../../../../../src/lib/connector/connector-service";
 import { connectorSessions } from "../../../../../src/db/schema/connector-session";
 import { logger } from "../../../../../src/lib/logger";
 import { getOrigin } from "../../../../../src/lib/request/get-origin";
-import { connectorTypeSchema } from "@vm0/core";
 
 const log = logger("api:connectors:callback");
 
@@ -77,9 +81,27 @@ export async function GET(
 
   const env = globalThis.services.env;
 
-  // Check if GitHub OAuth is configured
-  if (!env.GH_OAUTH_CLIENT_ID || !env.GH_OAUTH_CLIENT_SECRET) {
-    return redirectWithError(origin, type, "GitHub OAuth not configured");
+  // Get OAuth credentials for connector type
+  let clientId: string | undefined;
+  let clientSecret: string | undefined;
+
+  switch (connectorType) {
+    case "github":
+      clientId = env.GH_OAUTH_CLIENT_ID;
+      clientSecret = env.GH_OAUTH_CLIENT_SECRET;
+      break;
+    case "notion":
+      clientId = env.NOTION_OAUTH_CLIENT_ID;
+      clientSecret = env.NOTION_OAUTH_CLIENT_SECRET;
+      break;
+  }
+
+  if (!clientId || !clientSecret) {
+    return redirectWithError(
+      origin,
+      type,
+      `${connectorType} OAuth not configured`,
+    );
   }
 
   // Get state and session from cookies
@@ -127,16 +149,45 @@ export async function GET(
     // Build redirect URI (must match authorize endpoint)
     const redirectUri = `${origin}/api/connectors/${type}/callback`;
 
-    // Exchange code for token
-    const { accessToken, scopes } = await exchangeGitHubCode(
-      env.GH_OAUTH_CLIENT_ID,
-      env.GH_OAUTH_CLIENT_SECRET,
-      code,
-      redirectUri,
-    );
+    // Exchange code for token and get user info (per connector type)
+    let accessToken: string;
+    let scopes: string[];
+    let userInfo: { id: string; username: string; email: string | null };
 
-    // Fetch user info
-    const userInfo = await fetchGitHubUserInfo(accessToken);
+    switch (connectorType) {
+      case "github": {
+        const ghResult = await exchangeGitHubCode(
+          clientId,
+          clientSecret,
+          code,
+          redirectUri,
+        );
+        accessToken = ghResult.accessToken;
+        scopes = ghResult.scopes;
+        userInfo = await fetchGitHubUserInfo(accessToken);
+        break;
+      }
+      case "notion": {
+        const notionResult = await exchangeNotionCode(
+          clientId,
+          clientSecret,
+          code,
+          redirectUri,
+        );
+        accessToken = notionResult.accessToken;
+        scopes = notionResult.scopes;
+        userInfo = notionResult.userInfo;
+        // Store refresh token as separate connector secret
+        if (notionResult.refreshToken) {
+          await upsertConnectorSecret(
+            userId,
+            "NOTION_REFRESH_TOKEN",
+            notionResult.refreshToken,
+          );
+        }
+        break;
+      }
+    }
 
     log.debug("Storing connector", {
       userId,

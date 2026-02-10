@@ -12,13 +12,14 @@ import {
   removeExtraFiles,
 } from "../../lib/utils/file-utils";
 import { handleEmptyStorageResponse } from "../../lib/storage/pull-utils";
+import { withErrorHandler } from "../../lib/command";
 
 export const pullCommand = new Command()
   .name("pull")
   .description("Pull cloud files to local directory")
   .argument("[versionId]", "Version ID to pull (default: latest)")
-  .action(async (versionId?: string) => {
-    try {
+  .action(
+    withErrorHandler(async (versionId?: string) => {
       const cwd = process.cwd();
 
       // Read storage config
@@ -102,15 +103,5 @@ export const pullCommand = new Command()
       await fs.promises.rmdir(tmpDir);
 
       console.log(chalk.green(`✓ Extracted ${remoteFiles.length} files`));
-    } catch (error) {
-      console.error(chalk.red("✗ Pull failed"));
-      if (error instanceof Error) {
-        if (error.message.includes("Not authenticated")) {
-          console.error(chalk.dim("  Run: vm0 auth login"));
-        } else {
-          console.error(chalk.dim(`  ${error.message}`));
-        }
-      }
-      process.exit(1);
-    }
-  });
+    }),
+  );

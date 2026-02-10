@@ -462,6 +462,23 @@ export function buildAppHomeView(options: {
 
   blocks.push({ type: "divider" });
 
+  // Compose section
+  blocks.push({
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: ":rocket: *Compose Agent*\nCreate a new agent from a GitHub repository.",
+    },
+    accessory: {
+      type: "button",
+      text: { type: "plain_text", text: "Compose" },
+      action_id: "home_agent_compose",
+      style: "primary",
+    },
+  });
+
+  blocks.push({ type: "divider" });
+
   // Help section
   blocks.push({
     type: "section",
@@ -485,6 +502,16 @@ export function buildAppHomeView(options: {
       type: "mrkdwn",
       text: "*Link and manage agents*\nLink an agent\n`/vm0 agent link`\nUnlink an agent\n`/vm0 agent unlink`\nUpdate agent configuration\n`/vm0 agent update`\nCompose an agent from GitHub URL\n`/vm0 agent compose`",
     },
+  });
+
+  blocks.push({
+    type: "context",
+    elements: [
+      {
+        type: "mrkdwn",
+        text: ":book: <https://docs.vm0.ai/docs/ecosystem/slack|View full documentation>",
+      },
+    ],
   });
 
   blocks.push({ type: "divider" });
@@ -892,6 +919,15 @@ export function buildHelpMessage(): (Block | KnownBlock)[] {
         type: "mrkdwn",
         text: "*Usage*\n• `@VM0 <message>` - Send a message to your agent",
       },
+    },
+    {
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: ":book: <https://docs.vm0.ai/docs/ecosystem/slack|View full documentation>",
+        },
+      ],
     },
   ];
 }

@@ -9,7 +9,6 @@
  */
 
 import { ESLintUtils } from "@typescript-eslint/utils";
-import path from "path";
 
 const createRule = ESLintUtils.RuleCreator(
   (name) =>
@@ -57,7 +56,7 @@ export default createRule<[], MessageIds>({
           node,
           messageId: "tsxOutsideViews",
           data: {
-            filename: path.basename(filename),
+            filename: filename.split("/").pop() ?? filename,
           },
         });
       },

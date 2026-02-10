@@ -191,7 +191,7 @@ describe("volume clone", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Clone failed"),
+        expect.stringContaining("404:"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -211,9 +211,6 @@ describe("volume clone", () => {
         ]);
       }).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Clone failed"),
-      );
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("is not empty"),
       );
@@ -259,7 +256,7 @@ describe("volume clone", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Clone failed"),
+        expect.stringContaining("Not authenticated"),
       );
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("vm0 auth login"),

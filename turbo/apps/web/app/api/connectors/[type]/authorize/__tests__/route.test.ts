@@ -12,6 +12,8 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
     // Set required OAuth environment variables
     vi.stubEnv("GH_OAUTH_CLIENT_ID", "test-client-id");
     vi.stubEnv("GH_OAUTH_CLIENT_SECRET", "test-client-secret");
+    vi.stubEnv("NOTION_OAUTH_CLIENT_ID", "notion-test-client-id");
+    vi.stubEnv("NOTION_OAUTH_CLIENT_SECRET", "notion-test-client-secret");
   });
 
   it("should return 400 for unknown connector type", async () => {
@@ -116,5 +118,46 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
       c.startsWith("connector_oauth_session="),
     );
     expect(sessionCookie).toBeUndefined();
+  });
+
+  describe("Notion connector", () => {
+    it("should redirect to Notion OAuth with correct parameters", async () => {
+      await context.setupUser();
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/connectors/notion/authorize",
+      );
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "notion" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("https://api.notion.com/v1/oauth/authorize");
+      expect(location).toContain("client_id=notion-test-client-id");
+      expect(location).toContain("redirect_uri=");
+      expect(location).toContain("response_type=code");
+      expect(location).toContain("owner=user");
+      expect(location).toContain("state=");
+    });
+
+    it("should set state cookie for CSRF protection", async () => {
+      await context.setupUser();
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/connectors/notion/authorize",
+      );
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "notion" }),
+      });
+
+      const cookies = response.headers.getSetCookie();
+      const stateCookie = cookies.find((c) =>
+        c.startsWith("connector_oauth_state="),
+      );
+      expect(stateCookie).toBeDefined();
+      expect(stateCookie).toContain("HttpOnly");
+      expect(stateCookie).toContain("SameSite=Lax");
+    });
   });
 });

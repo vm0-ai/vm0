@@ -167,7 +167,7 @@ describe("artifact list", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to list artifacts"),
+        expect.stringContaining("Not authenticated"),
       );
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("vm0 auth login"),
@@ -190,7 +190,7 @@ describe("artifact list", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to list artifacts"),
+        expect.stringContaining("500: Server error"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

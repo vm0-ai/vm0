@@ -1,0 +1,27 @@
+[package]
+name = "runner"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+sandbox = { workspace = true }
+sandbox-fc = { workspace = true }
+
+base64 = { workspace = true }
+chrono = { workspace = true, features = ["serde", "now"] }
+clap = { workspace = true, features = ["derive", "env"] }
+nix = { workspace = true, features = ["user", "signal"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "signal", "time", "fs"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+reqwest = { workspace = true, features = ["json", "rustls-tls"] }
+uuid = { workspace = true, features = ["v4", "serde"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

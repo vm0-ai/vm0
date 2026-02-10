@@ -218,7 +218,7 @@ When `USE_MOCK_CLAUDE=true`:
 3. Instead of running real `claude` CLI, it runs `/usr/local/bin/vm0-agent/mock-claude.mjs`
 4. Mock Claude executes the prompt as a bash command and outputs Claude-compatible JSONL
 
-Mock Claude location: `turbo/packages/core/src/sandbox/scripts/src/mock-claude.ts`
+Mock Claude location: `turbo/packages/sandbox-scripts/src/scripts/mock-claude.ts`
 
 ---
 
@@ -385,5 +385,5 @@ vm0 run <agent-name> --artifact-name <artifact> "echo hello"
 
 - CLI E2E Testing Patterns: `.claude/skills/cli-e2e-testing/skill.md`
 - Dev Server Management: `.claude/skills/dev-server/skill.md`
-- Mock Claude Source: `turbo/packages/core/src/sandbox/scripts/src/mock-claude.ts`
+- Mock Claude Source: `turbo/packages/sandbox-scripts/src/scripts/mock-claude.ts`
 - E2B Executor: `turbo/apps/web/src/lib/run/executors/e2b-executor.ts`

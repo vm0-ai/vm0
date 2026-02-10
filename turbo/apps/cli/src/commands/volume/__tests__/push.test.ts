@@ -216,7 +216,7 @@ describe("volume push", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Push failed"),
+        expect.stringContaining("500: Internal server error"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

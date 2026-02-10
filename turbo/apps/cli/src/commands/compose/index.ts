@@ -8,12 +8,17 @@ import {
   getLegacySystemTemplateWarning,
   extractVariableReferences,
   groupVariablesBySource,
+  getConnectorProvidedSecretNames,
 } from "@vm0/core";
 import {
   getComposeByName,
   createOrUpdateCompose,
   getScope,
+  listSecrets,
+  listVariables,
+  listConnectors,
 } from "../../lib/api";
+import { getApiUrl } from "../../lib/api/config";
 import { validateAgentCompose } from "../../lib/domain/yaml-validator";
 import { downloadGitHubDirectory } from "../../lib/domain/github-skills";
 import {
@@ -47,6 +52,16 @@ export function getSecretsFromComposeContent(content: unknown): Set<string> {
   const refs = extractVariableReferences(content);
   const grouped = groupVariablesBySource(refs);
   return new Set(grouped.secrets.map((r) => r.name));
+}
+
+/**
+ * Extract variable names from compose content using variable references.
+ * Looks for ${{ vars.XXX }} patterns in the compose.
+ */
+function getVarsFromComposeContent(content: unknown): Set<string> {
+  const refs = extractVariableReferences(content);
+  const grouped = groupVariablesBySource(refs);
+  return new Set(grouped.vars.map((r) => r.name));
 }
 
 interface AgentConfig {
@@ -373,6 +388,90 @@ function mergeSkillVariables(
 }
 
 /**
+ * Derive the platform URL from the API URL by replacing "www" with "platform" in the hostname.
+ */
+function getPlatformUrl(apiUrl: string): string {
+  const url = new URL(apiUrl);
+  url.hostname = url.hostname.replace("www", "platform");
+  return url.origin;
+}
+
+interface MissingItemsResult {
+  missingSecrets: string[];
+  missingVars: string[];
+  setupUrl?: string;
+}
+
+/**
+ * Check for missing secrets/vars and print setup URL if any are missing.
+ */
+async function checkAndPromptMissingItems(
+  config: unknown,
+  options: { json?: boolean },
+): Promise<MissingItemsResult> {
+  const requiredSecrets = getSecretsFromComposeContent(config);
+  const requiredVars = getVarsFromComposeContent(config);
+
+  if (requiredSecrets.size === 0 && requiredVars.size === 0) {
+    return { missingSecrets: [], missingVars: [] };
+  }
+
+  const [secretsResponse, variablesResponse, connectorsResponse] =
+    await Promise.all([
+      requiredSecrets.size > 0 ? listSecrets() : { secrets: [] },
+      requiredVars.size > 0 ? listVariables() : { variables: [] },
+      listConnectors(),
+    ]);
+
+  const existingSecretNames = new Set(
+    secretsResponse.secrets.map((s) => s.name),
+  );
+  const existingVarNames = new Set(
+    variablesResponse.variables.map((v) => v.name),
+  );
+
+  // Connector-provided secrets (e.g., GH_TOKEN from GitHub connector)
+  const connectorProvided = getConnectorProvidedSecretNames(
+    connectorsResponse.connectors.map((c) => c.type),
+  );
+
+  const missingSecrets = [...requiredSecrets].filter(
+    (name) => !existingSecretNames.has(name) && !connectorProvided.has(name),
+  );
+  const missingVars = [...requiredVars].filter(
+    (name) => !existingVarNames.has(name),
+  );
+
+  if (missingSecrets.length === 0 && missingVars.length === 0) {
+    return { missingSecrets: [], missingVars: [] };
+  }
+
+  const apiUrl = await getApiUrl();
+  const platformUrl = getPlatformUrl(apiUrl);
+  const params = new URLSearchParams();
+  if (missingSecrets.length > 0) {
+    params.set("secrets", missingSecrets.join(","));
+  }
+  if (missingVars.length > 0) {
+    params.set("vars", missingVars.join(","));
+  }
+  const setupUrl = `${platformUrl}/environment-variables-setup?${params.toString()}`;
+
+  if (!options.json) {
+    console.log();
+    console.log(
+      chalk.yellow(
+        "⚠ Missing secrets/variables detected. Set them up before running your agent:",
+      ),
+    );
+    console.log(chalk.cyan(`  ${setupUrl}`));
+    console.log();
+  }
+
+  return { missingSecrets, missingVars, setupUrl };
+}
+
+/**
  * Result from finalizeCompose for JSON output
  */
 interface ComposeResult {
@@ -381,6 +480,9 @@ interface ComposeResult {
   versionId: string;
   action: "created" | "existing";
   displayName: string;
+  missingSecrets?: string[];
+  missingVars?: string[];
+  setupUrl?: string;
 }
 
 /**
@@ -422,6 +524,17 @@ async function finalizeCompose(
     action: response.action,
     displayName,
   };
+
+  // Check for missing secrets/vars before showing run command
+  const missingItems = await checkAndPromptMissingItems(config, options);
+  if (
+    missingItems.missingSecrets.length > 0 ||
+    missingItems.missingVars.length > 0
+  ) {
+    result.missingSecrets = missingItems.missingSecrets;
+    result.missingVars = missingItems.missingVars;
+    result.setupUrl = missingItems.setupUrl;
+  }
 
   // Display human-readable result (skip in JSON mode)
   if (!options.json) {
@@ -595,7 +708,7 @@ export const composeCommand = new Command()
   .option("-y, --yes", "Skip confirmation prompts for skill requirements")
   .option(
     "--experimental-shared-compose",
-    "Enable GitHub URL compose (experimental)",
+    "[deprecated] No longer required, kept for backward compatibility",
   )
   .option("--json", "Output JSON for scripts (suppresses interactive output)")
   .option(
@@ -641,33 +754,6 @@ export const composeCommand = new Command()
 
         // Branch based on input type
         if (isGitHubUrl(resolvedConfigFile)) {
-          // Require experimental flag for GitHub URLs
-          if (!options.experimentalSharedCompose) {
-            if (options.json) {
-              console.log(
-                JSON.stringify({
-                  error:
-                    "Composing shared agents requires --experimental-shared-compose flag",
-                }),
-              );
-            } else {
-              console.error(
-                chalk.red(
-                  "✗ Composing shared agents requires --experimental-shared-compose flag",
-                ),
-              );
-              console.error();
-              console.error(
-                chalk.dim(
-                  "  Composing agents from other users carries security risks.",
-                ),
-              );
-              console.error(
-                chalk.dim("  Only compose agents from users you trust."),
-              );
-            }
-            process.exit(1);
-          }
           result = await handleGitHubCompose(resolvedConfigFile, options);
         } else {
           // Existing local file flow

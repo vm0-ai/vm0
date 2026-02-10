@@ -31,6 +31,8 @@ export async function createRun(body: {
   modelProvider?: string;
   // Debug flag (internal use only)
   debugNoMockClaude?: boolean;
+  // Environment validation flag - when true, validates secrets/vars before running
+  checkEnv?: boolean;
   // Required
   prompt: string;
 }): Promise<CreateRunResponse> {

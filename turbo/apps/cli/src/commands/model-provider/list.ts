@@ -1,13 +1,14 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { listModelProviders } from "../../lib/api";
+import { withErrorHandler } from "../../lib/command";
 
 export const listCommand = new Command()
   .name("list")
   .alias("ls")
   .description("List all model providers")
-  .action(async () => {
-    try {
+  .action(
+    withErrorHandler(async () => {
       const result = await listModelProviders();
 
       if (result.modelProviders.length === 0) {
@@ -56,16 +57,5 @@ export const listCommand = new Command()
       console.log(
         chalk.dim(`Total: ${result.modelProviders.length} provider(s)`),
       );
-    } catch (error) {
-      if (error instanceof Error) {
-        if (error.message.includes("Not authenticated")) {
-          console.error(chalk.red("✗ Not authenticated. Run: vm0 auth login"));
-        } else {
-          console.error(chalk.red(`✗ ${error.message}`));
-        }
-      } else {
-        console.error(chalk.red("✗ An unexpected error occurred"));
-      }
-      process.exit(1);
-    }
-  });
+    }),
+  );

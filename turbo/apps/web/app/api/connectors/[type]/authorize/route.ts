@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { connectorTypeSchema } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserIdFromRequest } from "../../../../../src/lib/auth/get-user-id";
 import { buildGitHubAuthorizationUrl } from "../../../../../src/lib/connector/providers/github";
+import { buildNotionAuthorizationUrl } from "../../../../../src/lib/connector/providers/notion";
 import { getOrigin } from "../../../../../src/lib/request/get-origin";
 
 /**
@@ -56,29 +58,49 @@ export async function GET(
   const { type } = await params;
 
   // Validate connector type
-  if (type !== "github") {
+  const typeResult = connectorTypeSchema.safeParse(type);
+  if (!typeResult.success) {
     return NextResponse.json(
       { error: `Unknown connector type: ${type}` },
       { status: 400 },
     );
   }
+  const connectorType = typeResult.data;
+
+  // Resolve origin early (handles forwarded host behind proxy/tunnel)
+  const url = new URL(request.url);
+  const origin = getOrigin(request);
 
   // Verify user is authenticated
   const userId = await getUserIdFromRequest(request);
   if (!userId) {
-    // Redirect to login page
-    const url = new URL(request.url);
-    const loginUrl = new URL("/sign-in", url.origin);
-    loginUrl.searchParams.set("redirect_url", request.url);
+    // Redirect to login page using correct origin (not localhost behind tunnel)
+    const loginUrl = new URL("/sign-in", origin);
+    const authorizeUrl = new URL(url.pathname + url.search, origin);
+    loginUrl.searchParams.set("redirect_url", authorizeUrl.toString());
     return NextResponse.redirect(loginUrl.toString());
   }
 
   const env = globalThis.services.env;
 
-  // Check if GitHub OAuth is configured
-  if (!env.GH_OAUTH_CLIENT_ID || !env.GH_OAUTH_CLIENT_SECRET) {
+  // Get OAuth credentials for connector type
+  let clientId: string | undefined;
+  let clientSecret: string | undefined;
+
+  switch (connectorType) {
+    case "github":
+      clientId = env.GH_OAUTH_CLIENT_ID;
+      clientSecret = env.GH_OAUTH_CLIENT_SECRET;
+      break;
+    case "notion":
+      clientId = env.NOTION_OAUTH_CLIENT_ID;
+      clientSecret = env.NOTION_OAUTH_CLIENT_SECRET;
+      break;
+  }
+
+  if (!clientId || !clientSecret) {
     return NextResponse.json(
-      { error: "GitHub OAuth is not configured" },
+      { error: `${connectorType} OAuth is not configured` },
       { status: 503 },
     );
   }
@@ -86,20 +108,23 @@ export async function GET(
   // Generate state for CSRF protection
   const state = generateState();
 
-  // Build redirect URI (use forwarded host if behind proxy/tunnel)
-  const url = new URL(request.url);
-  const origin = getOrigin(request);
+  // Build redirect URI
   const redirectUri = `${origin}/api/connectors/${type}/callback`;
 
   // Check for session parameter (CLI device flow)
   const sessionId = url.searchParams.get("session");
 
-  // Build authorization URL
-  const authUrl = buildGitHubAuthorizationUrl(
-    env.GH_OAUTH_CLIENT_ID,
-    redirectUri,
-    state,
-  );
+  // Build authorization URL for connector type
+  let authUrl: string;
+
+  switch (connectorType) {
+    case "github":
+      authUrl = buildGitHubAuthorizationUrl(clientId, redirectUri, state);
+      break;
+    case "notion":
+      authUrl = buildNotionAuthorizationUrl(clientId, redirectUri, state);
+      break;
+  }
 
   // Create redirect response with state cookie
   const response = NextResponse.redirect(authUrl);

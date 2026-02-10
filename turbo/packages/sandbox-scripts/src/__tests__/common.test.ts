@@ -18,7 +18,7 @@ describe("common", () => {
       delete process.env.VM0_WORKING_DIR;
 
       try {
-        const { validateConfig } = await import("../src/lib/common");
+        const { validateConfig } = await import("../scripts/lib/common");
         expect(() => validateConfig()).toThrow(
           "VM0_WORKING_DIR is required but not set",
         );
@@ -34,7 +34,7 @@ describe("common", () => {
       process.env.VM0_WORKING_DIR = "";
 
       try {
-        const { validateConfig } = await import("../src/lib/common");
+        const { validateConfig } = await import("../scripts/lib/common");
         expect(() => validateConfig()).toThrow(
           "VM0_WORKING_DIR is required but not set",
         );
@@ -52,7 +52,7 @@ describe("common", () => {
       process.env.VM0_WORKING_DIR = "/some/path";
 
       try {
-        const { validateConfig } = await import("../src/lib/common");
+        const { validateConfig } = await import("../scripts/lib/common");
         expect(validateConfig()).toBe(true);
       } finally {
         if (originalWorkingDir !== undefined) {
@@ -93,7 +93,7 @@ describe("common", () => {
         fs.unlinkSync(logFile);
       }
 
-      const { recordSandboxOp } = await import("../src/lib/common");
+      const { recordSandboxOp } = await import("../scripts/lib/common");
 
       recordSandboxOp("test_operation", 100, true);
 
@@ -118,7 +118,7 @@ describe("common", () => {
         fs.unlinkSync(logFile);
       }
 
-      const { recordSandboxOp } = await import("../src/lib/common");
+      const { recordSandboxOp } = await import("../scripts/lib/common");
 
       recordSandboxOp("failed_operation", 50, false, "Something went wrong");
 
@@ -139,7 +139,7 @@ describe("common", () => {
         fs.unlinkSync(logFile);
       }
 
-      const { recordSandboxOp } = await import("../src/lib/common");
+      const { recordSandboxOp } = await import("../scripts/lib/common");
 
       recordSandboxOp("op1", 10, true);
       recordSandboxOp("op2", 20, true);
@@ -168,7 +168,7 @@ describe("common", () => {
       }
 
       const beforeTime = new Date();
-      const { recordSandboxOp } = await import("../src/lib/common");
+      const { recordSandboxOp } = await import("../scripts/lib/common");
       recordSandboxOp("timestamp_test", 5, true);
       const afterTime = new Date();
 
@@ -205,7 +205,7 @@ describe("common", () => {
           COMPLETE_URL,
           HEARTBEAT_URL,
           TELEMETRY_URL,
-        } = await import("../src/lib/common");
+        } = await import("../scripts/lib/common");
 
         expect(WEBHOOK_URL).toBe(
           "https://api.example.com/api/webhooks/agent/events",
@@ -236,7 +236,7 @@ describe("common", () => {
       delete process.env.VM0_API_URL;
 
       try {
-        const { WEBHOOK_URL } = await import("../src/lib/common");
+        const { WEBHOOK_URL } = await import("../scripts/lib/common");
         expect(WEBHOOK_URL).toBe("/api/webhooks/agent/events");
       } finally {
         if (originalApiUrl !== undefined) {
@@ -266,7 +266,7 @@ describe("common", () => {
           SYSTEM_LOG_FILE,
           AGENT_LOG_FILE,
           METRICS_LOG_FILE,
-        } = await import("../src/lib/common");
+        } = await import("../scripts/lib/common");
 
         expect(SESSION_ID_FILE).toBe("/tmp/vm0-session-unique-run-456.txt");
         expect(EVENT_ERROR_FLAG).toBe("/tmp/vm0-event-error-unique-run-456");

@@ -35,6 +35,10 @@ OPENROUTER_API_KEY=op://Development/vm0-env-local/openrouter_api_key
 GH_OAUTH_CLIENT_ID=op://Development/vm0-env-local/gh_oauth_client_id
 GH_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/gh_oauth_client_secret
 
+# Optional: Notion OAuth Connector
+NOTION_OAUTH_CLIENT_ID=op://Development/vm0-env-local/notion_oauth_client_id
+NOTION_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/notion_oauth_client_secret
+
 # Optional: Error Tracking (Sentry)
 SENTRY_DSN=
 SENTRY_AUTH_TOKEN=

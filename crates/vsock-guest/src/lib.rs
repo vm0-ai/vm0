@@ -63,6 +63,34 @@ fn get_exec_user() -> Option<&'static str> {
     }
 }
 
+/// Shell-escape a value by wrapping in single quotes and escaping embedded `'`.
+fn shell_escape_value(val: &str) -> String {
+    format!("'{}'", val.replace('\'', "'\\''"))
+}
+
+/// Prepend environment variable exports to a command string.
+///
+/// Returns the command unchanged when `env` is empty. Otherwise produces
+/// `export KEY='value' KEY2='value2'; command` so the variables are
+/// available for shell expansion in the command.
+fn prepend_env(command: &str, env: &[(&str, &str)]) -> String {
+    if env.is_empty() {
+        return command.to_string();
+    }
+    let mut parts = String::from("export ");
+    for (i, (key, val)) in env.iter().enumerate() {
+        if i > 0 {
+            parts.push(' ');
+        }
+        parts.push_str(key);
+        parts.push('=');
+        parts.push_str(&shell_escape_value(val));
+    }
+    parts.push_str("; ");
+    parts.push_str(command);
+    parts
+}
+
 /// Build a Command to execute a shell command as the appropriate user
 fn build_exec_command(command: &str) -> Command {
     match get_exec_user() {
@@ -168,12 +196,13 @@ fn wait_with_timeout(child: Child, timeout_ms: u32) -> (i32, Vec<u8>, Vec<u8>) {
 }
 
 /// Handle exec message
-fn handle_exec(timeout_ms: u32, command: &str) -> (i32, Vec<u8>, Vec<u8>) {
+fn handle_exec(timeout_ms: u32, command: &str, env: &[(&str, &str)]) -> (i32, Vec<u8>, Vec<u8>) {
+    let command = prepend_env(command, env);
     log(
         "INFO",
         &format!(
             "exec: {} (timeout={}ms)",
-            truncate_preview(command),
+            truncate_preview(&command),
             timeout_ms
         ),
     );
@@ -182,14 +211,14 @@ fn handle_exec(timeout_ms: u32, command: &str) -> (i32, Vec<u8>, Vec<u8>) {
     #[cfg(unix)]
     let child = {
         use std::os::unix::process::CommandExt;
-        build_exec_command(command)
+        build_exec_command(&command)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .process_group(0)
             .spawn()
     };
     #[cfg(not(unix))]
-    let child = build_exec_command(command)
+    let child = build_exec_command(&command)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn();
@@ -302,14 +331,16 @@ fn handle_shutdown(seq: u32) -> io::Result<Vec<u8>> {
 fn handle_spawn_watch(
     timeout_ms: u32,
     command: &str,
+    env: &[(&str, &str)],
     seq: u32,
     writer: Arc<Mutex<UnixStream>>,
 ) -> io::Result<Vec<u8>> {
+    let command = prepend_env(command, env);
     log(
         "INFO",
         &format!(
             "spawn_watch: {} (timeout={}ms)",
-            truncate_preview(command),
+            truncate_preview(&command),
             timeout_ms
         ),
     );
@@ -318,14 +349,14 @@ fn handle_spawn_watch(
     #[cfg(unix)]
     let child = {
         use std::os::unix::process::CommandExt;
-        build_exec_command(command)
+        build_exec_command(&command)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .process_group(0)
             .spawn()
     };
     #[cfg(not(unix))]
-    let child = build_exec_command(command)
+    let child = build_exec_command(&command)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn();
@@ -406,9 +437,9 @@ fn handle_message(msg: &RawMessage) -> io::Result<Option<Vec<u8>>> {
             vsock_proto::encode(MSG_PONG, msg.seq, &[]).map_err(to_io_error)?,
         )),
         MSG_EXEC => {
-            let (timeout_ms, command) =
+            let (timeout_ms, command, env) =
                 vsock_proto::decode_exec(&msg.payload).map_err(to_io_error)?;
-            let (exit_code, stdout, stderr) = handle_exec(timeout_ms, command);
+            let (exit_code, stdout, stderr) = handle_exec(timeout_ms, command, &env);
             let payload = vsock_proto::encode_exec_result(exit_code, &stdout, &stderr);
             Ok(Some(
                 vsock_proto::encode(MSG_EXEC_RESULT, msg.seq, &payload).map_err(to_io_error)?,
@@ -524,11 +555,12 @@ pub fn handle_connection(stream: UnixStream) -> io::Result<()> {
         {
             // Handle spawn_watch separately since it needs the writer Arc
             let response = if msg.msg_type == MSG_SPAWN_WATCH {
-                let (timeout_ms, command) =
+                let (timeout_ms, command, env) =
                     vsock_proto::decode_exec(&msg.payload).map_err(to_io_error)?;
                 Some(handle_spawn_watch(
                     timeout_ms,
                     command,
+                    &env,
                     msg.seq,
                     Arc::clone(&writer),
                 )?)
@@ -635,5 +667,50 @@ pub fn run(unix_socket: Option<&str>) -> io::Result<()> {
                 std::thread::sleep(std::time::Duration::from_millis(RECONNECT_DELAY_MS));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shell_escape_simple() {
+        assert_eq!(shell_escape_value("hello"), "'hello'");
+    }
+
+    #[test]
+    fn shell_escape_with_single_quotes() {
+        assert_eq!(shell_escape_value("it's"), "'it'\\''s'");
+    }
+
+    #[test]
+    fn shell_escape_empty() {
+        assert_eq!(shell_escape_value(""), "''");
+    }
+
+    #[test]
+    fn prepend_env_empty() {
+        assert_eq!(prepend_env("echo hi", &[]), "echo hi");
+    }
+
+    #[test]
+    fn prepend_env_single() {
+        assert_eq!(
+            prepend_env("echo hi", &[("FOO", "bar")]),
+            "export FOO='bar'; echo hi"
+        );
+    }
+
+    #[test]
+    fn prepend_env_multiple() {
+        let result = prepend_env("cmd", &[("A", "1"), ("B", "2")]);
+        assert_eq!(result, "export A='1' B='2'; cmd");
+    }
+
+    #[test]
+    fn prepend_env_with_special_chars() {
+        let result = prepend_env("cmd", &[("KEY", "it's a \"test\"")]);
+        assert_eq!(result, "export KEY='it'\\''s a \"test\"'; cmd");
     }
 }

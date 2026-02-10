@@ -1,5 +1,54 @@
 # Changelog
 
+## [12.26.0](https://github.com/vm0-ai/vm0/compare/web-v12.25.0...web-v12.26.0) (2026-02-10)
+
+
+### Features
+
+* **slack:** add compose agent button to app home ([#2751](https://github.com/vm0-ai/vm0/issues/2751)) ([f5ee9e5](https://github.com/vm0-ai/vm0/commit/f5ee9e57f03b7c5db669480923f019a3a7875e8e))
+
+
+### Bug Fixes
+
+* exclude connector-provided secrets from missing-secrets checks ([#2752](https://github.com/vm0-ai/vm0/issues/2752)) ([3dc98d4](https://github.com/vm0-ai/vm0/commit/3dc98d47451a2084b50a9a6ebce2f2ccb31d2833)), closes [#2747](https://github.com/vm0-ai/vm0/issues/2747)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.7.1
+
+## [12.25.0](https://github.com/vm0-ai/vm0/compare/web-v12.24.2...web-v12.25.0) (2026-02-10)
+
+
+### Features
+
+* **slack:** add documentation link to app home and help command ([#2744](https://github.com/vm0-ai/vm0/issues/2744)) ([17145af](https://github.com/vm0-ai/vm0/commit/17145af4512ad4181a7d368bc1b8d931fbf46355))
+
+## [12.24.2](https://github.com/vm0-ai/vm0/compare/web-v12.24.1...web-v12.24.2) (2026-02-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.7.0
+
+## [12.24.1](https://github.com/vm0-ai/vm0/compare/web-v12.24.0...web-v12.24.1) (2026-02-10)
+
+
+### Performance Improvements
+
+* **ci:** speed up preview deploy with vercel prebuilt and skip sentry source maps ([#2712](https://github.com/vm0-ai/vm0/issues/2712)) ([bf2fdfd](https://github.com/vm0-ai/vm0/commit/bf2fdfdb9c10137bcafe3099f8c107bece82eee6))
+
+## [12.24.0](https://github.com/vm0-ai/vm0/compare/web-v12.23.0...web-v12.24.0) (2026-02-10)
+
+
+### Features
+
+* **platform:** detect and display missing secrets for agents ([#2664](https://github.com/vm0-ai/vm0/issues/2664)) ([e43fb63](https://github.com/vm0-ai/vm0/commit/e43fb63d574f3f614254e702c76270b59381fedf))
+
 ## [12.23.0](https://github.com/vm0-ai/vm0/compare/web-v12.22.2...web-v12.23.0) (2026-02-09)
 
 

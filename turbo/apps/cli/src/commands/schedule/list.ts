@@ -2,13 +2,14 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { listSchedules } from "../../lib/api";
 import { formatRelativeTime } from "../../lib/domain/schedule-utils";
+import { withErrorHandler } from "../../lib/command";
 
 export const listCommand = new Command()
   .name("list")
   .alias("ls")
   .description("List all schedules")
-  .action(async () => {
-    try {
+  .action(
+    withErrorHandler(async () => {
       const result = await listSchedules();
 
       if (result.schedules.length === 0) {
@@ -64,15 +65,5 @@ export const listCommand = new Command()
         ].join("  ");
         console.log(row);
       }
-    } catch (error) {
-      console.error(chalk.red("✗ Failed to list schedules"));
-      if (error instanceof Error) {
-        if (error.message.includes("Not authenticated")) {
-          console.error(chalk.dim("  Run: vm0 auth login"));
-        } else {
-          console.error(chalk.dim(`  ${error.message}`));
-        }
-      }
-      process.exit(1);
-    }
-  });
+    }),
+  );

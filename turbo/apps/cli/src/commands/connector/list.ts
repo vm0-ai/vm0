@@ -2,13 +2,14 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { CONNECTOR_TYPES } from "@vm0/core";
 import { listConnectors } from "../../lib/api";
+import { withErrorHandler } from "../../lib/command";
 
 export const listCommand = new Command()
   .name("list")
   .alias("ls")
   .description("List all connectors and their status")
-  .action(async () => {
-    try {
+  .action(
+    withErrorHandler(async () => {
       const result = await listConnectors();
       const connectedMap = new Map(result.connectors.map((c) => [c.type, c]));
 
@@ -47,19 +48,5 @@ export const listCommand = new Command()
       console.log();
       console.log(chalk.dim("To connect a service:"));
       console.log(chalk.dim("  vm0 connector connect <type>"));
-    } catch (error) {
-      if (error instanceof Error) {
-        if (error.message.includes("Not authenticated")) {
-          console.error(chalk.red("✗ Not authenticated. Run: vm0 auth login"));
-        } else {
-          console.error(chalk.red(`✗ ${error.message}`));
-          if (error.cause instanceof Error) {
-            console.error(chalk.dim(`  Cause: ${error.cause.message}`));
-          }
-        }
-      } else {
-        console.error(chalk.red("✗ An unexpected error occurred"));
-      }
-      process.exit(1);
-    }
-  });
+    }),
+  );

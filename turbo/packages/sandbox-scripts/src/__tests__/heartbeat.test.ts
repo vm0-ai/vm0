@@ -1,19 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock http-client before importing heartbeat
-vi.mock("../src/lib/http-client.js", () => ({
+vi.mock("../scripts/lib/http-client.js", () => ({
   httpPostJson: vi.fn(),
 }));
 
 // Mock log to suppress output during tests
-vi.mock("../src/lib/log.js", () => ({
+vi.mock("../scripts/lib/log.js", () => ({
   logInfo: vi.fn(),
   logWarn: vi.fn(),
   logError: vi.fn(),
 }));
 
-import { startHeartbeat, resetShutdown } from "../src/lib/heartbeat.js";
-import { httpPostJson } from "../src/lib/http-client.js";
+import { startHeartbeat, resetShutdown } from "../scripts/lib/heartbeat.js";
+import { httpPostJson } from "../scripts/lib/http-client.js";
 
 const mockHttpPostJson = vi.mocked(httpPostJson);
 

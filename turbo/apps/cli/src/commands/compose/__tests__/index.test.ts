@@ -1785,29 +1785,54 @@ describe("GitHub URL compose", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("should show security warning when GitHub URL used without --experimental-shared-compose flag", async () => {
-    await expect(async () => {
-      await composeCommand.parseAsync([
-        "node",
-        "cli",
-        "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
-      ]);
-    }).rejects.toThrow("process.exit called");
+  it("should accept deprecated --experimental-shared-compose flag without error", async () => {
+    // Setup mock for GitHub URL compose
+    const tempRoot = path.join(tempDir, "github-download");
+    const cookbookDir = createMockCookbookDir(
+      tempRoot,
+      "tutorials/101-intro",
+      `version: "1.0"
+agents:
+  intro:
+    framework: claude-code`,
+    );
+    mockDownloadGitHubDirectory.mockResolvedValue({
+      dir: cookbookDir,
+      tempRoot,
+    });
 
-    expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "Composing shared agents requires --experimental-shared-compose flag",
-      ),
+    // Setup API mocks
+    server.use(
+      http.get("http://localhost:3000/api/agent/composes", () => {
+        return HttpResponse.json(
+          { error: { message: "Not found", code: "NOT_FOUND" } },
+          { status: 404 },
+        );
+      }),
+      http.post("http://localhost:3000/api/agent/composes", () => {
+        return HttpResponse.json({
+          composeId: "cmp-123",
+          name: "intro",
+          versionId: "a".repeat(64),
+          action: "created",
+        });
+      }),
+      http.get("http://localhost:3000/api/scope", () => {
+        return HttpResponse.json(scopeResponse);
+      }),
     );
-    expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "Composing agents from other users carries security risks.",
-      ),
+
+    // Should work WITH the deprecated flag (backward compatibility)
+    await composeCommand.parseAsync([
+      "node",
+      "cli",
+      "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
+      "--experimental-shared-compose",
+    ]);
+
+    expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect.stringContaining("Compose created"),
     );
-    expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("Only compose agents from users you trust."),
-    );
-    expect(mockExit).toHaveBeenCalledWith(1);
   });
 
   it("should error when vm0.yaml not found in GitHub directory", async () => {
@@ -1822,7 +1847,6 @@ describe("GitHub URL compose", () => {
         "node",
         "cli",
         "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
-        "--experimental-shared-compose",
       ]);
     }).rejects.toThrow("process.exit called");
 
@@ -1860,7 +1884,6 @@ volumes:
         "node",
         "cli",
         "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/104-intro-volume",
-        "--experimental-shared-compose",
       ]);
     }).rejects.toThrow("process.exit called");
 
@@ -1915,7 +1938,6 @@ agents:
       "node",
       "cli",
       "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
-      "--experimental-shared-compose",
     ]);
 
     expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -1984,7 +2006,6 @@ agents:
       "node",
       "cli",
       "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
-      "--experimental-shared-compose",
     ]);
 
     expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -2038,7 +2059,6 @@ agents:
       "node",
       "cli",
       "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
-      "--experimental-shared-compose",
     ]);
 
     // The tempRoot should be fully cleaned up (including the .git folder)
@@ -2046,17 +2066,13 @@ agents:
   });
 
   it("should detect GitHub tree URLs correctly", async () => {
-    // Non-GitHub URL should not trigger experimental flag check
+    // Non-GitHub URL should show "not found" error
     await expect(async () => {
       await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
     }).rejects.toThrow("process.exit called");
 
-    // Should show "not found" error, not the experimental flag error
     expect(mockConsoleError).toHaveBeenCalledWith(
       expect.stringContaining("Config file not found"),
-    );
-    expect(mockConsoleError).not.toHaveBeenCalledWith(
-      expect.stringContaining("--experimental-shared-compose"),
     );
   });
 
@@ -2100,7 +2116,6 @@ agents:
         "node",
         "cli",
         "https://github.com/owner/repo",
-        "--experimental-shared-compose",
       ]);
 
       expect(mockDownloadGitHubDirectory).toHaveBeenCalledWith(
@@ -2150,25 +2165,10 @@ agents:
         "node",
         "cli",
         "https://github.com/owner/repo/tree/main",
-        "--experimental-shared-compose",
       ]);
 
       expect(mockDownloadGitHubDirectory).toHaveBeenCalledWith(
         "https://github.com/owner/repo/tree/main",
-      );
-    });
-
-    it("should require --experimental-shared-compose for plain repo URL", async () => {
-      await expect(async () => {
-        await composeCommand.parseAsync([
-          "node",
-          "cli",
-          "https://github.com/owner/repo",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("--experimental-shared-compose"),
       );
     });
 
@@ -2211,7 +2211,6 @@ agents:
         "node",
         "cli",
         "https://github.com/owner/repo/tree/main/",
-        "--experimental-shared-compose",
       ]);
 
       expect(mockDownloadGitHubDirectory).toHaveBeenCalledWith(
@@ -2262,7 +2261,6 @@ agents:
         "node",
         "cli",
         "https://github.com/owner/repo/tree/main/examples/101-intro/",
-        "--experimental-shared-compose",
       ]);
 
       expect(mockDownloadGitHubDirectory).toHaveBeenCalledWith(
@@ -2315,7 +2313,6 @@ agents:
           "node",
           "cli",
           "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
-          "--experimental-shared-compose",
         ]);
       }).rejects.toThrow("process.exit called");
 
@@ -2383,7 +2380,6 @@ agents:
         "node",
         "cli",
         "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
-        "--experimental-shared-compose",
         "--yes",
       ]);
 
@@ -2434,7 +2430,6 @@ agents:
         "node",
         "cli",
         "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
-        "--experimental-shared-compose",
       ]);
 
       // Should not show the "already exists" warning
@@ -2489,7 +2484,6 @@ agents:
         "node",
         "cli",
         "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
-        "--experimental-shared-compose",
         "--json",
       ]);
 
@@ -2553,7 +2547,6 @@ agents:
         "node",
         "cli",
         "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
-        "--experimental-shared-compose",
         "--json",
       ]);
 
@@ -2585,7 +2578,6 @@ agents:
           "node",
           "cli",
           "https://github.com/vm0-ai/vm0-cookbooks/tree/main/tutorials/101-intro",
-          "--experimental-shared-compose",
           "--json",
         ]);
       }).rejects.toThrow("process.exit called");
@@ -2603,6 +2595,414 @@ agents:
       expect(jsonOutputCall).toBeDefined();
       const result = JSON.parse(jsonOutputCall![0] as string);
       expect(result.error).toContain("vm0.yaml not found");
+    });
+  });
+
+  describe("missing secrets/variables detection", () => {
+    const composeApiHandler = http.post(
+      "http://localhost:3000/api/agent/composes",
+      () => {
+        return HttpResponse.json({
+          composeId: "cmp-123",
+          name: "test",
+          versionId:
+            "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
+          action: "created",
+        });
+      },
+    );
+
+    const scopeApiHandler = http.get("http://localhost:3000/api/scope", () => {
+      return HttpResponse.json(scopeResponse);
+    });
+
+    it("should show setup URL when secrets are missing", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        yaml.stringify({
+          version: "1.0",
+          agents: {
+            test: {
+              framework: "claude-code",
+              working_dir: "/",
+              environment: {
+                API_KEY: "${{ secrets.API_KEY }}",
+                DB_URL: "${{ secrets.DB_URL }}",
+              },
+            },
+          },
+        }),
+      );
+
+      server.use(
+        composeApiHandler,
+        scopeApiHandler,
+        http.get("http://localhost:3000/api/secrets", () => {
+          return HttpResponse.json({ secrets: [] });
+        }),
+        http.get("http://localhost:3000/api/variables", () => {
+          return HttpResponse.json({ variables: [] });
+        }),
+      );
+
+      await composeCommand.parseAsync(["node", "cli"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Missing secrets/variables detected");
+      expect(logCalls).toContain("environment-variables-setup");
+      expect(logCalls).toContain("secrets=");
+      expect(logCalls).toContain("API_KEY");
+      expect(logCalls).toContain("DB_URL");
+    });
+
+    it("should not show setup URL when all secrets exist", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        yaml.stringify({
+          version: "1.0",
+          agents: {
+            test: {
+              framework: "claude-code",
+              working_dir: "/",
+              environment: {
+                API_KEY: "${{ secrets.API_KEY }}",
+              },
+            },
+          },
+        }),
+      );
+
+      server.use(
+        composeApiHandler,
+        scopeApiHandler,
+        http.get("http://localhost:3000/api/secrets", () => {
+          return HttpResponse.json({
+            secrets: [
+              {
+                id: "1",
+                name: "API_KEY",
+                description: null,
+                type: "user",
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
+            ],
+          });
+        }),
+      );
+
+      await composeCommand.parseAsync(["node", "cli"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).not.toContain("Missing secrets/variables detected");
+      expect(logCalls).not.toContain("environment-variables-setup");
+    });
+
+    it("should show setup URL with both secrets and vars when missing", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        yaml.stringify({
+          version: "1.0",
+          agents: {
+            test: {
+              framework: "claude-code",
+              working_dir: "/",
+              environment: {
+                API_KEY: "${{ secrets.API_KEY }}",
+                REGION: "${{ vars.REGION }}",
+              },
+            },
+          },
+        }),
+      );
+
+      server.use(
+        composeApiHandler,
+        scopeApiHandler,
+        http.get("http://localhost:3000/api/secrets", () => {
+          return HttpResponse.json({ secrets: [] });
+        }),
+        http.get("http://localhost:3000/api/variables", () => {
+          return HttpResponse.json({ variables: [] });
+        }),
+      );
+
+      await composeCommand.parseAsync(["node", "cli"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Missing secrets/variables detected");
+      expect(logCalls).toContain("secrets=API_KEY");
+      expect(logCalls).toContain("vars=REGION");
+    });
+
+    it("should include setupUrl in JSON output when items are missing", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        yaml.stringify({
+          version: "1.0",
+          agents: {
+            test: {
+              framework: "claude-code",
+              working_dir: "/",
+              environment: {
+                API_KEY: "${{ secrets.API_KEY }}",
+              },
+            },
+          },
+        }),
+      );
+
+      server.use(
+        composeApiHandler,
+        scopeApiHandler,
+        http.get("http://localhost:3000/api/secrets", () => {
+          return HttpResponse.json({ secrets: [] });
+        }),
+        http.get("http://localhost:3000/api/variables", () => {
+          return HttpResponse.json({ variables: [] });
+        }),
+      );
+
+      await composeCommand.parseAsync(["node", "cli", "--json"]);
+
+      const jsonOutputCall = mockConsoleLog.mock.calls.find((call) => {
+        try {
+          const parsed = JSON.parse(call[0] as string);
+          return parsed.composeId !== undefined;
+        } catch {
+          return false;
+        }
+      });
+
+      expect(jsonOutputCall).toBeDefined();
+      const result = JSON.parse(jsonOutputCall![0] as string);
+      expect(result.missingSecrets).toEqual(["API_KEY"]);
+      expect(result.setupUrl).toContain("environment-variables-setup");
+      expect(result.setupUrl).toContain("secrets=API_KEY");
+    });
+
+    it("should not include setupUrl in JSON output when no items missing", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        yaml.stringify({
+          version: "1.0",
+          agents: {
+            test: {
+              framework: "claude-code",
+              working_dir: "/",
+              environment: {
+                STATIC: "static-value",
+              },
+            },
+          },
+        }),
+      );
+
+      server.use(composeApiHandler, scopeApiHandler);
+
+      await composeCommand.parseAsync(["node", "cli", "--json"]);
+
+      const jsonOutputCall = mockConsoleLog.mock.calls.find((call) => {
+        try {
+          const parsed = JSON.parse(call[0] as string);
+          return parsed.composeId !== undefined;
+        } catch {
+          return false;
+        }
+      });
+
+      expect(jsonOutputCall).toBeDefined();
+      const result = JSON.parse(jsonOutputCall![0] as string);
+      expect(result.missingSecrets).toBeUndefined();
+      expect(result.missingVars).toBeUndefined();
+      expect(result.setupUrl).toBeUndefined();
+    });
+
+    it("should only show missing items, not already configured ones", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        yaml.stringify({
+          version: "1.0",
+          agents: {
+            test: {
+              framework: "claude-code",
+              working_dir: "/",
+              environment: {
+                EXISTING_KEY: "${{ secrets.EXISTING_KEY }}",
+                MISSING_KEY: "${{ secrets.MISSING_KEY }}",
+                EXISTING_VAR: "${{ vars.EXISTING_VAR }}",
+                MISSING_VAR: "${{ vars.MISSING_VAR }}",
+              },
+            },
+          },
+        }),
+      );
+
+      server.use(
+        composeApiHandler,
+        scopeApiHandler,
+        http.get("http://localhost:3000/api/secrets", () => {
+          return HttpResponse.json({
+            secrets: [
+              {
+                id: "1",
+                name: "EXISTING_KEY",
+                description: null,
+                type: "user",
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
+            ],
+          });
+        }),
+        http.get("http://localhost:3000/api/variables", () => {
+          return HttpResponse.json({
+            variables: [
+              {
+                id: "1",
+                name: "EXISTING_VAR",
+                value: "val",
+                description: null,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
+            ],
+          });
+        }),
+      );
+
+      await composeCommand.parseAsync(["node", "cli", "--json"]);
+
+      const jsonOutputCall = mockConsoleLog.mock.calls.find((call) => {
+        try {
+          const parsed = JSON.parse(call[0] as string);
+          return parsed.composeId !== undefined;
+        } catch {
+          return false;
+        }
+      });
+
+      expect(jsonOutputCall).toBeDefined();
+      const result = JSON.parse(jsonOutputCall![0] as string);
+      expect(result.missingSecrets).toEqual(["MISSING_KEY"]);
+      expect(result.missingVars).toEqual(["MISSING_VAR"]);
+      expect(result.setupUrl).toContain("secrets=MISSING_KEY");
+      expect(result.setupUrl).toContain("vars=MISSING_VAR");
+      expect(result.setupUrl).not.toContain("EXISTING_KEY");
+      expect(result.setupUrl).not.toContain("EXISTING_VAR");
+    });
+
+    it("should not show connector-provided secrets as missing", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        yaml.stringify({
+          version: "1.0",
+          agents: {
+            test: {
+              framework: "claude-code",
+              working_dir: "/",
+              environment: {
+                GH_TOKEN: "${{ secrets.GH_TOKEN }}",
+                OTHER_KEY: "${{ secrets.OTHER_KEY }}",
+              },
+            },
+          },
+        }),
+      );
+
+      server.use(
+        composeApiHandler,
+        scopeApiHandler,
+        http.get("http://localhost:3000/api/secrets", () => {
+          return HttpResponse.json({ secrets: [] });
+        }),
+        http.get("http://localhost:3000/api/variables", () => {
+          return HttpResponse.json({ variables: [] });
+        }),
+        http.get("http://localhost:3000/api/connectors", () => {
+          return HttpResponse.json({
+            connectors: [
+              {
+                id: "conn-1",
+                type: "github",
+                authMethod: "oauth",
+                externalId: "12345",
+                externalUsername: "testuser",
+                externalEmail: null,
+                oauthScopes: ["repo"],
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
+            ],
+          });
+        }),
+      );
+
+      await composeCommand.parseAsync(["node", "cli", "--json"]);
+
+      const jsonOutputCall = mockConsoleLog.mock.calls.find((call) => {
+        try {
+          const parsed = JSON.parse(call[0] as string);
+          return parsed.composeId !== undefined;
+        } catch {
+          return false;
+        }
+      });
+
+      expect(jsonOutputCall).toBeDefined();
+      const result = JSON.parse(jsonOutputCall![0] as string);
+      // GH_TOKEN is provided by GitHub connector, should not be missing
+      expect(result.missingSecrets).toEqual(["OTHER_KEY"]);
+      expect(result.setupUrl).toContain("secrets=OTHER_KEY");
+      expect(result.setupUrl).not.toContain("GH_TOKEN");
+    });
+
+    it("should show all secrets as missing when no connectors are connected", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        yaml.stringify({
+          version: "1.0",
+          agents: {
+            test: {
+              framework: "claude-code",
+              working_dir: "/",
+              environment: {
+                GH_TOKEN: "${{ secrets.GH_TOKEN }}",
+              },
+            },
+          },
+        }),
+      );
+
+      server.use(
+        composeApiHandler,
+        scopeApiHandler,
+        http.get("http://localhost:3000/api/secrets", () => {
+          return HttpResponse.json({ secrets: [] });
+        }),
+        http.get("http://localhost:3000/api/variables", () => {
+          return HttpResponse.json({ variables: [] });
+        }),
+        http.get("http://localhost:3000/api/connectors", () => {
+          return HttpResponse.json({ connectors: [] });
+        }),
+      );
+
+      await composeCommand.parseAsync(["node", "cli", "--json"]);
+
+      const jsonOutputCall = mockConsoleLog.mock.calls.find((call) => {
+        try {
+          const parsed = JSON.parse(call[0] as string);
+          return parsed.composeId !== undefined;
+        } catch {
+          return false;
+        }
+      });
+
+      expect(jsonOutputCall).toBeDefined();
+      const result = JSON.parse(jsonOutputCall![0] as string);
+      // No connector connected, GH_TOKEN should still be missing
+      expect(result.missingSecrets).toEqual(["GH_TOKEN"]);
     });
   });
 });

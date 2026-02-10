@@ -179,6 +179,8 @@ jobs:
             SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_WEB }}
             GH_OAUTH_CLIENT_ID=${{ vars.GH_OAUTH_CLIENT_ID }}
             GH_OAUTH_CLIENT_SECRET=${{ secrets.GH_OAUTH_CLIENT_SECRET }}
+            NOTION_OAUTH_CLIENT_ID=${{ vars.NOTION_OAUTH_CLIENT_ID }}
+            NOTION_OAUTH_CLIENT_SECRET=${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}

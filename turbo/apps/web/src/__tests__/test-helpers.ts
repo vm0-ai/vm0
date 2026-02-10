@@ -47,6 +47,7 @@ import { slackInstallations } from "../db/schema/slack-installation";
 import { slackUserLinks } from "../db/schema/slack-user-link";
 import { slackBindings } from "../db/schema/slack-binding";
 import { agentComposes } from "../db/schema/agent-compose";
+import { connectors } from "../db/schema/connector";
 import { scopes } from "../db/schema/scope";
 import { encryptCredentialValue } from "../lib/crypto/secrets-encryption";
 import { env } from "../env";
@@ -185,6 +186,10 @@ interface TestContext {
     vm0UserId: string,
     options?: { name?: string },
   ): Promise<{ id: string; name: string; scopeId: string }>;
+  createConnector(
+    scopeId: string,
+    options?: { type?: string; authMethod?: string },
+  ): Promise<{ id: string; type: string }>;
 }
 
 export interface UserContext {
@@ -630,6 +635,34 @@ export function testContext(): TestContext {
     };
   }
 
+  /**
+   * Creates a connector record for a scope.
+   * Used to test connector-aware secret checks.
+   */
+  async function createConnector(
+    scopeId: string,
+    options: { type?: string; authMethod?: string } = {},
+  ): Promise<{ id: string; type: string }> {
+    const { type = "github", authMethod = "oauth" } = options;
+
+    initServices();
+
+    const [connector] = await globalThis.services.db
+      .insert(connectors)
+      .values({
+        scopeId,
+        type,
+        authMethod,
+      })
+      .returning();
+
+    if (!connector) {
+      throw new Error("Failed to create connector");
+    }
+
+    return { id: connector.id, type: connector.type };
+  }
+
   return {
     get signal(): AbortSignal {
       return controller.signal;
@@ -647,5 +680,6 @@ export function testContext(): TestContext {
     createSlackInstallation,
     createSlackBinding,
     createAgentCompose,
+    createConnector,
   };
 }

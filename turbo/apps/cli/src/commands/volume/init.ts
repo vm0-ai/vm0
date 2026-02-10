@@ -7,13 +7,14 @@ import {
   readStorageConfig,
 } from "../../lib/storage/storage-utils";
 import { promptText, isInteractive } from "../../lib/utils/prompt-utils";
+import { withErrorHandler } from "../../lib/command";
 
 export const initCommand = new Command()
   .name("init")
   .description("Initialize a volume in the current directory")
   .option("-n, --name <name>", "Volume name (required in non-interactive mode)")
-  .action(async (options: { name?: string }) => {
-    try {
+  .action(
+    withErrorHandler(async (options: { name?: string }) => {
       const cwd = process.cwd();
       const dirName = path.basename(cwd);
 
@@ -90,11 +91,5 @@ export const initCommand = new Command()
           `  Config saved to ${path.join(cwd, ".vm0", "storage.yaml")}`,
         ),
       );
-    } catch (error) {
-      console.error(chalk.red("✗ Failed to initialize volume"));
-      if (error instanceof Error) {
-        console.error(chalk.dim(`  ${error.message}`));
-      }
-      process.exit(1);
-    }
-  });
+    }),
+  );

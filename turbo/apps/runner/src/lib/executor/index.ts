@@ -20,7 +20,7 @@ import { VsockClient } from "../firecracker/vsock.js";
 import type { ExecutionContext } from "../api.js";
 import type { RunnerConfig } from "../config.js";
 import { runnerPaths, vmPaths } from "../paths.js";
-import { ENV_LOADER_PATH } from "../scripts/index.js";
+import { RUN_AGENT_PATH } from "../scripts/index.js";
 import { getVMRegistry } from "../proxy/index.js";
 import {
   withSandboxTiming,
@@ -31,7 +31,7 @@ import {
 
 // Import from extracted modules
 import type { ExecutionResult, ExecutionOptions } from "./types.js";
-import { buildEnvironmentVariables, ENV_JSON_PATH } from "./env.js";
+import { buildEnvironmentVariables } from "./env.js";
 import { uploadNetworkLogs } from "../network-logs/index.js";
 import { downloadStorages, restoreSessionHistory } from "../vm-setup/index.js";
 import { createLogger } from "../logger.js";
@@ -137,10 +137,8 @@ export async function executeJob(
       `VM ${vmId} started, guest IP: ${guestIp}, veth NS IP: ${vethNsIp}`,
     );
 
-    // Pre-build env JSON before waiting for guest (sync, no guest dependency)
-    const envJson = JSON.stringify(
-      buildEnvironmentVariables(context, config.server.url),
-    );
+    // Pre-build env vars before waiting for guest (sync, no guest dependency)
+    const envVars = buildEnvironmentVariables(context, config.server.url);
 
     // Handle network security before guest wait (sync, no guest dependency)
     const firewallConfig = context.experimentalFirewall;
@@ -200,13 +198,6 @@ export async function executeJob(
       );
     }
 
-    // Write pre-built env JSON to VM
-    // Using JSON avoids shell escaping issues entirely - Python loads it directly
-    logger.log(
-      `Writing env JSON (${envJson.length} bytes) to ${ENV_JSON_PATH}`,
-    );
-    await guest.writeFile(ENV_JSON_PATH, envJson);
-
     // Execute agent or direct command using event-driven mode
     // Note: Network connectivity is validated by agent's first heartbeat (fail-fast)
     // The agent spawns in background, and we wait for exit notification (no polling)
@@ -221,13 +212,16 @@ export async function executeJob(
       logger.log(`Running command directly (benchmark mode)...`);
       command = `${context.prompt} > ${systemLogFile} 2>&1`;
     } else {
-      // Production mode: run env-loader.mjs which loads environment and runs run-agent.mjs
-      logger.log(`Running agent via env-loader...`);
-      command = `node ${ENV_LOADER_PATH} > ${systemLogFile} 2>&1`;
+      // Production mode: run run-agent.mjs directly with env vars passed via vsock protocol
+      logger.log(
+        `Running agent via vsock with ${Object.keys(envVars).length} env vars...`,
+      );
+      command = `node ${RUN_AGENT_PATH} > ${systemLogFile} 2>&1`;
     }
 
     // Spawn process and get PID (returns immediately)
-    const { pid } = await guest.spawnAndWatch(command, maxWaitMs);
+    // Env vars are passed via vsock protocol — guest agent exports them before running command
+    const { pid } = await guest.spawnAndWatch(command, maxWaitMs, envVars);
     logger.log(`Process started with pid=${pid}`);
 
     // Wait for process exit event (event-driven, no polling)

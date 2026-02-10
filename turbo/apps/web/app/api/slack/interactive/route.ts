@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { eq, and, inArray } from "drizzle-orm";
-import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
+import {
+  extractVariableReferences,
+  groupVariablesBySource,
+  getConnectorProvidedSecretNames,
+} from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
 import {
@@ -16,6 +20,7 @@ import {
 } from "../../../../src/db/schema/agent-compose";
 import {
   buildAgentAddModal,
+  buildAgentComposeModal,
   buildAgentUpdateModal,
 } from "../../../../src/lib/slack/blocks";
 import { decryptCredentialValue } from "../../../../src/lib/crypto/secrets-encryption";
@@ -37,7 +42,7 @@ import { slackComposeRequests } from "../../../../src/db/schema/slack-compose-re
 import { generateEphemeralCliToken } from "../../../../src/lib/auth/cli-token-service";
 import { triggerComposeJob } from "../../../../src/lib/compose/trigger-compose-job";
 import { listModelProviders } from "../../../../src/lib/model-provider/model-provider-service";
-import { ensureScopeAndArtifact } from "../../../../src/lib/slack/handlers/shared";
+import { listConnectors } from "../../../../src/lib/connector/connector-service";
 
 const log = logger("slack:interactive");
 
@@ -221,12 +226,19 @@ async function fetchAvailableAgents(
           .where(inArray(agentComposeVersions.id, versionIds))
       : [];
 
-  // Get user's existing secrets and variables
-  const [userSecrets, userVars] = await Promise.all([
+  // Get user's existing secrets, variables, and connectors
+  const [userSecrets, userVars, userConnectors] = await Promise.all([
     listSecrets(vm0UserId),
     listVariables(vm0UserId),
+    listConnectors(vm0UserId),
   ]);
-  const existingSecretNames = new Set(userSecrets.map((s) => s.name));
+  const connectorProvided = getConnectorProvidedSecretNames(
+    userConnectors.map((c) => c.type),
+  );
+  const existingSecretNames = new Set([
+    ...userSecrets.map((s) => s.name),
+    ...connectorProvided,
+  ]);
   const existingVarNames = new Set(userVars.map((v) => v.name));
 
   // Build map of compose ID to required secrets and vars
@@ -306,12 +318,19 @@ async function fetchBoundAgents(
           .where(inArray(agentComposeVersions.id, versionIds))
       : [];
 
-  // Get user's existing secrets and variables
-  const [userSecrets, userVars] = await Promise.all([
+  // Get user's existing secrets, variables, and connectors
+  const [userSecrets, userVars, userConnectors] = await Promise.all([
     listSecrets(vm0UserId),
     listVariables(vm0UserId),
+    listConnectors(vm0UserId),
   ]);
-  const existingSecretNames = new Set(userSecrets.map((s) => s.name));
+  const connectorProvided = getConnectorProvidedSecretNames(
+    userConnectors.map((c) => c.type),
+  );
+  const existingSecretNames = new Set([
+    ...userSecrets.map((s) => s.name),
+    ...connectorProvided,
+  ]);
   const existingVarNames = new Set(userVars.map((v) => v.name));
 
   // Build map of compose ID to required secrets and vars
@@ -549,6 +568,11 @@ async function dispatchBlockAction(
         await handleModelProviderRefresh(payload);
       }
       break;
+    case "home_agent_compose":
+      if (payload.trigger_id) {
+        await handleHomeAgentCompose(payload, payload.trigger_id);
+      }
+      break;
     case "home_disconnect":
       await handleHomeDisconnect(payload);
       break;
@@ -624,8 +648,6 @@ async function handleHomeAgentLink(
   const userLink = await getUserLink(payload.user.id, payload.team.id);
   if (!userLink) return;
 
-  await ensureScopeAndArtifact(userLink.vm0UserId);
-
   // Check model provider status
   const providers = await listModelProviders(userLink.vm0UserId);
   const hasModelProvider = providers.length > 0;
@@ -638,6 +660,26 @@ async function handleHomeAgentLink(
     channelId,
     hasModelProvider,
   );
+
+  await client.views.open({
+    trigger_id: triggerId,
+    view: modal,
+  });
+}
+
+/**
+ * Handle compose button on App Home
+ */
+async function handleHomeAgentCompose(
+  payload: SlackInteractivePayload,
+  triggerId: string,
+): Promise<void> {
+  const client = await getSlackClientForWorkspace(payload.team.id);
+  if (!client) {
+    return;
+  }
+
+  const modal = buildAgentComposeModal();
 
   await client.views.open({
     trigger_id: triggerId,

@@ -22,6 +22,7 @@ import {
   type ModelProviderType,
 } from "@vm0/core";
 import { isInteractive } from "../../lib/utils/prompt-utils";
+import { withErrorHandler } from "../../lib/command";
 
 interface SetupInput {
   type: ModelProviderType;
@@ -579,20 +580,6 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
   return { type, secret, selectedModel, isInteractiveMode: true };
 }
 
-function handleSetupError(error: unknown): never {
-  if (error instanceof Error) {
-    if (error.message.includes("Not authenticated")) {
-      console.error(chalk.red("✗ Not authenticated"));
-      console.error(chalk.dim("  Run: vm0 auth login"));
-    } else {
-      console.error(chalk.red(`✗ ${error.message}`));
-    }
-  } else {
-    console.error(chalk.red("✗ An unexpected error occurred"));
-  }
-  process.exit(1);
-}
-
 async function promptSetAsDefault(
   type: ModelProviderType,
   framework: string,
@@ -639,13 +626,13 @@ export const setupCommand = new Command()
   )
   .option("-m, --model <model>", "Model selection (for non-interactive mode)")
   .action(
-    async (options: {
-      type?: string;
-      secret?: string[];
-      authMethod?: string;
-      model?: string;
-    }) => {
-      try {
+    withErrorHandler(
+      async (options: {
+        type?: string;
+        secret?: string[];
+        authMethod?: string;
+        model?: string;
+      }) => {
         let input: SetupInput;
         const secretArgs = options.secret ?? [];
 
@@ -731,8 +718,6 @@ export const setupCommand = new Command()
             provider.isDefault,
           );
         }
-      } catch (error) {
-        handleSetupError(error);
-      }
-    },
+      },
+    ),
   );

@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.7.1](https://github.com/vm0-ai/vm0/compare/core-v8.7.0...core-v8.7.1) (2026-02-10)
+
+
+### Bug Fixes
+
+* exclude connector-provided secrets from missing-secrets checks ([#2752](https://github.com/vm0-ai/vm0/issues/2752)) ([3dc98d4](https://github.com/vm0-ai/vm0/commit/3dc98d47451a2084b50a9a6ebce2f2ccb31d2833)), closes [#2747](https://github.com/vm0-ai/vm0/issues/2747)
+
+## [8.7.0](https://github.com/vm0-ai/vm0/compare/core-v8.6.1...core-v8.7.0) (2026-02-10)
+
+
+### Features
+
+* **vsock:** add environment variable support to exec/spawn_watch ([#2736](https://github.com/vm0-ai/vm0/issues/2736)) ([6f93486](https://github.com/vm0-ai/vm0/commit/6f9348601ae5736e20a8c32a2064ac394a70e70b))
+
 ## [8.6.1](https://github.com/vm0-ai/vm0/compare/core-v8.6.0...core-v8.6.1) (2026-02-09)
 
 

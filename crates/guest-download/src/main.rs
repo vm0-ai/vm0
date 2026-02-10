@@ -74,13 +74,13 @@ fn main() {
 
     let start = Instant::now();
     let success = run(manifest_path);
-    let duration_ms = start.elapsed().as_millis() as u64;
+    let elapsed = start.elapsed();
 
     if success {
-        record_sandbox_op("download_total", duration_ms, true, None);
-        log_info!(LOG_TAG, "Download completed in {duration_ms}ms");
+        record_sandbox_op("download_total", elapsed, true, None);
+        log_info!(LOG_TAG, "Download completed in {}ms", elapsed.as_millis());
     } else {
-        record_sandbox_op("download_total", duration_ms, false, None);
+        record_sandbox_op("download_total", elapsed, false, None);
         log_error!(LOG_TAG, "Download failed");
         std::process::exit(1);
     }
@@ -121,13 +121,12 @@ fn run(manifest_path: &str) -> bool {
 
         match download_with_retry(url, &artifact.mount_path) {
             Ok(()) => {
-                let duration_ms = start.elapsed().as_millis() as u64;
-                record_sandbox_op("artifact_download", duration_ms, true, None);
-                log_info!(LOG_TAG, "Artifact downloaded in {duration_ms}ms");
+                let elapsed = start.elapsed();
+                record_sandbox_op("artifact_download", elapsed, true, None);
+                log_info!(LOG_TAG, "Artifact downloaded in {}ms", elapsed.as_millis());
             }
             Err(e) => {
-                let duration_ms = start.elapsed().as_millis() as u64;
-                record_sandbox_op("artifact_download", duration_ms, false, Some(&e));
+                record_sandbox_op("artifact_download", start.elapsed(), false, Some(&e));
                 log_error!(LOG_TAG, "Artifact download failed: {e}");
                 all_success = false;
             }
@@ -181,20 +180,20 @@ fn download_storages_parallel(storages: &[Storage]) -> bool {
                     log_info!(LOG_TAG, "Downloading storage {} to {}", idx + 1, mount_path);
 
                     let result = download_with_retry(&url, &mount_path);
-                    let duration_ms = start.elapsed().as_millis() as u64;
+                    let elapsed = start.elapsed();
 
                     match &result {
                         Ok(()) => {
-                            record_sandbox_op("storage_download", duration_ms, true, None);
+                            record_sandbox_op("storage_download", elapsed, true, None);
                             log_info!(
                                 LOG_TAG,
                                 "Storage {} downloaded in {}ms",
                                 idx + 1,
-                                duration_ms
+                                elapsed.as_millis()
                             );
                         }
                         Err(e) => {
-                            record_sandbox_op("storage_download", duration_ms, false, Some(e));
+                            record_sandbox_op("storage_download", elapsed, false, Some(e));
                             log_error!(LOG_TAG, "Storage {} download failed: {}", idx + 1, e);
                         }
                     }

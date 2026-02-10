@@ -170,7 +170,7 @@ describe("auth login", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Login failed"),
+        expect.stringContaining("Failed to request device code"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -187,7 +187,7 @@ describe("auth login", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Login failed"),
+        expect.stringContaining("Failed to fetch"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -203,9 +203,6 @@ describe("auth login", () => {
         await loginCommand.parseAsync(["node", "cli"]);
       }).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Login failed"),
-      );
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("fetch failed"),
       );
@@ -228,9 +225,6 @@ describe("auth login", () => {
         await loginCommand.parseAsync(["node", "cli"]);
       }).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Login failed"),
-      );
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("An unexpected network issue occurred"),
       );

@@ -18,7 +18,6 @@ import {
 import { computeContentHashFromHashes } from "../../storage/content-hash";
 import { putS3Object } from "../../s3/s3-client";
 import { env } from "../../../env";
-import { after } from "next/server";
 import { logger } from "../../logger";
 
 const log = logger("slack:shared");
@@ -291,62 +290,60 @@ export async function ensureScopeAndArtifact(vm0UserId: string): Promise<void> {
   // If HEAD version already exists, nothing more to do
   if (storage.headVersionId) return;
 
-  // Create initial empty version via after() — runs after response is sent
-  // but keeps the serverless function alive until completion.
+  // Create initial empty version synchronously — this only runs during the
+  // link flow (server action) so there is no Slack timeout constraint.
   const storageId = storage.id;
   const scopeSlug = scope.slug;
-  after(
-    (async () => {
-      const versionId = computeContentHashFromHashes(storageId, []);
-      const s3Key = `${scopeSlug}/artifact/artifact/${versionId}`;
-      const manifestKey = `${s3Key}/manifest.json`;
-      const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
+  try {
+    const versionId = computeContentHashFromHashes(storageId, []);
+    const s3Key = `${scopeSlug}/artifact/artifact/${versionId}`;
+    const manifestKey = `${s3Key}/manifest.json`;
+    const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
 
-      await putS3Object(
-        bucketName,
-        manifestKey,
-        JSON.stringify({ files: [] }),
-        "application/json",
-      );
+    await putS3Object(
+      bucketName,
+      manifestKey,
+      JSON.stringify({ files: [] }),
+      "application/json",
+    );
 
-      await globalThis.services.db.transaction(async (tx) => {
-        await tx
-          .insert(storageVersions)
-          .values({
-            id: versionId,
-            storageId,
-            s3Key,
-            size: 0,
-            fileCount: 0,
-            message: "Initial empty artifact (auto-created via Slack)",
-            createdBy: "user",
-          })
-          .onConflictDoNothing();
+    await globalThis.services.db.transaction(async (tx) => {
+      await tx
+        .insert(storageVersions)
+        .values({
+          id: versionId,
+          storageId,
+          s3Key,
+          size: 0,
+          fileCount: 0,
+          message: "Initial empty artifact (auto-created via Slack)",
+          createdBy: "user",
+        })
+        .onConflictDoNothing();
 
-        await tx
-          .update(storages)
-          .set({
-            headVersionId: versionId,
-            size: 0,
-            fileCount: 0,
-            updatedAt: new Date(),
-          })
-          .where(eq(storages.id, storageId));
+      await tx
+        .update(storages)
+        .set({
+          headVersionId: versionId,
+          size: 0,
+          fileCount: 0,
+          updatedAt: new Date(),
+        })
+        .where(eq(storages.id, storageId));
+    });
+
+    log.info("Auto-created initial artifact version", {
+      userId: vm0UserId,
+      versionId,
+    });
+  } catch (err) {
+    log.error("Failed to create initial artifact version", { err });
+    // Clean up the headless storage so the next call can retry
+    await globalThis.services.db
+      .delete(storages)
+      .where(and(eq(storages.id, storageId), isNull(storages.headVersionId)))
+      .catch((cleanupErr) => {
+        log.error("Failed to clean up headless storage", { cleanupErr });
       });
-
-      log.info("Auto-created initial artifact version", {
-        userId: vm0UserId,
-        versionId,
-      });
-    })().catch(async (err) => {
-      log.error("Failed to create initial artifact version", { err });
-      // Clean up the headless storage so the next call can retry
-      await globalThis.services.db
-        .delete(storages)
-        .where(and(eq(storages.id, storageId), isNull(storages.headVersionId)))
-        .catch((cleanupErr) => {
-          log.error("Failed to clean up headless storage", { cleanupErr });
-        });
-    }),
-  );
+  }
 }

@@ -373,10 +373,10 @@ describe("run list command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to list runs"),
+        expect.stringContaining("Not authenticated"),
       );
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 auth login"),
+        expect.stringContaining("Run: vm0 auth login"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -400,9 +400,6 @@ describe("run list command", () => {
         await listCommand.parseAsync(["node", "cli"]);
       }).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to list runs"),
-      );
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Internal server error"),
       );

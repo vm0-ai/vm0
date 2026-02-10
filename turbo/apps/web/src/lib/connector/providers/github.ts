@@ -1,4 +1,4 @@
-import { CONNECTOR_TYPES, getConnectorOAuthConfig } from "@vm0/core";
+import { getConnectorOAuthConfig } from "@vm0/core";
 
 const GITHUB_API_BASE = "https://api.github.com";
 
@@ -116,17 +116,10 @@ export async function fetchGitHubUserInfo(
 }
 
 /**
- * Get secret name for GitHub connector
+ * Get the primary secret name for GitHub connector (the access token).
+ * Uses an explicit key rather than Object.keys() ordering to avoid
+ * fragile dependency on property insertion order.
  */
 export function getGitHubSecretName(): string {
-  const oauthMethod = CONNECTOR_TYPES.github.authMethods.oauth;
-  if (!oauthMethod) {
-    throw new Error("GitHub OAuth auth method not found");
-  }
-  const secretNames = Object.keys(oauthMethod.secrets);
-  const firstSecret = secretNames[0];
-  if (!firstSecret) {
-    throw new Error("GitHub OAuth secrets not configured");
-  }
-  return firstSecret;
+  return "GITHUB_ACCESS_TOKEN";
 }

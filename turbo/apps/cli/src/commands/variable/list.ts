@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { listVariables } from "../../lib/api";
+import { withErrorHandler } from "../../lib/command";
 
 /**
  * Truncate value for display if too long
@@ -16,8 +17,8 @@ export const listCommand = new Command()
   .name("list")
   .alias("ls")
   .description("List all variables")
-  .action(async () => {
-    try {
+  .action(
+    withErrorHandler(async () => {
       const result = await listVariables();
 
       if (result.variables.length === 0) {
@@ -44,16 +45,5 @@ export const listCommand = new Command()
       }
 
       console.log(chalk.dim(`Total: ${result.variables.length} variable(s)`));
-    } catch (error) {
-      if (error instanceof Error) {
-        if (error.message.includes("Not authenticated")) {
-          console.error(chalk.red("✗ Not authenticated. Run: vm0 auth login"));
-        } else {
-          console.error(chalk.red(`✗ ${error.message}`));
-        }
-      } else {
-        console.error(chalk.red("✗ An unexpected error occurred"));
-      }
-      process.exit(1);
-    }
-  });
+    }),
+  );

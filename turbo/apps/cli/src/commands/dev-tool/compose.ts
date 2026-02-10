@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { initClient } from "@ts-rest/core";
 import { composeJobsMainContract, composeJobsByIdContract } from "@vm0/core";
 import { getClientConfig } from "../../lib/api/core/client-factory";
+import { withErrorHandler } from "../../lib/command";
 
 /**
  * Sleep for specified milliseconds
@@ -143,79 +144,81 @@ export const composeCommand = new Command()
   )
   .option("--json", "Output result as JSON")
   .action(
-    async (
-      githubUrl: string,
-      options: {
-        overwrite: boolean;
-        interval: number;
-        timeout: number;
-        json?: boolean;
-      },
-    ) => {
-      const intervalMs = options.interval * 1000;
-      const timeoutMs = options.timeout * 1000;
+    withErrorHandler(
+      async (
+        githubUrl: string,
+        options: {
+          overwrite: boolean;
+          interval: number;
+          timeout: number;
+          json?: boolean;
+        },
+      ) => {
+        const intervalMs = options.interval * 1000;
+        const timeoutMs = options.timeout * 1000;
 
-      try {
-        // Create job
-        if (!options.json) {
-          console.log("Creating compose job...");
+        // JSON mode: catch errors and output structured JSON instead of chalk
+        if (options.json) {
+          try {
+            const { jobId, status: initialStatus } = await createComposeJob(
+              githubUrl,
+              options.overwrite,
+            );
+
+            if (initialStatus === "completed" || initialStatus === "failed") {
+              const finalJob = await getComposeJobStatus(jobId);
+              console.log(JSON.stringify(finalJob, null, 2));
+              process.exit(finalJob.status === "completed" ? 0 : 1);
+            }
+
+            const finalJob = await pollUntilComplete(
+              jobId,
+              intervalMs,
+              timeoutMs,
+              true,
+            );
+            console.log(JSON.stringify(finalJob, null, 2));
+            process.exit(finalJob.status === "completed" ? 0 : 1);
+          } catch (error) {
+            console.log(
+              JSON.stringify({
+                error: error instanceof Error ? error.message : String(error),
+              }),
+            );
+            process.exit(1);
+          }
+          return;
         }
+
+        // Human-readable mode: errors bubble up to withErrorHandler
+        console.log("Creating compose job...");
 
         const { jobId, status: initialStatus } = await createComposeJob(
           githubUrl,
           options.overwrite,
         );
 
-        if (!options.json) {
-          console.log(`Job ID: ${chalk.cyan(jobId)}`);
-          console.log();
-        }
+        console.log(`Job ID: ${chalk.cyan(jobId)}`);
+        console.log();
 
-        // If already completed (shouldn't happen, but handle it)
         if (initialStatus === "completed" || initialStatus === "failed") {
           const finalJob = await getComposeJobStatus(jobId);
-          if (options.json) {
-            console.log(JSON.stringify(finalJob, null, 2));
-          } else {
-            displayResult(finalJob);
-          }
+          displayResult(finalJob);
           process.exit(finalJob.status === "completed" ? 0 : 1);
         }
 
-        // Poll until complete
         const finalJob = await pollUntilComplete(
           jobId,
           intervalMs,
           timeoutMs,
-          !!options.json,
+          false,
         );
 
-        // Output result
-        if (options.json) {
-          console.log(JSON.stringify(finalJob, null, 2));
-        } else {
-          console.log();
-          displayResult(finalJob);
-        }
-
+        console.log();
+        displayResult(finalJob);
         process.exit(finalJob.status === "completed" ? 0 : 1);
-      } catch (error) {
-        if (options.json) {
-          console.log(
-            JSON.stringify({
-              error: error instanceof Error ? error.message : String(error),
-            }),
-          );
-        } else {
-          console.error(
-            chalk.red(
-              `✗ ${error instanceof Error ? error.message : String(error)}`,
-            ),
-          );
-        }
-        process.exit(1);
-      }
-    },
+      },
+    ),
   );
 
 /**

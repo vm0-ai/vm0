@@ -403,6 +403,7 @@ export {
   getConnectorSecretNames,
   getConnectorEnvironmentMapping,
   getConnectorDerivedNames,
+  getConnectorProvidedSecretNames,
   getConnectorOAuthConfig,
   type ConnectorsMainContract,
   type ConnectorsByTypeContract,

@@ -432,6 +432,7 @@ export async function createTestRun(
     sessionId?: string;
     checkpointId?: string;
     modelProvider?: string;
+    checkEnv?: boolean;
   },
 ): Promise<{ runId: string; status: string }> {
   const request = createTestRequest("http://localhost:3000/api/agent/runs", {

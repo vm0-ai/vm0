@@ -278,7 +278,7 @@ describe("volume pull", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Pull failed"),
+        expect.stringContaining("404:"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -303,7 +303,7 @@ describe("volume pull", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Pull failed"),
+        expect.stringContaining("404:"),
       );
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("not found"),
@@ -331,9 +331,6 @@ describe("volume pull", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Pull failed"),
-      );
-      expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("S3 download failed"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
@@ -359,7 +356,7 @@ describe("volume pull", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Pull failed"),
+        expect.stringContaining("500: Internal server error"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

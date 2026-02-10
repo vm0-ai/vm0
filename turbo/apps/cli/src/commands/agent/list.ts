@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { httpGet, type ApiError } from "../../lib/api";
+import { withErrorHandler } from "../../lib/command";
 import { formatRelativeTime } from "../../lib/utils/file-utils";
 
 /**
@@ -20,8 +21,8 @@ export const listCommand = new Command()
   .name("list")
   .alias("ls")
   .description("List all agent composes")
-  .action(async () => {
-    try {
+  .action(
+    withErrorHandler(async () => {
       const response = await httpGet("/api/agent/composes/list");
 
       if (!response.ok) {
@@ -60,15 +61,5 @@ export const listCommand = new Command()
         ].join("  ");
         console.log(row);
       }
-    } catch (error) {
-      console.error(chalk.red("✗ Failed to list agent composes"));
-      if (error instanceof Error) {
-        if (error.message.includes("Not authenticated")) {
-          console.error(chalk.dim("  Run: vm0 auth login"));
-        } else {
-          console.error(chalk.dim(`  ${error.message}`));
-        }
-      }
-      process.exit(1);
-    }
-  });
+    }),
+  );

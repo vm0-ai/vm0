@@ -16,7 +16,7 @@ export async function getScope(): Promise<ScopeResponse> {
     return result.body;
   }
 
-  handleError(result, "Failed to get scope", { useServerMessage: true });
+  handleError(result, "Failed to get scope");
 }
 
 /**
@@ -34,7 +34,7 @@ export async function createScope(body: {
     return result.body;
   }
 
-  handleError(result, "Failed to create scope", { useServerMessage: true });
+  handleError(result, "Failed to create scope");
 }
 
 /**
@@ -53,5 +53,5 @@ export async function updateScope(body: {
     return result.body;
   }
 
-  handleError(result, "Failed to update scope", { useServerMessage: true });
+  handleError(result, "Failed to update scope");
 }

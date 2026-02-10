@@ -8,12 +8,6 @@ import type { ExecutionContext } from "../api.js";
 import { VM_PROXY_CA_PATH } from "../vm-setup/index.js";
 
 /**
- * Path to environment JSON file in VM
- * Used by run-agent.py to load environment variables
- */
-export const ENV_JSON_PATH = "/tmp/vm0-env.json";
-
-/**
  * Build environment variables for the agent execution
  */
 export function buildEnvironmentVariables(

@@ -1,0 +1,212 @@
+import { useGet, useSet, useLoadable } from "ccstate-react";
+import { IconLock, IconCheck } from "@tabler/icons-react";
+import { Button } from "@vm0/ui/components/ui/button";
+import { Input } from "@vm0/ui/components/ui/input";
+import { theme$ } from "../../signals/theme.ts";
+import { detach, Reason } from "../../signals/utils.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import {
+  missingItems$,
+  formValues$,
+  formErrors$,
+  updateFormValue$,
+  submitForm$,
+  submitPromise$,
+  isSuccess$,
+} from "../../signals/environment-variables-setup/environment-variables-setup.ts";
+
+function LogoHeader() {
+  const theme = useGet(theme$);
+
+  return (
+    <div className="flex items-center gap-2.5 p-1.5 shrink-0">
+      <div className="inline-grid grid-cols-[max-content] grid-rows-[max-content] items-start justify-items-start leading-[0] shrink-0">
+        <img
+          src={theme === "dark" ? "/logo_dark.svg" : "/logo_light.svg"}
+          alt="VM0"
+          className="col-1 row-1 block max-w-none"
+          style={{ width: "81px", height: "24px" }}
+        />
+      </div>
+      <p className="text-2xl font-normal leading-8 text-foreground shrink-0">
+        Platform
+      </p>
+    </div>
+  );
+}
+
+function SecurityFooter() {
+  const theme = useGet(theme$);
+
+  return (
+    <div className="flex flex-col gap-1 items-center w-full">
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground leading-4">
+          Secured by
+        </span>
+        <img
+          src={theme === "dark" ? "/logo_dark.svg" : "/logo_light.svg"}
+          alt="VM0"
+          className="block max-w-none"
+          style={{ width: "50px", height: "15px" }}
+        />
+      </div>
+      <p className="text-xs text-muted-foreground text-center leading-4">
+        Your secrets are securely stored and never exposed directly to agents.
+      </p>
+    </div>
+  );
+}
+
+function LoadingState() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background p-6">
+      <div className="w-full max-w-[400px] overflow-hidden rounded-xl border border-border bg-popover">
+        <div className="flex flex-col items-center gap-8 p-10">
+          <LogoHeader />
+          <div className="flex flex-col gap-5 w-full">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex flex-col gap-2 w-full">
+                <div className="h-5 w-32 rounded bg-muted animate-pulse" />
+                <div className="h-9 w-full rounded-lg bg-muted animate-pulse" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SuccessState() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background p-6">
+      <div className="w-full max-w-[400px] min-h-[380px] overflow-hidden rounded-xl border border-border bg-popover">
+        <div className="flex flex-col items-center p-10">
+          <LogoHeader />
+          <div className="mt-12 flex flex-col items-center gap-4">
+            <IconCheck size={40} className="text-lime-600" stroke={1} />
+            <div className="flex flex-col items-center gap-2 text-center">
+              <h1 className="text-lg font-medium leading-7 text-foreground">
+                Your secrets are configured.
+              </h1>
+              <p className="text-sm leading-5 text-muted-foreground">
+                Close this window and return to your terminal.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FormState() {
+  const missingItemsStatus = useLoadable(missingItems$);
+  const values = useGet(formValues$);
+  const errors = useGet(formErrors$);
+  const setFormValue = useSet(updateFormValue$);
+  const submit = useSet(submitForm$);
+  const submitStatus = useLoadable(submitPromise$);
+  const pageSignal = useGet(pageSignal$);
+
+  const items =
+    missingItemsStatus.state === "hasData" ? missingItemsStatus.data : [];
+  const isSubmitting = submitStatus.state === "loading";
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    detach(submit(pageSignal), Reason.DomCallback);
+  };
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background p-6">
+      <div className="w-full max-w-[400px] overflow-hidden rounded-xl border border-border bg-popover">
+        <form
+          onSubmit={handleSubmit}
+          className="flex flex-col items-center gap-8 p-10"
+        >
+          <LogoHeader />
+
+          <div className="flex flex-col items-center w-full">
+            <div className="flex flex-col gap-1 items-center w-full">
+              <h1 className="text-lg font-medium leading-7 text-foreground">
+                VM0 would like to connect
+              </h1>
+              <p className="text-sm leading-5 text-muted-foreground text-center">
+                Add the required secrets so your agent can run
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-5 w-full">
+            {items.map((item) => (
+              <div key={item.name} className="flex flex-col gap-2 w-full">
+                <label className="text-sm font-medium leading-5 text-foreground px-1">
+                  {item.name}
+                </label>
+                <div className="relative">
+                  <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                    <IconLock size={18} stroke={1.5} />
+                  </div>
+                  <Input
+                    type={item.type === "secret" ? "password" : "text"}
+                    value={values[item.name] ?? ""}
+                    placeholder="Enter value"
+                    onChange={(e) => setFormValue(item.name, e.target.value)}
+                    readOnly={isSubmitting}
+                    className={`pl-10 ${
+                      errors[item.name]
+                        ? "border-destructive focus:border-destructive focus:ring-destructive/10"
+                        : ""
+                    }`}
+                  />
+                </div>
+                {errors[item.name] && (
+                  <p className="text-xs text-destructive px-1">
+                    {errors[item.name]}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="flex flex-col w-full">
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+              size="sm"
+              className="w-full"
+            >
+              {isSubmitting ? "Saving..." : "Verify"}
+            </Button>
+          </div>
+
+          <SecurityFooter />
+        </form>
+      </div>
+    </div>
+  );
+}
+
+export function EnvironmentVariablesSetupPage() {
+  const success = useGet(isSuccess$);
+  const missingItemsStatus = useLoadable(missingItems$);
+
+  if (success) {
+    return <SuccessState />;
+  }
+
+  if (missingItemsStatus.state === "loading") {
+    return <LoadingState />;
+  }
+
+  if (
+    missingItemsStatus.state === "hasData" &&
+    missingItemsStatus.data.length === 0
+  ) {
+    return <SuccessState />;
+  }
+
+  return <FormState />;
+}

@@ -1,9 +1,9 @@
 {
   "extends": "@vm0/typescript-config/base.json",
   "compilerOptions": {
-    "lib": ["ES2022"],
-    "types": ["vitest/globals", "node"]
+    "lib": ["ES2022", "DOM"],
+    "types": ["vitest/globals"]
   },
-  "include": ["src/**/*", "scripts/**/*"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }

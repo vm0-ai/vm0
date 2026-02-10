@@ -558,6 +558,7 @@ const router = tsr.router(runsMainContract, {
         continuedFromSessionId: body.sessionId,
         debugNoMockClaude: body.debugNoMockClaude,
         modelProvider: body.modelProvider,
+        checkEnv: body.checkEnv,
         apiStartTime,
       });
 

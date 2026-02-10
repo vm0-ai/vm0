@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { eq, and, inArray } from "drizzle-orm";
-import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
+import {
+  extractVariableReferences,
+  groupVariablesBySource,
+  getConnectorProvidedSecretNames,
+} from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
 import {
@@ -34,7 +38,7 @@ import {
 } from "../../../../src/lib/slack/blocks";
 import { logger } from "../../../../src/lib/logger";
 import { listModelProviders } from "../../../../src/lib/model-provider/model-provider-service";
-import { ensureScopeAndArtifact } from "../../../../src/lib/slack/handlers/shared";
+import { listConnectors } from "../../../../src/lib/connector/connector-service";
 
 const log = logger("slack:commands");
 
@@ -531,12 +535,19 @@ async function handleAgentAdd(
           .where(inArray(agentComposeVersions.id, versionIds))
       : [];
 
-  // Get user's existing secrets and variables
-  const [userSecrets, userVars] = await Promise.all([
+  // Get user's existing secrets, variables, and connectors
+  const [userSecrets, userVars, userConnectors] = await Promise.all([
     listSecrets(vm0UserId),
     listVariables(vm0UserId),
+    listConnectors(vm0UserId),
   ]);
-  const existingSecretNames = new Set(userSecrets.map((s) => s.name));
+  const connectorProvided = getConnectorProvidedSecretNames(
+    userConnectors.map((c) => c.type),
+  );
+  const existingSecretNames = new Set([
+    ...userSecrets.map((s) => s.name),
+    ...connectorProvided,
+  ]);
   const existingVarNames = new Set(userVars.map((v) => v.name));
 
   // Build map of compose ID to required secrets and vars
@@ -558,9 +569,6 @@ async function handleAgentAdd(
       existingVars: requiredVars.filter((name) => existingVarNames.has(name)),
     };
   });
-
-  // Ensure scope + artifact exist
-  await ensureScopeAndArtifact(vm0UserId);
 
   // Check model provider status
   const providers = await listModelProviders(vm0UserId);
@@ -637,12 +645,19 @@ async function handleAgentUpdate(
           .where(inArray(agentComposeVersions.id, versionIds))
       : [];
 
-  // Get user's existing secrets and variables
-  const [userSecrets, userVars] = await Promise.all([
+  // Get user's existing secrets, variables, and connectors
+  const [userSecrets, userVars, userConnectors] = await Promise.all([
     listSecrets(vm0UserId),
     listVariables(vm0UserId),
+    listConnectors(vm0UserId),
   ]);
-  const existingSecretNames = new Set(userSecrets.map((s) => s.name));
+  const connectorProvided = getConnectorProvidedSecretNames(
+    userConnectors.map((c) => c.type),
+  );
+  const existingSecretNames = new Set([
+    ...userSecrets.map((s) => s.name),
+    ...connectorProvided,
+  ]);
   const existingVarNames = new Set(userVars.map((v) => v.name));
 
   // Build map of compose ID to required secrets and vars

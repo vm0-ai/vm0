@@ -134,7 +134,6 @@ create_squashfs_image() {
     sudo cp "$SCRIPT_DIR/run-agent.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
     sudo cp "$SCRIPT_DIR/download.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
     sudo cp "$SCRIPT_DIR/mock-claude.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
-    sudo cp "$SCRIPT_DIR/env-loader.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
     sudo chmod +x "$EXTRACT_DIR/usr/local/bin/vm0-agent/"*
 
     # Install proxy CA certificate (required for MITM mode)

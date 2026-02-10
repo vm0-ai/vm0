@@ -11,6 +11,7 @@ import { notFound, badRequest } from "../errors";
 import { logger } from "../logger";
 import { getUserScopeByClerkId } from "../scope/scope-service";
 import { getGitHubSecretName } from "./providers/github";
+import { getNotionSecretName } from "./providers/notion";
 
 const log = logger("service:connector");
 
@@ -32,8 +33,8 @@ function getSecretNameForConnector(type: ConnectorType): string {
   switch (type) {
     case "github":
       return getGitHubSecretName();
-    default:
-      throw new Error(`Unknown connector type: ${type}`);
+    case "notion":
+      return getNotionSecretName();
   }
 }
 
@@ -306,4 +307,49 @@ export async function deleteConnector(
     );
 
   log.debug("connector deleted", { scopeId: scope.id, type });
+}
+
+/**
+ * Create or update a connector secret (e.g., refresh token)
+ */
+export async function upsertConnectorSecret(
+  clerkUserId: string,
+  secretName: string,
+  secretValue: string,
+): Promise<void> {
+  const scope = await getUserScopeByClerkId(clerkUserId);
+  if (!scope) {
+    throw notFound("User scope not found");
+  }
+
+  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
+  const encryptedValue = encryptCredentialValue(secretValue, encryptionKey);
+  const db = globalThis.services.db;
+
+  const existingSecret = await db
+    .select({ id: secrets.id })
+    .from(secrets)
+    .where(
+      and(
+        eq(secrets.scopeId, scope.id),
+        eq(secrets.name, secretName),
+        eq(secrets.type, "connector"),
+      ),
+    )
+    .limit(1);
+
+  if (existingSecret[0]) {
+    await db
+      .update(secrets)
+      .set({ encryptedValue, updatedAt: new Date() })
+      .where(eq(secrets.id, existingSecret[0].id));
+  } else {
+    await db.insert(secrets).values({
+      scopeId: scope.id,
+      name: secretName,
+      encryptedValue,
+      type: "connector",
+      description: `Connector secret: ${secretName}`,
+    });
+  }
 }

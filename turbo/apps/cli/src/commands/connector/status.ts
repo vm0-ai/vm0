@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { CONNECTOR_TYPES, connectorTypeSchema } from "@vm0/core";
 import { getConnector } from "../../lib/api";
 import { formatDateTime } from "../../lib/domain/schedule-utils";
+import { withErrorHandler } from "../../lib/command";
 
 const LABEL_WIDTH = 16;
 
@@ -10,8 +11,8 @@ export const statusCommand = new Command()
   .name("status")
   .description("Show detailed status of a connector")
   .argument("<type>", "Connector type (e.g., github)")
-  .action(async (type: string) => {
-    try {
+  .action(
+    withErrorHandler(async (type: string) => {
       const parseResult = connectorTypeSchema.safeParse(type);
       if (!parseResult.success) {
         console.error(chalk.red(`✗ Unknown connector type: ${type}`));
@@ -66,19 +67,5 @@ export const statusCommand = new Command()
         console.log(chalk.dim("To connect:"));
         console.log(chalk.dim(`  vm0 connector connect ${type}`));
       }
-    } catch (error) {
-      if (error instanceof Error) {
-        if (error.message.includes("Not authenticated")) {
-          console.error(chalk.red("✗ Not authenticated. Run: vm0 auth login"));
-        } else {
-          console.error(chalk.red(`✗ ${error.message}`));
-          if (error.cause instanceof Error) {
-            console.error(chalk.dim(`  Cause: ${error.cause.message}`));
-          }
-        }
-      } else {
-        console.error(chalk.red("✗ An unexpected error occurred"));
-      }
-      process.exit(1);
-    }
-  });
+    }),
+  );

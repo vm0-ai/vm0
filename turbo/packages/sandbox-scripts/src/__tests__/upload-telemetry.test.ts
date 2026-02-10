@@ -6,7 +6,7 @@ import {
   readFileFromPosition,
   savePosition,
   readJsonlFromPosition,
-} from "../src/lib/upload-telemetry";
+} from "../scripts/lib/upload-telemetry";
 
 describe("upload-telemetry", () => {
   let tempDir: string;
