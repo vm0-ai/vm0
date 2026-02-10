@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.56.0](https://github.com/vm0-ai/vm0/compare/platform-v0.55.1...platform-v0.56.0) (2026-02-10)
+
+
+### Features
+
+* **platform:** add environment variables setup page ([#2737](https://github.com/vm0-ai/vm0/issues/2737)) ([d33842a](https://github.com/vm0-ai/vm0/commit/d33842a2e5e72eb5bfebe66cd442135b49f35a51))
+
 ## [0.55.1](https://github.com/vm0-ai/vm0/compare/platform-v0.55.0...platform-v0.55.1) (2026-02-10)
 
 
