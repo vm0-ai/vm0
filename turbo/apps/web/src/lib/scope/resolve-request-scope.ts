@@ -7,18 +7,18 @@ import type { scopes } from "../../db/schema/scope";
 
 type Scope = typeof scopes.$inferSelect;
 
-export interface ResolvedScope {
+interface ResolvedScope {
   scope: Scope;
   error?: never;
 }
 
-export interface ScopeError {
+interface ScopeError {
   scope?: never;
   error: string;
   code: "NO_SCOPE" | "NOT_FOUND" | "FORBIDDEN";
 }
 
-export type ScopeResolutionResult = ResolvedScope | ScopeError;
+type ScopeResolutionResult = ResolvedScope | ScopeError;
 
 /**
  * Resolve the scope for a request based on the X-VM0-Scope header

@@ -89,9 +89,3 @@ export {
   leaveOrg,
   listScopes,
 } from "./domains/org";
-export type {
-  OrgResponse,
-  OrgStatusResponse,
-  InviteLinkResponse,
-  ScopeListItem,
-} from "./domains/org";

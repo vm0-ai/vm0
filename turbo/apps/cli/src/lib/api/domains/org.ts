@@ -10,12 +10,12 @@ import {
 import { getClientConfig, handleError } from "../core/client-factory";
 
 /**
- * Re-export types from core with CLI-friendly names
+ * Type aliases from core for internal use
  */
-export type OrgStatusResponse = OrgStatus;
-export type ScopeListItem = CoreScopeListItem;
-export type InviteLinkResponse = CoreInviteLinkResponse;
-export type OrgResponse = ScopeResponse;
+type OrgStatusResponse = OrgStatus;
+type ScopeListItem = CoreScopeListItem;
+type InviteLinkResponse = CoreInviteLinkResponse;
+type OrgResponse = ScopeResponse;
 
 /**
  * Create a new organization

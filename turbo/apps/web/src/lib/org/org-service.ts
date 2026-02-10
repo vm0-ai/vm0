@@ -15,9 +15,7 @@ const INVITE_TOKEN_LENGTH = 32;
 /**
  * Check if a user can create an organization (1 org per user limit)
  */
-export async function canCreateOrganization(
-  clerkUserId: string,
-): Promise<boolean> {
+async function canCreateOrganization(clerkUserId: string): Promise<boolean> {
   const existingOrg = await getUserOwnedOrganization(clerkUserId);
   return existingOrg === null;
 }
@@ -93,19 +91,6 @@ export async function createOrganization(clerkUserId: string, slug: string) {
 }
 
 /**
- * Get organization by slug
- */
-export async function getOrganizationBySlug(slug: string) {
-  const result = await globalThis.services.db
-    .select()
-    .from(scopes)
-    .where(and(eq(scopes.slug, slug), eq(scopes.type, "organization")))
-    .limit(1);
-
-  return result[0] ?? null;
-}
-
-/**
  * Get all members of an organization
  */
 export async function getOrgMembers(scopeId: string) {
@@ -163,7 +148,7 @@ export async function isOrgOwner(
 /**
  * Add a member to an organization
  */
-export async function addOrgMember(
+async function addOrgMember(
   scopeId: string,
   clerkUserId: string,
   role: OrgMembershipRole = "member",
@@ -337,28 +322,4 @@ export async function acceptInvitation(token: string, clerkUserId: string) {
   log.debug("invitation accepted", { token, clerkUserId, scopeId: scope.id });
 
   return scope;
-}
-
-/**
- * Get all organizations a user is a member of
- */
-export async function getUserOrganizations(clerkUserId: string) {
-  const result = await globalThis.services.db
-    .select({
-      scope: scopes,
-      membership: orgMemberships,
-    })
-    .from(orgMemberships)
-    .innerJoin(scopes, eq(scopes.id, orgMemberships.scopeId))
-    .where(
-      and(
-        eq(orgMemberships.userId, clerkUserId),
-        eq(scopes.type, "organization"),
-      ),
-    );
-
-  return result.map((r) => ({
-    ...r.scope,
-    role: r.membership.role as OrgMembershipRole,
-  }));
 }
