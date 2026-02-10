@@ -363,9 +363,6 @@ jobs:
       - name: Use latest npm for OIDC support
         run: npm install -g npm@latest
 
-      - name: Build Core Package
-        run: cd turbo && pnpm turbo run build --filter=@vm0/core
-
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build
         env:
@@ -432,9 +429,6 @@ jobs:
       - name: Use latest npm for OIDC support
         run: npm install -g npm@latest
 
-      - name: Build Core Package
-        run: cd turbo && pnpm turbo run build --filter=@vm0/core
-
       - name: Build Runner
         run: cd turbo && pnpm --filter @vm0/runner build
 
@@ -493,8 +487,8 @@ jobs:
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             text: "*Runner* deploying to production servers..."
 
-      - name: Build Core Package
-        run: cd turbo && pnpm turbo run build --filter=@vm0/core
+      - name: Build Sandbox Scripts
+        run: cd turbo && pnpm turbo run build --filter=@vm0/sandbox-scripts
 
       # Cross-compile Rust binaries for ARM64 (metal runners are ARM64)
       - name: Build guest-init and guest-download for ARM64
