@@ -451,9 +451,12 @@ async function checkAndPromptMissingItems(
   if (!options.json) {
     console.log();
     console.log(
-      chalk.yellow("⚠ Missing secrets/variables detected. Set them up at:"),
+      chalk.yellow(
+        "⚠ Missing secrets/variables detected. Set them up before running your agent:",
+      ),
     );
     console.log(chalk.cyan(`  ${setupUrl}`));
+    console.log();
   }
 
   return { missingSecrets, missingVars, setupUrl };
@@ -513,6 +516,17 @@ async function finalizeCompose(
     displayName,
   };
 
+  // Check for missing secrets/vars before showing run command
+  const missingItems = await checkAndPromptMissingItems(config, options);
+  if (
+    missingItems.missingSecrets.length > 0 ||
+    missingItems.missingVars.length > 0
+  ) {
+    result.missingSecrets = missingItems.missingSecrets;
+    result.missingVars = missingItems.missingVars;
+    result.setupUrl = missingItems.setupUrl;
+  }
+
   // Display human-readable result (skip in JSON mode)
   if (!options.json) {
     if (response.action === "created") {
@@ -529,17 +543,6 @@ async function finalizeCompose(
         `    vm0 run ${displayName}:${shortVersionId} --artifact-name <artifact> "your prompt"`,
       ),
     );
-  }
-
-  // Check for missing secrets/vars and prompt user
-  const missingItems = await checkAndPromptMissingItems(config, options);
-  if (
-    missingItems.missingSecrets.length > 0 ||
-    missingItems.missingVars.length > 0
-  ) {
-    result.missingSecrets = missingItems.missingSecrets;
-    result.missingVars = missingItems.missingVars;
-    result.setupUrl = missingItems.setupUrl;
   }
 
   // Wait for upgrade at command end (shows warning if failed)
