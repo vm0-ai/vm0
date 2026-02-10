@@ -82,13 +82,17 @@ services:
     restart: unless-stopped
     ports:
       - "${HTTP_PORT:-8080}:80"
-      - "${HTTPS_PORT:-8443}:443"
+      - "${PLATFORM_PORT:-3001}:3000"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    depends_on:
+      - web
+      - platform
     environment:
       DOMAIN: ${DOMAIN:-localhost}
+      PLATFORM_PORT: ${PLATFORM_PORT:-3001}
     networks:
       - vm0
 

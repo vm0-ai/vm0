@@ -5,6 +5,8 @@
  * Add validation only when a variable is required by the application.
  */
 
+export const isSelfHosted = import.meta.env.VITE_SELF_HOSTED === "true";
+
 declare global {
   interface Window {
     __vitest_index__?: boolean;

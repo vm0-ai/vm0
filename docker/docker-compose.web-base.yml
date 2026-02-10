@@ -1,4 +1,4 @@
-# VM0 Shared Web Service Template
+# VM0 Shared Service Templates
 # Not used directly. Referenced via `extends` from other compose files.
 
 services:
@@ -42,7 +42,17 @@ services:
       CONCURRENT_RUN_LIMIT: ${CONCURRENT_RUN_LIMIT:-0}
       # Claude Code
       CLAUDE_CODE_VERSION_URL: ${CLAUDE_CODE_VERSION_URL:-https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/latest}
+      # Platform console
+      PLATFORM_PORT: ${PLATFORM_PORT:-3001}
+      PLATFORM_URL: http://${DOMAIN:-localhost}:${PLATFORM_PORT:-3001}
     volumes:
       - web_data:/app/data
+    networks:
+      - vm0
+
+  platform-base:
+    restart: unless-stopped
+    depends_on:
+      - web
     networks:
       - vm0

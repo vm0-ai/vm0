@@ -1,15 +1,45 @@
 import { Clerk } from "@clerk/clerk-js";
 import { command, computed, state } from "ccstate";
 import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
+import { isSelfHosted } from "../env.ts";
 
 const reload$ = state(0);
 
 /**
- * Clerk instance signal that initializes the Clerk SDK with the publishable key.
- * The VITE_CLERK_PUBLISHABLE_KEY environment variable must be set at build time
- * via .env.production.local file for production deployments.
+ * In self-hosted mode, return a mock Clerk-like object that satisfies
+ * all call sites without actually loading the Clerk SDK.
+ */
+function createSelfHostedClerk(): Clerk {
+  return {
+    user: {
+      id: "self-hosted-user",
+      fullName: "Admin",
+      imageUrl: "",
+      primaryEmailAddress: { emailAddress: "admin@localhost" },
+    },
+    session: {
+      getToken: async () => null,
+    },
+    addListener: () => () => {},
+    signOut: async () => {
+      location.href = "/";
+    },
+    redirectToSignIn: async () => {},
+    openUserProfile: async () => {},
+  } as unknown as Clerk;
+}
+
+/**
+ * Clerk instance signal.
+ *
+ * - SaaS mode: initializes the real Clerk SDK with the publishable key.
+ * - Self-hosted mode: returns a mock object (no external auth dependency).
  */
 export const clerk$ = computed(async () => {
+  if (isSelfHosted) {
+    return createSelfHostedClerk();
+  }
+
   const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as
     | string
     | undefined;

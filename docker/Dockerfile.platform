@@ -1,0 +1,37 @@
+# VM0 Platform - Static SPA Build
+# Build context: repository root (same as Dockerfile.web)
+
+FROM node:20.20.0-alpine AS base
+RUN corepack enable && corepack prepare pnpm@10.15.0 --activate
+RUN apk add --no-cache curl && npm i -g turbo@2
+
+# ============ Prune ============
+FROM base AS pruner
+WORKDIR /app
+
+COPY turbo/ .
+RUN turbo prune @vm0/platform --docker
+
+# ============ Dependencies ============
+FROM base AS deps
+WORKDIR /app
+
+COPY --from=pruner /app/out/json/ .
+RUN pnpm install --frozen-lockfile --ignore-scripts
+
+# ============ Build ============
+FROM deps AS builder
+
+COPY --from=pruner /app/out/full/ .
+
+ENV VITE_API_URL=http://localhost:3000
+ENV VITE_CLERK_PUBLISHABLE_KEY=placeholder
+ENV VITE_SELF_HOSTED=true
+
+RUN pnpm run build --filter=@vm0/platform
+
+# ============ Runtime ============
+FROM caddy:2-alpine AS runner
+
+COPY --from=builder /app/apps/platform/dist /srv
+COPY docker/Caddyfile.platform /etc/caddy/Caddyfile

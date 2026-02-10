@@ -1,24 +1,26 @@
-/**
- * URL utilities for deriving related service URLs
- */
+import { isSelfHosted } from "../env";
 
 /**
- * Resolves the Platform URL from the current browser origin.
- * Replaces "www" with "platform" in the hostname.
+ * Resolves the Platform URL.
  *
- * This is the inverse of resolveApiBase() in apps/platform/src/signals/fetch.ts,
- * which replaces "platform" with "www" to get the API URL.
- *
- * @example
- * // In browser at https://www.vm0.ai
- * getPlatformUrl() // returns "https://platform.vm0.ai"
- *
- * // In browser at https://www.vm7.ai:8443
- * getPlatformUrl() // returns "https://platform.vm7.ai:8443"
- *
- * @returns The platform URL derived from the current origin
+ * - SaaS mode: replaces "www" with "platform" in the hostname
+ *   (e.g. https://www.vm0.ai -> https://platform.vm0.ai)
+ * - Self-hosted server-side: returns the absolute PLATFORM_URL
+ *   (e.g. http://localhost:3001) for contexts that need a full URL
+ * - Self-hosted client-side: returns "/platform" which Caddy redirects
+ *   to the real platform port
  */
 export function getPlatformUrl(): string {
+  if (isSelfHosted) {
+    if (typeof window === "undefined") {
+      return (
+        process.env.PLATFORM_URL ||
+        `http://localhost:${process.env.PLATFORM_PORT || "3001"}`
+      );
+    }
+    return "/platform";
+  }
+
   if (typeof window === "undefined") {
     // Server-side: use Caddy proxy in dev, production URL otherwise
     if (process.env.NODE_ENV === "development") {

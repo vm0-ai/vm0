@@ -1,7 +1,7 @@
 # VM0 Web - Multi-stage Docker Build
 # Build context: repository root (see docker-compose.dev.yml)
 
-FROM node:20-alpine AS base
+FROM node:20.20.0-alpine AS base
 RUN corepack enable && corepack prepare pnpm@10.15.0 --activate
 RUN apk add --no-cache openssl
 
@@ -27,7 +27,9 @@ RUN pnpm install --frozen-lockfile --ignore-scripts
 # ============ Build ============
 FROM deps AS builder
 
-COPY turbo/ .
+COPY turbo/turbo.json .
+COPY turbo/packages/ ./packages
+COPY turbo/apps/web ./apps/web
 
 # Inject standalone output mode without modifying source
 RUN sed -i 's/const nextConfig = {/const nextConfig = {\n  output: "standalone",/' apps/web/next.config.js
@@ -46,7 +48,7 @@ RUN node -e "require('http').createServer((_,r)=>{r.writeHead(200,{'Content-Type
     sleep 1 && pnpm run build --filter=web
 
 # ============ Runtime ============
-FROM node:20-alpine AS runner
+FROM node:20.20.0-alpine AS runner
 WORKDIR /app
 
 RUN apk add --no-cache openssl curl
@@ -74,7 +76,12 @@ COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/src/db/migrations ./apps/web/src/db/migrations
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/drizzle.config.ts ./apps/web/drizzle.config.ts
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/scripts/migrate.ts ./apps/web/scripts/migrate.ts
+
+# Self-hosted init script and its source dependencies
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/scripts/self-hosted-init.ts ./apps/web/scripts/self-hosted-init.ts
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/src/db/schema/scope.ts ./apps/web/src/db/schema/scope.ts
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/src/db/schema/user.ts ./apps/web/src/db/schema/user.ts
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/src/lib/auth/constants.ts ./apps/web/src/lib/auth/constants.ts
 
 # Entrypoint
 COPY --chmod=755 docker/entrypoint.sh /entrypoint.sh

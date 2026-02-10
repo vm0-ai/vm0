@@ -1,0 +1,15 @@
+# VM0 Platform - Static SPA Server
+# Serves the Vite-built platform frontend with SPA catch-all routing.
+
+:80 {
+	root * /srv
+
+	# SPA catch-all: serve index.html for all non-file routes
+	try_files {path} /index.html
+
+	file_server
+
+	# Cache static assets aggressively (Vite hashes filenames)
+	@static path *.js *.css *.woff2 *.svg *.png *.ico
+	header @static Cache-Control "public, max-age=31536000, immutable"
+}

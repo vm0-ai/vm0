@@ -10,3 +10,9 @@ services:
       file: docker-compose.web-base.yml
       service: web-base
     image: ghcr.io/vm0-ai/vm0:${VM0_VERSION:-latest}
+
+  platform:
+    extends:
+      file: docker-compose.web-base.yml
+      service: platform-base
+    image: ghcr.io/vm0-ai/vm0-platform:${VM0_VERSION:-latest}

@@ -1,15 +1,21 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+
+vi.mock("../../env", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../../env")>();
+  return { ...original, isSelfHosted: false };
+});
+
 import { getPlatformUrl } from "../url";
+import * as envModule from "../../env";
 
 describe("url", () => {
-  describe("getPlatformUrl", () => {
+  describe("getPlatformUrl (SaaS mode)", () => {
     afterEach(() => {
       vi.unstubAllGlobals();
       vi.restoreAllMocks();
     });
 
     it("replaces www with platform in hostname", () => {
-      // Mock window.location
       Object.defineProperty(global, "window", {
         value: {
           location: {
@@ -76,8 +82,49 @@ describe("url", () => {
         configurable: true,
       });
 
-      // When there's no www, the hostname remains unchanged
       expect(getPlatformUrl()).toBe("https://vm0.ai");
+    });
+  });
+
+  describe("getPlatformUrl (self-hosted mode)", () => {
+    beforeEach(() => {
+      vi.mocked(envModule).isSelfHosted = true as never;
+    });
+
+    afterEach(() => {
+      vi.mocked(envModule).isSelfHosted = false as never;
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    });
+
+    it("returns /platform on the client side", () => {
+      Object.defineProperty(global, "window", {
+        value: { location: { origin: "http://localhost:8080" } },
+        writable: true,
+        configurable: true,
+      });
+
+      expect(getPlatformUrl()).toBe("/platform");
+    });
+
+    it("returns PLATFORM_URL on the server side", () => {
+      vi.stubGlobal("window", undefined);
+      vi.stubEnv("PLATFORM_URL", "http://myhost:3001");
+
+      expect(getPlatformUrl()).toBe("http://myhost:3001");
+    });
+
+    it("falls back to localhost with PLATFORM_PORT on the server side", () => {
+      vi.stubGlobal("window", undefined);
+      vi.stubEnv("PLATFORM_PORT", "5000");
+
+      expect(getPlatformUrl()).toBe("http://localhost:5000");
+    });
+
+    it("falls back to localhost:3001 when no env vars set", () => {
+      vi.stubGlobal("window", undefined);
+
+      expect(getPlatformUrl()).toBe("http://localhost:3001");
     });
   });
 });

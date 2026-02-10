@@ -14,3 +14,13 @@ services:
     build:
       context: ../
       dockerfile: docker/Dockerfile.web
+
+  platform:
+    extends:
+      file: docker-compose.web-base.yml
+      service: platform-base
+    image: vm0-platform:dev
+    pull_policy: build
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.platform
