@@ -117,7 +117,7 @@ impl Drop for Harness {
 async fn test_exec() {
     let mut h = Harness::new().await;
 
-    let result = h.exec("echo hello", 5000).await.expect("exec failed");
+    let result = h.exec("echo hello", 5000, &[]).await.expect("exec failed");
 
     assert_eq!(result.exit_code, 0);
     assert_eq!(result.stdout, b"hello\n");
@@ -130,7 +130,7 @@ async fn test_exec_stderr() {
     let mut h = Harness::new().await;
 
     let result = h
-        .exec("echo error >&2 && exit 1", 5000)
+        .exec("echo error >&2 && exit 1", 5000, &[])
         .await
         .expect("exec failed");
 
@@ -144,7 +144,7 @@ async fn test_exec_multiline() {
     let mut h = Harness::new().await;
 
     let result = h
-        .exec("printf 'line1\\nline2\\nline3\\n'", 5000)
+        .exec("printf 'line1\\nline2\\nline3\\n'", 5000, &[])
         .await
         .expect("exec failed");
 
@@ -158,7 +158,7 @@ async fn test_exec_pipe_chain() {
     let mut h = Harness::new().await;
 
     let result = h
-        .exec("echo 'hello world' | tr 'a-z' 'A-Z'", 5000)
+        .exec("echo 'hello world' | tr 'a-z' 'A-Z'", 5000, &[])
         .await
         .expect("exec failed");
 
@@ -172,7 +172,7 @@ async fn test_exec_env_vars() {
     let mut h = Harness::new().await;
 
     let result = h
-        .exec("export TEST_VAR=hello; echo $TEST_VAR", 5000)
+        .exec("export TEST_VAR=hello; echo $TEST_VAR", 5000, &[])
         .await
         .expect("exec failed");
 
@@ -185,7 +185,7 @@ async fn test_exec_env_vars() {
 async fn test_exec_timeout() {
     let mut h = Harness::new().await;
 
-    let result = h.exec("sleep 10", 100).await.expect("exec failed");
+    let result = h.exec("sleep 10", 100, &[]).await.expect("exec failed");
 
     assert_eq!(result.exit_code, 124);
     assert!(result.stderr.starts_with(b"Timeout"));
@@ -198,7 +198,7 @@ async fn test_exec_sequential() {
 
     for i in 0..5 {
         let result = h
-            .exec(&format!("echo {i}"), 5000)
+            .exec(&format!("echo {i}"), 5000, &[])
             .await
             .expect("exec failed");
         assert_eq!(result.exit_code, 0);
@@ -223,7 +223,7 @@ async fn test_write_file() {
 
     // Verify by reading the file back via exec
     let result = h
-        .exec(&format!("cat '{file_path_str}'"), 5000)
+        .exec(&format!("cat '{file_path_str}'"), 5000, &[])
         .await
         .expect("exec cat failed");
 
@@ -273,7 +273,7 @@ async fn test_spawn_watch() {
     let mut h = Harness::new().await;
 
     let pid = h
-        .spawn_watch("echo done", 5000)
+        .spawn_watch("echo done", 5000, &[])
         .await
         .expect("spawn_watch failed");
     assert!(pid > 0);
@@ -294,7 +294,7 @@ async fn test_spawn_watch_exit_code() {
     let mut h = Harness::new().await;
 
     let pid = h
-        .spawn_watch("exit 42", 5000)
+        .spawn_watch("exit 42", 5000, &[])
         .await
         .expect("spawn_watch failed");
 
@@ -312,7 +312,7 @@ async fn test_spawn_watch_stderr() {
     let mut h = Harness::new().await;
 
     let pid = h
-        .spawn_watch("echo error >&2 && exit 1", 5000)
+        .spawn_watch("echo error >&2 && exit 1", 5000, &[])
         .await
         .expect("spawn_watch failed");
 
@@ -331,7 +331,7 @@ async fn test_spawn_watch_both_stdout_stderr() {
     let mut h = Harness::new().await;
 
     let pid = h
-        .spawn_watch("echo out && echo err >&2 && exit 2", 5000)
+        .spawn_watch("echo out && echo err >&2 && exit 2", 5000, &[])
         .await
         .expect("spawn_watch failed");
 
@@ -351,7 +351,7 @@ async fn test_spawn_watch_no_output() {
     let mut h = Harness::new().await;
 
     let pid = h
-        .spawn_watch("true", 5000)
+        .spawn_watch("true", 5000, &[])
         .await
         .expect("spawn_watch failed");
 
@@ -372,11 +372,11 @@ async fn test_spawn_watch_concurrent() {
 
     // Spawn two processes — second finishes first
     let pid1 = h
-        .spawn_watch("sleep 0.1 && echo first", 5000)
+        .spawn_watch("sleep 0.1 && echo first", 5000, &[])
         .await
         .expect("spawn_watch 1 failed");
     let pid2 = h
-        .spawn_watch("echo second", 5000)
+        .spawn_watch("echo second", 5000, &[])
         .await
         .expect("spawn_watch 2 failed");
 
@@ -404,7 +404,7 @@ async fn test_spawn_watch_timeout() {
     let mut h = Harness::new().await;
 
     let pid = h
-        .spawn_watch("sleep 10", 100)
+        .spawn_watch("sleep 10", 100, &[])
         .await
         .expect("spawn_watch failed");
 
@@ -423,14 +423,16 @@ async fn test_spawn_watch_cached_exit() {
     let mut h = Harness::new().await;
 
     let pid = h
-        .spawn_watch("echo cached", 5000)
+        .spawn_watch("echo cached", 5000, &[])
         .await
         .expect("spawn_watch failed");
 
     // Use an exec round-trip as a synchronization barrier: by the time exec
     // returns, the exit event from "echo cached" has arrived and been cached
     // by read_and_dispatch. This tests the cache-hit path without any sleep.
-    h.exec("true", 5000).await.expect("barrier exec failed");
+    h.exec("true", 5000, &[])
+        .await
+        .expect("barrier exec failed");
 
     let event = h
         .wait_for_exit(pid, Duration::from_secs(5))
@@ -447,7 +449,7 @@ async fn test_spawn_watch_multiline() {
     let mut h = Harness::new().await;
 
     let pid = h
-        .spawn_watch("printf 'line1\\nline2\\nline3\\n'", 5000)
+        .spawn_watch("printf 'line1\\nline2\\nline3\\n'", 5000, &[])
         .await
         .expect("spawn_watch failed");
 
@@ -469,6 +471,7 @@ async fn test_spawn_watch_large_output() {
         .spawn_watch(
             "dd if=/dev/zero bs=1024 count=10 2>/dev/null | base64",
             5000,
+            &[],
         )
         .await
         .expect("spawn_watch failed");
@@ -488,7 +491,7 @@ async fn test_spawn_watch_delayed_output() {
     let mut h = Harness::new().await;
 
     let pid = h
-        .spawn_watch("sleep 0.2 && echo delayed", 5000)
+        .spawn_watch("sleep 0.2 && echo delayed", 5000, &[])
         .await
         .expect("spawn_watch failed");
 
@@ -508,7 +511,7 @@ async fn test_spawn_watch_sigterm() {
 
     // Use `exec` to replace shell so the PID we get is the actual sleep process
     let pid = h
-        .spawn_watch("exec sleep 60", 0)
+        .spawn_watch("exec sleep 60", 0, &[])
         .await
         .expect("spawn_watch failed");
 
@@ -516,6 +519,7 @@ async fn test_spawn_watch_sigterm() {
     h.exec(
         &format!("kill -15 -{pid} 2>/dev/null || kill -15 {pid}"),
         5000,
+        &[],
     )
     .await
     .expect("kill failed");
@@ -534,13 +538,14 @@ async fn test_spawn_watch_sigkill() {
     let mut h = Harness::new().await;
 
     let pid = h
-        .spawn_watch("exec sleep 60", 0)
+        .spawn_watch("exec sleep 60", 0, &[])
         .await
         .expect("spawn_watch failed");
 
     h.exec(
         &format!("kill -9 -{pid} 2>/dev/null || kill -9 {pid}"),
         5000,
+        &[],
     )
     .await
     .expect("kill failed");
@@ -561,7 +566,7 @@ async fn test_spawn_watch_rapid_multiple() {
     let mut pids = Vec::new();
     for i in 0..5 {
         let pid = h
-            .spawn_watch(&format!("echo p{i}"), 5000)
+            .spawn_watch(&format!("echo p{i}"), 5000, &[])
             .await
             .expect("spawn_watch failed");
         pids.push(pid);
@@ -588,7 +593,7 @@ async fn test_spawn_watch_nonexistent_command() {
     let mut h = Harness::new().await;
 
     let pid = h
-        .spawn_watch("nonexistent_command_12345 2>&1", 5000)
+        .spawn_watch("nonexistent_command_12345 2>&1", 5000, &[])
         .await
         .expect("spawn_watch failed");
 
@@ -613,7 +618,7 @@ async fn test_spawn_watch_unicode() {
     let mut h = Harness::new().await;
 
     let pid = h
-        .spawn_watch("printf '你好世界\\nこんにちは\\n🎉emoji🚀'", 5000)
+        .spawn_watch("printf '你好世界\\nこんにちは\\n🎉emoji🚀'", 5000, &[])
         .await
         .expect("spawn_watch failed");
 
@@ -638,6 +643,7 @@ async fn test_spawn_watch_interleaved_output() {
         .spawn_watch(
             "echo out1 && echo err1 >&2 && echo out2 && echo err2 >&2",
             5000,
+            &[],
         )
         .await
         .expect("spawn_watch failed");
@@ -693,11 +699,74 @@ async fn test_shutdown_after_exec() {
     let mut h = Harness::new().await;
 
     // Run a command first, then shutdown
-    let result = h.exec("echo before", 5000).await.expect("exec failed");
+    let result = h.exec("echo before", 5000, &[]).await.expect("exec failed");
     assert_eq!(result.exit_code, 0);
 
     let acked = h.shutdown(Duration::from_secs(5)).await;
     assert!(acked);
 
     h.finish_ignore_guest();
+}
+
+// ── exec with env ────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_exec_with_env() {
+    let mut h = Harness::new().await;
+
+    let result = h
+        .exec("echo $MY_VAR", 5000, &[("MY_VAR", "hello_env")])
+        .await
+        .expect("exec failed");
+
+    assert_eq!(result.exit_code, 0);
+    assert_eq!(result.stdout, b"hello_env\n");
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_exec_with_multiple_env() {
+    let mut h = Harness::new().await;
+
+    let result = h
+        .exec("echo $A $B", 5000, &[("A", "first"), ("B", "second")])
+        .await
+        .expect("exec failed");
+
+    assert_eq!(result.exit_code, 0);
+    assert_eq!(result.stdout, b"first second\n");
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_exec_with_env_special_chars() {
+    let mut h = Harness::new().await;
+
+    let result = h
+        .exec("echo $VAL", 5000, &[("VAL", "it's a \"test\"")])
+        .await
+        .expect("exec failed");
+
+    assert_eq!(result.exit_code, 0);
+    assert_eq!(result.stdout, b"it's a \"test\"\n");
+    h.finish();
+}
+
+#[tokio::test]
+async fn test_spawn_watch_with_env() {
+    let mut h = Harness::new().await;
+
+    let pid = h
+        .spawn_watch("echo $GREETING", 5000, &[("GREETING", "hi_from_env")])
+        .await
+        .expect("spawn_watch failed");
+
+    let event = h
+        .wait_for_exit(pid, Duration::from_secs(5))
+        .await
+        .expect("wait_for_exit failed");
+
+    assert_eq!(event.exit_code, 0);
+    assert_eq!(event.stdout, b"hi_from_env\n");
+    h.finish();
 }

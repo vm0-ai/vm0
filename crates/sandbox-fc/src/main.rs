@@ -230,6 +230,7 @@ async fn run_exec(
         .exec(&ExecRequest {
             cmd,
             timeout: Duration::from_millis(u64::from(timeout)),
+            env: &[],
         })
         .await?;
 

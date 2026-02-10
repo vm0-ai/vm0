@@ -3,6 +3,7 @@ use std::time::Duration;
 pub struct ExecRequest<'a> {
     pub cmd: &'a str,
     pub timeout: Duration,
+    pub env: &'a [(&'a str, &'a str)],
 }
 
 impl ExecRequest<'_> {

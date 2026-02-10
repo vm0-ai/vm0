@@ -133,6 +133,7 @@ async fn run_in_sandbox(
         .spawn_watch(&ExecRequest {
             cmd: &agent_cmd,
             timeout: JOB_TIMEOUT,
+            env: &[],
         })
         .await?;
 
@@ -171,6 +172,7 @@ async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
         .exec(&ExecRequest {
             cmd: &date_cmd,
             timeout: DEFAULT_EXEC_TIMEOUT,
+            env: &[],
         })
         .await?;
     Ok(())
@@ -194,6 +196,7 @@ async fn download_storages(
         .exec(&ExecRequest {
             cmd: &download_cmd,
             timeout: DEFAULT_EXEC_TIMEOUT,
+            env: &[],
         })
         .await?;
 
@@ -230,6 +233,7 @@ async fn restore_session(
         .exec(&ExecRequest {
             cmd: &mkdir_cmd,
             timeout: DEFAULT_EXEC_TIMEOUT,
+            env: &[],
         })
         .await?;
     sandbox

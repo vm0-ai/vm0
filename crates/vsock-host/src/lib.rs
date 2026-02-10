@@ -214,8 +214,13 @@ impl VsockHost {
     }
 
     /// Execute a command on the guest.
-    pub async fn exec(&mut self, command: &str, timeout_ms: u32) -> io::Result<ExecResult> {
-        let payload = vsock_proto::encode_exec(timeout_ms, command);
+    pub async fn exec(
+        &mut self,
+        command: &str,
+        timeout_ms: u32,
+        env: &[(&str, &str)],
+    ) -> io::Result<ExecResult> {
+        let payload = vsock_proto::encode_exec(timeout_ms, command, env);
         // Add 5s buffer for network latency
         let timeout = Duration::from_millis(timeout_ms as u64 + 5000);
         let resp = self.request(MSG_EXEC, &payload, timeout).await?;
@@ -281,8 +286,13 @@ impl VsockHost {
     ///
     /// Returns immediately with the PID. Use [`wait_for_exit`](Self::wait_for_exit)
     /// to wait for completion.
-    pub async fn spawn_watch(&mut self, command: &str, timeout_ms: u32) -> io::Result<u32> {
-        let payload = vsock_proto::encode_exec(timeout_ms, command);
+    pub async fn spawn_watch(
+        &mut self,
+        command: &str,
+        timeout_ms: u32,
+        env: &[(&str, &str)],
+    ) -> io::Result<u32> {
+        let payload = vsock_proto::encode_exec(timeout_ms, command, env);
         let resp = self
             .request(MSG_SPAWN_WATCH, &payload, Duration::from_secs(30))
             .await?;
@@ -391,9 +401,10 @@ mod tests {
             let msgs = decoder.decode(&buf[..n]).unwrap();
             assert_eq!(msgs[0].msg_type, MSG_EXEC);
 
-            let (timeout, cmd) = vsock_proto::decode_exec(&msgs[0].payload).unwrap();
+            let (timeout, cmd, env) = vsock_proto::decode_exec(&msgs[0].payload).unwrap();
             assert_eq!(cmd, "echo hello");
             assert_eq!(timeout, 5000);
+            assert!(env.is_empty());
 
             let payload = vsock_proto::encode_exec_result(0, b"hello\n", b"");
             let resp = vsock_proto::encode(MSG_EXEC_RESULT, msgs[0].seq, &payload).unwrap();
@@ -401,7 +412,7 @@ mod tests {
         });
 
         let mut host = host_from_stream(host_stream).await.unwrap();
-        let result = host.exec("echo hello", 5000).await.unwrap();
+        let result = host.exec("echo hello", 5000, &[]).await.unwrap();
         assert_eq!(result.exit_code, 0);
         assert_eq!(result.stdout, b"hello\n");
         assert!(result.stderr.is_empty());
@@ -425,7 +436,7 @@ mod tests {
         });
 
         let mut host = host_from_stream(host_stream).await.unwrap();
-        let result = host.exec("badcmd", 5000).await.unwrap();
+        let result = host.exec("badcmd", 5000, &[]).await.unwrap();
         assert_eq!(result.exit_code, 1);
         assert_eq!(result.stderr, b"command not found");
     }
@@ -513,7 +524,7 @@ mod tests {
         });
 
         let mut host = host_from_stream(host_stream).await.unwrap();
-        let pid = host.spawn_watch("sleep 1", 0).await.unwrap();
+        let pid = host.spawn_watch("sleep 1", 0, &[]).await.unwrap();
         assert_eq!(pid, 42);
 
         let event = host
@@ -556,7 +567,7 @@ mod tests {
         });
 
         let mut host = host_from_stream(host_stream).await.unwrap();
-        let pid = host.spawn_watch("false", 0).await.unwrap();
+        let pid = host.spawn_watch("false", 0, &[]).await.unwrap();
         assert_eq!(pid, 99);
 
         let event = host
@@ -611,7 +622,7 @@ mod tests {
         let mut host = host_from_stream(host_stream).await.unwrap();
 
         // exec triggers read_and_dispatch which encounters the corrupted process_exit
-        let err = host.exec("echo hi", 5000).await.unwrap_err();
+        let err = host.exec("echo hi", 5000, &[]).await.unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
     }
 }
