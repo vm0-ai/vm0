@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.31.1](https://github.com/vm0-ai/vm0/compare/cli-v9.31.0...cli-v9.31.1) (2026-02-10)
+
+
+### Bug Fixes
+
+* exclude connector-provided secrets from missing-secrets checks ([#2752](https://github.com/vm0-ai/vm0/issues/2752)) ([3dc98d4](https://github.com/vm0-ai/vm0/commit/3dc98d47451a2084b50a9a6ebce2f2ccb31d2833)), closes [#2747](https://github.com/vm0-ai/vm0/issues/2747)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.7.1
+
 ## [9.31.0](https://github.com/vm0-ai/vm0/compare/cli-v9.30.1...cli-v9.31.0) (2026-02-10)
 
 

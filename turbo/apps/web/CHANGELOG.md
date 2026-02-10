@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.26.0](https://github.com/vm0-ai/vm0/compare/web-v12.25.0...web-v12.26.0) (2026-02-10)
+
+
+### Features
+
+* **slack:** add compose agent button to app home ([#2751](https://github.com/vm0-ai/vm0/issues/2751)) ([f5ee9e5](https://github.com/vm0-ai/vm0/commit/f5ee9e57f03b7c5db669480923f019a3a7875e8e))
+
+
+### Bug Fixes
+
+* exclude connector-provided secrets from missing-secrets checks ([#2752](https://github.com/vm0-ai/vm0/issues/2752)) ([3dc98d4](https://github.com/vm0-ai/vm0/commit/3dc98d47451a2084b50a9a6ebce2f2ccb31d2833)), closes [#2747](https://github.com/vm0-ai/vm0/issues/2747)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.7.1
+
 ## [12.25.0](https://github.com/vm0-ai/vm0/compare/web-v12.24.2...web-v12.25.0) (2026-02-10)
 
 
