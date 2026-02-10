@@ -239,7 +239,7 @@
         mode: '0644'
       with_fileglob:
         - "{{ playbook_dir }}/../../turbo/apps/runner/scripts/deploy/Dockerfile"
-        - "{{ playbook_dir }}/../../turbo/packages/core/src/sandbox/scripts/dist/*.mjs"
+        - "{{ playbook_dir }}/../../turbo/packages/sandbox-scripts/src/dist/*.mjs"
       tags: [prepare]
 
     # ========================================
