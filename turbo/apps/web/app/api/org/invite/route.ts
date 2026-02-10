@@ -89,7 +89,18 @@ export async function POST(request: Request) {
   const { token, expiresAt } = await createInviteLink(orgScope.id, userId);
 
   // Build invite URL
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://vm0.dev";
+  const baseUrl = process.env.WEB_APP_URL;
+  if (!baseUrl) {
+    return NextResponse.json(
+      {
+        error: {
+          message: "Server configuration error: WEB_APP_URL not set",
+          code: "INTERNAL_ERROR",
+        },
+      },
+      { status: 500 },
+    );
+  }
   const url = `${baseUrl}/invite/${token}`;
 
   return NextResponse.json(

@@ -40,6 +40,8 @@ vi.hoisted(() => {
   vi.stubEnv("SLACK_REDIRECT_BASE_URL", "https://test.example.com");
   // API URL for compose job webhooks
   vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+  // Web app URL for invite links
+  vi.stubEnv("WEB_APP_URL", "https://test.vm0.dev");
 });
 
 // Mock server-only package (no-op in tests)
