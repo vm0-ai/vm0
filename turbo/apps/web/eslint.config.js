@@ -28,6 +28,7 @@ export default [
     },
     rules: {
       "web/no-direct-db-in-tests": "error",
+      "web/no-relative-vi-mock": "error",
     },
   },
   {
