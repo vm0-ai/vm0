@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.55.0](https://github.com/vm0-ai/vm0/compare/platform-v0.54.3...platform-v0.55.0) (2026-02-10)
+
+
+### Features
+
+* **platform:** detect and display missing secrets for agents ([#2664](https://github.com/vm0-ai/vm0/issues/2664)) ([e43fb63](https://github.com/vm0-ai/vm0/commit/e43fb63d574f3f614254e702c76270b59381fedf))
+
 ## [0.54.3](https://github.com/vm0-ai/vm0/compare/platform-v0.54.2...platform-v0.54.3) (2026-02-09)
 
 
