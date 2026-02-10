@@ -68,11 +68,40 @@ export const CONNECTOR_TYPES = {
       scopes: ["repo"],
     } as ConnectorOAuthConfig,
   },
+  notion: {
+    label: "Notion",
+    helpText: "Connect your Notion workspace to access pages and databases",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Notion to grant access.",
+        secrets: {
+          NOTION_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          NOTION_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      NOTION_TOKEN: "$secrets.NOTION_ACCESS_TOKEN",
+    } as Record<string, string>,
+    oauth: {
+      authorizationUrl: "https://api.notion.com/v1/oauth/authorize",
+      tokenUrl: "https://api.notion.com/v1/oauth/token",
+      scopes: [],
+    } as ConnectorOAuthConfig,
+  },
 } as const;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES;
 
-export const connectorTypeSchema = z.enum(["github"]);
+export const connectorTypeSchema = z.enum(["github", "notion"]);
 
 /**
  * Get auth methods for a connector type

@@ -16,6 +16,7 @@ const context = testContext();
 
 const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
 const GITHUB_USER_URL = "https://api.github.com/user";
+const NOTION_TOKEN_URL = "https://api.notion.com/v1/oauth/token";
 
 /**
  * Create MSW handlers for GitHub OAuth API
@@ -60,6 +61,43 @@ function createGitHubOAuthMock(options: {
 }
 
 /**
+ * Create MSW handlers for Notion OAuth API
+ */
+function createNotionOAuthMock(options: {
+  accessToken?: string;
+  refreshToken?: string | null;
+  tokenError?: string;
+  userId?: string;
+  userName?: string;
+  email?: string | null;
+}) {
+  return handlers({
+    tokenExchange: http.post(NOTION_TOKEN_URL, () => {
+      if (options.tokenError) {
+        return HttpResponse.json({
+          error: "invalid_grant",
+          error_description: options.tokenError,
+        });
+      }
+      return HttpResponse.json({
+        access_token: options.accessToken ?? "notion-test-access-token",
+        refresh_token: options.refreshToken ?? "notion-test-refresh-token",
+        token_type: "bearer",
+        owner: {
+          user: {
+            id: options.userId ?? "notion-user-123",
+            name: options.userName ?? "Notion User",
+            person: {
+              email: options.email ?? "notion@example.com",
+            },
+          },
+        },
+      });
+    }),
+  });
+}
+
+/**
  * Create a test request with OAuth callback parameters and cookies
  */
 function createCallbackRequest(options: {
@@ -69,8 +107,10 @@ function createCallbackRequest(options: {
   errorDescription?: string;
   savedState?: string;
   sessionId?: string;
+  connectorType?: string;
 }) {
-  const url = new URL("http://localhost:3000/api/connectors/github/callback");
+  const type = options.connectorType ?? "github";
+  const url = new URL(`http://localhost:3000/api/connectors/${type}/callback`);
 
   if (options.code) url.searchParams.set("code", options.code);
   if (options.state) url.searchParams.set("state", options.state);
@@ -97,6 +137,8 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
     context.setupMocks();
     vi.stubEnv("GH_OAUTH_CLIENT_ID", "test-client-id");
     vi.stubEnv("GH_OAUTH_CLIENT_SECRET", "test-client-secret");
+    vi.stubEnv("NOTION_OAUTH_CLIENT_ID", "notion-test-client-id");
+    vi.stubEnv("NOTION_OAUTH_CLIENT_SECRET", "notion-test-client-secret");
   });
 
   afterEach(() => {
@@ -391,6 +433,99 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(statusResponse.status).toBe(200);
       expect(sessionData.status).toBe("error");
       expect(sessionData.errorMessage).toBeDefined();
+    });
+  });
+
+  describe("Notion OAuth Flow", () => {
+    it("should store Notion connector and redirect to success page", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createNotionOAuthMock({
+        accessToken: "notion-access-token",
+        refreshToken: "notion-refresh-token",
+        userId: "notion-user-456",
+        userName: "My Workspace",
+        email: "user@workspace.com",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "notion",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "notion" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=notion");
+      expect(location).toContain("username=My+Workspace");
+
+      // Verify connector was stored via API
+      const getRequest = createTestRequest(
+        "http://localhost:3000/api/connectors/notion",
+      );
+      const getResponse = await getConnector(getRequest);
+      const connector = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(connector.type).toBe("notion");
+      expect(connector.externalUsername).toBe("My Workspace");
+      expect(connector.externalId).toBe("notion-user-456");
+    });
+
+    it("should redirect with error when Notion token exchange fails", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createNotionOAuthMock({
+        tokenError: "Invalid authorization code",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "invalid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "notion",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "notion" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+    });
+
+    it("should handle Notion response without refresh token", async () => {
+      await context.setupUser();
+
+      const { handlers: mswHandlers } = createNotionOAuthMock({
+        accessToken: "notion-access-token",
+        refreshToken: null,
+        userId: "notion-user-789",
+        userName: "No Refresh",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "notion",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "notion" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/success");
+      expect(location).toContain("type=notion");
     });
   });
 });
