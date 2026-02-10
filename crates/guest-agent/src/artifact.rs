@@ -142,7 +142,12 @@ pub async fn create_snapshot(
         )
         .await?;
         let commit: CommitResponse = resp
-            .map(|v| serde_json::from_value(v).unwrap_or(CommitResponse { success: None }))
+            .map(|v| {
+                serde_json::from_value(v).unwrap_or_else(|e| {
+                    log_warn!(LOG_TAG, "Failed to parse dedup commit response: {e}");
+                    CommitResponse { success: None }
+                })
+            })
             .unwrap_or(CommitResponse { success: None });
         if commit.success != Some(true) {
             return Err(AgentError::Checkpoint("Failed to update HEAD".into()));
@@ -240,7 +245,12 @@ pub async fn create_snapshot(
         }
     };
     let commit: CommitResponse = resp
-        .map(|v| serde_json::from_value(v).unwrap_or(CommitResponse { success: None }))
+        .map(|v| {
+            serde_json::from_value(v).unwrap_or_else(|e| {
+                log_warn!(LOG_TAG, "Failed to parse commit response: {e}");
+                CommitResponse { success: None }
+            })
+        })
         .unwrap_or(CommitResponse { success: None });
 
     if commit.success != Some(true) {

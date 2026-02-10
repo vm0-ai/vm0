@@ -18,12 +18,15 @@ pub struct SecretMasker {
 
 impl SecretMasker {
     /// Build a masker from the `VM0_SECRET_VALUES` environment variable.
+    pub fn from_env() -> Self {
+        Self::from_raw(env::secret_values())
+    }
+
+    /// Build a masker from a raw comma-separated base64-encoded secret string.
     ///
-    /// The env var contains comma-separated base64-encoded secret values.
     /// For each secret ≥ 5 chars, three variants are stored:
     /// plain, base64-encoded, and percent-encoded.
-    pub fn from_env() -> Self {
-        let raw = env::secret_values();
+    fn from_raw(raw: &str) -> Self {
         if raw.is_empty() {
             return Self {
                 patterns: Vec::new(),
@@ -179,16 +182,14 @@ mod tests {
     }
 
     #[test]
-    fn from_env_with_encoded_secrets() {
+    fn from_raw_with_encoded_secrets() {
         // Build comma-separated base64-encoded secrets (matching TS format)
         let engine = base64::engine::general_purpose::STANDARD;
         let s1 = engine.encode("hello-world-secret");
         let s2 = engine.encode("tiny");
         let encoded = format!("{s1},{s2}");
-        // SAFETY: test-only, single-threaded test runner.
-        unsafe { std::env::set_var("VM0_SECRET_VALUES", &encoded) };
 
-        let masker = SecretMasker::from_env();
+        let masker = SecretMasker::from_raw(&encoded);
         // "tiny" is < 5 chars, should be excluded
         // "hello-world-secret" should have 2-3 patterns (plain + base64 + url if different)
         assert!(!masker.patterns.is_empty());

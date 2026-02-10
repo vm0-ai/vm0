@@ -98,20 +98,19 @@ pub fn setup_codex() -> Result<(), AgentError> {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
     let codex_home = format!("{home}/.codex");
     std::fs::create_dir_all(&codex_home)?;
-    // SAFETY: no other thread reads CODEX_HOME — it is only consumed later
-    // by `extract_session_id` on the main task, after this point.
-    unsafe { std::env::set_var("CODEX_HOME", &codex_home) };
     log_info!(LOG_TAG, "Codex home directory: {codex_home}");
 
     let login_start = std::time::Instant::now();
     let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_default();
     if api_key.is_empty() {
-        log_error!(LOG_TAG, "OPENAI_API_KEY not set");
-        record_sandbox_op("codex_login", login_start.elapsed(), false, None);
-        return Ok(());
+        let msg = "OPENAI_API_KEY not set";
+        log_error!(LOG_TAG, "{msg}");
+        record_sandbox_op("codex_login", login_start.elapsed(), false, Some(msg));
+        return Err(AgentError::Execution(msg.into()));
     }
     let output = std::process::Command::new("codex")
         .args(["login", "--with-api-key"])
+        .env("CODEX_HOME", &codex_home)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -158,13 +157,20 @@ pub async fn execute_cli(
         .split_first()
         .ok_or_else(|| AgentError::Execution("empty command".into()))?;
 
-    let mut child = tokio::process::Command::new(bin)
-        .args(args)
+    let mut cmd = tokio::process::Command::new(bin);
+    cmd.args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .process_group(0)
-        .spawn()?;
+        .process_group(0);
+
+    // Pass CODEX_HOME via Command::env instead of global set_var
+    if env::cli_agent_type() == "codex" {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
+        cmd.env("CODEX_HOME", format!("{home}/.codex"));
+    }
+
+    let mut child = cmd.spawn()?;
 
     let stdout = child
         .stdout
@@ -245,7 +251,19 @@ pub async fn execute_cli(
     };
 
     let status = child.wait().await?;
-    let exit_code = status.code().unwrap_or(1);
+    let exit_code = match status.code() {
+        Some(code) => code,
+        None => {
+            #[cfg(unix)]
+            {
+                use std::os::unix::process::ExitStatusExt;
+                if let Some(sig) = status.signal() {
+                    log_warn!(LOG_TAG, "Process killed by signal {sig}");
+                }
+            }
+            1
+        }
+    };
 
     let stderr_lines = stderr_handle.await.unwrap_or_default();
 
