@@ -169,6 +169,32 @@ export function getConnectorDerivedNames(
 }
 
 /**
+ * Get the set of environment variable names that connected connectors can provide.
+ * Used by pre-run checks to exclude connector-provided secrets from "missing" lists.
+ *
+ * Example: getConnectorProvidedSecretNames(["github"])
+ * → Set { "GH_TOKEN", "GITHUB_TOKEN" }
+ */
+export function getConnectorProvidedSecretNames(
+  connectedTypes: string[],
+): Set<string> {
+  const provided = new Set<string>();
+
+  for (const rawType of connectedTypes) {
+    const parsed = connectorTypeSchema.safeParse(rawType);
+    if (!parsed.success) {
+      continue;
+    }
+    const mapping = getConnectorEnvironmentMapping(parsed.data);
+    for (const envVar of Object.keys(mapping)) {
+      provided.add(envVar);
+    }
+  }
+
+  return provided;
+}
+
+/**
  * Get OAuth configuration for a connector type
  */
 export function getConnectorOAuthConfig(

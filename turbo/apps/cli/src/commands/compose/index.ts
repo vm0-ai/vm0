@@ -8,6 +8,7 @@ import {
   getLegacySystemTemplateWarning,
   extractVariableReferences,
   groupVariablesBySource,
+  getConnectorProvidedSecretNames,
 } from "@vm0/core";
 import {
   getComposeByName,
@@ -15,6 +16,7 @@ import {
   getScope,
   listSecrets,
   listVariables,
+  listConnectors,
 } from "../../lib/api";
 import { getApiUrl } from "../../lib/api/config";
 import { validateAgentCompose } from "../../lib/domain/yaml-validator";
@@ -414,10 +416,12 @@ async function checkAndPromptMissingItems(
     return { missingSecrets: [], missingVars: [] };
   }
 
-  const [secretsResponse, variablesResponse] = await Promise.all([
-    requiredSecrets.size > 0 ? listSecrets() : { secrets: [] },
-    requiredVars.size > 0 ? listVariables() : { variables: [] },
-  ]);
+  const [secretsResponse, variablesResponse, connectorsResponse] =
+    await Promise.all([
+      requiredSecrets.size > 0 ? listSecrets() : { secrets: [] },
+      requiredVars.size > 0 ? listVariables() : { variables: [] },
+      listConnectors(),
+    ]);
 
   const existingSecretNames = new Set(
     secretsResponse.secrets.map((s) => s.name),
@@ -426,8 +430,13 @@ async function checkAndPromptMissingItems(
     variablesResponse.variables.map((v) => v.name),
   );
 
+  // Connector-provided secrets (e.g., GH_TOKEN from GitHub connector)
+  const connectorProvided = getConnectorProvidedSecretNames(
+    connectorsResponse.connectors.map((c) => c.type),
+  );
+
   const missingSecrets = [...requiredSecrets].filter(
-    (name) => !existingSecretNames.has(name),
+    (name) => !existingSecretNames.has(name) && !connectorProvided.has(name),
   );
   const missingVars = [...requiredVars].filter(
     (name) => !existingVarNames.has(name),

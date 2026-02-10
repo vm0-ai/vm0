@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { eq, and, inArray } from "drizzle-orm";
-import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
+import {
+  extractVariableReferences,
+  groupVariablesBySource,
+  getConnectorProvidedSecretNames,
+} from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
 import {
@@ -37,6 +41,7 @@ import { slackComposeRequests } from "../../../../src/db/schema/slack-compose-re
 import { generateEphemeralCliToken } from "../../../../src/lib/auth/cli-token-service";
 import { triggerComposeJob } from "../../../../src/lib/compose/trigger-compose-job";
 import { listModelProviders } from "../../../../src/lib/model-provider/model-provider-service";
+import { listConnectors } from "../../../../src/lib/connector/connector-service";
 
 const log = logger("slack:interactive");
 
@@ -220,12 +225,19 @@ async function fetchAvailableAgents(
           .where(inArray(agentComposeVersions.id, versionIds))
       : [];
 
-  // Get user's existing secrets and variables
-  const [userSecrets, userVars] = await Promise.all([
+  // Get user's existing secrets, variables, and connectors
+  const [userSecrets, userVars, userConnectors] = await Promise.all([
     listSecrets(vm0UserId),
     listVariables(vm0UserId),
+    listConnectors(vm0UserId),
   ]);
-  const existingSecretNames = new Set(userSecrets.map((s) => s.name));
+  const connectorProvided = getConnectorProvidedSecretNames(
+    userConnectors.map((c) => c.type),
+  );
+  const existingSecretNames = new Set([
+    ...userSecrets.map((s) => s.name),
+    ...connectorProvided,
+  ]);
   const existingVarNames = new Set(userVars.map((v) => v.name));
 
   // Build map of compose ID to required secrets and vars
@@ -305,12 +317,19 @@ async function fetchBoundAgents(
           .where(inArray(agentComposeVersions.id, versionIds))
       : [];
 
-  // Get user's existing secrets and variables
-  const [userSecrets, userVars] = await Promise.all([
+  // Get user's existing secrets, variables, and connectors
+  const [userSecrets, userVars, userConnectors] = await Promise.all([
     listSecrets(vm0UserId),
     listVariables(vm0UserId),
+    listConnectors(vm0UserId),
   ]);
-  const existingSecretNames = new Set(userSecrets.map((s) => s.name));
+  const connectorProvided = getConnectorProvidedSecretNames(
+    userConnectors.map((c) => c.type),
+  );
+  const existingSecretNames = new Set([
+    ...userSecrets.map((s) => s.name),
+    ...connectorProvided,
+  ]);
   const existingVarNames = new Set(userVars.map((v) => v.name));
 
   // Build map of compose ID to required secrets and vars

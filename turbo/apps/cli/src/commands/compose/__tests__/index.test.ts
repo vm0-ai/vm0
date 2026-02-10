@@ -2891,6 +2891,119 @@ agents:
       expect(result.setupUrl).not.toContain("EXISTING_KEY");
       expect(result.setupUrl).not.toContain("EXISTING_VAR");
     });
+
+    it("should not show connector-provided secrets as missing", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        yaml.stringify({
+          version: "1.0",
+          agents: {
+            test: {
+              framework: "claude-code",
+              working_dir: "/",
+              environment: {
+                GH_TOKEN: "${{ secrets.GH_TOKEN }}",
+                OTHER_KEY: "${{ secrets.OTHER_KEY }}",
+              },
+            },
+          },
+        }),
+      );
+
+      server.use(
+        composeApiHandler,
+        scopeApiHandler,
+        http.get("http://localhost:3000/api/secrets", () => {
+          return HttpResponse.json({ secrets: [] });
+        }),
+        http.get("http://localhost:3000/api/variables", () => {
+          return HttpResponse.json({ variables: [] });
+        }),
+        http.get("http://localhost:3000/api/connectors", () => {
+          return HttpResponse.json({
+            connectors: [
+              {
+                id: "conn-1",
+                type: "github",
+                authMethod: "oauth",
+                externalId: "12345",
+                externalUsername: "testuser",
+                externalEmail: null,
+                oauthScopes: ["repo"],
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
+            ],
+          });
+        }),
+      );
+
+      await composeCommand.parseAsync(["node", "cli", "--json"]);
+
+      const jsonOutputCall = mockConsoleLog.mock.calls.find((call) => {
+        try {
+          const parsed = JSON.parse(call[0] as string);
+          return parsed.composeId !== undefined;
+        } catch {
+          return false;
+        }
+      });
+
+      expect(jsonOutputCall).toBeDefined();
+      const result = JSON.parse(jsonOutputCall![0] as string);
+      // GH_TOKEN is provided by GitHub connector, should not be missing
+      expect(result.missingSecrets).toEqual(["OTHER_KEY"]);
+      expect(result.setupUrl).toContain("secrets=OTHER_KEY");
+      expect(result.setupUrl).not.toContain("GH_TOKEN");
+    });
+
+    it("should show all secrets as missing when no connectors are connected", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        yaml.stringify({
+          version: "1.0",
+          agents: {
+            test: {
+              framework: "claude-code",
+              working_dir: "/",
+              environment: {
+                GH_TOKEN: "${{ secrets.GH_TOKEN }}",
+              },
+            },
+          },
+        }),
+      );
+
+      server.use(
+        composeApiHandler,
+        scopeApiHandler,
+        http.get("http://localhost:3000/api/secrets", () => {
+          return HttpResponse.json({ secrets: [] });
+        }),
+        http.get("http://localhost:3000/api/variables", () => {
+          return HttpResponse.json({ variables: [] });
+        }),
+        http.get("http://localhost:3000/api/connectors", () => {
+          return HttpResponse.json({ connectors: [] });
+        }),
+      );
+
+      await composeCommand.parseAsync(["node", "cli", "--json"]);
+
+      const jsonOutputCall = mockConsoleLog.mock.calls.find((call) => {
+        try {
+          const parsed = JSON.parse(call[0] as string);
+          return parsed.composeId !== undefined;
+        } catch {
+          return false;
+        }
+      });
+
+      expect(jsonOutputCall).toBeDefined();
+      const result = JSON.parse(jsonOutputCall![0] as string);
+      // No connector connected, GH_TOKEN should still be missing
+      expect(result.missingSecrets).toEqual(["GH_TOKEN"]);
+    });
   });
 });
 
