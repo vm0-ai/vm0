@@ -37,7 +37,17 @@ const nextConfig = {
         : false,
   },
   experimental: {
-    optimizePackageImports: ["next-intl"],
+    optimizePackageImports: [
+      "next-intl",
+      "@tabler/icons-react",
+      "@aws-sdk/client-s3",
+      "@aws-sdk/s3-request-presigner",
+      "@radix-ui/react-dialog",
+      "@radix-ui/react-popover",
+      "@radix-ui/react-select",
+      "@radix-ui/react-tooltip",
+      "@sentry/nextjs",
+    ],
   },
   allowedDevOrigins: ["*.vm7.ai"],
   serverExternalPackages: ["ably"],
