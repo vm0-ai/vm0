@@ -12,8 +12,7 @@ export const GUEST_BINARY_PATHS = {
 } as const;
 
 /**
- * Environment loader script path
- * This wrapper loads environment from JSON file before executing run-agent.mjs
- * Runner uses this because remote exec doesn't support passing environment variables directly
+ * Run-agent script path
+ * Main agent orchestrator that handles CLI execution, events, checkpoints.
  */
-export const ENV_LOADER_PATH = "/usr/local/bin/vm0-agent/env-loader.mjs";
+export const RUN_AGENT_PATH = "/usr/local/bin/vm0-agent/run-agent.mjs";

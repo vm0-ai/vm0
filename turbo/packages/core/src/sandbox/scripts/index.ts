@@ -13,13 +13,12 @@ export {
   RUN_AGENT_SCRIPT,
   DOWNLOAD_SCRIPT,
   MOCK_CLAUDE_SCRIPT,
-  ENV_LOADER_SCRIPT,
 } from "./dist/bundled";
 
 /**
  * Script paths in the E2B sandbox / Firecracker VM (TypeScript/ESM)
  *
- * Simplified structure: just the base directory and 4 bundled scripts.
+ * Simplified structure: just the base directory and 3 bundled scripts.
  * No lib directory needed since scripts are self-contained.
  */
 export const SCRIPT_PATHS = {
@@ -31,6 +30,4 @@ export const SCRIPT_PATHS = {
   download: "/usr/local/bin/vm0-agent/download.mjs",
   /** Mock Claude CLI for testing - executes prompt as bash, outputs Claude-compatible JSONL */
   mockClaude: "/usr/local/bin/vm0-agent/mock-claude.mjs",
-  /** Environment loader for runner - loads env from JSON file before running agent */
-  envLoader: "/usr/local/bin/vm0-agent/env-loader.mjs",
 } as const;
