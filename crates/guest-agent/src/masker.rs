@@ -105,11 +105,19 @@ impl SecretMasker {
     }
 }
 
-/// Percent-encode a string (same characters as JS `encodeURIComponent`).
+/// Percent-encode a string matching JS `encodeURIComponent` behavior.
+///
+/// Unescaped set per ECMAScript spec (uriUnescaped):
+///   A-Z a-z 0-9 - _ . ! ~ * ' ( )
+///
+/// See: https://tc39.es/ecma262/#sec-encodeuricomponent-uricomponent
 fn url_encode(s: &str) -> String {
     let mut encoded = String::with_capacity(s.len() * 3);
+    // Rust &str is valid UTF-8, so iterating bytes and percent-encoding
+    // non-unescaped bytes is equivalent to the spec's UTF-8 encode + escape.
     for byte in s.bytes() {
         match byte {
+            // uriUnescaped: uriAlpha | DecimalDigit | uriMark
             b'A'..=b'Z'
             | b'a'..=b'z'
             | b'0'..=b'9'
