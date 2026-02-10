@@ -215,6 +215,13 @@ verify_rootfs() {
         echo "  guest-agent: installed (Rust binary at /usr/local/bin/guest-agent)"
     fi
 
+    if [ ! -f "$MOUNT_POINT/usr/local/bin/guest-mock-claude" ]; then
+        echo "ERROR: guest-mock-claude binary not found in rootfs"
+        ERRORS=$((ERRORS + 1))
+    else
+        echo "  guest-mock-claude: installed (Rust binary at /usr/local/bin/guest-mock-claude)"
+    fi
+
     # Check for Codex CLI (for framework: codex)
     if ! sudo chroot "$MOUNT_POINT" /usr/bin/which codex > /dev/null 2>&1; then
         echo "WARNING: Codex CLI not found in rootfs"

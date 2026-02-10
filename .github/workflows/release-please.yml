@@ -495,10 +495,11 @@ jobs:
         run: |
           cd crates
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc \
-            cargo build --release --target aarch64-unknown-linux-musl -p guest-init -p guest-download -p guest-agent
+            cargo build --release --target aarch64-unknown-linux-musl -p guest-init -p guest-download -p guest-agent -p guest-mock-claude
           ls -la target/aarch64-unknown-linux-musl/release/guest-init
           ls -la target/aarch64-unknown-linux-musl/release/guest-download
           ls -la target/aarch64-unknown-linux-musl/release/guest-agent
+          ls -la target/aarch64-unknown-linux-musl/release/guest-mock-claude
 
       - name: Build runner bundle
         run: |
