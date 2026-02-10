@@ -24,7 +24,7 @@ export const secrets$ = computed(async (get) => {
   const data = (await resp.json()) as SecretListResponse;
   // Filter out model-provider secrets (only show user and connector secrets)
   return data.secrets
-    .filter((s) => s.type !== "model-provider")
+    .filter((s) => s.type !== "model-provider" && s.type !== "connector")
     .sort(
       (a, b) =>
         new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),

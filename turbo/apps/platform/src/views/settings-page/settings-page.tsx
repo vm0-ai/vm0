@@ -10,6 +10,8 @@ import { DefaultProviderCard } from "./default-provider-card.tsx";
 import { ProviderList } from "./provider-list.tsx";
 import { ProviderDialog } from "./provider-dialog.tsx";
 import { DeleteProviderDialog } from "./delete-provider-dialog.tsx";
+import { ConnectorList } from "./connector-list.tsx";
+import { DisconnectConnectorDialog } from "./disconnect-connector-dialog.tsx";
 import { SecretList } from "./secret-list.tsx";
 import { SecretDialog } from "./secret-dialog.tsx";
 import { DeleteSecretDialog } from "./delete-secret-dialog.tsx";
@@ -25,7 +27,7 @@ export function SettingsPage() {
     <AppShell
       breadcrumb={["Settings"]}
       title="Settings"
-      subtitle="Configure your model providers, secrets, and variables"
+      subtitle="Configure your model providers, connectors, secrets, and variables"
     >
       <div className="flex flex-col gap-6 px-6 pb-8">
         <Tabs
@@ -34,6 +36,7 @@ export function SettingsPage() {
         >
           <TabsList>
             <TabsTrigger value="providers">Model Providers</TabsTrigger>
+            <TabsTrigger value="connectors">Connectors</TabsTrigger>
             <TabsTrigger value="secrets">Secrets</TabsTrigger>
             <TabsTrigger value="variables">Variables</TabsTrigger>
           </TabsList>
@@ -45,6 +48,13 @@ export function SettingsPage() {
             <ProviderList />
             <ProviderDialog />
             <DeleteProviderDialog />
+          </>
+        )}
+
+        {tab === "connectors" && (
+          <>
+            <ConnectorList />
+            <DisconnectConnectorDialog />
           </>
         )}
 

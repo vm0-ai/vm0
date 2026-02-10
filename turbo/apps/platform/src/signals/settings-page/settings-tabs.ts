@@ -5,7 +5,7 @@ import { searchParams$, updateSearchParams$ } from "../route.ts";
 // Tab types
 // ---------------------------------------------------------------------------
 
-export type SettingsTab = "providers" | "secrets" | "variables";
+export type SettingsTab = "providers" | "connectors" | "secrets" | "variables";
 
 // ---------------------------------------------------------------------------
 // Internal state
@@ -27,7 +27,12 @@ export const requiredItems$ = computed((get) => get(internalRequiredItems$));
 // ---------------------------------------------------------------------------
 
 function isValidTab(value: string): value is SettingsTab {
-  return value === "providers" || value === "secrets" || value === "variables";
+  return (
+    value === "providers" ||
+    value === "connectors" ||
+    value === "secrets" ||
+    value === "variables"
+  );
 }
 
 /**
