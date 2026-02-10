@@ -134,10 +134,10 @@ create_squashfs_image() {
     sudo cp "$SCRIPT_DIR/guest-agent" "$EXTRACT_DIR/usr/local/bin/guest-agent"
     sudo chmod 755 "$EXTRACT_DIR/usr/local/bin/guest-agent"
 
-    # Install agent files (ESM scripts)
-    echo "[INSTALL] Installing agent files..."
-    sudo cp "$SCRIPT_DIR/mock-claude.mjs" "$EXTRACT_DIR/usr/local/bin/vm0-agent/"
-    sudo chmod +x "$EXTRACT_DIR/usr/local/bin/vm0-agent/"*
+    # Install guest-mock-claude binary (test-only CLI for mock mode)
+    echo "[INSTALL] Installing guest-mock-claude..."
+    sudo cp "$SCRIPT_DIR/guest-mock-claude" "$EXTRACT_DIR/usr/local/bin/guest-mock-claude"
+    sudo chmod 755 "$EXTRACT_DIR/usr/local/bin/guest-mock-claude"
 
     # Install proxy CA certificate (required for MITM mode)
     echo "[INSTALL] Installing proxy CA certificate..."

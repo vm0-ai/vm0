@@ -49,7 +49,7 @@ fn build_claude_command(use_mock: bool) -> Vec<String> {
 
     let bin = if use_mock {
         log_info!(LOG_TAG, "Using mock-claude for testing");
-        "/usr/local/bin/vm0-agent/mock-claude.mjs".to_string()
+        "/usr/local/bin/guest-mock-claude".to_string()
     } else {
         "claude".to_string()
     };
