@@ -42,16 +42,23 @@ export async function GET(request: Request) {
   const baseUrl = getSlackRedirectBaseUrl(request.url);
   const redirectUri = `${baseUrl}/api/slack/oauth/callback`;
 
-  // Get optional Slack user info from query params (for combined install + link flow)
+  // Get optional Slack user info and default agent from query params
   const slackUserId = url.searchParams.get("u");
   const slackWorkspaceId = url.searchParams.get("w");
   const channelId = url.searchParams.get("c");
+  const composeId = url.searchParams.get("composeId");
 
-  // Build state with user info if provided
-  const stateObj: { u?: string; w?: string; c?: string } = {};
+  // Build state with user info and default agent if provided
+  const stateObj: {
+    u?: string;
+    w?: string;
+    c?: string;
+    composeId?: string;
+  } = {};
   if (slackUserId) stateObj.u = slackUserId;
   if (slackWorkspaceId) stateObj.w = slackWorkspaceId;
   if (channelId) stateObj.c = channelId;
+  if (composeId) stateObj.composeId = composeId;
   const state =
     Object.keys(stateObj).length > 0 ? JSON.stringify(stateObj) : "";
 

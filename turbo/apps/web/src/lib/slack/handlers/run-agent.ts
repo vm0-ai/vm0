@@ -16,7 +16,7 @@ const log = logger("slack:run-agent");
 
 interface RunAgentParams {
   composeId: string;
-  bindingId?: string;
+  agentName: string;
   sessionId: string | undefined;
   prompt: string;
   threadContext: string;
@@ -49,7 +49,7 @@ interface RunAgentResult {
 export async function runAgentForSlack(
   params: RunAgentParams,
 ): Promise<RunAgentResult> {
-  const { composeId, bindingId, sessionId, prompt, threadContext, userId } =
+  const { composeId, agentName, sessionId, prompt, threadContext, userId } =
     params;
 
   try {
@@ -124,7 +124,7 @@ export async function runAgentForSlack(
       };
     }
 
-    log.debug(`Created run ${run.id} for Slack`, { bindingId });
+    log.debug(`Created run ${run.id} for Slack agent ${agentName}`);
 
     // Generate sandbox token
     const sandboxToken = await generateSandboxToken(userId, run.id);
@@ -138,7 +138,7 @@ export async function runAgentForSlack(
       runId: run.id,
       sandboxToken,
       userId,
-      agentName: compose.name,
+      agentName,
       artifactName: "artifact", // Same default as cook command
     });
 

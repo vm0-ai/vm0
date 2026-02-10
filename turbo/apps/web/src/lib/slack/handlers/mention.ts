@@ -14,10 +14,11 @@ import { runAgentForSlack } from "./run-agent";
 import {
   removeThinkingReaction,
   fetchConversationContexts,
+  lookupThreadSession,
   saveThreadSession,
-  resolveRunContext,
   buildLoginUrl,
   buildLogsUrl,
+  getWorkspaceAgent,
 } from "./shared";
 import { logger } from "../../logger";
 
@@ -36,16 +37,17 @@ interface MentionContext {
  * Handle an app_mention event from Slack
  *
  * Flow:
- * 1. Get workspace installation and decrypt bot token
+ * 1. Get workspace installation (includes defaultComposeId)
  * 2. Check if user is linked
  * 3. If not linked, post link message
- * 4. Resolve which agent to run (thread session first, then binding fallback)
+ * 4. Resolve workspace agent name
  * 5. Add thinking reaction
- * 6. Fetch conversation context
- * 7. Execute agent
- * 8. Create/update thread session mapping
- * 9. Post response message
- * 10. Remove thinking reaction
+ * 6. Look up existing thread session
+ * 7. Fetch conversation context
+ * 8. Execute agent
+ * 9. Create/update thread session mapping
+ * 10. Post response message
+ * 11. Remove thinking reaction
  */
 export async function handleAppMention(context: MentionContext): Promise<void> {
   const { SECRETS_ENCRYPTION_KEY } = env();
@@ -104,30 +106,17 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       return;
     }
 
-    // 4. Resolve which agent to run (thread session first, then binding fallback)
-    const runCtx = await resolveRunContext(
-      context.channelId,
-      threadTs,
-      userLink.id,
-    );
-
-    if (!runCtx) {
+    // 4. Resolve workspace agent
+    const agent = await getWorkspaceAgent(installation.defaultComposeId);
+    if (!agent) {
       await postMessage(
         client,
         context.channelId,
-        "You don't have any agent linked. Use `/vm0 agent link` to link one.",
+        "The workspace agent is not available. Please contact the workspace admin.",
         { threadTs },
       );
       return;
     }
-
-    const {
-      composeId,
-      bindingId,
-      agentName,
-      existingSessionId,
-      lastProcessedMessageTs,
-    } = runCtx;
 
     // 5. Add thinking reaction (emoji only, no message)
     const reactionAdded = await client.reactions
@@ -145,7 +134,24 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       botUserId,
     );
 
-    // 6. Fetch context: execution gets deduplicated with images
+    // 6. Look up existing thread session for deduplication
+    let existingSessionId: string | undefined;
+    let lastProcessedMessageTs: string | undefined;
+    if (threadTs) {
+      const session = await lookupThreadSession(
+        context.channelId,
+        threadTs,
+        userLink.id,
+      );
+      existingSessionId = session.existingSessionId;
+      lastProcessedMessageTs = session.lastProcessedMessageTs;
+      log.debug("Thread session lookup", {
+        existingSessionId,
+        lastProcessedMessageTs,
+      });
+    }
+
+    // 7. Fetch context: execution gets deduplicated with images
     const { executionContext } = await fetchConversationContexts(
       client,
       context.channelId,
@@ -157,7 +163,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
     );
 
     try {
-      // 7. Execute agent with deduplicated context
+      // 8. Execute agent with deduplicated context
       log.debug("Calling runAgentForSlack", { existingSessionId });
       const {
         status: runStatus,
@@ -165,18 +171,18 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
         sessionId: newSessionId,
         runId,
       } = await runAgentForSlack({
-        composeId,
-        bindingId,
+        composeId: installation.defaultComposeId,
+        agentName: agent.name,
         sessionId: existingSessionId,
         prompt: messageContent,
         threadContext: executionContext,
         userId: userLink.vm0UserId,
       });
 
-      // 8. Create or update thread session mapping
+      // 9. Create or update thread session mapping
       if (threadTs) {
         await saveThreadSession({
-          bindingId,
+          userLinkId: userLink.id,
           channelId: context.channelId,
           threadTs,
           existingSessionId,
@@ -186,7 +192,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
         });
       }
 
-      // 9. Post response message with agent name and logs link
+      // 10. Post response message with agent name and logs link
       const logsUrl = runId ? buildLogsUrl(runId) : undefined;
       const responseText =
         runStatus === "timeout"
@@ -194,7 +200,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
           : agentResponse;
       await postMessage(client, context.channelId, responseText, {
         threadTs,
-        blocks: buildAgentResponseMessage(responseText, agentName, logsUrl),
+        blocks: buildAgentResponseMessage(responseText, agent.name, logsUrl),
       });
     } catch (innerError) {
       // If postMessage or session creation fails, still try to notify the user
@@ -210,7 +216,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
         // If even the error message fails, we can't do anything more
       });
     } finally {
-      // 10. Remove thinking reaction
+      // 11. Remove thinking reaction
       if (reactionAdded) {
         await removeThinkingReaction(
           client,

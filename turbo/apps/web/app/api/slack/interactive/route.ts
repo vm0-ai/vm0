@@ -13,15 +13,14 @@ import {
 } from "../../../../src/lib/slack/verify";
 import { slackInstallations } from "../../../../src/db/schema/slack-installation";
 import { slackUserLinks } from "../../../../src/db/schema/slack-user-link";
-import { slackBindings } from "../../../../src/db/schema/slack-binding";
 import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import {
-  buildAgentAddModal,
+  buildAgentManageModal,
   buildAgentComposeModal,
-  buildAgentUpdateModal,
+  buildEnvironmentSetupModal,
 } from "../../../../src/lib/slack/blocks";
 import { decryptCredentialValue } from "../../../../src/lib/crypto/secrets-encryption";
 import {
@@ -43,6 +42,11 @@ import { generateEphemeralCliToken } from "../../../../src/lib/auth/cli-token-se
 import { triggerComposeJob } from "../../../../src/lib/compose/trigger-compose-job";
 import { listModelProviders } from "../../../../src/lib/model-provider/model-provider-service";
 import { listConnectors } from "../../../../src/lib/connector/connector-service";
+import {
+  addPermission,
+  removePermission,
+} from "../../../../src/lib/agent/permission-service";
+import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 
 const log = logger("slack:interactive");
 
@@ -164,69 +168,43 @@ export async function POST(request: Request) {
 }
 
 /**
- * Fetch available agents for add modal from database
+ * Fetch workspace agent info for a given user
  */
-async function fetchAvailableAgents(
+async function fetchWorkspaceAgentInfo(
+  composeId: string,
   vm0UserId: string,
-  userLinkId: string,
-): Promise<
-  Array<{
-    id: string;
-    name: string;
-    requiredSecrets: string[];
-    existingSecrets: string[];
-    requiredVars: string[];
-    existingVars: string[];
-  }>
-> {
-  // Fetch user's available agents with their head version
-  const composes = await globalThis.services.db
+): Promise<{
+  id: string;
+  name: string;
+  requiredSecrets: string[];
+  existingSecrets: string[];
+  requiredVars: string[];
+  existingVars: string[];
+} | null> {
+  const [compose] = await globalThis.services.db
     .select({
       id: agentComposes.id,
       name: agentComposes.name,
       headVersionId: agentComposes.headVersionId,
     })
     .from(agentComposes)
-    .where(eq(agentComposes.userId, vm0UserId));
+    .where(eq(agentComposes.id, composeId))
+    .limit(1);
 
-  if (composes.length === 0) {
-    return [];
-  }
+  if (!compose) return null;
 
-  // Get already bound agent names
-  const existingBindings = await globalThis.services.db
-    .select({ agentName: slackBindings.agentName })
-    .from(slackBindings)
-    .where(eq(slackBindings.slackUserLinkId, userLinkId));
+  // Get compose version
+  const versions = compose.headVersionId
+    ? await globalThis.services.db
+        .select({
+          id: agentComposeVersions.id,
+          content: agentComposeVersions.content,
+        })
+        .from(agentComposeVersions)
+        .where(eq(agentComposeVersions.id, compose.headVersionId))
+        .limit(1)
+    : [];
 
-  const boundNames = new Set(existingBindings.map((b) => b.agentName));
-
-  // Filter out already bound agents
-  const availableComposes = composes.filter(
-    (c) => !boundNames.has(c.name.toLowerCase()),
-  );
-
-  if (availableComposes.length === 0) {
-    return [];
-  }
-
-  // Get compose versions to extract required secrets and vars
-  const versionIds = availableComposes
-    .map((c) => c.headVersionId)
-    .filter((id): id is string => id !== null);
-
-  const versions =
-    versionIds.length > 0
-      ? await globalThis.services.db
-          .select({
-            id: agentComposeVersions.id,
-            content: agentComposeVersions.content,
-          })
-          .from(agentComposeVersions)
-          .where(inArray(agentComposeVersions.id, versionIds))
-      : [];
-
-  // Get user's existing secrets, variables, and connectors
   const [userSecrets, userVars, userConnectors] = await Promise.all([
     listSecrets(vm0UserId),
     listVariables(vm0UserId),
@@ -241,9 +219,79 @@ async function fetchAvailableAgents(
   ]);
   const existingVarNames = new Set(userVars.map((v) => v.name));
 
-  // Build map of compose ID to required secrets and vars
+  const version = versions[0];
+  const content = version ? version.content : null;
+  const refs = content ? extractVariableReferences(content) : [];
+  const grouped = groupVariablesBySource(refs);
+  const requiredSecrets = grouped.secrets.map((s) => s.name);
+  const requiredVars = grouped.vars.map((v) => v.name);
+
+  return {
+    id: compose.id,
+    name: compose.name,
+    requiredSecrets,
+    existingSecrets: requiredSecrets.filter((name) =>
+      existingSecretNames.has(name),
+    ),
+    requiredVars,
+    existingVars: requiredVars.filter((name) => existingVarNames.has(name)),
+  };
+}
+
+/**
+ * Fetch all agents owned by the admin user
+ */
+async function fetchAdminAgents(vm0UserId: string): Promise<
+  Array<{
+    id: string;
+    name: string;
+    requiredSecrets: string[];
+    existingSecrets: string[];
+    requiredVars: string[];
+    existingVars: string[];
+  }>
+> {
+  const composes = await globalThis.services.db
+    .select({
+      id: agentComposes.id,
+      name: agentComposes.name,
+      headVersionId: agentComposes.headVersionId,
+    })
+    .from(agentComposes)
+    .where(eq(agentComposes.userId, vm0UserId));
+
+  if (composes.length === 0) return [];
+
+  const versionIds = composes
+    .map((c) => c.headVersionId)
+    .filter((id): id is string => id !== null);
+  const versions =
+    versionIds.length > 0
+      ? await globalThis.services.db
+          .select({
+            id: agentComposeVersions.id,
+            content: agentComposeVersions.content,
+          })
+          .from(agentComposeVersions)
+          .where(inArray(agentComposeVersions.id, versionIds))
+      : [];
+
+  const [userSecrets, userVars, userConnectors] = await Promise.all([
+    listSecrets(vm0UserId),
+    listVariables(vm0UserId),
+    listConnectors(vm0UserId),
+  ]);
+  const connectorProvided = getConnectorProvidedSecretNames(
+    userConnectors.map((c) => c.type),
+  );
+  const existingSecretNames = new Set([
+    ...userSecrets.map((s) => s.name),
+    ...connectorProvided,
+  ]);
+  const existingVarNames = new Set(userVars.map((v) => v.name));
+
   const versionMap = new Map(versions.map((v) => [v.id, v.content]));
-  return availableComposes.map((c) => {
+  return composes.map((c) => {
     const content = c.headVersionId ? versionMap.get(c.headVersionId) : null;
     const refs = content ? extractVariableReferences(content) : [];
     const grouped = groupVariablesBySource(refs);
@@ -263,100 +311,15 @@ async function fetchAvailableAgents(
 }
 
 /**
- * Fetch bound agents for update modal from database
+ * Get the Slack installation for a workspace
  */
-async function fetchBoundAgents(
-  vm0UserId: string,
-  userLinkId: string,
-): Promise<
-  Array<{
-    id: string;
-    name: string;
-    requiredSecrets: string[];
-    existingSecrets: string[];
-    requiredVars: string[];
-    existingVars: string[];
-  }>
-> {
-  // Get user's bound agents with their compose IDs
-  const bindings = await globalThis.services.db
-    .select({
-      id: slackBindings.id,
-      agentName: slackBindings.agentName,
-      composeId: slackBindings.composeId,
-    })
-    .from(slackBindings)
-    .where(eq(slackBindings.slackUserLinkId, userLinkId));
-
-  if (bindings.length === 0) {
-    return [];
-  }
-
-  // Get compose versions to extract required secrets and vars
-  const composeIds = bindings.map((b) => b.composeId);
-  const composes = await globalThis.services.db
-    .select({
-      id: agentComposes.id,
-      headVersionId: agentComposes.headVersionId,
-    })
-    .from(agentComposes)
-    .where(inArray(agentComposes.id, composeIds));
-
-  const versionIds = composes
-    .map((c) => c.headVersionId)
-    .filter((id): id is string => id !== null);
-
-  const versions =
-    versionIds.length > 0
-      ? await globalThis.services.db
-          .select({
-            id: agentComposeVersions.id,
-            composeId: agentComposeVersions.composeId,
-            content: agentComposeVersions.content,
-          })
-          .from(agentComposeVersions)
-          .where(inArray(agentComposeVersions.id, versionIds))
-      : [];
-
-  // Get user's existing secrets, variables, and connectors
-  const [userSecrets, userVars, userConnectors] = await Promise.all([
-    listSecrets(vm0UserId),
-    listVariables(vm0UserId),
-    listConnectors(vm0UserId),
-  ]);
-  const connectorProvided = getConnectorProvidedSecretNames(
-    userConnectors.map((c) => c.type),
-  );
-  const existingSecretNames = new Set([
-    ...userSecrets.map((s) => s.name),
-    ...connectorProvided,
-  ]);
-  const existingVarNames = new Set(userVars.map((v) => v.name));
-
-  // Build map of compose ID to required secrets and vars
-  const composeToVersion = new Map(
-    composes.map((c) => [c.id, c.headVersionId]),
-  );
-  const versionMap = new Map(versions.map((v) => [v.id, v.content]));
-
-  return bindings.map((b) => {
-    const versionId = composeToVersion.get(b.composeId);
-    const content = versionId ? versionMap.get(versionId) : null;
-    const refs = content ? extractVariableReferences(content) : [];
-    const grouped = groupVariablesBySource(refs);
-    const requiredSecrets = grouped.secrets.map((s) => s.name);
-    const requiredVars = grouped.vars.map((v) => v.name);
-    return {
-      id: b.id,
-      name: b.agentName,
-      requiredSecrets,
-      existingSecrets: requiredSecrets.filter((name) =>
-        existingSecretNames.has(name),
-      ),
-      requiredVars,
-      existingVars: requiredVars.filter((name) => existingVarNames.has(name)),
-    };
-  });
+async function getInstallation(workspaceId: string) {
+  const [installation] = await globalThis.services.db
+    .select()
+    .from(slackInstallations)
+    .where(eq(slackInstallations.slackWorkspaceId, workspaceId))
+    .limit(1);
+  return installation ?? null;
 }
 
 /**
@@ -365,7 +328,7 @@ async function fetchBoundAgents(
 async function updateModalView(
   client: ReturnType<typeof createSlackClient>,
   viewId: string,
-  view: ReturnType<typeof buildAgentAddModal>,
+  view: ReturnType<typeof buildAgentManageModal>,
   workspaceId: string,
 ): Promise<void> {
   try {
@@ -424,9 +387,9 @@ async function getUserLink(slackUserId: string, workspaceId: string) {
 }
 
 /**
- * Handle agent selection in add modal
+ * Handle agent selection in manage modal
  */
-async function handleAgentAddSelection(
+async function handleAgentManageSelection(
   payload: SlackInteractivePayload,
   selectedAgentId: string,
 ): Promise<void> {
@@ -444,45 +407,12 @@ async function handleAgentAddSelection(
   const userLink = await getUserLink(payload.user.id, payload.team.id);
   if (!userLink) return;
 
-  const agents = await fetchAvailableAgents(userLink.vm0UserId, userLink.id);
-  const updatedModal = buildAgentAddModal(
+  const agents = await fetchAdminAgents(userLink.vm0UserId);
+  const updatedModal = buildAgentManageModal(
     agents,
     selectedAgentId,
     channelId,
     hasModelProvider ?? true,
-  );
-
-  await updateModalView(
-    client,
-    payload.view!.id,
-    updatedModal,
-    payload.team.id,
-  );
-}
-
-/**
- * Handle agent selection in update modal
- */
-async function handleAgentUpdateSelection(
-  payload: SlackInteractivePayload,
-  selectedAgentId: string,
-): Promise<void> {
-  const privateMetadata = payload.view?.private_metadata;
-  const { channelId } = privateMetadata
-    ? (JSON.parse(privateMetadata) as { channelId?: string })
-    : { channelId: undefined };
-
-  const client = await getSlackClientForWorkspace(payload.team.id);
-  if (!client) return;
-
-  const userLink = await getUserLink(payload.user.id, payload.team.id);
-  if (!userLink) return;
-
-  const agents = await fetchBoundAgents(userLink.vm0UserId, userLink.id);
-  const updatedModal = buildAgentUpdateModal(
-    agents,
-    selectedAgentId,
-    channelId,
   );
 
   await updateModalView(
@@ -509,7 +439,7 @@ async function handleBlockActions(
 }
 
 /**
- * Dispatch modal-related block actions (agent select, agent update select)
+ * Dispatch modal-related block actions (agent select)
  */
 async function dispatchModalAction(
   payload: SlackInteractivePayload,
@@ -518,10 +448,7 @@ async function dispatchModalAction(
 ): Promise<void> {
   switch (actionId) {
     case "agent_select_action":
-      await handleAgentAddSelection(payload, value);
-      break;
-    case "agent_update_select_action":
-      await handleAgentUpdateSelection(payload, value);
+      await handleAgentManageSelection(payload, value);
       break;
   }
 }
@@ -535,7 +462,6 @@ async function dispatchBlockAction(
 ): Promise<void> {
   switch (action.action_id) {
     case "agent_select_action":
-    case "agent_update_select_action":
       if (payload.view && action.selected_option?.value) {
         await dispatchModalAction(
           payload,
@@ -544,23 +470,14 @@ async function dispatchBlockAction(
         );
       }
       break;
-    case "home_agent_update":
-      if (action.value && payload.trigger_id) {
-        await handleHomeAgentConfigure(
-          payload,
-          action.value,
-          payload.trigger_id,
-        );
-      }
-      break;
-    case "home_agent_unlink":
-      if (action.value) {
-        await handleHomeAgentUnlink(payload, action.value);
-      }
-      break;
-    case "home_agent_link":
+    case "home_environment_setup":
       if (payload.trigger_id) {
-        await handleHomeAgentLink(payload, payload.trigger_id);
+        await handleHomeEnvironmentSetup(payload, payload.trigger_id);
+      }
+      break;
+    case "home_agent_manage":
+      if (payload.trigger_id) {
+        await handleHomeAgentManage(payload, payload.trigger_id);
       }
       break;
     case "model_provider_refresh":
@@ -586,59 +503,29 @@ async function refreshAppHomeForUser(
   workspaceId: string,
   slackUserId: string,
 ): Promise<void> {
-  const client = await getSlackClientForWorkspace(workspaceId);
-  if (!client) return;
-  await refreshAppHome(client, workspaceId, slackUserId);
+  const { SECRETS_ENCRYPTION_KEY } = env();
+  const [installation] = await globalThis.services.db
+    .select()
+    .from(slackInstallations)
+    .where(eq(slackInstallations.slackWorkspaceId, workspaceId))
+    .limit(1);
+
+  if (!installation) return;
+
+  const botToken = decryptCredentialValue(
+    installation.encryptedBotToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+  const client = createSlackClient(botToken);
+  await refreshAppHome(client, installation, slackUserId);
 }
 
 /**
- * Handle agent configure select from App Home
+ * Handle environment setup button from App Home
  *
- * Opens the agent update modal pre-selected with the chosen agent.
+ * Opens the environment setup modal for the workspace agent.
  */
-async function handleHomeAgentConfigure(
-  payload: SlackInteractivePayload,
-  bindingId: string,
-  triggerId: string,
-): Promise<void> {
-  const client = await getSlackClientForWorkspace(payload.team.id);
-  if (!client) return;
-
-  const userLink = await getUserLink(payload.user.id, payload.team.id);
-  if (!userLink) return;
-
-  const agents = await fetchBoundAgents(userLink.vm0UserId, userLink.id);
-  const modal = buildAgentUpdateModal(agents, bindingId);
-
-  await client.views.open({
-    trigger_id: triggerId,
-    view: modal,
-  });
-}
-
-/**
- * Handle agent unlink button from App Home
- *
- * Deletes the binding and refreshes the Home tab.
- */
-async function handleHomeAgentUnlink(
-  payload: SlackInteractivePayload,
-  bindingId: string,
-): Promise<void> {
-  await globalThis.services.db
-    .delete(slackBindings)
-    .where(eq(slackBindings.id, bindingId));
-
-  await refreshAppHomeForUser(payload.team.id, payload.user.id);
-}
-
-/**
- * Handle agent link button from App Home
- *
- * Ensures scope and artifact storage exist, checks model provider status,
- * then opens the agent add modal.
- */
-async function handleHomeAgentLink(
+async function handleHomeEnvironmentSetup(
   payload: SlackInteractivePayload,
   triggerId: string,
 ): Promise<void> {
@@ -647,24 +534,57 @@ async function handleHomeAgentLink(
 
   const userLink = await getUserLink(payload.user.id, payload.team.id);
   if (!userLink) return;
+
+  const installation = await getInstallation(payload.team.id);
+  if (!installation) return;
+
+  const agent = await fetchWorkspaceAgentInfo(
+    installation.defaultComposeId,
+    userLink.vm0UserId,
+  );
+  if (!agent) return;
+
+  const modal = buildEnvironmentSetupModal(agent);
+  await client.views.open({ trigger_id: triggerId, view: modal });
+}
+
+/**
+ * Handle agent manage button from App Home
+ *
+ * Admin only - opens the agent manage modal.
+ */
+async function handleHomeAgentManage(
+  payload: SlackInteractivePayload,
+  triggerId: string,
+): Promise<void> {
+  const client = await getSlackClientForWorkspace(payload.team.id);
+  if (!client) return;
+
+  const userLink = await getUserLink(payload.user.id, payload.team.id);
+  if (!userLink) return;
+
+  const installation = await getInstallation(payload.team.id);
+  if (!installation) return;
+
+  // Only admin can manage workspace agent
+  if (installation.adminSlackUserId !== payload.user.id) return;
 
   // Check model provider status
   const providers = await listModelProviders(userLink.vm0UserId);
   const hasModelProvider = providers.length > 0;
 
-  const agents = await fetchAvailableAgents(userLink.vm0UserId, userLink.id);
-  const channelId = payload.channel?.id;
-  const modal = buildAgentAddModal(
+  const agents = await fetchAdminAgents(userLink.vm0UserId);
+  const currentAgentId = agents.find(
+    (a) => a.id === installation.defaultComposeId,
+  )?.id;
+  const modal = buildAgentManageModal(
     agents,
+    currentAgentId,
     undefined,
-    channelId,
     hasModelProvider,
   );
 
-  await client.views.open({
-    trigger_id: triggerId,
-    view: modal,
-  });
+  await client.views.open({ trigger_id: triggerId, view: modal });
 }
 
 /**
@@ -688,7 +608,7 @@ async function handleHomeAgentCompose(
 }
 
 /**
- * Handle model provider refresh button in the agent add modal
+ * Handle model provider refresh button in the agent manage modal
  *
  * Re-checks model provider status and updates the modal view.
  */
@@ -701,23 +621,20 @@ async function handleModelProviderRefresh(
   const userLink = await getUserLink(payload.user.id, payload.team.id);
   if (!userLink) return;
 
-  // Re-check model provider status
   const providers = await listModelProviders(userLink.vm0UserId);
   const hasModelProvider = providers.length > 0;
 
-  // Parse existing metadata
   const privateMetadata = payload.view?.private_metadata;
   const { channelId } = privateMetadata
     ? (JSON.parse(privateMetadata) as { channelId?: string })
     : { channelId: undefined };
 
-  // Get current agent selection from view state
   const selectedAgentId =
     payload.view?.state?.values?.agent_select?.agent_select_action
       ?.selected_option?.value;
 
-  const agents = await fetchAvailableAgents(userLink.vm0UserId, userLink.id);
-  const updatedModal = buildAgentAddModal(
+  const agents = await fetchAdminAgents(userLink.vm0UserId);
+  const updatedModal = buildAgentManageModal(
     agents,
     selectedAgentId,
     channelId,
@@ -741,7 +658,7 @@ async function handleHomeDisconnect(
   const userLink = await getUserLink(payload.user.id, payload.team.id);
   if (!userLink) return;
 
-  // Delete user link (cascades to bindings)
+  // Delete user link
   await globalThis.services.db
     .delete(slackUserLinks)
     .where(eq(slackUserLinks.id, userLink.id));
@@ -762,12 +679,12 @@ async function handleViewSubmission(
     return handleAgentComposeSubmission(payload);
   }
 
-  if (callbackId === "agent_add_modal") {
-    return handleAgentAddSubmission(payload);
+  if (callbackId === "agent_manage_modal") {
+    return handleAgentManageSubmission(payload);
   }
 
-  if (callbackId === "agent_update_modal") {
-    return handleAgentUpdateSubmission(payload);
+  if (callbackId === "environment_setup_modal") {
+    return handleEnvironmentSetupSubmission(payload);
   }
 
   // Unknown callback - just acknowledge
@@ -876,7 +793,7 @@ async function sendConfirmationMessage(
   const client = await getSlackClientForWorkspace(workspaceId);
   if (!client) return;
 
-  let messageText = `:white_check_mark: *Agent \`${agentName}\` has been added successfully!*`;
+  let messageText = `:white_check_mark: *Workspace agent changed to \`${agentName}\`*`;
 
   if (savedVarNames.length > 0) {
     const varsList = savedVarNames.map((n) => `\`${n}\``).join(", ");
@@ -888,12 +805,12 @@ async function sendConfirmationMessage(
     messageText += `\n\nSecrets saved to your account: ${secretsList}`;
   }
 
-  messageText += `\n\nYou can now use it by mentioning \`@VM0 <message>\``;
+  messageText += `\n\nAll workspace members can now use it by mentioning \`@VM0\`.`;
 
   await client.chat.postEphemeral({
     channel: channelId,
     user: slackUserId,
-    text: `Agent "${agentName}" has been added successfully!`,
+    text: `Workspace agent changed to "${agentName}"`,
     blocks: [
       {
         type: "section",
@@ -1022,13 +939,14 @@ async function handleGithubUrlSubmission(
 }
 
 /**
- * Handle agent add modal submission
+ * Handle agent manage modal submission
+ *
+ * Admin changes the workspace agent.
  */
-async function handleAgentAddSubmission(
+async function handleAgentManageSubmission(
   payload: SlackInteractivePayload,
 ): Promise<Response> {
   const values = payload.view?.state?.values;
-
   if (!values) {
     return NextResponse.json({
       response_action: "errors",
@@ -1036,22 +954,32 @@ async function handleAgentAddSubmission(
     });
   }
 
-  // Extract channelId from private_metadata
   const channelId = extractChannelIdFromMetadata(
     payload.view?.private_metadata,
   );
-
   const rawFormValues = extractFormValues(values);
-
   const validationResult = validateAgentAddForm(rawFormValues);
-  // If validation returns a Response, it's an error
-  if (validationResult instanceof Response) {
-    return validationResult;
-  }
-  // Otherwise, we have validated form values with narrowed types
+  if (validationResult instanceof Response) return validationResult;
   const formValues = validationResult;
 
-  // Get the compose to use its name
+  // Get installation
+  const installation = await getInstallation(payload.team.id);
+  if (!installation) {
+    return NextResponse.json({
+      response_action: "errors",
+      errors: { agent_select: "Workspace not found" },
+    });
+  }
+
+  // Verify admin
+  if (installation.adminSlackUserId !== payload.user.id) {
+    return NextResponse.json({
+      response_action: "errors",
+      errors: { agent_select: "Only the workspace admin can change the agent" },
+    });
+  }
+
+  // Get the compose name
   const [compose] = await globalThis.services.db
     .select({ name: agentComposes.name })
     .from(agentComposes)
@@ -1065,107 +993,88 @@ async function handleAgentAddSubmission(
     });
   }
 
-  const agentName = compose.name.toLowerCase();
+  const oldComposeId = installation.defaultComposeId;
+  const newComposeId = formValues.composeId;
 
-  // Get user link
-  const [userLink] = await globalThis.services.db
-    .select()
-    .from(slackUserLinks)
-    .where(
-      and(
-        eq(slackUserLinks.slackUserId, payload.user.id),
-        eq(slackUserLinks.slackWorkspaceId, payload.team.id),
-      ),
-    )
-    .limit(1);
+  // Update installation's default agent
+  await globalThis.services.db
+    .update(slackInstallations)
+    .set({ defaultComposeId: newComposeId, updatedAt: new Date() })
+    .where(eq(slackInstallations.id, installation.id));
 
-  if (!userLink) {
-    return NextResponse.json({
-      response_action: "errors",
-      errors: {
-        agent_select:
-          "Your account is not linked. Please link your account first.",
-      },
-    });
-  }
+  // Re-authorize all linked users if agent changed
+  if (oldComposeId !== newComposeId) {
+    const allLinks = await globalThis.services.db
+      .select({ vm0UserId: slackUserLinks.vm0UserId })
+      .from(slackUserLinks)
+      .where(eq(slackUserLinks.slackWorkspaceId, payload.team.id));
 
-  // Check if agent already exists for this user
-  const [existingBinding] = await globalThis.services.db
-    .select()
-    .from(slackBindings)
-    .where(
-      and(
-        eq(slackBindings.slackUserLinkId, userLink.id),
-        eq(slackBindings.agentName, agentName),
-      ),
-    )
-    .limit(1);
-
-  if (existingBinding) {
-    return NextResponse.json({
-      response_action: "errors",
-      errors: {
-        agent_select: `Agent "${agentName}" is already added. Remove it first if you want to reconfigure.`,
-      },
-    });
-  }
-
-  // Save variables to user's scope
-  const savedVarNames: string[] = [];
-  for (const [name, value] of Object.entries(formValues.vars)) {
-    if (value.trim()) {
-      await setVariable(
-        userLink.vm0UserId,
-        name,
-        value,
-        `Configured via Slack for ${agentName}`,
-      );
-      savedVarNames.push(name);
+    for (const link of allLinks) {
+      const email = await getUserEmail(link.vm0UserId);
+      if (email) {
+        // Revoke old
+        await removePermission(oldComposeId, "email", email).catch((e) =>
+          log.warn("Failed to revoke old permission", { error: e }),
+        );
+        // Grant new
+        await addPermission(
+          newComposeId,
+          "email",
+          installation.adminSlackUserId,
+          email,
+        ).catch((e) =>
+          log.warn("Failed to grant new permission", { error: e }),
+        );
+      }
     }
   }
 
-  // Save secrets to user's scope
-  const savedSecretNames: string[] = [];
-  for (const [name, value] of Object.entries(formValues.secrets)) {
-    if (value.trim()) {
-      await setSecret(
-        userLink.vm0UserId,
-        name,
-        value,
-        `Configured via Slack for ${agentName}`,
-      );
-      savedSecretNames.push(name);
+  // Save admin's secrets and vars if provided
+  const userLink = await getUserLink(payload.user.id, payload.team.id);
+  if (userLink) {
+    const agentName = compose.name.toLowerCase();
+    const savedVarNames: string[] = [];
+    for (const [name, value] of Object.entries(formValues.vars)) {
+      if (value.trim()) {
+        await setVariable(
+          userLink.vm0UserId,
+          name,
+          value,
+          `Configured via Slack for ${agentName}`,
+        );
+        savedVarNames.push(name);
+      }
+    }
+    const savedSecretNames: string[] = [];
+    for (const [name, value] of Object.entries(formValues.secrets)) {
+      if (value.trim()) {
+        await setSecret(
+          userLink.vm0UserId,
+          name,
+          value,
+          `Configured via Slack for ${agentName}`,
+        );
+        savedSecretNames.push(name);
+      }
+    }
+
+    if (channelId) {
+      await sendConfirmationMessage(
+        payload.team.id,
+        compose.name,
+        savedSecretNames,
+        savedVarNames,
+        channelId,
+        payload.user.id,
+      ).catch((error) => {
+        log.warn("Failed to send confirmation message (non-critical)", {
+          error,
+        });
+      });
     }
   }
 
-  // Create binding
-  await globalThis.services.db.insert(slackBindings).values({
-    slackUserLinkId: userLink.id,
-    vm0UserId: userLink.vm0UserId,
-    slackWorkspaceId: payload.team.id,
-    composeId: formValues.composeId,
-    agentName,
-    enabled: true,
-  });
-
-  // Await message to prevent serverless function from terminating before it's sent
-  if (channelId) {
-    await sendConfirmationMessage(
-      payload.team.id,
-      agentName,
-      savedSecretNames,
-      savedVarNames,
-      channelId,
-      payload.user.id,
-    ).catch((error) => {
-      log.warn("Failed to send confirmation message (non-critical)", { error });
-    });
-  }
-
-  // Refresh App Home to show newly linked agent
   await refreshAppHomeForUser(payload.team.id, payload.user.id);
-
-  // Close modal
   return new Response("", { status: 200 });
 }
 
@@ -1238,42 +1147,53 @@ async function saveVarsAndSecrets(
 }
 
 /**
- * Handle agent update modal submission
+ * Handle environment setup modal submission
+ *
+ * User saves secrets/vars for the workspace agent.
  */
-async function handleAgentUpdateSubmission(
+async function handleEnvironmentSetupSubmission(
   payload: SlackInteractivePayload,
 ): Promise<Response> {
   const values = payload.view?.state?.values;
   if (!values) {
     return NextResponse.json({
       response_action: "errors",
-      errors: { agent_select: "Missing form values" },
+      errors: { agent_info: "Missing form values" },
     });
   }
 
   const channelId = extractChannelIdFromMetadata(
     payload.view?.private_metadata,
   );
-  const bindingId =
-    values.agent_select?.agent_update_select_action?.selected_option?.value;
 
-  if (!bindingId) {
+  // Get installation to find workspace agent
+  const installation = await getInstallation(payload.team.id);
+  if (!installation) {
     return NextResponse.json({
       response_action: "errors",
-      errors: { agent_select: "Please select an agent" },
+      errors: { agent_info: "Workspace not found" },
     });
   }
 
-  const [binding] = await globalThis.services.db
-    .select()
-    .from(slackBindings)
-    .where(eq(slackBindings.id, bindingId))
+  // Get the workspace agent
+  const [compose] = await globalThis.services.db
+    .select({ name: agentComposes.name })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, installation.defaultComposeId))
     .limit(1);
 
-  if (!binding) {
+  if (!compose) {
     return NextResponse.json({
       response_action: "errors",
-      errors: { agent_select: "Agent binding not found" },
+      errors: { agent_info: "Workspace agent not found" },
+    });
+  }
+
+  const userLink = await getUserLink(payload.user.id, payload.team.id);
+  if (!userLink) {
+    return NextResponse.json({
+      response_action: "errors",
+      errors: { agent_info: "Your account is not connected." },
     });
   }
 
@@ -1285,13 +1205,13 @@ async function handleAgentUpdateSubmission(
   if (!hasVars && !hasSecrets) {
     return NextResponse.json({
       response_action: "errors",
-      errors: { agent_select: "No changes to save" },
+      errors: { agent_info: "No changes to save" },
     });
   }
 
   const { savedVarNames, savedSecretNames } = await saveVarsAndSecrets(
-    binding.vm0UserId,
-    binding.agentName,
+    userLink.vm0UserId,
+    compose.name.toLowerCase(),
     newVars,
     newSecrets,
   );
@@ -1299,7 +1219,7 @@ async function handleAgentUpdateSubmission(
   if (channelId) {
     await sendUpdateConfirmationMessage(
       payload.team.id,
-      binding.agentName,
+      compose.name,
       savedVarNames,
       savedSecretNames,
       channelId,
@@ -1311,9 +1231,7 @@ async function handleAgentUpdateSubmission(
     });
   }
 
-  // Refresh App Home to reflect updated agent
   await refreshAppHomeForUser(payload.team.id, payload.user.id);
-
   return new Response("", { status: 200 });
 }
 

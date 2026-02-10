@@ -62,6 +62,7 @@ export async function notifyScheduleRunComplete(
   // 4. Find slack user link for this VM0 user
   const [userLink] = await globalThis.services.db
     .select({
+      id: slackUserLinks.id,
       slackUserId: slackUserLinks.slackUserId,
       slackWorkspaceId: slackUserLinks.slackWorkspaceId,
     })
@@ -152,7 +153,7 @@ export async function notifyScheduleRunComplete(
 
     if (messageTs && dmChannelId && agentSessionId) {
       await saveThreadSession({
-        bindingId: undefined,
+        userLinkId: userLink.id,
         channelId: dmChannelId,
         threadTs: messageTs,
         existingSessionId: undefined,

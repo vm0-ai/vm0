@@ -271,10 +271,18 @@ describe("POST /api/slack/events", () => {
     });
   });
 
-  describe("Scenario: Mention bot with no agents", () => {
-    it("should prompt user to add an agent", async () => {
-      // Given I am a linked Slack user with no agents
+  describe("Scenario: Mention bot with unavailable workspace agent", () => {
+    it("should inform user the workspace agent is not available", async () => {
+      // Given I am a linked Slack user whose workspace agent is unavailable
       const { userLink, installation } = await givenLinkedSlackUser();
+
+      // Mock getWorkspaceAgent to return undefined (simulates deleted/invalid compose)
+      const sharedModule = await import(
+        "../../../../../src/lib/slack/handlers/shared"
+      );
+      vi.spyOn(sharedModule, "getWorkspaceAgent").mockResolvedValueOnce(
+        undefined,
+      );
 
       // When I @mention the VM0 bot
       const request = createSlackEventRequest({
@@ -288,13 +296,12 @@ describe("POST /api/slack/events", () => {
       expect(response.status).toBe(200);
       await flushAfterCallbacks();
 
-      // Then I should receive a message prompting to link an agent
+      // Then I should receive a message saying the workspace agent is not available
       expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
 
       const call = getCallArgs(mockClient.chat.postMessage);
       const text = (call.text as string) ?? "";
-      expect(text).toContain("don't have any agent linked");
-      expect(text).toContain("/vm0 agent link");
+      expect(text).toContain("workspace agent is not available");
     });
   });
 
@@ -505,10 +512,18 @@ describe("POST /api/slack/events", () => {
     });
   });
 
-  describe("Scenario: DM bot with no agents", () => {
-    it("should prompt user to link an agent", async () => {
-      // Given I am a linked Slack user with no agents
+  describe("Scenario: DM bot with unavailable workspace agent", () => {
+    it("should inform user the workspace agent is not available", async () => {
+      // Given I am a linked Slack user whose workspace agent is unavailable
       const { userLink, installation } = await givenLinkedSlackUser();
+
+      // Mock getWorkspaceAgent to return undefined (simulates deleted/invalid compose)
+      const sharedModule = await import(
+        "../../../../../src/lib/slack/handlers/shared"
+      );
+      vi.spyOn(sharedModule, "getWorkspaceAgent").mockResolvedValueOnce(
+        undefined,
+      );
 
       // When I send a DM to the bot
       const request = createSlackDmEventRequest({
@@ -522,13 +537,12 @@ describe("POST /api/slack/events", () => {
       expect(response.status).toBe(200);
       await flushAfterCallbacks();
 
-      // Then I should receive a message prompting to link an agent
+      // Then I should receive a message saying the workspace agent is not available
       expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
 
       const call = getCallArgs(mockClient.chat.postMessage);
       const text = (call.text as string) ?? "";
-      expect(text).toContain("don't have any agent linked");
-      expect(text).toContain("/vm0 agent link");
+      expect(text).toContain("workspace agent is not available");
     });
   });
 
@@ -750,6 +764,9 @@ describe("POST /api/slack/events", () => {
       // Given I am a Slack user without a linked account
       const { installation } = await givenSlackWorkspaceInstalled();
 
+      // Clear viewsPublish calls from givenSlackWorkspaceInstalled
+      mockClient.views.publish.mockClear();
+
       // When I open the bot's Home tab
       const request = createSlackAppHomeOpenedRequest({
         teamId: installation.slackWorkspaceId,
@@ -839,9 +856,9 @@ describe("POST /api/slack/events", () => {
     });
   });
 
-  describe("Scenario: App Home opened by linked user without agents", () => {
-    it("should publish home view with link prompt", async () => {
-      // Given I am a linked Slack user with no agents
+  describe("Scenario: App Home opened by linked user with default workspace agent", () => {
+    it("should publish home view with workspace agent info", async () => {
+      // Given I am a linked Slack user (workspace always has a default agent)
       const { userLink, installation } = await givenLinkedSlackUser();
 
       // Clear viewsPublish calls from givenLinkedSlackUser (which refreshes
@@ -857,7 +874,7 @@ describe("POST /api/slack/events", () => {
       expect(response.status).toBe(200);
       await flushAfterCallbacks();
 
-      // Then the home view should be published with link prompt
+      // Then the home view should be published with workspace agent info
       expect(mockClient.views.publish).toHaveBeenCalledTimes(1);
 
       const call = getCallArgs(mockClient.views.publish);
@@ -876,7 +893,8 @@ describe("POST /api/slack/events", () => {
         )
         .map((b) => b.text.text);
       expect(texts.some((t) => t.includes("Connected to VM0"))).toBe(true);
-      expect(texts.some((t) => t.includes("No agent linked yet"))).toBe(true);
+      // Workspace always has a default agent — verify the agent name is shown
+      expect(texts.some((t) => t.includes("default-agent"))).toBe(true);
     });
   });
 
@@ -1236,9 +1254,9 @@ describe("POST /api/slack/events", () => {
         binding.composeId,
       );
 
-      // And a thread session exists with NULL bindingId (created by notification)
+      // And a thread session exists (created by notification)
       await createTestThreadSession({
-        bindingId: null,
+        userLinkId: userLink.id,
         channelId,
         threadTs,
         agentSessionId: agentSession.id,

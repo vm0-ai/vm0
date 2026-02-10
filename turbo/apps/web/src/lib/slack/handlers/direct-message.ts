@@ -12,10 +12,12 @@ import {
 import { runAgentForSlack } from "./run-agent";
 import {
   removeThinkingReaction,
+  fetchConversationContexts,
+  lookupThreadSession,
   saveThreadSession,
-  resolveRunContext,
   buildLoginUrl,
   buildLogsUrl,
+  getWorkspaceAgent,
 } from "./shared";
 import { logger } from "../../logger";
 
@@ -63,6 +65,7 @@ export async function handleDirectMessage(
       SECRETS_ENCRYPTION_KEY,
     );
     const client = createSlackClient(botToken);
+    const botUserId = installation.botUserId;
     // Always reply in a thread so sessions persist across messages.
     const threadTs = context.threadTs ?? context.messageTs;
 
@@ -94,24 +97,17 @@ export async function handleDirectMessage(
       return;
     }
 
-    // 4. Resolve which agent to run (thread session first, then binding fallback)
-    const runCtx = await resolveRunContext(
-      context.channelId,
-      threadTs,
-      userLink.id,
-    );
-
-    if (!runCtx) {
+    // 4. Resolve workspace agent
+    const agent = await getWorkspaceAgent(installation.defaultComposeId);
+    if (!agent) {
       await postMessage(
         client,
         context.channelId,
-        "You don't have any agent linked. Use `/vm0 agent link` to link one.",
+        "The workspace agent is not available. Please contact the workspace admin.",
         { threadTs },
       );
       return;
     }
-
-    const { composeId, bindingId, agentName, existingSessionId } = runCtx;
 
     // 5. Add thinking reaction
     const reactionAdded = await client.reactions
@@ -126,26 +122,54 @@ export async function handleDirectMessage(
     // Use message text directly (no mention prefix to strip in DMs)
     const messageContent = context.messageText;
 
+    // 6. Look up existing thread session for deduplication
+    let existingSessionId: string | undefined;
+    let lastProcessedMessageTs: string | undefined;
+    if (threadTs) {
+      const session = await lookupThreadSession(
+        context.channelId,
+        threadTs,
+        userLink.id,
+      );
+      existingSessionId = session.existingSessionId;
+      lastProcessedMessageTs = session.lastProcessedMessageTs;
+      log.debug("Thread session lookup", {
+        existingSessionId,
+        lastProcessedMessageTs,
+      });
+    }
+
+    // 7. Fetch context: execution gets deduplicated with images
+    const { executionContext } = await fetchConversationContexts(
+      client,
+      context.channelId,
+      context.threadTs,
+      botUserId,
+      botToken,
+      lastProcessedMessageTs,
+      context.messageTs,
+    );
+
     try {
-      // 6. Execute agent
+      // 8. Execute agent with deduplicated context
       const {
         status: runStatus,
         response: agentResponse,
         sessionId: newSessionId,
         runId,
       } = await runAgentForSlack({
-        composeId,
-        bindingId,
+        composeId: installation.defaultComposeId,
+        agentName: agent.name,
         sessionId: existingSessionId,
         prompt: messageContent,
-        threadContext: "",
+        threadContext: executionContext,
         userId: userLink.vm0UserId,
       });
 
-      // 7. Create or update thread session mapping
+      // 9. Create or update thread session mapping
       if (threadTs) {
         await saveThreadSession({
-          bindingId,
+          userLinkId: userLink.id,
           channelId: context.channelId,
           threadTs,
           existingSessionId,
@@ -155,7 +179,7 @@ export async function handleDirectMessage(
         });
       }
 
-      // 8. Post response message
+      // 10. Post response message
       const logsUrl = runId ? buildLogsUrl(runId) : undefined;
       const responseText =
         runStatus === "timeout"
@@ -163,7 +187,7 @@ export async function handleDirectMessage(
           : agentResponse;
       await postMessage(client, context.channelId, responseText, {
         threadTs,
-        blocks: buildAgentResponseMessage(responseText, agentName, logsUrl),
+        blocks: buildAgentResponseMessage(responseText, agent.name, logsUrl),
       });
     } catch (innerError) {
       log.error("Error posting response or creating session", {
@@ -176,7 +200,7 @@ export async function handleDirectMessage(
         { threadTs },
       ).catch((e) => log.warn("Failed to post error message", { error: e }));
     } finally {
-      // 9. Remove thinking reaction
+      // 11. Remove thinking reaction
       if (reactionAdded) {
         await removeThinkingReaction(
           client,

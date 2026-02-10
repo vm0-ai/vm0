@@ -16,15 +16,9 @@ interface AgentOption {
   existingVars: string[];
 }
 
-interface BindingInfo {
-  id: string;
-  agentName: string;
-  enabled: boolean;
-}
-
 /**
  * Build an input block for a variable or secret value
- * Used by both add and update modals
+ * Used by both manage and environment setup modals
  */
 function buildValueInputBlock(
   blockIdPrefix: string,
@@ -61,9 +55,9 @@ function buildValueInputBlock(
 }
 
 /**
- * Build blocks for the "existing agent" mode in the add modal
+ * Build blocks for the agent select dropdown in the manage modal
  */
-function buildExistingAgentBlocks(
+function buildAgentSelectBlocks(
   agents: AgentOption[],
   selectedAgentId?: string,
   hasModelProvider?: boolean,
@@ -240,7 +234,7 @@ export function buildAgentComposeModal(channelId?: string): View {
 }
 
 /**
- * Build model provider status blocks for the agent add modal
+ * Build model provider status blocks for the agent manage modal
  */
 function buildModelProviderStatusBlocks(
   hasModelProvider: boolean,
@@ -286,7 +280,7 @@ function buildModelProviderStatusBlocks(
 }
 
 /**
- * Build the "Add Agent" modal view
+ * Build the "Manage Agent" modal view
  *
  * Shows a dropdown to select from existing agents and configure secrets/vars.
  *
@@ -296,7 +290,7 @@ function buildModelProviderStatusBlocks(
  * @param hasModelProvider - Whether the user has a model provider configured
  * @returns Modal view definition
  */
-export function buildAgentAddModal(
+export function buildAgentManageModal(
   agents: AgentOption[],
   selectedAgentId?: string,
   channelId?: string,
@@ -304,21 +298,118 @@ export function buildAgentAddModal(
 ): View {
   return {
     type: "modal",
-    callback_id: "agent_add_modal",
+    callback_id: "agent_manage_modal",
     private_metadata: JSON.stringify({ channelId, hasModelProvider }),
     title: {
       type: "plain_text",
-      text: "Link Agent",
+      text: "Manage Agent",
     },
     submit: {
       type: "plain_text",
-      text: "Link",
+      text: "Save",
     },
     close: {
       type: "plain_text",
       text: "Cancel",
     },
-    blocks: buildExistingAgentBlocks(agents, selectedAgentId, hasModelProvider),
+    blocks: buildAgentSelectBlocks(agents, selectedAgentId, hasModelProvider),
+  };
+}
+
+/**
+ * Build the "Environment Setup" modal view
+ *
+ * Shows fields for configuring secrets and variables for a single agent.
+ *
+ * @param agent - The workspace agent with its required secrets/vars
+ * @param channelId - Channel ID to send confirmation message to
+ * @returns Modal view definition
+ */
+export function buildEnvironmentSetupModal(
+  agent: AgentOption,
+  channelId?: string,
+): View {
+  const blocks: (Block | KnownBlock)[] = [];
+
+  // Agent name header
+  blocks.push({
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: `:robot_face: *Agent: ${agent.name}*`,
+    },
+  });
+
+  // Variables
+  if (agent.requiredVars.length > 0) {
+    blocks.push({ type: "divider" });
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: "*Variables*" },
+    });
+
+    const existingVarsSet = new Set(agent.existingVars);
+    for (const varName of agent.requiredVars) {
+      blocks.push(
+        buildValueInputBlock(
+          "var",
+          varName,
+          existingVarsSet.has(varName),
+          true,
+        ),
+      );
+    }
+  }
+
+  // Secrets
+  if (agent.requiredSecrets.length > 0) {
+    blocks.push({ type: "divider" });
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: "*Secrets*" },
+    });
+
+    const existingSecretsSet = new Set(agent.existingSecrets);
+    for (const secretName of agent.requiredSecrets) {
+      blocks.push(
+        buildValueInputBlock(
+          "secret",
+          secretName,
+          existingSecretsSet.has(secretName),
+          true,
+        ),
+      );
+    }
+  }
+
+  // No vars or secrets
+  if (agent.requiredVars.length === 0 && agent.requiredSecrets.length === 0) {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "_This agent doesn't require any variables or secrets._",
+      },
+    });
+  }
+
+  return {
+    type: "modal",
+    callback_id: "environment_setup_modal",
+    private_metadata: JSON.stringify({ channelId }),
+    title: {
+      type: "plain_text",
+      text: "Environment Setup",
+    },
+    submit: {
+      type: "plain_text",
+      text: "Save",
+    },
+    close: {
+      type: "plain_text",
+      text: "Cancel",
+    },
+    blocks,
   };
 }
 
@@ -332,7 +423,8 @@ export function buildAppHomeView(options: {
   isLinked: boolean;
   vm0UserId?: string;
   userEmail?: string;
-  bindings?: BindingInfo[];
+  agentName?: string;
+  isAdmin?: boolean;
   loginUrl?: string;
 }): View {
   const blocks: (Block | KnownBlock)[] = [
@@ -400,82 +492,67 @@ export function buildAppHomeView(options: {
 
   blocks.push({ type: "divider" });
 
-  // Linked agents
+  // Workspace Agent section
   blocks.push({
     type: "section",
     text: {
       type: "mrkdwn",
-      text: ":robot_face: *Your Linked Agent*",
+      text: ":robot_face: *Workspace Agent*",
     },
   });
 
-  if (options.bindings && options.bindings.length > 0) {
-    for (const binding of options.bindings) {
-      const agentText = `AgentName: *${binding.agentName}*`;
-      blocks.push({
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: agentText,
-        },
-      });
-
-      blocks.push({
-        type: "actions",
-        elements: [
-          {
-            type: "button",
-            text: { type: "plain_text", text: "Update" },
-            action_id: "home_agent_update",
-            value: binding.id,
-          },
-          {
-            type: "button",
-            text: { type: "plain_text", text: "Unlink" },
-            action_id: "home_agent_unlink",
-            value: binding.id,
-            style: "danger",
-          },
-        ],
-      });
-    }
+  if (options.agentName) {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `*${options.agentName}*`,
+      },
+      accessory: {
+        type: "button",
+        text: { type: "plain_text", text: "Environment Setup" },
+        action_id: "home_environment_setup",
+      },
+    });
   } else {
     blocks.push({
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "_No agent linked yet._",
+        text: "_No agent configured yet._",
       },
     });
+  }
+
+  // Admin section
+  if (options.isAdmin) {
+    blocks.push({ type: "divider" });
+
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: ":wrench: *Admin*",
+      },
+    });
+
     blocks.push({
       type: "actions",
       elements: [
         {
           type: "button",
-          text: { type: "plain_text", text: "Link Agent" },
-          action_id: "home_agent_link",
+          text: { type: "plain_text", text: "Manage Agent" },
+          action_id: "home_agent_manage",
           style: "primary",
+        },
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Compose Agent" },
+          action_id: "home_agent_compose",
         },
       ],
     });
   }
-
-  blocks.push({ type: "divider" });
-
-  // Compose section
-  blocks.push({
-    type: "section",
-    text: {
-      type: "mrkdwn",
-      text: ":rocket: *Compose Agent*\nCreate a new agent from a GitHub repository.",
-    },
-    accessory: {
-      type: "button",
-      text: { type: "plain_text", text: "Compose" },
-      action_id: "home_agent_compose",
-      style: "primary",
-    },
-  });
 
   blocks.push({ type: "divider" });
 
@@ -492,7 +569,7 @@ export function buildAppHomeView(options: {
     type: "section",
     text: {
       type: "mrkdwn",
-      text: "*Chat with your agents*\nSend a DM or `@VM0` in any channel\n`@VM0 [your message]`",
+      text: "*Chat with your agents*\nSend a DM or `@VM0` in any channel",
     },
   });
 
@@ -500,7 +577,7 @@ export function buildAppHomeView(options: {
     type: "section",
     text: {
       type: "mrkdwn",
-      text: "*Link and manage agents*\nLink an agent\n`/vm0 agent link`\nUnlink an agent\n`/vm0 agent unlink`\nUpdate agent configuration\n`/vm0 agent update`\nCompose an agent from GitHub URL\n`/vm0 agent compose`",
+      text: "*Commands*\n\u2022 `/vm0 environment setup` - Configure secrets and variables\n\u2022 `/vm0 agent manage` - Select workspace agent (admin)\n\u2022 `/vm0 agent compose` - Compose agent from GitHub URL (admin)\n\u2022 `/vm0 admin transfer @user` - Transfer admin role (admin)",
     },
   });
 
@@ -546,211 +623,6 @@ export function buildAppHomeView(options: {
     type: "home",
     blocks,
   };
-}
-
-interface AgentUpdateOption {
-  id: string;
-  name: string;
-  requiredSecrets: string[];
-  existingSecrets: string[];
-  requiredVars: string[];
-  existingVars: string[];
-}
-
-/**
- * Build the "Update Agent" modal view
- *
- * @param agents - List of bound agents with their required secrets
- * @param selectedAgentId - Currently selected agent ID
- * @param channelId - Channel ID to send confirmation message to
- * @returns Modal view definition
- */
-export function buildAgentUpdateModal(
-  agents: AgentUpdateOption[],
-  selectedAgentId?: string,
-  channelId?: string,
-): View {
-  // Find selected agent or default to first
-  const selectedAgent = selectedAgentId
-    ? agents.find((a) => a.id === selectedAgentId)
-    : undefined;
-
-  const blocks: (Block | KnownBlock)[] = [
-    {
-      type: "input",
-      block_id: "agent_select",
-      dispatch_action: true,
-      element: {
-        type: "static_select",
-        action_id: "agent_update_select_action",
-        placeholder: {
-          type: "plain_text",
-          text: "Select an agent to update",
-        },
-        options: agents.map((agent) => ({
-          text: {
-            type: "plain_text" as const,
-            text: agent.name,
-          },
-          value: agent.id,
-        })),
-        ...(selectedAgentId && {
-          initial_option: {
-            text: {
-              type: "plain_text" as const,
-              text: selectedAgent?.name ?? "",
-            },
-            value: selectedAgentId,
-          },
-        }),
-      },
-      label: {
-        type: "plain_text",
-        text: "Agent",
-      },
-    },
-  ];
-
-  // Add variables fields if agent is selected and has required vars
-  if (selectedAgent && selectedAgent.requiredVars.length > 0) {
-    blocks.push({ type: "divider" });
-    blocks.push({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: "*Update Variables*\n_Leave empty to keep current value_",
-      },
-    });
-
-    const existingVarsSet = new Set(selectedAgent.existingVars);
-    for (const varName of selectedAgent.requiredVars) {
-      blocks.push(
-        buildValueInputBlock(
-          "var",
-          varName,
-          existingVarsSet.has(varName),
-          false,
-        ),
-      );
-    }
-  }
-
-  // Add secrets fields if agent is selected and has required secrets
-  if (selectedAgent && selectedAgent.requiredSecrets.length > 0) {
-    blocks.push({ type: "divider" });
-    blocks.push({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: "*Update Secrets*\n_Leave empty to keep current value_",
-      },
-    });
-
-    const existingSecretsSet = new Set(selectedAgent.existingSecrets);
-    for (const secretName of selectedAgent.requiredSecrets) {
-      blocks.push(
-        buildValueInputBlock(
-          "secret",
-          secretName,
-          existingSecretsSet.has(secretName),
-          false,
-        ),
-      );
-    }
-  }
-
-  // Show message if no variables or secrets to update
-  if (
-    selectedAgent &&
-    selectedAgent.requiredVars.length === 0 &&
-    selectedAgent.requiredSecrets.length === 0
-  ) {
-    blocks.push({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: "_This agent doesn't have any variables or secrets to update._",
-      },
-    });
-  } else if (!selectedAgent) {
-    blocks.push({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: "_Select an agent to update its configuration._",
-      },
-    });
-  }
-
-  return {
-    type: "modal",
-    callback_id: "agent_update_modal",
-    private_metadata: JSON.stringify({ channelId }),
-    title: {
-      type: "plain_text",
-      text: "Update Agent",
-    },
-    submit: selectedAgent
-      ? {
-          type: "plain_text",
-          text: "Update",
-        }
-      : undefined,
-    close: {
-      type: "plain_text",
-      text: "Cancel",
-    },
-    blocks,
-  };
-}
-
-/**
- * Build a message listing bound agents
- *
- * @param bindings - List of agent bindings
- * @returns Block Kit blocks
- */
-export function buildAgentListMessage(
-  bindings: BindingInfo[],
-): (Block | KnownBlock)[] {
-  if (bindings.length === 0) {
-    return [
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: "You don't have any agent linked yet.\n\nUse `/vm0 agent link` to link one.",
-        },
-      },
-    ];
-  }
-
-  const blocks: (Block | KnownBlock)[] = [
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: ":robot_face: *Your Linked Agent*",
-      },
-    },
-    {
-      type: "divider",
-    },
-  ];
-
-  for (const binding of bindings) {
-    const status = binding.enabled ? ":white_check_mark:" : ":x:";
-
-    blocks.push({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: `${status} *${binding.agentName}*`,
-      },
-    });
-  }
-
-  return blocks;
 }
 
 /**
@@ -810,10 +682,8 @@ export function buildLoginPromptMessage(
  * Build a welcome message for the Messages tab
  */
 export function buildWelcomeMessage(
-  agents: { agentName: string }[],
+  agentName?: string,
 ): (Block | KnownBlock)[] {
-  const hasAgents = agents.length > 0;
-
   const blocks: (Block | KnownBlock)[] = [
     {
       type: "section",
@@ -827,56 +697,31 @@ export function buildWelcomeMessage(
     },
   ];
 
-  if (hasAgents) {
-    const agentList = agents.map((a) => `• \`${a.agentName}\``).join("\n");
-
+  if (agentName) {
     blocks.push(
       {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `*Your Linked Agent*\n${agentList}`,
+          text: `*Workspace Agent*\n\u2022 \`${agentName}\``,
         },
       },
       {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: "*How to Use*\n• Just describe what you need help with",
+          text: "*How to Use*\n\u2022 Just describe what you need help with",
         },
       },
     );
   } else {
-    blocks.push(
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: "*Your Linked Agent*\n_No agent linked yet._ Use the button below to link one.",
-        },
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "_No workspace agent configured yet._",
       },
-      {
-        type: "actions",
-        elements: [
-          {
-            type: "button",
-            text: {
-              type: "plain_text",
-              text: "Link Agent",
-            },
-            action_id: "home_agent_link",
-            style: "primary",
-          },
-        ],
-      },
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: "*How to Use*\n• Link an agent first, then describe what you need help with",
-        },
-      },
-    );
+    });
   }
 
   return blocks;
@@ -903,21 +748,28 @@ export function buildHelpMessage(): (Block | KnownBlock)[] {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "*Account*\n• `/vm0 connect` - Connect to VM0\n• `/vm0 disconnect` - Disconnect from VM0",
+        text: "*Account*\n\u2022 `/vm0 connect` - Connect to VM0\n\u2022 `/vm0 disconnect` - Disconnect from VM0",
       },
     },
     {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "*Agent*\n• `/vm0 agent link` - Link an agent\n• `/vm0 agent unlink` - Unlink your agent\n• `/vm0 agent update` - Update agent configuration\n• `/vm0 agent compose` - Compose an agent from GitHub URL",
+        text: "*Agent*\n\u2022 `/vm0 agent manage` - Select workspace agent (admin)\n\u2022 `/vm0 agent compose` - Compose an agent from GitHub URL (admin)\n\u2022 `/vm0 environment setup` - Configure secrets and variables",
       },
     },
     {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "*Usage*\n• `@VM0 <message>` - Send a message to your agent",
+        text: "*Admin*\n\u2022 `/vm0 admin transfer @user` - Transfer admin role",
+      },
+    },
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "*Usage*\n\u2022 `@VM0 <message>` - Send a message to your agent",
       },
     },
     {

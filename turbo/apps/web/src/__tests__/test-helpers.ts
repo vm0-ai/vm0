@@ -35,7 +35,7 @@ function uniqueSuffix(): string {
 export function uniqueId(prefix: string): string {
   return `${prefix}-${uniqueSuffix()}`;
 }
-import { eq } from "drizzle-orm";
+
 import { Sandbox } from "@e2b/code-interpreter";
 import { Axiom } from "@axiomhq/js";
 import { mockClerk, clearClerkMock } from "./clerk-mock";
@@ -45,7 +45,6 @@ import * as s3Client from "../lib/s3/s3-client";
 import * as axiomClient from "../lib/axiom/client";
 import { slackInstallations } from "../db/schema/slack-installation";
 import { slackUserLinks } from "../db/schema/slack-user-link";
-import { slackBindings } from "../db/schema/slack-binding";
 import { agentComposes } from "../db/schema/agent-compose";
 import { connectors } from "../db/schema/connector";
 import { scopes } from "../db/schema/scope";
@@ -148,6 +147,10 @@ interface SlackInstallationOptions {
   workspaceId?: string;
   /** Slack user ID for user link (default: "U123") */
   slackUserId?: string;
+  /** VM0 user ID for the admin user who installs (default: auto-generated) */
+  vm0UserId?: string;
+  /** Compose ID to use as defaultComposeId (default: auto-created) */
+  composeId?: string;
 }
 
 interface SlackInstallationResult {
@@ -155,6 +158,7 @@ interface SlackInstallationResult {
     id: string;
     slackWorkspaceId: string;
     botUserId: string;
+    defaultComposeId: string;
   };
   userLink: {
     id: string;
@@ -162,11 +166,6 @@ interface SlackInstallationResult {
     slackWorkspaceId: string;
     vm0UserId: string;
   };
-}
-
-interface SlackBindingOptions {
-  agentName?: string;
-  enabled?: boolean;
 }
 
 interface TestContext {
@@ -178,10 +177,6 @@ interface TestContext {
   createSlackInstallation(
     options?: SlackInstallationOptions,
   ): Promise<SlackInstallationResult>;
-  createSlackBinding(
-    userLinkId: string,
-    options?: SlackBindingOptions,
-  ): Promise<{ id: string; agentName: string; composeId: string }>;
   createAgentCompose(
     vm0UserId: string,
     options?: { name?: string },
@@ -451,11 +446,45 @@ export function testContext(): TestContext {
       withUserLink = false,
       workspaceId = `T${suffix}`,
       slackUserId = `U${suffix}`,
+      vm0UserId: optVm0UserId,
     } = options;
 
     initServices();
 
     const { SECRETS_ENCRYPTION_KEY } = env();
+
+    // Create a scope + compose for the default workspace agent
+    const adminUserId = optVm0UserId ?? uniqueId("test-admin");
+    let composeId = options.composeId;
+    if (!composeId) {
+      const scopeSlug = uniqueId("scope");
+      const [scopeData] = await globalThis.services.db
+        .insert(scopes)
+        .values({
+          slug: scopeSlug,
+          type: "personal",
+          ownerId: adminUserId,
+        })
+        .returning();
+
+      if (!scopeData) {
+        throw new Error("Failed to create scope for installation");
+      }
+
+      const [compose] = await globalThis.services.db
+        .insert(agentComposes)
+        .values({
+          userId: adminUserId,
+          scopeId: scopeData.id,
+          name: uniqueId("default-agent"),
+        })
+        .returning();
+
+      if (!compose) {
+        throw new Error("Failed to create compose for installation");
+      }
+      composeId = compose.id;
+    }
 
     // Create installation
     const encryptedBotToken = encryptCredentialValue(
@@ -470,7 +499,8 @@ export function testContext(): TestContext {
         slackWorkspaceName: "Test Workspace",
         encryptedBotToken,
         botUserId: "B123",
-        installedBySlackUserId: slackUserId,
+        defaultComposeId: composeId,
+        adminSlackUserId: slackUserId,
       })
       .returning();
 
@@ -486,14 +516,14 @@ export function testContext(): TestContext {
     };
 
     if (withUserLink) {
-      const vm0UserId = uniqueId("test-user");
+      const linkVm0UserId = optVm0UserId ?? uniqueId("test-user");
 
       const [createdLink] = await globalThis.services.db
         .insert(slackUserLinks)
         .values({
           slackUserId,
           slackWorkspaceId: workspaceId,
-          vm0UserId,
+          vm0UserId: linkVm0UserId,
         })
         .returning();
 
@@ -507,83 +537,9 @@ export function testContext(): TestContext {
         id: installation.id,
         slackWorkspaceId: installation.slackWorkspaceId,
         botUserId: installation.botUserId,
+        defaultComposeId: composeId,
       },
       userLink,
-    };
-  }
-
-  /**
-   * Creates a Slack binding (agent) for a user link.
-   * Creates a compose first if needed.
-   */
-  async function createSlackBinding(
-    userLinkId: string,
-    options: SlackBindingOptions = {},
-  ): Promise<{ id: string; agentName: string; composeId: string }> {
-    const { agentName = uniqueId("test-agent"), enabled = true } = options;
-
-    initServices();
-
-    // Get user link to find the vm0UserId
-    const [link] = await globalThis.services.db
-      .select()
-      .from(slackUserLinks)
-      .where(eq(slackUserLinks.id, userLinkId))
-      .limit(1);
-
-    if (!link) {
-      throw new Error(`Slack user link not found: ${userLinkId}`);
-    }
-
-    // Create a scope directly in the database (bypass API to avoid Clerk auth)
-    const scopeSlug = uniqueId("scope");
-    const [scopeData] = await globalThis.services.db
-      .insert(scopes)
-      .values({
-        slug: scopeSlug,
-        type: "personal",
-        ownerId: link.vm0UserId,
-      })
-      .returning();
-
-    if (!scopeData) {
-      throw new Error("Failed to create scope");
-    }
-
-    // Create a compose for this binding
-    const [compose] = await globalThis.services.db
-      .insert(agentComposes)
-      .values({
-        userId: link.vm0UserId,
-        scopeId: scopeData.id,
-        name: `compose-${agentName}`,
-      })
-      .returning();
-
-    if (!compose) {
-      throw new Error("Failed to create agent compose");
-    }
-
-    const [binding] = await globalThis.services.db
-      .insert(slackBindings)
-      .values({
-        slackUserLinkId: userLinkId,
-        vm0UserId: link.vm0UserId,
-        slackWorkspaceId: link.slackWorkspaceId,
-        composeId: compose.id,
-        agentName,
-        enabled,
-      })
-      .returning();
-
-    if (!binding) {
-      throw new Error("Failed to create Slack binding");
-    }
-
-    return {
-      id: binding.id,
-      agentName: binding.agentName,
-      composeId: compose.id,
     };
   }
 
@@ -678,7 +634,6 @@ export function testContext(): TestContext {
     },
     setupUser,
     createSlackInstallation,
-    createSlackBinding,
     createAgentCompose,
     createConnector,
   };

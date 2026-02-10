@@ -1,7 +1,7 @@
 import { eq, and } from "drizzle-orm";
 import { slackInstallations } from "../../../db/schema/slack-installation";
 import { slackUserLinks } from "../../../db/schema/slack-user-link";
-import { slackBindings } from "../../../db/schema/slack-binding";
+import { agentComposes } from "../../../db/schema/agent-compose";
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
 import { getUserEmail } from "../../auth/get-user-email";
@@ -47,7 +47,7 @@ export async function handleAppHomeOpened(
   );
   const client = createSlackClient(botToken);
 
-  await refreshAppHome(client, context.workspaceId, context.userId);
+  await refreshAppHome(client, installation, context.userId);
 }
 
 /**
@@ -57,9 +57,11 @@ export async function handleAppHomeOpened(
  */
 export async function refreshAppHome(
   client: ReturnType<typeof createSlackClient>,
-  workspaceId: string,
+  installation: typeof slackInstallations.$inferSelect,
   userId: string,
 ): Promise<void> {
+  const workspaceId = installation.slackWorkspaceId;
+
   // Check if user is linked
   const [userLink] = await globalThis.services.db
     .select()
@@ -83,15 +85,16 @@ export async function refreshAppHome(
     return;
   }
 
-  // Get user's bindings
-  const bindings = await globalThis.services.db
-    .select({
-      id: slackBindings.id,
-      agentName: slackBindings.agentName,
-      enabled: slackBindings.enabled,
-    })
-    .from(slackBindings)
-    .where(eq(slackBindings.slackUserLinkId, userLink.id));
+  // Get workspace agent name
+  const [compose] = await globalThis.services.db
+    .select({ name: agentComposes.name })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, installation.defaultComposeId))
+    .limit(1);
+  const agentName = compose?.name;
+
+  // Check if user is admin
+  const isAdmin = installation.adminSlackUserId === userId;
 
   // Fetch user email for display
   const userEmail = await getUserEmail(userLink.vm0UserId);
@@ -101,7 +104,8 @@ export async function refreshAppHome(
     isLinked: true,
     vm0UserId: userLink.vm0UserId,
     userEmail,
-    bindings,
+    agentName,
+    isAdmin,
   });
   await publishAppHome(client, userId, view);
 }
@@ -167,13 +171,12 @@ export async function handleMessagesTabOpened(
     return;
   }
 
-  // 4. Fetch user's agent bindings
-  const bindings = await globalThis.services.db
-    .select({
-      agentName: slackBindings.agentName,
-    })
-    .from(slackBindings)
-    .where(eq(slackBindings.slackUserLinkId, userLink.id));
+  // 4. Get workspace agent name
+  const [compose] = await globalThis.services.db
+    .select({ name: agentComposes.name })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, installation.defaultComposeId))
+    .limit(1);
 
   // 5. Send welcome message
   const botToken = decryptCredentialValue(
@@ -186,6 +189,6 @@ export async function handleMessagesTabOpened(
     client,
     context.channelId,
     "Hi! I'm VM0. I can connect you to AI agents to help with your tasks.",
-    { blocks: buildWelcomeMessage(bindings) },
+    { blocks: buildWelcomeMessage(compose?.name) },
   );
 }

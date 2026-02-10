@@ -1,15 +1,19 @@
 "use server";
 
 import { auth } from "@clerk/nextjs/server";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { initServices } from "../../../src/lib/init-services";
 import { env } from "../../../src/env";
 import { slackUserLinks } from "../../../src/db/schema/slack-user-link";
 import { slackInstallations } from "../../../src/db/schema/slack-installation";
-import { slackBindings } from "../../../src/db/schema/slack-binding";
 import { decryptCredentialValue } from "../../../src/lib/crypto/secrets-encryption";
 import { createSlackClient, refreshAppHome } from "../../../src/lib/slack";
-import { ensureScopeAndArtifact } from "../../../src/lib/slack/handlers/shared";
+import {
+  ensureScopeAndArtifact,
+  getWorkspaceAgent,
+} from "../../../src/lib/slack/handlers/shared";
+import { getUserEmail } from "../../../src/lib/auth/get-user-email";
+import { addPermission } from "../../../src/lib/agent/permission-service";
 import { logger } from "../../../src/lib/logger";
 
 const log = logger("slack:link");
@@ -114,12 +118,12 @@ export async function linkSlackAccount(
   if (existingLink) {
     if (existingLink.vm0UserId === userId) {
       // Send success message even for already linked users
-      // Must await to prevent serverless function from terminating before message is sent
       if (channelId) {
         await sendSuccessMessage(
           installation.encryptedBotToken,
           channelId,
           slackUserId,
+          installation.defaultComposeId,
         ).catch((error) => {
           log.warn("Failed to send success message", { error });
         });
@@ -136,7 +140,7 @@ export async function linkSlackAccount(
   await ensureScopeAndArtifact(userId);
 
   // Create the link
-  const [newUserLink] = await globalThis.services.db
+  await globalThis.services.db
     .insert(slackUserLinks)
     .values({
       slackUserId,
@@ -145,36 +149,26 @@ export async function linkSlackAccount(
     })
     .returning({ id: slackUserLinks.id });
 
-  // Restore orphaned bindings from previous disconnect
-  if (newUserLink) {
-    const restoredCount = await globalThis.services.db
-      .update(slackBindings)
-      .set({ slackUserLinkId: newUserLink.id })
-      .where(
-        and(
-          eq(slackBindings.vm0UserId, userId),
-          eq(slackBindings.slackWorkspaceId, workspaceId),
-          isNull(slackBindings.slackUserLinkId),
-        ),
-      )
-      .then((result) => result.rowCount ?? 0);
-
-    if (restoredCount > 0) {
-      log.info("Restored orphaned bindings", {
-        count: restoredCount,
-        userId,
-        workspaceId,
-      });
-    }
+  // Auto-share workspace agent with the new user
+  const email = await getUserEmail(userId);
+  if (email && installation.defaultComposeId) {
+    await addPermission(
+      installation.defaultComposeId,
+      "email",
+      installation.adminSlackUserId,
+      email,
+    ).catch((error) => {
+      log.warn("Failed to auto-share workspace agent", { error });
+    });
   }
 
   // Send success message to the Slack channel
-  // Must await to prevent serverless function from terminating before message is sent
   if (channelId) {
     await sendSuccessMessage(
       installation.encryptedBotToken,
       channelId,
       slackUserId,
+      installation.defaultComposeId,
     ).catch((error) => {
       log.warn("Failed to send success message", { error });
     });
@@ -187,7 +181,7 @@ export async function linkSlackAccount(
     SECRETS_ENCRYPTION_KEY,
   );
   const client = createSlackClient(botToken);
-  await refreshAppHome(client, workspaceId, slackUserId).catch((error) => {
+  await refreshAppHome(client, installation, slackUserId).catch((error) => {
     log.warn("Failed to refresh App Home after link", { error });
   });
 
@@ -201,6 +195,7 @@ async function sendSuccessMessage(
   encryptedBotToken: string,
   channelId: string,
   slackUserId: string,
+  defaultComposeId: string,
 ): Promise<void> {
   const { SECRETS_ENCRYPTION_KEY } = env();
   const botToken = decryptCredentialValue(
@@ -208,6 +203,11 @@ async function sendSuccessMessage(
     SECRETS_ENCRYPTION_KEY,
   );
   const client = createSlackClient(botToken);
+
+  const agent = await getWorkspaceAgent(defaultComposeId);
+  const agentInfo = agent
+    ? `The workspace agent \`${agent.name}\` is ready to use.`
+    : "";
 
   await client.chat.postEphemeral({
     channel: channelId,
@@ -218,7 +218,7 @@ async function sendSuccessMessage(
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `:white_check_mark: *Successfully connected to VM0!*\n\nYou can now:\n• Use \`/vm0 agent link\` to link an agent\n• Mention \`@VM0\` to interact with your agents`,
+          text: `:white_check_mark: *Successfully connected to VM0!*\n\n${agentInfo}\n\nYou can now:\n• Mention \`@VM0\` to interact with the agent\n• Use \`/vm0 environment setup\` to configure your secrets and variables`,
         },
       },
     ],

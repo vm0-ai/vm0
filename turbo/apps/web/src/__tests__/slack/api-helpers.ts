@@ -7,74 +7,18 @@
  * External APIs (Slack OAuth, Slack Web API) are mocked via vi.mock("@slack/web-api")
  * in setup.ts — all `new WebClient()` calls return the same singleton mock object.
  */
-import crypto from "crypto";
 import { vi } from "vitest";
 import { WebClient } from "@slack/web-api";
 import { mockClerk } from "../clerk-mock";
-import { createTestCompose } from "../api-test-helpers";
+import { createTestCompose, createTestScope } from "../api-test-helpers";
 import { uniqueId } from "../test-helpers";
-import { env } from "../../env";
 import { initServices } from "../../lib/init-services";
 
 // Import route handlers
 import { GET as oauthCallbackRoute } from "../../../app/api/slack/oauth/callback/route";
-import { POST as interactiveRoute } from "../../../app/api/slack/interactive/route";
 
 // Import server action
 import { linkSlackAccount } from "../../../app/slack/link/actions";
-
-// Import API helpers
-import { createTestScope } from "../api-test-helpers";
-
-/**
- * Extract binding ID from a published App Home view by finding the Unlink button
- * for a given agent name (the button value contains the binding UUID).
- */
-function extractBindingIdFromView(
-  publishedView: Record<string, unknown> | undefined,
-  agentName: string,
-): string {
-  if (!publishedView) {
-    throw new Error("No App Home view was published during agent setup");
-  }
-
-  const view = publishedView.view as
-    | { blocks?: Array<Record<string, unknown>> }
-    | undefined;
-  const blocks = view?.blocks ?? [];
-
-  // Find the actions block that follows the agent's section block
-  for (let i = 0; i < blocks.length; i++) {
-    const block = blocks[i]!;
-    if (
-      block.type === "section" &&
-      typeof block.text === "object" &&
-      block.text !== null &&
-      "text" in block.text &&
-      typeof block.text.text === "string" &&
-      block.text.text.includes(agentName)
-    ) {
-      // Next block should be actions with Update/Unlink buttons
-      const actionsBlock = blocks[i + 1];
-      if (actionsBlock?.type === "actions") {
-        const elements = actionsBlock.elements as Array<{
-          action_id: string;
-          value?: string;
-        }>;
-        const unlinkButton = elements?.find(
-          (el) => el.action_id === "home_agent_unlink",
-        );
-        if (unlinkButton?.value) {
-          return unlinkButton.value;
-        }
-      }
-    }
-  }
-
-  throw new Error(
-    `Could not find binding ID for agent "${agentName}" in published App Home view`,
-  );
-}
 
 /**
  * Result from givenSlackWorkspaceInstalled
@@ -84,6 +28,7 @@ interface WorkspaceInstallationResult {
     slackWorkspaceId: string;
     slackWorkspaceName: string;
     botUserId: string;
+    defaultComposeId: string;
   };
 }
 
@@ -92,6 +37,7 @@ interface WorkspaceInstallationResult {
  */
 interface LinkedUserResult extends WorkspaceInstallationResult {
   userLink: {
+    id: string;
     slackUserId: string;
     slackWorkspaceId: string;
     vm0UserId: string;
@@ -121,6 +67,8 @@ interface WorkspaceInstallationOptions {
   workspaceId?: string;
   workspaceName?: string;
   botUserId?: string;
+  adminUserId?: string;
+  agentName?: string;
 }
 
 /**
@@ -149,6 +97,15 @@ export async function givenSlackWorkspaceInstalled(
   const workspaceName = options.workspaceName ?? "Test Workspace";
   const botUserId = options.botUserId ?? uniqueId("B");
   const accessToken = `xoxb-test-${uniqueId("token")}`;
+  const adminSlackUserId = uniqueId("admin-slack");
+
+  // Create admin user scope + compose for the workspace agent
+  const adminUserId = options.adminUserId ?? uniqueId("admin");
+  mockClerk({ userId: adminUserId });
+  await createTestScope(uniqueId("admin-scope"));
+  const { composeId } = await createTestCompose(
+    options.agentName ?? "default-agent",
+  );
 
   // Configure the WebClient singleton's oauth.v2.access to return expected values
   const mockClient = vi.mocked(new WebClient(), true);
@@ -157,19 +114,22 @@ export async function givenSlackWorkspaceInstalled(
     access_token: accessToken,
     bot_user_id: botUserId,
     team: { id: workspaceId, name: workspaceName },
+    authed_user: { id: adminSlackUserId },
   } as never);
 
-  // Call OAuth callback endpoint with a mock code
+  // Call OAuth callback endpoint with a mock code and state containing composeId
   const callbackUrl = new URL("http://localhost/api/slack/oauth/callback");
   callbackUrl.searchParams.set("code", "mock-oauth-code");
+  callbackUrl.searchParams.set("state", JSON.stringify({ composeId }));
 
   const request = new Request(callbackUrl.toString(), { method: "GET" });
   const response = await oauthCallbackRoute(request);
 
   // The callback redirects on success, so check for redirect status
   if (response.status !== 302 && response.status !== 307) {
+    const text = await response.text();
     throw new Error(
-      `OAuth callback failed with status ${response.status}: ${await response.text()}`,
+      `OAuth callback failed with status ${response.status}: ${text}`,
     );
   }
 
@@ -178,6 +138,7 @@ export async function givenSlackWorkspaceInstalled(
       slackWorkspaceId: workspaceId,
       slackWorkspaceName: workspaceName,
       botUserId,
+      defaultComposeId: composeId,
     },
   };
 }
@@ -199,12 +160,15 @@ export async function givenLinkedSlackUser(
     botUserId: options.botUserId,
   });
 
-  // Mock Clerk auth for the server action and scope creation
+  // Restore Clerk mock to the linking user (givenSlackWorkspaceInstalled sets it to admin)
   mockClerk({ userId: vm0UserId });
 
   // Create scope for the user (required for compose creation)
   const scopeSlug = uniqueId("scope");
   const scopeData = await createTestScope(scopeSlug);
+
+  // WebClient methods (views.publish, chat.postEphemeral) are already mocked in setup.ts
+  // so linking triggers (refreshAppHome, postEphemeral) will use those mocks.
 
   // Call the server action to link the user
   const result = await linkSlackAccount(
@@ -216,9 +180,25 @@ export async function givenLinkedSlackUser(
     throw new Error(`Failed to link Slack user: ${result.error}`);
   }
 
+  // Query the created user link to get the id
+  initServices();
+  const { slackUserLinks } = await import("../../db/schema/slack-user-link");
+  const { eq, and } = await import("drizzle-orm");
+  const [link] = await globalThis.services.db
+    .select({ id: slackUserLinks.id })
+    .from(slackUserLinks)
+    .where(
+      and(
+        eq(slackUserLinks.slackUserId, slackUserId),
+        eq(slackUserLinks.slackWorkspaceId, installation.slackWorkspaceId),
+      ),
+    )
+    .limit(1);
+
   return {
     installation,
     userLink: {
+      id: link!.id,
       slackUserId,
       slackWorkspaceId: installation.slackWorkspaceId,
       vm0UserId,
@@ -228,38 +208,10 @@ export async function givenLinkedSlackUser(
 }
 
 /**
- * Create a signed Slack interactive request
- */
-function createSlackInteractiveRequest(payload: object): Request {
-  initServices();
-  const { SLACK_SIGNING_SECRET } = env();
-  if (!SLACK_SIGNING_SECRET) {
-    throw new Error("SLACK_SIGNING_SECRET must be set in test environment");
-  }
-
-  const timestamp = Math.floor(Date.now() / 1000).toString();
-  const payloadStr = JSON.stringify(payload);
-  const body = `payload=${encodeURIComponent(payloadStr)}`;
-
-  // Generate signature
-  const baseString = `v0:${timestamp}:${body}`;
-  const hmac = crypto.createHmac("sha256", SLACK_SIGNING_SECRET);
-  const signature = `v0=${hmac.update(baseString).digest("hex")}`;
-
-  return new Request("http://localhost/api/slack/interactive", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      "x-slack-signature": signature,
-      "x-slack-request-timestamp": timestamp,
-    },
-    body,
-  });
-}
-
-/**
- * Given a user has an agent configured.
- * Creates agent via compose API and binding via interactive endpoint.
+ * Given the workspace has an agent configured.
+ * Creates agent compose and sets it as the workspace default.
+ * In the new model, there are no per-user bindings - the workspace has a single
+ * default agent set by the admin.
  */
 export async function givenUserHasAgent(
   userLink: LinkedUserResult["userLink"],
@@ -273,59 +225,20 @@ export async function givenUserHasAgent(
   // Create agent compose via API
   const { composeId } = await createTestCompose(agentName);
 
-  // Create binding via interactive endpoint (modal submission)
-  const interactivePayload = {
-    type: "view_submission",
-    user: {
-      id: userLink.slackUserId,
-      username: "testuser",
-      team_id: userLink.slackWorkspaceId,
-    },
-    team: {
-      id: userLink.slackWorkspaceId,
-      domain: "test-workspace",
-    },
-    view: {
-      id: "view-123",
-      callback_id: "agent_add_modal",
-      state: {
-        values: {
-          agent_select: {
-            agent_select_action: {
-              type: "static_select",
-              selected_option: { value: composeId },
-            },
-          },
-        },
-      },
-      private_metadata: JSON.stringify({ channelId: "C123" }),
-    },
-  };
-
-  // Clear views.publish mock so we can capture only the call from this route
-  const mockClient = vi.mocked(new WebClient(), true);
-  mockClient.views.publish.mockClear();
-
-  const request = createSlackInteractiveRequest(interactivePayload);
-  const response = await interactiveRoute(request);
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to create agent binding: ${error}`);
-  }
-
-  // Extract binding ID from the published App Home view (captured by module mock)
-  const publishCall = mockClient.views.publish.mock.lastCall?.[0] as
-    | Record<string, unknown>
-    | undefined;
-  const bindingId = extractBindingIdFromView(
-    publishCall,
-    agentName.toLowerCase(),
+  // Update the workspace's default agent
+  initServices();
+  const { slackInstallations } = await import(
+    "../../db/schema/slack-installation"
   );
+  const { eq } = await import("drizzle-orm");
+  await globalThis.services.db
+    .update(slackInstallations)
+    .set({ defaultComposeId: composeId })
+    .where(eq(slackInstallations.slackWorkspaceId, userLink.slackWorkspaceId));
 
   return {
     binding: {
-      id: bindingId,
+      id: composeId,
       agentName: agentName.toLowerCase(),
       composeId,
     },
@@ -334,4 +247,23 @@ export async function givenUserHasAgent(
       name: agentName,
     },
   };
+}
+
+/**
+ * Given a Slack user is the workspace admin.
+ * Updates the installation to set the specified Slack user as admin.
+ */
+export async function givenUserIsWorkspaceAdmin(
+  slackUserId: string,
+  slackWorkspaceId: string,
+): Promise<void> {
+  initServices();
+  const { slackInstallations } = await import(
+    "../../db/schema/slack-installation"
+  );
+  const { eq } = await import("drizzle-orm");
+  await globalThis.services.db
+    .update(slackInstallations)
+    .set({ adminSlackUserId: slackUserId })
+    .where(eq(slackInstallations.slackWorkspaceId, slackWorkspaceId));
 }

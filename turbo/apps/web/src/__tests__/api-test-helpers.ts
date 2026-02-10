@@ -1529,7 +1529,7 @@ export async function linkRunToSchedule(
  * Create a thread session for testing (e.g., notification-created sessions with null bindingId).
  */
 export async function createTestThreadSession(params: {
-  bindingId: string | null;
+  userLinkId: string;
   channelId: string;
   threadTs: string;
   agentSessionId: string;
@@ -1538,7 +1538,7 @@ export async function createTestThreadSession(params: {
   const [row] = await globalThis.services.db
     .insert(slackThreadSessions)
     .values({
-      slackBindingId: params.bindingId,
+      slackUserLinkId: params.userLinkId,
       slackChannelId: params.channelId,
       slackThreadTs: params.threadTs,
       agentSessionId: params.agentSessionId,
@@ -1551,14 +1551,14 @@ export async function createTestThreadSession(params: {
 export async function findTestThreadSession(channelId: string): Promise<{
   id: string;
   slackChannelId: string;
-  slackBindingId: string | null;
+  slackUserLinkId: string;
   agentSessionId: string | null;
 } | null> {
   const [row] = await globalThis.services.db
     .select({
       id: slackThreadSessions.id,
       slackChannelId: slackThreadSessions.slackChannelId,
-      slackBindingId: slackThreadSessions.slackBindingId,
+      slackUserLinkId: slackThreadSessions.slackUserLinkId,
       agentSessionId: slackThreadSessions.agentSessionId,
     })
     .from(slackThreadSessions)

@@ -6,15 +6,14 @@ import type {
   StaticSelect,
 } from "@slack/web-api";
 import {
-  buildAgentAddModal,
-  buildAgentListMessage,
+  buildAgentManageModal,
   buildErrorMessage,
   buildLoginPromptMessage,
   buildHelpMessage,
   buildSuccessMessage,
 } from "../blocks";
 
-describe("buildAgentAddModal", () => {
+describe("buildAgentManageModal", () => {
   it("should create a valid modal structure", () => {
     const agents = [
       {
@@ -35,18 +34,18 @@ describe("buildAgentAddModal", () => {
       },
     ];
 
-    // Without selected agent, submit button is not shown
-    const modalWithoutSelection = buildAgentAddModal(agents) as ModalView;
+    // Without selected agent, submit button is shown
+    const modalWithoutSelection = buildAgentManageModal(agents) as ModalView;
     expect(modalWithoutSelection.type).toBe("modal");
-    expect(modalWithoutSelection.callback_id).toBe("agent_add_modal");
+    expect(modalWithoutSelection.callback_id).toBe("agent_manage_modal");
     expect(modalWithoutSelection.title).toEqual({
       type: "plain_text",
-      text: "Link Agent",
+      text: "Manage Agent",
     });
     // Submit button is always shown (required for input blocks)
     expect(modalWithoutSelection.submit).toEqual({
       type: "plain_text",
-      text: "Link",
+      text: "Save",
     });
     expect(modalWithoutSelection.close).toEqual({
       type: "plain_text",
@@ -54,13 +53,13 @@ describe("buildAgentAddModal", () => {
     });
 
     // With selected agent, submit button is shown
-    const modalWithSelection = buildAgentAddModal(
+    const modalWithSelection = buildAgentManageModal(
       agents,
       "agent-1",
     ) as ModalView;
     expect(modalWithSelection.submit).toEqual({
       type: "plain_text",
-      text: "Link",
+      text: "Save",
     });
   });
 
@@ -84,7 +83,7 @@ describe("buildAgentAddModal", () => {
       },
     ];
 
-    const modal = buildAgentAddModal(agents);
+    const modal = buildAgentManageModal(agents);
     const agentSelectBlock = modal.blocks?.find(
       (b) => "block_id" in b && b.block_id === "agent_select",
     );
@@ -112,7 +111,7 @@ describe("buildAgentAddModal", () => {
       },
     ];
 
-    const modal = buildAgentAddModal(agents, "agent-1") as ModalView;
+    const modal = buildAgentManageModal(agents, "agent-1") as ModalView;
 
     // Find the existing secret input (API_KEY)
     const existingSecretBlock = modal.blocks?.find(
@@ -140,67 +139,6 @@ describe("buildAgentAddModal", () => {
       text: "NEW_SECRET",
     });
     expect(newSecretBlock.hint).toBeUndefined();
-  });
-});
-
-describe("buildAgentListMessage", () => {
-  it("should show empty state when no bindings", () => {
-    const blocks = buildAgentListMessage([]);
-
-    expect(blocks).toHaveLength(1);
-    expect(blocks[0]).toMatchObject({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: expect.stringContaining("don't have any agent linked"),
-      },
-    });
-  });
-
-  it("should list bindings with status", () => {
-    const bindings = [
-      {
-        id: "binding-1",
-        agentName: "my-coder",
-        description: "Helps with coding",
-        enabled: true,
-      },
-      {
-        id: "binding-2",
-        agentName: "my-analyst",
-        description: null,
-        enabled: false,
-      },
-    ];
-
-    const blocks = buildAgentListMessage(bindings);
-
-    // Should have header, divider, and 2 agent sections
-    expect(blocks.length).toBeGreaterThanOrEqual(4);
-
-    // Check first agent has checkmark (enabled)
-    const firstAgentBlock = blocks.find(
-      (b) =>
-        b.type === "section" &&
-        "text" in b &&
-        b.text?.type === "mrkdwn" &&
-        b.text.text.includes("my-coder"),
-    );
-    expect(firstAgentBlock).toBeDefined();
-    expect((firstAgentBlock as SectionBlock).text?.text).toContain(
-      ":white_check_mark:",
-    );
-
-    // Check second agent has X (disabled)
-    const secondAgentBlock = blocks.find(
-      (b) =>
-        b.type === "section" &&
-        "text" in b &&
-        b.text?.type === "mrkdwn" &&
-        b.text.text.includes("my-analyst"),
-    );
-    expect(secondAgentBlock).toBeDefined();
-    expect((secondAgentBlock as SectionBlock).text?.text).toContain(":x:");
   });
 });
 
@@ -253,12 +191,12 @@ describe("buildHelpMessage", () => {
 
     expect(blocks.length).toBeGreaterThanOrEqual(3);
 
-    // Check for commands section (now uses link/unlink instead of add/remove)
+    // Check for commands section (uses agent manage)
     const commandsBlock = blocks.find(
       (b) =>
         b.type === "section" &&
         "text" in b &&
-        b.text?.text?.includes("/vm0 agent link"),
+        b.text?.text?.includes("/vm0 agent manage"),
     );
     expect(commandsBlock).toBeDefined();
 

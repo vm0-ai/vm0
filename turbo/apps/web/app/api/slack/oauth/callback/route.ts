@@ -35,17 +35,20 @@ export async function GET(request: Request) {
   const error = url.searchParams.get("error");
   const state = url.searchParams.get("state");
 
-  // Parse state to get Slack user info (for combined install + link flow)
+  // Parse state to get Slack user info and default agent
   let slackUserId: string | null = null;
   let channelId: string | null = null;
+  let defaultComposeId: string | null = null;
   if (state) {
     try {
       const parsed = JSON.parse(state) as {
         u?: string;
         c?: string;
+        composeId?: string;
       };
       slackUserId = parsed.u ?? null;
       channelId = parsed.c ?? null;
+      defaultComposeId = parsed.composeId ?? null;
     } catch {
       // Ignore parse errors
     }
@@ -85,6 +88,16 @@ export async function GET(request: Request) {
       SECRETS_ENCRYPTION_KEY,
     );
 
+    if (!defaultComposeId) {
+      return NextResponse.redirect(
+        `${baseUrl}/slack/failed?error=${encodeURIComponent("Missing default agent. Install must specify a composeId.")}`,
+      );
+    }
+
+    // The installing user becomes the workspace admin
+    const adminSlackUserId =
+      oauthResult.authedUserId || slackUserId || "unknown";
+
     // Store or update the installation
     await globalThis.services.db
       .insert(slackInstallations)
@@ -93,6 +106,8 @@ export async function GET(request: Request) {
         slackWorkspaceName: oauthResult.teamName,
         encryptedBotToken,
         botUserId: oauthResult.botUserId,
+        defaultComposeId,
+        adminSlackUserId,
       })
       .onConflictDoUpdate({
         target: slackInstallations.slackWorkspaceId,
@@ -100,6 +115,8 @@ export async function GET(request: Request) {
           slackWorkspaceName: oauthResult.teamName,
           encryptedBotToken,
           botUserId: oauthResult.botUserId,
+          defaultComposeId,
+          adminSlackUserId,
           updatedAt: new Date(),
         },
       });

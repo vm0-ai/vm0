@@ -514,7 +514,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       // not the Slack user ID (U...) that was used to send the message
       const threadSession = await findTestThreadSession(MOCK_DM_CHANNEL_ID);
       expect(threadSession).not.toBeNull();
-      expect(threadSession!.slackBindingId).toBeNull();
+      expect(threadSession!.slackUserLinkId).toBeDefined();
       expect(threadSession!.agentSessionId).toBeDefined();
     });
 

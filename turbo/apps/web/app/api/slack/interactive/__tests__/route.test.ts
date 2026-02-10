@@ -13,7 +13,7 @@ import {
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   givenLinkedSlackUser,
-  givenUserHasAgent,
+  givenUserIsWorkspaceAdmin,
 } from "../../../../../src/__tests__/slack/api-helpers";
 
 // Mock only external dependencies (third-party packages)
@@ -160,8 +160,15 @@ describe("POST /api/slack/interactive", () => {
   });
 
   describe("Block Actions - Home Tab", () => {
-    it("opens agent add modal when home_agent_link is clicked", async () => {
+    it("opens agent manage modal when home_agent_manage is clicked by admin", async () => {
       const { userLink, installation } = await givenLinkedSlackUser();
+
+      // Make the linked user the admin
+      await givenUserIsWorkspaceAdmin(
+        userLink.slackUserId,
+        installation.slackWorkspaceId,
+      );
+
       mockClerk({ userId: userLink.vm0UserId });
       await createTestCompose("available-agent");
 
@@ -177,7 +184,7 @@ describe("POST /api/slack/interactive", () => {
         },
         team: { id: installation.slackWorkspaceId, domain: "test" },
         trigger_id: "trigger-123",
-        actions: [{ action_id: "home_agent_link", block_id: "block-1" }],
+        actions: [{ action_id: "home_agent_manage", block_id: "block-1" }],
       });
       const request = createSignedSlackRequest(body);
 
@@ -187,11 +194,8 @@ describe("POST /api/slack/interactive", () => {
       expect(mockClient.views.open).toHaveBeenCalled();
     });
 
-    it("opens agent update modal when home_agent_update is clicked", async () => {
+    it("opens environment setup modal when home_environment_setup is clicked", async () => {
       const { userLink, installation } = await givenLinkedSlackUser();
-      const { binding } = await givenUserHasAgent(userLink, {
-        agentName: "my-agent",
-      });
 
       const mockClient = vi.mocked(new WebClient(), true);
       mockClient.views.open.mockClear();
@@ -207,9 +211,8 @@ describe("POST /api/slack/interactive", () => {
         trigger_id: "trigger-456",
         actions: [
           {
-            action_id: "home_agent_update",
+            action_id: "home_environment_setup",
             block_id: "block-1",
-            value: binding.id,
           },
         ],
       });
@@ -219,40 +222,6 @@ describe("POST /api/slack/interactive", () => {
 
       expect(response.status).toBe(200);
       expect(mockClient.views.open).toHaveBeenCalled();
-    });
-
-    it("deletes binding and refreshes home when home_agent_unlink is clicked", async () => {
-      const { userLink, installation } = await givenLinkedSlackUser();
-      const { binding } = await givenUserHasAgent(userLink, {
-        agentName: "unlink-agent",
-      });
-
-      const mockClient = vi.mocked(new WebClient(), true);
-      mockClient.views.publish.mockClear();
-
-      const body = buildInteractiveBody({
-        type: "block_actions",
-        user: {
-          id: userLink.slackUserId,
-          username: "testuser",
-          team_id: installation.slackWorkspaceId,
-        },
-        team: { id: installation.slackWorkspaceId, domain: "test" },
-        actions: [
-          {
-            action_id: "home_agent_unlink",
-            block_id: "block-1",
-            value: binding.id,
-          },
-        ],
-      });
-      const request = createSignedSlackRequest(body);
-
-      const response = await POST(request);
-
-      expect(response.status).toBe(200);
-      // App Home was refreshed after unlink
-      expect(mockClient.views.publish).toHaveBeenCalled();
     });
 
     it("opens compose modal when home_agent_compose is clicked", async () => {
@@ -343,7 +312,7 @@ describe("POST /api/slack/interactive", () => {
     });
   });
 
-  describe("View Submission - Agent Add Modal", () => {
+  describe("View Submission - Agent Manage Modal", () => {
     it("returns error when form values are missing", async () => {
       const body = buildInteractiveBody({
         type: "view_submission",
@@ -351,7 +320,7 @@ describe("POST /api/slack/interactive", () => {
         team: { id: "T123", domain: "test" },
         view: {
           id: "V123",
-          callback_id: "agent_add_modal",
+          callback_id: "agent_manage_modal",
           state: {},
         },
       });
@@ -372,7 +341,7 @@ describe("POST /api/slack/interactive", () => {
         team: { id: "T123", domain: "test" },
         view: {
           id: "V123",
-          callback_id: "agent_add_modal",
+          callback_id: "agent_manage_modal",
           state: {
             values: {
               agent_select: { agent_select_action: {} },
@@ -391,13 +360,25 @@ describe("POST /api/slack/interactive", () => {
     });
 
     it("returns error when agent is not found in database", async () => {
+      const { userLink, installation } = await givenLinkedSlackUser();
+
+      // Make the linked user the admin
+      await givenUserIsWorkspaceAdmin(
+        userLink.slackUserId,
+        installation.slackWorkspaceId,
+      );
+
       const body = buildInteractiveBody({
         type: "view_submission",
-        user: { id: "U123", username: "testuser", team_id: "T123" },
-        team: { id: "T123", domain: "test" },
+        user: {
+          id: userLink.slackUserId,
+          username: "testuser",
+          team_id: installation.slackWorkspaceId,
+        },
+        team: { id: installation.slackWorkspaceId, domain: "test" },
         view: {
           id: "V123",
-          callback_id: "agent_add_modal",
+          callback_id: "agent_manage_modal",
           state: {
             values: {
               agent_select: {
@@ -421,20 +402,23 @@ describe("POST /api/slack/interactive", () => {
       expect(data.errors.agent_select).toContain("not found");
     });
 
-    it("returns error when user is not linked", async () => {
-      // Create a linked user to get a valid compose
-      const { userLink } = await givenLinkedSlackUser();
+    it("returns error when user is not admin", async () => {
+      const { userLink, installation } = await givenLinkedSlackUser();
       mockClerk({ userId: userLink.vm0UserId });
-      const { composeId } = await createTestCompose("unlinked-test");
+      const { composeId } = await createTestCompose("admin-test");
 
-      // Submit from a different, unlinked Slack user
+      // userLink.slackUserId is NOT the admin — submit from them
       const body = buildInteractiveBody({
         type: "view_submission",
-        user: { id: "U-unlinked", username: "testuser", team_id: "T-unlinked" },
-        team: { id: "T-unlinked", domain: "test" },
+        user: {
+          id: userLink.slackUserId,
+          username: "testuser",
+          team_id: installation.slackWorkspaceId,
+        },
+        team: { id: installation.slackWorkspaceId, domain: "test" },
         view: {
           id: "V123",
-          callback_id: "agent_add_modal",
+          callback_id: "agent_manage_modal",
           state: {
             values: {
               agent_select: {
@@ -451,51 +435,18 @@ describe("POST /api/slack/interactive", () => {
 
       expect(response.status).toBe(200);
       expect(data.response_action).toBe("errors");
-      expect(data.errors.agent_select).toContain("not linked");
+      expect(data.errors.agent_select).toContain("admin");
     });
 
-    it("returns error when agent is already added", async () => {
-      // Create linked user with an agent binding
+    it("changes workspace agent successfully", async () => {
       const { userLink, installation } = await givenLinkedSlackUser();
-      const { compose } = await givenUserHasAgent(userLink, {
-        agentName: "existing-agent",
-      });
 
-      // Try to add the same compose again
-      const body = buildInteractiveBody({
-        type: "view_submission",
-        user: {
-          id: userLink.slackUserId,
-          username: "testuser",
-          team_id: installation.slackWorkspaceId,
-        },
-        team: { id: installation.slackWorkspaceId, domain: "test" },
-        view: {
-          id: "V123",
-          callback_id: "agent_add_modal",
-          state: {
-            values: {
-              agent_select: {
-                agent_select_action: {
-                  selected_option: { value: compose.id },
-                },
-              },
-            },
-          },
-        },
-      });
-      const request = createSignedSlackRequest(body);
+      // Make the linked user the admin
+      await givenUserIsWorkspaceAdmin(
+        userLink.slackUserId,
+        installation.slackWorkspaceId,
+      );
 
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.response_action).toBe("errors");
-      expect(data.errors.agent_select).toContain("already added");
-    });
-
-    it("creates binding successfully", async () => {
-      const { userLink, installation } = await givenLinkedSlackUser();
       mockClerk({ userId: userLink.vm0UserId });
       const { composeId } = await createTestCompose("new-agent");
 
@@ -509,7 +460,7 @@ describe("POST /api/slack/interactive", () => {
         team: { id: installation.slackWorkspaceId, domain: "test" },
         view: {
           id: "V123",
-          callback_id: "agent_add_modal",
+          callback_id: "agent_manage_modal",
           state: {
             values: {
               agent_select: {
@@ -529,8 +480,15 @@ describe("POST /api/slack/interactive", () => {
       expect(text).toBe("");
     });
 
-    it("saves secrets to user scope when provided", async () => {
+    it("saves secrets to admin scope when provided", async () => {
       const { userLink, installation } = await givenLinkedSlackUser();
+
+      // Make the linked user the admin
+      await givenUserIsWorkspaceAdmin(
+        userLink.slackUserId,
+        installation.slackWorkspaceId,
+      );
+
       mockClerk({ userId: userLink.vm0UserId });
       const { composeId } = await createTestCompose("secret-agent");
 
@@ -544,7 +502,7 @@ describe("POST /api/slack/interactive", () => {
         team: { id: installation.slackWorkspaceId, domain: "test" },
         view: {
           id: "V123",
-          callback_id: "agent_add_modal",
+          callback_id: "agent_manage_modal",
           state: {
             values: {
               agent_select: {
@@ -703,13 +661,19 @@ describe("POST /api/slack/interactive", () => {
     });
   });
 
-  describe("View Submission - Agent Add Modal (existing agent)", () => {
-    it("existing agent selection works correctly", async () => {
+  describe("View Submission - Agent Manage Modal (with channel metadata)", () => {
+    it("admin can change workspace agent with channel context", async () => {
       const { userLink, installation } = await givenLinkedSlackUser();
+
+      // Make the linked user the admin
+      await givenUserIsWorkspaceAdmin(
+        userLink.slackUserId,
+        installation.slackWorkspaceId,
+      );
+
       mockClerk({ userId: userLink.vm0UserId });
       const { composeId } = await createTestCompose("normal-agent");
 
-      // Submit with agent_select (no github_url_input) — existing flow
       const body = buildInteractiveBody({
         type: "view_submission",
         user: {
@@ -720,7 +684,7 @@ describe("POST /api/slack/interactive", () => {
         team: { id: installation.slackWorkspaceId, domain: "test" },
         view: {
           id: "V123",
-          callback_id: "agent_add_modal",
+          callback_id: "agent_manage_modal",
           state: {
             values: {
               agent_select: {

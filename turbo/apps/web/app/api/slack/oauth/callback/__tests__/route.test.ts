@@ -1,8 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { WebClient } from "@slack/web-api";
 import { GET } from "../route";
-import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
-import { testContext } from "../../../../../../src/__tests__/test-helpers";
+import {
+  createTestRequest,
+  createTestScope,
+  createTestCompose,
+} from "../../../../../../src/__tests__/api-test-helpers";
+import {
+  testContext,
+  uniqueId,
+} from "../../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { reloadEnv } from "../../../../../../src/env";
 
 // Mock external dependencies required by testContext().setupMocks()
@@ -40,16 +48,25 @@ describe("/api/slack/oauth/callback", () => {
     });
 
     it("should redirect to success page on successful OAuth exchange", async () => {
+      // Create a compose to use as the default workspace agent
+      const adminUserId = uniqueId("admin");
+      mockClerk({ userId: adminUserId });
+      await createTestScope(uniqueId("scope"));
+      const { composeId } = await createTestCompose("test-agent");
+
+      // Configure the WebClient singleton's oauth.v2.access to return expected values
       const mockClient = vi.mocked(new WebClient(), true);
       mockClient.oauth.v2.access.mockResolvedValueOnce({
         ok: true,
         access_token: "xoxb-test-token",
         bot_user_id: "U123456",
         team: { id: "T123456", name: "Test Workspace" },
+        authed_user: { id: "U-installer" },
       } as never);
 
+      const state = JSON.stringify({ composeId });
       const request = createTestRequest(
-        "http://localhost:3000/api/slack/oauth/callback?code=valid-code",
+        `http://localhost:3000/api/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
       );
       const response = await GET(request);
 

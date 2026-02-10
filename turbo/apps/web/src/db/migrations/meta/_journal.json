@@ -561,6 +561,13 @@
       "when": 1770400000000,
       "tag": "0079_allow_null_agent_compose_version",
       "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1770500000000,
+      "tag": "0080_workspace_agent_model",
+      "breakpoints": true
     }
   ]
 }

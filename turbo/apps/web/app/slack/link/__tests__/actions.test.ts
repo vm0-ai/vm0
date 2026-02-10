@@ -1,14 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { eq, and, isNull } from "drizzle-orm";
 import { checkLinkStatus, linkSlackAccount } from "../actions";
 import { testContext } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
-import { slackUserLinks } from "../../../../src/db/schema/slack-user-link";
-import { slackBindings } from "../../../../src/db/schema/slack-binding";
 import {
   givenSlackWorkspaceInstalled,
   givenLinkedSlackUser,
-  givenUserHasAgent,
 } from "../../../../src/__tests__/slack/api-helpers";
 import { findTestArtifactStorage } from "../../../../src/__tests__/api-test-helpers";
 
@@ -76,8 +72,9 @@ describe("Slack Link Actions", () => {
     });
 
     it("should successfully link a new Slack account", async () => {
-      await context.setupUser();
+      const user = await context.setupUser();
       const { installation } = await givenSlackWorkspaceInstalled();
+      mockClerk({ userId: user.userId });
 
       const slackUserId = `U-link-test-${Date.now()}`;
 
@@ -130,6 +127,7 @@ describe("Slack Link Actions", () => {
     it("should create artifact storage with HEAD version during linking", async () => {
       const user = await context.setupUser();
       const { installation } = await givenSlackWorkspaceInstalled();
+      mockClerk({ userId: user.userId });
 
       const slackUserId = `U-artifact-test-${Date.now()}`;
 
@@ -155,6 +153,7 @@ describe("Slack Link Actions", () => {
     it("should not duplicate artifact when linking is called twice", async () => {
       const user = await context.setupUser();
       const { installation } = await givenSlackWorkspaceInstalled();
+      mockClerk({ userId: user.userId });
 
       const slackUserId = `U-dup-test-${Date.now()}`;
 
@@ -179,67 +178,6 @@ describe("Slack Link Actions", () => {
       expect(artifactResult).not.toBeNull();
       expect(artifactResult!.storage.headVersionId).toBeTruthy();
       expect(artifactResult!.version).not.toBeNull();
-    });
-
-    it("should restore orphaned bindings when user re-links after logout", async () => {
-      // Given a linked user with an agent (via API helpers)
-      const { userLink, installation } = await givenLinkedSlackUser();
-      const { binding } = await givenUserHasAgent(userLink, {
-        agentName: "test-agent",
-      });
-
-      // Mock Clerk to return the same vm0UserId
-      mockClerk({ userId: userLink.vm0UserId });
-
-      // Simulate logout - delete the user link (this orphans the binding)
-      // No API endpoint for "unlink" — direct DB is the only way to simulate this state transition.
-      // eslint-disable-next-line web/no-direct-db-in-tests -- approved by e7h4n
-      await globalThis.services.db
-        .delete(slackUserLinks)
-        .where(
-          and(
-            eq(slackUserLinks.slackUserId, userLink.slackUserId),
-            eq(slackUserLinks.slackWorkspaceId, userLink.slackWorkspaceId),
-          ),
-        );
-
-      // Verify binding is now orphaned — orphan state is not observable through any API
-      // eslint-disable-next-line web/no-direct-db-in-tests -- approved by e7h4n
-      const [orphanedBinding] = await globalThis.services.db
-        .select()
-        .from(slackBindings)
-        .where(
-          and(
-            eq(slackBindings.vm0UserId, userLink.vm0UserId),
-            eq(slackBindings.slackWorkspaceId, installation.slackWorkspaceId),
-            isNull(slackBindings.slackUserLinkId),
-          ),
-        );
-      expect(orphanedBinding).toBeDefined();
-      expect(orphanedBinding?.agentName).toBe("test-agent");
-
-      // Re-link (simulate login again)
-      const result = await linkSlackAccount(
-        userLink.slackUserId,
-        installation.slackWorkspaceId,
-      );
-      expect(result.success).toBe(true);
-
-      // Verify binding is restored to the new user link — not observable through API
-      // eslint-disable-next-line web/no-direct-db-in-tests -- approved by e7h4n
-      const [restoredBinding] = await globalThis.services.db
-        .select()
-        .from(slackBindings)
-        .where(
-          and(
-            eq(slackBindings.vm0UserId, userLink.vm0UserId),
-            eq(slackBindings.agentName, binding.agentName),
-          ),
-        );
-
-      expect(restoredBinding).toBeDefined();
-      expect(restoredBinding?.slackUserLinkId).not.toBeNull();
-      expect(restoredBinding?.agentName).toBe(binding.agentName);
     });
   });
 });
