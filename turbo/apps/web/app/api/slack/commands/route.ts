@@ -34,7 +34,6 @@ import {
 } from "../../../../src/lib/slack/blocks";
 import { logger } from "../../../../src/lib/logger";
 import { listModelProviders } from "../../../../src/lib/model-provider/model-provider-service";
-import { ensureScopeAndArtifact } from "../../../../src/lib/slack/handlers/shared";
 
 const log = logger("slack:commands");
 
@@ -558,9 +557,6 @@ async function handleAgentAdd(
       existingVars: requiredVars.filter((name) => existingVarNames.has(name)),
     };
   });
-
-  // Ensure scope + artifact exist
-  await ensureScopeAndArtifact(vm0UserId);
 
   // Check model provider status
   const providers = await listModelProviders(vm0UserId);

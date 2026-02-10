@@ -10,6 +10,7 @@ import {
   givenLinkedSlackUser,
   givenUserHasAgent,
 } from "../../../../src/__tests__/slack/api-helpers";
+import { findTestArtifactStorage } from "../../../../src/__tests__/api-test-helpers";
 
 const context = testContext();
 
@@ -124,6 +125,60 @@ describe("Slack Link Actions", () => {
       expect(result.error).toContain(
         "already linked to a different VM0 account",
       );
+    });
+
+    it("should create artifact storage with HEAD version during linking", async () => {
+      const user = await context.setupUser();
+      const { installation } = await givenSlackWorkspaceInstalled();
+
+      const slackUserId = `U-artifact-test-${Date.now()}`;
+
+      const result = await linkSlackAccount(
+        slackUserId,
+        installation.slackWorkspaceId,
+      );
+
+      expect(result.success).toBe(true);
+
+      // Verify artifact storage was created with a HEAD version
+      const artifactResult = await findTestArtifactStorage(user.scopeId);
+
+      expect(artifactResult).not.toBeNull();
+      expect(artifactResult!.storage.headVersionId).toBeTruthy();
+      expect(artifactResult!.version).not.toBeNull();
+      expect(artifactResult!.version!.fileCount).toBe(0);
+      expect(artifactResult!.version!.storageId).toBe(
+        artifactResult!.storage.id,
+      );
+    });
+
+    it("should not duplicate artifact when linking is called twice", async () => {
+      const user = await context.setupUser();
+      const { installation } = await givenSlackWorkspaceInstalled();
+
+      const slackUserId = `U-dup-test-${Date.now()}`;
+
+      // First link
+      const result1 = await linkSlackAccount(
+        slackUserId,
+        installation.slackWorkspaceId,
+      );
+      expect(result1.success).toBe(true);
+
+      // Second link (same user, already linked)
+      const result2 = await linkSlackAccount(
+        slackUserId,
+        installation.slackWorkspaceId,
+      );
+      expect(result2.success).toBe(true);
+      expect(result2.alreadyLinked).toBe(true);
+
+      // Verify only one artifact storage exists with HEAD version
+      const artifactResult = await findTestArtifactStorage(user.scopeId);
+
+      expect(artifactResult).not.toBeNull();
+      expect(artifactResult!.storage.headVersionId).toBeTruthy();
+      expect(artifactResult!.version).not.toBeNull();
     });
 
     it("should restore orphaned bindings when user re-links after logout", async () => {

@@ -9,6 +9,7 @@ import { slackInstallations } from "../../../src/db/schema/slack-installation";
 import { slackBindings } from "../../../src/db/schema/slack-binding";
 import { decryptCredentialValue } from "../../../src/lib/crypto/secrets-encryption";
 import { createSlackClient, refreshAppHome } from "../../../src/lib/slack";
+import { ensureScopeAndArtifact } from "../../../src/lib/slack/handlers/shared";
 import { logger } from "../../../src/lib/logger";
 
 const log = logger("slack:link");
@@ -130,6 +131,9 @@ export async function linkSlackAccount(
       error: "This Slack account is already linked to a different VM0 account.",
     };
   }
+
+  // Ensure scope and artifact exist for the user
+  await ensureScopeAndArtifact(userId);
 
   // Create the link
   const [newUserLink] = await globalThis.services.db
