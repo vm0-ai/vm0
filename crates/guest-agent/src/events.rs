@@ -23,7 +23,7 @@ pub async fn send_event(
     seq: u32,
     masker: &SecretMasker,
 ) -> Result<(), AgentError> {
-    // Extract session ID from init event
+    // Extract session ID from init event (must happen before masking)
     extract_session_id(event);
 
     // Add sequence number
@@ -50,7 +50,6 @@ pub async fn send_event(
         Ok(_) => Ok(()),
         Err(e) => {
             log_error!(LOG_TAG, "Failed to send event after retries");
-            // Write error flag
             let _ = std::fs::write(paths::event_error_flag(), "1");
             Err(e)
         }
@@ -60,8 +59,9 @@ pub async fn send_event(
 /// If this is an init event, extract session ID and write temp files.
 fn extract_session_id(event: &Value) {
     let event_type = event.get("type").and_then(|v| v.as_str()).unwrap_or("");
+    let agent_type = env::cli_agent_type();
 
-    let session_id = if env::cli_agent_type() == "codex" {
+    let session_id = if agent_type == "codex" {
         if event_type == "thread.started" {
             event.get("thread_id").and_then(|v| v.as_str())
         } else {
@@ -91,7 +91,7 @@ fn extract_session_id(event: &Value) {
     // Build session history path
     let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
 
-    let history_path = if env::cli_agent_type() == "codex" {
+    let history_path = if agent_type == "codex" {
         let codex_home = std::env::var("CODEX_HOME").unwrap_or_else(|_| format!("{home}/.codex"));
         format!("CODEX_SEARCH:{codex_home}/sessions:{session_id}")
     } else {
