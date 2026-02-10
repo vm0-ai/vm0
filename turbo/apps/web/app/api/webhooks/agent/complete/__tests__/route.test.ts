@@ -44,7 +44,6 @@ async function flushAfterCallbacks() {
   await Promise.all(callbacks.map((fn) => fn()));
 }
 
-
 const context = testContext();
 
 const SLACK_API = "https://slack.com/api";
