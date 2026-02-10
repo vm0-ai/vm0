@@ -21,11 +21,11 @@ function createSelfHostedClerk(): Clerk {
       getToken: async () => null,
     },
     addListener: () => () => {},
-    signOut: async () => {
+    signOut: () => {
       location.href = "/";
     },
-    redirectToSignIn: async () => {},
-    openUserProfile: async () => {},
+    redirectToSignIn: () => {},
+    openUserProfile: () => {},
   } as unknown as Clerk;
 }
 

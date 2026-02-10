@@ -45,6 +45,8 @@ function initEnv() {
       S3_ENDPOINT: z.string().url().optional(),
       S3_REGION: z.string().min(1).optional(),
       S3_FORCE_PATH_STYLE: z.enum(["true", "false"]).optional(),
+      // Public S3 endpoint for presigned URLs (reachable from CLI / browsers)
+      S3_PUBLIC_ENDPOINT: z.string().url().optional(),
       SECRETS_ENCRYPTION_KEY: z.string().length(64), // 32-byte hex key for AES-256
       OFFICIAL_RUNNER_SECRET: z.string().length(64).optional(), // 32-byte hex key for official runner auth
       AXIOM_TOKEN_SESSIONS: z.string().min(1).optional(), // Scoped token for agent-run-events
@@ -99,6 +101,8 @@ function initEnv() {
       S3_ENDPOINT: process.env.S3_ENDPOINT,
       S3_REGION: process.env.S3_REGION,
       S3_FORCE_PATH_STYLE: process.env.S3_FORCE_PATH_STYLE,
+      S3_PUBLIC_ENDPOINT:
+        process.env.S3_PUBLIC_ENDPOINT || process.env.S3_ENDPOINT,
       SECRETS_ENCRYPTION_KEY: process.env.SECRETS_ENCRYPTION_KEY,
       OFFICIAL_RUNNER_SECRET: process.env.OFFICIAL_RUNNER_SECRET,
       AXIOM_TOKEN_SESSIONS: process.env.AXIOM_TOKEN_SESSIONS,

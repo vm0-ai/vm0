@@ -19,7 +19,7 @@ import {
   agentComposeVersions,
 } from "../../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
-import { killSandbox } from "../../../../../src/lib/e2b/e2b-service";
+import { killSandbox } from "../../../../../src/lib/sandbox/sandbox-service";
 
 interface RunResult {
   output?: string;

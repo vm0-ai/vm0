@@ -9,7 +9,7 @@ import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { eq, and } from "drizzle-orm";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
 import { logger } from "../../../../../../src/lib/logger";
-import { killSandbox } from "../../../../../../src/lib/e2b/e2b-service";
+import { killSandbox } from "../../../../../../src/lib/sandbox/sandbox-service";
 
 const log = logger("api:runs:cancel");
 

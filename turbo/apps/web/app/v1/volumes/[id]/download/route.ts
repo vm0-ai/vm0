@@ -179,6 +179,8 @@ export async function GET(
     bucketName,
     archiveKey,
     DOWNLOAD_EXPIRY_SECONDS,
+    undefined,
+    true,
   );
 
   // Return 302 redirect to presigned URL

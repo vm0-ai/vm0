@@ -10,6 +10,8 @@ services:
       file: docker-compose.web-base.yml
       service: web-base
     image: ghcr.io/vm0-ai/vm0:${VM0_VERSION:-latest}
+    environment:
+      DOCKER_SANDBOX_IMAGE: ghcr.io/vm0-ai/vm0-sandbox:${VM0_VERSION:-latest}
 
   platform:
     extends:

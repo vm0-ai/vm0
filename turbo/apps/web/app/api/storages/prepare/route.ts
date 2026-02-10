@@ -274,12 +274,19 @@ const router = tsr.router(storagesPrepareContract, {
     const manifestKey = `${s3Key}/manifest.json`;
 
     const [archiveUrl, manifestUrl] = await Promise.all([
-      generatePresignedPutUrl(bucketName, archiveKey, "application/gzip", 3600),
+      generatePresignedPutUrl(
+        bucketName,
+        archiveKey,
+        "application/gzip",
+        3600,
+        true,
+      ),
       generatePresignedPutUrl(
         bucketName,
         manifestKey,
         "application/json",
         3600,
+        true,
       ),
     ]);
 

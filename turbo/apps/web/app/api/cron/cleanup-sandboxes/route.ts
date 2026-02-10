@@ -7,7 +7,7 @@ import {
   agentComposes,
 } from "../../../../src/db/schema/agent-compose";
 import { eq, inArray } from "drizzle-orm";
-import { killSandbox } from "../../../../src/lib/e2b/e2b-service";
+import { killSandbox } from "../../../../src/lib/sandbox/sandbox-service";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("cron:cleanup-sandboxes");

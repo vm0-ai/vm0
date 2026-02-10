@@ -22,7 +22,8 @@ COPY turbo/packages/eslint-config/package.json packages/eslint-config/package.js
 COPY turbo/packages/typescript-config/package.json packages/typescript-config/package.json
 COPY turbo/packages/proxy/package.json packages/proxy/package.json
 
-RUN pnpm install --frozen-lockfile --ignore-scripts
+RUN pnpm install --frozen-lockfile --ignore-scripts \
+    && pnpm rebuild esbuild
 
 # ============ Build ============
 FROM deps AS builder
@@ -57,8 +58,9 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Non-root user for security (created before COPY so --chown can reference it)
+# --ingroup nodejs: required so nextjs can access the Docker socket (GID 1001)
 RUN addgroup --system --gid 1001 nodejs \
-    && adduser --system --uid 1001 nextjs \
+    && adduser --system --uid 1001 --ingroup nodejs nextjs \
     && mkdir -p /app/data && chown nextjs:nodejs /app/data
 
 # Migration script runtime dependencies

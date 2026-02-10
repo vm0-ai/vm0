@@ -14,6 +14,7 @@ import { getAgentSessionWithConversation } from "../agent-session";
 import { prepareForExecution } from "./context/execution-preparer";
 import { executeE2bRun } from "./executors/e2b-executor";
 import { executeRunnerJob } from "./executors/runner-executor";
+import { executeDockerRun } from "./executors/docker-executor";
 import type { ExecutorResult, PreparedContext } from "./executors/types";
 import {
   buildExecutionContext as buildContext,
@@ -242,6 +243,8 @@ export async function prepareAndDispatchRun(
 /**
  * Dispatch prepared context to appropriate executor
  *
+ * Routing priority: Runner Group > E2B > Docker
+ *
  * @param context PreparedContext ready for execution
  * @returns ExecutorResult with status and optional sandboxId
  */
@@ -251,8 +254,13 @@ async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
       `Dispatching run ${context.runId} to runner group: ${context.runnerGroup}`,
     );
     return await executeRunnerJob(context);
-  } else {
+  }
+
+  if (process.env.E2B_API_KEY) {
     log.debug(`Dispatching run ${context.runId} to E2B executor`);
     return await executeE2bRun(context);
   }
+
+  log.debug(`Dispatching run ${context.runId} to Docker executor`);
+  return await executeDockerRun(context);
 }

@@ -12,8 +12,8 @@ import type { S3Object, S3StorageManifest } from "./types";
 import { s3DownloadError, s3UploadError } from "./types";
 
 /**
- * Get S3 client instance configured for S3-compatible storage.
- * Defaults to Cloudflare R2; set S3_ENDPOINT to use MinIO or other providers.
+ * Get S3 client for server-to-S3 operations (upload, download, list, delete).
+ * Uses S3_ENDPOINT which may be a container-internal address (e.g. http://minio:9000).
  */
 function getS3Client(): S3Client {
   const envVars = env();
@@ -27,6 +27,34 @@ function getS3Client(): S3Client {
   return new S3Client({
     region,
     endpoint,
+    credentials: {
+      accessKeyId: envVars.R2_ACCESS_KEY_ID,
+      secretAccessKey: envVars.R2_SECRET_ACCESS_KEY,
+    },
+    forcePathStyle,
+  });
+}
+
+/**
+ * Get S3 client for generating presigned URLs consumed by external clients
+ * (CLI, browsers, public API). Uses S3_PUBLIC_ENDPOINT so the resulting URLs
+ * are reachable from outside the Docker network. Falls back to the internal
+ * endpoint when S3_PUBLIC_ENDPOINT is not set (e.g. SaaS / R2).
+ */
+function getPublicS3Client(): S3Client {
+  const envVars = env();
+
+  const publicEndpoint = envVars.S3_PUBLIC_ENDPOINT;
+  if (!publicEndpoint) {
+    return getS3Client();
+  }
+
+  const region = envVars.S3_REGION || "auto";
+  const forcePathStyle = envVars.S3_FORCE_PATH_STYLE === "true";
+
+  return new S3Client({
+    region,
+    endpoint: publicEndpoint,
     credentials: {
       accessKeyId: envVars.R2_ACCESS_KEY_ID,
       secretAccessKey: envVars.R2_SECRET_ACCESS_KEY,
@@ -149,20 +177,18 @@ export async function deleteS3Objects(
 }
 
 /**
- * Generate presigned URL for downloading a single S3 object
- * @param bucket - S3 bucket name
- * @param key - S3 object key
- * @param expiresIn - URL expiration time in seconds (default: 86400 = 24 hours)
- * @param filename - Optional filename for the download (sets Content-Disposition header)
- * @returns Presigned URL string
+ * Generate presigned URL for downloading a single S3 object.
+ * Set usePublicEndpoint=true when the URL is consumed by external clients
+ * (CLI, browsers) rather than by sandbox containers in the Docker network.
  */
 export async function generatePresignedUrl(
   bucket: string,
   key: string,
   expiresIn: number = 86400,
   filename?: string,
+  usePublicEndpoint: boolean = false,
 ): Promise<string> {
-  const client = getS3Client();
+  const client = usePublicEndpoint ? getPublicS3Client() : getS3Client();
 
   const command = new GetObjectCommand({
     Bucket: bucket,
@@ -247,22 +273,18 @@ export async function downloadBlob(
 }
 
 /**
- * Generate presigned URL for uploading (PUT) a single S3 object
- * Used for direct client-to-S3 uploads that bypass Vercel serverless limits
- *
- * @param bucket - S3 bucket name
- * @param key - S3 object key
- * @param contentType - MIME type of the file (default: application/octet-stream)
- * @param expiresIn - URL expiration time in seconds (default: 3600 = 1 hour)
- * @returns Presigned PUT URL string
+ * Generate presigned URL for uploading (PUT) a single S3 object.
+ * Used for direct client-to-S3 uploads that bypass Vercel serverless limits.
+ * Set usePublicEndpoint=true when the URL is consumed by external clients.
  */
 export async function generatePresignedPutUrl(
   bucket: string,
   key: string,
   contentType: string = "application/octet-stream",
   expiresIn: number = 3600,
+  usePublicEndpoint: boolean = false,
 ): Promise<string> {
-  const client = getS3Client();
+  const client = usePublicEndpoint ? getPublicS3Client() : getS3Client();
 
   const command = new PutObjectCommand({
     Bucket: bucket,

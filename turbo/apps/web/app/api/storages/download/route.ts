@@ -161,7 +161,13 @@ const router = tsr.router(storagesDownloadContract, {
 
     const archiveKey = `${version.s3Key}/archive.tar.gz`;
     // URL valid for 1 hour (3600 seconds)
-    const url = await generatePresignedUrl(bucketName, archiveKey, 3600);
+    const url = await generatePresignedUrl(
+      bucketName,
+      archiveKey,
+      3600,
+      undefined,
+      true,
+    );
 
     log.debug(`Generated presigned URL for ${archiveKey}`);
 

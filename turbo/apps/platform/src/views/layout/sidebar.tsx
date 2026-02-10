@@ -117,7 +117,9 @@ function SidebarContent({ collapsed }: { collapsed: boolean }) {
 
       <div className="p-2">
         <div className="flex flex-col gap-1">
-          {!isSelfHosted && featureSwitches?.pricing && <VM0SubscriptionDetailsButton />}
+          {!isSelfHosted && featureSwitches?.pricing && (
+            <VM0SubscriptionDetailsButton />
+          )}
           {FOOTER_NAV_ITEMS.map((item) => (
             <NavLink
               key={item.id}
@@ -286,7 +288,11 @@ function UserProfile({ collapsed }: UserProfileProps) {
                 className="w-full flex items-center gap-3 px-5 py-4 border-b border-border hover:bg-muted transition-colors text-left"
               >
                 <div className="w-9 h-[18px] flex items-center justify-center shrink-0">
-                  <IconUser size={20} stroke={1.5} className="text-foreground" />
+                  <IconUser
+                    size={20}
+                    stroke={1.5}
+                    className="text-foreground"
+                  />
                 </div>
                 <span className="text-sm leading-5 text-foreground">
                   Manage account

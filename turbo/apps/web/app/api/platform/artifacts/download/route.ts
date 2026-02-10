@@ -132,6 +132,7 @@ const router = tsr.router(platformArtifactDownloadContract, {
       archiveKey,
       DOWNLOAD_EXPIRY_SECONDS,
       downloadFilename,
+      true,
     );
 
     // Calculate expiration time

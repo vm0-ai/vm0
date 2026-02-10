@@ -19,6 +19,8 @@ services:
       S3_ENDPOINT: http://minio:9000
       S3_FORCE_PATH_STYLE: "true"
       S3_REGION: us-east-1
+      # Public S3 endpoint for presigned URLs (reachable from CLI / browsers)
+      S3_PUBLIC_ENDPOINT: http://${DOMAIN:-localhost}:${MINIO_API_PORT:-9000}
       R2_ACCESS_KEY_ID: ${MINIO_USER:-minioadmin}
       R2_SECRET_ACCESS_KEY: ${MINIO_PASSWORD}
       R2_USER_STORAGES_BUCKET_NAME: ${MINIO_BUCKET:-vm0-storages}
@@ -40,6 +42,10 @@ services:
       SLACK_REDIRECT_BASE_URL: ${SLACK_REDIRECT_BASE_URL:-}
       # Concurrency
       CONCURRENT_RUN_LIMIT: ${CONCURRENT_RUN_LIMIT:-0}
+      # Docker Sandbox (used when E2B is not configured)
+      DOCKER_SANDBOX_IMAGE: ${DOCKER_SANDBOX_IMAGE}
+      DOCKER_SANDBOX_MEMORY: ${DOCKER_SANDBOX_MEMORY:-2g}
+      DOCKER_SANDBOX_CPUS: ${DOCKER_SANDBOX_CPUS:-2}
       # Claude Code
       CLAUDE_CODE_VERSION_URL: ${CLAUDE_CODE_VERSION_URL:-https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/latest}
       # Platform console
@@ -47,6 +53,8 @@ services:
       PLATFORM_URL: http://${DOMAIN:-localhost}:${PLATFORM_PORT:-3001}
     volumes:
       - web_data:/app/data
+      # Docker socket for creating sandbox containers (Docker Sandbox executor)
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - vm0
 
