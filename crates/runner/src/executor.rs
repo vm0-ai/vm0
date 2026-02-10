@@ -1,13 +1,14 @@
 use std::collections::HashMap;
+use std::time::Duration;
 
 use sandbox::{ExecRequest, Sandbox, SandboxConfig, SandboxFactory};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
 /// Maximum wall-clock time for a single job (2 hours).
-const JOB_TIMEOUT_MS: u32 = 7_200_000;
+const JOB_TIMEOUT: Duration = Duration::from_secs(7200);
 /// Default timeout for guest commands (5 minutes).
-const DEFAULT_EXEC_TIMEOUT_MS: u32 = 300_000;
+const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
 
 use crate::api::ApiClient;
 use crate::error::RunnerResult;
@@ -63,7 +64,6 @@ async fn execute_inner(
         resources: sandbox::ResourceLimits {
             cpu_count: config.vcpu,
             memory_mb: config.memory_mb,
-            timeout_ms: JOB_TIMEOUT_MS,
         },
     };
 
@@ -123,12 +123,12 @@ async fn run_in_sandbox(
     let handle = sandbox
         .spawn_watch(&ExecRequest {
             cmd: &agent_cmd,
-            timeout_ms: JOB_TIMEOUT_MS, // 2 hours
+            timeout: JOB_TIMEOUT,
         })
         .await?;
 
     // 6. Wait for exit
-    let exit = sandbox.wait_exit(handle).await?;
+    let exit = sandbox.wait_exit(handle, JOB_TIMEOUT).await?;
     let stderr = String::from_utf8_lossy(&exit.stderr).to_string();
 
     info!(
@@ -161,7 +161,7 @@ async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
     sandbox
         .exec(&ExecRequest {
             cmd: &date_cmd,
-            timeout_ms: DEFAULT_EXEC_TIMEOUT_MS,
+            timeout: DEFAULT_EXEC_TIMEOUT,
         })
         .await?;
     Ok(())
@@ -184,7 +184,7 @@ async fn download_storages(
     let result = sandbox
         .exec(&ExecRequest {
             cmd: &download_cmd,
-            timeout_ms: DEFAULT_EXEC_TIMEOUT_MS,
+            timeout: DEFAULT_EXEC_TIMEOUT,
         })
         .await?;
 
@@ -220,7 +220,7 @@ async fn restore_session(
     sandbox
         .exec(&ExecRequest {
             cmd: &mkdir_cmd,
-            timeout_ms: DEFAULT_EXEC_TIMEOUT_MS,
+            timeout: DEFAULT_EXEC_TIMEOUT,
         })
         .await?;
     sandbox

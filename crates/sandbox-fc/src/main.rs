@@ -4,6 +4,8 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 use clap::{Parser, Subcommand};
+use std::time::Duration;
+
 use sandbox::{ExecRequest, ResourceLimits, SandboxConfig, SandboxFactory};
 use tracing_subscriber::fmt::time::FormatTime;
 use uuid::Uuid;
@@ -220,8 +222,6 @@ async fn run_exec(
         resources: ResourceLimits {
             cpu_count: vcpu_count,
             memory_mb,
-            // Sandbox-level lifetime cap (distinct from per-exec timeout_ms).
-            timeout_ms: 30_000,
         },
     };
 
@@ -231,7 +231,7 @@ async fn run_exec(
     let result = sandbox
         .exec(&ExecRequest {
             cmd,
-            timeout_ms: timeout,
+            timeout: Duration::from_millis(u64::from(timeout)),
         })
         .await?;
 

@@ -420,7 +420,7 @@ impl Sandbox for FirecrackerSandbox {
         };
 
         let result = guest
-            .exec(request.cmd, request.timeout_ms)
+            .exec(request.cmd, request.timeout_ms())
             .await
             .map_err(|e| SandboxError::ExecFailed(e.to_string()))?;
 
@@ -458,14 +458,18 @@ impl Sandbox for FirecrackerSandbox {
         };
 
         let pid = guest
-            .spawn_watch(request.cmd, request.timeout_ms)
+            .spawn_watch(request.cmd, request.timeout_ms())
             .await
             .map_err(|e| SandboxError::ExecFailed(e.to_string()))?;
 
         Ok(SpawnHandle { pid })
     }
 
-    async fn wait_exit(&self, handle: SpawnHandle) -> sandbox::Result<ProcessExit> {
+    async fn wait_exit(
+        &self,
+        handle: SpawnHandle,
+        timeout: Duration,
+    ) -> sandbox::Result<ProcessExit> {
         let mut guard = self.guest.lock().await;
         let Some(ref mut guest) = *guard else {
             return Err(SandboxError::ExecFailed(format!(
@@ -474,7 +478,6 @@ impl Sandbox for FirecrackerSandbox {
             )));
         };
 
-        let timeout = Duration::from_millis(u64::from(self.config.resources.timeout_ms));
         let event = guest
             .wait_for_exit(handle.pid, timeout)
             .await

@@ -1,6 +1,15 @@
+use std::time::Duration;
+
 pub struct ExecRequest<'a> {
     pub cmd: &'a str,
-    pub timeout_ms: u32,
+    pub timeout: Duration,
+}
+
+impl ExecRequest<'_> {
+    /// Return the timeout as whole milliseconds, saturating at `u32::MAX`.
+    pub fn timeout_ms(&self) -> u32 {
+        u32::try_from(self.timeout.as_millis()).unwrap_or(u32::MAX)
+    }
 }
 
 pub struct ExecResult {
