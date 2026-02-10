@@ -88,9 +88,9 @@ fn get_disk_info() -> (u64, u64) {
     if ret != 0 {
         return (0, 0);
     }
-    let block_size = stat.f_frsize as u64;
-    let total = stat.f_blocks as u64 * block_size;
-    let free = stat.f_bfree as u64 * block_size;
+    let block_size = stat.f_frsize;
+    let total = stat.f_blocks * block_size;
+    let free = stat.f_bfree * block_size;
     let used = total.saturating_sub(free);
     (used, total)
 }
