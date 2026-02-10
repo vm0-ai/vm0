@@ -250,9 +250,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
-      - name: Build Core Package
+      - name: Build Sandbox Scripts
         working-directory: turbo
-        run: pnpm turbo run build --filter=@vm0/core
+        run: pnpm turbo run build --filter=@vm0/sandbox-scripts
       - name: Lint
         working-directory: turbo
         run: pnpm lint
@@ -264,9 +264,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
-      - name: Build Core Package
+      - name: Build Sandbox Scripts
         working-directory: turbo
-        run: pnpm turbo run build --filter=@vm0/core
+        run: pnpm turbo run build --filter=@vm0/sandbox-scripts
       - name: Type Check
         working-directory: turbo
         run: pnpm check-types
@@ -289,9 +289,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
-      - name: Build Core Package
+      - name: Build Sandbox Scripts
         working-directory: turbo
-        run: pnpm turbo run build --filter=@vm0/core
+        run: pnpm turbo run build --filter=@vm0/sandbox-scripts
       - name: Knip
         working-directory: turbo
         run: pnpm knip
@@ -316,9 +316,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
-      - name: Build Core Package
+      - name: Build Sandbox Scripts
         working-directory: turbo
-        run: pnpm turbo run build --filter=@vm0/core
+        run: pnpm turbo run build --filter=@vm0/sandbox-scripts
       - name: Run Database Migrations
         working-directory: turbo
         env:
@@ -337,9 +337,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
-      - name: Build Core Package
+      - name: Build Sandbox Scripts
         working-directory: turbo
-        run: pnpm turbo run build --filter=@vm0/core
+        run: pnpm turbo run build --filter=@vm0/sandbox-scripts
       - name: Test CLI
         working-directory: turbo
         run: pnpm vitest run --project=@vm0/cli
@@ -351,9 +351,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
-      - name: Build Core Package
+      - name: Build Sandbox Scripts
         working-directory: turbo
-        run: pnpm turbo run build --filter=@vm0/core
+        run: pnpm turbo run build --filter=@vm0/sandbox-scripts
       - name: Test Platform
         working-directory: turbo
         run: pnpm vitest run --project=@vm0/platform
@@ -365,9 +365,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
-      - name: Build Core Package
+      - name: Build Sandbox Scripts
         working-directory: turbo
-        run: pnpm turbo run build --filter=@vm0/core
+        run: pnpm turbo run build --filter=@vm0/sandbox-scripts
       - name: Build vsock-guest (for runner tests)
         run: cargo build --manifest-path crates/Cargo.toml -p vsock-guest
       - name: Test Other Packages
@@ -603,8 +603,8 @@ jobs:
           pnpm config set global-bin-dir $HOME/.local/share/pnpm
           echo "$HOME/.local/share/pnpm" >> $GITHUB_PATH
 
-      - name: Build Core Package
-        run: cd turbo && pnpm turbo run build --filter=@vm0/core
+      - name: Build Sandbox Scripts
+        run: cd turbo && pnpm turbo run build --filter=@vm0/sandbox-scripts
 
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build
@@ -703,8 +703,8 @@ jobs:
           pnpm config set global-bin-dir $HOME/.local/share/pnpm
           echo "$HOME/.local/share/pnpm" >> $GITHUB_PATH
 
-      - name: Build Core Package
-        run: cd turbo && pnpm turbo run build --filter=@vm0/core
+      - name: Build Sandbox Scripts
+        run: cd turbo && pnpm turbo run build --filter=@vm0/sandbox-scripts
 
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build
@@ -780,8 +780,8 @@ jobs:
           pnpm config set global-bin-dir $HOME/.local/share/pnpm
           echo "$HOME/.local/share/pnpm" >> $GITHUB_PATH
 
-      - name: Build Core Package
-        run: cd turbo && pnpm turbo run build --filter=@vm0/core
+      - name: Build Sandbox Scripts
+        run: cd turbo && pnpm turbo run build --filter=@vm0/sandbox-scripts
 
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build
@@ -866,8 +866,8 @@ jobs:
           pnpm config set global-bin-dir $HOME/.local/share/pnpm
           echo "$HOME/.local/share/pnpm" >> $GITHUB_PATH
 
-      - name: Build Core Package
-        run: cd turbo && pnpm turbo run build --filter=@vm0/core
+      - name: Build Sandbox Scripts
+        run: cd turbo && pnpm turbo run build --filter=@vm0/sandbox-scripts
 
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build
@@ -1070,8 +1070,8 @@ jobs:
           echo "All runner hosts are busy. Please try again later or check for stale locks."
           exit 1
 
-      - name: Build Core Package
-        run: cd turbo && pnpm turbo run build --filter=@vm0/core
+      - name: Build Sandbox Scripts
+        run: cd turbo && pnpm turbo run build --filter=@vm0/sandbox-scripts
 
       # Cross-compile Rust binaries for ARM64 (metal runners are ARM64)
       - name: Build guest-init and guest-download for ARM64
