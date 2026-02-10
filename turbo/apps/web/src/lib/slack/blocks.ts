@@ -487,6 +487,16 @@ export function buildAppHomeView(options: {
     },
   });
 
+  blocks.push({
+    type: "context",
+    elements: [
+      {
+        type: "mrkdwn",
+        text: ":book: <https://docs.vm0.ai/docs/ecosystem/slack|View full documentation>",
+      },
+    ],
+  });
+
   blocks.push({ type: "divider" });
 
   blocks.push({
@@ -892,6 +902,15 @@ export function buildHelpMessage(): (Block | KnownBlock)[] {
         type: "mrkdwn",
         text: "*Usage*\n• `@VM0 <message>` - Send a message to your agent",
       },
+    },
+    {
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: ":book: <https://docs.vm0.ai/docs/ecosystem/slack|View full documentation>",
+        },
+      ],
     },
   ];
 }
