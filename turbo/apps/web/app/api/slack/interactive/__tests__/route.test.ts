@@ -269,6 +269,35 @@ describe("POST /api/slack/interactive", () => {
       expect(slackMock.mocked.viewsPublish).toHaveBeenCalled();
     });
 
+    it("opens compose modal when home_agent_compose is clicked", async () => {
+      const { userLink, installation } = await givenLinkedSlackUser();
+
+      const slackMock = handlers({
+        viewsOpen: http.post("https://slack.com/api/views.open", () =>
+          HttpResponse.json({ ok: true, view: { id: "V123" } }),
+        ),
+      });
+      server.use(...slackMock.handlers);
+
+      const body = buildInteractiveBody({
+        type: "block_actions",
+        user: {
+          id: userLink.slackUserId,
+          username: "testuser",
+          team_id: installation.slackWorkspaceId,
+        },
+        team: { id: installation.slackWorkspaceId, domain: "test" },
+        trigger_id: "trigger-compose-123",
+        actions: [{ action_id: "home_agent_compose", block_id: "block-1" }],
+      });
+      const request = createSignedSlackRequest(body);
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      expect(slackMock.mocked.viewsOpen).toHaveBeenCalled();
+    });
+
     it("disconnects user and refreshes home when home_disconnect is clicked", async () => {
       const { userLink, installation } = await givenLinkedSlackUser();
 
