@@ -1,5 +1,6 @@
 use std::io::Read;
 use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
@@ -102,29 +103,58 @@ async fn create_directories(paths: &HomePaths, fc_version: &str) -> RunnerResult
     Ok(())
 }
 
+/// Write contents to a PID-unique temp file, set permissions, then atomically rename.
+/// Cleans up the temp file on failure.
+async fn atomic_install(target: &Path, contents: &[u8], mode: Option<u32>) -> RunnerResult<()> {
+    let tmp_path = target.with_extension(format!("tmp.{}", std::process::id()));
+
+    let result = async {
+        tokio::fs::write(&tmp_path, contents)
+            .await
+            .map_err(|e| RunnerError::Internal(format!("write {}: {e}", target.display())))?;
+        if let Some(mode) = mode {
+            tokio::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(mode))
+                .await
+                .map_err(|e| RunnerError::Internal(format!("chmod {}: {e}", target.display())))?;
+        }
+        tokio::fs::rename(&tmp_path, target)
+            .await
+            .map_err(|e| RunnerError::Internal(format!("rename to {}: {e}", target.display())))
+    }
+    .await;
+
+    if result.is_err() {
+        let _ = tokio::fs::remove_file(&tmp_path).await;
+    }
+    result
+}
+
+async fn is_firecracker_installed(bin_path: &Path) -> bool {
+    if !tokio::fs::try_exists(bin_path).await.unwrap_or(false) {
+        return false;
+    }
+    let Ok(output) = tokio::process::Command::new(bin_path)
+        .arg("--version")
+        .output()
+        .await
+    else {
+        return false;
+    };
+    let version_str = String::from_utf8_lossy(&output.stdout);
+    let version_no_prefix = FIRECRACKER_VERSION
+        .strip_prefix('v')
+        .unwrap_or(FIRECRACKER_VERSION);
+    version_str.contains(version_no_prefix)
+}
+
 async fn download_firecracker(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
     let bin_path = paths.firecracker_bin(FIRECRACKER_VERSION);
 
-    // Check if already installed with correct version
-    if tokio::fs::try_exists(&bin_path).await.unwrap_or(false) {
-        let output = tokio::process::Command::new(&bin_path)
-            .arg("--version")
-            .output()
-            .await;
-        if let Ok(output) = output {
-            let version_str = String::from_utf8_lossy(&output.stdout);
-            // Firecracker prints "Firecracker v1.14.1", strip the 'v' prefix to match
-            let version_no_prefix = FIRECRACKER_VERSION
-                .strip_prefix('v')
-                .unwrap_or(FIRECRACKER_VERSION);
-            if version_str.contains(version_no_prefix) {
-                tracing::info!(
-                    "[OK] firecracker {FIRECRACKER_VERSION} already installed, skipping download"
-                );
-                return Ok(());
-            }
-            tracing::info!("firecracker version mismatch, re-downloading");
-        }
+    if is_firecracker_installed(&bin_path).await {
+        tracing::info!(
+            "[OK] firecracker {FIRECRACKER_VERSION} already installed, skipping download"
+        );
+        return Ok(());
     }
 
     let url = format!(
@@ -153,12 +183,12 @@ async fn download_firecracker(paths: &HomePaths, arch: &str) -> RunnerResult<()>
     let mut archive = tar::Archive::new(decoder);
 
     let expected_name = format!("firecracker-{FIRECRACKER_VERSION}-{arch}");
-    let mut found = false;
 
     let entries = archive
         .entries()
         .map_err(|e| RunnerError::Internal(format!("read tarball entries: {e}")))?;
 
+    let mut contents = None;
     for entry in entries {
         let mut entry =
             entry.map_err(|e| RunnerError::Internal(format!("read tarball entry: {e}")))?;
@@ -173,36 +203,37 @@ async fn download_firecracker(paths: &HomePaths, arch: &str) -> RunnerResult<()>
             .unwrap_or_default();
 
         if file_name == expected_name {
-            let mut contents = Vec::new();
+            let mut buf = Vec::new();
             entry
-                .read_to_end(&mut contents)
+                .read_to_end(&mut buf)
                 .map_err(|e| RunnerError::Internal(format!("read firecracker binary: {e}")))?;
-
-            // Write to a PID-unique temp file then rename for atomicity
-            let tmp_path = bin_path.with_extension(format!("tmp.{}", std::process::id()));
-            tokio::fs::write(&tmp_path, &contents)
-                .await
-                .map_err(|e| RunnerError::Internal(format!("write firecracker binary: {e}")))?;
-            tokio::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o755))
-                .await
-                .map_err(|e| RunnerError::Internal(format!("set firecracker permissions: {e}")))?;
-            tokio::fs::rename(&tmp_path, &bin_path)
-                .await
-                .map_err(|e| RunnerError::Internal(format!("rename firecracker binary: {e}")))?;
-
-            found = true;
+            contents = Some(buf);
             break;
         }
     }
 
-    if !found {
-        return Err(RunnerError::Internal(format!(
+    let contents = contents.ok_or_else(|| {
+        RunnerError::Internal(format!(
             "firecracker binary '{expected_name}' not found in tarball"
-        )));
-    }
+        ))
+    })?;
 
-    tracing::info!("[OK] firecracker {FIRECRACKER_VERSION} installed");
-    Ok(())
+    match atomic_install(&bin_path, &contents, Some(0o755)).await {
+        Ok(()) => {
+            tracing::info!("[OK] firecracker {FIRECRACKER_VERSION} installed");
+            Ok(())
+        }
+        Err(e) => {
+            // Another runner may have completed the install
+            if is_firecracker_installed(&bin_path).await {
+                tracing::info!(
+                    "[OK] firecracker {FIRECRACKER_VERSION} installed by another process"
+                );
+                return Ok(());
+            }
+            Err(e)
+        }
+    }
 }
 
 async fn download_kernel(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
@@ -234,17 +265,20 @@ async fn download_kernel(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
         .await
         .map_err(|e| RunnerError::Internal(format!("read kernel response: {e}")))?;
 
-    // Write to a PID-unique temp file then rename for atomicity
-    let tmp_path = kernel_path.with_extension(format!("tmp.{}", std::process::id()));
-    tokio::fs::write(&tmp_path, &bytes)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("write kernel: {e}")))?;
-    tokio::fs::rename(&tmp_path, &kernel_path)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("rename kernel: {e}")))?;
-
-    tracing::info!("[OK] kernel vmlinux-{KERNEL_VERSION} installed");
-    Ok(())
+    match atomic_install(&kernel_path, &bytes, None).await {
+        Ok(()) => {
+            tracing::info!("[OK] kernel vmlinux-{KERNEL_VERSION} installed");
+            Ok(())
+        }
+        Err(e) => {
+            // Another runner may have completed the install
+            if tokio::fs::try_exists(&kernel_path).await.unwrap_or(false) {
+                tracing::info!("[OK] kernel vmlinux-{KERNEL_VERSION} installed by another process");
+                return Ok(());
+            }
+            Err(e)
+        }
+    }
 }
 
 fn check_kvm() {
