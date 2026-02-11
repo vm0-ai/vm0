@@ -290,15 +290,11 @@ export class Runner {
     logger.log(
       `  Calling complete API for job ${context.runId} with exitCode=${exitCode}`,
     );
-    try {
-      const completeResult = await withRunnerTiming("complete", () =>
-        completeJob(this.config.server.url, context, exitCode, error),
-      );
-      logger.log(`  Job ${context.runId} reported as ${completeResult.status}`);
-    } catch (err) {
-      logger.error(
-        `  Failed to call complete API for job ${context.runId}: ${err instanceof Error ? err.message : "Unknown error"}`,
-      );
-    }
+    const completeResult = await withRunnerTiming("complete", () =>
+      completeJob(this.config.server.url, context, exitCode, error),
+    );
+    logger.log(
+      `  Job ${context.runId} reported as ${completeResult.status}`,
+    );
   }
 }
