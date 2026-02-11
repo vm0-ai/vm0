@@ -68,6 +68,10 @@ function initEnv() {
       NOTION_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // Platform UI URL (for settings page links in error messages)
       PLATFORM_URL: z.string().url(),
+      // Email integration (Resend) — optional, only needed when email notifications are enabled
+      RESEND_API_KEY: z.string().min(1).optional(),
+      RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
+      RESEND_FROM_DOMAIN: z.string().min(1).default("vm0.bot"),
       // Sentry
       SENTRY_DSN: z.string().url().optional(),
       SENTRY_AUTH_TOKEN: z.string().min(1).optional(),
@@ -120,6 +124,9 @@ function initEnv() {
       NOTION_OAUTH_CLIENT_ID: process.env.NOTION_OAUTH_CLIENT_ID,
       NOTION_OAUTH_CLIENT_SECRET: process.env.NOTION_OAUTH_CLIENT_SECRET,
       PLATFORM_URL: process.env.PLATFORM_URL,
+      RESEND_API_KEY: process.env.RESEND_API_KEY,
+      RESEND_WEBHOOK_SECRET: process.env.RESEND_WEBHOOK_SECRET,
+      RESEND_FROM_DOMAIN: process.env.RESEND_FROM_DOMAIN,
       SENTRY_DSN: process.env.SENTRY_DSN,
       SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
       SENTRY_ORG: process.env.SENTRY_ORG,

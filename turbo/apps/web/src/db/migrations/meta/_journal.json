@@ -575,6 +575,20 @@
       "when": 1770600000000,
       "tag": "0081_add_agent_run_events_local",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1770700000000,
+      "tag": "0082_add_email_thread_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1770800000000,
+      "tag": "0083_add_email_reply_requests",
+      "breakpoints": true
     }
   ]
 }

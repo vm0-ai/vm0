@@ -16,6 +16,8 @@ import type { RunResult } from "../../../../../src/lib/run/types";
 import { logger } from "../../../../../src/lib/logger";
 import { publishStatus } from "../../../../../src/lib/realtime/client";
 import { notifyScheduleRunComplete } from "../../../../../src/lib/slack/handlers/schedule-notification";
+import { notifyScheduleRunCompleteEmail } from "../../../../../src/lib/email/handlers/schedule-notification";
+import { sendEmailReplyIfNeeded } from "../../../../../src/lib/email/handlers/send-reply";
 import { after } from "next/server";
 
 const log = logger("webhook:complete");
@@ -182,18 +184,37 @@ const router = tsr.router(webhookCompleteContract, {
       await publishStatus(body.runId, "failed", undefined, errorMessage);
     }
 
-    // Send Slack DM notification for scheduled runs (non-blocking)
+    // Send notifications for scheduled runs (non-blocking)
     if (run.scheduleId) {
       const errorMsg =
         finalStatus === "failed"
           ? (body.error ?? `Agent exited with code ${body.exitCode}`)
           : undefined;
+      // Slack DM notification
       after(() =>
         notifyScheduleRunComplete(body.runId, finalStatus, errorMsg).catch(
           (err) => log.error("Failed to send schedule notification", { err }),
         ),
       );
+      // Email notification
+      after(() =>
+        notifyScheduleRunCompleteEmail(body.runId, finalStatus, errorMsg).catch(
+          (err) =>
+            log.error("Failed to send email schedule notification", { err }),
+        ),
+      );
     }
+
+    // Send email reply response (for runs triggered by email replies)
+    after(() =>
+      sendEmailReplyIfNeeded(
+        body.runId,
+        finalStatus,
+        finalStatus === "failed"
+          ? (body.error ?? `Agent exited with code ${body.exitCode}`)
+          : undefined,
+      ).catch((err) => log.error("Failed to send email reply", { err })),
+    );
 
     // Kill sandbox (wait for completion to ensure cleanup before response)
     if (sandboxId) {

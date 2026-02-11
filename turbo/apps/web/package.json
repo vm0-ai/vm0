@@ -26,6 +26,7 @@
     "@e2b/code-interpreter": "^2.3.3",
     "@neondatabase/serverless": "^1.0.1",
     "@opentelemetry/api": "^1.9.0",
+    "@react-email/components": "^1.0.7",
     "@sentry/nextjs": "^10.38.0",
     "@slack/web-api": "^7.13.0",
     "@t3-oss/env-nextjs": "^0.13.8",
@@ -40,6 +41,7 @@
     "croner": "^9.1.0",
     "dockerode": "^4.0.9",
     "drizzle-orm": "^0.44.5",
+    "email-reply-parser": "^2.3.5",
     "import-in-the-middle": "^2.0.6",
     "next": "^15.5.7",
     "next-intl": "^4.6.1",
@@ -52,7 +54,9 @@
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1",
     "require-in-the-middle": "^8.0.1",
+    "resend": "^6.9.2",
     "server-only": "^0.0.1",
+    "svix": "^1.84.1",
     "zod": "^4.1.12"
   },
   "devDependencies": {
