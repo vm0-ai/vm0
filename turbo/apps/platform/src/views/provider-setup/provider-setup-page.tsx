@@ -25,7 +25,7 @@ import {
 import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { theme$ } from "../../signals/theme.ts";
-import { navigateInReact$ } from "../../signals/route.ts";
+import { navigateInReact$, searchParams$ } from "../../signals/route.ts";
 import { ProviderIcon } from "../settings-page/provider-icons.tsx";
 import {
   getProviderShape,
@@ -53,6 +53,8 @@ export function ProviderSetupPage() {
   const pageSignal = useGet(pageSignal$);
   const theme = useGet(theme$);
   const navigate = useSet(navigateInReact$);
+  const currentSearchParams = useGet(searchParams$);
+  const returnUrl = currentSearchParams.get("return");
 
   const isLoading = actionStatus.state === "loading";
   const shape = getProviderShape(providerType);
@@ -65,22 +67,31 @@ export function ProviderSetupPage() {
       ? "linear-gradient(91deg, rgba(255, 200, 176, 0.15) 0%, rgba(166, 222, 255, 0.15) 51%, rgba(255, 231, 162, 0.15) 100%), linear-gradient(90deg, hsl(var(--background)) 0%, hsl(var(--background)) 100%)"
       : "linear-gradient(91deg, rgba(255, 200, 176, 0.26) 0%, rgba(166, 222, 255, 0.26) 51%, rgba(255, 231, 162, 0.26) 100%), linear-gradient(90deg, hsl(var(--background)) 0%, hsl(var(--background)) 100%)";
 
+  const navigateToDestination = () => {
+    if (returnUrl) {
+      const url = new URL(returnUrl, location.origin);
+      navigate(url.pathname as Parameters<typeof navigate>[0], {
+        searchParams: url.searchParams,
+      });
+    } else {
+      navigate("/settings", {
+        searchParams: new URLSearchParams({ tab: "integrations" }),
+      });
+    }
+  };
+
   const handleContinue = () => {
     detach(
       (async () => {
         await saveConfig(pageSignal);
-        navigate("/settings", {
-          searchParams: new URLSearchParams({ tab: "integrations" }),
-        });
+        navigateToDestination();
       })(),
       Reason.DomCallback,
     );
   };
 
   const handleLater = () => {
-    navigate("/settings", {
-      searchParams: new URLSearchParams({ tab: "integrations" }),
-    });
+    navigateToDestination();
   };
 
   return (

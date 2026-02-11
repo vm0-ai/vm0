@@ -1,50 +1,60 @@
-"use server";
-
-import { getAuthProvider } from "../../../src/lib/auth/auth-provider";
+import { NextResponse } from "next/server";
 import { eq, and } from "drizzle-orm";
-import { initServices } from "../../../src/lib/init-services";
-import { env } from "../../../src/env";
-import { slackUserLinks } from "../../../src/db/schema/slack-user-link";
-import { slackInstallations } from "../../../src/db/schema/slack-installation";
-import { decryptCredentialValue } from "../../../src/lib/crypto/secrets-encryption";
-import { createSlackClient, refreshAppHome } from "../../../src/lib/slack";
+import { initServices } from "../../../../../src/lib/init-services";
+import { env } from "../../../../../src/env";
+import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import { slackUserLinks } from "../../../../../src/db/schema/slack-user-link";
+import { slackInstallations } from "../../../../../src/db/schema/slack-installation";
+import { decryptCredentialValue } from "../../../../../src/lib/crypto/secrets-encryption";
+import {
+  createSlackClient,
+  refreshAppHome,
+} from "../../../../../src/lib/slack";
 import {
   ensureScopeAndArtifact,
   getWorkspaceAgent,
-} from "../../../src/lib/slack/handlers/shared";
-import { getUserEmail } from "../../../src/lib/auth/get-user-email";
-import { addPermission } from "../../../src/lib/agent/permission-service";
-import { logger } from "../../../src/lib/logger";
+} from "../../../../../src/lib/slack/handlers/shared";
+import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
+import { addPermission } from "../../../../../src/lib/agent/permission-service";
+import { logger } from "../../../../../src/lib/logger";
 
-const log = logger("slack:link");
-
-interface LinkResult {
-  success: boolean;
-  error?: string;
-  alreadyLinked?: boolean;
-}
-
-interface LinkStatus {
-  isLinked: boolean;
-  workspaceName?: string;
-}
+const log = logger("api:slack:link");
 
 /**
- * Check if a Slack user is already linked to the current VM0 user
+ * GET /api/integrations/slack/link
+ *
+ * Check if a Slack user is already linked to the current VM0 user.
+ * Query params: slackUserId, workspaceId
  */
-export async function checkLinkStatus(
-  slackUserId: string,
-  workspaceId: string,
-): Promise<LinkStatus> {
-  const userId = await getAuthProvider().getUserId();
-
-  if (!userId) {
-    return { isLinked: false };
-  }
-
+export async function GET(request: Request) {
   initServices();
 
-  // Check if this Slack user is already linked
+  const authHeader = request.headers.get("authorization");
+  const userId = await getUserId(authHeader ?? undefined);
+
+  if (!userId) {
+    return NextResponse.json(
+      { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+      { status: 401 },
+    );
+  }
+
+  const url = new URL(request.url);
+  const slackUserId = url.searchParams.get("slackUserId");
+  const workspaceId = url.searchParams.get("workspaceId");
+
+  if (!slackUserId || !workspaceId) {
+    return NextResponse.json(
+      {
+        error: {
+          message: "Missing slackUserId or workspaceId",
+          code: "BAD_REQUEST",
+        },
+      },
+      { status: 400 },
+    );
+  }
+
   const [existingLink] = await globalThis.services.db
     .select()
     .from(slackUserLinks)
@@ -57,37 +67,59 @@ export async function checkLinkStatus(
     .limit(1);
 
   if (existingLink) {
-    // Get workspace name
     const [installation] = await globalThis.services.db
       .select({ workspaceName: slackInstallations.slackWorkspaceName })
       .from(slackInstallations)
       .where(eq(slackInstallations.slackWorkspaceId, workspaceId))
       .limit(1);
 
-    return {
+    return NextResponse.json({
       isLinked: true,
-      workspaceName: installation?.workspaceName ?? undefined,
-    };
+      workspaceName: installation?.workspaceName ?? null,
+    });
   }
 
-  return { isLinked: false };
+  return NextResponse.json({ isLinked: false });
 }
 
 /**
- * Link a Slack user to the current VM0 user
+ * POST /api/integrations/slack/link
+ *
+ * Link a Slack user to the current VM0 user.
+ * Body: { slackUserId: string, workspaceId: string, channelId?: string }
  */
-export async function linkSlackAccount(
-  slackUserId: string,
-  workspaceId: string,
-  channelId?: string | null,
-): Promise<LinkResult> {
-  const userId = await getAuthProvider().getUserId();
+export async function POST(request: Request) {
+  initServices();
+
+  const authHeader = request.headers.get("authorization");
+  const userId = await getUserId(authHeader ?? undefined);
 
   if (!userId) {
-    return { success: false, error: "Not authenticated" };
+    return NextResponse.json(
+      { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+      { status: 401 },
+    );
   }
 
-  initServices();
+  const body = (await request.json()) as {
+    slackUserId?: string;
+    workspaceId?: string;
+    channelId?: string;
+  };
+
+  const { slackUserId, workspaceId, channelId } = body;
+
+  if (!slackUserId || !workspaceId) {
+    return NextResponse.json(
+      {
+        error: {
+          message: "Missing slackUserId or workspaceId",
+          code: "BAD_REQUEST",
+        },
+      },
+      { status: 400 },
+    );
+  }
 
   // Check if the workspace installation exists
   const [installation] = await globalThis.services.db
@@ -97,10 +129,15 @@ export async function linkSlackAccount(
     .limit(1);
 
   if (!installation) {
-    return {
-      success: false,
-      error: "Workspace not found. Please install the Slack app first.",
-    };
+    return NextResponse.json(
+      {
+        error: {
+          message: "Workspace not found. Please install the Slack app first.",
+          code: "NOT_FOUND",
+        },
+      },
+      { status: 404 },
+    );
   }
 
   // Check if this Slack user is already linked
@@ -117,7 +154,6 @@ export async function linkSlackAccount(
 
   if (existingLink) {
     if (existingLink.vm0UserId === userId) {
-      // Send success message even for already linked users
       if (channelId) {
         await sendSuccessMessage(
           installation.encryptedBotToken,
@@ -128,15 +164,18 @@ export async function linkSlackAccount(
           log.warn("Failed to send success message", { error });
         });
       }
-      return {
-        success: true,
-        alreadyLinked: true,
-      };
+      return NextResponse.json({ success: true, alreadyLinked: true });
     }
-    return {
-      success: false,
-      error: "This Slack account is already linked to a different VM0 account.",
-    };
+    return NextResponse.json(
+      {
+        error: {
+          message:
+            "This Slack account is already linked to a different VM0 account.",
+          code: "CONFLICT",
+        },
+      },
+      { status: 409 },
+    );
   }
 
   // Ensure scope and artifact exist for the user
@@ -188,7 +227,7 @@ export async function linkSlackAccount(
     log.warn("Failed to refresh App Home after link", { error });
   });
 
-  return { success: true };
+  return NextResponse.json({ success: true });
 }
 
 /**
