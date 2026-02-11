@@ -143,6 +143,295 @@ describe("logs command", () => {
       expect(requestCount).toBe(2);
     });
 
+    it("should stop pagination when target count is reached within single page", async () => {
+      let requestCount = 0;
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            requestCount++;
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "assistant",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "assistant",
+                    message: { content: [{ type: "text", text: "Event 1" }] },
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "assistant",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "assistant",
+                    message: { content: [{ type: "text", text: "Event 2" }] },
+                  },
+                },
+                {
+                  sequenceNumber: 3,
+                  eventType: "assistant",
+                  createdAt: "2024-01-15T10:30:02Z",
+                  eventData: {
+                    type: "assistant",
+                    message: { content: [{ type: "text", text: "Event 3" }] },
+                  },
+                },
+              ],
+              framework: "claude-code",
+              hasMore: true,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--tail", "2"]);
+
+      // Should only make 1 request since we got enough events
+      expect(requestCount).toBe(1);
+      // Should display only 2 events (trimmed to target count)
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Event 1");
+      expect(logCalls).toContain("Event 2");
+    });
+
+    it("should paginate across multiple pages until target count is reached", async () => {
+      let requestCount = 0;
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          ({ request }) => {
+            requestCount++;
+            const url = new URL(request.url);
+            const since = url.searchParams.get("since");
+
+            if (!since) {
+              return HttpResponse.json({
+                events: [
+                  {
+                    sequenceNumber: 1,
+                    eventType: "assistant",
+                    createdAt: "2024-01-15T10:30:00Z",
+                    eventData: {
+                      type: "assistant",
+                      message: {
+                        content: [{ type: "text", text: "Page1-Event1" }],
+                      },
+                    },
+                  },
+                  {
+                    sequenceNumber: 2,
+                    eventType: "assistant",
+                    createdAt: "2024-01-15T10:30:01Z",
+                    eventData: {
+                      type: "assistant",
+                      message: {
+                        content: [{ type: "text", text: "Page1-Event2" }],
+                      },
+                    },
+                  },
+                ],
+                framework: "claude-code",
+                hasMore: true,
+              });
+            } else {
+              return HttpResponse.json({
+                events: [
+                  {
+                    sequenceNumber: 3,
+                    eventType: "assistant",
+                    createdAt: "2024-01-15T10:30:02Z",
+                    eventData: {
+                      type: "assistant",
+                      message: {
+                        content: [{ type: "text", text: "Page2-Event1" }],
+                      },
+                    },
+                  },
+                  {
+                    sequenceNumber: 4,
+                    eventType: "assistant",
+                    createdAt: "2024-01-15T10:30:03Z",
+                    eventData: {
+                      type: "assistant",
+                      message: {
+                        content: [{ type: "text", text: "Page2-Event2" }],
+                      },
+                    },
+                  },
+                ],
+                framework: "claude-code",
+                hasMore: true,
+              });
+            }
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--tail", "3"]);
+
+      // Should make 2 requests to collect 3 events
+      expect(requestCount).toBe(2);
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Page1-Event1");
+      expect(logCalls).toContain("Page1-Event2");
+      expect(logCalls).toContain("Page2-Event1");
+      // Should NOT contain 4th event (trimmed to target count)
+      expect(logCalls).not.toContain("Page2-Event2");
+    });
+
+    it("should pass correct since cursor to subsequent pages", async () => {
+      const capturedSinceValues: (string | null)[] = [];
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          ({ request }) => {
+            const url = new URL(request.url);
+            capturedSinceValues.push(url.searchParams.get("since"));
+
+            if (capturedSinceValues.length === 1) {
+              return HttpResponse.json({
+                events: [
+                  {
+                    sequenceNumber: 1,
+                    eventType: "assistant",
+                    createdAt: "2024-01-15T10:30:00Z",
+                    eventData: {
+                      type: "assistant",
+                      message: { content: [{ type: "text", text: "Event 1" }] },
+                    },
+                  },
+                ],
+                framework: "claude-code",
+                hasMore: true,
+              });
+            } else {
+              return HttpResponse.json({
+                events: [
+                  {
+                    sequenceNumber: 2,
+                    eventType: "assistant",
+                    createdAt: "2024-01-15T10:31:00Z",
+                    eventData: {
+                      type: "assistant",
+                      message: { content: [{ type: "text", text: "Event 2" }] },
+                    },
+                  },
+                ],
+                framework: "claude-code",
+                hasMore: false,
+              });
+            }
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--all"]);
+
+      expect(capturedSinceValues).toHaveLength(2);
+      expect(capturedSinceValues[0]).toBeNull(); // First page has no since
+      // Second page should have since = timestamp of last event from first page
+      expect(capturedSinceValues[1]).toBe(
+        new Date("2024-01-15T10:30:00Z").getTime().toString(),
+      );
+    });
+
+    it("should stop pagination when API returns empty items with hasMore true", async () => {
+      let requestCount = 0;
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          ({ request }) => {
+            requestCount++;
+            const url = new URL(request.url);
+            const since = url.searchParams.get("since");
+
+            if (!since) {
+              return HttpResponse.json({
+                events: [
+                  {
+                    sequenceNumber: 1,
+                    eventType: "assistant",
+                    createdAt: "2024-01-15T10:30:00Z",
+                    eventData: {
+                      type: "assistant",
+                      message: { content: [{ type: "text", text: "Event 1" }] },
+                    },
+                  },
+                ],
+                framework: "claude-code",
+                hasMore: true,
+              });
+            } else {
+              // API says hasMore but returns no items - should stop
+              return HttpResponse.json({
+                events: [],
+                framework: "claude-code",
+                hasMore: true,
+              });
+            }
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--all"]);
+
+      // Should stop after 2 requests (not infinite loop)
+      expect(requestCount).toBe(2);
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Event 1");
+    });
+
+    it("should fail entirely when pagination encounters API error", async () => {
+      let requestCount = 0;
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          ({ request }) => {
+            requestCount++;
+            const url = new URL(request.url);
+            const since = url.searchParams.get("since");
+
+            if (!since) {
+              return HttpResponse.json({
+                events: [
+                  {
+                    sequenceNumber: 1,
+                    eventType: "assistant",
+                    createdAt: "2024-01-15T10:30:00Z",
+                    eventData: {
+                      type: "assistant",
+                      message: { content: [{ type: "text", text: "Event 1" }] },
+                    },
+                  },
+                ],
+                framework: "claude-code",
+                hasMore: true,
+              });
+            } else {
+              // Second page fails
+              return HttpResponse.json(
+                { error: { message: "Server error", code: "ERROR" } },
+                { status: 500 },
+              );
+            }
+          },
+        ),
+      );
+
+      await expect(async () => {
+        await logsCommand.parseAsync(["node", "cli", "run-123", "--all"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(requestCount).toBe(2);
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Failed to fetch logs"),
+      );
+    });
+
     it("should handle paired tool_use and tool_result events", async () => {
       server.use(
         http.get(
