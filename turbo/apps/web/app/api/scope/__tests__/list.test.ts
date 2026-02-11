@@ -25,7 +25,8 @@ describe("GET /api/scope/list - Scope List", () => {
   });
 
   it("should return personal scope", async () => {
-    await context.setupUser();
+    const user = await context.setupUser();
+    setupClerkOrgMock({ userId: user.userId });
 
     const request = createTestRequest("http://localhost:3000/api/scope/list");
     const response = await GET(request);
