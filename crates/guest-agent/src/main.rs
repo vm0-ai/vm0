@@ -153,8 +153,7 @@ async fn execute(
     // Execution phase
     log_info!(LOG_TAG, "▷ Execution");
     let cli_start = Instant::now();
-    let (mut exit_code, error_message) = match cli::execute_cli(masker, heartbeat_handle).await
-    {
+    let (mut exit_code, error_message) = match cli::execute_cli(masker, heartbeat_handle).await {
         Ok((code, stderr_lines)) => {
             if code != 0 {
                 let msg = if stderr_lines.is_empty() {
