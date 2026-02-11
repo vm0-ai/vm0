@@ -36,7 +36,7 @@ const MAX_TOKEN_RENEWAL_FAILURES: u32 = 3;
 pub(crate) const EVENT_CHANNEL_CAPACITY: usize = 64;
 
 fn error_or_unknown(error: Option<crate::protocol::ErrorInfo>) -> crate::protocol::ErrorInfo {
-    error.unwrap_or(crate::protocol::ErrorInfo {
+    error.unwrap_or_else(|| crate::protocol::ErrorInfo {
         code: 80000,
         status_code: None,
         message: "no error details from server".to_string(),
@@ -409,6 +409,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
             match tokio::time::timeout(RECONNECT_TIMEOUT, attempt_reconnect(&mut p)).await {
                 Ok(Ok(())) => {
                     retry_count = 0;
+                    p.token_renewal_failures = 0;
                     let _ = p.event_tx.send(Event::Connected).await;
                     continue 'outer;
                 }
