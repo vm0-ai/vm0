@@ -52,7 +52,6 @@ impl BuildRootfsArgs {
 pub async fn run_build_rootfs(args: BuildRootfsArgs) -> RunnerResult<()> {
     check_dependencies()?;
     let guest_bins = args.guest_bins();
-    let docker = detect_docker_privilege().await?;
     let paths = HomePaths::new()?;
 
     // Compute input hash (deterministic inputs only — no CA)
@@ -78,10 +77,10 @@ pub async fn run_build_rootfs(args: BuildRootfsArgs) -> RunnerResult<()> {
 
     // Docker build + export (drop dockerfile temp dir immediately after build)
     let dockerfile_dir = write_dockerfile_to_temp(EMBEDDED_DOCKERFILE)?;
-    docker_build(dockerfile_dir.path(), docker).await?;
+    docker_build(dockerfile_dir.path()).await?;
     drop(dockerfile_dir);
 
-    let tar_path = docker_export(&output_dir, docker).await?;
+    let tar_path = docker_export(&output_dir).await?;
 
     // Extract and inject
     let extract_dir =
@@ -152,20 +151,6 @@ fn check_dependencies() -> RunnerResult<()> {
     }
     tracing::info!("[OK] all dependencies found");
     Ok(())
-}
-
-async fn detect_docker_privilege() -> RunnerResult<Privilege> {
-    if exec("docker", &["info"], Privilege::User).await.is_ok() {
-        tracing::info!("[OK] docker accessible without sudo");
-        return Ok(Privilege::User);
-    }
-    if exec("docker", &["info"], Privilege::Sudo).await.is_ok() {
-        tracing::info!("[OK] docker accessible with sudo");
-        return Ok(Privilege::Sudo);
-    }
-    Err(RunnerError::Config(
-        "docker not accessible (even with sudo)".into(),
-    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -288,25 +273,30 @@ fn write_dockerfile_to_temp(content: &str) -> RunnerResult<tempfile::TempDir> {
     Ok(dir)
 }
 
-async fn docker_build(dockerfile_dir: &Path, docker: Privilege) -> RunnerResult<()> {
+async fn docker_build(dockerfile_dir: &Path) -> RunnerResult<()> {
     tracing::info!("building docker image...");
     let dir_str = dockerfile_dir.to_string_lossy();
-    exec("docker", &["build", "-t", IMAGE_NAME, &dir_str], docker).await?;
+    exec(
+        "docker",
+        &["build", "-t", IMAGE_NAME, &dir_str],
+        Privilege::User,
+    )
+    .await?;
     tracing::info!("[OK] docker image built");
     Ok(())
 }
 
-async fn docker_export(output_dir: &Path, docker: Privilege) -> RunnerResult<PathBuf> {
+async fn docker_export(output_dir: &Path) -> RunnerResult<PathBuf> {
     tracing::info!("exporting docker filesystem...");
 
     // Remove any existing temp container
-    exec_ignore_errors("docker", &["rm", "-f", CONTAINER_NAME], docker).await;
+    exec_ignore_errors("docker", &["rm", "-f", CONTAINER_NAME], Privilege::User).await;
 
     // Create container (don't start it)
     exec(
         "docker",
         &["create", "--name", CONTAINER_NAME, IMAGE_NAME],
-        docker,
+        Privilege::User,
     )
     .await?;
 
@@ -316,12 +306,12 @@ async fn docker_export(output_dir: &Path, docker: Privilege) -> RunnerResult<Pat
     let result = exec(
         "docker",
         &["export", CONTAINER_NAME, "-o", &tar_str],
-        docker,
+        Privilege::User,
     )
     .await;
 
     // Always cleanup container
-    exec_ignore_errors("docker", &["rm", "-f", CONTAINER_NAME], docker).await;
+    exec_ignore_errors("docker", &["rm", "-f", CONTAINER_NAME], Privilege::User).await;
 
     result?;
     tracing::info!("[OK] filesystem exported");
