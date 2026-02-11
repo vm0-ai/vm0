@@ -1,0 +1,107 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import { POST as createOrgRoute } from "../../org/route";
+import { GET as listScopesRoute } from "../../scope/list/route";
+import { POST } from "../../scope/use/route";
+import { createTestRequest } from "../../../../src/__tests__/api-test-helpers";
+import { testContext, uniqueId } from "../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../src/__tests__/clerk-mock";
+import { setupClerkOrgMock } from "../../../../src/__tests__/org-test-helpers";
+
+const context = testContext();
+
+describe("POST /api/scope/use - Scope Use", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("should require authentication", async () => {
+    mockClerk({ userId: null });
+
+    const request = createTestRequest("http://localhost:3000/api/scope/use", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug: "some-slug" }),
+    });
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error.message).toContain("Not authenticated");
+  });
+
+  it("should switch to org scope and return org token", async () => {
+    const user = await context.setupUser();
+    const slug = uniqueId("org");
+    const orgId = `org_${user.userId}`;
+    setupClerkOrgMock({
+      userId: user.userId,
+      orgId,
+      memberships: [{ userId: user.userId, role: "org:admin" }],
+    });
+
+    // Create org first
+    const createReq = createTestRequest("http://localhost:3000/api/org", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug }),
+    });
+    const createRes = await createOrgRoute(createReq);
+    expect(createRes.status).toBe(201);
+
+    // Use org scope
+    const useReq = createTestRequest("http://localhost:3000/api/scope/use", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug }),
+    });
+    const useRes = await POST(useReq);
+    expect(useRes.status).toBe(200);
+
+    const data = await useRes.json();
+    expect(data.scope.slug).toBe(slug);
+    expect(data.token).toBeTruthy();
+    expect(data.token).toMatch(/^vm0_org_/);
+    expect(data.expiresAt).toBeTruthy();
+  });
+
+  it("should switch to personal scope", async () => {
+    const user = await context.setupUser();
+    setupClerkOrgMock({ userId: user.userId });
+
+    // List scopes to find personal scope slug
+    const listReq = createTestRequest("http://localhost:3000/api/scope/list");
+    const listRes = await listScopesRoute(listReq);
+    const listData = await listRes.json();
+
+    const personal = listData.scopes.find(
+      (s: { type: string }) => s.type === "personal",
+    );
+    expect(personal).toBeDefined();
+
+    // Switch to personal scope
+    const useReq = createTestRequest("http://localhost:3000/api/scope/use", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug: personal.slug }),
+    });
+    const useRes = await POST(useReq);
+    expect(useRes.status).toBe(200);
+
+    const data = await useRes.json();
+    expect(data.scope.type).toBe("personal");
+    expect(data.token).toBe("");
+    expect(data.expiresAt).toBe("");
+  });
+
+  it("should reject non-existent scope", async () => {
+    await context.setupUser();
+
+    const useReq = createTestRequest("http://localhost:3000/api/scope/use", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug: "nonexistent-scope-slug" }),
+    });
+    const useRes = await POST(useReq);
+    expect(useRes.status).toBe(404);
+  });
+});
