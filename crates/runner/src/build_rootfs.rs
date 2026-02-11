@@ -11,12 +11,12 @@ use crate::paths::HomePaths;
 const EMBEDDED_DOCKERFILE: &str = include_str!("../rootfs.Dockerfile");
 
 const IMAGE_NAME: &str = "vm0-rootfs";
-const CONTAINER_NAME: &str = "vm0-rootfs-tmp";
 
 const ROOTFS_FILE: &str = "rootfs.squashfs";
 const CA_CERT_FILE: &str = "mitmproxy-ca-cert.pem";
 const CA_KEY_FILE: &str = "mitmproxy-ca-key.pem";
 const CA_COMBINED_FILE: &str = "mitmproxy-ca.pem";
+const CA_ROOTFS_DEST: &str = "usr/local/share/ca-certificates/vm0-proxy-ca.crt";
 
 const RESOLV_CONF: &str = "\
 nameserver 8.8.8.8
@@ -86,22 +86,21 @@ pub async fn run_build_rootfs(args: BuildRootfsArgs) -> RunnerResult<()> {
 
     let tar_path = docker_export(&output_dir).await?;
 
-    // Extract and inject
+    // Extract, inject, create squashfs, verify, and move into place.
+    // All temp files are root-owned; always clean up with sudo afterwards.
     let extract_dir =
         tempfile::tempdir().map_err(|e| RunnerError::Internal(format!("create temp dir: {e}")))?;
-    extract_and_inject(&tar_path, extract_dir.path(), &guest_bins, &output_dir).await?;
-    sudo_remove(&tar_path).await;
-
-    // Create squashfs to temp, verify, then move into place
     let tmp_rootfs = rootfs_path.with_extension(format!("tmp.{}", std::process::id()));
+
     let result: RunnerResult<()> = async {
+        extract_and_inject(&tar_path, extract_dir.path(), &guest_bins, &output_dir).await?;
+        sudo_remove(&tar_path).await; // free disk space early
+
         create_squashfs(extract_dir.path(), &tmp_rootfs).await?;
-        sudo_remove_dir(extract_dir).await;
 
         let dest_paths: Vec<&str> = guest_bins.iter().map(|(_, dest)| *dest).collect();
         verify_rootfs(&tmp_rootfs, &dest_paths).await?;
 
-        // Atomic rename into final location
         tokio::fs::rename(&tmp_rootfs, &rootfs_path)
             .await
             .map_err(|e| RunnerError::Internal(format!("rename rootfs: {e}")))?;
@@ -110,10 +109,10 @@ pub async fn run_build_rootfs(args: BuildRootfsArgs) -> RunnerResult<()> {
     }
     .await;
 
-    // Cleanup tmp_rootfs on failure (root-owned from mksquashfs)
-    if result.is_err() {
-        sudo_remove(&tmp_rootfs).await;
-    }
+    // Always clean up root-owned temps (no-op if already removed/renamed)
+    sudo_remove(&tar_path).await;
+    sudo_remove(&tmp_rootfs).await;
+    sudo_remove_dir(extract_dir).await;
 
     result?;
     tracing::info!("[OK] rootfs built: {}", rootfs_path.display());
@@ -304,13 +303,15 @@ async fn docker_build(dockerfile_dir: &Path) -> RunnerResult<()> {
 async fn docker_export(output_dir: &Path) -> RunnerResult<PathBuf> {
     tracing::info!("exporting docker filesystem...");
 
+    let container_name = format!("vm0-rootfs-tmp-{}", std::process::id());
+
     // Remove any existing temp container
-    exec_ignore_errors("docker", &["rm", "-f", CONTAINER_NAME], Privilege::User).await;
+    exec_ignore_errors("docker", &["rm", "-f", &container_name], Privilege::User).await;
 
     // Create container (don't start it)
     exec(
         "docker",
-        &["create", "--name", CONTAINER_NAME, IMAGE_NAME],
+        &["create", "--name", &container_name, IMAGE_NAME],
         Privilege::User,
     )
     .await?;
@@ -320,13 +321,13 @@ async fn docker_export(output_dir: &Path) -> RunnerResult<PathBuf> {
     let tar_str = tar_path.to_string_lossy();
     let result = exec(
         "docker",
-        &["export", CONTAINER_NAME, "-o", &tar_str],
+        &["export", &container_name, "-o", &tar_str],
         Privilege::User,
     )
     .await;
 
     // Always cleanup container
-    exec_ignore_errors("docker", &["rm", "-f", CONTAINER_NAME], Privilege::User).await;
+    exec_ignore_errors("docker", &["rm", "-f", &container_name], Privilege::User).await;
 
     result?;
     tracing::info!("[OK] filesystem exported");
@@ -375,8 +376,10 @@ async fn extract_and_inject(
             "proxy CA cert not found — generate_proxy_ca should have been called first".into(),
         ));
     }
-    let ca_target = extract_dir.join("usr/local/share/ca-certificates/vm0-proxy-ca.crt");
-    let ca_target_dir = extract_dir.join("usr/local/share/ca-certificates");
+    let ca_target = extract_dir.join(CA_ROOTFS_DEST);
+    let ca_target_dir = ca_target
+        .parent()
+        .ok_or_else(|| RunnerError::Internal("CA rootfs dest has no parent directory".into()))?;
     let ca_target_dir_str = ca_target_dir.to_string_lossy();
     let ca_cert_str = ca_cert.to_string_lossy();
     let ca_target_str = ca_target.to_string_lossy();
@@ -522,7 +525,7 @@ async fn verify_mounted(mount_point: &Path, guest_bin_dests: &[&str]) -> RunnerR
     }
 
     // Check proxy CA certificate file
-    let ca_path = mount_point.join("usr/local/share/ca-certificates/vm0-proxy-ca.crt");
+    let ca_path = mount_point.join(CA_ROOTFS_DEST);
     if !ca_path.exists() {
         errors.push("proxy CA certificate not found".to_string());
     } else {
