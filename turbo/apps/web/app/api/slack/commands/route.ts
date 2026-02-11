@@ -304,7 +304,7 @@ export async function POST(request: Request) {
 
   // Handle settings command
   if (subCommand === "settings") {
-    return handleEnvironmentSetup();
+    return handleEnvironmentSetup(isAdmin);
   }
 
   // Unknown command
@@ -317,8 +317,11 @@ export async function POST(request: Request) {
 /**
  * Handle /vm0 settings - Return link to Platform settings page
  */
-function handleEnvironmentSetup(): NextResponse {
+function handleEnvironmentSetup(isAdmin: boolean): NextResponse {
   const platformUrl = getPlatformUrl();
+  const desc = isAdmin
+    ? "Configure secrets, variables, and select the workspace agent on the VM0 platform."
+    : "Configure your environment variables and secrets on the VM0 platform.";
 
   return NextResponse.json({
     response_type: "ephemeral",
@@ -327,7 +330,7 @@ function handleEnvironmentSetup(): NextResponse {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `:gear: *Settings*\nConfigure your environment variables and secrets on the VM0 platform.`,
+          text: `:gear: *Settings*\n${desc}`,
         },
         accessory: {
           type: "button",
