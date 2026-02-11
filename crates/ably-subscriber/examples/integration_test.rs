@@ -9,6 +9,8 @@
 //! ABLY_API_KEY=keyName:keySecret cargo run -p ably-subscriber --example integration_test
 //! ```
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use base64::Engine as _;
@@ -166,13 +168,14 @@ fn test_cases() -> Vec<TestCase> {
 fn create_token_request(
     key_name: &str,
     key_secret: &str,
+    ttl_ms: i64,
 ) -> Result<TokenRequest, Box<dyn std::error::Error + Send + Sync>> {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|e| format!("system time error: {e}"))?;
     let timestamp = now.as_millis() as i64;
     let nonce = format!("{:x}{:x}", now.as_nanos(), std::process::id());
-    let ttl = 3_600_000_i64;
+    let ttl = ttl_ms;
     let capability = r#"{"*":["*"]}"#;
 
     let sign_text = format!("{key_name}\n{ttl}\n{capability}\n\n{timestamp}\n{nonce}\n");
@@ -269,7 +272,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         get_token: Box::new(move || {
             let kn = kn.clone();
             let ks = ks.clone();
-            Box::pin(async move { create_token_request(&kn, &ks) })
+            Box::pin(async move { create_token_request(&kn, &ks, 3_600_000) })
         }),
         channel: channel.clone(),
         channel_params: None,
@@ -373,9 +376,128 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     }
 
-    // --- Summary ---
+    // Clean up message-test subscription before lifecycle tests.
+    drop(sub);
+
+    // =====================================================================
+    // Lifecycle: token renewal
+    // =====================================================================
+    //
+    // Connect with a short-TTL token (15s). Since TOKEN_RENEWAL_MARGIN (5min)
+    // exceeds the TTL, the SDK triggers renewal immediately. After waiting
+    // longer than the original token's lifetime, publish a message — if
+    // renewal worked the message arrives; if not, the connection is dead.
+
     eprintln!();
-    eprintln!("{passed} passed, {failed} failed, {} total", cases.len());
+    eprintln!("--- lifecycle: token renewal ---");
+
+    let renewal_channel = format!("integration-renewal-{}", ts.as_millis());
+    let kn = key_name.to_string();
+    let ks = key_secret.to_string();
+    let call_count = Arc::new(AtomicU32::new(0));
+
+    let mut renewal_sub = subscribe(SubscribeConfig {
+        get_token: Box::new(move || {
+            let kn = kn.clone();
+            let ks = ks.clone();
+            let cc = call_count.clone();
+            Box::pin(async move {
+                let n = cc.fetch_add(1, Ordering::Relaxed);
+                // First token: short TTL forces immediate renewal.
+                // Subsequent: normal TTL avoids a tight renewal loop.
+                let ttl = if n == 0 { 15_000 } else { 3_600_000 };
+                create_token_request(&kn, &ks, ttl)
+            })
+        }),
+        channel: renewal_channel.clone(),
+        channel_params: None,
+        host: None,
+        rest_host: None,
+    })
+    .await?;
+
+    // Wait for Connected
+    tokio::time::timeout(Duration::from_secs(15), async {
+        while let Some(event) = renewal_sub.next().await {
+            match event {
+                Event::Connected => return Ok(()),
+                Event::Error { code, message } => {
+                    return Err(format!("connection error: code={code} {message}"));
+                }
+                _ => {}
+            }
+        }
+        Err("subscription ended before connected".to_string())
+    })
+    .await
+    .map_err(|_| "timeout waiting for Connected")?
+    .map_err(|e| format!("connection failed: {e}"))?;
+
+    // Wait for the original 15s token to expire.
+    eprintln!("  waiting 20s for original token to expire...");
+    tokio::time::sleep(Duration::from_secs(20)).await;
+
+    // Publish and verify — if renewal failed, this will timeout.
+    publish_message(
+        &client,
+        rest_host,
+        &renewal_channel,
+        &auth_header,
+        Some("renewal-test"),
+        &serde_json::json!("after-renewal"),
+        None,
+    )
+    .await?;
+
+    let renewal_result = tokio::time::timeout(Duration::from_secs(10), async {
+        while let Some(event) = renewal_sub.next().await {
+            match event {
+                Event::Message(msg) => return Ok(msg),
+                Event::Error { code, message } => {
+                    return Err(format!("error: code={code} {message}"));
+                }
+                _ => {}
+            }
+        }
+        Err("subscription ended".to_string())
+    })
+    .await;
+
+    match renewal_result {
+        Ok(Ok(msg)) if msg.data == serde_json::json!("after-renewal") => {
+            eprintln!("  PASS: token-renewal");
+            passed += 1;
+        }
+        Ok(Ok(msg)) => {
+            eprintln!("  FAIL: token-renewal — unexpected data: {}", msg.data);
+            failed += 1;
+        }
+        Ok(Err(e)) => {
+            eprintln!("  FAIL: token-renewal — {e}");
+            failed += 1;
+        }
+        Err(_) => {
+            eprintln!("  FAIL: token-renewal — timeout (renewal likely failed)");
+            failed += 1;
+        }
+    }
+
+    // =====================================================================
+    // Lifecycle: graceful close
+    // =====================================================================
+
+    eprintln!();
+    eprintln!("--- lifecycle: graceful close ---");
+    renewal_sub.close();
+    // close() sends a CLOSE protocol message and consumes the subscription.
+    // If it panics or the background task deadlocks, this line is not reached.
+    eprintln!("  PASS: graceful-close");
+    passed += 1;
+
+    // --- Summary ---
+    let total = passed + failed;
+    eprintln!();
+    eprintln!("{passed} passed, {failed} failed, {total} total");
 
     if failed > 0 {
         std::process::exit(1);
