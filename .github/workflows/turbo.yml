@@ -375,7 +375,6 @@ jobs:
         working-directory: turbo
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
-          PLATFORM_URL: https://platform.test.local
         run: pnpm vitest run --project=web
 
   test-cli:
