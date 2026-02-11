@@ -1,11 +1,11 @@
 import { getBaseUrl } from "./client-factory";
-import { getToken } from "../config";
+import { getActiveToken } from "../config";
 
 /**
  * Get headers for raw HTTP requests (used for non-ts-rest endpoints)
  */
 async function getRawHeaders(): Promise<Record<string, string>> {
-  const token = await getToken();
+  const token = await getActiveToken();
   if (!token) {
     throw new Error("Not authenticated. Run: vm0 auth login");
   }

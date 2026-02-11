@@ -77,6 +77,17 @@ export {
   getConnector,
 } from "./domains/connectors";
 
+// Domain modules - Organizations
+export {
+  createOrg,
+  getOrgStatus,
+  inviteMember,
+  removeMember,
+  leaveOrg,
+  listScopes,
+  useScope,
+} from "./domains/org";
+
 // Domain modules - Usage
 export { getUsage } from "./domains/usage";
 

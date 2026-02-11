@@ -28,6 +28,7 @@ import * as connectorSchema from "./schema/connector";
 import * as usageDailySchema from "./schema/usage-daily";
 import * as emailThreadSessionSchema from "./schema/email-thread-session";
 import * as emailReplyRequestSchema from "./schema/email-reply-request";
+import * as orgAccessTokenSchema from "./schema/org-access-token";
 
 export const schema = {
   ...userSchema,
@@ -60,4 +61,5 @@ export const schema = {
   ...usageDailySchema,
   ...emailThreadSessionSchema,
   ...emailReplyRequestSchema,
+  ...orgAccessTokenSchema,
 };

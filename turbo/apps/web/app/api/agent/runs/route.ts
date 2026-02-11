@@ -25,6 +25,8 @@ import {
   isBadRequest,
   isNotFound,
 } from "../../../../src/lib/errors";
+import { getVariableValues } from "../../../../src/lib/variable/variable-service";
+import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
 
 const log = logger("api:runs");
 
@@ -456,6 +458,18 @@ const router = tsr.router(runsMainContract, {
       `Resolved agentComposeVersionId: ${resolved.agentComposeVersionId}`,
     );
 
+    // Resolve scope-specific stored variables (supports org scope via auth header)
+    const isNewRun = !body.checkpointId && !body.sessionId;
+    let resolvedVars = body.vars;
+    if (isNewRun) {
+      const scope = await resolveScope(userId, headers.authorization);
+      if (scope) {
+        const storedVars = await getVariableValues(scope.id);
+        // CLI vars override server-stored vars
+        resolvedVars = { ...storedVars, ...body.vars };
+      }
+    }
+
     // Delegate run creation, validation, and dispatch to createRun()
     try {
       const result = await createRun({
@@ -466,7 +480,7 @@ const router = tsr.router(runsMainContract, {
         checkpointId: body.checkpointId,
         sessionId: body.sessionId,
         conversationId: body.conversationId,
-        vars: body.vars,
+        vars: resolvedVars,
         secrets: body.secrets,
         artifactName: body.artifactName,
         artifactVersion: body.artifactVersion,

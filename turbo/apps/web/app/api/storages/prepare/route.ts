@@ -9,7 +9,7 @@ import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { storages, storageVersions } from "../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
-import { getUserScopeByClerkId } from "../../../../src/lib/scope/scope-service";
+import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
 import {
   generatePresignedPutUrl,
   downloadManifest,
@@ -98,7 +98,7 @@ const router = tsr.router(storagesPrepareContract, {
     }
 
     // Resolve user's scope
-    const userScope = await getUserScopeByClerkId(userId);
+    const userScope = await resolveScope(userId, headers.authorization);
     if (!userScope) {
       return {
         status: 400 as const,

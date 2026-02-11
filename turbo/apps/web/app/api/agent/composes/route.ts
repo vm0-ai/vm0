@@ -23,10 +23,8 @@ import { storages } from "../../../../src/db/schema/storage";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { eq, and } from "drizzle-orm";
 import { computeComposeVersionId } from "../../../../src/lib/agent-compose/content-hash";
-import {
-  getUserScopeByClerkId,
-  getScopeBySlug,
-} from "../../../../src/lib/scope/scope-service";
+import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
+import { getScopeBySlug } from "../../../../src/lib/scope/scope-service";
 import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 import { canAccessCompose } from "../../../../src/lib/agent/permission-service";
 import { getInstructionsStorageName } from "@vm0/core";
@@ -82,7 +80,7 @@ const router = tsr.router(composesMainContract, {
       }
       scopeId = scope.id;
     } else {
-      const userScope = await getUserScopeByClerkId(userId);
+      const userScope = await resolveScope(userId, headers.authorization);
       if (!userScope) {
         return {
           status: 400 as const,
@@ -291,7 +289,7 @@ const router = tsr.router(composesMainContract, {
     const versionId = computeComposeVersionId(resolvedContent);
 
     // Get user's scope (required for compose creation)
-    const userScope = await getUserScopeByClerkId(userId);
+    const userScope = await resolveScope(userId, headers.authorization);
     if (!userScope) {
       return {
         status: 400 as const,

@@ -1,4 +1,4 @@
-import { getApiUrl, getToken } from "../config";
+import { getApiUrl, getActiveToken } from "../config";
 import type { ApiErrorResponse } from "@vm0/core";
 
 /**
@@ -19,7 +19,7 @@ export class ApiRequestError extends Error {
  * Get authentication headers for API requests
  */
 export async function getHeaders(): Promise<Record<string, string>> {
-  const token = await getToken();
+  const token = await getActiveToken();
   if (!token) {
     throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
   }

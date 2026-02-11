@@ -35,6 +35,7 @@ export const scopes = pgTable(
     type: scopeTypeEnum("type").notNull().default("personal"),
     ownerId: text("owner_id"), // Clerk user ID, null for system scopes
     timezone: varchar("timezone", { length: 50 }), // IANA timezone (e.g., "Asia/Shanghai")
+    clerkOrgId: text("clerk_org_id"), // Clerk Organization ID, null for personal/system scopes
     notifyEmail: boolean("notify_email").default(false).notNull(),
     notifySlack: boolean("notify_slack").default(true).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -43,5 +44,6 @@ export const scopes = pgTable(
   (table) => ({
     ownerIdx: index("idx_scopes_owner").on(table.ownerId),
     typeIdx: index("idx_scopes_type").on(table.type),
+    clerkOrgIdx: index("idx_scopes_clerk_org").on(table.clerkOrgId),
   }),
 );

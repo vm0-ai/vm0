@@ -8,7 +8,7 @@ import { initServices } from "../../../../src/lib/init-services";
 import { storages, storageVersions } from "../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
-import { getUserScopeByClerkId } from "../../../../src/lib/scope/scope-service";
+import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
 import { generatePresignedUrl } from "../../../../src/lib/s3/s3-client";
 import { env } from "../../../../src/env";
 import { resolveVersionByPrefix } from "../../../../src/lib/storage/version-resolver";
@@ -32,7 +32,7 @@ const router = tsr.router(storagesDownloadContract, {
     }
 
     // Resolve user's scope
-    const userScope = await getUserScopeByClerkId(userId);
+    const userScope = await resolveScope(userId, headers.authorization);
     if (!userScope) {
       return {
         status: 400 as const,

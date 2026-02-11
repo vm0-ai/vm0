@@ -9,7 +9,7 @@ import {
   type ApiErrorResponse,
   type ComputerConnectorCreateResponse,
 } from "@vm0/core";
-import { getApiUrl, getToken } from "../../lib/api/config";
+import { getApiUrl, getActiveToken } from "../../lib/api/config";
 import { deleteConnector } from "../../lib/api";
 import {
   checkComputerDependencies,
@@ -21,7 +21,7 @@ function delay(ms: number): Promise<void> {
 }
 
 async function getHeaders(): Promise<Record<string, string>> {
-  const token = await getToken();
+  const token = await getActiveToken();
   if (!token) {
     throw new Error("Not authenticated. Run: vm0 auth login");
   }

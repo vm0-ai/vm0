@@ -13,7 +13,7 @@ import {
   authenticatePublicApi,
   isAuthSuccess,
 } from "../../../src/lib/public-api/auth";
-import { getUserScopeByClerkId } from "../../../src/lib/scope/scope-service";
+import { resolveScope } from "../../../src/lib/scope/resolve-scope";
 import { getUserEmail } from "../../../src/lib/auth/get-user-email";
 import { getEmailSharedAgents } from "../../../src/lib/agent/permission-service";
 import { agentComposes } from "../../../src/db/schema/agent-compose";
@@ -38,7 +38,7 @@ const router = tsr.router(publicAgentsListContract, {
     }
 
     // Get user's scope
-    const userScope = await getUserScopeByClerkId(auth.userId);
+    const userScope = await resolveScope(auth.userId, headers.authorization);
     if (!userScope) {
       return {
         status: 401 as const,
