@@ -1,4 +1,4 @@
-import { pgTable, uuid, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, timestamp, index, varchar } from "drizzle-orm/pg-core";
 import { scopes } from "./scope";
 
 export const users = pgTable(
@@ -6,6 +6,7 @@ export const users = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     scopeId: uuid("scope_id").references(() => scopes.id),
+    timezone: varchar("timezone", { length: 50 }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
