@@ -177,9 +177,7 @@ const router = tsr.router(webhookTelemetryContract, {
 
     // DB fallback: store telemetry locally when Axiom is not configured
     if (!axiomIngested) {
-      storeTelemetryFallback(body).catch((err: unknown) => {
-        log.error("DB telemetry store failed:", err);
-      });
+      await storeTelemetryFallback(body);
     }
 
     // Record sandbox internal operations as OpenTelemetry metrics (to sandbox-metric-{env} dataset)
