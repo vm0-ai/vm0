@@ -352,34 +352,9 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                 }
 
                 _ = tokio::time::sleep_until(p.conn_state.token_renewal_at) => {
-                    match tokio::time::timeout(CONNECT_TIMEOUT, renew_token(&mut p)).await {
-                        Ok(Ok(())) => {
-                            p.token_renewal_failures = 0;
-                        }
-                        Ok(Err(e)) => {
-                            p.token_renewal_failures += 1;
-                            tracing::error!("Token renewal failed ({}/{}): {e}", p.token_renewal_failures, MAX_TOKEN_RENEWAL_FAILURES);
-                            if p.token_renewal_failures >= MAX_TOKEN_RENEWAL_FAILURES {
-                                let _ = p.event_tx.send(Event::Error {
-                                    code: 80000,
-                                    message: format!("Token renewal failed {MAX_TOKEN_RENEWAL_FAILURES} consecutive times"),
-                                }).await;
-                                return;
-                            }
-                            p.conn_state.token_renewal_at = Instant::now() + TOKEN_RENEWAL_RETRY_DELAY;
-                        }
-                        Err(_) => {
-                            p.token_renewal_failures += 1;
-                            tracing::error!("Token renewal timed out ({}/{})", p.token_renewal_failures, MAX_TOKEN_RENEWAL_FAILURES);
-                            if p.token_renewal_failures >= MAX_TOKEN_RENEWAL_FAILURES {
-                                let _ = p.event_tx.send(Event::Error {
-                                    code: 80000,
-                                    message: format!("Token renewal failed {MAX_TOKEN_RENEWAL_FAILURES} consecutive times"),
-                                }).await;
-                                return;
-                            }
-                            p.conn_state.token_renewal_at = Instant::now() + TOKEN_RENEWAL_RETRY_DELAY;
-                        }
+                    let result = tokio::time::timeout(CONNECT_TIMEOUT, renew_token(&mut p)).await;
+                    if handle_renewal_result(&mut p, result).await {
+                        return;
                     }
                 }
 
@@ -644,42 +619,9 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
         }
         action::AUTH => {
             tracing::info!("Server requested reauthentication");
-            match tokio::time::timeout(CONNECT_TIMEOUT, renew_token(p)).await {
-                Ok(Ok(())) => {
-                    p.token_renewal_failures = 0;
-                }
-                Ok(Err(e)) => {
-                    p.token_renewal_failures += 1;
-                    tracing::error!(
-                        "Server-initiated token renewal failed ({}/{}): {e}",
-                        p.token_renewal_failures,
-                        MAX_TOKEN_RENEWAL_FAILURES
-                    );
-                    if p.token_renewal_failures >= MAX_TOKEN_RENEWAL_FAILURES {
-                        let _ = p.event_tx.send(Event::Error {
-                            code: 80000,
-                            message: format!("Token renewal failed {MAX_TOKEN_RENEWAL_FAILURES} consecutive times"),
-                        }).await;
-                        return LoopAction::Stop;
-                    }
-                    p.conn_state.token_renewal_at = Instant::now() + TOKEN_RENEWAL_RETRY_DELAY;
-                }
-                Err(_) => {
-                    p.token_renewal_failures += 1;
-                    tracing::error!(
-                        "Server-initiated token renewal timed out ({}/{})",
-                        p.token_renewal_failures,
-                        MAX_TOKEN_RENEWAL_FAILURES
-                    );
-                    if p.token_renewal_failures >= MAX_TOKEN_RENEWAL_FAILURES {
-                        let _ = p.event_tx.send(Event::Error {
-                            code: 80000,
-                            message: format!("Token renewal failed {MAX_TOKEN_RENEWAL_FAILURES} consecutive times"),
-                        }).await;
-                        return LoopAction::Stop;
-                    }
-                    p.conn_state.token_renewal_at = Instant::now() + TOKEN_RENEWAL_RETRY_DELAY;
-                }
+            let result = tokio::time::timeout(CONNECT_TIMEOUT, renew_token(p)).await;
+            if handle_renewal_result(p, result).await {
+                return LoopAction::Stop;
             }
         }
         _ => {
@@ -692,6 +634,45 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
 // ---------------------------------------------------------------------------
 // Token renewal
 // ---------------------------------------------------------------------------
+
+/// Handle the result of a token renewal attempt. Returns `true` if the failure
+/// is fatal (caller should terminate).
+async fn handle_renewal_result(
+    p: &mut EventLoopState,
+    result: Result<Result<(), Error>, tokio::time::error::Elapsed>,
+) -> bool {
+    let failure_reason = match result {
+        Ok(Ok(())) => {
+            p.token_renewal_failures = 0;
+            return false;
+        }
+        Ok(Err(e)) => format!("Token renewal failed: {e}"),
+        Err(_) => "Token renewal timed out".to_string(),
+    };
+
+    p.token_renewal_failures += 1;
+    tracing::error!(
+        "{failure_reason} ({}/{})",
+        p.token_renewal_failures,
+        MAX_TOKEN_RENEWAL_FAILURES,
+    );
+
+    if p.token_renewal_failures >= MAX_TOKEN_RENEWAL_FAILURES {
+        let _ = p
+            .event_tx
+            .send(Event::Error {
+                code: 80000,
+                message: format!(
+                    "Token renewal failed {MAX_TOKEN_RENEWAL_FAILURES} consecutive times"
+                ),
+            })
+            .await;
+        return true;
+    }
+
+    p.conn_state.token_renewal_at = Instant::now() + TOKEN_RENEWAL_RETRY_DELAY;
+    false
+}
 
 /// Renew the token and send an AUTH message. Callers are responsible for
 /// applying an outer timeout (e.g. `CONNECT_TIMEOUT`).
