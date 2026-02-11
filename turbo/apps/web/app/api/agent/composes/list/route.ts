@@ -4,8 +4,8 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import { eq, desc } from "drizzle-orm";
+import { resolveScope } from "../../../../../src/lib/scope/resolve-scope";
 import {
-  getUserScopeByClerkId,
   getScopeBySlug,
   canAccessScope,
 } from "../../../../../src/lib/scope/scope-service";
@@ -56,7 +56,7 @@ const router = tsr.router(composesListContract, {
 
       scopeId = scope.id;
     } else {
-      const userScope = await getUserScopeByClerkId(userId);
+      const userScope = await resolveScope(userId, headers.authorization);
       if (!userScope) {
         return {
           status: 400 as const,

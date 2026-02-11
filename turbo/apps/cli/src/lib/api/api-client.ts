@@ -44,7 +44,7 @@ import {
   type AblyTokenRequest,
 } from "@vm0/core";
 import type { z } from "zod";
-import { getApiUrl, getToken } from "./config";
+import { getApiUrl, getActiveToken } from "./config";
 
 // Import types from @vm0/core contracts
 import type {
@@ -123,7 +123,7 @@ export interface GetComposeVersionResponse {
 
 class ApiClient {
   private async getHeaders(): Promise<Record<string, string>> {
-    const token = await getToken();
+    const token = await getActiveToken();
     if (!token) {
       throw new Error("Not authenticated. Run: vm0 auth login");
     }
@@ -1315,7 +1315,7 @@ class ApiClient {
    */
   async get(path: string): Promise<Response> {
     const baseUrl = await this.getBaseUrl();
-    const token = await getToken();
+    const token = await getActiveToken();
     if (!token) {
       throw new Error("Not authenticated. Run: vm0 auth login");
     }
@@ -1344,7 +1344,7 @@ class ApiClient {
     options?: { body?: FormData | string },
   ): Promise<Response> {
     const baseUrl = await this.getBaseUrl();
-    const token = await getToken();
+    const token = await getActiveToken();
     if (!token) {
       throw new Error("Not authenticated. Run: vm0 auth login");
     }
@@ -1376,7 +1376,7 @@ class ApiClient {
    */
   async delete(path: string): Promise<Response> {
     const baseUrl = await this.getBaseUrl();
-    const token = await getToken();
+    const token = await getActiveToken();
     if (!token) {
       throw new Error("Not authenticated. Run: vm0 auth login");
     }

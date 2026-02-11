@@ -420,5 +420,38 @@ export {
   type ConnectorOAuthConfig,
 } from "./connectors";
 
+export {
+  orgContract,
+  orgRoleSchema,
+  orgMemberSchema,
+  orgStatusResponseSchema,
+  createOrgRequestSchema,
+  inviteRequestSchema,
+  removeMemberRequestSchema,
+  messageResponseSchema,
+  type OrgContract,
+  type OrgRole,
+  type OrgMember,
+  type OrgStatusResponse,
+  type CreateOrgRequest,
+  type InviteRequest,
+  type RemoveMemberRequest,
+  type MessageResponse,
+} from "./org";
+export {
+  scopeListContract,
+  scopeUseContract,
+  scopeListItemSchema,
+  scopeListResponseSchema,
+  scopeUseRequestSchema,
+  scopeUseResponseSchema,
+  type ScopeListContract,
+  type ScopeUseContract,
+  type ScopeListItem,
+  type ScopeListResponse,
+  type ScopeUseRequest,
+  type ScopeUseResponse,
+} from "./scope-list";
+
 // Public API v1 contracts (developer-friendly external API)
 export * from "./public";

@@ -9,7 +9,7 @@ import {
   authenticatePublicApi,
   isAuthSuccess,
 } from "../../../../../src/lib/public-api/auth";
-import { getUserScopeByClerkId } from "../../../../../src/lib/scope/scope-service";
+import { resolveScope } from "../../../../../src/lib/scope/resolve-scope";
 import {
   storages,
   storageVersions,
@@ -49,7 +49,10 @@ export async function GET(
   }
 
   // Get user's scope
-  const userScope = await getUserScopeByClerkId(auth.userId);
+  const userScope = await resolveScope(
+    auth.userId,
+    request.headers.get("Authorization") ?? undefined,
+  );
   if (!userScope) {
     return NextResponse.json(
       {

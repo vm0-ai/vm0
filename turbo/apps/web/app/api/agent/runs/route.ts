@@ -26,7 +26,7 @@ import { assertImageAccess } from "../../../../src/lib/image/image-service";
 import { logger } from "../../../../src/lib/logger";
 import { isConcurrentRunLimit } from "../../../../src/lib/errors";
 import { getVariableValues } from "../../../../src/lib/variable/variable-service";
-import { getUserScopeByClerkId } from "../../../../src/lib/scope/scope-service";
+import { resolveScope } from "../../../../src/lib/scope/resolve-scope";
 import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 import { canAccessCompose } from "../../../../src/lib/agent/permission-service";
 
@@ -386,7 +386,7 @@ const router = tsr.router(runsMainContract, {
         let storedVars: Record<string, string>;
         try {
           [storedVars] = await Promise.all([
-            getUserScopeByClerkId(userId).then(async (scope) =>
+            resolveScope(userId, headers.authorization).then(async (scope) =>
               scope ? getVariableValues(scope.id) : {},
             ),
             agent?.image

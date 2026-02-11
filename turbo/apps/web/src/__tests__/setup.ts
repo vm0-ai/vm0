@@ -38,6 +38,7 @@ vi.hoisted(() => {
     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   );
   vi.stubEnv("SLACK_REDIRECT_BASE_URL", "https://test.example.com");
+  vi.stubEnv("PLATFORM_URL", "https://test.platform.example.com");
   // API URL for compose job webhooks
   vi.stubEnv("VM0_API_URL", "http://localhost:3000");
   // Initialize Next.js after() callback queue (shared with test-helpers.ts flushAfter)

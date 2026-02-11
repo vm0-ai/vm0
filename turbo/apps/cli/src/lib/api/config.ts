@@ -6,6 +6,9 @@ import { existsSync } from "fs";
 interface CliConfig {
   token?: string;
   apiUrl?: string;
+  orgToken?: string;
+  orgTokenExpiresAt?: string;
+  activeScope?: string;
 }
 
 // Use functions for lazy evaluation (enables testing with mocked homedir)
@@ -49,6 +52,56 @@ export async function getToken(): Promise<string | undefined> {
 
   const config = await loadConfig();
   return config.token;
+}
+
+/**
+ * Get the active token for API requests.
+ * Priority: VM0_TOKEN env var > orgToken (if not expired) > user token
+ */
+export async function getActiveToken(): Promise<string | undefined> {
+  if (process.env.VM0_TOKEN) {
+    return process.env.VM0_TOKEN;
+  }
+
+  const config = await loadConfig();
+
+  if (config.orgToken && config.orgTokenExpiresAt) {
+    const expiresAt = new Date(config.orgTokenExpiresAt);
+    if (expiresAt > new Date()) {
+      return config.orgToken;
+    }
+  }
+
+  return config.token;
+}
+
+/**
+ * Save org access token to config
+ */
+export async function setOrgToken(
+  token: string,
+  expiresAt: string,
+  scope: string,
+): Promise<void> {
+  await saveConfig({
+    orgToken: token,
+    orgTokenExpiresAt: expiresAt,
+    activeScope: scope,
+  });
+}
+
+/**
+ * Clear org access token from config
+ */
+export async function clearOrgToken(): Promise<void> {
+  const config = await loadConfig();
+  delete config.orgToken;
+  delete config.orgTokenExpiresAt;
+  delete config.activeScope;
+  const configDir = join(homedir(), ".vm0");
+  const configFile = join(configDir, "config.json");
+  await mkdir(configDir, { recursive: true });
+  await writeFile(configFile, JSON.stringify(config, null, 2), "utf8");
 }
 
 export async function getApiUrl(): Promise<string> {

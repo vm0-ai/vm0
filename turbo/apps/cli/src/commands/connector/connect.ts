@@ -7,14 +7,14 @@ import {
   connectorTypeSchema,
   type ApiErrorResponse,
 } from "@vm0/core";
-import { getApiUrl, getToken } from "../../lib/api/config";
+import { getApiUrl, getActiveToken } from "../../lib/api/config";
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function getHeaders(): Promise<Record<string, string>> {
-  const token = await getToken();
+  const token = await getActiveToken();
   if (!token) {
     throw new Error("Not authenticated. Run: vm0 auth login");
   }
