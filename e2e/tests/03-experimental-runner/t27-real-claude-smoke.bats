@@ -18,10 +18,9 @@ teardown() {
 }
 
 @test "real claude executes simple prompt with --debug-no-mock-claude" {
-    skip "cook does not support experimental_runner yet"
-
-    if [[ -z "$ANTHROPIC_API_KEY" ]]; then
-        skip "ANTHROPIC_API_KEY not set"
+    # Fail if ANTHROPIC_API_KEY is not set (required for this test)
+    if [ -z "$ANTHROPIC_API_KEY" ]; then
+        fail "ANTHROPIC_API_KEY not set - required for real Claude test"
     fi
 
     # Fail if not authenticated

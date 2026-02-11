@@ -19,8 +19,6 @@ teardown() {
 }
 
 @test "cook command reads vm0.yaml and prepares agent with volume" {
-    skip "cook does not support experimental_runner yet"
-
     # Skip if not authenticated (requires VM0_TOKEN or logged in)
     if $CLI_COMMAND auth status 2>&1 | grep -q "Not authenticated"; then
         skip "Not authenticated - run 'vm0 auth login' first"
