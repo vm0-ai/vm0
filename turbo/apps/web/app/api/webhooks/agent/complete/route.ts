@@ -18,6 +18,7 @@ import { publishStatus } from "../../../../../src/lib/realtime/client";
 import { notifyScheduleRunComplete } from "../../../../../src/lib/slack/handlers/schedule-notification";
 import { notifyScheduleRunCompleteEmail } from "../../../../../src/lib/email/handlers/schedule-notification";
 import { sendEmailReplyIfNeeded } from "../../../../../src/lib/email/handlers/send-reply";
+import { dispatchCallbacks } from "../../../../../src/lib/callback";
 import { after } from "next/server";
 
 const log = logger("webhook:complete");
@@ -215,6 +216,18 @@ const router = tsr.router(webhookCompleteContract, {
           : undefined,
       ).catch((err) => log.error("Failed to send email reply", { err })),
     );
+
+    // Dispatch registered callbacks (non-blocking)
+    // This handles Slack mentions and other webhook integrations
+    after(() => {
+      const errorMsg =
+        finalStatus === "failed"
+          ? (body.error ?? `Agent exited with code ${body.exitCode}`)
+          : undefined;
+      dispatchCallbacks(body.runId, finalStatus, undefined, errorMsg).catch(
+        (err) => log.error("Failed to dispatch callbacks", { err }),
+      );
+    });
 
     // Kill sandbox (wait for completion to ensure cleanup before response)
     if (sandboxId) {

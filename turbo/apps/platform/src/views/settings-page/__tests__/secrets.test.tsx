@@ -142,12 +142,12 @@ describe("secrets tab", () => {
     // Fill in the form
     const nameInput = within(dialog).getByPlaceholderText("MY_API_KEY");
     await user.click(nameInput);
-    await user.keyboard("NEW_SECRET");
+    await user.paste("NEW_SECRET");
 
     const valueInput =
       within(dialog).getByPlaceholderText("Enter secret value");
     await user.click(valueInput);
-    await user.keyboard("super-secret-value");
+    await user.paste("super-secret-value");
 
     // Submit
     const submitButton = within(dialog).getByRole("button", {
@@ -155,16 +155,13 @@ describe("secrets tab", () => {
     });
     await user.click(submitButton);
 
-    // Verify request
+    // Verify request and dialog closed
     await vi.waitFor(() => {
       expect(capturedBody).toBeTruthy();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
     expect(capturedBody!.name).toBe("NEW_SECRET");
     expect(capturedBody!.value).toBe("super-secret-value");
-
-    await vi.waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    });
   });
 
   it("can delete a secret via kebab menu", async () => {
@@ -207,9 +204,6 @@ describe("secrets tab", () => {
 
     await vi.waitFor(() => {
       expect(deletedName).toBe("API_KEY");
-    });
-
-    await vi.waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });

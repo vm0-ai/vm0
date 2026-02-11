@@ -21,7 +21,9 @@ import { slackComposeRequests } from "../db/schema/slack-compose-request";
 import { slackThreadSessions } from "../db/schema/slack-thread-session";
 import { emailThreadSessions } from "../db/schema/email-thread-session";
 import { emailReplyRequests } from "../db/schema/email-reply-request";
+import { agentRunCallbacks } from "../db/schema/agent-run-callback";
 import { and, eq } from "drizzle-orm";
+import { generateCallbackSecret } from "../lib/callback/hmac";
 
 // Route handlers - imported here so callers don't need to pass them
 import { POST as createComposeRoute } from "../../app/api/agent/composes/route";
@@ -1438,30 +1440,6 @@ export async function findUsageDaily(
 }
 
 /**
- * Find compose jobs by userId for verification.
- */
-export async function findTestComposeJobsByUser(userId: string) {
-  return globalThis.services.db
-    .select()
-    .from(composeJobs)
-    .where(eq(composeJobs.userId, userId));
-}
-
-/**
- * Find CLI tokens by userId and optional name filter.
- */
-export async function findTestCliTokensByUser(userId: string, name?: string) {
-  const conditions = [eq(cliTokens.userId, userId)];
-  if (name) {
-    conditions.push(eq(cliTokens.name, name));
-  }
-  return globalThis.services.db
-    .select()
-    .from(cliTokens)
-    .where(and(...conditions));
-}
-
-/**
  * Insert a slack_compose_requests record for test setup.
  */
 export async function createTestSlackComposeRequest(options: {
@@ -1658,4 +1636,33 @@ export async function findTestRunsByUserAndPrompt(
     .select()
     .from(agentRuns)
     .where(and(eq(agentRuns.userId, userId), eq(agentRuns.prompt, prompt)));
+}
+
+/**
+ * Create a test callback record for agent run completion
+ * Returns the callback ID and the plaintext secret for signing test requests
+ */
+export async function createTestCallback(params: {
+  runId: string;
+  url: string;
+  payload?: Record<string, unknown>;
+}): Promise<{ callbackId: string; secret: string }> {
+  const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
+  const secret = generateCallbackSecret();
+  const encryptedSecret = encryptCredentialValue(
+    secret,
+    SECRETS_ENCRYPTION_KEY,
+  );
+
+  const [callback] = await globalThis.services.db
+    .insert(agentRunCallbacks)
+    .values({
+      runId: params.runId,
+      url: params.url,
+      encryptedSecret,
+      payload: params.payload ?? null,
+    })
+    .returning({ id: agentRunCallbacks.id });
+
+  return { callbackId: callback!.id, secret };
 }

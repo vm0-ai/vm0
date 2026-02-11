@@ -57,7 +57,8 @@ describe("home page", () => {
 
     // Type a token value (default provider is claude-code-oauth-token)
     const tokenInput = screen.getByPlaceholderText("sk-ant-oat...");
-    await user.type(tokenInput, "sk-ant-oat-test-token");
+    await user.click(tokenInput);
+    await user.paste("sk-ant-oat-test-token");
 
     // Save button should now be enabled
     expect(saveButton).toBeEnabled();
@@ -138,7 +139,8 @@ describe("home page", () => {
 
     // Type a token value
     const tokenInput = screen.getByPlaceholderText("sk-ant-oat...");
-    await user.type(tokenInput, "sk-ant-oat-test-token");
+    await user.click(tokenInput);
+    await user.paste("sk-ant-oat-test-token");
 
     // Click Save
     await user.click(screen.getByRole("button", { name: "Save" }));
@@ -194,7 +196,8 @@ describe("home page", () => {
     });
 
     const tokenInput = screen.getByPlaceholderText("sk-ant-oat...");
-    await user.type(tokenInput, "sk-ant-oat-test-token");
+    await user.click(tokenInput);
+    await user.paste("sk-ant-oat-test-token");
 
     const saveButton = screen.getByRole("button", { name: "Save" });
     expect(saveButton).toBeEnabled();

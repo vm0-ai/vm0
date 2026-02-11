@@ -631,7 +631,10 @@ describe("POST /api/webhooks/agent/complete", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      // Then no Slack DM should be sent (no scheduleId → after() not called)
+      // Then email reply check + callback dispatch should be registered (no schedule notification)
+      // Both always run but are no-ops if no email reply request / no callbacks registered
+      expect(globalThis.nextAfterCallbacks).toHaveLength(2);
+      await context.mocks.flushAfter();
       expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
     });
   });

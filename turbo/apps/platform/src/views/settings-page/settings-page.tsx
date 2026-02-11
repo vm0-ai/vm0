@@ -18,6 +18,7 @@ import { DeleteSecretDialog } from "./delete-secret-dialog.tsx";
 import { VariableList } from "./variable-list.tsx";
 import { VariableDialog } from "./variable-dialog.tsx";
 import { DeleteVariableDialog } from "./delete-variable-dialog.tsx";
+import { SlackIntegrationCard } from "../integrations-page/integrations-page.tsx";
 
 export function SettingsPage() {
   const tab = useGet(activeTab$);
@@ -39,6 +40,7 @@ export function SettingsPage() {
             <TabsTrigger value="connectors">Connectors</TabsTrigger>
             <TabsTrigger value="secrets">Secrets</TabsTrigger>
             <TabsTrigger value="variables">Variables</TabsTrigger>
+            <TabsTrigger value="integrations">Integrations</TabsTrigger>
           </TabsList>
         </Tabs>
 
@@ -73,6 +75,8 @@ export function SettingsPage() {
             <DeleteVariableDialog />
           </>
         )}
+
+        {tab === "integrations" && <SlackIntegrationCard />}
       </div>
     </AppShell>
   );

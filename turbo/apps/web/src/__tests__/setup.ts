@@ -40,7 +40,8 @@ vi.hoisted(() => {
   vi.stubEnv("SLACK_REDIRECT_BASE_URL", "https://test.example.com");
   // API URL for compose job webhooks
   vi.stubEnv("VM0_API_URL", "http://localhost:3000");
-  vi.stubEnv("PLATFORM_URL", "http://localhost:3000");
+  // Platform UI URL
+  vi.stubEnv("PLATFORM_URL", "https://platform.test.example.com");
   // Email integration (Resend)
   vi.stubEnv("RESEND_API_KEY", "re_test_api_key");
   vi.stubEnv("RESEND_WEBHOOK_SECRET", "whsec_test_webhook_secret");

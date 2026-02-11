@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.31.0](https://github.com/vm0-ai/vm0/compare/web-v12.30.0...web-v12.31.0) (2026-02-11)
+
+
+### Features
+
+* **platform:** add connector management to settings page ([#2769](https://github.com/vm0-ai/vm0/issues/2769)) ([418bc1e](https://github.com/vm0-ai/vm0/commit/418bc1e2dd6afb94b3caca84abf260bf542359c8)), closes [#2766](https://github.com/vm0-ai/vm0/issues/2766)
+* **slack:** move settings to platform integrations page ([#2797](https://github.com/vm0-ai/vm0/issues/2797)) ([030e41f](https://github.com/vm0-ai/vm0/commit/030e41fa55e7f7eeebb811f6619ad84c954de173))
+
+
+### Bug Fixes
+
+* **telemetry:** await db fallback instead of fire-and-forget ([#2841](https://github.com/vm0-ai/vm0/issues/2841)) ([7dbabc0](https://github.com/vm0-ai/vm0/commit/7dbabc0cdb6c34e1a221d0353aa77b1405e15e03))
+
+
+### Performance Improvements
+
+* **web:** optimize agent API query performance with JOINs and Promise.all ([#2816](https://github.com/vm0-ai/vm0/issues/2816)) ([5149283](https://github.com/vm0-ai/vm0/commit/5149283480a3c8c2525a75dace00b6c41946f203))
+
 ## [12.30.0](https://github.com/vm0-ai/vm0/compare/web-v12.29.0...web-v12.30.0) (2026-02-11)
 
 
