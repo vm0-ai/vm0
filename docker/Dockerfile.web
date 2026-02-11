@@ -21,6 +21,7 @@ COPY turbo/packages/ui/package.json packages/ui/package.json
 COPY turbo/packages/eslint-config/package.json packages/eslint-config/package.json
 COPY turbo/packages/typescript-config/package.json packages/typescript-config/package.json
 COPY turbo/packages/proxy/package.json packages/proxy/package.json
+COPY turbo/packages/sandbox-scripts/package.json packages/sandbox-scripts/package.json
 
 RUN pnpm install --frozen-lockfile --ignore-scripts \
     && pnpm rebuild esbuild
