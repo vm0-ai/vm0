@@ -154,7 +154,12 @@ fn rmpv_to_json(value: rmpv::Value) -> serde_json::Value {
         rmpv::Value::F64(f) => serde_json::Number::from_f64(f)
             .map_or(serde_json::Value::Null, serde_json::Value::Number),
         rmpv::Value::String(s) => {
-            serde_json::Value::String(s.into_str().unwrap_or_default().to_string())
+            if s.is_str() {
+                serde_json::Value::String(s.into_str().unwrap_or_default().to_string())
+            } else {
+                tracing::warn!("msgpack string contains invalid UTF-8, substituting empty string");
+                serde_json::Value::String(String::new())
+            }
         }
         rmpv::Value::Binary(bytes) => {
             let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);

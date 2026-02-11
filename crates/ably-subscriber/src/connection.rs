@@ -480,6 +480,11 @@ fn decode_data(data: serde_json::Value, encoding: Option<&str>) -> serde_json::V
                 }
             }
             "base64" => {
+                // serde_json::Value has no binary type, so we represent decoded
+                // bytes as a JSON array of numbers (e.g. [104, 101, 108, ...]).
+                // In practice this branch is rarely hit: Ably's REST→Realtime
+                // bridge consumes the encoding, so binary data arrives as
+                // msgpack Binary (handled by rmpv_to_json → base64 string).
                 if let serde_json::Value::String(ref s) = result {
                     match base64::engine::general_purpose::STANDARD.decode(s) {
                         Ok(bytes) => {
@@ -533,6 +538,12 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
                         client_id: m.client_id,
                         timestamp,
                     });
+                    // Use try_send (non-blocking) for messages: if the consumer
+                    // falls behind, we drop messages rather than stalling the
+                    // event loop (which would block heartbeat processing and
+                    // cause spurious reconnects). Status events (Connected,
+                    // Disconnected, Error) use .send().await because they must
+                    // not be lost.
                     match p.event_tx.try_send(event) {
                         Ok(()) => {}
                         Err(mpsc::error::TrySendError::Full(_)) => {

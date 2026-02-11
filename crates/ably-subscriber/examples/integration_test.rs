@@ -120,6 +120,10 @@ fn test_cases() -> Vec<TestCase> {
             expected_data: serde_json::json!("こんにちは 🌍"),
         },
         // --- Explicit encoding ---
+        // NOTE: Ably's REST→Realtime bridge consumes the encoding field before
+        // forwarding, so the subscriber receives raw msgpack Binary data (no
+        // encoding). This exercises the rmpv_to_json Binary→base64 path, not
+        // decode_data's base64 branch (which is covered by unit tests).
         TestCase {
             label: "binary",
             name: Some("binary"),
