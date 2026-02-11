@@ -1,4 +1,6 @@
 mod api;
+mod build_rootfs;
+mod command;
 mod error;
 mod executor;
 mod paths;
@@ -47,6 +49,8 @@ enum Command {
     Start(Box<StartArgs>),
     /// Download Firecracker, kernel, and verify host prerequisites
     Setup(SetupArgs),
+    /// Build squashfs rootfs for Firecracker VMs
+    BuildRootfs(build_rootfs::BuildRootfsArgs),
 }
 
 #[derive(Args)]
@@ -112,6 +116,7 @@ async fn main() -> ExitCode {
     let result = match cli.command {
         Command::Start(args) => run_start(*args).await,
         Command::Setup(args) => setup::run_setup(args.strict).await,
+        Command::BuildRootfs(args) => build_rootfs::run_build_rootfs(args).await,
     };
 
     if let Err(e) = result {
