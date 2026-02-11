@@ -9,22 +9,22 @@ export function isSelfHosted(): boolean {
   return env().SELF_HOSTED === "true";
 }
 
-// Internal flags for conditional schema validation (must read process.env
-// directly because they configure the schema that env() itself validates).
-const _isSelfHosted = process.env.SELF_HOSTED === "true";
-const slackEnabled =
-  !_isSelfHosted || process.env.SLACK_INTEGRATION_ENABLED === "true";
-const e2bEnabled = !_isSelfHosted || process.env.E2B_ENABLED === "true";
-
-/**
- * Make a field required only when a condition is true, otherwise optional.
- * In SaaS mode all conditions default to true, so behavior is unchanged.
- */
-function requiredWhen(condition: boolean, schema = z.string().min(1)) {
-  return condition ? schema : schema.optional();
-}
-
 function initEnv() {
+  // Internal flags for conditional schema validation (must read process.env
+  // directly because they configure the schema that env() itself validates).
+  const selfHosted = process.env.SELF_HOSTED === "true";
+  const slackEnabled =
+    !selfHosted || process.env.SLACK_INTEGRATION_ENABLED === "true";
+  const e2bEnabled = !selfHosted || process.env.E2B_ENABLED === "true";
+
+  /**
+   * Make a field required only when a condition is true, otherwise optional.
+   * In SaaS mode all conditions default to true, so behavior is unchanged.
+   */
+  function requiredWhen(condition: boolean, schema = z.string().min(1)) {
+    return condition ? schema : schema.optional();
+  }
+
   return createEnv({
     server: {
       DATABASE_URL: z.string().min(1),
@@ -40,7 +40,7 @@ function initEnv() {
         .positive()
         .default(10000),
       SELF_HOSTED: z.enum(["true", "false"]).optional(),
-      CLERK_SECRET_KEY: requiredWhen(!_isSelfHosted),
+      CLERK_SECRET_KEY: requiredWhen(!selfHosted),
       E2B_ENABLED: z.enum(["true", "false"]).optional(),
       E2B_API_KEY: requiredWhen(e2bEnabled),
       VM0_API_URL: z.string().url().optional(),
@@ -103,7 +103,7 @@ function initEnv() {
     },
     client: {
       NEXT_PUBLIC_SELF_HOSTED: z.enum(["true", "false"]).optional(),
-      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: requiredWhen(!_isSelfHosted),
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: requiredWhen(!selfHosted),
       NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
       // Blog/content config
       NEXT_PUBLIC_BASE_URL: z.string().url().optional(),
