@@ -16,6 +16,7 @@ describe("test model providers", () => {
     await setupPage({
       context,
       path: "/",
+      withoutRender: true,
     });
 
     await expect(context.store.get(modelProviders$)).resolves.toHaveProperty(

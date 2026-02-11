@@ -21,6 +21,7 @@ export async function setupPage(options: {
   session?: { token: string } | null;
   debugLoggers?: string[];
   featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
+  withoutRender?: boolean;
 }) {
   createPushStateMock(options.context.signal);
   pushState({}, "", options.path);
@@ -54,21 +55,29 @@ export async function setupPage(options: {
     clearMockedAuth();
   });
 
-  // Bootstrap the app (like main.ts does)
-  await act(async () => {
+  if (options.withoutRender) {
     await options.context.store.set(
       bootstrap$,
-      () => {
-        setupRouter(options.context.store, (element) => {
-          const { unmount } = render(element);
-          options.context.signal.addEventListener("abort", () => {
-            unmount();
-          });
-        });
-      },
+      () => {},
       options.context.signal,
     );
-  });
+  } else {
+    // Bootstrap the app (like main.ts does)
+    await act(async () => {
+      await options.context.store.set(
+        bootstrap$,
+        () => {
+          setupRouter(options.context.store, (element) => {
+            const { unmount } = render(element);
+            options.context.signal.addEventListener("abort", () => {
+              unmount();
+            });
+          });
+        },
+        options.context.signal,
+      );
+    });
+  }
 }
 
 // Helper to create a pushState mock that updates mockLocation

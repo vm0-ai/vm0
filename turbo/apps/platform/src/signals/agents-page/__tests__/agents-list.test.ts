@@ -40,7 +40,7 @@ describe("agents-list signals", () => {
         }),
       );
 
-      await setupPage({ context, path: "/" });
+      await setupPage({ context, path: "/", withoutRender: true });
 
       await context.store.set(fetchAgentsList$);
 
@@ -65,7 +65,7 @@ describe("agents-list signals", () => {
         }),
       );
 
-      await setupPage({ context, path: "/" });
+      await setupPage({ context, path: "/", withoutRender: true });
 
       await context.store.set(fetchAgentsList$);
 
@@ -93,7 +93,7 @@ describe("agents-list signals", () => {
         }),
       );
 
-      await setupPage({ context, path: "/" });
+      await setupPage({ context, path: "/", withoutRender: true });
 
       await context.store.set(fetchAgentsList$);
 
