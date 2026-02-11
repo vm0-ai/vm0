@@ -129,40 +129,58 @@ export function SecretList() {
       )}
 
       <div className="flex flex-col">
-        {secretsList &&
-          secretsList.map((secret, index) => (
-            <SecretRow key={secret.id} secret={secret} isFirst={index === 0} />
-          ))}
+        {!secretsList
+          ? ["s1", "s2", "s3"].map((id, i) => (
+              <div
+                key={id}
+                className={`flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 animate-pulse ${i === 0 ? "rounded-t-xl" : ""} ${i === 2 ? "rounded-b-xl border-b" : ""}`}
+              >
+                <div className="flex flex-1 flex-col gap-2">
+                  <div className="h-4 w-32 rounded bg-muted" />
+                  <div className="h-3 w-48 rounded bg-muted" />
+                </div>
+                <div className="h-3 w-16 rounded bg-muted" />
+              </div>
+            ))
+          : secretsList.map((secret, index) => (
+              <SecretRow
+                key={secret.id}
+                secret={secret}
+                isFirst={index === 0}
+              />
+            ))}
 
-        <div
-          className={`flex flex-col gap-4 border border-border bg-card p-4 rounded-b-xl sm:flex-row sm:items-center ${!secretsList || secretsList.length === 0 ? "rounded-t-xl" : ""}`}
-        >
-          <div className="flex flex-1 items-center gap-4 min-w-0">
-            <div className="flex shrink-0 items-center justify-center size-[28px]">
-              <IconPlus size={24} stroke={1.5} className="text-foreground" />
-            </div>
-            <div className="flex flex-1 flex-col gap-1 min-w-0">
-              <div className="text-sm font-medium text-foreground">
-                {!secretsList || secretsList.length === 0
-                  ? "No secrets configured yet"
-                  : "New secret"}
-              </div>
-              <div className="text-sm text-muted-foreground">
-                {!secretsList || secretsList.length === 0
-                  ? "Add your first encrypted credential"
-                  : "Add a new encrypted credential for your agents"}
-              </div>
-            </div>
-          </div>
-          <button
-            onClick={() => openAdd()}
-            className="flex items-center self-start shrink-0 rounded-lg border border-border bg-background overflow-hidden hover:bg-muted transition-colors"
+        {secretsList && (
+          <div
+            className={`flex flex-col gap-4 border border-border bg-card p-4 rounded-b-xl sm:flex-row sm:items-center ${secretsList.length === 0 ? "rounded-t-xl" : ""}`}
           >
-            <span className="px-4 py-2 text-sm font-medium text-foreground">
-              Add secret
-            </span>
-          </button>
-        </div>
+            <div className="flex flex-1 items-center gap-4 min-w-0">
+              <div className="flex shrink-0 items-center justify-center size-[28px]">
+                <IconPlus size={24} stroke={1.5} className="text-foreground" />
+              </div>
+              <div className="flex flex-1 flex-col gap-1 min-w-0">
+                <div className="text-sm font-medium text-foreground">
+                  {secretsList.length === 0
+                    ? "No secrets configured yet"
+                    : "New secret"}
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {secretsList.length === 0
+                    ? "Add your first encrypted credential"
+                    : "Add a new encrypted credential for your agents"}
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => openAdd()}
+              className="flex items-center self-start shrink-0 rounded-lg border border-border bg-background overflow-hidden hover:bg-muted transition-colors"
+            >
+              <span className="px-4 py-2 text-sm font-medium text-foreground">
+                Add secret
+              </span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
