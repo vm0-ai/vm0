@@ -96,7 +96,7 @@ async fn run() -> i32 {
     record_sandbox_op("telemetry_upload_start", t.elapsed(), true, None);
 
     // Execute main logic (init + CLI + checkpoint)
-    let (exit_code, _error_message) = execute(&masker, start, heartbeat_handle).await;
+    let exit_code = execute(&masker, start, heartbeat_handle).await;
 
     // Guaranteed cleanup: final telemetry upload
     log_info!(LOG_TAG, "▷ Cleanup");
@@ -118,12 +118,11 @@ async fn run() -> i32 {
 }
 
 /// Main execution logic: working dir, codex setup, CLI, checkpoint.
-/// Returns `(exit_code, error_message)`.
 async fn execute(
     masker: &masker::SecretMasker,
     start: Instant,
     heartbeat_handle: tokio::task::JoinHandle<Result<(), error::AgentError>>,
-) -> (i32, String) {
+) -> i32 {
     // Working directory setup
     let wd_start = Instant::now();
     if let Err(e) = std::fs::create_dir_all(env::working_dir())
@@ -132,7 +131,7 @@ async fn execute(
         let msg = format!("Working dir setup failed: {e}");
         log_error!(LOG_TAG, "{msg}");
         record_sandbox_op("working_dir_setup", wd_start.elapsed(), false, Some(&msg));
-        return (1, msg);
+        return 1;
     }
     record_sandbox_op("working_dir_setup", wd_start.elapsed(), true, None);
 
@@ -154,7 +153,7 @@ async fn execute(
     // Execution phase
     log_info!(LOG_TAG, "▷ Execution");
     let cli_start = Instant::now();
-    let (mut exit_code, mut error_message) = match cli::execute_cli(masker, heartbeat_handle).await
+    let (mut exit_code, error_message) = match cli::execute_cli(masker, heartbeat_handle).await
     {
         Ok((code, stderr_lines)) => {
             if code != 0 {
@@ -192,10 +191,6 @@ async fn execute(
     if std::path::Path::new(paths::event_error_flag()).exists() {
         log_error!(LOG_TAG, "Some events failed to send, marking run as failed");
         exit_code = 1;
-        // Only override error_message when CLI itself succeeded (matching TS priority)
-        if cli_exit_code == 0 {
-            error_message = "Some events failed to send".to_string();
-        }
     }
 
     if cli_exit_code == 0 && exit_code == 0 {
@@ -226,7 +221,6 @@ async fn execute(
                     cp_start.elapsed().as_secs()
                 );
                 exit_code = 1;
-                error_message = "Checkpoint creation failed".to_string();
             }
         }
     } else if cli_exit_code != 0 {
@@ -237,7 +231,7 @@ async fn execute(
         );
     }
 
-    (exit_code, error_message)
+    exit_code
 }
 
 /// Cleanup that always runs: final telemetry upload.
