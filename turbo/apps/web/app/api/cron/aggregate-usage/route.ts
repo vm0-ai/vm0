@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
-import { usageDaily } from "../../../../src/db/schema/usage-daily";
-import { sql, and, gte, lt, isNotNull } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 
 export async function GET(request: Request): Promise<Response> {
   initServices();
@@ -28,48 +27,27 @@ export async function GET(request: Request): Promise<Response> {
   );
   const targetDate = yesterday.toISOString().split("T")[0]!;
 
-  // Aggregate completed runs from yesterday, grouped by user
-  const results = await globalThis.services.db
-    .select({
-      userId: agentRuns.userId,
-      runCount: sql<number>`COUNT(*)::int`.as("run_count"),
-      runTimeMs:
-        sql<number>`COALESCE(SUM(EXTRACT(EPOCH FROM (${agentRuns.completedAt} - ${agentRuns.startedAt})) * 1000), 0)::bigint`.as(
-          "run_time_ms",
-        ),
-    })
-    .from(agentRuns)
-    .where(
-      and(
-        gte(agentRuns.createdAt, yesterday),
-        lt(agentRuns.createdAt, today),
-        isNotNull(agentRuns.completedAt),
-      ),
-    )
-    .groupBy(agentRuns.userId);
-
-  // Upsert each user's daily usage
-  for (const row of results) {
-    await globalThis.services.db
-      .insert(usageDaily)
-      .values({
-        userId: row.userId,
-        date: targetDate,
-        runCount: row.runCount,
-        runTimeMs: Number(row.runTimeMs),
-      })
-      .onConflictDoUpdate({
-        target: [usageDaily.userId, usageDaily.date],
-        set: {
-          runCount: row.runCount,
-          runTimeMs: Number(row.runTimeMs),
-          updatedAt: new Date(),
-        },
-      });
-  }
+  // Aggregate completed runs from yesterday and upsert daily usage in one query
+  const result = await globalThis.services.db.execute(sql`
+    INSERT INTO usage_daily (user_id, date, run_count, run_time_ms)
+    SELECT
+      ${agentRuns.userId},
+      ${targetDate}::date,
+      COUNT(*)::int,
+      COALESCE(SUM(EXTRACT(EPOCH FROM (${agentRuns.completedAt} - ${agentRuns.startedAt})) * 1000), 0)::bigint
+    FROM ${agentRuns}
+    WHERE ${agentRuns.createdAt} >= ${yesterday}
+      AND ${agentRuns.createdAt} < ${today}
+      AND ${agentRuns.completedAt} IS NOT NULL
+    GROUP BY ${agentRuns.userId}
+    ON CONFLICT (user_id, date) DO UPDATE SET
+      run_count = EXCLUDED.run_count,
+      run_time_ms = EXCLUDED.run_time_ms,
+      updated_at = NOW()
+  `);
 
   return NextResponse.json({
     date: targetDate,
-    aggregated: results.length,
+    aggregated: result.rowCount ?? 0,
   });
 }
