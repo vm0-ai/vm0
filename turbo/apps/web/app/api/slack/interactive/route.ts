@@ -27,6 +27,7 @@ import {
   createSlackClient,
   isSlackInvalidAuthError,
   refreshAppHome,
+  resolveDefaultAgentComposeId,
 } from "../../../../src/lib/slack";
 import {
   listSecrets,
@@ -241,10 +242,7 @@ async function fetchWorkspaceAgentInfo(
 /**
  * Fetch all agents owned by the admin user
  */
-async function fetchAdminAgents(
-  vm0UserId: string,
-  includeComposeId?: string,
-): Promise<
+async function fetchAdminAgents(vm0UserId: string): Promise<
   Array<{
     id: string;
     name: string;
@@ -263,8 +261,13 @@ async function fetchAdminAgents(
     .from(agentComposes)
     .where(eq(agentComposes.userId, vm0UserId));
 
-  // Include the default workspace agent if it's not owned by the admin
-  if (includeComposeId && !composes.some((c) => c.id === includeComposeId)) {
+  // Include the platform default agent (from SLACK_DEFAULT_AGENT env var)
+  // so admin can always switch back to it
+  const platformDefaultComposeId = await resolveDefaultAgentComposeId();
+  if (
+    platformDefaultComposeId &&
+    !composes.some((c) => c.id === platformDefaultComposeId)
+  ) {
     const [defaultCompose] = await globalThis.services.db
       .select({
         id: agentComposes.id,
@@ -272,7 +275,7 @@ async function fetchAdminAgents(
         headVersionId: agentComposes.headVersionId,
       })
       .from(agentComposes)
-      .where(eq(agentComposes.id, includeComposeId))
+      .where(eq(agentComposes.id, platformDefaultComposeId))
       .limit(1);
     if (defaultCompose) {
       composes.unshift(defaultCompose);
@@ -426,11 +429,7 @@ async function handleAgentManageSelection(
   const userLink = await getUserLink(payload.user.id, payload.team.id);
   if (!userLink) return;
 
-  const installation = await getInstallation(payload.team.id);
-  const agents = await fetchAdminAgents(
-    userLink.vm0UserId,
-    installation?.defaultComposeId,
-  );
+  const agents = await fetchAdminAgents(userLink.vm0UserId);
   const updatedModal = buildAgentManageModal(
     agents,
     selectedAgentId,
@@ -596,10 +595,7 @@ async function handleHomeAgentManage(
   const providers = await listModelProviders(userLink.vm0UserId);
   const hasModelProvider = providers.length > 0;
 
-  const agents = await fetchAdminAgents(
-    userLink.vm0UserId,
-    installation.defaultComposeId,
-  );
+  const agents = await fetchAdminAgents(userLink.vm0UserId);
   const currentAgentId = agents.find(
     (a) => a.id === installation.defaultComposeId,
   )?.id;
@@ -659,11 +655,7 @@ async function handleModelProviderRefresh(
     payload.view?.state?.values?.agent_select?.agent_select_action
       ?.selected_option?.value;
 
-  const installation = await getInstallation(payload.team.id);
-  const agents = await fetchAdminAgents(
-    userLink.vm0UserId,
-    installation?.defaultComposeId,
-  );
+  const agents = await fetchAdminAgents(userLink.vm0UserId);
   const updatedModal = buildAgentManageModal(
     agents,
     selectedAgentId,

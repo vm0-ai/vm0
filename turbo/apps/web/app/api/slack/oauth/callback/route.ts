@@ -4,46 +4,10 @@ import { env } from "../../../../../src/env";
 import {
   exchangeOAuthCode,
   getSlackRedirectBaseUrl,
+  resolveDefaultAgentComposeId,
 } from "../../../../../src/lib/slack";
 import { encryptCredentialValue } from "../../../../../src/lib/crypto/secrets-encryption";
 import { slackInstallations } from "../../../../../src/db/schema/slack-installation";
-import { agentComposes } from "../../../../../src/db/schema/agent-compose";
-import { scopes } from "../../../../../src/db/schema/scope";
-import { eq, and } from "drizzle-orm";
-
-/**
- * Look up the default agent compose ID from SLACK_DEFAULT_AGENT env var.
- * Format: "scope-slug/agent-name" (e.g. "yuma/deep-dive")
- */
-async function resolveDefaultAgent(
-  slackDefaultAgent: string | undefined,
-): Promise<string | null> {
-  if (!slackDefaultAgent) return null;
-
-  const [scopeSlug, agentName] = slackDefaultAgent.split("/");
-  if (!scopeSlug || !agentName) return null;
-
-  const [scope] = await globalThis.services.db
-    .select({ id: scopes.id })
-    .from(scopes)
-    .where(eq(scopes.slug, scopeSlug))
-    .limit(1);
-
-  if (!scope) return null;
-
-  const [compose] = await globalThis.services.db
-    .select({ id: agentComposes.id })
-    .from(agentComposes)
-    .where(
-      and(
-        eq(agentComposes.scopeId, scope.id),
-        eq(agentComposes.name, agentName),
-      ),
-    )
-    .limit(1);
-
-  return compose?.id ?? null;
-}
 
 /**
  * Slack OAuth Callback Endpoint
@@ -57,12 +21,8 @@ async function resolveDefaultAgent(
 export async function GET(request: Request) {
   initServices();
 
-  const {
-    SLACK_CLIENT_ID,
-    SLACK_CLIENT_SECRET,
-    SECRETS_ENCRYPTION_KEY,
-    SLACK_DEFAULT_AGENT,
-  } = env();
+  const { SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, SECRETS_ENCRYPTION_KEY } =
+    env();
 
   if (!SLACK_CLIENT_ID || !SLACK_CLIENT_SECRET) {
     return NextResponse.json(
@@ -131,7 +91,7 @@ export async function GET(request: Request) {
 
     // Fall back to SLACK_DEFAULT_AGENT when no composeId is specified
     if (!defaultComposeId) {
-      defaultComposeId = await resolveDefaultAgent(SLACK_DEFAULT_AGENT);
+      defaultComposeId = await resolveDefaultAgentComposeId();
     }
 
     if (!defaultComposeId) {

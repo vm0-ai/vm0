@@ -23,6 +23,7 @@ import {
   getSlackRedirectBaseUrl,
   isSlackInvalidAuthError,
   refreshAppHome,
+  resolveDefaultAgentComposeId,
 } from "../../../../src/lib/slack";
 import { listSecrets } from "../../../../src/lib/secret/secret-service";
 import { listVariables } from "../../../../src/lib/variable/variable-service";
@@ -530,8 +531,13 @@ async function handleAgentManage(
     .from(agentComposes)
     .where(eq(agentComposes.userId, vm0UserId));
 
-  // Include the default workspace agent if it's not owned by the admin
-  if (!composes.some((c) => c.id === installation.defaultComposeId)) {
+  // Include the platform default agent (from SLACK_DEFAULT_AGENT env var)
+  // so admin can always switch back to it
+  const platformDefaultComposeId = await resolveDefaultAgentComposeId();
+  if (
+    platformDefaultComposeId &&
+    !composes.some((c) => c.id === platformDefaultComposeId)
+  ) {
     const [defaultCompose] = await globalThis.services.db
       .select({
         id: agentComposes.id,
@@ -539,7 +545,7 @@ async function handleAgentManage(
         headVersionId: agentComposes.headVersionId,
       })
       .from(agentComposes)
-      .where(eq(agentComposes.id, installation.defaultComposeId))
+      .where(eq(agentComposes.id, platformDefaultComposeId))
       .limit(1);
     if (defaultCompose) {
       composes.unshift(defaultCompose);
