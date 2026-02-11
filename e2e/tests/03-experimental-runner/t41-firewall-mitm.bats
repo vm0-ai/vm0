@@ -10,7 +10,7 @@
 #
 # Prerequisites: runner must have mitmproxy installed with CA certificate
 
-load '../../helpers/setup.bash'
+load '../../helpers/setup'
 
 setup() {
     if [[ -z "$VM0_API_URL" ]]; then
