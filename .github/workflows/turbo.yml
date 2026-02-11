@@ -20,6 +20,7 @@ jobs:
     outputs:
       job-ref: ${{ steps.set-job-ref.outputs.job-ref }}
       web-preview-url: ${{ steps.preview-urls.outputs.web-url }}
+      platform-preview-url: ${{ steps.preview-urls.outputs.platform-url }}
       web-changed: ${{ steps.detect.outputs.web-changed }}
       docs-changed: ${{ steps.detect.outputs.docs-changed }}
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
@@ -118,9 +119,11 @@ jobs:
 
           if [ -n "$PREVIEW_DOMAIN" ] && [ -n "$JOB_REF" ]; then
             echo "web-url=https://${JOB_REF}-www.${PREVIEW_DOMAIN}" >> $GITHUB_OUTPUT
+            echo "platform-url=https://${JOB_REF}-platform.${PREVIEW_DOMAIN}" >> $GITHUB_OUTPUT
             echo "Preview URL set to: https://${JOB_REF}-www.${PREVIEW_DOMAIN}"
           else
             echo "web-url=" >> $GITHUB_OUTPUT
+            echo "platform-url=" >> $GITHUB_OUTPUT
             echo "Preview URL not set (PREVIEW_DOMAIN or job-ref is empty)"
           fi
 
@@ -328,6 +331,7 @@ jobs:
         working-directory: turbo
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
+          PLATFORM_URL: https://platform.test.local
         run: pnpm vitest run --project=web
 
   test-cli:
@@ -455,6 +459,7 @@ jobs:
             GH_OAUTH_CLIENT_SECRET=${{ secrets.GH_OAUTH_CLIENT_SECRET }}
             NOTION_OAUTH_CLIENT_ID=${{ vars.NOTION_OAUTH_CLIENT_ID }}
             NOTION_OAUTH_CLIENT_SECRET=${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
+            PLATFORM_URL=${{ needs.prepare.outputs.platform-preview-url }}
             NEXT_PUBLIC_STRAPI_URL=${{ vars.NEXT_PUBLIC_STRAPI_URL }}
           meta-branch: ${{ github.head_ref || github.ref_name }}
           meta-pr: ${{ needs.prepare.outputs.job-ref }}

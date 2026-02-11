@@ -67,7 +67,7 @@ function initEnv() {
       NOTION_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       NOTION_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // Platform UI URL (for settings page links in error messages)
-      PLATFORM_URL: z.string().url().optional(),
+      PLATFORM_URL: z.string().url(),
       // Sentry
       SENTRY_DSN: z.string().url().optional(),
       SENTRY_AUTH_TOKEN: z.string().min(1).optional(),
