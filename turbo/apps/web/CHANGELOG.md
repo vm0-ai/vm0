@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.30.0](https://github.com/vm0-ai/vm0/compare/web-v12.29.0...web-v12.30.0) (2026-02-11)
+
+
+### Features
+
+* **deploy:** add self-hosted deployment support with docker and local auth ([#2718](https://github.com/vm0-ai/vm0/issues/2718)) ([498da5e](https://github.com/vm0-ai/vm0/commit/498da5e0a411a034df83c18c00fc287143dc0259))
+
 ## [12.29.0](https://github.com/vm0-ai/vm0/compare/web-v12.28.1...web-v12.29.0) (2026-02-11)
 
 
