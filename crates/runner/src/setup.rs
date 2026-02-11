@@ -229,9 +229,11 @@ async fn download_firecracker(paths: &HomePaths, arch: &str) -> RunnerResult<()>
     let _ = tokio::fs::remove_file(&tarball_path).await;
     let sha_hex = result?;
 
+    #[allow(clippy::unreachable)] // arch validated by check_architecture
     let expected_sha = match arch {
         "x86_64" => FIRECRACKER_SHA256_X86_64,
-        _ => FIRECRACKER_SHA256_AARCH64,
+        "aarch64" => FIRECRACKER_SHA256_AARCH64,
+        _ => unreachable!(),
     };
     if let Err(e) = verify_sha256(&sha_hex, expected_sha, "firecracker binary") {
         let _ = tokio::fs::remove_file(&tmp_path).await;
@@ -357,9 +359,11 @@ async fn download_kernel(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
         }
     };
 
+    #[allow(clippy::unreachable)] // arch validated by check_architecture
     let expected_sha = match arch {
         "x86_64" => KERNEL_SHA256_X86_64,
-        _ => KERNEL_SHA256_AARCH64,
+        "aarch64" => KERNEL_SHA256_AARCH64,
+        _ => unreachable!(),
     };
     if let Err(e) = verify_sha256(&sha_hex, expected_sha, "kernel") {
         let _ = tokio::fs::remove_file(&tmp_path).await;
