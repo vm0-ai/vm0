@@ -17,7 +17,7 @@ vi.hoisted(() => {
 
 // Start MSW server before all tests
 beforeAll(() => {
-  server.listen({ onUnhandledRequest: "bypass" });
+  server.listen({ onUnhandledRequest: "error" });
 });
 
 // Reset handlers after each test

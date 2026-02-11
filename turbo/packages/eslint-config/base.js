@@ -3,6 +3,39 @@ import eslintConfigPrettier from "eslint-config-prettier";
 import turboPlugin from "eslint-plugin-turbo";
 import tseslint from "typescript-eslint";
 
+const vm0Plugin = {
+  rules: {
+    "no-msw-bypass": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            'Disallow onUnhandledRequest: "bypass" in MSW server configuration',
+        },
+        messages: {
+          noBypass:
+            'Use onUnhandledRequest: "error" instead of "bypass". All MSW requests must be explicitly handled.',
+        },
+        schema: [],
+      },
+      create(context) {
+        return {
+          Property(node) {
+            if (
+              node.key.type === "Identifier" &&
+              node.key.name === "onUnhandledRequest" &&
+              node.value.type === "Literal" &&
+              node.value.value === "bypass"
+            ) {
+              context.report({ node: node.value, messageId: "noBypass" });
+            }
+          },
+        };
+      },
+    },
+  },
+};
+
 /**
  * A shared ESLint configuration for the repository.
  *
@@ -15,10 +48,12 @@ export const config = [
   {
     plugins: {
       turbo: turboPlugin,
+      vm0: vm0Plugin,
     },
     rules: {
       "turbo/no-undeclared-env-vars": "warn",
       complexity: ["error", { max: 20 }],
+      "vm0/no-msw-bypass": "error",
     },
   },
   {
