@@ -10,6 +10,7 @@ use crate::paths::HomePaths;
 
 const FIRECRACKER_VERSION: &str = "v1.14.1";
 const KERNEL_VERSION: &str = "6.1.155";
+const MITMPROXY_VERSION: &str = "12.2.1";
 
 // SHA256 checksums for installed artifacts, keyed by arch.
 const FIRECRACKER_SHA256_X86_64: &str =
@@ -20,6 +21,10 @@ const KERNEL_SHA256_X86_64: &str =
     "e41c7048bd2475e7e788153823fcb9166a7e0b78c4c443bd6446d015fa735f53";
 const KERNEL_SHA256_AARCH64: &str =
     "61baeae1ac6197be4fc5c71fa78df266acdc33c54570290d2f611c2b42c105be";
+const MITMDUMP_SHA256_X86_64: &str =
+    "0adfd86a006b593dce745b989f305f14acd94edadf7f998b6985555b44838167";
+const MITMDUMP_SHA256_AARCH64: &str =
+    "48fb2cd30945f03faa5cc2797dd6e5762f09ebe8754da87ac8c372dc82e694df";
 
 /// "v1.14.1" → "v1.14"
 const FIRECRACKER_MINOR: &str = strip_patch(FIRECRACKER_VERSION);
@@ -45,9 +50,10 @@ pub async fn run_setup(strict: bool) -> RunnerResult<()> {
     let (missing_required, missing_optional) = check_system_dependencies();
 
     let paths = HomePaths::new()?;
-    create_directories(&paths, FIRECRACKER_VERSION).await?;
+    create_directories(&paths).await?;
     download_firecracker(&paths, arch).await?;
     download_kernel(&paths, arch).await?;
+    download_mitmdump(&paths, arch).await?;
     check_kvm();
 
     if !missing_required.is_empty() {
@@ -118,16 +124,18 @@ fn check_system_dependencies() -> (Vec<&'static str>, Vec<&'static str>) {
     (missing_required, missing_optional)
 }
 
-async fn create_directories(paths: &HomePaths, fc_version: &str) -> RunnerResult<()> {
-    tokio::fs::create_dir_all(paths.bin_dir())
-        .await
-        .map_err(|e| RunnerError::Internal(format!("create bin dir: {e}")))?;
-    tokio::fs::create_dir_all(paths.firecracker_dir(fc_version))
-        .await
-        .map_err(|e| RunnerError::Internal(format!("create firecracker dir: {e}")))?;
-    tokio::fs::create_dir_all(paths.runners_dir())
-        .await
-        .map_err(|e| RunnerError::Internal(format!("create runners dir: {e}")))?;
+async fn create_directories(paths: &HomePaths) -> RunnerResult<()> {
+    let dirs = [
+        paths.bin_dir(),
+        paths.firecracker_dir(FIRECRACKER_VERSION),
+        paths.mitmproxy_dir(MITMPROXY_VERSION),
+        paths.runners_dir(),
+    ];
+    for dir in &dirs {
+        tokio::fs::create_dir_all(dir)
+            .await
+            .map_err(|e| RunnerError::Internal(format!("create {}: {e}", dir.display())))?;
+    }
     tracing::info!("[OK] directory structure created");
     Ok(())
 }
@@ -241,7 +249,8 @@ async fn download_firecracker(paths: &HomePaths, arch: &str) -> RunnerResult<()>
 
     // Extract the firecracker binary from the tarball on disk
     let tmp_path = bin_path.with_extension(format!("tmp.{}", std::process::id()));
-    let result = extract_firecracker(&tarball_path, &tmp_path, arch).await;
+    let fc_entry_name = format!("firecracker-{FIRECRACKER_VERSION}-{arch}");
+    let result = extract_tar_entry(&tarball_path, &tmp_path, &fc_entry_name).await;
     let _ = tokio::fs::remove_file(&tarball_path).await;
     let sha_hex = match result {
         Ok(sha) => sha,
@@ -279,16 +288,16 @@ async fn download_firecracker(paths: &HomePaths, arch: &str) -> RunnerResult<()>
     }
 }
 
-/// Extract the firecracker binary from a tarball, writing to tmp_path.
-/// Returns the SHA256 hex digest of the extracted binary.
-async fn extract_firecracker(
+/// Extract a named entry from a gzipped tarball, writing to tmp_path.
+/// Matches by file_name (last path component). Returns the SHA256 hex digest.
+async fn extract_tar_entry(
     tarball_path: &Path,
     tmp_path: &Path,
-    arch: &str,
+    entry_name: &str,
 ) -> RunnerResult<String> {
     let tarball = tarball_path.to_owned();
     let tmp = tmp_path.to_owned();
-    let arch = arch.to_owned();
+    let entry_name = entry_name.to_owned();
 
     // Sync I/O on local files — fine for a setup command
     tokio::task::spawn_blocking(move || {
@@ -296,8 +305,6 @@ async fn extract_firecracker(
             .map_err(|e| RunnerError::Internal(format!("open tarball: {e}")))?;
         let decoder = flate2::read::GzDecoder::new(file);
         let mut archive = tar::Archive::new(decoder);
-
-        let expected_name = format!("firecracker-{FIRECRACKER_VERSION}-{arch}");
 
         let entries = archive
             .entries()
@@ -316,7 +323,7 @@ async fn extract_firecracker(
                 .and_then(|n| n.to_str())
                 .unwrap_or_default();
 
-            if file_name == expected_name {
+            if file_name == entry_name {
                 let mut out = std::fs::File::create(&tmp)
                     .map_err(|e| RunnerError::Internal(format!("create temp binary: {e}")))?;
                 let mut hasher = Sha256::new();
@@ -340,7 +347,7 @@ async fn extract_firecracker(
         }
 
         Err(RunnerError::Internal(format!(
-            "firecracker binary '{expected_name}' not found in tarball"
+            "'{entry_name}' not found in tarball"
         )))
     })
     .await
@@ -400,6 +407,90 @@ async fn download_kernel(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
         Err(e) => {
             if tokio::fs::try_exists(&kernel_path).await.unwrap_or(false) {
                 tracing::info!("[OK] kernel vmlinux-{KERNEL_VERSION} installed by another process");
+                return Ok(());
+            }
+            Err(e)
+        }
+    }
+}
+
+async fn is_mitmdump_installed(bin_path: &Path) -> bool {
+    if !tokio::fs::try_exists(bin_path).await.unwrap_or(false) {
+        return false;
+    }
+    let Ok(output) = tokio::process::Command::new(bin_path)
+        .arg("--version")
+        .output()
+        .await
+    else {
+        return false;
+    };
+    let version_str = String::from_utf8_lossy(&output.stdout);
+    version_str.contains(MITMPROXY_VERSION)
+}
+
+async fn download_mitmdump(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
+    let bin_path = paths.mitmdump_bin(MITMPROXY_VERSION);
+
+    if is_mitmdump_installed(&bin_path).await {
+        tracing::info!("[OK] mitmdump {MITMPROXY_VERSION} already installed, skipping download");
+        return Ok(());
+    }
+
+    let url = format!(
+        "https://downloads.mitmproxy.org/{MITMPROXY_VERSION}/mitmproxy-{MITMPROXY_VERSION}-linux-{arch}.tar.gz"
+    );
+    tracing::info!("downloading mitmdump from {url}");
+
+    let response = reqwest::get(&url)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("download mitmdump: {e}")))?;
+
+    if !response.status().is_success() {
+        return Err(RunnerError::Internal(format!(
+            "download mitmdump: HTTP {}",
+            response.status()
+        )));
+    }
+
+    // Stream tarball to a temp file
+    let tarball_path = bin_path.with_extension(format!("tgz.{}", std::process::id()));
+    if let Err(e) = stream_to_file(response, &tarball_path).await {
+        let _ = tokio::fs::remove_file(&tarball_path).await;
+        return Err(e);
+    }
+
+    // Extract mitmdump binary from the tarball
+    let tmp_path = bin_path.with_extension(format!("tmp.{}", std::process::id()));
+    let result = extract_tar_entry(&tarball_path, &tmp_path, "mitmdump").await;
+    let _ = tokio::fs::remove_file(&tarball_path).await;
+    let sha_hex = match result {
+        Ok(sha) => sha,
+        Err(e) => {
+            let _ = tokio::fs::remove_file(&tmp_path).await;
+            return Err(e);
+        }
+    };
+
+    #[allow(clippy::unreachable)] // arch validated by check_architecture
+    let expected_sha = match arch {
+        "x86_64" => MITMDUMP_SHA256_X86_64,
+        "aarch64" => MITMDUMP_SHA256_AARCH64,
+        _ => unreachable!(),
+    };
+    if let Err(e) = verify_sha256(&sha_hex, expected_sha, "mitmdump") {
+        let _ = tokio::fs::remove_file(&tmp_path).await;
+        return Err(e);
+    }
+
+    match atomic_rename(&tmp_path, &bin_path, Some(0o755)).await {
+        Ok(()) => {
+            tracing::info!("[OK] mitmdump {MITMPROXY_VERSION} installed");
+            Ok(())
+        }
+        Err(e) => {
+            if is_mitmdump_installed(&bin_path).await {
+                tracing::info!("[OK] mitmdump {MITMPROXY_VERSION} installed by another process");
                 return Ok(());
             }
             Err(e)

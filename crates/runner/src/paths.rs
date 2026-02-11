@@ -55,6 +55,14 @@ impl HomePaths {
         self.firecracker_dir(fc_version).join(kernel_name)
     }
 
+    pub fn mitmproxy_dir(&self, version: &str) -> PathBuf {
+        self.root.join("mitmproxy").join(version)
+    }
+
+    pub fn mitmdump_bin(&self, version: &str) -> PathBuf {
+        self.mitmproxy_dir(version).join("mitmdump")
+    }
+
     pub fn runners_dir(&self) -> PathBuf {
         self.root.join("runners")
     }
