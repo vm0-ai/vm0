@@ -35,6 +35,7 @@ function initEnv() {
       SLACK_CLIENT_SECRET: z.string().min(1),
       SLACK_SIGNING_SECRET: z.string().min(1),
       SLACK_REDIRECT_BASE_URL: z.string().url(), // Override base URL for OAuth redirects (e.g., tunnel URL)
+      SLACK_DEFAULT_AGENT: z.string().min(1).optional(), // Default agent for new installs (format: "scope/name")
       // GitHub OAuth (for connector)
       GH_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       GH_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -77,6 +78,7 @@ function initEnv() {
       SLACK_CLIENT_SECRET: process.env.SLACK_CLIENT_SECRET,
       SLACK_SIGNING_SECRET: process.env.SLACK_SIGNING_SECRET,
       SLACK_REDIRECT_BASE_URL: process.env.SLACK_REDIRECT_BASE_URL,
+      SLACK_DEFAULT_AGENT: process.env.SLACK_DEFAULT_AGENT,
       GH_OAUTH_CLIENT_ID: process.env.GH_OAUTH_CLIENT_ID,
       GH_OAUTH_CLIENT_SECRET: process.env.GH_OAUTH_CLIENT_SECRET,
       NOTION_OAUTH_CLIENT_ID: process.env.NOTION_OAUTH_CLIENT_ID,
