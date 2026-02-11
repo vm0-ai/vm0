@@ -350,28 +350,48 @@ fn verify_sha256(actual_hex: &str, expected_hex: &str, label: &str) -> RunnerRes
 // Artifact downloads
 // ---------------------------------------------------------------------------
 
-async fn is_firecracker_installed(bin_path: &Path) -> bool {
-    if !tokio::fs::try_exists(bin_path).await.unwrap_or(false) {
+/// Compute SHA256 of an existing file. Returns hex digest.
+async fn file_sha256(path: &Path) -> RunnerResult<String> {
+    let path = path.to_owned();
+    tokio::task::spawn_blocking(move || {
+        let mut file = std::fs::File::open(&path)
+            .map_err(|e| RunnerError::Internal(format!("open {}: {e}", path.display())))?;
+        let mut hasher = Sha256::new();
+        let mut buf = [0u8; 64 * 1024];
+        loop {
+            let n = file
+                .read(&mut buf)
+                .map_err(|e| RunnerError::Internal(format!("read {}: {e}", path.display())))?;
+            if n == 0 {
+                break;
+            }
+            let chunk = buf
+                .get(..n)
+                .ok_or_else(|| RunnerError::Internal("read returned invalid length".into()))?;
+            hasher.update(chunk);
+        }
+        Ok(format!("{:x}", hasher.finalize()))
+    })
+    .await
+    .map_err(|e| RunnerError::Internal(format!("sha256 task failed: {e}")))?
+}
+
+/// Check if an artifact is already installed with the expected SHA256.
+async fn is_already_installed(path: &Path, expected_sha: &str) -> bool {
+    if !tokio::fs::try_exists(path).await.unwrap_or(false) {
         return false;
     }
-    let Ok(output) = tokio::process::Command::new(bin_path)
-        .arg("--version")
-        .output()
-        .await
-    else {
+    let Ok(sha) = file_sha256(path).await else {
         return false;
     };
-    let version_str = String::from_utf8_lossy(&output.stdout);
-    let version_no_prefix = FIRECRACKER_VERSION
-        .strip_prefix('v')
-        .unwrap_or(FIRECRACKER_VERSION);
-    version_str.contains(version_no_prefix)
+    sha == expected_sha
 }
 
 async fn download_firecracker(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
     let bin_path = paths.firecracker_bin(FIRECRACKER_VERSION);
+    let expected_sha = select_sha(arch, FIRECRACKER_SHA256_X86_64, FIRECRACKER_SHA256_AARCH64);
 
-    if is_firecracker_installed(&bin_path).await {
+    if is_already_installed(&bin_path, expected_sha).await {
         tracing::info!(
             "[OK] firecracker {FIRECRACKER_VERSION} already installed, skipping download"
         );
@@ -389,7 +409,6 @@ async fn download_firecracker(paths: &HomePaths, arch: &str) -> RunnerResult<()>
     let sha_hex =
         download_and_extract(&url, "firecracker", &fc_entry, &tarball_path, &tmp_path).await?;
 
-    let expected_sha = select_sha(arch, FIRECRACKER_SHA256_X86_64, FIRECRACKER_SHA256_AARCH64);
     verify_and_install(
         &sha_hex,
         expected_sha,
@@ -405,9 +424,10 @@ async fn download_firecracker(paths: &HomePaths, arch: &str) -> RunnerResult<()>
 
 async fn download_kernel(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
     let kernel_path = paths.kernel_bin(FIRECRACKER_VERSION, KERNEL_VERSION);
+    let expected_sha = select_sha(arch, KERNEL_SHA256_X86_64, KERNEL_SHA256_AARCH64);
 
-    if tokio::fs::try_exists(&kernel_path).await.unwrap_or(false) {
-        tracing::info!("[OK] kernel vmlinux-{KERNEL_VERSION} already present, skipping download");
+    if is_already_installed(&kernel_path, expected_sha).await {
+        tracing::info!("[OK] kernel vmlinux-{KERNEL_VERSION} already installed, skipping download");
         return Ok(());
     }
 
@@ -419,7 +439,6 @@ async fn download_kernel(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
     let tmp_path = kernel_path.with_extension(format!("tmp.{}", std::process::id()));
     let sha_hex = download_to_temp(&url, &tmp_path, "kernel").await?;
 
-    let expected_sha = select_sha(arch, KERNEL_SHA256_X86_64, KERNEL_SHA256_AARCH64);
     verify_and_install(
         &sha_hex,
         expected_sha,
@@ -433,25 +452,11 @@ async fn download_kernel(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
     Ok(())
 }
 
-async fn is_mitmdump_installed(bin_path: &Path) -> bool {
-    if !tokio::fs::try_exists(bin_path).await.unwrap_or(false) {
-        return false;
-    }
-    let Ok(output) = tokio::process::Command::new(bin_path)
-        .arg("--version")
-        .output()
-        .await
-    else {
-        return false;
-    };
-    let version_str = String::from_utf8_lossy(&output.stdout);
-    version_str.contains(MITMPROXY_VERSION)
-}
-
 async fn download_mitmdump(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
     let bin_path = paths.mitmdump_bin(MITMPROXY_VERSION);
+    let expected_sha = select_sha(arch, MITMDUMP_SHA256_X86_64, MITMDUMP_SHA256_AARCH64);
 
-    if is_mitmdump_installed(&bin_path).await {
+    if is_already_installed(&bin_path, expected_sha).await {
         tracing::info!("[OK] mitmdump {MITMPROXY_VERSION} already installed, skipping download");
         return Ok(());
     }
@@ -466,7 +471,6 @@ async fn download_mitmdump(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
     let sha_hex =
         download_and_extract(&url, "mitmdump", "mitmdump", &tarball_path, &tmp_path).await?;
 
-    let expected_sha = select_sha(arch, MITMDUMP_SHA256_X86_64, MITMDUMP_SHA256_AARCH64);
     verify_and_install(
         &sha_hex,
         expected_sha,
