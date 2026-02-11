@@ -1,6 +1,19 @@
 [workspace]
 resolver = "2"
-members = ["vsock-guest", "vsock-proto", "vsock-host", "vsock-test", "guest-init", "guest-common", "guest-download", "guest-agent", "guest-mock-claude", "sandbox", "sandbox-fc", "runner"]
+members = [
+    "guest-agent",
+    "guest-common",
+    "guest-download",
+    "guest-init",
+    "guest-mock-claude",
+    "runner",
+    "sandbox",
+    "sandbox-fc",
+    "vsock-guest",
+    "vsock-host",
+    "vsock-proto",
+    "vsock-test",
+]
 
 [workspace.package]
 edition = "2024"
