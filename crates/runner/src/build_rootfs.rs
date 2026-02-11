@@ -8,8 +8,7 @@ use crate::command::{Privilege, exec, exec_ignore_errors};
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
 
-const EMBEDDED_DOCKERFILE: &str =
-    include_str!("../../../turbo/apps/runner/scripts/deploy/Dockerfile");
+const EMBEDDED_DOCKERFILE: &str = include_str!("../rootfs.Dockerfile");
 
 const IMAGE_NAME: &str = "vm0-rootfs";
 const CONTAINER_NAME: &str = "vm0-rootfs-tmp";
