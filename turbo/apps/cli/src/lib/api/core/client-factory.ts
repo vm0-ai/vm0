@@ -31,9 +31,10 @@ export async function getHeaders(): Promise<Record<string, string>> {
   };
 
   // Add scope header if configured (for org scope access)
+  // Use lowercase to match the contract schema (x-vm0-scope)
   const scope = await getScope();
   if (scope) {
-    headers["X-VM0-Scope"] = scope;
+    headers["x-vm0-scope"] = scope;
   }
 
   // Add Vercel bypass secret if available (for CI/preview deployments)

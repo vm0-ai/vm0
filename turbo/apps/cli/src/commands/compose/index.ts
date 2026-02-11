@@ -18,7 +18,7 @@ import {
   listVariables,
   listConnectors,
 } from "../../lib/api";
-import { getApiUrl } from "../../lib/api/config";
+import { getApiUrl, getScope as getConfigScope } from "../../lib/api/config";
 import { validateAgentCompose } from "../../lib/domain/yaml-validator";
 import { downloadGitHubDirectory } from "../../lib/domain/github-skills";
 import {
@@ -511,10 +511,11 @@ async function finalizeCompose(
   }
   const response = await createOrUpdateCompose({ content: config });
 
-  // Get scope for display name
-  const scopeResponse = await getScope();
+  // Get scope for display name - prefer active scope from config, fallback to user's default scope
+  const activeScope = await getConfigScope();
+  const scopeSlug = activeScope || (await getScope()).slug;
   const shortVersionId = response.versionId.slice(0, 8);
-  const displayName = `${scopeResponse.slug}/${response.name}`;
+  const displayName = `${scopeSlug}/${response.name}`;
 
   // Build result
   const result: ComposeResult = {
