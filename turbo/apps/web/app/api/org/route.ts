@@ -4,6 +4,9 @@ import { initServices } from "../../../src/lib/init-services";
 import { getUserId } from "../../../src/lib/auth/get-user-id";
 import { createOrganization } from "../../../src/lib/org/org-service";
 import { isBadRequest } from "../../../src/lib/errors";
+import { logger } from "../../../src/lib/logger";
+
+const log = logger("api:org");
 
 const router = tsr.router(orgContract, {
   create: async ({ body, headers }) => {
@@ -47,7 +50,15 @@ const router = tsr.router(orgContract, {
           },
         };
       }
-      throw error;
+      const message =
+        error instanceof Error ? error.message : "Internal server error";
+      log.error("Failed to create organization", { error: message });
+      return {
+        status: 500 as const,
+        body: {
+          error: { message, code: "INTERNAL_ERROR" },
+        },
+      };
     }
   },
 
