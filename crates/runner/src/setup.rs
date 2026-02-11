@@ -2,11 +2,23 @@ use std::io::Read;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
+use sha2::{Digest, Sha256};
+
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
 
 const FIRECRACKER_VERSION: &str = "v1.14.1";
 const KERNEL_VERSION: &str = "6.1.155";
+
+// SHA256 checksums for installed artifacts, keyed by arch.
+const FIRECRACKER_SHA256_X86_64: &str =
+    "ef68f03e2dcaa4c07347a4b11989bedb350c982e62da7a3f74bc40f4f840e0ce";
+const FIRECRACKER_SHA256_AARCH64: &str =
+    "d1bc4cbd166a3b572cdb55019634aed48a5426e2253f126b18654596367d2bf4";
+const KERNEL_SHA256_X86_64: &str =
+    "e41c7048bd2475e7e788153823fcb9166a7e0b78c4c443bd6446d015fa735f53";
+const KERNEL_SHA256_AARCH64: &str =
+    "61baeae1ac6197be4fc5c71fa78df266acdc33c54570290d2f611c2b42c105be";
 
 /// "v1.14.1" → "v1.14"
 const FIRECRACKER_MINOR: &str = strip_patch(FIRECRACKER_VERSION);
@@ -129,6 +141,17 @@ async fn atomic_install(target: &Path, contents: &[u8], mode: Option<u32>) -> Ru
     result
 }
 
+fn verify_sha256(data: &[u8], expected_hex: &str, label: &str) -> RunnerResult<()> {
+    let actual = format!("{:x}", Sha256::digest(data));
+    if actual != expected_hex {
+        return Err(RunnerError::Internal(format!(
+            "{label} SHA256 mismatch: expected {expected_hex}, got {actual}"
+        )));
+    }
+    tracing::info!("[OK] {label} SHA256 verified");
+    Ok(())
+}
+
 async fn is_firecracker_installed(bin_path: &Path) -> bool {
     if !tokio::fs::try_exists(bin_path).await.unwrap_or(false) {
         return false;
@@ -218,6 +241,12 @@ async fn download_firecracker(paths: &HomePaths, arch: &str) -> RunnerResult<()>
         ))
     })?;
 
+    let expected_sha = match arch {
+        "x86_64" => FIRECRACKER_SHA256_X86_64,
+        _ => FIRECRACKER_SHA256_AARCH64,
+    };
+    verify_sha256(&contents, expected_sha, "firecracker binary")?;
+
     match atomic_install(&bin_path, &contents, Some(0o755)).await {
         Ok(()) => {
             tracing::info!("[OK] firecracker {FIRECRACKER_VERSION} installed");
@@ -264,6 +293,12 @@ async fn download_kernel(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
         .bytes()
         .await
         .map_err(|e| RunnerError::Internal(format!("read kernel response: {e}")))?;
+
+    let expected_sha = match arch {
+        "x86_64" => KERNEL_SHA256_X86_64,
+        _ => KERNEL_SHA256_AARCH64,
+    };
+    verify_sha256(&bytes, expected_sha, "kernel")?;
 
     match atomic_install(&kernel_path, &bytes, None).await {
         Ok(()) => {
