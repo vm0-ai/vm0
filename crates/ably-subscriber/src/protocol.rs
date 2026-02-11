@@ -1,0 +1,381 @@
+//! Ably wire protocol types, constants, and MessagePack encode/decode.
+
+use std::collections::HashMap;
+
+use serde::{Deserialize, Serialize};
+
+use crate::Error;
+
+// ---------------------------------------------------------------------------
+// Protocol action constants
+// ---------------------------------------------------------------------------
+
+pub mod action {
+    pub const HEARTBEAT: i32 = 0;
+    pub const CONNECTED: i32 = 4;
+    pub const DISCONNECTED: i32 = 6;
+    pub const CLOSE: i32 = 7;
+    pub const CLOSED: i32 = 8;
+    pub const ERROR: i32 = 9;
+    pub const ATTACH: i32 = 10;
+    pub const ATTACHED: i32 = 11;
+    pub const DETACHED: i32 = 13;
+    pub const MESSAGE: i32 = 15;
+    pub const AUTH: i32 = 17;
+}
+
+pub mod flags {
+    #![allow(dead_code)]
+    pub const HAS_PRESENCE: i32 = 1;
+    pub const HAS_BACKLOG: i32 = 2;
+    pub const HAS_CHANNEL_RESUMED: i32 = 4;
+    pub const MODE_SUBSCRIBE: i32 = 262_144; // bit 18
+}
+
+// ---------------------------------------------------------------------------
+// Wire protocol types (MessagePack)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ProtocolMessage {
+    pub action: i32,
+    pub channel: Option<String>,
+    #[serde(rename = "channelSerial")]
+    pub channel_serial: Option<String>,
+    #[serde(rename = "connectionId")]
+    pub connection_id: Option<String>,
+    #[serde(rename = "connectionKey")]
+    pub connection_key: Option<String>,
+    #[serde(rename = "connectionDetails")]
+    pub connection_details: Option<ConnectionDetails>,
+    #[serde(rename = "connectionSerial")]
+    pub connection_serial: Option<i64>,
+    #[serde(rename = "msgSerial")]
+    pub msg_serial: Option<i64>,
+    pub flags: Option<i32>,
+    pub error: Option<ErrorInfo>,
+    pub auth: Option<AuthDetails>,
+    pub messages: Option<Vec<AblyMessage>>,
+    pub timestamp: Option<i64>,
+    pub params: Option<HashMap<String, String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ConnectionDetails {
+    #[serde(rename = "clientId")]
+    pub client_id: Option<String>,
+    #[serde(rename = "connectionKey")]
+    pub connection_key: Option<String>,
+    #[serde(rename = "connectionStateTtl")]
+    pub connection_state_ttl: Option<i64>,
+    #[serde(rename = "maxIdleInterval")]
+    pub max_idle_interval: Option<i64>,
+    #[serde(rename = "maxMessageSize")]
+    pub max_message_size: Option<i64>,
+    #[serde(rename = "maxFrameSize")]
+    pub max_frame_size: Option<i64>,
+    #[serde(rename = "serverId")]
+    pub server_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ErrorInfo {
+    pub code: i32,
+    #[serde(rename = "statusCode")]
+    pub status_code: Option<i32>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct AuthDetails {
+    #[serde(rename = "accessToken")]
+    pub access_token: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct AblyMessage {
+    pub id: Option<String>,
+    pub name: Option<String>,
+    pub data: Option<serde_json::Value>,
+    #[serde(rename = "clientId")]
+    pub client_id: Option<String>,
+    pub timestamp: Option<i64>,
+    pub encoding: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Encode / decode helpers
+// ---------------------------------------------------------------------------
+
+pub fn encode_msg(msg: &ProtocolMessage) -> Result<Vec<u8>, Error> {
+    Ok(rmp_serde::to_vec_named(msg)?)
+}
+
+pub fn decode_msg(data: &[u8]) -> Result<ProtocolMessage, Error> {
+    Ok(rmp_serde::from_slice(data)?)
+}
+
+// ---------------------------------------------------------------------------
+// Helper to build an ATTACH message
+// ---------------------------------------------------------------------------
+
+pub fn build_attach_msg(
+    channel: &str,
+    params: Option<&HashMap<String, String>>,
+) -> ProtocolMessage {
+    ProtocolMessage {
+        action: action::ATTACH,
+        channel: Some(channel.to_string()),
+        flags: Some(flags::MODE_SUBSCRIBE),
+        params: params.cloned(),
+        ..Default::default()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn encode_decode_attach() {
+        let msg = ProtocolMessage {
+            action: action::ATTACH,
+            channel: Some("test-channel".to_string()),
+            flags: Some(flags::MODE_SUBSCRIBE),
+            ..Default::default()
+        };
+        let data = encode_msg(&msg).unwrap_or_default();
+        let decoded = decode_msg(&data).unwrap_or_default();
+        assert_eq!(decoded.action, action::ATTACH);
+        assert_eq!(decoded.channel.as_deref(), Some("test-channel"));
+        assert_eq!(decoded.flags, Some(flags::MODE_SUBSCRIBE));
+    }
+
+    #[test]
+    fn encode_decode_close() {
+        let msg = ProtocolMessage {
+            action: action::CLOSE,
+            ..Default::default()
+        };
+        let data = encode_msg(&msg).unwrap_or_default();
+        let decoded = decode_msg(&data).unwrap_or_default();
+        assert_eq!(decoded.action, action::CLOSE);
+    }
+
+    #[test]
+    fn encode_decode_auth() {
+        let msg = ProtocolMessage {
+            action: action::AUTH,
+            auth: Some(AuthDetails {
+                access_token: "my-token".to_string(),
+            }),
+            ..Default::default()
+        };
+        let data = encode_msg(&msg).unwrap_or_default();
+        let decoded = decode_msg(&data).unwrap_or_default();
+        assert_eq!(decoded.action, action::AUTH);
+        assert_eq!(
+            decoded.auth.as_ref().map(|a| a.access_token.as_str()),
+            Some("my-token")
+        );
+    }
+
+    #[test]
+    fn encode_decode_connected() {
+        let msg = ProtocolMessage {
+            action: action::CONNECTED,
+            connection_id: Some("abc123".to_string()),
+            connection_key: Some("abc123!key".to_string()),
+            connection_serial: Some(-1),
+            connection_details: Some(ConnectionDetails {
+                connection_state_ttl: Some(120000),
+                max_idle_interval: Some(15000),
+                server_id: Some("frontend.0".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let data = encode_msg(&msg).unwrap_or_default();
+        let decoded = decode_msg(&data).unwrap_or_default();
+        assert_eq!(decoded.action, action::CONNECTED);
+        assert_eq!(decoded.connection_id.as_deref(), Some("abc123"));
+        assert_eq!(decoded.connection_key.as_deref(), Some("abc123!key"));
+        assert_eq!(decoded.connection_serial, Some(-1));
+        let details = decoded.connection_details.as_ref();
+        assert!(details.is_some());
+        let default_details = ConnectionDetails::default();
+        let details = details.unwrap_or(&default_details);
+        assert_eq!(details.connection_state_ttl, Some(120000));
+        assert_eq!(details.max_idle_interval, Some(15000));
+    }
+
+    #[test]
+    fn encode_decode_message_with_data() {
+        let msg = ProtocolMessage {
+            action: action::MESSAGE,
+            channel: Some("runner-group:test".to_string()),
+            connection_serial: Some(5),
+            messages: Some(vec![AblyMessage {
+                id: Some("msg-001".to_string()),
+                name: Some("job".to_string()),
+                data: Some(serde_json::json!({"runId": "uuid-123"})),
+                client_id: Some("publisher".to_string()),
+                timestamp: Some(1700000000000),
+                encoding: None,
+            }]),
+            ..Default::default()
+        };
+        let data = encode_msg(&msg).unwrap_or_default();
+        let decoded = decode_msg(&data).unwrap_or_default();
+        assert_eq!(decoded.action, action::MESSAGE);
+        assert_eq!(decoded.channel.as_deref(), Some("runner-group:test"));
+        let messages = decoded.messages.as_ref();
+        assert!(messages.is_some());
+        let empty_vec = Vec::new();
+        let messages = messages.unwrap_or(&empty_vec);
+        assert_eq!(messages.len(), 1);
+        if let Some(m) = messages.first() {
+            assert_eq!(m.name.as_deref(), Some("job"));
+            assert_eq!(
+                m.data
+                    .as_ref()
+                    .and_then(|d| d.get("runId"))
+                    .and_then(|v| v.as_str()),
+                Some("uuid-123")
+            );
+        }
+    }
+
+    #[test]
+    fn encode_decode_heartbeat() {
+        let msg = ProtocolMessage {
+            action: action::HEARTBEAT,
+            ..Default::default()
+        };
+        let data = encode_msg(&msg).unwrap_or_default();
+        let decoded = decode_msg(&data).unwrap_or_default();
+        assert_eq!(decoded.action, action::HEARTBEAT);
+    }
+
+    #[test]
+    fn encode_decode_error() {
+        let msg = ProtocolMessage {
+            action: action::ERROR,
+            error: Some(ErrorInfo {
+                code: 40142,
+                status_code: Some(401),
+                message: "Token expired".to_string(),
+            }),
+            ..Default::default()
+        };
+        let data = encode_msg(&msg).unwrap_or_default();
+        let decoded = decode_msg(&data).unwrap_or_default();
+        assert_eq!(decoded.action, action::ERROR);
+        let err = decoded.error.as_ref();
+        assert!(err.is_some());
+        let default_err = ErrorInfo::default();
+        let err = err.unwrap_or(&default_err);
+        assert_eq!(err.code, 40142);
+        assert_eq!(err.status_code, Some(401));
+        assert_eq!(err.message, "Token expired");
+    }
+
+    #[test]
+    fn encode_decode_disconnected() {
+        let msg = ProtocolMessage {
+            action: action::DISCONNECTED,
+            error: Some(ErrorInfo {
+                code: 80003,
+                status_code: Some(500),
+                message: "Connection lost".to_string(),
+            }),
+            ..Default::default()
+        };
+        let data = encode_msg(&msg).unwrap_or_default();
+        let decoded = decode_msg(&data).unwrap_or_default();
+        assert_eq!(decoded.action, action::DISCONNECTED);
+        assert_eq!(decoded.error.as_ref().map(|e| e.code), Some(80003));
+    }
+
+    #[test]
+    fn encode_decode_attach_with_params() {
+        let mut params = HashMap::new();
+        params.insert("rewind".to_string(), "2m".to_string());
+        let msg = ProtocolMessage {
+            action: action::ATTACH,
+            channel: Some("run:uuid-123".to_string()),
+            flags: Some(flags::MODE_SUBSCRIBE),
+            params: Some(params),
+            ..Default::default()
+        };
+        let data = encode_msg(&msg).unwrap_or_default();
+        let decoded = decode_msg(&data).unwrap_or_default();
+        assert_eq!(decoded.action, action::ATTACH);
+        assert_eq!(
+            decoded
+                .params
+                .as_ref()
+                .and_then(|p| p.get("rewind"))
+                .map(String::as_str),
+            Some("2m")
+        );
+    }
+
+    #[test]
+    fn action_constants() {
+        assert_eq!(action::HEARTBEAT, 0);
+        assert_eq!(action::CONNECTED, 4);
+        assert_eq!(action::DISCONNECTED, 6);
+        assert_eq!(action::CLOSE, 7);
+        assert_eq!(action::CLOSED, 8);
+        assert_eq!(action::ERROR, 9);
+        assert_eq!(action::ATTACH, 10);
+        assert_eq!(action::ATTACHED, 11);
+        assert_eq!(action::DETACHED, 13);
+        assert_eq!(action::MESSAGE, 15);
+        assert_eq!(action::AUTH, 17);
+    }
+
+    #[test]
+    fn flag_constants() {
+        assert_eq!(flags::MODE_SUBSCRIBE, 262_144);
+        assert_eq!(flags::MODE_SUBSCRIBE, 1 << 18);
+        assert_eq!(flags::HAS_PRESENCE, 1);
+        assert_eq!(flags::HAS_BACKLOG, 2);
+        assert_eq!(flags::HAS_CHANNEL_RESUMED, 4);
+    }
+
+    #[test]
+    fn build_attach_msg_basic() {
+        let msg = build_attach_msg("my-channel", None);
+        assert_eq!(msg.action, action::ATTACH);
+        assert_eq!(msg.channel.as_deref(), Some("my-channel"));
+        assert_eq!(msg.flags, Some(flags::MODE_SUBSCRIBE));
+        assert!(msg.params.is_none());
+    }
+
+    #[test]
+    fn build_attach_msg_with_rewind() {
+        let mut params = HashMap::new();
+        params.insert("rewind".to_string(), "2m".to_string());
+        let msg = build_attach_msg("run:abc", Some(&params));
+        assert_eq!(msg.action, action::ATTACH);
+        assert_eq!(msg.channel.as_deref(), Some("run:abc"));
+        assert_eq!(
+            msg.params
+                .as_ref()
+                .and_then(|p| p.get("rewind"))
+                .map(String::as_str),
+            Some("2m")
+        );
+    }
+}
