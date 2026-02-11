@@ -27,6 +27,9 @@ jobs:
       runner-changed: ${{ steps.detect.outputs.runner-changed }}
       platform-changed: ${{ steps.detect.outputs.platform-changed }}
       e2b-changed: ${{ steps.detect-e2b.outputs.e2b-changed }}
+      sandbox-changed: ${{ steps.detect-docker.outputs.sandbox-changed }}
+      docker-web-changed: ${{ steps.detect-docker.outputs.docker-web-changed }}
+      docker-platform-changed: ${{ steps.detect-docker.outputs.docker-platform-changed }}
       cli-e2e-parallel-matrix: ${{ steps.cli-e2e-matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v6
@@ -95,6 +98,47 @@ jobs:
           else
             echo "No E2B template changes"
             echo "e2b-changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Detect Docker file changes
+        id: detect-docker
+        run: |
+          # Determine base ref based on event type
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_REF=$(git merge-base ${{ github.event.pull_request.base.sha }} HEAD)
+          elif [ "${{ github.event_name }}" = "merge_group" ]; then
+            BASE_REF="${{ github.event.merge_group.base_sha }}"
+          else
+            BASE_REF="HEAD^"
+          fi
+
+          CHANGED_FILES=$(git diff --name-only "$BASE_REF" HEAD)
+
+          # Check if web Docker files changed
+          if echo "$CHANGED_FILES" | grep -qE "^docker/(Dockerfile\.web|entrypoint\.sh)$"; then
+            echo "Docker web file changes detected"
+            echo "docker-web-changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No Docker web file changes"
+            echo "docker-web-changed=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Check if platform Docker files changed
+          if echo "$CHANGED_FILES" | grep -qE "^docker/(Dockerfile\.platform|Caddyfile\.platform)$"; then
+            echo "Docker platform file changes detected"
+            echo "docker-platform-changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No Docker platform file changes"
+            echo "docker-platform-changed=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Check if sandbox Docker file changed
+          if echo "$CHANGED_FILES" | grep -q "^docker/Dockerfile\.sandbox$"; then
+            echo "Docker sandbox file changes detected"
+            echo "sandbox-changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No Docker sandbox file changes"
+            echo "sandbox-changed=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Set job-ref
@@ -1360,3 +1404,183 @@ jobs:
 
       - name: Build summary
         run: echo "✅ E2B templates built successfully (development account)"
+
+  # Docker build/publish for application images (web, platform, sandbox)
+  # On PR: build only (validation), single platform
+  # On main push: build + publish to GHCR, multi-platform
+  docker-build-web:
+    runs-on: ubuntu-latest
+    needs: [prepare]
+    if: |
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+      (needs.prepare.outputs.web-changed == 'true' || needs.prepare.outputs.docker-web-changed == 'true')
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        if: github.event_name == 'push'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags
+        id: tags
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            SHA_SHORT=$(git rev-parse --short HEAD)
+            DATE=$(date +'%Y%m%d')
+            {
+              echo "tags<<EOF"
+              echo "ghcr.io/vm0-ai/vm0:latest"
+              echo "ghcr.io/vm0-ai/vm0:${SHA_SHORT}"
+              echo "ghcr.io/vm0-ai/vm0:${DATE}"
+              echo "EOF"
+            } >> $GITHUB_OUTPUT
+          else
+            echo "tags=vm0:test" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and optionally push web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.web
+          platforms: ${{ github.event_name == 'push' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          labels: |
+            org.opencontainers.image.source=${{ github.event.repository.html_url }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+  docker-build-platform:
+    runs-on: ubuntu-latest
+    needs: [prepare]
+    if: |
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+      (needs.prepare.outputs.platform-changed == 'true' || needs.prepare.outputs.docker-platform-changed == 'true')
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        if: github.event_name == 'push'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags
+        id: tags
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            SHA_SHORT=$(git rev-parse --short HEAD)
+            DATE=$(date +'%Y%m%d')
+            {
+              echo "tags<<EOF"
+              echo "ghcr.io/vm0-ai/vm0-platform:latest"
+              echo "ghcr.io/vm0-ai/vm0-platform:${SHA_SHORT}"
+              echo "ghcr.io/vm0-ai/vm0-platform:${DATE}"
+              echo "EOF"
+            } >> $GITHUB_OUTPUT
+          else
+            echo "tags=vm0-platform:test" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and optionally push platform image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.platform
+          platforms: ${{ github.event_name == 'push' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          labels: |
+            org.opencontainers.image.source=${{ github.event.repository.html_url }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+  docker-build-sandbox:
+    runs-on: ubuntu-latest
+    needs: [prepare]
+    if: |
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+      needs.prepare.outputs.sandbox-changed == 'true'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        if: github.event_name == 'push'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags
+        id: tags
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            SHA_SHORT=$(git rev-parse --short HEAD)
+            DATE=$(date +'%Y%m%d')
+            {
+              echo "tags<<EOF"
+              echo "ghcr.io/vm0-ai/vm0-sandbox:latest"
+              echo "ghcr.io/vm0-ai/vm0-sandbox:${SHA_SHORT}"
+              echo "ghcr.io/vm0-ai/vm0-sandbox:${DATE}"
+              echo "EOF"
+            } >> $GITHUB_OUTPUT
+          else
+            echo "tags=vm0-sandbox:test" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and optionally push sandbox image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.sandbox
+          platforms: ${{ github.event_name == 'push' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          labels: |
+            org.opencontainers.image.source=${{ github.event.repository.html_url }}
+            org.opencontainers.image.revision=${{ github.sha }}
