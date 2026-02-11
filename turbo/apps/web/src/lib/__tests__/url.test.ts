@@ -108,6 +108,7 @@ describe("url", () => {
 
     it("falls back to localhost with PLATFORM_PORT on the server side", () => {
       vi.stubGlobal("window", undefined);
+      vi.stubEnv("PLATFORM_URL", "");
       vi.stubEnv("PLATFORM_PORT", "5000");
 
       expect(getPlatformUrl()).toBe("http://localhost:5000");
@@ -115,6 +116,7 @@ describe("url", () => {
 
     it("falls back to localhost:3001 when no env vars set", () => {
       vi.stubGlobal("window", undefined);
+      vi.stubEnv("PLATFORM_URL", "");
 
       expect(getPlatformUrl()).toBe("http://localhost:3001");
     });
