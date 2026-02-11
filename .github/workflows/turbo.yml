@@ -368,8 +368,8 @@ jobs:
       - name: Build Sandbox Scripts
         working-directory: turbo
         run: pnpm turbo run build --filter=@vm0/sandbox-scripts
-      - name: Build vsock-guest (for runner tests)
-        run: cargo build --manifest-path crates/Cargo.toml -p vsock-guest
+      - name: Build vsock-guest example (for runner tests)
+        run: cargo build --manifest-path crates/Cargo.toml -p vsock-guest --example vsock-guest
       - name: Test Other Packages
         working-directory: turbo
         run: pnpm vitest run --project=@vm0/runner --project=@vm0/core --project=@vm0/ui

@@ -5,7 +5,6 @@ edition.workspace = true
 
 [dependencies]
 async-trait.workspace = true
-clap = { workspace = true, features = ["derive"] }
 libc.workspace = true
 nix = { workspace = true, features = ["user", "inotify", "fs"] }
 sandbox.workspace = true
@@ -13,13 +12,14 @@ serde_json.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["process", "fs", "rt", "rt-multi-thread", "macros", "sync", "io-util", "net", "time"] }
 tracing.workspace = true
-tracing-subscriber.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 vsock-host.workspace = true
 which.workspace = true
 
 [dev-dependencies]
+clap = { workspace = true, features = ["derive"] }
 tempfile.workspace = true
+tracing-subscriber.workspace = true
 
 [lints]
 workspace = true

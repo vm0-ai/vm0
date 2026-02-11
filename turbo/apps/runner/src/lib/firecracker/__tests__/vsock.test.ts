@@ -23,7 +23,7 @@ import { VsockClient } from "../vsock.js";
 
 const AGENT_BINARY = path.resolve(
   __dirname,
-  "../../../../../../../crates/target/debug/vsock-guest",
+  "../../../../../../../crates/target/debug/examples/vsock-guest",
 );
 
 const VSOCK_PORT = 1000;
