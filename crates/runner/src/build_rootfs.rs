@@ -13,13 +13,6 @@ const EMBEDDED_DOCKERFILE: &str = include_str!("../rootfs.Dockerfile");
 const IMAGE_NAME: &str = "vm0-rootfs";
 const CONTAINER_NAME: &str = "vm0-rootfs-tmp";
 
-const GUEST_BINARIES: &[(&str, &str)] = &[
-    ("guest-init", "/sbin/guest-init"),
-    ("guest-download", "/usr/local/bin/guest-download"),
-    ("guest-agent", "/usr/local/bin/guest-agent"),
-    ("guest-mock-claude", "/usr/local/bin/guest-mock-claude"),
-];
-
 const RESOLV_CONF: &str = "\
 nameserver 8.8.8.8
 nameserver 8.8.4.4
@@ -28,19 +21,42 @@ nameserver 1.1.1.1
 
 #[derive(Args)]
 pub struct BuildRootfsArgs {
-    /// Directory containing guest binaries (guest-init, guest-download, guest-agent, guest-mock-claude)
     #[arg(long)]
-    guest_bins: PathBuf,
+    guest_init: PathBuf,
+    #[arg(long)]
+    guest_download: PathBuf,
+    #[arg(long)]
+    guest_agent: PathBuf,
+    #[arg(long)]
+    guest_mock_claude: PathBuf,
+}
+
+impl BuildRootfsArgs {
+    /// Returns (source_path, rootfs_dest) pairs sorted by name for deterministic hashing.
+    fn guest_bins(&self) -> [(&Path, &str); 4] {
+        [
+            (self.guest_agent.as_path(), "/usr/local/bin/guest-agent"),
+            (
+                self.guest_download.as_path(),
+                "/usr/local/bin/guest-download",
+            ),
+            (self.guest_init.as_path(), "/sbin/guest-init"),
+            (
+                self.guest_mock_claude.as_path(),
+                "/usr/local/bin/guest-mock-claude",
+            ),
+        ]
+    }
 }
 
 pub async fn run_build_rootfs(args: BuildRootfsArgs) -> RunnerResult<()> {
     check_dependencies()?;
-    validate_guest_bins(&args.guest_bins)?;
+    let guest_bins = args.guest_bins();
     let docker = detect_docker_privilege().await?;
     let paths = HomePaths::new()?;
 
     // Compute input hash (deterministic inputs only — no CA)
-    let hash = compute_input_hash(EMBEDDED_DOCKERFILE, &args.guest_bins).await?;
+    let hash = compute_input_hash(EMBEDDED_DOCKERFILE, &guest_bins).await?;
     tracing::info!("rootfs input hash: {hash}");
 
     let output_dir = paths.rootfs_dir().join(&hash);
@@ -70,7 +86,7 @@ pub async fn run_build_rootfs(args: BuildRootfsArgs) -> RunnerResult<()> {
     // Extract and inject
     let extract_dir =
         tempfile::tempdir().map_err(|e| RunnerError::Internal(format!("create temp dir: {e}")))?;
-    extract_and_inject(&tar_path, extract_dir.path(), &args.guest_bins, &output_dir).await?;
+    extract_and_inject(&tar_path, extract_dir.path(), &guest_bins, &output_dir).await?;
     sudo_remove(&tar_path).await;
 
     // Create squashfs to temp, verify, then move into place
@@ -79,7 +95,8 @@ pub async fn run_build_rootfs(args: BuildRootfsArgs) -> RunnerResult<()> {
         create_squashfs(extract_dir.path(), &tmp_rootfs).await?;
         sudo_remove_dir(extract_dir).await;
 
-        verify_rootfs(&tmp_rootfs).await?;
+        let dest_paths: Vec<&str> = guest_bins.iter().map(|(_, dest)| *dest).collect();
+        verify_rootfs(&tmp_rootfs, &dest_paths).await?;
 
         // Atomic rename into final location
         tokio::fs::rename(&tmp_rootfs, &rootfs_path)
@@ -137,24 +154,6 @@ fn check_dependencies() -> RunnerResult<()> {
     Ok(())
 }
 
-fn validate_guest_bins(dir: &Path) -> RunnerResult<()> {
-    let missing: Vec<&str> = GUEST_BINARIES
-        .iter()
-        .filter(|(name, _)| !dir.join(name).exists())
-        .map(|(name, _)| *name)
-        .collect();
-
-    if !missing.is_empty() {
-        return Err(RunnerError::Config(format!(
-            "missing guest binaries in {}: {}",
-            dir.display(),
-            missing.join(", ")
-        )));
-    }
-    tracing::info!("[OK] all guest binaries found");
-    Ok(())
-}
-
 async fn detect_docker_privilege() -> RunnerResult<Privilege> {
     if exec("docker", &["info"], Privilege::User).await.is_ok() {
         tracing::info!("[OK] docker accessible without sudo");
@@ -173,23 +172,22 @@ async fn detect_docker_privilege() -> RunnerResult<Privilege> {
 // Input hash
 // ---------------------------------------------------------------------------
 
-async fn compute_input_hash(dockerfile: &str, guest_bins_dir: &Path) -> RunnerResult<String> {
+async fn compute_input_hash(
+    dockerfile: &str,
+    guest_bins: &[(&Path, &str)],
+) -> RunnerResult<String> {
     let mut hasher = Sha256::new();
 
     // Hash Dockerfile content
     hasher.update(b"dockerfile:");
     hasher.update(dockerfile.as_bytes());
 
-    // Hash guest binaries (sorted by name for determinism)
-    let mut bin_names: Vec<&str> = GUEST_BINARIES.iter().map(|(name, _)| *name).collect();
-    bin_names.sort();
-
-    for name in bin_names {
-        let path = guest_bins_dir.join(name);
-        let content = tokio::fs::read(&path)
+    // Hash guest binaries (already sorted by name via guest_bins())
+    for (src, dest) in guest_bins {
+        let content = tokio::fs::read(src)
             .await
-            .map_err(|e| RunnerError::Internal(format!("read {}: {e}", path.display())))?;
-        let tag = format!("bin:{name}:");
+            .map_err(|e| RunnerError::Internal(format!("read {}: {e}", src.display())))?;
+        let tag = format!("bin:{dest}:");
         hasher.update(tag.as_bytes());
         hasher.update(&content);
     }
@@ -337,7 +335,7 @@ async fn docker_export(output_dir: &Path, docker: Privilege) -> RunnerResult<Pat
 async fn extract_and_inject(
     tar_path: &Path,
     extract_dir: &Path,
-    guest_bins: &Path,
+    guest_bins: &[(&Path, &str)],
     ca_dir: &Path,
 ) -> RunnerResult<()> {
     tracing::info!("extracting and injecting files...");
@@ -356,14 +354,13 @@ async fn extract_and_inject(
     write_file_as_root(&resolv_path, RESOLV_CONF).await?;
 
     // Install guest binaries
-    for (name, dest) in GUEST_BINARIES {
-        let src = guest_bins.join(name);
+    for (src, dest) in guest_bins {
         let target = extract_dir.join(dest.trim_start_matches('/'));
         let src_str = src.to_string_lossy();
         let target_str = target.to_string_lossy();
         exec("cp", &[&src_str, &target_str], Privilege::Sudo).await?;
         exec("chmod", &["755", &target_str], Privilege::Sudo).await?;
-        tracing::info!("[OK] installed {name}");
+        tracing::info!("[OK] installed {}", src.display());
     }
 
     // Install proxy CA certificate
@@ -462,7 +459,7 @@ async fn create_squashfs(source_dir: &Path, output: &Path) -> RunnerResult<()> {
 // Verification
 // ---------------------------------------------------------------------------
 
-async fn verify_rootfs(rootfs_path: &Path) -> RunnerResult<()> {
+async fn verify_rootfs(rootfs_path: &Path, guest_bin_dests: &[&str]) -> RunnerResult<()> {
     tracing::info!("verifying rootfs...");
 
     // Check file size
@@ -488,7 +485,7 @@ async fn verify_rootfs(rootfs_path: &Path) -> RunnerResult<()> {
     .await?;
 
     // Run checks, collecting errors
-    let result = verify_mounted(mount_dir.path()).await;
+    let result = verify_mounted(mount_dir.path(), guest_bin_dests).await;
 
     // Always unmount
     exec_ignore_errors("umount", &[&mount_str], Privilege::Sudo).await;
@@ -498,7 +495,7 @@ async fn verify_rootfs(rootfs_path: &Path) -> RunnerResult<()> {
     Ok(())
 }
 
-async fn verify_mounted(mount_point: &Path) -> RunnerResult<()> {
+async fn verify_mounted(mount_point: &Path, guest_bin_dests: &[&str]) -> RunnerResult<()> {
     let mut errors = Vec::new();
 
     // Check python3
@@ -510,12 +507,12 @@ async fn verify_mounted(mount_point: &Path) -> RunnerResult<()> {
     }
 
     // Check guest binaries
-    for (name, dest) in GUEST_BINARIES {
+    for dest in guest_bin_dests {
         let path = mount_point.join(dest.trim_start_matches('/'));
         if !path.exists() {
-            errors.push(format!("{name} not found at {dest}"));
+            errors.push(format!("{dest} not found"));
         } else {
-            tracing::info!("  {name}: found");
+            tracing::info!("  {dest}: found");
         }
     }
 
