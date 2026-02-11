@@ -112,6 +112,8 @@ fn run(manifest_path: &str) -> bool {
     }
 
     // Download artifact if present (after storages complete)
+    // Artifact download failure is non-fatal (matching JS behavior):
+    // empty artifacts may not have an archive in S3, resulting in 404.
     if let Some(artifact) = &manifest.artifact
         && is_valid_url(&artifact.archive_url)
         && let Some(url) = artifact.archive_url.as_deref()
@@ -127,8 +129,7 @@ fn run(manifest_path: &str) -> bool {
             }
             Err(e) => {
                 record_sandbox_op("artifact_download", start.elapsed(), false, Some(&e));
-                log_error!(LOG_TAG, "Artifact download failed: {e}");
-                all_success = false;
+                log_warn!(LOG_TAG, "Artifact download failed (non-fatal): {e}");
             }
         }
     }
