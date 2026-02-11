@@ -21,6 +21,7 @@ import {
   deploySchedule,
   listSchedules,
   enableSchedule,
+  getUserPreferences,
   ApiRequestError,
 } from "../../lib/api";
 import { withErrorHandler } from "../../lib/command";
@@ -345,6 +346,7 @@ async function gatherOneTimeSchedule(
 
 /**
  * Gather timezone from options or interactive prompt
+ * Priority: option > existing schedule > user preferences > detected system timezone
  */
 async function gatherTimezone(
   optionTimezone: string | undefined,
@@ -352,13 +354,23 @@ async function gatherTimezone(
 ): Promise<string | undefined> {
   if (optionTimezone) return optionTimezone;
 
-  const detectedTimezone = detectTimezone();
-
-  if (!isInteractive()) {
-    return detectedTimezone;
+  // Try to get user's timezone preference from server
+  let userTimezone: string | null = null;
+  try {
+    const prefs = await getUserPreferences();
+    userTimezone = prefs.timezone;
+  } catch {
+    // Ignore error - fall back to detected timezone
   }
 
-  return await promptText("Timezone", existingTimezone || detectedTimezone);
+  // Fallback to system timezone detection
+  const defaultTimezone = userTimezone || detectTimezone();
+
+  if (!isInteractive()) {
+    return defaultTimezone;
+  }
+
+  return await promptText("Timezone", existingTimezone || defaultTimezone);
 }
 
 /**
