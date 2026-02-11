@@ -9,6 +9,7 @@ import {
 } from "../../../../../src/lib/scope/scope-service";
 import { isBadRequest } from "../../../../../src/lib/errors";
 import { resolveTestUserId } from "../../../../../src/lib/auth/test-user";
+import { env } from "../../../../../src/env";
 
 /**
  * Check if test-token endpoint is allowed based on environment.
@@ -20,8 +21,8 @@ import { resolveTestUserId } from "../../../../../src/lib/auth/test-user";
  * - All other environments: Deny
  */
 function isTestTokenAllowed(request: Request): boolean {
-  const vercelEnv = process.env.VERCEL_ENV;
-  const nodeEnv = process.env.NODE_ENV;
+  const vercelEnv = env().VERCEL_ENV;
+  const nodeEnv = env().NODE_ENV;
 
   if (!vercelEnv && nodeEnv === "development") {
     return true;
@@ -29,7 +30,7 @@ function isTestTokenAllowed(request: Request): boolean {
 
   if (vercelEnv === "preview") {
     const bypassHeader = request.headers.get("x-vercel-protection-bypass");
-    const expectedSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+    const expectedSecret = env().VERCEL_AUTOMATION_BYPASS_SECRET;
     return !!expectedSecret && bypassHeader === expectedSecret;
   }
 

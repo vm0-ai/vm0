@@ -264,32 +264,35 @@ export class Runner {
     logger.log(`  Prompt: ${context.prompt.substring(0, 100)}...`);
     logger.log(`  Compose version: ${context.agentComposeVersionId}`);
 
+    let exitCode = 1;
+    let error: string | undefined;
+
     try {
       // Execute in Firecracker VM
       const result = await executeJobInVM(context, this.config);
+      exitCode = result.exitCode;
+      error = result.error;
 
       logger.log(
-        `  Job ${context.runId} execution completed with exit code ${result.exitCode}`,
+        `  Job ${context.runId} execution completed with exit code ${exitCode}`,
       );
-
-      // The executor's bootstrap script calls the complete API directly
-      // But if execution fails before that, we need to report it ourselves
-      if (result.exitCode !== 0 && result.error) {
-        logger.error(`  Job ${context.runId} failed: ${result.error}`);
+      if (exitCode !== 0 && error) {
+        logger.error(`  Job ${context.runId} failed: ${error}`);
       }
     } catch (err) {
-      const error =
-        err instanceof Error ? err.message : "Unknown execution error";
+      error = err instanceof Error ? err.message : "Unknown execution error";
       logger.error(`  Job ${context.runId} execution failed: ${error}`);
-
-      // Report failure to server if VM execution failed before bootstrap
-      const result = await completeJob(
-        this.config.server.url,
-        context,
-        1,
-        error,
-      );
-      logger.log(`  Job ${context.runId} reported as ${result.status}`);
     }
+
+    // Runner is the sole reporter of job completion.
+    // Guest-agent handles telemetry; runner handles the complete API call
+    // after VM exits to ensure it always runs.
+    logger.log(
+      `  Calling complete API for job ${context.runId} with exitCode=${exitCode}`,
+    );
+    const completeResult = await withRunnerTiming("complete", () =>
+      completeJob(this.config.server.url, context, exitCode, error),
+    );
+    logger.log(`  Job ${context.runId} reported as ${completeResult.status}`);
   }
 }

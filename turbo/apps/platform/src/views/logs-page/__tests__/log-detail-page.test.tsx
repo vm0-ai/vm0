@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { pathname$ } from "../../../signals/route.ts";
+import { setPollInterval$ } from "../../../signals/logs-page/log-detail-signals.ts";
 import { screen, waitFor, within } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { http, HttpResponse } from "msw";
@@ -1030,6 +1031,94 @@ describe("log detail page", () => {
       // "1 calls" badge should NOT appear — single operations render individually
       expect(screen.queryByText("1 calls")).not.toBeInTheDocument();
       expect(screen.queryByText("1 call")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("polling", () => {
+    it("should poll new events and stop when run completes", async () => {
+      let polledEventServed = false;
+
+      server.use(
+        http.get("*/api/platform/logs/:id", () => {
+          return HttpResponse.json({
+            id: "run-polling-test",
+            sessionId: null,
+            agentName: "Polling Agent",
+            framework: "claude-code",
+            status: polledEventServed ? "completed" : "running",
+            prompt: "Test polling",
+            error: null,
+            createdAt: "2024-01-01T00:00:00Z",
+            startedAt: "2024-01-01T00:00:01Z",
+            completedAt: polledEventServed ? "2024-01-01T00:00:10Z" : null,
+            artifact: { name: null, version: null },
+          });
+        }),
+        http.get("*/api/agent/runs/:id/telemetry/agent", ({ request }) => {
+          const url = new URL(request.url);
+          const since = url.searchParams.get("since");
+
+          // Initial load: return one event
+          if (!since) {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "assistant",
+                  eventData: {
+                    message: {
+                      content: [{ type: "text", text: "Initial event" }],
+                      role: "assistant",
+                    },
+                  },
+                  createdAt: "2024-01-01T00:00:02Z",
+                },
+              ],
+              hasMore: false,
+              framework: "claude-code",
+            });
+          }
+
+          // Poll: return new event and mark run as completing
+          polledEventServed = true;
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 2,
+                eventType: "assistant",
+                eventData: {
+                  message: {
+                    content: [{ type: "text", text: "Polled event" }],
+                    role: "assistant",
+                  },
+                },
+                createdAt: "2024-01-01T00:00:05Z",
+              },
+            ],
+            hasMore: false,
+            framework: "claude-code",
+          });
+        }),
+      );
+
+      // Use 0ms interval — polling naturally stops after 2-3 cycles
+      context.store.set(setPollInterval$, 0);
+
+      await setupPage({
+        context,
+        path: "/logs/run-polling-test",
+      });
+
+      // Initial event should appear
+      await waitFor(() => {
+        expect(screen.getByText(/Initial event/)).toBeInTheDocument();
+      });
+
+      // Polled event should appear automatically via polling
+      await waitFor(() => {
+        expect(screen.getByText(/Polled event/)).toBeInTheDocument();
+        expect(screen.getByText("2 total")).toBeInTheDocument();
+      });
     });
   });
 });

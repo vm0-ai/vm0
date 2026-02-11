@@ -101,7 +101,8 @@ function extractFields(args: unknown[]): Record<string, unknown> {
 }
 
 function isAutoDebugEnabled(): boolean {
-  // Auto-enable debug in local development
+  // Read process.env directly — logger() is called at module scope by many
+  // files, so this must not trigger full env() validation at import time.
   return process.env.NODE_ENV === "development";
 }
 

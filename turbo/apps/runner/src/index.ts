@@ -2,7 +2,7 @@
 // CI: Refactored E2E tests with setup_file() - parallel tests use 45s timeout (issue #1555)
 // Perf: Replaced Python vsock-guest with Rust for 16x faster VM startup (issue #1668)
 // Perf: Added snapshot support for fast VM boot from pre-warmed state (issue #1600)
-// CI: Trigger runner CI pipeline
+// CI: Sync 02-parallel E2E tests into 03-experimental-runner (issue #2830)
 import { program } from "commander";
 import { startCommand } from "./commands/start.js";
 import { doctorCommand } from "./commands/doctor.js";

@@ -2,6 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { composeJobs } from "../../db/schema/compose-job";
 import { generateComposeJobToken } from "../auth/sandbox-token";
 import { Sandbox } from "@e2b/code-interpreter";
+import { env } from "../../env";
 import { e2bConfig } from "../e2b/config";
 import { logger } from "../logger";
 import { notifySlackComposeComplete } from "../slack/handlers/compose-notification";
@@ -13,11 +14,10 @@ const log = logger("compose:trigger");
  * Falls back based on environment: preview -> production -> localhost.
  */
 function getApiUrl(): string {
-  const envVars = globalThis.services?.env;
-  const vercelEnv = process.env.VERCEL_ENV;
-  const vercelUrl = process.env.VERCEL_URL;
+  const vercelEnv = env().VERCEL_ENV;
+  const vercelUrl = env().VERCEL_URL;
 
-  let apiUrl = envVars?.VM0_API_URL || process.env.VM0_API_URL;
+  let apiUrl = env().VM0_API_URL;
   if (!apiUrl) {
     if (vercelEnv === "preview" && vercelUrl) {
       apiUrl = `https://${vercelUrl}`;
@@ -201,8 +201,8 @@ async function spawnComposeJobSandbox(
       VM0_API_URL: apiUrl,
       VM0_WEBHOOK_URL: webhookUrl,
       VM0_WEBHOOK_TOKEN: webhookToken,
-      ...(process.env.VERCEL_AUTOMATION_BYPASS_SECRET && {
-        VERCEL_PROTECTION_BYPASS: process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
+      ...(env().VERCEL_AUTOMATION_BYPASS_SECRET && {
+        VERCEL_PROTECTION_BYPASS: env().VERCEL_AUTOMATION_BYPASS_SECRET,
       }),
     },
   });

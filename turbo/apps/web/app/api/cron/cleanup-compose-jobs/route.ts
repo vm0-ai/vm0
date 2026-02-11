@@ -3,6 +3,7 @@ import { initServices } from "../../../../src/lib/init-services";
 import { composeJobs } from "../../../../src/db/schema/compose-job";
 import { and, eq, lt, inArray } from "drizzle-orm";
 import { logger } from "../../../../src/lib/logger";
+import { env } from "../../../../src/env";
 
 const log = logger("cron:cleanup-compose-jobs");
 
@@ -21,7 +22,7 @@ export async function GET(request: Request): Promise<Response> {
 
   // Verify cron secret (Vercel automatically injects CRON_SECRET into Authorization header)
   const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
+  const cronSecret = env().CRON_SECRET;
 
   if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json(

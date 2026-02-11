@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   encryptSecrets,
   decryptSecrets,
@@ -13,10 +13,6 @@ const TEST_KEY =
 describe("secrets-encryption", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    vi.unstubAllEnvs();
   });
 
   describe("encryptSecrets (array)", () => {

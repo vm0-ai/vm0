@@ -1,4 +1,4 @@
-import { useGet, useSet, useLoadable } from "ccstate-react";
+import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { IconSearch, IconLoader2 } from "@tabler/icons-react";
 import { Input } from "@vm0/ui";
 import {
@@ -7,7 +7,7 @@ import {
   totalMatchCount$,
   type ViewMode,
 } from "../../../../signals/logs-page/log-detail-state.ts";
-import { runEvents$ } from "../../../../signals/logs-page/log-detail-signals.ts";
+import { allEvents$ } from "../../../../signals/logs-page/log-detail-signals.ts";
 import { SearchNavigation } from "../../components/search-navigation.tsx";
 import { ViewModeToggle } from "./view-mode-toggle.tsx";
 import { RawJsonView } from "./raw-json-view.tsx";
@@ -29,7 +29,7 @@ export function AgentEventsCard({
   setSearchTerm: (term: string) => void;
   className?: string;
 }) {
-  const eventsLoadable = useLoadable(runEvents$);
+  const eventsLoadable = useLastLoadable(allEvents$);
 
   const viewMode = useGet(viewMode$);
   const setViewMode = useSet(viewMode$);

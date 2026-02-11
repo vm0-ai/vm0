@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { executeDueSchedules } from "../../../../src/lib/schedule";
 import { logger } from "../../../../src/lib/logger";
+import { env } from "../../../../src/env";
 
 const log = logger("cron:execute-schedules");
 
@@ -14,7 +15,7 @@ export async function GET(request: Request) {
 
   // Verify cron secret (Vercel automatically injects CRON_SECRET into Authorization header)
   const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
+  const cronSecret = env().CRON_SECRET;
 
   if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
     log.warn("Invalid cron secret provided");
