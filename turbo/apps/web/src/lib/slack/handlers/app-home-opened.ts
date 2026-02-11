@@ -97,11 +97,13 @@ export async function refreshAppHome(
   const userEmail = await getUserEmail(userLink.vm0UserId);
 
   // Build and publish home view
+  const isAdmin = installation.adminSlackUserId === userId;
   const view = buildAppHomeView({
     isLinked: true,
     vm0UserId: userLink.vm0UserId,
     userEmail,
     agentName,
+    isAdmin,
   });
   await publishAppHome(client, userId, view);
 }

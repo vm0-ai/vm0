@@ -15,6 +15,7 @@ export function buildAppHomeView(options: {
   userEmail?: string;
   agentName?: string;
   loginUrl?: string;
+  isAdmin?: boolean;
 }): View {
   const blocks: (Block | KnownBlock)[] = [
     {
@@ -95,12 +96,12 @@ export function buildAppHomeView(options: {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*${options.agentName}*`,
+        text: `AgentName: *${options.agentName}*`,
       },
       accessory: {
         type: "button",
         text: { type: "plain_text", text: "Settings" },
-        url: `${getPlatformUrl()}/settings?tab=integrations`,
+        url: `${getPlatformUrl()}/settings/slack`,
         action_id: "home_environment_setup",
       },
     });
@@ -116,6 +117,10 @@ export function buildAppHomeView(options: {
 
   blocks.push({ type: "divider" });
 
+  const settingsDesc = options.isAdmin
+    ? "Configure secrets, variables, and select the workspace agent"
+    : "Configure secrets and variables";
+
   // Help section
   blocks.push({
     type: "section",
@@ -129,7 +134,7 @@ export function buildAppHomeView(options: {
     type: "section",
     text: {
       type: "mrkdwn",
-      text: "*Chat with your agents*\nSend a DM or `@VM0` in any channel",
+      text: `*Commands*\n\u2022 \`/vm0 connect\` - Connect to VM0\n\u2022 \`/vm0 disconnect\` - Disconnect from VM0\n\u2022 \`/vm0 settings\` - ${settingsDesc}`,
     },
   });
 
@@ -137,7 +142,7 @@ export function buildAppHomeView(options: {
     type: "section",
     text: {
       type: "mrkdwn",
-      text: "*Commands*\n\u2022 `/vm0 connect` - Connect to VM0\n\u2022 `/vm0 disconnect` - Disconnect from VM0\n\u2022 `/vm0 settings` - Configure secrets and variables",
+      text: "*Usage*\nSend a DM or `@VM0` in any channel to chat with your agents",
     },
   });
 

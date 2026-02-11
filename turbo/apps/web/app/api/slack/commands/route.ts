@@ -332,7 +332,7 @@ function handleEnvironmentSetup(): NextResponse {
         accessory: {
           type: "button",
           text: { type: "plain_text", text: "Open Platform" },
-          url: `${platformUrl}/settings?tab=integrations`,
+          url: `${platformUrl}/settings/slack`,
           action_id: "open_platform_settings",
         },
       },
