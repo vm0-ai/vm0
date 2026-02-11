@@ -80,7 +80,7 @@ pub(crate) async fn exchange_token(
 // WebSocket URL construction
 // ---------------------------------------------------------------------------
 
-fn build_ws_url(host: &str, token: &str, resume: Option<(&str, i64)>) -> Result<String, Error> {
+fn build_ws_url(host: &str, token: &str, resume: Option<&str>) -> Result<String, Error> {
     let mut u = url::Url::parse(&format!("wss://{host}/"))?;
     {
         let mut q = u.query_pairs_mut();
@@ -90,9 +90,8 @@ fn build_ws_url(host: &str, token: &str, resume: Option<(&str, i64)>) -> Result<
         q.append_pair("agent", AGENT_STRING);
         q.append_pair("heartbeats", "true");
         q.append_pair("echo", "false");
-        if let Some((key, serial)) = resume {
+        if let Some(key) = resume {
             q.append_pair("resume", key);
-            q.append_pair("connection_serial", &serial.to_string());
         }
     }
     Ok(u.to_string())
@@ -140,7 +139,7 @@ async fn wait_for_connected(ws_read: &mut WsRead) -> Result<ProtocolMessage, Err
     })
 }
 
-async fn wait_for_attached(ws_read: &mut WsRead, channel: &str) -> Result<(), Error> {
+async fn wait_for_attached(ws_read: &mut WsRead, channel: &str) -> Result<ProtocolMessage, Error> {
     while let Some(frame) = ws_read.next().await {
         let frame = frame?;
         if let tungstenite::Message::Binary(data) = frame {
@@ -148,7 +147,7 @@ async fn wait_for_attached(ws_read: &mut WsRead, channel: &str) -> Result<(), Er
             match msg.action {
                 action::ATTACHED => {
                     if msg.channel.as_deref() == Some(channel) {
-                        return Ok(());
+                        return Ok(msg);
                     }
                 }
                 action::ERROR => {
@@ -190,13 +189,14 @@ pub(crate) async fn connect_and_attach(
     let ws_url = build_ws_url(realtime_host, &token.token, None)?;
     let (mut ws_write, mut ws_read) = connect_and_split(&ws_url).await?;
     let connected_msg = wait_for_connected(&mut ws_read).await?;
-    let conn_state = ConnState::from_connected(&connected_msg, token);
-    let attach = build_attach_msg(channel, channel_params);
+    let mut conn_state = ConnState::from_connected(&connected_msg, token);
+    let attach = build_attach_msg(channel, channel_params, None);
     let encoded = encode_msg(&attach)?;
     ws_write
         .send(tungstenite::Message::Binary(encoded.into()))
         .await?;
-    wait_for_attached(&mut ws_read, channel).await?;
+    let attached_msg = wait_for_attached(&mut ws_read, channel).await?;
+    conn_state.channel_serial = attached_msg.channel_serial;
     Ok((ws_write, ws_read, conn_state))
 }
 
@@ -207,7 +207,7 @@ pub(crate) async fn connect_and_attach(
 pub(crate) struct ConnState {
     pub connection_id: Option<String>,
     pub connection_key: Option<String>,
-    pub connection_serial: i64,
+    pub channel_serial: Option<String>,
     pub connection_state_ttl: Duration,
     pub max_idle_interval: Duration,
     pub disconnected_at: Option<Instant>,
@@ -220,7 +220,7 @@ impl ConnState {
         let mut state = ConnState {
             connection_id: None,
             connection_key: None,
-            connection_serial: -1,
+            channel_serial: None,
             connection_state_ttl: DEFAULT_CONNECTION_STATE_TTL,
             max_idle_interval: DEFAULT_MAX_IDLE_INTERVAL,
             disconnected_at: None,
@@ -236,7 +236,6 @@ impl ConnState {
         if let Some(ref key) = msg.connection_key {
             self.connection_key = Some(key.clone());
         }
-        self.connection_serial = msg.connection_serial.unwrap_or(-1);
 
         if let Some(ref details) = msg.connection_details {
             if let Some(ref key) = details.connection_key {
@@ -267,14 +266,6 @@ impl ConnState {
             disconnected_at.elapsed() < self.connection_state_ttl && self.connection_key.is_some()
         } else {
             false
-        }
-    }
-
-    fn update_serial(&mut self, msg: &ProtocolMessage) {
-        if let Some(serial) = msg.connection_serial
-            && serial > self.connection_serial
-        {
-            self.connection_serial = serial;
         }
     }
 }
@@ -313,7 +304,6 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                             retry_count = 0;
                             match decode_msg(&data) {
                                 Ok(msg) => {
-                                    p.conn_state.update_serial(&msg);
                                     match handle_message(&mut p, msg).await {
                                         LoopAction::Stop => return,
                                         LoopAction::Reconnect => {
@@ -431,17 +421,58 @@ enum LoopAction {
     Reconnect,
 }
 
+fn decode_data(data: serde_json::Value, encoding: Option<&str>) -> serde_json::Value {
+    let Some(encoding) = encoding else {
+        return data;
+    };
+    if encoding.is_empty() {
+        return data;
+    }
+    let mut result = data;
+    for layer in encoding.rsplit('/') {
+        match layer {
+            "json" => {
+                if let serde_json::Value::String(ref s) = result {
+                    match serde_json::from_str(s) {
+                        Ok(parsed) => result = parsed,
+                        Err(e) => {
+                            tracing::warn!("Failed to decode JSON encoding layer: {e}");
+                            return result;
+                        }
+                    }
+                }
+            }
+            "utf-8" => {
+                // No-op: MessagePack strings are already UTF-8
+            }
+            other => {
+                tracing::warn!(
+                    encoding = other,
+                    "Unsupported encoding layer, returning raw data"
+                );
+                return result;
+            }
+        }
+    }
+    result
+}
+
 async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAction {
     match msg.action {
         action::HEARTBEAT => {
             tracing::trace!("Heartbeat received");
         }
         action::MESSAGE => {
+            if let Some(ref serial) = msg.channel_serial {
+                p.conn_state.channel_serial = Some(serial.clone());
+            }
             if let Some(messages) = msg.messages {
                 for m in messages {
+                    let raw = m.data.unwrap_or(serde_json::Value::Null);
+                    let data = decode_data(raw, m.encoding.as_deref());
                     let event = Event::Message(Message {
                         name: m.name,
-                        data: m.data.unwrap_or(serde_json::Value::Null),
+                        data,
                         id: m.id,
                         client_id: m.client_id,
                         timestamp: m.timestamp,
@@ -453,6 +484,18 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
             }
         }
         action::DISCONNECTED => {
+            if let Some(ref err) = msg.error
+                && err.status_code.is_some_and(|sc| (400..500).contains(&sc))
+            {
+                let _ = p
+                    .event_tx
+                    .send(Event::Error {
+                        code: err.code,
+                        message: err.message.clone(),
+                    })
+                    .await;
+                return LoopAction::Stop;
+            }
             let reason = msg.error.map(|e| e.message);
             let _ = p.event_tx.send(Event::Disconnected { reason }).await;
             return LoopAction::Reconnect;
@@ -482,7 +525,11 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
                 return LoopAction::Stop;
             }
             tracing::warn!(channel = ?msg.channel, "Channel detached, re-attaching");
-            let attach = build_attach_msg(&p.channel, p.channel_params.as_ref());
+            let attach = build_attach_msg(
+                &p.channel,
+                p.channel_params.as_ref(),
+                p.conn_state.channel_serial.as_deref(),
+            );
             if let Ok(data) = encode_msg(&attach) {
                 let _ = p
                     .ws_write
@@ -491,6 +538,9 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
             }
         }
         action::ATTACHED => {
+            if let Some(ref serial) = msg.channel_serial {
+                p.conn_state.channel_serial = Some(serial.clone());
+            }
             tracing::info!(channel = ?msg.channel, "Channel attached");
         }
         action::CONNECTED => {
@@ -577,10 +627,7 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<(), Error> {
         .map_or(&p.conn_state.token.token, |t| &t.token);
 
     let resume = if use_resume {
-        p.conn_state
-            .connection_key
-            .as_deref()
-            .map(|key| (key, p.conn_state.connection_serial))
+        p.conn_state.connection_key.as_deref()
     } else {
         None
     };
@@ -594,20 +641,29 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<(), Error> {
         && connected_msg.connection_id == p.conn_state.connection_id
         && connected_msg.error.is_none();
 
-    if !resumed {
+    let new_channel_serial = if !resumed {
         tracing::info!("Resume failed or fresh connect, re-attaching channel");
-        let attach = build_attach_msg(&p.channel, p.channel_params.as_ref());
+        let attach = build_attach_msg(
+            &p.channel,
+            p.channel_params.as_ref(),
+            p.conn_state.channel_serial.as_deref(),
+        );
         let data = encode_msg(&attach)?;
         ws_write
             .send(tungstenite::Message::Binary(data.into()))
             .await?;
-        wait_for_attached(&mut ws_read, &p.channel).await?;
+        let attached_msg = wait_for_attached(&mut ws_read, &p.channel).await?;
+        attached_msg.channel_serial
     } else {
         tracing::info!("Connection resumed successfully");
-    }
+        None
+    };
 
     // Commit state only after all steps succeeded.
     p.conn_state.update_from_connected(&connected_msg);
+    if let Some(serial) = new_channel_serial {
+        p.conn_state.channel_serial = Some(serial);
+    }
     if let Some(token) = new_token {
         p.conn_state.token = token;
         p.conn_state.token_renewal_at = ConnState::compute_renewal_at(&p.conn_state.token);
@@ -644,11 +700,11 @@ mod tests {
 
     #[test]
     fn build_ws_url_with_resume() {
-        let url = build_ws_url("realtime.ably.io", "my-token", Some(("conn-key!abc", 42)));
+        let url = build_ws_url("realtime.ably.io", "my-token", Some("conn-key!abc"));
         assert!(url.is_ok());
         let url = url.unwrap_or_default();
         assert!(url.contains("resume=conn-key"));
-        assert!(url.contains("connection_serial=42"));
+        assert!(!url.contains("connection_serial"));
     }
 
     #[test]
@@ -693,7 +749,6 @@ mod tests {
         let state = ConnState::from_connected(&msg, token);
         assert_eq!(state.connection_id.as_deref(), Some("conn-1"));
         assert_eq!(state.connection_key.as_deref(), Some("conn-1!key"));
-        assert_eq!(state.connection_serial, -1);
         assert_eq!(state.connection_state_ttl, Duration::from_millis(60000));
         assert_eq!(state.max_idle_interval, Duration::from_millis(10000));
     }
@@ -703,7 +758,7 @@ mod tests {
         let mut state = ConnState {
             connection_id: Some("c1".to_string()),
             connection_key: Some("c1!key".to_string()),
-            connection_serial: 5,
+            channel_serial: None,
             connection_state_ttl: Duration::from_secs(120),
             max_idle_interval: Duration::from_secs(15),
             disconnected_at: None,
@@ -727,5 +782,40 @@ mod tests {
         // No connection key → cannot resume
         state.connection_key = None;
         assert!(!state.can_resume());
+    }
+
+    #[test]
+    fn decode_data_no_encoding() {
+        let data = serde_json::json!({"key": "value"});
+        let result = decode_data(data.clone(), None);
+        assert_eq!(result, data);
+    }
+
+    #[test]
+    fn decode_data_empty_encoding() {
+        let data = serde_json::json!("hello");
+        let result = decode_data(data.clone(), Some(""));
+        assert_eq!(result, data);
+    }
+
+    #[test]
+    fn decode_data_json_encoding() {
+        let data = serde_json::json!(r#"{"runId":"uuid-123"}"#);
+        let result = decode_data(data, Some("json"));
+        assert_eq!(result, serde_json::json!({"runId": "uuid-123"}));
+    }
+
+    #[test]
+    fn decode_data_utf8_json_encoding() {
+        let data = serde_json::json!(r#"[1,2,3]"#);
+        let result = decode_data(data, Some("utf-8/json"));
+        assert_eq!(result, serde_json::json!([1, 2, 3]));
+    }
+
+    #[test]
+    fn decode_data_unsupported_encoding() {
+        let data = serde_json::json!("encoded-data");
+        let result = decode_data(data.clone(), Some("base64"));
+        assert_eq!(result, data);
     }
 }

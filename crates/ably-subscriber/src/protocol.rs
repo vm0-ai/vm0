@@ -29,6 +29,7 @@ pub mod flags {
     pub const HAS_PRESENCE: i32 = 1;
     pub const HAS_BACKLOG: i32 = 2;
     pub const HAS_CHANNEL_RESUMED: i32 = 4;
+    pub const ATTACH_RESUME: i32 = 1 << 5; // 32
     pub const MODE_SUBSCRIBE: i32 = 262_144; // bit 18
 }
 
@@ -130,11 +131,18 @@ pub fn decode_msg(data: &[u8]) -> Result<ProtocolMessage, Error> {
 pub fn build_attach_msg(
     channel: &str,
     params: Option<&HashMap<String, String>>,
+    channel_serial: Option<&str>,
 ) -> ProtocolMessage {
+    let mut f = flags::MODE_SUBSCRIBE;
+    let cs = channel_serial.map(|s| {
+        f |= flags::ATTACH_RESUME;
+        s.to_string()
+    });
     ProtocolMessage {
         action: action::ATTACH,
         channel: Some(channel.to_string()),
-        flags: Some(flags::MODE_SUBSCRIBE),
+        channel_serial: cs,
+        flags: Some(f),
         params: params.cloned(),
         ..Default::default()
     }
@@ -359,10 +367,11 @@ mod tests {
 
     #[test]
     fn build_attach_msg_basic() {
-        let msg = build_attach_msg("my-channel", None);
+        let msg = build_attach_msg("my-channel", None, None);
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("my-channel"));
         assert_eq!(msg.flags, Some(flags::MODE_SUBSCRIBE));
+        assert!(msg.channel_serial.is_none());
         assert!(msg.params.is_none());
     }
 
@@ -370,7 +379,7 @@ mod tests {
     fn build_attach_msg_with_rewind() {
         let mut params = HashMap::new();
         params.insert("rewind".to_string(), "2m".to_string());
-        let msg = build_attach_msg("run:abc", Some(&params));
+        let msg = build_attach_msg("run:abc", Some(&params), None);
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel.as_deref(), Some("run:abc"));
         assert_eq!(
@@ -380,5 +389,23 @@ mod tests {
                 .map(String::as_str),
             Some("2m")
         );
+    }
+
+    #[test]
+    fn build_attach_msg_with_channel_serial() {
+        let msg = build_attach_msg("my-channel", None, Some("serial-abc"));
+        assert_eq!(msg.action, action::ATTACH);
+        assert_eq!(msg.channel_serial.as_deref(), Some("serial-abc"));
+        let f = msg.flags.unwrap_or(0);
+        assert_ne!(f & flags::ATTACH_RESUME, 0);
+        assert_ne!(f & flags::MODE_SUBSCRIBE, 0);
+    }
+
+    #[test]
+    fn build_attach_msg_without_channel_serial_no_resume_flag() {
+        let msg = build_attach_msg("my-channel", None, None);
+        let f = msg.flags.unwrap_or(0);
+        assert_eq!(f & flags::ATTACH_RESUME, 0);
+        assert_ne!(f & flags::MODE_SUBSCRIBE, 0);
     }
 }
