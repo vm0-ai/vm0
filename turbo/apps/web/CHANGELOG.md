@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.28.1](https://github.com/vm0-ai/vm0/compare/web-v12.28.0...web-v12.28.1) (2026-02-11)
+
+
+### Bug Fixes
+
+* **db:** register orphaned migration 0077 as 0079 in journal ([#2785](https://github.com/vm0-ai/vm0/issues/2785)) ([7a5e013](https://github.com/vm0-ai/vm0/commit/7a5e01395c083b497b38ff3c1b36a3a15b0c6828))
+
 ## [12.28.0](https://github.com/vm0-ai/vm0/compare/web-v12.27.0...web-v12.28.0) (2026-02-10)
 
 
