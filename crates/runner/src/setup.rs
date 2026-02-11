@@ -227,7 +227,13 @@ async fn download_firecracker(paths: &HomePaths, arch: &str) -> RunnerResult<()>
     let tmp_path = bin_path.with_extension(format!("tmp.{}", std::process::id()));
     let result = extract_firecracker(&tarball_path, &tmp_path, arch).await;
     let _ = tokio::fs::remove_file(&tarball_path).await;
-    let sha_hex = result?;
+    let sha_hex = match result {
+        Ok(sha) => sha,
+        Err(e) => {
+            let _ = tokio::fs::remove_file(&tmp_path).await;
+            return Err(e);
+        }
+    };
 
     #[allow(clippy::unreachable)] // arch validated by check_architecture
     let expected_sha = match arch {
