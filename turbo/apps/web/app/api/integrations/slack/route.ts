@@ -283,6 +283,19 @@ export async function PATCH(request: Request) {
     );
   }
 
+  // Only workspace admin can change the default agent
+  if (userLink.slackUserId !== installation.adminSlackUserId) {
+    return NextResponse.json(
+      {
+        error: {
+          message: "Only the workspace admin can change the default agent",
+          code: "FORBIDDEN",
+        },
+      },
+      { status: 403 },
+    );
+  }
+
   // Resolve user's scope to find the agent compose
   const userScope = await getUserScopeByClerkId(userId);
   if (!userScope) {

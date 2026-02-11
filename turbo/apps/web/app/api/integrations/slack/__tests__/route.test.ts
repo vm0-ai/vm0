@@ -181,8 +181,27 @@ describe("/api/integrations/slack", () => {
       expect(data.error.code).toBe("BAD_REQUEST");
     });
 
-    it("returns 404 when agent does not exist", async () => {
+    it("returns 403 when non-admin tries to update", async () => {
       const { userLink } = await givenLinkedSlackUser();
+      mockClerk({ userId: userLink.vm0UserId });
+
+      const request = new Request(
+        "http://localhost:3000/api/integrations/slack",
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ agentName: "some-agent" }),
+        },
+      );
+      const response = await PATCH(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.error.code).toBe("FORBIDDEN");
+    });
+
+    it("returns 404 when agent does not exist", async () => {
+      const { userLink } = await givenLinkedSlackUser({ isAdmin: true });
       mockClerk({ userId: userLink.vm0UserId });
 
       const request = new Request(
@@ -201,7 +220,7 @@ describe("/api/integrations/slack", () => {
     });
 
     it("updates the default agent successfully", async () => {
-      const { userLink } = await givenLinkedSlackUser();
+      const { userLink } = await givenLinkedSlackUser({ isAdmin: true });
       const { compose } = await givenUserHasAgent(userLink, {
         agentName: "new-agent",
       });
