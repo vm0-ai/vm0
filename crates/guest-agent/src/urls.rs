@@ -7,8 +7,6 @@ static EVENTS_URL: LazyLock<String> =
     LazyLock::new(|| format!("{}/api/webhooks/agent/events", env::api_url()));
 static CHECKPOINT_URL: LazyLock<String> =
     LazyLock::new(|| format!("{}/api/webhooks/agent/checkpoints", env::api_url()));
-static COMPLETE_URL: LazyLock<String> =
-    LazyLock::new(|| format!("{}/api/webhooks/agent/complete", env::api_url()));
 static HEARTBEAT_URL: LazyLock<String> =
     LazyLock::new(|| format!("{}/api/webhooks/agent/heartbeat", env::api_url()));
 static TELEMETRY_URL: LazyLock<String> =
@@ -23,9 +21,6 @@ pub fn events_url() -> &'static str {
 }
 pub fn checkpoint_url() -> &'static str {
     &CHECKPOINT_URL
-}
-pub fn complete_url() -> &'static str {
-    &COMPLETE_URL
 }
 pub fn heartbeat_url() -> &'static str {
     &HEARTBEAT_URL

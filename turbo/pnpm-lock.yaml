@@ -226,6 +226,9 @@ importers:
       react-json-view-lite:
         specifier: ^2.5.0
         version: 2.5.0(react@19.2.1)
+      signal-timers:
+        specifier: ^1.0.4
+        version: 1.0.4
     devDependencies:
       '@tailwindcss/vite':
         specifier: ^4.1.8
@@ -7691,6 +7694,10 @@ packages:
   signal-exit@4.1.0:
     resolution: {integrity: sha512-bzyZ1e88w9O1iNJbKnOlvYTrWPDl46O1bG0D3XInv+9tkPrxrN8jUUTiFlDkkmKWgn1M6CfIA13SuGqOa9Korw==}
     engines: {node: '>=14'}
+
+  signal-timers@1.0.4:
+    resolution: {integrity: sha512-aIqj6BTlnA2G48GTfTFqkEn5MJBtfx4bHCjqzdRLdkhvCRhH8kEDFsX6yUbX0qYXLvV4bI1PRgAw+C9DrgskGg==}
+    engines: {node: '>=10'}
 
   simple-swizzle@0.2.2:
     resolution: {integrity: sha512-JA//kQgZtbuY83m+xT+tXJkmJncGMTFT+C+g2h2R9uxkYIrE2yy9sgmcLhCnw57/WSD+Eh3J97FPEDFnbXnDUg==}
@@ -16798,6 +16805,8 @@ snapshots:
   signal-exit@3.0.7: {}
 
   signal-exit@4.1.0: {}
+
+  signal-timers@1.0.4: {}
 
   simple-swizzle@0.2.2:
     dependencies:

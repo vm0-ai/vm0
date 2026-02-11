@@ -8,16 +8,12 @@ import {
   postMessage,
   extractMessageContent,
   buildLoginPromptMessage,
-  buildAgentResponseMessage,
 } from "../index";
 import { runAgentForSlack } from "./run-agent";
 import {
-  removeThinkingReaction,
   fetchConversationContexts,
   lookupThreadSession,
-  saveThreadSession,
   buildLoginUrl,
-  buildLogsUrl,
   getWorkspaceAgent,
 } from "./shared";
 import { logger } from "../../logger";
@@ -44,10 +40,10 @@ interface MentionContext {
  * 5. Add thinking reaction
  * 6. Look up existing thread session
  * 7. Fetch conversation context
- * 8. Execute agent
- * 9. Create/update thread session mapping
- * 10. Post response message
- * 11. Remove thinking reaction
+ * 8. Dispatch agent run with callback
+ *
+ * Note: Response posting is now handled by the callback endpoint
+ * when the agent run completes.
  */
 export async function handleAppMention(context: MentionContext): Promise<void> {
   const { SECRETS_ENCRYPTION_KEY } = env();
@@ -158,67 +154,47 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
     context.messageTs,
   );
 
-  try {
-    // 8. Execute agent with deduplicated context
-    log.debug("Calling runAgentForSlack", { existingSessionId });
-    const {
-      status: runStatus,
-      response: agentResponse,
-      sessionId: newSessionId,
-      runId,
-    } = await runAgentForSlack({
-      composeId: installation.defaultComposeId,
-      agentName: agent.name,
-      sessionId: existingSessionId,
-      prompt: messageContent,
-      threadContext: executionContext,
-      userId: userLink.vm0UserId,
-    });
-
-    // 9. Create or update thread session mapping
-    if (threadTs) {
-      await saveThreadSession({
-        userLinkId: userLink.id,
-        channelId: context.channelId,
-        threadTs,
-        existingSessionId,
-        newSessionId,
-        messageTs: context.messageTs,
-        runStatus,
-      });
-    }
-
-    // 10. Post response message with agent name and logs link
-    const logsUrl = runId ? buildLogsUrl(runId) : undefined;
-    const responseText =
-      runStatus === "timeout"
-        ? `:warning: *Agent timed out*\n${agentResponse}`
-        : agentResponse;
-    await postMessage(client, context.channelId, responseText, {
+  // 8. Dispatch agent run with callback (returns immediately)
+  log.debug("Dispatching agent run", { existingSessionId });
+  const { status, response } = await runAgentForSlack({
+    composeId: installation.defaultComposeId,
+    agentName: agent.name,
+    sessionId: existingSessionId,
+    prompt: messageContent,
+    threadContext: executionContext,
+    userId: userLink.vm0UserId,
+    callbackContext: {
+      workspaceId: context.workspaceId,
+      channelId: context.channelId,
       threadTs,
-      blocks: buildAgentResponseMessage(responseText, agent.name, logsUrl),
-    });
-  } catch (innerError) {
-    // If postMessage or session creation fails, still try to notify the user
-    log.error("Error posting response or creating session", {
-      error: innerError,
-    });
+      messageTs: context.messageTs,
+      userLinkId: userLink.id,
+      agentName: agent.name,
+      composeId: installation.defaultComposeId,
+      existingSessionId,
+      reactionAdded,
+    },
+  });
+
+  // Only handle immediate failures (agent run was not dispatched)
+  if (status === "failed") {
+    log.error("Failed to dispatch agent run", { response });
     await postMessage(
       client,
       context.channelId,
-      "Sorry, an error occurred while sending the response. Please try again.",
+      response ?? "Sorry, an error occurred. Please try again.",
       { threadTs },
-    ).catch(() => {
-      // If even the error message fails, we can't do anything more
-    });
-  } finally {
-    // 11. Remove thinking reaction
+    );
+    // Remove reaction on failure since callback won't be invoked
     if (reactionAdded) {
-      await removeThinkingReaction(
-        client,
-        context.channelId,
-        context.messageTs,
-      );
+      await client.reactions
+        .remove({
+          channel: context.channelId,
+          timestamp: context.messageTs,
+          name: "thought_balloon",
+        })
+        .catch(() => {});
     }
   }
+  // For "dispatched" status, callback will handle response posting and reaction removal
 }

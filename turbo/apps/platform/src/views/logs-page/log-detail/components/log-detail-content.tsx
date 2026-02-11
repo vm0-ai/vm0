@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useGet, useSet, useLoadable } from "ccstate-react";
+import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { runDetail$ } from "../../../../signals/logs-page/log-detail-signals.ts";
 import { CopyButton } from "@vm0/ui";
 import {
@@ -46,7 +46,7 @@ export function LogDetailContent() {
   const setSearchTerm = useSet(logDetailSearchTerm$);
   const openAddDialog = useSet(openAddSecretDialog$);
 
-  const loadable = useLoadable(runDetail$);
+  const loadable = useLastLoadable(runDetail$);
 
   const handleAddSecret = (secretName: string) => {
     detach(openAddDialog(secretName), Reason.DomCallback);

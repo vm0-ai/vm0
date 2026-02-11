@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.58.0](https://github.com/vm0-ai/vm0/compare/platform-v0.57.0...platform-v0.58.0) (2026-02-11)
+
+
+### Features
+
+* **platform:** add connector management to settings page ([#2769](https://github.com/vm0-ai/vm0/issues/2769)) ([418bc1e](https://github.com/vm0-ai/vm0/commit/418bc1e2dd6afb94b3caca84abf260bf542359c8)), closes [#2766](https://github.com/vm0-ai/vm0/issues/2766)
+* **platform:** add connector-based environment variable setup ([#2847](https://github.com/vm0-ai/vm0/issues/2847)) ([7a0004f](https://github.com/vm0-ai/vm0/commit/7a0004f3c0436e53d591f1308b7ec5b59d56f226))
+* **slack:** move settings to platform integrations page ([#2797](https://github.com/vm0-ai/vm0/issues/2797)) ([030e41f](https://github.com/vm0-ai/vm0/commit/030e41fa55e7f7eeebb811f6619ad84c954de173))
+
+
+### Bug Fixes
+
+* **platform:** show skeleton loading state instead of flashing empty state in secrets/vars lists ([#2840](https://github.com/vm0-ai/vm0/issues/2840)) ([cab7682](https://github.com/vm0-ai/vm0/commit/cab7682483252324f0d4e14dfa07b67fceb5ac0a)), closes [#2658](https://github.com/vm0-ai/vm0/issues/2658)
+
 ## [0.57.0](https://github.com/vm0-ai/vm0/compare/platform-v0.56.5...platform-v0.57.0) (2026-02-11)
 
 
