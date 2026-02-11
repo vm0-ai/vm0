@@ -213,7 +213,7 @@ describe("POST /api/slack/commands", () => {
       expect(data.response_type).toBe("ephemeral");
       const blockStr = JSON.stringify(data.blocks);
       expect(blockStr).toContain("Settings");
-      expect(blockStr).toContain("settings?tab=integrations");
+      expect(blockStr).toContain("/settings/slack");
     });
   });
 
