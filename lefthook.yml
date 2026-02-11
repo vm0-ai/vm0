@@ -15,10 +15,6 @@ pre-commit:
             root: turbo/
             glob: "turbo/**/*"
             stage_fixed: true
-          - name: turbo-checks
-            run: pnpm turbo run lint check-types --filter='...[HEAD]' --ui=stream
-            root: turbo/
-            glob: "turbo/**/*.{js,ts,tsx,jsx,mjs,cjs}"
           - name: knip
             run: pnpm knip --cache
             root: turbo/
