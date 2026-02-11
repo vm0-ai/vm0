@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "../route";
 import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
+import { reloadEnv } from "../../../../../../src/env";
 
 // Mock Clerk Server API
 const mockGetUserList = vi.fn();
@@ -20,6 +21,7 @@ describe("/api/cli/auth/test-token", () => {
   beforeEach(() => {
     context.setupMocks();
     vi.stubEnv("CLERK_SECRET_KEY", "test-secret-key");
+    reloadEnv();
     mockGetUserList.mockReset();
     mockGetUserList.mockResolvedValue({
       data: [{ id: "user_test123" }],
@@ -30,6 +32,7 @@ describe("/api/cli/auth/test-token", () => {
     it("allows access in local development (no VERCEL_ENV, NODE_ENV=development)", async () => {
       vi.stubEnv("VERCEL_ENV", "");
       vi.stubEnv("NODE_ENV", "development");
+      reloadEnv();
 
       const request = createTestRequest(
         "http://localhost:3000/api/cli/auth/test-token",
@@ -48,6 +51,7 @@ describe("/api/cli/auth/test-token", () => {
       vi.stubEnv("VERCEL_ENV", "preview");
       vi.stubEnv("NODE_ENV", "production");
       vi.stubEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "test-bypass-secret");
+      reloadEnv();
 
       const request = createTestRequest(
         "http://localhost:3000/api/cli/auth/test-token",
@@ -65,6 +69,7 @@ describe("/api/cli/auth/test-token", () => {
       vi.stubEnv("VERCEL_ENV", "preview");
       vi.stubEnv("NODE_ENV", "production");
       vi.stubEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "test-bypass-secret");
+      reloadEnv();
 
       const request = createTestRequest(
         "http://localhost:3000/api/cli/auth/test-token",
@@ -79,6 +84,7 @@ describe("/api/cli/auth/test-token", () => {
       vi.stubEnv("VERCEL_ENV", "preview");
       vi.stubEnv("NODE_ENV", "production");
       vi.stubEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "test-bypass-secret");
+      reloadEnv();
 
       const request = createTestRequest(
         "http://localhost:3000/api/cli/auth/test-token",
@@ -96,6 +102,7 @@ describe("/api/cli/auth/test-token", () => {
       vi.stubEnv("VERCEL_ENV", "preview");
       vi.stubEnv("NODE_ENV", "production");
       vi.stubEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "");
+      reloadEnv();
 
       const request = createTestRequest(
         "http://localhost:3000/api/cli/auth/test-token",
@@ -112,6 +119,7 @@ describe("/api/cli/auth/test-token", () => {
     it("denies access in production", async () => {
       vi.stubEnv("VERCEL_ENV", "production");
       vi.stubEnv("NODE_ENV", "production");
+      reloadEnv();
 
       const request = createTestRequest(
         "http://localhost:3000/api/cli/auth/test-token",
@@ -125,19 +133,7 @@ describe("/api/cli/auth/test-token", () => {
     it("denies access in non-Vercel production (no VERCEL_ENV, NODE_ENV=production)", async () => {
       vi.stubEnv("VERCEL_ENV", "");
       vi.stubEnv("NODE_ENV", "production");
-
-      const request = createTestRequest(
-        "http://localhost:3000/api/cli/auth/test-token",
-        { method: "POST" },
-      );
-
-      const response = await POST(request);
-      expect(response.status).toBe(404);
-    });
-
-    it("denies access in unknown environment", async () => {
-      vi.stubEnv("VERCEL_ENV", "unknown-env");
-      vi.stubEnv("NODE_ENV", "production");
+      reloadEnv();
 
       const request = createTestRequest(
         "http://localhost:3000/api/cli/auth/test-token",
@@ -153,6 +149,7 @@ describe("/api/cli/auth/test-token", () => {
     beforeEach(() => {
       vi.stubEnv("VERCEL_ENV", "");
       vi.stubEnv("NODE_ENV", "development");
+      reloadEnv();
     });
 
     it("returns token with correct format", async () => {

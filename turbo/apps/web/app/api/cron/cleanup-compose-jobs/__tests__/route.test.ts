@@ -5,6 +5,7 @@ import {
   createTestComposeJob,
   findTestComposeJob,
 } from "../../../../../src/__tests__/api-test-helpers";
+import { reloadEnv } from "../../../../../src/env";
 
 vi.hoisted(() => {
   vi.stubEnv("CRON_SECRET", "test-cron-secret");
@@ -22,6 +23,8 @@ function cronRequest(secret?: string) {
 describe("GET /api/cron/cleanup-compose-jobs", () => {
   beforeEach(() => {
     context.setupMocks();
+    vi.stubEnv("CRON_SECRET", "test-cron-secret");
+    reloadEnv();
   });
 
   it("should return 401 with invalid cron secret", async () => {

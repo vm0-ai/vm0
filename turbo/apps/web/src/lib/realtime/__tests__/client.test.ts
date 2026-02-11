@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import Ably from "ably";
 
 // Create shared mock functions that can be accessed in tests
@@ -53,10 +53,6 @@ describe("realtime/client", () => {
       nonce: "test-nonce",
       mac: "test-mac",
     });
-  });
-
-  afterEach(() => {
-    vi.unstubAllEnvs();
   });
 
   describe("publishEvents", () => {

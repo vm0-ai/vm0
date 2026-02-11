@@ -9,6 +9,7 @@ import {
   createCompletedTestRun,
   findUsageDaily,
 } from "../../../../../src/__tests__/api-test-helpers";
+import { reloadEnv } from "../../../../../src/env";
 
 vi.hoisted(() => {
   vi.stubEnv("CRON_SECRET", "test-cron-secret");
@@ -38,6 +39,8 @@ describe("GET /api/cron/aggregate-usage", () => {
 
   beforeEach(async () => {
     context.setupMocks();
+    vi.stubEnv("CRON_SECRET", "test-cron-secret");
+    reloadEnv();
     const user = await context.setupUser();
     userId = user.userId;
     const { versionId } = await createTestCompose(uniqueId("usage-agent"));

@@ -50,7 +50,7 @@ services:
       CLAUDE_CODE_VERSION_URL: ${CLAUDE_CODE_VERSION_URL:-https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/latest}
       # Platform console
       PLATFORM_PORT: ${PLATFORM_PORT:-3001}
-      PLATFORM_URL: http://${DOMAIN:-localhost}:${PLATFORM_PORT:-3001}
+      NEXT_PUBLIC_PLATFORM_URL: http://${DOMAIN:-localhost}:${PLATFORM_PORT:-3001}
     volumes:
       - web_data:/app/data
       # Docker socket for creating sandbox containers (Docker Sandbox executor)

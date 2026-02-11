@@ -27,6 +27,9 @@ jobs:
       runner-changed: ${{ steps.detect.outputs.runner-changed }}
       platform-changed: ${{ steps.detect.outputs.platform-changed }}
       e2b-changed: ${{ steps.detect-e2b.outputs.e2b-changed }}
+      sandbox-changed: ${{ steps.detect-docker.outputs.sandbox-changed }}
+      docker-web-changed: ${{ steps.detect-docker.outputs.docker-web-changed }}
+      docker-platform-changed: ${{ steps.detect-docker.outputs.docker-platform-changed }}
       cli-e2e-parallel-matrix: ${{ steps.cli-e2e-matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v6
@@ -95,6 +98,47 @@ jobs:
           else
             echo "No E2B template changes"
             echo "e2b-changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Detect Docker file changes
+        id: detect-docker
+        run: |
+          # Determine base ref based on event type
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_REF=$(git merge-base ${{ github.event.pull_request.base.sha }} HEAD)
+          elif [ "${{ github.event_name }}" = "merge_group" ]; then
+            BASE_REF="${{ github.event.merge_group.base_sha }}"
+          else
+            BASE_REF="HEAD^"
+          fi
+
+          CHANGED_FILES=$(git diff --name-only "$BASE_REF" HEAD)
+
+          # Check if web Docker files changed
+          if echo "$CHANGED_FILES" | grep -qE "^docker/(Dockerfile\.web|entrypoint\.sh)$"; then
+            echo "Docker web file changes detected"
+            echo "docker-web-changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No Docker web file changes"
+            echo "docker-web-changed=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Check if platform Docker files changed
+          if echo "$CHANGED_FILES" | grep -qE "^docker/(Dockerfile\.platform|Caddyfile\.platform)$"; then
+            echo "Docker platform file changes detected"
+            echo "docker-platform-changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No Docker platform file changes"
+            echo "docker-platform-changed=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Check if sandbox Docker file changed
+          if echo "$CHANGED_FILES" | grep -q "^docker/Dockerfile\.sandbox$"; then
+            echo "Docker sandbox file changes detected"
+            echo "sandbox-changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No Docker sandbox file changes"
+            echo "sandbox-changed=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Set job-ref
@@ -331,7 +375,7 @@ jobs:
         working-directory: turbo
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
-          PLATFORM_URL: https://platform.test.local
+          NEXT_PUBLIC_PLATFORM_URL: https://platform.test.local
         run: pnpm vitest run --project=web
 
   test-cli:
@@ -459,7 +503,7 @@ jobs:
             GH_OAUTH_CLIENT_SECRET=${{ secrets.GH_OAUTH_CLIENT_SECRET }}
             NOTION_OAUTH_CLIENT_ID=${{ vars.NOTION_OAUTH_CLIENT_ID }}
             NOTION_OAUTH_CLIENT_SECRET=${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
-            PLATFORM_URL=${{ needs.prepare.outputs.platform-preview-url }}
+            NEXT_PUBLIC_PLATFORM_URL=${{ needs.prepare.outputs.platform-preview-url }}
             NEXT_PUBLIC_STRAPI_URL=${{ vars.NEXT_PUBLIC_STRAPI_URL }}
           meta-branch: ${{ github.head_ref || github.ref_name }}
           meta-pr: ${{ needs.prepare.outputs.job-ref }}
@@ -1360,3 +1404,74 @@ jobs:
 
       - name: Build summary
         run: echo "✅ E2B templates built successfully (development account)"
+
+  # Docker build validation for application images (web, platform, sandbox)
+  # Build only (no push) - publishing happens in release-please workflow
+  docker-build-web:
+    runs-on: ubuntu-latest
+    needs: [prepare]
+    if: |
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+      (needs.prepare.outputs.web-changed == 'true' || needs.prepare.outputs.docker-web-changed == 'true')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.web
+          push: false
+          tags: vm0:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  docker-build-platform:
+    runs-on: ubuntu-latest
+    needs: [prepare]
+    if: |
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+      (needs.prepare.outputs.platform-changed == 'true' || needs.prepare.outputs.docker-platform-changed == 'true')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build platform image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.platform
+          push: false
+          tags: vm0-platform:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  docker-build-sandbox:
+    runs-on: ubuntu-latest
+    needs: [prepare]
+    if: |
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+      needs.prepare.outputs.sandbox-changed == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build sandbox image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.sandbox
+          push: false
+          tags: vm0-sandbox:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
