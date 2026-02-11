@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import {
   extractVariableReferences,
   groupVariablesBySource,
@@ -574,7 +574,7 @@ async function handleAgentManage(
             content: agentComposeVersions.content,
           })
           .from(agentComposeVersions)
-          .where(eq(agentComposeVersions.id, versionIds[0]!))
+          .where(inArray(agentComposeVersions.id, versionIds))
       : [];
 
   // Get user's existing secrets, variables, and connectors
