@@ -34,10 +34,13 @@ export default [
   {
     files: [
       "src/env.ts",
+      "src/lib/logger.ts",
       "drizzle.config.ts",
       "scripts/**",
       "instrumentation.ts",
       "sentry.client.config.ts",
+      "sentry.edge.config.ts",
+      "sentry.server.config.ts",
       "app/hooks/use-auth.ts",
     ],
     rules: {

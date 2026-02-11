@@ -28,7 +28,6 @@
 import "server-only";
 import { Logger as AxiomLogger, AxiomJSTransport } from "@axiomhq/logging";
 import { Axiom } from "@axiomhq/js";
-import { env } from "../env";
 import { getDatasetName, DATASETS } from "./axiom/datasets";
 
 type LogMethod = (...args: unknown[]) => void;
@@ -56,7 +55,7 @@ function getAxiomLogger(): AxiomLogger | null {
   if (axiomInitialized) return axiomLogger;
   axiomInitialized = true;
 
-  const token = env().AXIOM_TOKEN_TELEMETRY;
+  const token = process.env.AXIOM_TOKEN_TELEMETRY;
   if (!token) {
     return null;
   }
@@ -102,12 +101,13 @@ function extractFields(args: unknown[]): Record<string, unknown> {
 }
 
 function isAutoDebugEnabled(): boolean {
-  // Auto-enable debug in local development
-  return env().NODE_ENV === "development";
+  // Read process.env directly — logger() is called at module scope by many
+  // files, so this must not trigger full env() validation at import time.
+  return process.env.NODE_ENV === "development";
 }
 
 function getDebugPatterns(): string[] {
-  const debug = env().VM0_DEBUG;
+  const debug = process.env.VM0_DEBUG;
 
   // If VM0_DEBUG is explicitly set, use it
   if (debug) {
