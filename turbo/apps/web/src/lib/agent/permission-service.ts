@@ -1,6 +1,5 @@
 import { eq, and, or } from "drizzle-orm";
 import { agentPermissions } from "../../db/schema/agent-permission";
-import { agentComposes } from "../../db/schema/agent-compose";
 import { scopes } from "../../db/schema/scope";
 import { logger } from "../logger";
 
@@ -18,48 +17,41 @@ const log = logger("agent:permission");
 export async function canAccessCompose(
   userId: string,
   userEmail: string,
-  composeId: string,
+  compose: { id: string; userId: string; scopeId: string },
 ): Promise<boolean> {
-  // 1. Get compose info
-  const [compose] = await globalThis.services.db
-    .select()
-    .from(agentComposes)
-    .where(eq(agentComposes.id, composeId))
-    .limit(1);
-
-  if (!compose) return false;
-
-  // 2. Owner always has access
+  // 1. Owner always has access
   if (compose.userId === userId) return true;
 
-  // 3. Check if system scope (public)
-  const [scope] = await globalThis.services.db
-    .select()
-    .from(scopes)
-    .where(eq(scopes.id, compose.scopeId))
-    .limit(1);
-
-  if (scope?.type === "system") return true;
-
-  // 4. Check ACL table
-  const [permission] = await globalThis.services.db
-    .select()
-    .from(agentPermissions)
-    .where(
-      and(
-        eq(agentPermissions.agentComposeId, composeId),
-        or(
-          eq(agentPermissions.granteeType, "public"),
-          and(
-            eq(agentPermissions.granteeType, "email"),
-            eq(agentPermissions.granteeEmail, userEmail),
+  // 2. Check scope and ACL in parallel (independent queries)
+  const [scopeResult, permissionResult] = await Promise.all([
+    globalThis.services.db
+      .select()
+      .from(scopes)
+      .where(eq(scopes.id, compose.scopeId))
+      .limit(1),
+    globalThis.services.db
+      .select()
+      .from(agentPermissions)
+      .where(
+        and(
+          eq(agentPermissions.agentComposeId, compose.id),
+          or(
+            eq(agentPermissions.granteeType, "public"),
+            and(
+              eq(agentPermissions.granteeType, "email"),
+              eq(agentPermissions.granteeEmail, userEmail),
+            ),
           ),
         ),
-      ),
-    )
-    .limit(1);
+      )
+      .limit(1),
+  ]);
 
-  return !!permission;
+  // 3. System scope = public access
+  if (scopeResult[0]?.type === "system") return true;
+
+  // 4. Check ACL table result
+  return !!permissionResult[0];
 }
 
 /**

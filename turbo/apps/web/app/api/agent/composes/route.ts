@@ -75,9 +75,23 @@ const router = tsr.router(composesMainContract, {
       scopeId = userScope.id;
     }
 
-    const composes = await globalThis.services.db
-      .select()
+    // JOIN compose + version in a single query
+    const [result] = await globalThis.services.db
+      .select({
+        id: agentComposes.id,
+        userId: agentComposes.userId,
+        scopeId: agentComposes.scopeId,
+        name: agentComposes.name,
+        headVersionId: agentComposes.headVersionId,
+        createdAt: agentComposes.createdAt,
+        updatedAt: agentComposes.updatedAt,
+        content: agentComposeVersions.content,
+      })
       .from(agentComposes)
+      .leftJoin(
+        agentComposeVersions,
+        eq(agentComposes.headVersionId, agentComposeVersions.id),
+      )
       .where(
         and(
           eq(agentComposes.scopeId, scopeId),
@@ -86,7 +100,7 @@ const router = tsr.router(composesMainContract, {
       )
       .limit(1);
 
-    if (composes.length === 0 || !composes[0]) {
+    if (!result) {
       return {
         status: 404 as const,
         body: {
@@ -98,12 +112,10 @@ const router = tsr.router(composesMainContract, {
       };
     }
 
-    const compose = composes[0];
-
     // Check permission to access this compose (for cross-scope lookups)
     if (query.scope) {
       const userEmail = await getUserEmail(userId);
-      const hasAccess = await canAccessCompose(userId, userEmail, compose.id);
+      const hasAccess = await canAccessCompose(userId, userEmail, result);
       if (!hasAccess) {
         return {
           status: 404 as const,
@@ -117,29 +129,15 @@ const router = tsr.router(composesMainContract, {
       }
     }
 
-    // Get HEAD version content if available
-    let content: AgentComposeYaml | null = null;
-    if (compose.headVersionId) {
-      const versions = await globalThis.services.db
-        .select()
-        .from(agentComposeVersions)
-        .where(eq(agentComposeVersions.id, compose.headVersionId))
-        .limit(1);
-
-      if (versions.length > 0 && versions[0]) {
-        content = versions[0].content as AgentComposeYaml;
-      }
-    }
-
     return {
       status: 200 as const,
       body: {
-        id: compose.id,
-        name: compose.name,
-        headVersionId: compose.headVersionId,
-        content,
-        createdAt: compose.createdAt.toISOString(),
-        updatedAt: compose.updatedAt.toISOString(),
+        id: result.id,
+        name: result.name,
+        headVersionId: result.headVersionId,
+        content: (result.content as AgentComposeYaml) ?? null,
+        createdAt: result.createdAt.toISOString(),
+        updatedAt: result.updatedAt.toISOString(),
       },
     };
   },
@@ -282,23 +280,33 @@ const router = tsr.router(composesMainContract, {
       };
     }
 
-    // Check if compose exists for this scope + name
-    const existing = await globalThis.services.db
-      .select()
-      .from(agentComposes)
-      .where(
-        and(
-          eq(agentComposes.scopeId, userScope.id),
-          eq(agentComposes.name, normalizedAgentName),
-        ),
-      )
-      .limit(1);
+    // Check compose and version existence in parallel
+    const [existingComposes, existingVersions] = await Promise.all([
+      globalThis.services.db
+        .select()
+        .from(agentComposes)
+        .where(
+          and(
+            eq(agentComposes.scopeId, userScope.id),
+            eq(agentComposes.name, normalizedAgentName),
+          ),
+        )
+        .limit(1),
+      globalThis.services.db
+        .select()
+        .from(agentComposeVersions)
+        .where(eq(agentComposeVersions.id, versionId))
+        .limit(1),
+    ]);
+
+    const existing = existingComposes[0];
+    const existingVersion = existingVersions;
 
     let composeId: string;
     let isNewCompose = false;
 
-    if (existing.length > 0 && existing[0]) {
-      composeId = existing[0].id;
+    if (existing) {
+      composeId = existing.id;
     } else {
       // Create new compose metadata
       const [created] = await globalThis.services.db
@@ -317,13 +325,6 @@ const router = tsr.router(composesMainContract, {
       composeId = created.id;
       isNewCompose = true;
     }
-
-    // Check if this exact version already exists
-    const existingVersion = await globalThis.services.db
-      .select()
-      .from(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, versionId))
-      .limit(1);
 
     let action: "created" | "existing";
 
