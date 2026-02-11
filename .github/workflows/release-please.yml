@@ -602,19 +602,24 @@ jobs:
         run: echo "✅ E2B templates built successfully (production account)"
 
   # Publish Docker images to GHCR on release
-  # Images are tagged with semver version + latest
-  publish-docker-web:
+  # Uses native ARM runners instead of QEMU for faster builds
+  # Pattern: build per-platform digests in parallel, then merge into multi-arch manifest
+  publish-docker-web-build:
     needs: release-please
     if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@v6
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -626,35 +631,138 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push web image
+      - name: Build and push by digest
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile.web
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ghcr.io/vm0-ai/vm0:${{ needs.release-please.outputs.web_version }}
-            ghcr.io/vm0-ai/vm0:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=ghcr.io/vm0-ai/vm0,push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=web-${{ matrix.platform }}
+          cache-to: type=gha,scope=web-${{ matrix.platform }},mode=max
           labels: |
             org.opencontainers.image.source=${{ github.event.repository.html_url }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ needs.release-please.outputs.web_version }}
 
-  publish-docker-platform:
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-digest-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-docker-web-merge:
+    needs: [release-please, publish-docker-web-build]
+    if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: web-digest-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create manifest and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            -t ghcr.io/vm0-ai/vm0:${{ needs.release-please.outputs.web_version }} \
+            -t ghcr.io/vm0-ai/vm0:latest \
+            $(printf 'ghcr.io/vm0-ai/vm0@sha256:%s ' *)
+
+  publish-docker-platform-build:
     needs: release-please
+    if: ${{ needs.release-please.outputs.platform_release_created == 'true' }}
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.platform
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=ghcr.io/vm0-ai/vm0-platform,push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=platform-${{ matrix.platform }}
+          cache-to: type=gha,scope=platform-${{ matrix.platform }},mode=max
+          labels: |
+            org.opencontainers.image.source=${{ github.event.repository.html_url }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.release-please.outputs.platform_version }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-digest-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-docker-platform-merge:
+    needs: [release-please, publish-docker-platform-build]
     if: ${{ needs.release-please.outputs.platform_release_created == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: platform-digest-*
+          merge-multiple: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -666,35 +774,84 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push platform image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile.platform
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ghcr.io/vm0-ai/vm0-platform:${{ needs.release-please.outputs.platform_version }}
-            ghcr.io/vm0-ai/vm0-platform:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          labels: |
-            org.opencontainers.image.source=${{ github.event.repository.html_url }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ needs.release-please.outputs.platform_version }}
+      - name: Create manifest and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            -t ghcr.io/vm0-ai/vm0-platform:${{ needs.release-please.outputs.platform_version }} \
+            -t ghcr.io/vm0-ai/vm0-platform:latest \
+            $(printf 'ghcr.io/vm0-ai/vm0-platform@sha256:%s ' *)
 
-  publish-docker-sandbox:
+  publish-docker-sandbox-build:
     needs: release-please
     if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.sandbox
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=ghcr.io/vm0-ai/vm0-sandbox,push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=sandbox-${{ matrix.platform }}
+          cache-to: type=gha,scope=sandbox-${{ matrix.platform }},mode=max
+          labels: |
+            org.opencontainers.image.source=${{ github.event.repository.html_url }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.release-please.outputs.web_version }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandbox-digest-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-docker-sandbox-merge:
+    needs: [release-please, publish-docker-sandbox-build]
+    if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: sandbox-digest-*
+          merge-multiple: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -706,19 +863,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push sandbox image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile.sandbox
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ghcr.io/vm0-ai/vm0-sandbox:${{ needs.release-please.outputs.web_version }}
-            ghcr.io/vm0-ai/vm0-sandbox:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          labels: |
-            org.opencontainers.image.source=${{ github.event.repository.html_url }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ needs.release-please.outputs.web_version }}
+      - name: Create manifest and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            -t ghcr.io/vm0-ai/vm0-sandbox:${{ needs.release-please.outputs.web_version }} \
+            -t ghcr.io/vm0-ai/vm0-sandbox:latest \
+            $(printf 'ghcr.io/vm0-ai/vm0-sandbox@sha256:%s ' *)
