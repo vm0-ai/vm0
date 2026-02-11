@@ -7,6 +7,8 @@ import type {
 } from "@slack/web-api";
 import { getPlatformUrl } from "../url";
 
+const SLACK_DOCS_URL = "https://docs.vm0.ai/docs/ecosystem/slack";
+
 interface AgentOption {
   id: string;
   name: string;
@@ -586,7 +588,7 @@ export function buildAppHomeView(options: {
     elements: [
       {
         type: "mrkdwn",
-        text: ":book: <https://docs.vm0.ai/docs/ecosystem/slack|View full documentation>",
+        text: `:book: <${SLACK_DOCS_URL}|View full documentation>`,
       },
     ],
   });
@@ -777,7 +779,7 @@ export function buildHelpMessage(): (Block | KnownBlock)[] {
       elements: [
         {
           type: "mrkdwn",
-          text: ":book: <https://docs.vm0.ai/docs/ecosystem/slack|View full documentation>",
+          text: `:book: <${SLACK_DOCS_URL}|View full documentation>`,
         },
       ],
     },

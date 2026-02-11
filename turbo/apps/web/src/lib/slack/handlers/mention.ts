@@ -52,181 +52,173 @@ interface MentionContext {
 export async function handleAppMention(context: MentionContext): Promise<void> {
   const { SECRETS_ENCRYPTION_KEY } = env();
 
-  try {
-    // 1. Get workspace installation
-    const [installation] = await globalThis.services.db
-      .select()
-      .from(slackInstallations)
-      .where(eq(slackInstallations.slackWorkspaceId, context.workspaceId))
-      .limit(1);
+  // 1. Get workspace installation
+  const [installation] = await globalThis.services.db
+    .select()
+    .from(slackInstallations)
+    .where(eq(slackInstallations.slackWorkspaceId, context.workspaceId))
+    .limit(1);
 
-    if (!installation) {
-      console.error(
-        `Slack installation not found for workspace: ${context.workspaceId}`,
-      );
-      return;
-    }
+  if (!installation) {
+    log.error("Slack installation not found for workspace", {
+      workspaceId: context.workspaceId,
+    });
+    return;
+  }
 
-    // Decrypt bot token
-    const botToken = decryptCredentialValue(
-      installation.encryptedBotToken,
-      SECRETS_ENCRYPTION_KEY,
+  // Decrypt bot token
+  const botToken = decryptCredentialValue(
+    installation.encryptedBotToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+  const client = createSlackClient(botToken);
+  const botUserId = installation.botUserId;
+
+  // Thread timestamp for replies (use existing thread or start new one)
+  const threadTs = context.threadTs ?? context.messageTs;
+
+  // 2. Check if user is linked
+  const [userLink] = await globalThis.services.db
+    .select()
+    .from(slackUserLinks)
+    .where(
+      and(
+        eq(slackUserLinks.slackUserId, context.userId),
+        eq(slackUserLinks.slackWorkspaceId, context.workspaceId),
+      ),
+    )
+    .limit(1);
+
+  if (!userLink) {
+    // 3. User not connected - post ephemeral connect message (only visible to user)
+    const loginUrl = buildLoginUrl(
+      context.workspaceId,
+      context.userId,
+      context.channelId,
     );
-    const client = createSlackClient(botToken);
-    const botUserId = installation.botUserId;
+    await client.chat.postEphemeral({
+      channel: context.channelId,
+      user: context.userId,
+      text: "Please connect your account first",
+      blocks: buildLoginPromptMessage(loginUrl),
+    });
+    return;
+  }
 
-    // Thread timestamp for replies (use existing thread or start new one)
-    const threadTs = context.threadTs ?? context.messageTs;
-
-    // 2. Check if user is linked
-    const [userLink] = await globalThis.services.db
-      .select()
-      .from(slackUserLinks)
-      .where(
-        and(
-          eq(slackUserLinks.slackUserId, context.userId),
-          eq(slackUserLinks.slackWorkspaceId, context.workspaceId),
-        ),
-      )
-      .limit(1);
-
-    if (!userLink) {
-      // 3. User not connected - post ephemeral connect message (only visible to user)
-      const loginUrl = buildLoginUrl(
-        context.workspaceId,
-        context.userId,
-        context.channelId,
-      );
-      await client.chat.postEphemeral({
-        channel: context.channelId,
-        user: context.userId,
-        text: "Please connect your account first",
-        blocks: buildLoginPromptMessage(loginUrl),
-      });
-      return;
-    }
-
-    // 4. Resolve workspace agent
-    const agent = await getWorkspaceAgent(installation.defaultComposeId);
-    if (!agent) {
-      await postMessage(
-        client,
-        context.channelId,
-        "The workspace agent is not available. Please contact the workspace admin.",
-        { threadTs },
-      );
-      return;
-    }
-
-    // 5. Add thinking reaction (emoji only, no message)
-    const reactionAdded = await client.reactions
-      .add({
-        channel: context.channelId,
-        timestamp: context.messageTs,
-        name: "thought_balloon",
-      })
-      .then(() => true)
-      .catch(() => false);
-
-    // Extract message content (remove bot mention)
-    const messageContent = extractMessageContent(
-      context.messageText,
-      botUserId,
-    );
-
-    // 6. Look up existing thread session for deduplication
-    let existingSessionId: string | undefined;
-    let lastProcessedMessageTs: string | undefined;
-    if (threadTs) {
-      const session = await lookupThreadSession(
-        context.channelId,
-        threadTs,
-        userLink.id,
-      );
-      existingSessionId = session.existingSessionId;
-      lastProcessedMessageTs = session.lastProcessedMessageTs;
-      log.debug("Thread session lookup", {
-        existingSessionId,
-        lastProcessedMessageTs,
-      });
-    }
-
-    // 7. Fetch context: execution gets deduplicated with images
-    const { executionContext } = await fetchConversationContexts(
+  // 4. Resolve workspace agent
+  const agent = await getWorkspaceAgent(installation.defaultComposeId);
+  if (!agent) {
+    await postMessage(
       client,
       context.channelId,
-      context.threadTs,
-      botUserId,
-      botToken,
-      lastProcessedMessageTs,
-      context.messageTs,
+      "The workspace agent is not available. Please contact the workspace admin.",
+      { threadTs },
     );
+    return;
+  }
 
-    try {
-      // 8. Execute agent with deduplicated context
-      log.debug("Calling runAgentForSlack", { existingSessionId });
-      const {
-        status: runStatus,
-        response: agentResponse,
-        sessionId: newSessionId,
-        runId,
-      } = await runAgentForSlack({
-        composeId: installation.defaultComposeId,
-        agentName: agent.name,
-        sessionId: existingSessionId,
-        prompt: messageContent,
-        threadContext: executionContext,
-        userId: userLink.vm0UserId,
-      });
+  // 5. Add thinking reaction (emoji only, no message)
+  const reactionAdded = await client.reactions
+    .add({
+      channel: context.channelId,
+      timestamp: context.messageTs,
+      name: "thought_balloon",
+    })
+    .then(() => true)
+    .catch(() => false);
 
-      // 9. Create or update thread session mapping
-      if (threadTs) {
-        await saveThreadSession({
-          userLinkId: userLink.id,
-          channelId: context.channelId,
-          threadTs,
-          existingSessionId,
-          newSessionId,
-          messageTs: context.messageTs,
-          runStatus,
-        });
-      }
+  // Extract message content (remove bot mention)
+  const messageContent = extractMessageContent(context.messageText, botUserId);
 
-      // 10. Post response message with agent name and logs link
-      const logsUrl = runId ? buildLogsUrl(runId) : undefined;
-      const responseText =
-        runStatus === "timeout"
-          ? `:warning: *Agent timed out*\n${agentResponse}`
-          : agentResponse;
-      await postMessage(client, context.channelId, responseText, {
+  // 6. Look up existing thread session for deduplication
+  let existingSessionId: string | undefined;
+  let lastProcessedMessageTs: string | undefined;
+  if (threadTs) {
+    const session = await lookupThreadSession(
+      context.channelId,
+      threadTs,
+      userLink.id,
+    );
+    existingSessionId = session.existingSessionId;
+    lastProcessedMessageTs = session.lastProcessedMessageTs;
+    log.debug("Thread session lookup", {
+      existingSessionId,
+      lastProcessedMessageTs,
+    });
+  }
+
+  // 7. Fetch context: execution gets deduplicated with images
+  const { executionContext } = await fetchConversationContexts(
+    client,
+    context.channelId,
+    context.threadTs,
+    botUserId,
+    botToken,
+    lastProcessedMessageTs,
+    context.messageTs,
+  );
+
+  try {
+    // 8. Execute agent with deduplicated context
+    log.debug("Calling runAgentForSlack", { existingSessionId });
+    const {
+      status: runStatus,
+      response: agentResponse,
+      sessionId: newSessionId,
+      runId,
+    } = await runAgentForSlack({
+      composeId: installation.defaultComposeId,
+      agentName: agent.name,
+      sessionId: existingSessionId,
+      prompt: messageContent,
+      threadContext: executionContext,
+      userId: userLink.vm0UserId,
+    });
+
+    // 9. Create or update thread session mapping
+    if (threadTs) {
+      await saveThreadSession({
+        userLinkId: userLink.id,
+        channelId: context.channelId,
         threadTs,
-        blocks: buildAgentResponseMessage(responseText, agent.name, logsUrl),
+        existingSessionId,
+        newSessionId,
+        messageTs: context.messageTs,
+        runStatus,
       });
-    } catch (innerError) {
-      // If postMessage or session creation fails, still try to notify the user
-      log.error("Error posting response or creating session", {
-        error: innerError,
-      });
-      await postMessage(
+    }
+
+    // 10. Post response message with agent name and logs link
+    const logsUrl = runId ? buildLogsUrl(runId) : undefined;
+    const responseText =
+      runStatus === "timeout"
+        ? `:warning: *Agent timed out*\n${agentResponse}`
+        : agentResponse;
+    await postMessage(client, context.channelId, responseText, {
+      threadTs,
+      blocks: buildAgentResponseMessage(responseText, agent.name, logsUrl),
+    });
+  } catch (innerError) {
+    // If postMessage or session creation fails, still try to notify the user
+    log.error("Error posting response or creating session", {
+      error: innerError,
+    });
+    await postMessage(
+      client,
+      context.channelId,
+      "Sorry, an error occurred while sending the response. Please try again.",
+      { threadTs },
+    ).catch(() => {
+      // If even the error message fails, we can't do anything more
+    });
+  } finally {
+    // 11. Remove thinking reaction
+    if (reactionAdded) {
+      await removeThinkingReaction(
         client,
         context.channelId,
-        "Sorry, an error occurred while sending the response. Please try again.",
-        { threadTs },
-      ).catch(() => {
-        // If even the error message fails, we can't do anything more
-      });
-    } finally {
-      // 11. Remove thinking reaction
-      if (reactionAdded) {
-        await removeThinkingReaction(
-          client,
-          context.channelId,
-          context.messageTs,
-        );
-      }
+        context.messageTs,
+      );
     }
-  } catch (error) {
-    log.error("Error handling app_mention", { error });
-    // Don't throw - we don't want Slack to retry
   }
 }

@@ -437,12 +437,8 @@ async function handleAgentManageSelection(
     hasModelProvider ?? true,
   );
 
-  await updateModalView(
-    client,
-    payload.view!.id,
-    updatedModal,
-    payload.team.id,
-  );
+  if (!payload.view) return;
+  await updateModalView(client, payload.view.id, updatedModal, payload.team.id);
 }
 
 /**
@@ -663,12 +659,8 @@ async function handleModelProviderRefresh(
     hasModelProvider,
   );
 
-  await updateModalView(
-    client,
-    payload.view!.id,
-    updatedModal,
-    payload.team.id,
-  );
+  if (!payload.view) return;
+  await updateModalView(client, payload.view.id, updatedModal, payload.team.id);
 }
 
 /**
