@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.29.0](https://github.com/vm0-ai/vm0/compare/web-v12.28.1...web-v12.29.0) (2026-02-11)
+
+
+### Features
+
+* **slack:** redesign to per-workspace single-agent model ([#2772](https://github.com/vm0-ai/vm0/issues/2772)) ([58f2b94](https://github.com/vm0-ai/vm0/commit/58f2b94b8c6220a5c87de3ecc13bca5eae60dd08))
+
+
+### Performance Improvements
+
+* **web:** replace N+1 upsert loop with single INSERT...SELECT in aggregate-usage cron ([#2795](https://github.com/vm0-ai/vm0/issues/2795)) ([f5dd92c](https://github.com/vm0-ai/vm0/commit/f5dd92c2f1704697895e07fd8fce6b65fe0735dd))
+
 ## [12.28.1](https://github.com/vm0-ai/vm0/compare/web-v12.28.0...web-v12.28.1) (2026-02-11)
 
 
