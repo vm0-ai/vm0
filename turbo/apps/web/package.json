@@ -18,8 +18,8 @@
     "db:reset": "tsx scripts/reset-db.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.985.0",
-    "@aws-sdk/s3-request-presigner": "^3.985.0",
+    "@aws-sdk/client-s3": "^3.987.0",
+    "@aws-sdk/s3-request-presigner": "^3.987.0",
     "@axiomhq/js": "^1.3.1",
     "@axiomhq/logging": "^0.1.6",
     "@clerk/nextjs": "^6.35.1",
