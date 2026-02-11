@@ -421,6 +421,26 @@ enum LoopAction {
     Reconnect,
 }
 
+/// Mirrors ably-js `isRetriable()` from `connectionerrors.ts`.
+///
+/// An error is retriable when it has no status code, is a server error (5xx),
+/// or carries a well-known connection error code even at 4xx.
+fn is_retriable(err: &crate::protocol::ErrorInfo) -> bool {
+    const CONNECTION_ERROR_CODES: &[i32] = &[
+        80003, // DISCONNECTED
+        80002, // SUSPENDED
+        80000, // FAILED
+        80017, // CLOSING / CLOSED
+        50002, // UNKNOWN_CONNECTION_ERR
+        50001, // UNKNOWN_CHANNEL_ERR
+    ];
+    match err.status_code {
+        None => true,
+        Some(sc) if sc >= 500 => true,
+        Some(_) => CONNECTION_ERROR_CODES.contains(&err.code),
+    }
+}
+
 fn decode_data(data: serde_json::Value, encoding: Option<&str>) -> serde_json::Value {
     let Some(encoding) = encoding else {
         return data;
@@ -467,15 +487,18 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
                 p.conn_state.channel_serial = Some(serial.clone());
             }
             if let Some(messages) = msg.messages {
-                for m in messages {
+                for (i, m) in messages.into_iter().enumerate() {
                     let raw = m.data.unwrap_or(serde_json::Value::Null);
                     let data = decode_data(raw, m.encoding.as_deref());
+                    let id =
+                        m.id.or_else(|| msg.id.as_ref().map(|pid| format!("{pid}:{i}")));
+                    let timestamp = m.timestamp.or(msg.timestamp);
                     let event = Event::Message(Message {
                         name: m.name,
                         data,
-                        id: m.id,
+                        id,
                         client_id: m.client_id,
-                        timestamp: m.timestamp,
+                        timestamp,
                     });
                     if p.event_tx.send(event).await.is_err() {
                         return LoopAction::Stop;
@@ -485,7 +508,7 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
         }
         action::DISCONNECTED => {
             if let Some(ref err) = msg.error
-                && err.status_code.is_some_and(|sc| (400..500).contains(&sc))
+                && !is_retriable(err)
             {
                 let _ = p
                     .event_tx
@@ -513,8 +536,9 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
         }
         action::DETACHED => {
             if let Some(ref err) = msg.error
-                && err.status_code.is_some_and(|sc| (400..500).contains(&sc))
+                && !is_retriable(err)
             {
+                p.conn_state.channel_serial = None; // RTP5a1
                 let _ = p
                     .event_tx
                     .send(Event::Error {
@@ -817,5 +841,55 @@ mod tests {
         let data = serde_json::json!("encoded-data");
         let result = decode_data(data.clone(), Some("base64"));
         assert_eq!(result, data);
+    }
+
+    #[test]
+    fn is_retriable_no_status_code() {
+        let err = crate::protocol::ErrorInfo {
+            code: 12345,
+            status_code: None,
+            message: String::new(),
+        };
+        assert!(is_retriable(&err));
+    }
+
+    #[test]
+    fn is_retriable_server_error() {
+        let err = crate::protocol::ErrorInfo {
+            code: 50000,
+            status_code: Some(500),
+            message: String::new(),
+        };
+        assert!(is_retriable(&err));
+    }
+
+    #[test]
+    fn is_retriable_connection_error_code_with_4xx() {
+        let err = crate::protocol::ErrorInfo {
+            code: 80003, // DISCONNECTED connection error
+            status_code: Some(400),
+            message: String::new(),
+        };
+        assert!(is_retriable(&err));
+    }
+
+    #[test]
+    fn is_retriable_auth_error_not_retriable() {
+        let err = crate::protocol::ErrorInfo {
+            code: 40142, // token expired
+            status_code: Some(401),
+            message: String::new(),
+        };
+        assert!(!is_retriable(&err));
+    }
+
+    #[test]
+    fn is_retriable_rate_limit_not_retriable() {
+        let err = crate::protocol::ErrorInfo {
+            code: 42910,
+            status_code: Some(429),
+            message: String::new(),
+        };
+        assert!(!is_retriable(&err));
     }
 }

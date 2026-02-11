@@ -44,6 +44,7 @@ pub mod flags {
 #[serde(default)]
 pub struct ProtocolMessage {
     pub action: i32,
+    pub id: Option<String>,
     pub channel: Option<String>,
     #[serde(rename = "channelSerial")]
     pub channel_serial: Option<String>,
