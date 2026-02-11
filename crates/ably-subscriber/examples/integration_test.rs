@@ -196,6 +196,47 @@ fn create_token_request(
     })
 }
 
+/// Wait for the `Connected` event on a subscription (15s timeout).
+async fn wait_for_connected(
+    sub: &mut ably_subscriber::Subscription,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    tokio::time::timeout(Duration::from_secs(15), async {
+        while let Some(event) = sub.next().await {
+            match event {
+                Event::Connected => return Ok(()),
+                Event::Error { code, message } => {
+                    return Err(format!("connection error: code={code} {message}"));
+                }
+                _ => {}
+            }
+        }
+        Err("subscription ended before connected".to_string())
+    })
+    .await
+    .map_err(|_| "timeout waiting for Connected")?
+    .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })
+}
+
+/// Receive a single message from the subscription (10s timeout).
+async fn receive_message(
+    sub: &mut ably_subscriber::Subscription,
+) -> Result<ably_subscriber::Message, String> {
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while let Some(event) = sub.next().await {
+            match event {
+                Event::Message(msg) => return Ok(msg),
+                Event::Error { code, message } => {
+                    return Err(format!("error event: code={code} {message}"));
+                }
+                _ => {}
+            }
+        }
+        Err("subscription ended".to_string())
+    })
+    .await
+    .map_err(|_| "timeout waiting for message".to_string())?
+}
+
 /// Publish a single message via Ably REST API.
 async fn publish_message(
     client: &reqwest::Client,
@@ -281,24 +322,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     })
     .await?;
 
-    // Wait for Connected event
     eprintln!("waiting for connection...");
-    tokio::time::timeout(Duration::from_secs(15), async {
-        while let Some(event) = sub.next().await {
-            match event {
-                Event::Connected => return Ok(()),
-                Event::Error { code, message } => {
-                    return Err(format!("connection error: code={code} {message}"));
-                }
-                _ => {}
-            }
-        }
-        Err("subscription ended before connected".to_string())
-    })
-    .await
-    .map_err(|_| "timeout waiting for Connected event")?
-    .map_err(|e| format!("connection failed: {e}"))?;
-
+    wait_for_connected(&mut sub).await?;
     eprintln!("connected — publishing test messages...");
 
     // --- Publish and verify each test case ---
@@ -320,23 +345,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         )
         .await?;
 
-        // Receive with timeout
-        let result = tokio::time::timeout(Duration::from_secs(10), async {
-            while let Some(event) = sub.next().await {
-                match event {
-                    Event::Message(msg) => return Ok(msg),
-                    Event::Error { code, message } => {
-                        return Err(format!("error event: code={code} {message}"));
-                    }
-                    _ => {}
-                }
-            }
-            Err("subscription ended".to_string())
-        })
-        .await;
+        let result = receive_message(&mut sub).await;
 
         match result {
-            Ok(Ok(msg)) => {
+            Ok(msg) => {
                 let name_ok = msg.name.as_deref() == tc.expected_name;
                 let data_ok = msg.data == tc.expected_data;
                 let id_ok = msg.id.is_some();
@@ -365,12 +377,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     failed += 1;
                 }
             }
-            Ok(Err(e)) => {
+            Err(e) => {
                 eprintln!("  FAIL: {} — {e}", tc.label);
-                failed += 1;
-            }
-            Err(_) => {
-                eprintln!("  FAIL: {} — timeout waiting for message", tc.label);
                 failed += 1;
             }
         }
@@ -416,22 +424,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     })
     .await?;
 
-    // Wait for Connected
-    tokio::time::timeout(Duration::from_secs(15), async {
-        while let Some(event) = renewal_sub.next().await {
-            match event {
-                Event::Connected => return Ok(()),
-                Event::Error { code, message } => {
-                    return Err(format!("connection error: code={code} {message}"));
-                }
-                _ => {}
-            }
-        }
-        Err("subscription ended before connected".to_string())
-    })
-    .await
-    .map_err(|_| "timeout waiting for Connected")?
-    .map_err(|e| format!("connection failed: {e}"))?;
+    wait_for_connected(&mut renewal_sub).await?;
 
     // Wait for the original 15s token to expire.
     eprintln!("  waiting 20s for original token to expire...");
@@ -449,35 +442,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     )
     .await?;
 
-    let renewal_result = tokio::time::timeout(Duration::from_secs(10), async {
-        while let Some(event) = renewal_sub.next().await {
-            match event {
-                Event::Message(msg) => return Ok(msg),
-                Event::Error { code, message } => {
-                    return Err(format!("error: code={code} {message}"));
-                }
-                _ => {}
-            }
-        }
-        Err("subscription ended".to_string())
-    })
-    .await;
-
-    match renewal_result {
-        Ok(Ok(msg)) if msg.data == serde_json::json!("after-renewal") => {
+    match receive_message(&mut renewal_sub).await {
+        Ok(msg) if msg.data == serde_json::json!("after-renewal") => {
             eprintln!("  PASS: token-renewal");
             passed += 1;
         }
-        Ok(Ok(msg)) => {
+        Ok(msg) => {
             eprintln!("  FAIL: token-renewal — unexpected data: {}", msg.data);
             failed += 1;
         }
-        Ok(Err(e)) => {
+        Err(e) => {
             eprintln!("  FAIL: token-renewal — {e}");
-            failed += 1;
-        }
-        Err(_) => {
-            eprintln!("  FAIL: token-renewal — timeout (renewal likely failed)");
             failed += 1;
         }
     }
