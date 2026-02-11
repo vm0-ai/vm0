@@ -42,13 +42,30 @@ const fn strip_patch(version: &str) -> &str {
 
 pub async fn run_setup() -> RunnerResult<()> {
     let arch = check_architecture()?;
-    check_system_dependencies();
+    let (missing_required, missing_optional) = check_system_dependencies();
 
     let paths = HomePaths::new()?;
     create_directories(&paths, FIRECRACKER_VERSION).await?;
     download_firecracker(&paths, arch).await?;
     download_kernel(&paths, arch).await?;
     check_kvm();
+
+    if !missing_required.is_empty() || !missing_optional.is_empty() {
+        let mut parts = Vec::new();
+        if !missing_required.is_empty() {
+            parts.push(format!(
+                "missing required dependencies: {}",
+                missing_required.join(", ")
+            ));
+        }
+        if !missing_optional.is_empty() {
+            parts.push(format!(
+                "missing optional dependencies: {}",
+                missing_optional.join(", ")
+            ));
+        }
+        return Err(RunnerError::Config(parts.join("; ")));
+    }
 
     tracing::info!("setup complete");
     Ok(())
@@ -68,7 +85,8 @@ fn check_architecture() -> RunnerResult<&'static str> {
     Ok(arch)
 }
 
-fn check_system_dependencies() {
+/// Returns (missing_required, missing_optional) dependency names.
+fn check_system_dependencies() -> (Vec<&'static str>, Vec<&'static str>) {
     // Required by `runner start` (sandbox networking)
     let required = ["ip", "iptables", "iptables-save", "sysctl"];
     // Only needed by specific commands (build-rootfs, etc.)
@@ -100,6 +118,8 @@ fn check_system_dependencies() {
             missing_optional.join(", ")
         );
     }
+
+    (missing_required, missing_optional)
 }
 
 async fn create_directories(paths: &HomePaths, fc_version: &str) -> RunnerResult<()> {
