@@ -533,19 +533,19 @@ async fn verify_mounted(mount_point: &Path, guest_bin_dests: &[&str]) -> RunnerR
         }
     }
 
-    // Check optional CLIs (warn only)
+    // Check CLIs
     let codex_path = mount_point.join("usr/local/bin/codex");
-    if codex_path.exists() {
-        tracing::info!("  codex CLI: found");
+    if !codex_path.exists() {
+        errors.push("codex CLI not found at /usr/local/bin/codex".to_string());
     } else {
-        tracing::warn!("  codex CLI: not found");
+        tracing::info!("  codex CLI: found");
     }
 
     let gh_path = mount_point.join("usr/bin/gh");
-    if gh_path.exists() {
-        tracing::info!("  gh CLI: found");
+    if !gh_path.exists() {
+        errors.push("gh CLI not found at /usr/bin/gh".to_string());
     } else {
-        tracing::warn!("  gh CLI: not found");
+        tracing::info!("  gh CLI: found");
     }
 
     // Check proxy CA certificate file
