@@ -99,9 +99,6 @@ pub enum Error {
     #[error("Token exchange HTTP error: {0}")]
     Http(#[from] reqwest::Error),
 
-    #[error("MessagePack decode error: {0}")]
-    MsgpackDecode(#[from] rmp_serde::decode::Error),
-
     #[error("MessagePack encode error: {0}")]
     MsgpackEncode(#[from] rmp_serde::encode::Error),
 

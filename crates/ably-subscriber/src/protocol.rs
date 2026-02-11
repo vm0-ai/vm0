@@ -135,8 +135,7 @@ pub fn decode_msg(data: &[u8]) -> Result<ProtocolMessage, Error> {
     })
 }
 
-/// Convert an rmpv::Value to serde_json::Value, encoding binary data as base64
-/// strings with a `\0base64:` prefix so decode_data can distinguish them.
+/// Convert an rmpv::Value to serde_json::Value, encoding binary data as base64 strings.
 fn rmpv_to_json(value: rmpv::Value) -> serde_json::Value {
     match value {
         rmpv::Value::Nil => serde_json::Value::Null,
