@@ -173,7 +173,14 @@ fn rmpv_to_json(value: rmpv::Value) -> serde_json::Value {
                 .into_iter()
                 .map(|(k, v)| {
                     let key = match k {
-                        rmpv::Value::String(s) => s.into_str().unwrap_or_default().to_string(),
+                        rmpv::Value::String(s) => {
+                            if s.is_str() {
+                                s.into_str().unwrap_or_default().to_string()
+                            } else {
+                                tracing::warn!("msgpack map key contains invalid UTF-8, substituting empty string");
+                                String::new()
+                            }
+                        }
                         other => format!("{other}"),
                     };
                     (key, rmpv_to_json(v))
