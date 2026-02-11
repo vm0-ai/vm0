@@ -37,12 +37,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Start the runner and poll for jobs
-    Start(Box<runner::StartArgs>),
     /// Download Firecracker, kernel, and verify host prerequisites
     Setup,
     /// Build squashfs rootfs for Firecracker VMs
     BuildRootfs(build_rootfs::BuildRootfsArgs),
+    /// Start the runner and poll for jobs
+    Start(Box<runner::StartArgs>),
 }
 
 #[tokio::main]
