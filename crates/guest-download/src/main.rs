@@ -113,8 +113,8 @@ fn run(manifest_path: &str) -> bool {
 
     // Download artifact if present (after storages complete)
     if let Some(artifact) = &manifest.artifact
-        && let Some(url) = &artifact.archive_url
-        && url != "null"
+        && is_valid_url(&artifact.archive_url)
+        && let Some(url) = artifact.archive_url.as_deref()
     {
         let start = Instant::now();
         log_info!(LOG_TAG, "Downloading artifact to {}", artifact.mount_path);
@@ -211,8 +211,13 @@ fn download_storages_parallel(storages: &[Storage]) -> bool {
                         all_success = false;
                     }
                 }
-                Err(_) => {
-                    log_error!(LOG_TAG, "Thread panicked");
+                Err(e) => {
+                    let msg = e
+                        .downcast_ref::<String>()
+                        .map(String::as_str)
+                        .or_else(|| e.downcast_ref::<&str>().copied())
+                        .unwrap_or("unknown");
+                    log_error!(LOG_TAG, "Thread panicked: {msg}");
                     all_success = false;
                 }
             }
