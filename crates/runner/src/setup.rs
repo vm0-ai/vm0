@@ -201,6 +201,7 @@ async fn download_and_extract(
     tarball_path: &Path,
     tmp_path: &Path,
 ) -> RunnerResult<String> {
+    // Tarball SHA is intentionally discarded — we verify the extracted binary's SHA instead.
     download_to_temp(url, tarball_path, label).await?;
 
     let result = extract_tar_entry(tarball_path, tmp_path, entry_name).await;
