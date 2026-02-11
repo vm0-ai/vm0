@@ -558,7 +558,9 @@ async fn verify_mounted(mount_point: &Path, guest_bin_dests: &[&str]) -> RunnerR
 
     // Check proxy CA in system bundle
     let bundle_path = mount_point.join("etc/ssl/certs/ca-certificates.crt");
-    if bundle_path.exists() && ca_path.exists() {
+    if !bundle_path.exists() {
+        errors.push("system CA bundle not found at /etc/ssl/certs/ca-certificates.crt".to_string());
+    } else if ca_path.exists() {
         // Read second line of CA cert as a unique identifier
         let ca_content = tokio::fs::read_to_string(&ca_path)
             .await
