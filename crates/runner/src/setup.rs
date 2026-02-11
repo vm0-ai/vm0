@@ -45,9 +45,9 @@ const fn strip_patch(version: &str) -> &str {
     panic!("FIRECRACKER_VERSION must be in vMAJOR.MINOR.PATCH format")
 }
 
-pub async fn run_setup(strict: bool) -> RunnerResult<()> {
+pub async fn run_setup() -> RunnerResult<()> {
     let arch = check_architecture()?;
-    let (missing_required, missing_optional) = check_system_dependencies();
+    let (missing_required, _missing_optional) = check_system_dependencies();
 
     let paths = HomePaths::new()?;
     create_directories(&paths).await?;
@@ -60,12 +60,6 @@ pub async fn run_setup(strict: bool) -> RunnerResult<()> {
         return Err(RunnerError::Config(format!(
             "missing required dependencies: {}",
             missing_required.join(", ")
-        )));
-    }
-    if strict && !missing_optional.is_empty() {
-        return Err(RunnerError::Config(format!(
-            "missing optional dependencies (strict mode): {}",
-            missing_optional.join(", ")
         )));
     }
 
