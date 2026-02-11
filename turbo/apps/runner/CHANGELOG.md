@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.18.1](https://github.com/vm0-ai/vm0/compare/runner-v3.18.0...runner-v3.18.1) (2026-02-11)
+
+
+### Bug Fixes
+
+* **runner:** make runner sole reporter of job completion ([#2852](https://github.com/vm0-ai/vm0/issues/2852)) ([807e2f9](https://github.com/vm0-ai/vm0/commit/807e2f9489ff4780eb3ff235d0eac2baae1b37d1))
+
 ## [3.18.0](https://github.com/vm0-ai/vm0/compare/runner-v3.17.2...runner-v3.18.0) (2026-02-10)
 
 
