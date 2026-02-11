@@ -51,6 +51,26 @@ describe("variables tab", () => {
     expect(screen.getByText("Backend API URL")).toBeInTheDocument();
   });
 
+  it("does not flash empty state while loading", async () => {
+    server.use(
+      http.get("/api/variables", () => {
+        return HttpResponse.json({ variables: mockVariables() });
+      }),
+    );
+
+    await setupPage({ context, path: "/settings?tab=variables" });
+
+    // Should not show empty state while data is loading
+    expect(
+      screen.queryByText("No variables configured yet"),
+    ).not.toBeInTheDocument();
+
+    // Wait for data to load
+    await vi.waitFor(() => {
+      expect(screen.getByText("API_URL")).toBeInTheDocument();
+    });
+  });
+
   it("can add a new variable via dialog", async () => {
     let capturedBody: Record<string, unknown> | null = null;
 
@@ -76,6 +96,11 @@ describe("variables tab", () => {
 
     await setupPage({ context, path: "/settings?tab=variables" });
 
+    // Wait for data to resolve before "Add variable" button appears
+    await vi.waitFor(() => {
+      expect(screen.getByText("Add variable")).toBeInTheDocument();
+    });
+
     // Click "Add variable"
     await user.click(screen.getByText("Add variable"));
 
@@ -85,13 +110,13 @@ describe("variables tab", () => {
     // Fill in the form
     const nameInput = within(dialog).getByPlaceholderText("MY_VARIABLE");
     await user.click(nameInput);
-    await user.keyboard("MY_VAR");
+    await user.paste("MY_VAR");
 
     const valueInput = within(dialog).getByPlaceholderText(
       "Enter variable value",
     );
     await user.click(valueInput);
-    await user.keyboard("some-value");
+    await user.paste("some-value");
 
     // Submit
     const submitButton = within(dialog).getByRole("button", {
@@ -101,13 +126,10 @@ describe("variables tab", () => {
 
     await vi.waitFor(() => {
       expect(capturedBody).toBeTruthy();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
     expect(capturedBody!.name).toBe("MY_VAR");
     expect(capturedBody!.value).toBe("some-value");
-
-    await vi.waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    });
   });
 
   it("shows missing variables banner from URL required param", async () => {
@@ -140,7 +162,11 @@ describe("variables tab", () => {
 
     await setupPage({ context, path: "/settings?tab=variables" });
 
-    expect(screen.getByText("No variables configured yet")).toBeInTheDocument();
+    await vi.waitFor(() => {
+      expect(
+        screen.getByText("No variables configured yet"),
+      ).toBeInTheDocument();
+    });
     expect(screen.getByText("Add variable")).toBeInTheDocument();
   });
 });

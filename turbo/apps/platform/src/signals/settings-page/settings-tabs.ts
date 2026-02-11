@@ -5,7 +5,12 @@ import { searchParams$, updateSearchParams$ } from "../route.ts";
 // Tab types
 // ---------------------------------------------------------------------------
 
-export type SettingsTab = "providers" | "connectors" | "secrets" | "variables";
+export type SettingsTab =
+  | "providers"
+  | "connectors"
+  | "secrets"
+  | "variables"
+  | "integrations";
 
 // ---------------------------------------------------------------------------
 // Internal state
@@ -31,7 +36,8 @@ function isValidTab(value: string): value is SettingsTab {
     value === "providers" ||
     value === "connectors" ||
     value === "secrets" ||
-    value === "variables"
+    value === "variables" ||
+    value === "integrations"
   );
 }
 

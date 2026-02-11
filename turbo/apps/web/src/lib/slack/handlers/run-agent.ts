@@ -1,18 +1,36 @@
-import { eq, desc, and, gte } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import {
   agentComposes,
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
 import { agentRuns } from "../../../db/schema/agent-run";
-import { agentSessions } from "../../../db/schema/agent-session";
+import { agentRunCallbacks } from "../../../db/schema/agent-run-callback";
 import { generateSandboxToken } from "../../auth/sandbox-token";
 import { buildExecutionContext, prepareAndDispatchRun } from "../../run";
 import { queryAxiom, getDatasetName, DATASETS } from "../../axiom";
 import { logger } from "../../logger";
 import { getUserScopeByClerkId } from "../../scope/scope-service";
 import { getSecretValues } from "../../secret/secret-service";
+import { encryptCredentialValue } from "../../crypto/secrets-encryption";
+import { generateCallbackSecret, getApiUrl } from "../../callback";
+import { env } from "../../../env";
 
 const log = logger("slack:run-agent");
+
+/**
+ * Slack-specific context to include in the callback payload
+ */
+export interface SlackCallbackContext {
+  workspaceId: string;
+  channelId: string;
+  threadTs: string;
+  messageTs: string;
+  userLinkId: string;
+  agentName: string;
+  composeId: string;
+  existingSessionId?: string;
+  reactionAdded: boolean;
+}
 
 interface RunAgentParams {
   composeId: string;
@@ -21,36 +39,34 @@ interface RunAgentParams {
   prompt: string;
   threadContext: string;
   userId: string;
-}
-
-interface WaitOptions {
-  timeoutMs: number;
-  pollIntervalMs: number;
-}
-
-interface WaitResult {
-  status: "completed" | "failed" | "timeout";
-  output?: string;
-  error?: string;
+  callbackContext: SlackCallbackContext;
 }
 
 interface RunAgentResult {
-  status: "completed" | "failed" | "timeout";
-  response: string;
-  sessionId: string | undefined;
+  status: "dispatched" | "failed";
+  response?: string;
   runId: string | undefined;
 }
 
 /**
  * Execute an agent run for Slack
  *
- * This creates a run, waits for completion, and returns the response
+ * This creates a run, registers a callback, and returns immediately.
+ * The callback will be invoked when the run completes.
  */
 export async function runAgentForSlack(
   params: RunAgentParams,
 ): Promise<RunAgentResult> {
-  const { composeId, agentName, sessionId, prompt, threadContext, userId } =
-    params;
+  const {
+    composeId,
+    agentName,
+    sessionId,
+    prompt,
+    threadContext,
+    userId,
+    callbackContext,
+  } = params;
+  const { SECRETS_ENCRYPTION_KEY } = env();
 
   try {
     // Get compose and latest version
@@ -64,7 +80,6 @@ export async function runAgentForSlack(
       return {
         status: "failed",
         response: "Error: Agent configuration not found.",
-        sessionId,
         runId: undefined,
       };
     }
@@ -83,7 +98,6 @@ export async function runAgentForSlack(
         return {
           status: "failed",
           response: "Error: Agent has no versions configured.",
-          sessionId,
           runId: undefined,
         };
       }
@@ -119,12 +133,28 @@ export async function runAgentForSlack(
       return {
         status: "failed",
         response: "Error: Failed to create run.",
-        sessionId,
         runId: undefined,
       };
     }
 
     log.debug(`Created run ${run.id} for Slack agent ${agentName}`);
+
+    // Register callback for run completion
+    const callbackSecret = generateCallbackSecret();
+    const encryptedSecret = encryptCredentialValue(
+      callbackSecret,
+      SECRETS_ENCRYPTION_KEY,
+    );
+    const callbackUrl = `${getApiUrl()}/api/internal/callbacks/slack`;
+
+    await globalThis.services.db.insert(agentRunCallbacks).values({
+      runId: run.id,
+      url: callbackUrl,
+      encryptedSecret,
+      payload: callbackContext,
+    });
+
+    log.debug(`Registered callback for run ${run.id}`);
 
     // Generate sandbox token
     const sandboxToken = await generateSandboxToken(userId, run.id);
@@ -146,108 +176,20 @@ export async function runAgentForSlack(
     const dispatchResult = await prepareAndDispatchRun(context);
     log.debug(`Run ${run.id} dispatched with status: ${dispatchResult.status}`);
 
-    // Wait for run completion
-    const result = await waitForRunCompletion(run.id, {
-      timeoutMs: 30 * 60 * 1000, // 30 minute timeout
-      pollIntervalMs: 5000, // 5 second polling interval
-    });
-
-    // If no existing session, find the session created/updated for this run
-    // Use updatedAt >= run.createdAt to catch both new and updated sessions
-    let resultSessionId = sessionId;
-    if (!sessionId && result.status === "completed") {
-      const [newSession] = await globalThis.services.db
-        .select({ id: agentSessions.id })
-        .from(agentSessions)
-        .where(
-          and(
-            eq(agentSessions.userId, userId),
-            eq(agentSessions.agentComposeId, composeId),
-            gte(agentSessions.updatedAt, run.createdAt),
-          ),
-        )
-        .orderBy(desc(agentSessions.updatedAt))
-        .limit(1);
-
-      resultSessionId = newSession?.id;
-    }
-
-    if (result.status === "completed") {
-      return {
-        status: "completed",
-        response: result.output ?? "Task completed successfully.",
-        sessionId: resultSessionId,
-        runId: run.id,
-      };
-    } else if (result.status === "failed") {
-      return {
-        status: "failed",
-        response: `Error: ${result.error ?? "Agent execution failed."}`,
-        sessionId: resultSessionId,
-        runId: run.id,
-      };
-    } else {
-      return {
-        status: "timeout",
-        response:
-          "The agent timed out after 30 minutes. You can check the logs for more details.",
-        sessionId: resultSessionId,
-        runId: run.id,
-      };
-    }
+    // Return immediately - callback will handle the response
+    return {
+      status: "dispatched",
+      runId: run.id,
+    };
   } catch (error) {
     log.error("Error running agent for Slack:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
     return {
       status: "failed",
       response: `Error executing agent: ${message}`,
-      sessionId,
       runId: undefined,
     };
   }
-}
-
-/**
- * Wait for a run to complete by polling the database
- * Also queries Axiom for the result event to get the output text
- */
-async function waitForRunCompletion(
-  runId: string,
-  options: WaitOptions,
-): Promise<WaitResult> {
-  const { timeoutMs, pollIntervalMs } = options;
-  const startTime = Date.now();
-
-  while (Date.now() - startTime < timeoutMs) {
-    // Query run status from database
-    const [run] = await globalThis.services.db
-      .select({
-        status: agentRuns.status,
-        error: agentRuns.error,
-      })
-      .from(agentRuns)
-      .where(eq(agentRuns.id, runId))
-      .limit(1);
-
-    if (!run) {
-      return { status: "failed", error: "Run not found" };
-    }
-
-    if (run.status === "completed") {
-      // Query Axiom for the result event to get output text
-      const output = await getRunOutput(runId);
-      return { status: "completed", output };
-    }
-
-    if (run.status === "failed") {
-      return { status: "failed", error: run.error ?? "Unknown error" };
-    }
-
-    // Wait before polling again
-    await sleep(pollIntervalMs);
-  }
-
-  return { status: "timeout" };
 }
 
 /**
@@ -335,11 +277,4 @@ export function formatAskUserDenials(
   if (parts.length === 0) return undefined;
 
   return `The agent needs your input to proceed:\n\n${parts.join("\n")}`;
-}
-
-/**
- * Sleep for a given number of milliseconds
- */
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

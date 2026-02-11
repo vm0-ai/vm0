@@ -33,6 +33,7 @@ interface WorkspaceInstallationResult {
     slackWorkspaceName: string;
     botUserId: string;
     defaultComposeId: string;
+    adminSlackUserId: string;
   };
 }
 
@@ -81,6 +82,7 @@ interface WorkspaceInstallationOptions {
 interface LinkedUserOptions extends WorkspaceInstallationOptions {
   slackUserId?: string;
   vm0UserId?: string;
+  isAdmin?: boolean;
 }
 
 /**
@@ -143,6 +145,7 @@ export async function givenSlackWorkspaceInstalled(
       slackWorkspaceName: workspaceName,
       botUserId,
       defaultComposeId: composeId,
+      adminSlackUserId,
     },
   };
 }
@@ -154,7 +157,6 @@ export async function givenSlackWorkspaceInstalled(
 export async function givenLinkedSlackUser(
   options: LinkedUserOptions = {},
 ): Promise<LinkedUserResult> {
-  const slackUserId = options.slackUserId ?? uniqueId("U");
   const vm0UserId = options.vm0UserId ?? uniqueId("user");
 
   // First install the workspace
@@ -163,6 +165,11 @@ export async function givenLinkedSlackUser(
     workspaceName: options.workspaceName,
     botUserId: options.botUserId,
   });
+
+  // If isAdmin, use the installation's admin Slack user ID so the link matches
+  const slackUserId = options.isAdmin
+    ? installation.adminSlackUserId
+    : (options.slackUserId ?? uniqueId("U"));
 
   // Restore Clerk mock to the linking user (givenSlackWorkspaceInstalled sets it to admin)
   mockClerk({ userId: vm0UserId });
@@ -245,21 +252,6 @@ export async function givenUserHasAgent(
       name: agentName,
     },
   };
-}
-
-/**
- * Given a Slack user is the workspace admin.
- * Updates the installation to set the specified Slack user as admin.
- */
-export async function givenUserIsWorkspaceAdmin(
-  slackUserId: string,
-  slackWorkspaceId: string,
-): Promise<void> {
-  initServices();
-  await globalThis.services.db
-    .update(slackInstallations)
-    .set({ adminSlackUserId: slackUserId })
-    .where(eq(slackInstallations.slackWorkspaceId, slackWorkspaceId));
 }
 
 /**

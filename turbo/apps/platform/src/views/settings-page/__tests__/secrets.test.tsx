@@ -47,6 +47,26 @@ describe("secrets tab", () => {
     ).toBeInTheDocument();
   });
 
+  it("does not flash empty state while loading", async () => {
+    server.use(
+      http.get("/api/secrets", () => {
+        return HttpResponse.json({ secrets: mockSecrets() });
+      }),
+    );
+
+    await setupPage({ context, path: "/settings?tab=secrets" });
+
+    // Should not show empty state while data is loading
+    expect(
+      screen.queryByText("No secrets configured yet"),
+    ).not.toBeInTheDocument();
+
+    // Wait for data to load
+    await vi.waitFor(() => {
+      expect(screen.getByText("API_KEY")).toBeInTheDocument();
+    });
+  });
+
   it("shows empty state when no secrets configured", async () => {
     server.use(
       http.get("/api/secrets", () => {
@@ -56,7 +76,9 @@ describe("secrets tab", () => {
 
     await setupPage({ context, path: "/settings?tab=secrets" });
 
-    expect(screen.getByText("No secrets configured yet")).toBeInTheDocument();
+    await vi.waitFor(() => {
+      expect(screen.getByText("No secrets configured yet")).toBeInTheDocument();
+    });
     expect(screen.getByText("Add secret")).toBeInTheDocument();
   });
 
@@ -101,6 +123,11 @@ describe("secrets tab", () => {
 
     await setupPage({ context, path: "/settings?tab=secrets" });
 
+    // Wait for data to resolve before "Add secret" button appears
+    await vi.waitFor(() => {
+      expect(screen.getByText("Add secret")).toBeInTheDocument();
+    });
+
     // Click "Add secret"
     await user.click(screen.getByText("Add secret"));
 
@@ -115,12 +142,12 @@ describe("secrets tab", () => {
     // Fill in the form
     const nameInput = within(dialog).getByPlaceholderText("MY_API_KEY");
     await user.click(nameInput);
-    await user.keyboard("NEW_SECRET");
+    await user.paste("NEW_SECRET");
 
     const valueInput =
       within(dialog).getByPlaceholderText("Enter secret value");
     await user.click(valueInput);
-    await user.keyboard("super-secret-value");
+    await user.paste("super-secret-value");
 
     // Submit
     const submitButton = within(dialog).getByRole("button", {
@@ -128,16 +155,13 @@ describe("secrets tab", () => {
     });
     await user.click(submitButton);
 
-    // Verify request
+    // Verify request and dialog closed
     await vi.waitFor(() => {
       expect(capturedBody).toBeTruthy();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
     expect(capturedBody!.name).toBe("NEW_SECRET");
     expect(capturedBody!.value).toBe("super-secret-value");
-
-    await vi.waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    });
   });
 
   it("can delete a secret via kebab menu", async () => {
@@ -180,9 +204,6 @@ describe("secrets tab", () => {
 
     await vi.waitFor(() => {
       expect(deletedName).toBe("API_KEY");
-    });
-
-    await vi.waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
@@ -218,6 +239,11 @@ describe("secrets tab", () => {
     );
 
     await setupPage({ context, path: "/settings?tab=secrets" });
+
+    // Wait for data to resolve before "Add secret" button appears
+    await vi.waitFor(() => {
+      expect(screen.getByText("Add secret")).toBeInTheDocument();
+    });
 
     await user.click(screen.getByText("Add secret"));
 

@@ -47,7 +47,7 @@ describe("/api/slack/oauth/callback", () => {
       expect(data.error).toBe("Missing authorization code");
     });
 
-    it("should redirect to success page on successful OAuth exchange", async () => {
+    it("should redirect to link page on successful OAuth exchange", async () => {
       // Create a compose to use as the default workspace agent
       const adminUserId = uniqueId("admin");
       mockClerk({ userId: adminUserId });
@@ -72,9 +72,9 @@ describe("/api/slack/oauth/callback", () => {
 
       expect(response.status).toBe(307);
       const locationHeader = response.headers.get("Location");
-      expect(locationHeader).toContain("/slack/success");
-      expect(locationHeader).toContain("workspace=Test%20Workspace");
-      expect(locationHeader).toContain("workspace_id=T123456");
+      expect(locationHeader).toContain("/slack/link");
+      expect(locationHeader).toContain("w=T123456");
+      expect(locationHeader).toContain("u=U-installer");
     });
 
     it("should redirect to failed page when OAuth exchange fails", async () => {

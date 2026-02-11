@@ -193,12 +193,12 @@ describe("POST /api/slack/events", () => {
     // Clear viewsPublish mock so each test starts with a clean call count
     mockClient.views.publish.mockClear();
 
-    // Default mock for runAgentForSlack — returns a completed result.
+    // Default mock for runAgentForSlack — returns a dispatched result.
     // Individual tests can override via mockResolvedValueOnce.
+    // Note: With the callback-based architecture, "dispatched" means the run was
+    // successfully started and a callback will handle the response later.
     vi.spyOn(runAgentModule, "runAgentForSlack").mockResolvedValue({
-      status: "completed",
-      response: "I've completed the task.",
-      sessionId: undefined,
+      status: "dispatched",
       runId: "run-123",
     });
   });
@@ -300,7 +300,7 @@ describe("POST /api/slack/events", () => {
   });
 
   describe("Scenario: Mention bot with single agent", () => {
-    it("should execute agent and post response", async () => {
+    it("should dispatch agent run and add thinking reaction", async () => {
       // Given I am a linked Slack user with one agent
       const { userLink, installation } = await givenLinkedSlackUser();
       await givenUserHasAgent(userLink, {
@@ -325,37 +325,26 @@ describe("POST /api/slack/events", () => {
       const reactionCall = getCallArgs(mockClient.reactions.add);
       expect(reactionCall.name).toBe("thought_balloon");
 
-      // 2. Response message should be posted
-      expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
+      // 2. No response message should be posted yet (callback handles that)
+      // The handler returns immediately after dispatching the run
+      expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
 
-      // 3. Response should include agent name in context block
-      const call = getCallArgs(mockClient.chat.postMessage);
-      const blocks = (call.blocks ?? []) as Array<{
-        type: string;
-        elements?: Array<{ text?: string }>;
-      }>;
-      const contextBlocks = blocks.filter((b) => b.type === "context");
-      expect(contextBlocks.length).toBeGreaterThanOrEqual(1);
-      const agentContext = contextBlocks[0]!.elements?.[0]?.text;
-      expect(agentContext).toContain("my-helper");
-
-      // 4. Thinking reaction should be removed
-      expect(mockClient.reactions.remove).toHaveBeenCalledTimes(1);
+      // 3. Thinking reaction should NOT be removed yet (callback handles that)
+      expect(mockClient.reactions.remove).not.toHaveBeenCalled();
     });
 
-    it("should not include timeout warning prefix when agent fails", async () => {
+    it("should post error and remove reaction when dispatch fails", async () => {
       // Given I am a linked Slack user with one agent
       const { userLink, installation } = await givenLinkedSlackUser();
       await givenUserHasAgent(userLink, {
         agentName: "my-helper",
       });
 
-      // And runAgentForSlack returns a failed result
+      // And runAgentForSlack returns a failed result (dispatch failure)
       vi.spyOn(runAgentModule, "runAgentForSlack").mockResolvedValueOnce({
         status: "failed",
         response: "Error: Agent execution failed.",
-        sessionId: undefined,
-        runId: "test-run-id",
+        runId: undefined,
       });
 
       // When I @mention the VM0 bot
@@ -370,79 +359,13 @@ describe("POST /api/slack/events", () => {
       expect(response.status).toBe(200);
       await flushAfterCallbacks();
 
-      // Then the response should contain an error message (failed status)
+      // Then the response should contain an error message
       expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
       const call = getCallArgs(mockClient.chat.postMessage);
       const text = (call.text as string) ?? "";
       expect(text).toContain("Error");
 
-      // And the response should NOT include the timeout warning prefix
-      // (timeout prefix ":warning: *Agent timed out*" is only added for timeout status)
-      expect(text).not.toContain(":warning:");
-      expect(text).not.toContain("Agent timed out");
-
-      // And the blocks should also not contain timeout warning
-      const blocks = (call.blocks ?? []) as Array<{
-        type: string;
-        text?: { text?: string };
-      }>;
-      const sectionTexts = blocks
-        .filter((b) => b.type === "section")
-        .map((b) => b.text?.text ?? "")
-        .join("");
-      expect(sectionTexts).not.toContain(":warning:");
-      expect(sectionTexts).not.toContain("Agent timed out");
-    });
-
-    it("should include timeout warning prefix when agent times out", async () => {
-      // Given I am a linked Slack user with one agent
-      const { userLink, installation } = await givenLinkedSlackUser();
-      await givenUserHasAgent(userLink, {
-        agentName: "my-helper",
-      });
-
-      // And runAgentForSlack returns a timeout result
-      vi.spyOn(runAgentModule, "runAgentForSlack").mockResolvedValueOnce({
-        status: "timeout",
-        response:
-          "The agent timed out after 30 minutes. You can check the logs for more details.",
-        sessionId: undefined,
-        runId: "test-run-id",
-      });
-
-      // When I @mention the VM0 bot
-      const request = createSlackEventRequest({
-        teamId: installation.slackWorkspaceId,
-        channelId: "C123",
-        userId: userLink.slackUserId,
-        text: `<@${installation.botUserId}> help me with this code`,
-        ts: "1234567890.123456",
-      });
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-      await flushAfterCallbacks();
-
-      // Then the response should include the timeout warning prefix
-      expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
-      const call = getCallArgs(mockClient.chat.postMessage);
-      const text = (call.text as string) ?? "";
-      expect(text).toContain(":warning:");
-      expect(text).toContain("Agent timed out");
-      expect(text).toContain("timed out after 30 minutes");
-
-      // And the blocks should contain the agent name and logs link
-      const blocks = (call.blocks ?? []) as Array<{
-        type: string;
-        elements?: Array<{ text?: string }>;
-      }>;
-      const contextBlocks = blocks.filter((b) => b.type === "context");
-      // First context block: agent name
-      expect(contextBlocks[0]!.elements?.[0]?.text).toContain("my-helper");
-      // Last context block: logs link
-      const logsBlock = contextBlocks[contextBlocks.length - 1]!;
-      expect(logsBlock.elements?.[0]?.text).toContain("test-run-id");
-
-      // And the thinking reaction should still be removed
+      // And the thinking reaction should be removed (since callback won't be invoked)
       expect(mockClient.reactions.remove).toHaveBeenCalledTimes(1);
     });
   });
@@ -534,7 +457,7 @@ describe("POST /api/slack/events", () => {
   });
 
   describe("Scenario: DM bot with single agent", () => {
-    it("should execute agent and post response", async () => {
+    it("should dispatch agent run and add thinking reaction", async () => {
       // Given I am a linked Slack user with one agent
       const { userLink, installation } = await givenLinkedSlackUser();
       await givenUserHasAgent(userLink, {
@@ -557,37 +480,25 @@ describe("POST /api/slack/events", () => {
       // 1. Thinking reaction should be added
       expect(mockClient.reactions.add).toHaveBeenCalledTimes(1);
 
-      // 2. Response message should be posted
-      expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
+      // 2. No response message should be posted yet (callback handles that)
+      expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
 
-      // 3. Response should include agent name in context block
-      const call = getCallArgs(mockClient.chat.postMessage);
-      const blocks = (call.blocks ?? []) as Array<{
-        type: string;
-        elements?: Array<{ text?: string }>;
-      }>;
-      const contextBlocks = blocks.filter((b) => b.type === "context");
-      expect(contextBlocks.length).toBeGreaterThanOrEqual(1);
-      const agentContext = contextBlocks[0]!.elements?.[0]?.text;
-      expect(agentContext).toContain("my-helper");
-
-      // 4. Thinking reaction should be removed
-      expect(mockClient.reactions.remove).toHaveBeenCalledTimes(1);
+      // 3. Thinking reaction should NOT be removed yet (callback handles that)
+      expect(mockClient.reactions.remove).not.toHaveBeenCalled();
     });
 
-    it("should not include timeout warning prefix when agent fails", async () => {
+    it("should post error and remove reaction when dispatch fails", async () => {
       // Given I am a linked Slack user with one agent
       const { userLink, installation } = await givenLinkedSlackUser();
       await givenUserHasAgent(userLink, {
         agentName: "my-helper",
       });
 
-      // And runAgentForSlack returns a failed result
+      // And runAgentForSlack returns a failed result (dispatch failure)
       vi.spyOn(runAgentModule, "runAgentForSlack").mockResolvedValueOnce({
         status: "failed",
         response: "Error: Agent execution failed.",
-        sessionId: undefined,
-        runId: "test-run-id",
+        runId: undefined,
       });
 
       // When I send a DM to the bot
@@ -602,75 +513,32 @@ describe("POST /api/slack/events", () => {
       expect(response.status).toBe(200);
       await flushAfterCallbacks();
 
-      // Then the response should contain an error message (failed status)
+      // Then the response should contain an error message
       expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
       const call = getCallArgs(mockClient.chat.postMessage);
       const text = (call.text as string) ?? "";
       expect(text).toContain("Error");
 
-      // And the response should NOT include the timeout warning prefix
-      expect(text).not.toContain(":warning:");
-      expect(text).not.toContain("Agent timed out");
-    });
-
-    it("should include timeout warning prefix when agent times out", async () => {
-      // Given I am a linked Slack user with one agent
-      const { userLink, installation } = await givenLinkedSlackUser();
-      await givenUserHasAgent(userLink, {
-        agentName: "my-helper",
-      });
-
-      // And runAgentForSlack returns a timeout result
-      vi.spyOn(runAgentModule, "runAgentForSlack").mockResolvedValueOnce({
-        status: "timeout",
-        response:
-          "The agent timed out after 30 minutes. You can check the logs for more details.",
-        sessionId: undefined,
-        runId: "test-run-id",
-      });
-
-      // When I send a DM to the bot
-      const request = createSlackDmEventRequest({
-        teamId: installation.slackWorkspaceId,
-        channelId: "D123",
-        userId: userLink.slackUserId,
-        text: "help me with this code",
-        ts: "1234567890.123456",
-      });
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-      await flushAfterCallbacks();
-
-      // Then the response should include the timeout warning prefix
-      expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
-      const call = getCallArgs(mockClient.chat.postMessage);
-      const text = (call.text as string) ?? "";
-      expect(text).toContain(":warning:");
-      expect(text).toContain("Agent timed out");
-      expect(text).toContain("timed out after 30 minutes");
-
-      // And the blocks should contain the agent name and logs link
-      const blocks = (call.blocks ?? []) as Array<{
-        type: string;
-        elements?: Array<{ text?: string }>;
-      }>;
-      const contextBlocks = blocks.filter((b) => b.type === "context");
-      expect(contextBlocks[0]!.elements?.[0]?.text).toContain("my-helper");
-      const logsBlock = contextBlocks[contextBlocks.length - 1]!;
-      expect(logsBlock.elements?.[0]?.text).toContain("test-run-id");
-
-      // And the thinking reaction should still be removed
+      // And the thinking reaction should be removed
       expect(mockClient.reactions.remove).toHaveBeenCalledTimes(1);
     });
   });
 
   describe("Scenario: DM bot with greeting message", () => {
-    it("should route greeting to agent instead of showing welcome card", async () => {
+    it("should dispatch agent run for greeting (not show welcome card)", async () => {
       // Given I am a linked Slack user with one agent
       const { userLink, installation } = await givenLinkedSlackUser();
       await givenUserHasAgent(userLink, {
         agentName: "my-helper",
       });
+
+      // And runAgentForSlack is mocked to track the call
+      const runAgentSpy = vi
+        .spyOn(runAgentModule, "runAgentForSlack")
+        .mockResolvedValueOnce({
+          status: "dispatched",
+          runId: "test-run-id",
+        });
 
       // When I send "hello" in DM (a greeting that triggers not_request in mentions)
       const request = createSlackDmEventRequest({
@@ -684,19 +552,12 @@ describe("POST /api/slack/events", () => {
       expect(response.status).toBe(200);
       await flushAfterCallbacks();
 
-      // Then the message should be routed to the agent (not show welcome card)
-      expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
+      // Then the message should be routed to the agent (runAgentForSlack called)
+      expect(runAgentSpy).toHaveBeenCalledTimes(1);
+      expect(runAgentSpy.mock.calls[0]![0].prompt).toBe("hello");
 
-      const call = getCallArgs(mockClient.chat.postMessage);
-      const blocks = (call.blocks ?? []) as Array<{
-        type: string;
-        elements?: Array<{ text?: string }>;
-      }>;
-      const contextBlocks = blocks.filter((b) => b.type === "context");
-      expect(contextBlocks.length).toBeGreaterThanOrEqual(1);
-      // Agent name should be in the response (not a welcome card)
-      const agentContext = contextBlocks[0]!.elements?.[0]?.text;
-      expect(agentContext).toContain("my-helper");
+      // And no immediate response should be posted (callback handles that)
+      expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
     });
   });
 
@@ -981,18 +842,13 @@ describe("POST /api/slack/events", () => {
       const threadTs = "1000000000.000000";
 
       // Create an agent session so the FK constraint is satisfied
-      const agentSession = await createTestAgentSession(
-        userLink.vm0UserId,
-        binding.composeId,
-      );
+      await createTestAgentSession(userLink.vm0UserId, binding.composeId);
 
-      // And runAgentForSlack returns a completed result with that session ID
+      // And runAgentForSlack returns a dispatched result
       const runAgentSpy = vi
         .spyOn(runAgentModule, "runAgentForSlack")
         .mockResolvedValue({
-          status: "completed",
-          response: "Done!",
-          sessionId: agentSession.id,
+          status: "dispatched",
           runId: "test-run-id",
         });
 
@@ -1028,203 +884,14 @@ describe("POST /api/slack/events", () => {
       expect(firstCallContext).toContain("First message");
       expect(firstCallContext).not.toContain("Second message");
 
-      // Reset mocks for second turn
-      runAgentSpy.mockClear();
-      mockClient.chat.postMessage.mockClear();
-      mockClient.reactions.add.mockClear();
-      mockClient.reactions.remove.mockClear();
-
-      // And the thread now has 3 messages (one new)
-      mockClient.conversations.replies.mockResolvedValueOnce({
-        ok: true,
-        messages: [
-          { user: "U111", text: "First message", ts: "1000000000.000000" },
-          {
-            user: userLink.slackUserId,
-            text: "Second message",
-            ts: "1000000001.000000",
-          },
-          {
-            user: userLink.slackUserId,
-            text: "Third message",
-            ts: "1000000002.000000",
-          },
-        ],
-      } as never);
-
-      // When I send the second mention in the same thread
-      const request2 = createSlackEventRequest({
-        teamId: installation.slackWorkspaceId,
-        channelId,
-        userId: userLink.slackUserId,
-        text: `<@${installation.botUserId}> do more`,
-        ts: "1000000002.000000",
-        threadTs,
-      });
-      await POST(request2);
-      await flushAfterCallbacks();
-
-      // Then the agent should receive empty context (all prior messages already processed,
-      // and "Third message" is the current mention excluded from context)
-      expect(runAgentSpy).toHaveBeenCalledTimes(1);
-      const secondCallContext = runAgentSpy.mock.calls[0]![0].threadContext;
-      expect(secondCallContext).not.toContain("First message");
-      expect(secondCallContext).not.toContain("Second message");
-      expect(secondCallContext).not.toContain("Third message");
-    });
-
-    it("should not update lastProcessedMessageTs when agent run fails", async () => {
-      // Given I am a linked Slack user with one agent
-      const { userLink, installation } = await givenLinkedSlackUser();
-      const { binding } = await givenUserHasAgent(userLink, {
-        agentName: "my-helper",
-      });
-
-      // Use unique channel/thread IDs to avoid collisions with stale DB data
-      const channelId = `C-dedup-fail-${Date.now()}`;
-      const threadTs = "2000000000.000000";
-
-      // Create an agent session so the FK constraint is satisfied
-      const agentSession = await createTestAgentSession(
-        userLink.vm0UserId,
-        binding.composeId,
-      );
-
-      // And runAgentForSlack returns completed on first call, failed on second
-      const runAgentSpy = vi.spyOn(runAgentModule, "runAgentForSlack");
-      runAgentSpy.mockResolvedValueOnce({
-        status: "completed",
-        response: "Done!",
-        sessionId: agentSession.id,
-        runId: "test-run-id-1",
-      });
-
-      // Thread has 1 message
-      mockClient.conversations.replies.mockResolvedValueOnce({
-        ok: true,
-        messages: [
-          {
-            user: userLink.slackUserId,
-            text: "First message",
-            ts: "2000000000.000000",
-          },
-        ],
-      } as never);
-
-      // First turn (succeeds) — establishes lastProcessedMessageTs
-      const request1 = createSlackEventRequest({
-        teamId: installation.slackWorkspaceId,
-        channelId,
-        userId: userLink.slackUserId,
-        text: `<@${installation.botUserId}> help`,
-        ts: "2000000000.000000",
-        threadTs,
-      });
-      await POST(request1);
-      await flushAfterCallbacks();
-
-      // Now runAgentForSlack fails on the second call
-      runAgentSpy.mockResolvedValueOnce({
-        status: "failed",
-        response: "Error: something broke",
-        sessionId: agentSession.id,
-        runId: "test-run-id-2",
-      });
-
-      // Thread now has 2 messages
-      mockClient.conversations.replies.mockResolvedValueOnce({
-        ok: true,
-        messages: [
-          {
-            user: userLink.slackUserId,
-            text: "First message",
-            ts: "2000000000.000000",
-          },
-          {
-            user: userLink.slackUserId,
-            text: "Second message",
-            ts: "2000000001.000000",
-          },
-        ],
-      } as never);
-
-      // Reset spy for second turn
-      runAgentSpy.mockClear();
-      runAgentSpy.mockResolvedValueOnce({
-        status: "failed",
-        response: "Error: something broke",
-        sessionId: agentSession.id,
-        runId: "test-run-id-2",
-      });
-
-      // Second turn (fails)
-      const request2 = createSlackEventRequest({
-        teamId: installation.slackWorkspaceId,
-        channelId,
-        userId: userLink.slackUserId,
-        text: `<@${installation.botUserId}> help again`,
-        ts: "2000000001.000000",
-        threadTs,
-      });
-      await POST(request2);
-      await flushAfterCallbacks();
-
-      // Reset for third turn
-      runAgentSpy.mockClear();
-      runAgentSpy.mockResolvedValueOnce({
-        status: "completed",
-        response: "Done!",
-        sessionId: agentSession.id,
-        runId: "test-run-id-3",
-      });
-
-      // Thread now has 3 messages
-      mockClient.conversations.replies.mockResolvedValueOnce({
-        ok: true,
-        messages: [
-          {
-            user: userLink.slackUserId,
-            text: "First message",
-            ts: "2000000000.000000",
-          },
-          {
-            user: userLink.slackUserId,
-            text: "Second message",
-            ts: "2000000001.000000",
-          },
-          {
-            user: userLink.slackUserId,
-            text: "Third message",
-            ts: "2000000002.000000",
-          },
-        ],
-      } as never);
-
-      // Third turn — should include "Second message" since the failed run didn't update the ts
-      const request3 = createSlackEventRequest({
-        teamId: installation.slackWorkspaceId,
-        channelId,
-        userId: userLink.slackUserId,
-        text: `<@${installation.botUserId}> retry`,
-        ts: "2000000002.000000",
-        threadTs,
-      });
-      await POST(request3);
-      await flushAfterCallbacks();
-
-      expect(runAgentSpy).toHaveBeenCalledTimes(1);
-      const thirdCallContext = runAgentSpy.mock.calls[0]![0].threadContext;
-      // Second message should be resent since the failed run didn't update lastProcessedMessageTs
-      expect(thirdCallContext).toContain("Second message");
-      // Third message is the current mention, excluded from context (sent as prompt)
-      expect(thirdCallContext).not.toContain("Third message");
-      // First message was already processed in the successful first turn
-      expect(thirdCallContext).not.toContain("First message");
+      // Note: With callback-based architecture, lastProcessedMessageTs is updated
+      // by the callback endpoint, not by the handler. This test only verifies
+      // the initial context sent to the agent.
     });
   });
 
   describe("Scenario: Reply in notification DM thread (NULL bindingId)", () => {
-    it("should resolve agent from thread session and execute", async () => {
+    it("should resolve agent from thread session and dispatch run", async () => {
       // Given I am a linked Slack user with one agent
       const { userLink, installation } = await givenLinkedSlackUser();
       const { binding } = await givenUserHasAgent(userLink, {
@@ -1250,13 +917,11 @@ describe("POST /api/slack/events", () => {
         lastProcessedMessageTs: threadTs,
       });
 
-      // And runAgentForSlack returns a completed result
+      // And runAgentForSlack returns a dispatched result
       const runAgentSpy = vi
         .spyOn(runAgentModule, "runAgentForSlack")
         .mockResolvedValueOnce({
-          status: "completed",
-          response: "Continued from schedule!",
-          sessionId: agentSession.id,
+          status: "dispatched",
           runId: "test-run-id",
         });
 
@@ -1286,7 +951,7 @@ describe("POST /api/slack/events", () => {
       expect(response.status).toBe(200);
       await flushAfterCallbacks();
 
-      // Then the agent should execute with the existing session
+      // Then the agent should be dispatched with the existing session
       expect(runAgentSpy).toHaveBeenCalledTimes(1);
       expect(runAgentSpy.mock.calls[0]![0].sessionId).toBe(agentSession.id);
       expect(runAgentSpy.mock.calls[0]![0].composeId).toBe(binding.composeId);
@@ -1294,8 +959,8 @@ describe("POST /api/slack/events", () => {
       // And Slack context should be skipped (session checkpoint has full history)
       expect(runAgentSpy.mock.calls[0]![0].threadContext).toBe("");
 
-      // And a response should be posted
-      expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
+      // And no immediate response should be posted (callback handles that)
+      expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
     });
   });
 

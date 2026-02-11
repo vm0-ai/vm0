@@ -45,6 +45,8 @@ const resetEnv = vi.hoisted(() => {
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     // Platform URL for settings page links
     vi.stubEnv("PLATFORM_URL", "http://localhost:3001");
+    // Initialize Next.js after() callback queue (shared with test-helpers.ts flushAfter)
+    globalThis.nextAfterCallbacks = [];
   };
   fn(); // Initial call before imports
   return fn;

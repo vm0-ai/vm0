@@ -6,14 +6,23 @@ import { theme$ } from "../../signals/theme.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
-  missingItems$,
   formValues$,
   formErrors$,
   updateFormValue$,
   submitForm$,
   submitPromise$,
   isSuccess$,
+  connectorItems$,
+  manualItems$,
+  allConnectorsSatisfied$,
+  autoSuccess$,
+  type ConnectorItem,
 } from "../../signals/environment-variables-setup/environment-variables-setup.ts";
+import {
+  connectConnector$,
+  pollingConnectorType$,
+} from "../../signals/settings-page/connectors.ts";
+import { ConnectorIcon } from "../settings-page/connector-icons.tsx";
 
 function LogoHeader() {
   const theme = useGet(theme$);
@@ -101,8 +110,48 @@ function SuccessState() {
   );
 }
 
+function ConnectorCard({ item }: { item: ConnectorItem }) {
+  const pollingType = useGet(pollingConnectorType$);
+  const connect = useSet(connectConnector$);
+  const pageSignal = useGet(pageSignal$);
+
+  const isPolling = pollingType === item.connectorType;
+
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-4 w-full">
+      <ConnectorIcon type={item.connectorType} size={30} />
+      <div className="flex flex-1 flex-col gap-0.5 min-w-0">
+        <span className="text-sm font-medium text-foreground">
+          {item.label}
+        </span>
+        <span className="text-xs text-muted-foreground">{item.helpText}</span>
+      </div>
+      {item.connected ? (
+        <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
+          Connected
+        </span>
+      ) : (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={isPolling}
+          onClick={() => {
+            detach(connect(item.connectorType, pageSignal), Reason.DomCallback);
+          }}
+          className="shrink-0"
+        >
+          {isPolling ? "Connecting..." : "Connect"}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 function FormState() {
-  const missingItemsStatus = useLoadable(missingItems$);
+  const connectorItemsStatus = useLoadable(connectorItems$);
+  const manualItemsStatus = useLoadable(manualItems$);
+  const connectorsSatisfiedStatus = useLoadable(allConnectorsSatisfied$);
   const values = useGet(formValues$);
   const errors = useGet(formErrors$);
   const setFormValue = useSet(updateFormValue$);
@@ -110,9 +159,16 @@ function FormState() {
   const submitStatus = useLoadable(submitPromise$);
   const pageSignal = useGet(pageSignal$);
 
-  const items =
-    missingItemsStatus.state === "hasData" ? missingItemsStatus.data : [];
+  const connectors =
+    connectorItemsStatus.state === "hasData" ? connectorItemsStatus.data : [];
+  const manualItems =
+    manualItemsStatus.state === "hasData" ? manualItemsStatus.data : [];
+  const connectorsSatisfied =
+    connectorsSatisfiedStatus.state === "hasData"
+      ? connectorsSatisfiedStatus.data
+      : false;
   const isSubmitting = submitStatus.state === "loading";
+  const hasManualItems = manualItems.length > 0;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,7 +196,11 @@ function FormState() {
           </div>
 
           <div className="flex flex-col gap-5 w-full">
-            {items.map((item) => (
+            {connectors.map((item) => (
+              <ConnectorCard key={item.connectorType} item={item} />
+            ))}
+
+            {manualItems.map((item) => (
               <div key={item.name} className="flex flex-col gap-2 w-full">
                 <label className="text-sm font-medium leading-5 text-foreground px-1">
                   {item.name}
@@ -171,16 +231,18 @@ function FormState() {
             ))}
           </div>
 
-          <div className="flex flex-col w-full">
-            <Button
-              type="submit"
-              disabled={isSubmitting}
-              size="sm"
-              className="w-full"
-            >
-              {isSubmitting ? "Saving..." : "Verify"}
-            </Button>
-          </div>
+          {hasManualItems && (
+            <div className="flex flex-col w-full">
+              <Button
+                type="submit"
+                disabled={isSubmitting || !connectorsSatisfied}
+                size="sm"
+                className="w-full"
+              >
+                {isSubmitting ? "Saving..." : "Verify"}
+              </Button>
+            </div>
+          )}
 
           <SecurityFooter />
         </form>
@@ -191,19 +253,31 @@ function FormState() {
 
 export function EnvironmentVariablesSetupPage() {
   const success = useGet(isSuccess$);
-  const missingItemsStatus = useLoadable(missingItems$);
+  const autoSuccessStatus = useLoadable(autoSuccess$);
+  const connectorItemsStatus = useLoadable(connectorItems$);
+  const manualItemsStatus = useLoadable(manualItems$);
 
   if (success) {
     return <SuccessState />;
   }
 
-  if (missingItemsStatus.state === "loading") {
+  if (autoSuccessStatus.state === "hasData" && autoSuccessStatus.data) {
+    return <SuccessState />;
+  }
+
+  const isLoading =
+    connectorItemsStatus.state === "loading" ||
+    manualItemsStatus.state === "loading";
+
+  if (isLoading) {
     return <LoadingState />;
   }
 
   if (
-    missingItemsStatus.state === "hasData" &&
-    missingItemsStatus.data.length === 0
+    connectorItemsStatus.state === "hasData" &&
+    manualItemsStatus.state === "hasData" &&
+    connectorItemsStatus.data.length === 0 &&
+    manualItemsStatus.data.length === 0
   ) {
     return <SuccessState />;
   }
