@@ -190,6 +190,10 @@ async fn compute_input_hash(
     hasher.update(b"dockerfile:");
     hasher.update(dockerfile.as_bytes());
 
+    // Hash resolv.conf content
+    hasher.update(b"resolv.conf:");
+    hasher.update(RESOLV_CONF.as_bytes());
+
     // Hash guest binaries (already sorted by name via guest_bins())
     for (src, dest) in guest_bins {
         let content = tokio::fs::read(src)
@@ -564,12 +568,14 @@ async fn verify_mounted(mount_point: &Path, guest_bin_dests: &[&str]) -> RunnerR
         // Read second line of CA cert as a unique identifier
         let ca_content = tokio::fs::read_to_string(&ca_path)
             .await
-            .unwrap_or_default();
+            .map_err(|e| RunnerError::Internal(format!("read CA cert: {e}")))?;
         let ca_line = ca_content.lines().nth(1).unwrap_or_default();
-        if !ca_line.is_empty() {
+        if ca_line.is_empty() {
+            errors.push("proxy CA cert appears empty or malformed".to_string());
+        } else {
             let bundle_content = tokio::fs::read_to_string(&bundle_path)
                 .await
-                .unwrap_or_default();
+                .map_err(|e| RunnerError::Internal(format!("read CA bundle: {e}")))?;
             if bundle_content.contains(ca_line) {
                 tracing::info!("  proxy CA bundle: updated");
             } else {
