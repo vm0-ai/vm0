@@ -1,14 +1,6 @@
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { Button } from "@vm0/ui/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@vm0/ui/components/ui/select";
 import { Loader2 } from "lucide-react";
-import { MODEL_PROVIDER_TYPES, type ModelProviderType } from "@vm0/core";
 import {
   onboardingProviderType$,
   onboardingFormValues$,
@@ -26,16 +18,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { theme$ } from "../../signals/theme.ts";
 import { navigateInReact$, searchParams$ } from "../../signals/route.ts";
-import { ProviderIcon } from "../settings-page/provider-icons.tsx";
-import {
-  getProviderShape,
-  getUILabel,
-} from "../settings-page/provider-ui-config.ts";
-import {
-  OnboardingOAuthFields,
-  OnboardingApiKeyFields,
-  OnboardingMultiAuthFields,
-} from "../home/onboarding-modal.tsx";
+import { ProviderFormFields } from "../shared/provider-form-fields.tsx";
 
 export function ProviderSetupPage() {
   const providerType = useGet(onboardingProviderType$);
@@ -57,10 +40,6 @@ export function ProviderSetupPage() {
   const returnUrl = currentSearchParams.get("return");
 
   const isLoading = actionStatus.state === "loading";
-  const shape = getProviderShape(providerType);
-  const providerTypes = Object.keys(
-    MODEL_PROVIDER_TYPES,
-  ) as ModelProviderType[];
 
   const backgroundGradient =
     theme === "dark"
@@ -128,67 +107,17 @@ export function ProviderSetupPage() {
 
           {/* Content area */}
           <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6 flex flex-col gap-4 sm:gap-6">
-            {/* Provider Type Selector */}
-            <div className="flex flex-col gap-2">
-              <label className="px-1 text-sm font-medium text-foreground">
-                Model provider
-              </label>
-              <Select
-                value={providerType}
-                onValueChange={(v) => setProviderType(v as ModelProviderType)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a model provider" />
-                </SelectTrigger>
-                <SelectContent>
-                  {providerTypes.map((type) => (
-                    <SelectItem key={type} value={type}>
-                      <div className="flex items-center gap-2">
-                        <ProviderIcon type={type} size={16} />
-                        <span>{getUILabel(type)}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Dynamic form fields based on provider shape */}
-            {shape === "oauth" && (
-              <OnboardingOAuthFields
-                secret={formValues.secret}
-                onSecretChange={setSecret}
-                isLoading={isLoading}
-              />
-            )}
-
-            {shape === "api-key" && (
-              <OnboardingApiKeyFields
-                providerType={providerType}
-                secret={formValues.secret}
-                selectedModel={formValues.selectedModel}
-                useDefaultModel={formValues.useDefaultModel}
-                onSecretChange={setSecret}
-                onModelChange={setModel}
-                onUseDefaultModelChange={setUseDefaultModel}
-                isLoading={isLoading}
-              />
-            )}
-
-            {shape === "multi-auth" && (
-              <OnboardingMultiAuthFields
-                providerType={providerType}
-                authMethod={formValues.authMethod}
-                secrets={formValues.secrets}
-                selectedModel={formValues.selectedModel}
-                useDefaultModel={formValues.useDefaultModel}
-                onAuthMethodChange={setAuthMethod}
-                onSecretFieldChange={setSecretField}
-                onModelChange={setModel}
-                onUseDefaultModelChange={setUseDefaultModel}
-                isLoading={isLoading}
-              />
-            )}
+            <ProviderFormFields
+              providerType={providerType}
+              formValues={formValues}
+              onProviderTypeChange={setProviderType}
+              onSecretChange={setSecret}
+              onModelChange={setModel}
+              onUseDefaultModelChange={setUseDefaultModel}
+              onAuthMethodChange={setAuthMethod}
+              onSecretFieldChange={setSecretField}
+              isLoading={isLoading}
+            />
           </div>
 
           {/* Footer - Action Buttons */}
