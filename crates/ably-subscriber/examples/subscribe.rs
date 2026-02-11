@@ -1,15 +1,12 @@
 //! Subscribe to an Ably channel using an API key.
 //!
 //! ```sh
-//! cargo run -p ably-subscriber --example subscribe \
-//!     --manifest-path /workspaces/vm2/crates/Cargo.toml \
-//!     -- <API_KEY> <CHANNEL> [HOST]
+//! cargo run -p ably-subscriber --example subscribe -- <API_KEY> <CHANNEL> [HOST]
 //! ```
 //!
 //! Or pass the API key via environment variable:
 //! ```sh
 //! ABLY_API_KEY=keyName:keySecret cargo run -p ably-subscriber --example subscribe \
-//!     --manifest-path /workspaces/vm2/crates/Cargo.toml \
 //!     -- <CHANNEL> [HOST]
 //! ```
 //!
