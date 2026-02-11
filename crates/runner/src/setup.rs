@@ -40,7 +40,7 @@ const fn strip_patch(version: &str) -> &str {
     panic!("FIRECRACKER_VERSION must be in vMAJOR.MINOR.PATCH format")
 }
 
-pub async fn run_setup() -> RunnerResult<()> {
+pub async fn run_setup(strict: bool) -> RunnerResult<()> {
     let arch = check_architecture()?;
     let (missing_required, missing_optional) = check_system_dependencies();
 
@@ -50,21 +50,17 @@ pub async fn run_setup() -> RunnerResult<()> {
     download_kernel(&paths, arch).await?;
     check_kvm();
 
-    if !missing_required.is_empty() || !missing_optional.is_empty() {
-        let mut parts = Vec::new();
-        if !missing_required.is_empty() {
-            parts.push(format!(
-                "missing required dependencies: {}",
-                missing_required.join(", ")
-            ));
-        }
-        if !missing_optional.is_empty() {
-            parts.push(format!(
-                "missing optional dependencies: {}",
-                missing_optional.join(", ")
-            ));
-        }
-        return Err(RunnerError::Config(parts.join("; ")));
+    if !missing_required.is_empty() {
+        return Err(RunnerError::Config(format!(
+            "missing required dependencies: {}",
+            missing_required.join(", ")
+        )));
+    }
+    if strict && !missing_optional.is_empty() {
+        return Err(RunnerError::Config(format!(
+            "missing optional dependencies (strict mode): {}",
+            missing_optional.join(", ")
+        )));
     }
 
     tracing::info!("setup complete");

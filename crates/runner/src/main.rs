@@ -46,7 +46,7 @@ enum Command {
     /// Start the runner and poll for jobs
     Start(Box<StartArgs>),
     /// Download Firecracker, kernel, and verify host prerequisites
-    Setup,
+    Setup(SetupArgs),
 }
 
 #[derive(Args)]
@@ -89,6 +89,13 @@ struct StartArgs {
     proxy_port: Option<u16>,
 }
 
+#[derive(Args)]
+struct SetupArgs {
+    /// Fail on missing optional dependencies (for CI)
+    #[arg(long)]
+    strict: bool,
+}
+
 #[tokio::main]
 async fn main() -> ExitCode {
     tracing_subscriber::fmt()
@@ -104,7 +111,7 @@ async fn main() -> ExitCode {
 
     let result = match cli.command {
         Command::Start(args) => run_start(*args).await,
-        Command::Setup => setup::run_setup().await,
+        Command::Setup(args) => setup::run_setup(args.strict).await,
     };
 
     if let Err(e) = result {
