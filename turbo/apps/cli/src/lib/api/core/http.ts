@@ -1,5 +1,5 @@
 import { getBaseUrl } from "./client-factory";
-import { getToken } from "../config";
+import { getToken, getScope } from "../config";
 
 /**
  * Get headers for raw HTTP requests (used for non-ts-rest endpoints)
@@ -13,6 +13,13 @@ async function getRawHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
   };
+
+  // Add scope header if configured (for org scope access)
+  // Use lowercase to match the contract schema (x-vm0-scope)
+  const scope = await getScope();
+  if (scope) {
+    headers["x-vm0-scope"] = scope;
+  }
 
   // Add Vercel bypass secret if available
   const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
