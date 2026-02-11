@@ -115,7 +115,16 @@ pub async fn run_build_rootfs(args: BuildRootfsArgs) -> RunnerResult<()> {
     sudo_remove_dir(extract_dir).await;
 
     result?;
-    tracing::info!("[OK] rootfs built: {}", rootfs_path.display());
+
+    let size = tokio::fs::metadata(&rootfs_path)
+        .await
+        .map(|m| m.len())
+        .unwrap_or(0);
+    let size_mb = size / (1024 * 1024);
+    tracing::info!(
+        "[OK] rootfs built: {} ({size_mb} MiB)",
+        rootfs_path.display()
+    );
     Ok(())
 }
 
@@ -522,6 +531,21 @@ async fn verify_mounted(mount_point: &Path, guest_bin_dests: &[&str]) -> RunnerR
         } else {
             tracing::info!("  {dest}: found");
         }
+    }
+
+    // Check optional CLIs (warn only)
+    let codex_path = mount_point.join("usr/local/bin/codex");
+    if codex_path.exists() {
+        tracing::info!("  codex CLI: found");
+    } else {
+        tracing::warn!("  codex CLI: not found");
+    }
+
+    let gh_path = mount_point.join("usr/bin/gh");
+    if gh_path.exists() {
+        tracing::info!("  gh CLI: found");
+    } else {
+        tracing::warn!("  gh CLI: not found");
     }
 
     // Check proxy CA certificate file
