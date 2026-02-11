@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.32.0](https://github.com/vm0-ai/vm0/compare/web-v12.31.0...web-v12.32.0) (2026-02-11)
+
+
+### Features
+
+* add webhook callback mechanism for agent run completion ([#2829](https://github.com/vm0-ai/vm0/issues/2829)) ([6069b7c](https://github.com/vm0-ai/vm0/commit/6069b7c6c99bc8bda79f214e10df5d2590ef5fad))
+
 ## [12.31.0](https://github.com/vm0-ai/vm0/compare/web-v12.30.0...web-v12.31.0) (2026-02-11)
 
 
