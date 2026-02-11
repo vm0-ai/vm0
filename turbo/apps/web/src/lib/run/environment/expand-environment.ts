@@ -3,6 +3,7 @@ import {
   extractVariableReferences,
   groupVariablesBySource,
 } from "@vm0/core";
+import { env } from "../../../env";
 import { createProxyToken } from "../../proxy/token-service";
 import { badRequest } from "../../errors";
 import { logger } from "../../logger";
@@ -129,7 +130,7 @@ export function expandEnvironmentFromCompose(
         (name) => !credentials || !credentials[name],
       );
       if (missingCredentials.length > 0) {
-        const platformUrl = process.env.PLATFORM_URL!;
+        const platformUrl = env().PLATFORM_URL;
         const settingsUrl = `${platformUrl}/settings?tab=secrets&required=${missingCredentials.join(",")}`;
         throw badRequest(
           `Missing required secrets: ${missingCredentials.join(", ")}. Use 'vm0 secret set ${missingCredentials[0]} <value>' or add them at: ${settingsUrl}`,

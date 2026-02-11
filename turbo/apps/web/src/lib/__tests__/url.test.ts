@@ -1,14 +1,12 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
-import { getPlatformUrl } from "../url";
+import { describe, it, expect, vi } from "vitest";
+import { reloadEnv } from "../../env";
 
 describe("getPlatformUrl", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
-  it("returns PLATFORM_URL env var", () => {
+  it("returns PLATFORM_URL env var", async () => {
     vi.stubEnv("PLATFORM_URL", "https://platform.vm0.ai");
+    reloadEnv();
 
+    const { getPlatformUrl } = await import("../url");
     expect(getPlatformUrl()).toBe("https://platform.vm0.ai");
   });
 });

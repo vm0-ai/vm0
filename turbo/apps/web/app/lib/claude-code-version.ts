@@ -1,5 +1,7 @@
+import { env } from "../../src/env";
+
 export async function fetchClaudeCodeVersion(): Promise<string | undefined> {
-  const url = process.env.CLAUDE_CODE_VERSION_URL;
+  const url = env().CLAUDE_CODE_VERSION_URL;
   if (!url) {
     throw new Error("CLAUDE_CODE_VERSION_URL environment variable is required");
   }

@@ -1,9 +1,10 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { reloadEnv } from "../../../../src/env";
 
-// Set env vars before any module loads
-vi.hoisted(() => {
+beforeEach(() => {
   vi.stubEnv("NEXT_PUBLIC_BASE_URL", "https://test.vm0.ai");
   vi.stubEnv("NEXT_PUBLIC_STRAPI_URL", "https://test-strapi.example.com");
+  reloadEnv();
 });
 
 // External: next-intl/server (used by page.tsx and i18n.ts)

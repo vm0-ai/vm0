@@ -1,6 +1,8 @@
+import { env } from "../env";
+
 /**
  * Returns the Platform URL from the PLATFORM_URL environment variable.
  */
 export function getPlatformUrl(): string {
-  return process.env.PLATFORM_URL!;
+  return env().PLATFORM_URL;
 }

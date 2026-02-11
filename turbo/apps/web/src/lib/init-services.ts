@@ -34,7 +34,7 @@ export function initServices(): void {
     return;
   }
 
-  const isVercel = !!process.env.VERCEL;
+  const isVercel = !!env().VERCEL;
 
   _services = {
     get env() {

@@ -1,27 +1,19 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import { reloadEnv } from "../../../../src/env";
+import { getBlogBaseUrl } from "../config";
 
 describe("blog/config", () => {
-  beforeEach(() => {
-    vi.resetModules();
-  });
-
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
-  describe("BLOG_BASE_URL", () => {
-    it("returns the configured base URL", async () => {
+  describe("getBlogBaseUrl", () => {
+    it("returns the configured base URL", () => {
       vi.stubEnv("NEXT_PUBLIC_BASE_URL", "https://vm0.ai");
+      reloadEnv();
 
-      const { BLOG_BASE_URL } = await import("../config");
-
-      expect(BLOG_BASE_URL).toBe("https://vm0.ai");
+      expect(getBlogBaseUrl()).toBe("https://vm0.ai");
     });
 
-    it("throws when NEXT_PUBLIC_BASE_URL is not configured", async () => {
-      // Don't stub the env var - leave it undefined
-
-      await expect(import("../config")).rejects.toThrow(
+    it("throws when NEXT_PUBLIC_BASE_URL is not configured", () => {
+      // setup.ts doesn't stub NEXT_PUBLIC_BASE_URL, so env() has it as undefined
+      expect(() => getBlogBaseUrl()).toThrow(
         "NEXT_PUBLIC_BASE_URL environment variable is not configured",
       );
     });

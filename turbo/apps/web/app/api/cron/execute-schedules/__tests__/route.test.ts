@@ -33,61 +33,49 @@ describe("GET /api/cron/execute-schedules", () => {
     it("should reject request without CRON_SECRET header when secret is set", async () => {
       vi.stubEnv("CRON_SECRET", "test-cron-secret");
 
-      try {
-        const request = createTestRequest(
-          "http://localhost:3000/api/cron/execute-schedules",
-        );
+      const request = createTestRequest(
+        "http://localhost:3000/api/cron/execute-schedules",
+      );
 
-        const response = await GET(request);
-        const data = await response.json();
+      const response = await GET(request);
+      const data = await response.json();
 
-        expect(response.status).toBe(401);
-        expect(data.error.code).toBe("UNAUTHORIZED");
-      } finally {
-        delete process.env.CRON_SECRET;
-      }
+      expect(response.status).toBe(401);
+      expect(data.error.code).toBe("UNAUTHORIZED");
     });
 
     it("should reject request with invalid CRON_SECRET", async () => {
       vi.stubEnv("CRON_SECRET", "correct-secret");
 
-      try {
-        const request = createTestRequest(
-          "http://localhost:3000/api/cron/execute-schedules",
-          {
-            headers: { Authorization: "Bearer wrong-secret" },
-          },
-        );
+      const request = createTestRequest(
+        "http://localhost:3000/api/cron/execute-schedules",
+        {
+          headers: { Authorization: "Bearer wrong-secret" },
+        },
+      );
 
-        const response = await GET(request);
-        const data = await response.json();
+      const response = await GET(request);
+      const data = await response.json();
 
-        expect(response.status).toBe(401);
-        expect(data.error.code).toBe("UNAUTHORIZED");
-      } finally {
-        delete process.env.CRON_SECRET;
-      }
+      expect(response.status).toBe(401);
+      expect(data.error.code).toBe("UNAUTHORIZED");
     });
 
     it("should accept request with valid CRON_SECRET", async () => {
       vi.stubEnv("CRON_SECRET", "valid-secret");
 
-      try {
-        const request = createTestRequest(
-          "http://localhost:3000/api/cron/execute-schedules",
-          {
-            headers: { Authorization: "Bearer valid-secret" },
-          },
-        );
+      const request = createTestRequest(
+        "http://localhost:3000/api/cron/execute-schedules",
+        {
+          headers: { Authorization: "Bearer valid-secret" },
+        },
+      );
 
-        const response = await GET(request);
-        const data = await response.json();
+      const response = await GET(request);
+      const data = await response.json();
 
-        expect(response.status).toBe(200);
-        expect(data.success).toBe(true);
-      } finally {
-        delete process.env.CRON_SECRET;
-      }
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
     });
 
     it("should allow request when CRON_SECRET is not configured", async () => {

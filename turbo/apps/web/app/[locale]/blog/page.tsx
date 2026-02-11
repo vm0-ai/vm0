@@ -5,7 +5,7 @@ import {
   getPosts,
   getFeatured,
   getCategories,
-  BLOG_BASE_URL,
+  getBlogBaseUrl,
 } from "../../lib/blog";
 import { BlogContent } from "../../components/blog";
 import Navbar from "../../components/Navbar";
@@ -27,12 +27,12 @@ export async function generateMetadata({
     title: t("title"),
     description: t("description"),
     alternates: {
-      canonical: `${BLOG_BASE_URL}/${locale}/blog`,
+      canonical: `${getBlogBaseUrl()}/${locale}/blog`,
     },
     openGraph: {
       title: `VM0 ${t("title")}`,
       description: t("description"),
-      url: `${BLOG_BASE_URL}/${locale}/blog`,
+      url: `${getBlogBaseUrl()}/${locale}/blog`,
       images: [
         {
           url: "/og-image.png",

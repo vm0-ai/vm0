@@ -11,6 +11,8 @@ export default defineConfig({
     fileParallelism: false,
     // Automatically clear mocks before each test (eliminates manual vi.clearAllMocks() calls)
     clearMocks: true,
+    // Automatically restore all env stubs after each test (prevents cross-test leakage)
+    unstubEnvs: true,
   },
   resolve: {
     alias: {
