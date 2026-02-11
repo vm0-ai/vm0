@@ -89,12 +89,16 @@ export async function POST(request: Request) {
   const { token, expiresAt } = await createInviteLink(orgScope.id, userId);
 
   // Build invite URL
-  const baseUrl = process.env.WEB_APP_URL;
+  // Priority: WEB_APP_URL (explicit config) > VERCEL_URL (auto-set by Vercel)
+  const baseUrl =
+    process.env.WEB_APP_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null);
   if (!baseUrl) {
     return NextResponse.json(
       {
         error: {
-          message: "Server configuration error: WEB_APP_URL not set",
+          message:
+            "Server configuration error: WEB_APP_URL or VERCEL_URL not set",
           code: "INTERNAL_ERROR",
         },
       },

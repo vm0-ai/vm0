@@ -118,8 +118,9 @@ describe("/api/org/invite", () => {
       expect(data.error.message).toContain("Only the organization owner");
     });
 
-    it("should return 500 if WEB_APP_URL is not set", async () => {
+    it("should return 500 if WEB_APP_URL and VERCEL_URL are not set", async () => {
       vi.stubEnv("WEB_APP_URL", "");
+      vi.stubEnv("VERCEL_URL", "");
 
       const userId = `test-user-${Date.now()}`;
       mockClerk({ userId });
@@ -145,7 +146,7 @@ describe("/api/org/invite", () => {
       const data = await response.json();
 
       expect(response.status).toBe(500);
-      expect(data.error.message).toContain("WEB_APP_URL not set");
+      expect(data.error.message).toContain("VERCEL_URL not set");
     });
   });
 });
