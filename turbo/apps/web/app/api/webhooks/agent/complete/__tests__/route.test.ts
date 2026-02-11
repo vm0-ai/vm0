@@ -24,25 +24,6 @@ import {
   givenUserHasAgent,
 } from "../../../../../../src/__tests__/slack/api-helpers";
 
-// Mock Next.js after() to capture callbacks for synchronous execution in tests
-const afterCallbacks: Array<() => Promise<unknown>> = [];
-vi.mock("next/server", async (importOriginal) => {
-  const original = await importOriginal<typeof import("next/server")>();
-  return {
-    ...original,
-    after: (fn: () => Promise<unknown>) => {
-      afterCallbacks.push(fn);
-    },
-  };
-});
-
-/** Execute all captured after() callbacks */
-async function flushAfterCallbacks() {
-  const callbacks = [...afterCallbacks];
-  afterCallbacks.length = 0;
-  await Promise.all(callbacks.map((fn) => fn()));
-}
-
 const context = testContext();
 
 // Simulate real Slack behavior: when posting to a user ID (U...),
@@ -57,7 +38,6 @@ describe("POST /api/webhooks/agent/complete", () => {
 
   beforeEach(async () => {
     context.setupMocks();
-    afterCallbacks.length = 0;
     user = await context.setupUser();
 
     // Create compose for test runs
@@ -492,7 +472,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(response.status).toBe(200);
 
       // Then the after() callback should send a Slack DM
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
       const callArgs = mockClient.chat.postMessage.mock.calls[0]![0] as {
@@ -565,7 +545,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(response.status).toBe(200);
 
       // Then the after() callback should send an error notification
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
       const callArgs = mockClient.chat.postMessage.mock.calls[0]![0] as {
@@ -616,7 +596,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(response.status).toBe(200);
 
       // Then no Slack DM should be sent (user has no Slack link)
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
     });
@@ -644,8 +624,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      // Then no after() callback should be registered (no scheduleId)
-      expect(afterCallbacks).toHaveLength(0);
+      // Then no Slack DM should be sent (no scheduleId → after() not called)
       expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
     });
   });

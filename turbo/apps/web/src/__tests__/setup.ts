@@ -40,11 +40,25 @@ vi.hoisted(() => {
   vi.stubEnv("SLACK_REDIRECT_BASE_URL", "https://test.example.com");
   // API URL for compose job webhooks
   vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+  // Initialize Next.js after() callback queue (shared with test-helpers.ts flushAfter)
+  globalThis.nextAfterCallbacks = [];
 });
 
 // Mock server-only package (no-op in tests)
 // This package throws when imported outside of a server component
 vi.mock("server-only", () => ({}));
+
+// Mock Next.js after() to capture callbacks for controlled execution in tests.
+// Tests can drain the queue with context.mocks.flushAfter().
+vi.mock("next/server", async (importOriginal) => {
+  const original = await importOriginal<typeof import("next/server")>();
+  return {
+    ...original,
+    after: (fn: () => Promise<unknown>) => {
+      globalThis.nextAfterCallbacks.push(fn);
+    },
+  };
+});
 
 // Mock Clerk authentication
 vi.mock("@clerk/nextjs/server", () => ({
@@ -140,6 +154,7 @@ beforeAll(() => {
 
 afterEach(() => {
   server.resetHandlers();
+  globalThis.nextAfterCallbacks = [];
 });
 
 afterAll(() => {
