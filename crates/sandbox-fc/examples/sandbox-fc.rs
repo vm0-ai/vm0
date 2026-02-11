@@ -235,8 +235,8 @@ async fn run_exec(
         .await?;
 
     println!("exit_code: {}", result.exit_code);
-    println!("stdout: {}", result.stdout);
-    println!("stderr: {}", result.stderr);
+    println!("stdout: {}", String::from_utf8_lossy(&result.stdout));
+    println!("stderr: {}", String::from_utf8_lossy(&result.stderr));
 
     sandbox.stop().await?;
     factory.destroy(sandbox).await;

@@ -426,8 +426,8 @@ impl Sandbox for FirecrackerSandbox {
 
         Ok(ExecResult {
             exit_code: result.exit_code,
-            stdout: String::from_utf8_lossy(&result.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&result.stderr).into_owned(),
+            stdout: result.stdout,
+            stderr: result.stderr,
         })
     }
 

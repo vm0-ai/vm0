@@ -85,7 +85,7 @@ impl SecretMasker {
                 }
             }
             Value::Object(map) => {
-                for (_key, v) in map.iter_mut() {
+                for v in map.values_mut() {
                     self.mask_value(v);
                 }
             }
@@ -97,9 +97,7 @@ impl SecretMasker {
     pub fn mask_string(&self, s: &str) -> String {
         let mut result = s.to_string();
         for pattern in &self.patterns {
-            if result.contains(pattern.as_str()) {
-                result = result.replace(pattern.as_str(), "***");
-            }
+            result = result.replace(pattern.as_str(), "***");
         }
         result
     }
