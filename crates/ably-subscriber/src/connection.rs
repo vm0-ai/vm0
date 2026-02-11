@@ -27,6 +27,7 @@ const DEFAULT_MAX_IDLE_INTERVAL: Duration = Duration::from_secs(15);
 const DEFAULT_CONNECTION_STATE_TTL: Duration = Duration::from_secs(120);
 const RETRY_INTERVAL: Duration = Duration::from_secs(15);
 const RECONNECT_TIMEOUT: Duration = Duration::from_secs(60);
+const CHANNEL_RETRY_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_RETRY_ATTEMPTS: u32 = 40; // ~10 minutes
 const TOKEN_RENEWAL_MARGIN: Duration = Duration::from_secs(300); // 5 minutes
 const TOKEN_RENEWAL_RETRY_DELAY: Duration = Duration::from_secs(30);
@@ -211,6 +212,7 @@ pub(crate) struct ConnState {
     pub connection_state_ttl: Duration,
     pub max_idle_interval: Duration,
     pub disconnected_at: Option<Instant>,
+    pub last_reattach_at: Option<Instant>,
     pub token: TokenDetails,
     pub token_renewal_at: Instant,
 }
@@ -224,6 +226,7 @@ impl ConnState {
             connection_state_ttl: DEFAULT_CONNECTION_STATE_TTL,
             max_idle_interval: DEFAULT_MAX_IDLE_INTERVAL,
             disconnected_at: None,
+            last_reattach_at: None,
             token_renewal_at: Self::compute_renewal_at(&token),
             token,
         };
@@ -483,8 +486,8 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
             tracing::trace!("Heartbeat received");
         }
         action::MESSAGE => {
-            if let Some(ref serial) = msg.channel_serial {
-                p.conn_state.channel_serial = Some(serial.clone());
+            if let Some(serial) = msg.channel_serial {
+                p.conn_state.channel_serial = Some(serial);
             }
             if let Some(messages) = msg.messages {
                 for (i, m) in messages.into_iter().enumerate() {
@@ -500,8 +503,14 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
                         client_id: m.client_id,
                         timestamp,
                     });
-                    if p.event_tx.send(event).await.is_err() {
-                        return LoopAction::Stop;
+                    match p.event_tx.try_send(event) {
+                        Ok(()) => {}
+                        Err(mpsc::error::TrySendError::Full(_)) => {
+                            tracing::warn!("Event channel full, dropping message");
+                        }
+                        Err(mpsc::error::TrySendError::Closed(_)) => {
+                            return LoopAction::Stop;
+                        }
                     }
                 }
             }
@@ -548,23 +557,42 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
                     .await;
                 return LoopAction::Stop;
             }
+            if p.conn_state
+                .last_reattach_at
+                .is_some_and(|t| t.elapsed() < CHANNEL_RETRY_TIMEOUT)
+            {
+                tracing::warn!("Channel detached again within retry window, reconnecting");
+                return LoopAction::Reconnect;
+            }
             tracing::warn!(channel = ?msg.channel, "Channel detached, re-attaching");
+            p.conn_state.last_reattach_at = Some(Instant::now());
             let attach = build_attach_msg(
                 &p.channel,
                 p.channel_params.as_ref(),
                 p.conn_state.channel_serial.as_deref(),
             );
-            if let Ok(data) = encode_msg(&attach) {
-                let _ = p
-                    .ws_write
-                    .send(tungstenite::Message::Binary(data.into()))
-                    .await;
+            match encode_msg(&attach) {
+                Ok(data) => {
+                    if p.ws_write
+                        .send(tungstenite::Message::Binary(data.into()))
+                        .await
+                        .is_err()
+                    {
+                        tracing::warn!("Failed to send re-attach, triggering reconnect");
+                        return LoopAction::Reconnect;
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to encode re-attach message: {e}");
+                    return LoopAction::Reconnect;
+                }
             }
         }
         action::ATTACHED => {
-            if let Some(ref serial) = msg.channel_serial {
-                p.conn_state.channel_serial = Some(serial.clone());
+            if let Some(serial) = msg.channel_serial {
+                p.conn_state.channel_serial = Some(serial);
             }
+            p.conn_state.last_reattach_at = None;
             tracing::info!(channel = ?msg.channel, "Channel attached");
         }
         action::CONNECTED => {
@@ -786,6 +814,7 @@ mod tests {
             connection_state_ttl: Duration::from_secs(120),
             max_idle_interval: Duration::from_secs(15),
             disconnected_at: None,
+            last_reattach_at: None,
             token: TokenDetails {
                 token: "t".to_string(),
                 expires: i64::MAX,

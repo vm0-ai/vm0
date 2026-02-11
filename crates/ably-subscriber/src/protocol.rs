@@ -118,11 +118,13 @@ pub fn build_attach_msg(
     params: Option<&HashMap<String, String>>,
     channel_serial: Option<&str>,
 ) -> ProtocolMessage {
-    let mut f = flags::MODE_SUBSCRIBE;
-    let cs = channel_serial.map(|s| {
-        f |= flags::ATTACH_RESUME;
-        s.to_string()
-    });
+    let (cs, f) = match channel_serial {
+        Some(s) => (
+            Some(s.to_string()),
+            flags::MODE_SUBSCRIBE | flags::ATTACH_RESUME,
+        ),
+        None => (None, flags::MODE_SUBSCRIBE),
+    };
     ProtocolMessage {
         action: action::ATTACH,
         channel: Some(channel.to_string()),
