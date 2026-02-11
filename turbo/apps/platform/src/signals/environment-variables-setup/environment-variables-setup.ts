@@ -1,7 +1,13 @@
 import { command, computed, state } from "ccstate";
-import type { SecretListResponse, VariableListResponse } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorType,
+  type SecretListResponse,
+  type VariableListResponse,
+} from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
 import { searchParams$ } from "../route.ts";
+import { connectors$ } from "../external/connectors.ts";
 
 // ---------------------------------------------------------------------------
 // URL params parsing
@@ -47,7 +53,27 @@ interface MissingItem {
   type: "secret" | "variable";
 }
 
-export const missingItems$ = computed(async (get) => {
+// ---------------------------------------------------------------------------
+// Env var → connector type mapping
+// ---------------------------------------------------------------------------
+
+function buildEnvVarToConnectorMap(): Readonly<Record<string, ConnectorType>> {
+  const map: Record<string, ConnectorType> = {};
+  for (const [type, config] of Object.entries(CONNECTOR_TYPES)) {
+    for (const envVar of Object.keys(config.environmentMapping)) {
+      map[envVar] = type as ConnectorType;
+    }
+  }
+  return Object.freeze(map);
+}
+
+const ENV_VAR_TO_CONNECTOR = buildEnvVarToConnectorMap();
+
+// ---------------------------------------------------------------------------
+// Missing items (required minus existing)
+// ---------------------------------------------------------------------------
+
+const missingItems$ = computed(async (get) => {
   const requiredSecrets = get(internalRequiredSecrets$);
   const requiredVars = get(internalRequiredVars$);
 
@@ -73,6 +99,86 @@ export const missingItems$ = computed(async (get) => {
   }
 
   return missing;
+});
+
+// ---------------------------------------------------------------------------
+// Connector items (missing secrets providable by connectors)
+// ---------------------------------------------------------------------------
+
+export interface ConnectorItem {
+  connectorType: ConnectorType;
+  label: string;
+  helpText: string;
+  connected: boolean;
+  envVars: string[];
+}
+
+export const connectorItems$ = computed(async (get) => {
+  const missing = await get(missingItems$);
+  const { connectors } = await get(connectors$);
+  const connectedTypes = new Set(connectors.map((c) => c.type));
+
+  // Group missing items by connector type
+  const grouped: Partial<Record<ConnectorType, string[]>> = {};
+  for (const item of missing) {
+    const connType = ENV_VAR_TO_CONNECTOR[item.name];
+    if (connType) {
+      const list = grouped[connType] ?? [];
+      list.push(item.name);
+      grouped[connType] = list;
+    }
+  }
+
+  const result: ConnectorItem[] = [];
+  for (const [connType, envVars] of Object.entries(grouped) as [
+    ConnectorType,
+    string[],
+  ][]) {
+    const config = CONNECTOR_TYPES[connType];
+    result.push({
+      connectorType: connType,
+      label: config.label,
+      helpText: config.helpText,
+      connected: connectedTypes.has(connType),
+      envVars,
+    });
+  }
+
+  return result;
+});
+
+// ---------------------------------------------------------------------------
+// Manual items (missing items NOT providable by any connector)
+// ---------------------------------------------------------------------------
+
+export const manualItems$ = computed(async (get) => {
+  const missing = await get(missingItems$);
+  return missing.filter((item) => !(item.name in ENV_VAR_TO_CONNECTOR));
+});
+
+// ---------------------------------------------------------------------------
+// All connectors satisfied
+// ---------------------------------------------------------------------------
+
+export const allConnectorsSatisfied$ = computed(async (get) => {
+  const items = await get(connectorItems$);
+  return items.every((item) => item.connected);
+});
+
+// ---------------------------------------------------------------------------
+// Auto-success: no manual items + all connectors connected
+// ---------------------------------------------------------------------------
+
+export const autoSuccess$ = computed(async (get) => {
+  const manual = await get(manualItems$);
+  if (manual.length > 0) {
+    return false;
+  }
+  const connectorItemsList = await get(connectorItems$);
+  if (connectorItemsList.length === 0) {
+    return false;
+  }
+  return connectorItemsList.every((item) => item.connected);
 });
 
 // ---------------------------------------------------------------------------
@@ -122,13 +228,19 @@ export const updateFormValue$ = command(
 
 export const submitForm$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const missing = await get(missingItems$);
+    const connectorsSatisfied = await get(allConnectorsSatisfied$);
+    signal.throwIfAborted();
+    if (!connectorsSatisfied) {
+      return;
+    }
+
+    const manual = await get(manualItems$);
     signal.throwIfAborted();
     const values = get(internalFormValues$);
 
-    // Validate all fields have values
+    // Validate all manual fields have values
     const errors: Record<string, string> = {};
-    for (const item of missing) {
+    for (const item of manual) {
       if (!values[item.name]?.trim()) {
         errors[item.name] = `${item.name} is required`;
       }
@@ -142,8 +254,8 @@ export const submitForm$ = command(
     const promise = (async () => {
       const fetchFn = get(fetch$);
 
-      // Submit all items in parallel
-      const requests = missing.map((item) => {
+      // Submit only manual items
+      const requests = manual.map((item) => {
         const endpoint =
           item.type === "secret" ? "/api/secrets" : "/api/variables";
         return fetchFn(endpoint, {

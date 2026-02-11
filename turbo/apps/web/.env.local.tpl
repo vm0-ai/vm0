@@ -23,7 +23,6 @@ SECRETS_ENCRYPTION_KEY=op://Development/vm0-env-local/SECRETS_ENCRYPTION_KEY
 SLACK_CLIENT_ID=op://Development/vm0-env-local/slack_client_id
 SLACK_CLIENT_SECRET=op://Development/vm0-env-local/slack_client_secret
 SLACK_SIGNING_SECRET=op://Development/vm0-env-local/slack_signing_secret
-SLACK_REDIRECT_BASE_URL=
 SLACK_DEFAULT_AGENT=op://Development/vm0-env-local/slack_default_agent
 
 # Required: Claude Code Version URL
@@ -39,6 +38,9 @@ GH_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/gh_oauth_client_secret
 # Optional: Notion OAuth Connector
 NOTION_OAUTH_CLIENT_ID=op://Development/vm0-env-local/notion_oauth_client_id
 NOTION_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/notion_oauth_client_secret
+
+# Required: Platform UI URL (for settings page links in error messages)
+PLATFORM_URL=op://Development/vm0-env-local/platform_url
 
 # Optional: Error Tracking (Sentry)
 SENTRY_DSN=

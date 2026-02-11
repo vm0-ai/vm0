@@ -22,6 +22,16 @@ export default [
     },
   },
   {
+    files: ["**/*.ts", "**/*.tsx"],
+    plugins: {
+      web: webPlugin,
+    },
+    rules: {
+      // Check for duplicate migration prefixes (runs once per lint process)
+      "web/no-duplicate-migration-prefix": "error",
+    },
+  },
+  {
     files: ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"],
     plugins: {
       web: webPlugin,

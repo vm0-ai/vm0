@@ -99,7 +99,7 @@ describe("settings page", () => {
     // Fill in the API key
     const input = within(dialog).getByPlaceholderText("Enter your API key");
     await user.click(input);
-    await user.keyboard("sk-ant-api-key-12345");
+    await user.paste("sk-ant-api-key-12345");
 
     // Submit
     const addProviderButton = within(dialog).getByRole("button", {
@@ -110,13 +110,10 @@ describe("settings page", () => {
     // Verify request was sent with correct data and dialog closed
     await vi.waitFor(() => {
       expect(capturedBody).toBeTruthy();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
     expect(capturedBody!.type).toBe("anthropic-api-key");
     expect(capturedBody!.secret).toBe("sk-ant-api-key-12345");
-
-    await vi.waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    });
   });
 
   it("can delete a provider via kebab menu", async () => {
@@ -153,9 +150,6 @@ describe("settings page", () => {
     // Verify delete API was called with correct provider type and dialog closed
     await vi.waitFor(() => {
       expect(deletedType).toBe("claude-code-oauth-token");
-    });
-
-    await vi.waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });

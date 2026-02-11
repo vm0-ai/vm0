@@ -342,12 +342,9 @@ describe("log detail page", () => {
       path: "/logs/run-raw-data",
     });
 
-    await waitFor(() => {
-      expect(screen.getByText("Agent events")).toBeInTheDocument();
-    });
-
     // Verify the events are rendered (in formatted view)
     await waitFor(() => {
+      expect(screen.getByText("Agent events")).toBeInTheDocument();
       expect(screen.getByText(/Starting task/)).toBeInTheDocument();
     });
   });
@@ -612,9 +609,7 @@ describe("log detail page", () => {
         path: "/logs/run-search-test",
       });
 
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText("Search logs")).toBeInTheDocument();
-      });
+      expect(screen.getByPlaceholderText("Search logs")).toBeInTheDocument();
     });
 
     it("should filter events when searching", async () => {
@@ -634,7 +629,8 @@ describe("log detail page", () => {
 
       // Type a search term that matches one message
       const searchInput = screen.getByPlaceholderText("Search logs");
-      await user.type(searchInput, "Third");
+      await user.click(searchInput);
+      await user.paste("Third");
 
       // Should show matching count in header (1 message matches out of 3)
       await waitFor(() => {
@@ -659,7 +655,8 @@ describe("log detail page", () => {
 
       // Type a search term that matches multiple times
       const searchInput = screen.getByPlaceholderText("Search logs");
-      await user.type(searchInput, "world");
+      await user.click(searchInput);
+      await user.paste("world");
 
       // Should show match counter
       await waitFor(() => {
@@ -691,7 +688,8 @@ describe("log detail page", () => {
 
       // Type a search term
       const searchInput = screen.getByPlaceholderText("Search logs");
-      await user.type(searchInput, "world");
+      await user.click(searchInput);
+      await user.paste("world");
 
       // Wait for match counter to appear
       await waitFor(() => {
@@ -724,7 +722,8 @@ describe("log detail page", () => {
 
       // Type a search term
       const searchInput = screen.getByPlaceholderText("Search logs");
-      await user.type(searchInput, "world");
+      await user.click(searchInput);
+      await user.paste("world");
 
       // Wait for match counter to appear
       await waitFor(() => {
@@ -757,7 +756,8 @@ describe("log detail page", () => {
 
       // Type a search term
       const searchInput = screen.getByPlaceholderText("Search logs");
-      await user.type(searchInput, "world");
+      await user.click(searchInput);
+      await user.paste("world");
 
       // Wait for match counter to appear
       await waitFor(() => {
@@ -798,7 +798,8 @@ describe("log detail page", () => {
 
       // Type a search term
       const searchInput = screen.getByPlaceholderText("Search logs");
-      await user.type(searchInput, "world");
+      await user.click(searchInput);
+      await user.paste("world");
 
       // Wait and navigate to a different match
       await waitFor(() => {
@@ -812,7 +813,8 @@ describe("log detail page", () => {
 
       // Change search term - "message" appears in 2 assistant messages
       await user.clear(searchInput);
-      await user.type(searchInput, "message");
+      await user.click(searchInput);
+      await user.paste("message");
 
       // Should reset to first match (2 matches for "message")
       await waitFor(() => {
@@ -837,7 +839,8 @@ describe("log detail page", () => {
 
       // Type a search term with no matches
       const searchInput = screen.getByPlaceholderText("Search logs");
-      await user.type(searchInput, "nonexistent");
+      await user.click(searchInput);
+      await user.paste("nonexistent");
 
       // Should show 0/0
       await waitFor(() => {
@@ -1004,13 +1007,9 @@ describe("log detail page", () => {
         path: "/logs/run-collapsed-tools",
       });
 
-      // Wait for assistant text to render
+      // Wait for events and collapsed tool groups to render
       await waitFor(() => {
         expect(screen.getByText(/Let me read those files/)).toBeInTheDocument();
-      });
-
-      // The 3 Read operations should be collapsed into a group with "3 files" badge
-      await waitFor(() => {
         expect(screen.getByText("3 files")).toBeInTheDocument();
       });
     });

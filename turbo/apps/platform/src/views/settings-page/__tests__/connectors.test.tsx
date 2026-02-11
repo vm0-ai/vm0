@@ -86,12 +86,9 @@ describe("connectors tab", () => {
     });
     await user.click(confirmButton);
 
-    // Verify delete API was called
+    // Verify delete API was called and dialog closed
     await vi.waitFor(() => {
       expect(deletedType).toBe("github");
-    });
-
-    await vi.waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
