@@ -195,6 +195,7 @@ const router = tsr.router(runnersJobClaimContract, {
         experimentalFirewall: storedContext.experimentalFirewall,
         debugNoMockClaude: storedContext.debugNoMockClaude,
         apiStartTime: storedContext.apiStartTime,
+        userTimezone: storedContext.userTimezone,
       },
     };
   },

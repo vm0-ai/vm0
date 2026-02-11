@@ -300,6 +300,17 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
         env.insert("VM0_RESUME_SESSION_ID".into(), session.session_id.clone());
     }
 
+    // User timezone as TZ env var (if not already set in user environment)
+    if let Some(tz) = &context.user_timezone {
+        let has_tz = context
+            .environment
+            .as_ref()
+            .is_some_and(|e| e.contains_key("TZ"));
+        if !has_tz {
+            env.insert("TZ".into(), tz.clone());
+        }
+    }
+
     // User environment variables
     if let Some(user_env) = &context.environment {
         for (k, v) in user_env {
@@ -347,6 +358,7 @@ mod tests {
             secret_values: None,
             cli_agent_type: String::new(),
             api_start_time: None,
+            user_timezone: None,
         }
     }
 
@@ -471,5 +483,25 @@ mod tests {
 
         let env = build_env_json(&ctx, "http://localhost");
         assert!(!env.contains_key("VM0_SECRET_VALUES"));
+    }
+
+    #[test]
+    fn build_env_json_with_user_timezone() {
+        let mut ctx = minimal_context();
+        ctx.user_timezone = Some("Asia/Shanghai".into());
+
+        let env = build_env_json(&ctx, "http://localhost");
+        assert_eq!(env.get("TZ").unwrap(), "Asia/Shanghai");
+    }
+
+    #[test]
+    fn build_env_json_user_timezone_not_override_environment() {
+        let mut ctx = minimal_context();
+        ctx.user_timezone = Some("Asia/Shanghai".into());
+        ctx.environment = Some(HashMap::from([("TZ".into(), "America/New_York".into())]));
+
+        let env = build_env_json(&ctx, "http://localhost");
+        // User environment TZ takes precedence
+        assert_eq!(env.get("TZ").unwrap(), "America/New_York");
     }
 }
