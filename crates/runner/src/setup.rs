@@ -140,6 +140,10 @@ async fn create_directories(paths: &HomePaths) -> RunnerResult<()> {
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Shared download helpers
+// ---------------------------------------------------------------------------
+
 /// Stream an HTTP response to a file, computing SHA256 incrementally.
 /// Returns the hex-encoded digest.
 async fn stream_to_file(mut response: reqwest::Response, path: &Path) -> RunnerResult<String> {
@@ -166,123 +170,45 @@ async fn stream_to_file(mut response: reqwest::Response, path: &Path) -> RunnerR
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-/// Set permissions then atomically rename to target. Cleans up temp on failure.
-async fn atomic_rename(tmp_path: &Path, target: &Path, mode: Option<u32>) -> RunnerResult<()> {
-    let result = async {
-        if let Some(mode) = mode {
-            tokio::fs::set_permissions(tmp_path, std::fs::Permissions::from_mode(mode))
-                .await
-                .map_err(|e| RunnerError::Internal(format!("chmod {}: {e}", target.display())))?;
-        }
-        tokio::fs::rename(tmp_path, target)
-            .await
-            .map_err(|e| RunnerError::Internal(format!("rename to {}: {e}", target.display())))
-    }
-    .await;
-
-    if result.is_err() {
-        let _ = tokio::fs::remove_file(tmp_path).await;
-    }
-    result
-}
-
-fn verify_sha256(actual_hex: &str, expected_hex: &str, label: &str) -> RunnerResult<()> {
-    if actual_hex != expected_hex {
-        return Err(RunnerError::Internal(format!(
-            "{label} SHA256 mismatch: expected {expected_hex}, got {actual_hex}"
-        )));
-    }
-    tracing::info!("[OK] {label} SHA256 verified");
-    Ok(())
-}
-
-async fn is_firecracker_installed(bin_path: &Path) -> bool {
-    if !tokio::fs::try_exists(bin_path).await.unwrap_or(false) {
-        return false;
-    }
-    let Ok(output) = tokio::process::Command::new(bin_path)
-        .arg("--version")
-        .output()
+/// Download a URL to a temp file. Cleans up on failure. Returns hex SHA256.
+async fn download_to_temp(url: &str, tmp_path: &Path, label: &str) -> RunnerResult<String> {
+    let response = reqwest::get(url)
         .await
-    else {
-        return false;
-    };
-    let version_str = String::from_utf8_lossy(&output.stdout);
-    let version_no_prefix = FIRECRACKER_VERSION
-        .strip_prefix('v')
-        .unwrap_or(FIRECRACKER_VERSION);
-    version_str.contains(version_no_prefix)
-}
-
-async fn download_firecracker(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
-    let bin_path = paths.firecracker_bin(FIRECRACKER_VERSION);
-
-    if is_firecracker_installed(&bin_path).await {
-        tracing::info!(
-            "[OK] firecracker {FIRECRACKER_VERSION} already installed, skipping download"
-        );
-        return Ok(());
-    }
-
-    let url = format!(
-        "https://github.com/firecracker-microvm/firecracker/releases/download/{FIRECRACKER_VERSION}/firecracker-{FIRECRACKER_VERSION}-{arch}.tgz"
-    );
-    tracing::info!("downloading firecracker from {url}");
-
-    let response = reqwest::get(&url)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("download firecracker: {e}")))?;
+        .map_err(|e| RunnerError::Internal(format!("download {label}: {e}")))?;
 
     if !response.status().is_success() {
         return Err(RunnerError::Internal(format!(
-            "download firecracker: HTTP {}",
+            "download {label}: HTTP {}",
             response.status()
         )));
     }
 
-    // Stream tarball to a temp file
-    let tarball_path = bin_path.with_extension(format!("tgz.{}", std::process::id()));
-    if let Err(e) = stream_to_file(response, &tarball_path).await {
-        let _ = tokio::fs::remove_file(&tarball_path).await;
-        return Err(e);
-    }
-
-    // Extract the firecracker binary from the tarball on disk
-    let tmp_path = bin_path.with_extension(format!("tmp.{}", std::process::id()));
-    let fc_entry_name = format!("firecracker-{FIRECRACKER_VERSION}-{arch}");
-    let result = extract_tar_entry(&tarball_path, &tmp_path, &fc_entry_name).await;
-    let _ = tokio::fs::remove_file(&tarball_path).await;
-    let sha_hex = match result {
-        Ok(sha) => sha,
+    match stream_to_file(response, tmp_path).await {
+        Ok(sha) => Ok(sha),
         Err(e) => {
-            let _ = tokio::fs::remove_file(&tmp_path).await;
-            return Err(e);
+            let _ = tokio::fs::remove_file(tmp_path).await;
+            Err(e)
         }
-    };
-
-    #[allow(clippy::unreachable)] // arch validated by check_architecture
-    let expected_sha = match arch {
-        "x86_64" => FIRECRACKER_SHA256_X86_64,
-        "aarch64" => FIRECRACKER_SHA256_AARCH64,
-        _ => unreachable!(),
-    };
-    if let Err(e) = verify_sha256(&sha_hex, expected_sha, "firecracker binary") {
-        let _ = tokio::fs::remove_file(&tmp_path).await;
-        return Err(e);
     }
+}
 
-    match atomic_rename(&tmp_path, &bin_path, Some(0o755)).await {
-        Ok(()) => {
-            tracing::info!("[OK] firecracker {FIRECRACKER_VERSION} installed");
-            Ok(())
-        }
+/// Download a tarball, extract a named entry. Cleans up tarball after extraction.
+/// Returns hex SHA256 of the extracted entry. Cleans up tmp_path on failure.
+async fn download_and_extract(
+    url: &str,
+    label: &str,
+    entry_name: &str,
+    tarball_path: &Path,
+    tmp_path: &Path,
+) -> RunnerResult<String> {
+    download_to_temp(url, tarball_path, label).await?;
+
+    let result = extract_tar_entry(tarball_path, tmp_path, entry_name).await;
+    let _ = tokio::fs::remove_file(tarball_path).await;
+    match result {
+        Ok(sha) => Ok(sha),
         Err(e) => {
-            if is_firecracker_installed(&bin_path).await {
-                tracing::info!(
-                    "[OK] firecracker {FIRECRACKER_VERSION} installed by another process"
-                );
-                return Ok(());
-            }
+            let _ = tokio::fs::remove_file(tmp_path).await;
             Err(e)
         }
     }
@@ -299,7 +225,6 @@ async fn extract_tar_entry(
     let tmp = tmp_path.to_owned();
     let entry_name = entry_name.to_owned();
 
-    // Sync I/O on local files — fine for a setup command
     tokio::task::spawn_blocking(move || {
         let file = std::fs::File::open(&tarball)
             .map_err(|e| RunnerError::Internal(format!("open tarball: {e}")))?;
@@ -354,6 +279,126 @@ async fn extract_tar_entry(
     .map_err(|e| RunnerError::Internal(format!("extract task failed: {e}")))?
 }
 
+/// Verify SHA256, set permissions, atomically rename to target.
+/// If rename fails but target already exists, assumes another process installed it.
+async fn verify_and_install(
+    sha_hex: &str,
+    expected_sha: &str,
+    label: &str,
+    tmp_path: &Path,
+    target: &Path,
+    mode: Option<u32>,
+) -> RunnerResult<()> {
+    if let Err(e) = verify_sha256(sha_hex, expected_sha, label) {
+        let _ = tokio::fs::remove_file(tmp_path).await;
+        return Err(e);
+    }
+
+    match atomic_rename(tmp_path, target, mode).await {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            if tokio::fs::try_exists(target).await.unwrap_or(false) {
+                tracing::info!("[OK] {label} installed by another process");
+                Ok(())
+            } else {
+                Err(e)
+            }
+        }
+    }
+}
+
+/// Set permissions then atomically rename. Cleans up temp on failure.
+async fn atomic_rename(tmp_path: &Path, target: &Path, mode: Option<u32>) -> RunnerResult<()> {
+    let result = async {
+        if let Some(mode) = mode {
+            tokio::fs::set_permissions(tmp_path, std::fs::Permissions::from_mode(mode))
+                .await
+                .map_err(|e| RunnerError::Internal(format!("chmod {}: {e}", target.display())))?;
+        }
+        tokio::fs::rename(tmp_path, target)
+            .await
+            .map_err(|e| RunnerError::Internal(format!("rename to {}: {e}", target.display())))
+    }
+    .await;
+
+    if result.is_err() {
+        let _ = tokio::fs::remove_file(tmp_path).await;
+    }
+    result
+}
+
+fn verify_sha256(actual_hex: &str, expected_hex: &str, label: &str) -> RunnerResult<()> {
+    if actual_hex != expected_hex {
+        return Err(RunnerError::Internal(format!(
+            "{label} SHA256 mismatch: expected {expected_hex}, got {actual_hex}"
+        )));
+    }
+    tracing::info!("[OK] {label} SHA256 verified");
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Artifact downloads
+// ---------------------------------------------------------------------------
+
+async fn is_firecracker_installed(bin_path: &Path) -> bool {
+    if !tokio::fs::try_exists(bin_path).await.unwrap_or(false) {
+        return false;
+    }
+    let Ok(output) = tokio::process::Command::new(bin_path)
+        .arg("--version")
+        .output()
+        .await
+    else {
+        return false;
+    };
+    let version_str = String::from_utf8_lossy(&output.stdout);
+    let version_no_prefix = FIRECRACKER_VERSION
+        .strip_prefix('v')
+        .unwrap_or(FIRECRACKER_VERSION);
+    version_str.contains(version_no_prefix)
+}
+
+async fn download_firecracker(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
+    let bin_path = paths.firecracker_bin(FIRECRACKER_VERSION);
+
+    if is_firecracker_installed(&bin_path).await {
+        tracing::info!(
+            "[OK] firecracker {FIRECRACKER_VERSION} already installed, skipping download"
+        );
+        return Ok(());
+    }
+
+    let url = format!(
+        "https://github.com/firecracker-microvm/firecracker/releases/download/{FIRECRACKER_VERSION}/firecracker-{FIRECRACKER_VERSION}-{arch}.tgz"
+    );
+    tracing::info!("downloading firecracker from {url}");
+
+    let tarball_path = bin_path.with_extension(format!("tgz.{}", std::process::id()));
+    let tmp_path = bin_path.with_extension(format!("tmp.{}", std::process::id()));
+    let fc_entry = format!("firecracker-{FIRECRACKER_VERSION}-{arch}");
+    let sha_hex =
+        download_and_extract(&url, "firecracker", &fc_entry, &tarball_path, &tmp_path).await?;
+
+    #[allow(clippy::unreachable)] // arch validated by check_architecture
+    let expected_sha = match arch {
+        "x86_64" => FIRECRACKER_SHA256_X86_64,
+        "aarch64" => FIRECRACKER_SHA256_AARCH64,
+        _ => unreachable!(),
+    };
+    verify_and_install(
+        &sha_hex,
+        expected_sha,
+        "firecracker",
+        &tmp_path,
+        &bin_path,
+        Some(0o755),
+    )
+    .await?;
+    tracing::info!("[OK] firecracker {FIRECRACKER_VERSION} installed");
+    Ok(())
+}
+
 async fn download_kernel(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
     let kernel_path = paths.kernel_bin(FIRECRACKER_VERSION, KERNEL_VERSION);
 
@@ -367,26 +412,8 @@ async fn download_kernel(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
     );
     tracing::info!("downloading kernel from {url}");
 
-    let response = reqwest::get(&url)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("download kernel: {e}")))?;
-
-    if !response.status().is_success() {
-        return Err(RunnerError::Internal(format!(
-            "download kernel: HTTP {}",
-            response.status()
-        )));
-    }
-
-    // Stream directly to temp file, computing SHA256 incrementally
     let tmp_path = kernel_path.with_extension(format!("tmp.{}", std::process::id()));
-    let sha_hex = match stream_to_file(response, &tmp_path).await {
-        Ok(sha) => sha,
-        Err(e) => {
-            let _ = tokio::fs::remove_file(&tmp_path).await;
-            return Err(e);
-        }
-    };
+    let sha_hex = download_to_temp(&url, &tmp_path, "kernel").await?;
 
     #[allow(clippy::unreachable)] // arch validated by check_architecture
     let expected_sha = match arch {
@@ -394,24 +421,17 @@ async fn download_kernel(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
         "aarch64" => KERNEL_SHA256_AARCH64,
         _ => unreachable!(),
     };
-    if let Err(e) = verify_sha256(&sha_hex, expected_sha, "kernel") {
-        let _ = tokio::fs::remove_file(&tmp_path).await;
-        return Err(e);
-    }
-
-    match atomic_rename(&tmp_path, &kernel_path, None).await {
-        Ok(()) => {
-            tracing::info!("[OK] kernel vmlinux-{KERNEL_VERSION} installed");
-            Ok(())
-        }
-        Err(e) => {
-            if tokio::fs::try_exists(&kernel_path).await.unwrap_or(false) {
-                tracing::info!("[OK] kernel vmlinux-{KERNEL_VERSION} installed by another process");
-                return Ok(());
-            }
-            Err(e)
-        }
-    }
+    verify_and_install(
+        &sha_hex,
+        expected_sha,
+        "kernel",
+        &tmp_path,
+        &kernel_path,
+        None,
+    )
+    .await?;
+    tracing::info!("[OK] kernel vmlinux-{KERNEL_VERSION} installed");
+    Ok(())
 }
 
 async fn is_mitmdump_installed(bin_path: &Path) -> bool {
@@ -442,35 +462,10 @@ async fn download_mitmdump(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
     );
     tracing::info!("downloading mitmdump from {url}");
 
-    let response = reqwest::get(&url)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("download mitmdump: {e}")))?;
-
-    if !response.status().is_success() {
-        return Err(RunnerError::Internal(format!(
-            "download mitmdump: HTTP {}",
-            response.status()
-        )));
-    }
-
-    // Stream tarball to a temp file
     let tarball_path = bin_path.with_extension(format!("tgz.{}", std::process::id()));
-    if let Err(e) = stream_to_file(response, &tarball_path).await {
-        let _ = tokio::fs::remove_file(&tarball_path).await;
-        return Err(e);
-    }
-
-    // Extract mitmdump binary from the tarball
     let tmp_path = bin_path.with_extension(format!("tmp.{}", std::process::id()));
-    let result = extract_tar_entry(&tarball_path, &tmp_path, "mitmdump").await;
-    let _ = tokio::fs::remove_file(&tarball_path).await;
-    let sha_hex = match result {
-        Ok(sha) => sha,
-        Err(e) => {
-            let _ = tokio::fs::remove_file(&tmp_path).await;
-            return Err(e);
-        }
-    };
+    let sha_hex =
+        download_and_extract(&url, "mitmdump", "mitmdump", &tarball_path, &tmp_path).await?;
 
     #[allow(clippy::unreachable)] // arch validated by check_architecture
     let expected_sha = match arch {
@@ -478,25 +473,22 @@ async fn download_mitmdump(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
         "aarch64" => MITMDUMP_SHA256_AARCH64,
         _ => unreachable!(),
     };
-    if let Err(e) = verify_sha256(&sha_hex, expected_sha, "mitmdump") {
-        let _ = tokio::fs::remove_file(&tmp_path).await;
-        return Err(e);
-    }
-
-    match atomic_rename(&tmp_path, &bin_path, Some(0o755)).await {
-        Ok(()) => {
-            tracing::info!("[OK] mitmdump {MITMPROXY_VERSION} installed");
-            Ok(())
-        }
-        Err(e) => {
-            if is_mitmdump_installed(&bin_path).await {
-                tracing::info!("[OK] mitmdump {MITMPROXY_VERSION} installed by another process");
-                return Ok(());
-            }
-            Err(e)
-        }
-    }
+    verify_and_install(
+        &sha_hex,
+        expected_sha,
+        "mitmdump",
+        &tmp_path,
+        &bin_path,
+        Some(0o755),
+    )
+    .await?;
+    tracing::info!("[OK] mitmdump {MITMPROXY_VERSION} installed");
+    Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Host checks
+// ---------------------------------------------------------------------------
 
 fn check_kvm() {
     use std::fs::File;
