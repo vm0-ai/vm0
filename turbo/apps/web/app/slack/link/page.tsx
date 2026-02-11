@@ -51,6 +51,10 @@ function SlackLinkContent(): React.JSX.Element {
     const result = await linkSlackAccount(slackUserId, workspaceId, channelId);
 
     if (result.success) {
+      if (result.providerSetupUrl) {
+        window.location.href = result.providerSetupUrl;
+        return;
+      }
       const params = new URLSearchParams({ linked: "true" });
       if (workspaceId) params.set("workspace_id", workspaceId);
       if (channelId) params.set("channel_id", channelId);

@@ -19,6 +19,7 @@ import { setupLoggers$ } from "./bootstrap/loggers.ts";
 import { setupPlaygroundPage$ } from "./playground-page/playground-page.ts";
 import { setupEnvironmentVariablesSetupPage$ } from "./environment-variables-setup/setup-page.ts";
 import { setupSlackSettingsPage$ } from "./integrations-page/slack-settings-page.ts";
+import { setupProviderSetupPage$ } from "./provider-setup/provider-setup-page.ts";
 
 const L = logger("Bootstrap");
 
@@ -50,6 +51,10 @@ const ROUTE_CONFIG = [
   {
     path: "/environment-variables-setup",
     setup: setupScopeRequiredPageWrapper(setupEnvironmentVariablesSetupPage$),
+  },
+  {
+    path: "/provider-setup",
+    setup: setupScopeRequiredPageWrapper(setupProviderSetupPage$),
   },
   {
     path: "/_playground",

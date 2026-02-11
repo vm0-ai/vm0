@@ -220,7 +220,7 @@ export function OnboardingModal() {
   );
 }
 
-function OnboardingOAuthFields({
+export function OnboardingOAuthFields({
   secret,
   onSecretChange,
   isLoading,
@@ -261,7 +261,7 @@ function OnboardingOAuthFields({
   );
 }
 
-function OnboardingApiKeyFields({
+export function OnboardingApiKeyFields({
   providerType,
   secret,
   selectedModel,
@@ -312,7 +312,7 @@ function OnboardingApiKeyFields({
   );
 }
 
-function OnboardingMultiAuthFields({
+export function OnboardingMultiAuthFields({
   providerType,
   authMethod,
   secrets,

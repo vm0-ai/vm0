@@ -14,6 +14,8 @@ import {
 } from "../../../src/lib/slack/handlers/shared";
 import { getUserEmail } from "../../../src/lib/auth/get-user-email";
 import { addPermission } from "../../../src/lib/agent/permission-service";
+import { listModelProviders } from "../../../src/lib/model-provider/model-provider-service";
+import { getPlatformUrl } from "../../../src/lib/url";
 import { logger } from "../../../src/lib/logger";
 
 const log = logger("slack:link");
@@ -22,6 +24,7 @@ interface LinkResult {
   success: boolean;
   error?: string;
   alreadyLinked?: boolean;
+  providerSetupUrl?: string;
 }
 
 interface LinkStatus {
@@ -128,7 +131,15 @@ export async function linkSlackAccount(
           log.warn("Failed to send success message", { error });
         });
       }
-      return { success: true, alreadyLinked: true };
+      const providers = await listModelProviders(userId);
+      return {
+        success: true,
+        alreadyLinked: true,
+        providerSetupUrl:
+          providers.length === 0
+            ? `${getPlatformUrl()}/provider-setup`
+            : undefined,
+      };
     }
     return {
       success: false,
@@ -185,7 +196,12 @@ export async function linkSlackAccount(
     log.warn("Failed to refresh App Home after link", { error });
   });
 
-  return { success: true };
+  const providers = await listModelProviders(userId);
+  return {
+    success: true,
+    providerSetupUrl:
+      providers.length === 0 ? `${getPlatformUrl()}/provider-setup` : undefined,
+  };
 }
 
 /**
