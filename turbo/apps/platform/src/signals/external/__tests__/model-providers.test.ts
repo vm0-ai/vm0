@@ -27,7 +27,7 @@ describe("test model providers", () => {
 
   describe("hasClaudeCodeOAuthToken$", () => {
     it("should return true when claude-code-oauth-token provider exists", async () => {
-      await setupPage({ context, path: "/" });
+      await setupPage({ context, path: "/", withoutRender: true });
 
       const hasToken = await context.store.get(hasClaudeCodeOAuthToken$);
       expect(hasToken).toBeTruthy();
@@ -40,7 +40,7 @@ describe("test model providers", () => {
         }),
       );
 
-      await setupPage({ context, path: "/" });
+      await setupPage({ context, path: "/", withoutRender: true });
 
       const hasToken = await context.store.get(hasClaudeCodeOAuthToken$);
       expect(hasToken).toBeFalsy();
@@ -65,7 +65,7 @@ describe("test model providers", () => {
         }),
       );
 
-      await setupPage({ context, path: "/" });
+      await setupPage({ context, path: "/", withoutRender: true });
 
       const hasToken = await context.store.get(hasClaudeCodeOAuthToken$);
       expect(hasToken).toBeFalsy();
@@ -82,7 +82,7 @@ describe("test model providers", () => {
         }),
       );
 
-      await setupPage({ context, path: "/" });
+      await setupPage({ context, path: "/", withoutRender: true });
 
       // First fetch
       await context.store.get(modelProviders$);
@@ -123,7 +123,7 @@ describe("test model providers", () => {
         }),
       );
 
-      await setupPage({ context, path: "/" });
+      await setupPage({ context, path: "/", withoutRender: true });
 
       await context.store.set(createModelProvider$, {
         type: "claude-code-oauth-token",

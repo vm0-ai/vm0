@@ -25,6 +25,7 @@ export default [
       "ccstate/tsx-in-views": "error",
       "ccstate/no-catch-abort": "error",
       "ccstate/test-context-in-hooks": "error",
+      "ccstate/setup-page-render": "error",
     },
   },
   // Type-aware rules (only for TypeScript files)
