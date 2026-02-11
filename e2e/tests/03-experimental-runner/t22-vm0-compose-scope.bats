@@ -108,6 +108,7 @@ EOF
         --artifact-name "$ARTIFACT_NAME" \
         "echo hello from scope test"
     assert_success
+    assert_output --partial "● Bash("
     assert_output --partial "hello from scope test"
 }
 

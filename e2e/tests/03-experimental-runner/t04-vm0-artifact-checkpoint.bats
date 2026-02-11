@@ -94,6 +94,10 @@ teardown_file() {
 
     assert_success
 
+    # Verify mock-claude execution events
+    assert_output --partial "● Bash("
+    assert_output --partial "echo 'created by agent'"
+    assert_output --partial "◆ Claude Code Completed"
     assert_output --partial "Checkpoint:"
 
     # Extract and save checkpoint ID for next test
@@ -141,6 +145,10 @@ teardown_file() {
         "ls && cat counter.txt"
 
     assert_success
+
+    # Verify mock-claude execution events for resume
+    assert_output --partial "● Bash("
+    assert_output --partial "ls && cat counter.txt"
 
     # Verify checkpoint version is restored:
     # Should see agent-marker.txt (created during agent run)

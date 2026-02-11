@@ -77,6 +77,7 @@ teardown() {
     assert_success
 
     # Verify run completes properly with checkpoint
+    assert_output --partial "◆ Claude Code Completed"
     assert_output --partial "Checkpoint:"
 }
 
@@ -103,6 +104,7 @@ teardown() {
     assert_success
 
     # Verify run completes properly with checkpoint
+    assert_output --partial "◆ Claude Code Completed"
     assert_output --partial "Checkpoint:"
     assert_output --partial "existing content"
     assert_output --partial "nested file"
@@ -128,6 +130,7 @@ teardown() {
         "rm -rf delete-me.txt subdir"
 
     assert_success
+    assert_output --partial "◆ Claude Code Completed"
     assert_output --partial "Checkpoint:"
 
     # Now pull the empty artifact - this should succeed, not fail with TAR_BAD_ARCHIVE

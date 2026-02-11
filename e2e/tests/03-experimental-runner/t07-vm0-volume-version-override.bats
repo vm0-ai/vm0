@@ -132,6 +132,7 @@ teardown_file() {
         "cat /home/user/data/data.txt"
 
     assert_success
+    assert_output --partial "● Bash("
 
     # Should see version-1 content (the overridden version)
     assert_output --partial "version-1"

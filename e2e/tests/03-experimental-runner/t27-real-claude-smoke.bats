@@ -56,4 +56,5 @@ EOF
 
     echo "# Step 4: Verify run completed with result..."
     assert_success
+    assert_output --partial "◆ Claude Code Completed"
 }
