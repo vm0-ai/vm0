@@ -36,7 +36,6 @@ jobs:
           cargo test --all-targets
 
       - name: Run ably-subscriber integration test
-        if: env.ABLY_API_KEY != ''
         env:
           ABLY_API_KEY: ${{ secrets.ABLY_API_KEY }}
         run: |
