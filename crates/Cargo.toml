@@ -54,6 +54,7 @@ sha2 = "0.10"
 tokio-util = "0.7"
 tokio-tungstenite = { version = "0.26", default-features = false }
 rmp-serde = "1"
+rmpv = "1"
 futures-util = "0.3"
 url = "2"
 

@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 
 use crate::Error;
@@ -116,16 +117,71 @@ pub fn encode_msg(msg: &ProtocolMessage) -> Result<Vec<u8>, Error> {
 }
 
 pub fn decode_msg(data: &[u8]) -> Result<ProtocolMessage, Error> {
-    // Two-step decode: msgpack → serde_json::Value → ProtocolMessage.
-    // Ably's server may send duplicate map keys (e.g. "messages" twice),
-    // which rmp_serde's struct deserializer rejects. Decoding via
-    // serde_json::Value first deduplicates keys (last value wins).
-    // This adds a small allocation overhead compared to direct struct deserialization.
-    let value: serde_json::Value = rmp_serde::from_slice(data)?;
-    serde_json::from_value(value).map_err(|e| Error::Protocol {
+    // Three-step decode: msgpack → rmpv::Value → serde_json::Value → ProtocolMessage.
+    //
+    // 1. rmpv::Value handles msgpack binary data (which serde_json::Value cannot).
+    // 2. serde_json::Value deduplicates map keys (Ably may send "messages" twice,
+    //    which rmp_serde's struct deserializer rejects).
+    // This adds allocation overhead compared to direct struct deserialization.
+    let mut cursor = std::io::Cursor::new(data);
+    let value = rmpv::decode::read_value(&mut cursor).map_err(|e| Error::Protocol {
+        code: error_code::BAD_REQUEST,
+        message: format!("msgpack decode error: {e}"),
+    })?;
+    let json = rmpv_to_json(value);
+    serde_json::from_value(json).map_err(|e| Error::Protocol {
         code: error_code::BAD_REQUEST,
         message: format!("message decode error: {e}"),
     })
+}
+
+/// Convert an rmpv::Value to serde_json::Value, encoding binary data as base64
+/// strings with a `\0base64:` prefix so decode_data can distinguish them.
+fn rmpv_to_json(value: rmpv::Value) -> serde_json::Value {
+    match value {
+        rmpv::Value::Nil => serde_json::Value::Null,
+        rmpv::Value::Boolean(b) => serde_json::Value::Bool(b),
+        rmpv::Value::Integer(i) => {
+            if let Some(n) = i.as_i64() {
+                serde_json::Value::Number(n.into())
+            } else if let Some(n) = i.as_u64() {
+                serde_json::Value::Number(n.into())
+            } else {
+                serde_json::Value::Null
+            }
+        }
+        rmpv::Value::F32(f) => serde_json::Number::from_f64(f64::from(f))
+            .map_or(serde_json::Value::Null, serde_json::Value::Number),
+        rmpv::Value::F64(f) => serde_json::Number::from_f64(f)
+            .map_or(serde_json::Value::Null, serde_json::Value::Number),
+        rmpv::Value::String(s) => {
+            serde_json::Value::String(s.into_str().unwrap_or_default().to_string())
+        }
+        rmpv::Value::Binary(bytes) => {
+            let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            serde_json::Value::String(encoded)
+        }
+        rmpv::Value::Array(arr) => {
+            serde_json::Value::Array(arr.into_iter().map(rmpv_to_json).collect())
+        }
+        rmpv::Value::Map(map) => {
+            let obj = map
+                .into_iter()
+                .map(|(k, v)| {
+                    let key = match k {
+                        rmpv::Value::String(s) => s.into_str().unwrap_or_default().to_string(),
+                        other => format!("{other}"),
+                    };
+                    (key, rmpv_to_json(v))
+                })
+                .collect();
+            serde_json::Value::Object(obj)
+        }
+        rmpv::Value::Ext(_, bytes) => {
+            let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            serde_json::Value::String(encoded)
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
