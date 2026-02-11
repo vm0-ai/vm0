@@ -36,6 +36,9 @@ pub mod flags {
 // Wire protocol types (MessagePack)
 // ---------------------------------------------------------------------------
 
+// NOTE: We intentionally omit `skip_serializing_if = "Option::is_none"` on
+// these structs. rmp_serde has a long-standing bug where skipped Option fields
+// cause deserialization failures: https://github.com/3Hren/msgpack-rust/issues/86
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct ProtocolMessage {

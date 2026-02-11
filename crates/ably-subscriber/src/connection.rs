@@ -217,29 +217,37 @@ pub(crate) struct ConnState {
 impl ConnState {
     fn from_connected(msg: &ProtocolMessage, token: TokenDetails) -> Self {
         let mut state = ConnState {
-            connection_id: msg.connection_id.clone(),
-            connection_key: msg.connection_key.clone(),
-            connection_serial: msg.connection_serial.unwrap_or(-1),
+            connection_id: None,
+            connection_key: None,
+            connection_serial: -1,
             connection_state_ttl: DEFAULT_CONNECTION_STATE_TTL,
             max_idle_interval: DEFAULT_MAX_IDLE_INTERVAL,
             disconnected_at: None,
             token_renewal_at: Self::compute_renewal_at(&token),
             token,
         };
+        state.update_from_connected(msg);
+        state
+    }
+
+    fn update_from_connected(&mut self, msg: &ProtocolMessage) {
+        self.connection_id = msg.connection_id.clone();
+        if let Some(ref key) = msg.connection_key {
+            self.connection_key = Some(key.clone());
+        }
+        self.connection_serial = msg.connection_serial.unwrap_or(-1);
 
         if let Some(ref details) = msg.connection_details {
+            if let Some(ref key) = details.connection_key {
+                self.connection_key = Some(key.clone());
+            }
             if let Some(ttl) = details.connection_state_ttl {
-                state.connection_state_ttl = Duration::from_millis(ttl as u64);
+                self.connection_state_ttl = Duration::from_millis(ttl.max(0) as u64);
             }
             if let Some(idle) = details.max_idle_interval {
-                state.max_idle_interval = Duration::from_millis(idle as u64);
-            }
-            if let Some(ref key) = details.connection_key {
-                state.connection_key = Some(key.clone());
+                self.max_idle_interval = Duration::from_millis(idle.max(0) as u64);
             }
         }
-
-        state
     }
 
     fn compute_renewal_at(token: &TokenDetails) -> Instant {
@@ -339,10 +347,16 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                 }
 
                 _ = tokio::time::sleep_until(p.conn_state.token_renewal_at) => {
-                    if let Err(e) = renew_token(&mut p).await {
-                        tracing::error!("Token renewal failed: {e}");
-                        // Push renewal time forward to avoid busy-loop on persistent failures
-                        p.conn_state.token_renewal_at = Instant::now() + TOKEN_RENEWAL_RETRY_DELAY;
+                    match tokio::time::timeout(CONNECT_TIMEOUT, renew_token(&mut p)).await {
+                        Ok(Ok(())) => {}
+                        Ok(Err(e)) => {
+                            tracing::error!("Token renewal failed: {e}");
+                            p.conn_state.token_renewal_at = Instant::now() + TOKEN_RENEWAL_RETRY_DELAY;
+                        }
+                        Err(_) => {
+                            tracing::error!("Token renewal timed out");
+                            p.conn_state.token_renewal_at = Instant::now() + TOKEN_RENEWAL_RETRY_DELAY;
+                        }
                     }
                 }
 
@@ -454,6 +468,18 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
             return LoopAction::Stop;
         }
         action::DETACHED => {
+            if let Some(ref err) = msg.error
+                && err.status_code.is_some_and(|sc| (400..500).contains(&sc))
+            {
+                let _ = p
+                    .event_tx
+                    .send(Event::Error {
+                        code: err.code,
+                        message: format!("Channel detached: {}", err.message),
+                    })
+                    .await;
+                return LoopAction::Stop;
+            }
             tracing::warn!(channel = ?msg.channel, "Channel detached, re-attaching");
             let attach = build_attach_msg(&p.channel, p.channel_params.as_ref());
             if let Ok(data) = encode_msg(&attach) {
@@ -467,18 +493,7 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
             tracing::info!(channel = ?msg.channel, "Channel attached");
         }
         action::CONNECTED => {
-            if let Some(details) = msg.connection_details {
-                if let Some(key) = details.connection_key {
-                    p.conn_state.connection_key = Some(key);
-                }
-                if let Some(ttl) = details.connection_state_ttl {
-                    p.conn_state.connection_state_ttl = Duration::from_millis(ttl as u64);
-                }
-                if let Some(idle) = details.max_idle_interval {
-                    p.conn_state.max_idle_interval = Duration::from_millis(idle as u64);
-                }
-            }
-            p.conn_state.connection_id = msg.connection_id;
+            p.conn_state.update_from_connected(&msg);
         }
         action::CLOSED => {
             tracing::info!("Connection closed by server");
@@ -486,9 +501,16 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
         }
         action::AUTH => {
             tracing::info!("Server requested reauthentication");
-            if let Err(e) = renew_token(p).await {
-                tracing::error!("Server-initiated token renewal failed: {e}");
-                p.conn_state.token_renewal_at = Instant::now() + TOKEN_RENEWAL_RETRY_DELAY;
+            match tokio::time::timeout(CONNECT_TIMEOUT, renew_token(p)).await {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => {
+                    tracing::error!("Server-initiated token renewal failed: {e}");
+                    p.conn_state.token_renewal_at = Instant::now() + TOKEN_RENEWAL_RETRY_DELAY;
+                }
+                Err(_) => {
+                    tracing::error!("Server-initiated token renewal timed out");
+                    p.conn_state.token_renewal_at = Instant::now() + TOKEN_RENEWAL_RETRY_DELAY;
+                }
             }
         }
         _ => {
@@ -539,7 +561,13 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<(), Error> {
     let use_resume = p.conn_state.can_resume();
 
     if !use_resume {
-        let token_request = (p.get_token)().await.map_err(Error::TokenFetch)?;
+        let token_request = tokio::time::timeout(CONNECT_TIMEOUT, (p.get_token)())
+            .await
+            .map_err(|_| Error::Protocol {
+                code: 80014,
+                message: "Token fetch timed out".to_string(),
+            })?
+            .map_err(Error::TokenFetch)?;
         p.conn_state.token = exchange_token(&p.http, &token_request, &p.rest_host).await?;
         p.conn_state.token_renewal_at = ConnState::compute_renewal_at(&p.conn_state.token);
     }
@@ -562,32 +590,7 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<(), Error> {
         && connected_msg.connection_id == p.conn_state.connection_id
         && connected_msg.error.is_none();
 
-    let old_key = p.conn_state.connection_key.clone();
-    let old_ttl = p.conn_state.connection_state_ttl;
-    let old_idle = p.conn_state.max_idle_interval;
-    p.conn_state.connection_id = connected_msg.connection_id.clone();
-    p.conn_state.connection_key = connected_msg.connection_key.clone();
-    p.conn_state.connection_serial = connected_msg.connection_serial.unwrap_or(-1);
-    p.conn_state.disconnected_at = None;
-
-    if let Some(ref details) = connected_msg.connection_details {
-        if let Some(ref key) = details.connection_key {
-            p.conn_state.connection_key = Some(key.clone());
-        }
-        if let Some(ttl) = details.connection_state_ttl {
-            p.conn_state.connection_state_ttl = Duration::from_millis(ttl as u64);
-        } else {
-            p.conn_state.connection_state_ttl = old_ttl;
-        }
-        if let Some(idle) = details.max_idle_interval {
-            p.conn_state.max_idle_interval = Duration::from_millis(idle as u64);
-        } else {
-            p.conn_state.max_idle_interval = old_idle;
-        }
-    } else {
-        p.conn_state.connection_key = old_key;
-    }
-
+    p.conn_state.update_from_connected(&connected_msg);
     p.ws_read = ws_read;
     p.ws_write = ws_write;
 
@@ -602,6 +605,11 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<(), Error> {
     } else {
         tracing::info!("Connection resumed successfully");
     }
+
+    // Clear disconnected_at only after fully successful reconnect (including
+    // channel re-attach). This preserves resume eligibility if a partial
+    // reconnect fails and we need to retry.
+    p.conn_state.disconnected_at = None;
 
     Ok(())
 }
