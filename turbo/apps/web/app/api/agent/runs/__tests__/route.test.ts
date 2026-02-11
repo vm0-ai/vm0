@@ -648,7 +648,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         expect(response.status).toBe(429);
         expect(data.error.message).toMatch(/concurrent/i);
       } finally {
-        vi.unstubAllEnvs();
+        delete process.env.CONCURRENT_RUN_LIMIT;
       }
     });
 
@@ -664,7 +664,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         expect(run2.status).toBe("running");
         expect(run3.status).toBe("running");
       } finally {
-        vi.unstubAllEnvs();
+        delete process.env.CONCURRENT_RUN_LIMIT;
       }
     });
 
@@ -681,7 +681,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         const run2 = await createTestRun(testComposeId, "Second run");
         expect(run2.status).toBe("running");
       } finally {
-        vi.unstubAllEnvs();
+        delete process.env.CONCURRENT_RUN_LIMIT;
       }
     });
 
@@ -713,7 +713,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         const response = await POST(request);
         expect(response.status).toBe(429);
       } finally {
-        vi.unstubAllEnvs();
+        delete process.env.CONCURRENT_RUN_LIMIT;
       }
     });
 
@@ -788,7 +788,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         const response = await POST(request);
         expect(response.status).toBe(429);
       } finally {
-        vi.unstubAllEnvs();
+        delete process.env.CONCURRENT_RUN_LIMIT;
       }
     });
   });

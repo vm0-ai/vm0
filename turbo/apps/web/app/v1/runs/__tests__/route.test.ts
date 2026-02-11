@@ -442,7 +442,7 @@ describe("Public API v1 - Runs Endpoints", () => {
         expect(data.error.type).toBe("rate_limit_error");
         expect(data.error.message).toMatch(/concurrent/i);
       } finally {
-        vi.unstubAllEnvs();
+        delete process.env.CONCURRENT_RUN_LIMIT;
       }
     });
 
@@ -459,7 +459,7 @@ describe("Public API v1 - Runs Endpoints", () => {
         expect(run2.status).toBe("running");
         expect(run3.status).toBe("running");
       } finally {
-        vi.unstubAllEnvs();
+        delete process.env.CONCURRENT_RUN_LIMIT;
       }
     });
   });

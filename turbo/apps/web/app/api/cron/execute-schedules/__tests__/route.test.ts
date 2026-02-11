@@ -44,7 +44,7 @@ describe("GET /api/cron/execute-schedules", () => {
         expect(response.status).toBe(401);
         expect(data.error.code).toBe("UNAUTHORIZED");
       } finally {
-        vi.unstubAllEnvs();
+        delete process.env.CRON_SECRET;
       }
     });
 
@@ -65,7 +65,7 @@ describe("GET /api/cron/execute-schedules", () => {
         expect(response.status).toBe(401);
         expect(data.error.code).toBe("UNAUTHORIZED");
       } finally {
-        vi.unstubAllEnvs();
+        delete process.env.CRON_SECRET;
       }
     });
 
@@ -86,7 +86,7 @@ describe("GET /api/cron/execute-schedules", () => {
         expect(response.status).toBe(200);
         expect(data.success).toBe(true);
       } finally {
-        vi.unstubAllEnvs();
+        delete process.env.CRON_SECRET;
       }
     });
 
