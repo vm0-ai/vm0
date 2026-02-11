@@ -5,6 +5,11 @@
 import { describe, it, expect, vi } from "vitest";
 import { paginate } from "../paginate";
 
+interface TestItem {
+  id: number;
+  ts: number;
+}
+
 describe("paginate", () => {
   it("should collect all items when targetCount is 'all'", async () => {
     const fetchPage = vi
@@ -22,14 +27,14 @@ describe("paginate", () => {
         hasMore: false,
       });
 
-    const result = await paginate({
+    const result = await paginate<TestItem>({
       fetchPage,
-      getTimestamp: (item: { ts: number }) => item.ts,
+      getTimestamp: (item) => item.ts,
       targetCount: "all",
     });
 
     expect(result).toHaveLength(3);
-    expect(result.map((i: { id: number }) => i.id)).toEqual([1, 2, 3]);
+    expect(result.map((i) => i.id)).toEqual([1, 2, 3]);
     expect(fetchPage).toHaveBeenCalledTimes(3);
   });
 
@@ -43,14 +48,14 @@ describe("paginate", () => {
       hasMore: true,
     });
 
-    const result = await paginate({
+    const result = await paginate<TestItem>({
       fetchPage,
-      getTimestamp: (item: { ts: number }) => item.ts,
+      getTimestamp: (item) => item.ts,
       targetCount: 2,
     });
 
     expect(result).toHaveLength(2);
-    expect(result.map((i: { id: number }) => i.id)).toEqual([1, 2]);
+    expect(result.map((i) => i.id)).toEqual([1, 2]);
     expect(fetchPage).toHaveBeenCalledTimes(1);
   });
 
@@ -72,14 +77,14 @@ describe("paginate", () => {
         hasMore: true,
       });
 
-    const result = await paginate({
+    const result = await paginate<TestItem>({
       fetchPage,
-      getTimestamp: (item: { ts: number }) => item.ts,
+      getTimestamp: (item) => item.ts,
       targetCount: 3,
     });
 
     expect(result).toHaveLength(3);
-    expect(result.map((i: { id: number }) => i.id)).toEqual([1, 2, 3]);
+    expect(result.map((i) => i.id)).toEqual([1, 2, 3]);
     expect(fetchPage).toHaveBeenCalledTimes(2);
   });
 
@@ -95,9 +100,9 @@ describe("paginate", () => {
         hasMore: false,
       });
 
-    await paginate({
+    await paginate<TestItem>({
       fetchPage,
-      getTimestamp: (item: { ts: number }) => item.ts,
+      getTimestamp: (item) => item.ts,
       targetCount: "all",
     });
 
@@ -111,9 +116,9 @@ describe("paginate", () => {
       hasMore: false,
     });
 
-    await paginate({
+    await paginate<TestItem>({
       fetchPage,
-      getTimestamp: (item: { ts: number }) => item.ts,
+      getTimestamp: (item) => item.ts,
       targetCount: "all",
       initialSince: 1000,
     });
@@ -133,9 +138,9 @@ describe("paginate", () => {
         hasMore: true, // API says hasMore but returns no items
       });
 
-    const result = await paginate({
+    const result = await paginate<TestItem>({
       fetchPage,
-      getTimestamp: (item: { ts: number }) => item.ts,
+      getTimestamp: (item) => item.ts,
       targetCount: "all",
     });
 
@@ -147,9 +152,9 @@ describe("paginate", () => {
     const fetchPage = vi.fn().mockRejectedValueOnce(new Error("API error"));
 
     await expect(
-      paginate({
+      paginate<TestItem>({
         fetchPage,
-        getTimestamp: (item: { ts: number }) => item.ts,
+        getTimestamp: (item) => item.ts,
         targetCount: "all",
       }),
     ).rejects.toThrow("API error");
@@ -161,9 +166,9 @@ describe("paginate", () => {
       hasMore: false,
     });
 
-    const result = await paginate({
+    const result = await paginate<TestItem>({
       fetchPage,
-      getTimestamp: (item: { ts: number }) => item.ts,
+      getTimestamp: (item) => item.ts,
       targetCount: "all",
     });
 
