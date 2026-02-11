@@ -26,6 +26,7 @@ const HEARTBEAT_MARGIN: Duration = Duration::from_secs(10);
 const DEFAULT_MAX_IDLE_INTERVAL: Duration = Duration::from_secs(15);
 const DEFAULT_CONNECTION_STATE_TTL: Duration = Duration::from_secs(120);
 const RETRY_INTERVAL: Duration = Duration::from_secs(15);
+const RECONNECT_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_RETRY_ATTEMPTS: u32 = 40; // ~10 minutes
 const TOKEN_RENEWAL_MARGIN: Duration = Duration::from_secs(300); // 5 minutes
 const TOKEN_RENEWAL_RETRY_DELAY: Duration = Duration::from_secs(30);
@@ -407,7 +408,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                 }
             }
 
-            match tokio::time::timeout(CONNECT_TIMEOUT, attempt_reconnect(&mut p)).await {
+            match tokio::time::timeout(RECONNECT_TIMEOUT, attempt_reconnect(&mut p)).await {
                 Ok(Ok(())) => {
                     retry_count = 0;
                     let _ = p.event_tx.send(Event::Connected).await;
@@ -524,15 +525,11 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
 // Token renewal
 // ---------------------------------------------------------------------------
 
+/// Renew the token and send an AUTH message. Callers are responsible for
+/// applying an outer timeout (e.g. `CONNECT_TIMEOUT`).
 async fn renew_token(p: &mut EventLoopState) -> Result<(), Error> {
     tracing::info!("Renewing token");
-    let token_request = tokio::time::timeout(CONNECT_TIMEOUT, (p.get_token)())
-        .await
-        .map_err(|_| Error::Protocol {
-            code: 80014,
-            message: "Token fetch timed out".to_string(),
-        })?
-        .map_err(Error::TokenFetch)?;
+    let token_request = (p.get_token)().await.map_err(Error::TokenFetch)?;
     let new_token = exchange_token(&p.http, &token_request, &p.rest_host).await?;
 
     let auth_msg = ProtocolMessage {
@@ -557,17 +554,13 @@ async fn renew_token(p: &mut EventLoopState) -> Result<(), Error> {
 // Reconnection
 // ---------------------------------------------------------------------------
 
+/// Attempt a single reconnect (resume or fresh). Callers are responsible for
+/// applying an outer timeout (e.g. `RECONNECT_TIMEOUT`).
 async fn attempt_reconnect(p: &mut EventLoopState) -> Result<(), Error> {
     let use_resume = p.conn_state.can_resume();
 
     if !use_resume {
-        let token_request = tokio::time::timeout(CONNECT_TIMEOUT, (p.get_token)())
-            .await
-            .map_err(|_| Error::Protocol {
-                code: 80014,
-                message: "Token fetch timed out".to_string(),
-            })?
-            .map_err(Error::TokenFetch)?;
+        let token_request = (p.get_token)().await.map_err(Error::TokenFetch)?;
         p.conn_state.token = exchange_token(&p.http, &token_request, &p.rest_host).await?;
         p.conn_state.token_renewal_at = ConnState::compute_renewal_at(&p.conn_state.token);
     }
