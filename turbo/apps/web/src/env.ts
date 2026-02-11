@@ -3,10 +3,12 @@ import { z } from "zod";
 
 /**
  * Whether the app is running in self-hosted mode.
- * Reads through env() so tests can override via vi.stubEnv + reloadEnv.
+ * Reads process.env directly so it can be used in layout.tsx (Server Component
+ * evaluated at build time) without triggering full env() validation.
+ * Tests can still override via vi.stubEnv('SELF_HOSTED', 'true').
  */
 export function isSelfHosted(): boolean {
-  return env().SELF_HOSTED === "true";
+  return process.env.SELF_HOSTED === "true";
 }
 
 function initEnv() {

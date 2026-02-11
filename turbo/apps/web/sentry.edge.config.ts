@@ -1,14 +1,13 @@
 import * as Sentry from "@sentry/nextjs";
-import { env } from "./src/env";
 
 Sentry.init({
-  dsn: env().SENTRY_DSN,
+  dsn: process.env.SENTRY_DSN,
 
   // Only enable in production
-  enabled: env().NODE_ENV === "production",
+  enabled: process.env.NODE_ENV === "production",
 
   // Set environment (Vercel provides VERCEL_ENV)
-  environment: env().VERCEL_ENV || env().NODE_ENV,
+  environment: process.env.VERCEL_ENV || process.env.NODE_ENV,
 
   // Set app tag to distinguish from platform app
   initialScope: {
