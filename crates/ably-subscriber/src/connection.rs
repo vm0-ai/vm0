@@ -388,7 +388,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                     .event_tx
                     .send(Event::Error {
                         code: 80000,
-                        message: format!("Connection failed after {retry_count} attempts"),
+                        message: format!("Connection failed after {MAX_RETRY_ATTEMPTS} attempts"),
                     })
                     .await;
                 return;
@@ -556,14 +556,25 @@ async fn renew_token(p: &mut EventLoopState) -> Result<(), Error> {
 
 /// Attempt a single reconnect (resume or fresh). Callers are responsible for
 /// applying an outer timeout (e.g. `RECONNECT_TIMEOUT`).
+///
+/// All mutations to `p` are deferred until every step (connect, handshake,
+/// channel attach) has succeeded. This prevents a partial reconnect from
+/// corrupting state and causing a subsequent resume to skip channel attach.
 async fn attempt_reconnect(p: &mut EventLoopState) -> Result<(), Error> {
     let use_resume = p.conn_state.can_resume();
 
-    if !use_resume {
+    // For fresh connects, obtain a new token up front (kept in a local until
+    // we know the full reconnect succeeded).
+    let new_token = if !use_resume {
         let token_request = (p.get_token)().await.map_err(Error::TokenFetch)?;
-        p.conn_state.token = exchange_token(&p.http, &token_request, &p.rest_host).await?;
-        p.conn_state.token_renewal_at = ConnState::compute_renewal_at(&p.conn_state.token);
-    }
+        Some(exchange_token(&p.http, &token_request, &p.rest_host).await?)
+    } else {
+        None
+    };
+
+    let active_token = new_token
+        .as_ref()
+        .map_or(&p.conn_state.token.token, |t| &t.token);
 
     let resume = if use_resume {
         p.conn_state
@@ -574,8 +585,8 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<(), Error> {
         None
     };
 
-    let ws_url = build_ws_url(&p.realtime_host, &p.conn_state.token.token, resume)?;
-    let (ws_write, mut ws_read) = connect_and_split(&ws_url).await?;
+    let ws_url = build_ws_url(&p.realtime_host, active_token, resume)?;
+    let (mut ws_write, mut ws_read) = connect_and_split(&ws_url).await?;
 
     let connected_msg = wait_for_connected(&mut ws_read).await?;
 
@@ -583,25 +594,26 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<(), Error> {
         && connected_msg.connection_id == p.conn_state.connection_id
         && connected_msg.error.is_none();
 
-    p.conn_state.update_from_connected(&connected_msg);
-    p.ws_read = ws_read;
-    p.ws_write = ws_write;
-
     if !resumed {
         tracing::info!("Resume failed or fresh connect, re-attaching channel");
         let attach = build_attach_msg(&p.channel, p.channel_params.as_ref());
         let data = encode_msg(&attach)?;
-        p.ws_write
+        ws_write
             .send(tungstenite::Message::Binary(data.into()))
             .await?;
-        wait_for_attached(&mut p.ws_read, &p.channel).await?;
+        wait_for_attached(&mut ws_read, &p.channel).await?;
     } else {
         tracing::info!("Connection resumed successfully");
     }
 
-    // Clear disconnected_at only after fully successful reconnect (including
-    // channel re-attach). This preserves resume eligibility if a partial
-    // reconnect fails and we need to retry.
+    // Commit state only after all steps succeeded.
+    p.conn_state.update_from_connected(&connected_msg);
+    if let Some(token) = new_token {
+        p.conn_state.token = token;
+        p.conn_state.token_renewal_at = ConnState::compute_renewal_at(&p.conn_state.token);
+    }
+    p.ws_read = ws_read;
+    p.ws_write = ws_write;
     p.conn_state.disconnected_at = None;
 
     Ok(())
