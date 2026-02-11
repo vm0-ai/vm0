@@ -86,34 +86,61 @@ describe("logs command", () => {
       expect(logCalls).toContain("No agent events found");
     });
 
-    it("should display hasMore hint when more events available", async () => {
+    it("should auto-paginate when more events available", async () => {
+      let requestCount = 0;
       server.use(
         http.get(
           "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
-          () => {
-            return HttpResponse.json({
-              events: [
-                {
-                  sequenceNumber: 1,
-                  eventType: "assistant",
-                  createdAt: "2024-01-15T10:30:00Z",
-                  eventData: {
-                    type: "assistant",
-                    message: { content: [{ type: "text", text: "Test" }] },
+          ({ request }) => {
+            requestCount++;
+            const url = new URL(request.url);
+            const since = url.searchParams.get("since");
+
+            if (!since) {
+              // First page
+              return HttpResponse.json({
+                events: [
+                  {
+                    sequenceNumber: 1,
+                    eventType: "assistant",
+                    createdAt: "2024-01-15T10:30:00Z",
+                    eventData: {
+                      type: "assistant",
+                      message: { content: [{ type: "text", text: "Page 1" }] },
+                    },
                   },
-                },
-              ],
-              framework: "claude-code",
-              hasMore: true,
-            });
+                ],
+                framework: "claude-code",
+                hasMore: true,
+              });
+            } else {
+              // Second page
+              return HttpResponse.json({
+                events: [
+                  {
+                    sequenceNumber: 2,
+                    eventType: "assistant",
+                    createdAt: "2024-01-15T10:31:00Z",
+                    eventData: {
+                      type: "assistant",
+                      message: { content: [{ type: "text", text: "Page 2" }] },
+                    },
+                  },
+                ],
+                framework: "claude-code",
+                hasMore: false,
+              });
+            }
           },
         ),
       );
 
-      await logsCommand.parseAsync(["node", "cli", "run-123"]);
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--all"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Use --tail to see more");
+      expect(logCalls).toContain("Page 1");
+      expect(logCalls).toContain("Page 2");
+      expect(requestCount).toBe(2);
     });
 
     it("should handle paired tool_use and tool_result events", async () => {
@@ -548,7 +575,43 @@ describe("logs command", () => {
 
       expect(mockExit).toHaveBeenCalledWith(1);
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("--tail and --head are mutually exclusive"),
+        expect.stringContaining("mutually exclusive"),
+      );
+    });
+
+    it("should exit with error when --tail and --all specified together", async () => {
+      await expect(async () => {
+        await logsCommand.parseAsync([
+          "node",
+          "cli",
+          "run-123",
+          "--tail",
+          "10",
+          "--all",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("mutually exclusive"),
+      );
+    });
+
+    it("should exit with error when --head and --all specified together", async () => {
+      await expect(async () => {
+        await logsCommand.parseAsync([
+          "node",
+          "cli",
+          "run-123",
+          "--head",
+          "10",
+          "--all",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("mutually exclusive"),
       );
     });
   });
@@ -850,7 +913,7 @@ describe("logs command", () => {
       expect(capturedQuery?.since).toBeDefined();
     });
 
-    it("should pass --tail option to API as limit", async () => {
+    it("should pass --tail option to API with desc order", async () => {
       let capturedQuery: Record<string, unknown> | undefined;
       server.use(
         http.get(
@@ -869,7 +932,8 @@ describe("logs command", () => {
 
       await logsCommand.parseAsync(["node", "cli", "run-123", "--tail", "20"]);
 
-      expect(capturedQuery?.limit).toBe("20");
+      // Per-page limit is always PAGE_LIMIT (100), targetCount is 20
+      expect(capturedQuery?.limit).toBe("100");
       expect(capturedQuery?.order).toBe("desc");
     });
 
@@ -892,11 +956,12 @@ describe("logs command", () => {
 
       await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "10"]);
 
-      expect(capturedQuery?.limit).toBe("10");
+      // Per-page limit is always PAGE_LIMIT (100), targetCount is 10
+      expect(capturedQuery?.limit).toBe("100");
       expect(capturedQuery?.order).toBe("asc");
     });
 
-    it("should cap limit at 100", async () => {
+    it("should use page limit of 100 for --tail 500", async () => {
       let capturedQuery: Record<string, unknown> | undefined;
       server.use(
         http.get(
@@ -915,6 +980,61 @@ describe("logs command", () => {
 
       await logsCommand.parseAsync(["node", "cli", "run-123", "--tail", "500"]);
 
+      // Per-page limit is capped at 100
+      expect(capturedQuery?.limit).toBe("100");
+    });
+
+    it("should use --all flag to fetch all entries", async () => {
+      let capturedQuery: Record<string, unknown> | undefined;
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          ({ request }) => {
+            const url = new URL(request.url);
+            capturedQuery = Object.fromEntries(url.searchParams);
+            return HttpResponse.json({
+              events: [],
+              framework: "claude-code",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--all"]);
+
+      // --all uses page limit of 100 and fetches all pages
+      expect(capturedQuery?.limit).toBe("100");
+      expect(capturedQuery?.order).toBe("desc");
+    });
+
+    it("should combine --all with --since", async () => {
+      let capturedQuery: Record<string, unknown> | undefined;
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          ({ request }) => {
+            const url = new URL(request.url);
+            capturedQuery = Object.fromEntries(url.searchParams);
+            return HttpResponse.json({
+              events: [],
+              framework: "claude-code",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync([
+        "node",
+        "cli",
+        "run-123",
+        "--all",
+        "--since",
+        "5m",
+      ]);
+
+      expect(capturedQuery?.since).toBeDefined();
       expect(capturedQuery?.limit).toBe("100");
     });
   });
