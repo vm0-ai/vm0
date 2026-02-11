@@ -77,8 +77,6 @@ function initEnv() {
       // Notion OAuth (for connector)
       NOTION_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       NOTION_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
-      // Platform UI URL (for settings page links in error messages)
-      PLATFORM_URL: z.string().url(),
       // Sentry
       SENTRY_DSN: z.string().url().optional(),
       SENTRY_AUTH_TOKEN: z.string().min(1).optional(),
@@ -111,6 +109,8 @@ function initEnv() {
       NEXT_PUBLIC_BASE_URL: z.string().url().optional(),
       NEXT_PUBLIC_DATA_SOURCE: z.string().optional(),
       NEXT_PUBLIC_STRAPI_URL: z.string().url().optional(),
+      // Platform UI URL (for settings page links, Navbar, LandingPage)
+      NEXT_PUBLIC_PLATFORM_URL: z.string().url(),
     },
     runtimeEnv: {
       DATABASE_URL: process.env.DATABASE_URL,
@@ -150,7 +150,7 @@ function initEnv() {
       GH_OAUTH_CLIENT_SECRET: process.env.GH_OAUTH_CLIENT_SECRET,
       NOTION_OAUTH_CLIENT_ID: process.env.NOTION_OAUTH_CLIENT_ID,
       NOTION_OAUTH_CLIENT_SECRET: process.env.NOTION_OAUTH_CLIENT_SECRET,
-      PLATFORM_URL: process.env.PLATFORM_URL,
+      NEXT_PUBLIC_PLATFORM_URL: process.env.NEXT_PUBLIC_PLATFORM_URL,
       SENTRY_DSN: process.env.SENTRY_DSN,
       SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
       SENTRY_ORG: process.env.SENTRY_ORG,
