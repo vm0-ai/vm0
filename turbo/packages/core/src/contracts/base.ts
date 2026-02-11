@@ -14,3 +14,12 @@ export { initContract } from "@ts-rest/core";
 export const authHeadersSchema = z.object({
   authorization: z.string().optional(),
 });
+
+/**
+ * Headers schema for endpoints that support scope selection.
+ * Includes authorization and x-vm0-scope for organization scope support.
+ */
+export const scopedAuthHeadersSchema = z.object({
+  authorization: z.string().optional(),
+  "x-vm0-scope": z.string().optional(),
+});

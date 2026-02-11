@@ -24,9 +24,56 @@ import {
   getUserScopeByClerkId,
   getScopeBySlug,
 } from "../../../../src/lib/scope/scope-service";
+import {
+  resolveRequestScope,
+  isScopeResolutionSuccess,
+} from "../../../../src/lib/scope/resolve-request-scope";
 import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 import { canAccessCompose } from "../../../../src/lib/agent/permission-service";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
+
+/**
+ * Helper to resolve scope and return appropriate error response
+ */
+async function resolveScopeWithErrorResponse(
+  userId: string,
+  scopeHeader: string | undefined,
+) {
+  const scopeResult = await resolveRequestScope(userId, scopeHeader);
+
+  if (!isScopeResolutionSuccess(scopeResult)) {
+    const statusCode =
+      scopeResult.code === "FORBIDDEN"
+        ? 403
+        : scopeResult.code === "NOT_FOUND"
+          ? 404
+          : 400;
+    const errorCode =
+      scopeResult.code === "FORBIDDEN"
+        ? "FORBIDDEN"
+        : scopeResult.code === "NOT_FOUND"
+          ? "NOT_FOUND"
+          : "BAD_REQUEST";
+
+    return {
+      success: false as const,
+      response: {
+        status: statusCode as 400 | 403 | 404,
+        body: {
+          error: {
+            message: scopeResult.error,
+            code: errorCode,
+          },
+        },
+      },
+    };
+  }
+
+  return {
+    success: true as const,
+    scope: scopeResult.scope,
+  };
+}
 
 const router = tsr.router(composesMainContract, {
   getByName: async ({ query, headers }) => {
@@ -267,20 +314,19 @@ const router = tsr.router(composesMainContract, {
     // Compute content-addressable version ID from resolved content
     const versionId = computeComposeVersionId(resolvedContent);
 
-    // Get user's scope (required for compose creation)
-    const userScope = await getUserScopeByClerkId(userId);
-    if (!userScope) {
-      return {
-        status: 400 as const,
-        body: {
-          error: {
-            message:
-              "Please set up your scope first. Login again with: vm0 login",
-            code: "BAD_REQUEST",
-          },
-        },
-      };
+    // Resolve scope from X-VM0-Scope header or fall back to user's default scope
+    const scopeHeader =
+      "x-vm0-scope" in headers ? (headers["x-vm0-scope"] as string) : undefined;
+    const scopeResolution = await resolveScopeWithErrorResponse(
+      userId,
+      scopeHeader,
+    );
+
+    if (!scopeResolution.success) {
+      return scopeResolution.response;
     }
+
+    const targetScope = scopeResolution.scope;
 
     // Check if compose exists for this scope + name
     const existing = await globalThis.services.db
@@ -288,7 +334,7 @@ const router = tsr.router(composesMainContract, {
       .from(agentComposes)
       .where(
         and(
-          eq(agentComposes.scopeId, userScope.id),
+          eq(agentComposes.scopeId, targetScope.id),
           eq(agentComposes.name, normalizedAgentName),
         ),
       )
@@ -305,7 +351,7 @@ const router = tsr.router(composesMainContract, {
         .insert(agentComposes)
         .values({
           userId,
-          scopeId: userScope.id,
+          scopeId: targetScope.id,
           name: normalizedAgentName,
         })
         .returning({ id: agentComposes.id });

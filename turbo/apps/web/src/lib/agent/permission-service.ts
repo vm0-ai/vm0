@@ -2,6 +2,7 @@ import { eq, and, or } from "drizzle-orm";
 import { agentPermissions } from "../../db/schema/agent-permission";
 import { agentComposes } from "../../db/schema/agent-compose";
 import { scopes } from "../../db/schema/scope";
+import { orgMemberships } from "../../db/schema/org-membership";
 import { logger } from "../logger";
 
 const log = logger("agent:permission");
@@ -12,8 +13,9 @@ const log = logger("agent:permission");
  * Access is granted if:
  * 1. User is the owner of the compose
  * 2. Compose is in a system scope (public)
- * 3. Compose has a 'public' permission entry
- * 4. User's email matches an 'email' permission entry
+ * 3. Compose is in an organization scope and user is a member
+ * 4. Compose has a 'public' permission entry
+ * 5. User's email matches an 'email' permission entry
  */
 export async function canAccessCompose(
   userId: string,
@@ -32,14 +34,31 @@ export async function canAccessCompose(
   // 2. Owner always has access
   if (compose.userId === userId) return true;
 
-  // 3. Check if system scope (public)
+  // 3. Check scope type
   const [scope] = await globalThis.services.db
     .select()
     .from(scopes)
     .where(eq(scopes.id, compose.scopeId))
     .limit(1);
 
+  // 3a. System scope (public)
   if (scope?.type === "system") return true;
+
+  // 3b. Organization scope - check membership
+  if (scope?.type === "organization") {
+    const [membership] = await globalThis.services.db
+      .select()
+      .from(orgMemberships)
+      .where(
+        and(
+          eq(orgMemberships.scopeId, scope.id),
+          eq(orgMemberships.userId, userId),
+        ),
+      )
+      .limit(1);
+
+    if (membership) return true;
+  }
 
   // 4. Check ACL table
   const [permission] = await globalThis.services.db

@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { authHeadersSchema, initContract } from "./base";
+import {
+  authHeadersSchema,
+  scopedAuthHeadersSchema,
+  initContract,
+} from "./base";
 import { apiErrorSchema } from "./errors";
 import { experimentalFirewallSchema } from "./runners";
 
@@ -229,11 +233,13 @@ export const composesMainContract = c.router({
    *
    * Returns 201 when a new compose is created, 200 when updating an existing compose.
    * The action field indicates whether a new version was created or an existing one reused.
+   *
+   * Supports x-vm0-scope header for creating composes in organization scope.
    */
   create: {
     method: "POST",
     path: "/api/agent/composes",
-    headers: authHeadersSchema,
+    headers: scopedAuthHeadersSchema,
     body: z.object({
       content: agentComposeContentSchema,
     }),
@@ -242,6 +248,8 @@ export const composesMainContract = c.router({
       201: createComposeResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
     },
     summary: "Create or update agent compose version",
   },
@@ -339,11 +347,14 @@ export const composesListContract = c.router({
    * GET /api/agent/composes/list?scope={scope}
    * List all agent composes for a scope
    * If scope is not provided, uses the authenticated user's default scope
+   *
+   * Supports x-vm0-scope header for organization scope support.
+   * Header takes precedence over query parameter.
    */
   list: {
     method: "GET",
     path: "/api/agent/composes/list",
-    headers: authHeadersSchema,
+    headers: scopedAuthHeadersSchema,
     query: z.object({
       scope: z.string().optional(),
     }),
@@ -353,6 +364,7 @@ export const composesListContract = c.router({
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
     },
     summary: "List all agent composes for a scope",
   },

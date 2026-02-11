@@ -126,7 +126,7 @@ describe("GET /api/agent/composes/list", () => {
     const data = await response.json();
 
     expect(response.status).toBe(400);
-    expect(data.error.message).toContain("Scope not found");
+    expect(data.error.message).toContain("not found");
   });
 
   it("should return 403 when user tries to access another user's scope", async () => {
