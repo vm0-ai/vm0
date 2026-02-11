@@ -61,8 +61,7 @@ pub async fn run_build_rootfs(args: BuildRootfsArgs) -> RunnerResult<()> {
     let output_dir = paths.rootfs_dir().join(&hash);
     let rootfs_path = output_dir.join("rootfs.squashfs");
 
-    // Skip if content-addressed rootfs already exists
-    if tokio::fs::try_exists(&rootfs_path).await.unwrap_or(false) {
+    if is_build_complete(&output_dir).await {
         tracing::info!("[OK] rootfs already exists: {}", rootfs_path.display());
         return Ok(());
     }
@@ -129,6 +128,22 @@ async fn sudo_remove_dir(dir: tempfile::TempDir) -> PathBuf {
     let s = path.to_string_lossy();
     exec_ignore_errors("rm", &["-rf", &s], Privilege::Sudo).await;
     path
+}
+
+/// Check whether all expected build outputs exist in the directory.
+async fn is_build_complete(dir: &Path) -> bool {
+    let files = [
+        "rootfs.squashfs",
+        "mitmproxy-ca-cert.pem",
+        "mitmproxy-ca-key.pem",
+        "mitmproxy-ca.pem",
+    ];
+    for name in files {
+        if !tokio::fs::try_exists(dir.join(name)).await.unwrap_or(false) {
+            return false;
+        }
+    }
+    true
 }
 
 // ---------------------------------------------------------------------------
