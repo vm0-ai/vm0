@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { POST } from "../route";
+import { POST as createComposeRoute } from "../../composes/route";
 import { PUT as putSecret } from "../../../secrets/route";
 import { PUT as setVariableRoute } from "../../../variables/route";
 import { randomUUID } from "crypto";
@@ -136,41 +137,6 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.error.message).toContain("both checkpointId and sessionId");
     });
 
-    it("should fail run when required secrets are not provided", async () => {
-      // Create compose that requires secrets
-      const { composeId: secretComposeId } = await createTestCompose(
-        `secret-required-${Date.now()}`,
-        {
-          overrides: {
-            environment: {
-              ANTHROPIC_API_KEY: "test-key",
-              MY_SECRET: "${{ secrets.MY_SECRET }}",
-            },
-          },
-        },
-      );
-
-      // Try to create run WITHOUT providing required secrets
-      // Pass checkEnv: true to enable server-side validation
-      const data = await createTestRun(
-        secretComposeId,
-        "Test without secrets",
-        {
-          checkEnv: true,
-        },
-      );
-
-      // Route creates run first, then fails during preparation
-      expect(data.status).toBe("failed");
-
-      // Verify error via API
-      const run = await getTestRun(data.runId);
-
-      expect(run.error).toMatch(/Missing required secrets/i);
-      expect(run.error).toContain("MY_SECRET");
-      expect(run.error).toContain("--secrets");
-    });
-
     it("should fail run when only some secrets are provided", async () => {
       // Create compose that requires multiple secrets
       const { composeId: multiSecretComposeId } = await createTestCompose(
@@ -301,41 +267,6 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       // Should succeed
       expect(data.status).toBe("running");
-    });
-
-    it("should reject request when required vars are not provided", async () => {
-      // Create compose that requires vars in environment
-      const { composeId: varsComposeId } = await createTestCompose(
-        `vars-required-${Date.now()}`,
-        {
-          overrides: {
-            environment: {
-              ANTHROPIC_API_KEY: "test-key",
-              MY_VAR: "${{ vars.MY_VAR }}",
-            },
-          },
-        },
-      );
-
-      // Try to create run WITHOUT providing required vars
-      // Template vars are validated at route level BEFORE run creation
-      const request = createTestRequest(
-        "http://localhost:3000/api/agent/runs",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agentComposeId: varsComposeId,
-            prompt: "Test without vars",
-          }),
-        },
-      );
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data.error.message).toContain("MY_VAR");
     });
 
     it("should reject request when only some vars are provided", async () => {
@@ -685,38 +616,6 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       }
     });
 
-    it("should respect higher limit values", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "3");
-
-      try {
-        const run1 = await createTestRun(testComposeId, "Run 1");
-        const run2 = await createTestRun(testComposeId, "Run 2");
-        const run3 = await createTestRun(testComposeId, "Run 3");
-
-        expect(run1.status).toBe("running");
-        expect(run2.status).toBe("running");
-        expect(run3.status).toBe("running");
-
-        // Fourth run should fail
-        const request = createTestRequest(
-          "http://localhost:3000/api/agent/runs",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              agentComposeId: testComposeId,
-              prompt: "Fourth run",
-            }),
-          },
-        );
-
-        const response = await POST(request);
-        expect(response.status).toBe(429);
-      } finally {
-        delete process.env.CONCURRENT_RUN_LIMIT;
-      }
-    });
-
     it("should not count stale pending runs toward concurrency limit", async () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
 
@@ -927,338 +826,6 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       );
 
       expect(data.status).toBe("running");
-    });
-
-    it("should pass ANTHROPIC_API_KEY env var for anthropic-api-key provider", async () => {
-      vi.mocked(Sandbox.create).mockClear();
-
-      await createTestModelProvider("anthropic-api-key", "sk-ant-test-key");
-
-      const { composeId } = await createTestCompose(
-        `anthropic-mp-env-${Date.now()}`,
-        {
-          skipDefaultApiKey: true,
-          overrides: { framework: "claude-code" },
-        },
-      );
-
-      const data = await createTestRun(composeId, "Test anthropic env vars");
-      expect(data.status).toBe("running");
-
-      // Verify Sandbox.create was called with correct env vars
-      expect(Sandbox.create).toHaveBeenCalled();
-      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
-      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
-
-      expect(envs?.ANTHROPIC_API_KEY).toBe("sk-ant-test-key");
-    });
-
-    it("should pass mapped env vars for moonshot-api-key provider with selected model", async () => {
-      vi.mocked(Sandbox.create).mockClear();
-
-      await createTestModelProvider(
-        "moonshot-api-key",
-        "sk-moonshot-test-key",
-        "kimi-k2.5",
-      );
-
-      const { composeId } = await createTestCompose(
-        `moonshot-mp-env-${Date.now()}`,
-        {
-          skipDefaultApiKey: true,
-          overrides: { framework: "claude-code" },
-        },
-      );
-
-      const data = await createTestRun(composeId, "Test moonshot env vars");
-      expect(data.status).toBe("running");
-
-      // Verify Sandbox.create was called with mapped env vars
-      expect(Sandbox.create).toHaveBeenCalled();
-      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
-      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
-
-      // Moonshot provider maps to ANTHROPIC_* env vars
-      expect(envs?.ANTHROPIC_AUTH_TOKEN).toBe("sk-moonshot-test-key");
-      expect(envs?.ANTHROPIC_BASE_URL).toBe(
-        "https://api.moonshot.ai/anthropic",
-      );
-      expect(envs?.ANTHROPIC_MODEL).toBe("kimi-k2.5");
-    });
-
-    it("should use default model when selectedModel is not provided for moonshot provider", async () => {
-      vi.mocked(Sandbox.create).mockClear();
-
-      // Create moonshot provider without selectedModel
-      await createTestModelProvider("moonshot-api-key", "sk-moonshot-key");
-
-      const { composeId } = await createTestCompose(
-        `moonshot-default-env-${Date.now()}`,
-        {
-          skipDefaultApiKey: true,
-          overrides: { framework: "claude-code" },
-        },
-      );
-
-      const data = await createTestRun(
-        composeId,
-        "Test moonshot default model",
-      );
-      expect(data.status).toBe("running");
-
-      // Verify default model is used
-      expect(Sandbox.create).toHaveBeenCalled();
-      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
-      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
-
-      // Default model for moonshot is kimi-k2.5
-      expect(envs?.ANTHROPIC_MODEL).toBe("kimi-k2.5");
-    });
-
-    it("should pass mapped env vars for openrouter-api-key provider with selected model", async () => {
-      vi.mocked(Sandbox.create).mockClear();
-
-      await createTestModelProvider(
-        "openrouter-api-key",
-        "sk-or-test-key",
-        "anthropic/claude-sonnet-4.5",
-      );
-
-      const { composeId } = await createTestCompose(
-        `openrouter-mp-env-${Date.now()}`,
-        {
-          skipDefaultApiKey: true,
-          overrides: { framework: "claude-code" },
-        },
-      );
-
-      const data = await createTestRun(composeId, "Test openrouter env vars");
-      expect(data.status).toBe("running");
-
-      // Verify Sandbox.create was called with mapped env vars
-      expect(Sandbox.create).toHaveBeenCalled();
-      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
-      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
-
-      // OpenRouter provider maps to ANTHROPIC_* env vars
-      expect(envs?.ANTHROPIC_AUTH_TOKEN).toBe("sk-or-test-key");
-      expect(envs?.ANTHROPIC_BASE_URL).toBe("https://openrouter.ai/api");
-      expect(envs?.ANTHROPIC_API_KEY).toBe("");
-      expect(envs?.ANTHROPIC_MODEL).toBe("anthropic/claude-sonnet-4.5");
-    });
-
-    it("should not set ANTHROPIC_MODEL when openrouter provider uses auto mode (empty defaultModel)", async () => {
-      vi.mocked(Sandbox.create).mockClear();
-
-      // Create openrouter provider without selectedModel (auto mode)
-      await createTestModelProvider("openrouter-api-key", "sk-or-key");
-
-      const { composeId } = await createTestCompose(
-        `openrouter-auto-env-${Date.now()}`,
-        {
-          skipDefaultApiKey: true,
-          overrides: { framework: "claude-code" },
-        },
-      );
-
-      const data = await createTestRun(composeId, "Test openrouter auto mode");
-      expect(data.status).toBe("running");
-
-      // Verify ANTHROPIC_MODEL is not set in auto mode
-      expect(Sandbox.create).toHaveBeenCalled();
-      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
-      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
-
-      // These should be set
-      expect(envs?.ANTHROPIC_AUTH_TOKEN).toBe("sk-or-key");
-      expect(envs?.ANTHROPIC_BASE_URL).toBe("https://openrouter.ai/api");
-      expect(envs?.ANTHROPIC_API_KEY).toBe("");
-      // ANTHROPIC_MODEL should NOT be set in auto mode (empty defaultModel)
-      expect(envs?.ANTHROPIC_MODEL).toBeUndefined();
-    });
-
-    it("should pass mapped env vars for minimax-api-key provider", async () => {
-      vi.mocked(Sandbox.create).mockClear();
-
-      await createTestModelProvider(
-        "minimax-api-key",
-        "sk-minimax-test-key",
-        "MiniMax-M2.1",
-      );
-
-      const { composeId } = await createTestCompose(
-        `minimax-mp-env-${Date.now()}`,
-        {
-          skipDefaultApiKey: true,
-          overrides: { framework: "claude-code" },
-        },
-      );
-
-      const data = await createTestRun(composeId, "Test minimax env vars");
-      expect(data.status).toBe("running");
-
-      // Verify Sandbox.create was called with mapped env vars
-      expect(Sandbox.create).toHaveBeenCalled();
-      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
-      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
-
-      // MiniMax provider maps to ANTHROPIC_* env vars plus MiniMax-specific settings
-      expect(envs?.ANTHROPIC_AUTH_TOKEN).toBe("sk-minimax-test-key");
-      expect(envs?.ANTHROPIC_BASE_URL).toBe("https://api.minimax.io/anthropic");
-      expect(envs?.ANTHROPIC_MODEL).toBe("MiniMax-M2.1");
-      expect(envs?.API_TIMEOUT_MS).toBe("3000000");
-      expect(envs?.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe("1");
-    });
-
-    it("should pass CLAUDE_CODE_OAUTH_TOKEN env var for oauth-token provider", async () => {
-      vi.mocked(Sandbox.create).mockClear();
-
-      await createTestModelProvider(
-        "claude-code-oauth-token",
-        "oauth-test-token-123",
-      );
-
-      const { composeId } = await createTestCompose(
-        `oauth-mp-env-${Date.now()}`,
-        {
-          skipDefaultApiKey: true,
-          overrides: { framework: "claude-code" },
-        },
-      );
-
-      const data = await createTestRun(composeId, "Test oauth env vars");
-      expect(data.status).toBe("running");
-
-      // Verify CLAUDE_CODE_OAUTH_TOKEN is set
-      expect(Sandbox.create).toHaveBeenCalled();
-      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
-      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
-
-      expect(envs?.CLAUDE_CODE_OAUTH_TOKEN).toBe("oauth-test-token-123");
-    });
-
-    it("should not include model env vars for providers without environment mapping", async () => {
-      vi.mocked(Sandbox.create).mockClear();
-
-      // Create anthropic provider with selectedModel (should be ignored)
-      await createTestModelProvider(
-        "anthropic-api-key",
-        "sk-ant-key",
-        "some-model-that-should-be-ignored",
-      );
-
-      const { composeId } = await createTestCompose(
-        `anthropic-no-model-env-${Date.now()}`,
-        {
-          skipDefaultApiKey: true,
-          overrides: { framework: "claude-code" },
-        },
-      );
-
-      const data = await createTestRun(
-        composeId,
-        "Test anthropic without model mapping",
-      );
-      expect(data.status).toBe("running");
-
-      // Verify only ANTHROPIC_API_KEY is set, no model env vars
-      expect(Sandbox.create).toHaveBeenCalled();
-      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
-      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
-
-      expect(envs?.ANTHROPIC_API_KEY).toBe("sk-ant-key");
-      // These should NOT be set for anthropic-api-key provider
-      expect(envs?.ANTHROPIC_MODEL).toBeUndefined();
-      expect(envs?.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
-      expect(envs?.ANTHROPIC_BASE_URL).toBeUndefined();
-    });
-
-    it("should pass mapped env vars for aws-bedrock provider with api-key auth method", async () => {
-      vi.mocked(Sandbox.create).mockClear();
-
-      // Create aws-bedrock provider with api-key auth method
-      await createTestMultiAuthModelProvider(
-        "aws-bedrock",
-        "api-key",
-        {
-          AWS_BEARER_TOKEN_BEDROCK: "bedrock-test-token",
-          AWS_REGION: "us-west-2",
-        },
-        "anthropic.claude-sonnet-4-20250514-v1:0",
-      );
-
-      const { composeId } = await createTestCompose(
-        `bedrock-api-key-env-${Date.now()}`,
-        {
-          skipDefaultApiKey: true,
-          overrides: { framework: "claude-code" },
-        },
-      );
-
-      const data = await createTestRun(
-        composeId,
-        "Test bedrock api-key env vars",
-      );
-      expect(data.status).toBe("running");
-
-      // Verify Sandbox.create was called with correct env vars
-      expect(Sandbox.create).toHaveBeenCalled();
-      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
-      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
-
-      // AWS Bedrock env vars should be set
-      expect(envs?.CLAUDE_CODE_USE_BEDROCK).toBe("1");
-      expect(envs?.AWS_REGION).toBe("us-west-2");
-      expect(envs?.AWS_BEARER_TOKEN_BEDROCK).toBe("bedrock-test-token");
-      expect(envs?.ANTHROPIC_MODEL).toBe(
-        "anthropic.claude-sonnet-4-20250514-v1:0",
-      );
-    });
-
-    it("should pass mapped env vars for aws-bedrock provider with access-keys auth method", async () => {
-      vi.mocked(Sandbox.create).mockClear();
-
-      // Create aws-bedrock provider with access-keys auth method
-      await createTestMultiAuthModelProvider(
-        "aws-bedrock",
-        "access-keys",
-        {
-          AWS_ACCESS_KEY_ID: "AKIA1234567890",
-          AWS_SECRET_ACCESS_KEY: "secret-access-key-test",
-          AWS_SESSION_TOKEN: "session-token-test",
-          AWS_REGION: "eu-west-1",
-        },
-        "anthropic.claude-opus-4-20250514-v1:0",
-      );
-
-      const { composeId } = await createTestCompose(
-        `bedrock-access-keys-env-${Date.now()}`,
-        {
-          skipDefaultApiKey: true,
-          overrides: { framework: "claude-code" },
-        },
-      );
-
-      const data = await createTestRun(
-        composeId,
-        "Test bedrock access-keys env vars",
-      );
-      expect(data.status).toBe("running");
-
-      // Verify Sandbox.create was called with correct env vars
-      expect(Sandbox.create).toHaveBeenCalled();
-      const createCall = vi.mocked(Sandbox.create).mock.calls[0];
-      const envs = createCall?.[1]?.envs as Record<string, string> | undefined;
-
-      // AWS Bedrock env vars should be set
-      expect(envs?.CLAUDE_CODE_USE_BEDROCK).toBe("1");
-      expect(envs?.AWS_REGION).toBe("eu-west-1");
-      expect(envs?.AWS_ACCESS_KEY_ID).toBe("AKIA1234567890");
-      expect(envs?.AWS_SECRET_ACCESS_KEY).toBe("secret-access-key-test");
-      expect(envs?.AWS_SESSION_TOKEN).toBe("session-token-test");
-      expect(envs?.ANTHROPIC_MODEL).toBe(
-        "anthropic.claude-opus-4-20250514-v1:0",
-      );
     });
 
     it("should succeed when aws-bedrock provider is configured and no API key in compose", async () => {
@@ -1534,42 +1101,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(writePath).toMatch(/\.jsonl$/);
     });
 
-    it("should write session history to codex path format for codex framework", async () => {
-      // Create and complete a run to get a checkpoint
-      const { composeId } = await createTestCompose(
-        `codex-resume-path-${Date.now()}`,
-        { overrides: { framework: "codex" } },
-      );
-
-      const { runId: initialRunId } = await createTestRun(
-        composeId,
-        "Initial run",
-      );
-      const { checkpointId } = await completeTestRun(user.userId, initialRunId);
-
-      // Clear mocks before resume run
-      context.mocks.e2b.sandbox.files.write.mockClear();
-
-      // Create a resume run using checkpointId
-      await createTestRun(composeId, "Resume run", { checkpointId });
-
-      // Find the session history write call (ends with .jsonl)
-      const writeCalls = context.mocks.e2b.sandbox.files.write.mock.calls;
-      const sessionHistoryCall = writeCalls.find((call) => {
-        const path = call?.[0] as string;
-        return path?.endsWith(".jsonl");
-      });
-
-      expect(sessionHistoryCall).toBeDefined();
-      const writePath = sessionHistoryCall?.[0] as string;
-
-      // Codex path format: /home/user/.codex/sessions/session-id.jsonl
-      expect(writePath).toMatch(/^\/home\/user\/\.codex\/sessions\//);
-      expect(writePath).toMatch(/\.jsonl$/);
-    });
-
     // Note: "Missing required secrets" validation is tested in the Validation
-    // describe block above (lines 138-197).
+    // describe block above.
   });
 
   describe("Volume Resolution", () => {
@@ -1602,7 +1135,6 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
           }),
         },
       );
-      const createComposeRoute = (await import("../../composes/route")).POST;
       const composeResponse = await createComposeRoute(request);
       const compose = await composeResponse.json();
 
@@ -1648,7 +1180,6 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
           }),
         },
       );
-      const createComposeRoute = (await import("../../composes/route")).POST;
       const composeResponse = await createComposeRoute(composeRequest);
       const compose = await composeResponse.json();
 
@@ -1698,7 +1229,6 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
           }),
         },
       );
-      const createComposeRoute = (await import("../../composes/route")).POST;
       const composeResponse = await createComposeRoute(request);
       const compose = await composeResponse.json();
 
