@@ -11,6 +11,7 @@ import {
   completeTestRun,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
+import { reloadEnv } from "../../../../../src/env";
 
 const context = testContext();
 
@@ -32,6 +33,7 @@ describe("GET /api/cron/execute-schedules", () => {
   describe("Authorization", () => {
     it("should reject request without CRON_SECRET header when secret is set", async () => {
       vi.stubEnv("CRON_SECRET", "test-cron-secret");
+      reloadEnv();
 
       const request = createTestRequest(
         "http://localhost:3000/api/cron/execute-schedules",
@@ -46,6 +48,7 @@ describe("GET /api/cron/execute-schedules", () => {
 
     it("should reject request with invalid CRON_SECRET", async () => {
       vi.stubEnv("CRON_SECRET", "correct-secret");
+      reloadEnv();
 
       const request = createTestRequest(
         "http://localhost:3000/api/cron/execute-schedules",
@@ -63,6 +66,7 @@ describe("GET /api/cron/execute-schedules", () => {
 
     it("should accept request with valid CRON_SECRET", async () => {
       vi.stubEnv("CRON_SECRET", "valid-secret");
+      reloadEnv();
 
       const request = createTestRequest(
         "http://localhost:3000/api/cron/execute-schedules",

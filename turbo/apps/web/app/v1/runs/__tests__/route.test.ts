@@ -18,6 +18,7 @@ import {
   type UserContext,
 } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
+import { reloadEnv } from "../../../../src/env";
 
 const context = testContext();
 
@@ -419,6 +420,7 @@ describe("Public API v1 - Runs Endpoints", () => {
   describe("Concurrent Run Limit", () => {
     it("should return 429 when concurrent run limit is reached", async () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+      reloadEnv();
 
       // First run should succeed (creates running run)
       const run1 = await createTestV1Run(testAgentId, "First concurrent run");
@@ -444,6 +446,7 @@ describe("Public API v1 - Runs Endpoints", () => {
 
     it("should allow unlimited runs when limit is 0", async () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT", "0");
+      reloadEnv();
 
       // Create multiple runs - all should succeed
       const run1 = await createTestV1Run(testAgentId, "Run 1 with no limit");

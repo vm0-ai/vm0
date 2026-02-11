@@ -11,6 +11,7 @@ import {
   uniqueId,
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
+import { reloadEnv } from "../../../../../src/env";
 
 const context = testContext();
 
@@ -25,6 +26,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
 
     // Set CRON_SECRET for tests
     vi.stubEnv("CRON_SECRET", cronSecret);
+    reloadEnv();
 
     // Create test compose
     const { composeId } = await createTestCompose(uniqueId("cleanup"));
