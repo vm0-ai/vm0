@@ -293,8 +293,6 @@ export class Runner {
     const completeResult = await withRunnerTiming("complete", () =>
       completeJob(this.config.server.url, context, exitCode, error),
     );
-    logger.log(
-      `  Job ${context.runId} reported as ${completeResult.status}`,
-    );
+    logger.log(`  Job ${context.runId} reported as ${completeResult.status}`);
   }
 }
