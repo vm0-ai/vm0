@@ -93,9 +93,6 @@ export async function refreshAppHome(
     .limit(1);
   const agentName = compose?.name;
 
-  // Check if user is admin
-  const isAdmin = installation.adminSlackUserId === userId;
-
   // Fetch user email for display
   const userEmail = await getUserEmail(userLink.vm0UserId);
 
@@ -105,7 +102,6 @@ export async function refreshAppHome(
     vm0UserId: userLink.vm0UserId,
     userEmail,
     agentName,
-    isAdmin,
   });
   await publishAppHome(client, userId, view);
 }

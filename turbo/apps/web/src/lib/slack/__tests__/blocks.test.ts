@@ -1,146 +1,11 @@
 import { describe, it, expect } from "vitest";
-import type {
-  InputBlock,
-  ModalView,
-  SectionBlock,
-  StaticSelect,
-} from "@slack/web-api";
+import type { SectionBlock } from "@slack/web-api";
 import {
-  buildAgentManageModal,
   buildErrorMessage,
   buildLoginPromptMessage,
   buildHelpMessage,
   buildSuccessMessage,
 } from "../blocks";
-
-describe("buildAgentManageModal", () => {
-  it("should create a valid modal structure", () => {
-    const agents = [
-      {
-        id: "agent-1",
-        name: "My Coder",
-        requiredSecrets: [],
-        existingSecrets: [],
-        requiredVars: [],
-        existingVars: [],
-      },
-      {
-        id: "agent-2",
-        name: "My Analyst",
-        requiredSecrets: [],
-        existingSecrets: [],
-        requiredVars: [],
-        existingVars: [],
-      },
-    ];
-
-    // Without selected agent, submit button is shown
-    const modalWithoutSelection = buildAgentManageModal(agents) as ModalView;
-    expect(modalWithoutSelection.type).toBe("modal");
-    expect(modalWithoutSelection.callback_id).toBe("agent_manage_modal");
-    expect(modalWithoutSelection.title).toEqual({
-      type: "plain_text",
-      text: "Manage Agent",
-    });
-    // Submit button is always shown (required for input blocks)
-    expect(modalWithoutSelection.submit).toEqual({
-      type: "plain_text",
-      text: "Save",
-    });
-    expect(modalWithoutSelection.close).toEqual({
-      type: "plain_text",
-      text: "Cancel",
-    });
-
-    // With selected agent, submit button is shown
-    const modalWithSelection = buildAgentManageModal(
-      agents,
-      "agent-1",
-    ) as ModalView;
-    expect(modalWithSelection.submit).toEqual({
-      type: "plain_text",
-      text: "Save",
-    });
-  });
-
-  it("should include agent options in select", () => {
-    const agents = [
-      {
-        id: "agent-1",
-        name: "My Coder",
-        requiredSecrets: [],
-        existingSecrets: [],
-        requiredVars: [],
-        existingVars: [],
-      },
-      {
-        id: "agent-2",
-        name: "My Analyst",
-        requiredSecrets: [],
-        existingSecrets: [],
-        requiredVars: [],
-        existingVars: [],
-      },
-    ];
-
-    const modal = buildAgentManageModal(agents);
-    const agentSelectBlock = modal.blocks?.find(
-      (b) => "block_id" in b && b.block_id === "agent_select",
-    );
-
-    expect(agentSelectBlock).toBeDefined();
-    const inputBlock = agentSelectBlock as InputBlock;
-    const selectElement = inputBlock.element as StaticSelect;
-    const options = selectElement.options;
-    expect(options).toHaveLength(2);
-    expect(options?.[0]).toEqual({
-      text: { type: "plain_text", text: "My Coder" },
-      value: "agent-1",
-    });
-  });
-
-  it("should mark existing secrets as optional with checkmark", () => {
-    const agents = [
-      {
-        id: "agent-1",
-        name: "My Coder",
-        requiredSecrets: ["API_KEY", "NEW_SECRET"],
-        existingSecrets: ["API_KEY"],
-        requiredVars: [],
-        existingVars: [],
-      },
-    ];
-
-    const modal = buildAgentManageModal(agents, "agent-1") as ModalView;
-
-    // Find the existing secret input (API_KEY)
-    const existingSecretBlock = modal.blocks?.find(
-      (b) => "block_id" in b && b.block_id === "secret_API_KEY",
-    ) as InputBlock;
-    expect(existingSecretBlock).toBeDefined();
-    expect(existingSecretBlock.optional).toBe(true);
-    expect(existingSecretBlock.label).toMatchObject({
-      type: "plain_text",
-      text: "API_KEY ✓",
-    });
-    expect(existingSecretBlock.hint).toMatchObject({
-      type: "plain_text",
-      text: "Already configured in your account",
-    });
-
-    // Find the new secret input (NEW_SECRET)
-    const newSecretBlock = modal.blocks?.find(
-      (b) => "block_id" in b && b.block_id === "secret_NEW_SECRET",
-    ) as InputBlock;
-    expect(newSecretBlock).toBeDefined();
-    expect(newSecretBlock.optional).toBeUndefined();
-    expect(newSecretBlock.label).toMatchObject({
-      type: "plain_text",
-      text: "NEW_SECRET",
-    });
-    expect(newSecretBlock.hint).toBeUndefined();
-  });
-});
 
 describe("buildErrorMessage", () => {
   it("should create error message block", () => {
@@ -191,12 +56,12 @@ describe("buildHelpMessage", () => {
 
     expect(blocks.length).toBeGreaterThanOrEqual(3);
 
-    // Check for commands section (uses agent manage)
+    // Check for commands section
     const commandsBlock = blocks.find(
       (b) =>
         b.type === "section" &&
         "text" in b &&
-        b.text?.text?.includes("/vm0 agent manage"),
+        b.text?.text?.includes("/vm0 settings"),
     );
     expect(commandsBlock).toBeDefined();
 
@@ -208,25 +73,21 @@ describe("buildHelpMessage", () => {
     expect(usageBlock).toBeDefined();
   });
 
-  it("should use 'Connect' and 'Disconnect' descriptions for connect/disconnect commands", () => {
+  it("should list connect, disconnect, and settings commands", () => {
     const blocks = buildHelpMessage();
 
-    // Find the account section
-    const accountBlock = blocks.find(
+    const commandsBlock = blocks.find(
       (b) =>
         b.type === "section" &&
         "text" in b &&
         b.text?.text?.includes("/vm0 connect"),
     );
-    expect(accountBlock).toBeDefined();
+    expect(commandsBlock).toBeDefined();
 
-    const text = (accountBlock as SectionBlock).text?.text ?? "";
-    // Should use "Connect to VM0" not "Log in to VM0"
+    const text = (commandsBlock as SectionBlock).text?.text ?? "";
     expect(text).toContain("Connect to VM0");
     expect(text).toContain("Disconnect from VM0");
-    // Should NOT contain old descriptions
-    expect(text).not.toContain("Log in to VM0");
-    expect(text).not.toContain("Log out of VM0");
+    expect(text).toContain("/vm0 settings");
   });
 });
 

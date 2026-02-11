@@ -18,7 +18,7 @@ import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
 import { setupLoggers$ } from "./bootstrap/loggers.ts";
 import { setupPlaygroundPage$ } from "./playground-page/playground-page.ts";
 import { setupEnvironmentVariablesSetupPage$ } from "./environment-variables-setup/setup-page.ts";
-import { setupIntegrationsPage$ } from "./integrations-page/integrations-page.ts";
+import { setupSlackSettingsPage$ } from "./integrations-page/slack-settings-page.ts";
 
 const L = logger("Bootstrap");
 
@@ -44,8 +44,8 @@ const ROUTE_CONFIG = [
     setup: setupAuthPageWrapper(setupAgentsPage$),
   },
   {
-    path: "/integrations",
-    setup: setupScopeRequiredPageWrapper(setupIntegrationsPage$),
+    path: "/settings/slack",
+    setup: setupScopeRequiredPageWrapper(setupSlackSettingsPage$),
   },
   {
     path: "/environment-variables-setup",

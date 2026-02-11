@@ -24,7 +24,7 @@ SLACK_CLIENT_ID=op://Development/vm0-env-local/slack_client_id
 SLACK_CLIENT_SECRET=op://Development/vm0-env-local/slack_client_secret
 SLACK_SIGNING_SECRET=op://Development/vm0-env-local/slack_signing_secret
 SLACK_REDIRECT_BASE_URL=
-SLACK_DEFAULT_AGENT=yuma/deep-dive
+SLACK_DEFAULT_AGENT=op://Development/vm0-env-local/slack_default_agent
 
 # Required: Claude Code Version URL
 CLAUDE_CODE_VERSION_URL=https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/latest

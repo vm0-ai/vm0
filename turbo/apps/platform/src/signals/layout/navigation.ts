@@ -28,17 +28,6 @@ export const NAVIGATION_CONFIG = [
     label: "Observation",
     items: [{ id: "logs", label: "Logs", icon: "List", path: "/logs" }],
   },
-  {
-    label: "Integrations",
-    items: [
-      {
-        id: "integrations",
-        label: "Integrations",
-        icon: "Plug",
-        path: "/integrations",
-      },
-    ],
-  },
 ] as const satisfies readonly NavGroup[];
 
 export const FOOTER_NAV_ITEMS = [

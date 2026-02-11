@@ -1,10 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq, and, inArray } from "drizzle-orm";
-import {
-  extractVariableReferences,
-  groupVariablesBySource,
-  getConnectorProvidedSecretNames,
-} from "@vm0/core";
+import { eq, and } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
 import {
@@ -13,23 +8,14 @@ import {
 } from "../../../../src/lib/slack/verify";
 import { slackInstallations } from "../../../../src/db/schema/slack-installation";
 import { slackUserLinks } from "../../../../src/db/schema/slack-user-link";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../../../src/db/schema/agent-compose";
+import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import { decryptCredentialValue } from "../../../../src/lib/crypto/secrets-encryption";
 import {
   createSlackClient,
   getSlackRedirectBaseUrl,
-  isSlackInvalidAuthError,
   refreshAppHome,
-  resolveDefaultAgentComposeId,
 } from "../../../../src/lib/slack";
-import { listSecrets } from "../../../../src/lib/secret/secret-service";
-import { listVariables } from "../../../../src/lib/variable/variable-service";
 import {
-  buildAgentManageModal,
-  buildAgentComposeModal,
   buildHelpMessage,
   buildErrorMessage,
   buildSuccessMessage,
@@ -37,8 +23,6 @@ import {
 } from "../../../../src/lib/slack/blocks";
 import { getPlatformUrl } from "../../../../src/lib/url";
 import { logger } from "../../../../src/lib/logger";
-import { listModelProviders } from "../../../../src/lib/model-provider/model-provider-service";
-import { listConnectors } from "../../../../src/lib/connector/connector-service";
 import { removePermission } from "../../../../src/lib/agent/permission-service";
 import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 
@@ -50,11 +34,9 @@ const log = logger("slack:commands");
  * POST /api/slack/commands
  *
  * Handles /vm0 slash commands:
- * - /vm0 agent manage - Select workspace agent (admin only)
- * - /vm0 agent compose - Compose agent from GitHub URL (admin only)
- * - /vm0 settings - Configure secrets/vars for workspace agent
- * - /vm0 admin transfer @user - Transfer admin role
- * - /vm0 help - Show help message
+ * - /vm0 connect - Connect account
+ * - /vm0 disconnect - Disconnect account
+ * - /vm0 settings - Configure secrets/vars on the VM0 platform
  */
 
 interface SlackCommandPayload {
@@ -70,16 +52,6 @@ interface SlackCommandPayload {
   response_url: string;
   trigger_id: string;
   api_app_id: string;
-}
-
-/**
- * Check if a Slack user is the workspace admin
- */
-function isAdmin(
-  installation: typeof slackInstallations.$inferSelect,
-  slackUserId: string,
-): boolean {
-  return installation.adminSlackUserId === slackUserId;
 }
 
 /**
@@ -134,131 +106,35 @@ function verifyRequest(
 }
 
 /**
- * Handle agent subcommands
- */
-async function handleAgentCommand(
-  action: string,
-  installation: typeof slackInstallations.$inferSelect,
-  client: ReturnType<typeof createSlackClient>,
-  payload: SlackCommandPayload,
-  vm0UserId: string,
-): Promise<NextResponse> {
-  switch (action) {
-    case "compose":
-      return handleAgentCompose(installation, client, payload);
-
-    case "manage":
-      return handleAgentManage(installation, client, payload, vm0UserId);
-
-    // Legacy redirects
-    case "link":
-      return NextResponse.json({
-        response_type: "ephemeral",
-        blocks: buildErrorMessage(
-          "The `link` command has been replaced.\n\nUse `/vm0 agent manage` instead (admin only).",
-        ),
-      });
-
-    case "add":
-      return NextResponse.json({
-        response_type: "ephemeral",
-        blocks: buildErrorMessage(
-          "The `add` command has been replaced.\n\nUse `/vm0 agent manage` instead (admin only).",
-        ),
-      });
-
-    case "list":
-      return NextResponse.json({
-        response_type: "ephemeral",
-        blocks: buildErrorMessage(
-          "The `list` command has been removed.\n\nThe workspace has a single shared agent.",
-        ),
-      });
-
-    case "remove":
-    case "unlink":
-      return NextResponse.json({
-        response_type: "ephemeral",
-        blocks: buildErrorMessage(
-          "The `unlink` command has been removed.\n\nUse `/vm0 agent manage` to change the workspace agent (admin only).",
-        ),
-      });
-
-    case "update":
-      return NextResponse.json({
-        response_type: "ephemeral",
-        blocks: buildErrorMessage(
-          "The `update` command has been replaced.\n\nUse `/vm0 settings` instead.",
-        ),
-      });
-
-    default:
-      return NextResponse.json({
-        response_type: "ephemeral",
-        blocks: buildErrorMessage(
-          `Unknown agent command: \`${action}\`\n\nAvailable commands:\n• \`/vm0 agent manage\` (admin)\n• \`/vm0 agent compose\` (admin)`,
-        ),
-      });
-  }
-}
-
-/**
- * Handle settings subcommands
- */
-function handleSettingsCommand(action: string): NextResponse {
-  switch (action) {
-    case "setup":
-    case "":
-      return handleEnvironmentSetup();
-
-    default:
-      return NextResponse.json({
-        response_type: "ephemeral",
-        blocks: buildErrorMessage(
-          `Unknown settings command: \`${action}\`\n\nAvailable commands:\n• \`/vm0 settings\``,
-        ),
-      });
-  }
-}
-
-/**
- * Handle admin subcommands
- */
-async function handleAdminCommand(
-  action: string,
-  args: string[],
-  installation: typeof slackInstallations.$inferSelect,
-  payload: SlackCommandPayload,
-): Promise<NextResponse> {
-  switch (action) {
-    case "transfer":
-      return handleAdminTransfer(installation, payload, args.slice(2));
-
-    default:
-      return NextResponse.json({
-        response_type: "ephemeral",
-        blocks: buildErrorMessage(
-          `Unknown admin command: \`${action}\`\n\nAvailable commands:\n• \`/vm0 admin transfer @user\``,
-        ),
-      });
-  }
-}
-
-/**
  * Handle /vm0 connect command
  */
-function handleLoginCommand(
+async function handleLoginCommand(
   payload: SlackCommandPayload,
-  installation: { encryptedBotToken: string } | undefined,
+  installation: typeof slackInstallations.$inferSelect | undefined,
   userLink: { id: string; vm0UserId: string } | undefined,
   requestUrl: string,
-): NextResponse {
+): Promise<NextResponse> {
   // Already connected
-  if (userLink) {
+  if (userLink && installation) {
+    // Look up the workspace agent name
+    let agentName: string | undefined;
+    if (installation.defaultComposeId) {
+      const [compose] = await globalThis.services.db
+        .select({ name: agentComposes.name })
+        .from(agentComposes)
+        .where(eq(agentComposes.id, installation.defaultComposeId))
+        .limit(1);
+      agentName = compose?.name;
+    }
+
+    const agentLine = agentName
+      ? `Your workspace agent is *${agentName}*.`
+      : `No workspace agent configured yet.`;
+
     return NextResponse.json({
       response_type: "ephemeral",
       blocks: buildSuccessMessage(
-        "You are already connected.\n\nUse `/vm0 settings` to configure your agent or `/vm0 help` for more commands.",
+        `You are already connected.\n\n${agentLine}\nMention \`@VM0\` in any channel or send a DM to start chatting with your agent.`,
       ),
     });
   }
@@ -354,18 +230,9 @@ export async function POST(request: Request) {
 
   initServices();
 
-  // Parse command text first (before checking installation)
+  // Parse command text
   const args = payload.text.trim().split(/\s+/);
   const subCommand = args[0]?.toLowerCase() ?? "";
-  const action = args[1]?.toLowerCase() ?? "";
-
-  // Handle help command (doesn't require installation or linking)
-  if (subCommand === "help" || subCommand === "") {
-    return NextResponse.json({
-      response_type: "ephemeral",
-      blocks: buildHelpMessage(),
-    });
-  }
 
   // Get workspace installation
   const [installation] = await globalThis.services.db
@@ -373,6 +240,16 @@ export async function POST(request: Request) {
     .from(slackInstallations)
     .where(eq(slackInstallations.slackWorkspaceId, payload.team_id))
     .limit(1);
+
+  const isAdmin = installation?.adminSlackUserId === payload.user_id;
+
+  // Handle help command (doesn't require installation or linking)
+  if (subCommand === "help" || subCommand === "") {
+    return NextResponse.json({
+      response_type: "ephemeral",
+      blocks: buildHelpMessage({ isAdmin }),
+    });
+  }
 
   // Check if user is already linked
   const [userLink] = installation
@@ -388,9 +265,14 @@ export async function POST(request: Request) {
         .limit(1)
     : [];
 
-  // Handle login command
+  // Handle connect command
   if (subCommand === "connect") {
-    return handleLoginCommand(payload, installation, userLink, request.url);
+    return await handleLoginCommand(
+      payload,
+      installation,
+      userLink,
+      request.url,
+    );
   }
 
   // Check installation for other commands
@@ -407,7 +289,7 @@ export async function POST(request: Request) {
   );
   const client = createSlackClient(botToken);
 
-  // Handle logout command
+  // Handle disconnect command
   if (subCommand === "disconnect") {
     return handleDisconnect(userLink, installation, client, payload.user_id);
   }
@@ -420,214 +302,20 @@ export async function POST(request: Request) {
     });
   }
 
-  // Wrap commands that use Slack API in try/catch for invalid auth handling
-  try {
-    // Handle agent commands
-    if (subCommand === "agent") {
-      return await handleAgentCommand(
-        action,
-        installation,
-        client,
-        payload,
-        userLink.vm0UserId,
-      );
-    }
-
-    // Handle settings commands
-    if (subCommand === "settings") {
-      return handleSettingsCommand(action);
-    }
-
-    // Handle admin commands
-    if (subCommand === "admin") {
-      return await handleAdminCommand(action, args, installation, payload);
-    }
-  } catch (err) {
-    // If bot token is invalid, clear installation and prompt re-login
-    if (isSlackInvalidAuthError(err)) {
-      await globalThis.services.db
-        .delete(slackInstallations)
-        .where(eq(slackInstallations.slackWorkspaceId, payload.team_id));
-
-      return NextResponse.json({
-        response_type: "ephemeral",
-        blocks: buildErrorMessage(
-          "Your Slack app authorization has expired.\n\nPlease use `/vm0 connect` to reconnect.",
-        ),
-      });
-    }
-    throw err;
+  // Handle settings command
+  if (subCommand === "settings") {
+    return handleEnvironmentSetup();
   }
 
   // Unknown command
   return NextResponse.json({
     response_type: "ephemeral",
-    blocks: buildHelpMessage(),
+    blocks: buildHelpMessage({ isAdmin }),
   });
 }
 
 /**
- * Handle /vm0 agent compose - Open modal to compose agent from GitHub URL (admin only)
- */
-async function handleAgentCompose(
-  installation: typeof slackInstallations.$inferSelect,
-  client: ReturnType<typeof createSlackClient>,
-  payload: SlackCommandPayload,
-): Promise<NextResponse> {
-  if (!isAdmin(installation, payload.user_id)) {
-    return NextResponse.json({
-      response_type: "ephemeral",
-      blocks: buildErrorMessage("Only the workspace admin can compose agents."),
-    });
-  }
-
-  const modal = buildAgentComposeModal(payload.channel_id);
-
-  await client.views.open({
-    trigger_id: payload.trigger_id,
-    view: modal,
-  });
-
-  return new NextResponse(null, { status: 200 });
-}
-
-/**
- * Handle /vm0 agent manage - Open modal to select workspace agent (admin only)
- */
-async function handleAgentManage(
-  installation: typeof slackInstallations.$inferSelect,
-  client: ReturnType<typeof createSlackClient>,
-  payload: SlackCommandPayload,
-  vm0UserId: string,
-): Promise<NextResponse> {
-  if (!isAdmin(installation, payload.user_id)) {
-    return NextResponse.json({
-      response_type: "ephemeral",
-      blocks: buildErrorMessage(
-        "Only the workspace admin can manage the workspace agent.",
-      ),
-    });
-  }
-
-  // Fetch admin's available agents with their head version
-  const composes = await globalThis.services.db
-    .select({
-      id: agentComposes.id,
-      name: agentComposes.name,
-      headVersionId: agentComposes.headVersionId,
-    })
-    .from(agentComposes)
-    .where(eq(agentComposes.userId, vm0UserId));
-
-  // Include the platform default agent (from SLACK_DEFAULT_AGENT env var)
-  // so admin can always switch back to it
-  const platformDefaultComposeId = await resolveDefaultAgentComposeId();
-  if (
-    platformDefaultComposeId &&
-    !composes.some((c) => c.id === platformDefaultComposeId)
-  ) {
-    const [defaultCompose] = await globalThis.services.db
-      .select({
-        id: agentComposes.id,
-        name: agentComposes.name,
-        headVersionId: agentComposes.headVersionId,
-      })
-      .from(agentComposes)
-      .where(eq(agentComposes.id, platformDefaultComposeId))
-      .limit(1);
-    if (defaultCompose) {
-      composes.unshift(defaultCompose);
-    }
-  }
-
-  if (composes.length === 0) {
-    return NextResponse.json({
-      response_type: "ephemeral",
-      blocks: buildErrorMessage(
-        "You don't have any agents yet.\n\nUse `/vm0 agent compose` to create one from a GitHub URL first.",
-      ),
-    });
-  }
-
-  // Get compose versions to extract required secrets
-  const versionIds = composes
-    .map((c) => c.headVersionId)
-    .filter((id): id is string => id !== null);
-
-  const versions =
-    versionIds.length > 0
-      ? await globalThis.services.db
-          .select({
-            id: agentComposeVersions.id,
-            content: agentComposeVersions.content,
-          })
-          .from(agentComposeVersions)
-          .where(inArray(agentComposeVersions.id, versionIds))
-      : [];
-
-  // Get user's existing secrets, variables, and connectors
-  const [userSecrets, userVars, userConnectors] = await Promise.all([
-    listSecrets(vm0UserId),
-    listVariables(vm0UserId),
-    listConnectors(vm0UserId),
-  ]);
-  const connectorProvided = getConnectorProvidedSecretNames(
-    userConnectors.map((c) => c.type),
-  );
-  const existingSecretNames = new Set([
-    ...userSecrets.map((s) => s.name),
-    ...connectorProvided,
-  ]);
-  const existingVarNames = new Set(userVars.map((v) => v.name));
-
-  // Build map of compose ID to required secrets and vars
-  const versionMap = new Map(versions.map((v) => [v.id, v.content]));
-  const agentsWithSecrets = composes.map((c) => {
-    const content = c.headVersionId ? versionMap.get(c.headVersionId) : null;
-    const refs = content ? extractVariableReferences(content) : [];
-    const grouped = groupVariablesBySource(refs);
-    const requiredSecrets = grouped.secrets.map((s) => s.name);
-    const requiredVars = grouped.vars.map((v) => v.name);
-    return {
-      id: c.id,
-      name: c.name,
-      requiredSecrets,
-      existingSecrets: requiredSecrets.filter((name) =>
-        existingSecretNames.has(name),
-      ),
-      requiredVars,
-      existingVars: requiredVars.filter((name) => existingVarNames.has(name)),
-    };
-  });
-
-  // Check model provider status
-  const providers = await listModelProviders(vm0UserId);
-  const hasModelProvider = providers.length > 0;
-
-  // Pre-select current workspace agent if it's in the list
-  const currentAgentId = composes.find(
-    (c) => c.id === installation.defaultComposeId,
-  )?.id;
-
-  // Open modal with channel_id for confirmation message
-  const modal = buildAgentManageModal(
-    agentsWithSecrets,
-    currentAgentId,
-    payload.channel_id,
-    hasModelProvider,
-  );
-
-  await client.views.open({
-    trigger_id: payload.trigger_id,
-    view: modal,
-  });
-
-  // Return empty response (Slack expects this when opening modal)
-  return new NextResponse(null, { status: 200 });
-}
-
-/**
- * Handle /vm0 settings - Return link to Platform integrations page
+ * Handle /vm0 settings - Return link to Platform settings page
  */
 function handleEnvironmentSetup(): NextResponse {
   const platformUrl = getPlatformUrl();
@@ -639,92 +327,15 @@ function handleEnvironmentSetup(): NextResponse {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `:gear: *Settings*\nConfigure your environment variables and secrets on the Platform.`,
+          text: `:gear: *Settings*\nConfigure your environment variables and secrets on the VM0 platform.`,
         },
         accessory: {
           type: "button",
           text: { type: "plain_text", text: "Open Platform" },
-          url: `${platformUrl}/integrations`,
+          url: `${platformUrl}/settings?tab=integrations`,
           action_id: "open_platform_settings",
         },
       },
     ],
-  });
-}
-
-/**
- * Handle /vm0 admin transfer @user - Transfer admin role to another user
- */
-async function handleAdminTransfer(
-  installation: typeof slackInstallations.$inferSelect,
-  payload: SlackCommandPayload,
-  transferArgs: string[],
-): Promise<NextResponse> {
-  if (!isAdmin(installation, payload.user_id)) {
-    return NextResponse.json({
-      response_type: "ephemeral",
-      blocks: buildErrorMessage(
-        "Only the workspace admin can transfer the admin role.",
-      ),
-    });
-  }
-
-  // Parse @user mention from command text (Slack format: <@U12345> or <@U12345|username>)
-  const mentionText = transferArgs[0] ?? "";
-  const mentionMatch = mentionText.match(/^<@(U[A-Z0-9]+)(?:\|[^>]*)?>$/);
-  if (!mentionMatch) {
-    return NextResponse.json({
-      response_type: "ephemeral",
-      blocks: buildErrorMessage(
-        "Please mention the user to transfer admin to.\n\nUsage: `/vm0 admin transfer @user`",
-      ),
-    });
-  }
-
-  const targetSlackUserId = mentionMatch[1]!;
-
-  // Cannot transfer to self
-  if (targetSlackUserId === payload.user_id) {
-    return NextResponse.json({
-      response_type: "ephemeral",
-      blocks: buildErrorMessage("You are already the workspace admin."),
-    });
-  }
-
-  // Verify target user is connected
-  const [targetLink] = await globalThis.services.db
-    .select()
-    .from(slackUserLinks)
-    .where(
-      and(
-        eq(slackUserLinks.slackUserId, targetSlackUserId),
-        eq(slackUserLinks.slackWorkspaceId, payload.team_id),
-      ),
-    )
-    .limit(1);
-
-  if (!targetLink) {
-    return NextResponse.json({
-      response_type: "ephemeral",
-      blocks: buildErrorMessage(
-        "The target user is not connected to VM0.\n\nThey must use `/vm0 connect` first.",
-      ),
-    });
-  }
-
-  // Update admin
-  await globalThis.services.db
-    .update(slackInstallations)
-    .set({
-      adminSlackUserId: targetSlackUserId,
-      updatedAt: new Date(),
-    })
-    .where(eq(slackInstallations.id, installation.id));
-
-  return NextResponse.json({
-    response_type: "ephemeral",
-    blocks: buildSuccessMessage(
-      `Admin role has been transferred to <@${targetSlackUserId}>.`,
-    ),
   });
 }

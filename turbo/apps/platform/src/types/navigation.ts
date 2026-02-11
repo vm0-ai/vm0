@@ -17,7 +17,6 @@ type NavIconName =
   | "Files"
   | "SquareKey"
   | "Sparkles"
-  | "Plug"
   | "Settings";
 
 export interface NavItem {

@@ -1,322 +1,7 @@
-import type {
-  Block,
-  InputBlock,
-  KnownBlock,
-  View,
-  SectionBlock,
-} from "@slack/web-api";
+import type { Block, KnownBlock, View, SectionBlock } from "@slack/web-api";
 import { getPlatformUrl } from "../url";
 
 const SLACK_DOCS_URL = "https://docs.vm0.ai/docs/ecosystem/slack";
-
-interface AgentOption {
-  id: string;
-  name: string;
-  requiredSecrets: string[];
-  existingSecrets: string[];
-  requiredVars: string[];
-  existingVars: string[];
-}
-
-/**
- * Build an input block for a variable or secret value
- * Used by both manage and settings modals
- */
-function buildValueInputBlock(
-  blockIdPrefix: string,
-  name: string,
-  isExisting: boolean,
-  isRequired: boolean,
-): InputBlock {
-  const isOptional = !isRequired || isExisting;
-  return {
-    type: "input",
-    block_id: `${blockIdPrefix}_${name}`,
-    ...(isOptional && { optional: true }),
-    element: {
-      type: "plain_text_input",
-      action_id: "value",
-      placeholder: {
-        type: "plain_text",
-        text: isExisting
-          ? "Leave empty to keep current value"
-          : `Enter value for ${name}`,
-      },
-    },
-    label: {
-      type: "plain_text",
-      text: isExisting ? `${name} ✓` : name,
-    },
-    ...(isExisting && {
-      hint: {
-        type: "plain_text",
-        text: "Already configured in your account",
-      },
-    }),
-  };
-}
-
-/**
- * Build blocks for the agent select dropdown in the manage modal
- */
-function buildAgentSelectBlocks(
-  agents: AgentOption[],
-  selectedAgentId?: string,
-  hasModelProvider?: boolean,
-): (Block | KnownBlock)[] {
-  const blocks: (Block | KnownBlock)[] = [];
-  const selectedAgent = selectedAgentId
-    ? agents.find((a) => a.id === selectedAgentId)
-    : undefined;
-
-  blocks.push({
-    type: "input",
-    block_id: "agent_select",
-    dispatch_action: true,
-    element: {
-      type: "static_select",
-      action_id: "agent_select_action",
-      placeholder: {
-        type: "plain_text",
-        text: "Select an agent",
-      },
-      options: agents.map((agent) => ({
-        text: {
-          type: "plain_text" as const,
-          text: agent.name,
-        },
-        value: agent.id,
-      })),
-      ...(selectedAgentId && {
-        initial_option: {
-          text: {
-            type: "plain_text" as const,
-            text: selectedAgent?.name ?? "",
-          },
-          value: selectedAgentId,
-        },
-      }),
-    },
-    label: {
-      type: "plain_text",
-      text: "Agent",
-    },
-  });
-
-  // Model provider status (shown after agent selection, like vars/secrets)
-  if (selectedAgent && hasModelProvider !== undefined) {
-    blocks.push({ type: "divider" });
-    blocks.push({
-      type: "section",
-      text: { type: "mrkdwn", text: "*Model Provider*" },
-    });
-    blocks.push(...buildModelProviderStatusBlocks(hasModelProvider));
-  }
-
-  if (selectedAgent && selectedAgent.requiredVars.length > 0) {
-    blocks.push({ type: "divider" });
-    blocks.push({
-      type: "section",
-      text: { type: "mrkdwn", text: "*Variables*" },
-    });
-
-    const existingVarsSet = new Set(selectedAgent.existingVars);
-    for (const varName of selectedAgent.requiredVars) {
-      blocks.push(
-        buildValueInputBlock(
-          "var",
-          varName,
-          existingVarsSet.has(varName),
-          true,
-        ),
-      );
-    }
-  }
-
-  if (selectedAgent && selectedAgent.requiredSecrets.length > 0) {
-    blocks.push({ type: "divider" });
-    blocks.push({
-      type: "section",
-      text: { type: "mrkdwn", text: "*Secrets*" },
-    });
-
-    const existingSecretsSet = new Set(selectedAgent.existingSecrets);
-    for (const secretName of selectedAgent.requiredSecrets) {
-      blocks.push(
-        buildValueInputBlock(
-          "secret",
-          secretName,
-          existingSecretsSet.has(secretName),
-          true,
-        ),
-      );
-    }
-  }
-
-  if (
-    selectedAgent &&
-    selectedAgent.requiredVars.length === 0 &&
-    selectedAgent.requiredSecrets.length === 0
-  ) {
-    blocks.push({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: "_This agent doesn't require any variables or secrets._",
-      },
-    });
-  } else if (!selectedAgent) {
-    blocks.push({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: "_Select an agent to see required configuration._",
-      },
-    });
-  }
-
-  return blocks;
-}
-
-/**
- * Build blocks for the GitHub URL compose modal
- */
-function buildGithubUrlBlocks(): (Block | KnownBlock)[] {
-  return [
-    {
-      type: "input",
-      block_id: "github_url_input",
-      element: {
-        type: "plain_text_input",
-        action_id: "github_url_value",
-        placeholder: {
-          type: "plain_text",
-          text: "https://github.com/owner/repo",
-        },
-      },
-      label: {
-        type: "plain_text",
-        text: "GitHub URL",
-      },
-      hint: {
-        type: "plain_text",
-        text: "The repository must contain a vm0.yaml file",
-      },
-    },
-  ];
-}
-
-/**
- * Build the "Compose Agent" modal view
- *
- * Opens a modal with a GitHub URL input to compose a new agent.
- *
- * @param channelId - Channel ID to send confirmation message to
- * @returns Modal view definition
- */
-export function buildAgentComposeModal(channelId?: string): View {
-  return {
-    type: "modal",
-    callback_id: "agent_compose_modal",
-    private_metadata: JSON.stringify({ channelId }),
-    title: {
-      type: "plain_text",
-      text: "Compose Agent",
-    },
-    submit: {
-      type: "plain_text",
-      text: "Compose",
-    },
-    close: {
-      type: "plain_text",
-      text: "Cancel",
-    },
-    blocks: buildGithubUrlBlocks(),
-  };
-}
-
-/**
- * Build model provider status blocks for the agent manage modal
- */
-function buildModelProviderStatusBlocks(
-  hasModelProvider: boolean,
-): (Block | KnownBlock)[] {
-  if (hasModelProvider) {
-    return [
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: ":white_check_mark: Configured",
-        },
-      },
-    ];
-  }
-
-  const platformUrl = getPlatformUrl();
-  return [
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: ":warning: Not configured\nYou need to configure a model provider before your agent can run.",
-      },
-    },
-    {
-      type: "actions",
-      elements: [
-        {
-          type: "button",
-          text: { type: "plain_text", text: "Go to Settings" },
-          url: `${platformUrl}/settings`,
-          action_id: "model_provider_settings",
-        },
-        {
-          type: "button",
-          text: { type: "plain_text", text: "Refresh" },
-          action_id: "model_provider_refresh",
-        },
-      ],
-    },
-  ];
-}
-
-/**
- * Build the "Manage Agent" modal view
- *
- * Shows a dropdown to select from existing agents and configure secrets/vars.
- *
- * @param agents - List of available agents
- * @param selectedAgentId - Currently selected agent ID
- * @param channelId - Channel ID to send confirmation message to
- * @param hasModelProvider - Whether the user has a model provider configured
- * @returns Modal view definition
- */
-export function buildAgentManageModal(
-  agents: AgentOption[],
-  selectedAgentId?: string,
-  channelId?: string,
-  hasModelProvider = true,
-): View {
-  return {
-    type: "modal",
-    callback_id: "agent_manage_modal",
-    private_metadata: JSON.stringify({ channelId, hasModelProvider }),
-    title: {
-      type: "plain_text",
-      text: "Manage Agent",
-    },
-    submit: {
-      type: "plain_text",
-      text: "Save",
-    },
-    close: {
-      type: "plain_text",
-      text: "Cancel",
-    },
-    blocks: buildAgentSelectBlocks(agents, selectedAgentId, hasModelProvider),
-  };
-}
 
 /**
  * Build the App Home tab view
@@ -329,7 +14,6 @@ export function buildAppHomeView(options: {
   vm0UserId?: string;
   userEmail?: string;
   agentName?: string;
-  isAdmin?: boolean;
   loginUrl?: string;
 }): View {
   const blocks: (Block | KnownBlock)[] = [
@@ -416,7 +100,7 @@ export function buildAppHomeView(options: {
       accessory: {
         type: "button",
         text: { type: "plain_text", text: "Settings" },
-        url: `${getPlatformUrl()}/integrations`,
+        url: `${getPlatformUrl()}/settings?tab=integrations`,
         action_id: "home_environment_setup",
       },
     });
@@ -427,36 +111,6 @@ export function buildAppHomeView(options: {
         type: "mrkdwn",
         text: "_No agent configured yet._",
       },
-    });
-  }
-
-  // Admin section
-  if (options.isAdmin) {
-    blocks.push({ type: "divider" });
-
-    blocks.push({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: ":wrench: *Admin*",
-      },
-    });
-
-    blocks.push({
-      type: "actions",
-      elements: [
-        {
-          type: "button",
-          text: { type: "plain_text", text: "Manage Agent" },
-          action_id: "home_agent_manage",
-          style: "primary",
-        },
-        {
-          type: "button",
-          text: { type: "plain_text", text: "Compose Agent" },
-          action_id: "home_agent_compose",
-        },
-      ],
     });
   }
 
@@ -483,7 +137,7 @@ export function buildAppHomeView(options: {
     type: "section",
     text: {
       type: "mrkdwn",
-      text: "*Commands*\n\u2022 `/vm0 settings` - Configure secrets and variables\n\u2022 `/vm0 agent manage` - Select workspace agent (admin)\n\u2022 `/vm0 agent compose` - Compose agent from GitHub URL (admin)\n\u2022 `/vm0 admin transfer @user` - Transfer admin role (admin)",
+      text: "*Commands*\n\u2022 `/vm0 connect` - Connect to VM0\n\u2022 `/vm0 disconnect` - Disconnect from VM0\n\u2022 `/vm0 settings` - Configure secrets and variables",
     },
   });
 
@@ -638,7 +292,13 @@ export function buildWelcomeMessage(
  *
  * @returns Block Kit blocks
  */
-export function buildHelpMessage(): (Block | KnownBlock)[] {
+export function buildHelpMessage(options?: {
+  isAdmin?: boolean;
+}): (Block | KnownBlock)[] {
+  const settingsDesc = options?.isAdmin
+    ? "Configure secrets, variables, and select the workspace agent"
+    : "Configure secrets and variables";
+
   return [
     {
       type: "section",
@@ -654,21 +314,7 @@ export function buildHelpMessage(): (Block | KnownBlock)[] {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "*Account*\n\u2022 `/vm0 connect` - Connect to VM0\n\u2022 `/vm0 disconnect` - Disconnect from VM0",
-      },
-    },
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: "*Agent*\n\u2022 `/vm0 agent manage` - Select workspace agent (admin)\n\u2022 `/vm0 agent compose` - Compose an agent from GitHub URL (admin)\n\u2022 `/vm0 settings` - Configure secrets and variables",
-      },
-    },
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: "*Admin*\n\u2022 `/vm0 admin transfer @user` - Transfer admin role",
+        text: `*Commands*\n\u2022 \`/vm0 connect\` - Connect to VM0\n\u2022 \`/vm0 disconnect\` - Disconnect from VM0\n\u2022 \`/vm0 settings\` - ${settingsDesc}`,
       },
     },
     {

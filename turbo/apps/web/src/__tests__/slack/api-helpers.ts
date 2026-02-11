@@ -248,21 +248,6 @@ export async function givenUserHasAgent(
 }
 
 /**
- * Given a Slack user is the workspace admin.
- * Updates the installation to set the specified Slack user as admin.
- */
-export async function givenUserIsWorkspaceAdmin(
-  slackUserId: string,
-  slackWorkspaceId: string,
-): Promise<void> {
-  initServices();
-  await globalThis.services.db
-    .update(slackInstallations)
-    .set({ adminSlackUserId: slackUserId })
-    .where(eq(slackInstallations.slackWorkspaceId, slackWorkspaceId));
-}
-
-/**
  * Given the workspace agent has been removed (compose no longer exists).
  * Points defaultComposeId to a non-existent UUID so getWorkspaceAgent
  * naturally returns undefined. Uses session_replication_role to bypass

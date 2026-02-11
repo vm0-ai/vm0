@@ -1436,30 +1436,6 @@ export async function findUsageDaily(
 }
 
 /**
- * Find compose jobs by userId for verification.
- */
-export async function findTestComposeJobsByUser(userId: string) {
-  return globalThis.services.db
-    .select()
-    .from(composeJobs)
-    .where(eq(composeJobs.userId, userId));
-}
-
-/**
- * Find CLI tokens by userId and optional name filter.
- */
-export async function findTestCliTokensByUser(userId: string, name?: string) {
-  const conditions = [eq(cliTokens.userId, userId)];
-  if (name) {
-    conditions.push(eq(cliTokens.name, name));
-  }
-  return globalThis.services.db
-    .select()
-    .from(cliTokens)
-    .where(and(...conditions));
-}
-
-/**
  * Insert a slack_compose_requests record for test setup.
  */
 export async function createTestSlackComposeRequest(options: {

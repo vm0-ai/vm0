@@ -17,7 +17,6 @@ import {
   IconSquareKey,
   IconSparkles,
   IconSettings,
-  IconPlug,
   type Icon,
 } from "@tabler/icons-react";
 import {
@@ -47,7 +46,6 @@ const ICON_MAP = {
   Files: IconFiles,
   SquareKey: IconSquareKey,
   Sparkles: IconSparkles,
-  Plug: IconPlug,
   Settings: IconSettings,
 } as const satisfies Record<string, Icon>;
 
