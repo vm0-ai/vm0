@@ -327,6 +327,15 @@ async fn atomic_rename(tmp_path: &Path, target: &Path, mode: Option<u32>) -> Run
     result
 }
 
+#[allow(clippy::unreachable)] // arch validated by check_architecture
+fn select_sha<'a>(arch: &str, x86_64: &'a str, aarch64: &'a str) -> &'a str {
+    match arch {
+        "x86_64" => x86_64,
+        "aarch64" => aarch64,
+        _ => unreachable!(),
+    }
+}
+
 fn verify_sha256(actual_hex: &str, expected_hex: &str, label: &str) -> RunnerResult<()> {
     if actual_hex != expected_hex {
         return Err(RunnerError::Internal(format!(
@@ -380,12 +389,7 @@ async fn download_firecracker(paths: &HomePaths, arch: &str) -> RunnerResult<()>
     let sha_hex =
         download_and_extract(&url, "firecracker", &fc_entry, &tarball_path, &tmp_path).await?;
 
-    #[allow(clippy::unreachable)] // arch validated by check_architecture
-    let expected_sha = match arch {
-        "x86_64" => FIRECRACKER_SHA256_X86_64,
-        "aarch64" => FIRECRACKER_SHA256_AARCH64,
-        _ => unreachable!(),
-    };
+    let expected_sha = select_sha(arch, FIRECRACKER_SHA256_X86_64, FIRECRACKER_SHA256_AARCH64);
     verify_and_install(
         &sha_hex,
         expected_sha,
@@ -415,12 +419,7 @@ async fn download_kernel(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
     let tmp_path = kernel_path.with_extension(format!("tmp.{}", std::process::id()));
     let sha_hex = download_to_temp(&url, &tmp_path, "kernel").await?;
 
-    #[allow(clippy::unreachable)] // arch validated by check_architecture
-    let expected_sha = match arch {
-        "x86_64" => KERNEL_SHA256_X86_64,
-        "aarch64" => KERNEL_SHA256_AARCH64,
-        _ => unreachable!(),
-    };
+    let expected_sha = select_sha(arch, KERNEL_SHA256_X86_64, KERNEL_SHA256_AARCH64);
     verify_and_install(
         &sha_hex,
         expected_sha,
@@ -467,12 +466,7 @@ async fn download_mitmdump(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
     let sha_hex =
         download_and_extract(&url, "mitmdump", "mitmdump", &tarball_path, &tmp_path).await?;
 
-    #[allow(clippy::unreachable)] // arch validated by check_architecture
-    let expected_sha = match arch {
-        "x86_64" => MITMDUMP_SHA256_X86_64,
-        "aarch64" => MITMDUMP_SHA256_AARCH64,
-        _ => unreachable!(),
-    };
+    let expected_sha = select_sha(arch, MITMDUMP_SHA256_X86_64, MITMDUMP_SHA256_AARCH64);
     verify_and_install(
         &sha_hex,
         expected_sha,
