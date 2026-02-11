@@ -25,7 +25,9 @@ pub mod action {
 }
 
 pub mod flags {
-    #![allow(dead_code)]
+    // Ably protocol flag constants (complete set for ATTACHED responses).
+    // Only ATTACH_RESUME and MODE_SUBSCRIBE are used for sending; the
+    // others are kept for decoding server responses.
     pub const HAS_PRESENCE: i32 = 1;
     pub const HAS_BACKLOG: i32 = 2;
     pub const HAS_CHANNEL_RESUMED: i32 = 4;

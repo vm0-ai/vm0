@@ -10,7 +10,7 @@ use tokio_tungstenite::tungstenite;
 
 use crate::Error;
 use crate::protocol::{
-    AuthDetails, ProtocolMessage, action, build_attach_msg, decode_msg, encode_msg,
+    AuthDetails, ProtocolMessage, action, build_attach_msg, decode_msg, encode_msg, flags,
 };
 use crate::types::{Event, Message, TokenDetails, TokenFuture};
 
@@ -593,7 +593,17 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
                 p.conn_state.channel_serial = Some(serial);
             }
             p.conn_state.last_reattach_at = None;
-            tracing::info!(channel = ?msg.channel, "Channel attached");
+            let f = msg.flags.unwrap_or(0);
+            let resumed = f & flags::HAS_CHANNEL_RESUMED != 0;
+            let has_backlog = f & flags::HAS_BACKLOG != 0;
+            let has_presence = f & flags::HAS_PRESENCE != 0;
+            tracing::info!(
+                channel = ?msg.channel,
+                resumed,
+                has_backlog,
+                has_presence,
+                "Channel attached",
+            );
         }
         action::CONNECTED => {
             p.conn_state.update_from_connected(&msg);
