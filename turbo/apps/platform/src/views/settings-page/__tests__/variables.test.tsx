@@ -110,13 +110,13 @@ describe("variables tab", () => {
     // Fill in the form
     const nameInput = within(dialog).getByPlaceholderText("MY_VARIABLE");
     await user.click(nameInput);
-    await user.keyboard("MY_VAR");
+    await user.paste("MY_VAR");
 
     const valueInput = within(dialog).getByPlaceholderText(
       "Enter variable value",
     );
     await user.click(valueInput);
-    await user.keyboard("some-value");
+    await user.paste("some-value");
 
     // Submit
     const submitButton = within(dialog).getByRole("button", {
@@ -126,13 +126,10 @@ describe("variables tab", () => {
 
     await vi.waitFor(() => {
       expect(capturedBody).toBeTruthy();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
     expect(capturedBody!.name).toBe("MY_VAR");
     expect(capturedBody!.value).toBe("some-value");
-
-    await vi.waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    });
   });
 
   it("shows missing variables banner from URL required param", async () => {
