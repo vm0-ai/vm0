@@ -319,103 +319,6 @@ export function buildAgentManageModal(
 }
 
 /**
- * Build the "Settings" modal view
- *
- * Shows fields for configuring secrets and variables for a single agent.
- *
- * @param agent - The workspace agent with its required secrets/vars
- * @param channelId - Channel ID to send confirmation message to
- * @returns Modal view definition
- */
-export function buildEnvironmentSetupModal(
-  agent: AgentOption,
-  channelId?: string,
-): View {
-  const blocks: (Block | KnownBlock)[] = [];
-
-  // Agent name header
-  blocks.push({
-    type: "section",
-    text: {
-      type: "mrkdwn",
-      text: `:robot_face: *Agent: ${agent.name}*`,
-    },
-  });
-
-  // Variables
-  if (agent.requiredVars.length > 0) {
-    blocks.push({ type: "divider" });
-    blocks.push({
-      type: "section",
-      text: { type: "mrkdwn", text: "*Variables*" },
-    });
-
-    const existingVarsSet = new Set(agent.existingVars);
-    for (const varName of agent.requiredVars) {
-      blocks.push(
-        buildValueInputBlock(
-          "var",
-          varName,
-          existingVarsSet.has(varName),
-          true,
-        ),
-      );
-    }
-  }
-
-  // Secrets
-  if (agent.requiredSecrets.length > 0) {
-    blocks.push({ type: "divider" });
-    blocks.push({
-      type: "section",
-      text: { type: "mrkdwn", text: "*Secrets*" },
-    });
-
-    const existingSecretsSet = new Set(agent.existingSecrets);
-    for (const secretName of agent.requiredSecrets) {
-      blocks.push(
-        buildValueInputBlock(
-          "secret",
-          secretName,
-          existingSecretsSet.has(secretName),
-          true,
-        ),
-      );
-    }
-  }
-
-  // No vars or secrets
-  if (agent.requiredVars.length === 0 && agent.requiredSecrets.length === 0) {
-    blocks.push({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: "_This agent doesn't require any variables or secrets._",
-      },
-    });
-  }
-
-  return {
-    type: "modal",
-    callback_id: "environment_setup_modal",
-    private_metadata: JSON.stringify({ channelId }),
-    title: {
-      type: "plain_text",
-      text: "Settings",
-    },
-    submit: {
-      type: "plain_text",
-      text: "Save",
-    },
-    close: {
-      type: "plain_text",
-      text: "Cancel",
-    },
-    blocks,
-  };
-}
-
-/**
  * Build the App Home tab view
  *
  * @param options - Configuration for the home view
@@ -513,6 +416,7 @@ export function buildAppHomeView(options: {
       accessory: {
         type: "button",
         text: { type: "plain_text", text: "Settings" },
+        url: `${getPlatformUrl()}/integrations`,
         action_id: "home_environment_setup",
       },
     });

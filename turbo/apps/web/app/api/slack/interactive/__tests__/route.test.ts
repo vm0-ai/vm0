@@ -194,11 +194,8 @@ describe("POST /api/slack/interactive", () => {
       expect(mockClient.views.open).toHaveBeenCalled();
     });
 
-    it("opens environment setup modal when home_environment_setup is clicked", async () => {
+    it("acknowledges home_environment_setup click (button opens Platform URL directly)", async () => {
       const { userLink, installation } = await givenLinkedSlackUser();
-
-      const mockClient = vi.mocked(new WebClient(), true);
-      mockClient.views.open.mockClear();
 
       const body = buildInteractiveBody({
         type: "block_actions",
@@ -221,7 +218,6 @@ describe("POST /api/slack/interactive", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(200);
-      expect(mockClient.views.open).toHaveBeenCalled();
     });
 
     it("opens compose modal when home_agent_compose is clicked", async () => {

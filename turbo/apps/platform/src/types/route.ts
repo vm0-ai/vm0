@@ -5,4 +5,5 @@ export type RoutePath =
   | "/settings"
   | "/agents"
   | "/environment-variables-setup"
+  | "/integrations"
   | `/projects/${string}`;

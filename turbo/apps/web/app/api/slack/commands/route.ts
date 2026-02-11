@@ -34,8 +34,8 @@ import {
   buildErrorMessage,
   buildSuccessMessage,
   buildLoginMessage,
-  buildEnvironmentSetupModal,
 } from "../../../../src/lib/slack/blocks";
+import { getPlatformUrl } from "../../../../src/lib/url";
 import { logger } from "../../../../src/lib/logger";
 import { listModelProviders } from "../../../../src/lib/model-provider/model-provider-service";
 import { listConnectors } from "../../../../src/lib/connector/connector-service";
@@ -205,17 +205,11 @@ async function handleAgentCommand(
 /**
  * Handle settings subcommands
  */
-async function handleSettingsCommand(
-  action: string,
-  installation: typeof slackInstallations.$inferSelect,
-  client: ReturnType<typeof createSlackClient>,
-  payload: SlackCommandPayload,
-  vm0UserId: string,
-): Promise<NextResponse> {
+function handleSettingsCommand(action: string): NextResponse {
   switch (action) {
     case "setup":
     case "":
-      return handleEnvironmentSetup(installation, client, payload, vm0UserId);
+      return handleEnvironmentSetup();
 
     default:
       return NextResponse.json({
@@ -441,13 +435,7 @@ export async function POST(request: Request) {
 
     // Handle settings commands
     if (subCommand === "settings") {
-      return await handleSettingsCommand(
-        action,
-        installation,
-        client,
-        payload,
-        userLink.vm0UserId,
-      );
+      return handleSettingsCommand(action);
     }
 
     // Handle admin commands
@@ -639,93 +627,29 @@ async function handleAgentManage(
 }
 
 /**
- * Handle /vm0 settings - Open modal to configure secrets/vars for workspace agent
+ * Handle /vm0 settings - Return link to Platform integrations page
  */
-async function handleEnvironmentSetup(
-  installation: typeof slackInstallations.$inferSelect,
-  client: ReturnType<typeof createSlackClient>,
-  payload: SlackCommandPayload,
-  vm0UserId: string,
-): Promise<NextResponse> {
-  // Load the workspace agent compose
-  const [compose] = await globalThis.services.db
-    .select({
-      id: agentComposes.id,
-      name: agentComposes.name,
-      headVersionId: agentComposes.headVersionId,
-    })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, installation.defaultComposeId))
-    .limit(1);
+function handleEnvironmentSetup(): NextResponse {
+  const platformUrl = getPlatformUrl();
 
-  if (!compose) {
-    return NextResponse.json({
-      response_type: "ephemeral",
-      blocks: buildErrorMessage(
-        "The workspace agent could not be found. Please contact the workspace admin.",
-      ),
-    });
-  }
-
-  // Get compose version to extract required secrets/vars
-  const versions = compose.headVersionId
-    ? await globalThis.services.db
-        .select({
-          id: agentComposeVersions.id,
-          composeId: agentComposeVersions.composeId,
-          content: agentComposeVersions.content,
-        })
-        .from(agentComposeVersions)
-        .where(eq(agentComposeVersions.id, compose.headVersionId))
-        .limit(1)
-    : [];
-
-  // Get user's existing secrets, variables, and connectors
-  const [userSecrets, userVars, userConnectors] = await Promise.all([
-    listSecrets(vm0UserId),
-    listVariables(vm0UserId),
-    listConnectors(vm0UserId),
-  ]);
-  const connectorProvided = getConnectorProvidedSecretNames(
-    userConnectors.map((c) => c.type),
-  );
-  const existingSecretNames = new Set([
-    ...userSecrets.map((s) => s.name),
-    ...connectorProvided,
-  ]);
-  const existingVarNames = new Set(userVars.map((v) => v.name));
-
-  const version = versions[0];
-  const content = version ? version.content : null;
-  const refs = content ? extractVariableReferences(content) : [];
-  const grouped = groupVariablesBySource(refs);
-  const requiredSecrets = grouped.secrets.map((s) => s.name);
-  const requiredVars = grouped.vars.map((v) => v.name);
-
-  const agentWithSecrets = {
-    id: compose.id,
-    name: compose.name,
-    requiredSecrets,
-    existingSecrets: requiredSecrets.filter((name) =>
-      existingSecretNames.has(name),
-    ),
-    requiredVars,
-    existingVars: requiredVars.filter((name) => existingVarNames.has(name)),
-  };
-
-  // Open modal pre-selected to the workspace agent
-  const modal = buildEnvironmentSetupModal(
-    agentWithSecrets,
-    payload.channel_id,
-  );
-
-  await client.views.open({
-    trigger_id: payload.trigger_id,
-    view: modal,
+  return NextResponse.json({
+    response_type: "ephemeral",
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `:gear: *Settings*\nConfigure your environment variables and secrets on the Platform.`,
+        },
+        accessory: {
+          type: "button",
+          text: { type: "plain_text", text: "Open Platform" },
+          url: `${platformUrl}/integrations`,
+          action_id: "open_platform_settings",
+        },
+      },
+    ],
   });
-
-  // Return empty response (Slack expects this when opening modal)
-  return new NextResponse(null, { status: 200 });
 }
 
 /**

@@ -20,7 +20,6 @@ import {
 import {
   buildAgentManageModal,
   buildAgentComposeModal,
-  buildEnvironmentSetupModal,
 } from "../../../../src/lib/slack/blocks";
 import { decryptCredentialValue } from "../../../../src/lib/crypto/secrets-encryption";
 import {
@@ -166,77 +165,6 @@ export async function POST(request: Request) {
     default:
       return new Response("", { status: 200 });
   }
-}
-
-/**
- * Fetch workspace agent info for a given user
- */
-async function fetchWorkspaceAgentInfo(
-  composeId: string,
-  vm0UserId: string,
-): Promise<{
-  id: string;
-  name: string;
-  requiredSecrets: string[];
-  existingSecrets: string[];
-  requiredVars: string[];
-  existingVars: string[];
-} | null> {
-  const [compose] = await globalThis.services.db
-    .select({
-      id: agentComposes.id,
-      name: agentComposes.name,
-      headVersionId: agentComposes.headVersionId,
-    })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, composeId))
-    .limit(1);
-
-  if (!compose) return null;
-
-  // Get compose version
-  const versions = compose.headVersionId
-    ? await globalThis.services.db
-        .select({
-          id: agentComposeVersions.id,
-          content: agentComposeVersions.content,
-        })
-        .from(agentComposeVersions)
-        .where(eq(agentComposeVersions.id, compose.headVersionId))
-        .limit(1)
-    : [];
-
-  const [userSecrets, userVars, userConnectors] = await Promise.all([
-    listSecrets(vm0UserId),
-    listVariables(vm0UserId),
-    listConnectors(vm0UserId),
-  ]);
-  const connectorProvided = getConnectorProvidedSecretNames(
-    userConnectors.map((c) => c.type),
-  );
-  const existingSecretNames = new Set([
-    ...userSecrets.map((s) => s.name),
-    ...connectorProvided,
-  ]);
-  const existingVarNames = new Set(userVars.map((v) => v.name));
-
-  const version = versions[0];
-  const content = version ? version.content : null;
-  const refs = content ? extractVariableReferences(content) : [];
-  const grouped = groupVariablesBySource(refs);
-  const requiredSecrets = grouped.secrets.map((s) => s.name);
-  const requiredVars = grouped.vars.map((v) => v.name);
-
-  return {
-    id: compose.id,
-    name: compose.name,
-    requiredSecrets,
-    existingSecrets: requiredSecrets.filter((name) =>
-      existingSecretNames.has(name),
-    ),
-    requiredVars,
-    existingVars: requiredVars.filter((name) => existingVarNames.has(name)),
-  };
 }
 
 /**
@@ -489,9 +417,7 @@ async function dispatchBlockAction(
       }
       break;
     case "home_environment_setup":
-      if (payload.trigger_id) {
-        await handleHomeEnvironmentSetup(payload, payload.trigger_id);
-      }
+      // Button now opens Platform URL directly; no server action needed
       break;
     case "home_agent_manage":
       if (payload.trigger_id) {
@@ -543,29 +469,6 @@ async function refreshAppHomeForUser(
  *
  * Opens the settings modal for the workspace agent.
  */
-async function handleHomeEnvironmentSetup(
-  payload: SlackInteractivePayload,
-  triggerId: string,
-): Promise<void> {
-  const client = await getSlackClientForWorkspace(payload.team.id);
-  if (!client) return;
-
-  const userLink = await getUserLink(payload.user.id, payload.team.id);
-  if (!userLink) return;
-
-  const installation = await getInstallation(payload.team.id);
-  if (!installation) return;
-
-  const agent = await fetchWorkspaceAgentInfo(
-    installation.defaultComposeId,
-    userLink.vm0UserId,
-  );
-  if (!agent) return;
-
-  const modal = buildEnvironmentSetupModal(agent);
-  await client.views.open({ trigger_id: triggerId, view: modal });
-}
-
 /**
  * Handle agent manage button from App Home
  *
@@ -695,10 +598,6 @@ async function handleViewSubmission(
 
   if (callbackId === "agent_manage_modal") {
     return handleAgentManageSubmission(payload);
-  }
-
-  if (callbackId === "environment_setup_modal") {
-    return handleEnvironmentSetupSubmission(payload);
   }
 
   // Unknown callback - just acknowledge
@@ -1090,208 +989,4 @@ async function handleAgentManageSubmission(
 
   await refreshAppHomeForUser(payload.team.id, payload.user.id);
   return new Response("", { status: 200 });
-}
-
-/**
- * Extract secrets from form values (only non-empty values)
- */
-function extractSecretsFromFormValues(
-  values: ModalStateValues,
-): Record<string, string> {
-  const secrets: Record<string, string> = {};
-  for (const [blockId, block] of Object.entries(values)) {
-    if (blockId.startsWith("secret_")) {
-      const secretName = blockId.replace("secret_", "");
-      const value = block?.value?.value?.trim();
-      if (value) {
-        secrets[secretName] = value;
-      }
-    }
-  }
-  return secrets;
-}
-
-/**
- * Extract vars from form values (only non-empty values)
- */
-function extractVarsFromFormValues(
-  values: ModalStateValues,
-): Record<string, string> {
-  const vars: Record<string, string> = {};
-  for (const [blockId, block] of Object.entries(values)) {
-    if (blockId.startsWith("var_")) {
-      const varName = blockId.replace("var_", "");
-      const value = block?.value?.value?.trim();
-      if (value) {
-        vars[varName] = value;
-      }
-    }
-  }
-  return vars;
-}
-
-/**
- * Save variables and secrets from form submission
- */
-async function saveVarsAndSecrets(
-  userId: string,
-  agentName: string,
-  vars: Record<string, string>,
-  secrets: Record<string, string>,
-): Promise<{ savedVarNames: string[]; savedSecretNames: string[] }> {
-  const savedVarNames: string[] = [];
-  const savedSecretNames: string[] = [];
-
-  for (const [name, value] of Object.entries(vars)) {
-    await setVariable(
-      userId,
-      name,
-      value,
-      `Updated via Slack for ${agentName}`,
-    );
-    savedVarNames.push(name);
-  }
-
-  for (const [name, value] of Object.entries(secrets)) {
-    await setSecret(userId, name, value, `Updated via Slack for ${agentName}`);
-    savedSecretNames.push(name);
-  }
-
-  return { savedVarNames, savedSecretNames };
-}
-
-/**
- * Handle settings modal submission
- *
- * User saves secrets/vars for the workspace agent.
- */
-async function handleEnvironmentSetupSubmission(
-  payload: SlackInteractivePayload,
-): Promise<Response> {
-  const values = payload.view?.state?.values;
-  if (!values) {
-    return NextResponse.json({
-      response_action: "errors",
-      errors: { agent_info: "Missing form values" },
-    });
-  }
-
-  const channelId = extractChannelIdFromMetadata(
-    payload.view?.private_metadata,
-  );
-
-  // Get installation to find workspace agent
-  const installation = await getInstallation(payload.team.id);
-  if (!installation) {
-    return NextResponse.json({
-      response_action: "errors",
-      errors: { agent_info: "Workspace not found" },
-    });
-  }
-
-  // Get the workspace agent
-  const [compose] = await globalThis.services.db
-    .select({ name: agentComposes.name })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, installation.defaultComposeId))
-    .limit(1);
-
-  if (!compose) {
-    return NextResponse.json({
-      response_action: "errors",
-      errors: { agent_info: "Workspace agent not found" },
-    });
-  }
-
-  const userLink = await getUserLink(payload.user.id, payload.team.id);
-  if (!userLink) {
-    return NextResponse.json({
-      response_action: "errors",
-      errors: { agent_info: "Your account is not connected." },
-    });
-  }
-
-  const newVars = extractVarsFromFormValues(values);
-  const newSecrets = extractSecretsFromFormValues(values);
-  const hasVars = Object.keys(newVars).length > 0;
-  const hasSecrets = Object.keys(newSecrets).length > 0;
-
-  if (!hasVars && !hasSecrets) {
-    return NextResponse.json({
-      response_action: "errors",
-      errors: { agent_info: "No changes to save" },
-    });
-  }
-
-  const { savedVarNames, savedSecretNames } = await saveVarsAndSecrets(
-    userLink.vm0UserId,
-    compose.name.toLowerCase(),
-    newVars,
-    newSecrets,
-  );
-
-  if (channelId) {
-    await sendUpdateConfirmationMessage(
-      payload.team.id,
-      compose.name,
-      savedVarNames,
-      savedSecretNames,
-      channelId,
-      payload.user.id,
-    ).catch((error) => {
-      log.warn("Failed to send update confirmation message (non-critical)", {
-        error,
-      });
-    });
-  }
-
-  await refreshAppHomeForUser(payload.team.id, payload.user.id);
-  return new Response("", { status: 200 });
-}
-
-/**
- * Send confirmation message to channel after agent is updated (ephemeral - only visible to the user)
- */
-async function sendUpdateConfirmationMessage(
-  workspaceId: string,
-  agentName: string,
-  updatedVarNames: string[],
-  updatedSecretNames: string[],
-  channelId: string,
-  slackUserId: string,
-): Promise<void> {
-  const client = await getSlackClientForWorkspace(workspaceId);
-  if (!client) return;
-
-  // Build update summary
-  const updates: string[] = [];
-  if (updatedVarNames.length > 0) {
-    const varList = updatedVarNames.map((n) => `\`${n}\``).join(", ");
-    updates.push(
-      `variable${updatedVarNames.length > 1 ? "s" : ""}: ${varList}`,
-    );
-  }
-  if (updatedSecretNames.length > 0) {
-    const secretList = updatedSecretNames.map((n) => `\`${n}\``).join(", ");
-    updates.push(
-      `secret${updatedSecretNames.length > 1 ? "s" : ""}: ${secretList}`,
-    );
-  }
-
-  const updateSummary = updates.join(", ");
-
-  await client.chat.postEphemeral({
-    channel: channelId,
-    user: slackUserId,
-    text: `Agent "${agentName}" updated: ${updateSummary}`,
-    blocks: [
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `:white_check_mark: *Agent \`${agentName}\` updated:* ${updateSummary}`,
-        },
-      },
-    ],
-  });
 }

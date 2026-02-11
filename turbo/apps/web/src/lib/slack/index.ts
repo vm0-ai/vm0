@@ -82,7 +82,6 @@ export {
 // Block Kit builders
 export {
   buildAgentManageModal,
-  buildEnvironmentSetupModal,
   buildAppHomeView,
   buildErrorMessage,
   buildLoginPromptMessage,
