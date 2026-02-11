@@ -196,10 +196,6 @@ function FormState() {
           </div>
 
           <div className="flex flex-col gap-5 w-full">
-            {connectors.map((item) => (
-              <ConnectorCard key={item.connectorType} item={item} />
-            ))}
-
             {manualItems.map((item) => (
               <div key={item.name} className="flex flex-col gap-2 w-full">
                 <label className="text-sm font-medium leading-5 text-foreground px-1">
@@ -228,6 +224,10 @@ function FormState() {
                   </p>
                 )}
               </div>
+            ))}
+
+            {connectors.map((item) => (
+              <ConnectorCard key={item.connectorType} item={item} />
             ))}
           </div>
 
