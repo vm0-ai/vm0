@@ -333,7 +333,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut failed = 0usize;
 
     for tc in &cases {
-        // Publish
+        let t0 = tokio::time::Instant::now();
         publish_message(
             &client,
             rest_host,
@@ -354,7 +354,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 let id_ok = msg.id.is_some();
                 let ts_ok = msg.timestamp.is_some();
                 if name_ok && data_ok && id_ok && ts_ok {
-                    eprintln!("  PASS: {}", tc.label);
+                    eprintln!("  PASS: {} ({:?})", tc.label, t0.elapsed());
                     passed += 1;
                 } else {
                     eprintln!("  FAIL: {}", tc.label);
