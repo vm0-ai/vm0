@@ -6,8 +6,8 @@ import { server } from "../mocks/server";
 // Using vi.hoisted() ensures stubs run before module imports.
 //
 // All env vars are explicitly stubbed here for deterministic test behavior.
-// Note: DATABASE_URL and PLATFORM_URL are NOT stubbed because they differ
-// between environments (local dev vs CI) and come from .env / .env.local.
+// Note: DATABASE_URL is NOT stubbed because it differs between environments
+// (local dev vs CI) and comes from .env / .env.local.
 //
 // resetEnv() is called in vi.hoisted() for initial import-time validation AND
 // in beforeEach to re-apply defaults after Vitest's unstubEnvs auto-cleanup.
@@ -43,8 +43,8 @@ const resetEnv = vi.hoisted(() => {
     vi.stubEnv("SLACK_REDIRECT_BASE_URL", "https://test.example.com");
     // API URL for compose job webhooks
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
-    // Platform URL for settings page links
-    vi.stubEnv("PLATFORM_URL", "http://localhost:3001");
+    // Platform UI URL
+    vi.stubEnv("NEXT_PUBLIC_PLATFORM_URL", "http://localhost:3001");
     // Initialize Next.js after() callback queue (shared with test-helpers.ts flushAfter)
     globalThis.nextAfterCallbacks = [];
   };
