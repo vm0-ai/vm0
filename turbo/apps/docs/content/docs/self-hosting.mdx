@@ -1,0 +1,179 @@
+---
+title: Self-Hosting
+description: Deploy VM0 on your own infrastructure with Docker Compose
+---
+
+## Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) (v20.10+) and Docker Compose v2
+- [Node.js](https://nodejs.org/) (v20+) for installing the VM0 CLI
+- A model provider API key (e.g., Z.AI, Anthropic, OpenAI)
+
+## Quick Start
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/vm0-ai/vm0.git
+cd vm0/docker
+```
+
+### 2. Configure Environment
+
+Copy the example environment file and update the required passwords:
+
+```bash
+cp .env.example .env
+```
+
+Open `.env` and set the required values:
+
+```bash
+# Required: set secure passwords for the built-in PostgreSQL and MinIO
+DB_PASSWORD=your_secure_database_password
+MINIO_PASSWORD=your_secure_minio_password
+```
+
+<Callout type="info">
+  See the `.env.example` file for all available configuration options, including
+  external database/storage, port mapping, encryption keys, and Slack
+  integration.
+</Callout>
+
+### 3. Start the Stack
+
+```bash
+docker compose up -d
+```
+
+This starts all services: web app, PostgreSQL, MinIO (object storage), Caddy (reverse proxy), and a cron scheduler. The first start may take a minute while images are pulled and the database is initialized.
+
+### 4. Configure the CLI
+
+Set the API URL to point to your self-hosted instance. You can export it in your current shell or add it to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.) for persistence:
+
+```bash
+export VM0_API_URL=http://localhost:8080
+```
+
+Then authenticate and set up your model provider:
+
+```bash
+vm0 auth login
+vm0 model-provider setup
+```
+
+### 5. Run Your Agent
+
+You are now ready to use VM0 with your self-hosted instance:
+
+```bash
+mkdir my-agent && cd my-agent
+vm0 init
+vm0 cook "let's start working"
+```
+
+## Development Deployment
+
+If you want to build from source (e.g., after modifying the code), use the development compose file instead.
+
+### Build the Sandbox Image
+
+The sandbox image must be built separately. Run this on the first setup, or whenever you modify the sandbox Dockerfile:
+
+```bash
+docker compose -f docker-compose.dev.yml --profile build-only build sandbox
+```
+
+### Build and Start All Services
+
+```bash
+docker compose -f docker-compose.dev.yml up -d --build
+```
+
+This builds the `web`, `platform`, and `sandbox` images from source and starts the full stack.
+
+## Architecture Overview
+
+The self-hosted stack consists of the following services:
+
+| Service      | Description                                      | Port  |
+| ------------ | ------------------------------------------------ | ----- |
+| **web**      | Next.js application (API + UI)                   | -     |
+| **platform** | Platform management console                      | -     |
+| **caddy**    | Reverse proxy with automatic HTTPS               | 8080  |
+| **postgres** | PostgreSQL database                               | -     |
+| **minio**    | S3-compatible object storage                      | 9000  |
+| **cron**     | Periodic task scheduler (cleanup, schedules)      | -     |
+
+The `caddy` reverse proxy exposes the web app on port `8080` (configurable via `HTTP_PORT`) and the platform console on port `3001` (configurable via `PLATFORM_PORT`).
+
+## Configuration Reference
+
+### Required Variables
+
+| Variable         | Description                  | Default |
+| ---------------- | ---------------------------- | ------- |
+| `DB_PASSWORD`    | PostgreSQL password          | -       |
+| `MINIO_PASSWORD` | MinIO (object storage) password | -    |
+
+### Optional Variables
+
+| Variable                 | Description                                     | Default      |
+| ------------------------ | ----------------------------------------------- | ------------ |
+| `DOMAIN`                 | Domain for Caddy reverse proxy                  | `localhost`  |
+| `DB_USER`                | PostgreSQL username                              | `vm0`        |
+| `DB_NAME`                | PostgreSQL database name                         | `vm0`        |
+| `HTTP_PORT`              | HTTP port for Caddy                              | `8080`       |
+| `PLATFORM_PORT`          | Platform console port                            | `3001`       |
+| `SECRETS_ENCRYPTION_KEY` | 64-char hex key (auto-generated if empty)        | auto         |
+| `CONCURRENT_RUN_LIMIT`   | Max concurrent agent runs (0 = unlimited)        | `0`          |
+| `DOCKER_SANDBOX_MEMORY`  | Memory limit per sandbox container               | `2g`         |
+| `DOCKER_SANDBOX_CPUS`    | CPU limit per sandbox container                  | `2`          |
+
+### External Services (Optional)
+
+You can replace the built-in PostgreSQL and MinIO with external services:
+
+```bash
+# External database
+DATABASE_URL=postgresql://user:pass@host:5432/dbname
+
+# External S3-compatible storage
+S3_ENDPOINT=https://s3.amazonaws.com
+R2_ACCESS_KEY_ID=your_key
+R2_SECRET_ACCESS_KEY=your_secret
+R2_USER_STORAGES_BUCKET_NAME=your_bucket
+```
+
+## Troubleshooting
+
+### Docker Socket Permission Error
+
+If you see `connect EACCES /var/run/docker.sock`, the entrypoint script automatically handles Docker socket permissions across different environments (Linux, macOS Docker Desktop, OrbStack, Windows WSL). Make sure the Docker socket is mounted correctly in `docker-compose.web-base.yml`.
+
+### Container Logs
+
+Check individual service logs for debugging:
+
+```bash
+# All services
+docker compose logs -f
+
+# Specific service
+docker compose logs -f web
+```
+
+### Reset Everything
+
+To start fresh, remove all containers, volumes, and rebuild:
+
+```bash
+docker compose down -v
+docker compose up -d
+```
+
+<Callout type="warn">
+  This will delete all data including the database and object storage. Back up
+  your data before running this command.
+</Callout>
