@@ -161,8 +161,8 @@ mod tests {
             flags: Some(flags::MODE_SUBSCRIBE),
             ..Default::default()
         };
-        let data = encode_msg(&msg).unwrap_or_default();
-        let decoded = decode_msg(&data).unwrap_or_default();
+        let data = encode_msg(&msg).unwrap();
+        let decoded = decode_msg(&data).unwrap();
         assert_eq!(decoded.action, action::ATTACH);
         assert_eq!(decoded.channel.as_deref(), Some("test-channel"));
         assert_eq!(decoded.flags, Some(flags::MODE_SUBSCRIBE));
@@ -174,8 +174,8 @@ mod tests {
             action: action::CLOSE,
             ..Default::default()
         };
-        let data = encode_msg(&msg).unwrap_or_default();
-        let decoded = decode_msg(&data).unwrap_or_default();
+        let data = encode_msg(&msg).unwrap();
+        let decoded = decode_msg(&data).unwrap();
         assert_eq!(decoded.action, action::CLOSE);
     }
 
@@ -188,8 +188,8 @@ mod tests {
             }),
             ..Default::default()
         };
-        let data = encode_msg(&msg).unwrap_or_default();
-        let decoded = decode_msg(&data).unwrap_or_default();
+        let data = encode_msg(&msg).unwrap();
+        let decoded = decode_msg(&data).unwrap();
         assert_eq!(decoded.action, action::AUTH);
         assert_eq!(
             decoded.auth.as_ref().map(|a| a.access_token.as_str()),
@@ -212,16 +212,13 @@ mod tests {
             }),
             ..Default::default()
         };
-        let data = encode_msg(&msg).unwrap_or_default();
-        let decoded = decode_msg(&data).unwrap_or_default();
+        let data = encode_msg(&msg).unwrap();
+        let decoded = decode_msg(&data).unwrap();
         assert_eq!(decoded.action, action::CONNECTED);
         assert_eq!(decoded.connection_id.as_deref(), Some("abc123"));
         assert_eq!(decoded.connection_key.as_deref(), Some("abc123!key"));
         assert_eq!(decoded.connection_serial, Some(-1));
-        let details = decoded.connection_details.as_ref();
-        assert!(details.is_some());
-        let default_details = ConnectionDetails::default();
-        let details = details.unwrap_or(&default_details);
+        let details = decoded.connection_details.as_ref().unwrap();
         assert_eq!(details.connection_state_ttl, Some(120000));
         assert_eq!(details.max_idle_interval, Some(15000));
     }
@@ -242,14 +239,11 @@ mod tests {
             }]),
             ..Default::default()
         };
-        let data = encode_msg(&msg).unwrap_or_default();
-        let decoded = decode_msg(&data).unwrap_or_default();
+        let data = encode_msg(&msg).unwrap();
+        let decoded = decode_msg(&data).unwrap();
         assert_eq!(decoded.action, action::MESSAGE);
         assert_eq!(decoded.channel.as_deref(), Some("runner-group:test"));
-        let messages = decoded.messages.as_ref();
-        assert!(messages.is_some());
-        let empty_vec = Vec::new();
-        let messages = messages.unwrap_or(&empty_vec);
+        let messages = decoded.messages.as_ref().unwrap();
         assert_eq!(messages.len(), 1);
         if let Some(m) = messages.first() {
             assert_eq!(m.name.as_deref(), Some("job"));
@@ -269,8 +263,8 @@ mod tests {
             action: action::HEARTBEAT,
             ..Default::default()
         };
-        let data = encode_msg(&msg).unwrap_or_default();
-        let decoded = decode_msg(&data).unwrap_or_default();
+        let data = encode_msg(&msg).unwrap();
+        let decoded = decode_msg(&data).unwrap();
         assert_eq!(decoded.action, action::HEARTBEAT);
     }
 
@@ -285,13 +279,10 @@ mod tests {
             }),
             ..Default::default()
         };
-        let data = encode_msg(&msg).unwrap_or_default();
-        let decoded = decode_msg(&data).unwrap_or_default();
+        let data = encode_msg(&msg).unwrap();
+        let decoded = decode_msg(&data).unwrap();
         assert_eq!(decoded.action, action::ERROR);
-        let err = decoded.error.as_ref();
-        assert!(err.is_some());
-        let default_err = ErrorInfo::default();
-        let err = err.unwrap_or(&default_err);
+        let err = decoded.error.as_ref().unwrap();
         assert_eq!(err.code, 40142);
         assert_eq!(err.status_code, Some(401));
         assert_eq!(err.message, "Token expired");
@@ -308,8 +299,8 @@ mod tests {
             }),
             ..Default::default()
         };
-        let data = encode_msg(&msg).unwrap_or_default();
-        let decoded = decode_msg(&data).unwrap_or_default();
+        let data = encode_msg(&msg).unwrap();
+        let decoded = decode_msg(&data).unwrap();
         assert_eq!(decoded.action, action::DISCONNECTED);
         assert_eq!(decoded.error.as_ref().map(|e| e.code), Some(80003));
     }
@@ -325,8 +316,8 @@ mod tests {
             params: Some(params),
             ..Default::default()
         };
-        let data = encode_msg(&msg).unwrap_or_default();
-        let decoded = decode_msg(&data).unwrap_or_default();
+        let data = encode_msg(&msg).unwrap();
+        let decoded = decode_msg(&data).unwrap();
         assert_eq!(decoded.action, action::ATTACH);
         assert_eq!(
             decoded
@@ -393,7 +384,7 @@ mod tests {
         let msg = build_attach_msg("my-channel", None, Some("serial-abc"));
         assert_eq!(msg.action, action::ATTACH);
         assert_eq!(msg.channel_serial.as_deref(), Some("serial-abc"));
-        let f = msg.flags.unwrap_or(0);
+        let f = msg.flags.unwrap();
         assert_ne!(f & flags::ATTACH_RESUME, 0);
         assert_ne!(f & flags::MODE_SUBSCRIBE, 0);
     }
@@ -401,7 +392,7 @@ mod tests {
     #[test]
     fn build_attach_msg_without_channel_serial_no_resume_flag() {
         let msg = build_attach_msg("my-channel", None, None);
-        let f = msg.flags.unwrap_or(0);
+        let f = msg.flags.unwrap();
         assert_eq!(f & flags::ATTACH_RESUME, 0);
         assert_ne!(f & flags::MODE_SUBSCRIBE, 0);
     }

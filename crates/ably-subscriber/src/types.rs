@@ -133,12 +133,12 @@ mod tests {
             ttl: Some(3600000),
             client_id: None,
         };
-        let json = serde_json::to_string(&tr).unwrap_or_default();
+        let json = serde_json::to_string(&tr).unwrap();
         assert!(json.contains("keyName"));
         assert!(json.contains("xVLyHw.mDYnFA"));
         assert!(!json.contains("clientId")); // None → skipped
 
-        let parsed: TokenRequest = serde_json::from_str(&json).unwrap_or_else(|_| tr.clone());
+        let parsed: TokenRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.key_name, "xVLyHw.mDYnFA");
         assert_eq!(parsed.ttl, Some(3600000));
     }
@@ -152,7 +152,7 @@ mod tests {
             "expires": 1700003600000,
             "capability": "{\"*\":[\"*\"]}"
         }"#;
-        let td: TokenDetails = serde_json::from_str(json).unwrap_or_default();
+        let td: TokenDetails = serde_json::from_str(json).unwrap();
         assert_eq!(td.token, "xVLyHw.some-token-string");
         assert_eq!(td.expires, 1700003600000);
         assert_eq!(td.issued, 1700000000000);

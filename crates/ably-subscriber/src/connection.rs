@@ -748,8 +748,7 @@ mod tests {
     #[test]
     fn build_ws_url_basic() {
         let url = build_ws_url("realtime.ably.io", "my-token", None);
-        assert!(url.is_ok());
-        let url = url.unwrap_or_default();
+        let url = url.unwrap();
         assert!(url.starts_with("wss://realtime.ably.io/"));
         assert!(url.contains("access_token=my-token"));
         assert!(url.contains("format=msgpack"));
@@ -763,8 +762,7 @@ mod tests {
     #[test]
     fn build_ws_url_with_resume() {
         let url = build_ws_url("realtime.ably.io", "my-token", Some("conn-key!abc"));
-        assert!(url.is_ok());
-        let url = url.unwrap_or_default();
+        let url = url.unwrap();
         assert!(url.contains("resume=conn-key"));
         assert!(!url.contains("connection_serial"));
     }
@@ -772,8 +770,7 @@ mod tests {
     #[test]
     fn build_ws_url_custom_host() {
         let url = build_ws_url("sandbox-realtime.ably.io", "tok", None);
-        assert!(url.is_ok());
-        let url = url.unwrap_or_default();
+        let url = url.unwrap();
         assert!(url.starts_with("wss://sandbox-realtime.ably.io/"));
     }
 
