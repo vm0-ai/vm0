@@ -6,6 +6,7 @@ import {
   givenLinkedSlackUser,
   givenSlackWorkspaceInstalled,
   givenUserHasAgent,
+  givenWorkspaceAgentUnavailable,
 } from "../../../../../src/__tests__/slack/api-helpers";
 import { POST } from "../route";
 import {
@@ -275,14 +276,7 @@ describe("POST /api/slack/events", () => {
     it("should inform user the workspace agent is not available", async () => {
       // Given I am a linked Slack user whose workspace agent is unavailable
       const { userLink, installation } = await givenLinkedSlackUser();
-
-      // Mock getWorkspaceAgent to return undefined (simulates deleted/invalid compose)
-      const sharedModule = await import(
-        "../../../../../src/lib/slack/handlers/shared"
-      );
-      vi.spyOn(sharedModule, "getWorkspaceAgent").mockResolvedValueOnce(
-        undefined,
-      );
+      await givenWorkspaceAgentUnavailable(installation.slackWorkspaceId);
 
       // When I @mention the VM0 bot
       const request = createSlackEventRequest({
@@ -516,14 +510,7 @@ describe("POST /api/slack/events", () => {
     it("should inform user the workspace agent is not available", async () => {
       // Given I am a linked Slack user whose workspace agent is unavailable
       const { userLink, installation } = await givenLinkedSlackUser();
-
-      // Mock getWorkspaceAgent to return undefined (simulates deleted/invalid compose)
-      const sharedModule = await import(
-        "../../../../../src/lib/slack/handlers/shared"
-      );
-      vi.spyOn(sharedModule, "getWorkspaceAgent").mockResolvedValueOnce(
-        undefined,
-      );
+      await givenWorkspaceAgentUnavailable(installation.slackWorkspaceId);
 
       // When I send a DM to the bot
       const request = createSlackDmEventRequest({

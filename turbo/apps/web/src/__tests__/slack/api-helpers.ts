@@ -7,12 +7,16 @@
  * External APIs (Slack OAuth, Slack Web API) are mocked via vi.mock("@slack/web-api")
  * in setup.ts — all `new WebClient()` calls return the same singleton mock object.
  */
+import crypto from "crypto";
 import { vi } from "vitest";
 import { WebClient } from "@slack/web-api";
+import { eq, and, sql } from "drizzle-orm";
 import { mockClerk } from "../clerk-mock";
 import { createTestCompose, createTestScope } from "../api-test-helpers";
 import { uniqueId } from "../test-helpers";
 import { initServices } from "../../lib/init-services";
+import { slackUserLinks } from "../../db/schema/slack-user-link";
+import { slackInstallations } from "../../db/schema/slack-installation";
 
 // Import route handlers
 import { GET as oauthCallbackRoute } from "../../../app/api/slack/oauth/callback/route";
@@ -182,8 +186,6 @@ export async function givenLinkedSlackUser(
 
   // Query the created user link to get the id
   initServices();
-  const { slackUserLinks } = await import("../../db/schema/slack-user-link");
-  const { eq, and } = await import("drizzle-orm");
   const [link] = await globalThis.services.db
     .select({ id: slackUserLinks.id })
     .from(slackUserLinks)
@@ -227,10 +229,6 @@ export async function givenUserHasAgent(
 
   // Update the workspace's default agent
   initServices();
-  const { slackInstallations } = await import(
-    "../../db/schema/slack-installation"
-  );
-  const { eq } = await import("drizzle-orm");
   await globalThis.services.db
     .update(slackInstallations)
     .set({ defaultComposeId: composeId })
@@ -258,12 +256,31 @@ export async function givenUserIsWorkspaceAdmin(
   slackWorkspaceId: string,
 ): Promise<void> {
   initServices();
-  const { slackInstallations } = await import(
-    "../../db/schema/slack-installation"
-  );
-  const { eq } = await import("drizzle-orm");
   await globalThis.services.db
     .update(slackInstallations)
     .set({ adminSlackUserId: slackUserId })
     .where(eq(slackInstallations.slackWorkspaceId, slackWorkspaceId));
+}
+
+/**
+ * Given the workspace agent has been removed (compose no longer exists).
+ * Points defaultComposeId to a non-existent UUID so getWorkspaceAgent
+ * naturally returns undefined. Uses session_replication_role to bypass
+ * the FK constraint (this is a test-only technique).
+ */
+export async function givenWorkspaceAgentUnavailable(
+  slackWorkspaceId: string,
+): Promise<void> {
+  initServices();
+  const nonExistentId = crypto.randomUUID();
+  await globalThis.services.db.execute(
+    sql`SET session_replication_role = 'replica'`,
+  );
+  await globalThis.services.db
+    .update(slackInstallations)
+    .set({ defaultComposeId: nonExistentId })
+    .where(eq(slackInstallations.slackWorkspaceId, slackWorkspaceId));
+  await globalThis.services.db.execute(
+    sql`SET session_replication_role = 'origin'`,
+  );
 }
