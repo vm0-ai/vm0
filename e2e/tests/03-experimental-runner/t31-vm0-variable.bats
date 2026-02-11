@@ -96,9 +96,6 @@ teardown() {
     if [[ -z "$VM0_API_URL" ]]; then
         skip "VM0_API_URL not set"
     fi
-    if [[ -z "$RUNNER_GROUP" ]]; then
-        skip "RUNNER_GROUP not set"
-    fi
 
     # Create unique identifiers for this test
     local unique_id="$(date +%s%3N)-$RANDOM"
@@ -168,9 +165,6 @@ EOF
 @test "vm0 run CLI vars override server-stored variables" {
     if [[ -z "$VM0_API_URL" ]]; then
         skip "VM0_API_URL not set"
-    fi
-    if [[ -z "$RUNNER_GROUP" ]]; then
-        skip "RUNNER_GROUP not set"
     fi
 
     # Create unique identifiers for this test

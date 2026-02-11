@@ -12,13 +12,6 @@
 load '../../helpers/setup'
 
 setup() {
-    if [[ -z "$VM0_API_URL" ]]; then
-        skip "VM0_API_URL not set"
-    fi
-    if [[ -z "$RUNNER_GROUP" ]]; then
-        skip "RUNNER_GROUP not set"
-    fi
-
     # Create temporary test directory
     export TEST_DIR="$(mktemp -d)"
     # Use UUID for reliable uniqueness in parallel test runs

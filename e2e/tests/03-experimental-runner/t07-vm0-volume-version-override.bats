@@ -9,13 +9,6 @@
 load '../../helpers/setup'
 
 setup_file() {
-    if [[ -z "$VM0_API_URL" ]]; then
-        skip "VM0_API_URL not set"
-    fi
-    if [[ -z "$RUNNER_GROUP" ]]; then
-        skip "RUNNER_GROUP not set"
-    fi
-
     # Unique agent name for this test file - must be generated in setup_file()
     # and exported to persist across test cases
     export AGENT_NAME="e2e-t07-$(date +%s%3N)-$RANDOM"
@@ -71,13 +64,6 @@ EOF
 }
 
 setup() {
-    if [[ -z "$VM0_API_URL" ]]; then
-        skip "VM0_API_URL not set"
-    fi
-    if [[ -z "$RUNNER_GROUP" ]]; then
-        skip "RUNNER_GROUP not set"
-    fi
-
     # Per-test setup: create unique artifact name
     # VOLUME_ALIAS is the key in the config's volumes section (used for --volume-version flag)
     # VOLUME_DIR is the actual directory path for the volume
