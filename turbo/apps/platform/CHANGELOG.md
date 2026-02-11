@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.56.4](https://github.com/vm0-ai/vm0/compare/platform-v0.56.3...platform-v0.56.4) (2026-02-11)
+
+
+### Bug Fixes
+
+* **platform:** enforce MSW onUnhandledRequest error mode ([#2791](https://github.com/vm0-ai/vm0/issues/2791)) ([ce092a5](https://github.com/vm0-ai/vm0/commit/ce092a514d198fef5cb90b0ae72818c874c2a383))
+
 ## [0.56.3](https://github.com/vm0-ai/vm0/compare/platform-v0.56.2...platform-v0.56.3) (2026-02-10)
 
 
