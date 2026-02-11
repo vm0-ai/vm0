@@ -1,12 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-
-vi.mock("../../env", async (importOriginal) => {
-  const original = await importOriginal<typeof import("../../env")>();
-  return { ...original, isSelfHosted: false };
-});
-
 import { getPlatformUrl } from "../url";
-import * as envModule from "../../env";
 
 describe("url", () => {
   describe("getPlatformUrl (SaaS mode)", () => {
@@ -88,11 +81,10 @@ describe("url", () => {
 
   describe("getPlatformUrl (self-hosted mode)", () => {
     beforeEach(() => {
-      vi.mocked(envModule).isSelfHosted = true as never;
+      vi.stubEnv("SELF_HOSTED", "true");
     });
 
     afterEach(() => {
-      vi.mocked(envModule).isSelfHosted = false as never;
       vi.unstubAllEnvs();
       vi.unstubAllGlobals();
     });

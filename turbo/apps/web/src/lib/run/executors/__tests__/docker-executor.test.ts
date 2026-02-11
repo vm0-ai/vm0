@@ -56,7 +56,10 @@ describe("createScriptsTarBuffer", () => {
     const tar = createScriptsTarBuffer(scripts);
 
     // Read the filename from the first 100 bytes of the header
-    const nameField = tar.subarray(0, 100).toString("utf-8").replace(/\0/g, "");
+    const nameField = tar
+      .subarray(0, 100)
+      .toString("utf-8")
+      .replaceAll("\0", "");
     expect(nameField).toBe("usr/local/bin/agent.mjs");
   });
 
@@ -64,7 +67,10 @@ describe("createScriptsTarBuffer", () => {
     const scripts = [{ content: "data", path: "relative/path.sh" }];
     const tar = createScriptsTarBuffer(scripts);
 
-    const nameField = tar.subarray(0, 100).toString("utf-8").replace(/\0/g, "");
+    const nameField = tar
+      .subarray(0, 100)
+      .toString("utf-8")
+      .replaceAll("\0", "");
     expect(nameField).toBe("relative/path.sh");
   });
 
@@ -77,7 +83,7 @@ describe("createScriptsTarBuffer", () => {
     const sizeField = tar
       .subarray(124, 136)
       .toString("utf-8")
-      .replace(/\0/g, "");
+      .replaceAll("\0", "");
     const sizeValue = parseInt(sizeField, 8);
     expect(sizeValue).toBe(Buffer.from(fileContent, "utf-8").length);
   });
@@ -90,7 +96,7 @@ describe("createScriptsTarBuffer", () => {
     const modeField = tar
       .subarray(100, 108)
       .toString("utf-8")
-      .replace(/\0/g, "");
+      .replaceAll("\0", "");
     expect(modeField).toBe("0000755");
   });
 
@@ -114,7 +120,7 @@ describe("createScriptsTarBuffer", () => {
     const checksumField = header
       .subarray(148, 156)
       .toString("utf-8")
-      .replace(/\0/g, "")
+      .replaceAll("\0", "")
       .trim();
     const writtenChecksum = parseInt(checksumField, 8);
 
@@ -168,7 +174,7 @@ describe("createScriptsTarBuffer", () => {
       const name = tar
         .subarray(offset, offset + 100)
         .toString("utf-8")
-        .replace(/\0/g, "");
+        .replaceAll("\0", "");
       expect(name).toBe(expectedName);
 
       // Advance past header + content + padding

@@ -1,5 +1,3 @@
-import { isSelfHosted } from "../env";
-
 /**
  * Resolves the Platform URL.
  *
@@ -11,7 +9,7 @@ import { isSelfHosted } from "../env";
  *   to the real platform port
  */
 export function getPlatformUrl(): string {
-  if (isSelfHosted) {
+  if (process.env.SELF_HOSTED === "true") {
     if (typeof window === "undefined") {
       return (
         process.env.PLATFORM_URL ||

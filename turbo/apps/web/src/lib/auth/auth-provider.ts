@@ -1,4 +1,3 @@
-import { isSelfHosted } from "../../env";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { SELF_HOSTED_USER_ID, SELF_HOSTED_USER_EMAIL } from "./constants";
 
@@ -55,9 +54,10 @@ let _provider: AuthProvider | undefined;
 
 export function getAuthProvider(): AuthProvider {
   if (!_provider) {
-    _provider = isSelfHosted
-      ? createLocalAuthProvider()
-      : createClerkAuthProvider();
+    _provider =
+      process.env.SELF_HOSTED === "true"
+        ? createLocalAuthProvider()
+        : createClerkAuthProvider();
   }
   return _provider;
 }

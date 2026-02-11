@@ -1,19 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import {
   getAuthProvider,
   resetAuthProvider,
   SELF_HOSTED_USER_ID,
 } from "../auth-provider";
-
-// Mock isSelfHosted as a mutable getter so we can toggle it per test
-const mockIsSelfHosted = vi.hoisted(() => ({ value: false }));
-
-vi.mock("../../../env", () => ({
-  get isSelfHosted() {
-    return mockIsSelfHosted.value;
-  },
-}));
 
 vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
@@ -27,7 +18,10 @@ describe("AuthProvider", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetAuthProvider();
-    mockIsSelfHosted.value = false;
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   describe("getAuthProvider (SaaS mode)", () => {
@@ -93,7 +87,7 @@ describe("AuthProvider", () => {
 
   describe("getAuthProvider (self-hosted mode)", () => {
     beforeEach(() => {
-      mockIsSelfHosted.value = true;
+      vi.stubEnv("SELF_HOSTED", "true");
       resetAuthProvider();
     });
 
