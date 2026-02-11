@@ -241,7 +241,10 @@ async function fetchWorkspaceAgentInfo(
 /**
  * Fetch all agents owned by the admin user
  */
-async function fetchAdminAgents(vm0UserId: string): Promise<
+async function fetchAdminAgents(
+  vm0UserId: string,
+  includeComposeId?: string,
+): Promise<
   Array<{
     id: string;
     name: string;
@@ -259,6 +262,22 @@ async function fetchAdminAgents(vm0UserId: string): Promise<
     })
     .from(agentComposes)
     .where(eq(agentComposes.userId, vm0UserId));
+
+  // Include the default workspace agent if it's not owned by the admin
+  if (includeComposeId && !composes.some((c) => c.id === includeComposeId)) {
+    const [defaultCompose] = await globalThis.services.db
+      .select({
+        id: agentComposes.id,
+        name: agentComposes.name,
+        headVersionId: agentComposes.headVersionId,
+      })
+      .from(agentComposes)
+      .where(eq(agentComposes.id, includeComposeId))
+      .limit(1);
+    if (defaultCompose) {
+      composes.unshift(defaultCompose);
+    }
+  }
 
   if (composes.length === 0) return [];
 
@@ -407,7 +426,11 @@ async function handleAgentManageSelection(
   const userLink = await getUserLink(payload.user.id, payload.team.id);
   if (!userLink) return;
 
-  const agents = await fetchAdminAgents(userLink.vm0UserId);
+  const installation = await getInstallation(payload.team.id);
+  const agents = await fetchAdminAgents(
+    userLink.vm0UserId,
+    installation?.defaultComposeId,
+  );
   const updatedModal = buildAgentManageModal(
     agents,
     selectedAgentId,
@@ -521,9 +544,9 @@ async function refreshAppHomeForUser(
 }
 
 /**
- * Handle environment setup button from App Home
+ * Handle settings button from App Home
  *
- * Opens the environment setup modal for the workspace agent.
+ * Opens the settings modal for the workspace agent.
  */
 async function handleHomeEnvironmentSetup(
   payload: SlackInteractivePayload,
@@ -573,7 +596,10 @@ async function handleHomeAgentManage(
   const providers = await listModelProviders(userLink.vm0UserId);
   const hasModelProvider = providers.length > 0;
 
-  const agents = await fetchAdminAgents(userLink.vm0UserId);
+  const agents = await fetchAdminAgents(
+    userLink.vm0UserId,
+    installation.defaultComposeId,
+  );
   const currentAgentId = agents.find(
     (a) => a.id === installation.defaultComposeId,
   )?.id;
@@ -633,7 +659,11 @@ async function handleModelProviderRefresh(
     payload.view?.state?.values?.agent_select?.agent_select_action
       ?.selected_option?.value;
 
-  const agents = await fetchAdminAgents(userLink.vm0UserId);
+  const installation = await getInstallation(payload.team.id);
+  const agents = await fetchAdminAgents(
+    userLink.vm0UserId,
+    installation?.defaultComposeId,
+  );
   const updatedModal = buildAgentManageModal(
     agents,
     selectedAgentId,
@@ -1147,7 +1177,7 @@ async function saveVarsAndSecrets(
 }
 
 /**
- * Handle environment setup modal submission
+ * Handle settings modal submission
  *
  * User saves secrets/vars for the workspace agent.
  */

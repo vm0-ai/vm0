@@ -218,7 +218,7 @@ async function sendSuccessMessage(
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `:white_check_mark: *Successfully connected to VM0!*\n\n${agentInfo}\n\nYou can now:\n• Mention \`@VM0\` to interact with the agent\n• Use \`/vm0 environment setup\` to configure your secrets and variables`,
+          text: `:white_check_mark: *Successfully connected to VM0!*\n\n${agentInfo}\n\nYou can now:\n• Mention \`@VM0\` to interact with the agent\n• Use \`/vm0 settings\` to configure your secrets and variables`,
         },
       },
     ],

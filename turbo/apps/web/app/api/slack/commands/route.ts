@@ -51,7 +51,7 @@ const log = logger("slack:commands");
  * Handles /vm0 slash commands:
  * - /vm0 agent manage - Select workspace agent (admin only)
  * - /vm0 agent compose - Compose agent from GitHub URL (admin only)
- * - /vm0 environment setup - Configure secrets/vars for workspace agent
+ * - /vm0 settings - Configure secrets/vars for workspace agent
  * - /vm0 admin transfer @user - Transfer admin role
  * - /vm0 help - Show help message
  */
@@ -187,7 +187,7 @@ async function handleAgentCommand(
       return NextResponse.json({
         response_type: "ephemeral",
         blocks: buildErrorMessage(
-          "The `update` command has been replaced.\n\nUse `/vm0 environment setup` instead.",
+          "The `update` command has been replaced.\n\nUse `/vm0 settings` instead.",
         ),
       });
 
@@ -202,9 +202,9 @@ async function handleAgentCommand(
 }
 
 /**
- * Handle environment subcommands
+ * Handle settings subcommands
  */
-async function handleEnvironmentCommand(
+async function handleSettingsCommand(
   action: string,
   installation: typeof slackInstallations.$inferSelect,
   client: ReturnType<typeof createSlackClient>,
@@ -220,7 +220,7 @@ async function handleEnvironmentCommand(
       return NextResponse.json({
         response_type: "ephemeral",
         blocks: buildErrorMessage(
-          `Unknown environment command: \`${action}\`\n\nAvailable commands:\n• \`/vm0 environment setup\``,
+          `Unknown settings command: \`${action}\`\n\nAvailable commands:\n• \`/vm0 settings\``,
         ),
       });
   }
@@ -263,7 +263,7 @@ function handleLoginCommand(
     return NextResponse.json({
       response_type: "ephemeral",
       blocks: buildSuccessMessage(
-        "You are already connected.\n\nUse `/vm0 environment setup` to configure your agent or `/vm0 help` for more commands.",
+        "You are already connected.\n\nUse `/vm0 settings` to configure your agent or `/vm0 help` for more commands.",
       ),
     });
   }
@@ -438,9 +438,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // Handle environment commands
-    if (subCommand === "environment") {
-      return await handleEnvironmentCommand(
+    // Handle settings commands
+    if (subCommand === "settings") {
+      return await handleSettingsCommand(
         action,
         installation,
         client,
@@ -530,6 +530,22 @@ async function handleAgentManage(
     .from(agentComposes)
     .where(eq(agentComposes.userId, vm0UserId));
 
+  // Include the default workspace agent if it's not owned by the admin
+  if (!composes.some((c) => c.id === installation.defaultComposeId)) {
+    const [defaultCompose] = await globalThis.services.db
+      .select({
+        id: agentComposes.id,
+        name: agentComposes.name,
+        headVersionId: agentComposes.headVersionId,
+      })
+      .from(agentComposes)
+      .where(eq(agentComposes.id, installation.defaultComposeId))
+      .limit(1);
+    if (defaultCompose) {
+      composes.unshift(defaultCompose);
+    }
+  }
+
   if (composes.length === 0) {
     return NextResponse.json({
       response_type: "ephemeral",
@@ -617,7 +633,7 @@ async function handleAgentManage(
 }
 
 /**
- * Handle /vm0 environment setup - Open modal to configure secrets/vars for workspace agent
+ * Handle /vm0 settings - Open modal to configure secrets/vars for workspace agent
  */
 async function handleEnvironmentSetup(
   installation: typeof slackInstallations.$inferSelect,

@@ -18,7 +18,7 @@ interface AgentOption {
 
 /**
  * Build an input block for a variable or secret value
- * Used by both manage and environment setup modals
+ * Used by both manage and settings modals
  */
 function buildValueInputBlock(
   blockIdPrefix: string,
@@ -317,7 +317,7 @@ export function buildAgentManageModal(
 }
 
 /**
- * Build the "Environment Setup" modal view
+ * Build the "Settings" modal view
  *
  * Shows fields for configuring secrets and variables for a single agent.
  *
@@ -399,7 +399,7 @@ export function buildEnvironmentSetupModal(
     private_metadata: JSON.stringify({ channelId }),
     title: {
       type: "plain_text",
-      text: "Environment Setup",
+      text: "Settings",
     },
     submit: {
       type: "plain_text",
@@ -510,7 +510,7 @@ export function buildAppHomeView(options: {
       },
       accessory: {
         type: "button",
-        text: { type: "plain_text", text: "Environment Setup" },
+        text: { type: "plain_text", text: "Settings" },
         action_id: "home_environment_setup",
       },
     });
@@ -577,7 +577,7 @@ export function buildAppHomeView(options: {
     type: "section",
     text: {
       type: "mrkdwn",
-      text: "*Commands*\n\u2022 `/vm0 environment setup` - Configure secrets and variables\n\u2022 `/vm0 agent manage` - Select workspace agent (admin)\n\u2022 `/vm0 agent compose` - Compose agent from GitHub URL (admin)\n\u2022 `/vm0 admin transfer @user` - Transfer admin role (admin)",
+      text: "*Commands*\n\u2022 `/vm0 settings` - Configure secrets and variables\n\u2022 `/vm0 agent manage` - Select workspace agent (admin)\n\u2022 `/vm0 agent compose` - Compose agent from GitHub URL (admin)\n\u2022 `/vm0 admin transfer @user` - Transfer admin role (admin)",
     },
   });
 
@@ -755,7 +755,7 @@ export function buildHelpMessage(): (Block | KnownBlock)[] {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "*Agent*\n\u2022 `/vm0 agent manage` - Select workspace agent (admin)\n\u2022 `/vm0 agent compose` - Compose an agent from GitHub URL (admin)\n\u2022 `/vm0 environment setup` - Configure secrets and variables",
+        text: "*Agent*\n\u2022 `/vm0 agent manage` - Select workspace agent (admin)\n\u2022 `/vm0 agent compose` - Compose an agent from GitHub URL (admin)\n\u2022 `/vm0 settings` - Configure secrets and variables",
       },
     },
     {
