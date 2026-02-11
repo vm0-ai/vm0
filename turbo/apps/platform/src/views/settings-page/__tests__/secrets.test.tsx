@@ -47,6 +47,26 @@ describe("secrets tab", () => {
     ).toBeInTheDocument();
   });
 
+  it("does not flash empty state while loading", async () => {
+    server.use(
+      http.get("/api/secrets", () => {
+        return HttpResponse.json({ secrets: mockSecrets() });
+      }),
+    );
+
+    await setupPage({ context, path: "/settings?tab=secrets" });
+
+    // Should not show empty state while data is loading
+    expect(
+      screen.queryByText("No secrets configured yet"),
+    ).not.toBeInTheDocument();
+
+    // Wait for data to load
+    await vi.waitFor(() => {
+      expect(screen.getByText("API_KEY")).toBeInTheDocument();
+    });
+  });
+
   it("shows empty state when no secrets configured", async () => {
     server.use(
       http.get("/api/secrets", () => {
@@ -56,7 +76,9 @@ describe("secrets tab", () => {
 
     await setupPage({ context, path: "/settings?tab=secrets" });
 
-    expect(screen.getByText("No secrets configured yet")).toBeInTheDocument();
+    await vi.waitFor(() => {
+      expect(screen.getByText("No secrets configured yet")).toBeInTheDocument();
+    });
     expect(screen.getByText("Add secret")).toBeInTheDocument();
   });
 
@@ -100,6 +122,11 @@ describe("secrets tab", () => {
     );
 
     await setupPage({ context, path: "/settings?tab=secrets" });
+
+    // Wait for data to resolve before "Add secret" button appears
+    await vi.waitFor(() => {
+      expect(screen.getByText("Add secret")).toBeInTheDocument();
+    });
 
     // Click "Add secret"
     await user.click(screen.getByText("Add secret"));
@@ -218,6 +245,11 @@ describe("secrets tab", () => {
     );
 
     await setupPage({ context, path: "/settings?tab=secrets" });
+
+    // Wait for data to resolve before "Add secret" button appears
+    await vi.waitFor(() => {
+      expect(screen.getByText("Add secret")).toBeInTheDocument();
+    });
 
     await user.click(screen.getByText("Add secret"));
 

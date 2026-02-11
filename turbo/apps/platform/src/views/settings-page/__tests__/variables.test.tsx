@@ -51,6 +51,26 @@ describe("variables tab", () => {
     expect(screen.getByText("Backend API URL")).toBeInTheDocument();
   });
 
+  it("does not flash empty state while loading", async () => {
+    server.use(
+      http.get("/api/variables", () => {
+        return HttpResponse.json({ variables: mockVariables() });
+      }),
+    );
+
+    await setupPage({ context, path: "/settings?tab=variables" });
+
+    // Should not show empty state while data is loading
+    expect(
+      screen.queryByText("No variables configured yet"),
+    ).not.toBeInTheDocument();
+
+    // Wait for data to load
+    await vi.waitFor(() => {
+      expect(screen.getByText("API_URL")).toBeInTheDocument();
+    });
+  });
+
   it("can add a new variable via dialog", async () => {
     let capturedBody: Record<string, unknown> | null = null;
 
@@ -75,6 +95,11 @@ describe("variables tab", () => {
     );
 
     await setupPage({ context, path: "/settings?tab=variables" });
+
+    // Wait for data to resolve before "Add variable" button appears
+    await vi.waitFor(() => {
+      expect(screen.getByText("Add variable")).toBeInTheDocument();
+    });
 
     // Click "Add variable"
     await user.click(screen.getByText("Add variable"));
@@ -140,7 +165,11 @@ describe("variables tab", () => {
 
     await setupPage({ context, path: "/settings?tab=variables" });
 
-    expect(screen.getByText("No variables configured yet")).toBeInTheDocument();
+    await vi.waitFor(() => {
+      expect(
+        screen.getByText("No variables configured yet"),
+      ).toBeInTheDocument();
+    });
     expect(screen.getByText("Add variable")).toBeInTheDocument();
   });
 });
