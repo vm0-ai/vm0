@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+use base64::Engine as _;
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Instant;
@@ -470,6 +471,22 @@ fn decode_data(data: serde_json::Value, encoding: Option<&str>) -> serde_json::V
                     }
                 }
             }
+            "base64" => {
+                if let serde_json::Value::String(ref s) = result {
+                    match base64::engine::general_purpose::STANDARD.decode(s) {
+                        Ok(bytes) => {
+                            result = serde_json::Value::Array(
+                                bytes.into_iter().map(|b| b.into()).collect(),
+                            );
+                        }
+                        Err(e) => {
+                            // Intentional fallback: return raw data rather than failing the message.
+                            tracing::warn!("Failed to decode base64 encoding layer: {e}");
+                            return result;
+                        }
+                    }
+                }
+            }
             "utf-8" => {
                 // No-op: MessagePack strings are already UTF-8
             }
@@ -910,9 +927,17 @@ mod tests {
     }
 
     #[test]
+    fn decode_data_base64_encoding() {
+        // "hello" in base64
+        let data = serde_json::json!("aGVsbG8=");
+        let result = decode_data(data, Some("base64"));
+        assert_eq!(result, serde_json::json!([104, 101, 108, 108, 111]));
+    }
+
+    #[test]
     fn decode_data_unsupported_encoding() {
         let data = serde_json::json!("encoded-data");
-        let result = decode_data(data.clone(), Some("base64"));
+        let result = decode_data(data.clone(), Some("cipher+aes-256-cbc"));
         assert_eq!(result, data);
     }
 
