@@ -27,9 +27,7 @@ describe("logs page", () => {
       path: "/logs",
     });
 
-    await waitFor(() => {
-      expect(screen.getByText("Run ID")).toBeInTheDocument();
-    });
+    expect(screen.getByText("Run ID")).toBeInTheDocument();
     expect(screen.getByText("Session ID")).toBeInTheDocument();
     expect(screen.getByText("Agent")).toBeInTheDocument();
     expect(screen.getByText("Framework")).toBeInTheDocument();

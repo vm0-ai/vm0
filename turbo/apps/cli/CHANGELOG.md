@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.34.0](https://github.com/vm0-ai/vm0/compare/cli-v9.33.0...cli-v9.34.0) (2026-02-11)
+
+
+### Features
+
+* **cli:** add auto-pagination to logs command ([#2855](https://github.com/vm0-ai/vm0/issues/2855)) ([e487a1a](https://github.com/vm0-ai/vm0/commit/e487a1a687146002f3d7abf2b4904b507b3b29c5))
+
 ## [9.33.0](https://github.com/vm0-ai/vm0/compare/cli-v9.32.0...cli-v9.33.0) (2026-02-10)
 
 
