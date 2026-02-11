@@ -12,6 +12,10 @@ export default defineConfig({
     // Automatically clear mocks before each test (eliminates manual vi.clearAllMocks() calls)
     clearMocks: true,
   },
+  esbuild: {
+    // Use automatic JSX runtime so .tsx files don't require `import React`
+    jsx: "automatic",
+  },
   resolve: {
     alias: {
       "~": resolve(__dirname, "./src"),

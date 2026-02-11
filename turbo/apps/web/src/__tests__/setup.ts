@@ -154,6 +154,17 @@ vi.mock("resend", () => {
       get: vi.fn().mockResolvedValue({
         data: { id: "mock-email-id", message_id: "<mock-message-id@vm7.bot>" },
       }),
+      receiving: {
+        get: vi.fn().mockResolvedValue({
+          data: {
+            from: "user@example.com",
+            to: ["reply+token@vm7.bot"],
+            subject: "Re: test",
+            text: "Hello from email",
+            html: "<p>Hello from email</p>",
+          },
+        }),
+      },
     },
     webhooks: {
       verify: vi.fn().mockReturnValue(true),

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { WebClient } from "@slack/web-api";
+import { Resend } from "resend";
 import { POST } from "../route";
 import {
   createTestRequest,
@@ -10,6 +11,11 @@ import {
   createTestSchedule,
   linkRunToSchedule,
   findTestThreadSession,
+  createTestAgentSession,
+  createTestEmailThreadSession,
+  createTestEmailReplyRequest,
+  findTestEmailReplyRequest,
+  findTestEmailThreadSession,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -23,6 +29,7 @@ import {
   givenLinkedSlackUser,
   givenUserHasAgent,
 } from "../../../../../../src/__tests__/slack/api-helpers";
+import { generateReplyToken } from "../../../../../../src/lib/email/handlers/shared";
 
 const context = testContext();
 
@@ -626,6 +633,246 @@ describe("POST /api/webhooks/agent/complete", () => {
 
       // Then no Slack DM should be sent (no scheduleId → after() not called)
       expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Email Notification", () => {
+    const mockResend = vi.mocked(new Resend(""), true);
+
+    it("should send email when scheduled run completes", async () => {
+      // Use a separate user to avoid concurrent run limit from beforeEach
+      const emailUser = await context.setupUser({ prefix: "email-sched" });
+      mockClerk({ userId: emailUser.userId });
+      const { composeId } = await createTestCompose(uniqueId("email-agent"));
+      const schedule = await createTestSchedule(composeId, uniqueId("sched"));
+
+      const { runId } = await createTestRun(composeId, "Scheduled email task");
+      await linkRunToSchedule(runId, schedule.id);
+
+      // Create checkpoint (required for successful completion)
+      const token = await createTestSandboxToken(emailUser.userId, runId);
+      mockClerk({ userId: null });
+      const checkpointRequest = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            runId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "test-session",
+            cliAgentSessionHistory: JSON.stringify({ type: "test" }),
+          }),
+        },
+      );
+      await checkpointWebhook(checkpointRequest);
+
+      // Mock Axiom to return agent output
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        { eventData: { result: "Email agent output" } },
+      ]);
+
+      mockResend.emails.send.mockClear();
+
+      // When the run completes
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ runId, exitCode: 0 }),
+        },
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      // Then after() callbacks should send an email
+      await context.mocks.flushAfter();
+
+      expect(mockResend.emails.send).toHaveBeenCalled();
+      const sendArgs = mockResend.emails.send.mock.calls[0]![0] as {
+        from: string;
+        to: string;
+        subject: string;
+      };
+      expect(sendArgs.to).toBe("test@example.com");
+      expect(sendArgs.subject).toContain("completed");
+      expect(sendArgs.from).toContain("vm7.bot");
+    });
+
+    it("should send failure email when scheduled run fails", async () => {
+      // Use a separate user to avoid concurrent run limit from beforeEach
+      const emailUser = await context.setupUser({ prefix: "email-fail" });
+      mockClerk({ userId: emailUser.userId });
+      const { composeId } = await createTestCompose(uniqueId("fail-agent"));
+      const schedule = await createTestSchedule(composeId, uniqueId("sched"));
+
+      const { runId } = await createTestRun(composeId, "Failing task");
+      await linkRunToSchedule(runId, schedule.id);
+      mockClerk({ userId: null });
+
+      const token = await createTestSandboxToken(emailUser.userId, runId);
+      mockResend.emails.send.mockClear();
+
+      // When the run fails
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            runId,
+            exitCode: 1,
+            error: "Agent crashed",
+          }),
+        },
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      // Then after() callbacks should send a failure email
+      await context.mocks.flushAfter();
+
+      expect(mockResend.emails.send).toHaveBeenCalled();
+      const sendArgs = mockResend.emails.send.mock.calls[0]![0] as {
+        from: string;
+        to: string;
+        subject: string;
+      };
+      expect(sendArgs.to).toBe("test@example.com");
+      expect(sendArgs.subject).toContain("failed");
+    });
+
+    it("should send email reply when run was triggered by email", async () => {
+      // Use a separate user to avoid concurrent run limit from beforeEach
+      const emailUser = await context.setupUser({ prefix: "email-reply" });
+      mockClerk({ userId: emailUser.userId });
+      const { composeId } = await createTestCompose(uniqueId("reply-agent"));
+      const agentSession = await createTestAgentSession(
+        emailUser.userId,
+        composeId,
+      );
+      const replyToken = generateReplyToken(agentSession.id);
+
+      const emailSession = await createTestEmailThreadSession({
+        userId: emailUser.userId,
+        composeId,
+        agentSessionId: agentSession.id,
+        replyToToken: replyToken,
+        lastEmailMessageId: "<original-msg-id@vm7.bot>",
+      });
+
+      // Create a run linked to this email session via reply request
+      const { runId } = await createTestRun(composeId, "Email reply task");
+      await createTestEmailReplyRequest({
+        runId,
+        emailThreadSessionId: emailSession.id,
+        inboundEmailId: "inbound-email-456",
+      });
+
+      // Create checkpoint for successful completion
+      const token = await createTestSandboxToken(emailUser.userId, runId);
+      mockClerk({ userId: null });
+      const checkpointRequest = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            runId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "test-session",
+            cliAgentSessionHistory: JSON.stringify({ type: "test" }),
+          }),
+        },
+      );
+      await checkpointWebhook(checkpointRequest);
+
+      // Mock Axiom to return agent output
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        { eventData: { result: "Reply output" } },
+      ]);
+
+      mockResend.emails.send.mockClear();
+
+      // When the run completes
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ runId, exitCode: 0 }),
+        },
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      await context.mocks.flushAfter();
+
+      // Verify: email reply was sent
+      expect(mockResend.emails.send).toHaveBeenCalled();
+      const sendArgs = mockResend.emails.send.mock.calls[0]![0] as {
+        from: string;
+        to: string;
+        subject: string;
+        replyTo: string;
+      };
+      expect(sendArgs.to).toBe("test@example.com");
+      expect(sendArgs.replyTo).toContain("reply+");
+
+      // Verify: email reply request was consumed (deleted)
+      const remainingRequest = await findTestEmailReplyRequest(runId);
+      expect(remainingRequest).toBeNull();
+
+      // Verify: thread session was updated with new messageId
+      const updatedSession = await findTestEmailThreadSession(replyToken);
+      expect(updatedSession).not.toBeNull();
+      expect(updatedSession!.lastEmailMessageId).toBe(
+        "<mock-message-id@vm7.bot>",
+      );
+    });
+
+    it("should not send email reply for non-email-triggered runs", async () => {
+      mockResend.emails.send.mockClear();
+
+      // When a normal run completes (no scheduleId, no email reply request)
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 1,
+            error: "Some error",
+          }),
+        },
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      await context.mocks.flushAfter();
+
+      // No email should be sent (no schedule, no email reply request)
+      expect(mockResend.emails.send).not.toHaveBeenCalled();
     });
   });
 });
