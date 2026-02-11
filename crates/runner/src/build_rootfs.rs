@@ -31,12 +31,6 @@ pub struct BuildRootfsArgs {
     /// Directory containing guest binaries (guest-init, guest-download, guest-agent, guest-mock-claude)
     #[arg(long)]
     guest_bins: PathBuf,
-    /// Override output directory (default: content-addressed in ~/.vm0-runner/rootfs/)
-    #[arg(long)]
-    output_dir: Option<PathBuf>,
-    /// Override embedded Dockerfile
-    #[arg(long)]
-    dockerfile: Option<PathBuf>,
 }
 
 pub async fn run_build_rootfs(args: BuildRootfsArgs) -> RunnerResult<()> {
@@ -45,23 +39,11 @@ pub async fn run_build_rootfs(args: BuildRootfsArgs) -> RunnerResult<()> {
     let docker = detect_docker_privilege().await?;
     let paths = HomePaths::new()?;
 
-    // Resolve Dockerfile content
-    let dockerfile = match &args.dockerfile {
-        Some(path) => tokio::fs::read_to_string(path)
-            .await
-            .map_err(|e| RunnerError::Config(format!("read dockerfile {}: {e}", path.display())))?,
-        None => EMBEDDED_DOCKERFILE.to_string(),
-    };
-
     // Compute input hash (deterministic inputs only — no CA)
-    let hash = compute_input_hash(&dockerfile, &args.guest_bins).await?;
+    let hash = compute_input_hash(EMBEDDED_DOCKERFILE, &args.guest_bins).await?;
     tracing::info!("rootfs input hash: {hash}");
 
-    // Resolve output directory
-    let output_dir = match &args.output_dir {
-        Some(dir) => dir.clone(),
-        None => paths.rootfs_dir().join(&hash),
-    };
+    let output_dir = paths.rootfs_dir().join(&hash);
     let rootfs_path = output_dir.join("rootfs.squashfs");
 
     // Skip if content-addressed rootfs already exists
@@ -78,31 +60,59 @@ pub async fn run_build_rootfs(args: BuildRootfsArgs) -> RunnerResult<()> {
     // Generate proxy CA into output directory
     generate_proxy_ca(&output_dir).await?;
 
-    // Docker build + export
-    let dockerfile_dir = write_dockerfile_to_temp(&dockerfile)?;
+    // Docker build + export (drop dockerfile temp dir immediately after build)
+    let dockerfile_dir = write_dockerfile_to_temp(EMBEDDED_DOCKERFILE)?;
     docker_build(dockerfile_dir.path(), docker).await?;
-    let tar_path = docker_export(docker).await?;
+    drop(dockerfile_dir);
+
+    let tar_path = docker_export(&output_dir, docker).await?;
 
     // Extract and inject
     let extract_dir =
         tempfile::tempdir().map_err(|e| RunnerError::Internal(format!("create temp dir: {e}")))?;
     extract_and_inject(&tar_path, extract_dir.path(), &args.guest_bins, &output_dir).await?;
-    let _ = tokio::fs::remove_file(&tar_path).await;
+    sudo_remove(&tar_path).await;
 
     // Create squashfs to temp, verify, then move into place
     let tmp_rootfs = rootfs_path.with_extension(format!("tmp.{}", std::process::id()));
-    create_squashfs(extract_dir.path(), &tmp_rootfs).await?;
-    drop(extract_dir);
+    let result: RunnerResult<()> = async {
+        create_squashfs(extract_dir.path(), &tmp_rootfs).await?;
+        sudo_remove_dir(extract_dir).await;
 
-    verify_rootfs(&tmp_rootfs).await?;
+        verify_rootfs(&tmp_rootfs).await?;
 
-    // Atomic rename into final location
-    tokio::fs::rename(&tmp_rootfs, &rootfs_path)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("rename rootfs: {e}")))?;
+        // Atomic rename into final location
+        tokio::fs::rename(&tmp_rootfs, &rootfs_path)
+            .await
+            .map_err(|e| RunnerError::Internal(format!("rename rootfs: {e}")))?;
 
+        Ok(())
+    }
+    .await;
+
+    // Cleanup tmp_rootfs on failure (root-owned from mksquashfs)
+    if result.is_err() {
+        sudo_remove(&tmp_rootfs).await;
+    }
+
+    result?;
     tracing::info!("[OK] rootfs built: {}", rootfs_path.display());
     Ok(())
+}
+
+/// Remove a file using sudo (needed for root-owned temp files).
+async fn sudo_remove(path: &Path) {
+    let s = path.to_string_lossy();
+    exec_ignore_errors("rm", &["-f", &s], Privilege::Sudo).await;
+}
+
+/// Remove a TempDir whose contents are root-owned.
+/// Consumes the TempDir to prevent its Drop from attempting (and failing) cleanup.
+async fn sudo_remove_dir(dir: tempfile::TempDir) -> PathBuf {
+    let path = dir.keep(); // disarm Drop
+    let s = path.to_string_lossy();
+    exec_ignore_errors("rm", &["-rf", &s], Privilege::Sudo).await;
+    path
 }
 
 // ---------------------------------------------------------------------------
@@ -197,6 +207,7 @@ async fn generate_proxy_ca(dir: &Path) -> RunnerResult<()> {
     let combined_path = dir.join("mitmproxy-ca.pem");
 
     if tokio::fs::try_exists(&cert_path).await.unwrap_or(false)
+        && tokio::fs::try_exists(&key_path).await.unwrap_or(false)
         && tokio::fs::try_exists(&combined_path).await.unwrap_or(false)
     {
         tracing::info!("[OK] proxy CA already exists, skipping generation");
@@ -287,7 +298,7 @@ async fn docker_build(dockerfile_dir: &Path, docker: Privilege) -> RunnerResult<
     Ok(())
 }
 
-async fn docker_export(docker: Privilege) -> RunnerResult<PathBuf> {
+async fn docker_export(output_dir: &Path, docker: Privilege) -> RunnerResult<PathBuf> {
     tracing::info!("exporting docker filesystem...");
 
     // Remove any existing temp container
@@ -301,8 +312,8 @@ async fn docker_export(docker: Privilege) -> RunnerResult<PathBuf> {
     )
     .await?;
 
-    // Export to temp file
-    let tar_path = std::env::temp_dir().join(format!("vm0-rootfs-{}.tar", std::process::id()));
+    // Export to temp file in output_dir (avoids tmpfs memory pressure)
+    let tar_path = output_dir.join(format!("rootfs-export-{}.tar", std::process::id()));
     let tar_str = tar_path.to_string_lossy();
     let result = exec(
         "docker",
@@ -426,12 +437,6 @@ async fn write_file_as_root(path: &Path, content: &str) -> RunnerResult<()> {
 async fn create_squashfs(source_dir: &Path, output: &Path) -> RunnerResult<()> {
     tracing::info!("creating squashfs image...");
 
-    // Ensure parent directory exists
-    if let Some(parent) = output.parent() {
-        let parent_str = parent.to_string_lossy();
-        exec("mkdir", &["-p", &parent_str], Privilege::Sudo).await?;
-    }
-
     let source_str = source_dir.to_string_lossy();
     let output_str = output.to_string_lossy();
 
@@ -526,10 +531,14 @@ async fn verify_mounted(mount_point: &Path) -> RunnerResult<()> {
     let bundle_path = mount_point.join("etc/ssl/certs/ca-certificates.crt");
     if bundle_path.exists() && ca_path.exists() {
         // Read second line of CA cert as a unique identifier
-        let ca_content = std::fs::read_to_string(&ca_path).unwrap_or_default();
+        let ca_content = tokio::fs::read_to_string(&ca_path)
+            .await
+            .unwrap_or_default();
         let ca_line = ca_content.lines().nth(1).unwrap_or_default();
         if !ca_line.is_empty() {
-            let bundle_content = std::fs::read_to_string(&bundle_path).unwrap_or_default();
+            let bundle_content = tokio::fs::read_to_string(&bundle_path)
+                .await
+                .unwrap_or_default();
             if bundle_content.contains(ca_line) {
                 tracing::info!("  proxy CA bundle: updated");
             } else {
