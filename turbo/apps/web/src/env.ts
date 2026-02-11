@@ -176,6 +176,9 @@ function initEnv() {
       NEXT_PUBLIC_DATA_SOURCE: process.env.NEXT_PUBLIC_DATA_SOURCE,
       NEXT_PUBLIC_STRAPI_URL: process.env.NEXT_PUBLIC_STRAPI_URL,
     },
+    // Skip validation during Docker build (SKIP_ENV_VALIDATION=true in Dockerfile)
+    // where server env vars are unavailable at build time.
+    skipValidation: process.env.SKIP_ENV_VALIDATION === "true",
     emptyStringAsUndefined: true,
   });
 }
