@@ -18,7 +18,8 @@ use crate::types::{Event, Message, TokenDetails, TokenFuture};
 // Constants
 // ---------------------------------------------------------------------------
 
-pub const DEFAULT_REALTIME_HOST: &str = "realtime.ably.io";
+pub(crate) const DEFAULT_REALTIME_HOST: &str = "realtime.ably.io";
+pub(crate) const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 const PROTOCOL_VERSION: &str = "5";
 const AGENT_STRING: &str = "ably-subscriber-rs/0.1";
 const HEARTBEAT_MARGIN: Duration = Duration::from_secs(10);
@@ -27,6 +28,7 @@ const DEFAULT_CONNECTION_STATE_TTL: Duration = Duration::from_secs(120);
 const RETRY_INTERVAL: Duration = Duration::from_secs(15);
 const MAX_RETRY_ATTEMPTS: u32 = 40; // ~10 minutes
 const TOKEN_RENEWAL_MARGIN: Duration = Duration::from_secs(300); // 5 minutes
+const TOKEN_RENEWAL_RETRY_DELAY: Duration = Duration::from_secs(30);
 
 // ---------------------------------------------------------------------------
 // Type aliases for WebSocket split halves
@@ -35,15 +37,15 @@ const TOKEN_RENEWAL_MARGIN: Duration = Duration::from_secs(300); // 5 minutes
 type WsStream =
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
-pub type WsRead = futures_util::stream::SplitStream<WsStream>;
-pub type WsWrite = futures_util::stream::SplitSink<WsStream, tungstenite::Message>;
+pub(crate) type WsRead = futures_util::stream::SplitStream<WsStream>;
+pub(crate) type WsWrite = futures_util::stream::SplitSink<WsStream, tungstenite::Message>;
 
 // ---------------------------------------------------------------------------
 // Token exchange
 // ---------------------------------------------------------------------------
 
 /// Derive REST host from realtime host.
-pub fn rest_host(realtime_host: &str) -> String {
+pub(crate) fn rest_host(realtime_host: &str) -> String {
     if realtime_host == DEFAULT_REALTIME_HOST {
         "rest.ably.io".to_string()
     } else {
@@ -52,7 +54,7 @@ pub fn rest_host(realtime_host: &str) -> String {
 }
 
 /// Exchange a TokenRequest for a TokenDetails via Ably's REST API.
-pub async fn exchange_token(
+pub(crate) async fn exchange_token(
     client: &reqwest::Client,
     token_request: &crate::TokenRequest,
     host: &str,
@@ -77,7 +79,7 @@ pub async fn exchange_token(
 // WebSocket URL construction
 // ---------------------------------------------------------------------------
 
-pub fn build_ws_url(host: &str, token: &str, resume: Option<(&str, i64)>) -> Result<String, Error> {
+fn build_ws_url(host: &str, token: &str, resume: Option<(&str, i64)>) -> Result<String, Error> {
     let mut u = url::Url::parse(&format!("wss://{host}/"))?;
     {
         let mut q = u.query_pairs_mut();
@@ -99,12 +101,12 @@ pub fn build_ws_url(host: &str, token: &str, resume: Option<(&str, i64)>) -> Res
 // WebSocket connect helpers
 // ---------------------------------------------------------------------------
 
-pub async fn connect_and_split(url: &str) -> Result<(WsWrite, WsRead), Error> {
+async fn connect_and_split(url: &str) -> Result<(WsWrite, WsRead), Error> {
     let (ws, _resp) = tokio_tungstenite::connect_async(url).await?;
     Ok(ws.split())
 }
 
-pub async fn wait_for_connected(ws_read: &mut WsRead) -> Result<ProtocolMessage, Error> {
+async fn wait_for_connected(ws_read: &mut WsRead) -> Result<ProtocolMessage, Error> {
     while let Some(frame) = ws_read.next().await {
         let frame = frame?;
         if let tungstenite::Message::Binary(data) = frame {
@@ -137,7 +139,7 @@ pub async fn wait_for_connected(ws_read: &mut WsRead) -> Result<ProtocolMessage,
     })
 }
 
-pub async fn wait_for_attached(ws_read: &mut WsRead, channel: &str) -> Result<(), Error> {
+async fn wait_for_attached(ws_read: &mut WsRead, channel: &str) -> Result<(), Error> {
     while let Some(frame) = ws_read.next().await {
         let frame = frame?;
         if let tungstenite::Message::Binary(data) = frame {
@@ -175,10 +177,33 @@ pub async fn wait_for_attached(ws_read: &mut WsRead, channel: &str) -> Result<()
 }
 
 // ---------------------------------------------------------------------------
+// Connect + handshake + attach (used by subscribe entry point)
+// ---------------------------------------------------------------------------
+
+pub(crate) async fn connect_and_attach(
+    realtime_host: &str,
+    token: TokenDetails,
+    channel: &str,
+    channel_params: Option<&HashMap<String, String>>,
+) -> Result<(WsWrite, WsRead, ConnState), Error> {
+    let ws_url = build_ws_url(realtime_host, &token.token, None)?;
+    let (mut ws_write, mut ws_read) = connect_and_split(&ws_url).await?;
+    let connected_msg = wait_for_connected(&mut ws_read).await?;
+    let conn_state = ConnState::from_connected(&connected_msg, token);
+    let attach = build_attach_msg(channel, channel_params);
+    let encoded = encode_msg(&attach)?;
+    ws_write
+        .send(tungstenite::Message::Binary(encoded.into()))
+        .await?;
+    wait_for_attached(&mut ws_read, channel).await?;
+    Ok((ws_write, ws_read, conn_state))
+}
+
+// ---------------------------------------------------------------------------
 // Connection state
 // ---------------------------------------------------------------------------
 
-pub struct ConnState {
+pub(crate) struct ConnState {
     pub connection_id: Option<String>,
     pub connection_key: Option<String>,
     pub connection_serial: i64,
@@ -190,7 +215,7 @@ pub struct ConnState {
 }
 
 impl ConnState {
-    pub fn from_connected(msg: &ProtocolMessage, token: TokenDetails) -> Self {
+    fn from_connected(msg: &ProtocolMessage, token: TokenDetails) -> Self {
         let mut state = ConnState {
             connection_id: msg.connection_id.clone(),
             connection_key: msg.connection_key.clone(),
@@ -217,7 +242,7 @@ impl ConnState {
         state
     }
 
-    pub fn compute_renewal_at(token: &TokenDetails) -> Instant {
+    fn compute_renewal_at(token: &TokenDetails) -> Instant {
         let now_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -228,7 +253,7 @@ impl ConnState {
         Instant::now() + renew_in
     }
 
-    pub fn can_resume(&self) -> bool {
+    fn can_resume(&self) -> bool {
         if let Some(disconnected_at) = self.disconnected_at {
             disconnected_at.elapsed() < self.connection_state_ttl && self.connection_key.is_some()
         } else {
@@ -236,7 +261,7 @@ impl ConnState {
         }
     }
 
-    pub fn update_serial(&mut self, msg: &ProtocolMessage) {
+    fn update_serial(&mut self, msg: &ProtocolMessage) {
         if let Some(serial) = msg.connection_serial
             && serial > self.connection_serial
         {
@@ -249,7 +274,7 @@ impl ConnState {
 // Background event loop
 // ---------------------------------------------------------------------------
 
-pub struct EventLoopState {
+pub(crate) struct EventLoopState {
     pub ws_read: WsRead,
     pub ws_write: WsWrite,
     pub event_tx: mpsc::Sender<Event>,
@@ -262,7 +287,7 @@ pub struct EventLoopState {
     pub get_token: Box<dyn Fn() -> TokenFuture + Send + Sync>,
 }
 
-pub async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot::Receiver<()>) {
+pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot::Receiver<()>) {
     let mut retry_count: u32 = 0;
 
     'outer: loop {
@@ -279,8 +304,10 @@ pub async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot::Receiv
                             match decode_msg(&data) {
                                 Ok(msg) => {
                                     p.conn_state.update_serial(&msg);
-                                    if handle_message(&mut p, &msg).await == LoopAction::Stop {
-                                        return;
+                                    match handle_message(&mut p, msg).await {
+                                        LoopAction::Stop => return,
+                                        LoopAction::Reconnect => break,
+                                        LoopAction::Continue => {}
                                     }
                                 }
                                 Err(e) => {
@@ -310,6 +337,8 @@ pub async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot::Receiv
                 _ = tokio::time::sleep_until(p.conn_state.token_renewal_at) => {
                     if let Err(e) = renew_token(&mut p).await {
                         tracing::error!("Token renewal failed: {e}");
+                        // Push renewal time forward to avoid busy-loop on persistent failures
+                        p.conn_state.token_renewal_at = Instant::now() + TOKEN_RENEWAL_RETRY_DELAY;
                     }
                 }
 
@@ -344,7 +373,12 @@ pub async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot::Receiv
                 return;
             }
 
-            let jitter = Duration::from_millis((retry_count as u64 * 137) % 2000);
+            // Use subsecond nanos from wall clock for non-deterministic jitter
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .subsec_nanos() as u64;
+            let jitter = Duration::from_millis(nanos % 2000);
             tokio::select! {
                 _ = tokio::time::sleep(RETRY_INTERVAL + jitter) => {}
                 _ = &mut close_rx => {
@@ -353,14 +387,17 @@ pub async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot::Receiv
                 }
             }
 
-            match attempt_reconnect(&mut p).await {
-                Ok(()) => {
+            match tokio::time::timeout(CONNECT_TIMEOUT, attempt_reconnect(&mut p)).await {
+                Ok(Ok(())) => {
                     retry_count = 0;
                     let _ = p.event_tx.send(Event::Connected).await;
                     continue 'outer;
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     tracing::warn!("Reconnect attempt {retry_count} failed: {e}");
+                }
+                Err(_) => {
+                    tracing::warn!("Reconnect attempt {retry_count} timed out");
                 }
             }
         }
@@ -371,21 +408,22 @@ pub async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot::Receiv
 enum LoopAction {
     Continue,
     Stop,
+    Reconnect,
 }
 
-async fn handle_message(p: &mut EventLoopState, msg: &ProtocolMessage) -> LoopAction {
+async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAction {
     match msg.action {
         action::HEARTBEAT => {
             tracing::trace!("Heartbeat received");
         }
         action::MESSAGE => {
-            if let Some(ref messages) = msg.messages {
+            if let Some(messages) = msg.messages {
                 for m in messages {
                     let event = Event::Message(Message {
-                        name: m.name.clone(),
-                        data: m.data.clone().unwrap_or(serde_json::Value::Null),
-                        id: m.id.clone(),
-                        client_id: m.client_id.clone(),
+                        name: m.name,
+                        data: m.data.unwrap_or(serde_json::Value::Null),
+                        id: m.id,
+                        client_id: m.client_id,
                         timestamp: m.timestamp,
                     });
                     if p.event_tx.send(event).await.is_err() {
@@ -395,11 +433,12 @@ async fn handle_message(p: &mut EventLoopState, msg: &ProtocolMessage) -> LoopAc
             }
         }
         action::DISCONNECTED => {
-            let reason = msg.error.as_ref().map(|e| e.message.clone());
+            let reason = msg.error.map(|e| e.message);
             let _ = p.event_tx.send(Event::Disconnected { reason }).await;
+            return LoopAction::Reconnect;
         }
         action::ERROR => {
-            let err = msg.error.clone().unwrap_or_default();
+            let err = msg.error.unwrap_or_default();
             let _ = p
                 .event_tx
                 .send(Event::Error {
@@ -422,9 +461,9 @@ async fn handle_message(p: &mut EventLoopState, msg: &ProtocolMessage) -> LoopAc
             tracing::info!(channel = ?msg.channel, "Channel attached");
         }
         action::CONNECTED => {
-            if let Some(ref details) = msg.connection_details {
-                if let Some(ref key) = details.connection_key {
-                    p.conn_state.connection_key = Some(key.clone());
+            if let Some(details) = msg.connection_details {
+                if let Some(key) = details.connection_key {
+                    p.conn_state.connection_key = Some(key);
                 }
                 if let Some(ttl) = details.connection_state_ttl {
                     p.conn_state.connection_state_ttl = Duration::from_millis(ttl as u64);
@@ -433,7 +472,7 @@ async fn handle_message(p: &mut EventLoopState, msg: &ProtocolMessage) -> LoopAc
                     p.conn_state.max_idle_interval = Duration::from_millis(idle as u64);
                 }
             }
-            p.conn_state.connection_id = msg.connection_id.clone();
+            p.conn_state.connection_id = msg.connection_id;
         }
         action::CLOSED => {
             tracing::info!("Connection closed by server");
@@ -443,6 +482,7 @@ async fn handle_message(p: &mut EventLoopState, msg: &ProtocolMessage) -> LoopAc
             tracing::info!("Server requested reauthentication");
             if let Err(e) = renew_token(p).await {
                 tracing::error!("Server-initiated token renewal failed: {e}");
+                p.conn_state.token_renewal_at = Instant::now() + TOKEN_RENEWAL_RETRY_DELAY;
             }
         }
         _ => {

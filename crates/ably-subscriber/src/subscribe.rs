@@ -1,14 +1,11 @@
 //! Public entry point: [`subscribe`] and [`Subscription`].
 
-use futures_util::SinkExt;
 use tokio::sync::{mpsc, oneshot};
-use tokio_tungstenite::tungstenite;
 
 use crate::connection::{
-    ConnState, DEFAULT_REALTIME_HOST, EventLoopState, build_ws_url, connect_and_split,
-    exchange_token, rest_host, run_event_loop, wait_for_attached, wait_for_connected,
+    CONNECT_TIMEOUT, DEFAULT_REALTIME_HOST, EventLoopState, connect_and_attach, exchange_token,
+    rest_host, run_event_loop,
 };
-use crate::protocol::{build_attach_msg, encode_msg};
 use crate::types::{Error, Event, SubscribeConfig};
 
 /// Handle to a running subscription.
@@ -65,24 +62,21 @@ pub async fn subscribe(config: SubscribeConfig) -> Result<Subscription, Error> {
     let token_request = (config.get_token)().await.map_err(Error::TokenFetch)?;
     let token = exchange_token(&http, &token_request, &rest).await?;
 
-    // Connect WebSocket
-    let ws_url = build_ws_url(&realtime_host, &token.token, None)?;
-    let (ws_write, mut ws_read) = connect_and_split(&ws_url).await?;
-
-    // Wait for CONNECTED
-    let connected_msg = wait_for_connected(&mut ws_read).await?;
-    let conn_state = ConnState::from_connected(&connected_msg, token);
-
-    // Send ATTACH
-    let attach = build_attach_msg(&config.channel, config.channel_params.as_ref());
-    let mut ws_write = ws_write;
-    let encoded = encode_msg(&attach)?;
-    ws_write
-        .send(tungstenite::Message::Binary(encoded.into()))
-        .await?;
-
-    // Wait for ATTACHED
-    wait_for_attached(&mut ws_read, &config.channel).await?;
+    // Connect, handshake, and attach with timeout
+    let (ws_write, ws_read, conn_state) = tokio::time::timeout(
+        CONNECT_TIMEOUT,
+        connect_and_attach(
+            &realtime_host,
+            token,
+            &config.channel,
+            config.channel_params.as_ref(),
+        ),
+    )
+    .await
+    .map_err(|_| Error::Protocol {
+        code: 80014,
+        message: "Connection timed out".to_string(),
+    })??;
 
     let _ = event_tx.send(Event::Connected).await;
 

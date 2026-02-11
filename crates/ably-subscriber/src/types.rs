@@ -110,9 +110,6 @@ pub enum Error {
 
     #[error("URL parse error: {0}")]
     Url(#[from] url::ParseError),
-
-    #[error("Connection failed after {attempts} attempts")]
-    ConnectionFailed { attempts: u32 },
 }
 
 impl From<tungstenite::Error> for Error {
