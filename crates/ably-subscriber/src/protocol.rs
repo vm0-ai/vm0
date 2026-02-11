@@ -41,22 +41,16 @@ pub mod flags {
 // these structs. rmp_serde has a long-standing bug where skipped Option fields
 // cause deserialization failures: https://github.com/3Hren/msgpack-rust/issues/86
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 pub struct ProtocolMessage {
     pub action: i32,
     pub id: Option<String>,
     pub channel: Option<String>,
-    #[serde(rename = "channelSerial")]
     pub channel_serial: Option<String>,
-    #[serde(rename = "connectionId")]
     pub connection_id: Option<String>,
-    #[serde(rename = "connectionKey")]
     pub connection_key: Option<String>,
-    #[serde(rename = "connectionDetails")]
     pub connection_details: Option<ConnectionDetails>,
-    #[serde(rename = "connectionSerial")]
     pub connection_serial: Option<i64>,
-    #[serde(rename = "msgSerial")]
     pub msg_serial: Option<i64>,
     pub flags: Option<i32>,
     pub error: Option<ErrorInfo>,
@@ -67,47 +61,37 @@ pub struct ProtocolMessage {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 pub struct ConnectionDetails {
-    #[serde(rename = "clientId")]
     pub client_id: Option<String>,
-    #[serde(rename = "connectionKey")]
     pub connection_key: Option<String>,
-    #[serde(rename = "connectionStateTtl")]
     pub connection_state_ttl: Option<i64>,
-    #[serde(rename = "maxIdleInterval")]
     pub max_idle_interval: Option<i64>,
-    #[serde(rename = "maxMessageSize")]
     pub max_message_size: Option<i64>,
-    #[serde(rename = "maxFrameSize")]
     pub max_frame_size: Option<i64>,
-    #[serde(rename = "serverId")]
     pub server_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 pub struct ErrorInfo {
     pub code: i32,
-    #[serde(rename = "statusCode")]
     pub status_code: Option<i32>,
     pub message: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 pub struct AuthDetails {
-    #[serde(rename = "accessToken")]
     pub access_token: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 pub struct AblyMessage {
     pub id: Option<String>,
     pub name: Option<String>,
     pub data: Option<serde_json::Value>,
-    #[serde(rename = "clientId")]
     pub client_id: Option<String>,
     pub timestamp: Option<i64>,
     pub encoding: Option<String>,
