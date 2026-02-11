@@ -24,6 +24,7 @@ import noGetSignal from "./rules/no-get-signal.ts";
 import testContextInHooks from "./rules/test-context-in-hooks.ts";
 import computedConstArgsPackageScope from "./rules/computed-const-args-package-scope.ts";
 import noStoreInParams from "./rules/no-store-in-params.ts";
+import setupPageRender from "./rules/setup-page-render.ts";
 
 const plugin = {
   meta: {
@@ -41,6 +42,7 @@ const plugin = {
     "test-context-in-hooks": testContextInHooks,
     "computed-const-args-package-scope": computedConstArgsPackageScope,
     "no-store-in-params": noStoreInParams,
+    "setup-page-render": setupPageRender,
   },
 };
 

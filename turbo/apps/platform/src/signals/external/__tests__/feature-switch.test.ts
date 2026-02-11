@@ -7,7 +7,7 @@ const context = testContext();
 
 describe("feature switch", () => {
   it("should support dummy switch", async () => {
-    await setupPage({ context, path: "/" });
+    await setupPage({ context, path: "/", withoutRender: true });
 
     await expect(context.store.get(featureSwitch$)).resolves.toHaveProperty(
       "dummy",
@@ -16,7 +16,12 @@ describe("feature switch", () => {
   });
 
   it("should override dummy switch", async () => {
-    await setupPage({ context, path: "/", featureSwitches: { dummy: false } });
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: { dummy: false },
+      withoutRender: true,
+    });
 
     await expect(context.store.get(featureSwitch$)).resolves.toHaveProperty(
       "dummy",
@@ -27,7 +32,12 @@ describe("feature switch", () => {
   it("should not override keys not present in localStorage", async () => {
     // When localStorage only has partial overrides, other keys should keep their default values
     // Setting an empty object should not affect the default value of 'dummy' (which is true)
-    await setupPage({ context, path: "/", featureSwitches: {} });
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: {},
+      withoutRender: true,
+    });
 
     await expect(context.store.get(featureSwitch$)).resolves.toHaveProperty(
       "dummy",

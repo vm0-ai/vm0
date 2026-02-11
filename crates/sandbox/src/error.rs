@@ -12,9 +12,6 @@ pub enum SandboxError {
     #[error("execution failed: {0}")]
     ExecFailed(String),
 
-    #[error("timeout after {0}ms")]
-    Timeout(u64),
-
     #[error("invalid configuration: {0}")]
     InvalidConfig(String),
 

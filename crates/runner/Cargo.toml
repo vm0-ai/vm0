@@ -17,8 +17,12 @@ thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "signal", "time", "fs"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-reqwest = { workspace = true, features = ["json", "rustls-tls"] }
+flate2 = { workspace = true }
+reqwest = { workspace = true, features = ["json", "rustls-tls-native-roots"] }
+sha2 = { workspace = true }
+tar = { workspace = true }
 uuid = { workspace = true, features = ["v4", "serde"] }
+which = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

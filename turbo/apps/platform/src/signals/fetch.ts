@@ -27,7 +27,7 @@ function resolveApiBase(): string {
   return CONFIGURED_API_URL;
 }
 
-const apiBase$ = computed(() => {
+export const apiBase$ = computed(() => {
   return resolveApiBase();
 });
 

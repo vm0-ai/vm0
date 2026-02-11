@@ -34,3 +34,10 @@ jobs:
         run: |
           cd crates
           cargo test --all-targets
+
+      - name: Run ably-subscriber integration test
+        env:
+          ABLY_API_KEY: ${{ secrets.ABLY_API_KEY }}
+        run: |
+          cd crates
+          cargo run -p ably-subscriber --example integration_test

@@ -123,7 +123,7 @@ export default function ConnectorStatusPage({
                     ) : (
                       "Your account has been connected."
                     )}{" "}
-                    Close this window and return to your terminal.
+                    You can close this tab now.
                   </p>
                 </>
               ) : (

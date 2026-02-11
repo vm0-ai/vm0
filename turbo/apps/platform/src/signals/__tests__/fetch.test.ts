@@ -43,6 +43,7 @@ describe("fetch$ signal integration tests", () => {
     await setupPage({
       context,
       path: "/",
+      withoutRender: true,
     });
 
     const captured: { request: CapturedRequest | null } = { request: null };
@@ -73,6 +74,7 @@ describe("fetch$ signal integration tests", () => {
       context,
       path: "/",
       session: { token: mockToken },
+      withoutRender: true,
     });
 
     const captured: { request: CapturedRequest | null } = { request: null };
@@ -115,6 +117,7 @@ describe("fetch$ signal integration tests", () => {
       context,
       path: "/",
       session: { token: mockToken },
+      withoutRender: true,
     });
 
     const captured: { request: CapturedRequest | null } = { request: null };
@@ -148,6 +151,7 @@ describe("fetch$ signal integration tests", () => {
       context,
       path: "/",
       session: { token: mockToken },
+      withoutRender: true,
     });
 
     const captured: { request: CapturedRequest | null } = { request: null };

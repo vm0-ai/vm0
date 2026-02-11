@@ -133,6 +133,8 @@ interface MockHelpers {
   dateNow: MockInstance<() => number>;
   /** Date mock for controlling new Date() and Date.now() */
   date: DateMocks;
+  /** Execute all captured Next.js after() callbacks */
+  flushAfter(): Promise<void>;
 }
 
 interface SetupUserOptions {
@@ -362,6 +364,11 @@ export function testContext(): TestContext {
       axiom: axiomMocks,
       dateNow: dateNowMock,
       date: dateMocks,
+      async flushAfter() {
+        const callbacks = [...globalThis.nextAfterCallbacks];
+        globalThis.nextAfterCallbacks = [];
+        await Promise.all(callbacks.map((fn) => fn()));
+      },
     };
     mockHelpers = helpers;
     return helpers;

@@ -18,4 +18,6 @@ export type Services = {
 declare global {
   // getter ensures it's always defined after initServices()
   var services: Services;
+  // Captured Next.js after() callbacks for test assertions (see setup.ts)
+  var nextAfterCallbacks: Array<() => Promise<unknown>>;
 }

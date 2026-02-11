@@ -205,7 +205,7 @@ async fn download_storages(
     if result.exit_code != 0 {
         return Err(crate::error::RunnerError::Internal(format!(
             "storage download failed: {}",
-            result.stderr
+            String::from_utf8_lossy(&result.stderr)
         )));
     }
     Ok(())

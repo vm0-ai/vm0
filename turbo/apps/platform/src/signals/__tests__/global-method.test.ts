@@ -11,13 +11,13 @@ beforeAll(() => {
 
 describe("global debug loggers", () => {
   it("should has vm0 method after init", async () => {
-    await setupPage({ context, path: "/" });
+    await setupPage({ context, path: "/", withoutRender: true });
 
     expect(window._vm0).toBeDefined();
   });
 
   it("should init all loggers in info level", async () => {
-    await setupPage({ context, path: "/" });
+    await setupPage({ context, path: "/", withoutRender: true });
 
     const loggers = window._vm0?.loggers;
     expect(loggers).toBeDefined();
@@ -29,7 +29,7 @@ describe("global debug loggers", () => {
   });
 
   it("should set logger to debug level when set debug to true", async () => {
-    await setupPage({ context, path: "/" });
+    await setupPage({ context, path: "/", withoutRender: true });
 
     const loggers = window._vm0?.loggers;
     expect(loggers).toBeDefined();
@@ -46,6 +46,7 @@ describe("global debug loggers", () => {
       context,
       path: "/",
       debugLoggers: ["Promise"],
+      withoutRender: true,
     });
 
     const loggers = window._vm0?.loggers;
@@ -60,14 +61,19 @@ describe("global debug loggers", () => {
 
 describe("global feature switches", () => {
   it("should have featureSwitches after init", async () => {
-    await setupPage({ context, path: "/" });
+    await setupPage({ context, path: "/", withoutRender: true });
 
     expect(window._vm0).toBeDefined();
     expect(window._vm0?.featureSwitches.dummy).toBeTruthy();
   });
 
   it("should override feature switch when set value", async () => {
-    await setupPage({ context, path: "/", featureSwitches: { dummy: false } });
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: { dummy: false },
+      withoutRender: true,
+    });
 
     expect(window._vm0?.featureSwitches.dummy).toBeFalsy();
   });

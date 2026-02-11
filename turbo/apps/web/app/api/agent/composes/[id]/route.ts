@@ -30,13 +30,27 @@ const router = tsr.router(composesByIdContract, {
       };
     }
 
-    const [compose] = await globalThis.services.db
-      .select()
+    // JOIN compose + version in a single query
+    const [result] = await globalThis.services.db
+      .select({
+        id: agentComposes.id,
+        userId: agentComposes.userId,
+        scopeId: agentComposes.scopeId,
+        name: agentComposes.name,
+        headVersionId: agentComposes.headVersionId,
+        createdAt: agentComposes.createdAt,
+        updatedAt: agentComposes.updatedAt,
+        content: agentComposeVersions.content,
+      })
       .from(agentComposes)
+      .leftJoin(
+        agentComposeVersions,
+        eq(agentComposes.headVersionId, agentComposeVersions.id),
+      )
       .where(eq(agentComposes.id, params.id))
       .limit(1);
 
-    if (!compose) {
+    if (!result) {
       return {
         status: 404 as const,
         body: {
@@ -47,7 +61,7 @@ const router = tsr.router(composesByIdContract, {
 
     // Check permission to access this compose
     const userEmail = await getUserEmail(userId);
-    const hasAccess = await canAccessCompose(userId, userEmail, compose.id);
+    const hasAccess = await canAccessCompose(userId, userEmail, result);
     if (!hasAccess) {
       return {
         status: 404 as const,
@@ -57,29 +71,15 @@ const router = tsr.router(composesByIdContract, {
       };
     }
 
-    // Get HEAD version content if available
-    let content: AgentComposeYaml | null = null;
-    if (compose.headVersionId) {
-      const versions = await globalThis.services.db
-        .select()
-        .from(agentComposeVersions)
-        .where(eq(agentComposeVersions.id, compose.headVersionId))
-        .limit(1);
-
-      if (versions.length > 0 && versions[0]) {
-        content = versions[0].content as AgentComposeYaml;
-      }
-    }
-
     return {
       status: 200 as const,
       body: {
-        id: compose.id,
-        name: compose.name,
-        headVersionId: compose.headVersionId,
-        content,
-        createdAt: compose.createdAt.toISOString(),
-        updatedAt: compose.updatedAt.toISOString(),
+        id: result.id,
+        name: result.name,
+        headVersionId: result.headVersionId,
+        content: (result.content as AgentComposeYaml) ?? null,
+        createdAt: result.createdAt.toISOString(),
+        updatedAt: result.updatedAt.toISOString(),
       },
     };
   },

@@ -15,8 +15,8 @@ impl ExecRequest<'_> {
 
 pub struct ExecResult {
     pub exit_code: i32,
-    pub stdout: String,
-    pub stderr: String,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
 }
 
 pub struct SpawnHandle {

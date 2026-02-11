@@ -1,6 +1,20 @@
 [workspace]
 resolver = "2"
-members = ["vsock-guest", "vsock-proto", "vsock-host", "vsock-test", "guest-init", "guest-common", "guest-download", "guest-agent", "guest-mock-claude", "sandbox", "sandbox-fc", "runner"]
+members = [
+    "ably-subscriber",
+    "guest-agent",
+    "guest-common",
+    "guest-download",
+    "guest-init",
+    "guest-mock-claude",
+    "runner",
+    "sandbox",
+    "sandbox-fc",
+    "vsock-guest",
+    "vsock-host",
+    "vsock-proto",
+    "vsock-test",
+]
 
 [workspace.package]
 edition = "2024"
@@ -35,8 +49,14 @@ tracing-subscriber = "0.3"
 which = "8"
 ureq = "3"
 reqwest = { version = "0.12", default-features = false }
+hmac = "0.12"
 sha2 = "0.10"
 tokio-util = "0.7"
+tokio-tungstenite = { version = "0.26", default-features = false }
+rmp-serde = "1"
+rmpv = "1"
+futures-util = "0.3"
+url = "2"
 
 [profile.release]
 lto = true
@@ -46,12 +66,13 @@ codegen-units = 1
 [workspace.lints.rust]
 warnings = "deny"
 
+# See clippy.toml for test-specific overrides (allow-unwrap-in-tests etc.)
 [workspace.lints.clippy]
 all = "deny"
 unwrap_used = "deny"
 expect_used = "deny"
-panic = "deny"
 indexing_slicing = "deny"
+panic = "deny"
 todo = "deny"
 unimplemented = "deny"
 unreachable = "deny"

@@ -228,16 +228,31 @@ const router = tsr.router(runsMainContract, {
 
     if (isNewRun) {
       if (body.agentComposeVersionId) {
-        // Explicit version ID provided - use directly
+        // Explicit version ID provided - JOIN version+compose and fetch userEmail in parallel
         agentComposeVersionId = body.agentComposeVersionId;
 
-        const [version] = await globalThis.services.db
-          .select()
-          .from(agentComposeVersions)
-          .where(eq(agentComposeVersions.id, agentComposeVersionId))
-          .limit(1);
+        const [joinResult, userEmail] = await Promise.all([
+          globalThis.services.db
+            .select({
+              versionId: agentComposeVersions.id,
+              content: agentComposeVersions.content,
+              composeId: agentComposes.id,
+              composeName: agentComposes.name,
+              composeUserId: agentComposes.userId,
+              composeScopeId: agentComposes.scopeId,
+            })
+            .from(agentComposeVersions)
+            .leftJoin(
+              agentComposes,
+              eq(agentComposeVersions.composeId, agentComposes.id),
+            )
+            .where(eq(agentComposeVersions.id, agentComposeVersionId))
+            .limit(1),
+          getUserEmail(userId),
+        ]);
 
-        if (!version) {
+        const versionRow = joinResult[0];
+        if (!versionRow) {
           return {
             status: 404 as const,
             body: {
@@ -249,22 +264,19 @@ const router = tsr.router(runsMainContract, {
           };
         }
 
-        composeContent = version.content as AgentComposeYaml;
-
-        const [compose] = await globalThis.services.db
-          .select()
-          .from(agentComposes)
-          .where(eq(agentComposes.id, version.composeId))
-          .limit(1);
+        composeContent = versionRow.content as AgentComposeYaml;
 
         // Check permission to access this compose
-        if (compose) {
-          const userEmail = await getUserEmail(userId);
-          const hasAccess = await canAccessCompose(
-            userId,
-            userEmail,
-            compose.id,
-          );
+        if (
+          versionRow.composeId &&
+          versionRow.composeUserId &&
+          versionRow.composeScopeId
+        ) {
+          const hasAccess = await canAccessCompose(userId, userEmail, {
+            id: versionRow.composeId,
+            userId: versionRow.composeUserId,
+            scopeId: versionRow.composeScopeId,
+          });
           if (!hasAccess) {
             return {
               status: 403 as const,
@@ -278,17 +290,33 @@ const router = tsr.router(runsMainContract, {
           }
         }
 
-        agentComposeName = compose?.name || undefined;
+        agentComposeName = versionRow.composeName || undefined;
       } else {
         // Resolve compose ID to HEAD version
         const composeId = body.agentComposeId!;
 
-        const [compose] = await globalThis.services.db
-          .select()
-          .from(agentComposes)
-          .where(eq(agentComposes.id, composeId))
-          .limit(1);
+        // JOIN compose+version and fetch userEmail in parallel
+        const [joinResult, userEmail] = await Promise.all([
+          globalThis.services.db
+            .select({
+              id: agentComposes.id,
+              userId: agentComposes.userId,
+              scopeId: agentComposes.scopeId,
+              name: agentComposes.name,
+              headVersionId: agentComposes.headVersionId,
+              content: agentComposeVersions.content,
+            })
+            .from(agentComposes)
+            .leftJoin(
+              agentComposeVersions,
+              eq(agentComposes.headVersionId, agentComposeVersions.id),
+            )
+            .where(eq(agentComposes.id, composeId))
+            .limit(1),
+          getUserEmail(userId),
+        ]);
 
+        const compose = joinResult[0];
         if (!compose) {
           return {
             status: 404 as const,
@@ -299,8 +327,7 @@ const router = tsr.router(runsMainContract, {
         }
 
         // Check permission to access this compose
-        const userEmail = await getUserEmail(userId);
-        const hasAccess = await canAccessCompose(userId, userEmail, compose.id);
+        const hasAccess = await canAccessCompose(userId, userEmail, compose);
         if (!hasAccess) {
           return {
             status: 403 as const,
@@ -326,16 +353,7 @@ const router = tsr.router(runsMainContract, {
           };
         }
 
-        agentComposeVersionId = compose.headVersionId;
-        agentComposeName = compose.name || undefined;
-
-        const [version] = await globalThis.services.db
-          .select()
-          .from(agentComposeVersions)
-          .where(eq(agentComposeVersions.id, agentComposeVersionId))
-          .limit(1);
-
-        if (!version) {
+        if (!compose.content) {
           return {
             status: 404 as const,
             body: {
@@ -347,20 +365,47 @@ const router = tsr.router(runsMainContract, {
           };
         }
 
-        composeContent = version.content as AgentComposeYaml;
+        agentComposeVersionId = compose.headVersionId;
+        agentComposeName = compose.name || undefined;
+        composeContent = compose.content as AgentComposeYaml;
       }
 
-      // Validate template variables for new runs
-      // Merge CLI-provided vars with server-stored vars for validation
+      // Validate template variables and image access for new runs
       if (composeContent) {
         const requiredVars = extractTemplateVars(composeContent);
         const cliVars = body.vars || {};
 
-        // Fetch server-stored variables to include in validation
-        let storedVars: Record<string, string> = {};
-        const userScope = await getUserScopeByClerkId(userId);
-        if (userScope) {
-          storedVars = await getVariableValues(userScope.id);
+        // Determine agent image for access check
+        const agentKeys = Object.keys(composeContent.agents);
+        const firstAgentKey = agentKeys[0];
+        const agent = firstAgentKey
+          ? composeContent.agents[firstAgentKey]
+          : undefined;
+
+        // Fetch stored vars and validate image access in parallel
+        let storedVars: Record<string, string>;
+        try {
+          [storedVars] = await Promise.all([
+            getUserScopeByClerkId(userId).then(async (scope) =>
+              scope ? getVariableValues(scope.id) : {},
+            ),
+            agent?.image
+              ? assertImageAccess(userId, agent.image)
+              : Promise.resolve(),
+          ]);
+        } catch (error) {
+          return {
+            status: 400 as const,
+            body: {
+              error: {
+                message:
+                  error instanceof Error
+                    ? error.message
+                    : "Image access denied",
+                code: "BAD_REQUEST",
+              },
+            },
+          };
         }
 
         // Merge: CLI vars override server-stored vars (same priority as buildExecutionContext)
@@ -379,31 +424,6 @@ const router = tsr.router(runsMainContract, {
               },
             },
           };
-        }
-
-        // Validate image access for new runs
-        const agentKeys = Object.keys(composeContent.agents);
-        const firstAgentKey = agentKeys[0];
-        if (firstAgentKey) {
-          const agent = composeContent.agents[firstAgentKey];
-          if (agent?.image) {
-            try {
-              await assertImageAccess(userId, agent.image);
-            } catch (error) {
-              return {
-                status: 400 as const,
-                body: {
-                  error: {
-                    message:
-                      error instanceof Error
-                        ? error.message
-                        : "Image access denied",
-                    code: "BAD_REQUEST",
-                  },
-                },
-              };
-            }
-          }
         }
       }
     } else if (isCheckpointResume) {
@@ -438,20 +458,18 @@ const router = tsr.router(runsMainContract, {
         secretNamesFromSource = checkpointSecretNames;
       }
 
-      const [version] = await globalThis.services.db
-        .select()
+      // JOIN version+compose in a single query to get compose name
+      const [versionWithCompose] = await globalThis.services.db
+        .select({ composeName: agentComposes.name })
         .from(agentComposeVersions)
+        .leftJoin(
+          agentComposes,
+          eq(agentComposeVersions.composeId, agentComposes.id),
+        )
         .where(eq(agentComposeVersions.id, agentComposeVersionId))
         .limit(1);
 
-      if (version) {
-        const [compose] = await globalThis.services.db
-          .select()
-          .from(agentComposes)
-          .where(eq(agentComposes.id, version.composeId))
-          .limit(1);
-        agentComposeName = compose?.name || undefined;
-      }
+      agentComposeName = versionWithCompose?.composeName || undefined;
     } else {
       // Session continue
       let sessionData;

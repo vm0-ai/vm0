@@ -141,44 +141,58 @@ export function VariableList() {
       )}
 
       <div className="flex flex-col">
-        {variablesList &&
-          variablesList.map((variable, index) => (
-            <VariableRow
-              key={variable.id}
-              variable={variable}
-              isFirst={index === 0}
-            />
-          ))}
+        {!variablesList
+          ? ["v1", "v2", "v3"].map((id, i) => (
+              <div
+                key={id}
+                className={`flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 animate-pulse ${i === 0 ? "rounded-t-xl" : ""} ${i === 2 ? "rounded-b-xl border-b" : ""}`}
+              >
+                <div className="flex flex-1 flex-col gap-2">
+                  <div className="h-4 w-32 rounded bg-muted" />
+                  <div className="h-3 w-48 rounded bg-muted" />
+                </div>
+                <div className="h-3 w-16 rounded bg-muted" />
+              </div>
+            ))
+          : variablesList.map((variable, index) => (
+              <VariableRow
+                key={variable.id}
+                variable={variable}
+                isFirst={index === 0}
+              />
+            ))}
 
-        <div
-          className={`flex flex-col gap-4 border border-border bg-card p-4 rounded-b-xl sm:flex-row sm:items-center ${!variablesList || variablesList.length === 0 ? "rounded-t-xl" : ""}`}
-        >
-          <div className="flex flex-1 items-center gap-4 min-w-0">
-            <div className="flex shrink-0 items-center justify-center size-[28px]">
-              <IconPlus size={24} stroke={1.5} className="text-foreground" />
-            </div>
-            <div className="flex flex-1 flex-col gap-1 min-w-0">
-              <div className="text-sm font-medium text-foreground">
-                {!variablesList || variablesList.length === 0
-                  ? "No variables configured yet"
-                  : "New variable"}
-              </div>
-              <div className="text-sm text-muted-foreground">
-                {!variablesList || variablesList.length === 0
-                  ? "Add your first configuration value"
-                  : "Add a new configuration value for your agents"}
-              </div>
-            </div>
-          </div>
-          <button
-            onClick={() => openAdd()}
-            className="flex items-center self-start shrink-0 rounded-lg border border-border bg-background overflow-hidden hover:bg-muted transition-colors"
+        {variablesList && (
+          <div
+            className={`flex flex-col gap-4 border border-border bg-card p-4 rounded-b-xl sm:flex-row sm:items-center ${variablesList.length === 0 ? "rounded-t-xl" : ""}`}
           >
-            <span className="px-4 py-2 text-sm font-medium text-foreground">
-              Add variable
-            </span>
-          </button>
-        </div>
+            <div className="flex flex-1 items-center gap-4 min-w-0">
+              <div className="flex shrink-0 items-center justify-center size-[28px]">
+                <IconPlus size={24} stroke={1.5} className="text-foreground" />
+              </div>
+              <div className="flex flex-1 flex-col gap-1 min-w-0">
+                <div className="text-sm font-medium text-foreground">
+                  {variablesList.length === 0
+                    ? "No variables configured yet"
+                    : "New variable"}
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {variablesList.length === 0
+                    ? "Add your first configuration value"
+                    : "Add a new configuration value for your agents"}
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => openAdd()}
+              className="flex items-center self-start shrink-0 rounded-lg border border-border bg-background overflow-hidden hover:bg-muted transition-colors"
+            >
+              <span className="px-4 py-2 text-sm font-medium text-foreground">
+                Add variable
+              </span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

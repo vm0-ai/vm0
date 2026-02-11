@@ -32,6 +32,7 @@ describe("startOnboarding$", () => {
     await setupPage({
       context,
       path: "/logs",
+      withoutRender: true,
     });
 
     expect(context.store.get(pathname$)).toBe("/");
@@ -49,7 +50,7 @@ describe("needsOnboarding$", () => {
       }),
     );
 
-    await setupPage({ context, path: "/" });
+    await setupPage({ context, path: "/", withoutRender: true });
 
     const needsOnboarding = await context.store.get(needsOnboarding$);
     expect(needsOnboarding).toBeTruthy();
@@ -62,7 +63,7 @@ describe("needsOnboarding$", () => {
       }),
     );
 
-    await setupPage({ context, path: "/" });
+    await setupPage({ context, path: "/", withoutRender: true });
 
     const needsOnboarding = await context.store.get(needsOnboarding$);
     expect(needsOnboarding).toBeTruthy();
@@ -70,7 +71,7 @@ describe("needsOnboarding$", () => {
 
   it("should return false when both scope and a model provider exist", async () => {
     // Default mocks have both scope and oauth token
-    await setupPage({ context, path: "/" });
+    await setupPage({ context, path: "/", withoutRender: true });
 
     const needsOnboarding = await context.store.get(needsOnboarding$);
     expect(needsOnboarding).toBeFalsy();
@@ -110,7 +111,7 @@ describe("saveOnboardingConfig$", () => {
       }),
     );
 
-    await setupPage({ context, path: "/" });
+    await setupPage({ context, path: "/", withoutRender: true });
 
     act(() => {
       context.store.set(setOnboardingSecret$, "test-oauth-token");
@@ -149,7 +150,7 @@ describe("saveOnboardingConfig$", () => {
       }),
     );
 
-    await setupPage({ context, path: "/" });
+    await setupPage({ context, path: "/", withoutRender: true });
 
     act(() => {
       context.store.set(setOnboardingProviderType$, "anthropic-api-key");
@@ -193,7 +194,7 @@ describe("saveOnboardingConfig$", () => {
       }),
     );
 
-    await setupPage({ context, path: "/" });
+    await setupPage({ context, path: "/", withoutRender: true });
 
     act(() => {
       context.store.set(setOnboardingProviderType$, "aws-bedrock");
@@ -239,7 +240,7 @@ describe("saveOnboardingConfig$", () => {
       }),
     );
 
-    await setupPage({ context, path: "/" });
+    await setupPage({ context, path: "/", withoutRender: true });
 
     await act(async () => {
       await context.store.set(saveOnboardingConfig$, context.signal);
@@ -268,7 +269,7 @@ describe("closeOnboardingModal$", () => {
       }),
     );
 
-    await setupPage({ context, path: "/" });
+    await setupPage({ context, path: "/", withoutRender: true });
 
     act(() => {
       context.store.set(closeOnboardingModal$);
@@ -290,7 +291,7 @@ describe("closeOnboardingModal$", () => {
     );
 
     // Default mock has scope
-    await setupPage({ context, path: "/" });
+    await setupPage({ context, path: "/", withoutRender: true });
 
     act(() => {
       context.store.set(closeOnboardingModal$);

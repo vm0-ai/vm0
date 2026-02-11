@@ -1,20 +1,24 @@
-# Rust Crates for Firecracker VM
+# Rust Crates
 
-This workspace contains Rust crates for running code inside Firecracker microVMs.
+This workspace contains Rust crates for the vm0 sandbox runtime — VM orchestration, guest execution, vsock communication, and supporting services.
 
 ## Crates
 
 | Crate | Description |
 |-------|-------------|
-| **vsock-proto** | Protocol encoding/decoding shared by host and guest |
-| **vsock-guest** | Guest-side agent — runs inside the VM, handles host commands |
-| **vsock-host** | Host-side async client (tokio) — sends commands to the guest |
-| **vsock-test** | End-to-end integration tests — real host + real guest over Unix sockets |
-| **guest-init** | Init process (PID 1) for Firecracker VMs — filesystem setup, signal handling, vsock-guest |
-| **guest-common** | Shared utilities for guest-init and guest-download |
-| **guest-download** | Downloads and extracts storage archives based on manifest — parallel downloads with retry logic |
+| **runner** | Firecracker sandbox orchestrator — polls for jobs, manages VM lifecycle, and bridges API to sandbox-fc |
 | **sandbox** | Sandbox trait and shared types — `SandboxConfig`, `ExecRequest`, `SandboxFactory` |
 | **sandbox-fc** | Firecracker sandbox implementation — VM lifecycle, network namespace pool, overlay FS, snapshots |
+| **vsock-proto** | Protocol encoding/decoding shared by host and guest |
+| **vsock-host** | Host-side async client (tokio) — sends commands to the guest |
+| **vsock-guest** | Guest-side agent — runs inside the VM, handles host commands |
+| **vsock-test** | End-to-end integration tests — real host + real guest over Unix sockets |
+| **guest-init** | Init process (PID 1) for Firecracker VMs — filesystem setup, signal handling, vsock-guest |
+| **guest-agent** | Orchestrates CLI execution, heartbeat, telemetry upload, and checkpoint creation inside Firecracker VM |
+| **guest-common** | Shared utilities for guest crates |
+| **guest-download** | Downloads and extracts storage archives based on manifest — parallel downloads with retry logic |
+| **guest-mock-claude** | Mock Claude CLI for testing — executes bash commands and outputs Claude-compatible JSONL |
+| **ably-subscriber** | Ably Pub/Sub subscribe-only realtime client — WebSocket/MessagePack protocol with token auth and automatic reconnection |
 
 ## Architecture
 
@@ -22,17 +26,19 @@ This workspace contains Rust crates for running code inside Firecracker microVMs
 ┌──────────────────────────────────────────┐
 │              Firecracker VM              │
 │                                          │
+│   guest-agent ── guest-download          │
+│       │                                  │
 │   guest-init (PID 1) + vsock-guest       │
 │                  │                       │
 │             vsock (CID=2, port=1000)     │
 └──────────────────┼───────────────────────┘
                    │
 ┌──────────────────┼───────────────────────┐
-│  Host (Runner)   │                       │
+│  Host            │                       │
 │                  │                       │
-│  sandbox-fc ── vsock-host                │
-│       │                                  │
-│  sandbox (trait)                         │
+│  runner ── sandbox-fc ── vsock-host      │
+│                 │                        │
+│            sandbox (trait)               │
 └──────────────────────────────────────────┘
 ```
 

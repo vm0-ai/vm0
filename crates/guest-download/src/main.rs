@@ -113,8 +113,8 @@ fn run(manifest_path: &str) -> bool {
 
     // Download artifact if present (after storages complete)
     if let Some(artifact) = &manifest.artifact
-        && let Some(url) = &artifact.archive_url
-        && url != "null"
+        && is_valid_url(&artifact.archive_url)
+        && let Some(url) = artifact.archive_url.as_deref()
     {
         let start = Instant::now();
         log_info!(LOG_TAG, "Downloading artifact to {}", artifact.mount_path);
@@ -211,8 +211,13 @@ fn download_storages_parallel(storages: &[Storage]) -> bool {
                         all_success = false;
                     }
                 }
-                Err(_) => {
-                    log_error!(LOG_TAG, "Thread panicked");
+                Err(e) => {
+                    let msg = e
+                        .downcast_ref::<String>()
+                        .map(String::as_str)
+                        .or_else(|| e.downcast_ref::<&str>().copied())
+                        .unwrap_or("unknown");
+                    log_error!(LOG_TAG, "Thread panicked: {msg}");
                     all_success = false;
                 }
             }
@@ -220,6 +225,17 @@ fn download_storages_parallel(storages: &[Storage]) -> bool {
     }
 
     all_success
+}
+
+struct DownloadError {
+    message: String,
+    retriable: bool,
+}
+
+impl std::fmt::Display for DownloadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
 }
 
 fn download_with_retry(url: &str, target_path: &str) -> Result<(), String> {
@@ -230,7 +246,10 @@ fn download_with_retry(url: &str, target_path: &str) -> Result<(), String> {
             Ok(()) => return Ok(()),
             Err(e) => {
                 log_warn!(LOG_TAG, "Attempt {attempt}/{MAX_RETRIES} failed: {e}");
-                last_error = e;
+                last_error = e.message.clone();
+                if !e.retriable {
+                    break;
+                }
                 if attempt < MAX_RETRIES {
                     thread::sleep(RETRY_DELAY);
                 }
@@ -241,16 +260,24 @@ fn download_with_retry(url: &str, target_path: &str) -> Result<(), String> {
     Err(last_error)
 }
 
-fn download_and_extract(url: &str, target_path: &str) -> Result<(), String> {
+fn download_and_extract(url: &str, target_path: &str) -> Result<(), DownloadError> {
     // Create target directory
-    fs::create_dir_all(target_path)
-        .map_err(|e| format!("Failed to create directory {target_path}: {e}"))?;
+    fs::create_dir_all(target_path).map_err(|e| DownloadError {
+        message: format!("Failed to create directory {target_path}: {e}"),
+        retriable: false,
+    })?;
 
     // Make HTTP request using global agent
-    let response = HTTP_AGENT
-        .get(url)
-        .call()
-        .map_err(|e| format!("HTTP request failed: {e}"))?;
+    let response = HTTP_AGENT.get(url).call().map_err(|e| {
+        let retriable = match &e {
+            ureq::Error::StatusCode(code) => *code >= 500,
+            _ => true, // network/timeout errors are retriable
+        };
+        DownloadError {
+            message: format!("HTTP {e} url={url}"),
+            retriable,
+        }
+    })?;
 
     // Stream: HTTP response -> GzDecoder -> tar::Archive
     let reader = response.into_body().into_reader();
@@ -259,9 +286,10 @@ fn download_and_extract(url: &str, target_path: &str) -> Result<(), String> {
 
     // Extract to target path
     // Note: tar crate handles empty archives gracefully (returns Ok with 0 entries)
-    archive
-        .unpack(target_path)
-        .map_err(|e| format!("Failed to extract archive: {e}"))?;
+    archive.unpack(target_path).map_err(|e| DownloadError {
+        message: format!("Failed to extract archive: {e}"),
+        retriable: false,
+    })?;
 
     Ok(())
 }
