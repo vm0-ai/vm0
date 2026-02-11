@@ -20,7 +20,6 @@ import { usageDaily } from "../db/schema/usage-daily";
 import { slackComposeRequests } from "../db/schema/slack-compose-request";
 import { slackThreadSessions } from "../db/schema/slack-thread-session";
 import { emailThreadSessions } from "../db/schema/email-thread-session";
-import { emailReplyRequests } from "../db/schema/email-reply-request";
 import { agentRunCallbacks } from "../db/schema/agent-run-callback";
 import { and, eq } from "drizzle-orm";
 import { generateCallbackSecret } from "../lib/callback/hmac";
@@ -1593,39 +1592,6 @@ export async function findTestEmailThreadSession(replyToToken: string) {
 }
 
 /**
- * Create an email reply request directly in the database for test setup.
- */
-export async function createTestEmailReplyRequest(params: {
-  runId: string;
-  emailThreadSessionId: string;
-  inboundEmailId: string;
-  inboundMessageId?: string | null;
-}): Promise<{ id: string }> {
-  const [row] = await globalThis.services.db
-    .insert(emailReplyRequests)
-    .values({
-      runId: params.runId,
-      emailThreadSessionId: params.emailThreadSessionId,
-      inboundEmailId: params.inboundEmailId,
-      inboundMessageId: params.inboundMessageId ?? null,
-    })
-    .returning({ id: emailReplyRequests.id });
-  return row!;
-}
-
-/**
- * Find an email reply request by run ID.
- */
-export async function findTestEmailReplyRequest(runId: string) {
-  const [row] = await globalThis.services.db
-    .select()
-    .from(emailReplyRequests)
-    .where(eq(emailReplyRequests.runId, runId))
-    .limit(1);
-  return row ?? null;
-}
-
-/**
  * Find agent runs matching a given userId and prompt.
  */
 export async function findTestRunsByUserAndPrompt(
@@ -1665,4 +1631,14 @@ export async function createTestCallback(params: {
     .returning({ id: agentRunCallbacks.id });
 
   return { callbackId: callback!.id, secret };
+}
+
+/**
+ * Find all callback records for a given run ID.
+ */
+export async function findTestCallbacksByRunId(runId: string) {
+  return globalThis.services.db
+    .select()
+    .from(agentRunCallbacks)
+    .where(eq(agentRunCallbacks.runId, runId));
 }

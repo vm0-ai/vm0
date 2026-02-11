@@ -15,9 +15,6 @@ import type { ArtifactSnapshot } from "../../../../../src/lib/checkpoint";
 import type { RunResult } from "../../../../../src/lib/run/types";
 import { logger } from "../../../../../src/lib/logger";
 import { publishStatus } from "../../../../../src/lib/realtime/client";
-import { notifyScheduleRunComplete } from "../../../../../src/lib/slack/handlers/schedule-notification";
-import { notifyScheduleRunCompleteEmail } from "../../../../../src/lib/email/handlers/schedule-notification";
-import { sendEmailReplyIfNeeded } from "../../../../../src/lib/email/handlers/send-reply";
 import { dispatchCallbacks } from "../../../../../src/lib/callback";
 import { after } from "next/server";
 
@@ -185,48 +182,19 @@ const router = tsr.router(webhookCompleteContract, {
       await publishStatus(body.runId, "failed", undefined, errorMessage);
     }
 
-    // Send notifications for scheduled runs (non-blocking)
-    if (run.scheduleId) {
-      const errorMsg =
-        finalStatus === "failed"
-          ? (body.error ?? `Agent exited with code ${body.exitCode}`)
-          : undefined;
-      // Slack DM notification
-      after(() =>
-        notifyScheduleRunComplete(body.runId, finalStatus, errorMsg).catch(
-          (err) => log.error("Failed to send schedule notification", { err }),
-        ),
-      );
-      // Email notification
-      after(() =>
-        notifyScheduleRunCompleteEmail(body.runId, finalStatus, errorMsg).catch(
-          (err) =>
-            log.error("Failed to send email schedule notification", { err }),
-        ),
-      );
-    }
-
-    // Send email reply response (for runs triggered by email replies)
-    after(() =>
-      sendEmailReplyIfNeeded(
-        body.runId,
-        finalStatus,
-        finalStatus === "failed"
-          ? (body.error ?? `Agent exited with code ${body.exitCode}`)
-          : undefined,
-      ).catch((err) => log.error("Failed to send email reply", { err })),
-    );
-
-    // Dispatch registered callbacks (non-blocking)
-    // This handles Slack mentions and other webhook integrations
+    // Dispatch all registered callbacks (non-blocking)
+    // This handles Slack mentions, schedule notifications, email replies, etc.
     after(() => {
       const errorMsg =
         finalStatus === "failed"
           ? (body.error ?? `Agent exited with code ${body.exitCode}`)
           : undefined;
-      dispatchCallbacks(body.runId, finalStatus, undefined, errorMsg).catch(
-        (err) => log.error("Failed to dispatch callbacks", { err }),
-      );
+      return dispatchCallbacks(
+        body.runId,
+        finalStatus,
+        undefined,
+        errorMsg,
+      ).catch((err) => log.error("Failed to dispatch callbacks", { err }));
     });
 
     // Kill sandbox (wait for completion to ensure cleanup before response)

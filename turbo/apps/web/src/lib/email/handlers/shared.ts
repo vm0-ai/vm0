@@ -1,7 +1,6 @@
 import crypto from "crypto";
 import { eq } from "drizzle-orm";
 import { emailThreadSessions } from "../../../db/schema/email-thread-session";
-import { emailReplyRequests } from "../../../db/schema/email-reply-request";
 import { env } from "../../../env";
 import { getPlatformUrl } from "../../url";
 
@@ -118,43 +117,4 @@ export async function updateEmailThreadSession(
       updatedAt: new Date(),
     })
     .where(eq(emailThreadSessions.id, sessionId));
-}
-
-/**
- * Create an email reply request (links a run to its email thread context).
- */
-export async function createEmailReplyRequest(opts: {
-  runId: string;
-  emailThreadSessionId: string;
-  inboundEmailId: string;
-  inboundMessageId: string | null;
-}): Promise<void> {
-  await globalThis.services.db.insert(emailReplyRequests).values({
-    runId: opts.runId,
-    emailThreadSessionId: opts.emailThreadSessionId,
-    inboundEmailId: opts.inboundEmailId,
-    inboundMessageId: opts.inboundMessageId,
-  });
-}
-
-/**
- * Look up an email reply request by run ID.
- */
-export async function lookupEmailReplyRequest(runId: string) {
-  const [request] = await globalThis.services.db
-    .select()
-    .from(emailReplyRequests)
-    .where(eq(emailReplyRequests.runId, runId))
-    .limit(1);
-
-  return request ?? null;
-}
-
-/**
- * Delete an email reply request after it has been consumed.
- */
-export async function deleteEmailReplyRequest(id: string): Promise<void> {
-  await globalThis.services.db
-    .delete(emailReplyRequests)
-    .where(eq(emailReplyRequests.id, id));
 }

@@ -7,7 +7,7 @@ import {
   createTestAgentSession,
   createTestEmailThreadSession,
   findTestRunsByUserAndPrompt,
-  findTestEmailReplyRequest,
+  findTestCallbacksByRunId,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -133,11 +133,18 @@ describe("POST /api/webhooks/email/inbound", () => {
     const run = runs[0]!;
     expect(run.status).toBeDefined();
 
-    // Verify: email reply request was created linking run to session
-    const replyRequest = await findTestEmailReplyRequest(run.id);
+    // Verify: email reply callback was registered (instead of emailReplyRequest)
+    const callbacks = await findTestCallbacksByRunId(run.id);
+    expect(callbacks.length).toBeGreaterThanOrEqual(1);
 
-    expect(replyRequest).toBeDefined();
-    expect(replyRequest!.inboundEmailId).toBe("inbound-email-123");
+    const emailReplyCallback = callbacks.find((c) =>
+      c.url.includes("/callbacks/email/reply"),
+    );
+    expect(emailReplyCallback).toBeDefined();
+    expect(emailReplyCallback!.payload).toEqual({
+      emailThreadSessionId: expect.any(String),
+      inboundEmailId: "inbound-email-123",
+    });
   });
 
   it("should ignore emails with invalid HMAC reply token", async () => {

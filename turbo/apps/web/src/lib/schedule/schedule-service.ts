@@ -7,8 +7,10 @@ import {
   agentComposeVersions,
 } from "../../db/schema/agent-compose";
 import { agentRuns } from "../../db/schema/agent-run";
+import { agentRunCallbacks } from "../../db/schema/agent-run-callback";
 import { scopes } from "../../db/schema/scope";
 import { decryptSecretsMap } from "../crypto";
+import { encryptCredentialValue } from "../crypto/secrets-encryption";
 import {
   notFound,
   badRequest,
@@ -26,6 +28,7 @@ import { generateSandboxToken } from "../auth/sandbox-token";
 import { getUserScopeByClerkId } from "../scope/scope-service";
 import { getSecretValues } from "../secret/secret-service";
 import { getVariableValues } from "../variable/variable-service";
+import { generateCallbackSecret, getApiUrl } from "../callback";
 
 const log = logger("service:schedule");
 
@@ -929,6 +932,37 @@ async function executeSchedule(
     .update(agentSchedules)
     .set({ lastRunId: run.id })
     .where(eq(agentSchedules.id, schedule.id));
+
+  // Register callbacks for run completion notifications
+  const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
+  const callbackPayload = {
+    scheduleId: schedule.id,
+    composeId: schedule.composeId,
+    composeName: compose.name,
+    userId: compose.userId,
+  };
+
+  // Email schedule notification callback
+  await globalThis.services.db.insert(agentRunCallbacks).values({
+    runId: run.id,
+    url: `${getApiUrl()}/api/internal/callbacks/email/schedule`,
+    encryptedSecret: encryptCredentialValue(
+      generateCallbackSecret(),
+      SECRETS_ENCRYPTION_KEY,
+    ),
+    payload: callbackPayload,
+  });
+
+  // Slack schedule DM notification callback
+  await globalThis.services.db.insert(agentRunCallbacks).values({
+    runId: run.id,
+    url: `${getApiUrl()}/api/internal/callbacks/slack/schedule`,
+    encryptedSecret: encryptCredentialValue(
+      generateCallbackSecret(),
+      SECRETS_ENCRYPTION_KEY,
+    ),
+    payload: callbackPayload,
+  });
 
   try {
     // Generate sandbox token with the run ID

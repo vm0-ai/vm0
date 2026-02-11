@@ -1,15 +1,14 @@
 import { eq } from "drizzle-orm";
 import { agentRuns } from "../../../db/schema/agent-run";
+import { agentRunCallbacks } from "../../../db/schema/agent-run-callback";
 import { agentComposes } from "../../../db/schema/agent-compose";
 import { getReceivedEmail } from "../client";
 import { stripQuotedReply } from "../quote-strip";
-import {
-  verifyReplyToken,
-  lookupEmailThreadSession,
-  createEmailReplyRequest,
-} from "./shared";
+import { verifyReplyToken, lookupEmailThreadSession } from "./shared";
 import { buildExecutionContext, prepareAndDispatchRun } from "../../run";
 import { generateSandboxToken } from "../../auth/sandbox-token";
+import { generateCallbackSecret, getApiUrl } from "../../callback";
+import { encryptCredentialValue } from "../../crypto/secrets-encryption";
 import { logger } from "../../logger";
 
 const log = logger("email:inbound-reply");
@@ -108,12 +107,19 @@ export async function handleInboundEmailReply(
     return;
   }
 
-  // 8. Create email reply request (links run to email context)
-  await createEmailReplyRequest({
+  // 8. Register email reply callback (invoked when run completes)
+  const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
+  await globalThis.services.db.insert(agentRunCallbacks).values({
     runId: run.id,
-    emailThreadSessionId: session.id,
-    inboundEmailId: emailId,
-    inboundMessageId: null, // Resend inbound doesn't provide RFC message-id directly
+    url: `${getApiUrl()}/api/internal/callbacks/email/reply`,
+    encryptedSecret: encryptCredentialValue(
+      generateCallbackSecret(),
+      SECRETS_ENCRYPTION_KEY,
+    ),
+    payload: {
+      emailThreadSessionId: session.id,
+      inboundEmailId: emailId,
+    },
   });
 
   // 9. Build execution context and dispatch
