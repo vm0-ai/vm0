@@ -52,7 +52,7 @@ async fn run() -> i32 {
         log_error!(LOG_TAG, "Fatal: VM0_WORKING_DIR is required but not set");
         let masker = masker::SecretMasker::from_env();
         log_info!(LOG_TAG, "▷ Cleanup");
-        cleanup(&masker, 1, "VM0_WORKING_DIR is required but not set").await;
+        cleanup(&masker).await;
         log_info!(LOG_TAG, "Background processes stopped");
         log_info!(LOG_TAG, "✗ Sandbox failed (exit code 1)");
         return 1;
@@ -96,11 +96,11 @@ async fn run() -> i32 {
     record_sandbox_op("telemetry_upload_start", t.elapsed(), true, None);
 
     // Execute main logic (init + CLI + checkpoint)
-    let (exit_code, error_message) = execute(&masker, start, heartbeat_handle).await;
+    let (exit_code, _error_message) = execute(&masker, start, heartbeat_handle).await;
 
-    // Guaranteed cleanup: final telemetry + complete API
+    // Guaranteed cleanup: final telemetry upload
     log_info!(LOG_TAG, "▷ Cleanup");
-    cleanup(&masker, exit_code, &error_message).await;
+    cleanup(&masker).await;
 
     // Stop all background processes (heartbeat, metrics, telemetry)
     shutdown.cancel();
@@ -240,8 +240,9 @@ async fn execute(
     (exit_code, error_message)
 }
 
-/// Cleanup that always runs: final telemetry upload and complete API call.
-async fn cleanup(masker: &masker::SecretMasker, exit_code: i32, error_message: &str) {
+/// Cleanup that always runs: final telemetry upload.
+/// Note: complete API is called by the runner after VM exits, not by guest-agent.
+async fn cleanup(masker: &masker::SecretMasker) {
     // Final telemetry upload
     let telemetry_start = Instant::now();
     let telemetry_ok = telemetry::final_upload(masker).await.is_ok();
@@ -252,39 +253,6 @@ async fn cleanup(masker: &masker::SecretMasker, exit_code: i32, error_message: &
         "final_telemetry_upload",
         telemetry_start.elapsed(),
         telemetry_ok,
-        None,
-    );
-
-    // Complete API call
-    log_info!(LOG_TAG, "Calling complete API with exitCode={exit_code}");
-    let complete_start = Instant::now();
-    let mut payload = serde_json::json!({
-        "runId": env::run_id(),
-        "exitCode": exit_code,
-    });
-    if !error_message.is_empty()
-        && let Some(obj) = payload.as_object_mut()
-    {
-        obj.insert(
-            "error".to_string(),
-            serde_json::Value::String(error_message.to_string()),
-        );
-    }
-    let complete_ok = http::post_json(urls::complete_url(), &payload, constants::HTTP_MAX_RETRIES)
-        .await
-        .is_ok();
-    if complete_ok {
-        log_info!(LOG_TAG, "Complete API called successfully");
-    } else {
-        log_error!(
-            LOG_TAG,
-            "Failed to call complete API (sandbox may not be cleaned up)"
-        );
-    }
-    record_sandbox_op(
-        "complete_api_call",
-        complete_start.elapsed(),
-        complete_ok,
         None,
     );
 }

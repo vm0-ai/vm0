@@ -284,18 +284,21 @@ export class Runner {
       logger.error(`  Job ${context.runId} execution failed: ${error}`);
     }
 
-    // Report failure for claimed jobs that didn't complete successfully.
-    // On success, guest-agent already calls the complete API from inside the VM.
-    // On failure, guest-agent may not have started (e.g., storage download error),
-    // so the runner must report it. The API is idempotent, so duplicate calls are safe.
-    if (exitCode !== 0) {
-      const completeResult = await completeJob(
-        this.config.server.url,
-        context,
-        exitCode,
-        error,
+    // Runner is the sole reporter of job completion.
+    // Guest-agent handles telemetry; runner handles the complete API call
+    // after VM exits to ensure it always runs.
+    logger.log(
+      `  Calling complete API for job ${context.runId} with exitCode=${exitCode}`,
+    );
+    try {
+      const completeResult = await withRunnerTiming("complete", () =>
+        completeJob(this.config.server.url, context, exitCode, error),
       );
       logger.log(`  Job ${context.runId} reported as ${completeResult.status}`);
+    } catch (err) {
+      logger.error(
+        `  Failed to call complete API for job ${context.runId}: ${err instanceof Error ? err.message : "Unknown error"}`,
+      );
     }
   }
 }
