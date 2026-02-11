@@ -13,6 +13,11 @@ const EMBEDDED_DOCKERFILE: &str = include_str!("../rootfs.Dockerfile");
 const IMAGE_NAME: &str = "vm0-rootfs";
 const CONTAINER_NAME: &str = "vm0-rootfs-tmp";
 
+const ROOTFS_FILE: &str = "rootfs.squashfs";
+const CA_CERT_FILE: &str = "mitmproxy-ca-cert.pem";
+const CA_KEY_FILE: &str = "mitmproxy-ca-key.pem";
+const CA_COMBINED_FILE: &str = "mitmproxy-ca.pem";
+
 const RESOLV_CONF: &str = "\
 nameserver 8.8.8.8
 nameserver 8.8.4.4
@@ -59,10 +64,10 @@ pub async fn run_build_rootfs(args: BuildRootfsArgs) -> RunnerResult<()> {
     tracing::info!("rootfs input hash: {hash}");
 
     let output_dir = paths.rootfs_dir().join(&hash);
-    let rootfs_path = output_dir.join("rootfs.squashfs");
+    let rootfs_path = output_dir.join(ROOTFS_FILE);
 
     if is_build_complete(&output_dir).await {
-        tracing::info!("[OK] rootfs already exists: {}", rootfs_path.display());
+        tracing::info!("[OK] rootfs already built: {}", output_dir.display());
         return Ok(());
     }
 
@@ -132,12 +137,7 @@ async fn sudo_remove_dir(dir: tempfile::TempDir) -> PathBuf {
 
 /// Check whether all expected build outputs exist in the directory.
 async fn is_build_complete(dir: &Path) -> bool {
-    let files = [
-        "rootfs.squashfs",
-        "mitmproxy-ca-cert.pem",
-        "mitmproxy-ca-key.pem",
-        "mitmproxy-ca.pem",
-    ];
+    let files = [ROOTFS_FILE, CA_CERT_FILE, CA_KEY_FILE, CA_COMBINED_FILE];
     for name in files {
         if !tokio::fs::try_exists(dir.join(name)).await.unwrap_or(false) {
             return false;
@@ -200,9 +200,9 @@ async fn compute_input_hash(
 // ---------------------------------------------------------------------------
 
 async fn generate_proxy_ca(dir: &Path) -> RunnerResult<()> {
-    let cert_path = dir.join("mitmproxy-ca-cert.pem");
-    let key_path = dir.join("mitmproxy-ca-key.pem");
-    let combined_path = dir.join("mitmproxy-ca.pem");
+    let cert_path = dir.join(CA_CERT_FILE);
+    let key_path = dir.join(CA_KEY_FILE);
+    let combined_path = dir.join(CA_COMBINED_FILE);
 
     if tokio::fs::try_exists(&cert_path).await.unwrap_or(false)
         && tokio::fs::try_exists(&key_path).await.unwrap_or(false)
@@ -369,7 +369,7 @@ async fn extract_and_inject(
     }
 
     // Install proxy CA certificate
-    let ca_cert = ca_dir.join("mitmproxy-ca-cert.pem");
+    let ca_cert = ca_dir.join(CA_CERT_FILE);
     if !tokio::fs::try_exists(&ca_cert).await.unwrap_or(false) {
         return Err(RunnerError::Internal(
             "proxy CA cert not found — generate_proxy_ca should have been called first".into(),
