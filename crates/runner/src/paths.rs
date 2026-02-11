@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use crate::error::{RunnerError, RunnerResult};
+
 /// Guest paths (must match rootfs layout).
 pub mod guest {
     pub const STORAGE_MANIFEST: &str = "/tmp/storage-manifest.json";
@@ -19,5 +21,41 @@ impl RunnerPaths {
 
     pub fn status(&self) -> PathBuf {
         self.base_dir.join("status.json")
+    }
+}
+
+/// Paths rooted at ~/.vm0-runner/.
+pub struct HomePaths {
+    root: PathBuf,
+}
+
+impl HomePaths {
+    pub fn new() -> RunnerResult<Self> {
+        let home = std::env::var("HOME")
+            .map_err(|_| RunnerError::Config("HOME environment variable not set".into()))?;
+        Ok(Self {
+            root: PathBuf::from(home).join(".vm0-runner"),
+        })
+    }
+
+    pub fn bin_dir(&self) -> PathBuf {
+        self.root.join("bin")
+    }
+
+    pub fn firecracker_dir(&self, version: &str) -> PathBuf {
+        self.root.join("firecracker").join(version)
+    }
+
+    pub fn firecracker_bin(&self, version: &str) -> PathBuf {
+        self.firecracker_dir(version).join("firecracker")
+    }
+
+    pub fn kernel_bin(&self, fc_version: &str, kernel_version: &str) -> PathBuf {
+        let kernel_name = format!("vmlinux-{kernel_version}");
+        self.firecracker_dir(fc_version).join(kernel_name)
+    }
+
+    pub fn runners_dir(&self) -> PathBuf {
+        self.root.join("runners")
     }
 }
