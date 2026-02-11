@@ -22,12 +22,15 @@ interface DispatchResult {
 
 /**
  * Get the API base URL for internal callbacks
- * Uses VERCEL_URL in production, localhost in development
+ * Priority: VM0_API_URL > VERCEL_URL > localhost fallback
  */
 export function getApiUrl(): string {
-  const vercelUrl = process.env.VERCEL_URL;
-  if (vercelUrl) {
-    return `https://${vercelUrl}`;
+  const { VM0_API_URL, VERCEL_URL } = env();
+  if (VM0_API_URL) {
+    return VM0_API_URL;
+  }
+  if (VERCEL_URL) {
+    return `https://${VERCEL_URL}`;
   }
   return "http://localhost:3000";
 }

@@ -246,8 +246,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         timestamp: messageTs,
         name: "thought_balloon",
       })
-      .catch(() => {
-        // Ignore errors when removing reaction
+      .catch((err) => {
+        // Non-critical: reaction may already be removed or message deleted
+        log.debug("Failed to remove thinking reaction", { runId, error: err });
       });
   }
 
