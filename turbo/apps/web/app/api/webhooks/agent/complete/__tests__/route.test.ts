@@ -626,8 +626,8 @@ describe("POST /api/webhooks/agent/complete", () => {
 
       // Then only callback dispatch should be registered (no schedule notification)
       // Callback dispatch always runs but won't post anything if no callbacks registered
-      expect(afterCallbacks).toHaveLength(1);
-      await flushAfterCallbacks();
+      expect(globalThis.nextAfterCallbacks).toHaveLength(1);
+      await context.mocks.flushAfter();
       expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
     });
   });
