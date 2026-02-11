@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.56.5](https://github.com/vm0-ai/vm0/compare/platform-v0.56.4...platform-v0.56.5) (2026-02-11)
+
+
+### Performance Improvements
+
+* **platform:** skip rendering in signal-only tests ([#2798](https://github.com/vm0-ai/vm0/issues/2798)) ([e438809](https://github.com/vm0-ai/vm0/commit/e4388091362b0e7812ea859c9a085061a99a6acf))
+
 ## [0.56.4](https://github.com/vm0-ai/vm0/compare/platform-v0.56.3...platform-v0.56.4) (2026-02-11)
 
 
