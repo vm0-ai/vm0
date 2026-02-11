@@ -11,7 +11,8 @@ use tokio_tungstenite::tungstenite;
 
 use crate::Error;
 use crate::protocol::{
-    AuthDetails, ProtocolMessage, action, build_attach_msg, decode_msg, encode_msg, flags,
+    AuthDetails, ProtocolMessage, action, build_attach_msg, decode_msg, encode_msg, error_code,
+    flags,
 };
 use crate::types::{Event, Message, TokenDetails, TokenFuture};
 
@@ -26,7 +27,8 @@ const AGENT_STRING: &str = "ably-subscriber-rs/0.1";
 const HEARTBEAT_MARGIN: Duration = Duration::from_secs(10);
 const DEFAULT_MAX_IDLE_INTERVAL: Duration = Duration::from_secs(15);
 const DEFAULT_CONNECTION_STATE_TTL: Duration = Duration::from_secs(120);
-const RETRY_INTERVAL: Duration = Duration::from_secs(15);
+const INITIAL_RETRY_INTERVAL: Duration = Duration::from_secs(1);
+const MAX_RETRY_INTERVAL: Duration = Duration::from_secs(15);
 const RECONNECT_TIMEOUT: Duration = Duration::from_secs(60);
 const CHANNEL_RETRY_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_RETRY_ATTEMPTS: u32 = 40; // ~10 minutes
@@ -37,7 +39,7 @@ pub(crate) const EVENT_CHANNEL_CAPACITY: usize = 64;
 
 fn error_or_unknown(error: Option<crate::protocol::ErrorInfo>) -> crate::protocol::ErrorInfo {
     error.unwrap_or_else(|| crate::protocol::ErrorInfo {
-        code: 80000,
+        code: error_code::FAILED,
         status_code: None,
         message: "no error details from server".to_string(),
     })
@@ -146,7 +148,7 @@ async fn wait_for_connected(ws_read: &mut WsRead) -> Result<ProtocolMessage, Err
         }
     }
     Err(Error::Protocol {
-        code: 80000,
+        code: error_code::FAILED,
         message: "Connection closed before CONNECTED received".to_string(),
     })
 }
@@ -183,7 +185,7 @@ async fn wait_for_attached(ws_read: &mut WsRead, channel: &str) -> Result<Protoc
         }
     }
     Err(Error::Protocol {
-        code: 90000,
+        code: error_code::CHANNEL_OPERATION_FAILED,
         message: "Connection closed before ATTACHED received".to_string(),
     })
 }
@@ -385,21 +387,26 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                 let _ = p
                     .event_tx
                     .send(Event::Error {
-                        code: 80000,
+                        code: error_code::FAILED,
                         message: format!("Connection failed after {MAX_RETRY_ATTEMPTS} attempts"),
                     })
                     .await;
                 return;
             }
 
+            // Exponential backoff: 1s, 2s, 4s, 8s, 15s, 15s, ...
+            let exp = retry_count.saturating_sub(1).min(30);
+            let backoff = INITIAL_RETRY_INTERVAL
+                .saturating_mul(1u32 << exp)
+                .min(MAX_RETRY_INTERVAL);
             // Use subsecond nanos from wall clock for non-deterministic jitter
             let nanos = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .subsec_nanos() as u64;
-            let jitter = Duration::from_millis(nanos % 2000);
+            let jitter = Duration::from_millis(nanos % 1000);
             tokio::select! {
-                _ = tokio::time::sleep(RETRY_INTERVAL + jitter) => {}
+                _ = tokio::time::sleep(backoff + jitter) => {}
                 _ = &mut close_rx => {
                     tracing::info!("Close requested during reconnect");
                     return;
@@ -679,7 +686,7 @@ async fn handle_renewal_result(
         let _ = p
             .event_tx
             .send(Event::Error {
-                code: 80000,
+                code: error_code::FAILED,
                 message: format!(
                     "Token renewal failed {MAX_TOKEN_RENEWAL_FAILURES} consecutive times"
                 ),
@@ -933,6 +940,13 @@ mod tests {
         let data = serde_json::json!("aGVsbG8=");
         let result = decode_data(data, Some("base64"));
         assert_eq!(result, serde_json::json!([104, 101, 108, 108, 111]));
+    }
+
+    #[test]
+    fn decode_data_base64_invalid() {
+        let data = serde_json::json!("not-valid-base64!!!");
+        let result = decode_data(data.clone(), Some("base64"));
+        assert_eq!(result, data);
     }
 
     #[test]

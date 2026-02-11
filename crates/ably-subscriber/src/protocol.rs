@@ -24,6 +24,13 @@ pub mod action {
     pub const AUTH: i32 = 17;
 }
 
+pub mod error_code {
+    pub const FAILED: i32 = 80000;
+    pub const TIMEOUT: i32 = 80014;
+    pub const CHANNEL_OPERATION_FAILED: i32 = 90000;
+    pub const BAD_REQUEST: i32 = 40000;
+}
+
 pub mod flags {
     // Ably protocol flag constants (complete set for ATTACHED responses).
     // Only ATTACH_RESUME and MODE_SUBSCRIBE are used for sending; the
@@ -52,6 +59,7 @@ pub struct ProtocolMessage {
     pub connection_id: Option<String>,
     pub connection_key: Option<String>,
     pub connection_details: Option<ConnectionDetails>,
+    /// Deprecated in protocol v3+; retained for wire compatibility with older servers.
     pub connection_serial: Option<i64>,
     pub msg_serial: Option<i64>,
     pub flags: Option<i32>,
@@ -115,7 +123,7 @@ pub fn decode_msg(data: &[u8]) -> Result<ProtocolMessage, Error> {
     // This adds a small allocation overhead compared to direct struct deserialization.
     let value: serde_json::Value = rmp_serde::from_slice(data)?;
     serde_json::from_value(value).map_err(|e| Error::Protocol {
-        code: 40000,
+        code: error_code::BAD_REQUEST,
         message: format!("message decode error: {e}"),
     })
 }

@@ -6,6 +6,7 @@ use crate::connection::{
     CONNECT_TIMEOUT, DEFAULT_REALTIME_HOST, EVENT_CHANNEL_CAPACITY, EventLoopState,
     connect_and_attach, exchange_token, rest_host, run_event_loop,
 };
+use crate::protocol::error_code;
 use crate::types::{Error, Event, SubscribeConfig};
 
 /// Handle to a running subscription.
@@ -68,7 +69,7 @@ pub async fn subscribe(config: SubscribeConfig) -> Result<Subscription, Error> {
     let token_request = tokio::time::timeout(CONNECT_TIMEOUT, (config.get_token)())
         .await
         .map_err(|_| Error::Protocol {
-            code: 80014,
+            code: error_code::TIMEOUT,
             message: "Token fetch timed out".to_string(),
         })?
         .map_err(Error::TokenFetch)?;
@@ -86,7 +87,7 @@ pub async fn subscribe(config: SubscribeConfig) -> Result<Subscription, Error> {
     )
     .await
     .map_err(|_| Error::Protocol {
-        code: 80014,
+        code: error_code::TIMEOUT,
         message: "Connection timed out".to_string(),
     })??;
 
