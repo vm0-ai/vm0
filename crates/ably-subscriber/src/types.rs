@@ -85,6 +85,9 @@ pub struct SubscribeConfig {
     pub channel_params: Option<HashMap<String, String>>,
     /// Ably realtime host. Defaults to `"realtime.ably.io"`.
     pub host: Option<String>,
+    /// Ably REST host for token exchange. Defaults to `"rest.ably.io"` when
+    /// `host` is the default, otherwise falls back to the realtime host value.
+    pub rest_host: Option<String>,
 }
 
 /// Errors returned by this crate.

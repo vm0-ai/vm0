@@ -20,6 +20,7 @@
 //!     channel: "my-channel".to_string(),
 //!     channel_params: None,
 //!     host: None,
+//!     rest_host: None,
 //! };
 //!
 //! let mut sub = ably_subscriber::subscribe(config).await?;

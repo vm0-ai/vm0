@@ -31,6 +31,16 @@ const CHANNEL_RETRY_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_RETRY_ATTEMPTS: u32 = 40; // ~10 minutes
 const TOKEN_RENEWAL_MARGIN: Duration = Duration::from_secs(300); // 5 minutes
 const TOKEN_RENEWAL_RETRY_DELAY: Duration = Duration::from_secs(30);
+const MAX_TOKEN_RENEWAL_FAILURES: u32 = 3;
+pub(crate) const EVENT_CHANNEL_CAPACITY: usize = 64;
+
+fn error_or_unknown(error: Option<crate::protocol::ErrorInfo>) -> crate::protocol::ErrorInfo {
+    error.unwrap_or(crate::protocol::ErrorInfo {
+        code: 80000,
+        status_code: None,
+        message: "no error details from server".to_string(),
+    })
+}
 
 // ---------------------------------------------------------------------------
 // Type aliases for WebSocket split halves
@@ -115,14 +125,14 @@ async fn wait_for_connected(ws_read: &mut WsRead) -> Result<ProtocolMessage, Err
             match msg.action {
                 action::CONNECTED => return Ok(msg),
                 action::ERROR => {
-                    let err = msg.error.unwrap_or_default();
+                    let err = error_or_unknown(msg.error);
                     return Err(Error::Protocol {
                         code: err.code,
                         message: err.message,
                     });
                 }
                 action::DISCONNECTED => {
-                    let err = msg.error.unwrap_or_default();
+                    let err = error_or_unknown(msg.error);
                     return Err(Error::Protocol {
                         code: err.code,
                         message: err.message,
@@ -152,14 +162,14 @@ async fn wait_for_attached(ws_read: &mut WsRead, channel: &str) -> Result<Protoc
                     }
                 }
                 action::ERROR => {
-                    let err = msg.error.unwrap_or_default();
+                    let err = error_or_unknown(msg.error);
                     return Err(Error::Protocol {
                         code: err.code,
                         message: err.message,
                     });
                 }
                 action::DETACHED => {
-                    let err = msg.error.unwrap_or_default();
+                    let err = error_or_unknown(msg.error);
                     return Err(Error::Protocol {
                         code: err.code,
                         message: format!("Channel detached: {}", err.message),
@@ -288,6 +298,7 @@ pub(crate) struct EventLoopState {
     pub rest_host: String,
     pub http: reqwest::Client,
     pub get_token: Box<dyn Fn() -> TokenFuture + Send + Sync>,
+    pub token_renewal_failures: u32,
 }
 
 pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot::Receiver<()>) {
@@ -342,13 +353,31 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
 
                 _ = tokio::time::sleep_until(p.conn_state.token_renewal_at) => {
                     match tokio::time::timeout(CONNECT_TIMEOUT, renew_token(&mut p)).await {
-                        Ok(Ok(())) => {}
+                        Ok(Ok(())) => {
+                            p.token_renewal_failures = 0;
+                        }
                         Ok(Err(e)) => {
-                            tracing::error!("Token renewal failed: {e}");
+                            p.token_renewal_failures += 1;
+                            tracing::error!("Token renewal failed ({}/{}): {e}", p.token_renewal_failures, MAX_TOKEN_RENEWAL_FAILURES);
+                            if p.token_renewal_failures >= MAX_TOKEN_RENEWAL_FAILURES {
+                                let _ = p.event_tx.send(Event::Error {
+                                    code: 80000,
+                                    message: format!("Token renewal failed {MAX_TOKEN_RENEWAL_FAILURES} consecutive times"),
+                                }).await;
+                                return;
+                            }
                             p.conn_state.token_renewal_at = Instant::now() + TOKEN_RENEWAL_RETRY_DELAY;
                         }
                         Err(_) => {
-                            tracing::error!("Token renewal timed out");
+                            p.token_renewal_failures += 1;
+                            tracing::error!("Token renewal timed out ({}/{})", p.token_renewal_failures, MAX_TOKEN_RENEWAL_FAILURES);
+                            if p.token_renewal_failures >= MAX_TOKEN_RENEWAL_FAILURES {
+                                let _ = p.event_tx.send(Event::Error {
+                                    code: 80000,
+                                    message: format!("Token renewal failed {MAX_TOKEN_RENEWAL_FAILURES} consecutive times"),
+                                }).await;
+                                return;
+                            }
                             p.conn_state.token_renewal_at = Instant::now() + TOKEN_RENEWAL_RETRY_DELAY;
                         }
                     }
@@ -459,6 +488,7 @@ fn decode_data(data: serde_json::Value, encoding: Option<&str>) -> serde_json::V
                     match serde_json::from_str(s) {
                         Ok(parsed) => result = parsed,
                         Err(e) => {
+                            // Intentional fallback: return raw data rather than failing the message.
                             tracing::warn!("Failed to decode JSON encoding layer: {e}");
                             return result;
                         }
@@ -533,7 +563,7 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
             return LoopAction::Reconnect;
         }
         action::ERROR => {
-            let err = msg.error.unwrap_or_default();
+            let err = error_or_unknown(msg.error);
             let _ = p
                 .event_tx
                 .send(Event::Error {
@@ -615,13 +645,39 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
         action::AUTH => {
             tracing::info!("Server requested reauthentication");
             match tokio::time::timeout(CONNECT_TIMEOUT, renew_token(p)).await {
-                Ok(Ok(())) => {}
+                Ok(Ok(())) => {
+                    p.token_renewal_failures = 0;
+                }
                 Ok(Err(e)) => {
-                    tracing::error!("Server-initiated token renewal failed: {e}");
+                    p.token_renewal_failures += 1;
+                    tracing::error!(
+                        "Server-initiated token renewal failed ({}/{}): {e}",
+                        p.token_renewal_failures,
+                        MAX_TOKEN_RENEWAL_FAILURES
+                    );
+                    if p.token_renewal_failures >= MAX_TOKEN_RENEWAL_FAILURES {
+                        let _ = p.event_tx.send(Event::Error {
+                            code: 80000,
+                            message: format!("Token renewal failed {MAX_TOKEN_RENEWAL_FAILURES} consecutive times"),
+                        }).await;
+                        return LoopAction::Stop;
+                    }
                     p.conn_state.token_renewal_at = Instant::now() + TOKEN_RENEWAL_RETRY_DELAY;
                 }
                 Err(_) => {
-                    tracing::error!("Server-initiated token renewal timed out");
+                    p.token_renewal_failures += 1;
+                    tracing::error!(
+                        "Server-initiated token renewal timed out ({}/{})",
+                        p.token_renewal_failures,
+                        MAX_TOKEN_RENEWAL_FAILURES
+                    );
+                    if p.token_renewal_failures >= MAX_TOKEN_RENEWAL_FAILURES {
+                        let _ = p.event_tx.send(Event::Error {
+                            code: 80000,
+                            message: format!("Token renewal failed {MAX_TOKEN_RENEWAL_FAILURES} consecutive times"),
+                        }).await;
+                        return LoopAction::Stop;
+                    }
                     p.conn_state.token_renewal_at = Instant::now() + TOKEN_RENEWAL_RETRY_DELAY;
                 }
             }

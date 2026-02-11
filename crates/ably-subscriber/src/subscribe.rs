@@ -3,8 +3,8 @@
 use tokio::sync::{mpsc, oneshot};
 
 use crate::connection::{
-    CONNECT_TIMEOUT, DEFAULT_REALTIME_HOST, EventLoopState, connect_and_attach, exchange_token,
-    rest_host, run_event_loop,
+    CONNECT_TIMEOUT, DEFAULT_REALTIME_HOST, EVENT_CHANNEL_CAPACITY, EventLoopState,
+    connect_and_attach, exchange_token, rest_host, run_event_loop,
 };
 use crate::types::{Error, Event, SubscribeConfig};
 
@@ -12,6 +12,8 @@ use crate::types::{Error, Event, SubscribeConfig};
 ///
 /// Call [`next`](Subscription::next) to receive events, or [`close`](Subscription::close) to
 /// shut down the connection.
+///
+/// Messages may be dropped under backpressure if the consumer falls behind.
 pub struct Subscription {
     rx: mpsc::Receiver<Event>,
     close_tx: Option<oneshot::Sender<()>>,
@@ -47,7 +49,7 @@ impl Drop for Subscription {
 /// The background task automatically handles reconnection, token renewal, and
 /// heartbeat timeout detection.
 pub async fn subscribe(config: SubscribeConfig) -> Result<Subscription, Error> {
-    let (event_tx, event_rx) = mpsc::channel::<Event>(64);
+    let (event_tx, event_rx) = mpsc::channel::<Event>(EVENT_CHANNEL_CAPACITY);
     let (close_tx, close_rx) = oneshot::channel::<()>();
 
     let realtime_host = config
@@ -55,7 +57,9 @@ pub async fn subscribe(config: SubscribeConfig) -> Result<Subscription, Error> {
         .as_deref()
         .unwrap_or(DEFAULT_REALTIME_HOST)
         .to_string();
-    let rest = rest_host(&realtime_host);
+    let rest = config
+        .rest_host
+        .unwrap_or_else(|| rest_host(&realtime_host));
     let http = reqwest::Client::builder()
         .timeout(CONNECT_TIMEOUT)
         .build()?;
@@ -101,6 +105,7 @@ pub async fn subscribe(config: SubscribeConfig) -> Result<Subscription, Error> {
             rest_host: rest,
             http,
             get_token: config.get_token,
+            token_renewal_failures: 0,
         },
         close_rx,
     ));

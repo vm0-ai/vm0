@@ -112,6 +112,7 @@ pub fn decode_msg(data: &[u8]) -> Result<ProtocolMessage, Error> {
     // Ably's server may send duplicate map keys (e.g. "messages" twice),
     // which rmp_serde's struct deserializer rejects. Decoding via
     // serde_json::Value first deduplicates keys (last value wins).
+    // This adds a small allocation overhead compared to direct struct deserialization.
     let value: serde_json::Value = rmp_serde::from_slice(data)?;
     serde_json::from_value(value).map_err(|e| Error::Protocol {
         code: 40000,

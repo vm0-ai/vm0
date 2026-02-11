@@ -82,6 +82,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         channel: channel.to_string(),
         channel_params: None,
         host,
+        rest_host: None,
     })
     .await?;
 
