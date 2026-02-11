@@ -106,7 +106,15 @@ pub fn encode_msg(msg: &ProtocolMessage) -> Result<Vec<u8>, Error> {
 }
 
 pub fn decode_msg(data: &[u8]) -> Result<ProtocolMessage, Error> {
-    Ok(rmp_serde::from_slice(data)?)
+    // Two-step decode: msgpack → serde_json::Value → ProtocolMessage.
+    // Ably's server may send duplicate map keys (e.g. "messages" twice),
+    // which rmp_serde's struct deserializer rejects. Decoding via
+    // serde_json::Value first deduplicates keys (last value wins).
+    let value: serde_json::Value = rmp_serde::from_slice(data)?;
+    serde_json::from_value(value).map_err(|e| Error::Protocol {
+        code: 40000,
+        message: format!("message decode error: {e}"),
+    })
 }
 
 // ---------------------------------------------------------------------------
