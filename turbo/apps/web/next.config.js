@@ -50,7 +50,7 @@ const nextConfig = {
     ],
   },
   allowedDevOrigins: ["*.vm7.ai"],
-  serverExternalPackages: ["ably"],
+  serverExternalPackages: ["ably", "dockerode"],
   env: {
     NEXT_PUBLIC_SELF_HOSTED: process.env.SELF_HOSTED || "false",
   },
