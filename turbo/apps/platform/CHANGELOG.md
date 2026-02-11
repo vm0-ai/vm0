@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.59.0](https://github.com/vm0-ai/vm0/compare/platform-v0.58.0...platform-v0.59.0) (2026-02-11)
+
+
+### Features
+
+* **platform:** add incremental polling for log detail auto-refresh ([#2716](https://github.com/vm0-ai/vm0/issues/2716)) ([aad0134](https://github.com/vm0-ai/vm0/commit/aad0134608f0d8af1f55bbe6cda6bcac8972d451))
+
 ## [0.58.0](https://github.com/vm0-ai/vm0/compare/platform-v0.57.0...platform-v0.58.0) (2026-02-11)
 
 
