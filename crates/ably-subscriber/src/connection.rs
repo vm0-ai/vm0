@@ -291,6 +291,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
     let mut retry_count: u32 = 0;
 
     'outer: loop {
+        let mut disconnected_sent = false;
         // Main message processing loop
         loop {
             let idle_timeout = p.conn_state.max_idle_interval + HEARTBEAT_MARGIN;
@@ -306,7 +307,10 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                                     p.conn_state.update_serial(&msg);
                                     match handle_message(&mut p, msg).await {
                                         LoopAction::Stop => return,
-                                        LoopAction::Reconnect => break,
+                                        LoopAction::Reconnect => {
+                                            disconnected_sent = true;
+                                            break;
+                                        }
                                         LoopAction::Continue => {}
                                     }
                                 }
@@ -358,7 +362,9 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
 
         // --- Reconnection ---
         p.conn_state.disconnected_at = Some(Instant::now());
-        let _ = p.event_tx.send(Event::Disconnected { reason: None }).await;
+        if !disconnected_sent {
+            let _ = p.event_tx.send(Event::Disconnected { reason: None }).await;
+        }
 
         loop {
             retry_count += 1;
@@ -404,7 +410,6 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
     }
 }
 
-#[derive(PartialEq, Eq)]
 enum LoopAction {
     Continue,
     Stop,
@@ -446,6 +451,7 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
                     message: err.message,
                 })
                 .await;
+            return LoopAction::Stop;
         }
         action::DETACHED => {
             tracing::warn!(channel = ?msg.channel, "Channel detached, re-attaching");
@@ -498,7 +504,13 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
 
 async fn renew_token(p: &mut EventLoopState) -> Result<(), Error> {
     tracing::info!("Renewing token");
-    let token_request = (p.get_token)().await.map_err(Error::TokenFetch)?;
+    let token_request = tokio::time::timeout(CONNECT_TIMEOUT, (p.get_token)())
+        .await
+        .map_err(|_| Error::Protocol {
+            code: 80014,
+            message: "Token fetch timed out".to_string(),
+        })?
+        .map_err(Error::TokenFetch)?;
     let new_token = exchange_token(&p.http, &token_request, &p.rest_host).await?;
 
     let auth_msg = ProtocolMessage {

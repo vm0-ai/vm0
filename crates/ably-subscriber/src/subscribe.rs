@@ -56,10 +56,18 @@ pub async fn subscribe(config: SubscribeConfig) -> Result<Subscription, Error> {
         .unwrap_or(DEFAULT_REALTIME_HOST)
         .to_string();
     let rest = rest_host(&realtime_host);
-    let http = reqwest::Client::new();
+    let http = reqwest::Client::builder()
+        .timeout(CONNECT_TIMEOUT)
+        .build()?;
 
-    // Initial token exchange
-    let token_request = (config.get_token)().await.map_err(Error::TokenFetch)?;
+    // Initial token exchange (with timeout)
+    let token_request = tokio::time::timeout(CONNECT_TIMEOUT, (config.get_token)())
+        .await
+        .map_err(|_| Error::Protocol {
+            code: 80014,
+            message: "Token fetch timed out".to_string(),
+        })?
+        .map_err(Error::TokenFetch)?;
     let token = exchange_token(&http, &token_request, &rest).await?;
 
     // Connect, handshake, and attach with timeout
