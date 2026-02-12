@@ -45,20 +45,26 @@ export function verifyReplyToken(token: string): string | null {
   return isValid ? sessionId : null;
 }
 
+function getFromDomain(): string {
+  const domain = env().RESEND_FROM_DOMAIN;
+  if (!domain) {
+    throw new Error("RESEND_FROM_DOMAIN is not configured");
+  }
+  return domain;
+}
+
 /**
  * Build a reply-to email address with the token embedded via plus addressing.
  */
 export function buildReplyToAddress(token: string): string {
-  const domain = env().RESEND_FROM_DOMAIN;
-  return `reply+${token}@${domain}`;
+  return `reply+${token}@${getFromDomain()}`;
 }
 
 /**
  * Build the from address for outbound emails.
  */
 export function buildFromAddress(agentName: string): string {
-  const domain = env().RESEND_FROM_DOMAIN;
-  return `${agentName} <agent@${domain}>`;
+  return `${agentName} <agent@${getFromDomain()}>`;
 }
 
 /**

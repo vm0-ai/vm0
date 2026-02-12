@@ -80,7 +80,7 @@ function initEnv() {
       // Email integration (Resend) — optional, only needed when email notifications are enabled
       RESEND_API_KEY: z.string().min(1).optional(),
       RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
-      RESEND_FROM_DOMAIN: z.string().min(1).default("vm0.bot"),
+      RESEND_FROM_DOMAIN: z.string().min(1).optional(),
       // Sentry
       SENTRY_DSN: z.string().url().optional(),
       SENTRY_AUTH_TOKEN: z.string().min(1).optional(),
