@@ -129,6 +129,40 @@ describe("slack settings page", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows workspace agent even when not in user's agents list", async () => {
+    server.use(
+      http.get("/api/integrations/slack", () => {
+        return HttpResponse.json({
+          workspace: { id: "T123", name: "Test Workspace" },
+          agent: { id: "other_compose", name: "shared-agent" },
+          isAdmin: true,
+          environment: {
+            requiredSecrets: [],
+            requiredVars: [],
+            missingSecrets: [],
+            missingVars: [],
+          },
+        });
+      }),
+      http.get("/api/agent/composes/list", () => {
+        return HttpResponse.json({
+          composes: [
+            {
+              name: "my-agent",
+              headVersionId: "v1",
+              updatedAt: "2024-01-01T00:00:00Z",
+            },
+          ],
+        });
+      }),
+    );
+
+    await setupPage({ context, path: "/settings/slack" });
+
+    // The workspace default agent should be visible in the select
+    expect(screen.getByText("shared-agent")).toBeInTheDocument();
+  });
+
   it("closes disconnect dialog on cancel", async () => {
     await setupPage({ context, path: "/settings/slack" });
 
