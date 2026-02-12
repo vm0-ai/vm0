@@ -16,6 +16,11 @@ interface UserAgent {
 /**
  * Fetch all agents accessible to a user (own + email-shared).
  * Shared agents are returned with `scopeSlug/name` format for agentName.
+ *
+ * Note: This always includes shared agents, unlike `composes/list` which
+ * only includes them when no `?scope=` param is provided. This is intentional
+ * — routes like `required-env` and `missing-secrets` need the full picture
+ * regardless of scope filtering.
  */
 export async function getUserAgents(userId: string): Promise<UserAgent[]> {
   const db = globalThis.services.db;

@@ -56,7 +56,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ agents: [] });
   }
 
-  // Get all user's configured secrets (only names, not values)
+  // Check the recipient's own secrets — shared agents run with the
+  // recipient's secrets, so missing ones need to be configured by them.
   const userSecrets = await db
     .select({ name: secrets.name })
     .from(secrets)
