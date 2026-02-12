@@ -9,13 +9,13 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::config;
-use crate::error::{RunnerError, RunnerResult};
+use crate::error::RunnerResult;
 use crate::executor;
 
 #[derive(Args)]
 pub struct BenchmarkArgs {
     /// The bash command to execute in the VM
-    prompt: String,
+    command: String,
     /// Path to runner.yaml config file
     #[arg(long, short)]
     config: PathBuf,
@@ -35,13 +35,8 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
 
     // 2. Factory init
     let t = Instant::now();
-    let mut factory = FirecrackerFactory::new(fc_config)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("factory init: {e}")))?;
-    factory
-        .startup()
-        .await
-        .map_err(|e| RunnerError::Internal(format!("factory startup: {e}")))?;
+    let mut factory = FirecrackerFactory::new(fc_config).await?;
+    factory.startup().await?;
     let factory_ms = t.elapsed().as_millis();
     info!(factory_ms, "factory ready");
 
@@ -115,7 +110,7 @@ async fn run_sandbox(
         Err(e) => return (Err(e.into()), 0, 0),
     };
 
-    let (result, boot_ms, exec_ms) = run_in_sandbox(args, &mut *sandbox, is_snapshot).await;
+    let (result, boot_ms, exec_ms) = run_in_sandbox(args, sandbox.as_mut(), is_snapshot).await;
 
     if let Err(e) = sandbox.stop().await {
         warn!(error = %e, "sandbox stop failed");
@@ -145,7 +140,7 @@ async fn run_in_sandbox(
     let t = Instant::now();
     let result = sandbox
         .exec(&ExecRequest {
-            cmd: &args.prompt,
+            cmd: &args.command,
             timeout: Duration::from_secs(args.timeout_secs),
             env: &[],
         })
