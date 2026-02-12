@@ -7,7 +7,7 @@ use crate::deps::{FIRECRACKER_VERSION, KERNEL_VERSION};
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::{HomePaths, RootfsPaths};
 
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct SnapshotArgs {
     /// SHA-256 hash of the rootfs inputs (output of `build-rootfs`).
     #[arg(long)]
@@ -44,7 +44,10 @@ pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<()> {
     tokio::fs::create_dir_all(&output_dir).await?;
 
     let rootfs_path = RootfsPaths::new(&paths, &args.rootfs_hash).rootfs();
-    if !tokio::fs::try_exists(&rootfs_path).await.unwrap_or(false) {
+    let rootfs_exists = tokio::fs::try_exists(&rootfs_path)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("check rootfs: {e}")))?;
+    if !rootfs_exists {
         return Err(RunnerError::Config(format!(
             "rootfs not found at {}; run `build-rootfs` first",
             rootfs_path.display()
@@ -91,6 +94,8 @@ async fn is_snapshot_complete(output: &SnapshotOutputPaths) -> RunnerResult<bool
 ///   - `rootfs_hash` — rootfs content (from `build-rootfs`)
 ///   - `FIRECRACKER_VERSION` / `KERNEL_VERSION` — binary versions
 ///   - `vcpu` / `memory_mb` — VM resource settings
+///
+/// **Changing this function invalidates all cached snapshots.**
 fn compute_snapshot_hash(args: &SnapshotArgs) -> String {
     let fc_config = sandbox_fc::config_hash();
     let mut hasher = Sha256::new();
@@ -107,4 +112,52 @@ fn compute_snapshot_hash(args: &SnapshotArgs) -> String {
     hasher.update(b"memory_mb:");
     hasher.update(args.memory_mb.to_le_bytes());
     format!("{:x}", hasher.finalize())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn snapshot_hash_is_stable() {
+        let args = SnapshotArgs {
+            rootfs_hash: "abc123".into(),
+            vcpu: 2,
+            memory_mb: 2048,
+        };
+        let hash = compute_snapshot_hash(&args);
+
+        // Changing this assertion means ALL existing cached snapshots are
+        // invalidated.  Only update deliberately.
+        assert_eq!(
+            hash, "3c68896dabe2536440cc57e8bf7d377c3f0935afd90ca68b189c6e37636fef19",
+            "snapshot hash changed — this invalidates all cached snapshots"
+        );
+    }
+
+    #[test]
+    fn different_inputs_produce_different_hashes() {
+        let base = SnapshotArgs {
+            rootfs_hash: "abc123".into(),
+            vcpu: 2,
+            memory_mb: 2048,
+        };
+        let different_rootfs = SnapshotArgs {
+            rootfs_hash: "def456".into(),
+            ..base.clone()
+        };
+        let different_vcpu = SnapshotArgs {
+            vcpu: 4,
+            ..base.clone()
+        };
+        let different_memory = SnapshotArgs {
+            memory_mb: 4096,
+            ..base.clone()
+        };
+
+        let base_hash = compute_snapshot_hash(&base);
+        assert_ne!(base_hash, compute_snapshot_hash(&different_rootfs));
+        assert_ne!(base_hash, compute_snapshot_hash(&different_vcpu));
+        assert_ne!(base_hash, compute_snapshot_hash(&different_memory));
+    }
 }
