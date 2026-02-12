@@ -336,6 +336,49 @@ async fn send_event_masks_secrets() {
     mock.delete_async().await;
 }
 
+// =========================================================================
+// Group 6: Edge cases
+// =========================================================================
+
+#[tokio::test]
+async fn put_presigned_retry_exhausted() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let mock = server.mock(|when, then| {
+        when.method(PUT).path("/test/put-exhaust");
+        then.status(500);
+    });
+
+    let url = format!("{}/test/put-exhaust", server.base_url());
+    let data = Bytes::from_static(b"exhaust data");
+    let result = guest_agent::http::put_presigned(&url, data, "application/octet-stream").await;
+
+    mock.assert_calls_async(3).await;
+    assert!(result.is_err());
+    mock.delete_async().await;
+}
+
+#[tokio::test]
+async fn post_json_malformed_json_response() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let mock = server.mock(|when, then| {
+        when.method(POST).path("/test/malformed");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body("not valid json {{{");
+    });
+
+    let url = format!("{}/test/malformed", server.base_url());
+    let result = guest_agent::http::post_json(&url, &json!({}), 1).await;
+
+    mock.assert_calls_async(1).await;
+    assert!(result.is_err());
+    mock.delete_async().await;
+}
+
 #[tokio::test]
 async fn send_event_failure_writes_error_flag() {
     let _guard = TEST_MUTEX.lock().unwrap();
