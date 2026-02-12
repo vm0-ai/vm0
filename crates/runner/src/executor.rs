@@ -162,7 +162,7 @@ async fn run_in_sandbox(
 /// Sync guest clock to host time after snapshot restore.
 ///
 /// Must run before any HTTPS calls — stale clock breaks TLS cert validation.
-async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
+pub(crate) async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
     let timestamp = format!(
         "{:.3}",
         std::time::SystemTime::now()

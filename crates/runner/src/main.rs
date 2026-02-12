@@ -1,4 +1,5 @@
 mod api;
+mod benchmark;
 mod build;
 mod config;
 mod deps;
@@ -50,6 +51,8 @@ enum Command {
     Rootfs(rootfs::RootfsArgs),
     /// Create a Firecracker VM snapshot for fast sandbox boot
     Snapshot(snapshot::SnapshotArgs),
+    /// Run a single bash command in a VM for benchmarking
+    Benchmark(benchmark::BenchmarkArgs),
     /// Start the runner and poll for jobs (must run setup + build first)
     Start(Box<runner::StartArgs>),
 }
@@ -68,17 +71,21 @@ async fn main() -> ExitCode {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        Command::Setup => setup::run_setup().await,
-        Command::Build(args) => build::run_build(args).await,
-        Command::Rootfs(args) => rootfs::run_rootfs(args).await.map(drop),
-        Command::Snapshot(args) => snapshot::run_snapshot(args).await.map(drop),
-        Command::Start(args) => runner::run_start(*args).await,
+        Command::Setup => setup::run_setup().await.map(|()| ExitCode::SUCCESS),
+        Command::Build(args) => build::run_build(args).await.map(|()| ExitCode::SUCCESS),
+        Command::Rootfs(args) => rootfs::run_rootfs(args).await.map(|_| ExitCode::SUCCESS),
+        Command::Snapshot(args) => snapshot::run_snapshot(args)
+            .await
+            .map(|_| ExitCode::SUCCESS),
+        Command::Benchmark(args) => benchmark::run_benchmark(args).await,
+        Command::Start(args) => runner::run_start(*args).await.map(|()| ExitCode::SUCCESS),
     };
 
-    if let Err(e) = result {
-        eprintln!("error: {e}");
-        return ExitCode::FAILURE;
+    match result {
+        Ok(code) => code,
+        Err(e) => {
+            eprintln!("error: {e}");
+            ExitCode::FAILURE
+        }
     }
-
-    ExitCode::SUCCESS
 }
