@@ -24,11 +24,11 @@ export function ScheduleFailedEmail({
   return (
     <Html>
       <Head />
-      <Preview>Scheduled run for &quot;{agentName}&quot; failed</Preview>
+      <Preview>VM0 - Scheduled run for &quot;{agentName}&quot; failed</Preview>
       <Body style={bodyStyle}>
         <Container style={containerStyle}>
           <Text style={headingStyle}>
-            Scheduled run for &quot;{agentName}&quot; failed
+            VM0 - Scheduled run for &quot;{agentName}&quot; failed
           </Text>
           <Section style={errorSectionStyle}>
             <Text style={errorStyle}>{errorMessage}</Text>

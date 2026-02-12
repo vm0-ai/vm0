@@ -168,7 +168,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const { messageId } = await sendEmail({
       from: buildFromAddress(composeName),
       to: userEmail,
-      subject: `Scheduled run for "${composeName}" completed`,
+      subject: `VM0 - Scheduled run for "${composeName}" completed`,
       react: ScheduleCompletedEmail({
         agentName: composeName,
         output: truncatedOutput,
@@ -192,7 +192,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     await sendEmail({
       from: buildFromAddress(composeName),
       to: userEmail,
-      subject: `Scheduled run for "${composeName}" failed`,
+      subject: `VM0 - Scheduled run for "${composeName}" failed`,
       react: ScheduleFailedEmail({
         agentName: composeName,
         errorMessage: error ?? "Unknown error",

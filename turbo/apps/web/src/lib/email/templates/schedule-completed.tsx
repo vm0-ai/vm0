@@ -24,11 +24,13 @@ export function ScheduleCompletedEmail({
   return (
     <Html>
       <Head />
-      <Preview>Scheduled run for &quot;{agentName}&quot; completed</Preview>
+      <Preview>
+        VM0 - Scheduled run for &quot;{agentName}&quot; completed
+      </Preview>
       <Body style={bodyStyle}>
         <Container style={containerStyle}>
           <Text style={headingStyle}>
-            Scheduled run for &quot;{agentName}&quot; completed
+            VM0 - Scheduled run for &quot;{agentName}&quot; completed
           </Text>
           <Section style={outputSectionStyle}>
             <Text style={outputStyle}>{output}</Text>

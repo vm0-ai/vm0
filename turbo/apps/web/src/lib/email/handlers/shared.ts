@@ -64,7 +64,7 @@ export function buildReplyToAddress(token: string): string {
  * Build the from address for outbound emails.
  */
 export function buildFromAddress(agentName: string): string {
-  return `${agentName} <agent@${getFromDomain()}>`;
+  return `${agentName} from VM0 <agent@${getFromDomain()}>`;
 }
 
 /**
