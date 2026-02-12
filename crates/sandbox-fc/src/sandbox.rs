@@ -13,7 +13,7 @@ use vsock_host::VsockHost;
 
 use crate::config::FirecrackerConfig;
 use crate::network::{GUEST_NETWORK, PooledNetns, generate_boot_args};
-use crate::paths::SandboxPaths;
+use crate::paths::{SandboxPaths, SockPaths};
 
 /// Timeout for waiting for the guest to connect via vsock after start.
 const VSOCK_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -61,8 +61,10 @@ pub struct FirecrackerSandbox {
     factory_config: FirecrackerConfig,
     /// Cached `config.id.to_string()`.
     pub(crate) id: String,
-    /// Workspace paths (used by factory to delete workspace on destroy).
-    pub(crate) paths: SandboxPaths,
+    /// Workspace paths (config, overlay — persistent data).
+    pub(crate) sandbox_paths: SandboxPaths,
+    /// Runtime socket paths (api.sock, vsock).
+    pub(crate) sock_paths: SockPaths,
     /// Pooled network namespace (returned to pool on destroy).
     pub(crate) network: PooledNetns,
     /// Overlay file path (deleted on destroy).
@@ -79,7 +81,8 @@ impl FirecrackerSandbox {
     pub(crate) fn new(
         config: SandboxConfig,
         factory_config: FirecrackerConfig,
-        paths: SandboxPaths,
+        sandbox_paths: SandboxPaths,
+        sock_paths: SockPaths,
         network: PooledNetns,
         overlay: PathBuf,
     ) -> Self {
@@ -88,7 +91,8 @@ impl FirecrackerSandbox {
             config,
             factory_config,
             id,
-            paths,
+            sandbox_paths,
+            sock_paths,
             network,
             overlay,
             process: None,
@@ -114,7 +118,7 @@ impl FirecrackerSandbox {
         let kernel_path = self.factory_config.kernel_path.display().to_string();
         let rootfs_path = self.factory_config.rootfs_path.display().to_string();
         let overlay_path = self.overlay.display().to_string();
-        let vsock_path = self.paths.vsock().display().to_string();
+        let vsock_path = self.sock_paths.vsock().display().to_string();
 
         let boot_args = generate_boot_args();
 
@@ -161,7 +165,7 @@ impl FirecrackerSandbox {
         let config_json = serde_json::to_string_pretty(&config)
             .map_err(|e| SandboxError::StartFailed(format!("serialize config: {e}")))?;
 
-        tokio::fs::write(self.paths.config(), config_json.as_bytes())
+        tokio::fs::write(self.sandbox_paths.config(), config_json.as_bytes())
             .await
             .map_err(|e| SandboxError::StartFailed(format!("write config: {e}")))?;
 
@@ -178,9 +182,9 @@ impl FirecrackerSandbox {
             .arg(&username)
             .arg(&self.factory_config.binary_path)
             .arg("--config-file")
-            .arg(self.paths.config())
+            .arg(self.sandbox_paths.config())
             .arg("--no-api")
-            .current_dir(self.paths.workspace())
+            .current_dir(self.sandbox_paths.workspace())
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -239,15 +243,15 @@ impl FirecrackerSandbox {
 
         let mut child = tokio::process::Command::new("sudo")
             .args(["unshare", "--mount", "bash", "-c", inner_cmd, "_"])
-            .arg(self.paths.vsock_dir()) // $1
+            .arg(self.sock_paths.vsock_dir()) // $1
             .arg(&snapshot.vsock_bind_dir) // $2
             .arg(&self.overlay) // $3
             .arg(&snapshot.overlay_bind_path) // $4
             .arg(&self.network.name) // $5
             .arg(&username) // $6
             .arg(&self.factory_config.binary_path) // $7
-            .arg(self.paths.api_sock()) // $8
-            .current_dir(self.paths.workspace())
+            .arg(self.sock_paths.api_sock()) // $8
+            .current_dir(self.sandbox_paths.workspace())
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -264,7 +268,7 @@ impl FirecrackerSandbox {
         info!(id = %self.id, "firecracker started (snapshot restore)");
 
         // Wait for Firecracker API to be ready.
-        let api_sock = self.paths.api_sock();
+        let api_sock = self.sock_paths.api_sock();
         let client = crate::api::ApiClient::new(&api_sock);
         client
             .wait_for_ready(API_READY_TIMEOUT)
@@ -363,7 +367,7 @@ impl Sandbox for FirecrackerSandbox {
 
         // Start the vsock listener BEFORE launching Firecracker.
         // The UDS must be bound before the guest tries to connect.
-        let vsock_path = self.paths.vsock().display().to_string();
+        let vsock_path = self.sock_paths.vsock().display().to_string();
         let vsock_task = tokio::spawn(async move {
             VsockHost::wait_for_connection(&vsock_path, VSOCK_CONNECT_TIMEOUT).await
         });

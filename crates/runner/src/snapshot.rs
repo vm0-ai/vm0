@@ -33,7 +33,7 @@ pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<SnapshotConfig> {
 
     if is_snapshot_complete(&output).await? {
         tracing::info!("[OK] snapshot already exists: {}", output_dir.display());
-        return Ok(output.snapshot_config().into());
+        return Ok(output.snapshot_config(&snapshot_hash).into());
     }
 
     // Clean up any partial output from a previous failed attempt.
@@ -56,6 +56,7 @@ pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<SnapshotConfig> {
     }
 
     let create_config = sandbox_fc::SnapshotCreateConfig {
+        id: snapshot_hash.clone(),
         binary_path: paths.firecracker_bin(FIRECRACKER_VERSION),
         kernel_path: paths.kernel_bin(FIRECRACKER_VERSION, KERNEL_VERSION),
         rootfs_path,

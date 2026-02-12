@@ -8,7 +8,7 @@ use crate::network::{GUEST_NETWORK, NetnsPool, NetnsPoolConfig, generate_boot_ar
 use crate::overlay::{
     Ext4Creator, OverlayCreator, OverlayPool, OverlayPoolConfig, SnapshotCopyCreator,
 };
-use crate::paths::{FactoryPaths, SandboxPaths};
+use crate::paths::{FactoryPaths, RuntimePaths, SandboxPaths, SockPaths};
 use crate::sandbox::FirecrackerSandbox;
 
 /// SHA-256 fingerprint of all sandbox-fc internal configuration that affects
@@ -34,7 +34,8 @@ pub fn config_hash() -> String {
 
 pub struct FirecrackerFactory {
     config: FirecrackerConfig,
-    paths: FactoryPaths,
+    factory_paths: FactoryPaths,
+    runtime_paths: RuntimePaths,
     netns_pool: Option<tokio::sync::Mutex<NetnsPool>>,
     overlay_pool: Option<tokio::sync::Mutex<OverlayPool>>,
 }
@@ -45,11 +46,13 @@ impl FirecrackerFactory {
     pub async fn new(config: FirecrackerConfig) -> Result<Self, SandboxError> {
         crate::prerequisites::check_prerequisites(&config).await?;
 
-        let paths = FactoryPaths::new(config.base_dir.clone());
+        let factory_paths = FactoryPaths::new(config.base_dir.clone());
+        let runtime_paths = RuntimePaths::new();
 
         Ok(Self {
             config,
-            paths,
+            factory_paths,
+            runtime_paths,
             netns_pool: None,
             overlay_pool: None,
         })
@@ -105,7 +108,7 @@ impl SandboxFactory for FirecrackerFactory {
         let overlay_pool = match OverlayPool::create(OverlayPoolConfig {
             size: concurrency,
             replenish_threshold: (concurrency / 2).max(1),
-            pool_dir: self.paths.overlays(),
+            pool_dir: self.factory_paths.overlays(),
             creator: overlay_creator,
         })
         .await
@@ -134,12 +137,23 @@ impl SandboxFactory for FirecrackerFactory {
 
     async fn create(&self, config: SandboxConfig) -> sandbox::Result<Box<dyn Sandbox>> {
         let id = config.id.to_string();
-        let sandbox_paths = SandboxPaths::new(self.paths.workspace(&id));
+        let sandbox_paths = SandboxPaths::new(self.factory_paths.workspace(&id));
+        let sock_paths = SockPaths::new(self.runtime_paths.sock_dir(&id));
 
-        // Create workspace and vsock subdirectory.
-        tokio::fs::create_dir_all(sandbox_paths.vsock_dir())
+        // Clean stale socket directory from a previous crashed sandbox.
+        if sock_paths.dir().exists()
+            && let Err(e) = tokio::fs::remove_dir_all(sock_paths.dir()).await
+        {
+            warn!(id = %id, error = %e, "failed to clean stale sock dir");
+        }
+
+        // Create workspace and socket directories.
+        tokio::fs::create_dir_all(sandbox_paths.workspace())
             .await
             .map_err(|e| SandboxError::CreationFailed(format!("mkdir workspace: {e}")))?;
+        tokio::fs::create_dir_all(sock_paths.vsock_dir())
+            .await
+            .map_err(|e| SandboxError::CreationFailed(format!("mkdir vsock dir: {e}")))?;
 
         // Acquire a network namespace from the pool.
         let network = self
@@ -167,8 +181,14 @@ impl SandboxFactory for FirecrackerFactory {
 
         info!(id = %id, "sandbox created");
 
-        let sandbox =
-            FirecrackerSandbox::new(config, self.config.clone(), sandbox_paths, network, overlay);
+        let sandbox = FirecrackerSandbox::new(
+            config,
+            self.config.clone(),
+            sandbox_paths,
+            sock_paths,
+            network,
+            overlay,
+        );
 
         Ok(Box::new(sandbox))
     }
@@ -200,8 +220,13 @@ impl SandboxFactory for FirecrackerFactory {
         overlay_pool.release(sandbox.overlay).await;
         drop(overlay_pool);
 
+        // Delete the socket directory.
+        if let Err(e) = tokio::fs::remove_dir_all(sandbox.sock_paths.dir()).await {
+            warn!(id = %sandbox_id, error = %e, "failed to delete sock dir");
+        }
+
         // Delete the workspace directory.
-        if let Err(e) = tokio::fs::remove_dir_all(sandbox.paths.workspace()).await {
+        if let Err(e) = tokio::fs::remove_dir_all(sandbox.sandbox_paths.workspace()).await {
             warn!(id = %sandbox_id, error = %e, "failed to delete workspace");
         }
 

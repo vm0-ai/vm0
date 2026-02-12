@@ -12,6 +12,6 @@ mod snapshot;
 
 pub use config::{FirecrackerConfig, SnapshotConfig};
 pub use factory::{FirecrackerFactory, config_hash};
-pub use paths::{FactoryPaths, SandboxPaths, SnapshotOutputPaths};
+pub use paths::{FactoryPaths, RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths};
 pub use sandbox::FirecrackerSandbox;
 pub use snapshot::{SnapshotCreateConfig, SnapshotError, create_snapshot};
