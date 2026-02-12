@@ -11,7 +11,7 @@ const VERIFY_SCRIPT: &str = include_str!("../scripts/verify-rootfs.sh");
 const EMBEDDED_DOCKERFILE: &str = include_str!("../scripts/rootfs.Dockerfile");
 
 #[derive(Args)]
-pub struct BuildRootfsArgs {
+pub struct RootfsArgs {
     #[arg(long)]
     guest_init: PathBuf,
     #[arg(long)]
@@ -22,7 +22,7 @@ pub struct BuildRootfsArgs {
     guest_mock_claude: PathBuf,
 }
 
-impl BuildRootfsArgs {
+impl RootfsArgs {
     /// Returns (source_path, rootfs_dest) pairs sorted by name for deterministic hashing.
     fn guest_bins(&self) -> [(&Path, &str); 4] {
         [
@@ -40,7 +40,8 @@ impl BuildRootfsArgs {
     }
 }
 
-pub async fn run_build_rootfs(args: BuildRootfsArgs) -> RunnerResult<()> {
+/// Build rootfs and return the content hash of the inputs.
+pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
     let guest_bins = args.guest_bins();
     let paths = HomePaths::new()?;
 
@@ -55,7 +56,7 @@ pub async fn run_build_rootfs(args: BuildRootfsArgs) -> RunnerResult<()> {
     if is_build_complete(&rootfs_paths).await? {
         tracing::info!("[OK] rootfs already built: {}", output_dir.display());
         tracing::info!("rootfs hash: {hash}");
-        return Ok(());
+        return Ok(hash);
     }
 
     // Create output directory
@@ -133,7 +134,7 @@ pub async fn run_build_rootfs(args: BuildRootfsArgs) -> RunnerResult<()> {
 
     tracing::info!("[OK] rootfs ready: {}", output_dir.display());
     tracing::info!("rootfs hash: {hash}");
-    Ok(())
+    Ok(hash)
 }
 
 /// Check whether all expected build outputs exist in the directory.

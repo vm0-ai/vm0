@@ -11,13 +11,13 @@ use crate::paths::{HomePaths, RootfsPaths};
 pub struct SnapshotArgs {
     /// SHA-256 hash of the rootfs inputs (output of `build-rootfs`).
     #[arg(long)]
-    rootfs_hash: String,
+    pub rootfs_hash: String,
     /// Number of vCPUs for the snapshot VM.
     #[arg(long, default_value_t = 2)]
-    vcpu: u32,
+    pub vcpu: u32,
     /// Memory size in MiB for the snapshot VM.
     #[arg(long, default_value_t = 2048)]
-    memory_mb: u32,
+    pub memory_mb: u32,
 }
 
 pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<()> {
