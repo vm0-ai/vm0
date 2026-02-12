@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.10.0](https://github.com/vm0-ai/vm0/compare/core-v8.9.0...core-v8.10.0) (2026-02-12)
+
+
+### Features
+
+* allow users to set timezone preference for sandbox and scheduling ([#2866](https://github.com/vm0-ai/vm0/issues/2866)) ([89437c7](https://github.com/vm0-ai/vm0/commit/89437c733b4e34eee46009b20c99f455c5963289))
+* **core:** add glm-5 model and fix model id casing ([#2889](https://github.com/vm0-ai/vm0/issues/2889)) ([f7dff90](https://github.com/vm0-ai/vm0/commit/f7dff9098110a983c8bf6c15740fa01010f09f5b)), closes [#2883](https://github.com/vm0-ai/vm0/issues/2883)
+
 ## [8.9.0](https://github.com/vm0-ai/vm0/compare/core-v8.8.0...core-v8.9.0) (2026-02-10)
 
 

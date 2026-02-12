@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.59.1](https://github.com/vm0-ai/vm0/compare/platform-v0.59.0...platform-v0.59.1) (2026-02-12)
+
+
+### Bug Fixes
+
+* **platform:** connector setup improvements and trailing ? fix ([#2857](https://github.com/vm0-ai/vm0/issues/2857)) ([5f65661](https://github.com/vm0-ai/vm0/commit/5f656610669ccc9999d709f0b8f06f6f15f4ef49))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.10.0
+
 ## [0.59.0](https://github.com/vm0-ai/vm0/compare/platform-v0.58.0...platform-v0.59.0) (2026-02-11)
 
 

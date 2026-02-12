@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.33.0](https://github.com/vm0-ai/vm0/compare/web-v12.32.2...web-v12.33.0) (2026-02-12)
+
+
+### Features
+
+* allow users to set timezone preference for sandbox and scheduling ([#2866](https://github.com/vm0-ai/vm0/issues/2866)) ([89437c7](https://github.com/vm0-ai/vm0/commit/89437c733b4e34eee46009b20c99f455c5963289))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.10.0
+
 ## [12.32.2](https://github.com/vm0-ai/vm0/compare/web-v12.32.1...web-v12.32.2) (2026-02-11)
 
 
