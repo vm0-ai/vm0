@@ -94,6 +94,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         channel_params: None,
         host,
         rest_host: None,
+        timing: None,
     })
     .await?;
 

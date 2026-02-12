@@ -9,6 +9,7 @@ dependencies = [
  "base64",
  "futures-util",
  "hmac",
+ "httpmock",
  "reqwest",
  "rmp-serde",
  "rmpv",

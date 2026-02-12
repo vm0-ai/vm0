@@ -323,6 +323,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         channel_params: None,
         host: None,
         rest_host: None,
+        timing: None,
     })
     .await?;
 
@@ -425,6 +426,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         channel_params: None,
         host: None,
         rest_host: None,
+        timing: None,
     })
     .await?;
 

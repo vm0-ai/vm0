@@ -21,6 +21,7 @@
 //!     channel_params: None,
 //!     host: None,
 //!     rest_host: None,
+//!     timing: None,
 //! };
 //!
 //! let mut sub = ably_subscriber::subscribe(config).await?;
@@ -36,11 +37,12 @@
 //! ```
 
 mod connection;
-mod protocol;
+pub mod protocol;
 mod subscribe;
 mod types;
 
 pub use subscribe::{Subscription, subscribe};
 pub use types::{
-    BoxError, Error, Event, Message, SubscribeConfig, TokenDetails, TokenFuture, TokenRequest,
+    BoxError, Error, Event, Message, SubscribeConfig, TimingConfig, TokenDetails, TokenFuture,
+    TokenRequest,
 };
