@@ -6,7 +6,7 @@ use sandbox_fc::SnapshotOutputPaths;
 use crate::config::{DEFAULT_MEMORY_MB, DEFAULT_VCPU, SnapshotConfig};
 use crate::deps::{FIRECRACKER_VERSION, KERNEL_VERSION};
 use crate::error::{RunnerError, RunnerResult};
-use crate::paths::{HomePaths, RootfsPaths};
+use crate::paths::{HomePaths, LockPaths, RootfsPaths};
 
 #[derive(Args, Clone)]
 pub struct SnapshotArgs {
@@ -31,6 +31,16 @@ pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<SnapshotConfig> {
     let output_dir = paths.snapshots_dir().join(&snapshot_hash);
     let output = SnapshotOutputPaths::new(output_dir.clone());
 
+    if is_snapshot_complete(&output).await? {
+        tracing::info!("[OK] snapshot already exists: {}", output_dir.display());
+        return Ok(output.snapshot_config(&snapshot_hash).into());
+    }
+
+    // Acquire exclusive lock to prevent concurrent builds with the same hash.
+    let locks = LockPaths::new();
+    let _lock = crate::lock::acquire(locks.snapshot(&snapshot_hash)).await?;
+
+    // Re-check after acquiring lock — another process may have completed the build.
     if is_snapshot_complete(&output).await? {
         tracing::info!("[OK] snapshot already exists: {}", output_dir.display());
         return Ok(output.snapshot_config(&snapshot_hash).into());

@@ -4,6 +4,7 @@ mod config;
 mod deps;
 mod error;
 mod executor;
+mod lock;
 mod paths;
 mod rootfs;
 mod runner;

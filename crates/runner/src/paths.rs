@@ -76,6 +76,35 @@ impl HomePaths {
     }
 }
 
+/// Lock file paths under `/var/lock` for coordinating concurrent builds.
+///
+/// `/var/lock` is FHS-standard (mode 1777), same as the netns pool locks.
+pub struct LockPaths {
+    base_dir: PathBuf,
+}
+
+impl Default for LockPaths {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl LockPaths {
+    pub fn new() -> Self {
+        Self {
+            base_dir: PathBuf::from("/var/lock"),
+        }
+    }
+
+    pub fn rootfs(&self, hash: &str) -> PathBuf {
+        self.base_dir.join(format!("vm0-rootfs-{hash}.lock"))
+    }
+
+    pub fn snapshot(&self, hash: &str) -> PathBuf {
+        self.base_dir.join(format!("vm0-snapshot-{hash}.lock"))
+    }
+}
+
 /// Paths for a rootfs build output directory (keyed by input hash).
 pub struct RootfsPaths {
     dir: PathBuf,

@@ -10,7 +10,7 @@ sandbox-fc = { workspace = true }
 base64 = { workspace = true }
 chrono = { workspace = true, features = ["serde", "now"] }
 clap = { workspace = true, features = ["derive", "env"] }
-nix = { workspace = true, features = ["user", "signal"] }
+nix = { workspace = true, features = ["user", "signal", "fs"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_yaml_ng = { workspace = true }
