@@ -176,7 +176,7 @@ export async function executeJob(
     if (config.firecracker.snapshot) {
       // Use host timestamp directly (faster than hwclock which accesses RTC device)
       const timestamp = (Date.now() / 1000).toFixed(3);
-      await guest.exec(`sudo date -s "@${timestamp}"`);
+      await guest.execAsRoot(`date -s "@${timestamp}"`);
     }
 
     // Download storages if manifest provided

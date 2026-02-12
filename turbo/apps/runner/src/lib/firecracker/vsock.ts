@@ -21,11 +21,11 @@
  *   0x00 ready          G→H  (empty)
  *   0x01 ping           H→G  (empty)
  *   0x02 pong           G→H  (empty)
- *   0x03 exec           H→G  [4-byte timeout_ms][4-byte cmd_len][command]([4-byte env_count]([4-byte key_len][key][4-byte val_len][value])*)
+ *   0x03 exec           H→G  [4-byte timeout_ms][1-byte flags][4-byte cmd_len][command]([4-byte env_count]([4-byte key_len][key][4-byte val_len][value])*)
  *   0x04 exec_result    G→H  [4-byte exit_code][4-byte stdout_len][stdout][4-byte stderr_len][stderr]
  *   0x05 write_file     H→G  [2-byte path_len][path][1-byte flags][4-byte content_len][content]
  *   0x06 write_file_result G→H [1-byte success][2-byte error_len][error]
- *   0x07 spawn_watch    H→G  [4-byte timeout_ms][4-byte cmd_len][command]([4-byte env_count]([4-byte key_len][key][4-byte val_len][value])*)
+ *   0x07 spawn_watch    H→G  [4-byte timeout_ms][1-byte flags][4-byte cmd_len][command]([4-byte env_count]([4-byte key_len][key][4-byte val_len][value])*)
  *   0x08 spawn_watch_result G→H [4-byte pid]
  *   0x09 process_exit   G→H  [4-byte pid][4-byte exit_code][4-byte stdout_len][stdout][4-byte stderr_len][stderr]
  *   0x0A shutdown       H→G  (empty)
@@ -117,6 +117,7 @@ function encodeExecPayload(
   command: string,
   timeoutMs: number,
   env?: EnvVars,
+  sudo: boolean = false,
 ): Buffer {
   const cmdBuf = Buffer.from(command, "utf-8");
   const envEntries = env ? Object.entries(env) : [];
@@ -134,13 +135,14 @@ function encodeExecPayload(
     }
   }
 
-  const payload = Buffer.alloc(8 + cmdBuf.length + envSize);
+  const payload = Buffer.alloc(9 + cmdBuf.length + envSize);
   payload.writeUInt32BE(timeoutMs, 0);
-  payload.writeUInt32BE(cmdBuf.length, 4);
-  cmdBuf.copy(payload, 8);
+  payload.writeUInt8(sudo ? FLAG_SUDO : 0, 4);
+  payload.writeUInt32BE(cmdBuf.length, 5);
+  cmdBuf.copy(payload, 9);
 
   if (encodedEntries.length > 0) {
-    let offset = 8 + cmdBuf.length;
+    let offset = 9 + cmdBuf.length;
     payload.writeUInt32BE(encodedEntries.length, offset);
     offset += 4;
     for (const [keyBuf, valBuf] of encodedEntries) {
@@ -456,11 +458,12 @@ export class VsockClient implements GuestClient {
     command: string,
     timeoutMs?: number,
     env?: EnvVars,
+    sudo: boolean = false,
   ): Promise<ExecResult> {
     const actualTimeout = timeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS;
 
     try {
-      const payload = encodeExecPayload(command, actualTimeout, env);
+      const payload = encodeExecPayload(command, actualTimeout, env, sudo);
       const response = await this.request(
         MSG_EXEC,
         payload,
@@ -483,6 +486,13 @@ export class VsockClient implements GuestClient {
         stderr: e instanceof Error ? e.message : String(e),
       };
     }
+  }
+
+  /**
+   * Execute a command as root via the sudo protocol flag.
+   */
+  async execAsRoot(command: string, timeoutMs?: number): Promise<ExecResult> {
+    return this.exec(command, timeoutMs, undefined, true);
   }
 
   /**
@@ -740,8 +750,9 @@ export class VsockClient implements GuestClient {
     command: string,
     timeoutMs: number = 0,
     env?: EnvVars,
+    sudo: boolean = false,
   ): Promise<SpawnResult> {
-    const payload = encodeExecPayload(command, timeoutMs, env);
+    const payload = encodeExecPayload(command, timeoutMs, env, sudo);
     const response = await this.request(
       MSG_SPAWN_WATCH,
       payload,

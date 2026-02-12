@@ -91,18 +91,39 @@ fn prepend_env(command: &str, env: &[(&str, &str)]) -> String {
     parts
 }
 
-/// Build a Command to execute a shell command as the appropriate user
-fn build_exec_command(command: &str) -> Command {
+/// Build a Command to execute a shell command as the appropriate user.
+///
+/// When `sudo` is true the command runs as root, bypassing `su - user` and
+/// the PAM overhead that comes with it.
+///
+/// In release builds the guest-init process is already root, so `sh -c`
+/// suffices. In debug builds the process is a normal user, so `sudo sh -c`
+/// is needed to elevate.
+fn build_exec_command(command: &str, sudo: bool) -> Command {
     match get_exec_user() {
         Some(user) => {
-            let mut c = Command::new("su");
-            c.arg("-").arg(user).arg("-c").arg(command);
-            c
+            if sudo {
+                // Release: already root — run directly
+                let mut c = Command::new("sh");
+                c.arg("-c").arg(command);
+                c
+            } else {
+                let mut c = Command::new("su");
+                c.arg("-").arg(user).arg("-c").arg(command);
+                c
+            }
         }
         None => {
-            let mut c = Command::new("sh");
-            c.arg("-c").arg(command);
-            c
+            if sudo {
+                // Debug: not root — elevate with sudo
+                let mut c = Command::new("sudo");
+                c.arg("sh").arg("-c").arg(command);
+                c
+            } else {
+                let mut c = Command::new("sh");
+                c.arg("-c").arg(command);
+                c
+            }
         }
     }
 }
@@ -196,14 +217,20 @@ fn wait_with_timeout(child: Child, timeout_ms: u32) -> (i32, Vec<u8>, Vec<u8>) {
 }
 
 /// Handle exec message
-fn handle_exec(timeout_ms: u32, command: &str, env: &[(&str, &str)]) -> (i32, Vec<u8>, Vec<u8>) {
+fn handle_exec(
+    timeout_ms: u32,
+    command: &str,
+    env: &[(&str, &str)],
+    sudo: bool,
+) -> (i32, Vec<u8>, Vec<u8>) {
     let command = prepend_env(command, env);
     log(
         "INFO",
         &format!(
-            "exec: {} (timeout={}ms)",
+            "exec: {} (timeout={}ms, sudo={})",
             truncate_preview(&command),
-            timeout_ms
+            timeout_ms,
+            sudo,
         ),
     );
 
@@ -211,14 +238,14 @@ fn handle_exec(timeout_ms: u32, command: &str, env: &[(&str, &str)]) -> (i32, Ve
     #[cfg(unix)]
     let child = {
         use std::os::unix::process::CommandExt;
-        build_exec_command(&command)
+        build_exec_command(&command, sudo)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .process_group(0)
             .spawn()
     };
     #[cfg(not(unix))]
-    let child = build_exec_command(&command)
+    let child = build_exec_command(&command, sudo)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn();
@@ -261,9 +288,10 @@ fn handle_write_file(path: &str, content: &[u8], use_sudo: bool) -> (bool, Strin
     // Use subprocess instead of direct fs::write to run as user
     const WRITE_TIMEOUT_MS: u32 = 30_000;
 
-    // Build the write command: use sudo tee for privileged writes, cat for normal writes
+    // Build the write command: tee for privileged writes (build_exec_command
+    // handles root elevation), cat for normal writes with parent dir creation.
     let write_cmd = if use_sudo {
-        format!("sudo tee '{}'", path.replace('\'', "'\\''"))
+        format!("tee '{}'", path.replace('\'', "'\\''"))
     } else {
         // Create parent directory if needed, then write
         if let Some(parent) = std::path::Path::new(path).parent() {
@@ -281,7 +309,7 @@ fn handle_write_file(path: &str, content: &[u8], use_sudo: bool) -> (bool, Strin
         }
     };
 
-    let mut child = match build_exec_command(&write_cmd)
+    let mut child = match build_exec_command(&write_cmd, use_sudo)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
@@ -332,6 +360,7 @@ fn handle_spawn_watch(
     timeout_ms: u32,
     command: &str,
     env: &[(&str, &str)],
+    sudo: bool,
     seq: u32,
     writer: Arc<Mutex<UnixStream>>,
 ) -> io::Result<Vec<u8>> {
@@ -339,9 +368,10 @@ fn handle_spawn_watch(
     log(
         "INFO",
         &format!(
-            "spawn_watch: {} (timeout={}ms)",
+            "spawn_watch: {} (timeout={}ms, sudo={})",
             truncate_preview(&command),
-            timeout_ms
+            timeout_ms,
+            sudo,
         ),
     );
 
@@ -349,14 +379,14 @@ fn handle_spawn_watch(
     #[cfg(unix)]
     let child = {
         use std::os::unix::process::CommandExt;
-        build_exec_command(&command)
+        build_exec_command(&command, sudo)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .process_group(0)
             .spawn()
     };
     #[cfg(not(unix))]
-    let child = build_exec_command(&command)
+    let child = build_exec_command(&command, sudo)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn();
@@ -437,9 +467,8 @@ fn handle_message(msg: &RawMessage) -> io::Result<Option<Vec<u8>>> {
             vsock_proto::encode(MSG_PONG, msg.seq, &[]).map_err(to_io_error)?,
         )),
         MSG_EXEC => {
-            let (timeout_ms, command, env) =
-                vsock_proto::decode_exec(&msg.payload).map_err(to_io_error)?;
-            let (exit_code, stdout, stderr) = handle_exec(timeout_ms, command, &env);
+            let d = vsock_proto::decode_exec(&msg.payload).map_err(to_io_error)?;
+            let (exit_code, stdout, stderr) = handle_exec(d.timeout_ms, d.command, &d.env, d.sudo);
             let payload = vsock_proto::encode_exec_result(exit_code, &stdout, &stderr);
             Ok(Some(
                 vsock_proto::encode(MSG_EXEC_RESULT, msg.seq, &payload).map_err(to_io_error)?,
@@ -555,12 +584,12 @@ pub fn handle_connection(stream: UnixStream) -> io::Result<()> {
         {
             // Handle spawn_watch separately since it needs the writer Arc
             let response = if msg.msg_type == MSG_SPAWN_WATCH {
-                let (timeout_ms, command, env) =
-                    vsock_proto::decode_exec(&msg.payload).map_err(to_io_error)?;
+                let d = vsock_proto::decode_exec(&msg.payload).map_err(to_io_error)?;
                 Some(handle_spawn_watch(
-                    timeout_ms,
-                    command,
-                    &env,
+                    d.timeout_ms,
+                    d.command,
+                    &d.env,
+                    d.sudo,
                     msg.seq,
                     Arc::clone(&writer),
                 )?)

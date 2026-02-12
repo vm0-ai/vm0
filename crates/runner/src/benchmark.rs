@@ -171,6 +171,7 @@ async fn run_in_sandbox(
             cmd: &args.command,
             timeout: Duration::from_secs(args.timeout_secs),
             env: &[],
+            sudo: false,
         })
         .await
         .map_err(Into::into);

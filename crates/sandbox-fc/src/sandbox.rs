@@ -424,7 +424,7 @@ impl Sandbox for FirecrackerSandbox {
         };
 
         let result = guest
-            .exec(request.cmd, request.timeout_ms(), request.env)
+            .exec(request.cmd, request.timeout_ms(), request.env, request.sudo)
             .await
             .map_err(|e| SandboxError::ExecFailed(e.to_string()))?;
 
@@ -462,7 +462,7 @@ impl Sandbox for FirecrackerSandbox {
         };
 
         let pid = guest
-            .spawn_watch(request.cmd, request.timeout_ms(), request.env)
+            .spawn_watch(request.cmd, request.timeout_ms(), request.env, request.sudo)
             .await
             .map_err(|e| SandboxError::ExecFailed(e.to_string()))?;
 
