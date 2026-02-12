@@ -48,7 +48,7 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
             memory_mb: runner_config.sandbox.memory_mb,
         },
     };
-    let (result, boot_ms, exec_ms) =
+    let (result, boot_ms, clock_ms, exec_ms) =
         run_sandbox(&args, &factory, sandbox_config, is_snapshot).await;
     let total_ms = total.elapsed().as_millis();
     factory.shutdown().await;
@@ -59,6 +59,7 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
             info!(
                 factory_ms,
                 boot_ms,
+                clock_ms,
                 exec_ms,
                 total_ms,
                 exit_code = exec_result.exit_code,
@@ -66,7 +67,7 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
             );
         }
         Err(e) => {
-            info!(factory_ms, boot_ms, exec_ms, total_ms, error = %e, "benchmark failed");
+            info!(factory_ms, boot_ms, clock_ms, exec_ms, total_ms, error = %e, "benchmark failed");
         }
     }
 
@@ -96,7 +97,7 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
     Ok(ExitCode::from(code))
 }
 
-/// Create, start, exec, stop, destroy. Returns (result, boot_ms, exec_ms).
+/// Create, start, exec, stop, destroy. Returns (result, boot_ms, clock_ms, exec_ms).
 /// Timing is always returned even on error.
 /// Caller is responsible for `factory.shutdown()`.
 async fn run_sandbox(
@@ -104,20 +105,21 @@ async fn run_sandbox(
     factory: &FirecrackerFactory,
     sandbox_config: SandboxConfig,
     is_snapshot: bool,
-) -> (RunnerResult<ExecResult>, u128, u128) {
+) -> (RunnerResult<ExecResult>, u128, u128, u128) {
     let mut sandbox = match factory.create(sandbox_config).await {
         Ok(s) => s,
-        Err(e) => return (Err(e.into()), 0, 0),
+        Err(e) => return (Err(e.into()), 0, 0, 0),
     };
 
-    let (result, boot_ms, exec_ms) = run_in_sandbox(args, sandbox.as_mut(), is_snapshot).await;
+    let (result, boot_ms, clock_ms, exec_ms) =
+        run_in_sandbox(args, sandbox.as_mut(), is_snapshot).await;
 
     if let Err(e) = sandbox.stop().await {
         warn!(error = %e, "sandbox stop failed");
     }
     factory.destroy(sandbox).await;
 
-    (result, boot_ms, exec_ms)
+    (result, boot_ms, clock_ms, exec_ms)
 }
 
 /// Start sandbox, fix clock, exec command. Returns result + timing.
@@ -125,17 +127,19 @@ async fn run_in_sandbox(
     args: &BenchmarkArgs,
     sandbox: &mut dyn sandbox::Sandbox,
     is_snapshot: bool,
-) -> (RunnerResult<ExecResult>, u128, u128) {
+) -> (RunnerResult<ExecResult>, u128, u128, u128) {
     let t = Instant::now();
     if let Err(e) = sandbox.start().await {
-        return (Err(e.into()), t.elapsed().as_millis(), 0);
+        return (Err(e.into()), t.elapsed().as_millis(), 0, 0);
     }
     let boot_ms = t.elapsed().as_millis();
     info!(boot_ms, "sandbox started");
 
+    let t = Instant::now();
     if is_snapshot && let Err(e) = executor::fix_guest_clock(sandbox).await {
-        return (Err(e), boot_ms, 0);
+        return (Err(e), boot_ms, t.elapsed().as_millis(), 0);
     }
+    let clock_ms = t.elapsed().as_millis();
 
     let t = Instant::now();
     let result = sandbox
@@ -148,5 +152,5 @@ async fn run_in_sandbox(
         .map_err(Into::into);
     let exec_ms = t.elapsed().as_millis();
 
-    (result, boot_ms, exec_ms)
+    (result, boot_ms, clock_ms, exec_ms)
 }
