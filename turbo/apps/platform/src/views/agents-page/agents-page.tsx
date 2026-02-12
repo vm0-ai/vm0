@@ -245,7 +245,7 @@ function AgentRow({
                 <span className="inline-flex items-center gap-1.5 text-xs text-destructive">
                   <AlertTriangle className="h-3 w-3 flex-shrink-0" />
                   <span className="truncate">
-                    Missing {missingCount} item
+                    Missing {missingCount} environment variable
                     {missingCount > 1 ? "s" : ""}
                   </span>
                 </span>
