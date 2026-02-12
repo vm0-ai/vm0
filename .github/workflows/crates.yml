@@ -149,11 +149,12 @@ jobs:
           SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
           REMOTE="${METAL_USER}@${HOST}"
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
+          RUNNER_DIR="~/.vm0-runner/runners/${JOB_REF}"
           TARGET_DIR="crates/target/aarch64-unknown-linux-musl/release"
 
-          # Upload binaries (rm first to avoid "Text file busy" if a stale process holds the old binary)
+          # Clean previous run artifacts and upload binaries
           echo "=== Deploying binaries to ${HOST}:${BIN_DIR} ==="
-          ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} && mkdir -p ${BIN_DIR}"
+          ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} ${RUNNER_DIR} && mkdir -p ${BIN_DIR}"
           for bin in runner guest-init guest-download guest-agent guest-mock-claude; do
             scp $SSH_OPTS "${TARGET_DIR}/${bin}" "${REMOTE}:${BIN_DIR}/"
           done
@@ -178,7 +179,7 @@ jobs:
           # Run benchmark (boot VM from snapshot, exec command, verify output)
           echo "=== Running benchmark ==="
           ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner benchmark \
-            --config ~/.vm0-runner/runners/${JOB_REF}/runner.yaml \
+            --config ${RUNNER_DIR}/runner.yaml \
             'echo hello-from-vm'"
 
       - name: Cleanup
@@ -190,5 +191,7 @@ jobs:
         run: |
           SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
           REMOTE="${METAL_USER}@${HOST}"
+          BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
+          RUNNER_DIR="~/.vm0-runner/runners/${JOB_REF}"
           echo "Cleaning up ${JOB_REF} on ${HOST}"
-          ssh $SSH_OPTS $REMOTE "rm -rf ~/.vm0-runner/bin/${JOB_REF} ~/.vm0-runner/runners/${JOB_REF}" || true
+          ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} ${RUNNER_DIR}" || true
