@@ -1,7 +1,3 @@
-// Integration test helpers are test-only code but not #[test]-annotated,
-// so clippy.toml's allow-unwrap-in-tests doesn't cover them.
-#![allow(clippy::unwrap_used)]
-
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use httpmock::prelude::*;
@@ -10,7 +6,7 @@ use std::path::PathBuf;
 use tempfile::TempDir;
 
 /// Create a tar.gz archive in memory containing the given files.
-fn create_tar_gz(files: &[(&str, &[u8])]) -> Vec<u8> {
+fn create_tar_gz(files: &[(&str, &[u8])]) -> std::io::Result<Vec<u8>> {
     let mut tar_data = Vec::new();
     {
         let mut builder = tar::Builder::new(&mut tar_data);
@@ -19,16 +15,16 @@ fn create_tar_gz(files: &[(&str, &[u8])]) -> Vec<u8> {
             header.set_size(contents.len() as u64);
             header.set_mode(0o644);
             header.set_cksum();
-            builder.append_data(&mut header, path, *contents).unwrap();
+            builder.append_data(&mut header, path, *contents)?;
         }
-        builder.finish().unwrap();
+        builder.finish()?;
     }
 
     let mut gz_data = Vec::new();
     let mut encoder = GzEncoder::new(&mut gz_data, Compression::fast());
-    encoder.write_all(&tar_data).unwrap();
-    encoder.finish().unwrap();
-    gz_data
+    encoder.write_all(&tar_data)?;
+    encoder.finish()?;
+    Ok(gz_data)
 }
 
 /// Write a manifest JSON to a temp file and return its path.
@@ -38,7 +34,7 @@ fn write_manifest(
     dir: &TempDir,
     storages: &[(&str, Option<&str>)],
     artifact: Option<(&str, Option<&str>)>,
-) -> PathBuf {
+) -> std::io::Result<PathBuf> {
     let storages_json: Vec<String> = storages
         .iter()
         .map(|(mount_path, archive_url)| match archive_url {
@@ -62,8 +58,8 @@ fn write_manifest(
     );
 
     let manifest_path = dir.path().join("manifest.json");
-    std::fs::write(&manifest_path, json).unwrap();
-    manifest_path
+    std::fs::write(&manifest_path, json)?;
+    Ok(manifest_path)
 }
 
 // ---------------------------------------------------------------------------
@@ -72,7 +68,7 @@ fn write_manifest(
 #[test]
 fn single_storage_download() {
     let server = MockServer::start();
-    let tar_gz = create_tar_gz(&[("hello.txt", b"hello world")]);
+    let tar_gz = create_tar_gz(&[("hello.txt", b"hello world")]).unwrap();
 
     server.mock(|when, then| {
         when.method(GET).path("/storage.tar.gz");
@@ -84,7 +80,7 @@ fn single_storage_download() {
     let dir = tempfile::tempdir().unwrap();
     let mount = dir.path().join("mount");
     let url = server.url("/storage.tar.gz");
-    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None);
+    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
     let result = guest_download::run(manifest.to_str().unwrap());
 
@@ -109,7 +105,7 @@ fn six_storages_parallel() {
     for i in 0..6 {
         let filename = format!("file_{i}.txt");
         let content = format!("content_{i}");
-        let tar_gz = create_tar_gz(&[(&filename, content.as_bytes())]);
+        let tar_gz = create_tar_gz(&[(&filename, content.as_bytes())]).unwrap();
         let path = format!("/storage_{i}.tar.gz");
 
         let mock = server.mock(|when, then| {
@@ -132,7 +128,7 @@ fn six_storages_parallel() {
         .map(|(m, u)| (m.as_str(), Some(u.as_str())))
         .collect();
 
-    let manifest = write_manifest(&dir, &storage_refs, None);
+    let manifest = write_manifest(&dir, &storage_refs, None).unwrap();
     let result = guest_download::run(manifest.to_str().unwrap());
 
     assert!(result);
@@ -151,7 +147,7 @@ fn six_storages_parallel() {
 #[test]
 fn artifact_download_success() {
     let server = MockServer::start();
-    let tar_gz = create_tar_gz(&[("artifact.txt", b"artifact data")]);
+    let tar_gz = create_tar_gz(&[("artifact.txt", b"artifact data")]).unwrap();
 
     server.mock(|when, then| {
         when.method(GET).path("/artifact.tar.gz");
@@ -163,7 +159,7 @@ fn artifact_download_success() {
     let dir = tempfile::tempdir().unwrap();
     let mount = dir.path().join("artifact_mount");
     let url = server.url("/artifact.tar.gz");
-    let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some(&url))));
+    let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some(&url)))).unwrap();
 
     let result = guest_download::run(manifest.to_str().unwrap());
 
@@ -189,7 +185,7 @@ fn artifact_404_non_fatal() {
     let dir = tempfile::tempdir().unwrap();
     let mount = dir.path().join("artifact_mount");
     let url = server.url("/artifact.tar.gz");
-    let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some(&url))));
+    let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some(&url)))).unwrap();
 
     let result = guest_download::run(manifest.to_str().unwrap());
     assert!(result);
@@ -210,7 +206,7 @@ fn storage_404_fatal() {
     let dir = tempfile::tempdir().unwrap();
     let mount = dir.path().join("mount");
     let url = server.url("/storage.tar.gz");
-    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None);
+    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
     let result = guest_download::run(manifest.to_str().unwrap());
     assert!(!result);
@@ -231,7 +227,7 @@ fn server_error_exhausts_retries() {
     let dir = tempfile::tempdir().unwrap();
     let mount = dir.path().join("mount");
     let url = server.url("/storage.tar.gz");
-    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None);
+    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
     let result = guest_download::run(manifest.to_str().unwrap());
 
@@ -254,7 +250,7 @@ fn rate_limit_exhausts_retries() {
     let dir = tempfile::tempdir().unwrap();
     let mount = dir.path().join("mount");
     let url = server.url("/storage.tar.gz");
-    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None);
+    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
     let result = guest_download::run(manifest.to_str().unwrap());
 
@@ -279,7 +275,7 @@ fn invalid_tar_gz_non_retriable() {
     let dir = tempfile::tempdir().unwrap();
     let mount = dir.path().join("mount");
     let url = server.url("/storage.tar.gz");
-    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None);
+    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
     let result = guest_download::run(manifest.to_str().unwrap());
 
@@ -303,7 +299,8 @@ fn null_and_missing_urls_skip_download() {
             (mount2.to_str().unwrap(), Some("null")),
         ],
         None,
-    );
+    )
+    .unwrap();
 
     let result = guest_download::run(manifest.to_str().unwrap());
     assert!(result);
@@ -346,7 +343,7 @@ fn artifact_500_fatal() {
     let dir = tempfile::tempdir().unwrap();
     let mount = dir.path().join("artifact_mount");
     let url = server.url("/artifact.tar.gz");
-    let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some(&url))));
+    let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some(&url)))).unwrap();
 
     let result = guest_download::run(manifest.to_str().unwrap());
 
@@ -360,7 +357,7 @@ fn artifact_500_fatal() {
 #[test]
 fn retry_then_succeed() {
     let server = MockServer::start();
-    let tar_gz = create_tar_gz(&[("recovered.txt", b"recovered")]);
+    let tar_gz = create_tar_gz(&[("recovered.txt", b"recovered")]).unwrap();
 
     // Start with a 500 mock
     let mut fail_mock = server.mock(|when, then| {
@@ -371,7 +368,7 @@ fn retry_then_succeed() {
     let dir = tempfile::tempdir().unwrap();
     let mount = dir.path().join("mount");
     let url = server.url("/storage.tar.gz");
-    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None);
+    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
     let manifest_str = manifest.to_str().unwrap().to_string();
 
     // Run in background thread so we can swap the mock during RETRY_DELAY
@@ -409,7 +406,7 @@ fn retry_then_succeed() {
 #[test]
 fn storages_partial_failure() {
     let server = MockServer::start();
-    let tar_gz = create_tar_gz(&[("ok.txt", b"ok")]);
+    let tar_gz = create_tar_gz(&[("ok.txt", b"ok")]).unwrap();
 
     server.mock(|when, then| {
         when.method(GET).path("/good.tar.gz");
@@ -436,7 +433,8 @@ fn storages_partial_failure() {
             (mount_bad.to_str().unwrap(), Some(&url_bad)),
         ],
         None,
-    );
+    )
+    .unwrap();
 
     let result = guest_download::run(manifest.to_str().unwrap());
 
@@ -457,12 +455,13 @@ fn artifact_null_url_skipped() {
     let mount = dir.path().join("artifact_mount");
 
     // archiveUrl is the string "null" — should be treated as missing
-    let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some("null"))));
+    let manifest =
+        write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some("null")))).unwrap();
     let result = guest_download::run(manifest.to_str().unwrap());
     assert!(result);
 
     // archiveUrl is absent entirely
-    let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), None)));
+    let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), None))).unwrap();
     let result = guest_download::run(manifest.to_str().unwrap());
     assert!(result);
 }
