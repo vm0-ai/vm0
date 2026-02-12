@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import {
   getPosts,
@@ -10,6 +11,7 @@ import {
 import { BlogContent } from "../../components/blog";
 import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
+import { isBlogEnabled } from "../../../src/env";
 
 export const revalidate = 60;
 
@@ -53,6 +55,10 @@ export async function generateMetadata({
 }
 
 export default async function BlogPage({ params }: BlogPageProps) {
+  if (!isBlogEnabled()) {
+    notFound();
+  }
+
   const { locale } = await params;
 
   const [posts, featuredPost, categories] = await Promise.all([

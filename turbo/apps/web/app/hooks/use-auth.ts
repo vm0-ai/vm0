@@ -9,7 +9,7 @@
 
 import { useUser, useClerk } from "@clerk/nextjs";
 
-const selfHosted = process.env.NEXT_PUBLIC_SELF_HOSTED === "true";
+const hasClerk = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 interface AuthState {
   isSignedIn: boolean;
@@ -32,4 +32,4 @@ function useLocalAuth(): AuthState {
   };
 }
 
-export const useAuth = selfHosted ? useLocalAuth : useSaaSAuth;
+export const useAuth = hasClerk ? useSaaSAuth : useLocalAuth;

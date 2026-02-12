@@ -1,5 +1,5 @@
 import { NextFetchEvent, NextRequest } from "next/server";
-import { isSelfHosted } from "./src/env";
+import { env } from "./src/env";
 import clerkMiddleware from "./middleware.clerk";
 import localMiddleware from "./middleware.local";
 
@@ -9,7 +9,9 @@ export default async function middleware(
   request: NextRequest,
   event: NextFetchEvent,
 ) {
-  if (isSelfHosted()) {
+  const useLocalAuth = !env().NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
+  if (useLocalAuth) {
     return localMiddleware(request);
   }
 

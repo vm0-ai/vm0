@@ -8,7 +8,7 @@ import {
 } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { getClerkPublishableKey } from "../src/lib/clerk-config";
-import { isSelfHosted } from "../src/env";
+import { hasClerkAuth } from "../src/env";
 import { ThemeProvider } from "./components/ThemeProvider";
 import "./globals.css";
 import "./landing.css";
@@ -133,7 +133,7 @@ export default function RootLayout({
   const content = (
     <html lang="en" data-theme="dark" suppressHydrationWarning>
       <head>
-        {!isSelfHosted() && (
+        {hasClerkAuth() && (
           <>
             <link rel="preconnect" href="https://fonts.googleapis.com" />
             <link
@@ -160,7 +160,7 @@ export default function RootLayout({
               `,
           }}
         />
-        {!isSelfHosted() && (
+        {hasClerkAuth() && (
           <>
             <Script
               src="https://plausible.io/js/pa-eEj_2G8vS8xPlTUzW2A3U.js"
@@ -180,7 +180,7 @@ export default function RootLayout({
       <body
         className={`${notoSans.variable} ${firaCode.variable} ${firaMono.variable} ${jetBrainsMono.variable}`}
       >
-        {!isSelfHosted() && (
+        {hasClerkAuth() && (
           <>
             <Script
               id="json-ld"
@@ -252,7 +252,7 @@ export default function RootLayout({
     </html>
   );
 
-  if (isSelfHosted()) {
+  if (!hasClerkAuth()) {
     return content;
   }
 

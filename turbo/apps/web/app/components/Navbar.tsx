@@ -10,6 +10,7 @@ import ThemeToggle from "./ThemeToggle";
 import LanguageSwitcher from "./LanguageSwitcher";
 import { getPlatformUrl } from "../../src/lib/url";
 import { useAuth } from "../hooks/use-auth";
+import { isBlogEnabled } from "../../src/env";
 
 export default function Navbar() {
   const { theme } = useTheme();
@@ -78,9 +79,11 @@ export default function Navbar() {
             >
               {t("docs")}
             </a>
-            <Link href="/blog" className="nav-link">
-              {t("blog")}
-            </Link>
+            {isBlogEnabled() && (
+              <Link href="/blog" className="nav-link">
+                {t("blog")}
+              </Link>
+            )}
             <Link href="/skills" className="nav-link">
               {t("skills")}
             </Link>
@@ -172,13 +175,15 @@ export default function Navbar() {
             >
               {t("docs")}
             </a>
-            <Link
-              href="/blog"
-              className="mobile-menu-link"
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              {t("blog")}
-            </Link>
+            {isBlogEnabled() && (
+              <Link
+                href="/blog"
+                className="mobile-menu-link"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                {t("blog")}
+              </Link>
+            )}
             <Link
               href="/skills"
               className="mobile-menu-link"

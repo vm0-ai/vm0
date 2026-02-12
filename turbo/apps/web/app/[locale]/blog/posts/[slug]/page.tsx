@@ -12,6 +12,7 @@ import Footer from "../../../../components/Footer";
 import { ShareButtons } from "../../../../components/blog";
 import { getPost, getPosts, getBlogBaseUrl } from "../../../../lib/blog";
 import { locales } from "../../../../../i18n";
+import { isBlogEnabled } from "../../../../../src/env";
 
 export const revalidate = 60;
 
@@ -22,6 +23,11 @@ interface PageProps {
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
+  // Skip blog metadata in self-hosted mode (no Strapi available)
+  if (!isBlogEnabled()) {
+    return { title: "Not Found" };
+  }
+
   const { slug, locale } = await params;
   const post = await getPost(slug, locale);
 
@@ -67,6 +73,11 @@ export async function generateMetadata({
 }
 
 export async function generateStaticParams() {
+  // Skip static blog pages in self-hosted mode (no Strapi available)
+  if (!isBlogEnabled()) {
+    return [];
+  }
+
   const params: { slug: string; locale: string }[] = [];
 
   for (const locale of locales) {
@@ -80,6 +91,10 @@ export async function generateStaticParams() {
 }
 
 export default async function BlogPostPage({ params }: PageProps) {
+  if (!isBlogEnabled()) {
+    notFound();
+  }
+
   const { slug, locale } = await params;
   const post = await getPost(slug, locale);
 

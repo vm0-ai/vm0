@@ -39,35 +39,12 @@ RUN sed -i 's/const nextConfig = {/const nextConfig = {\n  output: "standalone",
 ENV SKIP_ENV_VALIDATION=true
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_BASE_URL=http://localhost
-ENV SELF_HOSTED=true
+# No NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY → isSelfHosted()=true (single-user mode)
+# No NEXT_PUBLIC_STRAPI_URL → isBlogEnabled()=false (blog hidden)
+# Placeholder for build-time inlining; actual value comes from docker-compose at runtime
+ENV NEXT_PUBLIC_PLATFORM_URL=http://localhost:3001
 
-# Point Strapi to the build-time mock server (see below)
-ENV NEXT_PUBLIC_STRAPI_URL=http://localhost:1337
-
-# Run a minimal mock server during build so blog pages that fetch from
-# Strapi get valid empty responses instead of ECONNREFUSED.
-# The mock server runs as the main process and the build runs as a child,
-# ensuring the server stays alive for the entire duration (especially
-# important under QEMU emulation where arm64 builds can take 10+ minutes).
-RUN set -e; \
-    node -e " \
-      const http = require('http'); \
-      const { spawn } = require('child_process'); \
-      const srv = http.createServer((_, r) => { \
-        r.writeHead(200, {'Content-Type':'application/json'}); \
-        r.end(JSON.stringify({data:[],meta:{}})); \
-      }); \
-      srv.listen(1337, () => { \
-        const child = spawn('pnpm', ['run', 'build', '--filter=web'], { \
-          stdio: 'inherit', \
-          shell: true \
-        }); \
-        child.on('close', (code) => { \
-          srv.close(); \
-          process.exit(code || 0); \
-        }); \
-      }); \
-    "
+RUN pnpm run build --filter=web
 
 # ============ Runtime ============
 FROM node:20.20.0-alpine AS runner

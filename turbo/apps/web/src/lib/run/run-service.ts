@@ -1,5 +1,5 @@
 import { eq, and, count, gt, or } from "drizzle-orm";
-import { env, isSelfHosted } from "../../env";
+import { env } from "../../env";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { agentRuns } from "../../db/schema/agent-run";
 import {
@@ -251,11 +251,11 @@ async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
       `Dispatching run ${context.runId} to runner group: ${context.runnerGroup}`,
     );
     return await executeRunnerJob(context);
-  } else if (isSelfHosted()) {
-    log.debug(`Dispatching run ${context.runId} to Docker executor`);
-    return await executeDockerRun(context);
-  } else {
+  } else if (env().E2B_API_KEY) {
     log.debug(`Dispatching run ${context.runId} to E2B executor`);
     return await executeE2bRun(context);
+  } else {
+    log.debug(`Dispatching run ${context.runId} to Docker executor`);
+    return await executeDockerRun(context);
   }
 }

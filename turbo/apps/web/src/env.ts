@@ -2,22 +2,34 @@ import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
 /**
- * Whether the app is running in self-hosted mode.
- * Reads process.env directly so it can be used in layout.tsx (Server Component
- * evaluated at build time) without triggering full env() validation.
- * Tests can still override via vi.stubEnv('SELF_HOSTED', 'true').
+ * Whether Clerk authentication is configured.
+ *
+ * Derived from the presence of NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY.
+ * When false, the app falls back to single-user local auth.
+ *
+ * Uses a NEXT_PUBLIC_* var so Next.js auto-inlines it at build time,
+ * making it work in both Server and Client Components.
+ *
+ * Does NOT trigger full env() validation, safe for use in layout.tsx
+ * and other build-time evaluated Server Components.
  */
-export function isSelfHosted(): boolean {
-  return process.env.SELF_HOSTED === "true";
+export function hasClerkAuth(): boolean {
+  return !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+}
+
+/**
+ * Whether the blog feature is available.
+ *
+ * Derived from the presence of a Strapi URL. No Strapi = no blog.
+ */
+export function isBlogEnabled(): boolean {
+  return !!process.env.NEXT_PUBLIC_STRAPI_URL;
 }
 
 function initEnv() {
   // Internal flags for conditional schema validation (must read process.env
   // directly because they configure the schema that env() itself validates).
-  const selfHosted = process.env.SELF_HOSTED === "true";
-  const slackEnabled =
-    !selfHosted || process.env.SLACK_INTEGRATION_ENABLED === "true";
-  const e2bEnabled = !selfHosted || process.env.E2B_ENABLED === "true";
+  const slackEnabled = process.env.SLACK_INTEGRATION_ENABLED === "true";
 
   /**
    * Make a field required only when a condition is true, otherwise optional.
@@ -41,10 +53,8 @@ function initEnv() {
         .int()
         .positive()
         .default(10000),
-      SELF_HOSTED: z.enum(["true", "false"]).optional(),
-      CLERK_SECRET_KEY: requiredWhen(!selfHosted),
-      E2B_ENABLED: z.enum(["true", "false"]).optional(),
-      E2B_API_KEY: requiredWhen(e2bEnabled),
+      CLERK_SECRET_KEY: z.string().min(1).optional(),
+      E2B_API_KEY: z.string().min(1).optional(),
       VM0_API_URL: z.string().url().optional(),
       VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),
       VERCEL_URL: z.string().optional(),
@@ -102,15 +112,14 @@ function initEnv() {
       VERCEL_AUTOMATION_BYPASS_SECRET: z.string().optional(),
     },
     client: {
-      NEXT_PUBLIC_SELF_HOSTED: z.enum(["true", "false"]).optional(),
-      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: requiredWhen(!selfHosted),
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1).optional(),
       NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
       // Blog/content config
       NEXT_PUBLIC_BASE_URL: z.string().url().optional(),
       NEXT_PUBLIC_DATA_SOURCE: z.string().optional(),
       NEXT_PUBLIC_STRAPI_URL: z.string().url().optional(),
       // Platform UI URL (for settings page links, Navbar, LandingPage)
-      NEXT_PUBLIC_PLATFORM_URL: z.string().url(),
+      NEXT_PUBLIC_PLATFORM_URL: z.string().url().optional(),
     },
     runtimeEnv: {
       DATABASE_URL: process.env.DATABASE_URL,
@@ -118,9 +127,8 @@ function initEnv() {
       DB_POOL_MAX: process.env.DB_POOL_MAX,
       DB_POOL_IDLE_TIMEOUT_MS: process.env.DB_POOL_IDLE_TIMEOUT_MS,
       DB_POOL_CONNECT_TIMEOUT_MS: process.env.DB_POOL_CONNECT_TIMEOUT_MS,
-      SELF_HOSTED: process.env.SELF_HOSTED,
       CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
-      E2B_ENABLED: process.env.E2B_ENABLED,
+
       E2B_API_KEY: process.env.E2B_API_KEY,
       VM0_API_URL: process.env.VM0_API_URL,
       VERCEL_ENV: process.env.VERCEL_ENV,
@@ -168,7 +176,7 @@ function initEnv() {
       VERCEL: process.env.VERCEL,
       VERCEL_AUTOMATION_BYPASS_SECRET:
         process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
-      NEXT_PUBLIC_SELF_HOSTED: process.env.SELF_HOSTED,
+
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
         process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
       NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,

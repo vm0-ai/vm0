@@ -1,5 +1,5 @@
 import { clerkClient } from "@clerk/nextjs/server";
-import { isSelfHosted } from "../../env";
+import { env } from "../../env";
 import { SELF_HOSTED_USER_ID } from "./constants";
 
 /**
@@ -9,7 +9,9 @@ import { SELF_HOSTED_USER_ID } from "./constants";
  * - SaaS: queries Clerk Backend API for the e2e test user
  */
 export async function resolveTestUserId(): Promise<string | null> {
-  if (isSelfHosted()) {
+  const useLocalAuth = !env().NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
+  if (useLocalAuth) {
     return SELF_HOSTED_USER_ID;
   }
 

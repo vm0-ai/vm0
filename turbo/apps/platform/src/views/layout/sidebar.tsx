@@ -11,7 +11,7 @@ import { NavLink } from "./nav-link.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import { VM0SubscriptionDetailsButton } from "../clerk/subscription-detail.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { isSelfHosted } from "../../env.ts";
+import { hasClerkAuth } from "../../env.ts";
 import {
   sidebarCollapsed$,
   mobileSidebarOpen$,
@@ -117,7 +117,7 @@ function SidebarContent({ collapsed }: { collapsed: boolean }) {
 
       <div className="p-2">
         <div className="flex flex-col gap-1">
-          {!isSelfHosted && featureSwitches?.pricing && (
+          {hasClerkAuth && featureSwitches?.pricing && (
             <VM0SubscriptionDetailsButton />
           )}
           {FOOTER_NAV_ITEMS.map((item) => (
@@ -282,7 +282,7 @@ function UserProfile({ collapsed }: UserProfileProps) {
             </div>
 
             {/* Manage Account (Clerk-only, hidden in self-hosted) */}
-            {!isSelfHosted && (
+            {hasClerkAuth && (
               <button
                 onClick={handleManageAccount}
                 className="w-full flex items-center gap-3 px-5 py-4 border-b border-border hover:bg-muted transition-colors text-left"

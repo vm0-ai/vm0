@@ -1,7 +1,7 @@
 import { Clerk } from "@clerk/clerk-js";
 import { command, computed, state } from "ccstate";
 import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
-import { isSelfHosted } from "../env.ts";
+import { hasClerkAuth } from "../env.ts";
 
 const reload$ = state(0);
 
@@ -36,7 +36,7 @@ function createSelfHostedClerk(): Clerk {
  * - Self-hosted mode: returns a mock object (no external auth dependency).
  */
 export const clerk$ = computed(async () => {
-  if (isSelfHosted) {
+  if (!hasClerkAuth) {
     return createSelfHostedClerk();
   }
 

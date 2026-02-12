@@ -84,7 +84,8 @@ describe("AuthProvider", () => {
 
   describe("getAuthProvider (self-hosted mode)", () => {
     beforeEach(() => {
-      vi.stubEnv("SELF_HOSTED", "true");
+      // Simulate self-hosted: no Clerk key configured
+      delete process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
       reloadEnv();
       resetAuthProvider();
     });

@@ -25,8 +25,6 @@ FROM deps AS builder
 COPY --from=pruner /app/out/full/ .
 
 ENV VITE_API_URL=http://localhost:3000
-ENV VITE_CLERK_PUBLISHABLE_KEY=placeholder
-ENV VITE_SELF_HOSTED=true
 
 RUN pnpm run build --filter=@vm0/platform
 
