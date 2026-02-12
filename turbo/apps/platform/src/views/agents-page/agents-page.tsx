@@ -25,7 +25,7 @@ import {
 } from "@vm0/ui/components/ui/table";
 import { AppShell } from "../layout/app-shell.tsx";
 import { AgentsListSkeleton } from "./agents-list-skeleton.tsx";
-import { useGet, useLastResolved, useResolved } from "ccstate-react";
+import { useGet, useLastResolved, useResolved, useSet } from "ccstate-react";
 import {
   agentsList$,
   agentsLoading$,
@@ -36,10 +36,16 @@ import {
   type AgentMissingItems,
 } from "../../signals/agents-page/agents-list.ts";
 import { defaultModelProvider$ } from "../../signals/external/model-providers.ts";
+import { navigateInReact$ } from "../../signals/route.ts";
 import { getUILabel } from "../settings-page/provider-ui-config.ts";
-import { IconMovie } from "@tabler/icons-react";
+import { IconAlertTriangle } from "@tabler/icons-react";
 import { Bed, Settings, Clock, AlertTriangle } from "lucide-react";
-import type { ComposeListItem } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  getConnectorProvidedSecretNames,
+  type ComposeListItem,
+  type ConnectorType,
+} from "@vm0/core";
 
 export function AgentsPage() {
   return (
@@ -144,6 +150,71 @@ function AgentsListSection() {
   );
 }
 
+function getAllConnectorEnvVars(): Set<string> {
+  return getConnectorProvidedSecretNames(
+    Object.keys(CONNECTOR_TYPES) as ConnectorType[],
+  );
+}
+
+function MissingEnvBanner({ missing }: { missing: AgentMissingItems }) {
+  const navigate = useSet(navigateInReact$);
+  const envVars = getAllConnectorEnvVars();
+
+  const hasMissingConnectors = missing.missingSecrets.some((s) =>
+    envVars.has(s),
+  );
+  const hasMissingSecretsOrVars =
+    missing.missingSecrets.some((s) => !envVars.has(s)) ||
+    missing.missingVariables.length > 0;
+
+  if (!hasMissingConnectors && !hasMissingSecretsOrVars) {
+    return null;
+  }
+
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-amber-500 bg-amber-50 px-4 py-3 dark:border-amber-700 dark:bg-amber-950/30">
+      <IconAlertTriangle
+        size={20}
+        className="shrink-0 text-amber-500"
+        stroke={1.5}
+      />
+      <p className="text-sm">
+        {"Looks like this agent is missing some "}
+        {hasMissingConnectors && (
+          <button
+            className="font-medium text-amber-600 hover:underline dark:text-amber-500"
+            onClick={() =>
+              navigate("/settings", {
+                searchParams: new URLSearchParams({
+                  tab: "connectors",
+                }),
+              })
+            }
+          >
+            connectors
+          </button>
+        )}
+        {hasMissingConnectors && hasMissingSecretsOrVars && ", "}
+        {hasMissingSecretsOrVars && (
+          <button
+            className="font-medium text-amber-600 hover:underline dark:text-amber-500"
+            onClick={() =>
+              navigate("/settings", {
+                searchParams: new URLSearchParams({
+                  tab: "secrets-and-variables",
+                }),
+              })
+            }
+          >
+            secrets or variables
+          </button>
+        )}
+        {". Add them now so it can run without stopping."}
+      </p>
+    </div>
+  );
+}
+
 function getMissingCount(missing: AgentMissingItems): number {
   return missing.missingSecrets.length + missing.missingVariables.length;
 }
@@ -160,23 +231,6 @@ function AgentRow({
   modelProviderLabel: string;
 }) {
   const missingCount = missing ? getMissingCount(missing) : 0;
-
-  const handleFill = () => {
-    if (!missing) {
-      return;
-    }
-    const params = new URLSearchParams();
-    if (missing.missingSecrets.length > 0) {
-      params.set("secrets", missing.missingSecrets.join(","));
-    }
-    if (missing.missingVariables.length > 0) {
-      params.set("vars", missing.missingVariables.join(","));
-    }
-    window.open(
-      `${window.location.origin}/environment-variables-setup?${params.toString()}`,
-      "_blank",
-    );
-  };
 
   return (
     <Dialog>
@@ -258,27 +312,7 @@ function AgentRow({
             How to manage this agent in Claude Code
           </DialogDescription>
         </DialogHeader>
-        {missingCount > 0 && (
-          <div className="flex items-center gap-3 rounded-lg border border-sky-500 bg-sky-50 px-4 py-3 dark:border-sky-800 dark:bg-sky-950/30">
-            <IconMovie
-              size={24}
-              className="shrink-0 text-sky-500"
-              stroke={1.5}
-            />
-            <p className="flex-1 text-sm font-medium">
-              This agent may be missing required secrets or variables. To avoid
-              interruptions, please fill in the missing values.
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              className="bg-white text-sky-600 border-sky-600 hover:bg-sky-50 dark:bg-background"
-              onClick={handleFill}
-            >
-              Fill
-            </Button>
-          </div>
-        )}
+        {missing && <MissingEnvBanner missing={missing} />}
         <AgentCommandsSection agent={agent} />
       </DialogContent>
     </Dialog>
