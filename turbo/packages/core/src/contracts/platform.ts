@@ -81,6 +81,7 @@ export const platformLogsListContract = c.router({
     path: "/api/platform/logs",
     query: listQuerySchema.extend({
       search: z.string().optional(),
+      agent: z.string().optional(),
     }),
     responses: {
       200: platformLogsListResponseSchema,

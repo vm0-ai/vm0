@@ -105,11 +105,13 @@ const router = tsr.router(composesListContract, {
         name: c.name,
         headVersionId: c.headVersionId,
         updatedAt: c.updatedAt.toISOString(),
+        isOwner: true,
       })),
       ...sharedComposes.map((c) => ({
         name: `${c.scopeSlug}/${c.name}`,
         headVersionId: c.headVersionId,
         updatedAt: c.updatedAt.toISOString(),
+        isOwner: false,
       })),
     ];
 

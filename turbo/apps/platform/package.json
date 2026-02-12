@@ -27,7 +27,8 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-json-view-lite": "^2.5.0",
-    "signal-timers": "^1.0.4"
+    "signal-timers": "^1.0.4",
+    "yaml": "^2.7.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.8",
