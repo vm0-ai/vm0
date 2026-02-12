@@ -13,26 +13,65 @@ use crate::sandbox::FirecrackerSandbox;
 pub struct FirecrackerFactory {
     config: FirecrackerConfig,
     paths: FactoryPaths,
-    netns_pool: tokio::sync::Mutex<NetnsPool>,
-    overlay_pool: tokio::sync::Mutex<OverlayPool>,
+    netns_pool: Option<tokio::sync::Mutex<NetnsPool>>,
+    overlay_pool: Option<tokio::sync::Mutex<OverlayPool>>,
 }
 
 impl FirecrackerFactory {
-    /// Create a new factory, pre-warming the network namespace and overlay pools.
+    /// Create a new factory without allocating system resources.
+    /// Call `startup()` to initialize pools before use.
     pub async fn new(config: FirecrackerConfig) -> Result<Self, SandboxError> {
         crate::prerequisites::check_prerequisites(&config).await?;
 
-        let concurrency = config.concurrency.max(1);
         let paths = FactoryPaths::new(config.base_dir.clone());
+
+        Ok(Self {
+            config,
+            paths,
+            netns_pool: None,
+            overlay_pool: None,
+        })
+    }
+
+    /// # Panics
+    /// Panics if called before `startup()` — this is a programming error.
+    #[allow(clippy::expect_used)]
+    fn netns_pool(&self) -> &tokio::sync::Mutex<NetnsPool> {
+        self.netns_pool.as_ref().expect("factory not started")
+    }
+
+    /// # Panics
+    /// Panics if called before `startup()` — this is a programming error.
+    #[allow(clippy::expect_used)]
+    fn overlay_pool(&self) -> &tokio::sync::Mutex<OverlayPool> {
+        self.overlay_pool.as_ref().expect("factory not started")
+    }
+}
+
+#[async_trait]
+impl SandboxFactory for FirecrackerFactory {
+    fn name(&self) -> &str {
+        "firecracker"
+    }
+
+    async fn startup(&mut self) -> sandbox::Result<()> {
+        // Both pools are always set together, so checking one is sufficient.
+        if self.netns_pool.is_some() {
+            return Err(SandboxError::CreationFailed(
+                "factory already started".into(),
+            ));
+        }
+
+        let concurrency = self.config.concurrency.max(1);
 
         let mut netns_pool = NetnsPool::create(NetnsPoolConfig {
             size: concurrency,
-            proxy_port: config.proxy_port,
+            proxy_port: self.config.proxy_port,
         })
         .await
         .map_err(|e| SandboxError::CreationFailed(format!("netns pool: {e}")))?;
 
-        let overlay_creator: Box<dyn OverlayCreator> = match &config.snapshot {
+        let overlay_creator: Box<dyn OverlayCreator> = match &self.config.snapshot {
             Some(snapshot) => Box::new(SnapshotCopyCreator::new(snapshot.overlay_path.clone())),
             None => Box::new(Ext4Creator),
         };
@@ -40,7 +79,7 @@ impl FirecrackerFactory {
         let overlay_pool = match OverlayPool::create(OverlayPoolConfig {
             size: concurrency,
             replenish_threshold: (concurrency / 2).max(1),
-            pool_dir: paths.overlays(),
+            pool_dir: self.paths.overlays(),
             creator: overlay_creator,
         })
         .await
@@ -54,41 +93,17 @@ impl FirecrackerFactory {
             }
         };
 
-        let mode = if config.snapshot.is_some() {
+        self.netns_pool = Some(tokio::sync::Mutex::new(netns_pool));
+        self.overlay_pool = Some(tokio::sync::Mutex::new(overlay_pool));
+
+        let mode = if self.config.snapshot.is_some() {
             "snapshot"
         } else {
             "fresh"
         };
-        info!(concurrency, mode, "factory initialized");
+        info!(concurrency, mode, "factory started");
 
-        Ok(Self {
-            config,
-            paths,
-            netns_pool: tokio::sync::Mutex::new(netns_pool),
-            overlay_pool: tokio::sync::Mutex::new(overlay_pool),
-        })
-    }
-
-    /// Clean up all factory-level resources (pools).
-    pub async fn cleanup(&self) {
-        let mut netns_pool = self.netns_pool.lock().await;
-        if let Err(e) = netns_pool.cleanup().await {
-            warn!(error = %e, "failed to cleanup netns pool");
-        }
-        drop(netns_pool);
-
-        let mut overlay_pool = self.overlay_pool.lock().await;
-        overlay_pool.cleanup().await;
-        drop(overlay_pool);
-
-        info!("factory cleanup complete");
-    }
-}
-
-#[async_trait]
-impl SandboxFactory for FirecrackerFactory {
-    fn name(&self) -> &str {
-        "firecracker"
+        Ok(())
     }
 
     async fn create(&self, config: SandboxConfig) -> sandbox::Result<Box<dyn Sandbox>> {
@@ -102,7 +117,7 @@ impl SandboxFactory for FirecrackerFactory {
 
         // Acquire a network namespace from the pool.
         let network = self
-            .netns_pool
+            .netns_pool()
             .lock()
             .await
             .acquire()
@@ -110,11 +125,11 @@ impl SandboxFactory for FirecrackerFactory {
             .map_err(|e| SandboxError::CreationFailed(format!("acquire netns: {e}")))?;
 
         // Acquire an overlay file from the pool.
-        let overlay = match self.overlay_pool.lock().await.acquire().await {
+        let overlay = match self.overlay_pool().lock().await.acquire().await {
             Ok(overlay) => overlay,
             Err(e) => {
                 // Roll back: return netns to pool before propagating error.
-                let mut netns_pool = self.netns_pool.lock().await;
+                let mut netns_pool = self.netns_pool().lock().await;
                 if let Err(rel_err) = netns_pool.release(network).await {
                     warn!(error = %rel_err, "failed to release netns during rollback");
                 }
@@ -148,14 +163,14 @@ impl SandboxFactory for FirecrackerFactory {
         let sandbox_id = sandbox.id;
 
         // Return the network namespace to the pool.
-        let mut netns_pool = self.netns_pool.lock().await;
+        let mut netns_pool = self.netns_pool().lock().await;
         if let Err(e) = netns_pool.release(sandbox.network).await {
             warn!(id = %sandbox_id, error = %e, "failed to release netns");
         }
         drop(netns_pool);
 
         // Delete the overlay file.
-        let mut overlay_pool = self.overlay_pool.lock().await;
+        let mut overlay_pool = self.overlay_pool().lock().await;
         overlay_pool.release(sandbox.overlay).await;
         drop(overlay_pool);
 
@@ -165,5 +180,21 @@ impl SandboxFactory for FirecrackerFactory {
         }
 
         info!(id = %sandbox_id, "sandbox destroyed");
+    }
+
+    async fn shutdown(&mut self) {
+        if let Some(netns_pool) = self.netns_pool.take() {
+            let mut pool = netns_pool.into_inner();
+            if let Err(e) = pool.cleanup().await {
+                warn!(error = %e, "failed to cleanup netns pool");
+            }
+        }
+
+        if let Some(overlay_pool) = self.overlay_pool.take() {
+            let mut pool = overlay_pool.into_inner();
+            pool.cleanup().await;
+        }
+
+        info!("factory shutdown complete");
     }
 }

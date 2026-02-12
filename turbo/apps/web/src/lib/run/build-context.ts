@@ -27,6 +27,7 @@ import {
 } from "./resolvers";
 import { expandEnvironmentFromCompose } from "./environment";
 import { getUserScopeByClerkId } from "../scope/scope-service";
+import { getUserPreferences } from "../user/user-preferences-service";
 import { getSecretValue, getSecretValues } from "../secret/secret-service";
 import { getVariableValues } from "../variable/variable-service";
 import { getDefaultModelProvider } from "../model-provider/model-provider-service";
@@ -926,6 +927,13 @@ export async function buildExecutionContext(
     ? { ...resolvedCredentials, ...secrets }
     : secrets;
 
+  // Fetch user timezone preference
+  let userTimezone: string | undefined;
+  if (params.userId) {
+    const userPrefs = await getUserPreferences(params.userId);
+    userTimezone = userPrefs.timezone ?? undefined;
+  }
+
   // Build final execution context
   return {
     runId: params.runId,
@@ -941,6 +949,7 @@ export async function buildExecutionContext(
     artifactVersion,
     volumeVersions,
     environment,
+    userTimezone,
     resumeSession,
     resumeArtifact,
     // Metadata for vm0_start event

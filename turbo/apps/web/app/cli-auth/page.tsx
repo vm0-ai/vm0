@@ -95,7 +95,10 @@ export default function CliAuthPage(): React.JSX.Element {
     setLoading(true);
     setError("");
 
-    verifyDeviceAction(code)
+    // Detect browser timezone for auto-setting on first login
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    verifyDeviceAction(code, timezone)
       .then((result) => {
         if (result.success) {
           router.push("/cli-auth/success");

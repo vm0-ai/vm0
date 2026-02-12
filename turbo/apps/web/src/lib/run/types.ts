@@ -68,6 +68,10 @@ export interface ExecutionContext {
   // Uses vars and secrets to resolve ${{ vars.xxx }} and ${{ secrets.xxx }} references
   environment?: Record<string, string>;
 
+  // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
+  // Injected as TZ environment variable in sandbox if not already set in environment
+  userTimezone?: string;
+
   // Experimental firewall configuration for network egress control
   experimentalFirewall?: ExperimentalFirewall;
 

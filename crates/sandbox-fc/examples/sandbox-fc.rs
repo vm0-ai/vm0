@@ -213,7 +213,8 @@ async fn run_exec(
         snapshot,
     };
 
-    let factory = sandbox_fc::FirecrackerFactory::new(config).await?;
+    let mut factory = sandbox_fc::FirecrackerFactory::new(config).await?;
+    factory.startup().await?;
 
     let sandbox_config = SandboxConfig {
         id: Uuid::new_v4(),
@@ -240,7 +241,7 @@ async fn run_exec(
 
     sandbox.stop().await?;
     factory.destroy(sandbox).await;
-    factory.cleanup().await;
+    factory.shutdown().await;
 
     Ok(())
 }
