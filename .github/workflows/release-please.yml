@@ -186,6 +186,9 @@ jobs:
             NOTION_OAUTH_CLIENT_ID=${{ vars.NOTION_OAUTH_CLIENT_ID }}
             NOTION_OAUTH_CLIENT_SECRET=${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
             NEXT_PUBLIC_PLATFORM_URL=${{ vars.PLATFORM_URL }}
+            RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+            RESEND_WEBHOOK_SECRET=${{ secrets.RESEND_WEBHOOK_SECRET }}
+            RESEND_FROM_DOMAIN=${{ vars.RESEND_FROM_DOMAIN }}
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}

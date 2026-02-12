@@ -74,14 +74,16 @@ fn save_position(pos_path: &str, pos: u64) {
 /// Perform one telemetry upload cycle.
 async fn upload_telemetry(masker: &SecretMasker) -> Result<(), AgentError> {
     // Read deltas
-    let (system_log, log_pos) =
-        read_file_delta(paths::system_log_file(), paths::telemetry_log_pos_file());
+    let (system_log, log_pos) = read_file_delta(
+        paths::system_log_file(),
+        paths::telemetry_system_log_pos_file(),
+    );
     let (metrics, metrics_pos) = read_jsonl_delta(
         paths::metrics_log_file(),
         paths::telemetry_metrics_pos_file(),
     );
     let (sandbox_ops, sandbox_ops_pos) = read_jsonl_delta(
-        guest_common::telemetry::sandbox_ops_log(),
+        paths::sandbox_ops_file(),
         paths::telemetry_sandbox_ops_pos_file(),
     );
 
@@ -107,7 +109,7 @@ async fn upload_telemetry(masker: &SecretMasker) -> Result<(), AgentError> {
     // Use 1 attempt for telemetry (non-critical, best-effort)
     match http::post_json(urls::telemetry_url(), &payload, 1).await {
         Ok(_) => {
-            save_position(paths::telemetry_log_pos_file(), log_pos);
+            save_position(paths::telemetry_system_log_pos_file(), log_pos);
             save_position(paths::telemetry_metrics_pos_file(), metrics_pos);
             save_position(paths::telemetry_sandbox_ops_pos_file(), sandbox_ops_pos);
             Ok(())

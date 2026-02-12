@@ -14,28 +14,19 @@ use crate::protocol::{
     AuthDetails, ProtocolMessage, action, build_attach_msg, decode_msg, encode_msg, error_code,
     flags,
 };
-use crate::types::{Event, Message, TokenDetails, TokenFuture};
+use crate::types::{Event, Message, TimingConfig, TokenDetails, TokenFuture};
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 pub(crate) const DEFAULT_REALTIME_HOST: &str = "realtime.ably.io";
-pub(crate) const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 const PROTOCOL_VERSION: &str = "5";
 const AGENT_STRING: &str = "ably-subscriber-rs/0.1";
-const HEARTBEAT_MARGIN: Duration = Duration::from_secs(10);
-const DEFAULT_MAX_IDLE_INTERVAL: Duration = Duration::from_secs(15);
-const DEFAULT_CONNECTION_STATE_TTL: Duration = Duration::from_secs(120);
-const INITIAL_RETRY_INTERVAL: Duration = Duration::from_secs(1);
-const MAX_RETRY_INTERVAL: Duration = Duration::from_secs(15);
-const RECONNECT_TIMEOUT: Duration = Duration::from_secs(60);
-const CHANNEL_RETRY_TIMEOUT: Duration = Duration::from_secs(15);
-const MAX_RETRY_ATTEMPTS: u32 = 40; // ~10 min (fast fail) to ~50 min (all timeouts)
-const TOKEN_RENEWAL_MARGIN: Duration = Duration::from_secs(300); // 5 minutes
-const TOKEN_RENEWAL_RETRY_DELAY: Duration = Duration::from_secs(30);
-const MAX_TOKEN_RENEWAL_FAILURES: u32 = 3;
-pub(crate) const EVENT_CHANNEL_CAPACITY: usize = 64;
+
+fn is_localhost(host: &str) -> bool {
+    host.starts_with("127.0.0.1") || host.starts_with("localhost")
+}
 
 fn error_or_unknown(error: Option<crate::protocol::ErrorInfo>) -> crate::protocol::ErrorInfo {
     error.unwrap_or_else(|| crate::protocol::ErrorInfo {
@@ -74,8 +65,9 @@ pub(crate) async fn exchange_token(
     token_request: &crate::TokenRequest,
     host: &str,
 ) -> Result<TokenDetails, Error> {
+    let scheme = if is_localhost(host) { "http" } else { "https" };
     let url = format!(
-        "https://{host}/keys/{}/requestToken",
+        "{scheme}://{host}/keys/{}/requestToken",
         token_request.key_name
     );
     let resp = client
@@ -95,7 +87,8 @@ pub(crate) async fn exchange_token(
 // ---------------------------------------------------------------------------
 
 fn build_ws_url(host: &str, token: &str, resume: Option<&str>) -> Result<String, Error> {
-    let mut u = url::Url::parse(&format!("wss://{host}/"))?;
+    let scheme = if is_localhost(host) { "ws" } else { "wss" };
+    let mut u = url::Url::parse(&format!("{scheme}://{host}/"))?;
     {
         let mut q = u.query_pairs_mut();
         q.append_pair("access_token", token);
@@ -199,11 +192,12 @@ pub(crate) async fn connect_and_attach(
     token: TokenDetails,
     channel: &str,
     channel_params: Option<&HashMap<String, String>>,
+    timing: &TimingConfig,
 ) -> Result<(WsWrite, WsRead, ConnState), Error> {
     let ws_url = build_ws_url(realtime_host, &token.token, None)?;
     let (mut ws_write, mut ws_read) = connect_and_split(&ws_url).await?;
     let connected_msg = wait_for_connected(&mut ws_read).await?;
-    let mut conn_state = ConnState::from_connected(&connected_msg, token);
+    let mut conn_state = ConnState::from_connected(&connected_msg, token, timing);
     let attach = build_attach_msg(channel, channel_params, None);
     let encoded = encode_msg(&attach)?;
     ws_write
@@ -231,16 +225,16 @@ pub(crate) struct ConnState {
 }
 
 impl ConnState {
-    fn from_connected(msg: &ProtocolMessage, token: TokenDetails) -> Self {
+    fn from_connected(msg: &ProtocolMessage, token: TokenDetails, timing: &TimingConfig) -> Self {
         let mut state = ConnState {
             connection_id: None,
             connection_key: None,
             channel_serial: None,
-            connection_state_ttl: DEFAULT_CONNECTION_STATE_TTL,
-            max_idle_interval: DEFAULT_MAX_IDLE_INTERVAL,
+            connection_state_ttl: timing.default_connection_state_ttl,
+            max_idle_interval: timing.default_max_idle_interval,
             disconnected_at: None,
             last_reattach_at: None,
-            token_renewal_at: Self::compute_renewal_at(&token),
+            token_renewal_at: Self::compute_renewal_at(&token, timing.token_renewal_margin),
             token,
         };
         state.update_from_connected(msg);
@@ -266,13 +260,13 @@ impl ConnState {
         }
     }
 
-    fn compute_renewal_at(token: &TokenDetails) -> Instant {
+    fn compute_renewal_at(token: &TokenDetails, margin: Duration) -> Instant {
         let now_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as i64;
         let remaining_ms = (token.expires - now_ms).max(0) as u64;
-        let margin_ms = TOKEN_RENEWAL_MARGIN.as_millis() as u64;
+        let margin_ms = margin.as_millis() as u64;
         let renew_in = Duration::from_millis(remaining_ms.saturating_sub(margin_ms));
         Instant::now() + renew_in
     }
@@ -301,6 +295,7 @@ pub(crate) struct EventLoopState {
     pub rest_host: String,
     pub http: reqwest::Client,
     pub get_token: Box<dyn Fn() -> TokenFuture + Send + Sync>,
+    pub timing: TimingConfig,
     pub token_renewal_failures: u32,
     pub dropped_messages: u64,
 }
@@ -312,7 +307,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
         let mut disconnected_sent = false;
         // Main message processing loop
         loop {
-            let idle_timeout = p.conn_state.max_idle_interval + HEARTBEAT_MARGIN;
+            let idle_timeout = p.conn_state.max_idle_interval + p.timing.heartbeat_margin;
             let idle_deadline = Instant::now() + idle_timeout;
 
             tokio::select! {
@@ -356,7 +351,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                 }
 
                 _ = tokio::time::sleep_until(p.conn_state.token_renewal_at) => {
-                    let result = tokio::time::timeout(CONNECT_TIMEOUT, renew_token(&mut p)).await;
+                    let result = tokio::time::timeout(p.timing.connect_timeout, renew_token(&mut p)).await;
                     if handle_renewal_result(&mut p, result).await {
                         return;
                     }
@@ -384,12 +379,15 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
 
         loop {
             retry_count += 1;
-            if retry_count > MAX_RETRY_ATTEMPTS {
+            if retry_count > p.timing.max_retry_attempts {
                 let _ = p
                     .event_tx
                     .send(Event::Error {
                         code: error_code::FAILED,
-                        message: format!("Connection failed after {MAX_RETRY_ATTEMPTS} attempts"),
+                        message: format!(
+                            "Connection failed after {} attempts",
+                            p.timing.max_retry_attempts
+                        ),
                     })
                     .await;
                 return;
@@ -397,9 +395,11 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
 
             // Exponential backoff: 1s, 2s, 4s, 8s, 15s, 15s, ...
             let exp = retry_count.saturating_sub(1).min(30);
-            let backoff = INITIAL_RETRY_INTERVAL
+            let backoff = p
+                .timing
+                .initial_retry_interval
                 .saturating_mul(1u32 << exp)
-                .min(MAX_RETRY_INTERVAL);
+                .min(p.timing.max_retry_interval);
             // Use subsecond nanos from wall clock for non-deterministic jitter
             let nanos = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -414,7 +414,8 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                 }
             }
 
-            match tokio::time::timeout(RECONNECT_TIMEOUT, attempt_reconnect(&mut p)).await {
+            match tokio::time::timeout(p.timing.reconnect_timeout, attempt_reconnect(&mut p)).await
+            {
                 Ok(Ok(())) => {
                     retry_count = 0;
                     p.token_renewal_failures = 0;
@@ -605,7 +606,7 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
             }
             if p.conn_state
                 .last_reattach_at
-                .is_some_and(|t| t.elapsed() < CHANNEL_RETRY_TIMEOUT)
+                .is_some_and(|t| t.elapsed() < p.timing.reattach_window)
             {
                 tracing::warn!("Channel detached again within retry window, reconnecting");
                 return LoopAction::Reconnect;
@@ -660,7 +661,7 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
         }
         action::AUTH => {
             tracing::info!("Server requested reauthentication");
-            let result = tokio::time::timeout(CONNECT_TIMEOUT, renew_token(p)).await;
+            let result = tokio::time::timeout(p.timing.connect_timeout, renew_token(p)).await;
             if handle_renewal_result(p, result).await {
                 return LoopAction::Stop;
             }
@@ -695,28 +696,29 @@ async fn handle_renewal_result(
     tracing::error!(
         "{failure_reason} ({}/{})",
         p.token_renewal_failures,
-        MAX_TOKEN_RENEWAL_FAILURES,
+        p.timing.max_token_renewal_failures,
     );
 
-    if p.token_renewal_failures >= MAX_TOKEN_RENEWAL_FAILURES {
+    if p.token_renewal_failures >= p.timing.max_token_renewal_failures {
         let _ = p
             .event_tx
             .send(Event::Error {
                 code: error_code::FAILED,
                 message: format!(
-                    "Token renewal failed {MAX_TOKEN_RENEWAL_FAILURES} consecutive times"
+                    "Token renewal failed {} consecutive times",
+                    p.timing.max_token_renewal_failures
                 ),
             })
             .await;
         return true;
     }
 
-    p.conn_state.token_renewal_at = Instant::now() + TOKEN_RENEWAL_RETRY_DELAY;
+    p.conn_state.token_renewal_at = Instant::now() + p.timing.token_renewal_retry_delay;
     false
 }
 
 /// Renew the token and send an AUTH message. Callers are responsible for
-/// applying an outer timeout (e.g. `CONNECT_TIMEOUT`).
+/// applying an outer timeout (e.g. `timing.connect_timeout`).
 async fn renew_token(p: &mut EventLoopState) -> Result<(), Error> {
     tracing::info!("Renewing token");
     let token_request = (p.get_token)().await.map_err(Error::TokenFetch)?;
@@ -735,7 +737,8 @@ async fn renew_token(p: &mut EventLoopState) -> Result<(), Error> {
         .await?;
 
     p.conn_state.token = new_token;
-    p.conn_state.token_renewal_at = ConnState::compute_renewal_at(&p.conn_state.token);
+    p.conn_state.token_renewal_at =
+        ConnState::compute_renewal_at(&p.conn_state.token, p.timing.token_renewal_margin);
     tracing::info!("Token renewed successfully");
     Ok(())
 }
@@ -745,7 +748,7 @@ async fn renew_token(p: &mut EventLoopState) -> Result<(), Error> {
 // ---------------------------------------------------------------------------
 
 /// Attempt a single reconnect (resume or fresh). Callers are responsible for
-/// applying an outer timeout (e.g. `RECONNECT_TIMEOUT`).
+/// applying an outer timeout (e.g. `timing.reconnect_timeout`).
 ///
 /// All mutations to `p` are deferred until every step (connect, handshake,
 /// channel attach) has succeeded. This prevents a partial reconnect from
@@ -806,7 +809,8 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<(), Error> {
     }
     if let Some(token) = new_token {
         p.conn_state.token = token;
-        p.conn_state.token_renewal_at = ConnState::compute_renewal_at(&p.conn_state.token);
+        p.conn_state.token_renewal_at =
+            ConnState::compute_renewal_at(&p.conn_state.token, p.timing.token_renewal_margin);
     }
     p.ws_read = ws_read;
     p.ws_write = ws_write;
@@ -883,7 +887,8 @@ mod tests {
             capability: None,
             client_id: None,
         };
-        let state = ConnState::from_connected(&msg, token);
+        let timing = TimingConfig::default();
+        let state = ConnState::from_connected(&msg, token, &timing);
         assert_eq!(state.connection_id.as_deref(), Some("conn-1"));
         assert_eq!(state.connection_key.as_deref(), Some("conn-1!key"));
         assert_eq!(state.connection_state_ttl, Duration::from_millis(60000));
@@ -1020,5 +1025,14 @@ mod tests {
             message: String::new(),
         };
         assert!(!is_retriable(&err));
+    }
+
+    #[test]
+    fn build_ws_url_localhost_uses_ws() {
+        let url = build_ws_url("127.0.0.1:9000", "tok", None).unwrap();
+        assert!(url.starts_with("ws://127.0.0.1:9000/"));
+
+        let url = build_ws_url("localhost:9000", "tok", None).unwrap();
+        assert!(url.starts_with("ws://localhost:9000/"));
     }
 }

@@ -1,4 +1,10 @@
 //! Derived temp-file paths — all scoped to the current run ID.
+//!
+//! Naming conventions:
+//! - "system log" = guest-agent's own stderr (matches TS `SYSTEM_LOG_FILE` and API `systemLog`)
+//! - "agent log" = AI agent (Claude Code / Codex) stdout output
+//! - "metrics" = periodic CPU/memory/disk snapshots
+//! - "sandbox ops" = operation timing records (defined in guest-common, re-exported here)
 
 use crate::env;
 use std::sync::LazyLock;
@@ -26,7 +32,7 @@ pub fn session_history_path_file() -> &'static str {
 static EVENT_ERROR_FLAG: LazyLock<String> =
     LazyLock::new(|| format!("/tmp/vm0-event-error-{}", env::run_id()));
 static SYSTEM_LOG_FILE: LazyLock<String> =
-    LazyLock::new(|| format!("/tmp/vm0-main-{}.log", env::run_id()));
+    LazyLock::new(|| format!("/tmp/vm0-system-{}.log", env::run_id()));
 static AGENT_LOG_FILE: LazyLock<String> =
     LazyLock::new(|| format!("/tmp/vm0-agent-{}.log", env::run_id()));
 static METRICS_LOG_FILE: LazyLock<String> =
@@ -45,19 +51,24 @@ pub fn metrics_log_file() -> &'static str {
     &METRICS_LOG_FILE
 }
 
+/// Re-export sandbox ops log path from guest-common for consistent access.
+pub fn sandbox_ops_file() -> &'static str {
+    guest_common::telemetry::sandbox_ops_log()
+}
+
 // ---------------------------------------------------------------------------
 // Telemetry position tracking
 // ---------------------------------------------------------------------------
 
-static TELEMETRY_LOG_POS_FILE: LazyLock<String> =
-    LazyLock::new(|| format!("/tmp/vm0-telemetry-log-pos-{}.txt", env::run_id()));
+static TELEMETRY_SYSTEM_LOG_POS_FILE: LazyLock<String> =
+    LazyLock::new(|| format!("/tmp/vm0-telemetry-system-log-pos-{}.txt", env::run_id()));
 static TELEMETRY_METRICS_POS_FILE: LazyLock<String> =
     LazyLock::new(|| format!("/tmp/vm0-telemetry-metrics-pos-{}.txt", env::run_id()));
 static TELEMETRY_SANDBOX_OPS_POS_FILE: LazyLock<String> =
     LazyLock::new(|| format!("/tmp/vm0-telemetry-sandbox-ops-pos-{}.txt", env::run_id()));
 
-pub fn telemetry_log_pos_file() -> &'static str {
-    &TELEMETRY_LOG_POS_FILE
+pub fn telemetry_system_log_pos_file() -> &'static str {
+    &TELEMETRY_SYSTEM_LOG_POS_FILE
 }
 pub fn telemetry_metrics_pos_file() -> &'static str {
     &TELEMETRY_METRICS_POS_FILE

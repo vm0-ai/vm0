@@ -1,5 +1,35 @@
 # Changelog
 
+## [12.35.0](https://github.com/vm0-ai/vm0/compare/web-v12.34.0...web-v12.35.0) (2026-02-12)
+
+
+### Features
+
+* **email:** add email notifications and reply-to-continue via Resend ([#2836](https://github.com/vm0-ai/vm0/issues/2836)) ([fd6aa4c](https://github.com/vm0-ai/vm0/commit/fd6aa4c032a84f25e8c6a8cf4ba4cef5ff070bd9))
+* **self-host:** add docker compose setup ([#2853](https://github.com/vm0-ai/vm0/issues/2853)) ([bd757fd](https://github.com/vm0-ai/vm0/commit/bd757fd21385dca449e82f6880bc5265dcf1b80d))
+* **storage:** add optional volume support for graceful degradation ([#2929](https://github.com/vm0-ai/vm0/issues/2929)) ([fd052a4](https://github.com/vm0-ai/vm0/commit/fd052a4fef4b2157bb1b1a7a2a0eaccffa6ff262))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.11.0
+
+## [12.34.0](https://github.com/vm0-ai/vm0/compare/web-v12.33.0...web-v12.34.0) (2026-02-12)
+
+
+### Features
+
+* **docs:** update slack docs and rename ecosystem to integrations ([#2917](https://github.com/vm0-ai/vm0/issues/2917)) ([fe90cd9](https://github.com/vm0-ai/vm0/commit/fe90cd90aa92291fd3f277ca324dd9f43d76b6ac))
+* **slack:** redirect to provider setup after connect ([#2854](https://github.com/vm0-ai/vm0/issues/2854)) ([3701bf6](https://github.com/vm0-ai/vm0/commit/3701bf66ad61c8d2ed525e2f97547cfa4bca8d82))
+
+
+### Bug Fixes
+
+* ensure after() awaits callback dispatch promise ([#2902](https://github.com/vm0-ai/vm0/issues/2902)) ([d62c92f](https://github.com/vm0-ai/vm0/commit/d62c92fcbcf0f7ac330493a6a8be1d52f8643d26))
+* **platform:** fix bash error overflow and markdown table light mode ([#2891](https://github.com/vm0-ai/vm0/issues/2891)) ([98c89fd](https://github.com/vm0-ai/vm0/commit/98c89fd53acfe601bc818b1b48b5d67e30676374))
+
 ## [12.33.0](https://github.com/vm0-ai/vm0/compare/web-v12.32.2...web-v12.33.0) (2026-02-12)
 
 

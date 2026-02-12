@@ -23,7 +23,7 @@ import { onboardCommand } from "./commands/onboard";
 import { setupClaudeCommand } from "./commands/setup-claude";
 import { dashboardCommand } from "./commands/dashboard";
 import { devToolCommand } from "./commands/dev-tool";
-import { timezoneCommand } from "./commands/timezone";
+import { preferenceCommand } from "./commands/preference";
 
 const program = new Command();
 
@@ -55,7 +55,7 @@ program.addCommand(connectorCommand);
 program.addCommand(onboardCommand);
 program.addCommand(setupClaudeCommand);
 program.addCommand(dashboardCommand);
-program.addCommand(timezoneCommand);
+program.addCommand(preferenceCommand);
 program.addCommand(devToolCommand, { hidden: true });
 
 export { program };

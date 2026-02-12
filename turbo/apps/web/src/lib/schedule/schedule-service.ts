@@ -21,6 +21,8 @@ import { createRun } from "../run/run-service";
 import { getUserScopeByClerkId } from "../scope/scope-service";
 import { getSecretValues } from "../secret/secret-service";
 import { getVariableValues } from "../variable/variable-service";
+import { getUserPreferences } from "../user/user-preferences-service";
+import { generateCallbackSecret, getApiUrl } from "../callback";
 
 const log = logger("service:schedule");
 
@@ -873,6 +875,35 @@ async function executeSchedule(
     return;
   }
 
+  // Build callbacks for run completion notifications
+  const callbacks: Array<{ url: string; secret: string; payload: unknown }> =
+    [];
+  const callbackPayload = {
+    scheduleId: schedule.id,
+    composeId: schedule.composeId,
+    composeName: compose.name,
+    userId: compose.userId,
+  };
+
+  // Email schedule notification callback (only if Resend is configured AND user opted in)
+  if (globalThis.services.env.RESEND_API_KEY) {
+    const prefs = await getUserPreferences(compose.userId);
+    if (prefs.notifyEmail) {
+      callbacks.push({
+        url: `${getApiUrl()}/api/internal/callbacks/email/schedule`,
+        secret: generateCallbackSecret(),
+        payload: callbackPayload,
+      });
+    }
+  }
+
+  // Slack schedule DM notification callback
+  callbacks.push({
+    url: `${getApiUrl()}/api/internal/callbacks/slack/schedule`,
+    secret: generateCallbackSecret(),
+    payload: callbackPayload,
+  });
+
   // Delegate run creation, validation, and dispatch to createRun()
   let runId: string;
   try {
@@ -886,6 +917,7 @@ async function executeSchedule(
       artifactVersion: schedule.artifactVersion ?? undefined,
       volumeVersions: schedule.volumeVersions ?? undefined,
       agentName: compose.name,
+      callbacks,
     });
     runId = result.runId;
   } catch (error) {

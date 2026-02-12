@@ -29,7 +29,7 @@ function LogoHeader() {
   const theme = useGet(theme$);
 
   return (
-    <div className="flex items-center gap-2.5 p-1.5 shrink-0">
+    <a href="/" className="flex items-center gap-2.5 p-1.5 shrink-0">
       <div className="inline-grid grid-cols-[max-content] grid-rows-[max-content] items-start justify-items-start leading-[0] shrink-0">
         <img
           src={theme === "dark" ? "/logo_dark.svg" : "/logo_light.svg"}
@@ -41,7 +41,7 @@ function LogoHeader() {
       <p className="text-2xl font-normal leading-8 text-foreground shrink-0">
         Platform
       </p>
-    </div>
+    </a>
   );
 }
 
@@ -71,7 +71,7 @@ function SecurityFooter() {
 function LoadingState() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-6">
-      <div className="w-full max-w-[400px] overflow-hidden rounded-xl border border-border bg-popover">
+      <div className="w-full max-w-[540px] overflow-hidden rounded-xl border border-border bg-popover">
         <div className="flex flex-col items-center gap-8 p-10">
           <LogoHeader />
           <div className="flex flex-col gap-5 w-full">
@@ -91,7 +91,7 @@ function LoadingState() {
 function SuccessState() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-6">
-      <div className="w-full max-w-[400px] min-h-[380px] overflow-hidden rounded-xl border border-border bg-popover">
+      <div className="w-full max-w-[540px] min-h-[380px] overflow-hidden rounded-xl border border-border bg-popover">
         <div className="flex flex-col items-center p-10">
           <LogoHeader />
           <div className="mt-12 flex flex-col items-center gap-4">
@@ -120,27 +120,31 @@ function ConnectorCard({ item }: { item: ConnectorItem }) {
   const isPolling = pollingType === item.connectorType;
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-4 w-full">
+    <div className="flex items-center gap-4 rounded-xl border border-border bg-card p-4 w-full">
       <ConnectorIcon type={item.connectorType} size={30} />
-      <div className="flex flex-1 flex-col gap-0.5 min-w-0">
+      <div className="flex flex-1 flex-col gap-1 min-w-0">
         <span className="text-sm font-medium text-foreground">
           {item.label}
         </span>
-        <span className="text-xs text-muted-foreground">{item.helpText}</span>
+        <span className="hidden sm:inline text-sm text-muted-foreground">
+          {item.helpText}
+        </span>
       </div>
       {item.connected ? (
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-            Connected
-          </span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <IconCheck
+            size={16}
+            stroke={2}
+            className="text-emerald-600 dark:text-emerald-400"
+          />
           <Button
             type="button"
-            variant="ghost"
+            variant="link"
             size="sm"
             onClick={() => {
               detach(disconnect(item.connectorType), Reason.DomCallback);
             }}
-            className="text-xs text-muted-foreground h-auto px-1 py-0.5"
+            className="text-xs text-muted-foreground h-auto p-0"
           >
             Disconnect
           </Button>
@@ -192,14 +196,11 @@ function FormState() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-6">
-      <div className="w-full max-w-[400px] overflow-hidden rounded-xl border border-border bg-popover">
-        <form
-          onSubmit={handleSubmit}
-          className="flex flex-col items-center gap-8 p-10"
-        >
-          <LogoHeader />
-
-          <div className="flex flex-col items-center w-full">
+      <div className="w-full max-w-[540px] max-h-[min(90vh,800px)] overflow-hidden rounded-xl border border-border bg-popover flex flex-col">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          {/* Fixed header */}
+          <div className="shrink-0 flex flex-col items-center gap-8 px-10 pt-10">
+            <LogoHeader />
             <div className="flex flex-col gap-1 items-center w-full">
               <h1 className="text-lg font-medium leading-7 text-foreground">
                 VM0 would like to connect
@@ -210,56 +211,61 @@ function FormState() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-5 w-full">
-            {manualItems.map((item) => (
-              <div key={item.name} className="flex flex-col gap-2 w-full">
-                <label className="text-sm font-medium leading-5 text-foreground px-1">
-                  {item.name}
-                </label>
-                <div className="relative">
-                  <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                    <IconLock size={18} stroke={1.5} />
+          {/* Scrollable content */}
+          <div className="flex-1 min-h-0 overflow-y-auto px-10 py-8">
+            <div className="flex flex-col gap-5 w-full">
+              {manualItems.map((item) => (
+                <div key={item.name} className="flex flex-col gap-2 w-full">
+                  <label className="text-sm font-medium leading-5 text-foreground px-1">
+                    {item.name}
+                  </label>
+                  <div className="relative">
+                    <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                      <IconLock size={18} stroke={1.5} />
+                    </div>
+                    <Input
+                      type={item.type === "secret" ? "password" : "text"}
+                      value={values[item.name] ?? ""}
+                      placeholder="Enter value"
+                      onChange={(e) => setFormValue(item.name, e.target.value)}
+                      readOnly={isSubmitting}
+                      className={`pl-10 ${
+                        errors[item.name]
+                          ? "border-destructive focus:border-destructive focus:ring-destructive/10"
+                          : ""
+                      }`}
+                    />
                   </div>
-                  <Input
-                    type={item.type === "secret" ? "password" : "text"}
-                    value={values[item.name] ?? ""}
-                    placeholder="Enter value"
-                    onChange={(e) => setFormValue(item.name, e.target.value)}
-                    readOnly={isSubmitting}
-                    className={`pl-10 ${
-                      errors[item.name]
-                        ? "border-destructive focus:border-destructive focus:ring-destructive/10"
-                        : ""
-                    }`}
-                  />
+                  {errors[item.name] && (
+                    <p className="text-xs text-destructive px-1">
+                      {errors[item.name]}
+                    </p>
+                  )}
                 </div>
-                {errors[item.name] && (
-                  <p className="text-xs text-destructive px-1">
-                    {errors[item.name]}
-                  </p>
-                )}
-              </div>
-            ))}
+              ))}
 
-            {connectors.map((item) => (
-              <ConnectorCard key={item.connectorType} item={item} />
-            ))}
+              {connectors.map((item) => (
+                <ConnectorCard key={item.connectorType} item={item} />
+              ))}
+            </div>
           </div>
 
-          {hasManualItems && (
-            <div className="flex flex-col w-full">
-              <Button
-                type="submit"
-                disabled={isSubmitting || !connectorsSatisfied}
-                size="sm"
-                className="w-full"
-              >
-                {isSubmitting ? "Saving..." : "Verify"}
-              </Button>
-            </div>
-          )}
-
-          <SecurityFooter />
+          {/* Fixed footer */}
+          <div className="shrink-0 flex flex-col items-center gap-8 px-10 pb-10">
+            {hasManualItems && (
+              <div className="flex flex-col w-full">
+                <Button
+                  type="submit"
+                  disabled={isSubmitting || !connectorsSatisfied}
+                  size="sm"
+                  className="w-full"
+                >
+                  {isSubmitting ? "Saving..." : "Verify"}
+                </Button>
+              </div>
+            )}
+            <SecurityFooter />
+          </div>
         </form>
       </div>
     </div>

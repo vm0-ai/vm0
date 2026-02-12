@@ -12,6 +12,10 @@ export default defineConfig({
     // Automatically restore all env stubs after each test (prevents cross-test leakage)
     unstubEnvs: true,
   },
+  esbuild: {
+    // Use automatic JSX runtime so .tsx files don't require `import React`
+    jsx: "automatic",
+  },
   resolve: {
     alias: {
       "~": resolve(__dirname, "./src"),

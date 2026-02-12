@@ -50,13 +50,7 @@ const nextConfig = {
     ],
   },
   allowedDevOrigins: ["*.vm7.ai"],
-  serverExternalPackages: ["ably"],
-  webpack: (config) => {
-    // Suppress ssh2 native binding warning — optional transitive dep via
-    // dockerode → docker-modem → ssh2, never used (Unix socket only)
-    config.resolve.alias["./crypto/build/Release/sshcrypto.node"] = false;
-    return config;
-  },
+  serverExternalPackages: ["ably", "dockerode"],
   env: {
     NEXT_PUBLIC_SELF_HOSTED: process.env.SELF_HOSTED || "false",
   },

@@ -124,8 +124,9 @@ async fn run_in_sandbox(
         .collect();
     info!(run_id = %context.run_id, count = env_refs.len(), "passing env vars via vsock");
 
-    // 5. Spawn agent
-    let log_file = format!("/tmp/vm0-main-{}.log", context.run_id);
+    // 5. Spawn agent — redirect stdout+stderr to system log file
+    //    (guest-agent reads this back via telemetry for incremental upload)
+    let log_file = format!("/tmp/vm0-system-{}.log", context.run_id);
     let agent_cmd = format!("{} > {log_file} 2>&1", guest::RUN_AGENT);
     info!(run_id = %context.run_id, "spawning agent");
 

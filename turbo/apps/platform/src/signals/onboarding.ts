@@ -141,7 +141,11 @@ export const setOnboardingSecret$ = command(({ set }, value: string) => {
 });
 
 export const setOnboardingModel$ = command(({ set }, value: string) => {
-  set(internalFormValues$, (prev) => ({ ...prev, selectedModel: value }));
+  set(internalFormValues$, (prev) => ({
+    ...prev,
+    selectedModel: value,
+    useDefaultModel: false,
+  }));
 });
 
 export const setOnboardingUseDefaultModel$ = command(

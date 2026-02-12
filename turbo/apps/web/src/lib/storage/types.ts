@@ -18,6 +18,8 @@ export interface ResolvedVolume {
   mountPath: string;
   vasStorageName: string;
   vasVersion: string; // Version hash or "latest"
+  /** When true, skip mounting without error if volume doesn't exist */
+  optional?: boolean;
 }
 
 /**

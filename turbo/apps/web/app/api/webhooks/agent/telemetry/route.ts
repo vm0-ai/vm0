@@ -175,7 +175,8 @@ const router = tsr.router(webhookTelemetryContract, {
       });
     }
 
-    // DB fallback: store telemetry locally when Axiom is not configured
+    // DB fallback: store telemetry locally when Axiom is not configured.
+    // Must await to ensure data is persisted before responding.
     if (!axiomIngested) {
       await storeTelemetryFallback(body);
     }

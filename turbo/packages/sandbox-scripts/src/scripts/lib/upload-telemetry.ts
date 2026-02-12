@@ -11,7 +11,7 @@ import {
   SYSTEM_LOG_FILE,
   METRICS_LOG_FILE,
   SANDBOX_OPS_LOG_FILE,
-  TELEMETRY_LOG_POS_FILE,
+  TELEMETRY_SYSTEM_LOG_POS_FILE,
   TELEMETRY_METRICS_POS_FILE,
   TELEMETRY_SANDBOX_OPS_POS_FILE,
 } from "./common.js";
@@ -140,7 +140,7 @@ async function uploadTelemetry(): Promise<boolean> {
   // Read new system log content
   const [systemLog, logPos] = readFileFromPosition(
     SYSTEM_LOG_FILE,
-    TELEMETRY_LOG_POS_FILE,
+    TELEMETRY_SYSTEM_LOG_POS_FILE,
   );
 
   // Read new metrics
@@ -178,7 +178,7 @@ async function uploadTelemetry(): Promise<boolean> {
 
   if (result) {
     // Save positions only on successful upload
-    savePosition(TELEMETRY_LOG_POS_FILE, logPos);
+    savePosition(TELEMETRY_SYSTEM_LOG_POS_FILE, logPos);
     savePosition(TELEMETRY_METRICS_POS_FILE, metricsPos);
     savePosition(TELEMETRY_SANDBOX_OPS_POS_FILE, sandboxOpsPos);
     logDebug(

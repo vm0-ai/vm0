@@ -1,5 +1,6 @@
 mod api;
 mod build;
+mod config;
 mod deps;
 mod error;
 mod executor;
@@ -69,7 +70,7 @@ async fn main() -> ExitCode {
         Command::Setup => setup::run_setup().await,
         Command::Build(args) => build::run_build(args).await,
         Command::Rootfs(args) => rootfs::run_rootfs(args).await.map(drop),
-        Command::Snapshot(args) => snapshot::run_snapshot(args).await,
+        Command::Snapshot(args) => snapshot::run_snapshot(args).await.map(drop),
         Command::Start(args) => runner::run_start(*args).await,
     };
 

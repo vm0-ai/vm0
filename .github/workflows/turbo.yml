@@ -503,6 +503,9 @@ jobs:
             NOTION_OAUTH_CLIENT_ID=${{ vars.NOTION_OAUTH_CLIENT_ID }}
             NOTION_OAUTH_CLIENT_SECRET=${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
             NEXT_PUBLIC_PLATFORM_URL=${{ needs.prepare.outputs.platform-preview-url }}
+            RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+            RESEND_WEBHOOK_SECRET=${{ secrets.RESEND_WEBHOOK_SECRET }}
+            RESEND_FROM_DOMAIN=${{ vars.RESEND_FROM_DOMAIN }}
             NEXT_PUBLIC_STRAPI_URL=${{ vars.NEXT_PUBLIC_STRAPI_URL }}
           meta-branch: ${{ github.head_ref || github.ref_name }}
           meta-pr: ${{ needs.prepare.outputs.job-ref }}

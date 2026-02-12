@@ -447,7 +447,7 @@ async function startAgentExecution(
   sandbox: SandboxLike,
   runId: string,
 ): Promise<void> {
-  const cmd = `nohup node ${SCRIPT_PATHS.runAgent} > /tmp/vm0-main-${runId}.log 2>&1 &`;
+  const cmd = `nohup node ${SCRIPT_PATHS.runAgent} > /tmp/vm0-system-${runId}.log 2>&1 &`;
   await sandbox.commands.run(cmd);
 }
 

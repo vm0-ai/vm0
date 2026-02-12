@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.36.0](https://github.com/vm0-ai/vm0/compare/cli-v9.35.0...cli-v9.36.0) (2026-02-12)
+
+
+### Features
+
+* **email:** add email notifications and reply-to-continue via Resend ([#2836](https://github.com/vm0-ai/vm0/issues/2836)) ([fd6aa4c](https://github.com/vm0-ai/vm0/commit/fd6aa4c032a84f25e8c6a8cf4ba4cef5ff070bd9))
+* **storage:** add optional volume support for graceful degradation ([#2929](https://github.com/vm0-ai/vm0/issues/2929)) ([fd052a4](https://github.com/vm0-ai/vm0/commit/fd052a4fef4b2157bb1b1a7a2a0eaccffa6ff262))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.11.0
+
 ## [9.35.0](https://github.com/vm0-ai/vm0/compare/cli-v9.34.0...cli-v9.35.0) (2026-02-12)
 
 

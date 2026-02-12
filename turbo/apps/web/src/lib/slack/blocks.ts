@@ -1,7 +1,7 @@
 import type { Block, KnownBlock, View, SectionBlock } from "@slack/web-api";
 import { getPlatformUrl } from "../url";
 
-const SLACK_DOCS_URL = "https://docs.vm0.ai/docs/ecosystem/slack";
+const SLACK_DOCS_URL = "https://docs.vm0.ai/docs/integrations/slack";
 
 /**
  * Build the App Home tab view

@@ -10,6 +10,7 @@ use tokio::task::JoinSet;
 use tracing::{error, info};
 
 use crate::api::ApiClient;
+use crate::config;
 use crate::error::{RunnerError, RunnerResult};
 use crate::executor::{self, ExecutorConfig};
 use crate::paths::RunnerPaths;
@@ -19,88 +20,85 @@ const POLL_INTERVAL: Duration = Duration::from_secs(5);
 
 #[derive(Args)]
 pub struct StartArgs {
-    /// Path to the Firecracker binary
-    #[arg(long)]
-    firecracker: PathBuf,
-    /// Path to the guest kernel image
-    #[arg(long)]
-    kernel: PathBuf,
-    /// Path to the root filesystem image
-    #[arg(long)]
-    rootfs: PathBuf,
-    /// vm0 API URL
+    /// Path to runner.yaml config file
+    #[arg(long, short)]
+    config: PathBuf,
+    /// vm0 API URL (overrides config)
     #[arg(long, env = "VM0_API_URL")]
-    api_url: String,
-    /// Runner authentication token
+    api_url: Option<String>,
+    /// Runner authentication token (overrides config)
     #[arg(long, env = "VM0_RUNNER_TOKEN")]
-    token: String,
-    /// Runner group in scope/name format (e.g. "acme/production")
-    #[arg(long)]
-    group: String,
-    /// Base directory for runtime data
-    #[arg(long)]
-    base_dir: PathBuf,
-    /// Snapshot directory to restore from
-    #[arg(long)]
-    snapshot_dir: Option<PathBuf>,
-    /// Maximum concurrent job executions
-    #[arg(long, default_value_t = 4)]
-    max_concurrent: usize,
-    /// vCPUs per sandbox
-    #[arg(long, default_value_t = 2)]
-    vcpu: u32,
-    /// Memory (MiB) per sandbox
-    #[arg(long, default_value_t = 2048)]
-    memory_mb: u32,
-    /// HTTP/HTTPS proxy port for network security
-    #[arg(long)]
-    proxy_port: Option<u16>,
+    token: Option<String>,
 }
 
-/// Build config from CLI args and run the main poll loop.
+/// Load config and run the main poll loop.
 pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
-    let firecracker = resolve_path(args.firecracker).await?;
-    let kernel = resolve_path(args.kernel).await?;
-    let rootfs = resolve_path(args.rootfs).await?;
-    let base_dir = resolve_or_create(args.base_dir).await?;
+    let mut runner_config = config::load(&args.config).await?;
 
-    let snapshot = match args.snapshot_dir {
-        Some(dir) => {
-            let dir = resolve_path(dir).await?;
-            let output = sandbox_fc::SnapshotOutputPaths::new(dir.clone());
-            let work = sandbox_fc::SandboxPaths::new(dir.join("work"));
-            Some(sandbox_fc::SnapshotConfig {
-                snapshot_path: output.snapshot(),
-                memory_path: output.memory(),
-                overlay_path: output.overlay(),
-                overlay_bind_path: work.overlay(),
-                vsock_bind_dir: work.vsock_dir(),
-            })
-        }
-        None => None,
-    };
+    // CLI / env overrides — take server out so we can mutate independently
+    let mut server = runner_config.server.take().unwrap_or(config::ServerConfig {
+        url: String::new(),
+        token: String::new(),
+    });
+    if let Some(url) = args.api_url {
+        server.url = url;
+    }
+    if let Some(token) = args.token {
+        server.token = token;
+    }
 
-    let fc_config = sandbox_fc::FirecrackerConfig {
-        binary_path: firecracker,
-        kernel_path: kernel,
-        rootfs_path: rootfs,
-        base_dir: base_dir.clone(),
-        concurrency: args.max_concurrent,
-        proxy_port: args.proxy_port,
-        snapshot,
-    };
+    // Validate required server fields
+    if server.url.is_empty() {
+        return Err(RunnerError::Config(
+            "server.url is required (set in config or via --api-url / VM0_API_URL)".into(),
+        ));
+    }
+    if server.token.is_empty() {
+        return Err(RunnerError::Config(
+            "server.token is required (set in config or via --token / VM0_RUNNER_TOKEN)".into(),
+        ));
+    }
+
+    tokio::fs::create_dir_all(&runner_config.base_dir)
+        .await
+        .map_err(|e| {
+            RunnerError::Config(format!(
+                "create base_dir {}: {e}",
+                runner_config.base_dir.display()
+            ))
+        })?;
+    let fc_config = runner_config.firecracker_config();
+
+    // Destructure — no clones needed
+    let config::RunnerConfig {
+        name,
+        group,
+        base_dir,
+        sandbox,
+        ..
+    } = runner_config;
+    let config::SandboxConfig {
+        max_concurrent,
+        vcpu,
+        memory_mb,
+    } = sandbox;
+    let config::ServerConfig {
+        url: api_url,
+        token,
+    } = server;
 
     let paths = RunnerPaths::new(base_dir);
     let status = Arc::new(StatusTracker::new(paths.status()));
 
     let config = RunConfig {
-        api_url: args.api_url,
-        token: args.token,
-        group: args.group,
+        name,
+        api_url,
+        token,
+        group,
         fc_config,
-        max_concurrent: args.max_concurrent,
-        vcpu: args.vcpu,
-        memory_mb: args.memory_mb,
+        max_concurrent,
+        vcpu,
+        memory_mb,
         status,
     };
 
@@ -108,6 +106,7 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
 }
 
 struct RunConfig {
+    name: String,
     api_url: String,
     token: String,
     group: String,
@@ -142,6 +141,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
     config.status.write_initial().await;
     info!(
+        name = %config.name,
         group = %config.group,
         max_concurrent = config.max_concurrent,
         "runner started, polling for jobs"
@@ -323,17 +323,4 @@ async fn recv_signal(sig: &mut Option<tokio::signal::unix::Signal>) {
         }
         None => std::future::pending().await,
     }
-}
-
-async fn resolve_path(path: PathBuf) -> RunnerResult<PathBuf> {
-    tokio::fs::canonicalize(&path)
-        .await
-        .map_err(|e| RunnerError::Config(format!("resolve path {}: {e}", path.display())))
-}
-
-async fn resolve_or_create(path: PathBuf) -> RunnerResult<PathBuf> {
-    tokio::fs::create_dir_all(&path)
-        .await
-        .map_err(|e| RunnerError::Config(format!("create dir {}: {e}", path.display())))?;
-    resolve_path(path).await
 }

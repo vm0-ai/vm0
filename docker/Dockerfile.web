@@ -46,14 +46,34 @@ ENV NEXT_PUBLIC_STRAPI_URL=http://localhost:1337
 
 # Run a minimal mock server during build so blog pages that fetch from
 # Strapi get valid empty responses instead of ECONNREFUSED.
-RUN node -e "require('http').createServer((_,r)=>{r.writeHead(200,{'Content-Type':'application/json'});r.end(JSON.stringify({data:[],meta:{}}))}).listen(1337)" & \
-    sleep 1 && pnpm run build --filter=web
+# The mock server runs as the main process and the build runs as a child,
+# ensuring the server stays alive for the entire duration (especially
+# important under QEMU emulation where arm64 builds can take 10+ minutes).
+RUN set -e; \
+    node -e " \
+      const http = require('http'); \
+      const { spawn } = require('child_process'); \
+      const srv = http.createServer((_, r) => { \
+        r.writeHead(200, {'Content-Type':'application/json'}); \
+        r.end(JSON.stringify({data:[],meta:{}})); \
+      }); \
+      srv.listen(1337, () => { \
+        const child = spawn('pnpm', ['run', 'build', '--filter=web'], { \
+          stdio: 'inherit', \
+          shell: true \
+        }); \
+        child.on('close', (code) => { \
+          srv.close(); \
+          process.exit(code || 0); \
+        }); \
+      }); \
+    "
 
 # ============ Runtime ============
 FROM node:20.20.0-alpine AS runner
 WORKDIR /app
 
-RUN apk add --no-cache openssl curl
+RUN apk add --no-cache openssl curl su-exec
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -89,7 +109,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/apps/web/src/lib/auth/constants.t
 # Entrypoint
 COPY --chmod=755 docker/entrypoint.sh /entrypoint.sh
 
-USER nextjs
+# Do not switch to nextjs here; entrypoint.sh handles docker.sock permissions and drops privileges via su-exec
 
 EXPOSE 3000
 

@@ -188,7 +188,11 @@ export const updateFormSecret$ = command(({ set }, value: string) => {
 });
 
 export const updateFormModel$ = command(({ set }, value: string) => {
-  set(internalFormValues$, (prev) => ({ ...prev, selectedModel: value }));
+  set(internalFormValues$, (prev) => ({
+    ...prev,
+    selectedModel: value,
+    useDefaultModel: false,
+  }));
 });
 
 export const updateFormUseDefaultModel$ = command(({ set }, value: boolean) => {

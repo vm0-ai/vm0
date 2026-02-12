@@ -6,11 +6,13 @@ import {
 } from "../../../__tests__/test-helpers";
 import {
   createTestCompose,
+  createTestVolume,
   insertStalePendingRun,
   findTestRunRecord,
   findTestRunCallbacks,
   findTestRunByStatus,
 } from "../../../__tests__/api-test-helpers";
+import type { AgentComposeYaml } from "../../../types/agent-compose";
 import { addPermission } from "../../agent/permission-service";
 import { reloadEnv } from "../../../env";
 import {
@@ -247,6 +249,219 @@ describe("createRun()", () => {
         channel: "C123",
         threadTs: "1234.5678",
       });
+    });
+  });
+
+  describe("Optional Volumes", () => {
+    /**
+     * Helper to create a compose with volume configuration
+     */
+    async function createComposeWithVolumes(
+      agentName: string,
+      volumes: AgentComposeYaml["volumes"],
+      agentVolumes: string[],
+    ) {
+      const config: AgentComposeYaml = {
+        version: "1.0",
+        agents: {
+          [agentName]: {
+            image: "vm0/claude-code:latest",
+            framework: "claude-code",
+            working_dir: "/home/user/workspace",
+            environment: { ANTHROPIC_API_KEY: "test-api-key" },
+            volumes: agentVolumes,
+          },
+        },
+        volumes,
+      };
+
+      // Use direct DB insert via POST /api/agent/composes
+      const { POST: createComposeRoute } = await import(
+        "../../../../app/api/agent/composes/route"
+      );
+      const { createTestRequest } = await import(
+        "../../../__tests__/api-test-helpers"
+      );
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/composes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: config }),
+        },
+      );
+      const response = await createComposeRoute(request);
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(
+          `Failed to create compose: ${error.error?.message || response.status}`,
+        );
+      }
+      return response.json() as Promise<{
+        composeId: string;
+        versionId: string;
+      }>;
+    }
+
+    it("should succeed when optional volume exists", async () => {
+      const volumeName = uniqueId("vol");
+      // Create the volume first
+      await createTestVolume(volumeName);
+
+      // Create compose with optional volume
+      const compose = await createComposeWithVolumes(
+        uniqueId("agent"),
+        {
+          mydata: {
+            name: volumeName,
+            version: "latest",
+            optional: true,
+          },
+        },
+        ["mydata:/data"],
+      );
+
+      const result = await createRun(
+        baseParams({ agentComposeVersionId: compose.versionId }),
+      );
+
+      expect(result.status).toBe("running");
+    });
+
+    it("should succeed when optional volume does not exist (skip silently)", async () => {
+      // Create compose with optional volume that doesn't exist
+      const compose = await createComposeWithVolumes(
+        uniqueId("agent"),
+        {
+          mydata: {
+            name: "nonexistent-volume",
+            version: "latest",
+            optional: true,
+          },
+        },
+        ["mydata:/data"],
+      );
+
+      // Should succeed - optional volume is silently skipped
+      const result = await createRun(
+        baseParams({ agentComposeVersionId: compose.versionId }),
+      );
+
+      expect(result.status).toBe("running");
+    });
+
+    it("should fail when required volume does not exist", async () => {
+      // Create compose with required volume (optional: false or not specified)
+      const compose = await createComposeWithVolumes(
+        uniqueId("agent"),
+        {
+          mydata: {
+            name: "nonexistent-volume",
+            version: "latest",
+            // optional defaults to false
+          },
+        },
+        ["mydata:/data"],
+      );
+
+      // Should fail - required volume doesn't exist
+      await expect(
+        createRun(baseParams({ agentComposeVersionId: compose.versionId })),
+      ).rejects.toThrow(/not found/);
+    });
+
+    it("should skip optional volume during checkpoint resume when it was skipped originally", async () => {
+      const volumeName = uniqueId("vol");
+
+      // Create compose with optional volume
+      const compose = await createComposeWithVolumes(
+        uniqueId("agent"),
+        {
+          mydata: {
+            name: volumeName,
+            version: "latest",
+            optional: true,
+          },
+        },
+        ["mydata:/data"],
+      );
+
+      // Simulate checkpoint resume scenario:
+      // volumeVersions is provided but does NOT include the optional volume
+      // (meaning it was skipped at checkpoint time)
+      const result = await createRun(
+        baseParams({
+          agentComposeVersionId: compose.versionId,
+          // Empty volumeVersions means no volumes were mounted at checkpoint
+          volumeVersions: {},
+        }),
+      );
+
+      // Even if we now create the volume, it should still succeed
+      // because the checkpoint resume should skip this optional volume
+      expect(result.status).toBe("running");
+    });
+
+    it("should mount optional volume in session/continue when it now exists (no volumeVersions)", async () => {
+      const volumeName = uniqueId("vol");
+      // Create the volume first
+      await createTestVolume(volumeName);
+
+      // Create compose with optional volume
+      const compose = await createComposeWithVolumes(
+        uniqueId("agent"),
+        {
+          mydata: {
+            name: volumeName,
+            version: "latest",
+            optional: true,
+          },
+        },
+        ["mydata:/data"],
+      );
+
+      // Session/Continue scenario: volumeVersions is NOT provided (undefined)
+      // This means we should use current config and mount if volume exists
+      const result = await createRun(
+        baseParams({
+          agentComposeVersionId: compose.versionId,
+          // No volumeVersions - use latest state
+        }),
+      );
+
+      expect(result.status).toBe("running");
+    });
+
+    it("should succeed with mixed volumes (required exists, optional missing)", async () => {
+      const requiredVolumeName = uniqueId("required-vol");
+      // Create only the required volume
+      await createTestVolume(requiredVolumeName);
+
+      // Create compose with both required and optional volumes
+      const compose = await createComposeWithVolumes(
+        uniqueId("agent"),
+        {
+          requiredData: {
+            name: requiredVolumeName,
+            version: "latest",
+            // optional defaults to false (required)
+          },
+          optionalData: {
+            name: "nonexistent-optional-volume",
+            version: "latest",
+            optional: true,
+          },
+        },
+        ["requiredData:/required", "optionalData:/optional"],
+      );
+
+      // Should succeed - required volume exists, optional is skipped
+      const result = await createRun(
+        baseParams({ agentComposeVersionId: compose.versionId }),
+      );
+
+      expect(result.status).toBe("running");
     });
   });
 });

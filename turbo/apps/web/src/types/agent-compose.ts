@@ -9,6 +9,8 @@
 export interface VolumeConfig {
   name: string; // Required: actual storage name
   version: string; // Required: version hash or "latest"
+  /** When true, skip mounting without error if volume doesn't exist */
+  optional?: boolean;
 }
 
 /**

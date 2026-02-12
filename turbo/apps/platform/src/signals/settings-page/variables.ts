@@ -5,7 +5,6 @@ import type {
   SetVariableRequest,
 } from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
-import { requiredItems$ } from "./settings-tabs.ts";
 
 // ---------------------------------------------------------------------------
 // Reload trigger
@@ -25,19 +24,6 @@ export const variables$ = computed(async (get) => {
   return data.variables.sort(
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
   );
-});
-
-/**
- * Variables from `required` URL param that are not yet configured.
- */
-export const missingVariables$ = computed(async (get) => {
-  const required = get(requiredItems$);
-  if (required.length === 0) {
-    return [];
-  }
-  const existing = await get(variables$);
-  const existingNames = new Set(existing.map((v) => v.name));
-  return required.filter((name) => !existingNames.has(name));
 });
 
 // ---------------------------------------------------------------------------

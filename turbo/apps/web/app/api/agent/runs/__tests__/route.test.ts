@@ -608,6 +608,35 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(run2.status).toBe("running");
     });
 
+    it("should respect higher limit values", async () => {
+      vi.stubEnv("CONCURRENT_RUN_LIMIT", "3");
+      reloadEnv();
+
+      const run1 = await createTestRun(testComposeId, "Run 1");
+      const run2 = await createTestRun(testComposeId, "Run 2");
+      const run3 = await createTestRun(testComposeId, "Run 3");
+
+      expect(run1.status).toBe("running");
+      expect(run2.status).toBe("running");
+      expect(run3.status).toBe("running");
+
+      // Fourth run should fail
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: testComposeId,
+            prompt: "Fourth run",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(429);
+    });
+
     it("should not count stale pending runs toward concurrency limit", async () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
       reloadEnv();

@@ -4,6 +4,7 @@ import { badRequest } from "../errors";
 
 interface UserPreferences {
   timezone: string | null;
+  notifyEmail: boolean;
 }
 
 /**
@@ -26,12 +27,13 @@ export async function getUserPreferences(
   clerkUserId: string,
 ): Promise<UserPreferences> {
   const [scope] = await globalThis.services.db
-    .select({ timezone: scopes.timezone })
+    .select({ timezone: scopes.timezone, notifyEmail: scopes.notifyEmail })
     .from(scopes)
     .where(and(eq(scopes.ownerId, clerkUserId), eq(scopes.type, "personal")));
 
   return {
     timezone: scope?.timezone ?? null,
+    notifyEmail: scope?.notifyEmail ?? false,
   };
 }
 
@@ -41,7 +43,7 @@ export async function getUserPreferences(
  */
 export async function updateUserPreferences(
   clerkUserId: string,
-  prefs: { timezone?: string },
+  prefs: { timezone?: string; notifyEmail?: boolean },
 ): Promise<UserPreferences> {
   if (prefs.timezone !== undefined) {
     if (!isValidTimezone(prefs.timezone)) {
@@ -49,17 +51,23 @@ export async function updateUserPreferences(
     }
   }
 
+  const setValues: Record<string, unknown> = { updatedAt: new Date() };
+  if (prefs.timezone !== undefined) {
+    setValues.timezone = prefs.timezone;
+  }
+  if (prefs.notifyEmail !== undefined) {
+    setValues.notifyEmail = prefs.notifyEmail;
+  }
+
   const [updated] = await globalThis.services.db
     .update(scopes)
-    .set({
-      timezone: prefs.timezone,
-      updatedAt: new Date(),
-    })
+    .set(setValues)
     .where(and(eq(scopes.ownerId, clerkUserId), eq(scopes.type, "personal")))
-    .returning({ timezone: scopes.timezone });
+    .returning({ timezone: scopes.timezone, notifyEmail: scopes.notifyEmail });
 
   return {
     timezone: updated?.timezone ?? null,
+    notifyEmail: updated?.notifyEmail ?? false,
   };
 }
 

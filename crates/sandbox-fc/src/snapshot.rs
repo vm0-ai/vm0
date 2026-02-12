@@ -68,12 +68,14 @@ pub enum SnapshotError {
 pub async fn create_snapshot(
     config: SnapshotCreateConfig,
 ) -> Result<SnapshotConfig, SnapshotError> {
+    let output = SnapshotOutputPaths::new(config.output_dir.clone());
+
     // 1. Clean and create work directory under output_dir.
     //    Paths inside this directory get baked into the snapshot and are used
     //    as bind-mount targets during restore, so they must be deterministic.
     //    Remove any stale work dir from a previous run (leftover sockets,
     //    root-owned files from an accidental sudo invocation, etc.).
-    let work = config.output_dir.join("work");
+    let work = output.work_dir();
     if work.exists() {
         let work_str = work.display().to_string();
         crate::command::exec("rm", &["-rf", &work_str], crate::command::Privilege::Sudo)
@@ -103,7 +105,7 @@ pub async fn create_snapshot(
     .map_err(|e| SnapshotError::Setup(format!("netns pool: {e}")))?;
 
     // Guard: ensure netns cleanup on any exit path.
-    let result = run_snapshot_workflow(&config, &paths, &mut netns_pool).await;
+    let result = run_snapshot_workflow(&config, &paths, &output, &mut netns_pool).await;
 
     // Always cleanup netns.
     if let Err(e) = netns_pool.cleanup().await {
@@ -117,6 +119,7 @@ pub async fn create_snapshot(
 async fn run_snapshot_workflow(
     config: &SnapshotCreateConfig,
     paths: &SandboxPaths,
+    output: &SnapshotOutputPaths,
     netns_pool: &mut NetnsPool,
 ) -> Result<SnapshotConfig, SnapshotError> {
     let network = netns_pool
@@ -179,7 +182,7 @@ async fn run_snapshot_workflow(
     }
 
     // Guard: ensure process cleanup on any exit path.
-    let result = run_with_firecracker(config, paths).await;
+    let result = run_with_firecracker(config, paths, output).await;
 
     // Always kill the process tree.
     if let Some(pid) = child.id() {
@@ -194,6 +197,7 @@ async fn run_snapshot_workflow(
 async fn run_with_firecracker(
     config: &SnapshotCreateConfig,
     paths: &SandboxPaths,
+    output: &SnapshotOutputPaths,
 ) -> Result<SnapshotConfig, SnapshotError> {
     // 5. Wait for API socket ready.
     let api_sock = paths.api_sock();
@@ -253,7 +257,6 @@ async fn run_with_firecracker(
     info!("VM paused");
 
     // 11. Create snapshot — Firecracker writes directly to output_dir.
-    let output = SnapshotOutputPaths::new(config.output_dir.clone());
     let snapshot_str = output.snapshot().display().to_string();
     let memory_str = output.memory().display().to_string();
     client.create_snapshot(&snapshot_str, &memory_str).await?;
@@ -266,11 +269,5 @@ async fn run_with_firecracker(
 
     info!(output_dir = %config.output_dir.display(), "snapshot creation complete");
 
-    Ok(SnapshotConfig {
-        snapshot_path: output.snapshot(),
-        memory_path: output.memory(),
-        overlay_path: output.overlay(),
-        overlay_bind_path: paths.overlay(),
-        vsock_bind_dir: paths.vsock_dir(),
-    })
+    Ok(output.snapshot_config())
 }

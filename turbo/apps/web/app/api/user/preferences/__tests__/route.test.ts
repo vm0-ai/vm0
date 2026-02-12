@@ -26,7 +26,7 @@ describe("GET /api/user/preferences", () => {
     expect(data.error.message).toContain("Not authenticated");
   });
 
-  it("should return null timezone for new user", async () => {
+  it("should return default preferences for new user", async () => {
     await context.setupUser();
 
     const request = createTestRequest(
@@ -37,6 +37,7 @@ describe("GET /api/user/preferences", () => {
 
     expect(response.status).toBe(200);
     expect(data.timezone).toBeNull();
+    expect(data.notifyEmail).toBe(false);
   });
 
   it("should return saved timezone after update", async () => {
@@ -169,5 +170,92 @@ describe("PUT /api/user/preferences", () => {
 
     expect(response2.status).toBe(200);
     expect(data2.timezone).toBe("America/Los_Angeles");
+  });
+
+  it("should update notifyEmail to true", async () => {
+    await context.setupUser();
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notifyEmail: true }),
+      },
+    );
+    const response = await PUT(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.notifyEmail).toBe(true);
+  });
+
+  it("should update timezone and notifyEmail together", async () => {
+    await context.setupUser();
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          timezone: "Asia/Shanghai",
+          notifyEmail: true,
+        }),
+      },
+    );
+    const response = await PUT(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.timezone).toBe("Asia/Shanghai");
+    expect(data.notifyEmail).toBe(true);
+  });
+
+  it("should update only notifyEmail without affecting timezone", async () => {
+    await context.setupUser();
+
+    // Set timezone first
+    const putTz = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ timezone: "Europe/Berlin" }),
+      },
+    );
+    await PUT(putTz);
+
+    // Update only notifyEmail
+    const request = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notifyEmail: true }),
+      },
+    );
+    const response = await PUT(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.timezone).toBe("Europe/Berlin");
+    expect(data.notifyEmail).toBe(true);
+  });
+
+  it("should reject request with no preferences", async () => {
+    await context.setupUser();
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      },
+    );
+    const response = await PUT(request);
+
+    expect(response.status).toBe(400);
   });
 });
