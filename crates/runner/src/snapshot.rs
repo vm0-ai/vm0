@@ -3,12 +3,10 @@ use sha2::{Digest, Sha256};
 
 use sandbox_fc::SnapshotOutputPaths;
 
+use crate::config::{DEFAULT_MEMORY_MB, DEFAULT_VCPU, SnapshotConfig};
 use crate::deps::{FIRECRACKER_VERSION, KERNEL_VERSION};
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::{HomePaths, RootfsPaths};
-
-pub const DEFAULT_VCPU: u32 = 2;
-pub const DEFAULT_MEMORY_MB: u32 = 2048;
 
 #[derive(Args, Clone)]
 pub struct SnapshotArgs {
@@ -23,19 +21,19 @@ pub struct SnapshotArgs {
     pub memory_mb: u32,
 }
 
-pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<()> {
+/// Create a snapshot and return the complete snapshot path information.
+pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<SnapshotConfig> {
     let paths = HomePaths::new()?;
 
     let snapshot_hash = compute_snapshot_hash(&args);
     tracing::info!("snapshot hash: {snapshot_hash}");
 
     let output_dir = paths.snapshots_dir().join(&snapshot_hash);
-
     let output = SnapshotOutputPaths::new(output_dir.clone());
 
     if is_snapshot_complete(&output).await? {
         tracing::info!("[OK] snapshot already exists: {}", output_dir.display());
-        return Ok(());
+        return Ok(output.snapshot_config().into());
     }
 
     // Clean up any partial output from a previous failed attempt.
@@ -57,7 +55,7 @@ pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<()> {
         )));
     }
 
-    let config = sandbox_fc::SnapshotCreateConfig {
+    let create_config = sandbox_fc::SnapshotCreateConfig {
         binary_path: paths.firecracker_bin(FIRECRACKER_VERSION),
         kernel_path: paths.kernel_bin(FIRECRACKER_VERSION, KERNEL_VERSION),
         rootfs_path,
@@ -66,15 +64,15 @@ pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<()> {
         memory_mb: args.memory_mb,
     };
 
-    let snapshot_config = sandbox_fc::create_snapshot(config).await?;
+    let sc = sandbox_fc::create_snapshot(create_config).await?;
     tracing::info!(
-        snapshot = %snapshot_config.snapshot_path.display(),
-        memory = %snapshot_config.memory_path.display(),
-        overlay = %snapshot_config.overlay_path.display(),
+        snapshot = %sc.snapshot_path.display(),
+        memory = %sc.memory_path.display(),
+        overlay = %sc.overlay_path.display(),
         "snapshot creation complete"
     );
 
-    Ok(())
+    Ok(sc.into())
 }
 
 /// Check whether all expected snapshot outputs exist in the directory.
@@ -99,7 +97,7 @@ async fn is_snapshot_complete(output: &SnapshotOutputPaths) -> RunnerResult<bool
 ///   - `vcpu` / `memory_mb` — VM resource settings
 ///
 /// **Changing this function invalidates all cached snapshots.**
-fn compute_snapshot_hash(args: &SnapshotArgs) -> String {
+pub(crate) fn compute_snapshot_hash(args: &SnapshotArgs) -> String {
     let fc_config = sandbox_fc::config_hash();
     let mut hasher = Sha256::new();
     hasher.update(b"fc_config:");
