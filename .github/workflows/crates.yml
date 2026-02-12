@@ -37,6 +37,10 @@ jobs:
           else
             BASE_REF="HEAD^"
           fi
+          # In CI containers, the repo may be owned by a different user (host vs container).
+          # Git 2.35.2+ rejects such repos unless marked as safe.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE" 2>/dev/null || true
+
           # scripts/crate-changed.sh: exit 0=changed, 1=not changed, 2+=error
           check_crate() {
             ./scripts/crate-changed.sh "$1" "$BASE_REF" && echo "$1-changed=true" >> "$GITHUB_OUTPUT" || {
