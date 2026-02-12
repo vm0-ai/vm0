@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.12.0](https://github.com/vm0-ai/vm0/compare/docs-v2.11.0...docs-v2.12.0) (2026-02-12)
+
+
+### Features
+
+* **docs:** update slack docs and rename ecosystem to integrations ([#2917](https://github.com/vm0-ai/vm0/issues/2917)) ([fe90cd9](https://github.com/vm0-ai/vm0/commit/fe90cd90aa92291fd3f277ca324dd9f43d76b6ac))
+
 ## [2.11.0](https://github.com/vm0-ai/vm0/compare/docs-v2.10.1...docs-v2.11.0) (2026-02-10)
 
 
