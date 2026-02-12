@@ -5,6 +5,7 @@ import { GET as getConnector } from "../../route";
 import { GET as getSessionStatus } from "../../sessions/[sessionId]/route";
 import { handlers, http } from "../../../../../../src/__tests__/msw";
 import { server } from "../../../../../../src/mocks/server";
+import { reloadEnv } from "../../../../../../src/env";
 import {
   createTestRequest,
   createTestConnectorSession,
@@ -139,6 +140,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
     vi.stubEnv("GH_OAUTH_CLIENT_SECRET", "test-client-secret");
     vi.stubEnv("NOTION_OAUTH_CLIENT_ID", "notion-test-client-id");
     vi.stubEnv("NOTION_OAUTH_CLIENT_SECRET", "notion-test-client-secret");
+    reloadEnv();
   });
 
   afterEach(() => {

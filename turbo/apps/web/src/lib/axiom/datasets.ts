@@ -4,8 +4,10 @@
  * @param base - Base dataset name (e.g., "sandbox-telemetry-system")
  * @returns Full name with suffix (e.g., "vm0-sandbox-telemetry-system-dev")
  */
+import { env } from "../../env";
+
 export function getDatasetName(base: string): string {
-  const isProd = process.env.VERCEL_ENV === "production";
+  const isProd = env().VERCEL_ENV === "production";
   return `vm0-${base}-${isProd ? "prod" : "dev"}`;
 }
 

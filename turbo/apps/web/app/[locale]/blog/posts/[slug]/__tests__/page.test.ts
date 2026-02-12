@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../../../src/mocks/server";
+import { reloadEnv } from "../../../../../../src/env";
 
 const STRAPI_URL = "https://test-strapi.example.com" as const;
 
@@ -18,12 +19,6 @@ const mockArticle = {
   category: { name: "Technology", slug: "technology" },
   blocks: [{ __component: "shared.rich-text", id: 1, body: "Test content" }],
 };
-
-// Set env vars before any module loads
-vi.hoisted(() => {
-  vi.stubEnv("NEXT_PUBLIC_BASE_URL", "https://test.vm0.ai");
-  vi.stubEnv("NEXT_PUBLIC_STRAPI_URL", "https://test-strapi.example.com");
-});
 
 // External: next-intl/server (used by page.tsx and i18n.ts)
 vi.mock("next-intl/server", () => ({
@@ -64,6 +59,10 @@ import { generateMetadata } from "../page";
 
 describe("blog post page metadata", () => {
   beforeEach(() => {
+    vi.stubEnv("NEXT_PUBLIC_BASE_URL", "https://test.vm0.ai");
+    vi.stubEnv("NEXT_PUBLIC_STRAPI_URL", "https://test-strapi.example.com");
+    reloadEnv();
+
     server.use(
       http.get(`${STRAPI_URL}/api/articles`, ({ request }) => {
         const url = new URL(request.url);

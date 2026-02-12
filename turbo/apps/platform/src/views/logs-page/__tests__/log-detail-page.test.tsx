@@ -1035,7 +1035,9 @@ describe("log detail page", () => {
   });
 
   describe("polling", () => {
-    it("should automatically load new events for a running agent", async () => {
+    it("should poll new events and stop when run completes", async () => {
+      let polledEventServed = false;
+
       server.use(
         http.get("*/api/platform/logs/:id", () => {
           return HttpResponse.json({
@@ -1043,12 +1045,12 @@ describe("log detail page", () => {
             sessionId: null,
             agentName: "Polling Agent",
             framework: "claude-code",
-            status: "running",
+            status: polledEventServed ? "completed" : "running",
             prompt: "Test polling",
             error: null,
             createdAt: "2024-01-01T00:00:00Z",
             startedAt: "2024-01-01T00:00:01Z",
-            completedAt: null,
+            completedAt: polledEventServed ? "2024-01-01T00:00:10Z" : null,
             artifact: { name: null, version: null },
           });
         }),
@@ -1077,7 +1079,8 @@ describe("log detail page", () => {
             });
           }
 
-          // Poll calls: always return new event
+          // Poll: return new event and mark run as completing
+          polledEventServed = true;
           return HttpResponse.json({
             events: [
               {
@@ -1098,8 +1101,8 @@ describe("log detail page", () => {
         }),
       );
 
-      // Shorten poll interval for fast testing
-      context.store.set(setPollInterval$, 100);
+      // Use 0ms interval — polling naturally stops after 2-3 cycles
+      context.store.set(setPollInterval$, 0);
 
       await setupPage({
         context,
@@ -1116,6 +1119,6 @@ describe("log detail page", () => {
         expect(screen.getByText(/Polled event/)).toBeInTheDocument();
         expect(screen.getByText("2 total")).toBeInTheDocument();
       });
-    }, 15_000);
+    });
   });
 });

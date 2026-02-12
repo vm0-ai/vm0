@@ -28,8 +28,10 @@ const mockArticles = [
   },
 ];
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.stubEnv("NEXT_PUBLIC_STRAPI_URL", STRAPI_URL);
+  const { reloadEnv } = await import("../../../../src/env");
+  reloadEnv();
 
   // Register base handlers for Strapi API
   server.use(

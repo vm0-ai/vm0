@@ -2,6 +2,7 @@ import {
   createDockerSandbox,
   resolveApiUrlForSandbox,
 } from "../../docker/docker-sandbox";
+import { env } from "../../../env";
 import type { SandboxLike } from "../../docker/docker-sandbox";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
 import type { PreparedArtifact, StorageManifest } from "../../storage/types";
@@ -250,7 +251,7 @@ async function buildSandboxEnvVars(
     sandboxEnvVars.VM0_RESUME_SESSION_ID = context.resumeSession.sessionId;
   }
 
-  if (process.env.USE_MOCK_CLAUDE === "true" && !context.debugNoMockClaude) {
+  if (env().USE_MOCK_CLAUDE === "true" && !context.debugNoMockClaude) {
     sandboxEnvVars.USE_MOCK_CLAUDE = "true";
   }
 

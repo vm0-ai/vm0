@@ -1,5 +1,6 @@
 import "server-only";
 import Ably from "ably";
+import { env } from "../../env";
 import { logger } from "../logger";
 
 const log = logger("realtime");
@@ -11,7 +12,7 @@ let ablyClient: Ably.Rest | null = null;
  * Returns null if ABLY_API_KEY is not configured.
  */
 function getAblyClient(): Ably.Rest | null {
-  const apiKey = process.env.ABLY_API_KEY;
+  const apiKey = env().ABLY_API_KEY;
   if (!apiKey) {
     return null;
   }

@@ -1,32 +1,123 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use clap::Args;
 use sandbox_fc::FirecrackerFactory;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 use tracing::{error, info};
 
 use crate::api::ApiClient;
-use crate::error::RunnerError;
+use crate::error::{RunnerError, RunnerResult};
 use crate::executor::{self, ExecutorConfig};
+use crate::paths::RunnerPaths;
 use crate::status::{RunnerMode, StatusTracker};
 
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 
-/// Top-level configuration passed from CLI.
-pub struct RunConfig {
-    pub api_url: String,
-    pub token: String,
-    pub group: String,
-    pub fc_config: sandbox_fc::FirecrackerConfig,
-    pub max_concurrent: usize,
-    pub vcpu: u32,
-    pub memory_mb: u32,
-    pub status: Arc<StatusTracker>,
+#[derive(Args)]
+pub struct StartArgs {
+    /// Path to the Firecracker binary
+    #[arg(long)]
+    firecracker: PathBuf,
+    /// Path to the guest kernel image
+    #[arg(long)]
+    kernel: PathBuf,
+    /// Path to the root filesystem image
+    #[arg(long)]
+    rootfs: PathBuf,
+    /// vm0 API URL
+    #[arg(long, env = "VM0_API_URL")]
+    api_url: String,
+    /// Runner authentication token
+    #[arg(long, env = "VM0_RUNNER_TOKEN")]
+    token: String,
+    /// Runner group in scope/name format (e.g. "acme/production")
+    #[arg(long)]
+    group: String,
+    /// Base directory for runtime data
+    #[arg(long)]
+    base_dir: PathBuf,
+    /// Snapshot directory to restore from
+    #[arg(long)]
+    snapshot_dir: Option<PathBuf>,
+    /// Maximum concurrent job executions
+    #[arg(long, default_value_t = 4)]
+    max_concurrent: usize,
+    /// vCPUs per sandbox
+    #[arg(long, default_value_t = 2)]
+    vcpu: u32,
+    /// Memory (MiB) per sandbox
+    #[arg(long, default_value_t = 2048)]
+    memory_mb: u32,
+    /// HTTP/HTTPS proxy port for network security
+    #[arg(long)]
+    proxy_port: Option<u16>,
 }
 
-/// Run the main poll loop until a shutdown signal is received.
-pub async fn run(config: RunConfig) -> Result<(), RunnerError> {
+/// Build config from CLI args and run the main poll loop.
+pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
+    let firecracker = resolve_path(args.firecracker).await?;
+    let kernel = resolve_path(args.kernel).await?;
+    let rootfs = resolve_path(args.rootfs).await?;
+    let base_dir = resolve_or_create(args.base_dir).await?;
+
+    let snapshot = match args.snapshot_dir {
+        Some(dir) => {
+            let dir = resolve_path(dir).await?;
+            let output = sandbox_fc::SnapshotOutputPaths::new(dir.clone());
+            let work = sandbox_fc::SandboxPaths::new(dir.join("work"));
+            Some(sandbox_fc::SnapshotConfig {
+                snapshot_path: output.snapshot(),
+                memory_path: output.memory(),
+                overlay_path: output.overlay(),
+                overlay_bind_path: work.overlay(),
+                vsock_bind_dir: work.vsock_dir(),
+            })
+        }
+        None => None,
+    };
+
+    let fc_config = sandbox_fc::FirecrackerConfig {
+        binary_path: firecracker,
+        kernel_path: kernel,
+        rootfs_path: rootfs,
+        base_dir: base_dir.clone(),
+        concurrency: args.max_concurrent,
+        proxy_port: args.proxy_port,
+        snapshot,
+    };
+
+    let paths = RunnerPaths::new(base_dir);
+    let status = Arc::new(StatusTracker::new(paths.status()));
+
+    let config = RunConfig {
+        api_url: args.api_url,
+        token: args.token,
+        group: args.group,
+        fc_config,
+        max_concurrent: args.max_concurrent,
+        vcpu: args.vcpu,
+        memory_mb: args.memory_mb,
+        status,
+    };
+
+    run(config).await
+}
+
+struct RunConfig {
+    api_url: String,
+    token: String,
+    group: String,
+    fc_config: sandbox_fc::FirecrackerConfig,
+    max_concurrent: usize,
+    vcpu: u32,
+    memory_mb: u32,
+    status: Arc<StatusTracker>,
+}
+
+async fn run(config: RunConfig) -> RunnerResult<()> {
     let factory = FirecrackerFactory::new(config.fc_config.clone())
         .await
         .map_err(|e| RunnerError::Internal(format!("factory init: {e}")))?;
@@ -226,4 +317,17 @@ async fn recv_signal(sig: &mut Option<tokio::signal::unix::Signal>) {
         }
         None => std::future::pending().await,
     }
+}
+
+async fn resolve_path(path: PathBuf) -> RunnerResult<PathBuf> {
+    tokio::fs::canonicalize(&path)
+        .await
+        .map_err(|e| RunnerError::Config(format!("resolve path {}: {e}", path.display())))
+}
+
+async fn resolve_or_create(path: PathBuf) -> RunnerResult<PathBuf> {
+    tokio::fs::create_dir_all(&path)
+        .await
+        .map_err(|e| RunnerError::Config(format!("create dir {}: {e}", path.display())))?;
+    resolve_path(path).await
 }

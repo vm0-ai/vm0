@@ -1,5 +1,6 @@
 import "server-only";
 import { Axiom, Entry } from "@axiomhq/js";
+import { env } from "../../env";
 import { logger } from "../logger";
 import { getDatasetName, DATASETS, isSessionsDataset } from "./datasets";
 
@@ -14,14 +15,14 @@ let telemetryInitialized = false;
  * Resolve the token for the sessions scope (agent-run-events).
  */
 function getSessionsToken(): string | undefined {
-  return process.env.AXIOM_TOKEN_SESSIONS;
+  return env().AXIOM_TOKEN_SESSIONS;
 }
 
 /**
  * Resolve the token for the telemetry scope (all other datasets).
  */
 function getTelemetryToken(): string | undefined {
-  return process.env.AXIOM_TOKEN_TELEMETRY;
+  return env().AXIOM_TOKEN_TELEMETRY;
 }
 
 /**

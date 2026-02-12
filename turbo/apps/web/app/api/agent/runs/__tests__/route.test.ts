@@ -25,6 +25,7 @@ import {
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import { reloadEnv } from "../../../../../src/env";
 
 const context = testContext();
 
@@ -554,70 +555,62 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
   describe("Concurrent Run Limit", () => {
     it("should return 429 when concurrent run limit is reached", async () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+      reloadEnv();
 
-      try {
-        // First run should succeed
-        const run1 = await createTestRun(testComposeId, "First run");
-        expect(run1.status).toBe("running");
+      // First run should succeed
+      const run1 = await createTestRun(testComposeId, "First run");
+      expect(run1.status).toBe("running");
 
-        // Second run should fail with 429
-        const request = createTestRequest(
-          "http://localhost:3000/api/agent/runs",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              agentComposeId: testComposeId,
-              prompt: "Second run",
-            }),
-          },
-        );
+      // Second run should fail with 429
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: testComposeId,
+            prompt: "Second run",
+          }),
+        },
+      );
 
-        const response = await POST(request);
-        const data = await response.json();
+      const response = await POST(request);
+      const data = await response.json();
 
-        expect(response.status).toBe(429);
-        expect(data.error.message).toMatch(/concurrent/i);
-      } finally {
-        delete process.env.CONCURRENT_RUN_LIMIT;
-      }
+      expect(response.status).toBe(429);
+      expect(data.error.message).toMatch(/concurrent/i);
     });
 
     it("should allow unlimited runs when limit is 0", async () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT", "0");
+      reloadEnv();
 
-      try {
-        const run1 = await createTestRun(testComposeId, "Run 1");
-        const run2 = await createTestRun(testComposeId, "Run 2");
-        const run3 = await createTestRun(testComposeId, "Run 3");
+      const run1 = await createTestRun(testComposeId, "Run 1");
+      const run2 = await createTestRun(testComposeId, "Run 2");
+      const run3 = await createTestRun(testComposeId, "Run 3");
 
-        expect(run1.status).toBe("running");
-        expect(run2.status).toBe("running");
-        expect(run3.status).toBe("running");
-      } finally {
-        delete process.env.CONCURRENT_RUN_LIMIT;
-      }
+      expect(run1.status).toBe("running");
+      expect(run2.status).toBe("running");
+      expect(run3.status).toBe("running");
     });
 
     it("should only count pending and running statuses", async () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+      reloadEnv();
 
-      try {
-        // Create and complete first run
-        const run1 = await createTestRun(testComposeId, "First run");
-        expect(run1.status).toBe("running");
-        await completeTestRun(user.userId, run1.runId);
+      // Create and complete first run
+      const run1 = await createTestRun(testComposeId, "First run");
+      expect(run1.status).toBe("running");
+      await completeTestRun(user.userId, run1.runId);
 
-        // Second run should succeed since first is completed
-        const run2 = await createTestRun(testComposeId, "Second run");
-        expect(run2.status).toBe("running");
-      } finally {
-        delete process.env.CONCURRENT_RUN_LIMIT;
-      }
+      // Second run should succeed since first is completed
+      const run2 = await createTestRun(testComposeId, "Second run");
+      expect(run2.status).toBe("running");
     });
 
     it("should not count stale pending runs toward concurrency limit", async () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+      reloadEnv();
 
       // Get a valid agentComposeVersionId from an existing compose
       const { versionId } = await createTestCompose(uniqueId("stale"));
@@ -633,6 +626,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
     it("should still count running runs older than TTL toward concurrency limit", async () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+      reloadEnv();
 
       // Record time when run is created
       const runCreationTime = Date.now();
@@ -661,34 +655,6 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       const response = await POST(request);
       expect(response.status).toBe(429);
-    });
-
-    it("should fall back to default limit when CONCURRENT_RUN_LIMIT is invalid", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "invalid");
-
-      try {
-        // First run should succeed (default limit is 1)
-        const run1 = await createTestRun(testComposeId, "First run");
-        expect(run1.status).toBe("running");
-
-        // Second run should fail with 429 (default limit of 1)
-        const request = createTestRequest(
-          "http://localhost:3000/api/agent/runs",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              agentComposeId: testComposeId,
-              prompt: "Second run",
-            }),
-          },
-        );
-
-        const response = await POST(request);
-        expect(response.status).toBe(429);
-      } finally {
-        delete process.env.CONCURRENT_RUN_LIMIT;
-      }
     });
   });
 

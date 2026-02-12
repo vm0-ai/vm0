@@ -63,6 +63,10 @@ impl HomePaths {
         self.mitmproxy_dir(version).join("mitmdump")
     }
 
+    pub fn rootfs_dir(&self) -> PathBuf {
+        self.root.join("rootfs")
+    }
+
     pub fn runners_dir(&self) -> PathBuf {
         self.root.join("runners")
     }

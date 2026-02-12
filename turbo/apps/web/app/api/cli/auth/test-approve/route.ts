@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { deviceCodes } from "../../../../../src/db/schema/device-codes";
 import { resolveTestUserId } from "../../../../../src/lib/auth/test-user";
+import { env } from "../../../../../src/env";
 
 /**
  * Test-only endpoint to approve device codes without browser automation.
@@ -13,7 +14,7 @@ import { resolveTestUserId } from "../../../../../src/lib/auth/test-user";
  * 2. Updates the device code status to "authenticated" with the test user ID
  */
 export async function POST(req: Request) {
-  if (process.env.USE_MOCK_CLAUDE !== "true") {
+  if (env().USE_MOCK_CLAUDE !== "true") {
     return new NextResponse("Not found", { status: 404 });
   }
 

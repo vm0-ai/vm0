@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.32.2](https://github.com/vm0-ai/vm0/compare/web-v12.32.1...web-v12.32.2) (2026-02-11)
+
+
+### Bug Fixes
+
+* **web:** ensure platform url is available in client components ([#2873](https://github.com/vm0-ai/vm0/issues/2873)) ([b16f8f9](https://github.com/vm0-ai/vm0/commit/b16f8f93dc7c7487681a214050e874dbe3e898d3))
+
+## [12.32.1](https://github.com/vm0-ai/vm0/compare/web-v12.32.0...web-v12.32.1) (2026-02-11)
+
+
+### Bug Fixes
+
+* enable parallel test execution in web app ([#2865](https://github.com/vm0-ai/vm0/issues/2865)) ([0c04ef0](https://github.com/vm0-ai/vm0/commit/0c04ef08066bf2854b43029b862a48511cce2ccb))
+
 ## [12.32.0](https://github.com/vm0-ai/vm0/compare/web-v12.31.0...web-v12.32.0) (2026-02-11)
 
 

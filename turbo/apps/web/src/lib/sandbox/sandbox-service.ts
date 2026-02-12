@@ -1,5 +1,6 @@
 import { killSandbox as killE2bSandbox } from "../e2b/e2b-service";
 import { killDockerSandbox } from "../docker/docker-sandbox";
+import { env } from "../../env";
 import { logger } from "../logger";
 
 const log = logger("sandbox-service");
@@ -11,7 +12,7 @@ const log = logger("sandbox-service");
  * Otherwise, it is treated as a Docker container.
  */
 export async function killSandbox(sandboxId: string): Promise<void> {
-  if (process.env.E2B_API_KEY) {
+  if (env().E2B_API_KEY) {
     log.debug(`Killing E2B sandbox ${sandboxId}...`);
     await killE2bSandbox(sandboxId);
   } else {

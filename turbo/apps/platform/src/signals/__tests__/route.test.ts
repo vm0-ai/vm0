@@ -152,6 +152,39 @@ describe("route", () => {
       );
       expect(mockSetup).toHaveBeenCalledWith();
     });
+
+    it("should not append trailing question mark when searchParams is empty", async () => {
+      const { store, signal } = context;
+      const pushStateMock = createPushStateMock(signal);
+
+      mockLocation({ pathname: "/", search: "" }, signal);
+
+      await store.set(
+        initRoutes$,
+        [
+          {
+            path: "/",
+            setup: command(() => void 0),
+          },
+          {
+            path: "/home",
+            setup: command(() => void 0),
+          },
+        ],
+        signal,
+      );
+
+      // Navigate with empty URLSearchParams
+      await store.set(
+        navigate$,
+        "/home",
+        { searchParams: new URLSearchParams() },
+        signal,
+      );
+
+      expect(pushStateMock).toHaveBeenCalledWith({}, "", "/home");
+      expect(store.get(pathname$)).toBe("/home");
+    });
   });
 
   describe("initRoutes$", () => {

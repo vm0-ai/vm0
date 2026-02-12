@@ -2,13 +2,14 @@ import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { sql } from "drizzle-orm";
+import { env } from "../../../../src/env";
 
 export async function GET(request: Request): Promise<Response> {
   initServices();
 
   // Verify cron secret (Vercel automatically injects CRON_SECRET into Authorization header)
   const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
+  const cronSecret = env().CRON_SECRET;
 
   if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json(

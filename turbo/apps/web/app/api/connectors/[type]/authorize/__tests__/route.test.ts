@@ -3,6 +3,7 @@ import { GET } from "../route";
 import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { reloadEnv } from "../../../../../../src/env";
 
 const context = testContext();
 
@@ -14,6 +15,7 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
     vi.stubEnv("GH_OAUTH_CLIENT_SECRET", "test-client-secret");
     vi.stubEnv("NOTION_OAUTH_CLIENT_ID", "notion-test-client-id");
     vi.stubEnv("NOTION_OAUTH_CLIENT_SECRET", "notion-test-client-secret");
+    reloadEnv();
   });
 
   it("should return 400 for unknown connector type", async () => {

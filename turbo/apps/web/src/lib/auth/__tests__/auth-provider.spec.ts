@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { auth, clerkClient } from "@clerk/nextjs/server";
+import { reloadEnv } from "../../../env";
 import {
   getAuthProvider,
   resetAuthProvider,
@@ -18,10 +19,6 @@ describe("AuthProvider", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetAuthProvider();
-  });
-
-  afterEach(() => {
-    vi.unstubAllEnvs();
   });
 
   describe("getAuthProvider (SaaS mode)", () => {
@@ -88,6 +85,7 @@ describe("AuthProvider", () => {
   describe("getAuthProvider (self-hosted mode)", () => {
     beforeEach(() => {
       vi.stubEnv("SELF_HOSTED", "true");
+      reloadEnv();
       resetAuthProvider();
     });
 

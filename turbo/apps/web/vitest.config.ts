@@ -9,6 +9,8 @@ export default defineConfig({
     // Don't override env vars, let them pass through from system
     // Automatically clear mocks before each test (eliminates manual vi.clearAllMocks() calls)
     clearMocks: true,
+    // Automatically restore all env stubs after each test (prevents cross-test leakage)
+    unstubEnvs: true,
   },
   resolve: {
     alias: {

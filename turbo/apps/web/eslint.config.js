@@ -1,6 +1,19 @@
 import { nextJsConfig } from "@vm0/eslint-config/next-js";
 import webPlugin from "./custom-eslint/index.ts";
 
+const classRestrictions = [
+  {
+    selector: "ClassDeclaration",
+    message:
+      "Classes are not allowed. Use functions and plain objects instead.",
+  },
+  {
+    selector: "ClassExpression",
+    message:
+      "Classes are not allowed. Use functions and plain objects instead.",
+  },
+];
+
 /** @type {import("eslint").Linter.Config} */
 export default [
   ...nextJsConfig,
@@ -8,17 +21,30 @@ export default [
     rules: {
       "no-restricted-syntax": [
         "error",
+        ...classRestrictions,
         {
-          selector: "ClassDeclaration",
+          selector:
+            "MemberExpression[object.name='process'][property.name='env']",
           message:
-            "Classes are not allowed. Use functions and plain objects instead.",
-        },
-        {
-          selector: "ClassExpression",
-          message:
-            "Classes are not allowed. Use functions and plain objects instead.",
+            "Use env() from src/env.ts instead of process.env. Direct access bypasses validation and breaks test isolation.",
         },
       ],
+    },
+  },
+  {
+    files: [
+      "src/env.ts",
+      "src/lib/logger.ts",
+      "drizzle.config.ts",
+      "scripts/**",
+      "instrumentation.ts",
+      "sentry.client.config.ts",
+      "sentry.edge.config.ts",
+      "sentry.server.config.ts",
+      "app/hooks/use-auth.ts",
+    ],
+    rules: {
+      "no-restricted-syntax": ["error", ...classRestrictions],
     },
   },
   {

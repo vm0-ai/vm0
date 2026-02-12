@@ -10,7 +10,7 @@ import Particles from "../../../../components/Particles";
 import Navbar from "../../../../components/Navbar";
 import Footer from "../../../../components/Footer";
 import { ShareButtons } from "../../../../components/blog";
-import { getPost, getPosts, BLOG_BASE_URL } from "../../../../lib/blog";
+import { getPost, getPosts, getBlogBaseUrl } from "../../../../lib/blog";
 import { locales } from "../../../../../i18n";
 
 export const revalidate = 60;
@@ -29,10 +29,10 @@ export async function generateMetadata({
     return { title: "Post Not Found" };
   }
 
-  const postUrl = `${BLOG_BASE_URL}/${locale}/blog/posts/${slug}`;
+  const postUrl = `${getBlogBaseUrl()}/${locale}/blog/posts/${slug}`;
   const imageUrl = post.cover.startsWith("http")
     ? post.cover
-    : `${BLOG_BASE_URL}${post.cover}`;
+    : `${getBlogBaseUrl()}${post.cover}`;
 
   return {
     title: post.title,
@@ -181,7 +181,7 @@ export default async function BlogPostPage({ params }: PageProps) {
       <div className="container-narrow">
         <ShareButtons
           title={post.title}
-          url={`${BLOG_BASE_URL}/${locale}/blog/posts/${post.slug}`}
+          url={`${getBlogBaseUrl()}/${locale}/blog/posts/${post.slug}`}
         />
       </div>
 
@@ -277,7 +277,7 @@ export default async function BlogPostPage({ params }: PageProps) {
             <p className="cta-subtitle">{t("stayInLoopDesc")}</p>
             <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
               <a
-                href={`${BLOG_BASE_URL}/sign-up`}
+                href={`${getBlogBaseUrl()}/sign-up`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="btn-primary-large"

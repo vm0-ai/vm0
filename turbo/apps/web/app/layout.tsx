@@ -133,7 +133,7 @@ export default function RootLayout({
   const content = (
     <html lang="en" data-theme="dark" suppressHydrationWarning>
       <head>
-        {!isSelfHosted && (
+        {!isSelfHosted() && (
           <>
             <link rel="preconnect" href="https://fonts.googleapis.com" />
             <link
@@ -160,7 +160,7 @@ export default function RootLayout({
               `,
           }}
         />
-        {!isSelfHosted && (
+        {!isSelfHosted() && (
           <>
             <Script
               src="https://plausible.io/js/pa-eEj_2G8vS8xPlTUzW2A3U.js"
@@ -180,7 +180,7 @@ export default function RootLayout({
       <body
         className={`${notoSans.variable} ${firaCode.variable} ${firaMono.variable} ${jetBrainsMono.variable}`}
       >
-        {!isSelfHosted && (
+        {!isSelfHosted() && (
           <>
             <Script
               id="json-ld"
@@ -252,7 +252,7 @@ export default function RootLayout({
     </html>
   );
 
-  if (isSelfHosted) {
+  if (isSelfHosted()) {
     return content;
   }
 
