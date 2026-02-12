@@ -9,7 +9,7 @@ use crate::paths::{HomePaths, RootfsPaths};
 
 #[derive(Args, Clone)]
 pub struct SnapshotArgs {
-    /// SHA-256 hash of the rootfs inputs (output of `build-rootfs`).
+    /// SHA-256 hash of the rootfs inputs (output of `rootfs`).
     #[arg(long)]
     pub rootfs_hash: String,
     /// Number of vCPUs for the snapshot VM.
@@ -49,7 +49,7 @@ pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<()> {
         .map_err(|e| RunnerError::Internal(format!("check rootfs: {e}")))?;
     if !rootfs_exists {
         return Err(RunnerError::Config(format!(
-            "rootfs not found at {}; run `build-rootfs` first",
+            "rootfs not found at {}; run `build` or `rootfs` first",
             rootfs_path.display()
         )));
     }
@@ -91,7 +91,7 @@ async fn is_snapshot_complete(output: &SnapshotOutputPaths) -> RunnerResult<bool
 ///
 /// Inputs:
 ///   - `sandbox_fc::config_hash()` — boot args, guest network config
-///   - `rootfs_hash` — rootfs content (from `build-rootfs`)
+///   - `rootfs_hash` — rootfs content (from `rootfs`)
 ///   - `FIRECRACKER_VERSION` / `KERNEL_VERSION` — binary versions
 ///   - `vcpu` / `memory_mb` — VM resource settings
 ///
