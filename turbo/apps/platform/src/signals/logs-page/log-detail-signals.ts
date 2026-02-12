@@ -10,12 +10,9 @@ import { delay } from "signal-timers";
 import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
 import { currentLogId$ } from "./log-detail-state.ts";
-import {
-  mockLogDetail,
-  mockAgentEvents,
-} from "../../mocks/mock-log-detail-data.ts";
-
 const MOCK_LOG_DETAIL_ENABLED = import.meta.env.VITE_MOCK_LOG_DETAIL === "true";
+
+const loadMockData = () => import("../../mocks/mock-log-detail-data.ts");
 
 const AGENT_EVENTS_PAGE_LIMIT = 30;
 const MAX_INTERVAL = 30_000;
@@ -48,6 +45,7 @@ const detailReloadTick$ = state(0);
  */
 export const runDetail$ = computed(async (get) => {
   if (MOCK_LOG_DETAIL_ENABLED) {
+    const { mockLogDetail } = await loadMockData();
     return mockLogDetail;
   }
 
@@ -162,6 +160,8 @@ const pollNewEvents$ = command(async ({ get, set }, runId: string) => {
 export const setupEventPolling$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (MOCK_LOG_DETAIL_ENABLED) {
+      const { mockAgentEvents } = await loadMockData();
+      signal.throwIfAborted();
       const mockPage$ = computed(() =>
         Promise.resolve({ events: mockAgentEvents, hasMore: false }),
       );
