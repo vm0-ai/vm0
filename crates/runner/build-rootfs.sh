@@ -80,13 +80,11 @@ EXTRACT_DIR=""
 check_dependencies() {
   local missing=()
 
-  if ! command -v docker &> /dev/null; then
-    missing+=("docker")
-  fi
-
-  if ! command -v openssl &> /dev/null; then
-    missing+=("openssl")
-  fi
+  for cmd in docker openssl sudo tar chroot mktemp stat; do
+    if ! command -v "$cmd" &> /dev/null; then
+      missing+=("$cmd")
+    fi
+  done
 
   if ! command -v mksquashfs &> /dev/null; then
     missing+=("mksquashfs (apt-get install squashfs-tools)")
