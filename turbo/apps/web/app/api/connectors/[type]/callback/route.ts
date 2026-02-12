@@ -205,6 +205,8 @@ export async function GET(
         }
         break;
       }
+      default:
+        return redirectWithError(origin, type, "Unsupported OAuth connector");
     }
 
     log.debug("Storing connector", {
