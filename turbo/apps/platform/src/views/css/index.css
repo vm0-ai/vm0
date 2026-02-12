@@ -183,6 +183,28 @@
   padding-left: 6px;
 }
 
+/* Table styling for light/dark mode visibility */
+.wmde-markdown table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.wmde-markdown table th,
+.wmde-markdown table td {
+  border: 1px solid hsl(var(--border));
+  padding: 6px 12px;
+  text-align: left;
+}
+
+.wmde-markdown table th {
+  background-color: hsl(var(--gray-50));
+  font-weight: 600;
+}
+
+.wmde-markdown table tr:nth-child(even) td {
+  background-color: hsl(var(--gray-50) / 0.5);
+}
+
 /* Details/summary animation */
 details > summary {
   transition: color 0.15s ease;
