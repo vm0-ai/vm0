@@ -5,8 +5,9 @@ import { GET as listVersions } from "../[id]/versions/route";
 import {
   createTestRequest,
   createTestCompose,
+  createTestPermission,
 } from "../../../../src/__tests__/api-test-helpers";
-import { testContext } from "../../../../src/__tests__/test-helpers";
+import { testContext, uniqueId } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
 
@@ -34,8 +35,8 @@ describe("Public API v1 - Agents Endpoints", () => {
 
       expect(response.status).toBe(200);
       expect(data.data).toBeInstanceOf(Array);
+      expect(data.data.length).toBeGreaterThanOrEqual(1);
       expect(data.pagination).toBeDefined();
-      expect(data.pagination.hasMore).toBe(false);
     });
 
     it("should support limit parameter", async () => {
@@ -187,6 +188,51 @@ describe("Public API v1 - Agents Endpoints", () => {
 
       expect(response.status).toBe(404);
       expect(data.error.type).toBe("not_found_error");
+    });
+  });
+
+  describe("Email-shared agents", () => {
+    it("should include shared agent with scope/name format", async () => {
+      // Owner creates and shares an agent
+      const owner = await context.setupUser({ prefix: "v1-owner" });
+      const sharedAgentName = uniqueId("v1-shared");
+      const { composeId } = await createTestCompose(sharedAgentName);
+      await createTestPermission(composeId, "email", "test@example.com");
+
+      const ownerSuffix = owner.userId.replace("v1-owner-", "");
+      const ownerScopeSlug = `scope-${ownerSuffix}`;
+
+      // Switch to a different user (recipient)
+      await context.setupUser({ prefix: "v1-recipient" });
+
+      const request = createTestRequest(
+        `http://localhost:3000/v1/agents?name=${sharedAgentName}`,
+      );
+      const response = await listAgents(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data.length).toBe(1);
+      expect(data.data[0].name).toBe(`${ownerScopeSlug}/${sharedAgentName}`);
+    });
+
+    it("should not show unshared agents from other users", async () => {
+      // Owner creates an agent but does NOT share
+      await context.setupUser({ prefix: "v1-private" });
+      const privateAgentName = uniqueId("v1-private-agent");
+      await createTestCompose(privateAgentName);
+
+      // Switch to recipient
+      await context.setupUser({ prefix: "v1-viewer" });
+
+      const request = createTestRequest(
+        `http://localhost:3000/v1/agents?name=${privateAgentName}`,
+      );
+      const response = await listAgents(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data.length).toBe(0);
     });
   });
 

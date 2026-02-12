@@ -14,8 +14,11 @@ import {
   isAuthSuccess,
 } from "../../../src/lib/public-api/auth";
 import { getUserScopeByClerkId } from "../../../src/lib/scope/scope-service";
+import { getUserEmail } from "../../../src/lib/auth/get-user-email";
 import { agentComposes } from "../../../src/db/schema/agent-compose";
-import { eq, and, desc, gt } from "drizzle-orm";
+import { agentPermissions } from "../../../src/db/schema/agent-permission";
+import { scopes } from "../../../src/db/schema/scope";
+import { eq, and, desc, gt, ne } from "drizzle-orm";
 
 const router = tsr.router(publicAgentsListContract, {
   list: async ({ query, headers }) => {
@@ -51,32 +54,97 @@ const router = tsr.router(publicAgentsListContract, {
       };
     }
 
-    // Build query conditions
-    const conditions = [eq(agentComposes.scopeId, userScope.id)];
+    // Build query conditions for own agents
+    const ownConditions = [eq(agentComposes.scopeId, userScope.id)];
 
     // Filter by name if provided (case-insensitive - normalize to lowercase)
-    if (query.name) {
-      conditions.push(eq(agentComposes.name, query.name.toLowerCase()));
+    const nameFilter = query.name?.toLowerCase();
+    if (nameFilter) {
+      ownConditions.push(eq(agentComposes.name, nameFilter));
     }
 
     // Handle cursor-based pagination
     if (query.cursor) {
-      conditions.push(gt(agentComposes.id, query.cursor));
+      ownConditions.push(gt(agentComposes.id, query.cursor));
     }
 
     const limit = query.limit ?? 20;
 
-    // Fetch agents
-    const agents = await globalThis.services.db
+    // Fetch own agents
+    const ownAgents = await globalThis.services.db
       .select()
       .from(agentComposes)
-      .where(and(...conditions))
+      .where(and(...ownConditions))
       .orderBy(desc(agentComposes.createdAt))
-      .limit(limit + 1); // Fetch one extra to check has_more
+      .limit(limit + 1);
 
-    // Determine pagination info
-    const hasMore = agents.length > limit;
-    const data = hasMore ? agents.slice(0, limit) : agents;
+    // Fetch email-shared agents
+    const userEmail = await getUserEmail(auth.userId);
+    let sharedAgents: {
+      id: string;
+      name: string;
+      headVersionId: string | null;
+      createdAt: Date;
+      updatedAt: Date;
+      scopeSlug: string;
+    }[] = [];
+
+    if (userEmail) {
+      const sharedConditions = [
+        eq(agentPermissions.granteeType, "email"),
+        eq(agentPermissions.granteeEmail, userEmail),
+        ne(agentComposes.userId, auth.userId),
+      ];
+
+      if (nameFilter) {
+        sharedConditions.push(eq(agentComposes.name, nameFilter));
+      }
+
+      if (query.cursor) {
+        sharedConditions.push(gt(agentComposes.id, query.cursor));
+      }
+
+      sharedAgents = await globalThis.services.db
+        .select({
+          id: agentComposes.id,
+          name: agentComposes.name,
+          headVersionId: agentComposes.headVersionId,
+          createdAt: agentComposes.createdAt,
+          updatedAt: agentComposes.updatedAt,
+          scopeSlug: scopes.slug,
+        })
+        .from(agentPermissions)
+        .innerJoin(
+          agentComposes,
+          eq(agentPermissions.agentComposeId, agentComposes.id),
+        )
+        .innerJoin(scopes, eq(agentComposes.scopeId, scopes.id))
+        .where(and(...sharedConditions))
+        .orderBy(desc(agentComposes.createdAt))
+        .limit(limit + 1);
+    }
+
+    // Combine own + shared, sort by createdAt desc, apply pagination
+    const combined = [
+      ...ownAgents.map((agent) => ({
+        id: agent.id,
+        name: agent.name,
+        currentVersionId: agent.headVersionId,
+        createdAt: agent.createdAt,
+        updatedAt: agent.updatedAt,
+      })),
+      ...sharedAgents.map((agent) => ({
+        id: agent.id,
+        name: `${agent.scopeSlug}/${agent.name}`,
+        currentVersionId: agent.headVersionId,
+        createdAt: agent.createdAt,
+        updatedAt: agent.updatedAt,
+      })),
+    ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+    // Apply limit + 1 pagination
+    const hasMore = combined.length > limit;
+    const data = hasMore ? combined.slice(0, limit) : combined;
     const nextCursor =
       hasMore && data.length > 0 ? data[data.length - 1]!.id : null;
 
@@ -86,7 +154,7 @@ const router = tsr.router(publicAgentsListContract, {
         data: data.map((agent) => ({
           id: agent.id,
           name: agent.name,
-          currentVersionId: agent.headVersionId,
+          currentVersionId: agent.currentVersionId,
           createdAt: agent.createdAt.toISOString(),
           updatedAt: agent.updatedAt.toISOString(),
         })),

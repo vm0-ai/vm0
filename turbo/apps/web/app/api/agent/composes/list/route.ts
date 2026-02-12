@@ -2,8 +2,11 @@ import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { composesListContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentComposes } from "../../../../../src/db/schema/agent-compose";
+import { agentPermissions } from "../../../../../src/db/schema/agent-permission";
+import { scopes } from "../../../../../src/db/schema/scope";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
-import { eq, desc } from "drizzle-orm";
+import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
+import { eq, and, desc, ne } from "drizzle-orm";
 import {
   getUserScopeByClerkId,
   getScopeBySlug,
@@ -72,8 +75,8 @@ const router = tsr.router(composesListContract, {
       scopeId = userScope.id;
     }
 
-    // Query all composes for this scope
-    const composes = await globalThis.services.db
+    // Query own composes for this scope
+    const ownComposes = await globalThis.services.db
       .select({
         name: agentComposes.name,
         headVersionId: agentComposes.headVersionId,
@@ -83,14 +86,59 @@ const router = tsr.router(composesListContract, {
       .where(eq(agentComposes.scopeId, scopeId))
       .orderBy(desc(agentComposes.updatedAt));
 
+    // When using default scope (no ?scope= param), also include email-shared agents
+    let sharedComposes: {
+      name: string;
+      headVersionId: string | null;
+      updatedAt: Date;
+      scopeSlug: string;
+    }[] = [];
+
+    if (!query.scope) {
+      const userEmail = await getUserEmail(userId);
+      if (userEmail) {
+        sharedComposes = await globalThis.services.db
+          .select({
+            name: agentComposes.name,
+            headVersionId: agentComposes.headVersionId,
+            updatedAt: agentComposes.updatedAt,
+            scopeSlug: scopes.slug,
+          })
+          .from(agentPermissions)
+          .innerJoin(
+            agentComposes,
+            eq(agentPermissions.agentComposeId, agentComposes.id),
+          )
+          .innerJoin(scopes, eq(agentComposes.scopeId, scopes.id))
+          .where(
+            and(
+              eq(agentPermissions.granteeType, "email"),
+              eq(agentPermissions.granteeEmail, userEmail),
+              ne(agentComposes.userId, userId),
+            ),
+          )
+          .orderBy(desc(agentComposes.updatedAt));
+      }
+    }
+
+    // Combine: own agents first, then shared agents with scope/name format
+    const allComposes = [
+      ...ownComposes.map((c) => ({
+        name: c.name,
+        headVersionId: c.headVersionId,
+        updatedAt: c.updatedAt.toISOString(),
+      })),
+      ...sharedComposes.map((c) => ({
+        name: `${c.scopeSlug}/${c.name}`,
+        headVersionId: c.headVersionId,
+        updatedAt: c.updatedAt.toISOString(),
+      })),
+    ];
+
     return {
       status: 200 as const,
       body: {
-        composes: composes.map((compose) => ({
-          name: compose.name,
-          headVersionId: compose.headVersionId,
-          updatedAt: compose.updatedAt.toISOString(),
-        })),
+        composes: allComposes,
       },
     };
   },
