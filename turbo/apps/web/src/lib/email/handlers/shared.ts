@@ -6,14 +6,14 @@ import { getPlatformUrl } from "../../url";
 
 /**
  * Generate an HMAC-signed reply token for plus addressing.
- * Format: {sessionId}.{hmac8chars}
+ * Format: {sessionId}.{hmac16chars}
  */
 export function generateReplyToken(sessionId: string): string {
   const hmac = crypto
     .createHmac("sha256", env().SECRETS_ENCRYPTION_KEY)
     .update(sessionId)
     .digest("hex")
-    .slice(0, 8);
+    .slice(0, 16);
   return `${sessionId}.${hmac}`;
 }
 
@@ -32,7 +32,7 @@ export function verifyReplyToken(token: string): string | null {
     .createHmac("sha256", env().SECRETS_ENCRYPTION_KEY)
     .update(sessionId)
     .digest("hex")
-    .slice(0, 8);
+    .slice(0, 16);
 
   // Timing-safe comparison
   if (providedHmac.length !== expectedHmac.length) return null;

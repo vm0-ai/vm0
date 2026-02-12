@@ -80,6 +80,8 @@ export async function getReceivedEmail(emailId: string): Promise<{
 }> {
   const resend = getResendClient();
 
+  // Workaround: Resend SDK v4 has `emails.receiving.get()` at runtime but
+  // does not expose it in its TypeScript types. Track as tech debt.
   const emails = resend.emails as unknown as Record<string, unknown>;
   const receiving = emails?.receiving as
     | {
