@@ -2,13 +2,11 @@ import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { logger } from "../../../../src/lib/logger";
-import { eq, inArray } from "drizzle-orm";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../../../src/db/schema/agent-compose";
 import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
-import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
+import {
+  getUserAgents,
+  batchFetchVersionContents,
+} from "../../../../src/lib/agent/get-user-agents";
 
 const log = logger("api:agents:required-env");
 
@@ -38,16 +36,7 @@ export async function GET(request: Request) {
 
   log.debug(`Checking required env for user ${userId}`);
 
-  const db = globalThis.services.db;
-
-  const agents = await db
-    .select({
-      composeId: agentComposes.id,
-      agentName: agentComposes.name,
-      headVersionId: agentComposes.headVersionId,
-    })
-    .from(agentComposes)
-    .where(eq(agentComposes.userId, userId));
+  const agents = await getUserAgents(userId);
 
   if (agents.length === 0) {
     return NextResponse.json({ agents: [] });
@@ -58,20 +47,7 @@ export async function GET(request: Request) {
     .map((a) => a.headVersionId)
     .filter((id): id is string => id !== null);
 
-  const versionContents = new Map<string, AgentComposeYaml>();
-  if (versionIds.length > 0) {
-    const versions = await db
-      .select({
-        id: agentComposeVersions.id,
-        content: agentComposeVersions.content,
-      })
-      .from(agentComposeVersions)
-      .where(inArray(agentComposeVersions.id, versionIds));
-
-    for (const v of versions) {
-      versionContents.set(v.id, v.content as AgentComposeYaml);
-    }
-  }
+  const versionContents = await batchFetchVersionContents(versionIds);
 
   const result: AgentRequiredEnv[] = [];
 
