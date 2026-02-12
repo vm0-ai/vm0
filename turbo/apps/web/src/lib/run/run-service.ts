@@ -24,10 +24,7 @@ import { executeE2bRun } from "./executors/e2b-executor";
 import { executeRunnerJob } from "./executors/runner-executor";
 import { executeDockerRun } from "./executors/docker-executor";
 import type { ExecutorResult, PreparedContext } from "./executors/types";
-import {
-  buildExecutionContext as buildContext,
-  type BuildContextParams,
-} from "./build-context";
+import { buildExecutionContext as buildContext } from "./build-context";
 import { generateSandboxToken } from "../auth/sandbox-token";
 import { canAccessCompose } from "../agent/permission-service";
 import { getUserEmail } from "../auth/get-user-email";
@@ -54,7 +51,7 @@ export { calculateSessionHistoryPath } from "./utils/session-history-path";
  * @param limit Maximum allowed concurrent runs (default: 1, or CONCURRENT_RUN_LIMIT env var, 0 = no limit)
  * @throws ConcurrentRunLimitError if limit exceeded
  */
-export async function checkRunConcurrencyLimit(
+async function checkRunConcurrencyLimit(
   userId: string,
   limit?: number,
 ): Promise<void> {
@@ -218,19 +215,6 @@ export async function validateAgentSession(
 }
 
 /**
- * Build unified execution context from various parameter sources
- * Supports: new run, checkpoint resume, session continue
- *
- * @param params Unified run parameters
- * @returns Execution context for executors
- */
-export async function buildExecutionContext(
-  params: BuildContextParams,
-): Promise<ExecutionContext> {
-  return buildContext(params);
-}
-
-/**
  * Prepare execution context and dispatch to appropriate executor
  *
  * This is the unified entry point that handles both E2B and runner paths:
@@ -240,7 +224,7 @@ export async function buildExecutionContext(
  * @param context ExecutionContext built by buildExecutionContext()
  * @returns ExecutorResult with status and optional sandboxId
  */
-export async function prepareAndDispatchRun(
+async function prepareAndDispatchRun(
   context: ExecutionContext,
 ): Promise<ExecutorResult> {
   log.debug(`Preparing and dispatching run ${context.runId}...`);
@@ -279,11 +263,28 @@ async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
 // Unified Run Creation
 // ============================================================================
 
+/**
+ * Extended error type for dispatch failures that includes run metadata.
+ * When createRun() fails after the run record is created (post-INSERT),
+ * the error is augmented with runId and createdAt so callers can
+ * return partial results if needed.
+ */
+export interface RunDispatchError extends Error {
+  runId?: string;
+  createdAt?: Date;
+}
+
 export interface CreateRunParams {
   // Required — every caller must provide
   userId: string;
   agentComposeVersionId: string;
   prompt: string;
+
+  // Optional — caller-resolved compose ID
+  // When provided, createRun() uses this to load the compose instead of
+  // resolving via version.composeId. This avoids content-addressed version
+  // collisions where version.composeId may point to a different user's compose.
+  composeId?: string;
 
   // Optional — caller-specific
   sessionId?: string;
@@ -360,6 +361,10 @@ export async function createRun(
 
   const composeContent = version.content as AgentComposeYaml;
 
+  // Use caller-provided composeId when available to avoid content-addressed
+  // version collisions (version.composeId may point to a different user's compose)
+  const resolvedComposeId = params.composeId ?? version.composeId;
+
   const [compose] = await globalThis.services.db
     .select({
       id: agentComposes.id,
@@ -367,7 +372,7 @@ export async function createRun(
       scopeId: agentComposes.scopeId,
     })
     .from(agentComposes)
-    .where(eq(agentComposes.id, version.composeId))
+    .where(eq(agentComposes.id, resolvedComposeId))
     .limit(1);
 
   if (!compose) {
@@ -514,6 +519,12 @@ export async function createRun(
         completedAt: new Date(),
       })
       .where(eq(agentRuns.id, run.id));
+
+    // Attach run metadata so callers can return partial results
+    if (error instanceof Error) {
+      (error as RunDispatchError).runId = run.id;
+      (error as RunDispatchError).createdAt = run.createdAt;
+    }
 
     throw error;
   }

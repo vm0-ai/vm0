@@ -626,7 +626,7 @@ async function fetchAndMergeVariables(
 /**
  * Parameters for building execution context
  */
-export interface BuildContextParams {
+interface BuildContextParams {
   // Shortcuts (mutually exclusive)
   checkpointId?: string;
   sessionId?: string;
