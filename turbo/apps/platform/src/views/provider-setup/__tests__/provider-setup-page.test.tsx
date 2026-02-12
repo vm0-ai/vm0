@@ -62,7 +62,7 @@ describe("provider setup page", () => {
     expect(params.get("tab")).toBe("integrations");
   });
 
-  it("Continue button is disabled when no secret is entered", async () => {
+  it("continue button is disabled when no secret is entered", async () => {
     server.use(
       http.get("/api/model-providers", () => {
         return HttpResponse.json({ modelProviders: [] });

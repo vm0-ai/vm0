@@ -135,10 +135,10 @@ export const initSlackConnect$ = command(async ({ get, set }) => {
     throwIfAbort(error);
     L.error("Failed to check link status:", error);
     set(slackConnectState$, {
-      status: "ready",
+      status: "error",
       isLinked: false,
       workspaceName: null,
-      error: null,
+      error: "Failed to check connection status. Please try again.",
       isAdmin: false,
       defaultAgent: null,
       agents: [],

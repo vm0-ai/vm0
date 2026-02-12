@@ -226,7 +226,6 @@ export async function POST(request: Request) {
       .update(slackInstallations)
       .set({ defaultComposeId: agentId, updatedAt: new Date() })
       .where(eq(slackInstallations.id, installation.id));
-    installation.defaultComposeId = agentId;
   }
 
   if (existingLink) {
@@ -300,9 +299,15 @@ export async function POST(request: Request) {
     SECRETS_ENCRYPTION_KEY,
   );
   const client = createSlackClient(botToken);
-  await refreshAppHome(client, installation, slackUserId).catch((error) => {
-    log.warn("Failed to refresh App Home after link", { error });
-  });
+  const effectiveInstallation = {
+    ...installation,
+    defaultComposeId: effectiveAgentId,
+  };
+  await refreshAppHome(client, effectiveInstallation, slackUserId).catch(
+    (error) => {
+      log.warn("Failed to refresh App Home after link", { error });
+    },
+  );
 
   return NextResponse.json({ success: true });
 }
