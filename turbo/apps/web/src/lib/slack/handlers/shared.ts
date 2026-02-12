@@ -203,7 +203,7 @@ export function buildLoginUrl(
     u: slackUserId,
     c: channelId,
   });
-  return `${baseUrl}/slack/link?${params.toString()}`;
+  return `${baseUrl}/slack/connect?${params.toString()}`;
 }
 
 /**

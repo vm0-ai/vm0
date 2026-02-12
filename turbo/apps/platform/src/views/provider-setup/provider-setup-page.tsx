@@ -78,35 +78,33 @@ export function ProviderSetupPage() {
       className="flex min-h-screen items-center justify-center p-6"
       style={{ backgroundImage: backgroundGradient }}
     >
-      <div className="w-full max-w-[600px] overflow-hidden rounded-xl border border-border bg-popover">
-        <div className="flex flex-col gap-0">
-          {/* Header - Logo and Title */}
-          <div className="shrink-0 px-4 pt-6 pb-3 sm:px-6 sm:pt-8 sm:pb-4">
-            {/* Logo */}
-            <div className="flex items-center justify-center gap-2 mb-3 sm:mb-4">
-              <img
-                src={theme === "dark" ? "/logo_dark.svg" : "/logo_light.svg"}
-                alt="VM0"
-                className="h-[32px] sm:h-[40px] w-auto"
-              />
-              <span className="text-3xl sm:text-4xl font-normal text-foreground">
-                Platform
-              </span>
-            </div>
-
-            {/* Header */}
-            <div className="text-center">
-              <h1 className="text-base sm:text-lg font-medium leading-6 sm:leading-7 text-foreground">
-                Define your model provider
-              </h1>
-              <p className="text-sm text-foreground mt-2">
-                Your model provider is required for sandboxed execution.
-              </p>
-            </div>
+      <div className="w-full max-w-[400px] overflow-hidden rounded-xl border border-border bg-popover p-10">
+        <div className="flex flex-col items-center gap-8">
+          {/* Logo */}
+          <div className="flex items-center gap-2.5 p-1.5">
+            <img
+              src={theme === "dark" ? "/logo_dark.svg" : "/logo_light.svg"}
+              alt="VM0"
+              className="h-5 w-auto"
+            />
+            <span className="text-2xl font-normal leading-8 text-foreground">
+              Platform
+            </span>
           </div>
 
-          {/* Content area */}
-          <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6 flex flex-col gap-4 sm:gap-6">
+          {/* Content */}
+          <div className="flex w-full flex-col gap-6">
+            {/* Header */}
+            <div className="flex flex-col gap-2.5 text-center text-foreground">
+              <h1 className="text-lg font-medium leading-7">
+                Define your model provider
+              </h1>
+              <p className="text-sm leading-5">
+                Your model provider is required for sandboxed execution
+              </p>
+            </div>
+
+            {/* Form Fields */}
             <ProviderFormFields
               providerType={providerType}
               formValues={formValues}
@@ -118,17 +116,25 @@ export function ProviderSetupPage() {
               onSecretFieldChange={setSecretField}
               isLoading={isLoading}
             />
-          </div>
 
-          {/* Footer - Action Buttons */}
-          <div className="shrink-0 flex justify-end gap-2 px-4 pb-4 pt-3 sm:px-6 sm:pb-6 sm:pt-4 border-t border-border/50">
-            <Button variant="outline" onClick={handleLater}>
-              Later
-            </Button>
-            <Button onClick={handleContinue} disabled={!canSave}>
-              {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-              Continue
-            </Button>
+            {/* Action Buttons */}
+            <div className="flex flex-col gap-4">
+              <Button
+                className="w-full"
+                onClick={handleContinue}
+                disabled={!canSave}
+              >
+                {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+                Continue
+              </Button>
+              <Button
+                className="w-full"
+                variant="outline"
+                onClick={handleLater}
+              >
+                Later
+              </Button>
+            </div>
           </div>
         </div>
       </div>

@@ -7,6 +7,6 @@ export type RoutePath =
   | "/agents"
   | "/environment-variables-setup"
   | "/provider-setup"
-  | "/slack/link"
-  | "/slack/link/success"
+  | "/slack/connect"
+  | "/slack/connect/success"
   | `/projects/${string}`;

@@ -20,8 +20,8 @@ import { setupPlaygroundPage$ } from "./playground-page/playground-page.ts";
 import { setupEnvironmentVariablesSetupPage$ } from "./environment-variables-setup/setup-page.ts";
 import { setupSlackSettingsPage$ } from "./integrations-page/slack-settings-page.ts";
 import { setupProviderSetupPage$ } from "./provider-setup/provider-setup-page.ts";
-import { setupSlackLinkPage$ } from "./slack-link/slack-link-page.ts";
-import { setupSlackLinkSuccessPage$ } from "./slack-link/slack-link-success-page.ts";
+import { setupSlackConnectPage$ } from "./slack-connect/slack-connect-page.ts";
+import { setupSlackConnectSuccessPage$ } from "./slack-connect/slack-connect-success-page.ts";
 
 const L = logger("Bootstrap");
 
@@ -56,15 +56,15 @@ const ROUTE_CONFIG = [
   },
   {
     path: "/provider-setup",
-    setup: setupScopeRequiredPageWrapper(setupProviderSetupPage$),
+    setup: setupAuthPageWrapper(setupProviderSetupPage$),
   },
   {
-    path: "/slack/link",
-    setup: setupAuthPageWrapper(setupSlackLinkPage$),
+    path: "/slack/connect",
+    setup: setupAuthPageWrapper(setupSlackConnectPage$),
   },
   {
-    path: "/slack/link/success",
-    setup: setupAuthPageWrapper(setupSlackLinkSuccessPage$),
+    path: "/slack/connect/success",
+    setup: setupAuthPageWrapper(setupSlackConnectSuccessPage$),
   },
   {
     path: "/_playground",

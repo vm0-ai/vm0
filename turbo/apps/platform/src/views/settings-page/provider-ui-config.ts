@@ -38,7 +38,7 @@ function getOverrides(
 ): ProviderUIOverrides | undefined {
   if (type === "claude-code-oauth-token") {
     return {
-      label: "Claude Code OAuth token",
+      label: "Claude Code (OAuth token)",
       description:
         "Leverage Claude Code's exceptional intelligence to build and run agents.",
     };

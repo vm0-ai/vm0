@@ -148,7 +148,7 @@ function OAuthFields({
   return (
     <div className="flex flex-col gap-2">
       <label className="px-1 text-sm font-medium text-foreground flex items-center gap-1.5">
-        Claude code OAuth token
+        Claude OAuth token
         <TooltipProvider delayDuration={100}>
           <Tooltip>
             <TooltipTrigger asChild>

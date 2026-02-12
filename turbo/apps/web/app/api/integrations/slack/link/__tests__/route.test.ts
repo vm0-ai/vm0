@@ -3,6 +3,7 @@ import { WebClient } from "@slack/web-api";
 import { GET, POST } from "../route";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { createTestCompose } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   givenSlackWorkspaceInstalled,
   givenLinkedSlackUser,
@@ -42,7 +43,7 @@ describe("/api/integrations/slack/link", () => {
       expect(data.error.code).toBe("BAD_REQUEST");
     });
 
-    it("returns isLinked=false when user is not linked", async () => {
+    it("returns isLinked=false with agent fields when user is not linked", async () => {
       await context.setupUser();
       const { installation } = await givenSlackWorkspaceInstalled();
 
@@ -54,9 +55,14 @@ describe("/api/integrations/slack/link", () => {
 
       expect(response.status).toBe(200);
       expect(data.isLinked).toBe(false);
+      expect(data.isAdmin).toBe(false);
+      expect(data.defaultAgent).toEqual(
+        expect.objectContaining({ id: installation.defaultComposeId }),
+      );
+      expect(data.agents).toHaveLength(1);
     });
 
-    it("returns isLinked=true with workspace name when user is linked", async () => {
+    it("returns isLinked=true with workspace name and agent fields when user is linked", async () => {
       const { userLink, installation } = await givenLinkedSlackUser();
       mockClerk({ userId: userLink.vm0UserId });
 
@@ -69,6 +75,35 @@ describe("/api/integrations/slack/link", () => {
       expect(response.status).toBe(200);
       expect(data.isLinked).toBe(true);
       expect(data.workspaceName).toBe("Test Workspace");
+      expect(data.isAdmin).toBe(false);
+      expect(data.defaultAgent).toEqual(
+        expect.objectContaining({ id: installation.defaultComposeId }),
+      );
+    });
+
+    it("returns isAdmin=true with user agents for admin slack user", async () => {
+      const { userLink, installation } = await givenLinkedSlackUser({
+        isAdmin: true,
+      });
+      mockClerk({ userId: userLink.vm0UserId });
+
+      // Create an additional agent for the admin user
+      await createTestCompose("extra-agent");
+
+      const request = new Request(
+        `http://localhost:3000/api/integrations/slack/link?slackUserId=${userLink.slackUserId}&workspaceId=${installation.slackWorkspaceId}`,
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.isAdmin).toBe(true);
+      expect(data.defaultAgent).toEqual(
+        expect.objectContaining({ id: installation.defaultComposeId }),
+      );
+      // Admin sees default agent + their own agents (deduplicated)
+      expect(data.agents.length).toBeGreaterThanOrEqual(2);
+      expect(data.agents[0].id).toBe(installation.defaultComposeId);
     });
   });
 
@@ -149,6 +184,36 @@ describe("/api/integrations/slack/link", () => {
           body: JSON.stringify({
             slackUserId: "U-new-user",
             workspaceId: installation.slackWorkspaceId,
+          }),
+        },
+      );
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+    });
+
+    it("links with custom agentId when provided", async () => {
+      const user = await context.setupUser();
+      const { installation } = await givenSlackWorkspaceInstalled();
+      mockClerk({ userId: user.userId });
+
+      // Create an additional agent for the user (scope already exists from setupUser)
+      const { composeId: customAgentId } =
+        await createTestCompose("custom-agent");
+
+      vi.mocked(new WebClient(), true);
+
+      const request = new Request(
+        "http://localhost:3000/api/integrations/slack/link",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slackUserId: "U-new-user",
+            workspaceId: installation.slackWorkspaceId,
+            agentId: customAgentId,
           }),
         },
       );

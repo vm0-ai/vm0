@@ -2,10 +2,10 @@ import { command } from "ccstate";
 import { createElement } from "react";
 import { updatePage$ } from "../react-router.ts";
 import { searchParams$ } from "../route.ts";
-import { SlackLinkSuccessPage } from "../../views/slack-link/slack-link-success-page.tsx";
+import { SlackConnectSuccessPage } from "../../views/slack-connect/slack-connect-success-page.tsx";
 
-export const setupSlackLinkSuccessPage$ = command(({ get, set }) => {
-  set(updatePage$, createElement(SlackLinkSuccessPage));
+export const setupSlackConnectSuccessPage$ = command(({ get, set }) => {
+  set(updatePage$, createElement(SlackConnectSuccessPage));
 
   // Auto-open Slack on page load
   const params = get(searchParams$);

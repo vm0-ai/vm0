@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getPlatformUrl } from "../../../src/lib/url";
 
 /**
- * Backward compatibility redirect: old web /slack/link URLs → platform /slack/link
+ * Backward compatibility redirect: old web /slack/link URLs → platform /slack/connect
  */
 export default function SlackLinkPage({
   searchParams,
@@ -17,5 +17,5 @@ export default function SlackLinkPage({
     }
   }
   const qs = params.toString();
-  redirect(`${platformUrl}/slack/link${qs ? `?${qs}` : ""}`);
+  redirect(`${platformUrl}/slack/connect${qs ? `?${qs}` : ""}`);
 }

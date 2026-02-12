@@ -142,7 +142,7 @@ async function handleLoginCommand(
   if (installation) {
     // Workspace already installed, go directly to link page on platform
     const platformUrl = getPlatformUrl();
-    const linkUrl = `${platformUrl}/slack/link?w=${encodeURIComponent(payload.team_id)}&u=${encodeURIComponent(payload.user_id)}&c=${encodeURIComponent(payload.channel_id)}`;
+    const linkUrl = `${platformUrl}/slack/connect?w=${encodeURIComponent(payload.team_id)}&u=${encodeURIComponent(payload.user_id)}&c=${encodeURIComponent(payload.channel_id)}`;
     return NextResponse.json({
       response_type: "ephemeral",
       blocks: buildLoginMessage(linkUrl),

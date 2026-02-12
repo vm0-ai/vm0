@@ -16,6 +16,8 @@ import {
 } from "../../../../../src/lib/slack/handlers/shared";
 import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
 import { addPermission } from "../../../../../src/lib/agent/permission-service";
+import { getUserScopeByClerkId } from "../../../../../src/lib/scope/scope-service";
+import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("api:slack:link");
@@ -55,6 +57,13 @@ export async function GET(request: Request) {
     );
   }
 
+  // Look up installation (needed for both linked and non-linked responses)
+  const [installation] = await globalThis.services.db
+    .select()
+    .from(slackInstallations)
+    .where(eq(slackInstallations.slackWorkspaceId, workspaceId))
+    .limit(1);
+
   const [existingLink] = await globalThis.services.db
     .select()
     .from(slackUserLinks)
@@ -66,20 +75,72 @@ export async function GET(request: Request) {
     )
     .limit(1);
 
-  if (existingLink) {
-    const [installation] = await globalThis.services.db
-      .select({ workspaceName: slackInstallations.slackWorkspaceName })
-      .from(slackInstallations)
-      .where(eq(slackInstallations.slackWorkspaceId, workspaceId))
-      .limit(1);
+  // Build agent fields when installation exists
+  const agentFields = installation
+    ? await buildAgentFields(
+        userId,
+        slackUserId,
+        installation.adminSlackUserId,
+        installation.defaultComposeId,
+      )
+    : {};
 
+  if (existingLink) {
     return NextResponse.json({
       isLinked: true,
-      workspaceName: installation?.workspaceName ?? null,
+      workspaceName: installation?.slackWorkspaceName ?? null,
+      ...agentFields,
     });
   }
 
-  return NextResponse.json({ isLinked: false });
+  return NextResponse.json({ isLinked: false, ...agentFields });
+}
+
+/**
+ * Build agent-related fields for the GET response.
+ */
+async function buildAgentFields(
+  userId: string,
+  slackUserId: string,
+  adminSlackUserId: string,
+  defaultComposeId: string,
+): Promise<{
+  isAdmin: boolean;
+  defaultAgent: { id: string; name: string } | null;
+  agents: Array<{ id: string; name: string }>;
+}> {
+  const isAdmin = slackUserId === adminSlackUserId;
+  const defaultAgent = (await getWorkspaceAgent(defaultComposeId)) ?? null;
+
+  let agents: Array<{ id: string; name: string }> = [];
+  if (isAdmin) {
+    const userScope = await getUserScopeByClerkId(userId);
+    if (userScope) {
+      const userAgents = await globalThis.services.db
+        .select({ id: agentComposes.id, name: agentComposes.name })
+        .from(agentComposes)
+        .where(eq(agentComposes.scopeId, userScope.id));
+
+      // Prepend default agent, deduplicate by id
+      const seen = new Set<string>();
+      if (defaultAgent) {
+        agents.push(defaultAgent);
+        seen.add(defaultAgent.id);
+      }
+      for (const agent of userAgents) {
+        if (!seen.has(agent.id)) {
+          agents.push(agent);
+          seen.add(agent.id);
+        }
+      }
+    } else if (defaultAgent) {
+      agents = [defaultAgent];
+    }
+  } else if (defaultAgent) {
+    agents = [defaultAgent];
+  }
+
+  return { isAdmin, defaultAgent, agents };
 }
 
 /**
@@ -105,9 +166,10 @@ export async function POST(request: Request) {
     slackUserId?: string;
     workspaceId?: string;
     channelId?: string;
+    agentId?: string;
   };
 
-  const { slackUserId, workspaceId, channelId } = body;
+  const { slackUserId, workspaceId, channelId, agentId } = body;
 
   if (!slackUserId || !workspaceId) {
     return NextResponse.json(
@@ -152,6 +214,21 @@ export async function POST(request: Request) {
     )
     .limit(1);
 
+  const effectiveAgentId = agentId ?? installation.defaultComposeId;
+
+  // Admin selecting a different agent updates the workspace default
+  if (
+    agentId &&
+    agentId !== installation.defaultComposeId &&
+    slackUserId === installation.adminSlackUserId
+  ) {
+    await globalThis.services.db
+      .update(slackInstallations)
+      .set({ defaultComposeId: agentId, updatedAt: new Date() })
+      .where(eq(slackInstallations.id, installation.id));
+    installation.defaultComposeId = agentId;
+  }
+
   if (existingLink) {
     if (existingLink.vm0UserId === userId) {
       if (channelId) {
@@ -159,7 +236,7 @@ export async function POST(request: Request) {
           installation.encryptedBotToken,
           channelId,
           slackUserId,
-          installation.defaultComposeId,
+          effectiveAgentId,
         ).catch((error) => {
           log.warn("Failed to send success message", { error });
         });
@@ -191,11 +268,11 @@ export async function POST(request: Request) {
     })
     .returning({ id: slackUserLinks.id });
 
-  // Auto-share workspace agent with the new user
+  // Auto-share selected agent with the new user
   const email = await getUserEmail(userId);
-  if (email && installation.defaultComposeId) {
+  if (email && effectiveAgentId) {
     await addPermission(
-      installation.defaultComposeId,
+      effectiveAgentId,
       "email",
       installation.adminSlackUserId,
       email,
@@ -210,7 +287,7 @@ export async function POST(request: Request) {
       installation.encryptedBotToken,
       channelId,
       slackUserId,
-      installation.defaultComposeId,
+      effectiveAgentId,
     ).catch((error) => {
       log.warn("Failed to send success message", { error });
     });

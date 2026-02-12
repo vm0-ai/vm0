@@ -116,7 +116,7 @@ function buildPostInstallRedirect(
       c: state.channelId,
     });
     return NextResponse.redirect(
-      `${platformUrl}/slack/link?${linkParams.toString()}`,
+      `${platformUrl}/slack/connect?${linkParams.toString()}`,
     );
   }
 
@@ -126,7 +126,7 @@ function buildPostInstallRedirect(
       u: linkUserId,
     });
     return NextResponse.redirect(
-      `${platformUrl}/slack/link?${linkParams.toString()}`,
+      `${platformUrl}/slack/connect?${linkParams.toString()}`,
     );
   }
 
