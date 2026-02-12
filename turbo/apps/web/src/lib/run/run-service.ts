@@ -371,33 +371,39 @@ async function loadAndAuthorizeCompose(
  * Validate template vars availability and image access for new runs.
  *
  * Skipped when resuming from checkpoint or continuing a session.
+ * Vars validation only runs when checkEnv is enabled (matching expand-environment.ts behavior).
  *
- * @throws BadRequestError - missing required template variables
+ * @throws BadRequestError - missing required template variables (only when checkEnv is true)
  */
 async function validateComposeRequirements(
   userId: string,
   composeContent: AgentComposeYaml,
   vars?: Record<string, string>,
+  checkEnv?: boolean,
 ): Promise<void> {
   if (!composeContent?.agents) {
     return;
   }
 
-  const requiredVars = extractTemplateVars(composeContent);
-  if (requiredVars.length > 0) {
-    const scope = await getUserScopeByClerkId(userId);
-    const storedVars = scope ? await getVariableValues(scope.id) : {};
-    const allVars = { ...storedVars, ...vars };
-    const missingVars = requiredVars.filter(
-      (varName) => allVars[varName] === undefined,
-    );
-    if (missingVars.length > 0) {
-      throw badRequest(
-        `Missing required template variables: ${missingVars.join(", ")}`,
+  // Only validate vars when checkEnv is enabled (matching expand-environment.ts behavior)
+  if (checkEnv) {
+    const requiredVars = extractTemplateVars(composeContent);
+    if (requiredVars.length > 0) {
+      const scope = await getUserScopeByClerkId(userId);
+      const storedVars = scope ? await getVariableValues(scope.id) : {};
+      const allVars = { ...storedVars, ...vars };
+      const missingVars = requiredVars.filter(
+        (varName) => allVars[varName] === undefined,
       );
+      if (missingVars.length > 0) {
+        throw badRequest(
+          `Missing required template variables: ${missingVars.join(", ")}`,
+        );
+      }
     }
   }
 
+  // Image access validation always runs (not affected by checkEnv)
   const agentKeys = Object.keys(composeContent.agents);
   const firstAgentKey = agentKeys[0];
   const agent = firstAgentKey
@@ -499,7 +505,12 @@ export async function createRun(
 
   // Step 4: Validate template vars and image access (for new runs only)
   if (!params.checkpointId && !params.sessionId) {
-    await validateComposeRequirements(userId, composeContent, params.vars);
+    await validateComposeRequirements(
+      userId,
+      composeContent,
+      params.vars,
+      params.checkEnv,
+    );
   }
 
   // Step 5: Validate mutual exclusivity

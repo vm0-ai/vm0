@@ -270,7 +270,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.status).toBe("running");
     });
 
-    it("should reject request when only some vars are provided", async () => {
+    it("should fail run when only some vars are provided with checkEnv", async () => {
       // Create compose that requires multiple vars
       const { composeId: multiVarsComposeId } = await createTestCompose(
         `multi-vars-${Date.now()}`,
@@ -285,28 +285,22 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         },
       );
 
-      // Try to create run with only one var
-      // Template vars are validated at route level BEFORE run creation
-      const request = createTestRequest(
-        "http://localhost:3000/api/agent/runs",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agentComposeId: multiVarsComposeId,
-            prompt: "Test with partial vars",
-            vars: { VAR_A: "value-a" }, // Missing VAR_B
-          }),
-        },
+      // Try to create run with only one var AND checkEnv: true
+      // Vars validation only happens when checkEnv is enabled
+      const data = await createTestRun(
+        multiVarsComposeId,
+        "Test with partial vars",
+        { vars: { VAR_A: "value-a" }, checkEnv: true }, // Missing VAR_B
       );
 
-      const response = await POST(request);
-      const data = await response.json();
+      expect(data.status).toBe("failed");
 
-      expect(response.status).toBe(400);
-      expect(data.error.message).toContain("VAR_B");
+      // Verify error via API
+      const run = await getTestRun(data.runId);
+      expect(run.error).toMatch(/Missing required template variables/i);
+      expect(run.error).toContain("VAR_B");
       // VAR_A should NOT be in the error (it was provided)
-      expect(data.error.message).not.toContain("VAR_A");
+      expect(run.error).not.toContain("VAR_A");
     });
 
     it("should succeed when all required vars are provided", async () => {
@@ -1343,6 +1337,84 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       expect(response.status).toBe(400);
       expect(data.error.message).toContain("MISSING_VAR");
+    });
+  });
+
+  describe("checkEnv flag behavior for vars", () => {
+    it("should allow run with missing vars when checkEnv is not set (default)", async () => {
+      // Create compose that requires vars
+      const { composeId } = await createTestCompose(
+        `vars-no-check-${Date.now()}`,
+        {
+          overrides: {
+            environment: {
+              ANTHROPIC_API_KEY: "test-key",
+              MY_VAR: "${{ vars.MY_VAR }}",
+            },
+          },
+        },
+      );
+
+      // Create run WITHOUT providing vars and WITHOUT checkEnv
+      // This should succeed because validation is opt-in
+      const data = await createTestRun(composeId, "Test without vars");
+
+      // Should succeed (running, not failed) - validation is skipped
+      expect(data.status).toBe("running");
+    });
+
+    it("should fail run with missing vars when checkEnv is true", async () => {
+      // Create compose that requires vars
+      const { composeId } = await createTestCompose(
+        `vars-check-${Date.now()}`,
+        {
+          overrides: {
+            environment: {
+              ANTHROPIC_API_KEY: "test-key",
+              MY_VAR: "${{ vars.MY_VAR }}",
+            },
+          },
+        },
+      );
+
+      // Create run WITHOUT providing vars but WITH checkEnv: true
+      const data = await createTestRun(composeId, "Test with checkEnv", {
+        checkEnv: true,
+      });
+
+      expect(data.status).toBe("failed");
+
+      // Verify error message
+      const run = await getTestRun(data.runId);
+      expect(run.error).toMatch(/Missing required template variables/i);
+      expect(run.error).toContain("MY_VAR");
+    });
+
+    it("should succeed with checkEnv when all vars are provided", async () => {
+      // Create compose that requires vars
+      const { composeId } = await createTestCompose(
+        `vars-check-ok-${Date.now()}`,
+        {
+          overrides: {
+            environment: {
+              ANTHROPIC_API_KEY: "test-key",
+              MY_VAR: "${{ vars.MY_VAR }}",
+            },
+          },
+        },
+      );
+
+      // Create run WITH vars AND checkEnv: true
+      const data = await createTestRun(
+        composeId,
+        "Test with vars and checkEnv",
+        {
+          vars: { MY_VAR: "value" },
+          checkEnv: true,
+        },
+      );
+
+      expect(data.status).toBe("running");
     });
   });
 });
