@@ -7,16 +7,19 @@ use crate::deps::{FIRECRACKER_VERSION, KERNEL_VERSION};
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::{HomePaths, RootfsPaths};
 
+pub const DEFAULT_VCPU: u32 = 2;
+pub const DEFAULT_MEMORY_MB: u32 = 2048;
+
 #[derive(Args, Clone)]
 pub struct SnapshotArgs {
     /// SHA-256 hash of the rootfs inputs (output of `rootfs`).
     #[arg(long)]
     pub rootfs_hash: String,
     /// Number of vCPUs for the snapshot VM.
-    #[arg(long, default_value_t = 2)]
+    #[arg(long, default_value_t = DEFAULT_VCPU)]
     pub vcpu: u32,
     /// Memory size in MiB for the snapshot VM.
-    #[arg(long, default_value_t = 2048)]
+    #[arg(long, default_value_t = DEFAULT_MEMORY_MB)]
     pub memory_mb: u32,
 }
 

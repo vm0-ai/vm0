@@ -2,17 +2,17 @@ use clap::Args;
 
 use crate::error::RunnerResult;
 use crate::rootfs::RootfsArgs;
-use crate::snapshot::SnapshotArgs;
+use crate::snapshot::{DEFAULT_MEMORY_MB, DEFAULT_VCPU, SnapshotArgs};
 
 #[derive(Args)]
 pub struct BuildArgs {
     #[command(flatten)]
     rootfs: RootfsArgs,
     /// Number of vCPUs for the snapshot VM.
-    #[arg(long, default_value_t = 2)]
+    #[arg(long, default_value_t = DEFAULT_VCPU)]
     vcpu: u32,
     /// Memory size in MiB for the snapshot VM.
-    #[arg(long, default_value_t = 2048)]
+    #[arg(long, default_value_t = DEFAULT_MEMORY_MB)]
     memory_mb: u32,
 }
 
