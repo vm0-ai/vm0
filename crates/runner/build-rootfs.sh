@@ -89,11 +89,7 @@ check_dependencies() {
   fi
 
   if ! command -v mksquashfs &> /dev/null; then
-    echo "[INSTALL] Installing squashfs-tools..."
-    sudo apt-get update && sudo apt-get install -y squashfs-tools
-    if ! command -v mksquashfs &> /dev/null; then
-      missing+=("mksquashfs")
-    fi
+    missing+=("mksquashfs (apt-get install squashfs-tools)")
   fi
 
   if [[ ${#missing[@]} -gt 0 ]]; then
