@@ -50,6 +50,22 @@ cleanup() {
 trap cleanup EXIT
 
 # ---------------------------------------------------------------------------
+# Dependency checks
+# ---------------------------------------------------------------------------
+
+missing=()
+for cmd in sudo mount umount stat mktemp sed grep; do
+  if ! command -v "$cmd" &> /dev/null; then
+    missing+=("$cmd")
+  fi
+done
+
+if [[ ${#missing[@]} -gt 0 ]]; then
+  echo "error: missing required dependencies: ${missing[*]}" >&2
+  exit 1
+fi
+
+# ---------------------------------------------------------------------------
 # Verification
 # ---------------------------------------------------------------------------
 
