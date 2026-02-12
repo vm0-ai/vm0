@@ -942,16 +942,18 @@ async function executeSchedule(
     userId: compose.userId,
   };
 
-  // Email schedule notification callback
-  await globalThis.services.db.insert(agentRunCallbacks).values({
-    runId: run.id,
-    url: `${getApiUrl()}/api/internal/callbacks/email/schedule`,
-    encryptedSecret: encryptCredentialValue(
-      generateCallbackSecret(),
-      SECRETS_ENCRYPTION_KEY,
-    ),
-    payload: callbackPayload,
-  });
+  // Email schedule notification callback (only if Resend is configured)
+  if (globalThis.services.env.RESEND_API_KEY) {
+    await globalThis.services.db.insert(agentRunCallbacks).values({
+      runId: run.id,
+      url: `${getApiUrl()}/api/internal/callbacks/email/schedule`,
+      encryptedSecret: encryptCredentialValue(
+        generateCallbackSecret(),
+        SECRETS_ENCRYPTION_KEY,
+      ),
+      payload: callbackPayload,
+    });
+  }
 
   // Slack schedule DM notification callback
   await globalThis.services.db.insert(agentRunCallbacks).values({
