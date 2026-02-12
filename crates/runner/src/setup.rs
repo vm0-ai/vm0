@@ -5,45 +5,14 @@ use std::path::Path;
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
 
+use crate::deps::{
+    FIRECRACKER_SHA256_AARCH64, FIRECRACKER_SHA256_X86_64, FIRECRACKER_VERSION,
+    KERNEL_SHA256_AARCH64, KERNEL_SHA256_X86_64, KERNEL_VERSION, MITMDUMP_SHA256_AARCH64,
+    MITMDUMP_SHA256_X86_64, MITMDUMP_TAR_ENTRY, MITMPROXY_VERSION, firecracker_tar_entry,
+    firecracker_url, kernel_url, mitmdump_url,
+};
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
-
-const FIRECRACKER_VERSION: &str = "v1.14.1";
-const KERNEL_VERSION: &str = "6.1.155";
-const MITMPROXY_VERSION: &str = "12.2.1";
-
-// SHA256 checksums for installed artifacts, keyed by arch.
-const FIRECRACKER_SHA256_X86_64: &str =
-    "ef68f03e2dcaa4c07347a4b11989bedb350c982e62da7a3f74bc40f4f840e0ce";
-const FIRECRACKER_SHA256_AARCH64: &str =
-    "d1bc4cbd166a3b572cdb55019634aed48a5426e2253f126b18654596367d2bf4";
-const KERNEL_SHA256_X86_64: &str =
-    "e41c7048bd2475e7e788153823fcb9166a7e0b78c4c443bd6446d015fa735f53";
-const KERNEL_SHA256_AARCH64: &str =
-    "61baeae1ac6197be4fc5c71fa78df266acdc33c54570290d2f611c2b42c105be";
-const MITMDUMP_SHA256_X86_64: &str =
-    "0adfd86a006b593dce745b989f305f14acd94edadf7f998b6985555b44838167";
-const MITMDUMP_SHA256_AARCH64: &str =
-    "48fb2cd30945f03faa5cc2797dd6e5762f09ebe8754da87ac8c372dc82e694df";
-
-/// "v1.14.1" → "v1.14"
-const FIRECRACKER_MINOR: &str = strip_patch(FIRECRACKER_VERSION);
-
-#[allow(clippy::panic, clippy::indexing_slicing)] // compile-time only
-const fn strip_patch(version: &str) -> &str {
-    let bytes = version.as_bytes();
-    let mut i = bytes.len();
-    while i > 0 {
-        i -= 1;
-        if bytes[i] == b'.' {
-            // SAFETY: splitting a UTF-8 str at an ASCII '.' boundary yields valid UTF-8
-            return unsafe {
-                std::str::from_utf8_unchecked(std::slice::from_raw_parts(bytes.as_ptr(), i))
-            };
-        }
-    }
-    panic!("FIRECRACKER_VERSION must be in vMAJOR.MINOR.PATCH format")
-}
 
 pub async fn run_setup() -> RunnerResult<()> {
     let arch = check_architecture()?;
@@ -393,14 +362,12 @@ async fn download_firecracker(paths: &HomePaths, arch: &str) -> RunnerResult<()>
         return Ok(());
     }
 
-    let url = format!(
-        "https://github.com/firecracker-microvm/firecracker/releases/download/{FIRECRACKER_VERSION}/firecracker-{FIRECRACKER_VERSION}-{arch}.tgz"
-    );
+    let url = firecracker_url(arch);
     tracing::info!("downloading firecracker from {url}");
 
     let tarball_path = bin_path.with_extension(format!("tgz.{}", std::process::id()));
     let tmp_path = bin_path.with_extension(format!("tmp.{}", std::process::id()));
-    let fc_entry = format!("firecracker-{FIRECRACKER_VERSION}-{arch}");
+    let fc_entry = firecracker_tar_entry(arch);
     let sha_hex =
         download_and_extract(&url, "firecracker", &fc_entry, &tarball_path, &tmp_path).await?;
 
@@ -426,9 +393,7 @@ async fn download_kernel(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
         return Ok(());
     }
 
-    let url = format!(
-        "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/{FIRECRACKER_MINOR}/{arch}/vmlinux-{KERNEL_VERSION}"
-    );
+    let url = kernel_url(arch);
     tracing::info!("downloading kernel from {url}");
 
     let tmp_path = kernel_path.with_extension(format!("tmp.{}", std::process::id()));
@@ -456,15 +421,19 @@ async fn download_mitmdump(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
         return Ok(());
     }
 
-    let url = format!(
-        "https://downloads.mitmproxy.org/{MITMPROXY_VERSION}/mitmproxy-{MITMPROXY_VERSION}-linux-{arch}.tar.gz"
-    );
+    let url = mitmdump_url(arch);
     tracing::info!("downloading mitmdump from {url}");
 
     let tarball_path = bin_path.with_extension(format!("tgz.{}", std::process::id()));
     let tmp_path = bin_path.with_extension(format!("tmp.{}", std::process::id()));
-    let sha_hex =
-        download_and_extract(&url, "mitmdump", "mitmdump", &tarball_path, &tmp_path).await?;
+    let sha_hex = download_and_extract(
+        &url,
+        "mitmdump",
+        MITMDUMP_TAR_ENTRY,
+        &tarball_path,
+        &tmp_path,
+    )
+    .await?;
 
     verify_and_install(
         &sha_hex,

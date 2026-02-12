@@ -1,5 +1,6 @@
 mod api;
 mod build_rootfs;
+mod deps;
 mod error;
 mod executor;
 mod paths;
