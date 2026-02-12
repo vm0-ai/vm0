@@ -1,13 +1,13 @@
 ---
 title: Slack
-description: Link VM0 agents to Slack and chat with them in any channel
+description: Connect VM0 agents to Slack and chat with them in any channel
 ---
 
 The VM0 Slack integration brings your agents directly into Slack. Once connected, you can mention `@VM0` in any channel or send a direct message to interact with your agents through natural conversation.
 
 ## Use Cases
 
-- **Team Q&A** — Link a knowledge-base agent and let anyone in the channel ask questions
+- **Team Q&A** — Connect a knowledge-base agent and let anyone in the channel ask questions
 - **Automated workflows** — Trigger agent tasks from Slack conversations without switching to the terminal
 - **Collaborative debugging** — Share context in a thread and let the agent help investigate
 - **Parallel task execution** — Kick off agent tasks in Slack while you continue other work
@@ -17,7 +17,6 @@ The VM0 Slack integration brings your agents directly into Slack. Once connected
 | Requirement | Details |
 | :--- | :--- |
 | VM0 Account | Sign up at [vm0.ai](https://www.vm0.ai) if you don't have one |
-| An Agent | Complete the [Quick Start](/docs/quick-start) guide to create your first agent |
 | Slack Workspace | Admin access to [install the VM0 app](https://slack.com/oauth/v2/authorize?client_id=9860643978390.10448672115104&scope=app_mentions:read,channels:history,channels:read,chat:write,commands,groups:history,im:history,im:write,reactions:write,users:read&user_scope=) in your workspace |
 
 ## Setup
@@ -33,7 +32,7 @@ A workspace administrator must [install the VM0 app](https://slack.com/oauth/v2/
 
 ### 2. Connect Your VM0 Account
 
-After the app is installed, connect your VM0 account in Slack. You can do this either by running the slash command in any channel where VM0 is present:
+After the app is installed, connect your VM0 account to Slack. You can do this either by running the slash command in any channel where VM0 is present:
 
 ```
 /vm0 connect
@@ -41,22 +40,16 @@ After the app is installed, connect your VM0 account in Slack. You can do this e
 
 Or by opening the VM0 App Home in Slack and clicking the **Connect** button.
 
-Both options open a browser flow to complete the authentication.
+Both options open a browser flow where you sign in to your VM0 account. During the connect flow:
 
-### 3. Link an Agent
+1. If no model provider is configured, you'll be prompted to set one up first (e.g. an Anthropic API key).
+2. The workspace admin can select which agent to use for the workspace. Non-admin users see the workspace's default agent.
+3. Click **Authorize** to complete the connection.
 
-Link an agent from your VM0 account to your Slack workspace:
-
-```
-/vm0 agent link
-```
-
-This opens a dialog where you select an agent. If the agent requires a model provider, secrets, or environment variables (e.g. API keys), you'll be prompted to configure them during this step.
-
-Once linked, the agent is available to you in any channel where `@VM0` is present.
+Once connected, the selected agent is available to everyone in any channel where `@VM0` is present.
 
 <Callout type="info">
-You can also use [`/vm0 agent compose`](#slash-commands) to create an agent directly from a public GitHub URL, like [this Hacker News agent](https://github.com/vm0-ai/vm0-cookbooks/tree/main/examples/201-hackernews).
+The workspace admin can change the workspace agent at any time via `/vm0 settings` or from the [Settings](/docs/integrations/slack#settings) page on the VM0 Platform.
 </Callout>
 
 ## How It Works
@@ -73,7 +66,7 @@ A thinking reaction appears while the agent processes your request.
 
 ### Direct Messages
 
-You can also DM the VM0 bot directly for private, one-on-one interactions. In DMs, all messages are routed to your linked agent automatically.
+You can also DM the VM0 bot directly for private, one-on-one interactions. In DMs, all messages are routed to your agent automatically.
 
 ### Thread Context
 
@@ -85,24 +78,28 @@ When you mention `@VM0` in a thread, it gathers context from all messages in tha
 | :--- | :--- |
 | `/vm0 connect` | Connect your Slack account to VM0 |
 | `/vm0 disconnect` | Disconnect your VM0 account |
-| `/vm0 agent compose` | Compose an agent from a public GitHub URL (e.g. [this Hacker News agent](https://github.com/vm0-ai/vm0-cookbooks/tree/main/examples/201-hackernews)). <br/> The repository must contain a [`vm0.yaml`](/docs/reference/configuration/vm0-yaml) configuration file — see the [Quick Start](/docs/quick-start) guide for details on creating agents. |
-| `/vm0 agent link` | Link an existing agent |
-| `/vm0 agent unlink` | Unlink an agent |
-| `/vm0 agent update` | Update agent configuration |
+| `/vm0 settings` | Open the VM0 Platform to configure secrets, variables, and the workspace agent |
 | `/vm0 help` | Show available commands |
 
 ## App Home
 
-The App Home tab in Slack shows your connection status, linked agents, and quick-reference commands. Open it by clicking "VM0" in your Slack Apps section.
+The App Home tab in Slack shows your connection status, the workspace agent, and quick-reference commands. Open it by clicking "VM0" in your Slack Apps section.
+
+## Settings
+
+Use `/vm0 settings` to open the VM0 Platform settings page where you can:
+
+- Configure secrets and environment variables for your agent
+- Select or change the workspace agent (admin only)
 
 ## Troubleshooting
 
 ### Agent not responding
 
 1. Verify your VM0 account is connected — run `/vm0 connect`
-2. Check that your agent is linked — run `/vm0 agent link`
+2. Check that a model provider is configured — you'll be prompted during connect if one is missing
 
 ### Authentication errors
 
-1. Run `/vm0 disconnect` then `/vm0 connect` to re-link your account
+1. Run `/vm0 disconnect` then `/vm0 connect` to reconnect your account
 2. Verify your VM0 account is active
