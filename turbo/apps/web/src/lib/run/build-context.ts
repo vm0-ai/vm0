@@ -638,6 +638,8 @@ export interface BuildContextParams {
   vars?: Record<string, string>;
   secrets?: Record<string, string>;
   volumeVersions?: Record<string, string>;
+  // Pre-loaded compose content — skips DB lookup in new-run path if provided
+  agentCompose?: unknown;
   // Required
   prompt: string;
   runId: string;
@@ -869,9 +871,11 @@ export async function buildExecutionContext(
       `Resolution applied: artifact=${artifactName}@${artifactVersion}`,
     );
   }
-  // Step 3: New run - load agent compose version if agentComposeVersionId provided (no conversation)
+  // Step 3: New run - use pre-loaded compose or load from DB
   else if (agentComposeVersionId) {
-    agentCompose = await loadAgentComposeForNewRun(agentComposeVersionId);
+    agentCompose =
+      params.agentCompose ??
+      (await loadAgentComposeForNewRun(agentComposeVersionId));
 
     // For new runs, derive secretNames from provided secrets
     if (secrets) {
