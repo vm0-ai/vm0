@@ -5,6 +5,7 @@ import { badRequest } from "../errors";
 interface UserPreferences {
   timezone: string | null;
   notifyEmail: boolean;
+  notifySlack: boolean;
 }
 
 /**
@@ -27,13 +28,18 @@ export async function getUserPreferences(
   clerkUserId: string,
 ): Promise<UserPreferences> {
   const [scope] = await globalThis.services.db
-    .select({ timezone: scopes.timezone, notifyEmail: scopes.notifyEmail })
+    .select({
+      timezone: scopes.timezone,
+      notifyEmail: scopes.notifyEmail,
+      notifySlack: scopes.notifySlack,
+    })
     .from(scopes)
     .where(and(eq(scopes.ownerId, clerkUserId), eq(scopes.type, "personal")));
 
   return {
     timezone: scope?.timezone ?? null,
     notifyEmail: scope?.notifyEmail ?? false,
+    notifySlack: scope?.notifySlack ?? true,
   };
 }
 
@@ -43,7 +49,7 @@ export async function getUserPreferences(
  */
 export async function updateUserPreferences(
   clerkUserId: string,
-  prefs: { timezone?: string; notifyEmail?: boolean },
+  prefs: { timezone?: string; notifyEmail?: boolean; notifySlack?: boolean },
 ): Promise<UserPreferences> {
   if (prefs.timezone !== undefined) {
     if (!isValidTimezone(prefs.timezone)) {
@@ -58,16 +64,24 @@ export async function updateUserPreferences(
   if (prefs.notifyEmail !== undefined) {
     setValues.notifyEmail = prefs.notifyEmail;
   }
+  if (prefs.notifySlack !== undefined) {
+    setValues.notifySlack = prefs.notifySlack;
+  }
 
   const [updated] = await globalThis.services.db
     .update(scopes)
     .set(setValues)
     .where(and(eq(scopes.ownerId, clerkUserId), eq(scopes.type, "personal")))
-    .returning({ timezone: scopes.timezone, notifyEmail: scopes.notifyEmail });
+    .returning({
+      timezone: scopes.timezone,
+      notifyEmail: scopes.notifyEmail,
+      notifySlack: scopes.notifySlack,
+    });
 
   return {
     timezone: updated?.timezone ?? null,
     notifyEmail: updated?.notifyEmail ?? false,
+    notifySlack: updated?.notifySlack ?? true,
   };
 }
 

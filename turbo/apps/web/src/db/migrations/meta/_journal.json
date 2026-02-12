@@ -610,6 +610,13 @@
       "when": 1771100000000,
       "tag": "0086_add_notify_email",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1771200000000,
+      "tag": "0087_add_notify_slack",
+      "breakpoints": true
     }
   ]
 }

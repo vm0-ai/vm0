@@ -38,6 +38,7 @@ describe("GET /api/user/preferences", () => {
     expect(response.status).toBe(200);
     expect(data.timezone).toBeNull();
     expect(data.notifyEmail).toBe(false);
+    expect(data.notifySlack).toBe(true);
   });
 
   it("should return saved timezone after update", async () => {
@@ -241,6 +242,56 @@ describe("PUT /api/user/preferences", () => {
     expect(response.status).toBe(200);
     expect(data.timezone).toBe("Europe/Berlin");
     expect(data.notifyEmail).toBe(true);
+  });
+
+  it("should update notifySlack to false", async () => {
+    await context.setupUser();
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notifySlack: false }),
+      },
+    );
+    const response = await PUT(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.notifySlack).toBe(false);
+  });
+
+  it("should update notifySlack independently without affecting other preferences", async () => {
+    await context.setupUser();
+
+    // Set timezone and notifyEmail first
+    const setup = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ timezone: "Europe/Berlin", notifyEmail: true }),
+      },
+    );
+    await PUT(setup);
+
+    // Update only notifySlack
+    const request = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notifySlack: false }),
+      },
+    );
+    const response = await PUT(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.timezone).toBe("Europe/Berlin");
+    expect(data.notifyEmail).toBe(true);
+    expect(data.notifySlack).toBe(false);
   });
 
   it("should reject request with no preferences", async () => {

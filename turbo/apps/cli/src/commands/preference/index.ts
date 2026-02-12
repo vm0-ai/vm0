@@ -28,14 +28,14 @@ function isValidTimezone(timezone: string): boolean {
 }
 
 /**
- * Parse --notify-email flag value (on/off)
+ * Parse on/off flag value
  */
-function parseNotifyEmail(value: string): boolean {
+function parseOnOff(flag: string, value: string): boolean {
   const lower = value.toLowerCase();
   if (lower === "on" || lower === "true" || lower === "1") return true;
   if (lower === "off" || lower === "false" || lower === "0") return false;
   throw new Error(
-    `Invalid value for --notify-email: "${value}". Use "on" or "off".`,
+    `Invalid value for --${flag}: "${value}". Use "on" or "off".`,
   );
 }
 
@@ -45,6 +45,7 @@ function parseNotifyEmail(value: string): boolean {
 function displayPreferences(prefs: {
   timezone: string | null;
   notifyEmail: boolean;
+  notifySlack: boolean;
 }): void {
   console.log(chalk.bold("Current preferences:"));
   console.log(
@@ -53,113 +54,176 @@ function displayPreferences(prefs: {
   console.log(
     `  Email notify:  ${prefs.notifyEmail ? chalk.green("on") : chalk.dim("off")}`,
   );
+  console.log(
+    `  Slack notify:  ${prefs.notifySlack ? chalk.green("on") : chalk.dim("off")}`,
+  );
+}
+
+interface PreferenceOpts {
+  timezone?: string;
+  notifyEmail?: string;
+  notifySlack?: string;
+}
+
+/**
+ * Build updates from CLI flags, exiting on invalid input
+ */
+function buildUpdates(opts: PreferenceOpts): {
+  timezone?: string;
+  notifyEmail?: boolean;
+  notifySlack?: boolean;
+} | null {
+  const hasTimezone = opts.timezone !== undefined;
+  const hasNotifyEmail = opts.notifyEmail !== undefined;
+  const hasNotifySlack = opts.notifySlack !== undefined;
+
+  if (!hasTimezone && !hasNotifyEmail && !hasNotifySlack) return null;
+
+  const updates: {
+    timezone?: string;
+    notifyEmail?: boolean;
+    notifySlack?: boolean;
+  } = {};
+
+  if (hasTimezone) {
+    if (!isValidTimezone(opts.timezone!)) {
+      console.error(chalk.red(`Invalid timezone: ${opts.timezone}`));
+      console.error(
+        chalk.dim(
+          "  Use an IANA timezone identifier (e.g., America/New_York, Asia/Shanghai)",
+        ),
+      );
+      process.exit(1);
+    }
+    updates.timezone = opts.timezone;
+  }
+
+  if (hasNotifyEmail) {
+    try {
+      updates.notifyEmail = parseOnOff("notify-email", opts.notifyEmail!);
+    } catch (err) {
+      console.error(chalk.red((err as Error).message));
+      process.exit(1);
+    }
+  }
+
+  if (hasNotifySlack) {
+    try {
+      updates.notifySlack = parseOnOff("notify-slack", opts.notifySlack!);
+    } catch (err) {
+      console.error(chalk.red((err as Error).message));
+      process.exit(1);
+    }
+  }
+
+  return updates;
+}
+
+/**
+ * Print confirmation after a successful update
+ */
+function printUpdateResult(
+  updates: { timezone?: string; notifyEmail?: boolean; notifySlack?: boolean },
+  result: {
+    timezone: string | null;
+    notifyEmail: boolean;
+    notifySlack: boolean;
+  },
+): void {
+  if (updates.timezone !== undefined) {
+    console.log(
+      chalk.green(
+        `Timezone set to ${chalk.cyan(result.timezone ?? updates.timezone)}`,
+      ),
+    );
+  }
+  if (updates.notifyEmail !== undefined) {
+    console.log(
+      chalk.green(
+        `Email notifications ${result.notifyEmail ? "enabled" : "disabled"}`,
+      ),
+    );
+  }
+  if (updates.notifySlack !== undefined) {
+    console.log(
+      chalk.green(
+        `Slack notifications ${result.notifySlack ? "enabled" : "disabled"}`,
+      ),
+    );
+  }
+}
+
+/**
+ * Interactive prompts when no flags provided
+ */
+async function interactiveSetup(prefs: {
+  timezone: string | null;
+  notifyEmail: boolean;
+}): Promise<void> {
+  if (!prefs.timezone) {
+    const detectedTz = detectTimezone();
+    console.log(chalk.dim(`\nSystem timezone detected: ${detectedTz}`));
+    const tz = await promptText(
+      "Set timezone? (enter timezone or leave empty to skip)",
+      detectedTz,
+    );
+    if (tz?.trim()) {
+      if (!isValidTimezone(tz.trim())) {
+        console.error(chalk.red(`Invalid timezone: ${tz.trim()}`));
+        process.exit(1);
+      }
+      await updateUserPreferences({ timezone: tz.trim() });
+      console.log(chalk.green(`Timezone set to ${chalk.cyan(tz.trim())}`));
+    }
+  }
+
+  if (!prefs.notifyEmail) {
+    const enable = await promptConfirm(
+      "\nEnable email notifications for scheduled runs?",
+      false,
+    );
+    if (enable) {
+      await updateUserPreferences({ notifyEmail: true });
+      console.log(chalk.green("Email notifications enabled"));
+    }
+  }
 }
 
 /**
  * vm0 preference
  *
- * View or update user preferences (timezone, email notifications).
+ * View or update user preferences (timezone, notifications).
  */
 export const preferenceCommand = new Command()
   .name("preference")
   .description("View or update your preferences")
   .option("--timezone <timezone>", "IANA timezone (e.g., America/New_York)")
   .option("--notify-email <on|off>", "Enable or disable email notifications")
+  .option("--notify-slack <on|off>", "Enable or disable Slack notifications")
   .action(
-    withErrorHandler(
-      async (opts: { timezone?: string; notifyEmail?: string }) => {
-        const hasTimezone = opts.timezone !== undefined;
-        const hasNotifyEmail = opts.notifyEmail !== undefined;
+    withErrorHandler(async (opts: PreferenceOpts) => {
+      const updates = buildUpdates(opts);
 
-        // If flags provided, update preferences
-        if (hasTimezone || hasNotifyEmail) {
-          const updates: { timezone?: string; notifyEmail?: boolean } = {};
+      if (updates) {
+        const result = await updateUserPreferences(updates);
+        printUpdateResult(updates, result);
+        return;
+      }
 
-          if (hasTimezone) {
-            if (!isValidTimezone(opts.timezone!)) {
-              console.error(chalk.red(`Invalid timezone: ${opts.timezone}`));
-              console.error(
-                chalk.dim(
-                  "  Use an IANA timezone identifier (e.g., America/New_York, Asia/Shanghai)",
-                ),
-              );
-              process.exit(1);
-            }
-            updates.timezone = opts.timezone;
-          }
+      // No flags: display current preferences
+      const prefs = await getUserPreferences();
+      displayPreferences(prefs);
 
-          if (hasNotifyEmail) {
-            try {
-              updates.notifyEmail = parseNotifyEmail(opts.notifyEmail!);
-            } catch (err) {
-              console.error(chalk.red((err as Error).message));
-              process.exit(1);
-            }
-          }
-
-          const result = await updateUserPreferences(updates);
-
-          if (updates.timezone !== undefined) {
-            console.log(
-              chalk.green(
-                `Timezone set to ${chalk.cyan(result.timezone ?? updates.timezone)}`,
-              ),
-            );
-          }
-          if (updates.notifyEmail !== undefined) {
-            console.log(
-              chalk.green(
-                `Email notifications ${result.notifyEmail ? "enabled" : "disabled"}`,
-              ),
-            );
-          }
-          return;
-        }
-
-        // No flags: display current preferences
-        const prefs = await getUserPreferences();
-        displayPreferences(prefs);
-
-        // Interactive mode: offer to change settings
-        if (isInteractive()) {
-          if (!prefs.timezone) {
-            const detectedTz = detectTimezone();
-            console.log(chalk.dim(`\nSystem timezone detected: ${detectedTz}`));
-            const tz = await promptText(
-              "Set timezone? (enter timezone or leave empty to skip)",
-              detectedTz,
-            );
-            if (tz?.trim()) {
-              if (!isValidTimezone(tz.trim())) {
-                console.error(chalk.red(`Invalid timezone: ${tz.trim()}`));
-                process.exit(1);
-              }
-              await updateUserPreferences({ timezone: tz.trim() });
-              console.log(
-                chalk.green(`Timezone set to ${chalk.cyan(tz.trim())}`),
-              );
-            }
-          }
-
-          if (!prefs.notifyEmail) {
-            const enable = await promptConfirm(
-              "\nEnable email notifications for scheduled runs?",
-              false,
-            );
-            if (enable) {
-              await updateUserPreferences({ notifyEmail: true });
-              console.log(chalk.green("Email notifications enabled"));
-            }
-          }
-        } else if (!prefs.timezone) {
-          console.log();
-          console.log(
-            `To set timezone: ${chalk.cyan("vm0 preference --timezone <timezone>")}`,
-          );
-          console.log(
-            chalk.dim("Example: vm0 preference --timezone America/New_York"),
-          );
-        }
-      },
-    ),
+      if (isInteractive()) {
+        await interactiveSetup(prefs);
+      } else if (!prefs.timezone) {
+        console.log();
+        console.log(
+          `To set timezone: ${chalk.cyan("vm0 preference --timezone <timezone>")}`,
+        );
+        console.log(
+          chalk.dim("Example: vm0 preference --timezone America/New_York"),
+        );
+      }
+    }),
   );

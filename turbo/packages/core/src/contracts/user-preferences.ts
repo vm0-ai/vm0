@@ -10,6 +10,7 @@ const c = initContract();
 export const userPreferencesResponseSchema = z.object({
   timezone: z.string().nullable(),
   notifyEmail: z.boolean(),
+  notifySlack: z.boolean(),
 });
 
 export type UserPreferencesResponse = z.infer<
@@ -23,9 +24,13 @@ export const updateUserPreferencesRequestSchema = z
   .object({
     timezone: z.string().min(1).optional(),
     notifyEmail: z.boolean().optional(),
+    notifySlack: z.boolean().optional(),
   })
   .refine(
-    (data) => data.timezone !== undefined || data.notifyEmail !== undefined,
+    (data) =>
+      data.timezone !== undefined ||
+      data.notifyEmail !== undefined ||
+      data.notifySlack !== undefined,
     {
       message: "At least one preference must be provided",
     },

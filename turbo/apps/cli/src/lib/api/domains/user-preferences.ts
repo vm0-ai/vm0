@@ -27,6 +27,7 @@ export async function getUserPreferences(): Promise<UserPreferencesResponse> {
 export async function updateUserPreferences(body: {
   timezone?: string;
   notifyEmail?: boolean;
+  notifySlack?: boolean;
 }): Promise<UserPreferencesResponse> {
   const config = await getClientConfig();
   const client = initClient(userPreferencesContract, config);

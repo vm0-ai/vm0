@@ -885,24 +885,25 @@ async function executeSchedule(
     userId: compose.userId,
   };
 
+  const prefs = await getUserPreferences(compose.userId);
+
   // Email schedule notification callback (only if Resend is configured AND user opted in)
-  if (globalThis.services.env.RESEND_API_KEY) {
-    const prefs = await getUserPreferences(compose.userId);
-    if (prefs.notifyEmail) {
-      callbacks.push({
-        url: `${getApiUrl()}/api/internal/callbacks/email/schedule`,
-        secret: generateCallbackSecret(),
-        payload: callbackPayload,
-      });
-    }
+  if (globalThis.services.env.RESEND_API_KEY && prefs.notifyEmail) {
+    callbacks.push({
+      url: `${getApiUrl()}/api/internal/callbacks/email/schedule`,
+      secret: generateCallbackSecret(),
+      payload: callbackPayload,
+    });
   }
 
-  // Slack schedule DM notification callback
-  callbacks.push({
-    url: `${getApiUrl()}/api/internal/callbacks/slack/schedule`,
-    secret: generateCallbackSecret(),
-    payload: callbackPayload,
-  });
+  // Slack schedule DM notification callback (only if user opted in)
+  if (prefs.notifySlack) {
+    callbacks.push({
+      url: `${getApiUrl()}/api/internal/callbacks/slack/schedule`,
+      secret: generateCallbackSecret(),
+      payload: callbackPayload,
+    });
+  }
 
   // Delegate run creation, validation, and dispatch to createRun()
   let runId: string;
