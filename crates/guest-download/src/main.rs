@@ -111,9 +111,9 @@ fn run(manifest_path: &str) -> bool {
         all_success = false;
     }
 
-    // Download artifact if present (after storages complete)
-    // Artifact download failure is non-fatal (matching JS behavior):
-    // empty artifacts may not have an archive in S3, resulting in 404.
+    // Download artifact if present (after storages complete).
+    // Only 404 is non-fatal (artifact may not exist in S3 on first run).
+    // Other errors (500, timeouts, network) are fatal.
     if let Some(artifact) = &manifest.artifact
         && is_valid_url(&artifact.archive_url)
         && let Some(url) = artifact.archive_url.as_deref()
