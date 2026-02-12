@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.37.0](https://github.com/vm0-ai/vm0/compare/web-v12.36.1...web-v12.37.0) (2026-02-12)
+
+
+### Features
+
+* add computer connector api for authenticated local tunneling via ngrok ([#2937](https://github.com/vm0-ai/vm0/issues/2937)) ([4f3fc4e](https://github.com/vm0-ai/vm0/commit/4f3fc4ebf137409a30b85b5882634a6bb8846836))
+
+
+### Bug Fixes
+
+* **api:** preserve slack admin and default agent on workspace re-install ([#2963](https://github.com/vm0-ai/vm0/issues/2963)) ([d8f26b2](https://github.com/vm0-ai/vm0/commit/d8f26b2e9146fd0923f88c7f082c2c117dfc5a79))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.13.0
+
 ## [12.36.1](https://github.com/vm0-ai/vm0/compare/web-v12.36.0...web-v12.36.1) (2026-02-12)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.13.0](https://github.com/vm0-ai/vm0/compare/core-v8.12.0...core-v8.13.0) (2026-02-12)
+
+
+### Features
+
+* add computer connector api for authenticated local tunneling via ngrok ([#2937](https://github.com/vm0-ai/vm0/issues/2937)) ([4f3fc4e](https://github.com/vm0-ai/vm0/commit/4f3fc4ebf137409a30b85b5882634a6bb8846836))
+
 ## [8.12.0](https://github.com/vm0-ai/vm0/compare/core-v8.11.0...core-v8.12.0) (2026-02-12)
 
 

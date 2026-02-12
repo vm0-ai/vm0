@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.61.0](https://github.com/vm0-ai/vm0/compare/platform-v0.60.3...platform-v0.61.0) (2026-02-12)
+
+
+### Features
+
+* add computer connector api for authenticated local tunneling via ngrok ([#2937](https://github.com/vm0-ai/vm0/issues/2937)) ([4f3fc4e](https://github.com/vm0-ai/vm0/commit/4f3fc4ebf137409a30b85b5882634a6bb8846836))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.13.0
+
 ## [0.60.3](https://github.com/vm0-ai/vm0/compare/platform-v0.60.2...platform-v0.60.3) (2026-02-12)
 
 
