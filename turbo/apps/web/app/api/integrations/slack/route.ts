@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import {
   extractVariableReferences,
   groupVariablesBySource,
@@ -49,11 +49,12 @@ export async function GET(request: Request) {
 
   const db = globalThis.services.db;
 
-  // Find user's Slack link
+  // Find user's most recent Slack link
   const [userLink] = await db
     .select()
     .from(slackUserLinks)
     .where(eq(slackUserLinks.vm0UserId, userId))
+    .orderBy(desc(slackUserLinks.createdAt))
     .limit(1);
 
   if (!userLink) {
@@ -179,11 +180,12 @@ export async function DELETE(request: Request) {
   const { SECRETS_ENCRYPTION_KEY } = env();
   const db = globalThis.services.db;
 
-  // Find user's Slack link
+  // Find user's most recent Slack link
   const [userLink] = await db
     .select()
     .from(slackUserLinks)
     .where(eq(slackUserLinks.vm0UserId, userId))
+    .orderBy(desc(slackUserLinks.createdAt))
     .limit(1);
 
   if (!userLink) {
@@ -255,11 +257,12 @@ export async function PATCH(request: Request) {
 
   const db = globalThis.services.db;
 
-  // Find user's Slack link
+  // Find user's most recent Slack link
   const [userLink] = await db
     .select()
     .from(slackUserLinks)
     .where(eq(slackUserLinks.vm0UserId, userId))
+    .orderBy(desc(slackUserLinks.createdAt))
     .limit(1);
 
   if (!userLink) {

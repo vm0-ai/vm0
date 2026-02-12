@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tokio_tungstenite::tungstenite;
@@ -75,7 +76,81 @@ pub enum Event {
     Error { code: i32, message: String },
 }
 
+/// Timing parameters that control reconnection, heartbeat, token renewal, and
+/// backpressure behavior. All fields use the same defaults as the hardcoded
+/// constants they replace, so `TimingConfig::default()` preserves existing
+/// production behavior.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct TimingConfig {
+    // -- Connection ----------------------------------------------------------
+    /// Timeout for WebSocket connect, HTTP requests, and token operations.
+    pub connect_timeout: Duration,
+    /// Timeout wrapping each individual reconnect attempt.
+    pub reconnect_timeout: Duration,
+    /// Default `max_idle_interval` when the server doesn't specify one.
+    pub default_max_idle_interval: Duration,
+    /// Default `connection_state_ttl` when the server doesn't specify one.
+    pub default_connection_state_ttl: Duration,
+
+    // -- Heartbeat -----------------------------------------------------------
+    /// Extra margin added to `max_idle_interval` for heartbeat timeout.
+    pub heartbeat_margin: Duration,
+
+    // -- Reconnection retry --------------------------------------------------
+    /// Base interval for the first retry attempt.
+    pub initial_retry_interval: Duration,
+    /// Cap on exponential backoff between retries.
+    pub max_retry_interval: Duration,
+    /// Maximum number of consecutive reconnection attempts before giving up.
+    pub max_retry_attempts: u32,
+
+    // -- Channel re-attach ---------------------------------------------------
+    /// If a channel is DETACHED again within this window after a re-attach,
+    /// a full reconnect is triggered instead.
+    pub reattach_window: Duration,
+
+    // -- Token renewal -------------------------------------------------------
+    /// How early before token expiry to start proactive renewal.
+    pub token_renewal_margin: Duration,
+    /// Delay before retrying a failed token renewal.
+    pub token_renewal_retry_delay: Duration,
+    /// Number of consecutive token renewal failures before emitting a fatal error.
+    pub max_token_renewal_failures: u32,
+
+    // -- Backpressure --------------------------------------------------------
+    /// Bounded capacity of the internal event channel (mpsc).
+    pub event_channel_capacity: usize,
+}
+
+impl Default for TimingConfig {
+    fn default() -> Self {
+        Self {
+            // Connection
+            connect_timeout: Duration::from_secs(30),
+            reconnect_timeout: Duration::from_secs(60),
+            default_max_idle_interval: Duration::from_secs(15),
+            default_connection_state_ttl: Duration::from_secs(120),
+            // Heartbeat
+            heartbeat_margin: Duration::from_secs(10),
+            // Reconnection retry
+            initial_retry_interval: Duration::from_secs(1),
+            max_retry_interval: Duration::from_secs(15),
+            max_retry_attempts: 40,
+            // Channel re-attach
+            reattach_window: Duration::from_secs(15),
+            // Token renewal
+            token_renewal_margin: Duration::from_secs(300),
+            token_renewal_retry_delay: Duration::from_secs(30),
+            max_token_renewal_failures: 3,
+            // Backpressure
+            event_channel_capacity: 64,
+        }
+    }
+}
+
 /// Configuration for [`subscribe`](crate::subscribe).
+#[non_exhaustive]
 pub struct SubscribeConfig {
     /// Callback that returns a fresh [`TokenRequest`] from your server.
     pub get_token: Box<dyn Fn() -> TokenFuture + Send + Sync>,
@@ -88,6 +163,28 @@ pub struct SubscribeConfig {
     /// Ably REST host for token exchange. Defaults to `"rest.ably.io"` when
     /// `host` is the default, otherwise falls back to the realtime host value.
     pub rest_host: Option<String>,
+    /// Override timing parameters. `None` uses [`TimingConfig::default()`].
+    pub timing: Option<TimingConfig>,
+}
+
+impl SubscribeConfig {
+    /// Create a new configuration with the required fields.
+    ///
+    /// Optional fields (`channel_params`, `host`, `rest_host`, `timing`) default
+    /// to `None` and can be set directly after construction.
+    pub fn new(
+        get_token: Box<dyn Fn() -> TokenFuture + Send + Sync>,
+        channel: impl Into<String>,
+    ) -> Self {
+        Self {
+            get_token,
+            channel: channel.into(),
+            channel_params: None,
+            host: None,
+            rest_host: None,
+            timing: None,
+        }
+    }
 }
 
 /// Errors returned by this crate.

@@ -141,6 +141,7 @@ function resolveVasVolume(
       mountPath,
       vasStorageName: storageName,
       vasVersion: version,
+      optional: volumeConfig.optional,
     },
     error: null,
   };

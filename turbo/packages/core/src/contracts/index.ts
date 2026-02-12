@@ -425,5 +425,14 @@ export {
   type ComputerConnectorCreateResponse,
 } from "./connectors";
 
+export {
+  userPreferencesContract,
+  userPreferencesResponseSchema,
+  updateUserPreferencesRequestSchema,
+  type UserPreferencesContract,
+  type UserPreferencesResponse,
+  type UpdateUserPreferencesRequest,
+} from "./user-preferences";
+
 // Public API v1 contracts (developer-friendly external API)
 export * from "./public";

@@ -13,6 +13,7 @@ clap = { workspace = true, features = ["derive", "env"] }
 nix = { workspace = true, features = ["user", "signal"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+serde_yaml_ng = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "signal", "time", "fs"] }
 tracing = { workspace = true }

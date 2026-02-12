@@ -10,5 +10,5 @@ import { Template } from "e2b";
  */
 export const template = Template()
   .fromNodeImage("24")
-  .aptInstall(["curl", "git", "ripgrep", "jq", "file"])
+  .aptInstall(["curl", "git", "ripgrep", "jq", "file", "tzdata"])
   .npmInstall("@anthropic-ai/claude-code@2.1.27", { g: true });

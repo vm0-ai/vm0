@@ -12,10 +12,9 @@ import { ProviderDialog } from "./provider-dialog.tsx";
 import { DeleteProviderDialog } from "./delete-provider-dialog.tsx";
 import { ConnectorList } from "./connector-list.tsx";
 import { DisconnectConnectorDialog } from "./disconnect-connector-dialog.tsx";
-import { SecretList } from "./secret-list.tsx";
+import { SecretsAndVariablesList } from "./secrets-and-variables-list.tsx";
 import { SecretDialog } from "./secret-dialog.tsx";
 import { DeleteSecretDialog } from "./delete-secret-dialog.tsx";
-import { VariableList } from "./variable-list.tsx";
 import { VariableDialog } from "./variable-dialog.tsx";
 import { DeleteVariableDialog } from "./delete-variable-dialog.tsx";
 import { SlackIntegrationCard } from "../integrations-page/integrations-page.tsx";
@@ -38,8 +37,9 @@ export function SettingsPage() {
           <TabsList>
             <TabsTrigger value="providers">Model Providers</TabsTrigger>
             <TabsTrigger value="connectors">Connectors</TabsTrigger>
-            <TabsTrigger value="secrets">Secrets</TabsTrigger>
-            <TabsTrigger value="variables">Variables</TabsTrigger>
+            <TabsTrigger value="secrets-and-variables">
+              Secrets and variables
+            </TabsTrigger>
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
           </TabsList>
         </Tabs>
@@ -60,17 +60,11 @@ export function SettingsPage() {
           </>
         )}
 
-        {tab === "secrets" && (
+        {tab === "secrets-and-variables" && (
           <>
-            <SecretList />
+            <SecretsAndVariablesList />
             <SecretDialog />
             <DeleteSecretDialog />
-          </>
-        )}
-
-        {tab === "variables" && (
-          <>
-            <VariableList />
             <VariableDialog />
             <DeleteVariableDialog />
           </>

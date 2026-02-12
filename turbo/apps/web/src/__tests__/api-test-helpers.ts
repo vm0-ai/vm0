@@ -19,6 +19,7 @@ import { storages, storageVersions } from "../db/schema/storage";
 import { usageDaily } from "../db/schema/usage-daily";
 import { slackComposeRequests } from "../db/schema/slack-compose-request";
 import { slackThreadSessions } from "../db/schema/slack-thread-session";
+import { emailThreadSessions } from "../db/schema/email-thread-session";
 import { agentRunCallbacks } from "../db/schema/agent-run-callback";
 import { and, eq } from "drizzle-orm";
 import { generateCallbackSecret } from "../lib/callback/hmac";
@@ -60,6 +61,12 @@ import { secrets } from "../db/schema/secret";
 import { encryptCredentialValue } from "../lib/crypto/secrets-encryption";
 import type { ConnectorType } from "@vm0/core";
 import { agentSessions } from "../db/schema/agent-session";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "../db/schema/agent-compose";
+import { conversations } from "../db/schema/conversation";
+import { uniqueId } from "./test-helpers";
 
 /**
  * Helper to create a NextRequest for testing.
@@ -422,6 +429,93 @@ export async function createTestAgentSession(
   const [session] = await globalThis.services.db
     .insert(agentSessions)
     .values({ userId, agentComposeId })
+    .returning({ id: agentSessions.id });
+  return session!;
+}
+
+/**
+ * Create a compose version for a compose.
+ * Internal helper for createTestSessionWithConversation.
+ */
+async function createTestComposeVersion(
+  composeId: string,
+  userId: string,
+): Promise<string> {
+  const versionId = uniqueId("version");
+  await globalThis.services.db.insert(agentComposeVersions).values({
+    id: versionId,
+    composeId,
+    content: { name: "test-agent", model: "claude-3-5-sonnet-20241022" },
+    createdBy: userId,
+  });
+  // Update compose to point to this version
+  await globalThis.services.db
+    .update(agentComposes)
+    .set({ headVersionId: versionId })
+    .where(eq(agentComposes.id, composeId));
+  return versionId;
+}
+
+/**
+ * Create a run record directly in the database.
+ * Internal helper for createTestSessionWithConversation.
+ */
+async function createTestRunRecord(
+  userId: string,
+  versionId: string,
+): Promise<{ id: string }> {
+  const [run] = await globalThis.services.db
+    .insert(agentRuns)
+    .values({
+      userId,
+      agentComposeVersionId: versionId,
+      status: "completed",
+      prompt: "test prompt",
+    })
+    .returning({ id: agentRuns.id });
+  return run!;
+}
+
+/**
+ * Create a conversation record for a run.
+ * Internal helper for createTestSessionWithConversation.
+ */
+async function createTestConversation(runId: string): Promise<{ id: string }> {
+  const [conversation] = await globalThis.services.db
+    .insert(conversations)
+    .values({
+      runId,
+      cliAgentType: "claude",
+      cliAgentSessionId: uniqueId("cli-session"),
+      cliAgentSessionHistory: "[]",
+    })
+    .returning({ id: conversations.id });
+  return conversation!;
+}
+
+/**
+ * Create an agent session with a linked conversation.
+ * This creates the full data chain required by validateAgentSession:
+ * compose version -> run -> conversation -> session
+ */
+export async function createTestSessionWithConversation(
+  userId: string,
+  agentComposeId: string,
+): Promise<{ id: string }> {
+  // Create compose version
+  const versionId = await createTestComposeVersion(agentComposeId, userId);
+  // Create run
+  const run = await createTestRunRecord(userId, versionId);
+  // Create conversation
+  const conversation = await createTestConversation(run.id);
+  // Create session with conversation
+  const [session] = await globalThis.services.db
+    .insert(agentSessions)
+    .values({
+      userId,
+      agentComposeId,
+      conversationId: conversation.id,
+    })
     .returning({ id: agentSessions.id });
   return session!;
 }
@@ -1551,6 +1645,58 @@ export async function findTestThreadSession(channelId: string): Promise<{
   return row ?? null;
 }
 
+// ============================================================================
+// Email Thread Session Test Helpers
+// ============================================================================
+
+/**
+ * Create an email thread session directly in the database for test setup.
+ */
+export async function createTestEmailThreadSession(params: {
+  userId: string;
+  composeId: string;
+  agentSessionId: string;
+  replyToToken: string;
+  lastEmailMessageId?: string | null;
+}): Promise<{ id: string }> {
+  const [row] = await globalThis.services.db
+    .insert(emailThreadSessions)
+    .values({
+      userId: params.userId,
+      composeId: params.composeId,
+      agentSessionId: params.agentSessionId,
+      replyToToken: params.replyToToken,
+      lastEmailMessageId: params.lastEmailMessageId ?? null,
+    })
+    .returning({ id: emailThreadSessions.id });
+  return row!;
+}
+
+/**
+ * Find an email thread session by its reply-to token.
+ */
+export async function findTestEmailThreadSession(replyToToken: string) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(emailThreadSessions)
+    .where(eq(emailThreadSessions.replyToToken, replyToToken))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * Find agent runs matching a given userId and prompt.
+ */
+export async function findTestRunsByUserAndPrompt(
+  userId: string,
+  prompt: string,
+) {
+  return globalThis.services.db
+    .select()
+    .from(agentRuns)
+    .where(and(eq(agentRuns.userId, userId), eq(agentRuns.prompt, prompt)));
+}
+
 /**
  * Create a test callback record for agent run completion
  * Returns the callback ID and the plaintext secret for signing test requests
@@ -1578,4 +1724,64 @@ export async function createTestCallback(params: {
     .returning({ id: agentRunCallbacks.id });
 
   return { callbackId: callback!.id, secret };
+}
+
+/**
+ * Find all callback records for a given run ID.
+ */
+export async function findTestCallbacksByRunId(runId: string) {
+  return globalThis.services.db
+    .select()
+    .from(agentRunCallbacks)
+    .where(eq(agentRunCallbacks.runId, runId));
+}
+
+/**
+ * Look up a full agent run record by ID for verification in tests.
+ *
+ * Direct DB read is required because the public GET /v1/runs/:id endpoint
+ * does not expose internal fields like `vars`, `secretNames`, `scheduleId`,
+ * or `lastHeartbeatAt` that integration tests need to verify.
+ */
+export async function findTestRunRecord(
+  runId: string,
+): Promise<typeof agentRuns.$inferSelect | undefined> {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .limit(1);
+  return row;
+}
+
+/**
+ * Look up agent run callback records by run ID for verification in tests.
+ *
+ * Direct DB read is required because no API endpoint exposes callback
+ * records — they are internal implementation details of the run dispatch.
+ */
+export async function findTestRunCallbacks(
+  runId: string,
+): Promise<Array<typeof agentRunCallbacks.$inferSelect>> {
+  return globalThis.services.db
+    .select()
+    .from(agentRunCallbacks)
+    .where(eq(agentRunCallbacks.runId, runId));
+}
+
+/**
+ * Find the first run that matches the given status for verification in tests.
+ *
+ * Direct DB read is required because no API endpoint supports filtering
+ * runs by status — the public API only looks up by specific run ID.
+ */
+export async function findTestRunByStatus(
+  status: string,
+): Promise<typeof agentRuns.$inferSelect | undefined> {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(agentRuns)
+    .where(eq(agentRuns.status, status))
+    .limit(1);
+  return row;
 }

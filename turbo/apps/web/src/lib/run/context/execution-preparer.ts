@@ -7,6 +7,7 @@ import type {
 import type { ExecutionContext } from "../types";
 import type { PreparedContext } from "../executors/types";
 import { prepareStorageManifest } from "../../storage/storage-service";
+import type { StorageManifest } from "../../storage/types";
 import { badRequest } from "../../errors";
 import { logger } from "../../logger";
 import { getUserScopeByClerkId } from "../../scope/scope-service";
@@ -224,7 +225,32 @@ export async function prepareForExecution(
   );
 
   // Build PreparedContext
-  const preparedContext: PreparedContext = {
+  const preparedContext = buildPreparedContext(
+    context,
+    workingDir,
+    cliAgentType,
+    runnerGroup,
+    storageManifest,
+    experimentalFirewall,
+  );
+
+  log.debug(`PreparedContext built for run ${context.runId}`);
+
+  return preparedContext;
+}
+
+/**
+ * Build PreparedContext from ExecutionContext and extracted configuration
+ */
+function buildPreparedContext(
+  context: ExecutionContext,
+  workingDir: string,
+  cliAgentType: string,
+  runnerGroup: string | null,
+  storageManifest: StorageManifest,
+  experimentalFirewall: CoreExperimentalFirewall | null,
+): PreparedContext {
+  return {
     // Identity
     runId: context.runId,
     userId: context.userId || "",
@@ -269,9 +295,8 @@ export async function prepareForExecution(
 
     // API start time for E2E timing metrics
     apiStartTime: context.apiStartTime ?? null,
+
+    // User timezone preference
+    userTimezone: context.userTimezone || null,
   };
-
-  log.debug(`PreparedContext built for run ${context.runId}`);
-
-  return preparedContext;
 }

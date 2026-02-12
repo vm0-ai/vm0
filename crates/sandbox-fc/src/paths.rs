@@ -83,4 +83,23 @@ impl SnapshotOutputPaths {
     pub fn overlay(&self) -> PathBuf {
         self.output_dir.join("overlay.ext4")
     }
+
+    /// Work directory used during snapshot creation.
+    /// Its layout is preserved as bind-mount targets during restore.
+    pub fn work_dir(&self) -> PathBuf {
+        self.output_dir.join("work")
+    }
+
+    /// Build a [`SnapshotConfig`] combining the output artifacts with
+    /// the work directory paths recorded during snapshot creation.
+    pub fn snapshot_config(&self) -> crate::SnapshotConfig {
+        let work = SandboxPaths::new(self.work_dir());
+        crate::SnapshotConfig {
+            snapshot_path: self.snapshot(),
+            memory_path: self.memory(),
+            overlay_path: self.overlay(),
+            overlay_bind_path: work.overlay(),
+            vsock_bind_dir: work.vsock_dir(),
+        }
+    }
 }

@@ -43,6 +43,9 @@ pub struct ExecutionContext {
     pub cli_agent_type: String,
     #[serde(default)]
     pub api_start_time: Option<f64>,
+    /// User's timezone preference (IANA format, e.g., "Asia/Shanghai")
+    #[serde(default)]
+    pub user_timezone: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

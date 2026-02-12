@@ -15,6 +15,7 @@ import {
   lookupThreadSession,
   buildLoginUrl,
   getWorkspaceAgent,
+  resolveSessionCompose,
 } from "./shared";
 import { logger } from "../../logger";
 
@@ -101,9 +102,10 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
     return;
   }
 
-  // 4. Resolve workspace agent
-  const agent = await getWorkspaceAgent(installation.defaultComposeId);
-  if (!agent) {
+  // 4. Resolve workspace agent (may be overridden by session below)
+  let composeId = installation.defaultComposeId;
+  const defaultAgent = await getWorkspaceAgent(composeId);
+  if (!defaultAgent) {
     await postMessage(
       client,
       context.channelId,
@@ -112,6 +114,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
     );
     return;
   }
+  let agentName = defaultAgent.name;
 
   // 5. Add thinking reaction (emoji only, no message)
   const reactionAdded = await client.reactions
@@ -143,6 +146,19 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
     });
   }
 
+  // 6b. If continuing session, use session's compose instead of workspace default
+  if (existingSessionId) {
+    const sessionCompose = await resolveSessionCompose(
+      existingSessionId,
+      userLink.vm0UserId,
+    );
+    if (sessionCompose) {
+      composeId = sessionCompose.composeId;
+      agentName = sessionCompose.agentName;
+      log.debug("Using session compose", { composeId, agentName });
+    }
+  }
+
   // 7. Fetch context: execution gets deduplicated with images
   const { executionContext } = await fetchConversationContexts(
     client,
@@ -157,8 +173,8 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
   // 8. Dispatch agent run with callback (returns immediately)
   log.debug("Dispatching agent run", { existingSessionId });
   const { status, response } = await runAgentForSlack({
-    composeId: installation.defaultComposeId,
-    agentName: agent.name,
+    composeId,
+    agentName,
     sessionId: existingSessionId,
     prompt: messageContent,
     threadContext: executionContext,
@@ -169,8 +185,8 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       threadTs,
       messageTs: context.messageTs,
       userLinkId: userLink.id,
-      agentName: agent.name,
-      composeId: installation.defaultComposeId,
+      agentName,
+      composeId,
       existingSessionId,
       reactionAdded,
     },

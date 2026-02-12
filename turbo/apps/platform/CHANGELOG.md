@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.60.2](https://github.com/vm0-ai/vm0/compare/platform-v0.60.1...platform-v0.60.2) (2026-02-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.11.0
+
+## [0.60.1](https://github.com/vm0-ai/vm0/compare/platform-v0.60.0...platform-v0.60.1) (2026-02-12)
+
+
+### Bug Fixes
+
+* **platform:** improve environment-variables-setup connector UI ([#2932](https://github.com/vm0-ai/vm0/issues/2932)) ([fbc02b1](https://github.com/vm0-ai/vm0/commit/fbc02b16f832ee35fe914210f5cd1224737bf973))
+* **platform:** persist model selection for providers with predefined models ([#2925](https://github.com/vm0-ai/vm0/issues/2925)) ([cf014c0](https://github.com/vm0-ai/vm0/commit/cf014c0a6c4a439748251023937b97f5d60dcf6c)), closes [#2923](https://github.com/vm0-ai/vm0/issues/2923)
+
+## [0.60.0](https://github.com/vm0-ai/vm0/compare/platform-v0.59.1...platform-v0.60.0) (2026-02-12)
+
+
+### Features
+
+* **slack:** redirect to provider setup after connect ([#2854](https://github.com/vm0-ai/vm0/issues/2854)) ([3701bf6](https://github.com/vm0-ai/vm0/commit/3701bf66ad61c8d2ed525e2f97547cfa4bca8d82))
+
+
+### Bug Fixes
+
+* **platform:** fix bash error overflow and markdown table light mode ([#2891](https://github.com/vm0-ai/vm0/issues/2891)) ([98c89fd](https://github.com/vm0-ai/vm0/commit/98c89fd53acfe601bc818b1b48b5d67e30676374))
+* sanitize mock data and rename platform env var ([#2912](https://github.com/vm0-ai/vm0/issues/2912)) ([b56b513](https://github.com/vm0-ai/vm0/commit/b56b513076eddc3d25b4e106e005b2ab9bc4f518))
+
+## [0.59.1](https://github.com/vm0-ai/vm0/compare/platform-v0.59.0...platform-v0.59.1) (2026-02-12)
+
+
+### Bug Fixes
+
+* **platform:** connector setup improvements and trailing ? fix ([#2857](https://github.com/vm0-ai/vm0/issues/2857)) ([5f65661](https://github.com/vm0-ai/vm0/commit/5f656610669ccc9999d709f0b8f06f6f15f4ef49))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.10.0
+
 ## [0.59.0](https://github.com/vm0-ai/vm0/compare/platform-v0.58.0...platform-v0.59.0) (2026-02-11)
 
 

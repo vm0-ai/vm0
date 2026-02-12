@@ -26,6 +26,8 @@ import * as variableSchema from "./schema/variable";
 import * as composeJobSchema from "./schema/compose-job";
 import * as connectorSchema from "./schema/connector";
 import * as usageDailySchema from "./schema/usage-daily";
+import * as emailThreadSessionSchema from "./schema/email-thread-session";
+import * as emailReplyRequestSchema from "./schema/email-reply-request";
 
 export const schema = {
   ...userSchema,
@@ -56,4 +58,6 @@ export const schema = {
   ...composeJobSchema,
   ...connectorSchema,
   ...usageDailySchema,
+  ...emailThreadSessionSchema,
+  ...emailReplyRequestSchema,
 };

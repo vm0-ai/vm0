@@ -82,7 +82,7 @@ describe("environment variables setup page", () => {
     expect(screen.getByRole("button", { name: "Connect" })).toBeInTheDocument();
   });
 
-  it("shows Connected badge when connector is already linked", async () => {
+  it("shows connected state when connector is already linked", async () => {
     setMockConnectors([makeConnector("github")]);
 
     server.use(
@@ -103,7 +103,82 @@ describe("environment variables setup page", () => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("Connected")).toBeInTheDocument();
+    // Connected state shows Disconnect button instead of Connect
+    expect(
+      screen.getByRole("button", { name: "Disconnect" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Connect" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows Disconnect button next to connected connector and removes it on click", async () => {
+    setMockConnectors([makeConnector("github")]);
+
+    server.use(
+      http.get("/api/secrets", () => {
+        return HttpResponse.json({ secrets: [] });
+      }),
+      http.get("/api/variables", () => {
+        return HttpResponse.json({ variables: [] });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/environment-variables-setup?secrets=GH_TOKEN,MY_CUSTOM_KEY",
+    });
+
+    await vi.waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+    });
+
+    // Connected state shows Disconnect button
+    const disconnectButton = screen.getByRole("button", {
+      name: "Disconnect",
+    });
+    expect(disconnectButton).toBeInTheDocument();
+
+    // Click disconnect
+    await user.click(disconnectButton);
+
+    // After disconnect, should show Connect button instead
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Connect" }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("button", { name: "Disconnect" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders manual input fields before connector cards", async () => {
+    server.use(
+      http.get("/api/secrets", () => {
+        return HttpResponse.json({ secrets: [] });
+      }),
+      http.get("/api/variables", () => {
+        return HttpResponse.json({ variables: [] });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/environment-variables-setup?secrets=GH_TOKEN,MY_CUSTOM_KEY",
+    });
+
+    await vi.waitFor(() => {
+      expect(screen.getByText("MY_CUSTOM_KEY")).toBeInTheDocument();
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+    });
+
+    // Manual field label should appear before the connector card label
+    const manualLabel = screen.getByText("MY_CUSTOM_KEY");
+    const connectorLabel = screen.getByText("GitHub");
+    const result = manualLabel.compareDocumentPosition(connectorLabel);
+    // Node.DOCUMENT_POSITION_FOLLOWING (4) means connectorLabel comes after manualLabel
+    expect(result & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("shows manual input fields for non-connector secrets", async () => {

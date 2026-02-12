@@ -11,5 +11,9 @@ tar.workspace = true
 ureq = { workspace = true, features = ["platform-verifier"] }
 guest-common.workspace = true
 
+[dev-dependencies]
+httpmock.workspace = true
+tempfile.workspace = true
+
 [lints]
 workspace = true

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { WebClient } from "@slack/web-api";
+import { Resend } from "resend";
 import { POST } from "../route";
 import {
   createTestRequest,
@@ -9,7 +9,10 @@ import {
   completeTestRun,
   createTestSchedule,
   linkRunToSchedule,
-  findTestThreadSession,
+  createTestAgentSession,
+  createTestEmailThreadSession,
+  createTestCallback,
+  findTestCallbacksByRunId,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -19,16 +22,9 @@ import {
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
 import { POST as checkpointWebhook } from "../../checkpoints/route";
-import {
-  givenLinkedSlackUser,
-  givenUserHasAgent,
-} from "../../../../../../src/__tests__/slack/api-helpers";
+import { generateReplyToken } from "../../../../../../src/lib/email/handlers/shared";
 
 const context = testContext();
-
-// Simulate real Slack behavior: when posting to a user ID (U...),
-// Slack returns the actual DM channel ID (D...) in the response.
-const MOCK_DM_CHANNEL_ID = "D-mock-dm-channel";
 
 describe("POST /api/webhooks/agent/complete", () => {
   let user: UserContext;
@@ -402,181 +398,16 @@ describe("POST /api/webhooks/agent/complete", () => {
     });
   });
 
-  describe("Schedule Notification", () => {
-    it("should send Slack DM when scheduled run completes successfully", async () => {
-      // Given a linked Slack user with an agent and a schedule
-      const { userLink } = await givenLinkedSlackUser();
-      const { binding } = await givenUserHasAgent(userLink, {
-        agentName: "scheduled-agent",
+  describe("Callback Dispatch", () => {
+    it("should dispatch registered callbacks on run completion", async () => {
+      // Register a callback for this run
+      await createTestCallback({
+        runId: testRunId,
+        url: "http://localhost/api/internal/callbacks/test",
+        payload: { testKey: "testValue" },
       });
 
-      mockClerk({ userId: userLink.vm0UserId });
-      const schedule = await createTestSchedule(
-        binding.composeId,
-        uniqueId("sched"),
-      );
-
-      // And a run linked to the schedule
-      const { runId } = await createTestRun(
-        binding.composeId,
-        "Scheduled task",
-      );
-      await linkRunToSchedule(runId, schedule.id);
-
-      // Create checkpoint (required for successful completion)
-      const token = await createTestSandboxToken(userLink.vm0UserId, runId);
-      mockClerk({ userId: null });
-      const checkpointRequest = createTestRequest(
-        "http://localhost:3000/api/webhooks/agent/checkpoints",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            runId,
-            cliAgentType: "claude-code",
-            cliAgentSessionId: "test-session",
-            cliAgentSessionHistory: JSON.stringify({ type: "test" }),
-          }),
-        },
-      );
-      await checkpointWebhook(checkpointRequest);
-
-      // Configure WebClient mock to return DM channel ID
-      const mockClient = vi.mocked(new WebClient(), true);
-      mockClient.chat.postMessage.mockClear();
-      mockClient.chat.postMessage.mockImplementation((args) => {
-        const channel = String(args.channel ?? "");
-        return Promise.resolve({
-          ok: true,
-          ts: `${Date.now()}.000000`,
-          channel: channel.startsWith("U") ? MOCK_DM_CHANNEL_ID : channel,
-        }) as never;
-      });
-
-      // When the run completes
-      const request = createTestRequest(
-        "http://localhost:3000/api/webhooks/agent/complete",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ runId, exitCode: 0 }),
-        },
-      );
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-
-      // Then the after() callback should send a Slack DM
-      await context.mocks.flushAfter();
-
-      expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
-      const callArgs = mockClient.chat.postMessage.mock.calls[0]![0] as {
-        channel: string;
-        blocks: Array<{ type: string; text?: { text: string } }>;
-      };
-      // DM is sent to the Slack user ID
-      expect(callArgs.channel).toBe(userLink.slackUserId);
-      // Message should contain the agent name and success indicator
-      const sectionTexts = callArgs.blocks
-        .filter((b) => b.type === "section")
-        .map((b) => b.text?.text ?? "");
-      expect(sectionTexts.some((t) => t.includes("completed"))).toBe(true);
-      expect(sectionTexts.some((t) => t.includes("scheduled-agent"))).toBe(
-        true,
-      );
-
-      // Thread session should be saved with the real DM channel ID (D...),
-      // not the Slack user ID (U...) that was used to send the message
-      const threadSession = await findTestThreadSession(MOCK_DM_CHANNEL_ID);
-      expect(threadSession).not.toBeNull();
-      expect(threadSession!.slackUserLinkId).toBeDefined();
-      expect(threadSession!.agentSessionId).toBeDefined();
-    });
-
-    it("should send error notification when scheduled run fails", async () => {
-      // Given a linked Slack user with an agent and a schedule
-      const { userLink } = await givenLinkedSlackUser();
-      const { binding } = await givenUserHasAgent(userLink, {
-        agentName: "my-agent",
-      });
-
-      mockClerk({ userId: userLink.vm0UserId });
-      const schedule = await createTestSchedule(
-        binding.composeId,
-        uniqueId("sched"),
-      );
-
-      // And a run linked to the schedule
-      const { runId } = await createTestRun(
-        binding.composeId,
-        "Scheduled task",
-      );
-      await linkRunToSchedule(runId, schedule.id);
-      mockClerk({ userId: null });
-
-      const token = await createTestSandboxToken(userLink.vm0UserId, runId);
-
-      // Configure WebClient mock
-      const mockClient = vi.mocked(new WebClient(), true);
-      mockClient.chat.postMessage.mockClear();
-
-      // When the run fails
-      const request = createTestRequest(
-        "http://localhost:3000/api/webhooks/agent/complete",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            runId,
-            exitCode: 1,
-            error: "Agent crashed",
-          }),
-        },
-      );
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-
-      // Then the after() callback should send an error notification
-      await context.mocks.flushAfter();
-
-      expect(mockClient.chat.postMessage).toHaveBeenCalledTimes(1);
-      const callArgs = mockClient.chat.postMessage.mock.calls[0]![0] as {
-        channel: string;
-        blocks: Array<{ type: string; text?: { text: string } }>;
-      };
-      expect(callArgs.channel).toBe(userLink.slackUserId);
-      // Message should contain error info
-      const sectionTexts = callArgs.blocks
-        .filter((b) => b.type === "section")
-        .map((b) => b.text?.text ?? "");
-      expect(sectionTexts.some((t) => t.includes("failed"))).toBe(true);
-      expect(sectionTexts.some((t) => t.includes("Agent crashed"))).toBe(true);
-    });
-
-    it("should not send notification when user has no Slack link", async () => {
-      // Given a schedule for the existing test compose (user has NO Slack link)
-      mockClerk({ userId: user.userId });
-      const schedule = await createTestSchedule(
-        testComposeId,
-        uniqueId("sched"),
-      );
-      mockClerk({ userId: null });
-
-      // Link the existing test run to the schedule
-      await linkRunToSchedule(testRunId, schedule.id);
-
-      const mockClient = vi.mocked(new WebClient(), true);
-      mockClient.chat.postMessage.mockClear();
-
-      // When the run fails
+      // When the run fails (simpler, no checkpoint needed)
       const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
         {
@@ -595,17 +426,17 @@ describe("POST /api/webhooks/agent/complete", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      // Then no Slack DM should be sent (user has no Slack link)
+      // Flush the after() callback (dispatchCallbacks)
       await context.mocks.flushAfter();
 
-      expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
+      // Verify the callback was attempted (status should be updated)
+      const callbacks = await findTestCallbacksByRunId(testRunId);
+      expect(callbacks).toHaveLength(1);
+      expect(callbacks[0]!.attempts).toBe(1);
     });
 
-    it("should not send notification for non-scheduled runs", async () => {
-      const mockClient = vi.mocked(new WebClient(), true);
-      mockClient.chat.postMessage.mockClear();
-
-      // When a non-scheduled run completes (testRunId has no scheduleId)
+    it("should register only one after() callback for dispatch", async () => {
+      // When a non-scheduled run completes (testRunId has no callbacks)
       const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
         {
@@ -624,11 +455,160 @@ describe("POST /api/webhooks/agent/complete", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      // Then only callback dispatch should be registered (no schedule notification)
-      // Callback dispatch always runs but won't post anything if no callbacks registered
+      // Only one after() callback: dispatchCallbacks
       expect(globalThis.nextAfterCallbacks).toHaveLength(1);
       await context.mocks.flushAfter();
-      expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
+    });
+
+    it("should not send notifications for non-scheduled runs without callbacks", async () => {
+      const mockResend = vi.mocked(new Resend(""), true);
+      mockResend.emails.send.mockClear();
+
+      // When a normal run completes (no callbacks registered)
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 1,
+            error: "Some error",
+          }),
+        },
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      await context.mocks.flushAfter();
+
+      // No email should be sent (no callbacks registered)
+      expect(mockResend.emails.send).not.toHaveBeenCalled();
+    });
+
+    it("should dispatch email reply callback when registered", async () => {
+      // Set up an email reply callback
+      const emailUser = await context.setupUser({ prefix: "email-cb" });
+      mockClerk({ userId: emailUser.userId });
+      const { composeId } = await createTestCompose(uniqueId("reply-agent"));
+      const agentSession = await createTestAgentSession(
+        emailUser.userId,
+        composeId,
+      );
+      const replyToken = generateReplyToken(agentSession.id);
+
+      const emailSession = await createTestEmailThreadSession({
+        userId: emailUser.userId,
+        composeId,
+        agentSessionId: agentSession.id,
+        replyToToken: replyToken,
+        lastEmailMessageId: "<original-msg-id@vm7.bot>",
+      });
+
+      const { runId } = await createTestRun(composeId, "Email reply task");
+
+      // Register a callback (as the inbound-reply handler now does)
+      await createTestCallback({
+        runId,
+        url: "http://localhost/api/internal/callbacks/email/reply",
+        payload: {
+          emailThreadSessionId: emailSession.id,
+          inboundEmailId: "inbound-email-456",
+        },
+      });
+
+      const token = await createTestSandboxToken(emailUser.userId, runId);
+      mockClerk({ userId: null });
+
+      // When the run fails
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            runId,
+            exitCode: 1,
+            error: "Agent crashed",
+          }),
+        },
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      await context.mocks.flushAfter();
+
+      // Verify the callback was dispatched (attempted)
+      const callbacks = await findTestCallbacksByRunId(runId);
+      expect(callbacks).toHaveLength(1);
+      expect(callbacks[0]!.attempts).toBe(1);
+    });
+
+    it("should dispatch schedule callbacks when registered", async () => {
+      // Use a separate user for concurrency
+      const schedUser = await context.setupUser({ prefix: "sched-cb" });
+      mockClerk({ userId: schedUser.userId });
+      const { composeId } = await createTestCompose(uniqueId("sched-agent"));
+      const schedule = await createTestSchedule(composeId, uniqueId("sched"));
+      const { runId } = await createTestRun(composeId, "Scheduled task");
+      await linkRunToSchedule(runId, schedule.id);
+
+      // Register callbacks (as executeSchedule now does)
+      await createTestCallback({
+        runId,
+        url: "http://localhost/api/internal/callbacks/email/schedule",
+        payload: {
+          scheduleId: schedule.id,
+          composeId,
+          composeName: "sched-agent",
+          userId: schedUser.userId,
+        },
+      });
+      await createTestCallback({
+        runId,
+        url: "http://localhost/api/internal/callbacks/slack/schedule",
+        payload: {
+          scheduleId: schedule.id,
+          composeId,
+          composeName: "sched-agent",
+          userId: schedUser.userId,
+        },
+      });
+
+      const token = await createTestSandboxToken(schedUser.userId, runId);
+      mockClerk({ userId: null });
+
+      // When the run fails
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            runId,
+            exitCode: 1,
+            error: "Agent crashed",
+          }),
+        },
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      await context.mocks.flushAfter();
+
+      // Verify both callbacks were dispatched (attempted)
+      const callbacks = await findTestCallbacksByRunId(runId);
+      expect(callbacks).toHaveLength(2);
+      expect(callbacks.every((c) => c.attempts === 1)).toBe(true);
     });
   });
 });

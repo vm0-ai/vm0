@@ -3,17 +3,11 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
-import { agentRuns } from "../../../db/schema/agent-run";
-import { agentRunCallbacks } from "../../../db/schema/agent-run-callback";
-import { generateSandboxToken } from "../../auth/sandbox-token";
-import { buildExecutionContext, prepareAndDispatchRun } from "../../run";
+import { createRun } from "../../run";
+import { isConcurrentRunLimit } from "../../errors";
 import { queryAxiom, getDatasetName, DATASETS } from "../../axiom";
 import { logger } from "../../logger";
-import { getUserScopeByClerkId } from "../../scope/scope-service";
-import { getSecretValues } from "../../secret/secret-service";
-import { encryptCredentialValue } from "../../crypto/secrets-encryption";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
-import { env } from "../../../env";
 
 const log = logger("slack:run-agent");
 
@@ -66,7 +60,6 @@ export async function runAgentForSlack(
     userId,
     callbackContext,
   } = params;
-  const { SECRETS_ENCRYPTION_KEY } = env();
 
   try {
     // Get compose and latest version
@@ -104,84 +97,47 @@ export async function runAgentForSlack(
       versionId = latestVersion.id;
     }
 
-    // Load secrets from user's scope
-    const scope = await getUserScopeByClerkId(userId);
-    const secrets: Record<string, string> = scope
-      ? await getSecretValues(scope.id)
-      : {};
-
     // Build the full prompt with thread context
     const fullPrompt = threadContext
       ? `${threadContext}\n\n# User Prompt\n\n${prompt}`
       : prompt;
 
-    // Create run record in database
-    const [run] = await globalThis.services.db
-      .insert(agentRuns)
-      .values({
-        userId,
-        agentComposeVersionId: versionId,
-        status: "pending",
-        prompt: fullPrompt,
-        secretNames:
-          Object.keys(secrets).length > 0 ? Object.keys(secrets) : null,
-        lastHeartbeatAt: new Date(),
-      })
-      .returning();
+    // Build callback for run completion notification
+    const callbackUrl = `${getApiUrl()}/api/internal/callbacks/slack`;
+    const callbackSecret = generateCallbackSecret();
 
-    if (!run) {
+    // Delegate all orchestration to createRun()
+    const result = await createRun({
+      userId,
+      agentComposeVersionId: versionId,
+      prompt: fullPrompt,
+      composeId: compose.id,
+      sessionId,
+      agentName,
+      callbacks: [
+        {
+          url: callbackUrl,
+          secret: callbackSecret,
+          payload: callbackContext,
+        },
+      ],
+    });
+
+    log.debug(`Run ${result.runId} dispatched for Slack agent ${agentName}`);
+
+    return {
+      status: "dispatched",
+      runId: result.runId,
+    };
+  } catch (error) {
+    if (isConcurrentRunLimit(error)) {
       return {
         status: "failed",
-        response: "Error: Failed to create run.",
+        response:
+          "You have too many concurrent runs. Please wait for existing runs to complete.",
         runId: undefined,
       };
     }
-
-    log.debug(`Created run ${run.id} for Slack agent ${agentName}`);
-
-    // Register callback for run completion
-    const callbackSecret = generateCallbackSecret();
-    const encryptedSecret = encryptCredentialValue(
-      callbackSecret,
-      SECRETS_ENCRYPTION_KEY,
-    );
-    const callbackUrl = `${getApiUrl()}/api/internal/callbacks/slack`;
-
-    await globalThis.services.db.insert(agentRunCallbacks).values({
-      runId: run.id,
-      url: callbackUrl,
-      encryptedSecret,
-      payload: callbackContext,
-    });
-
-    log.debug(`Registered callback for run ${run.id}`);
-
-    // Generate sandbox token
-    const sandboxToken = await generateSandboxToken(userId, run.id);
-
-    // Build execution context
-    const context = await buildExecutionContext({
-      sessionId,
-      agentComposeVersionId: versionId,
-      prompt: fullPrompt,
-      secrets,
-      runId: run.id,
-      sandboxToken,
-      userId,
-      agentName,
-      artifactName: "artifact", // Same default as cook command
-    });
-
-    // Dispatch run to executor
-    const dispatchResult = await prepareAndDispatchRun(context);
-    log.debug(`Run ${run.id} dispatched with status: ${dispatchResult.status}`);
-
-    // Return immediately - callback will handle the response
-    return {
-      status: "dispatched",
-      runId: run.id,
-    };
-  } catch (error) {
     log.error("Error running agent for Slack:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
     return {

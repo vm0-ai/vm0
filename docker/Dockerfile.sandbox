@@ -9,7 +9,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # System tools needed by agents
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip procps curl git ripgrep jq file \
-    ca-certificates sudo openssh-client \
+    ca-certificates sudo openssh-client tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 # Claude Code CLI

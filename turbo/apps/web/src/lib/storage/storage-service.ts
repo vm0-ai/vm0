@@ -147,36 +147,61 @@ export async function prepareStorageManifest(
     throw new Error(`Volume resolution failed: ${messages}`);
   }
 
-  // Process all volumes and artifact in parallel
-  const volumePromises = volumeResult.volumes.map(async (volume) => {
-    const { versionId, s3Key } = await resolveVersion(
-      volumeScopeId,
-      volume.vasStorageName,
-      "volume",
-      volume.vasVersion,
-    );
+  // Process all volumes in parallel, handling optional volumes gracefully
+  const volumePromises = volumeResult.volumes.map(
+    async (volume): Promise<ManifestStorage | null> => {
+      // For checkpoint resume: if volumeVersionOverrides is provided and volume is optional
+      // but NOT in the overrides, skip it (it was skipped at checkpoint time)
+      if (
+        volumeVersionOverrides &&
+        volume.optional &&
+        !(volume.name in volumeVersionOverrides)
+      ) {
+        return null;
+      }
 
-    // Generate archive URL for tar.gz
-    const archiveKey = `${s3Key}/archive.tar.gz`;
-    const archiveUrl = await generatePresignedUrl(bucketName, archiveKey);
+      try {
+        const { versionId, s3Key } = await resolveVersion(
+          volumeScopeId,
+          volume.vasStorageName,
+          "volume",
+          volume.vasVersion,
+        );
 
-    // Get archive size from S3
-    const archiveObjects = await listS3Objects(bucketName, archiveKey);
-    const archiveSize = archiveObjects[0]?.size ?? 0;
+        // Generate archive URL for tar.gz
+        const archiveKey = `${s3Key}/archive.tar.gz`;
+        const archiveUrl = await generatePresignedUrl(bucketName, archiveKey);
 
-    const manifestStorage: ManifestStorage = {
-      name: volume.name,
-      mountPath: volume.mountPath,
-      vasStorageName: volume.vasStorageName,
-      vasVersionId: versionId,
-      archiveUrl,
-      archiveSize,
-    };
+        // Get archive size from S3
+        const archiveObjects = await listS3Objects(bucketName, archiveKey);
+        const archiveSize = archiveObjects[0]?.size ?? 0;
 
-    log.debug(`Generated archive URL for volume "${volume.name}"`);
+        const manifestStorage: ManifestStorage = {
+          name: volume.name,
+          mountPath: volume.mountPath,
+          vasStorageName: volume.vasStorageName,
+          vasVersionId: versionId,
+          archiveUrl,
+          archiveSize,
+        };
 
-    return manifestStorage;
-  });
+        log.debug(`Generated archive URL for volume "${volume.name}"`);
+
+        return manifestStorage;
+      } catch (error) {
+        // For optional volumes, silently skip if not found
+        if (
+          volume.optional &&
+          error instanceof Error &&
+          error.message.includes("not found")
+        ) {
+          return null;
+        }
+        // Re-throw for required volumes
+        throw error;
+      }
+    },
+  );
 
   // Handle artifact: either from resumeArtifact or from volumeResult
   // Note: resumeArtifactMountPath is required when resumeArtifact is provided (no fallback)
@@ -239,12 +264,17 @@ export async function prepareStorageManifest(
     artifactPromise,
   ]);
 
+  // Filter out null results (skipped optional volumes)
+  const filteredStorages = storageResults.filter(
+    (s): s is ManifestStorage => s !== null,
+  );
+
   log.debug(
-    `Storage manifest prepared: ${storageResults.length} storages, ${artifact ? "1 artifact" : "no artifact"}`,
+    `Storage manifest prepared: ${filteredStorages.length} storages, ${artifact ? "1 artifact" : "no artifact"}`,
   );
 
   return {
-    storages: storageResults,
+    storages: filteredStorages,
     artifact,
   };
 }

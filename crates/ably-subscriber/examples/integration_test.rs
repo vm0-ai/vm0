@@ -313,17 +313,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let kn = key_name.to_string();
     let ks = key_secret.to_string();
 
-    let mut sub = subscribe(SubscribeConfig {
-        get_token: Box::new(move || {
+    let mut sub = subscribe(SubscribeConfig::new(
+        Box::new(move || {
             let kn = kn.clone();
             let ks = ks.clone();
             Box::pin(async move { create_token_request(&kn, &ks, 3_600_000) })
         }),
-        channel: channel.clone(),
-        channel_params: None,
-        host: None,
-        rest_host: None,
-    })
+        channel.clone(),
+    ))
     .await?;
 
     eprintln!("waiting for connection...");
@@ -408,8 +405,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let ks = key_secret.to_string();
     let call_count = Arc::new(AtomicU32::new(0));
 
-    let mut renewal_sub = subscribe(SubscribeConfig {
-        get_token: Box::new(move || {
+    let mut renewal_sub = subscribe(SubscribeConfig::new(
+        Box::new(move || {
             let kn = kn.clone();
             let ks = ks.clone();
             let cc = call_count.clone();
@@ -421,11 +418,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 create_token_request(&kn, &ks, ttl)
             })
         }),
-        channel: renewal_channel.clone(),
-        channel_params: None,
-        host: None,
-        rest_host: None,
-    })
+        renewal_channel.clone(),
+    ))
     .await?;
 
     wait_for_connected(&mut renewal_sub).await?;

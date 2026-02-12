@@ -4,9 +4,8 @@
  */
 
 export {
-  checkRunConcurrencyLimit,
   validateCheckpoint,
   validateAgentSession,
-  buildExecutionContext,
-  prepareAndDispatchRun,
+  createRun,
+  type RunDispatchError,
 } from "./run-service";

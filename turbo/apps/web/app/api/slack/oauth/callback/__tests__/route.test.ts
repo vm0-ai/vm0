@@ -72,7 +72,7 @@ describe("/api/slack/oauth/callback", () => {
 
       expect(response.status).toBe(307);
       const locationHeader = response.headers.get("Location");
-      expect(locationHeader).toContain("/slack/link");
+      expect(locationHeader).toContain("/slack/connect");
       expect(locationHeader).toContain("w=T123456");
       expect(locationHeader).toContain("u=U-installer");
     });

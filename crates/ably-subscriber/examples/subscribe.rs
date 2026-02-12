@@ -84,18 +84,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     eprintln!("subscribing to '{channel}' ...");
 
-    let mut sub = subscribe(SubscribeConfig {
-        get_token: Box::new(move || {
+    let mut config = SubscribeConfig::new(
+        Box::new(move || {
             let kn = key_name.clone();
             let ks = key_secret.clone();
             Box::pin(async move { create_token_request(&kn, &ks) })
         }),
-        channel: channel.to_string(),
-        channel_params: None,
-        host,
-        rest_host: None,
-    })
-    .await?;
+        channel.to_string(),
+    );
+    config.host = host;
+    let mut sub = subscribe(config).await?;
 
     while let Some(event) = sub.next().await {
         match &event {
