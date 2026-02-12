@@ -270,7 +270,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.status).toBe("running");
     });
 
-    it("should fail run when only some vars are provided with checkEnv", async () => {
+    it("should reject run when only some vars are provided with checkEnv", async () => {
       // Create compose that requires multiple vars
       const { composeId: multiVarsComposeId } = await createTestCompose(
         `multi-vars-${Date.now()}`,
@@ -287,20 +287,28 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       // Try to create run with only one var AND checkEnv: true
       // Vars validation only happens when checkEnv is enabled
-      const data = await createTestRun(
-        multiVarsComposeId,
-        "Test with partial vars",
-        { vars: { VAR_A: "value-a" }, checkEnv: true }, // Missing VAR_B
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: multiVarsComposeId,
+            prompt: "Test with partial vars",
+            vars: { VAR_A: "value-a" }, // Missing VAR_B
+            checkEnv: true,
+          }),
+        },
       );
 
-      expect(data.status).toBe("failed");
+      const response = await POST(request);
+      const data = await response.json();
 
-      // Verify error via API
-      const run = await getTestRun(data.runId);
-      expect(run.error).toMatch(/Missing required template variables/i);
-      expect(run.error).toContain("VAR_B");
+      // API validates template variables when checkEnv is true
+      expect(response.status).toBe(400);
+      expect(data.error.message).toContain("VAR_B");
       // VAR_A should NOT be in the error (it was provided)
-      expect(run.error).not.toContain("VAR_A");
+      expect(data.error.message).not.toContain("VAR_A");
     });
 
     it("should succeed when all required vars are provided", async () => {
@@ -1140,7 +1148,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(run.error).toContain("not found");
     });
 
-    it("should reject request when volume has missing template variable", async () => {
+    it("should reject request when volume has missing template variable with checkEnv", async () => {
       // Create compose with volume that uses a template variable
       const composeRequest = createTestRequest(
         "http://localhost:3000/api/agent/composes",
@@ -1172,8 +1180,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const composeResponse = await createComposeRoute(composeRequest);
       const compose = await composeResponse.json();
 
-      // Create run WITHOUT providing required vars
-      // This should return 400 because template vars are validated before run creation
+      // Create run WITHOUT providing required vars but WITH checkEnv: true
+      // Vars validation only happens when checkEnv is enabled
       const runRequest = createTestRequest(
         "http://localhost:3000/api/agent/runs",
         {
@@ -1182,6 +1190,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
           body: JSON.stringify({
             agentComposeId: compose.composeId,
             prompt: "Test missing var",
+            checkEnv: true,
           }),
         },
       );
@@ -1189,7 +1198,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const response = await POST(runRequest);
       const data = await response.json();
 
-      // API validates template variables before creating run
+      // API validates template variables when checkEnv is true
       expect(response.status).toBe(400);
       expect(data.error.message).toContain("userId");
     });
@@ -1308,7 +1317,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(envs?.MY_VAR).toBe("cli-value");
     });
 
-    it("should still fail when required var is neither on server nor CLI", async () => {
+    it("should still fail when required var is neither on server nor CLI with checkEnv", async () => {
       // Create compose that requires a variable that doesn't exist
       const { composeId } = await createTestCompose(uniqueId("missing-var"), {
         overrides: {
@@ -1319,7 +1328,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         },
       });
 
-      // Try to create run without providing the variable
+      // Try to create run without providing the variable but WITH checkEnv: true
+      // Vars validation only happens when checkEnv is enabled
       const request = createTestRequest(
         "http://localhost:3000/api/agent/runs",
         {
@@ -1328,6 +1338,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
           body: JSON.stringify({
             agentComposeId: composeId,
             prompt: "Test without var",
+            checkEnv: true,
           }),
         },
       );
@@ -1363,7 +1374,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.status).toBe("running");
     });
 
-    it("should fail run with missing vars when checkEnv is true", async () => {
+    it("should reject run with missing vars when checkEnv is true", async () => {
       // Create compose that requires vars
       const { composeId } = await createTestCompose(
         `vars-check-${Date.now()}`,
@@ -1378,16 +1389,28 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       );
 
       // Create run WITHOUT providing vars but WITH checkEnv: true
-      const data = await createTestRun(composeId, "Test with checkEnv", {
-        checkEnv: true,
-      });
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: composeId,
+            prompt: "Test with checkEnv",
+            checkEnv: true,
+          }),
+        },
+      );
 
-      expect(data.status).toBe("failed");
+      const response = await POST(request);
+      const data = await response.json();
 
-      // Verify error message
-      const run = await getTestRun(data.runId);
-      expect(run.error).toMatch(/Missing required template variables/i);
-      expect(run.error).toContain("MY_VAR");
+      // API validates template variables when checkEnv is true
+      expect(response.status).toBe(400);
+      expect(data.error.message).toMatch(
+        /Missing required template variables/i,
+      );
+      expect(data.error.message).toContain("MY_VAR");
     });
 
     it("should succeed with checkEnv when all vars are provided", async () => {
