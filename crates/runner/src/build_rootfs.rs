@@ -7,6 +7,7 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
 
 const BUILD_SCRIPT: &str = include_str!("../build-rootfs.sh");
+const VERIFY_SCRIPT: &str = include_str!("../verify-rootfs.sh");
 const EMBEDDED_DOCKERFILE: &str = include_str!("../rootfs.Dockerfile");
 
 const ROOTFS_FILE: &str = "rootfs.squashfs";
@@ -65,12 +66,15 @@ pub async fn run_build_rootfs(args: BuildRootfsArgs) -> RunnerResult<()> {
         .await
         .map_err(|e| RunnerError::Internal(format!("create {}: {e}", output_dir.display())))?;
 
-    // Write build script and Dockerfile to a temp directory
+    // Write scripts and Dockerfile to a temp directory
     let work_dir =
         tempfile::tempdir().map_err(|e| RunnerError::Internal(format!("create temp dir: {e}")))?;
     tokio::fs::write(work_dir.path().join("build-rootfs.sh"), BUILD_SCRIPT)
         .await
         .map_err(|e| RunnerError::Internal(format!("write build script: {e}")))?;
+    tokio::fs::write(work_dir.path().join("verify-rootfs.sh"), VERIFY_SCRIPT)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("write verify script: {e}")))?;
     tokio::fs::write(work_dir.path().join("Dockerfile"), EMBEDDED_DOCKERFILE)
         .await
         .map_err(|e| RunnerError::Internal(format!("write Dockerfile: {e}")))?;
@@ -111,15 +115,23 @@ pub async fn run_build_rootfs(args: BuildRootfsArgs) -> RunnerResult<()> {
         )));
     }
 
-    // Verify output file exists
+    // Verify rootfs contents (verify script is NOT part of the input hash)
     let rootfs_path = output_dir.join(ROOTFS_FILE);
-    let exists = tokio::fs::try_exists(&rootfs_path)
+    let verify_path = work_dir.path().join("verify-rootfs.sh");
+    let rootfs_str = rootfs_path.to_string_lossy();
+
+    let status = tokio::process::Command::new("bash")
+        .arg(&verify_path)
+        .args(["--rootfs", &rootfs_str])
+        .stdin(std::process::Stdio::null())
+        .status()
         .await
-        .map_err(|e| RunnerError::Internal(format!("check {}: {e}", rootfs_path.display())))?;
-    if !exists {
-        return Err(RunnerError::Internal(
-            "build script succeeded but rootfs.squashfs not found".into(),
-        ));
+        .map_err(|e| RunnerError::Internal(format!("spawn verify script: {e}")))?;
+
+    if !status.success() {
+        return Err(RunnerError::Internal(format!(
+            "verify-rootfs.sh failed with {status}"
+        )));
     }
 
     tracing::info!("[OK] rootfs ready: {}", output_dir.display());
