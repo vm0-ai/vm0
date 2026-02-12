@@ -198,7 +198,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const { messageId } = await sendEmail({
     from: buildFromAddress(compose.name),
     to: userEmail,
-    subject: `Re: Reply from "${compose.name}"`,
+    subject: `Re: VM0 - Scheduled run for "${compose.name}" completed`,
     react: AgentReplyEmail({
       agentName: compose.name,
       output,
