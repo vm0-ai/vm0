@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.13.0](https://github.com/vm0-ai/vm0/compare/docs-v2.12.0...docs-v2.13.0) (2026-02-12)
+
+
+### Features
+
+* **self-host:** add docker compose setup ([#2853](https://github.com/vm0-ai/vm0/issues/2853)) ([bd757fd](https://github.com/vm0-ai/vm0/commit/bd757fd21385dca449e82f6880bc5265dcf1b80d))
+
 ## [2.12.0](https://github.com/vm0-ai/vm0/compare/docs-v2.11.0...docs-v2.12.0) (2026-02-12)
 
 

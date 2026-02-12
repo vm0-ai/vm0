@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.11.0](https://github.com/vm0-ai/vm0/compare/core-v8.10.0...core-v8.11.0) (2026-02-12)
+
+
+### Features
+
+* **email:** add email notifications and reply-to-continue via Resend ([#2836](https://github.com/vm0-ai/vm0/issues/2836)) ([fd6aa4c](https://github.com/vm0-ai/vm0/commit/fd6aa4c032a84f25e8c6a8cf4ba4cef5ff070bd9))
+* **storage:** add optional volume support for graceful degradation ([#2929](https://github.com/vm0-ai/vm0/issues/2929)) ([fd052a4](https://github.com/vm0-ai/vm0/commit/fd052a4fef4b2157bb1b1a7a2a0eaccffa6ff262))
+
 ## [8.10.0](https://github.com/vm0-ai/vm0/compare/core-v8.9.0...core-v8.10.0) (2026-02-12)
 
 
