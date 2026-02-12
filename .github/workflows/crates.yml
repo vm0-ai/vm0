@@ -99,6 +99,9 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260203
+    defaults:
+      run:
+        shell: bash
     needs: [detect]
     if: |
       needs.detect.outputs.workflow-changed == 'true' ||
