@@ -15,9 +15,6 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { generateReplyToken } from "../../../../../../src/lib/email/handlers/shared";
-import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
-import { scopes } from "../../../../../../src/db/schema/scope";
-import { eq } from "drizzle-orm";
 
 const context = testContext();
 const mockResend = vi.mocked(new Resend(""), true);
@@ -257,31 +254,18 @@ describe("POST /api/webhooks/email/inbound", () => {
   describe("Email Trigger (scope+agent@domain)", () => {
     it("should dispatch agent run for valid trigger email", async () => {
       // Given a user with a scope and compose
+      // setupUser creates a user with userId = "trigger-user-{suffix}" and
+      // scope slug = "scope-{suffix}" using the same suffix
       const user = await context.setupUser({ prefix: "trigger-user" });
-      const scopeSlug = uniqueId("trigger-scope");
+
+      // Extract suffix from userId to derive scope slug
+      // userId format: "{prefix}-{suffix}" where suffix is an 8-char UUID
+      const suffix = user.userId.slice("trigger-user-".length);
+      const scopeSlug = `scope-${suffix}`;
       const agentName = uniqueId("trigger-agent");
 
-      // Get the user's existing scope (created by setupUser)
-      const [userScope] = await globalThis.services.db
-        .select()
-        .from(scopes)
-        .where(eq(scopes.ownerId, user.userId))
-        .limit(1);
-
-      // Update scope slug to our test slug
-      await globalThis.services.db
-        .update(scopes)
-        .set({ slug: scopeSlug })
-        .where(eq(scopes.id, userScope!.id));
-
-      // Create compose under that scope
+      // Create compose (automatically associates with user's scope)
       const { composeId } = await createTestCompose(agentName);
-
-      // Update compose to use the user's scope
-      await globalThis.services.db
-        .update(agentComposes)
-        .set({ scopeId: userScope!.id })
-        .where(eq(agentComposes.id, composeId));
 
       // Mock Clerk to return the user when looking up by email
       const senderEmail = "sender@example.com";
