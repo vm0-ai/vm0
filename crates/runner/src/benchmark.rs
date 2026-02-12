@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use clap::Args;
 use sandbox::{ExecRequest, ExecResult, SandboxConfig, SandboxFactory};
 use sandbox_fc::FirecrackerFactory;
-use tracing::info;
+use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::config;
@@ -88,7 +88,16 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
     }
 
     // 6. Propagate exit code
-    let code = u8::try_from(exec_result.exit_code).unwrap_or(1);
+    let code = match u8::try_from(exec_result.exit_code) {
+        Ok(c) => c,
+        Err(_) => {
+            warn!(
+                exit_code = exec_result.exit_code,
+                "exit code out of u8 range, using 1"
+            );
+            1
+        }
+    };
     Ok(ExitCode::from(code))
 }
 
@@ -109,7 +118,7 @@ async fn run_sandbox(
     let (result, boot_ms, exec_ms) = run_in_sandbox(args, &mut *sandbox, is_snapshot).await;
 
     if let Err(e) = sandbox.stop().await {
-        info!(error = %e, "sandbox stop failed");
+        warn!(error = %e, "sandbox stop failed");
     }
     factory.destroy(sandbox).await;
 
