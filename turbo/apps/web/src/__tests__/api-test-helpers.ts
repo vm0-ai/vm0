@@ -18,6 +18,7 @@ import { composeJobs } from "../db/schema/compose-job";
 import { storages, storageVersions } from "../db/schema/storage";
 import { usageDaily } from "../db/schema/usage-daily";
 import { slackComposeRequests } from "../db/schema/slack-compose-request";
+import { slackInstallations } from "../db/schema/slack-installation";
 import { slackThreadSessions } from "../db/schema/slack-thread-session";
 import { emailThreadSessions } from "../db/schema/email-thread-session";
 import { agentRunCallbacks } from "../db/schema/agent-run-callback";
@@ -1782,6 +1783,15 @@ export async function findTestRunByStatus(
     .select()
     .from(agentRuns)
     .where(eq(agentRuns.status, status))
+    .limit(1);
+  return row;
+}
+
+export async function findTestSlackInstallation(workspaceId: string) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(slackInstallations)
+    .where(eq(slackInstallations.slackWorkspaceId, workspaceId))
     .limit(1);
   return row;
 }

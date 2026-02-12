@@ -5,6 +5,7 @@ import {
   createTestRequest,
   createTestScope,
   createTestCompose,
+  findTestSlackInstallation,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -137,6 +138,55 @@ describe("/api/slack/oauth/callback", () => {
           redirect_uri: "https://tunnel.example.com/api/slack/oauth/callback",
         }),
       );
+    });
+
+    it("should skip installation update entirely when workspace is already installed", async () => {
+      const workspaceId = uniqueId("ws");
+
+      // First install: admin is U-admin-original
+      const adminUserId = uniqueId("admin");
+      mockClerk({ userId: adminUserId });
+      await createTestScope(uniqueId("scope"));
+      const { composeId } = await createTestCompose("original-agent");
+
+      const mockClient = vi.mocked(new WebClient(), true);
+      mockClient.oauth.v2.access.mockResolvedValueOnce({
+        ok: true,
+        access_token: "xoxb-original-token",
+        bot_user_id: "B-original",
+        team: { id: workspaceId, name: "Test Workspace" },
+        authed_user: { id: "U-admin-original" },
+      } as never);
+
+      const firstState = JSON.stringify({ composeId });
+      const firstRequest = createTestRequest(
+        `http://localhost:3000/api/slack/oauth/callback?code=first-code&state=${encodeURIComponent(firstState)}`,
+      );
+      await GET(firstRequest);
+
+      // Second OAuth: different user re-authorizes for same workspace
+      mockClient.oauth.v2.access.mockResolvedValueOnce({
+        ok: true,
+        access_token: "xoxb-new-token",
+        bot_user_id: "B-new",
+        team: { id: workspaceId, name: "Renamed Workspace" },
+        authed_user: { id: "U-non-admin" },
+      } as never);
+
+      const secondState = JSON.stringify({ composeId });
+      const secondRequest = createTestRequest(
+        `http://localhost:3000/api/slack/oauth/callback?code=second-code&state=${encodeURIComponent(secondState)}`,
+      );
+      await GET(secondRequest);
+
+      // Verify the entire installation record is untouched
+      const installation = await findTestSlackInstallation(workspaceId);
+
+      expect(installation).toBeDefined();
+      expect(installation!.adminSlackUserId).toBe("U-admin-original");
+      expect(installation!.defaultComposeId).toBe(composeId);
+      expect(installation!.slackWorkspaceName).toBe("Test Workspace");
+      expect(installation!.botUserId).toBe("B-original");
     });
   });
 });
