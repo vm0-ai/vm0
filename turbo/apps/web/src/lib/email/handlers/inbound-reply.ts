@@ -1,14 +1,10 @@
 import { eq } from "drizzle-orm";
-import { agentRuns } from "../../../db/schema/agent-run";
-import { agentRunCallbacks } from "../../../db/schema/agent-run-callback";
 import { agentComposes } from "../../../db/schema/agent-compose";
 import { getReceivedEmail } from "../client";
 import { stripQuotedReply } from "../quote-strip";
 import { verifyReplyToken, lookupEmailThreadSession } from "./shared";
-import { buildExecutionContext, prepareAndDispatchRun } from "../../run";
-import { generateSandboxToken } from "../../auth/sandbox-token";
+import { createRun } from "../../run";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
-import { encryptCredentialValue } from "../../crypto/secrets-encryption";
 import { logger } from "../../logger";
 
 const log = logger("email:inbound-reply");
@@ -88,57 +84,31 @@ export async function handleInboundEmailReply(
     return;
   }
 
-  // 7. Create agent run record
-  const [run] = await globalThis.services.db
-    .insert(agentRuns)
-    .values({
-      userId: session.userId,
-      agentComposeVersionId: compose.headVersionId,
-      status: "pending",
-      prompt: replyContent,
-      vars: null,
-      secretNames: null,
-      createdAt: new Date(Date.now()),
-    })
-    .returning();
-
-  if (!run) {
-    log.error("Failed to create run for email reply", { emailId });
-    return;
-  }
-
-  // 8. Register email reply callback (invoked when run completes)
-  const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
-  await globalThis.services.db.insert(agentRunCallbacks).values({
-    runId: run.id,
-    url: `${getApiUrl()}/api/internal/callbacks/email/reply`,
-    encryptedSecret: encryptCredentialValue(
-      generateCallbackSecret(),
-      SECRETS_ENCRYPTION_KEY,
-    ),
-    payload: {
-      emailThreadSessionId: session.id,
-      inboundEmailId: emailId,
+  // 7. Build callbacks for email reply notification
+  const callbacks = [
+    {
+      url: `${getApiUrl()}/api/internal/callbacks/email/reply`,
+      secret: generateCallbackSecret(),
+      payload: {
+        emailThreadSessionId: session.id,
+        inboundEmailId: emailId,
+      },
     },
-  });
+  ];
 
-  // 9. Build execution context and dispatch
-  const sandboxToken = await generateSandboxToken(session.userId, run.id);
-  const context = await buildExecutionContext({
-    runId: run.id,
-    sessionId: session.agentSessionId,
-    agentComposeVersionId: compose.headVersionId ?? undefined,
-    prompt: replyContent,
-    sandboxToken,
+  // 8. Create and dispatch run via unified pipeline
+  const result = await createRun({
     userId: session.userId,
+    agentComposeVersionId: compose.headVersionId ?? "",
+    prompt: replyContent,
+    composeId: session.composeId,
+    sessionId: session.agentSessionId,
     agentName: compose.name,
-    continuedFromSessionId: session.agentSessionId,
+    callbacks,
   });
-
-  await prepareAndDispatchRun(context);
 
   log.info("Dispatched agent run from email reply", {
-    runId: run.id,
+    runId: result.runId,
     emailId,
     agentName: compose.name,
   });

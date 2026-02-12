@@ -183,6 +183,41 @@
   padding-left: 6px;
 }
 
+/* Table styling for light/dark mode visibility */
+.wmde-markdown table {
+  border-collapse: collapse;
+  width: 100%;
+  display: block;
+  overflow-x: auto;
+}
+
+.wmde-markdown table th,
+.wmde-markdown table td {
+  border-bottom: 1px solid hsl(var(--border));
+  padding: 6px 12px;
+  text-align: left;
+  color: hsl(var(--foreground));
+}
+
+.wmde-markdown table th {
+  font-weight: 600;
+  border-bottom-width: 2px;
+}
+
+/* Override library color variables to match our theme */
+.wmde-markdown {
+  --color-fg-default: hsl(var(--foreground));
+  --color-fg-muted: hsl(var(--muted-foreground));
+  --color-canvas-default: transparent;
+  --color-canvas-subtle: hsl(var(--gray-50));
+  --color-border-default: hsl(var(--border));
+}
+
+/* Code block styling */
+.wmde-markdown pre {
+  overflow-x: auto;
+}
+
 /* Details/summary animation */
 details > summary {
   transition: color 0.15s ease;

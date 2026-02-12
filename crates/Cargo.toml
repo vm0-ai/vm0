@@ -35,6 +35,7 @@ bytes = "1"
 clap = "4"
 chrono = { version = "0.4", default-features = false }
 flate2 = "1"
+httpmock = "0.8"
 libc = "0.2"
 nix = { version = "0.31", default-features = false }
 serde = "1"

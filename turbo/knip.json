@@ -113,6 +113,7 @@
     "**/drizzle.config.ts",
     "**/custom-eslint/**",
     "apps/platform/src/mocks/browser.ts",
+    "apps/platform/src/mocks/mock-log-detail-data.ts",
     "apps/platform/src/signals/test-utils.ts",
     "apps/platform/src/signals/__tests__/test-helpers.ts",
     "apps/platform/src/signals/location.ts",

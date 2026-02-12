@@ -139,11 +139,10 @@ async function handleLoginCommand(
     });
   }
 
-  const baseUrl = getSlackRedirectBaseUrl(requestUrl);
-
   if (installation) {
-    // Workspace already installed, go directly to link page
-    const linkUrl = `${baseUrl}/slack/link?w=${encodeURIComponent(payload.team_id)}&u=${encodeURIComponent(payload.user_id)}&c=${encodeURIComponent(payload.channel_id)}`;
+    // Workspace already installed, go directly to link page on platform
+    const platformUrl = getPlatformUrl();
+    const linkUrl = `${platformUrl}/slack/connect?w=${encodeURIComponent(payload.team_id)}&u=${encodeURIComponent(payload.user_id)}&c=${encodeURIComponent(payload.channel_id)}`;
     return NextResponse.json({
       response_type: "ephemeral",
       blocks: buildLoginMessage(linkUrl),
@@ -151,6 +150,7 @@ async function handleLoginCommand(
   }
 
   // Workspace not installed, need OAuth flow
+  const baseUrl = getSlackRedirectBaseUrl(requestUrl);
   const installUrl = `${baseUrl}/api/slack/oauth/install?w=${encodeURIComponent(payload.team_id)}&u=${encodeURIComponent(payload.user_id)}&c=${encodeURIComponent(payload.channel_id)}`;
   return NextResponse.json({
     response_type: "ephemeral",

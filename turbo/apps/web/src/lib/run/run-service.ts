@@ -3,24 +3,36 @@ import { env, isSelfHosted } from "../../env";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { agentRuns } from "../../db/schema/agent-run";
 import {
+  agentComposeVersions,
+  agentComposes,
+} from "../../db/schema/agent-compose";
+import { agentRunCallbacks } from "../../db/schema/agent-run-callback";
+import {
   notFound,
   unauthorized,
   badRequest,
+  forbidden,
   concurrentRunLimit,
 } from "../errors";
 import { logger } from "../logger";
 import type { ExecutionContext } from "./types";
 import type { AgentComposeSnapshot } from "../checkpoint/types";
+import type { AgentComposeYaml } from "../../types/agent-compose";
 import { getAgentSessionWithConversation } from "../agent-session";
 import { prepareForExecution } from "./context/execution-preparer";
 import { executeE2bRun } from "./executors/e2b-executor";
 import { executeRunnerJob } from "./executors/runner-executor";
 import { executeDockerRun } from "./executors/docker-executor";
 import type { ExecutorResult, PreparedContext } from "./executors/types";
-import {
-  buildExecutionContext as buildContext,
-  type BuildContextParams,
-} from "./build-context";
+import { buildExecutionContext as buildContext } from "./build-context";
+import { generateSandboxToken } from "../auth/sandbox-token";
+import { canAccessCompose } from "../agent/permission-service";
+import { getUserEmail } from "../auth/get-user-email";
+import { extractTemplateVars } from "../config-validator";
+import { assertImageAccess } from "../image/image-service";
+import { getUserScopeByClerkId } from "../scope/scope-service";
+import { getVariableValues } from "../variable/variable-service";
+import { encryptCredentialValue } from "../crypto/secrets-encryption";
 
 const log = logger("service:run");
 
@@ -39,7 +51,7 @@ export { calculateSessionHistoryPath } from "./utils/session-history-path";
  * @param limit Maximum allowed concurrent runs (default: 1, or CONCURRENT_RUN_LIMIT env var, 0 = no limit)
  * @throws ConcurrentRunLimitError if limit exceeded
  */
-export async function checkRunConcurrencyLimit(
+async function checkRunConcurrencyLimit(
   userId: string,
   limit?: number,
 ): Promise<void> {
@@ -203,19 +215,6 @@ export async function validateAgentSession(
 }
 
 /**
- * Build unified execution context from various parameter sources
- * Supports: new run, checkpoint resume, session continue
- *
- * @param params Unified run parameters
- * @returns Execution context for executors
- */
-export async function buildExecutionContext(
-  params: BuildContextParams,
-): Promise<ExecutionContext> {
-  return buildContext(params);
-}
-
-/**
  * Prepare execution context and dispatch to appropriate executor
  *
  * This is the unified entry point that handles both E2B and runner paths:
@@ -225,7 +224,7 @@ export async function buildExecutionContext(
  * @param context ExecutionContext built by buildExecutionContext()
  * @returns ExecutorResult with status and optional sandboxId
  */
-export async function prepareAndDispatchRun(
+async function prepareAndDispatchRun(
   context: ExecutionContext,
 ): Promise<ExecutorResult> {
   log.debug(`Preparing and dispatching run ${context.runId}...`);
@@ -257,5 +256,332 @@ async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
   } else {
     log.debug(`Dispatching run ${context.runId} to E2B executor`);
     return await executeE2bRun(context);
+  }
+}
+
+// ============================================================================
+// Unified Run Creation
+// ============================================================================
+
+/**
+ * Extended error type for dispatch failures that includes run metadata.
+ * When createRun() fails after the run record is created (post-INSERT),
+ * the error is augmented with runId and createdAt so callers can
+ * return partial results if needed.
+ */
+export interface RunDispatchError extends Error {
+  runId?: string;
+  createdAt?: Date;
+}
+
+export interface CreateRunParams {
+  // Required — every caller must provide
+  userId: string;
+  agentComposeVersionId: string;
+  prompt: string;
+
+  // Optional — caller-resolved compose ID
+  // When provided, createRun() uses this to load the compose instead of
+  // resolving via version.composeId. This avoids content-addressed version
+  // collisions where version.composeId may point to a different user's compose.
+  composeId?: string;
+
+  // Optional — caller-specific
+  sessionId?: string;
+  checkpointId?: string;
+  conversationId?: string;
+  vars?: Record<string, string>;
+  secrets?: Record<string, string>;
+  artifactName?: string;
+  artifactVersion?: string;
+  volumeVersions?: Record<string, string>;
+  scheduleId?: string;
+  callbacks?: Array<{ url: string; secret: string; payload: unknown }>;
+  resumedFromCheckpointId?: string;
+  agentName?: string;
+  modelProvider?: string;
+  debugNoMockClaude?: boolean;
+  checkEnv?: boolean;
+  apiStartTime?: number;
+}
+
+export interface CreateRunResult {
+  runId: string;
+  status: string;
+  sandboxId?: string;
+  createdAt: Date;
+}
+
+/**
+ * Load compose version and compose metadata, then verify access.
+ *
+ * @returns composeContent and compose record
+ * @throws NotFoundError - version or compose not found
+ * @throws ForbiddenError - user cannot access compose
+ */
+async function loadAndAuthorizeCompose(
+  userId: string,
+  agentComposeVersionId: string,
+  callerComposeId?: string,
+): Promise<{
+  composeContent: AgentComposeYaml;
+  compose: { id: string; userId: string; scopeId: string | null };
+}> {
+  const [version] = await globalThis.services.db
+    .select({
+      id: agentComposeVersions.id,
+      content: agentComposeVersions.content,
+      composeId: agentComposeVersions.composeId,
+    })
+    .from(agentComposeVersions)
+    .where(eq(agentComposeVersions.id, agentComposeVersionId))
+    .limit(1);
+
+  if (!version) {
+    throw notFound("Agent compose version not found");
+  }
+
+  const composeContent = version.content as AgentComposeYaml;
+
+  // Use caller-provided composeId when available to avoid content-addressed
+  // version collisions (version.composeId may point to a different user's compose)
+  const resolvedComposeId = callerComposeId ?? version.composeId;
+
+  const [compose] = await globalThis.services.db
+    .select({
+      id: agentComposes.id,
+      userId: agentComposes.userId,
+      scopeId: agentComposes.scopeId,
+    })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, resolvedComposeId))
+    .limit(1);
+
+  if (!compose) {
+    throw notFound("Agent compose not found");
+  }
+
+  const userEmail = await getUserEmail(userId);
+  const hasAccess = await canAccessCompose(userId, userEmail, compose);
+  if (!hasAccess) {
+    throw forbidden("You do not have permission to access this agent");
+  }
+
+  return { composeContent, compose };
+}
+
+/**
+ * Validate template vars availability and image access for new runs.
+ *
+ * Skipped when resuming from checkpoint or continuing a session.
+ *
+ * @throws BadRequestError - missing required template variables
+ */
+async function validateComposeRequirements(
+  userId: string,
+  composeContent: AgentComposeYaml,
+  vars?: Record<string, string>,
+): Promise<void> {
+  if (!composeContent?.agents) {
+    return;
+  }
+
+  const requiredVars = extractTemplateVars(composeContent);
+  if (requiredVars.length > 0) {
+    const scope = await getUserScopeByClerkId(userId);
+    const storedVars = scope ? await getVariableValues(scope.id) : {};
+    const allVars = { ...storedVars, ...vars };
+    const missingVars = requiredVars.filter(
+      (varName) => allVars[varName] === undefined,
+    );
+    if (missingVars.length > 0) {
+      throw badRequest(
+        `Missing required template variables: ${missingVars.join(", ")}`,
+      );
+    }
+  }
+
+  const agentKeys = Object.keys(composeContent.agents);
+  const firstAgentKey = agentKeys[0];
+  const agent = firstAgentKey
+    ? composeContent.agents[firstAgentKey]
+    : undefined;
+  if (agent?.image) {
+    await assertImageAccess(userId, agent.image);
+  }
+}
+
+/**
+ * Register run callbacks with encrypted secrets.
+ */
+async function registerCallbacks(
+  runId: string,
+  callbacks: Array<{ url: string; secret: string; payload: unknown }>,
+): Promise<void> {
+  const { SECRETS_ENCRYPTION_KEY } = env();
+  for (const callback of callbacks) {
+    const encryptedSecret = encryptCredentialValue(
+      callback.secret,
+      SECRETS_ENCRYPTION_KEY,
+    );
+    await globalThis.services.db.insert(agentRunCallbacks).values({
+      runId,
+      url: callback.url,
+      encryptedSecret,
+      payload: callback.payload,
+    });
+  }
+  log.debug(`Registered ${callbacks.length} callback(s) for run ${runId}`);
+}
+
+/**
+ * Mark a run as failed and attach run metadata to the error for callers.
+ */
+async function markRunFailed(
+  runId: string,
+  createdAt: Date,
+  error: unknown,
+): Promise<void> {
+  const errorMessage = error instanceof Error ? error.message : "Unknown error";
+  log.error(`Run ${runId} failed: ${errorMessage}`);
+
+  await globalThis.services.db
+    .update(agentRuns)
+    .set({
+      status: "failed",
+      error: errorMessage,
+      completedAt: new Date(),
+    })
+    .where(eq(agentRuns.id, runId));
+
+  // Attach run metadata so callers can return partial results
+  if (error instanceof Error) {
+    (error as RunDispatchError).runId = runId;
+    (error as RunDispatchError).createdAt = createdAt;
+  }
+}
+
+/**
+ * Unified run creation pipeline
+ *
+ * Validates, creates, and dispatches a run in a single call.
+ * All callers (API Route, Public API, Schedule, Slack) should use this.
+ *
+ * Pipeline:
+ * 1. Check concurrent run limit
+ * 2. Load compose version content + compose metadata
+ * 3. Permission check (canAccessCompose)
+ * 4. Validate template vars and image access
+ * 5. Validate mutual exclusivity (checkpointId vs sessionId)
+ * 6. INSERT agentRuns
+ * 7. Register callbacks (if any)
+ * 8. Generate sandbox token
+ * 9. Build execution context
+ * 10. Dispatch to executor
+ *
+ * @throws ConcurrentRunLimitError - concurrent run limit reached
+ * @throws ForbiddenError - user cannot access compose
+ * @throws BadRequestError - validation failure (missing vars, mutual exclusivity)
+ * @throws NotFoundError - compose version not found
+ * @throws Error - dispatch failure (run already marked as "failed")
+ */
+export async function createRun(
+  params: CreateRunParams,
+): Promise<CreateRunResult> {
+  const { userId, agentComposeVersionId, prompt } = params;
+
+  // Step 1: Check concurrent run limit
+  await checkRunConcurrencyLimit(userId);
+
+  // Steps 2-3: Load compose version/metadata and verify access
+  const { composeContent } = await loadAndAuthorizeCompose(
+    userId,
+    agentComposeVersionId,
+    params.composeId,
+  );
+
+  // Step 4: Validate template vars and image access (for new runs only)
+  if (!params.checkpointId && !params.sessionId) {
+    await validateComposeRequirements(userId, composeContent, params.vars);
+  }
+
+  // Step 5: Validate mutual exclusivity
+  if (params.checkpointId && params.sessionId) {
+    throw badRequest(
+      "Cannot specify both checkpointId and sessionId. Use checkpointId to resume from a checkpoint, or sessionId to continue a session.",
+    );
+  }
+
+  // Step 6: INSERT agentRuns
+  const [run] = await globalThis.services.db
+    .insert(agentRuns)
+    .values({
+      userId,
+      agentComposeVersionId,
+      status: "pending",
+      prompt,
+      vars: params.vars ?? null,
+      secretNames: params.secrets ? Object.keys(params.secrets) : null,
+      resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,
+      scheduleId: params.scheduleId ?? null,
+      lastHeartbeatAt: new Date(),
+    })
+    .returning();
+
+  if (!run) {
+    throw new Error("Failed to create run record");
+  }
+
+  log.debug(`Created run ${run.id} for user ${userId}`);
+
+  // From this point on, errors must mark the run as "failed"
+  try {
+    // Step 7: Register callbacks (if any)
+    if (params.callbacks && params.callbacks.length > 0) {
+      await registerCallbacks(run.id, params.callbacks);
+    }
+
+    // Step 8: Generate sandbox token
+    const sandboxToken = await generateSandboxToken(userId, run.id);
+
+    // Step 9: Build execution context (pass pre-loaded compose to avoid double fetch)
+    const context = await buildContext({
+      checkpointId: params.checkpointId,
+      sessionId: params.sessionId,
+      conversationId: params.conversationId,
+      agentComposeVersionId,
+      artifactName: params.artifactName,
+      artifactVersion: params.artifactVersion,
+      vars: params.vars,
+      secrets: params.secrets,
+      volumeVersions: params.volumeVersions,
+      agentCompose: composeContent,
+      prompt,
+      runId: run.id,
+      sandboxToken,
+      userId,
+      agentName: params.agentName,
+      resumedFromCheckpointId: params.resumedFromCheckpointId,
+      continuedFromSessionId: params.sessionId,
+      debugNoMockClaude: params.debugNoMockClaude,
+      modelProvider: params.modelProvider,
+      checkEnv: params.checkEnv,
+      apiStartTime: params.apiStartTime,
+    });
+
+    // Step 10: Dispatch to executor
+    const result = await prepareAndDispatchRun(context);
+
+    log.debug(`Run ${run.id} dispatched with status: ${result.status}`);
+
+    return {
+      runId: run.id,
+      status: result.status,
+      sandboxId: result.sandboxId,
+      createdAt: run.createdAt,
+    };
+  } catch (error) {
+    await markRunFailed(run.id, run.createdAt, error);
+    throw error;
   }
 }

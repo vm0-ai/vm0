@@ -31,7 +31,7 @@ describe("settings page", () => {
     expect(context.store.get(pathname$)).toBe("/settings");
 
     // The default mock has a claude-code-oauth-token provider
-    expect(screen.getByText("Claude Code OAuth token")).toBeInTheDocument();
+    expect(screen.getByText("Claude Code (OAuth token)")).toBeInTheDocument();
   });
 
   it("shows empty state when no providers configured", async () => {
@@ -46,7 +46,7 @@ describe("settings page", () => {
     // Should show "New model provider" button but no provider rows
     expect(screen.getByText("New model provider")).toBeInTheDocument();
     expect(
-      screen.queryByText("Claude Code OAuth token"),
+      screen.queryByText("Claude Code (OAuth token)"),
     ).not.toBeInTheDocument();
   });
 

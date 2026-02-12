@@ -1,11 +1,13 @@
 mod api;
-mod build_rootfs;
+mod build;
 mod deps;
 mod error;
 mod executor;
 mod paths;
+mod rootfs;
 mod runner;
 mod setup;
+mod snapshot;
 mod status;
 mod types;
 
@@ -40,9 +42,13 @@ struct Cli {
 enum Command {
     /// Download Firecracker, kernel, and verify host prerequisites
     Setup,
-    /// Build squashfs rootfs for Firecracker VMs
-    BuildRootfs(build_rootfs::BuildRootfsArgs),
-    /// Start the runner and poll for jobs
+    /// Build rootfs and snapshot in one step
+    Build(build::BuildArgs),
+    /// Build squashfs rootfs only (without snapshot)
+    Rootfs(rootfs::RootfsArgs),
+    /// Create a Firecracker VM snapshot for fast sandbox boot
+    Snapshot(snapshot::SnapshotArgs),
+    /// Start the runner and poll for jobs (must run setup + build first)
     Start(Box<runner::StartArgs>),
 }
 
@@ -60,9 +66,11 @@ async fn main() -> ExitCode {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        Command::Start(args) => runner::run_start(*args).await,
         Command::Setup => setup::run_setup().await,
-        Command::BuildRootfs(args) => build_rootfs::run_build_rootfs(args).await,
+        Command::Build(args) => build::run_build(args).await,
+        Command::Rootfs(args) => rootfs::run_rootfs(args).await.map(drop),
+        Command::Snapshot(args) => snapshot::run_snapshot(args).await,
+        Command::Start(args) => runner::run_start(*args).await,
     };
 
     if let Err(e) = result {

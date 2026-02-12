@@ -136,9 +136,10 @@ describe("log detail page", () => {
     await waitFor(() => {
       expect(screen.getByText("Prompt")).toBeInTheDocument();
     });
+    // Prompt text appears in both the collapsed summary and the expanded body
     expect(
-      screen.getByText("Summarize the quarterly report"),
-    ).toBeInTheDocument();
+      screen.getAllByText("Summarize the quarterly report").length,
+    ).toBeGreaterThan(0);
   });
 
   it("should not display prompt section when prompt is empty", async () => {

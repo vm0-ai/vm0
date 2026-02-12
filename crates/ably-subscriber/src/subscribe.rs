@@ -107,6 +107,7 @@ pub async fn subscribe(config: SubscribeConfig) -> Result<Subscription, Error> {
             http,
             get_token: config.get_token,
             token_renewal_failures: 0,
+            dropped_messages: 0,
         },
         close_rx,
     ));

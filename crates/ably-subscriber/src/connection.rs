@@ -302,6 +302,7 @@ pub(crate) struct EventLoopState {
     pub http: reqwest::Client,
     pub get_token: Box<dyn Fn() -> TokenFuture + Send + Sync>,
     pub token_renewal_failures: u32,
+    pub dropped_messages: u64,
 }
 
 pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot::Receiver<()>) {
@@ -547,7 +548,11 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
                     match p.event_tx.try_send(event) {
                         Ok(()) => {}
                         Err(mpsc::error::TrySendError::Full(_)) => {
-                            tracing::warn!("Event channel full, dropping message");
+                            p.dropped_messages += 1;
+                            tracing::warn!(
+                                total_dropped = p.dropped_messages,
+                                "event channel full, dropping message"
+                            );
                         }
                         Err(mpsc::error::TrySendError::Closed(_)) => {
                             return LoopAction::Stop;
