@@ -12,7 +12,7 @@ import {
   MOCK_CLAUDE_SCRIPT,
   SCRIPT_PATHS,
 } from "@vm0/sandbox-scripts";
-import { calculateSessionHistoryPath } from "../run-service";
+import { calculateSessionHistoryPath } from "../utils/session-history-path";
 import { logger } from "../../logger";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { eq } from "drizzle-orm";

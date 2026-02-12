@@ -1,11 +1,11 @@
 import { eq, and, isNull } from "drizzle-orm";
+import { createSlackClient } from "../client";
 import {
-  createSlackClient,
   fetchThreadContext,
   fetchChannelContext,
   formatContextForAgent,
   formatContextForAgentWithImages,
-} from "../index";
+} from "../context";
 import { slackThreadSessions } from "../../../db/schema/slack-thread-session";
 import { agentComposes } from "../../../db/schema/agent-compose";
 import { storages, storageVersions } from "../../../db/schema/storage";

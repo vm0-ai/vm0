@@ -41,9 +41,6 @@ const log = logger("service:run");
 // so this TTL only matters if the cron job fails to run.
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
-// Re-export for backward compatibility
-export { calculateSessionHistoryPath } from "./utils/session-history-path";
-
 /**
  * Check if user has reached concurrent run limit
  *

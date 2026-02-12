@@ -3,11 +3,8 @@ import { slackInstallations } from "../../../db/schema/slack-installation";
 import { slackUserLinks } from "../../../db/schema/slack-user-link";
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
-import {
-  createSlackClient,
-  postMessage,
-  buildLoginPromptMessage,
-} from "../index";
+import { createSlackClient, postMessage } from "../client";
+import { buildLoginPromptMessage } from "../blocks";
 import { runAgentForSlack } from "./run-agent";
 import {
   fetchConversationContexts,
