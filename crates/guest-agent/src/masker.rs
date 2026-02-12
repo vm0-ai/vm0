@@ -26,7 +26,7 @@ impl SecretMasker {
     ///
     /// For each secret ≥ 5 chars, three variants are stored:
     /// plain, base64-encoded, and percent-encoded.
-    fn from_raw(raw: &str) -> Self {
+    pub fn from_raw(raw: &str) -> Self {
         if raw.is_empty() {
             return Self {
                 patterns: Vec::new(),

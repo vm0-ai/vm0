@@ -1,20 +1,15 @@
 //! Guest agent — orchestrates CLI execution, heartbeat, telemetry, and
 //! checkpoint creation inside a Firecracker VM.
 
-mod artifact;
-mod checkpoint;
-mod cli;
-mod constants;
-mod env;
-mod error;
-mod events;
-mod heartbeat;
-mod http;
-mod masker;
-mod metrics;
-mod paths;
-mod telemetry;
-mod urls;
+use guest_agent::checkpoint;
+use guest_agent::cli;
+use guest_agent::env;
+use guest_agent::error;
+use guest_agent::heartbeat;
+use guest_agent::masker;
+use guest_agent::metrics;
+use guest_agent::paths;
+use guest_agent::telemetry;
 
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info};
