@@ -381,19 +381,47 @@ firecracker:
         generate(&config).await.unwrap();
 
         let loaded = load(&runner_dir.join("runner.yaml")).await.unwrap();
-        assert_eq!(loaded.name, "test-runner");
-        assert_eq!(loaded.group, "acme/prod");
-        assert_eq!(loaded.base_dir, runner_dir);
-        assert_eq!(loaded.firecracker.binary, fc);
-        assert_eq!(loaded.firecracker.kernel, kernel);
-        assert_eq!(loaded.firecracker.rootfs, rootfs);
-        assert!(loaded.firecracker.snapshot.is_none());
-        assert_eq!(loaded.sandbox.vcpu, 4);
-        assert_eq!(loaded.sandbox.memory_mb, 4096);
-        assert_eq!(loaded.sandbox.max_concurrent, 8);
-        let server = loaded.server.unwrap();
-        assert_eq!(server.url, "https://api.example.com");
-        assert_eq!(server.token, "secret");
+        assert_eq!(loaded, config);
+    }
+
+    #[tokio::test]
+    async fn generate_then_load_round_trip_with_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        let fc = dir.path().join("firecracker");
+        let kernel = dir.path().join("vmlinux");
+        let rootfs = dir.path().join("rootfs.squashfs");
+        let snap = dir.path().join("snapshot.bin");
+        let mem = dir.path().join("memory.bin");
+        let overlay = dir.path().join("overlay.ext4");
+        for f in [&fc, &kernel, &rootfs, &snap, &mem, &overlay] {
+            tokio::fs::write(f, b"").await.unwrap();
+        }
+
+        let runner_dir = dir.path().join("my-runner");
+        let config = RunnerConfig {
+            name: "snap-runner".into(),
+            group: "acme/staging".into(),
+            base_dir: runner_dir.clone(),
+            firecracker: FirecrackerConfig {
+                binary: fc,
+                kernel,
+                rootfs,
+                snapshot: Some(SnapshotConfig {
+                    snapshot_path: snap,
+                    memory_path: mem,
+                    overlay_path: overlay,
+                    overlay_bind_path: dir.path().join("work/overlay.ext4"),
+                    vsock_bind_dir: dir.path().join("work/vsock"),
+                }),
+            },
+            sandbox: SandboxConfig::default(),
+            server: None,
+        };
+
+        generate(&config).await.unwrap();
+
+        let loaded = load(&runner_dir.join("runner.yaml")).await.unwrap();
+        assert_eq!(loaded, config);
     }
 
     #[tokio::test]
