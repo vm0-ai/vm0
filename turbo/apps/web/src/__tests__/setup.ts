@@ -61,12 +61,18 @@ vi.mock("server-only", () => ({}));
 
 // Mock Next.js after() to capture callbacks for controlled execution in tests.
 // Tests can drain the queue with context.mocks.flushAfter().
+// Supports both function and promise arguments to match Next.js behavior.
 vi.mock("next/server", async (importOriginal) => {
   const original = await importOriginal<typeof import("next/server")>();
   return {
     ...original,
-    after: (fn: () => Promise<unknown>) => {
-      globalThis.nextAfterCallbacks.push(fn);
+    after: (fnOrPromise: (() => Promise<unknown>) | Promise<unknown>) => {
+      if (typeof fnOrPromise === "function") {
+        globalThis.nextAfterCallbacks.push(fnOrPromise);
+      } else {
+        // Wrap promise in a function for consistent handling in flushAfter()
+        globalThis.nextAfterCallbacks.push(() => fnOrPromise);
+      }
     },
   };
 });
