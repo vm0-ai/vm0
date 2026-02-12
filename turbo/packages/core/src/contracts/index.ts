@@ -418,6 +418,11 @@ export {
   type ConnectorSecretConfig,
   type ConnectorAuthMethodConfig,
   type ConnectorOAuthConfig,
+  // Computer connector
+  computerConnectorContract,
+  computerConnectorCreateResponseSchema,
+  type ComputerConnectorContract,
+  type ComputerConnectorCreateResponse,
 } from "./connectors";
 
 // Public API v1 contracts (developer-friendly external API)

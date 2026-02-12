@@ -35,6 +35,8 @@ function getSecretNameForConnector(type: ConnectorType): string {
       return getGitHubSecretName();
     case "notion":
       return getNotionSecretName();
+    case "computer":
+      return "COMPUTER_CONNECTOR_AUTHTOKEN";
   }
 }
 

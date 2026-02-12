@@ -2,10 +2,12 @@ import type { ConnectorType } from "@vm0/core";
 
 import githubIcon from "./icons/github.svg";
 import notionIcon from "./icons/notion.svg";
+import computerIcon from "./icons/computer.svg";
 
 const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   github: githubIcon,
   notion: notionIcon,
+  computer: computerIcon,
 });
 
 export function ConnectorIcon({
