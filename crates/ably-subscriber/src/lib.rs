@@ -15,14 +15,10 @@
 //! # async fn example() -> Result<(), ably_subscriber::Error> {
 //! use ably_subscriber::{SubscribeConfig, Event};
 //!
-//! let config = ably_subscriber::SubscribeConfig {
-//!     get_token: Box::new(|| Box::pin(async { todo!() })),
-//!     channel: "my-channel".to_string(),
-//!     channel_params: None,
-//!     host: None,
-//!     rest_host: None,
-//!     timing: None,
-//! };
+//! let config = ably_subscriber::SubscribeConfig::new(
+//!     Box::new(|| Box::pin(async { todo!() })),
+//!     "my-channel",
+//! );
 //!
 //! let mut sub = ably_subscriber::subscribe(config).await?;
 //! while let Some(event) = sub.next().await {

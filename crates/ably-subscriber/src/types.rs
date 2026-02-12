@@ -150,6 +150,7 @@ impl Default for TimingConfig {
 }
 
 /// Configuration for [`subscribe`](crate::subscribe).
+#[non_exhaustive]
 pub struct SubscribeConfig {
     /// Callback that returns a fresh [`TokenRequest`] from your server.
     pub get_token: Box<dyn Fn() -> TokenFuture + Send + Sync>,
@@ -164,6 +165,26 @@ pub struct SubscribeConfig {
     pub rest_host: Option<String>,
     /// Override timing parameters. `None` uses [`TimingConfig::default()`].
     pub timing: Option<TimingConfig>,
+}
+
+impl SubscribeConfig {
+    /// Create a new configuration with the required fields.
+    ///
+    /// Optional fields (`channel_params`, `host`, `rest_host`, `timing`) default
+    /// to `None` and can be set directly after construction.
+    pub fn new(
+        get_token: Box<dyn Fn() -> TokenFuture + Send + Sync>,
+        channel: impl Into<String>,
+    ) -> Self {
+        Self {
+            get_token,
+            channel: channel.into(),
+            channel_params: None,
+            host: None,
+            rest_host: None,
+            timing: None,
+        }
+    }
 }
 
 /// Errors returned by this crate.

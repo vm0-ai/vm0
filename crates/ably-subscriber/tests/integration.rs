@@ -173,8 +173,8 @@ fn test_config(ws_port: u16, http_port: u16, channel: &str) -> SubscribeConfig {
     let host = format!("127.0.0.1:{ws_port}");
     let rest_host = format!("127.0.0.1:{http_port}");
     let channel = channel.to_string();
-    SubscribeConfig {
-        get_token: Box::new(move || {
+    let mut config = SubscribeConfig::new(
+        Box::new(move || {
             Box::pin(async {
                 Ok(ably_subscriber::TokenRequest {
                     key_name: "testKey.testId".into(),
@@ -188,11 +188,10 @@ fn test_config(ws_port: u16, http_port: u16, channel: &str) -> SubscribeConfig {
             })
         }),
         channel,
-        channel_params: None,
-        host: Some(host),
-        rest_host: Some(rest_host),
-        timing: None,
-    }
+    );
+    config.host = Some(host);
+    config.rest_host = Some(rest_host);
+    config
 }
 
 fn test_config_with_timing(
@@ -1075,14 +1074,12 @@ async fn server_initiated_auth() {
 
 #[tokio::test]
 async fn get_token_callback_error() {
-    let config = SubscribeConfig {
-        get_token: Box::new(|| Box::pin(async { Err("token fetch failed".into()) })),
-        channel: "ch".into(),
-        channel_params: None,
-        host: Some("127.0.0.1:19999".into()),
-        rest_host: Some("127.0.0.1:19999".into()),
-        timing: None,
-    };
+    let mut config = SubscribeConfig::new(
+        Box::new(|| Box::pin(async { Err("token fetch failed".into()) })),
+        "ch",
+    );
+    config.host = Some("127.0.0.1:19999".into());
+    config.rest_host = Some("127.0.0.1:19999".into());
 
     let result = subscribe(config).await;
     match result {
@@ -1276,8 +1273,8 @@ async fn token_renewal_failures_fatal() {
     // but fails for all subsequent renewal attempts.
     let call_count = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
     let cc = call_count.clone();
-    let config = SubscribeConfig {
-        get_token: Box::new(move || {
+    let mut config = SubscribeConfig::new(
+        Box::new(move || {
             let n = cc.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             Box::pin(async move {
                 if n > 0 {
@@ -1294,16 +1291,15 @@ async fn token_renewal_failures_fatal() {
                 })
             })
         }),
-        channel: "ch".into(),
-        channel_params: None,
-        host: Some(host),
-        rest_host: Some(rest_host),
-        timing: Some({
-            let mut t = TimingConfig::default();
-            t.token_renewal_retry_delay = Duration::from_millis(10);
-            t
-        }),
-    };
+        "ch",
+    );
+    config.host = Some(host);
+    config.rest_host = Some(rest_host);
+    config.timing = Some({
+        let mut t = TimingConfig::default();
+        t.token_renewal_retry_delay = Duration::from_millis(10);
+        t
+    });
     let mut sub = subscribe(config).await.unwrap();
 
     assert!(matches!(sub.next().await.unwrap(), Event::Connected));

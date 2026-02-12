@@ -24,6 +24,10 @@ pub(crate) const DEFAULT_REALTIME_HOST: &str = "realtime.ably.io";
 const PROTOCOL_VERSION: &str = "5";
 const AGENT_STRING: &str = "ably-subscriber-rs/0.1";
 
+fn is_localhost(host: &str) -> bool {
+    host.starts_with("127.0.0.1") || host.starts_with("localhost")
+}
+
 fn error_or_unknown(error: Option<crate::protocol::ErrorInfo>) -> crate::protocol::ErrorInfo {
     error.unwrap_or_else(|| crate::protocol::ErrorInfo {
         code: error_code::FAILED,
@@ -61,11 +65,7 @@ pub(crate) async fn exchange_token(
     token_request: &crate::TokenRequest,
     host: &str,
 ) -> Result<TokenDetails, Error> {
-    let scheme = if host.starts_with("127.0.0.1") || host.starts_with("localhost") {
-        "http"
-    } else {
-        "https"
-    };
+    let scheme = if is_localhost(host) { "http" } else { "https" };
     let url = format!(
         "{scheme}://{host}/keys/{}/requestToken",
         token_request.key_name
@@ -87,11 +87,7 @@ pub(crate) async fn exchange_token(
 // ---------------------------------------------------------------------------
 
 fn build_ws_url(host: &str, token: &str, resume: Option<&str>) -> Result<String, Error> {
-    let scheme = if host.starts_with("127.0.0.1") || host.starts_with("localhost") {
-        "ws"
-    } else {
-        "wss"
-    };
+    let scheme = if is_localhost(host) { "ws" } else { "wss" };
     let mut u = url::Url::parse(&format!("{scheme}://{host}/"))?;
     {
         let mut q = u.query_pairs_mut();
