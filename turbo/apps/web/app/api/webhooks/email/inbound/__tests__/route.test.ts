@@ -15,6 +15,9 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { generateReplyToken } from "../../../../../../src/lib/email/handlers/shared";
+import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
+import { scopes } from "../../../../../../src/db/schema/scope";
+import { eq } from "drizzle-orm";
 
 const context = testContext();
 const mockResend = vi.mocked(new Resend(""), true);
@@ -249,5 +252,143 @@ describe("POST /api/webhooks/email/inbound", () => {
 
     // The handler should have returned early — Resend receiving.get not called
     expect(mockResend.emails.receiving.get).not.toHaveBeenCalled();
+  });
+
+  describe("Email Trigger (scope+agent@domain)", () => {
+    it("should dispatch agent run for valid trigger email", async () => {
+      // Given a user with a scope and compose
+      const user = await context.setupUser({ prefix: "trigger-user" });
+      const scopeSlug = uniqueId("trigger-scope");
+      const agentName = uniqueId("trigger-agent");
+
+      // Get the user's existing scope (created by setupUser)
+      const [userScope] = await globalThis.services.db
+        .select()
+        .from(scopes)
+        .where(eq(scopes.ownerId, user.userId))
+        .limit(1);
+
+      // Update scope slug to our test slug
+      await globalThis.services.db
+        .update(scopes)
+        .set({ slug: scopeSlug })
+        .where(eq(scopes.id, userScope!.id));
+
+      // Create compose under that scope
+      const { composeId } = await createTestCompose(agentName);
+
+      // Update compose to use the user's scope
+      await globalThis.services.db
+        .update(agentComposes)
+        .set({ scopeId: userScope!.id })
+        .where(eq(agentComposes.id, composeId));
+
+      // Mock Clerk to return the user when looking up by email
+      const senderEmail = "sender@example.com";
+      mockClerk({ userId: user.userId, email: senderEmail });
+
+      // Build inbound email webhook payload with scope+agent format
+      const payload = JSON.stringify({
+        type: "email.received",
+        data: {
+          email_id: "trigger-email-123",
+          to: [`${scopeSlug}+${agentName}@vm7.bot`],
+          from: senderEmail,
+          subject: "Test Subject",
+          created_at: new Date().toISOString(),
+        },
+      });
+
+      const request = createWebhookRequest(payload);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ received: true });
+
+      // Flush the after() callback
+      await context.mocks.flushAfter();
+
+      // Verify: agent run was created with subject + body as prompt
+      const runs = await findTestRunsByUserAndPrompt(
+        user.userId,
+        "Test Subject\n\nHello from email",
+      );
+
+      expect(runs).toHaveLength(1);
+      const run = runs[0]!;
+      expect(run.status).toBeDefined();
+
+      // Verify: trigger callback was registered
+      const callbacks = await findTestCallbacksByRunId(run.id);
+      expect(callbacks.length).toBeGreaterThanOrEqual(1);
+
+      const triggerCallback = callbacks.find((c) =>
+        c.url.includes("/callbacks/email/trigger"),
+      );
+      expect(triggerCallback).toBeDefined();
+      expect(triggerCallback!.payload).toMatchObject({
+        senderEmail,
+        composeId,
+        userId: user.userId,
+        inboundEmailId: "trigger-email-123",
+        replyToken: expect.any(String),
+      });
+    });
+
+    it("should ignore trigger email from unregistered sender", async () => {
+      mockResend.emails.receiving.get.mockClear();
+
+      // Mock Clerk to return user only for registered email
+      mockClerk({ userId: "some-user-id", email: "registered@example.com" });
+
+      // Send email from unregistered address
+      const payload = JSON.stringify({
+        type: "email.received",
+        data: {
+          email_id: "unreg-email",
+          to: ["somescope+someagent@vm7.bot"],
+          from: "unregistered@example.com",
+          subject: "Test",
+          created_at: new Date().toISOString(),
+        },
+      });
+
+      const request = createWebhookRequest(payload);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      // No email should have been fetched (early return)
+      expect(mockResend.emails.receiving.get).not.toHaveBeenCalled();
+    });
+
+    it("should ignore trigger email for non-existent agent", async () => {
+      mockResend.emails.receiving.get.mockClear();
+
+      const senderEmail = "sender@example.com";
+      mockClerk({ userId: "some-user-id", email: senderEmail });
+
+      // Send email to non-existent scope/agent
+      const payload = JSON.stringify({
+        type: "email.received",
+        data: {
+          email_id: "no-agent-email",
+          to: ["nonexistent+fakeagent@vm7.bot"],
+          from: senderEmail,
+          subject: "Test",
+          created_at: new Date().toISOString(),
+        },
+      });
+
+      const request = createWebhookRequest(payload);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      // Resend should not have been called (early return after agent lookup failed)
+      expect(mockResend.emails.receiving.get).not.toHaveBeenCalled();
+    });
   });
 });

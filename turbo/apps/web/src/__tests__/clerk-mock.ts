@@ -33,8 +33,11 @@ const mockClerkClient = vi.mocked(clerkClient);
  * Configure Clerk auth mock
  * @param options - Auth configuration
  * @param options.userId - User ID to return, or null for unauthenticated
+ * @param options.email - Email address for the user (default: "test@example.com")
  */
-export function mockClerk(options: { userId: string | null }) {
+export function mockClerk(options: { userId: string | null; email?: string }) {
+  const email = options.email ?? "test@example.com";
+
   mockAuth.mockResolvedValue({
     userId: options.userId,
   } as Awaited<ReturnType<typeof auth>>);
@@ -43,8 +46,18 @@ export function mockClerk(options: { userId: string | null }) {
   mockClerkClient.mockResolvedValue({
     users: {
       getUser: vi.fn().mockResolvedValue({
-        emailAddresses: [{ id: "email_1", emailAddress: MOCK_USER_EMAIL }],
+        emailAddresses: [{ id: "email_1", emailAddress: email }],
         primaryEmailAddressId: "email_1",
+      }),
+      getUserList: vi.fn().mockImplementation(({ emailAddress }) => {
+        // Return user if email matches, empty array otherwise
+        const queryEmail = emailAddress?.[0];
+        if (queryEmail === email && options.userId) {
+          return Promise.resolve({
+            data: [{ id: options.userId }],
+          });
+        }
+        return Promise.resolve({ data: [] });
       }),
     },
   } as unknown as Awaited<ReturnType<typeof clerkClient>>);
