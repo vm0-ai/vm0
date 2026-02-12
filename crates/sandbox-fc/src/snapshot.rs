@@ -70,6 +70,16 @@ pub enum SnapshotError {
 pub async fn create_snapshot(
     config: SnapshotCreateConfig,
 ) -> Result<SnapshotConfig, SnapshotError> {
+    // Check prerequisites (binary, kernel, rootfs, kvm, sudo, runtime dir, etc.).
+    crate::prerequisites::check_prerequisites(&crate::prerequisites::PrerequisiteConfig {
+        binary_path: &config.binary_path,
+        kernel_path: &config.kernel_path,
+        rootfs_path: &config.rootfs_path,
+        snapshot: None,
+    })
+    .await
+    .map_err(|e| SnapshotError::Setup(e.to_string()))?;
+
     let output = SnapshotOutputPaths::new(config.output_dir.clone());
 
     // 1. Clean and create work directory under output_dir.
@@ -148,7 +158,10 @@ async fn run_snapshot_workflow(
 
     info!(netns = %network.name, "namespace acquired");
 
-    // 4. Spawn Firecracker with --api-sock in the namespace.
+    // 4. Create socket directory and spawn Firecracker with --api-sock in the namespace.
+    tokio::fs::create_dir_all(sock_paths.dir())
+        .await
+        .map_err(|e| SnapshotError::Setup(format!("mkdir sock dir: {e}")))?;
     let api_sock = sock_paths.api_sock();
     let username = process::current_username().map_err(|e| SnapshotError::Setup(e.to_string()))?;
 

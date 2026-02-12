@@ -44,7 +44,13 @@ impl FirecrackerFactory {
     /// Create a new factory without allocating system resources.
     /// Call `startup()` to initialize pools before use.
     pub async fn new(config: FirecrackerConfig) -> Result<Self, SandboxError> {
-        crate::prerequisites::check_prerequisites(&config).await?;
+        crate::prerequisites::check_prerequisites(&crate::prerequisites::PrerequisiteConfig {
+            binary_path: &config.binary_path,
+            kernel_path: &config.kernel_path,
+            rootfs_path: &config.rootfs_path,
+            snapshot: config.snapshot.as_ref(),
+        })
+        .await?;
 
         let factory_paths = FactoryPaths::new(config.base_dir.clone());
         let runtime_paths = RuntimePaths::new();

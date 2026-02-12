@@ -4,21 +4,34 @@ use std::path::Path;
 use sandbox::SandboxError;
 
 use crate::command::{Privilege, exec};
-use crate::config::FirecrackerConfig;
+use crate::config::SnapshotConfig;
 use crate::paths::RUNTIME_DIR;
 
-/// Verify that all required system prerequisites are present before creating the factory.
+/// Common inputs needed for prerequisite checks.
+///
+/// Both [`crate::factory::FirecrackerFactory`] and [`crate::snapshot::create_snapshot`]
+/// construct this from their respective config types.
+pub(crate) struct PrerequisiteConfig<'a> {
+    pub binary_path: &'a Path,
+    pub kernel_path: &'a Path,
+    pub rootfs_path: &'a Path,
+    pub snapshot: Option<&'a SnapshotConfig>,
+}
+
+/// Verify that all required system prerequisites are present.
 ///
 /// Checks firecracker binary, kernel, rootfs, `/dev/kvm`, network commands, and sudo access.
 /// Collects all failures and returns them in a single `BackendNotAvailable` error.
-pub async fn check_prerequisites(config: &FirecrackerConfig) -> Result<(), SandboxError> {
+pub(crate) async fn check_prerequisites(
+    config: &PrerequisiteConfig<'_>,
+) -> Result<(), SandboxError> {
     let mut errors = Vec::new();
 
-    check_file_exists(&config.binary_path, "firecracker binary", &mut errors);
-    check_executable(&config.binary_path, "firecracker binary", &mut errors);
-    check_file_exists(&config.kernel_path, "kernel", &mut errors);
-    check_file_exists(&config.rootfs_path, "rootfs", &mut errors);
-    if let Some(snapshot) = &config.snapshot {
+    check_file_exists(config.binary_path, "firecracker binary", &mut errors);
+    check_executable(config.binary_path, "firecracker binary", &mut errors);
+    check_file_exists(config.kernel_path, "kernel", &mut errors);
+    check_file_exists(config.rootfs_path, "rootfs", &mut errors);
+    if let Some(snapshot) = config.snapshot {
         check_file_exists(&snapshot.snapshot_path, "snapshot state", &mut errors);
         check_file_exists(&snapshot.memory_path, "snapshot memory", &mut errors);
         check_file_exists(&snapshot.overlay_path, "snapshot overlay", &mut errors);
@@ -58,7 +71,7 @@ fn check_kvm(errors: &mut Vec<String>) {
     }
 }
 
-fn check_required_commands(config: &FirecrackerConfig, errors: &mut Vec<String>) {
+fn check_required_commands(config: &PrerequisiteConfig<'_>, errors: &mut Vec<String>) {
     let mut commands = vec!["ip", "iptables", "iptables-save", "sysctl", "pgrep"];
     if config.snapshot.is_none() {
         commands.push("mkfs.ext4");
