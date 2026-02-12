@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use clap::Args;
+use sandbox::SandboxFactory;
 use sandbox_fc::FirecrackerFactory;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
@@ -118,9 +119,13 @@ struct RunConfig {
 }
 
 async fn run(config: RunConfig) -> RunnerResult<()> {
-    let factory = FirecrackerFactory::new(config.fc_config.clone())
+    let mut factory = FirecrackerFactory::new(config.fc_config.clone())
         .await
         .map_err(|e| RunnerError::Internal(format!("factory init: {e}")))?;
+    factory
+        .startup()
+        .await
+        .map_err(|e| RunnerError::Internal(format!("factory startup: {e}")))?;
     let factory = Arc::new(factory);
 
     let api = ApiClient::new(config.api_url.clone(), config.token.clone())?;
@@ -299,9 +304,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         }
     }
 
-    // Cleanup factory pools
-    info!("cleaning up factory");
-    factory.cleanup().await;
+    info!("shutting down factory");
+    let mut factory = Arc::try_unwrap(factory)
+        .map_err(|_| RunnerError::Internal("factory still referenced at shutdown".into()))?;
+    factory.shutdown().await;
 
     config.status.set_mode(RunnerMode::Stopped).await;
     info!("runner stopped");
