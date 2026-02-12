@@ -1,12 +1,14 @@
-//! Integration test: publish messages via Ably REST API and verify reception.
+//! Smoke test: publish messages via the real Ably REST API and verify reception.
+//!
+//! Requires a real Ably API key — not run in CI.
 //!
 //! ```sh
-//! cargo run -p ably-subscriber --example integration_test -- <API_KEY>
+//! cargo run -p ably-subscriber --example smoke_test -- <API_KEY>
 //! ```
 //!
 //! Or via environment variable:
 //! ```sh
-//! ABLY_API_KEY=keyName:keySecret cargo run -p ably-subscriber --example integration_test
+//! ABLY_API_KEY=keyName:keySecret cargo run -p ably-subscriber --example smoke_test
 //! ```
 
 use std::sync::Arc;
@@ -291,7 +293,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         key.as_str()
     } else {
         args.first()
-            .ok_or("usage: integration_test <API_KEY>  (or set ABLY_API_KEY)")?
+            .ok_or("usage: smoke_test <API_KEY>  (or set ABLY_API_KEY)")?
             .as_str()
     };
 
