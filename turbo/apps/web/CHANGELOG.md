@@ -1,5 +1,21 @@
 # Changelog
 
+## [12.36.0](https://github.com/vm0-ai/vm0/compare/web-v12.35.1...web-v12.36.0) (2026-02-12)
+
+
+### Features
+
+* **api:** include email-shared agents in agent list endpoints ([#2941](https://github.com/vm0-ai/vm0/issues/2941)) ([1687a74](https://github.com/vm0-ai/vm0/commit/1687a7453b1fa796b85327f959cbfefe1f3f9ee4))
+* **email:** add vm0 branding to scheduled run notifications ([#2949](https://github.com/vm0-ai/vm0/issues/2949)) ([db03c4a](https://github.com/vm0-ai/vm0/commit/db03c4af4c67cb25c57163238e241a76a5e67348))
+
+
+### Bug Fixes
+
+* **email:** align reply subject with schedule notification for threading ([#2952](https://github.com/vm0-ai/vm0/issues/2952)) ([b70c814](https://github.com/vm0-ai/vm0/commit/b70c8149847e70ab831ea2e7f502d6efcdda1711))
+* **slack:** add artifact name to create-run call in slack agent handler ([#2955](https://github.com/vm0-ai/vm0/issues/2955)) ([e12262d](https://github.com/vm0-ai/vm0/commit/e12262d261237b4742160ceb0e00f7291984cf5c))
+* **web:** resolve build warnings for circular imports, ssh2, and e2b ([#2933](https://github.com/vm0-ai/vm0/issues/2933)) ([87ac6c4](https://github.com/vm0-ai/vm0/commit/87ac6c4a1884629e415447e37e2f2055b5f8b3a3))
+* **web:** suppress remaining build warnings ([#2953](https://github.com/vm0-ai/vm0/issues/2953)) ([8bd2c4f](https://github.com/vm0-ai/vm0/commit/8bd2c4f5bc069f1ca9018ceb99703fd5b3938dd0))
+
 ## [12.35.1](https://github.com/vm0-ai/vm0/compare/web-v12.35.0...web-v12.35.1) (2026-02-12)
 
 
