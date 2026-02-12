@@ -29,7 +29,7 @@ function LogoHeader() {
   const theme = useGet(theme$);
 
   return (
-    <div className="flex items-center gap-2.5 p-1.5 shrink-0">
+    <a href="/" className="flex items-center gap-2.5 p-1.5 shrink-0">
       <div className="inline-grid grid-cols-[max-content] grid-rows-[max-content] items-start justify-items-start leading-[0] shrink-0">
         <img
           src={theme === "dark" ? "/logo_dark.svg" : "/logo_light.svg"}
@@ -41,7 +41,7 @@ function LogoHeader() {
       <p className="text-2xl font-normal leading-8 text-foreground shrink-0">
         Platform
       </p>
-    </div>
+    </a>
   );
 }
 
