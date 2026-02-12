@@ -235,12 +235,11 @@ export async function executeE2bRun(
  * Resolve API URL for sandbox based on environment
  */
 function resolveApiUrl(): string {
-  const envVars = globalThis.services?.env;
-  const apiUrl = envVars?.VM0_API_URL || process.env.VM0_API_URL;
+  const apiUrl = env().VM0_API_URL;
   if (apiUrl) return apiUrl;
 
-  const vercelEnv = process.env.VERCEL_ENV;
-  const vercelUrl = process.env.VERCEL_URL;
+  const vercelEnv = env().VERCEL_ENV;
+  const vercelUrl = env().VERCEL_URL;
 
   if (vercelEnv === "preview" && vercelUrl) return `https://${vercelUrl}`;
   if (vercelEnv === "production") return "https://www.vm0.ai";
