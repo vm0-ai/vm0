@@ -1,4 +1,5 @@
-import { eq, and, or } from "drizzle-orm";
+import { eq, and, or, ne, desc } from "drizzle-orm";
+import { agentComposes } from "../../db/schema/agent-compose";
 import { agentPermissions } from "../../db/schema/agent-permission";
 import { scopes } from "../../db/schema/scope";
 import { logger } from "../logger";
@@ -96,6 +97,53 @@ export async function removePermission(
     .where(and(...conditions));
 
   return (result.rowCount ?? 0) > 0;
+}
+
+interface SharedAgent {
+  id: string;
+  name: string;
+  headVersionId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  scopeSlug: string;
+}
+
+/**
+ * Fetch agents shared with a user via email permissions.
+ * Excludes agents the user owns (to avoid duplicates).
+ */
+export async function getEmailSharedAgents(
+  userId: string,
+  userEmail: string,
+  options?: { nameFilter?: string },
+): Promise<SharedAgent[]> {
+  const conditions = [
+    eq(agentPermissions.granteeType, "email"),
+    eq(agentPermissions.granteeEmail, userEmail),
+    ne(agentComposes.userId, userId),
+  ];
+
+  if (options?.nameFilter) {
+    conditions.push(eq(agentComposes.name, options.nameFilter));
+  }
+
+  return globalThis.services.db
+    .select({
+      id: agentComposes.id,
+      name: agentComposes.name,
+      headVersionId: agentComposes.headVersionId,
+      createdAt: agentComposes.createdAt,
+      updatedAt: agentComposes.updatedAt,
+      scopeSlug: scopes.slug,
+    })
+    .from(agentPermissions)
+    .innerJoin(
+      agentComposes,
+      eq(agentPermissions.agentComposeId, agentComposes.id),
+    )
+    .innerJoin(scopes, eq(agentComposes.scopeId, scopes.id))
+    .where(and(...conditions))
+    .orderBy(desc(agentComposes.createdAt));
 }
 
 /**

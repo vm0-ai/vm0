@@ -2,16 +2,15 @@ import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { composesListContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentComposes } from "../../../../../src/db/schema/agent-compose";
-import { agentPermissions } from "../../../../../src/db/schema/agent-permission";
-import { scopes } from "../../../../../src/db/schema/scope";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
-import { eq, and, desc, ne } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import {
   getUserScopeByClerkId,
   getScopeBySlug,
   canAccessScope,
 } from "../../../../../src/lib/scope/scope-service";
+import { getEmailSharedAgents } from "../../../../../src/lib/agent/permission-service";
 
 const router = tsr.router(composesListContract, {
   list: async ({ query, headers }) => {
@@ -96,29 +95,8 @@ const router = tsr.router(composesListContract, {
 
     if (!query.scope) {
       const userEmail = await getUserEmail(userId);
-      if (userEmail) {
-        sharedComposes = await globalThis.services.db
-          .select({
-            name: agentComposes.name,
-            headVersionId: agentComposes.headVersionId,
-            updatedAt: agentComposes.updatedAt,
-            scopeSlug: scopes.slug,
-          })
-          .from(agentPermissions)
-          .innerJoin(
-            agentComposes,
-            eq(agentPermissions.agentComposeId, agentComposes.id),
-          )
-          .innerJoin(scopes, eq(agentComposes.scopeId, scopes.id))
-          .where(
-            and(
-              eq(agentPermissions.granteeType, "email"),
-              eq(agentPermissions.granteeEmail, userEmail),
-              ne(agentComposes.userId, userId),
-            ),
-          )
-          .orderBy(desc(agentComposes.updatedAt));
-      }
+      const shared = await getEmailSharedAgents(userId, userEmail);
+      sharedComposes = shared;
     }
 
     // Combine: own agents first, then shared agents with scope/name format

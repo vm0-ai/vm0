@@ -10,7 +10,10 @@ import {
   uniqueId,
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
-import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import {
+  mockClerk,
+  MOCK_USER_EMAIL,
+} from "../../../../../../src/__tests__/clerk-mock";
 
 // Only mock external services
 
@@ -192,7 +195,7 @@ describe("GET /api/agent/composes/list", () => {
       const owner = await context.setupUser({ prefix: "owner" });
       const agentName = uniqueId("shared-agent");
       const { composeId } = await createTestCompose(agentName);
-      await createTestPermission(composeId, "email", "test@example.com");
+      await createTestPermission(composeId, "email", MOCK_USER_EMAIL);
 
       // Derive owner's scope slug
       const ownerSuffix = owner.userId.replace("owner-", "");
@@ -240,7 +243,7 @@ describe("GET /api/agent/composes/list", () => {
       const owner = await context.setupUser({ prefix: "combo-owner" });
       const sharedAgentName = uniqueId("combo-shared");
       const { composeId } = await createTestCompose(sharedAgentName);
-      await createTestPermission(composeId, "email", "test@example.com");
+      await createTestPermission(composeId, "email", MOCK_USER_EMAIL);
 
       const ownerSuffix = owner.userId.replace("combo-owner-", "");
       const ownerScopeSlug = `scope-${ownerSuffix}`;
@@ -266,7 +269,7 @@ describe("GET /api/agent/composes/list", () => {
       await context.setupUser({ prefix: "scope-owner" });
       const sharedAgentName = uniqueId("scope-shared");
       const { composeId } = await createTestCompose(sharedAgentName);
-      await createTestPermission(composeId, "email", "test@example.com");
+      await createTestPermission(composeId, "email", MOCK_USER_EMAIL);
 
       // Switch back to original user, list with explicit scope
       mockClerk({ userId: user.userId });
@@ -291,7 +294,7 @@ describe("GET /api/agent/composes/list", () => {
       // Current user creates agent and shares with own email
       const agentName = uniqueId("self-shared");
       const { composeId } = await createTestCompose(agentName);
-      await createTestPermission(composeId, "email", "test@example.com");
+      await createTestPermission(composeId, "email", MOCK_USER_EMAIL);
 
       const request = createTestRequest(
         "http://localhost:3000/api/agent/composes/list",

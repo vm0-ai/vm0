@@ -23,6 +23,9 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
  * ```
  */
 
+/** The email address returned by the Clerk mock for all test users */
+export const MOCK_USER_EMAIL = "test@example.com";
+
 const mockAuth = vi.mocked(auth);
 const mockClerkClient = vi.mocked(clerkClient);
 
@@ -40,7 +43,7 @@ export function mockClerk(options: { userId: string | null }) {
   mockClerkClient.mockResolvedValue({
     users: {
       getUser: vi.fn().mockResolvedValue({
-        emailAddresses: [{ id: "email_1", emailAddress: "test@example.com" }],
+        emailAddresses: [{ id: "email_1", emailAddress: MOCK_USER_EMAIL }],
         primaryEmailAddressId: "email_1",
       }),
     },

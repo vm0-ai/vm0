@@ -8,7 +8,10 @@ import {
   createTestPermission,
 } from "../../../../src/__tests__/api-test-helpers";
 import { testContext, uniqueId } from "../../../../src/__tests__/test-helpers";
-import { mockClerk } from "../../../../src/__tests__/clerk-mock";
+import {
+  mockClerk,
+  MOCK_USER_EMAIL,
+} from "../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
 
 const context = testContext();
@@ -28,15 +31,19 @@ describe("Public API v1 - Agents Endpoints", () => {
 
   describe("GET /v1/agents - List Agents", () => {
     it("should list agents with pagination", async () => {
-      const request = createTestRequest("http://localhost:3000/v1/agents");
+      // Use name filter for deterministic results (avoids shared agent interference)
+      const request = createTestRequest(
+        `http://localhost:3000/v1/agents?name=${testAgentName}`,
+      );
 
       const response = await listAgents(request);
       const data = await response.json();
 
       expect(response.status).toBe(200);
       expect(data.data).toBeInstanceOf(Array);
-      expect(data.data.length).toBeGreaterThanOrEqual(1);
+      expect(data.data.length).toBe(1);
       expect(data.pagination).toBeDefined();
+      expect(data.pagination.hasMore).toBe(false);
     });
 
     it("should support limit parameter", async () => {
@@ -197,7 +204,7 @@ describe("Public API v1 - Agents Endpoints", () => {
       const owner = await context.setupUser({ prefix: "v1-owner" });
       const sharedAgentName = uniqueId("v1-shared");
       const { composeId } = await createTestCompose(sharedAgentName);
-      await createTestPermission(composeId, "email", "test@example.com");
+      await createTestPermission(composeId, "email", MOCK_USER_EMAIL);
 
       const ownerSuffix = owner.userId.replace("v1-owner-", "");
       const ownerScopeSlug = `scope-${ownerSuffix}`;
