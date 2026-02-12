@@ -8,7 +8,7 @@ pub(crate) const DEFAULT_VCPU: u32 = 2;
 pub(crate) const DEFAULT_MEMORY_MB: u32 = 2048;
 pub(crate) const DEFAULT_MAX_CONCURRENT: usize = 4;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct RunnerConfig {
     pub name: String,
     pub group: String,
@@ -19,7 +19,7 @@ pub struct RunnerConfig {
     pub server: Option<ServerConfig>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct FirecrackerConfig {
     pub binary: PathBuf,
     pub kernel: PathBuf,
@@ -27,7 +27,7 @@ pub struct FirecrackerConfig {
     pub snapshot: Option<SnapshotConfig>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct SnapshotConfig {
     pub snapshot_path: PathBuf,
     pub memory_path: PathBuf,
@@ -48,7 +48,7 @@ impl From<sandbox_fc::SnapshotConfig> for SnapshotConfig {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SandboxConfig {
     pub vcpu: u32,
@@ -66,7 +66,7 @@ impl Default for SandboxConfig {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct ServerConfig {
     pub url: String,
     pub token: String,
@@ -79,7 +79,7 @@ pub async fn load(path: &Path) -> RunnerResult<RunnerConfig> {
     let content = tokio::fs::read_to_string(path)
         .await
         .map_err(|e| RunnerError::Config(format!("read {}: {e}", path.display())))?;
-    let mut config: RunnerConfig = serde_yaml::from_str(&content)
+    let mut config: RunnerConfig = serde_yaml_ng::from_str(&content)
         .map_err(|e| RunnerError::Config(format!("parse {}: {e}", path.display())))?;
     if let Some(config_dir) = path.parent() {
         config.resolve_relative_paths(config_dir);
@@ -95,7 +95,7 @@ pub async fn generate(config: &RunnerConfig) -> RunnerResult<()> {
         .await
         .map_err(|e| RunnerError::Config(format!("create {}: {e}", runner_dir.display())))?;
 
-    let content = serde_yaml::to_string(config)
+    let content = serde_yaml_ng::to_string(config)
         .map_err(|e| RunnerError::Config(format!("serialize config: {e}")))?;
 
     let config_path = runner_dir.join("runner.yaml");
@@ -394,5 +394,40 @@ firecracker:
         let server = loaded.server.unwrap();
         assert_eq!(server.url, "https://api.example.com");
         assert_eq!(server.token, "secret");
+    }
+
+    #[tokio::test]
+    async fn load_resolves_relative_paths() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // Create files in a subdirectory
+        let sub = dir.path().join("artifacts");
+        tokio::fs::create_dir_all(&sub).await.unwrap();
+        for name in ["firecracker", "vmlinux", "rootfs.squashfs"] {
+            tokio::fs::write(sub.join(name), b"").await.unwrap();
+        }
+
+        // YAML uses relative paths (relative to config file location)
+        let yaml = r#"
+name: test
+group: test/group
+base_dir: my-runner
+firecracker:
+  binary: artifacts/firecracker
+  kernel: artifacts/vmlinux
+  rootfs: artifacts/rootfs.squashfs
+"#;
+
+        let config_path = dir.path().join("runner.yaml");
+        tokio::fs::write(&config_path, yaml).await.unwrap();
+
+        let config = load(&config_path).await.unwrap();
+
+        // All paths should be resolved to absolute paths under dir
+        assert!(config.base_dir.is_absolute());
+        assert_eq!(config.base_dir, dir.path().join("my-runner"));
+        assert_eq!(config.firecracker.binary, sub.join("firecracker"));
+        assert_eq!(config.firecracker.kernel, sub.join("vmlinux"));
+        assert_eq!(config.firecracker.rootfs, sub.join("rootfs.squashfs"));
     }
 }

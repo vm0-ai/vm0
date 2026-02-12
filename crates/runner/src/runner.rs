@@ -35,13 +35,11 @@ pub struct StartArgs {
 pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
     let mut runner_config = config::load(&args.config).await?;
 
-    // CLI / env overrides
-    let server = runner_config
-        .server
-        .get_or_insert_with(|| crate::config::ServerConfig {
-            url: String::new(),
-            token: String::new(),
-        });
+    // CLI / env overrides — take server out so we can mutate independently
+    let mut server = runner_config.server.take().unwrap_or(config::ServerConfig {
+        url: String::new(),
+        token: String::new(),
+    });
     if let Some(url) = args.api_url {
         server.url = url;
     }
@@ -61,15 +59,6 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         ));
     }
 
-    // Extract values before borrowing runner_config immutably
-    let api_url = server.url.clone();
-    let token = server.token.clone();
-    let name = runner_config.name.clone();
-    let group = runner_config.group.clone();
-    let max_concurrent = runner_config.sandbox.max_concurrent;
-    let vcpu = runner_config.sandbox.vcpu;
-    let memory_mb = runner_config.sandbox.memory_mb;
-
     tokio::fs::create_dir_all(&runner_config.base_dir)
         .await
         .map_err(|e| {
@@ -79,7 +68,24 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
             ))
         })?;
     let fc_config = runner_config.firecracker_config();
-    let base_dir = runner_config.base_dir.clone();
+
+    // Destructure — no clones needed
+    let config::RunnerConfig {
+        name,
+        group,
+        base_dir,
+        sandbox,
+        ..
+    } = runner_config;
+    let config::SandboxConfig {
+        max_concurrent,
+        vcpu,
+        memory_mb,
+    } = sandbox;
+    let config::ServerConfig {
+        url: api_url,
+        token,
+    } = server;
 
     let paths = RunnerPaths::new(base_dir);
     let status = Arc::new(StatusTracker::new(paths.status()));
