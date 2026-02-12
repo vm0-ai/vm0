@@ -42,7 +42,7 @@ AFFECTED_CRATES=$(echo "$DEPS_JSON" | jq -r --arg crate "$CRATE_NAME" '
 echo "Crate '$CRATE_NAME' depends on: $AFFECTED_CRATES" >&2
 
 # Workspace-level files affect all crates
-CHANGED_FILES=$(git diff --name-only "$BASE_REF" HEAD -- crates/)
+CHANGED_FILES=$(git -C "$REPO_ROOT" diff --name-only "$BASE_REF" HEAD -- crates/)
 if echo "$CHANGED_FILES" | grep -qE "^crates/(Cargo\.toml|Cargo\.lock|clippy\.toml)$"; then
   echo "Workspace-level file changed, all crates affected" >&2
   exit 0
