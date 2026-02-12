@@ -95,13 +95,13 @@ describe("slack settings page", () => {
 
     await setupPage({ context, path: "/settings/slack" });
 
-    // Should show the missing secrets warning
-    expect(
-      screen.getByText(/missing required secrets or variables/),
-    ).toBeInTheDocument();
+    // Should show the missing env warning banner
+    expect(screen.getByText(/missing some/)).toBeInTheDocument();
 
-    // Should show Fill button
-    expect(screen.getByRole("button", { name: /fill/i })).toBeInTheDocument();
+    // Should show a link to secrets or variables settings
+    expect(
+      screen.getByRole("button", { name: /secrets or variables/i }),
+    ).toBeInTheDocument();
   });
 
   it("opens disconnect confirmation dialog", async () => {

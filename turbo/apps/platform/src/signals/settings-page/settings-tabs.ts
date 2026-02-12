@@ -8,8 +8,7 @@ import { searchParams$, updateSearchParams$ } from "../route.ts";
 export type SettingsTab =
   | "providers"
   | "connectors"
-  | "secrets"
-  | "variables"
+  | "secrets-and-variables"
   | "integrations";
 
 // ---------------------------------------------------------------------------
@@ -17,15 +16,12 @@ export type SettingsTab =
 // ---------------------------------------------------------------------------
 
 const internalActiveTab$ = state<SettingsTab>("providers");
-const internalRequiredItems$ = state<string[]>([]);
 
 // ---------------------------------------------------------------------------
 // Public computed signals
 // ---------------------------------------------------------------------------
 
 export const activeTab$ = computed((get) => get(internalActiveTab$));
-
-export const requiredItems$ = computed((get) => get(internalRequiredItems$));
 
 // ---------------------------------------------------------------------------
 // Commands
@@ -35,10 +31,14 @@ function isValidTab(value: string): value is SettingsTab {
   return (
     value === "providers" ||
     value === "connectors" ||
-    value === "secrets" ||
-    value === "variables" ||
+    value === "secrets-and-variables" ||
     value === "integrations"
   );
+}
+
+/** Legacy tab values that map to the merged tab. */
+function isLegacySecretsOrVariablesTab(value: string): boolean {
+  return value === "secrets" || value === "variables";
 }
 
 /**
@@ -49,19 +49,12 @@ export const initSettingsTabs$ = command(({ get, set }) => {
   const params = get(searchParams$);
 
   const tab = params.get("tab");
-  if (tab && isValidTab(tab)) {
-    set(internalActiveTab$, tab as SettingsTab);
-  }
-
-  const required = params.get("required");
-  if (required) {
-    set(
-      internalRequiredItems$,
-      required
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-    );
+  if (tab) {
+    if (isValidTab(tab)) {
+      set(internalActiveTab$, tab);
+    } else if (isLegacySecretsOrVariablesTab(tab)) {
+      set(internalActiveTab$, "secrets-and-variables");
+    }
   }
 });
 
