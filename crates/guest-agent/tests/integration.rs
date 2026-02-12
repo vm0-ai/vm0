@@ -337,7 +337,89 @@ async fn send_event_masks_secrets() {
 }
 
 // =========================================================================
-// Group 6: Edge cases
+// Group 6: Session ID extraction
+// =========================================================================
+
+#[tokio::test]
+async fn send_event_extracts_claude_session_id() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    // Clean up session files from any prior run
+    let sid_file = guest_agent::paths::session_id_file();
+    let hist_file = guest_agent::paths::session_history_path_file();
+    let _ = std::fs::remove_file(sid_file);
+    let _ = std::fs::remove_file(hist_file);
+
+    let mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/events");
+        then.status(200);
+    });
+
+    let masker = SecretMasker::from_raw("");
+    // CLI_AGENT_TYPE defaults to "claude-code", so the Claude path is taken:
+    // type == "system" && subtype == "init" → reads session_id field.
+    let mut event = json!({
+        "type": "system",
+        "subtype": "init",
+        "session_id": "ses-abc-123"
+    });
+    let result = guest_agent::events::send_event(&mut event, 1, &masker).await;
+
+    assert!(result.is_ok());
+    mock.assert_calls_async(1).await;
+
+    // Session ID persisted
+    let stored = std::fs::read_to_string(sid_file).unwrap();
+    assert_eq!(stored, "ses-abc-123");
+
+    // Session history path written and contains the session ID
+    let history = std::fs::read_to_string(hist_file).unwrap();
+    assert!(
+        history.contains("ses-abc-123"),
+        "history path should contain the session ID, got: {history}"
+    );
+    assert!(
+        history.ends_with(".jsonl"),
+        "claude-code history path should end with .jsonl, got: {history}"
+    );
+
+    mock.delete_async().await;
+    let _ = std::fs::remove_file(sid_file);
+    let _ = std::fs::remove_file(hist_file);
+}
+
+#[tokio::test]
+async fn send_event_skips_session_id_for_non_init() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    // Ensure no leftover session file
+    let sid_file = guest_agent::paths::session_id_file();
+    let _ = std::fs::remove_file(sid_file);
+
+    let mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/events");
+        then.status(200);
+    });
+
+    let masker = SecretMasker::from_raw("");
+    let mut event = json!({"type": "assistant", "data": "hello"});
+    let result = guest_agent::events::send_event(&mut event, 1, &masker).await;
+
+    assert!(result.is_ok());
+    mock.assert_calls_async(1).await;
+
+    assert!(
+        !std::path::Path::new(sid_file).exists(),
+        "session ID file should NOT be written for non-init events"
+    );
+
+    mock.delete_async().await;
+}
+
+// =========================================================================
+// Group 7: Edge cases
 // =========================================================================
 
 #[tokio::test]
