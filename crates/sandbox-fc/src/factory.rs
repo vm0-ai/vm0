@@ -19,7 +19,7 @@ pub struct FirecrackerFactory {
 
 impl FirecrackerFactory {
     /// Create a new factory without allocating system resources.
-    /// Call `start()` to initialize pools before use.
+    /// Call `startup()` to initialize pools before use.
     pub async fn new(config: FirecrackerConfig) -> Result<Self, SandboxError> {
         crate::prerequisites::check_prerequisites(&config).await?;
 
@@ -33,11 +33,15 @@ impl FirecrackerFactory {
         })
     }
 
+    /// # Panics
+    /// Panics if called before `startup()` — this is a programming error.
     #[allow(clippy::expect_used)]
     fn netns_pool(&self) -> &tokio::sync::Mutex<NetnsPool> {
         self.netns_pool.as_ref().expect("factory not started")
     }
 
+    /// # Panics
+    /// Panics if called before `startup()` — this is a programming error.
     #[allow(clippy::expect_used)]
     fn overlay_pool(&self) -> &tokio::sync::Mutex<OverlayPool> {
         self.overlay_pool.as_ref().expect("factory not started")
@@ -51,6 +55,12 @@ impl SandboxFactory for FirecrackerFactory {
     }
 
     async fn startup(&mut self) -> sandbox::Result<()> {
+        if self.netns_pool.is_some() {
+            return Err(SandboxError::CreationFailed(
+                "factory already started".into(),
+            ));
+        }
+
         let concurrency = self.config.concurrency.max(1);
 
         let mut netns_pool = NetnsPool::create(NetnsPoolConfig {
