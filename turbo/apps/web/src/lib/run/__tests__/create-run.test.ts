@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { eq } from "drizzle-orm";
 import {
   testContext,
   uniqueId,
@@ -8,6 +7,9 @@ import {
 import {
   createTestCompose,
   insertStalePendingRun,
+  findTestRunRecord,
+  findTestRunCallbacks,
+  findTestRunByStatus,
 } from "../../../__tests__/api-test-helpers";
 import { addPermission } from "../../agent/permission-service";
 import { reloadEnv } from "../../../env";
@@ -16,8 +18,6 @@ import {
   type CreateRunParams,
   type CreateRunResult,
 } from "../run-service";
-import { agentRuns } from "../../../db/schema/agent-run";
-import { agentRunCallbacks } from "../../../db/schema/agent-run-callback";
 import { isConcurrentRunLimit, isForbidden, isBadRequest } from "../../errors";
 
 const context = testContext();
@@ -54,11 +54,7 @@ describe("createRun()", () => {
       expect(result.createdAt).toBeInstanceOf(Date);
 
       // Verify run record in DB
-      const [run] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.id, result.runId))
-        .limit(1);
+      const run = await findTestRunRecord(result.runId);
 
       expect(run).toBeDefined();
       expect(run!.status).toBe("running");
@@ -70,11 +66,7 @@ describe("createRun()", () => {
     it("should always set lastHeartbeatAt", async () => {
       const result = await createRun(baseParams());
 
-      const [run] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.id, result.runId))
-        .limit(1);
+      const run = await findTestRunRecord(result.runId);
 
       expect(run!.lastHeartbeatAt).not.toBeNull();
     });
@@ -83,11 +75,7 @@ describe("createRun()", () => {
       const vars = { MY_VAR: "value1", OTHER_VAR: "value2" };
       const result = await createRun(baseParams({ vars }));
 
-      const [run] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.id, result.runId))
-        .limit(1);
+      const run = await findTestRunRecord(result.runId);
 
       expect(run!.vars).toEqual(vars);
     });
@@ -96,11 +84,7 @@ describe("createRun()", () => {
       const secrets = { API_KEY: "sk-123", DB_PASS: "pw" };
       const result = await createRun(baseParams({ secrets }));
 
-      const [run] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.id, result.runId))
-        .limit(1);
+      const run = await findTestRunRecord(result.runId);
 
       expect(run!.secretNames).toEqual(["API_KEY", "DB_PASS"]);
     });
@@ -108,11 +92,7 @@ describe("createRun()", () => {
     it("should set null scheduleId when not provided", async () => {
       const result = await createRun(baseParams());
 
-      const [run] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.id, result.runId))
-        .limit(1);
+      const run = await findTestRunRecord(result.runId);
 
       expect(run!.scheduleId).toBeNull();
     });
@@ -237,11 +217,7 @@ describe("createRun()", () => {
       );
 
       // Verify run is marked as failed in DB
-      const [run] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.status, "failed"))
-        .limit(1);
+      const run = await findTestRunByStatus("failed");
 
       expect(run).toBeDefined();
       expect(run!.error).toContain("Sandbox creation failed");
@@ -262,10 +238,7 @@ describe("createRun()", () => {
       const result = await createRun(baseParams({ callbacks }));
 
       // Verify callback record in DB
-      const callbackRecords = await globalThis.services.db
-        .select()
-        .from(agentRunCallbacks)
-        .where(eq(agentRunCallbacks.runId, result.runId));
+      const callbackRecords = await findTestRunCallbacks(result.runId);
 
       expect(callbackRecords).toHaveLength(1);
       expect(callbackRecords[0]!.url).toBe("https://example.com/callback");

@@ -313,6 +313,155 @@ export interface CreateRunResult {
 }
 
 /**
+ * Load compose version and compose metadata, then verify access.
+ *
+ * @returns composeContent and compose record
+ * @throws NotFoundError - version or compose not found
+ * @throws ForbiddenError - user cannot access compose
+ */
+async function loadAndAuthorizeCompose(
+  userId: string,
+  agentComposeVersionId: string,
+  callerComposeId?: string,
+): Promise<{
+  composeContent: AgentComposeYaml;
+  compose: { id: string; userId: string; scopeId: string | null };
+}> {
+  const [version] = await globalThis.services.db
+    .select({
+      id: agentComposeVersions.id,
+      content: agentComposeVersions.content,
+      composeId: agentComposeVersions.composeId,
+    })
+    .from(agentComposeVersions)
+    .where(eq(agentComposeVersions.id, agentComposeVersionId))
+    .limit(1);
+
+  if (!version) {
+    throw notFound("Agent compose version not found");
+  }
+
+  const composeContent = version.content as AgentComposeYaml;
+
+  // Use caller-provided composeId when available to avoid content-addressed
+  // version collisions (version.composeId may point to a different user's compose)
+  const resolvedComposeId = callerComposeId ?? version.composeId;
+
+  const [compose] = await globalThis.services.db
+    .select({
+      id: agentComposes.id,
+      userId: agentComposes.userId,
+      scopeId: agentComposes.scopeId,
+    })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, resolvedComposeId))
+    .limit(1);
+
+  if (!compose) {
+    throw notFound("Agent compose not found");
+  }
+
+  const userEmail = await getUserEmail(userId);
+  const hasAccess = await canAccessCompose(userId, userEmail, compose);
+  if (!hasAccess) {
+    throw forbidden("You do not have permission to access this agent");
+  }
+
+  return { composeContent, compose };
+}
+
+/**
+ * Validate template vars availability and image access for new runs.
+ *
+ * Skipped when resuming from checkpoint or continuing a session.
+ *
+ * @throws BadRequestError - missing required template variables
+ */
+async function validateComposeRequirements(
+  userId: string,
+  composeContent: AgentComposeYaml,
+  vars?: Record<string, string>,
+): Promise<void> {
+  if (!composeContent?.agents) {
+    return;
+  }
+
+  const requiredVars = extractTemplateVars(composeContent);
+  if (requiredVars.length > 0) {
+    const scope = await getUserScopeByClerkId(userId);
+    const storedVars = scope ? await getVariableValues(scope.id) : {};
+    const allVars = { ...storedVars, ...vars };
+    const missingVars = requiredVars.filter(
+      (varName) => allVars[varName] === undefined,
+    );
+    if (missingVars.length > 0) {
+      throw badRequest(
+        `Missing required template variables: ${missingVars.join(", ")}`,
+      );
+    }
+  }
+
+  const agentKeys = Object.keys(composeContent.agents);
+  const firstAgentKey = agentKeys[0];
+  const agent = firstAgentKey
+    ? composeContent.agents[firstAgentKey]
+    : undefined;
+  if (agent?.image) {
+    await assertImageAccess(userId, agent.image);
+  }
+}
+
+/**
+ * Register run callbacks with encrypted secrets.
+ */
+async function registerCallbacks(
+  runId: string,
+  callbacks: Array<{ url: string; secret: string; payload: unknown }>,
+): Promise<void> {
+  const { SECRETS_ENCRYPTION_KEY } = env();
+  for (const callback of callbacks) {
+    const encryptedSecret = encryptCredentialValue(
+      callback.secret,
+      SECRETS_ENCRYPTION_KEY,
+    );
+    await globalThis.services.db.insert(agentRunCallbacks).values({
+      runId,
+      url: callback.url,
+      encryptedSecret,
+      payload: callback.payload,
+    });
+  }
+  log.debug(`Registered ${callbacks.length} callback(s) for run ${runId}`);
+}
+
+/**
+ * Mark a run as failed and attach run metadata to the error for callers.
+ */
+async function markRunFailed(
+  runId: string,
+  createdAt: Date,
+  error: unknown,
+): Promise<void> {
+  const errorMessage = error instanceof Error ? error.message : "Unknown error";
+  log.error(`Run ${runId} failed: ${errorMessage}`);
+
+  await globalThis.services.db
+    .update(agentRuns)
+    .set({
+      status: "failed",
+      error: errorMessage,
+      completedAt: new Date(),
+    })
+    .where(eq(agentRuns.id, runId));
+
+  // Attach run metadata so callers can return partial results
+  if (error instanceof Error) {
+    (error as RunDispatchError).runId = runId;
+    (error as RunDispatchError).createdAt = createdAt;
+  }
+}
+
+/**
  * Unified run creation pipeline
  *
  * Validates, creates, and dispatches a run in a single call.
@@ -344,75 +493,16 @@ export async function createRun(
   // Step 1: Check concurrent run limit
   await checkRunConcurrencyLimit(userId);
 
-  // Step 2: Load compose version content and compose metadata
-  const [version] = await globalThis.services.db
-    .select({
-      id: agentComposeVersions.id,
-      content: agentComposeVersions.content,
-      composeId: agentComposeVersions.composeId,
-    })
-    .from(agentComposeVersions)
-    .where(eq(agentComposeVersions.id, agentComposeVersionId))
-    .limit(1);
+  // Steps 2-3: Load compose version/metadata and verify access
+  const { composeContent } = await loadAndAuthorizeCompose(
+    userId,
+    agentComposeVersionId,
+    params.composeId,
+  );
 
-  if (!version) {
-    throw notFound("Agent compose version not found");
-  }
-
-  const composeContent = version.content as AgentComposeYaml;
-
-  // Use caller-provided composeId when available to avoid content-addressed
-  // version collisions (version.composeId may point to a different user's compose)
-  const resolvedComposeId = params.composeId ?? version.composeId;
-
-  const [compose] = await globalThis.services.db
-    .select({
-      id: agentComposes.id,
-      userId: agentComposes.userId,
-      scopeId: agentComposes.scopeId,
-    })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, resolvedComposeId))
-    .limit(1);
-
-  if (!compose) {
-    throw notFound("Agent compose not found");
-  }
-
-  // Step 3: Permission check
-  const userEmail = await getUserEmail(userId);
-  const hasAccess = await canAccessCompose(userId, userEmail, compose);
-  if (!hasAccess) {
-    throw forbidden("You do not have permission to access this agent");
-  }
-
-  // Step 4: Validate template vars and image access (for new runs with compose content)
-  if (composeContent?.agents && !params.checkpointId && !params.sessionId) {
-    const requiredVars = extractTemplateVars(composeContent);
-    if (requiredVars.length > 0) {
-      // Fetch stored vars and merge with provided vars
-      const scope = await getUserScopeByClerkId(userId);
-      const storedVars = scope ? await getVariableValues(scope.id) : {};
-      const allVars = { ...storedVars, ...(params.vars ?? {}) };
-      const missingVars = requiredVars.filter(
-        (varName) => allVars[varName] === undefined,
-      );
-      if (missingVars.length > 0) {
-        throw badRequest(
-          `Missing required template variables: ${missingVars.join(", ")}`,
-        );
-      }
-    }
-
-    // Image access check
-    const agentKeys = Object.keys(composeContent.agents);
-    const firstAgentKey = agentKeys[0];
-    const agent = firstAgentKey
-      ? composeContent.agents[firstAgentKey]
-      : undefined;
-    if (agent?.image) {
-      await assertImageAccess(userId, agent.image);
-    }
+  // Step 4: Validate template vars and image access (for new runs only)
+  if (!params.checkpointId && !params.sessionId) {
+    await validateComposeRequirements(userId, composeContent, params.vars);
   }
 
   // Step 5: Validate mutual exclusivity
@@ -448,22 +538,7 @@ export async function createRun(
   try {
     // Step 7: Register callbacks (if any)
     if (params.callbacks && params.callbacks.length > 0) {
-      const { SECRETS_ENCRYPTION_KEY } = env();
-      for (const callback of params.callbacks) {
-        const encryptedSecret = encryptCredentialValue(
-          callback.secret,
-          SECRETS_ENCRYPTION_KEY,
-        );
-        await globalThis.services.db.insert(agentRunCallbacks).values({
-          runId: run.id,
-          url: callback.url,
-          encryptedSecret,
-          payload: callback.payload,
-        });
-      }
-      log.debug(
-        `Registered ${params.callbacks.length} callback(s) for run ${run.id}`,
-      );
+      await registerCallbacks(run.id, params.callbacks);
     }
 
     // Step 8: Generate sandbox token
@@ -506,26 +581,7 @@ export async function createRun(
       createdAt: run.createdAt,
     };
   } catch (error) {
-    // Mark run as failed on any post-INSERT error
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error";
-    log.error(`Run ${run.id} failed: ${errorMessage}`);
-
-    await globalThis.services.db
-      .update(agentRuns)
-      .set({
-        status: "failed",
-        error: errorMessage,
-        completedAt: new Date(),
-      })
-      .where(eq(agentRuns.id, run.id));
-
-    // Attach run metadata so callers can return partial results
-    if (error instanceof Error) {
-      (error as RunDispatchError).runId = run.id;
-      (error as RunDispatchError).createdAt = run.createdAt;
-    }
-
+    await markRunFailed(run.id, run.createdAt, error);
     throw error;
   }
 }
