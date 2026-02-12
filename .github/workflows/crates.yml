@@ -99,9 +99,6 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260203
-    defaults:
-      run:
-        shell: bash
     needs: [detect]
     if: |
       needs.detect.outputs.workflow-changed == 'true' ||
@@ -134,11 +131,10 @@ jobs:
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           JOB_REF: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'main' }}
         run: |
-          IFS=',' read -ra HOSTS <<< "$METAL_HOSTS"
-          NUM_HOSTS=${#HOSTS[@]}
+          NUM_HOSTS=$(echo "$METAL_HOSTS" | tr ',' '\n' | wc -l)
           HASH=$(echo -n "$JOB_REF" | md5sum | cut -c1-8)
-          HOST_INDEX=$((16#$HASH % NUM_HOSTS))
-          HOST="${HOSTS[$HOST_INDEX]}"
+          HOST_INDEX=$(( 0x$HASH % NUM_HOSTS ))
+          HOST=$(echo "$METAL_HOSTS" | tr ',' '\n' | sed -n "$((HOST_INDEX + 1))p")
           echo "host=${HOST}" >> "$GITHUB_OUTPUT"
           echo "job-ref=${JOB_REF}" >> "$GITHUB_OUTPUT"
           echo "Selected metal host: ${HOST} (index ${HOST_INDEX}/${NUM_HOSTS})"
