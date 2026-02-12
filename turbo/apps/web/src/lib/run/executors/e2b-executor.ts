@@ -1,4 +1,5 @@
 import { Sandbox } from "@e2b/code-interpreter";
+import { env } from "../../../env";
 import { e2bConfig } from "../../e2b/config";
 import { resolveImageAlias } from "../../image/image-service";
 import { badRequest } from "../../errors";
@@ -237,11 +238,10 @@ function buildSandboxEnvVars(
   context: PreparedContext,
   artifactForCommand: PreparedArtifact | null,
 ): Record<string, string> {
-  const envVars = globalThis.services?.env;
-  const vercelEnv = process.env.VERCEL_ENV;
-  const vercelUrl = process.env.VERCEL_URL;
+  const vercelEnv = env().VERCEL_ENV;
+  const vercelUrl = env().VERCEL_URL;
 
-  let apiUrl = envVars?.VM0_API_URL || process.env.VM0_API_URL;
+  let apiUrl = env().VM0_API_URL;
   if (!apiUrl) {
     if (vercelEnv === "preview" && vercelUrl) {
       apiUrl = `https://${vercelUrl}`;
@@ -263,7 +263,7 @@ function buildSandboxEnvVars(
   };
 
   // Add Vercel protection bypass if available
-  const vercelBypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  const vercelBypassSecret = env().VERCEL_AUTOMATION_BYPASS_SECRET;
   if (vercelBypassSecret) {
     sandboxEnvVars.VERCEL_PROTECTION_BYPASS = vercelBypassSecret;
   }
@@ -274,7 +274,7 @@ function buildSandboxEnvVars(
   }
 
   // Pass USE_MOCK_CLAUDE for testing (skip if debugNoMockClaude is set)
-  if (process.env.USE_MOCK_CLAUDE === "true" && !context.debugNoMockClaude) {
+  if (env().USE_MOCK_CLAUDE === "true" && !context.debugNoMockClaude) {
     sandboxEnvVars.USE_MOCK_CLAUDE = "true";
   }
 
@@ -313,7 +313,7 @@ async function createSandbox(
   agentCompose: AgentComposeYaml | undefined,
   userId: string,
 ): Promise<Sandbox> {
-  const isVercelProduction = process.env.VERCEL_ENV === "production";
+  const isVercelProduction = env().VERCEL_ENV === "production";
   const timeoutMs = isVercelProduction ? 7_200_000 : 3_600_000;
 
   const agent = getFirstAgent(agentCompose);

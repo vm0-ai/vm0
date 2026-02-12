@@ -1,6 +1,7 @@
 import Docker from "dockerode";
 import os from "os";
 import { PassThrough } from "stream";
+import { env } from "../../env";
 import { logger } from "../logger";
 
 const log = logger("docker-sandbox");
@@ -22,7 +23,7 @@ let cachedNetwork: string | null | undefined;
 async function detectDockerNetwork(): Promise<string | null> {
   if (cachedNetwork !== undefined) return cachedNetwork;
 
-  const envNetwork = process.env.DOCKER_NETWORK;
+  const envNetwork = env().DOCKER_NETWORK;
   if (envNetwork) {
     cachedNetwork = envNetwork;
     log.debug(`Using explicit Docker network: ${cachedNetwork}`);
@@ -60,8 +61,7 @@ async function detectDockerNetwork(): Promise<string | null> {
  * 3. host.docker.internal (when web runs on host)
  */
 export async function resolveApiUrlForSandbox(): Promise<string> {
-  const explicit =
-    globalThis.services?.env?.VM0_API_URL || process.env.VM0_API_URL;
+  const explicit = env().VM0_API_URL;
   if (explicit) return explicit;
 
   const network = await detectDockerNetwork();
@@ -216,7 +216,7 @@ export async function createDockerSandbox(
   options: { timeoutMs?: number; envs?: Record<string, string> } = {},
 ): Promise<SandboxLike> {
   const sandboxImage =
-    process.env.DOCKER_SANDBOX_IMAGE || image || DEFAULT_SANDBOX_IMAGE;
+    env().DOCKER_SANDBOX_IMAGE || image || DEFAULT_SANDBOX_IMAGE;
 
   const envArray: string[] = [];
   if (options.envs) {
@@ -225,8 +225,8 @@ export async function createDockerSandbox(
     }
   }
 
-  const memoryBytes = parseMemory(process.env.DOCKER_SANDBOX_MEMORY || "2g");
-  const cpuNano = parseCpus(process.env.DOCKER_SANDBOX_CPUS || "2");
+  const memoryBytes = parseMemory(env().DOCKER_SANDBOX_MEMORY || "2g");
+  const cpuNano = parseCpus(env().DOCKER_SANDBOX_CPUS || "2");
 
   const network = await detectDockerNetwork();
   const isLinux = os.platform() === "linux";

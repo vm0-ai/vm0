@@ -26,9 +26,11 @@ const mockCategories = [
   { id: 3, name: "Lifestyle", slug: "lifestyle" },
 ];
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.stubEnv("NEXT_PUBLIC_STRAPI_URL", STRAPI_URL);
   vi.stubEnv("NEXT_PUBLIC_DATA_SOURCE", "strapi");
+  const { reloadEnv } = await import("../../../../src/env");
+  reloadEnv();
 
   // Register base handlers for Strapi API
   server.use(

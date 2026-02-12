@@ -3,13 +3,12 @@ import { Pool as NeonPool } from "@neondatabase/serverless";
 import { drizzle as drizzleNodePg } from "drizzle-orm/node-postgres";
 import { drizzle as drizzleNeonServerless } from "drizzle-orm/neon-serverless";
 import { schema } from "../db/db";
-import { env, type Env } from "../env";
+import { env } from "../env";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { NeonDatabase } from "drizzle-orm/neon-serverless";
 import type { Services } from "../types/global";
 
 // Private variables for singleton instances
-let _env: Env | undefined;
 let _pool: PgPool | NeonPool | undefined;
 let _db:
   | NodePgDatabase<typeof schema>
@@ -34,14 +33,11 @@ export function initServices(): void {
     return;
   }
 
-  const isVercel = !!process.env.VERCEL;
+  const isVercel = !!env().VERCEL;
 
   _services = {
     get env() {
-      if (!_env) {
-        _env = env();
-      }
-      return _env;
+      return env();
     },
     get pool() {
       if (!_pool) {

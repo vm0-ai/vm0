@@ -127,10 +127,8 @@ export const navigate$ = command(
     options: NavigateOptions,
     signal: AbortSignal,
   ) => {
-    const searchParams = options.searchParams
-      ? `?${options.searchParams.toString()}`
-      : "";
-    const newPath = `${pathname}${searchParams}`;
+    const searchStr = options.searchParams?.toString();
+    const newPath = `${pathname}${searchStr ? `?${searchStr}` : ""}`;
     L.debug("navigating to", newPath);
     pushState({}, "", newPath);
     set(reloadPathname$, (x) => x + 1);

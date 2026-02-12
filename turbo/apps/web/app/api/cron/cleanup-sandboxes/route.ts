@@ -9,6 +9,7 @@ import {
 import { eq, inArray } from "drizzle-orm";
 import { killSandbox } from "../../../../src/lib/sandbox/sandbox-service";
 import { logger } from "../../../../src/lib/logger";
+import { env } from "../../../../src/env";
 
 const log = logger("cron:cleanup-sandboxes");
 
@@ -35,7 +36,7 @@ const router = tsr.router(cronCleanupSandboxesContract, {
 
     // Verify cron secret (Vercel automatically injects CRON_SECRET into Authorization header)
     const authHeader = headers.authorization;
-    const cronSecret = process.env.CRON_SECRET;
+    const cronSecret = env().CRON_SECRET;
 
     if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
       return createErrorResponse("UNAUTHORIZED", "Invalid cron secret");

@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 import { Link } from "../../../navigation";
 import Particles from "../Particles";
 import type { BlogPost } from "../../lib/blog/types";
-import { BLOG_BASE_URL } from "../../lib/blog/config";
+import { getBlogBaseUrl } from "../../lib/blog/config";
 
 interface BlogContentProps {
   posts: BlogPost[];
@@ -215,7 +215,7 @@ export default function BlogContent({
             <p className="cta-subtitle">{t("stayInLoopDesc")}</p>
             <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
               <a
-                href={`${BLOG_BASE_URL}/sign-up`}
+                href={`${getBlogBaseUrl()}/sign-up`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="btn-primary-large"

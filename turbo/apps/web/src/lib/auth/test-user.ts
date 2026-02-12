@@ -9,7 +9,7 @@ import { SELF_HOSTED_USER_ID } from "./constants";
  * - SaaS: queries Clerk Backend API for the e2e test user
  */
 export async function resolveTestUserId(): Promise<string | null> {
-  if (isSelfHosted) {
+  if (isSelfHosted()) {
     return SELF_HOSTED_USER_ID;
   }
 

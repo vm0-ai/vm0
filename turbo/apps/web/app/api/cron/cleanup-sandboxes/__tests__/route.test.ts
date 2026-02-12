@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "../route";
 import {
   createTestRequest,
@@ -11,6 +11,7 @@ import {
   uniqueId,
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
+import { reloadEnv } from "../../../../../src/env";
 
 const context = testContext();
 
@@ -25,14 +26,11 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
 
     // Set CRON_SECRET for tests
     vi.stubEnv("CRON_SECRET", cronSecret);
+    reloadEnv();
 
     // Create test compose
     const { composeId } = await createTestCompose(uniqueId("cleanup"));
     testComposeId = composeId;
-  });
-
-  afterEach(() => {
-    delete process.env.CRON_SECRET;
   });
 
   describe("Authentication", () => {

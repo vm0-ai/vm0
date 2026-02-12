@@ -1,21 +1,32 @@
 import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
-export const isSelfHosted = process.env.SELF_HOSTED === "true";
-
-const slackEnabled =
-  !isSelfHosted || process.env.SLACK_INTEGRATION_ENABLED === "true";
-const e2bEnabled = !isSelfHosted || process.env.E2B_ENABLED === "true";
-
 /**
- * Make a field required only when a condition is true, otherwise optional.
- * In SaaS mode all conditions default to true, so behavior is unchanged.
+ * Whether the app is running in self-hosted mode.
+ * Reads process.env directly so it can be used in layout.tsx (Server Component
+ * evaluated at build time) without triggering full env() validation.
+ * Tests can still override via vi.stubEnv('SELF_HOSTED', 'true').
  */
-function requiredWhen(condition: boolean, schema = z.string().min(1)) {
-  return condition ? schema : schema.optional();
+export function isSelfHosted(): boolean {
+  return process.env.SELF_HOSTED === "true";
 }
 
 function initEnv() {
+  // Internal flags for conditional schema validation (must read process.env
+  // directly because they configure the schema that env() itself validates).
+  const selfHosted = process.env.SELF_HOSTED === "true";
+  const slackEnabled =
+    !selfHosted || process.env.SLACK_INTEGRATION_ENABLED === "true";
+  const e2bEnabled = !selfHosted || process.env.E2B_ENABLED === "true";
+
+  /**
+   * Make a field required only when a condition is true, otherwise optional.
+   * In SaaS mode all conditions default to true, so behavior is unchanged.
+   */
+  function requiredWhen(condition: boolean, schema = z.string().min(1)) {
+    return condition ? schema : schema.optional();
+  }
+
   return createEnv({
     server: {
       DATABASE_URL: z.string().min(1),
@@ -31,7 +42,7 @@ function initEnv() {
         .positive()
         .default(10000),
       SELF_HOSTED: z.enum(["true", "false"]).optional(),
-      CLERK_SECRET_KEY: requiredWhen(!isSelfHosted),
+      CLERK_SECRET_KEY: requiredWhen(!selfHosted),
       E2B_ENABLED: z.enum(["true", "false"]).optional(),
       E2B_API_KEY: requiredWhen(e2bEnabled),
       VM0_API_URL: z.string().url().optional(),
@@ -66,8 +77,6 @@ function initEnv() {
       // Notion OAuth (for connector)
       NOTION_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       NOTION_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
-      // Platform UI URL (for settings page links in error messages)
-      PLATFORM_URL: z.string().url(),
       // Sentry
       SENTRY_DSN: z.string().url().optional(),
       SENTRY_AUTH_TOKEN: z.string().min(1).optional(),
@@ -75,11 +84,33 @@ function initEnv() {
       SENTRY_PROJECT: z.string().min(1).optional(),
       // Run concurrency (0 = no limit, undefined = default of 1)
       CONCURRENT_RUN_LIMIT: z.coerce.number().int().nonnegative().optional(),
+      // Realtime pub/sub
+      ABLY_API_KEY: z.string().min(1).optional(),
+      // Vercel cron job authentication
+      CRON_SECRET: z.string().min(1).optional(),
+      // Dev/test flags
+      USE_MOCK_CLAUDE: z.enum(["true", "false"]).optional(),
+      VM0_DEBUG: z.string().optional(),
+      CLAUDE_CODE_VERSION_URL: z.string().url().optional(),
+      // Docker sandbox config
+      DOCKER_NETWORK: z.string().optional(),
+      DOCKER_SANDBOX_IMAGE: z.string().optional(),
+      DOCKER_SANDBOX_MEMORY: z.string().optional(),
+      DOCKER_SANDBOX_CPUS: z.string().optional(),
+      // Vercel platform detection
+      VERCEL: z.string().optional(),
+      VERCEL_AUTOMATION_BYPASS_SECRET: z.string().optional(),
     },
     client: {
       NEXT_PUBLIC_SELF_HOSTED: z.enum(["true", "false"]).optional(),
-      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: requiredWhen(!isSelfHosted),
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: requiredWhen(!selfHosted),
       NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
+      // Blog/content config
+      NEXT_PUBLIC_BASE_URL: z.string().url().optional(),
+      NEXT_PUBLIC_DATA_SOURCE: z.string().optional(),
+      NEXT_PUBLIC_STRAPI_URL: z.string().url().optional(),
+      // Platform UI URL (for settings page links, Navbar, LandingPage)
+      NEXT_PUBLIC_PLATFORM_URL: z.string().url(),
     },
     runtimeEnv: {
       DATABASE_URL: process.env.DATABASE_URL,
@@ -119,17 +150,35 @@ function initEnv() {
       GH_OAUTH_CLIENT_SECRET: process.env.GH_OAUTH_CLIENT_SECRET,
       NOTION_OAUTH_CLIENT_ID: process.env.NOTION_OAUTH_CLIENT_ID,
       NOTION_OAUTH_CLIENT_SECRET: process.env.NOTION_OAUTH_CLIENT_SECRET,
-      PLATFORM_URL: process.env.PLATFORM_URL,
+      NEXT_PUBLIC_PLATFORM_URL: process.env.NEXT_PUBLIC_PLATFORM_URL,
       SENTRY_DSN: process.env.SENTRY_DSN,
       SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
       SENTRY_ORG: process.env.SENTRY_ORG,
       SENTRY_PROJECT: process.env.SENTRY_PROJECT,
       CONCURRENT_RUN_LIMIT: process.env.CONCURRENT_RUN_LIMIT,
+      ABLY_API_KEY: process.env.ABLY_API_KEY,
+      CRON_SECRET: process.env.CRON_SECRET,
+      USE_MOCK_CLAUDE: process.env.USE_MOCK_CLAUDE,
+      VM0_DEBUG: process.env.VM0_DEBUG,
+      CLAUDE_CODE_VERSION_URL: process.env.CLAUDE_CODE_VERSION_URL,
+      DOCKER_NETWORK: process.env.DOCKER_NETWORK,
+      DOCKER_SANDBOX_IMAGE: process.env.DOCKER_SANDBOX_IMAGE,
+      DOCKER_SANDBOX_MEMORY: process.env.DOCKER_SANDBOX_MEMORY,
+      DOCKER_SANDBOX_CPUS: process.env.DOCKER_SANDBOX_CPUS,
+      VERCEL: process.env.VERCEL,
+      VERCEL_AUTOMATION_BYPASS_SECRET:
+        process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
       NEXT_PUBLIC_SELF_HOSTED: process.env.SELF_HOSTED,
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
         process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
       NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
+      NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL,
+      NEXT_PUBLIC_DATA_SOURCE: process.env.NEXT_PUBLIC_DATA_SOURCE,
+      NEXT_PUBLIC_STRAPI_URL: process.env.NEXT_PUBLIC_STRAPI_URL,
     },
+    // Skip validation during Docker build (SKIP_ENV_VALIDATION=true in Dockerfile)
+    // where server env vars are unavailable at build time.
+    skipValidation: process.env.SKIP_ENV_VALIDATION === "true",
     emptyStringAsUndefined: true,
   });
 }

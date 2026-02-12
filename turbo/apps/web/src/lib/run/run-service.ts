@@ -1,5 +1,5 @@
 import { eq, and, count, gt, or } from "drizzle-orm";
-import { isSelfHosted } from "../../env";
+import { env, isSelfHosted } from "../../env";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { agentRuns } from "../../db/schema/agent-run";
 import {
@@ -45,11 +45,7 @@ export async function checkRunConcurrencyLimit(
 ): Promise<void> {
   // Use provided limit, or env var, or default to 1
   // Note: 0 means no limit, so we need explicit undefined check
-  const rawEnvLimit = process.env.CONCURRENT_RUN_LIMIT;
-  const envLimit =
-    rawEnvLimit !== undefined && rawEnvLimit !== ""
-      ? parseInt(rawEnvLimit, 10)
-      : undefined;
+  const envLimit = env().CONCURRENT_RUN_LIMIT;
   let effectiveLimit = 1; // Default
 
   if (limit !== undefined) {
@@ -255,7 +251,7 @@ async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
       `Dispatching run ${context.runId} to runner group: ${context.runnerGroup}`,
     );
     return await executeRunnerJob(context);
-  } else if (isSelfHosted) {
+  } else if (isSelfHosted()) {
     log.debug(`Dispatching run ${context.runId} to Docker executor`);
     return await executeDockerRun(context);
   } else {

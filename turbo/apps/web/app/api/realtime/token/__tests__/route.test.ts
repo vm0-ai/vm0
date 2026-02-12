@@ -7,6 +7,7 @@ import {
 } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import { reloadEnv } from "../../../../../src/env";
 
 const { mockCreateTokenRequest } = vi.hoisted(() => {
   const mockCreateTokenRequest = vi.fn();
@@ -40,6 +41,8 @@ function postToken(runId: string) {
 describe("POST /api/realtime/token", () => {
   beforeEach(async () => {
     context.setupMocks();
+    vi.stubEnv("ABLY_API_KEY", "test-ably-key");
+    reloadEnv();
     await context.setupUser();
     mockCreateTokenRequest.mockReset();
   });

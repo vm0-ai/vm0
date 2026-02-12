@@ -3,6 +3,7 @@ import { POST } from "../route";
 import { POST as createDeviceRoute } from "../../device/route";
 import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
+import { reloadEnv } from "../../../../../../src/env";
 
 // Mock Clerk Server API
 const mockGetUserList = vi.fn();
@@ -35,12 +36,14 @@ describe("/api/cli/auth/test-approve", () => {
     context.setupMocks();
     vi.stubEnv("USE_MOCK_CLAUDE", "true");
     vi.stubEnv("CLERK_SECRET_KEY", "test-secret-key");
+    reloadEnv();
     mockGetUserList.mockReset();
   });
 
   describe("environment gate", () => {
     it("should return 404 when USE_MOCK_CLAUDE is not set", async () => {
       vi.stubEnv("USE_MOCK_CLAUDE", "");
+      reloadEnv();
 
       const request = createTestRequest(
         "http://localhost:3000/api/cli/auth/test-approve",
@@ -58,6 +61,7 @@ describe("/api/cli/auth/test-approve", () => {
 
     it("should return 404 when USE_MOCK_CLAUDE is false", async () => {
       vi.stubEnv("USE_MOCK_CLAUDE", "false");
+      reloadEnv();
 
       const request = createTestRequest(
         "http://localhost:3000/api/cli/auth/test-approve",

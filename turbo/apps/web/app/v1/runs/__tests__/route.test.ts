@@ -18,6 +18,7 @@ import {
   type UserContext,
 } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
+import { reloadEnv } from "../../../../src/env";
 
 const context = testContext();
 
@@ -419,48 +420,42 @@ describe("Public API v1 - Runs Endpoints", () => {
   describe("Concurrent Run Limit", () => {
     it("should return 429 when concurrent run limit is reached", async () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+      reloadEnv();
 
-      try {
-        // First run should succeed (creates running run)
-        const run1 = await createTestV1Run(testAgentId, "First concurrent run");
-        expect(run1.status).toBe("running");
+      // First run should succeed (creates running run)
+      const run1 = await createTestV1Run(testAgentId, "First concurrent run");
+      expect(run1.status).toBe("running");
 
-        // Second run should fail with 429
-        const request = createTestRequest("http://localhost:3000/v1/runs", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agentId: testAgentId,
-            prompt: "Second concurrent run",
-          }),
-        });
+      // Second run should fail with 429
+      const request = createTestRequest("http://localhost:3000/v1/runs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: testAgentId,
+          prompt: "Second concurrent run",
+        }),
+      });
 
-        const response = await createRun(request);
-        const data = await response.json();
+      const response = await createRun(request);
+      const data = await response.json();
 
-        expect(response.status).toBe(429);
-        expect(data.error.type).toBe("rate_limit_error");
-        expect(data.error.message).toMatch(/concurrent/i);
-      } finally {
-        delete process.env.CONCURRENT_RUN_LIMIT;
-      }
+      expect(response.status).toBe(429);
+      expect(data.error.type).toBe("rate_limit_error");
+      expect(data.error.message).toMatch(/concurrent/i);
     });
 
     it("should allow unlimited runs when limit is 0", async () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT", "0");
+      reloadEnv();
 
-      try {
-        // Create multiple runs - all should succeed
-        const run1 = await createTestV1Run(testAgentId, "Run 1 with no limit");
-        const run2 = await createTestV1Run(testAgentId, "Run 2 with no limit");
-        const run3 = await createTestV1Run(testAgentId, "Run 3 with no limit");
+      // Create multiple runs - all should succeed
+      const run1 = await createTestV1Run(testAgentId, "Run 1 with no limit");
+      const run2 = await createTestV1Run(testAgentId, "Run 2 with no limit");
+      const run3 = await createTestV1Run(testAgentId, "Run 3 with no limit");
 
-        expect(run1.status).toBe("running");
-        expect(run2.status).toBe("running");
-        expect(run3.status).toBe("running");
-      } finally {
-        delete process.env.CONCURRENT_RUN_LIMIT;
-      }
+      expect(run1.status).toBe("running");
+      expect(run2.status).toBe("running");
+      expect(run3.status).toBe("running");
     });
   });
 });

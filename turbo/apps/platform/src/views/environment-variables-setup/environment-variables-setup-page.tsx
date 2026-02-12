@@ -22,6 +22,7 @@ import {
   connectConnector$,
   pollingConnectorType$,
 } from "../../signals/settings-page/connectors.ts";
+import { deleteConnector$ } from "../../signals/external/connectors.ts";
 import { ConnectorIcon } from "../settings-page/connector-icons.tsx";
 
 function LogoHeader() {
@@ -113,6 +114,7 @@ function SuccessState() {
 function ConnectorCard({ item }: { item: ConnectorItem }) {
   const pollingType = useGet(pollingConnectorType$);
   const connect = useSet(connectConnector$);
+  const disconnect = useSet(deleteConnector$);
   const pageSignal = useGet(pageSignal$);
 
   const isPolling = pollingType === item.connectorType;
@@ -127,9 +129,22 @@ function ConnectorCard({ item }: { item: ConnectorItem }) {
         <span className="text-xs text-muted-foreground">{item.helpText}</span>
       </div>
       {item.connected ? (
-        <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
-          Connected
-        </span>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+            Connected
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              detach(disconnect(item.connectorType), Reason.DomCallback);
+            }}
+            className="text-xs text-muted-foreground h-auto px-1 py-0.5"
+          >
+            Disconnect
+          </Button>
+        </div>
       ) : (
         <Button
           type="button"
@@ -196,10 +211,6 @@ function FormState() {
           </div>
 
           <div className="flex flex-col gap-5 w-full">
-            {connectors.map((item) => (
-              <ConnectorCard key={item.connectorType} item={item} />
-            ))}
-
             {manualItems.map((item) => (
               <div key={item.name} className="flex flex-col gap-2 w-full">
                 <label className="text-sm font-medium leading-5 text-foreground px-1">
@@ -228,6 +239,10 @@ function FormState() {
                   </p>
                 )}
               </div>
+            ))}
+
+            {connectors.map((item) => (
+              <ConnectorCard key={item.connectorType} item={item} />
             ))}
           </div>
 

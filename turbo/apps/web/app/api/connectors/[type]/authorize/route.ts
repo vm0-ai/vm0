@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { connectorTypeSchema } from "@vm0/core";
+import { env } from "../../../../../src/env";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserIdFromRequest } from "../../../../../src/lib/auth/get-user-id";
 import { buildGitHubAuthorizationUrl } from "../../../../../src/lib/connector/providers/github";
@@ -43,7 +44,7 @@ function buildCookieHeader(
     "HttpOnly",
     "SameSite=Lax",
   ];
-  if (process.env.NODE_ENV === "production") {
+  if (env().NODE_ENV === "production") {
     parts.push("Secure");
   }
   return parts.join("; ");
