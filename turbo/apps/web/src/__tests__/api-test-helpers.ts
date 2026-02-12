@@ -60,6 +60,12 @@ import { secrets } from "../db/schema/secret";
 import { encryptCredentialValue } from "../lib/crypto/secrets-encryption";
 import type { ConnectorType } from "@vm0/core";
 import { agentSessions } from "../db/schema/agent-session";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "../db/schema/agent-compose";
+import { conversations } from "../db/schema/conversation";
+import { uniqueId } from "./test-helpers";
 
 /**
  * Helper to create a NextRequest for testing.
@@ -422,6 +428,93 @@ export async function createTestAgentSession(
   const [session] = await globalThis.services.db
     .insert(agentSessions)
     .values({ userId, agentComposeId })
+    .returning({ id: agentSessions.id });
+  return session!;
+}
+
+/**
+ * Create a compose version for a compose.
+ * Internal helper for createTestSessionWithConversation.
+ */
+async function createTestComposeVersion(
+  composeId: string,
+  userId: string,
+): Promise<string> {
+  const versionId = uniqueId("version");
+  await globalThis.services.db.insert(agentComposeVersions).values({
+    id: versionId,
+    composeId,
+    content: { name: "test-agent", model: "claude-3-5-sonnet-20241022" },
+    createdBy: userId,
+  });
+  // Update compose to point to this version
+  await globalThis.services.db
+    .update(agentComposes)
+    .set({ headVersionId: versionId })
+    .where(eq(agentComposes.id, composeId));
+  return versionId;
+}
+
+/**
+ * Create a run record directly in the database.
+ * Internal helper for createTestSessionWithConversation.
+ */
+async function createTestRunRecord(
+  userId: string,
+  versionId: string,
+): Promise<{ id: string }> {
+  const [run] = await globalThis.services.db
+    .insert(agentRuns)
+    .values({
+      userId,
+      agentComposeVersionId: versionId,
+      status: "completed",
+      prompt: "test prompt",
+    })
+    .returning({ id: agentRuns.id });
+  return run!;
+}
+
+/**
+ * Create a conversation record for a run.
+ * Internal helper for createTestSessionWithConversation.
+ */
+async function createTestConversation(runId: string): Promise<{ id: string }> {
+  const [conversation] = await globalThis.services.db
+    .insert(conversations)
+    .values({
+      runId,
+      cliAgentType: "claude",
+      cliAgentSessionId: uniqueId("cli-session"),
+      cliAgentSessionHistory: "[]",
+    })
+    .returning({ id: conversations.id });
+  return conversation!;
+}
+
+/**
+ * Create an agent session with a linked conversation.
+ * This creates the full data chain required by validateAgentSession:
+ * compose version -> run -> conversation -> session
+ */
+export async function createTestSessionWithConversation(
+  userId: string,
+  agentComposeId: string,
+): Promise<{ id: string }> {
+  // Create compose version
+  const versionId = await createTestComposeVersion(agentComposeId, userId);
+  // Create run
+  const run = await createTestRunRecord(userId, versionId);
+  // Create conversation
+  const conversation = await createTestConversation(run.id);
+  // Create session with conversation
+  const [session] = await globalThis.services.db
+    .insert(agentSessions)
+    .values({
+      userId,
+      agentComposeId,
+      conversationId: conversation.id,
+    })
     .returning({ id: agentSessions.id });
   return session!;
 }
