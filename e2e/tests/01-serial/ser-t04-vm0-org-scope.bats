@@ -18,6 +18,9 @@ load '../../helpers/setup'
 # ============================================
 
 @test "vm0 scope use --personal switches back to personal scope" {
+    if [ "${VM0_EXPERIMENTAL_ORG_SCOPE:-}" != "1" ]; then
+        skip "VM0_EXPERIMENTAL_ORG_SCOPE not enabled"
+    fi
     run $CLI_COMMAND scope use --personal
     assert_success
     assert_output --partial "personal scope"
