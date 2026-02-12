@@ -19,6 +19,24 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260203
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed crates
+        id: detect
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_REF="origin/${{ github.event.pull_request.base.ref }}"
+          else
+            BASE_REF="HEAD^"
+          fi
+          # scripts/crate-changed.sh: exit 0=changed, 1=not changed, 2+=error
+          check_crate() {
+            ./scripts/crate-changed.sh "$1" "$BASE_REF" && echo "$1-changed=true" >> "$GITHUB_OUTPUT" || {
+              rc=$?; [ $rc -eq 1 ] && echo "$1-changed=false" >> "$GITHUB_OUTPUT" || exit $rc
+            }
+          }
+          check_crate ably-subscriber
 
       - name: Check formatting
         run: |
@@ -36,6 +54,7 @@ jobs:
           cargo test --all-targets
 
       - name: Run ably-subscriber integration test
+        if: steps.detect.outputs.ably-subscriber-changed == 'true'
         env:
           ABLY_API_KEY: ${{ secrets.ABLY_API_KEY }}
         run: |
