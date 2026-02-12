@@ -71,7 +71,7 @@ function SecurityFooter() {
 function LoadingState() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-6">
-      <div className="w-full max-w-[400px] overflow-hidden rounded-xl border border-border bg-popover">
+      <div className="w-full max-w-[540px] overflow-hidden rounded-xl border border-border bg-popover">
         <div className="flex flex-col items-center gap-8 p-10">
           <LogoHeader />
           <div className="flex flex-col gap-5 w-full">
@@ -91,7 +91,7 @@ function LoadingState() {
 function SuccessState() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-6">
-      <div className="w-full max-w-[400px] min-h-[380px] overflow-hidden rounded-xl border border-border bg-popover">
+      <div className="w-full max-w-[540px] min-h-[380px] overflow-hidden rounded-xl border border-border bg-popover">
         <div className="flex flex-col items-center p-10">
           <LogoHeader />
           <div className="mt-12 flex flex-col items-center gap-4">
@@ -120,27 +120,29 @@ function ConnectorCard({ item }: { item: ConnectorItem }) {
   const isPolling = pollingType === item.connectorType;
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-4 w-full">
+    <div className="flex items-center gap-4 rounded-xl border border-border bg-card p-4 w-full">
       <ConnectorIcon type={item.connectorType} size={30} />
-      <div className="flex flex-1 flex-col gap-0.5 min-w-0">
+      <div className="flex flex-1 flex-col gap-1 min-w-0">
         <span className="text-sm font-medium text-foreground">
           {item.label}
         </span>
-        <span className="text-xs text-muted-foreground">{item.helpText}</span>
+        <span className="text-sm text-muted-foreground">{item.helpText}</span>
       </div>
       {item.connected ? (
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-            Connected
-          </span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <IconCheck
+            size={16}
+            stroke={2}
+            className="text-emerald-600 dark:text-emerald-400"
+          />
           <Button
             type="button"
-            variant="ghost"
+            variant="link"
             size="sm"
             onClick={() => {
               detach(disconnect(item.connectorType), Reason.DomCallback);
             }}
-            className="text-xs text-muted-foreground h-auto px-1 py-0.5"
+            className="text-xs text-muted-foreground h-auto p-0"
           >
             Disconnect
           </Button>
@@ -192,7 +194,7 @@ function FormState() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-6">
-      <div className="w-full max-w-[400px] overflow-hidden rounded-xl border border-border bg-popover">
+      <div className="w-full max-w-[540px] overflow-hidden rounded-xl border border-border bg-popover">
         <form
           onSubmit={handleSubmit}
           className="flex flex-col items-center gap-8 p-10"
