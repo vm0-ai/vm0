@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.60.1](https://github.com/vm0-ai/vm0/compare/platform-v0.60.0...platform-v0.60.1) (2026-02-12)
+
+
+### Bug Fixes
+
+* **platform:** improve environment-variables-setup connector UI ([#2932](https://github.com/vm0-ai/vm0/issues/2932)) ([fbc02b1](https://github.com/vm0-ai/vm0/commit/fbc02b16f832ee35fe914210f5cd1224737bf973))
+* **platform:** persist model selection for providers with predefined models ([#2925](https://github.com/vm0-ai/vm0/issues/2925)) ([cf014c0](https://github.com/vm0-ai/vm0/commit/cf014c0a6c4a439748251023937b97f5d60dcf6c)), closes [#2923](https://github.com/vm0-ai/vm0/issues/2923)
+
 ## [0.60.0](https://github.com/vm0-ai/vm0/compare/platform-v0.59.1...platform-v0.60.0) (2026-02-12)
 
 
