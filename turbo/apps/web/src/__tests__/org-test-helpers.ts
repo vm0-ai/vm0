@@ -58,14 +58,23 @@ export function setupClerkOrgMock(options: {
     ),
     getUserList: vi
       .fn()
-      .mockImplementation((params: { emailAddress: string[] }) =>
-        Promise.resolve({
-          data: params.emailAddress.map((email) => ({
-            id: `user_${email.split("@")[0]}`,
-            emailAddresses: [{ id: "email_1", emailAddress: email }],
-            primaryEmailAddressId: "email_1",
-          })),
-        }),
+      .mockImplementation(
+        (params: { emailAddress?: string[]; userId?: string[] }) =>
+          Promise.resolve({
+            data: params.emailAddress
+              ? params.emailAddress.map((email) => ({
+                  id: `user_${email.split("@")[0]}`,
+                  emailAddresses: [{ id: "email_1", emailAddress: email }],
+                  primaryEmailAddressId: "email_1",
+                }))
+              : (params.userId ?? []).map((uid) => ({
+                  id: uid,
+                  emailAddresses: [
+                    { id: "email_1", emailAddress: `${uid}@example.com` },
+                  ],
+                  primaryEmailAddressId: "email_1",
+                })),
+          }),
       ),
     getOrganizationMembershipList: vi.fn().mockResolvedValue({
       data: memberships.map((m) => ({
