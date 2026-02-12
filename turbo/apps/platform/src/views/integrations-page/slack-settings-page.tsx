@@ -45,9 +45,13 @@ export function SlackSettingsPage() {
   // Ensure the current workspace agent appears in the dropdown even if
   // it isn't in the user's own agents list (e.g. shared by another user).
   const agentOptions = (() => {
-    if (!data?.agent) return agents;
+    if (!data?.agent) {
+      return agents;
+    }
     const hasCurrentAgent = agents.some((a) => a.name === data.agent?.name);
-    if (hasCurrentAgent) return agents;
+    if (hasCurrentAgent) {
+      return agents;
+    }
     return [
       { name: data.agent.name, headVersionId: null, updatedAt: "" },
       ...agents,

@@ -115,7 +115,9 @@ export const updateSlackDefaultAgent$ = command(
   async ({ get, set }, agentName: string) => {
     // Optimistically update agent name so the UI doesn't flash a loading state
     set(slackIntegrationState$, (prev) => {
-      if (!prev.data) return prev;
+      if (!prev.data) {
+        return prev;
+      }
       return {
         ...prev,
         data: {
