@@ -59,6 +59,7 @@ rmp-serde = "1"
 rmpv = "1"
 futures-util = "0.3"
 url = "2"
+xxhash-rust = "0.8"
 
 [profile.release]
 lto = true

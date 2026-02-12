@@ -1,5 +1,7 @@
+use std::hash::Hasher;
+
 use clap::Args;
-use sha2::{Digest, Sha256};
+use xxhash_rust::xxh64::Xxh64;
 
 use sandbox_fc::SnapshotOutputPaths;
 
@@ -10,7 +12,7 @@ use crate::paths::{HomePaths, RootfsPaths};
 
 #[derive(Args, Clone)]
 pub struct SnapshotArgs {
-    /// SHA-256 hash of the rootfs inputs (output of `rootfs`).
+    /// Cache key of the rootfs inputs (xxh64, output of `rootfs`).
     #[arg(long)]
     pub rootfs_hash: String,
     /// Number of vCPUs for the snapshot VM.
@@ -90,6 +92,10 @@ async fn is_snapshot_complete(output: &SnapshotOutputPaths) -> RunnerResult<bool
 
 /// Compute a composite cache key from all inputs that affect the snapshot.
 ///
+/// Uses xxh64 (64-bit) for the same reason as rootfs `compute_input_hash`:
+/// SHA-256's 64 hex chars exceed the 108-byte Unix socket `sun_path` limit
+/// when used as a directory name. See that function's doc comment for details.
+///
 /// Inputs:
 ///   - `sandbox_fc::config_hash()` — boot args, guest network config
 ///   - `rootfs_hash` — rootfs content (from `rootfs`)
@@ -99,20 +105,20 @@ async fn is_snapshot_complete(output: &SnapshotOutputPaths) -> RunnerResult<bool
 /// **Changing this function invalidates all cached snapshots.**
 pub(crate) fn compute_snapshot_hash(args: &SnapshotArgs) -> String {
     let fc_config = sandbox_fc::config_hash();
-    let mut hasher = Sha256::new();
-    hasher.update(b"fc_config:");
-    hasher.update(fc_config.as_bytes());
-    hasher.update(b"rootfs:");
-    hasher.update(args.rootfs_hash.as_bytes());
-    hasher.update(b"firecracker:");
-    hasher.update(FIRECRACKER_VERSION.as_bytes());
-    hasher.update(b"kernel:");
-    hasher.update(KERNEL_VERSION.as_bytes());
-    hasher.update(b"vcpu:");
-    hasher.update(args.vcpu.to_le_bytes());
-    hasher.update(b"memory_mb:");
-    hasher.update(args.memory_mb.to_le_bytes());
-    format!("{:x}", hasher.finalize())
+    let mut hasher = Xxh64::default();
+    hasher.write(b"fc_config:");
+    hasher.write(fc_config.as_bytes());
+    hasher.write(b"rootfs:");
+    hasher.write(args.rootfs_hash.as_bytes());
+    hasher.write(b"firecracker:");
+    hasher.write(FIRECRACKER_VERSION.as_bytes());
+    hasher.write(b"kernel:");
+    hasher.write(KERNEL_VERSION.as_bytes());
+    hasher.write(b"vcpu:");
+    hasher.write(&args.vcpu.to_le_bytes());
+    hasher.write(b"memory_mb:");
+    hasher.write(&args.memory_mb.to_le_bytes());
+    format!("{:016x}", hasher.finish())
 }
 
 #[cfg(test)]
@@ -131,7 +137,7 @@ mod tests {
         // Changing this assertion means ALL existing cached snapshots are
         // invalidated.  Only update deliberately.
         assert_eq!(
-            hash, "3c68896dabe2536440cc57e8bf7d377c3f0935afd90ca68b189c6e37636fef19",
+            hash, "9393ede23e670df9",
             "snapshot hash changed — this invalidates all cached snapshots"
         );
     }

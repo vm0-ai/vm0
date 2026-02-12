@@ -1,7 +1,8 @@
+use std::hash::Hasher;
 use std::path::{Path, PathBuf};
 
 use clap::Args;
-use sha2::{Digest, Sha256};
+use xxhash_rust::xxh64::Xxh64;
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::{HomePaths, RootfsPaths};
@@ -40,7 +41,7 @@ impl RootfsArgs {
     }
 }
 
-/// Build rootfs and return the content hash of the inputs.
+/// Build rootfs and return the cache key (xxh64 of inputs).
 pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
     let guest_bins = args.guest_bins();
     let paths = HomePaths::new()?;
@@ -151,16 +152,25 @@ async fn is_build_complete(rootfs: &RootfsPaths) -> RunnerResult<bool> {
 }
 
 /// Hash all deterministic inputs: build script, Dockerfile, and guest binaries.
+///
+/// We use xxh64 (64-bit, 16 hex chars) instead of SHA-256 (64 hex chars) because
+/// the hash becomes a directory name in the rootfs/snapshot path. Firecracker binds
+/// Unix sockets inside that directory, and `sun_path` is limited to 108 bytes on
+/// Linux. SHA-256 pushed paths to ~113 bytes, exceeding the limit.
+///
+/// Collision risk is negligible: a single machine has at most tens of cached builds,
+/// and 64 bits gives ~50% collision probability only at ~5 billion entries (birthday
+/// bound). This is purely a local cache key — not used for integrity verification.
 async fn compute_input_hash(guest_bins: &[(&Path, &str)]) -> RunnerResult<String> {
-    let mut hasher = Sha256::new();
+    let mut hasher = Xxh64::default();
 
     // Hash build script content (includes resolv.conf, constants, all logic)
-    hasher.update(b"script:");
-    hasher.update(BUILD_SCRIPT.as_bytes());
+    hasher.write(b"script:");
+    hasher.write(BUILD_SCRIPT.as_bytes());
 
     // Hash Dockerfile content
-    hasher.update(b"dockerfile:");
-    hasher.update(EMBEDDED_DOCKERFILE.as_bytes());
+    hasher.write(b"dockerfile:");
+    hasher.write(EMBEDDED_DOCKERFILE.as_bytes());
 
     // Hash guest binaries (already sorted by name via guest_bins())
     for (src, dest) in guest_bins {
@@ -168,9 +178,9 @@ async fn compute_input_hash(guest_bins: &[(&Path, &str)]) -> RunnerResult<String
             .await
             .map_err(|e| RunnerError::Internal(format!("read {}: {e}", src.display())))?;
         let tag = format!("bin:{dest}:");
-        hasher.update(tag.as_bytes());
-        hasher.update(&content);
+        hasher.write(tag.as_bytes());
+        hasher.write(&content);
     }
 
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(format!("{:016x}", hasher.finish()))
 }
