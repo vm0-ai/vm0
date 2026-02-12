@@ -62,14 +62,14 @@ export const SESSION_HISTORY_PATH_FILE = `/tmp/vm0-session-history-${RUN_ID}.txt
 export const EVENT_ERROR_FLAG = `/tmp/vm0-event-error-${RUN_ID}`;
 
 // Log file for persistent logging (directly in /tmp with vm0- prefix)
-export const SYSTEM_LOG_FILE = `/tmp/vm0-main-${RUN_ID}.log`;
+export const SYSTEM_LOG_FILE = `/tmp/vm0-system-${RUN_ID}.log`;
 export const AGENT_LOG_FILE = `/tmp/vm0-agent-${RUN_ID}.log`;
 
 // Metrics log file for system resource metrics (JSONL format)
 export const METRICS_LOG_FILE = `/tmp/vm0-metrics-${RUN_ID}.jsonl`;
 
 // Telemetry position tracking files (to avoid duplicate uploads)
-export const TELEMETRY_LOG_POS_FILE = `/tmp/vm0-telemetry-log-pos-${RUN_ID}.txt`;
+export const TELEMETRY_SYSTEM_LOG_POS_FILE = `/tmp/vm0-telemetry-system-log-pos-${RUN_ID}.txt`;
 export const TELEMETRY_METRICS_POS_FILE = `/tmp/vm0-telemetry-metrics-pos-${RUN_ID}.txt`;
 export const TELEMETRY_SANDBOX_OPS_POS_FILE = `/tmp/vm0-telemetry-sandbox-ops-pos-${RUN_ID}.txt`;
 
