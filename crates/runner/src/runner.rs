@@ -70,7 +70,14 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
     let vcpu = runner_config.sandbox.vcpu;
     let memory_mb = runner_config.sandbox.memory_mb;
 
-    runner_config.base_dir = resolve_or_create(runner_config.base_dir.clone()).await?;
+    tokio::fs::create_dir_all(&runner_config.base_dir)
+        .await
+        .map_err(|e| {
+            RunnerError::Config(format!(
+                "create base_dir {}: {e}",
+                runner_config.base_dir.display()
+            ))
+        })?;
     let fc_config = runner_config.firecracker_config();
     let base_dir = runner_config.base_dir.clone();
 
@@ -310,17 +317,4 @@ async fn recv_signal(sig: &mut Option<tokio::signal::unix::Signal>) {
         }
         None => std::future::pending().await,
     }
-}
-
-async fn resolve_path(path: PathBuf) -> RunnerResult<PathBuf> {
-    tokio::fs::canonicalize(&path)
-        .await
-        .map_err(|e| RunnerError::Config(format!("resolve path {}: {e}", path.display())))
-}
-
-async fn resolve_or_create(path: PathBuf) -> RunnerResult<PathBuf> {
-    tokio::fs::create_dir_all(&path)
-        .await
-        .map_err(|e| RunnerError::Config(format!("create dir {}: {e}", path.display())))?;
-    resolve_path(path).await
 }
