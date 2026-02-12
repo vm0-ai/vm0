@@ -7,7 +7,6 @@ import {
   type VariableResponse,
 } from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
-import { connectors$ } from "../external/connectors.ts";
 import { secrets$ } from "./secrets.ts";
 import { variables$ } from "./variables.ts";
 
@@ -74,25 +73,22 @@ export type MergedItem =
     };
 
 export const mergedItems$ = computed(async (get) => {
-  const [secretsList, variablesList, reqSecrets, reqVariables, connectorData] =
+  const [secretsList, variablesList, reqSecrets, reqVariables] =
     await Promise.all([
       get(secrets$),
       get(variables$),
       get(requiredSecretNames$),
       get(requiredVariableNames$),
-      get(connectors$),
     ]);
 
   // Secret names that ANY connector can provide (e.g. NOTION_TOKEN, GH_TOKEN).
   // Used to hide missing secrets that should be resolved via connectors tab.
+  // Secret names that ANY connector can provide (e.g. NOTION_TOKEN, GH_TOKEN).
+  // These are hidden from missing items and always deletable when configured,
+  // since the user should resolve them via the connectors tab.
   const allConnectorEnvVars = getConnectorProvidedSecretNames(
     Object.keys(CONNECTOR_TYPES) as ConnectorType[],
   );
-
-  // Secret names that already-connected connectors provide.
-  // Used to determine whether a configured secret is deletable.
-  const connectedTypes = connectorData.connectors.map((c) => c.type);
-  const connectorProvided = getConnectorProvidedSecretNames(connectedTypes);
 
   const items: MergedItem[] = [];
 
@@ -114,14 +110,14 @@ export const mergedItems$ = computed(async (get) => {
   }
 
   // Configured secrets
-  // Agent-required but connector-covered → treat as deletable (not agentRequired)
+  // Agent-required but connector-resolvable → treat as deletable (not agentRequired)
   for (const secret of secretsList) {
     const required = reqSecrets.has(secret.name);
     items.push({
       kind: "secret",
       name: secret.name,
       data: secret,
-      agentRequired: required && !connectorProvided.has(secret.name),
+      agentRequired: required && !allConnectorEnvVars.has(secret.name),
     });
   }
 
