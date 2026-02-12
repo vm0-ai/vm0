@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.35.1](https://github.com/vm0-ai/vm0/compare/web-v12.35.0...web-v12.35.1) (2026-02-12)
+
+
+### Bug Fixes
+
+* **slack:** use most recent workspace link for settings api ([#2928](https://github.com/vm0-ai/vm0/issues/2928)) ([53513d1](https://github.com/vm0-ai/vm0/commit/53513d18d9817254a2f6869c6283fa3e618168f6))
+* **slack:** use session's compose when continuing conversation ([#2934](https://github.com/vm0-ai/vm0/issues/2934)) ([ca19a82](https://github.com/vm0-ai/vm0/commit/ca19a8266cad225d4e8f3f726f49d3cd66c074e6))
+
 ## [12.35.0](https://github.com/vm0-ai/vm0/compare/web-v12.34.0...web-v12.35.0) (2026-02-12)
 
 
