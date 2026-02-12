@@ -126,7 +126,9 @@ function ConnectorCard({ item }: { item: ConnectorItem }) {
         <span className="text-sm font-medium text-foreground">
           {item.label}
         </span>
-        <span className="text-sm text-muted-foreground">{item.helpText}</span>
+        <span className="hidden sm:inline text-sm text-muted-foreground">
+          {item.helpText}
+        </span>
       </div>
       {item.connected ? (
         <div className="flex items-center gap-1.5 shrink-0">
