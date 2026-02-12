@@ -13,5 +13,8 @@ pub trait SandboxFactory: Send + Sync {
     async fn create(&self, config: SandboxConfig) -> Result<Box<dyn Sandbox>>;
     async fn destroy(&self, sandbox: Box<dyn Sandbox>);
     /// Release all factory-level resources.
+    /// Requires exclusive ownership — callers sharing via `Arc` must
+    /// first recover ownership (e.g. `Arc::try_unwrap`) after all
+    /// concurrent users have been dropped.
     async fn shutdown(&mut self);
 }

@@ -55,6 +55,7 @@ impl SandboxFactory for FirecrackerFactory {
     }
 
     async fn startup(&mut self) -> sandbox::Result<()> {
+        // Both pools are always set together, so checking one is sufficient.
         if self.netns_pool.is_some() {
             return Err(SandboxError::CreationFailed(
                 "factory already started".into(),
