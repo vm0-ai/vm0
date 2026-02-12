@@ -31,20 +31,25 @@ import {
 import { AppShell } from "../layout/app-shell.tsx";
 import { AgentsListSkeleton } from "./agents-list-skeleton.tsx";
 import { SecretDialog } from "../settings-page/secret-dialog.tsx";
-import { useGet, useResolved, useSet } from "ccstate-react";
+import { VariableDialog } from "../settings-page/variable-dialog.tsx";
+import { useGet, useLastResolved, useResolved, useSet } from "ccstate-react";
 import {
   agentsList$,
   agentsLoading$,
   agentsError$,
   schedules$,
-  agentsWithMissingSecrets$,
+  agentsMissingInfo$,
   getAgentScheduleStatus,
+  type AgentMissingInfo,
 } from "../../signals/agents-page/agents-list.ts";
 import { openAddSecretDialog$ } from "../../signals/settings-page/secrets.ts";
+import { openAddVariableDialog$ } from "../../signals/settings-page/variables.ts";
+import { connectConnector$ } from "../../signals/settings-page/connectors.ts";
 import { defaultModelProvider$ } from "../../signals/external/model-providers.ts";
 import { getUILabel } from "../settings-page/provider-ui-config.ts";
-import { Bed, Settings, Clock, AlertTriangle, Plus } from "lucide-react";
-import type { ComposeListItem } from "@vm0/core";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import { Bed, Settings, Clock, AlertTriangle, Plus, Link } from "lucide-react";
+import type { ComposeListItem, ConnectorType } from "@vm0/core";
 import { detach, Reason } from "../../signals/utils.ts";
 
 export function AgentsPage() {
@@ -58,6 +63,7 @@ export function AgentsPage() {
         <AgentsListSection />
       </div>
       <SecretDialog />
+      <VariableDialog />
     </AppShell>
   );
 }
@@ -65,15 +71,10 @@ export function AgentsPage() {
 function AgentsListSection() {
   const agents = useGet(agentsList$);
   const schedules = useGet(schedules$);
-  const agentsWithMissingSecrets = useGet(agentsWithMissingSecrets$);
+  const missingInfoMap = useLastResolved(agentsMissingInfo$);
   const loading = useGet(agentsLoading$);
   const error = useGet(agentsError$);
   const defaultProvider = useResolved(defaultModelProvider$);
-
-  // Create a map for quick lookup of missing secrets
-  const missingSecretsMap = new Map(
-    agentsWithMissingSecrets.map((a) => [a.agentName, a.missingSecrets]),
-  );
 
   if (loading) {
     return <AgentsListSkeleton />;
@@ -135,13 +136,13 @@ function AgentsListSection() {
       <TableBody>
         {agents.map((agent) => {
           const hasSchedule = getAgentScheduleStatus(agent.name, schedules);
-          const missingSecrets = missingSecretsMap.get(agent.name);
+          const missingInfo = missingInfoMap?.get(agent.name);
           return (
             <AgentRow
               key={agent.name}
               agent={agent}
               hasSchedule={hasSchedule}
-              missingSecrets={missingSecrets}
+              missingInfo={missingInfo}
               modelProviderLabel={
                 defaultProvider ? getUILabel(defaultProvider.type) : "N/A"
               }
@@ -153,22 +154,43 @@ function AgentsListSection() {
   );
 }
 
+function getMissingItemCount(info: AgentMissingInfo): number {
+  return (
+    info.manualSecrets.length +
+    info.connectorItems.reduce((sum, c) => sum + c.secretNames.length, 0) +
+    info.missingVariables.length
+  );
+}
+
 function AgentRow({
   agent,
   hasSchedule,
-  missingSecrets,
+  missingInfo,
   modelProviderLabel,
 }: {
   agent: ComposeListItem;
   hasSchedule: boolean;
-  missingSecrets?: string[];
+  missingInfo?: AgentMissingInfo;
   modelProviderLabel: string;
 }) {
-  const openAddDialog = useSet(openAddSecretDialog$);
+  const openAddSecret = useSet(openAddSecretDialog$);
+  const openAddVariable = useSet(openAddVariableDialog$);
+  const connectConnector = useSet(connectConnector$);
+  const pageSignal = useGet(pageSignal$);
 
   const handleAddSecret = (secretName: string) => {
-    detach(openAddDialog(secretName), Reason.DomCallback);
+    detach(openAddSecret(secretName), Reason.DomCallback);
   };
+
+  const handleAddVariable = (variableName: string) => {
+    detach(openAddVariable(variableName), Reason.DomCallback);
+  };
+
+  const handleConnectConnector = (connectorType: ConnectorType) => {
+    detach(connectConnector(connectorType, pageSignal), Reason.DomCallback);
+  };
+
+  const missingCount = missingInfo ? getMissingItemCount(missingInfo) : 0;
 
   return (
     <Dialog>
@@ -179,12 +201,12 @@ function AgentRow({
               <span className="block truncate whitespace-nowrap font-medium">
                 {agent.name}
               </span>
-              {missingSecrets && missingSecrets.length > 0 && (
+              {missingCount > 0 && (
                 <span className="inline-flex items-center gap-1.5 text-xs text-destructive">
                   <AlertTriangle className="h-3 w-3 flex-shrink-0" />
                   <span className="truncate">
-                    Missing {missingSecrets.length} secret
-                    {missingSecrets.length > 1 ? "s" : ""}
+                    Missing {missingCount} item
+                    {missingCount > 1 ? "s" : ""}
                   </span>
                 </span>
               )}
@@ -250,28 +272,65 @@ function AgentRow({
             How to manage this agent in Claude Code
           </DialogDescription>
         </DialogHeader>
-        {missingSecrets && missingSecrets.length > 0 && (
+        {missingInfo && missingCount > 0 && (
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Missing required secrets</AlertTitle>
+            <AlertTitle>Missing required configuration</AlertTitle>
             <AlertDescription>
               <p className="mb-3">
-                This agent requires {missingSecrets.length} secret
-                {missingSecrets.length > 1 ? "s" : ""} to run. Click to add:
+                This agent requires {missingCount} item
+                {missingCount > 1 ? "s" : ""} to run:
               </p>
-              <div className="flex flex-wrap gap-2">
-                {missingSecrets.map((secret) => (
-                  <Button
-                    key={secret}
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleAddSecret(secret)}
-                    className="h-auto py-1.5 px-2.5 text-xs border-destructive text-destructive hover:bg-destructive/10"
-                  >
-                    <Plus className="h-3 w-3" />
-                    <code className="font-mono">{secret}</code>
-                  </Button>
+              <div className="flex flex-col gap-3">
+                {missingInfo.connectorItems.map((item) => (
+                  <div key={item.connectorType} className="flex flex-col gap-1">
+                    <span className="text-xs text-destructive/80">
+                      Connect {item.label} for{" "}
+                      {item.secretNames.map((n) => n).join(", ")}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleConnectConnector(item.connectorType)}
+                      className="h-auto py-1.5 px-2.5 text-xs border-destructive text-destructive hover:bg-destructive/10 w-fit"
+                    >
+                      <Link className="h-3 w-3" />
+                      Connect {item.label}
+                    </Button>
+                  </div>
                 ))}
+                {missingInfo.manualSecrets.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {missingInfo.manualSecrets.map((secret) => (
+                      <Button
+                        key={secret}
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleAddSecret(secret)}
+                        className="h-auto py-1.5 px-2.5 text-xs border-destructive text-destructive hover:bg-destructive/10"
+                      >
+                        <Plus className="h-3 w-3" />
+                        <code className="font-mono">{secret}</code>
+                      </Button>
+                    ))}
+                  </div>
+                )}
+                {missingInfo.missingVariables.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {missingInfo.missingVariables.map((variable) => (
+                      <Button
+                        key={variable}
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleAddVariable(variable)}
+                        className="h-auto py-1.5 px-2.5 text-xs border-destructive text-destructive hover:bg-destructive/10"
+                      >
+                        <Plus className="h-3 w-3" />
+                        <code className="font-mono">{variable}</code>
+                      </Button>
+                    ))}
+                  </div>
+                )}
               </div>
             </AlertDescription>
           </Alert>

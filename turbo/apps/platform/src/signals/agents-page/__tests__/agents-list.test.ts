@@ -8,6 +8,8 @@ import {
   agentsLoading$,
   agentsError$,
   schedules$,
+  agentsMissingInfo$,
+  reloadAgentsMissing$,
   fetchAgentsList$,
   getAgentScheduleStatus,
 } from "../agents-list";
@@ -38,12 +40,6 @@ describe("agents-list signals", () => {
         http.get("http://localhost:3000/api/agent/schedules", () => {
           return HttpResponse.json({ schedules: mockSchedules });
         }),
-        http.get(
-          "http://localhost:3000/api/agent/schedules/missing-secrets",
-          () => {
-            return HttpResponse.json({ agents: [] });
-          },
-        ),
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
@@ -97,12 +93,6 @@ describe("agents-list signals", () => {
             { status: 500 },
           );
         }),
-        http.get(
-          "http://localhost:3000/api/agent/schedules/missing-secrets",
-          () => {
-            return HttpResponse.json({ agents: [] });
-          },
-        ),
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
@@ -118,6 +108,211 @@ describe("agents-list signals", () => {
       expect(schedules).toStrictEqual([]);
       expect(loading).toBeFalsy();
       expect(error).toBeNull();
+    });
+  });
+
+  describe("agentsMissingInfo$", () => {
+    it("should return missing secrets for agents", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/schedules/missing-secrets",
+          () => {
+            return HttpResponse.json({
+              agents: [
+                {
+                  composeId: "c1",
+                  agentName: "agent-1",
+                  requiredSecrets: ["MY_API_KEY"],
+                  missingSecrets: ["MY_API_KEY"],
+                  requiredVariables: [],
+                  missingVariables: [],
+                },
+              ],
+            });
+          },
+        ),
+        http.get("http://localhost:3000/api/connectors", () => {
+          return HttpResponse.json({ connectors: [] });
+        }),
+      );
+
+      await setupPage({ context, path: "/", withoutRender: true });
+
+      const info = await context.store.get(agentsMissingInfo$);
+      const agentInfo = info.get("agent-1");
+
+      expect(agentInfo).toBeDefined();
+      expect(agentInfo!.manualSecrets).toStrictEqual(["MY_API_KEY"]);
+      expect(agentInfo!.connectorItems).toStrictEqual([]);
+      expect(agentInfo!.missingVariables).toStrictEqual([]);
+    });
+
+    it("should return missing variables for agents", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/schedules/missing-secrets",
+          () => {
+            return HttpResponse.json({
+              agents: [
+                {
+                  composeId: "c1",
+                  agentName: "agent-1",
+                  requiredSecrets: [],
+                  missingSecrets: [],
+                  requiredVariables: ["MY_VAR"],
+                  missingVariables: ["MY_VAR"],
+                },
+              ],
+            });
+          },
+        ),
+        http.get("http://localhost:3000/api/connectors", () => {
+          return HttpResponse.json({ connectors: [] });
+        }),
+      );
+
+      await setupPage({ context, path: "/", withoutRender: true });
+
+      const info = await context.store.get(agentsMissingInfo$);
+      const agentInfo = info.get("agent-1");
+
+      expect(agentInfo).toBeDefined();
+      expect(agentInfo!.manualSecrets).toStrictEqual([]);
+      expect(agentInfo!.missingVariables).toStrictEqual(["MY_VAR"]);
+    });
+
+    it("should categorize connector-resolvable secrets separately", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/schedules/missing-secrets",
+          () => {
+            return HttpResponse.json({
+              agents: [
+                {
+                  composeId: "c1",
+                  agentName: "agent-1",
+                  requiredSecrets: ["GITHUB_TOKEN", "MY_API_KEY"],
+                  missingSecrets: ["GITHUB_TOKEN", "MY_API_KEY"],
+                  requiredVariables: [],
+                  missingVariables: [],
+                },
+              ],
+            });
+          },
+        ),
+        http.get("http://localhost:3000/api/connectors", () => {
+          return HttpResponse.json({ connectors: [] });
+        }),
+      );
+
+      await setupPage({ context, path: "/", withoutRender: true });
+
+      const info = await context.store.get(agentsMissingInfo$);
+      const agentInfo = info.get("agent-1");
+
+      expect(agentInfo).toBeDefined();
+      expect(agentInfo!.manualSecrets).toStrictEqual(["MY_API_KEY"]);
+      expect(agentInfo!.connectorItems).toHaveLength(1);
+      expect(agentInfo!.connectorItems[0]!.connectorType).toBe("github");
+      expect(agentInfo!.connectorItems[0]!.label).toBe("GitHub");
+      expect(agentInfo!.connectorItems[0]!.secretNames).toStrictEqual([
+        "GITHUB_TOKEN",
+      ]);
+    });
+
+    it("should exclude secrets provided by connected connectors", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/schedules/missing-secrets",
+          () => {
+            return HttpResponse.json({
+              agents: [
+                {
+                  composeId: "c1",
+                  agentName: "agent-1",
+                  requiredSecrets: ["GITHUB_TOKEN", "MY_API_KEY"],
+                  missingSecrets: ["GITHUB_TOKEN", "MY_API_KEY"],
+                  requiredVariables: [],
+                  missingVariables: [],
+                },
+              ],
+            });
+          },
+        ),
+        http.get("http://localhost:3000/api/connectors", () => {
+          return HttpResponse.json({
+            connectors: [
+              {
+                id: "conn-1",
+                type: "github",
+                authMethod: "oauth",
+                externalId: null,
+                externalUsername: null,
+                externalEmail: null,
+                oauthScopes: null,
+                createdAt: "2024-01-01",
+                updatedAt: "2024-01-01",
+              },
+            ],
+          });
+        }),
+      );
+
+      await setupPage({ context, path: "/", withoutRender: true });
+
+      const info = await context.store.get(agentsMissingInfo$);
+      const agentInfo = info.get("agent-1");
+
+      expect(agentInfo).toBeDefined();
+      // GITHUB_TOKEN is excluded because GitHub connector is connected
+      expect(agentInfo!.manualSecrets).toStrictEqual(["MY_API_KEY"]);
+      expect(agentInfo!.connectorItems).toStrictEqual([]);
+    });
+
+    it("should refresh after reloadAgentsMissing$ is triggered", async () => {
+      let callCount = 0;
+
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/schedules/missing-secrets",
+          () => {
+            callCount++;
+            if (callCount === 1) {
+              return HttpResponse.json({
+                agents: [
+                  {
+                    composeId: "c1",
+                    agentName: "agent-1",
+                    requiredSecrets: ["MY_API_KEY"],
+                    missingSecrets: ["MY_API_KEY"],
+                    requiredVariables: [],
+                    missingVariables: [],
+                  },
+                ],
+              });
+            }
+            // After secret is added, no more missing
+            return HttpResponse.json({ agents: [] });
+          },
+        ),
+        http.get("http://localhost:3000/api/connectors", () => {
+          return HttpResponse.json({ connectors: [] });
+        }),
+      );
+
+      await setupPage({ context, path: "/", withoutRender: true });
+
+      // First fetch returns missing secret
+      const infoBefore = await context.store.get(agentsMissingInfo$);
+      expect(infoBefore.get("agent-1")).toBeDefined();
+
+      // Trigger reload (simulating what happens after adding a secret)
+      context.store.set(reloadAgentsMissing$);
+
+      // Second fetch returns no missing items
+      const infoAfter = await context.store.get(agentsMissingInfo$);
+      expect(infoAfter.get("agent-1")).toBeUndefined();
+      expect(callCount).toBe(2);
     });
   });
 

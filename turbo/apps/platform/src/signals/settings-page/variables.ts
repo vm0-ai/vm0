@@ -5,6 +5,7 @@ import type {
   SetVariableRequest,
 } from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
+import { reloadAgentsMissing$ } from "../agents-page/agents-list.ts";
 
 // ---------------------------------------------------------------------------
 // Reload trigger
@@ -228,6 +229,7 @@ export const submitVariableDialog$ = command(
 
       signal.throwIfAborted();
       set(internalReloadVariables$, (x) => x + 1);
+      set(reloadAgentsMissing$);
       set(internalDialogState$, {
         open: false,
         mode: "add",
@@ -281,6 +283,7 @@ export const confirmDeleteVariable$ = command(
 
       signal.throwIfAborted();
       set(internalReloadVariables$, (x) => x + 1);
+      set(reloadAgentsMissing$);
       set(internalDeleteDialogState$, { open: false, variableName: null });
     })();
 
