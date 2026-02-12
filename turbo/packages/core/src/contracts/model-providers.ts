@@ -157,8 +157,8 @@ export const MODEL_PROVIDER_TYPES = {
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
       API_TIMEOUT_MS: "3000000",
     } as Record<string, string>,
-    models: ["GLM-4.7", "GLM-4.5-Air"] as string[],
-    defaultModel: "GLM-4.7",
+    models: ["glm-5", "glm-4.7", "glm-4.5-air"] as string[],
+    defaultModel: "glm-4.7",
   },
   "azure-foundry": {
     framework: "claude-code" as const,
