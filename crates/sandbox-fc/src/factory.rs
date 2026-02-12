@@ -1,14 +1,36 @@
 use async_trait::async_trait;
 use sandbox::{Sandbox, SandboxConfig, SandboxError, SandboxFactory};
+use sha2::{Digest, Sha256};
 use tracing::{info, warn};
 
 use crate::config::FirecrackerConfig;
-use crate::network::{NetnsPool, NetnsPoolConfig};
+use crate::network::{GUEST_NETWORK, NetnsPool, NetnsPoolConfig, generate_boot_args};
 use crate::overlay::{
     Ext4Creator, OverlayCreator, OverlayPool, OverlayPoolConfig, SnapshotCopyCreator,
 };
 use crate::paths::{FactoryPaths, SandboxPaths};
 use crate::sandbox::FirecrackerSandbox;
+
+/// SHA-256 fingerprint of all sandbox-fc internal configuration that affects
+/// snapshot output (boot args, guest network, etc.).
+///
+/// This is the backing implementation for [`SandboxFactory::config_hash`].
+/// It is also available as a free function so callers that don't have a
+/// factory instance (e.g. the snapshot subcommand) can compute the hash.
+pub fn config_hash() -> String {
+    let boot_args = generate_boot_args();
+    let mut hasher = Sha256::new();
+    // boot_args already contains guest_ip, gateway_ip, netmask via
+    // generate_guest_network_boot_args(). Only guest_mac and tap_name
+    // need to be hashed separately (used by configure_network_interface).
+    hasher.update(b"boot_args:");
+    hasher.update(boot_args.as_bytes());
+    hasher.update(b"guest_mac:");
+    hasher.update(GUEST_NETWORK.guest_mac.as_bytes());
+    hasher.update(b"tap_name:");
+    hasher.update(GUEST_NETWORK.tap_name.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
 
 pub struct FirecrackerFactory {
     config: FirecrackerConfig,
@@ -52,6 +74,10 @@ impl FirecrackerFactory {
 impl SandboxFactory for FirecrackerFactory {
     fn name(&self) -> &str {
         "firecracker"
+    }
+
+    fn config_hash(&self) -> String {
+        config_hash()
     }
 
     async fn startup(&mut self) -> sandbox::Result<()> {

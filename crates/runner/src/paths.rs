@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::error::{RunnerError, RunnerResult};
 
@@ -67,7 +67,54 @@ impl HomePaths {
         self.root.join("rootfs")
     }
 
+    pub fn snapshots_dir(&self) -> PathBuf {
+        self.root.join("snapshots")
+    }
+
     pub fn runners_dir(&self) -> PathBuf {
         self.root.join("runners")
+    }
+}
+
+/// Paths for a rootfs build output directory (keyed by input hash).
+pub struct RootfsPaths {
+    dir: PathBuf,
+}
+
+impl RootfsPaths {
+    pub fn new(home: &HomePaths, hash: &str) -> Self {
+        Self {
+            dir: home.rootfs_dir().join(hash),
+        }
+    }
+
+    pub fn dir(&self) -> &Path {
+        &self.dir
+    }
+
+    pub fn rootfs(&self) -> PathBuf {
+        self.dir.join("rootfs.squashfs")
+    }
+
+    pub fn ca_cert(&self) -> PathBuf {
+        self.dir.join("mitmproxy-ca-cert.pem")
+    }
+
+    pub fn ca_key(&self) -> PathBuf {
+        self.dir.join("mitmproxy-ca-key.pem")
+    }
+
+    pub fn ca_combined(&self) -> PathBuf {
+        self.dir.join("mitmproxy-ca.pem")
+    }
+
+    /// All files that must exist for the build to be considered complete.
+    pub fn expected_files(&self) -> [PathBuf; 4] {
+        [
+            self.rootfs(),
+            self.ca_cert(),
+            self.ca_key(),
+            self.ca_combined(),
+        ]
     }
 }

@@ -4,16 +4,11 @@ use clap::Args;
 use sha2::{Digest, Sha256};
 
 use crate::error::{RunnerError, RunnerResult};
-use crate::paths::HomePaths;
+use crate::paths::{HomePaths, RootfsPaths};
 
 const BUILD_SCRIPT: &str = include_str!("../scripts/build-rootfs.sh");
 const VERIFY_SCRIPT: &str = include_str!("../scripts/verify-rootfs.sh");
 const EMBEDDED_DOCKERFILE: &str = include_str!("../scripts/rootfs.Dockerfile");
-
-const ROOTFS_FILE: &str = "rootfs.squashfs";
-const CA_CERT_FILE: &str = "mitmproxy-ca-cert.pem";
-const CA_KEY_FILE: &str = "mitmproxy-ca-key.pem";
-const CA_COMBINED_FILE: &str = "mitmproxy-ca.pem";
 
 #[derive(Args)]
 pub struct BuildRootfsArgs {
@@ -54,10 +49,12 @@ pub async fn run_build_rootfs(args: BuildRootfsArgs) -> RunnerResult<()> {
     let hash = compute_input_hash(&guest_bins).await?;
     tracing::info!("rootfs input hash: {hash}");
 
-    let output_dir = paths.rootfs_dir().join(&hash);
+    let rootfs_paths = RootfsPaths::new(&paths, &hash);
+    let output_dir = rootfs_paths.dir();
 
-    if is_build_complete(&output_dir).await? {
+    if is_build_complete(&rootfs_paths).await? {
         tracing::info!("[OK] rootfs already built: {}", output_dir.display());
+        tracing::info!("rootfs hash: {hash}");
         return Ok(());
     }
 
@@ -116,7 +113,7 @@ pub async fn run_build_rootfs(args: BuildRootfsArgs) -> RunnerResult<()> {
     }
 
     // Verify rootfs contents (verify script is NOT part of the input hash)
-    let rootfs_path = output_dir.join(ROOTFS_FILE);
+    let rootfs_path = rootfs_paths.rootfs();
     let verify_path = work_dir.path().join("verify-rootfs.sh");
     let rootfs_str = rootfs_path.to_string_lossy();
 
@@ -135,14 +132,13 @@ pub async fn run_build_rootfs(args: BuildRootfsArgs) -> RunnerResult<()> {
     }
 
     tracing::info!("[OK] rootfs ready: {}", output_dir.display());
+    tracing::info!("rootfs hash: {hash}");
     Ok(())
 }
 
 /// Check whether all expected build outputs exist in the directory.
-async fn is_build_complete(dir: &Path) -> RunnerResult<bool> {
-    let files = [ROOTFS_FILE, CA_CERT_FILE, CA_KEY_FILE, CA_COMBINED_FILE];
-    for name in files {
-        let path = dir.join(name);
+async fn is_build_complete(rootfs: &RootfsPaths) -> RunnerResult<bool> {
+    for path in rootfs.expected_files() {
         let exists = tokio::fs::try_exists(&path)
             .await
             .map_err(|e| RunnerError::Internal(format!("check {}: {e}", path.display())))?;
