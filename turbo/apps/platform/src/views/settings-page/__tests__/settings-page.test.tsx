@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { pathname$ } from "../../../signals/route.ts";
+import { updateFormModel$ } from "../../../signals/settings-page/model-providers.ts";
 import { screen, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 
@@ -114,6 +115,73 @@ describe("settings page", () => {
     });
     expect(capturedBody!.type).toBe("anthropic-api-key");
     expect(capturedBody!.secret).toBe("sk-ant-api-key-12345");
+  });
+
+  it("persists selected model when adding a provider with model selection", async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+
+    server.use(
+      http.get("/api/model-providers", () => {
+        return HttpResponse.json({ modelProviders: [] });
+      }),
+      http.put("/api/model-providers", async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(
+          {
+            provider: {
+              id: crypto.randomUUID(),
+              type: capturedBody.type,
+              framework: "claude-code",
+              secretName: "ZAI_API_KEY",
+              authMethod: null,
+              secretNames: null,
+              isDefault: true,
+              selectedModel: (capturedBody.selectedModel as string) ?? null,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+            created: true,
+          },
+          { status: 201 },
+        );
+      }),
+    );
+
+    await setupPage({ context, path: "/settings" });
+
+    // Open add provider menu
+    const addButton = screen.getByText("Add more model provider");
+    await user.click(addButton);
+
+    // Select Z.AI (GLM) provider
+    const zaiOption = await screen.findByText("Z.AI (GLM)");
+    await user.click(zaiOption);
+
+    // Dialog should open with model selector
+    const dialog = await screen.findByRole("dialog");
+
+    // Select glm-5 model via store (Radix Select doesn't render options in jsdom)
+    context.store.set(updateFormModel$, "glm-5");
+
+    // Fill in API key
+    const input = within(dialog).getByPlaceholderText("Enter your API key");
+    await user.click(input);
+    await user.paste("test-zai-api-key");
+
+    // Submit
+    const addProviderButton = within(dialog).getByRole("button", {
+      name: /^add$/i,
+    });
+    await user.click(addProviderButton);
+
+    // Verify selectedModel was included in the request
+    await vi.waitFor(() => {
+      expect(capturedBody).toBeTruthy();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(capturedBody!.type).toBe("zai-api-key");
+    expect(capturedBody!.secret).toBe("test-zai-api-key");
+    expect(capturedBody!.selectedModel).toBe("glm-5");
   });
 
   it("can delete a provider via kebab menu", async () => {
