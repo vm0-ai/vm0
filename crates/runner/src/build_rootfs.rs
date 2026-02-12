@@ -6,9 +6,9 @@ use sha2::{Digest, Sha256};
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
 
-const BUILD_SCRIPT: &str = include_str!("../build-rootfs.sh");
-const VERIFY_SCRIPT: &str = include_str!("../verify-rootfs.sh");
-const EMBEDDED_DOCKERFILE: &str = include_str!("../rootfs.Dockerfile");
+const BUILD_SCRIPT: &str = include_str!("../scripts/build-rootfs.sh");
+const VERIFY_SCRIPT: &str = include_str!("../scripts/verify-rootfs.sh");
+const EMBEDDED_DOCKERFILE: &str = include_str!("../scripts/rootfs.Dockerfile");
 
 const ROOTFS_FILE: &str = "rootfs.squashfs";
 const CA_CERT_FILE: &str = "mitmproxy-ca-cert.pem";
