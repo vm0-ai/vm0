@@ -377,8 +377,10 @@ fn retry_then_succeed() {
     // Run in background thread so we can swap the mock during RETRY_DELAY
     let handle = std::thread::spawn(move || guest_download::run(&manifest_str));
 
-    // Wait for first request to fail, then swap mock before retry fires (RETRY_DELAY = 1s)
-    std::thread::sleep(std::time::Duration::from_millis(200));
+    // Poll until the first request has been made, then swap mock before retry fires (RETRY_DELAY = 1s)
+    while fail_mock.calls() < 1 {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
     fail_mock.delete();
     server.mock(|when, then| {
         when.method(GET).path("/storage.tar.gz");
@@ -438,4 +440,23 @@ fn storages_partial_failure() {
         std::fs::read_to_string(mount_good.join("ok.txt")).unwrap(),
         "ok"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Test 15: artifact with null/missing URL is skipped (no download)
+// ---------------------------------------------------------------------------
+#[test]
+fn artifact_null_url_skipped() {
+    let dir = tempfile::tempdir().unwrap();
+    let mount = dir.path().join("artifact_mount");
+
+    // archiveUrl is the string "null" — should be treated as missing
+    let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some("null"))));
+    let result = guest_download::run(manifest.to_str().unwrap());
+    assert!(result);
+
+    // archiveUrl is absent entirely
+    let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), None)));
+    let result = guest_download::run(manifest.to_str().unwrap());
+    assert!(result);
 }
