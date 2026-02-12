@@ -1,6 +1,6 @@
 //! Ably Pub/Sub subscribe-only Realtime SDK.
 //!
-//! A minimal implementation of the Ably realtime protocol for
+//! Implements the minimum subset of the Ably realtime protocol needed for
 //! subscribing to channels via WebSocket with MessagePack encoding.
 //!
 //! # Features
