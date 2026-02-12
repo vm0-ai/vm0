@@ -94,6 +94,12 @@ export async function GET(
       clientId = env.NOTION_OAUTH_CLIENT_ID;
       clientSecret = env.NOTION_OAUTH_CLIENT_SECRET;
       break;
+    case "computer":
+      return redirectWithError(
+        origin,
+        type,
+        "Computer connector does not use OAuth",
+      );
   }
 
   if (!clientId || !clientSecret) {

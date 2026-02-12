@@ -1,9 +1,11 @@
 import { command, computed, state } from "ccstate";
 import {
   CONNECTOR_TYPES,
+  FeatureSwitchKey,
   type ConnectorType,
   type ConnectorResponse,
 } from "@vm0/core";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import {
   connectors$,
   reloadConnectors$,
@@ -30,18 +32,29 @@ export interface ConnectorTypeWithStatus {
 export const allConnectorTypes$ = computed(async (get) => {
   const { connectors } = await get(connectors$);
   const connectorMap = new Map(connectors.map((c) => [c.type, c]));
+  const features = await get(featureSwitch$);
 
-  return (Object.keys(CONNECTOR_TYPES) as ConnectorType[]).map((type) => {
-    const config = CONNECTOR_TYPES[type];
-    const connector = connectorMap.get(type) ?? null;
-    return {
-      type,
-      label: config.label,
-      helpText: config.helpText,
-      connected: connector !== null,
-      connector,
-    };
-  });
+  return (Object.keys(CONNECTOR_TYPES) as ConnectorType[])
+    .filter((type) => {
+      if (
+        type === "computer" &&
+        !features?.[FeatureSwitchKey.ComputerConnector]
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .map((type) => {
+      const config = CONNECTOR_TYPES[type];
+      const connector = connectorMap.get(type) ?? null;
+      return {
+        type,
+        label: config.label,
+        helpText: config.helpText,
+        connected: connector !== null,
+        connector,
+      };
+    });
 });
 
 // ---------------------------------------------------------------------------
