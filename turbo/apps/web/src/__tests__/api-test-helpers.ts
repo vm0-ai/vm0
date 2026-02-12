@@ -1579,3 +1579,53 @@ export async function createTestCallback(params: {
 
   return { callbackId: callback!.id, secret };
 }
+
+/**
+ * Look up a full agent run record by ID for verification in tests.
+ *
+ * Direct DB read is required because the public GET /v1/runs/:id endpoint
+ * does not expose internal fields like `vars`, `secretNames`, `scheduleId`,
+ * or `lastHeartbeatAt` that integration tests need to verify.
+ */
+export async function findTestRunRecord(
+  runId: string,
+): Promise<typeof agentRuns.$inferSelect | undefined> {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .limit(1);
+  return row;
+}
+
+/**
+ * Look up agent run callback records by run ID for verification in tests.
+ *
+ * Direct DB read is required because no API endpoint exposes callback
+ * records — they are internal implementation details of the run dispatch.
+ */
+export async function findTestRunCallbacks(
+  runId: string,
+): Promise<Array<typeof agentRunCallbacks.$inferSelect>> {
+  return globalThis.services.db
+    .select()
+    .from(agentRunCallbacks)
+    .where(eq(agentRunCallbacks.runId, runId));
+}
+
+/**
+ * Find the first run that matches the given status for verification in tests.
+ *
+ * Direct DB read is required because no API endpoint supports filtering
+ * runs by status — the public API only looks up by specific run ID.
+ */
+export async function findTestRunByStatus(
+  status: string,
+): Promise<typeof agentRuns.$inferSelect | undefined> {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(agentRuns)
+    .where(eq(agentRuns.status, status))
+    .limit(1);
+  return row;
+}

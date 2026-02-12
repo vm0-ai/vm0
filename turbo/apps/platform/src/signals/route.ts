@@ -122,19 +122,24 @@ interface NavigateOptions {
 
 export const navigate$ = command(
   async (
-    { set },
+    { get, set },
     pathname: string,
     options: NavigateOptions,
     signal: AbortSignal,
   ) => {
-    const searchParams = options.searchParams
-      ? `?${options.searchParams.toString()}`
-      : "";
-    const newPath = `${pathname}${searchParams}`;
+    const searchStr = options.searchParams?.toString();
+    const newPath = `${pathname}${searchStr ? `?${searchStr}` : ""}`;
     L.debug("navigating to", newPath);
     pushState({}, "", newPath);
     set(reloadPathname$, (x) => x + 1);
-    await set(loadRoute$, signal);
+    // Use rootSignal$ (not the caller's route signal) so the new route gets
+    // a fresh, non-aborted signal.  resetRouteSignal$ inside loadRoute$ will
+    // abort the previous route's controller, which would poison any signal
+    // derived from it — passing the caller's signal here causes the new
+    // route's signal to be born-aborted.
+    // eslint-disable-next-line ccstate/no-get-signal
+    await set(loadRoute$, get(rootSignal$));
+    signal.throwIfAborted();
   },
 );
 

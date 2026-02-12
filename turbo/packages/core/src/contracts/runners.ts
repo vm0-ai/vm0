@@ -130,6 +130,8 @@ export const storedExecutionContextSchema = z.object({
   debugNoMockClaude: z.boolean().optional(),
   // Dispatch timestamp for E2E timing metrics
   apiStartTime: z.number().optional(),
+  // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
+  userTimezone: z.string().optional(),
 });
 
 /**
@@ -156,6 +158,8 @@ export const executionContextSchema = z.object({
   debugNoMockClaude: z.boolean().optional(),
   // Dispatch timestamp for E2E timing metrics
   apiStartTime: z.number().optional(),
+  // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
+  userTimezone: z.string().optional(),
 });
 
 /**

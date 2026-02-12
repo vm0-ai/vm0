@@ -17,12 +17,7 @@ import {
   type ConcurrentRunLimitError,
 } from "../errors";
 import { logger } from "../logger";
-import {
-  checkRunConcurrencyLimit,
-  buildExecutionContext,
-  prepareAndDispatchRun,
-} from "../run/run-service";
-import { generateSandboxToken } from "../auth/sandbox-token";
+import { createRun } from "../run/run-service";
 import { getUserScopeByClerkId } from "../scope/scope-service";
 import { getSecretValues } from "../secret/secret-service";
 import { getVariableValues } from "../variable/variable-service";
@@ -878,9 +873,21 @@ async function executeSchedule(
     return;
   }
 
-  // Check concurrent run limit before creating run
+  // Delegate run creation, validation, and dispatch to createRun()
+  let runId: string;
   try {
-    await checkRunConcurrencyLimit(compose.userId);
+    const result = await createRun({
+      userId: compose.userId,
+      agentComposeVersionId: compose.headVersionId,
+      prompt: schedule.prompt,
+      composeId: compose.id,
+      scheduleId: schedule.id,
+      artifactName: schedule.artifactName ?? undefined,
+      artifactVersion: schedule.artifactVersion ?? undefined,
+      volumeVersions: schedule.volumeVersions ?? undefined,
+      agentName: compose.name,
+    });
+    runId = result.runId;
   } catch (error) {
     if (isConcurrentRunLimit(error)) {
       log.debug(`Schedule ${schedule.name} blocked by concurrent run limit`);
@@ -894,79 +901,10 @@ async function executeSchedule(
       if (retryScheduled) {
         return; // Retry scheduled, don't continue
       }
-      // Retry window expired, re-throw to advance to next occurrence
-      throw error;
+      // Retry window expired — fall through to advance schedule to next occurrence
     }
-    throw error;
-  }
 
-  // Note: vars and secrets are no longer stored in schedule table
-  // They are fetched from platform tables by buildExecutionContext
-
-  // Create run record first
-  const [run] = await globalThis.services.db
-    .insert(agentRuns)
-    .values({
-      userId: compose.userId,
-      agentComposeVersionId: compose.headVersionId,
-      scheduleId: schedule.id,
-      status: "pending",
-      prompt: schedule.prompt,
-      vars: null, // Vars come from platform tables
-      secretNames: null, // Secret names come from platform tables
-      createdAt: new Date(Date.now()),
-    })
-    .returning();
-
-  if (!run) {
-    log.error(`Failed to create run for schedule ${schedule.name}`);
-    return;
-  }
-
-  // Update lastRunId immediately to prevent duplicate runs
-  // This ensures skip-if-active check works even if subsequent steps fail
-  await globalThis.services.db
-    .update(agentSchedules)
-    .set({ lastRunId: run.id })
-    .where(eq(agentSchedules.id, schedule.id));
-
-  try {
-    // Generate sandbox token with the run ID
-    const sandboxToken = await generateSandboxToken(compose.userId, run.id);
-
-    // Build execution context and dispatch
-    // Note: vars and secrets are fetched from platform tables by buildExecutionContext
-    const context = await buildExecutionContext({
-      runId: run.id,
-      agentComposeVersionId: compose.headVersionId,
-      prompt: schedule.prompt,
-      sandboxToken,
-      userId: compose.userId,
-      // vars: undefined - fetched from platform tables by buildExecutionContext
-      // secrets: undefined - fetched from platform tables by buildExecutionContext
-      artifactName: schedule.artifactName ?? undefined,
-      artifactVersion: schedule.artifactVersion ?? undefined,
-      volumeVersions: schedule.volumeVersions ?? undefined,
-      agentName: compose.name,
-    });
-
-    await prepareAndDispatchRun(context);
-  } catch (error) {
-    // Mark run as failed with error message
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error";
-    log.error(`Run ${run.id} failed during preparation: ${errorMessage}`);
-
-    await globalThis.services.db
-      .update(agentRuns)
-      .set({
-        status: "failed",
-        completedAt: new Date(Date.now()),
-        error: errorMessage,
-      })
-      .where(eq(agentRuns.id, run.id));
-
-    // Update schedule state (disable one-time, advance cron)
+    // Any failure (concurrency-expired or other): update schedule state (disable one-time, advance cron)
     if (schedule.cronExpression) {
       const nextRunAt = calculateNextRun(
         schedule.cronExpression,
@@ -977,21 +915,20 @@ async function executeSchedule(
         .set({
           lastRunAt: new Date(Date.now()),
           nextRunAt,
-          retryStartedAt: null, // Clear retry state on non-concurrency failure
+          retryStartedAt: null,
         })
         .where(eq(agentSchedules.id, schedule.id));
       log.debug(
         `Cron schedule ${schedule.name} failed, next run at ${nextRunAt?.toISOString()}`,
       );
     } else {
-      // One-time schedule: disable after failed execution (non-concurrency errors)
       await globalThis.services.db
         .update(agentSchedules)
         .set({
           enabled: false,
           lastRunAt: new Date(Date.now()),
           nextRunAt: null,
-          retryStartedAt: null, // Clear retry state
+          retryStartedAt: null,
         })
         .where(eq(agentSchedules.id, schedule.id));
       log.debug(`One-time schedule ${schedule.name} failed and disabled`);
@@ -999,6 +936,12 @@ async function executeSchedule(
 
     throw error; // Re-throw so executeDueSchedules counts it as skipped
   }
+
+  // Update lastRunId after successful creation
+  await globalThis.services.db
+    .update(agentSchedules)
+    .set({ lastRunId: runId })
+    .where(eq(agentSchedules.id, schedule.id));
 
   // Calculate next run time for success path
   let nextRunAt: Date | null = null;
@@ -1012,20 +955,20 @@ async function executeSchedule(
         enabled: false,
         lastRunAt: new Date(Date.now()),
         nextRunAt: null,
-        retryStartedAt: null, // Clear retry state
+        retryStartedAt: null,
       })
       .where(eq(agentSchedules.id, schedule.id));
     log.debug(`One-time schedule ${schedule.name} executed and disabled`);
     return;
   }
 
-  // Update schedule with next run time (lastRunId already set above)
+  // Update schedule with next run time
   await globalThis.services.db
     .update(agentSchedules)
     .set({
       lastRunAt: new Date(Date.now()),
       nextRunAt,
-      retryStartedAt: null, // Clear retry state on success
+      retryStartedAt: null,
     })
     .where(eq(agentSchedules.id, schedule.id));
 

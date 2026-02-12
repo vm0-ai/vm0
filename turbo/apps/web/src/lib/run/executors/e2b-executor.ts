@@ -232,28 +232,29 @@ export async function executeE2bRun(
 }
 
 /**
+ * Resolve API URL for sandbox based on environment
+ */
+function resolveApiUrl(): string {
+  const apiUrl = env().VM0_API_URL;
+  if (apiUrl) return apiUrl;
+
+  const vercelEnv = env().VERCEL_ENV;
+  const vercelUrl = env().VERCEL_URL;
+
+  if (vercelEnv === "preview" && vercelUrl) return `https://${vercelUrl}`;
+  if (vercelEnv === "production") return "https://www.vm0.ai";
+  return "http://localhost:3000";
+}
+
+/**
  * Build environment variables for sandbox
  */
 function buildSandboxEnvVars(
   context: PreparedContext,
   artifactForCommand: PreparedArtifact | null,
 ): Record<string, string> {
-  const vercelEnv = env().VERCEL_ENV;
-  const vercelUrl = env().VERCEL_URL;
-
-  let apiUrl = env().VM0_API_URL;
-  if (!apiUrl) {
-    if (vercelEnv === "preview" && vercelUrl) {
-      apiUrl = `https://${vercelUrl}`;
-    } else if (vercelEnv === "production") {
-      apiUrl = "https://www.vm0.ai";
-    } else {
-      apiUrl = "http://localhost:3000";
-    }
-  }
-
   const sandboxEnvVars: Record<string, string> = {
-    VM0_API_URL: apiUrl,
+    VM0_API_URL: resolveApiUrl(),
     VM0_RUN_ID: context.runId,
     VM0_API_TOKEN: context.sandboxToken,
     VM0_PROMPT: context.prompt,
@@ -284,6 +285,11 @@ function buildSandboxEnvVars(
     sandboxEnvVars.VM0_ARTIFACT_MOUNT_PATH = artifactForCommand.mountPath;
     sandboxEnvVars.VM0_ARTIFACT_VOLUME_NAME = artifactForCommand.vasStorageName;
     sandboxEnvVars.VM0_ARTIFACT_VERSION_ID = artifactForCommand.vasVersionId;
+  }
+
+  // Inject user timezone as TZ environment variable (if not already set in environment)
+  if (context.userTimezone && !context.environment?.["TZ"]) {
+    sandboxEnvVars.TZ = context.userTimezone;
   }
 
   // Add user-defined environment variables

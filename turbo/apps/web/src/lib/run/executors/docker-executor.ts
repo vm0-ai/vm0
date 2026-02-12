@@ -262,6 +262,11 @@ async function buildSandboxEnvVars(
     sandboxEnvVars.VM0_ARTIFACT_VERSION_ID = artifactForCommand.vasVersionId;
   }
 
+  // Inject user timezone as TZ environment variable (if not already set in environment)
+  if (context.userTimezone && !context.environment?.["TZ"]) {
+    sandboxEnvVars.TZ = context.userTimezone;
+  }
+
   if (context.environment) {
     for (const [key, value] of Object.entries(context.environment)) {
       sandboxEnvVars[key] = value;

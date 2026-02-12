@@ -61,6 +61,7 @@ export async function executeRunnerJob(
     experimentalFirewall: context.experimentalFirewall ?? undefined,
     debugNoMockClaude: context.debugNoMockClaude || undefined,
     apiStartTime: context.apiStartTime ?? undefined,
+    userTimezone: context.userTimezone ?? undefined,
   };
 
   // Insert into runner job queue

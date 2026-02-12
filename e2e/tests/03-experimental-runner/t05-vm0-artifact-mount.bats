@@ -1,41 +1,29 @@
 #!/usr/bin/env bats
 
-# Test Runner artifact mounting to sandbox
-# The runner is started by the CI workflow before these tests run.
-#
+# Test VM0 artifact mounting to sandbox
 # Verifies that artifacts pushed via CLI are correctly mounted and visible
-# in the sandbox during agent runs with runner
+# in the sandbox during agent runs
 #
-# BLACK BOX test - only interacts via CLI/API
+# This test covers issue #213: artifact not mounted to sandbox
 
-load '../../helpers/setup.bash'
+load '../../helpers/setup'
 
-# Unique agent name for this test file
-AGENT_NAME="e2e-runner-t06"
+# Unique agent name for this test file to avoid compose conflicts in parallel runs
+AGENT_NAME="e2e-t05"
 
 setup() {
-    if [[ -z "$VM0_API_URL" ]]; then
-        fail "VM0_API_URL not set"
-    fi
-
-    if [[ -z "$RUNNER_GROUP" ]]; then
-        fail "RUNNER_GROUP not set - runner was not started by workflow"
-    fi
-
     # Create unique volume for this test
-    create_test_volume "e2e-vol-runner-t06"
+    create_test_volume "e2e-vol-t05"
 
     export TEST_ARTIFACT_DIR="$(mktemp -d)"
-    export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
-    export ARTIFACT_NAME="e2e-runner-mount-${UNIQUE_ID}"
-
-    # Create inline config with runner
+    export ARTIFACT_NAME="e2e-mount-test-$(date +%s%3N)-$RANDOM"
+    # Create inline config with unique agent name
     export TEST_CONFIG="$(mktemp --suffix=.yaml)"
     cat > "$TEST_CONFIG" <<EOF
 version: "1.0"
 agents:
   ${AGENT_NAME}:
-    description: "E2E test agent for artifact mount testing with runner"
+    description: "E2E test agent for artifact mount testing"
     framework: claude-code
     experimental_runner:
       group: ${RUNNER_GROUP}
@@ -53,6 +41,7 @@ teardown() {
     if [ -n "$TEST_ARTIFACT_DIR" ] && [ -d "$TEST_ARTIFACT_DIR" ]; then
         rm -rf "$TEST_ARTIFACT_DIR"
     fi
+    # Clean up config file
     if [ -n "$TEST_CONFIG" ] && [ -f "$TEST_CONFIG" ]; then
         rm -f "$TEST_CONFIG"
     fi
@@ -60,25 +49,19 @@ teardown() {
     cleanup_test_volume
 }
 
-@test "Runner mount: compose agent with experimental_runner" {
+@test "Build VM0 artifact mount test agent configuration" {
     run $CLI_COMMAND compose "$TEST_CONFIG"
     assert_success
     assert_output --partial "$AGENT_NAME"
 }
 
-@test "Runner mount: artifact files are visible in sandbox working directory" {
-    echo "# Using shared runner with group: ${RUNNER_GROUP}"
-
-    # Compose the agent
-    run $CLI_COMMAND compose "$TEST_CONFIG"
-    assert_success
-
+@test "VM0 artifact files are visible in sandbox working directory" {
     # Step 1: Create artifact with known content
-    echo "# Step 1: Creating artifact..."
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
 
+    # Create test files with known content
     echo "hello from artifact" > test-file.txt
     mkdir -p subdir
     echo "nested content" > subdir/nested.txt
@@ -87,36 +70,30 @@ teardown() {
     assert_success
 
     # Step 2: Run agent with artifact, list files
-    echo "# Step 2: Running agent to list files..."
+    # Use extended timeout for CI environments which may be slower
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         --verbose \
         "ls -la && cat test-file.txt && cat subdir/nested.txt"
 
-    echo "# Output:"
-    echo "$output"
-
     assert_success
 
     # Step 3: Verify files are visible
-    echo "# Step 3: Verifying files..."
+    # The agent should see our test files
     assert_output --partial "test-file.txt"
     assert_output --partial "subdir"
     assert_output --partial "hello from artifact"
     assert_output --partial "nested content"
 
     # Step 4: Verify run completes properly
+    assert_output --partial "◆ Claude Code Completed"
+    assert_output --partial "Run completed successfully"
     assert_output --partial "Checkpoint:"
 }
 
-@test "Runner mount: run completes with checkpoint" {
-    echo "# Using shared runner with group: ${RUNNER_GROUP}"
+@test "VM0 artifact run completes with checkpoint" {
+    # This test verifies run completion with artifact
 
-    # Compose the agent
-    run $CLI_COMMAND compose "$TEST_CONFIG"
-    assert_success
-
-    # Create artifact
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
@@ -124,14 +101,14 @@ teardown() {
     $CLI_COMMAND artifact push >/dev/null
 
     # Simple run that should complete
-    echo "# Running simple command..."
+    # Use extended timeout for CI environments which may be slower
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo done"
 
-    echo "# Output:"
-    echo "$output"
-
     assert_success
+
+    # Verify run completed successfully
+    assert_output --partial "◆ Claude Code Completed"
     assert_output --partial "Run completed successfully"
 }

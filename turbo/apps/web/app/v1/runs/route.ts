@@ -9,7 +9,7 @@ import {
   createPublicApiHandler,
   tsr,
 } from "../../../src/lib/public-api/handler";
-import { publicRunsListContract } from "@vm0/core";
+import { publicRunsListContract, type PublicApiErrorType } from "@vm0/core";
 import {
   authenticatePublicApi,
   isAuthSuccess,
@@ -22,14 +22,260 @@ import {
 } from "../../../src/db/schema/agent-compose";
 import { eq, and, desc, gt } from "drizzle-orm";
 import {
-  checkRunConcurrencyLimit,
   validateCheckpoint,
   validateAgentSession,
-  buildExecutionContext,
-  prepareAndDispatchRun,
+  createRun,
 } from "../../../src/lib/run";
-import { generateSandboxToken } from "../../../src/lib/auth/sandbox-token";
-import { isConcurrentRunLimit } from "../../../src/lib/errors";
+import {
+  isConcurrentRunLimit,
+  isForbidden,
+  isBadRequest,
+  isNotFound,
+} from "../../../src/lib/errors";
+
+interface ResolvedAgent {
+  agentComposeVersionId: string;
+  agentCompose?: typeof agentComposes.$inferSelect;
+}
+
+type PublicApiError400 = {
+  status: 400;
+  body: { error: { type: PublicApiErrorType; code: string; message: string } };
+};
+
+type PublicApiError404 = {
+  status: 404;
+  body: { error: { type: PublicApiErrorType; code: string; message: string } };
+};
+
+type PublicApiErrorResponse = PublicApiError400 | PublicApiError404;
+
+/**
+ * Resolve agent compose from request body parameters.
+ * Priority: checkpointId > sessionId > agentId > agent (name)
+ */
+async function resolveAgent(
+  body: {
+    checkpointId?: string;
+    sessionId?: string;
+    agentId?: string;
+    agent?: string;
+  },
+  userId: string,
+  scopeId: string,
+): Promise<ResolvedAgent | PublicApiErrorResponse> {
+  if (body.checkpointId) {
+    const checkpointData = await validateCheckpoint(body.checkpointId, userId);
+    return { agentComposeVersionId: checkpointData.agentComposeVersionId };
+  }
+
+  if (body.sessionId) {
+    return resolveFromSession(body.sessionId, userId);
+  }
+
+  if (body.agentId) {
+    return resolveFromAgentId(body.agentId, scopeId);
+  }
+
+  if (body.agent) {
+    return resolveFromAgentName(body.agent, scopeId);
+  }
+
+  return {
+    status: 400 as const,
+    body: {
+      error: {
+        type: "invalid_request_error" as const,
+        code: "missing_parameter",
+        message:
+          "Must provide one of: agent, agentId, sessionId, or checkpointId",
+      },
+    },
+  };
+}
+
+async function resolveFromSession(
+  sessionId: string,
+  userId: string,
+): Promise<ResolvedAgent | PublicApiErrorResponse> {
+  const sessionData = await validateAgentSession(sessionId, userId);
+
+  const [compose] = await globalThis.services.db
+    .select()
+    .from(agentComposes)
+    .where(eq(agentComposes.id, sessionData.agentComposeId))
+    .limit(1);
+
+  if (!compose?.headVersionId) {
+    return {
+      status: 404 as const,
+      body: {
+        error: {
+          type: "not_found_error" as const,
+          code: "resource_not_found",
+          message: "Agent for session not found or has no versions",
+        },
+      },
+    };
+  }
+
+  return {
+    agentComposeVersionId: compose.headVersionId,
+    agentCompose: compose,
+  };
+}
+
+async function resolveFromAgentId(
+  agentId: string,
+  scopeId: string,
+): Promise<ResolvedAgent | PublicApiErrorResponse> {
+  const [compose] = await globalThis.services.db
+    .select()
+    .from(agentComposes)
+    .where(
+      and(eq(agentComposes.id, agentId), eq(agentComposes.scopeId, scopeId)),
+    )
+    .limit(1);
+
+  if (!compose) {
+    return {
+      status: 404 as const,
+      body: {
+        error: {
+          type: "not_found_error" as const,
+          code: "resource_not_found",
+          message: `No such agent: '${agentId}'`,
+        },
+      },
+    };
+  }
+
+  if (!compose.headVersionId) {
+    return {
+      status: 400 as const,
+      body: {
+        error: {
+          type: "invalid_request_error" as const,
+          code: "invalid_parameter",
+          message: "Agent has no versions. Create a version first.",
+        },
+      },
+    };
+  }
+
+  return {
+    agentComposeVersionId: compose.headVersionId,
+    agentCompose: compose,
+  };
+}
+
+async function resolveFromAgentName(
+  agentName: string,
+  scopeId: string,
+): Promise<ResolvedAgent | PublicApiErrorResponse> {
+  const [compose] = await globalThis.services.db
+    .select()
+    .from(agentComposes)
+    .where(
+      and(
+        eq(agentComposes.name, agentName),
+        eq(agentComposes.scopeId, scopeId),
+      ),
+    )
+    .limit(1);
+
+  if (!compose) {
+    return {
+      status: 404 as const,
+      body: {
+        error: {
+          type: "not_found_error" as const,
+          code: "resource_not_found",
+          message: `No such agent: '${agentName}'`,
+        },
+      },
+    };
+  }
+
+  if (!compose.headVersionId) {
+    return {
+      status: 400 as const,
+      body: {
+        error: {
+          type: "invalid_request_error" as const,
+          code: "invalid_parameter",
+          message: "Agent has no versions. Create a version first.",
+        },
+      },
+    };
+  }
+
+  return {
+    agentComposeVersionId: compose.headVersionId,
+    agentCompose: compose,
+  };
+}
+
+function isErrorResponse(
+  result: ResolvedAgent | PublicApiErrorResponse,
+): result is PublicApiErrorResponse {
+  return "status" in result;
+}
+
+/**
+ * Translate createRun() errors into Public API error format
+ */
+function handlePublicApiError(error: unknown) {
+  if (isConcurrentRunLimit(error)) {
+    return {
+      status: 429 as const,
+      body: {
+        error: {
+          type: "rate_limit_error" as const,
+          code: "concurrent_run_limit_exceeded",
+          message: error.message,
+        },
+      },
+    };
+  }
+  if (isForbidden(error)) {
+    return {
+      status: 401 as const,
+      body: {
+        error: {
+          type: "authentication_error" as const,
+          code: "permission_denied",
+          message: error.message,
+        },
+      },
+    };
+  }
+  if (isBadRequest(error)) {
+    return {
+      status: 400 as const,
+      body: {
+        error: {
+          type: "invalid_request_error" as const,
+          code: "invalid_parameter",
+          message: error.message,
+        },
+      },
+    };
+  }
+  if (isNotFound(error)) {
+    return {
+      status: 404 as const,
+      body: {
+        error: {
+          type: "not_found_error" as const,
+          code: "resource_not_found",
+          message: error.message,
+        },
+      },
+    };
+  }
+  return null;
+}
 
 const router = tsr.router(publicRunsListContract, {
   list: async ({ query, headers }) => {
@@ -132,7 +378,6 @@ const router = tsr.router(publicRunsListContract, {
     };
   },
 
-  // eslint-disable-next-line complexity -- TODO: refactor complex function
   create: async ({ body, headers }) => {
     const apiStartTime = Date.now();
     initServices();
@@ -167,237 +412,64 @@ const router = tsr.router(publicRunsListContract, {
       };
     }
 
-    // Check concurrent run limit
+    // Resolve the agent to run
+    const resolved = await resolveAgent(body, auth.userId, userScope.id);
+    if (isErrorResponse(resolved)) {
+      // Narrow the discriminated union for ts-rest type compatibility
+      if (resolved.status === 404) return resolved;
+      return resolved;
+    }
+
+    // Delegate run creation, validation, and dispatch to createRun()
     try {
-      await checkRunConcurrencyLimit(auth.userId);
+      const result = await createRun({
+        userId: auth.userId,
+        agentComposeVersionId: resolved.agentComposeVersionId,
+        prompt: body.prompt,
+        composeId: resolved.agentCompose?.id,
+        checkpointId: body.checkpointId,
+        sessionId: body.sessionId,
+        vars: body.variables,
+        secrets: body.secrets,
+        volumeVersions: body.volumes,
+        resumedFromCheckpointId: body.checkpointId,
+        agentName: resolved.agentCompose?.name,
+        apiStartTime,
+      });
+
+      return {
+        status: 202 as const,
+        body: {
+          id: result.runId,
+          agentId: resolved.agentCompose?.id ?? "",
+          agentName: resolved.agentCompose?.name ?? "unknown",
+          status: result.status as
+            | "pending"
+            | "running"
+            | "completed"
+            | "failed"
+            | "timeout"
+            | "cancelled",
+          prompt: body.prompt,
+          createdAt: result.createdAt.toISOString(),
+          startedAt: null,
+          completedAt: null,
+          error: null,
+          executionTimeMs: null,
+          checkpointId: null,
+          sessionId: body.sessionId ?? null,
+          artifactName: body.artifactName ?? null,
+          artifactVersion: body.artifactVersion ?? null,
+          volumes: body.volumes,
+        },
+      };
     } catch (error) {
-      if (isConcurrentRunLimit(error)) {
-        return {
-          status: 429 as const,
-          body: {
-            error: {
-              type: "rate_limit_error" as const,
-              code: "concurrent_run_limit_exceeded",
-              message: error.message,
-            },
-          },
-        };
+      const errorResponse = handlePublicApiError(error);
+      if (errorResponse) {
+        return errorResponse;
       }
       throw error;
     }
-
-    // Determine the agent to run
-    let agentComposeVersionId: string | undefined;
-    let agentCompose: typeof agentComposes.$inferSelect | undefined;
-
-    // Priority: checkpointId > sessionId > agentId > agent (name)
-    if (body.checkpointId) {
-      // Resume from checkpoint - validate and get version ID
-      const checkpointData = await validateCheckpoint(
-        body.checkpointId,
-        auth.userId,
-      );
-      agentComposeVersionId = checkpointData.agentComposeVersionId;
-    } else if (body.sessionId) {
-      // Continue session
-      const sessionData = await validateAgentSession(
-        body.sessionId,
-        auth.userId,
-      );
-
-      const [compose] = await globalThis.services.db
-        .select()
-        .from(agentComposes)
-        .where(eq(agentComposes.id, sessionData.agentComposeId))
-        .limit(1);
-
-      if (!compose?.headVersionId) {
-        return {
-          status: 404 as const,
-          body: {
-            error: {
-              type: "not_found_error" as const,
-              code: "resource_not_found",
-              message: "Agent for session not found or has no versions",
-            },
-          },
-        };
-      }
-
-      // Always use HEAD compose version for session continue
-      agentComposeVersionId = compose.headVersionId;
-      agentCompose = compose;
-    } else if (body.agentId) {
-      // Find by agent ID
-      const [compose] = await globalThis.services.db
-        .select()
-        .from(agentComposes)
-        .where(
-          and(
-            eq(agentComposes.id, body.agentId),
-            eq(agentComposes.scopeId, userScope.id),
-          ),
-        )
-        .limit(1);
-
-      if (!compose) {
-        return {
-          status: 404 as const,
-          body: {
-            error: {
-              type: "not_found_error" as const,
-              code: "resource_not_found",
-              message: `No such agent: '${body.agentId}'`,
-            },
-          },
-        };
-      }
-
-      if (!compose.headVersionId) {
-        return {
-          status: 400 as const,
-          body: {
-            error: {
-              type: "invalid_request_error" as const,
-              code: "invalid_parameter",
-              message: "Agent has no versions. Create a version first.",
-            },
-          },
-        };
-      }
-
-      agentComposeVersionId = compose.headVersionId;
-      agentCompose = compose;
-    } else if (body.agent) {
-      // Find by agent name
-      const [compose] = await globalThis.services.db
-        .select()
-        .from(agentComposes)
-        .where(
-          and(
-            eq(agentComposes.name, body.agent),
-            eq(agentComposes.scopeId, userScope.id),
-          ),
-        )
-        .limit(1);
-
-      if (!compose) {
-        return {
-          status: 404 as const,
-          body: {
-            error: {
-              type: "not_found_error" as const,
-              code: "resource_not_found",
-              message: `No such agent: '${body.agent}'`,
-            },
-          },
-        };
-      }
-
-      if (!compose.headVersionId) {
-        return {
-          status: 400 as const,
-          body: {
-            error: {
-              type: "invalid_request_error" as const,
-              code: "invalid_parameter",
-              message: "Agent has no versions. Create a version first.",
-            },
-          },
-        };
-      }
-
-      agentComposeVersionId = compose.headVersionId;
-      agentCompose = compose;
-    } else {
-      return {
-        status: 400 as const,
-        body: {
-          error: {
-            type: "invalid_request_error" as const,
-            code: "missing_parameter",
-            message:
-              "Must provide one of: agent, agentId, sessionId, or checkpointId",
-          },
-        },
-      };
-    }
-
-    // Create run record
-    const [run] = await globalThis.services.db
-      .insert(agentRuns)
-      .values({
-        userId: auth.userId,
-        agentComposeVersionId: agentComposeVersionId!,
-        status: "pending",
-        prompt: body.prompt,
-        vars: body.variables ?? null,
-        secretNames: body.secrets ? Object.keys(body.secrets) : null,
-        resumedFromCheckpointId: body.checkpointId ?? null,
-      })
-      .returning();
-
-    if (!run) {
-      return {
-        status: 500 as const,
-        body: {
-          error: {
-            type: "api_error" as const,
-            code: "internal_error",
-            message: "Failed to create run",
-          },
-        },
-      };
-    }
-
-    // Generate sandbox token and dispatch
-    const sandboxToken = await generateSandboxToken(auth.userId, run.id);
-
-    const context = await buildExecutionContext({
-      checkpointId: body.checkpointId,
-      sessionId: body.sessionId,
-      agentComposeVersionId: agentComposeVersionId!,
-      vars: body.variables,
-      secrets: body.secrets,
-      volumeVersions: body.volumes,
-      prompt: body.prompt,
-      runId: run.id,
-      sandboxToken,
-      userId: auth.userId,
-      agentName: agentCompose?.name,
-      resumedFromCheckpointId: body.checkpointId,
-      continuedFromSessionId: body.sessionId,
-      apiStartTime,
-    });
-
-    const result = await prepareAndDispatchRun(context);
-
-    return {
-      status: 202 as const,
-      body: {
-        id: run.id,
-        agentId: agentCompose?.id ?? "",
-        agentName: agentCompose?.name ?? "unknown",
-        status: result.status as
-          | "pending"
-          | "running"
-          | "completed"
-          | "failed"
-          | "timeout"
-          | "cancelled",
-        prompt: body.prompt,
-        createdAt: run.createdAt.toISOString(),
-        startedAt: null,
-        completedAt: null,
-        error: null,
-        executionTimeMs: null,
-        checkpointId: null,
-        sessionId: body.sessionId ?? null,
-        artifactName: body.artifactName ?? null,
-        artifactVersion: body.artifactVersion ?? null,
-        volumes: body.volumes,
-      },
-    };
   },
 });
 

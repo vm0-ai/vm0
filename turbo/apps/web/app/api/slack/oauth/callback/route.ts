@@ -107,6 +107,7 @@ function buildPostInstallRedirect(
 ): NextResponse {
   const { oauthResult } = installation;
   const linkUserId = state.slackUserId || oauthResult.authedUserId || null;
+  const platformUrl = getPlatformUrl();
 
   if (linkUserId && state.channelId) {
     const linkParams = new URLSearchParams({
@@ -115,7 +116,7 @@ function buildPostInstallRedirect(
       c: state.channelId,
     });
     return NextResponse.redirect(
-      `${baseUrl}/slack/link?${linkParams.toString()}`,
+      `${platformUrl}/slack/connect?${linkParams.toString()}`,
     );
   }
 
@@ -125,7 +126,7 @@ function buildPostInstallRedirect(
       u: linkUserId,
     });
     return NextResponse.redirect(
-      `${baseUrl}/slack/link?${linkParams.toString()}`,
+      `${platformUrl}/slack/connect?${linkParams.toString()}`,
     );
   }
 

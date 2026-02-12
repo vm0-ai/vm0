@@ -36,7 +36,7 @@ describe("secrets tab", () => {
     await setupPage({ context, path: "/settings" });
 
     // Should start on providers tab
-    expect(screen.getByText("Claude Code OAuth token")).toBeInTheDocument();
+    expect(screen.getByText("Claude Code (OAuth token)")).toBeInTheDocument();
 
     // Click Secrets tab
     await user.click(screen.getByRole("tab", { name: /secrets/i }));

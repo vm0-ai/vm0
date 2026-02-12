@@ -5,7 +5,6 @@ import {
   fetchChannelContext,
   formatContextForAgent,
   formatContextForAgentWithImages,
-  getSlackRedirectBaseUrl,
 } from "../index";
 import { slackThreadSessions } from "../../../db/schema/slack-thread-session";
 import { agentComposes } from "../../../db/schema/agent-compose";
@@ -198,13 +197,13 @@ export function buildLoginUrl(
   slackUserId: string,
   channelId: string,
 ): string {
-  const baseUrl = getSlackRedirectBaseUrl();
+  const baseUrl = getPlatformUrl();
   const params = new URLSearchParams({
     w: workspaceId,
     u: slackUserId,
     c: channelId,
   });
-  return `${baseUrl}/slack/link?${params.toString()}`;
+  return `${baseUrl}/slack/connect?${params.toString()}`;
 }
 
 /**

@@ -25,7 +25,7 @@ describe("buildErrorMessage", () => {
 
 describe("buildLoginPromptMessage", () => {
   it("should create login message with button", () => {
-    const loginUrl = "https://vm0.ai/slack/link?u=U123&w=T456";
+    const loginUrl = "https://vm0.ai/slack/connect?u=U123&w=T456";
     const blocks = buildLoginPromptMessage(loginUrl);
 
     expect(blocks).toHaveLength(2);

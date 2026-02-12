@@ -217,6 +217,67 @@ describe("POST /api/slack/commands", () => {
     });
   });
 
+  describe("Connect Command", () => {
+    it("returns platform /slack/connect URL when workspace installed but user not linked", async () => {
+      const { installation } = await context.createSlackInstallation();
+
+      const body = buildCommandBody(
+        "connect",
+        installation.slackWorkspaceId,
+        "U-new-user",
+      );
+      const request = createSignedSlackRequest(body);
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.response_type).toBe("ephemeral");
+      const blockStr = JSON.stringify(data.blocks);
+      // Should redirect to platform /slack/connect, not the old /slack/link
+      expect(blockStr).toContain("/slack/connect");
+      expect(blockStr).toContain(
+        `w=${encodeURIComponent(installation.slackWorkspaceId)}`,
+      );
+      expect(blockStr).toContain("u=U-new-user");
+      expect(blockStr).toContain("c=C123");
+    });
+
+    it("returns OAuth install URL when workspace not installed", async () => {
+      const body = buildCommandBody("connect", "T-uninstalled", "U123");
+      const request = createSignedSlackRequest(body);
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.response_type).toBe("ephemeral");
+      const blockStr = JSON.stringify(data.blocks);
+      expect(blockStr).toContain("oauth/install");
+    });
+
+    it("returns already-connected message when user is linked", async () => {
+      const { installation, userLink } = await context.createSlackInstallation({
+        withUserLink: true,
+      });
+
+      const body = buildCommandBody(
+        "connect",
+        installation.slackWorkspaceId,
+        userLink.slackUserId,
+      );
+      const request = createSignedSlackRequest(body);
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.response_type).toBe("ephemeral");
+      const blockStr = JSON.stringify(data.blocks);
+      expect(blockStr).toContain("already connected");
+    });
+  });
+
   describe("Unknown Commands", () => {
     it("returns help message for unknown top-level command", async () => {
       const { installation, userLink } = await context.createSlackInstallation({

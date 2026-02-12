@@ -111,7 +111,9 @@ fn run(manifest_path: &str) -> bool {
         all_success = false;
     }
 
-    // Download artifact if present (after storages complete)
+    // Download artifact if present (after storages complete).
+    // Only 404 is non-fatal (artifact may not exist in S3 on first run).
+    // Other errors (500, timeouts, network) are fatal.
     if let Some(artifact) = &manifest.artifact
         && is_valid_url(&artifact.archive_url)
         && let Some(url) = artifact.archive_url.as_deref()
@@ -125,8 +127,22 @@ fn run(manifest_path: &str) -> bool {
                 record_sandbox_op("artifact_download", elapsed, true, None);
                 log_info!(LOG_TAG, "Artifact downloaded in {}ms", elapsed.as_millis());
             }
+            Err(e) if e.status_code == Some(404) => {
+                record_sandbox_op(
+                    "artifact_download",
+                    start.elapsed(),
+                    false,
+                    Some(&e.message),
+                );
+                log_info!(LOG_TAG, "Artifact not found, skipping (first run)");
+            }
             Err(e) => {
-                record_sandbox_op("artifact_download", start.elapsed(), false, Some(&e));
+                record_sandbox_op(
+                    "artifact_download",
+                    start.elapsed(),
+                    false,
+                    Some(&e.message),
+                );
                 log_error!(LOG_TAG, "Artifact download failed: {e}");
                 all_success = false;
             }
@@ -193,7 +209,7 @@ fn download_storages_parallel(storages: &[Storage]) -> bool {
                             );
                         }
                         Err(e) => {
-                            record_sandbox_op("storage_download", elapsed, false, Some(e));
+                            record_sandbox_op("storage_download", elapsed, false, Some(&e.message));
                             log_error!(LOG_TAG, "Storage {} download failed: {}", idx + 1, e);
                         }
                     }
@@ -230,6 +246,7 @@ fn download_storages_parallel(storages: &[Storage]) -> bool {
 struct DownloadError {
     message: String,
     retriable: bool,
+    status_code: Option<u16>,
 }
 
 impl std::fmt::Display for DownloadError {
@@ -238,16 +255,17 @@ impl std::fmt::Display for DownloadError {
     }
 }
 
-fn download_with_retry(url: &str, target_path: &str) -> Result<(), String> {
-    let mut last_error = String::new();
+fn download_with_retry(url: &str, target_path: &str) -> Result<(), DownloadError> {
+    let mut last_error = None;
 
     for attempt in 1..=MAX_RETRIES {
         match download_and_extract(url, target_path) {
             Ok(()) => return Ok(()),
             Err(e) => {
                 log_warn!(LOG_TAG, "Attempt {attempt}/{MAX_RETRIES} failed: {e}");
-                last_error = e.message.clone();
-                if !e.retriable {
+                let should_break = !e.retriable;
+                last_error = Some(e);
+                if should_break {
                     break;
                 }
                 if attempt < MAX_RETRIES {
@@ -257,7 +275,11 @@ fn download_with_retry(url: &str, target_path: &str) -> Result<(), String> {
         }
     }
 
-    Err(last_error)
+    Err(last_error.unwrap_or_else(|| DownloadError {
+        message: "download failed with no error".into(),
+        retriable: false,
+        status_code: None,
+    }))
 }
 
 fn download_and_extract(url: &str, target_path: &str) -> Result<(), DownloadError> {
@@ -265,17 +287,20 @@ fn download_and_extract(url: &str, target_path: &str) -> Result<(), DownloadErro
     fs::create_dir_all(target_path).map_err(|e| DownloadError {
         message: format!("Failed to create directory {target_path}: {e}"),
         retriable: false,
+        status_code: None,
     })?;
 
     // Make HTTP request using global agent
     let response = HTTP_AGENT.get(url).call().map_err(|e| {
-        let retriable = match &e {
-            ureq::Error::StatusCode(code) => *code >= 500,
-            _ => true, // network/timeout errors are retriable
+        let (retriable, status_code) = match &e {
+            // Retry on server errors (5xx) and rate limiting (429)
+            ureq::Error::StatusCode(code) => (*code >= 500 || *code == 429, Some(*code)),
+            _ => (true, None), // network/timeout errors are retriable
         };
         DownloadError {
             message: format!("HTTP {e} url={url}"),
             retriable,
+            status_code,
         }
     })?;
 
@@ -289,6 +314,7 @@ fn download_and_extract(url: &str, target_path: &str) -> Result<(), DownloadErro
     archive.unpack(target_path).map_err(|e| DownloadError {
         message: format!("Failed to extract archive: {e}"),
         retriable: false,
+        status_code: None,
     })?;
 
     Ok(())

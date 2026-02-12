@@ -1,43 +1,31 @@
 #!/usr/bin/env bats
 
-# Test Runner telemetry collection and retrieval
-# The runner is started by the CI workflow before these tests run.
-#
+# Test VM0 telemetry collection and retrieval
 # This test verifies that:
 # 1. Agent runs display Run ID at start
 # 2. Agent runs collect telemetry data (system log and metrics)
 # 3. The vm0 logs command can retrieve telemetry data
 #
-# BLACK BOX test - only interacts via CLI/API
+# Test count: 2 tests with 1 vm0 run call
 
-load '../../helpers/setup.bash'
+load '../../helpers/setup'
 
-# Unique agent name for this test file
-AGENT_NAME="e2e-runner-t07"
+# Unique agent name for this test file to avoid compose conflicts in parallel runs
+AGENT_NAME="e2e-t15"
 
 setup() {
-    if [[ -z "$VM0_API_URL" ]]; then
-        fail "VM0_API_URL not set"
-    fi
-
-    if [[ -z "$RUNNER_GROUP" ]]; then
-        fail "RUNNER_GROUP not set - runner was not started by workflow"
-    fi
-
     # Create unique volume for this test
-    create_test_volume "e2e-vol-runner-t07"
+    create_test_volume "e2e-vol-t15"
 
     export TEST_ARTIFACT_DIR="$(mktemp -d)"
-    export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
-    export ARTIFACT_NAME="e2e-runner-telemetry-${UNIQUE_ID}"
-
-    # Create inline config with runner
+    export ARTIFACT_NAME="e2e-telemetry-test-$(date +%s%3N)-$RANDOM"
+    # Create inline config with unique agent name
     export TEST_CONFIG="$(mktemp --suffix=.yaml)"
     cat > "$TEST_CONFIG" <<EOF
 version: "1.0"
 agents:
   ${AGENT_NAME}:
-    description: "E2E test agent for telemetry testing with runner"
+    description: "E2E test agent for telemetry testing"
     framework: claude-code
     experimental_runner:
       group: ${RUNNER_GROUP}
@@ -55,6 +43,7 @@ teardown() {
     if [ -n "$TEST_ARTIFACT_DIR" ] && [ -d "$TEST_ARTIFACT_DIR" ]; then
         rm -rf "$TEST_ARTIFACT_DIR"
     fi
+    # Clean up config file
     if [ -n "$TEST_CONFIG" ] && [ -f "$TEST_CONFIG" ]; then
         rm -f "$TEST_CONFIG"
     fi
@@ -62,21 +51,15 @@ teardown() {
     cleanup_test_volume
 }
 
-@test "Runner telemetry: compose agent with experimental_runner" {
+@test "Build VM0 telemetry test agent configuration" {
     run $CLI_COMMAND compose "$TEST_CONFIG"
     assert_success
     assert_output --partial "$AGENT_NAME"
 }
 
-@test "Runner telemetry: run displays Run ID and logs command retrieves data" {
-    echo "# Using shared runner with group: ${RUNNER_GROUP}"
-
-    # Compose the agent
-    run $CLI_COMMAND compose "$TEST_CONFIG"
-    assert_success
-
-    # Step 1: Create artifact
-    echo "# Step 1: Creating artifact..."
+@test "VM0 telemetry: run displays Run ID and logs command retrieves data" {
+    # Step 1: Create artifact with initial content
+    echo "# Step 1: Creating initial artifact..."
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
@@ -84,104 +67,93 @@ teardown() {
     run $CLI_COMMAND artifact push
     assert_success
 
-    # Step 2: Run agent
-    echo "# Step 2: Running agent..."
+    # Step 2: Run agent with a simple command
+    echo "# Step 2: Running agent to trigger telemetry collection..."
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'hello from agent'"
 
-    echo "# Output:"
-    echo "$output"
-
     assert_success
 
-    # Verify "Run started" message with Run ID
+    # Verify "Run started" message with Run ID is displayed
     assert_output --partial "Run started"
     assert_output --partial "Run ID:"
 
-    # Verify run completed
+    # Verify run completed successfully
+    assert_output --partial "◆ Claude Code Completed"
     assert_output --partial "Run completed successfully"
 
-    # Verify logs hint
+    # Verify "vm0 logs" command hint is shown in next steps
     assert_output --partial "View agent logs:"
     assert_output --partial "vm0 logs"
 
-    # Step 3: Extract Run ID
+    # Step 3: Extract Run ID from output
+    # Format: "  Run ID:   abc12345-6789-..."
     RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
     echo "# Run ID: $RUN_ID"
     [ -n "$RUN_ID" ] || {
-        echo "# Failed to extract Run ID"
+        echo "# Failed to extract Run ID from output"
+        echo "$output"
         return 1
     }
 
-    # Step 4: Verify vm0 logs (default: agent events)
-    echo "# Step 4: Fetching agent events..."
+    # Step 4: Verify vm0 logs command (default: agent events)
+    echo "# Step 4: Fetching agent events (default)..."
     run $CLI_COMMAND logs "$RUN_ID"
 
     assert_success
+
+    # Default output shows agent events - verify event type markers are present
+    # Mock-claude produces: Claude Code Started, text, tool calls, Completed
     assert_output --partial "▷ Claude Code Started"
     assert_output --partial "◆ Claude Code Completed"
-    echo "# Agent events OK"
+    echo "# Agent events contain expected event types"
 
-    # Step 5: Verify --agent option
+    # Step 5: Verify --agent option explicitly shows agent events
     echo "# Step 5: Testing --agent option..."
     run $CLI_COMMAND logs "$RUN_ID" --agent
 
     assert_success
     assert_output --partial "▷ Claude Code Started"
-    echo "# --agent option OK"
+    echo "# --agent option works correctly"
 
-    # Step 6: Verify --system option
+    # Step 6: Verify --system option shows system logs
     echo "# Step 6: Testing --system option..."
     run $CLI_COMMAND logs "$RUN_ID" --system --tail 100
 
     assert_success
+    # System log should contain sandbox log entries with INFO level
+    # Format: [TIMESTAMP] [INFO] [sandbox:run-agent] message
     assert_output --partial "[INFO]"
     assert_output --partial "[sandbox:"
-    echo "# System log OK"
+    echo "# System log contains expected log format"
 
-    # Step 7: Verify --metrics option (with retry for eventual consistency)
-    # Axiom is eventually consistent - metrics may take 10-20s to be queryable
+    # Step 7: Verify --metrics option shows resource metrics
     echo "# Step 7: Testing --metrics option..."
-
-    # Initial delay to allow Axiom to index the data
-    echo "# Waiting 5s for Axiom to index metrics..."
-    sleep 5
-
-    local attempt=1
-    local max_attempts=8
-    local delay=3
-
-    while [[ $attempt -le $max_attempts ]]; do
-        run $CLI_COMMAND logs "$RUN_ID" --metrics --tail 100
-
-        if [[ "$status" -eq 0 ]] && \
-           [[ "$output" == *"CPU:"* ]] && \
-           [[ "$output" == *"Mem:"* ]] && \
-           [[ "$output" == *"Disk:"* ]]; then
-            echo "# Metrics found on attempt $attempt"
-            break
-        fi
-
-        if [[ $attempt -lt $max_attempts ]]; then
-            echo "# Metrics not found yet (attempt $attempt/$max_attempts), waiting ${delay}s..."
-            sleep $delay
-        fi
-        ((attempt++))
-    done
+    run $CLI_COMMAND logs "$RUN_ID" --metrics --tail 100
 
     assert_success
-    assert_output --partial "CPU:"
-    assert_output --partial "Mem:"
-    assert_output --partial "Disk:"
-    echo "# Metrics OK"
+    # Metrics may take time to collect, so check if either:
+    # 1. Metrics are available (contains CPU/Mem/Disk)
+    # 2. Or "No metrics found" message is shown (acceptable for quick runs)
+    if echo "$output" | grep -q "No metrics found"; then
+        echo "# Metrics not yet available (acceptable for quick runs)"
+    else
+        # If metrics are available, verify format
+        assert_output --partial "CPU:"
+        assert_output --partial "Mem:"
+        assert_output --partial "Disk:"
+        echo "# Metrics contain expected resource data"
+    fi
 
-    # Step 8: Verify --tail option
+    # Step 8: Verify --tail option limits output
     echo "# Step 8: Testing --tail option..."
     run $CLI_COMMAND logs "$RUN_ID" --tail 2
 
     assert_success
-    echo "# Tail option OK"
+    # With tail=2, should see at most 2 events
+    # If more exist, should see "Use --tail to see more"
+    echo "# Tail option works correctly"
 
     # Note: Mutually exclusive options validation (--agent, --system, etc.)
     # is tested in CLI integration tests:

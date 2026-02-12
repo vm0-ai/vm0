@@ -79,3 +79,9 @@ export {
 
 // Domain modules - Usage
 export { getUsage } from "./domains/usage";
+
+// Domain modules - User Preferences
+export {
+  getUserPreferences,
+  updateUserPreferences,
+} from "./domains/user-preferences";

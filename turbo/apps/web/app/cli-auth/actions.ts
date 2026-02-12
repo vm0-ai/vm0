@@ -4,13 +4,17 @@ import { eq, and } from "drizzle-orm";
 import { initServices } from "../../src/lib/init-services";
 import { deviceCodes } from "../../src/db/schema/device-codes";
 import { getAuthProvider } from "../../src/lib/auth/auth-provider";
+import { setTimezoneIfNotSet } from "../../src/lib/user/user-preferences-service";
 
 interface VerifyResult {
   success: boolean;
   error?: string;
 }
 
-export async function verifyDeviceAction(code: string): Promise<VerifyResult> {
+export async function verifyDeviceAction(
+  code: string,
+  timezone?: string,
+): Promise<VerifyResult> {
   const userId = await getAuthProvider().getUserId();
 
   if (!userId) {
@@ -51,6 +55,11 @@ export async function verifyDeviceAction(code: string): Promise<VerifyResult> {
       updatedAt: new Date(),
     })
     .where(eq(deviceCodes.code, normalizedCode));
+
+  // Auto-set timezone if user has no preference yet (first login)
+  if (timezone) {
+    await setTimezoneIfNotSet(userId, timezone);
+  }
 
   return { success: true };
 }
