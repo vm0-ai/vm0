@@ -402,5 +402,66 @@ describe("createRun()", () => {
       // because the checkpoint resume should skip this optional volume
       expect(result.status).toBe("running");
     });
+
+    it("should mount optional volume in session/continue when it now exists (no volumeVersions)", async () => {
+      const volumeName = uniqueId("vol");
+      // Create the volume first
+      await createTestVolume(volumeName);
+
+      // Create compose with optional volume
+      const compose = await createComposeWithVolumes(
+        uniqueId("agent"),
+        {
+          mydata: {
+            name: volumeName,
+            version: "latest",
+            optional: true,
+          },
+        },
+        ["mydata:/data"],
+      );
+
+      // Session/Continue scenario: volumeVersions is NOT provided (undefined)
+      // This means we should use current config and mount if volume exists
+      const result = await createRun(
+        baseParams({
+          agentComposeVersionId: compose.versionId,
+          // No volumeVersions - use latest state
+        }),
+      );
+
+      expect(result.status).toBe("running");
+    });
+
+    it("should succeed with mixed volumes (required exists, optional missing)", async () => {
+      const requiredVolumeName = uniqueId("required-vol");
+      // Create only the required volume
+      await createTestVolume(requiredVolumeName);
+
+      // Create compose with both required and optional volumes
+      const compose = await createComposeWithVolumes(
+        uniqueId("agent"),
+        {
+          requiredData: {
+            name: requiredVolumeName,
+            version: "latest",
+            // optional defaults to false (required)
+          },
+          optionalData: {
+            name: "nonexistent-optional-volume",
+            version: "latest",
+            optional: true,
+          },
+        },
+        ["requiredData:/required", "optionalData:/optional"],
+      );
+
+      // Should succeed - required volume exists, optional is skipped
+      const result = await createRun(
+        baseParams({ agentComposeVersionId: compose.versionId }),
+      );
+
+      expect(result.status).toBe("running");
+    });
   });
 });
