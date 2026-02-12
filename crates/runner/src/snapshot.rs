@@ -36,12 +36,20 @@ pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<()> {
     }
 
     // Clean up any partial output from a previous failed attempt.
-    if output_dir.exists() {
-        tokio::fs::remove_dir_all(&output_dir).await?;
+    match tokio::fs::remove_dir_all(&output_dir).await {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.into()),
     }
     tokio::fs::create_dir_all(&output_dir).await?;
 
     let rootfs_path = RootfsPaths::new(&paths, &args.rootfs_hash).rootfs();
+    if !tokio::fs::try_exists(&rootfs_path).await.unwrap_or(false) {
+        return Err(RunnerError::Config(format!(
+            "rootfs not found at {}; run `build-rootfs` first",
+            rootfs_path.display()
+        )));
+    }
 
     let config = sandbox_fc::SnapshotCreateConfig {
         binary_path: paths.firecracker_bin(FIRECRACKER_VERSION),
