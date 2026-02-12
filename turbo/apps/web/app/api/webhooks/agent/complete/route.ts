@@ -198,15 +198,19 @@ const router = tsr.router(webhookCompleteContract, {
 
     // Dispatch registered callbacks (non-blocking)
     // This handles Slack mentions and other webhook integrations
-    after(() => {
-      const errorMsg =
-        finalStatus === "failed"
-          ? (body.error ?? `Agent exited with code ${body.exitCode}`)
-          : undefined;
-      dispatchCallbacks(body.runId, finalStatus, undefined, errorMsg).catch(
-        (err) => log.error("Failed to dispatch callbacks", { err }),
-      );
-    });
+    // Note: Must return the promise so after() waits for completion
+    const callbackErrorMsg =
+      finalStatus === "failed"
+        ? (body.error ?? `Agent exited with code ${body.exitCode}`)
+        : undefined;
+    after(
+      dispatchCallbacks(
+        body.runId,
+        finalStatus,
+        undefined,
+        callbackErrorMsg,
+      ).catch((err) => log.error("Failed to dispatch callbacks", { err })),
+    );
 
     // Kill sandbox (wait for completion to ensure cleanup before response)
     if (sandboxId) {
