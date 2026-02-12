@@ -1,11 +1,6 @@
 import { command, computed, state } from "ccstate";
-import {
-  CONNECTOR_TYPES,
-  type ConnectorType,
-  type ComposeListItem,
-} from "@vm0/core";
+import type { ComposeListItem } from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
-import { connectors$ } from "../external/connectors.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 
@@ -20,7 +15,7 @@ interface Schedule {
   timezone: string;
 }
 
-interface AgentMissingItems {
+export interface AgentMissingItems {
   composeId: string;
   agentName: string;
   requiredSecrets: string[];
@@ -49,7 +44,7 @@ const agentsListState$ = state<AgentsListState>({
 
 const internalReloadMissing$ = state(0);
 
-const agentsMissingItems$ = computed(async (get) => {
+export const agentsMissingItems$ = computed(async (get) => {
   get(internalReloadMissing$);
   const fetchFn = get(fetch$);
   const resp = await fetchFn("/api/agent/schedules/missing-secrets");
@@ -65,103 +60,6 @@ const agentsMissingItems$ = computed(async (get) => {
  */
 export const reloadAgentsMissing$ = command(({ set }) => {
   set(internalReloadMissing$, (x) => x + 1);
-});
-
-// ---------------------------------------------------------------------------
-// Env var → connector type mapping
-// ---------------------------------------------------------------------------
-
-function buildEnvVarToConnectorMap(): Readonly<Record<string, ConnectorType>> {
-  const map: Record<string, ConnectorType> = {};
-  for (const [type, config] of Object.entries(CONNECTOR_TYPES)) {
-    for (const envVar of Object.keys(config.environmentMapping)) {
-      map[envVar] = type as ConnectorType;
-    }
-  }
-  return Object.freeze(map);
-}
-
-const ENV_VAR_TO_CONNECTOR = buildEnvVarToConnectorMap();
-
-// ---------------------------------------------------------------------------
-// Processed missing items per agent (connector-aware)
-// ---------------------------------------------------------------------------
-
-interface ConnectorMissingItem {
-  connectorType: ConnectorType;
-  label: string;
-  secretNames: string[];
-}
-
-export interface AgentMissingInfo {
-  agentName: string;
-  /** Secrets not resolvable by any connector */
-  manualSecrets: string[];
-  /** Secrets resolvable by connecting a connector */
-  connectorItems: ConnectorMissingItem[];
-  /** Missing variables */
-  missingVariables: string[];
-}
-
-/**
- * Processed map of agent name → missing info, accounting for connectors.
- */
-export const agentsMissingInfo$ = computed(async (get) => {
-  const items = await get(agentsMissingItems$);
-  const { connectors } = await get(connectors$);
-  const connectedTypes = new Set(connectors.map((c) => c.type));
-
-  const result = new Map<string, AgentMissingInfo>();
-
-  for (const item of items) {
-    // Filter out secrets provided by connected connectors
-    const trulyMissingSecrets = item.missingSecrets.filter((name) => {
-      const connType = ENV_VAR_TO_CONNECTOR[name];
-      return !connType || !connectedTypes.has(connType);
-    });
-
-    // Group connector-resolvable secrets by connector type
-    const connectorGrouped: Partial<Record<ConnectorType, string[]>> = {};
-    const manualSecrets: string[] = [];
-
-    for (const name of trulyMissingSecrets) {
-      const connType = ENV_VAR_TO_CONNECTOR[name];
-      if (connType) {
-        const list = connectorGrouped[connType] ?? [];
-        list.push(name);
-        connectorGrouped[connType] = list;
-      } else {
-        manualSecrets.push(name);
-      }
-    }
-
-    const connectorItems: ConnectorMissingItem[] = [];
-    for (const [connType, secretNames] of Object.entries(connectorGrouped)) {
-      const config = CONNECTOR_TYPES[connType as ConnectorType];
-      connectorItems.push({
-        connectorType: connType as ConnectorType,
-        label: config.label,
-        secretNames,
-      });
-    }
-
-    const missingVariables = item.missingVariables;
-
-    if (
-      manualSecrets.length > 0 ||
-      connectorItems.length > 0 ||
-      missingVariables.length > 0
-    ) {
-      result.set(item.agentName, {
-        agentName: item.agentName,
-        manualSecrets,
-        connectorItems,
-        missingVariables,
-      });
-    }
-  }
-
-  return result;
 });
 
 export const agentsList$ = computed((get) => get(agentsListState$).agents);
@@ -211,7 +109,7 @@ export const fetchAgentsList$ = command(async ({ get, set }) => {
       L.error("Failed to fetch schedules:", error);
     }
 
-    // Missing items are now fetched reactively via agentsMissingInfo$ computed signal
+    // Missing items are fetched reactively via agentsMissingItems$ computed signal
     set(agentsListState$, {
       agents: agentsData.composes,
       schedules,

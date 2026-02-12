@@ -8,7 +8,7 @@ import {
   agentsLoading$,
   agentsError$,
   schedules$,
-  agentsMissingInfo$,
+  agentsMissingItems$,
   reloadAgentsMissing$,
   fetchAgentsList$,
   getAgentScheduleStatus,
@@ -111,7 +111,7 @@ describe("agents-list signals", () => {
     });
   });
 
-  describe("agentsMissingInfo$", () => {
+  describe("agentsMissingItems$", () => {
     it("should return missing secrets for agents", async () => {
       server.use(
         http.get(
@@ -131,20 +131,16 @@ describe("agents-list signals", () => {
             });
           },
         ),
-        http.get("http://localhost:3000/api/connectors", () => {
-          return HttpResponse.json({ connectors: [] });
-        }),
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
 
-      const info = await context.store.get(agentsMissingInfo$);
-      const agentInfo = info.get("agent-1");
+      const items = await context.store.get(agentsMissingItems$);
 
-      expect(agentInfo).toBeDefined();
-      expect(agentInfo!.manualSecrets).toStrictEqual(["MY_API_KEY"]);
-      expect(agentInfo!.connectorItems).toStrictEqual([]);
-      expect(agentInfo!.missingVariables).toStrictEqual([]);
+      expect(items).toHaveLength(1);
+      expect(items[0]!.agentName).toBe("agent-1");
+      expect(items[0]!.missingSecrets).toStrictEqual(["MY_API_KEY"]);
+      expect(items[0]!.missingVariables).toStrictEqual([]);
     });
 
     it("should return missing variables for agents", async () => {
@@ -166,22 +162,18 @@ describe("agents-list signals", () => {
             });
           },
         ),
-        http.get("http://localhost:3000/api/connectors", () => {
-          return HttpResponse.json({ connectors: [] });
-        }),
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
 
-      const info = await context.store.get(agentsMissingInfo$);
-      const agentInfo = info.get("agent-1");
+      const items = await context.store.get(agentsMissingItems$);
 
-      expect(agentInfo).toBeDefined();
-      expect(agentInfo!.manualSecrets).toStrictEqual([]);
-      expect(agentInfo!.missingVariables).toStrictEqual(["MY_VAR"]);
+      expect(items).toHaveLength(1);
+      expect(items[0]!.missingSecrets).toStrictEqual([]);
+      expect(items[0]!.missingVariables).toStrictEqual(["MY_VAR"]);
     });
 
-    it("should categorize connector-resolvable secrets separately", async () => {
+    it("should return both missing secrets and variables", async () => {
       server.use(
         http.get(
           "http://localhost:3000/api/agent/schedules/missing-secrets",
@@ -193,80 +185,25 @@ describe("agents-list signals", () => {
                   agentName: "agent-1",
                   requiredSecrets: ["GITHUB_TOKEN", "MY_API_KEY"],
                   missingSecrets: ["GITHUB_TOKEN", "MY_API_KEY"],
-                  requiredVariables: [],
-                  missingVariables: [],
+                  requiredVariables: ["MY_VAR"],
+                  missingVariables: ["MY_VAR"],
                 },
               ],
             });
           },
         ),
-        http.get("http://localhost:3000/api/connectors", () => {
-          return HttpResponse.json({ connectors: [] });
-        }),
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
 
-      const info = await context.store.get(agentsMissingInfo$);
-      const agentInfo = info.get("agent-1");
+      const items = await context.store.get(agentsMissingItems$);
 
-      expect(agentInfo).toBeDefined();
-      expect(agentInfo!.manualSecrets).toStrictEqual(["MY_API_KEY"]);
-      expect(agentInfo!.connectorItems).toHaveLength(1);
-      expect(agentInfo!.connectorItems[0]!.connectorType).toBe("github");
-      expect(agentInfo!.connectorItems[0]!.label).toBe("GitHub");
-      expect(agentInfo!.connectorItems[0]!.secretNames).toStrictEqual([
+      expect(items).toHaveLength(1);
+      expect(items[0]!.missingSecrets).toStrictEqual([
         "GITHUB_TOKEN",
+        "MY_API_KEY",
       ]);
-    });
-
-    it("should exclude secrets provided by connected connectors", async () => {
-      server.use(
-        http.get(
-          "http://localhost:3000/api/agent/schedules/missing-secrets",
-          () => {
-            return HttpResponse.json({
-              agents: [
-                {
-                  composeId: "c1",
-                  agentName: "agent-1",
-                  requiredSecrets: ["GITHUB_TOKEN", "MY_API_KEY"],
-                  missingSecrets: ["GITHUB_TOKEN", "MY_API_KEY"],
-                  requiredVariables: [],
-                  missingVariables: [],
-                },
-              ],
-            });
-          },
-        ),
-        http.get("http://localhost:3000/api/connectors", () => {
-          return HttpResponse.json({
-            connectors: [
-              {
-                id: "conn-1",
-                type: "github",
-                authMethod: "oauth",
-                externalId: null,
-                externalUsername: null,
-                externalEmail: null,
-                oauthScopes: null,
-                createdAt: "2024-01-01",
-                updatedAt: "2024-01-01",
-              },
-            ],
-          });
-        }),
-      );
-
-      await setupPage({ context, path: "/", withoutRender: true });
-
-      const info = await context.store.get(agentsMissingInfo$);
-      const agentInfo = info.get("agent-1");
-
-      expect(agentInfo).toBeDefined();
-      // GITHUB_TOKEN is excluded because GitHub connector is connected
-      expect(agentInfo!.manualSecrets).toStrictEqual(["MY_API_KEY"]);
-      expect(agentInfo!.connectorItems).toStrictEqual([]);
+      expect(items[0]!.missingVariables).toStrictEqual(["MY_VAR"]);
     });
 
     it("should refresh after reloadAgentsMissing$ is triggered", async () => {
@@ -295,23 +232,20 @@ describe("agents-list signals", () => {
             return HttpResponse.json({ agents: [] });
           },
         ),
-        http.get("http://localhost:3000/api/connectors", () => {
-          return HttpResponse.json({ connectors: [] });
-        }),
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
 
       // First fetch returns missing secret
-      const infoBefore = await context.store.get(agentsMissingInfo$);
-      expect(infoBefore.get("agent-1")).toBeDefined();
+      const itemsBefore = await context.store.get(agentsMissingItems$);
+      expect(itemsBefore).toHaveLength(1);
 
       // Trigger reload (simulating what happens after adding a secret)
       context.store.set(reloadAgentsMissing$);
 
       // Second fetch returns no missing items
-      const infoAfter = await context.store.get(agentsMissingInfo$);
-      expect(infoAfter.get("agent-1")).toBeUndefined();
+      const itemsAfter = await context.store.get(agentsMissingItems$);
+      expect(itemsAfter).toHaveLength(0);
       expect(callCount).toBe(2);
     });
   });
