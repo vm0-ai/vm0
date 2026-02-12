@@ -4,7 +4,6 @@ import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import { logger } from "../../../../../src/lib/logger";
 import { eq } from "drizzle-orm";
 import { secrets } from "../../../../../src/db/schema/secret";
-import { variables } from "../../../../../src/db/schema/variable";
 import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
 import {
   getUserAgents,
@@ -15,15 +14,13 @@ import { getUserScopeByClerkId } from "../../../../../src/lib/scope/scope-servic
 const log = logger("api:agents:missing-secrets");
 
 /**
- * Agent with missing secrets and variables information
+ * Agent with missing secrets information
  */
-interface AgentMissingItems {
+interface AgentMissingSecrets {
   composeId: string;
   agentName: string;
-  requiredSecrets: string[];
-  missingSecrets: string[];
-  requiredVariables: string[];
-  missingVariables: string[];
+  requiredSecrets: string[]; // All secrets required by agent
+  missingSecrets: string[]; // Secrets that are required but not configured
 }
 
 /**
@@ -59,21 +56,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ agents: [] });
   }
 
-  // Check the recipient's own secrets and variables — shared agents run with the
+  // Check the recipient's own secrets — shared agents run with the
   // recipient's secrets, so missing ones need to be configured by them.
-  const [userSecrets, userVariables] = await Promise.all([
-    db
-      .select({ name: secrets.name })
-      .from(secrets)
-      .where(eq(secrets.scopeId, userScope.id)),
-    db
-      .select({ name: variables.name })
-      .from(variables)
-      .where(eq(variables.scopeId, userScope.id)),
-  ]);
+  const userSecrets = await db
+    .select({ name: secrets.name })
+    .from(secrets)
+    .where(eq(secrets.scopeId, userScope.id));
 
   const configuredSecretNames = new Set(userSecrets.map((s) => s.name));
-  const configuredVariableNames = new Set(userVariables.map((v) => v.name));
 
   // Batch-fetch all versions in a single query
   const versionIds = agents
@@ -82,7 +72,7 @@ export async function GET(request: Request) {
 
   const versionContents = await batchFetchVersionContents(versionIds);
 
-  const result: AgentMissingItems[] = [];
+  const result: AgentMissingSecrets[] = [];
 
   for (const agent of agents) {
     if (!agent.headVersionId) {
@@ -111,33 +101,27 @@ export async function GET(request: Request) {
       ...grouped.credentials.map((r) => r.name),
     ];
 
-    // Get required variables (${{ vars.xxx }})
-    const requiredVariables = grouped.vars.map((r) => r.name);
+    if (requiredSecrets.length === 0) {
+      continue;
+    }
 
     // Find missing secrets
     const missingSecrets = requiredSecrets.filter(
       (secret) => !configuredSecretNames.has(secret),
     );
 
-    // Find missing variables
-    const missingVariables = requiredVariables.filter(
-      (v) => !configuredVariableNames.has(v),
-    );
-
-    if (missingSecrets.length > 0 || missingVariables.length > 0) {
+    if (missingSecrets.length > 0) {
       result.push({
         composeId: agent.composeId,
         agentName: agent.agentName,
         requiredSecrets,
         missingSecrets,
-        requiredVariables,
-        missingVariables,
       });
     }
   }
 
   log.debug(
-    `Found ${result.length} agent(s) with missing items for user ${userId}`,
+    `Found ${result.length} agent(s) with missing secrets for user ${userId}`,
   );
 
   return NextResponse.json({

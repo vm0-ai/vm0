@@ -28,11 +28,6 @@ export const apiAgentsHandlers = [
     return HttpResponse.json({ schedules: [] });
   }),
 
-  // GET /api/agent/schedules/missing-secrets
-  http.get("/api/agent/schedules/missing-secrets", () => {
-    return HttpResponse.json({ agents: [] });
-  }),
-
   // GET /api/agent/required-env
   http.get("/api/agent/required-env", () => {
     return HttpResponse.json({ agents: [] });

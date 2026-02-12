@@ -1,6 +1,12 @@
 import { command, computed, state } from "ccstate";
-import type { ComposeListItem } from "@vm0/core";
+import {
+  getConnectorProvidedSecretNames,
+  type ComposeListItem,
+} from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
+import { connectors$ } from "../external/connectors.ts";
+import { secrets$ } from "../settings-page/secrets.ts";
+import { variables$ } from "../settings-page/variables.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 
@@ -18,9 +24,7 @@ interface Schedule {
 export interface AgentMissingItems {
   composeId: string;
   agentName: string;
-  requiredSecrets: string[];
   missingSecrets: string[];
-  requiredVariables: string[];
   missingVariables: string[];
 }
 
@@ -39,27 +43,68 @@ const agentsListState$ = state<AgentsListState>({
 });
 
 // ---------------------------------------------------------------------------
-// Missing items (separate reload trigger so it can refresh independently)
+// Missing items (computed from required-env + configured secrets/variables)
 // ---------------------------------------------------------------------------
 
-const internalReloadMissing$ = state(0);
+interface AgentRequiredEnv {
+  composeId: string;
+  agentName: string;
+  requiredSecrets: string[];
+  requiredVariables: string[];
+}
 
-export const agentsMissingItems$ = computed(async (get) => {
-  get(internalReloadMissing$);
+const agentRequiredEnv$ = computed(async (get) => {
   const fetchFn = get(fetch$);
-  const resp = await fetchFn("/api/agent/schedules/missing-secrets");
+  const resp = await fetchFn("/api/agent/required-env");
   if (!resp.ok) {
     return [];
   }
-  const data = (await resp.json()) as { agents: AgentMissingItems[] };
+  const data = (await resp.json()) as { agents: AgentRequiredEnv[] };
   return data.agents;
 });
 
 /**
- * Reload missing items data (called after adding secrets/variables/connectors).
+ * Per-agent missing items, computed client-side by comparing required env
+ * against configured secrets, variables, and connected connectors.
+ *
+ * Automatically refreshes when secrets$, variables$, or connectors$ change.
  */
-export const reloadAgentsMissing$ = command(({ set }) => {
-  set(internalReloadMissing$, (x) => x + 1);
+export const agentsMissingItems$ = computed(async (get) => {
+  const [requiredEnv, secretsList, variablesList, connectorData] =
+    await Promise.all([
+      get(agentRequiredEnv$),
+      get(secrets$),
+      get(variables$),
+      get(connectors$),
+    ]);
+
+  const configuredSecretNames = new Set(secretsList.map((s) => s.name));
+  const configuredVariableNames = new Set(variablesList.map((v) => v.name));
+  const connectedTypes = connectorData.connectors.map((c) => c.type);
+  const connectorProvided = getConnectorProvidedSecretNames(connectedTypes);
+
+  const result: AgentMissingItems[] = [];
+
+  for (const agent of requiredEnv) {
+    const missingSecrets = agent.requiredSecrets.filter(
+      (name) =>
+        !configuredSecretNames.has(name) && !connectorProvided.has(name),
+    );
+    const missingVariables = agent.requiredVariables.filter(
+      (name) => !configuredVariableNames.has(name),
+    );
+
+    if (missingSecrets.length > 0 || missingVariables.length > 0) {
+      result.push({
+        composeId: agent.composeId,
+        agentName: agent.agentName,
+        missingSecrets,
+        missingVariables,
+      });
+    }
+  }
+
+  return result;
 });
 
 export const agentsList$ = computed((get) => get(agentsListState$).agents);
@@ -109,7 +154,6 @@ export const fetchAgentsList$ = command(async ({ get, set }) => {
       L.error("Failed to fetch schedules:", error);
     }
 
-    // Missing items are fetched reactively via agentsMissingItems$ computed signal
     set(agentsListState$, {
       agents: agentsData.composes,
       schedules,

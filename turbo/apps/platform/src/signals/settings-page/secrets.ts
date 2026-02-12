@@ -5,7 +5,6 @@ import type {
   SetSecretRequest,
 } from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
-import { reloadAgentsMissing$ } from "../agents-page/agents-list.ts";
 
 // ---------------------------------------------------------------------------
 // Reload trigger
@@ -227,7 +226,7 @@ export const submitSecretDialog$ = command(
 
       signal.throwIfAborted();
       set(internalReloadSecrets$, (x) => x + 1);
-      set(reloadAgentsMissing$);
+
       set(internalDialogState$, {
         open: false,
         mode: "add",
@@ -281,7 +280,7 @@ export const confirmDeleteSecret$ = command(
 
       signal.throwIfAborted();
       set(internalReloadSecrets$, (x) => x + 1);
-      set(reloadAgentsMissing$);
+
       set(internalDeleteDialogState$, { open: false, secretName: null });
     })();
 
