@@ -375,8 +375,11 @@ export async function resolveSessionCompose(
         agentName: agent.name,
       };
     }
-  } catch {
-    // Session validation failed - fall back to workspace default
+  } catch (error) {
+    log.warn("Failed to resolve session compose, using workspace default", {
+      sessionId,
+      error,
+    });
   }
   return undefined;
 }
