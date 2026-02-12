@@ -15,6 +15,7 @@ import {
   createUserScope,
   generateDefaultScopeSlug,
 } from "../../scope/scope-service";
+import { validateAgentSession } from "../../run";
 import { computeContentHashFromHashes } from "../../storage/content-hash";
 import { putS3Object } from "../../s3/s3-client";
 import { env } from "../../../env";
@@ -354,4 +355,28 @@ export async function getWorkspaceAgent(
     .where(eq(agentComposes.id, composeId))
     .limit(1);
   return compose ?? undefined;
+}
+
+/**
+ * Resolve compose info from an existing session.
+ * Used when continuing a conversation to ensure we use the session's agent,
+ * not the workspace default.
+ */
+export async function resolveSessionCompose(
+  sessionId: string,
+  userId: string,
+): Promise<{ composeId: string; agentName: string } | undefined> {
+  try {
+    const sessionData = await validateAgentSession(sessionId, userId);
+    const agent = await getWorkspaceAgent(sessionData.agentComposeId);
+    if (agent) {
+      return {
+        composeId: sessionData.agentComposeId,
+        agentName: agent.name,
+      };
+    }
+  } catch {
+    // Session validation failed - fall back to workspace default
+  }
+  return undefined;
 }
