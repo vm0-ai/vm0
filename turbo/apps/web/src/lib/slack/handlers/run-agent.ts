@@ -114,6 +114,7 @@ export async function runAgentForSlack(
       composeId: compose.id,
       sessionId,
       agentName,
+      artifactName: "artifact",
       callbacks: [
         {
           url: callbackUrl,
