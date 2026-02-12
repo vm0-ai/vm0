@@ -7,10 +7,10 @@ import { scopeContract, createErrorResponse, ApiError } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
 import { getUserId } from "../../../src/lib/auth/get-user-id";
 import {
-  getUserScopeByClerkId,
   createUserScope,
   updateScopeSlug,
 } from "../../../src/lib/scope/scope-service";
+import { resolveScope } from "../../../src/lib/scope/resolve-scope";
 import { logger } from "../../../src/lib/logger";
 import { isBadRequest, isForbidden, isNotFound } from "../../../src/lib/errors";
 
@@ -19,6 +19,10 @@ const log = logger("api:scope");
 const router = tsr.router(scopeContract, {
   /**
    * GET /api/scope - Get current user's scope
+   *
+   * Returns the active scope based on the auth token:
+   * - vm0_org_* token → org scope
+   * - vm0_live_* token → personal scope
    */
   get: async ({ headers }) => {
     initServices();
@@ -28,7 +32,7 @@ const router = tsr.router(scopeContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const scope = await getUserScopeByClerkId(userId);
+    const scope = await resolveScope(userId, headers.authorization);
     if (!scope) {
       return createErrorResponse(
         "NOT_FOUND",
@@ -94,7 +98,11 @@ const router = tsr.router(scopeContract, {
   },
 
   /**
-   * PUT /api/scope - Update user's scope slug
+   * PUT /api/scope - Update active scope slug
+   *
+   * Resolves the active scope based on the auth token:
+   * - vm0_org_* token → updates org scope
+   * - vm0_live_* token → updates personal scope
    */
   update: async ({ body, headers }) => {
     initServices();
@@ -106,10 +114,9 @@ const router = tsr.router(scopeContract, {
 
     const { slug, force } = body;
 
-    log.debug("updating user scope", { userId, slug, force });
+    log.debug("updating scope", { userId, slug, force });
 
-    // First get user's current scope
-    const existingScope = await getUserScopeByClerkId(userId);
+    const existingScope = await resolveScope(userId, headers.authorization);
     if (!existingScope) {
       return createErrorResponse(
         "NOT_FOUND",
