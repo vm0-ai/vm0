@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { logger } from "../../../../src/lib/logger";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import {
   agentComposes,
   agentComposeVersions,
@@ -53,6 +53,26 @@ export async function GET(request: Request) {
     return NextResponse.json({ agents: [] });
   }
 
+  // Batch-fetch all versions in a single query
+  const versionIds = agents
+    .map((a) => a.headVersionId)
+    .filter((id): id is string => id !== null);
+
+  const versionContents = new Map<string, AgentComposeYaml>();
+  if (versionIds.length > 0) {
+    const versions = await db
+      .select({
+        id: agentComposeVersions.id,
+        content: agentComposeVersions.content,
+      })
+      .from(agentComposeVersions)
+      .where(inArray(agentComposeVersions.id, versionIds));
+
+    for (const v of versions) {
+      versionContents.set(v.id, v.content as AgentComposeYaml);
+    }
+  }
+
   const result: AgentRequiredEnv[] = [];
 
   for (const agent of agents) {
@@ -60,20 +80,11 @@ export async function GET(request: Request) {
       continue;
     }
 
-    const [version] = await db
-      .select({ content: agentComposeVersions.content })
-      .from(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, agent.headVersionId))
-      .limit(1);
-
-    if (!version) {
-      log.warn(
-        `Version ${agent.headVersionId} not found for agent ${agent.agentName}`,
-      );
+    const composeYaml = versionContents.get(agent.headVersionId);
+    if (!composeYaml) {
       continue;
     }
 
-    const composeYaml = version.content as AgentComposeYaml;
     const agentDefs = Object.values(composeYaml.agents || {});
     const firstAgent = agentDefs[0];
 

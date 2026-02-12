@@ -407,6 +407,213 @@ describe("secrets and variables tab", () => {
     expect(screen.queryByText("GH_TOKEN")).not.toBeInTheDocument();
   });
 
+  it("shows skeleton loading state before data resolves", async () => {
+    let resolveSecrets: () => void = () => {};
+    const secretsPromise = new Promise<void>((resolve) => {
+      resolveSecrets = resolve;
+    });
+
+    server.use(
+      http.get("/api/secrets", async () => {
+        await secretsPromise;
+        return HttpResponse.json({ secrets: mockSecrets() });
+      }),
+      http.get("/api/variables", () => {
+        return HttpResponse.json({ variables: mockVariables() });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/settings?tab=secrets-and-variables",
+    });
+
+    // While loading, footer and items should not be visible
+    expect(
+      screen.queryByText("New secrets and variables"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("API_KEY")).not.toBeInTheDocument();
+
+    // Resolve the delayed response
+    resolveSecrets();
+
+    // Now data and footer should appear
+    await vi.waitFor(() => {
+      expect(screen.getByText("API_KEY")).toBeInTheDocument();
+    });
+    expect(screen.getByText("New secrets and variables")).toBeInTheDocument();
+  });
+
+  it("can add a new secret via dialog", async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+
+    server.use(
+      http.get("/api/secrets", () => {
+        return HttpResponse.json({ secrets: [] });
+      }),
+      http.get("/api/variables", () => {
+        return HttpResponse.json({ variables: [] });
+      }),
+      http.put("/api/secrets", async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(
+          {
+            id: crypto.randomUUID(),
+            name: capturedBody.name,
+            description: capturedBody.description ?? null,
+            type: "user",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+          { status: 201 },
+        );
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/settings?tab=secrets-and-variables",
+    });
+
+    await vi.waitFor(() => {
+      expect(screen.getByText("New secrets and variables")).toBeInTheDocument();
+    });
+
+    // Open dropdown and click "Add secret"
+    await user.click(screen.getByText("Add more secrets"));
+    await user.click(await screen.findByText("Add secret"));
+
+    // Dialog should open
+    const dialog = await screen.findByRole("dialog");
+
+    // Fill in the form
+    const nameInput = within(dialog).getByPlaceholderText("MY_API_KEY");
+    await user.click(nameInput);
+    await user.paste("NEW_SECRET");
+
+    const valueInput =
+      within(dialog).getByPlaceholderText("Enter secret value");
+    await user.click(valueInput);
+    await user.paste("super-secret-value");
+
+    // Submit
+    const submitButton = within(dialog).getByRole("button", {
+      name: /add secret/i,
+    });
+    await user.click(submitButton);
+
+    // Verify request and dialog closed
+    await vi.waitFor(() => {
+      expect(capturedBody).toBeTruthy();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(capturedBody!.name).toBe("NEW_SECRET");
+    expect(capturedBody!.value).toBe("super-secret-value");
+  });
+
+  it("can add a new variable via dialog", async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+
+    server.use(
+      http.get("/api/secrets", () => {
+        return HttpResponse.json({ secrets: [] });
+      }),
+      http.get("/api/variables", () => {
+        return HttpResponse.json({ variables: [] });
+      }),
+      http.put("/api/variables", async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(
+          {
+            id: crypto.randomUUID(),
+            name: capturedBody.name,
+            value: capturedBody.value,
+            description: capturedBody.description ?? null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+          { status: 201 },
+        );
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/settings?tab=secrets-and-variables",
+    });
+
+    await vi.waitFor(() => {
+      expect(screen.getByText("New secrets and variables")).toBeInTheDocument();
+    });
+
+    // Open dropdown and click "Add variable"
+    await user.click(screen.getByText("Add more secrets"));
+    await user.click(await screen.findByText("Add variable"));
+
+    // Dialog should open
+    const dialog = await screen.findByRole("dialog");
+
+    // Fill in the form
+    const nameInput = within(dialog).getByPlaceholderText("MY_VARIABLE");
+    await user.click(nameInput);
+    await user.paste("MY_VAR");
+
+    const valueInput = within(dialog).getByPlaceholderText(
+      "Enter variable value",
+    );
+    await user.click(valueInput);
+    await user.paste("some-value");
+
+    // Submit
+    const submitButton = within(dialog).getByRole("button", {
+      name: /add variable/i,
+    });
+    await user.click(submitButton);
+
+    await vi.waitFor(() => {
+      expect(capturedBody).toBeTruthy();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(capturedBody!.name).toBe("MY_VAR");
+    expect(capturedBody!.value).toBe("some-value");
+  });
+
+  it("validates secret name on add", async () => {
+    server.use(
+      http.get("/api/secrets", () => {
+        return HttpResponse.json({ secrets: [] });
+      }),
+      http.get("/api/variables", () => {
+        return HttpResponse.json({ variables: [] });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/settings?tab=secrets-and-variables",
+    });
+
+    await vi.waitFor(() => {
+      expect(screen.getByText("New secrets and variables")).toBeInTheDocument();
+    });
+
+    // Open dropdown and click "Add secret"
+    await user.click(screen.getByText("Add more secrets"));
+    await user.click(await screen.findByText("Add secret"));
+
+    const dialog = await screen.findByRole("dialog");
+
+    // Try to submit empty
+    const submitButton = within(dialog).getByRole("button", {
+      name: /add secret/i,
+    });
+    await user.click(submitButton);
+
+    expect(
+      within(dialog).getByText("Secret name is required"),
+    ).toBeInTheDocument();
+  });
+
   it("connector-covered agent-required configured secret is deletable", async () => {
     const githubConnector: ConnectorResponse = {
       id: "conn-1",
