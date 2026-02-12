@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.37.0](https://github.com/vm0-ai/vm0/compare/cli-v9.36.0...cli-v9.37.0) (2026-02-12)
+
+
+### Features
+
+* add notify-slack preference to gate slack schedule notifications ([#2945](https://github.com/vm0-ai/vm0/issues/2945)) ([a0058e6](https://github.com/vm0-ai/vm0/commit/a0058e6d2c2a7f6c4d20c78a287488ba843cce02))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.12.0
+
 ## [9.36.0](https://github.com/vm0-ai/vm0/compare/cli-v9.35.0...cli-v9.36.0) (2026-02-12)
 
 

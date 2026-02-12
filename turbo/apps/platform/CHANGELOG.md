@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.60.3](https://github.com/vm0-ai/vm0/compare/platform-v0.60.2...platform-v0.60.3) (2026-02-12)
+
+
+### Bug Fixes
+
+* **platform:** fix agents page missing vars, connector suggestions, and stale state ([#2946](https://github.com/vm0-ai/vm0/issues/2946)) ([b20addf](https://github.com/vm0-ai/vm0/commit/b20addf0266a0326ee5f263d54ba299f7e71546e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.12.0
+
 ## [0.60.2](https://github.com/vm0-ai/vm0/compare/platform-v0.60.1...platform-v0.60.2) (2026-02-12)
 
 

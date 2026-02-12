@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.36.1](https://github.com/vm0-ai/vm0/compare/web-v12.36.0...web-v12.36.1) (2026-02-12)
+
+
+### Bug Fixes
+
+* **web:** make vars validation respect checkenv flag ([#2960](https://github.com/vm0-ai/vm0/issues/2960)) ([a52b291](https://github.com/vm0-ai/vm0/commit/a52b291dbbadec36d048387aa1f76c4131d44fd5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.12.0
+
 ## [12.36.0](https://github.com/vm0-ai/vm0/compare/web-v12.35.1...web-v12.36.0) (2026-02-12)
 
 
