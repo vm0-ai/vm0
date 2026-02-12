@@ -7,7 +7,7 @@
  * - Real (internal): All CLI code, formatters, validators
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
 import { inviteCommand } from "../invite";
@@ -28,8 +28,6 @@ describe("org invite command", () => {
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
   });
-
-  afterEach(() => {});
 
   it("should invite member and show success", async () => {
     server.use(

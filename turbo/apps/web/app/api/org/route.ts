@@ -62,7 +62,9 @@ const router = tsr.router(orgContract, {
     }
   },
 
-  // Stub handlers for sub-routes (actual implementations are in separate files)
+  // Stub handlers required by ts-rest contract router. The actual implementations
+  // live in separate Next.js route files (e.g., /api/org/status/route.ts) which
+  // take precedence over these stubs due to Next.js file-system routing.
   status: async () => ({
     status: 404 as const,
     body: {

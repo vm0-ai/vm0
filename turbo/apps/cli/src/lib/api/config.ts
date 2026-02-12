@@ -98,8 +98,9 @@ export async function clearOrgToken(): Promise<void> {
   delete config.orgToken;
   delete config.orgTokenExpiresAt;
   delete config.activeScope;
-  const configDir = join(homedir(), ".vm0");
-  const configFile = join(configDir, "config.json");
+
+  const configDir = getConfigDir();
+  const configFile = getConfigFile();
   await mkdir(configDir, { recursive: true });
   await writeFile(configFile, JSON.stringify(config, null, 2), "utf8");
 }

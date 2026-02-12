@@ -27,7 +27,7 @@ export async function createOrganization(clerkUserId: string, slug: string) {
 
   if (existingOrg.length > 0) {
     throw badRequest(
-      `You already have an organization: ${existingOrg[0]!.slug}`,
+      `You already own an organization: ${existingOrg[0]!.slug}`,
     );
   }
 
@@ -46,7 +46,7 @@ export async function createOrganization(clerkUserId: string, slug: string) {
   });
 
   // Create local scope
-  const [scope] = await globalThis.services.db
+  const result = await globalThis.services.db
     .insert(scopes)
     .values({
       slug,
@@ -56,23 +56,19 @@ export async function createOrganization(clerkUserId: string, slug: string) {
     })
     .returning();
 
+  const scope = result[0];
+  if (!scope) {
+    throw new Error("Failed to create organization scope");
+  }
+
   log.debug("Organization created", {
-    scopeId: scope!.id,
+    scopeId: scope.id,
     slug,
     clerkOrgId: clerkOrg.id,
   });
 
-  // Generate org access token for creator (admin)
-  const { token, expiresAt } = await generateOrgAccessToken(
-    clerkUserId,
-    scope!.id,
-    "admin",
-  );
-
   return {
-    scope: scope!,
-    token,
-    expiresAt,
+    scope,
     role: "admin" as const,
   };
 }
@@ -104,32 +100,36 @@ export async function getOrganizationStatus(
     organizationId: scope.clerkOrgId,
   });
 
-  // Resolve emails for each member
-  const members = await Promise.all(
-    memberships.data.map(async (membership) => {
-      const userId = membership.publicUserData?.userId ?? "";
-      let email = "";
-      if (userId) {
-        const user = await client.users.getUser(userId);
-        const primaryEmail = user.emailAddresses.find(
-          (e) => e.id === user.primaryEmailAddressId,
-        );
-        email = primaryEmail?.emailAddress ?? "";
-      }
+  // Batch-resolve emails for all members in a single Clerk API call
+  const userIds = memberships.data
+    .map((m) => m.publicUserData?.userId)
+    .filter((id): id is string => Boolean(id));
 
-      return {
-        userId,
-        email,
-        role:
-          membership.role === "org:admin"
-            ? ("admin" as const)
-            : ("member" as const),
-        joinedAt: membership.createdAt
-          ? new Date(membership.createdAt).toISOString()
-          : new Date().toISOString(),
-      };
-    }),
-  );
+  const emailMap = new Map<string, string>();
+  if (userIds.length > 0) {
+    const users = await client.users.getUserList({ userId: userIds });
+    for (const user of users.data) {
+      const primaryEmail = user.emailAddresses.find(
+        (e) => e.id === user.primaryEmailAddressId,
+      );
+      emailMap.set(user.id, primaryEmail?.emailAddress ?? "");
+    }
+  }
+
+  const members = memberships.data.map((membership) => {
+    const userId = membership.publicUserData?.userId ?? "";
+    return {
+      userId,
+      email: emailMap.get(userId) ?? "",
+      role:
+        membership.role === "org:admin"
+          ? ("admin" as const)
+          : ("member" as const),
+      joinedAt: membership.createdAt
+        ? new Date(membership.createdAt).toISOString()
+        : new Date().toISOString(),
+    };
+  });
 
   // Determine caller's role
   const callerMembership = memberships.data.find(

@@ -66,8 +66,8 @@ export async function resolveOrgAccessToken(
     return null;
   }
 
-  // Update last used timestamp (non-blocking)
-  globalThis.services.db
+  // Update last used timestamp (non-blocking, same pattern as cli_tokens)
+  void globalThis.services.db
     .update(orgAccessTokens)
     .set({ lastUsedAt: new Date() })
     .where(eq(orgAccessTokens.token, token))

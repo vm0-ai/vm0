@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
-import { resolveOrgAccessToken } from "../../../../src/lib/org/org-token-service";
+import { requireOrgAuth } from "../../../../src/lib/org/require-org-auth";
 import { removeMember } from "../../../../src/lib/org/org-service";
 import {
   isNotFound,
@@ -21,33 +21,13 @@ export async function DELETE(request: Request) {
     );
   }
 
-  // Require org access token
-  const token = authHeader?.startsWith("Bearer ")
-    ? authHeader.substring(7)
-    : null;
-
-  if (!token?.startsWith("vm0_org_")) {
+  const orgResult = await requireOrgAuth(authHeader);
+  if (!orgResult.ok) {
     return NextResponse.json(
       {
-        error: {
-          message: "Organization access token required",
-          code: "FORBIDDEN",
-        },
+        error: { message: orgResult.error.message, code: orgResult.error.code },
       },
-      { status: 403 },
-    );
-  }
-
-  const orgAuth = await resolveOrgAccessToken(token);
-  if (!orgAuth) {
-    return NextResponse.json(
-      {
-        error: {
-          message: "Invalid or expired org token",
-          code: "UNAUTHORIZED",
-        },
-      },
-      { status: 401 },
+      { status: orgResult.error.status },
     );
   }
 
@@ -60,7 +40,12 @@ export async function DELETE(request: Request) {
   }
 
   try {
-    await removeMember(userId, orgAuth.scopeId, orgAuth.role, body.email);
+    await removeMember(
+      userId,
+      orgResult.auth.scopeId,
+      orgResult.auth.role,
+      body.email,
+    );
     return NextResponse.json({
       message: `Removed ${body.email} from organization`,
     });

@@ -7,7 +7,7 @@
  * - Real (internal): All CLI code, formatters, validators
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
 import { createCommand } from "../create";
@@ -39,8 +39,6 @@ describe("org create command", () => {
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
   });
-
-  afterEach(() => {});
 
   it("should create org and auto-switch scope, show success", async () => {
     server.use(
@@ -84,13 +82,13 @@ describe("org create command", () => {
     expect(logCalls).toContain("created");
   });
 
-  it("should handle 'already have an organization' error", async () => {
+  it("should handle 'already own an organization' error", async () => {
     server.use(
       http.post("http://localhost:3000/api/org", () => {
         return HttpResponse.json(
           {
             error: {
-              message: "You already have an organization",
+              message: "You already own an organization",
               code: "BAD_REQUEST",
             },
           },
@@ -104,7 +102,7 @@ describe("org create command", () => {
     }).rejects.toThrow("process.exit called");
 
     expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("already have an organization"),
+      expect.stringContaining("already own an organization"),
     );
     expect(mockExit).toHaveBeenCalledWith(1);
   });

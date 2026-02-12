@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
-import { resolveOrgAccessToken } from "../../../../src/lib/org/org-token-service";
+import { requireOrgAuth } from "../../../../src/lib/org/require-org-auth";
 import { getOrganizationStatus } from "../../../../src/lib/org/org-service";
 import { isNotFound, isForbidden } from "../../../../src/lib/errors";
 
@@ -17,39 +17,18 @@ export async function GET(request: Request) {
     );
   }
 
-  // Require org access token
-  const token = authHeader?.startsWith("Bearer ")
-    ? authHeader.substring(7)
-    : null;
-
-  if (!token?.startsWith("vm0_org_")) {
+  const orgResult = await requireOrgAuth(authHeader);
+  if (!orgResult.ok) {
     return NextResponse.json(
       {
-        error: {
-          message:
-            "Organization access token required. Use: vm0 scope use <org-slug>",
-          code: "FORBIDDEN",
-        },
+        error: { message: orgResult.error.message, code: orgResult.error.code },
       },
-      { status: 403 },
-    );
-  }
-
-  const orgAuth = await resolveOrgAccessToken(token);
-  if (!orgAuth) {
-    return NextResponse.json(
-      {
-        error: {
-          message: "Invalid or expired org token",
-          code: "UNAUTHORIZED",
-        },
-      },
-      { status: 401 },
+      { status: orgResult.error.status },
     );
   }
 
   try {
-    const status = await getOrganizationStatus(userId, orgAuth.scopeId);
+    const status = await getOrganizationStatus(userId, orgResult.auth.scopeId);
     return NextResponse.json(status);
   } catch (error) {
     if (isNotFound(error)) {
