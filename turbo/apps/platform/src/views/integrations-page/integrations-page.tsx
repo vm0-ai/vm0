@@ -16,33 +16,31 @@ export function SlackIntegrationCard() {
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-border">
-        <div className="flex items-center justify-between px-5 py-4">
-          <div className="flex items-center gap-3">
-            <Skeleton className="h-9 w-9 rounded" />
-            <div>
-              <Skeleton className="h-4 w-24 mb-1.5" />
-              <Skeleton className="h-3 w-40" />
-            </div>
-          </div>
-          <Skeleton className="h-8 w-16" />
+      <div className="flex items-center gap-4 rounded-xl border border-border bg-card p-4">
+        <div className="shrink-0">
+          <Skeleton className="h-7 w-7 rounded" />
         </div>
+        <div className="flex flex-1 flex-col gap-2 min-w-0">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-3 w-48" />
+        </div>
+        <Skeleton className="h-8 w-16 shrink-0" />
       </div>
     );
   }
 
   return (
-    <div className="rounded-lg border border-border">
-      <div className="flex items-center justify-between px-5 py-4">
-        <div className="flex items-center gap-3">
-          <img src="/slack-icon.svg" alt="Slack" className="h-9 w-9" />
-          <div>
-            <p className="text-sm font-medium">VM0 in Slack</p>
-            <p className="text-sm text-muted-foreground">
-              Use your VM0 agent in Slack
-            </p>
-          </div>
+    <div className="flex items-center gap-4 rounded-xl border border-border bg-card p-4">
+      <div className="shrink-0">
+        <img src="/slack-icon.svg" alt="Slack" className="h-7 w-7" />
+      </div>
+      <div className="flex flex-1 flex-col gap-1 min-w-0">
+        <div className="text-sm font-medium text-foreground">VM0 in Slack</div>
+        <div className="text-sm text-muted-foreground">
+          Use your VM0 agent in Slack
         </div>
+      </div>
+      <div className="shrink-0">
         {notLinked ? (
           installUrl ? (
             <Button variant="outline" size="sm" asChild>

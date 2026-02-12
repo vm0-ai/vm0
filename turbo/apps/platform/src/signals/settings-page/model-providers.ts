@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   MODEL_PROVIDER_TYPES,
   getDefaultAuthMethod,
@@ -297,6 +298,13 @@ export const submitDialog$ = command(
         request as Parameters<typeof createModelProvider$.write>[1],
       );
       signal.throwIfAborted();
+
+      const providerLabel =
+        MODEL_PROVIDER_TYPES[providerType]?.label ?? providerType;
+      toast.success(
+        `${providerLabel} ${dialogState.mode === "add" ? "added" : "updated"} successfully`,
+      );
+
       set(internalDialogState$, {
         open: false,
         mode: "add",
@@ -343,9 +351,14 @@ export const confirmDelete$ = command(
       return;
     }
 
+    const providerLabel =
+      MODEL_PROVIDER_TYPES[deleteState.providerType]?.label ??
+      deleteState.providerType;
+
     const promise = (async () => {
       await set(deleteModelProvider$, deleteState.providerType as string);
       signal.throwIfAborted();
+      toast.success(`${providerLabel} removed successfully`);
       set(internalDeleteDialogState$, { open: false, providerType: null });
     })();
 
@@ -365,7 +378,14 @@ export const confirmDelete$ = command(
 
 export const setDefaultProvider$ = command(
   async ({ set }, type: ModelProviderType, signal: AbortSignal) => {
-    const promise = set(setDefaultModelProvider$, type);
+    const providerLabel = MODEL_PROVIDER_TYPES[type]?.label ?? type;
+
+    const promise = (async () => {
+      await set(setDefaultModelProvider$, type);
+      signal.throwIfAborted();
+      toast.success(`${providerLabel} set as default`);
+    })();
+
     set(internalActionPromise$, promise);
     signal.addEventListener("abort", () => {
       set(internalActionPromise$, null);

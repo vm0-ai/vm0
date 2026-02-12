@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
@@ -88,6 +89,9 @@ export const connectConnector$ = command(
         window.clearInterval(interval);
         window.clearTimeout(timeout);
         set(internalPollingType$, null);
+
+        const connectorLabel = CONNECTOR_TYPES[type]?.label ?? type;
+        toast.success(`${connectorLabel} connected successfully`);
       }
     };
 
@@ -154,9 +158,14 @@ export const confirmDisconnect$ = command(
       return;
     }
 
+    const connectorLabel =
+      CONNECTOR_TYPES[dialogState.connectorType]?.label ??
+      dialogState.connectorType;
+
     const promise = (async () => {
       await set(deleteConnector$, dialogState.connectorType as string);
       signal.throwIfAborted();
+      toast.success(`${connectorLabel} disconnected successfully`);
       set(internalDisconnectDialogState$, {
         open: false,
         connectorType: null,
