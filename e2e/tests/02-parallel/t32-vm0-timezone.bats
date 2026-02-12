@@ -1,9 +1,9 @@
 #!/usr/bin/env bats
 
-# E2E tests for vm0 timezone command and TZ injection into sandbox
+# E2E tests for vm0 preference --timezone and TZ injection into sandbox
 #
 # These tests verify:
-# 1. The vm0 timezone command can set user timezone preference
+# 1. The vm0 preference command can set user timezone preference
 # 2. The TZ environment variable is correctly injected into sandbox
 #
 # Test Structure:
@@ -75,27 +75,27 @@ setup() {
 }
 
 # ============================================================
-# vm0 timezone command tests
+# vm0 preference --timezone command tests
 # ============================================================
 
-@test "vm0 timezone sets user preference" {
-    run $CLI_COMMAND timezone "Asia/Shanghai"
+@test "vm0 preference --timezone sets user preference" {
+    run $CLI_COMMAND preference --timezone "Asia/Shanghai"
     assert_success
     assert_output --partial "Timezone set to"
     assert_output --partial "Asia/Shanghai"
 }
 
-@test "vm0 timezone shows current preference" {
+@test "vm0 preference shows current preferences" {
     # Set a timezone first
-    $CLI_COMMAND timezone "America/New_York" >/dev/null
+    $CLI_COMMAND preference --timezone "America/New_York" >/dev/null
 
-    run $CLI_COMMAND timezone
+    run $CLI_COMMAND preference
     assert_success
     assert_output --partial "America/New_York"
 }
 
-@test "vm0 timezone rejects invalid timezone" {
-    run $CLI_COMMAND timezone "Invalid/Timezone"
+@test "vm0 preference --timezone rejects invalid timezone" {
+    run $CLI_COMMAND preference --timezone "Invalid/Timezone"
     assert_failure
     assert_output --partial "Invalid timezone"
 }
@@ -106,7 +106,7 @@ setup() {
 
 @test "sandbox receives TZ environment variable from user preference" {
     # Set timezone preference
-    $CLI_COMMAND timezone "Asia/Tokyo" >/dev/null
+    $CLI_COMMAND preference --timezone "Asia/Tokyo" >/dev/null
 
     # Run agent and check TZ environment variable
     run $CLI_COMMAND run "$AGENT_NAME" \
@@ -118,7 +118,7 @@ setup() {
 
 @test "explicit TZ in environment overrides user preference" {
     # Set user timezone preference
-    $CLI_COMMAND timezone "Asia/Shanghai" >/dev/null
+    $CLI_COMMAND preference --timezone "Asia/Shanghai" >/dev/null
 
     # Create agent config with explicit TZ in environment
     local OVERRIDE_AGENT_NAME="tz-override-${UNIQUE_ID}"
