@@ -183,13 +183,15 @@ const router = tsr.router(webhookCompleteContract, {
       await publishStatus(body.runId, "failed", undefined, errorMessage);
     }
 
+    // Error message for notifications (only set on failure)
+    const errorMsg =
+      finalStatus === "failed"
+        ? (body.error ?? `Agent exited with code ${body.exitCode}`)
+        : undefined;
+
     // Send Slack DM notification for scheduled runs (non-blocking)
     if (run.scheduleId) {
-      const errorMsg =
-        finalStatus === "failed"
-          ? (body.error ?? `Agent exited with code ${body.exitCode}`)
-          : undefined;
-      after(() =>
+      after(
         notifyScheduleRunComplete(body.runId, finalStatus, errorMsg).catch(
           (err) => log.error("Failed to send schedule notification", { err }),
         ),
@@ -198,18 +200,10 @@ const router = tsr.router(webhookCompleteContract, {
 
     // Dispatch registered callbacks (non-blocking)
     // This handles Slack mentions and other webhook integrations
-    // Note: Must return the promise so after() waits for completion
-    const callbackErrorMsg =
-      finalStatus === "failed"
-        ? (body.error ?? `Agent exited with code ${body.exitCode}`)
-        : undefined;
     after(
-      dispatchCallbacks(
-        body.runId,
-        finalStatus,
-        undefined,
-        callbackErrorMsg,
-      ).catch((err) => log.error("Failed to dispatch callbacks", { err })),
+      dispatchCallbacks(body.runId, finalStatus, undefined, errorMsg).catch(
+        (err) => log.error("Failed to dispatch callbacks", { err }),
+      ),
     );
 
     // Kill sandbox (wait for completion to ensure cleanup before response)
