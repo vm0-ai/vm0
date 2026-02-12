@@ -1,6 +1,8 @@
 import { computed } from "ccstate";
 import {
+  CONNECTOR_TYPES,
   getConnectorProvidedSecretNames,
+  type ConnectorType,
   type SecretResponse,
   type VariableResponse,
 } from "@vm0/core";
@@ -81,7 +83,14 @@ export const mergedItems$ = computed(async (get) => {
       get(connectors$),
     ]);
 
-  // Secret names that connected connectors already provide (e.g. GH_TOKEN)
+  // Secret names that ANY connector can provide (e.g. NOTION_TOKEN, GH_TOKEN).
+  // Used to hide missing secrets that should be resolved via connectors tab.
+  const allConnectorEnvVars = getConnectorProvidedSecretNames(
+    Object.keys(CONNECTOR_TYPES) as ConnectorType[],
+  );
+
+  // Secret names that already-connected connectors provide.
+  // Used to determine whether a configured secret is deletable.
   const connectedTypes = connectorData.connectors.map((c) => c.type);
   const connectorProvided = getConnectorProvidedSecretNames(connectedTypes);
 
@@ -90,9 +99,9 @@ export const mergedItems$ = computed(async (get) => {
   const configuredSecretNames = new Set(secretsList.map((s) => s.name));
   const configuredVariableNames = new Set(variablesList.map((v) => v.name));
 
-  // Missing required secrets (not yet configured, not covered by connectors)
+  // Missing required secrets (not yet configured, not resolvable by any connector)
   for (const name of reqSecrets) {
-    if (!configuredSecretNames.has(name) && !connectorProvided.has(name)) {
+    if (!configuredSecretNames.has(name) && !allConnectorEnvVars.has(name)) {
       items.push({ kind: "secret", name, data: null, agentRequired: true });
     }
   }
