@@ -293,7 +293,8 @@ fn download_and_extract(url: &str, target_path: &str) -> Result<(), DownloadErro
     // Make HTTP request using global agent
     let response = HTTP_AGENT.get(url).call().map_err(|e| {
         let (retriable, status_code) = match &e {
-            ureq::Error::StatusCode(code) => (*code >= 500, Some(*code)),
+            // Retry on server errors (5xx) and rate limiting (429)
+            ureq::Error::StatusCode(code) => (*code >= 500 || *code == 429, Some(*code)),
             _ => (true, None), // network/timeout errors are retriable
         };
         DownloadError {
