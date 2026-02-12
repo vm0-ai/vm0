@@ -38,7 +38,7 @@ export default [
       "drizzle.config.ts",
       "scripts/**",
       "instrumentation.ts",
-      "sentry.client.config.ts",
+      "instrumentation-client.ts",
       "sentry.edge.config.ts",
       "sentry.server.config.ts",
       "app/hooks/use-auth.ts",
