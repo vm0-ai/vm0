@@ -37,6 +37,7 @@
 //! ```
 
 mod connection;
+#[doc(hidden)]
 pub mod protocol;
 mod subscribe;
 mod types;

@@ -81,6 +81,7 @@ pub enum Event {
 /// constants they replace, so `TimingConfig::default()` preserves existing
 /// production behavior.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct TimingConfig {
     // -- Connection ----------------------------------------------------------
     /// Timeout for WebSocket connect, HTTP requests, and token operations.
