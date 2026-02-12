@@ -40,7 +40,7 @@ NOTION_OAUTH_CLIENT_ID=op://Development/vm0-env-local/notion_oauth_client_id
 NOTION_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/notion_oauth_client_secret
 
 # Required: Platform UI URL (for settings page links in error messages)
-PLATFORM_URL=op://Development/vm0-env-local/platform_url
+NEXT_PUBLIC_PLATFORM_URL=op://Development/vm0-env-local/next_public_platform_url
 
 # Optional: Error Tracking (Sentry)
 SENTRY_DSN=

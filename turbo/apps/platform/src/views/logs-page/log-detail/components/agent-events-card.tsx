@@ -1,6 +1,7 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { IconSearch, IconLoader2 } from "@tabler/icons-react";
 import { Input } from "@vm0/ui";
+import { StatusDot } from "../../components/status-dot.tsx";
 import {
   viewMode$,
   currentMatchIndex$,
@@ -20,11 +21,13 @@ import {
 
 export function AgentEventsCard({
   framework,
+  prompt,
   searchTerm,
   setSearchTerm,
   className,
 }: {
   framework: string | null;
+  prompt: string;
   searchTerm: string;
   setSearchTerm: (term: string) => void;
   className?: string;
@@ -165,6 +168,9 @@ export function AgentEventsCard({
         </div>
 
         <div>
+          {prompt.trim().length > 0 && (
+            <PromptCard prompt={prompt} showConnector={events.length > 0} />
+          )}
           {events.length === 0 ? (
             <div className="py-8 text-center text-muted-foreground">
               No events available
@@ -196,6 +202,64 @@ export function AgentEventsCard({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function summarizePrompt(prompt: string): string {
+  // Find the last meaningful line — skip headers, separators, metadata
+  const lines = prompt.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim();
+    if (
+      line.length > 0 &&
+      !line.startsWith("#") &&
+      !line.startsWith("---") &&
+      !line.startsWith("- ") &&
+      !line.startsWith("[file]")
+    ) {
+      return line.length > 80 ? `${line.slice(0, 77)}...` : line;
+    }
+  }
+  // Fallback: first non-empty line
+  const first = lines.find((l) => l.trim().length > 0)?.trim() ?? "";
+  return first.length > 80 ? `${first.slice(0, 77)}...` : first;
+}
+
+function PromptCard({
+  prompt,
+  showConnector,
+}: {
+  prompt: string;
+  showConnector: boolean;
+}) {
+  const summary = summarizePrompt(prompt);
+
+  return (
+    <div className="relative">
+      {showConnector && (
+        <div
+          className="absolute left-[3px] top-6 bottom-[-8px] w-[1px] bg-border/70"
+          aria-hidden="true"
+        />
+      )}
+      <details className="group relative py-2">
+        <summary className="cursor-pointer list-none">
+          <div className="flex gap-2 items-center">
+            <StatusDot variant="neutral" />
+            <span className="font-semibold text-sm text-foreground shrink-0">
+              Prompt
+            </span>
+            <span className="text-sm text-muted-foreground truncate">
+              {summary}
+            </span>
+          </div>
+        </summary>
+        <div className="absolute left-[2px] top-[2.25rem] bottom-0 w-[1px] bg-border/70 group-open:block hidden" />
+        <p className="ml-[18px] mt-2 text-sm text-foreground whitespace-pre-wrap break-words">
+          {prompt}
+        </p>
+      </details>
     </div>
   );
 }
