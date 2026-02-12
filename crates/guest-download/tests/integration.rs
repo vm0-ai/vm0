@@ -377,8 +377,14 @@ fn retry_then_succeed() {
     // Run in background thread so we can swap the mock during RETRY_DELAY
     let handle = std::thread::spawn(move || guest_download::run(&manifest_str));
 
-    // Poll until the first request has been made, then swap mock before retry fires (RETRY_DELAY = 1s)
+    // Poll until the first request has been made, then swap mock before retry fires (RETRY_DELAY = 1s).
+    // Timeout after 5s to avoid infinite loop if the spawned thread panics before making a request.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     while fail_mock.calls() < 1 {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "timed out waiting for first mock hit"
+        );
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     fail_mock.delete();
