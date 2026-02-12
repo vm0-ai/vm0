@@ -8,7 +8,7 @@ use crate::api::ApiClient;
 use crate::config::SnapshotConfig;
 use crate::network::{GUEST_NETWORK, NetnsPool, NetnsPoolConfig, generate_boot_args};
 use crate::overlay::{Ext4Creator, OverlayCreator as _};
-use crate::paths::{SandboxPaths, SnapshotOutputPaths};
+use crate::paths::{RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths};
 use crate::process;
 
 /// Timeout for waiting for the Firecracker API socket after process spawn.
@@ -20,6 +20,8 @@ const VSOCK_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 /// Configuration for creating a snapshot.
 #[derive(Debug, Clone)]
 pub struct SnapshotCreateConfig {
+    /// Unique identifier for this snapshot (used for runtime socket directory).
+    pub id: String,
     /// Path to the Firecracker binary.
     pub binary_path: PathBuf,
     /// Path to the guest kernel image.
@@ -68,12 +70,14 @@ pub enum SnapshotError {
 pub async fn create_snapshot(
     config: SnapshotCreateConfig,
 ) -> Result<SnapshotConfig, SnapshotError> {
+    let output = SnapshotOutputPaths::new(config.output_dir.clone());
+
     // 1. Clean and create work directory under output_dir.
     //    Paths inside this directory get baked into the snapshot and are used
     //    as bind-mount targets during restore, so they must be deterministic.
     //    Remove any stale work dir from a previous run (leftover sockets,
     //    root-owned files from an accidental sudo invocation, etc.).
-    let work = config.output_dir.join("work");
+    let work = output.work_dir();
     if work.exists() {
         let work_str = work.display().to_string();
         crate::command::exec("rm", &["-rf", &work_str], crate::command::Privilege::Sudo)
@@ -82,7 +86,17 @@ pub async fn create_snapshot(
     }
     tokio::fs::create_dir_all(&work).await?;
 
+    // Socket directory under /run, keyed by config id so concurrent builds don't collide.
+    let runtime_paths = RuntimePaths::new();
+    let sock_dir = runtime_paths.sock_dir(&config.id);
+    if sock_dir.exists()
+        && let Err(e) = tokio::fs::remove_dir_all(&sock_dir).await
+    {
+        tracing::warn!(error = %e, "failed to clean stale sock dir");
+    }
+
     let paths = SandboxPaths::new(work);
+    let sock_paths = SockPaths::new(sock_dir.clone());
 
     info!(work_dir = %paths.workspace().display(), "starting snapshot creation");
 
@@ -103,11 +117,17 @@ pub async fn create_snapshot(
     .map_err(|e| SnapshotError::Setup(format!("netns pool: {e}")))?;
 
     // Guard: ensure netns cleanup on any exit path.
-    let result = run_snapshot_workflow(&config, &paths, &mut netns_pool).await;
+    let result =
+        run_snapshot_workflow(&config, &paths, &sock_paths, &output, &mut netns_pool).await;
 
     // Always cleanup netns.
     if let Err(e) = netns_pool.cleanup().await {
         tracing::warn!(error = %e, "failed to cleanup netns pool");
+    }
+
+    // Cleanup runtime socket directory.
+    if let Err(e) = tokio::fs::remove_dir_all(&sock_dir).await {
+        tracing::warn!(error = %e, "failed to cleanup sock dir");
     }
 
     result
@@ -117,6 +137,8 @@ pub async fn create_snapshot(
 async fn run_snapshot_workflow(
     config: &SnapshotCreateConfig,
     paths: &SandboxPaths,
+    sock_paths: &SockPaths,
+    output: &SnapshotOutputPaths,
     netns_pool: &mut NetnsPool,
 ) -> Result<SnapshotConfig, SnapshotError> {
     let network = netns_pool
@@ -127,7 +149,7 @@ async fn run_snapshot_workflow(
     info!(netns = %network.name, "namespace acquired");
 
     // 4. Spawn Firecracker with --api-sock in the namespace.
-    let api_sock = paths.api_sock();
+    let api_sock = sock_paths.api_sock();
     let username = process::current_username().map_err(|e| SnapshotError::Setup(e.to_string()))?;
 
     info!(
@@ -179,7 +201,7 @@ async fn run_snapshot_workflow(
     }
 
     // Guard: ensure process cleanup on any exit path.
-    let result = run_with_firecracker(config, paths).await;
+    let result = run_with_firecracker(config, paths, sock_paths, output).await;
 
     // Always kill the process tree.
     if let Some(pid) = child.id() {
@@ -194,9 +216,11 @@ async fn run_snapshot_workflow(
 async fn run_with_firecracker(
     config: &SnapshotCreateConfig,
     paths: &SandboxPaths,
+    sock_paths: &SockPaths,
+    output: &SnapshotOutputPaths,
 ) -> Result<SnapshotConfig, SnapshotError> {
     // 5. Wait for API socket ready.
-    let api_sock = paths.api_sock();
+    let api_sock = sock_paths.api_sock();
     let client = ApiClient::new(&api_sock);
     client.wait_for_ready(API_READY_TIMEOUT).await?;
 
@@ -206,8 +230,8 @@ async fn run_with_firecracker(
     let kernel_path = config.kernel_path.display().to_string();
     let rootfs_path = config.rootfs_path.display().to_string();
     let overlay_path = paths.overlay().display().to_string();
-    tokio::fs::create_dir_all(&paths.vsock_dir()).await?;
-    let vsock_uds_str = paths.vsock().display().to_string();
+    tokio::fs::create_dir_all(&sock_paths.vsock_dir()).await?;
+    let vsock_uds_str = sock_paths.vsock().display().to_string();
 
     let boot_args = generate_boot_args();
 
@@ -253,7 +277,6 @@ async fn run_with_firecracker(
     info!("VM paused");
 
     // 11. Create snapshot — Firecracker writes directly to output_dir.
-    let output = SnapshotOutputPaths::new(config.output_dir.clone());
     let snapshot_str = output.snapshot().display().to_string();
     let memory_str = output.memory().display().to_string();
     client.create_snapshot(&snapshot_str, &memory_str).await?;
@@ -266,11 +289,5 @@ async fn run_with_firecracker(
 
     info!(output_dir = %config.output_dir.display(), "snapshot creation complete");
 
-    Ok(SnapshotConfig {
-        snapshot_path: output.snapshot(),
-        memory_path: output.memory(),
-        overlay_path: output.overlay(),
-        overlay_bind_path: paths.overlay(),
-        vsock_bind_dir: paths.vsock_dir(),
-    })
+    Ok(output.snapshot_config(&config.id))
 }

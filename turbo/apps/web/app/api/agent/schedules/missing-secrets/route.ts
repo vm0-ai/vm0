@@ -3,11 +3,13 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import { logger } from "../../../../../src/lib/logger";
 import { eq } from "drizzle-orm";
-import { agentComposes } from "../../../../../src/db/schema/agent-compose";
-import { agentComposeVersions } from "../../../../../src/db/schema/agent-compose";
 import { secrets } from "../../../../../src/db/schema/secret";
 import { extractVariableReferences, groupVariablesBySource } from "@vm0/core";
-import type { AgentComposeYaml } from "../../../../../src/types/agent-compose";
+import {
+  getUserAgents,
+  batchFetchVersionContents,
+} from "../../../../../src/lib/agent/get-user-agents";
+import { getUserScopeByClerkId } from "../../../../../src/lib/scope/scope-service";
 
 const log = logger("api:agents:missing-secrets");
 
@@ -42,66 +44,54 @@ export async function GET(request: Request) {
 
   const db = globalThis.services.db;
 
-  // Get all user's agents
-  const agents = await db
-    .select({
-      composeId: agentComposes.id,
-      agentName: agentComposes.name,
-      scopeId: agentComposes.scopeId,
-      headVersionId: agentComposes.headVersionId,
-    })
-    .from(agentComposes)
-    .where(eq(agentComposes.userId, userId));
+  const agents = await getUserAgents(userId);
 
   if (agents.length === 0) {
     return NextResponse.json({ agents: [] });
   }
 
-  // Get user's scope ID from first agent (all agents belong to same user scope)
-  const userScopeId = agents[0]!.scopeId;
+  // Get user's scope to query configured secrets
+  const userScope = await getUserScopeByClerkId(userId);
+  if (!userScope) {
+    return NextResponse.json({ agents: [] });
+  }
 
-  // Get all user's configured secrets (only names, not values)
+  // Check the recipient's own secrets — shared agents run with the
+  // recipient's secrets, so missing ones need to be configured by them.
   const userSecrets = await db
     .select({ name: secrets.name })
     .from(secrets)
-    .where(eq(secrets.scopeId, userScopeId));
+    .where(eq(secrets.scopeId, userScope.id));
 
   const configuredSecretNames = new Set(userSecrets.map((s) => s.name));
+
+  // Batch-fetch all versions in a single query
+  const versionIds = agents
+    .map((a) => a.headVersionId)
+    .filter((id): id is string => id !== null);
+
+  const versionContents = await batchFetchVersionContents(versionIds);
 
   const result: AgentMissingSecrets[] = [];
 
   for (const agent of agents) {
     if (!agent.headVersionId) {
-      log.debug(`Agent ${agent.agentName} has no head version, skipping`);
       continue;
     }
 
-    // Get compose content from version
-    const [version] = await db
-      .select({ content: agentComposeVersions.content })
-      .from(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, agent.headVersionId))
-      .limit(1);
-
-    if (!version) {
-      log.warn(
-        `Version ${agent.headVersionId} not found for agent ${agent.agentName}`,
-      );
+    const composeYaml = versionContents.get(agent.headVersionId);
+    if (!composeYaml) {
       continue;
     }
-
-    const composeYaml = version.content as AgentComposeYaml;
 
     // Extract required secrets from compose environment
     const agentDefs = Object.values(composeYaml.agents || {});
     const firstAgent = agentDefs[0];
 
     if (!firstAgent?.environment) {
-      // No environment variables means no secrets required
       continue;
     }
 
-    // Extract all variable references from environment
     const refs = extractVariableReferences(firstAgent.environment);
     const grouped = groupVariablesBySource(refs);
 
@@ -112,7 +102,6 @@ export async function GET(request: Request) {
     ];
 
     if (requiredSecrets.length === 0) {
-      // No secrets required
       continue;
     }
 

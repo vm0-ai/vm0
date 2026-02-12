@@ -1,5 +1,87 @@
 # Changelog
 
+## [12.36.1](https://github.com/vm0-ai/vm0/compare/web-v12.36.0...web-v12.36.1) (2026-02-12)
+
+
+### Bug Fixes
+
+* **web:** make vars validation respect checkenv flag ([#2960](https://github.com/vm0-ai/vm0/issues/2960)) ([a52b291](https://github.com/vm0-ai/vm0/commit/a52b291dbbadec36d048387aa1f76c4131d44fd5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.12.0
+
+## [12.36.0](https://github.com/vm0-ai/vm0/compare/web-v12.35.1...web-v12.36.0) (2026-02-12)
+
+
+### Features
+
+* **api:** include email-shared agents in agent list endpoints ([#2941](https://github.com/vm0-ai/vm0/issues/2941)) ([1687a74](https://github.com/vm0-ai/vm0/commit/1687a7453b1fa796b85327f959cbfefe1f3f9ee4))
+* **email:** add vm0 branding to scheduled run notifications ([#2949](https://github.com/vm0-ai/vm0/issues/2949)) ([db03c4a](https://github.com/vm0-ai/vm0/commit/db03c4af4c67cb25c57163238e241a76a5e67348))
+
+
+### Bug Fixes
+
+* **email:** align reply subject with schedule notification for threading ([#2952](https://github.com/vm0-ai/vm0/issues/2952)) ([b70c814](https://github.com/vm0-ai/vm0/commit/b70c8149847e70ab831ea2e7f502d6efcdda1711))
+* **slack:** add artifact name to create-run call in slack agent handler ([#2955](https://github.com/vm0-ai/vm0/issues/2955)) ([e12262d](https://github.com/vm0-ai/vm0/commit/e12262d261237b4742160ceb0e00f7291984cf5c))
+* **web:** resolve build warnings for circular imports, ssh2, and e2b ([#2933](https://github.com/vm0-ai/vm0/issues/2933)) ([87ac6c4](https://github.com/vm0-ai/vm0/commit/87ac6c4a1884629e415447e37e2f2055b5f8b3a3))
+* **web:** suppress remaining build warnings ([#2953](https://github.com/vm0-ai/vm0/issues/2953)) ([8bd2c4f](https://github.com/vm0-ai/vm0/commit/8bd2c4f5bc069f1ca9018ceb99703fd5b3938dd0))
+
+## [12.35.1](https://github.com/vm0-ai/vm0/compare/web-v12.35.0...web-v12.35.1) (2026-02-12)
+
+
+### Bug Fixes
+
+* **slack:** use most recent workspace link for settings api ([#2928](https://github.com/vm0-ai/vm0/issues/2928)) ([53513d1](https://github.com/vm0-ai/vm0/commit/53513d18d9817254a2f6869c6283fa3e618168f6))
+* **slack:** use session's compose when continuing conversation ([#2934](https://github.com/vm0-ai/vm0/issues/2934)) ([ca19a82](https://github.com/vm0-ai/vm0/commit/ca19a8266cad225d4e8f3f726f49d3cd66c074e6))
+
+## [12.35.0](https://github.com/vm0-ai/vm0/compare/web-v12.34.0...web-v12.35.0) (2026-02-12)
+
+
+### Features
+
+* **email:** add email notifications and reply-to-continue via Resend ([#2836](https://github.com/vm0-ai/vm0/issues/2836)) ([fd6aa4c](https://github.com/vm0-ai/vm0/commit/fd6aa4c032a84f25e8c6a8cf4ba4cef5ff070bd9))
+* **self-host:** add docker compose setup ([#2853](https://github.com/vm0-ai/vm0/issues/2853)) ([bd757fd](https://github.com/vm0-ai/vm0/commit/bd757fd21385dca449e82f6880bc5265dcf1b80d))
+* **storage:** add optional volume support for graceful degradation ([#2929](https://github.com/vm0-ai/vm0/issues/2929)) ([fd052a4](https://github.com/vm0-ai/vm0/commit/fd052a4fef4b2157bb1b1a7a2a0eaccffa6ff262))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.11.0
+
+## [12.34.0](https://github.com/vm0-ai/vm0/compare/web-v12.33.0...web-v12.34.0) (2026-02-12)
+
+
+### Features
+
+* **docs:** update slack docs and rename ecosystem to integrations ([#2917](https://github.com/vm0-ai/vm0/issues/2917)) ([fe90cd9](https://github.com/vm0-ai/vm0/commit/fe90cd90aa92291fd3f277ca324dd9f43d76b6ac))
+* **slack:** redirect to provider setup after connect ([#2854](https://github.com/vm0-ai/vm0/issues/2854)) ([3701bf6](https://github.com/vm0-ai/vm0/commit/3701bf66ad61c8d2ed525e2f97547cfa4bca8d82))
+
+
+### Bug Fixes
+
+* ensure after() awaits callback dispatch promise ([#2902](https://github.com/vm0-ai/vm0/issues/2902)) ([d62c92f](https://github.com/vm0-ai/vm0/commit/d62c92fcbcf0f7ac330493a6a8be1d52f8643d26))
+* **platform:** fix bash error overflow and markdown table light mode ([#2891](https://github.com/vm0-ai/vm0/issues/2891)) ([98c89fd](https://github.com/vm0-ai/vm0/commit/98c89fd53acfe601bc818b1b48b5d67e30676374))
+
+## [12.33.0](https://github.com/vm0-ai/vm0/compare/web-v12.32.2...web-v12.33.0) (2026-02-12)
+
+
+### Features
+
+* allow users to set timezone preference for sandbox and scheduling ([#2866](https://github.com/vm0-ai/vm0/issues/2866)) ([89437c7](https://github.com/vm0-ai/vm0/commit/89437c733b4e34eee46009b20c99f455c5963289))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.10.0
+
 ## [12.32.2](https://github.com/vm0-ai/vm0/compare/web-v12.32.1...web-v12.32.2) (2026-02-11)
 
 

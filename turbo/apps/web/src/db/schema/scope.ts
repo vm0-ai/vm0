@@ -4,6 +4,7 @@ import {
   text,
   varchar,
   timestamp,
+  boolean,
   pgEnum,
   index,
 } from "drizzle-orm/pg-core";
@@ -33,6 +34,9 @@ export const scopes = pgTable(
     slug: varchar("slug", { length: 64 }).notNull().unique(),
     type: scopeTypeEnum("type").notNull().default("personal"),
     ownerId: text("owner_id"), // Clerk user ID, null for system scopes
+    timezone: varchar("timezone", { length: 50 }), // IANA timezone (e.g., "Asia/Shanghai")
+    notifyEmail: boolean("notify_email").default(false).notNull(),
+    notifySlack: boolean("notify_slack").default(true).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

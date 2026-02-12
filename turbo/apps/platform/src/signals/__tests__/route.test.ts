@@ -9,6 +9,7 @@ import {
   searchParams$,
   updateSearchParams$,
 } from "../route.ts";
+import { setRootSignal$ } from "../root-signal.ts";
 import { testContext } from "./test-helpers.ts";
 import { createPushStateMock } from "../../__tests__/page-helper.ts";
 
@@ -55,6 +56,7 @@ describe("route", () => {
   describe("navigate$", () => {
     it("should navigate to new path", async () => {
       const { store, signal } = context;
+      store.set(setRootSignal$, signal);
       const pushStateMock = createPushStateMock(signal);
 
       mockLocation({ pathname: "/", search: "" }, signal);
@@ -88,6 +90,7 @@ describe("route", () => {
 
     it("should throw error when navigating to non-existent route", async () => {
       const { store, signal } = context;
+      store.set(setRootSignal$, signal);
       createPushStateMock(signal);
 
       mockLocation({ pathname: "/", search: "" }, signal);
@@ -114,6 +117,7 @@ describe("route", () => {
 
     it("should navigate to new path and update search parameters", async () => {
       const { store, signal } = context;
+      store.set(setRootSignal$, signal);
       const pushStateMock = createPushStateMock(signal);
 
       mockLocation({ pathname: "/", search: "" }, signal);
@@ -155,6 +159,7 @@ describe("route", () => {
 
     it("should not append trailing question mark when searchParams is empty", async () => {
       const { store, signal } = context;
+      store.set(setRootSignal$, signal);
       const pushStateMock = createPushStateMock(signal);
 
       mockLocation({ pathname: "/", search: "" }, signal);

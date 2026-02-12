@@ -32,6 +32,8 @@ export interface AgentDefinition {
 export interface VolumeConfig {
   name: string;
   version: string;
+  /** When true, skip mounting without error if volume doesn't exist */
+  optional?: boolean;
 }
 
 /**

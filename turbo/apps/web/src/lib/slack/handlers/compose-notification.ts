@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { slackComposeRequests } from "../../../db/schema/slack-compose-request";
 import { slackInstallations } from "../../../db/schema/slack-installation";
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
-import { createSlackClient } from "../index";
+import { createSlackClient } from "../client";
 import { env } from "../../../env";
 import { logger } from "../../logger";
 import type { ComposeJobResult } from "../../../db/schema/compose-job";

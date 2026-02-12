@@ -35,6 +35,12 @@ interface ForbiddenError extends ApiErrorBase {
   readonly code: "FORBIDDEN";
 }
 
+interface ConflictError extends ApiErrorBase {
+  readonly name: "ConflictError";
+  readonly statusCode: 409;
+  readonly code: "CONFLICT";
+}
+
 interface SchedulePastError extends ApiErrorBase {
   readonly name: "SchedulePastError";
   readonly statusCode: 400;
@@ -72,6 +78,14 @@ export function badRequest(message = "Bad request"): BadRequestError {
   (error as { name: string }).name = "BadRequestError";
   (error as { statusCode: number }).statusCode = 400;
   (error as { code: string }).code = "BAD_REQUEST";
+  return error;
+}
+
+export function conflict(message = "Resource already exists"): ConflictError {
+  const error = new Error(message) as ConflictError;
+  (error as { name: string }).name = "ConflictError";
+  (error as { statusCode: number }).statusCode = 409;
+  (error as { code: string }).code = "CONFLICT";
   return error;
 }
 
@@ -113,6 +127,10 @@ export function isNotFound(e: unknown): e is NotFoundError {
 
 export function isBadRequest(e: unknown): e is BadRequestError {
   return e instanceof Error && e.name === "BadRequestError";
+}
+
+export function isConflict(e: unknown): e is ConflictError {
+  return e instanceof Error && e.name === "ConflictError";
 }
 
 export function isForbidden(e: unknown): e is ForbiddenError {

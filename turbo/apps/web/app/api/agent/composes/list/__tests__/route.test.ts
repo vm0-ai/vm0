@@ -3,13 +3,17 @@ import { GET } from "../route";
 import {
   createTestRequest,
   createTestCompose,
+  createTestPermission,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
   uniqueId,
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
-import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import {
+  mockClerk,
+  MOCK_USER_EMAIL,
+} from "../../../../../../src/__tests__/clerk-mock";
 
 // Only mock external services
 
@@ -36,9 +40,13 @@ describe("GET /api/agent/composes/list", () => {
     expect(data.error.message).toBe("Not authenticated");
   });
 
-  it("should return empty array when no composes exist", async () => {
+  it("should return no own composes when none exist in scope", async () => {
+    // Use explicit scope param to only get own agents (excludes shared)
+    const uniqueSuffix = user.userId.replace("test-user-", "");
+    const scopeSlug = `scope-${uniqueSuffix}`;
+
     const request = createTestRequest(
-      "http://localhost:3000/api/agent/composes/list",
+      `http://localhost:3000/api/agent/composes/list?scope=${scopeSlug}`,
     );
     const response = await GET(request);
     const data = await response.json();
@@ -55,9 +63,12 @@ describe("GET /api/agent/composes/list", () => {
     await createTestCompose(agentName1);
     await createTestCompose(agentName2);
 
-    // List composes
+    // Use explicit scope param to get only own agents
+    const uniqueSuffix = user.userId.replace("test-user-", "");
+    const scopeSlug = `scope-${uniqueSuffix}`;
+
     const request = createTestRequest(
-      "http://localhost:3000/api/agent/composes/list",
+      `http://localhost:3000/api/agent/composes/list?scope=${scopeSlug}`,
     );
     const response = await GET(request);
     const data = await response.json();
@@ -176,5 +187,129 @@ describe("GET /api/agent/composes/list", () => {
     expect(response.status).toBe(200);
     const names = data.composes.map((c: { name: string }) => c.name);
     expect(names).toContain(agentName);
+  });
+
+  describe("email-shared agents", () => {
+    it("should show shared agent with scope/name format", async () => {
+      // User A (owner) creates an agent and shares it
+      const owner = await context.setupUser({ prefix: "owner" });
+      const agentName = uniqueId("shared-agent");
+      const { composeId } = await createTestCompose(agentName);
+      await createTestPermission(composeId, "email", MOCK_USER_EMAIL);
+
+      // Derive owner's scope slug
+      const ownerSuffix = owner.userId.replace("owner-", "");
+      const ownerScopeSlug = `scope-${ownerSuffix}`;
+
+      // Switch to recipient (original user) and list
+      mockClerk({ userId: user.userId });
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/composes/list",
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      const names = data.composes.map((c: { name: string }) => c.name);
+      expect(names).toContain(`${ownerScopeSlug}/${agentName}`);
+    });
+
+    it("should not show unshared agents from other users", async () => {
+      // User A creates an agent but does NOT share it
+      await context.setupUser({ prefix: "private-owner" });
+      const agentName = uniqueId("private-agent");
+      await createTestCompose(agentName);
+
+      // Switch to original user and list
+      mockClerk({ userId: user.userId });
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/composes/list",
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      const names = data.composes.map((c: { name: string }) => c.name);
+      // Should not contain the private agent in any form
+      expect(names.some((n: string) => n.includes(agentName))).toBe(false);
+    });
+
+    it("should combine own and shared agents in default list", async () => {
+      // Create own agent
+      const ownAgentName = uniqueId("own-agent");
+      await createTestCompose(ownAgentName);
+
+      // Create shared agent from another user
+      const owner = await context.setupUser({ prefix: "combo-owner" });
+      const sharedAgentName = uniqueId("combo-shared");
+      const { composeId } = await createTestCompose(sharedAgentName);
+      await createTestPermission(composeId, "email", MOCK_USER_EMAIL);
+
+      const ownerSuffix = owner.userId.replace("combo-owner-", "");
+      const ownerScopeSlug = `scope-${ownerSuffix}`;
+
+      // Switch back to original user
+      mockClerk({ userId: user.userId });
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/composes/list",
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      const names = data.composes.map((c: { name: string }) => c.name);
+      // Own agent has plain name
+      expect(names).toContain(ownAgentName);
+      // Shared agent has scope/name format
+      expect(names).toContain(`${ownerScopeSlug}/${sharedAgentName}`);
+    });
+
+    it("should not include shared agents when scope param is provided", async () => {
+      // Create shared agent from another user
+      await context.setupUser({ prefix: "scope-owner" });
+      const sharedAgentName = uniqueId("scope-shared");
+      const { composeId } = await createTestCompose(sharedAgentName);
+      await createTestPermission(composeId, "email", MOCK_USER_EMAIL);
+
+      // Switch back to original user, list with explicit scope
+      mockClerk({ userId: user.userId });
+      const uniqueSuffix = user.userId.replace("test-user-", "");
+      const scopeSlug = `scope-${uniqueSuffix}`;
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/composes/list?scope=${scopeSlug}`,
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      const names = data.composes.map((c: { name: string }) => c.name);
+      // Shared agent should NOT appear when using scope param
+      expect(names.some((n: string) => n.includes(sharedAgentName))).toBe(
+        false,
+      );
+    });
+
+    it("should not duplicate agent when owner shares with own email", async () => {
+      // Current user creates agent and shares with own email
+      const agentName = uniqueId("self-shared");
+      const { composeId } = await createTestCompose(agentName);
+      await createTestPermission(composeId, "email", MOCK_USER_EMAIL);
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/composes/list",
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      const matches = data.composes.filter(
+        (c: { name: string }) =>
+          c.name === agentName || c.name.endsWith(`/${agentName}`),
+      );
+      // Should appear exactly once (as own agent), not duplicated as shared
+      expect(matches).toHaveLength(1);
+      expect(matches[0].name).toBe(agentName);
+    });
   });
 });

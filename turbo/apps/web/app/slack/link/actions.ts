@@ -128,7 +128,10 @@ export async function linkSlackAccount(
           log.warn("Failed to send success message", { error });
         });
       }
-      return { success: true, alreadyLinked: true };
+      return {
+        success: true,
+        alreadyLinked: true,
+      };
     }
     return {
       success: false,

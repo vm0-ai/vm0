@@ -1,6 +1,7 @@
 import type { Store } from "ccstate";
 import { StoreProvider } from "ccstate-react";
 import { StrictMode } from "react";
+import { Toaster } from "@vm0/ui/components/ui/sonner";
 import { ErrorBoundary } from "./error-boundary.tsx";
 import { Router } from "./router.tsx";
 import "./css/index.css";
@@ -17,6 +18,7 @@ export const setupRouter = (
         <ErrorBoundary>
           <Router />
         </ErrorBoundary>
+        <Toaster position="top-center" />
       </StoreProvider>
     </StrictMode>,
   );

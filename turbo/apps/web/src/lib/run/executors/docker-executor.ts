@@ -12,7 +12,7 @@ import {
   MOCK_CLAUDE_SCRIPT,
   SCRIPT_PATHS,
 } from "@vm0/sandbox-scripts";
-import { calculateSessionHistoryPath } from "../run-service";
+import { calculateSessionHistoryPath } from "../utils/session-history-path";
 import { logger } from "../../logger";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { eq } from "drizzle-orm";
@@ -262,6 +262,11 @@ async function buildSandboxEnvVars(
     sandboxEnvVars.VM0_ARTIFACT_VERSION_ID = artifactForCommand.vasVersionId;
   }
 
+  // Inject user timezone as TZ environment variable (if not already set in environment)
+  if (context.userTimezone && !context.environment?.["TZ"]) {
+    sandboxEnvVars.TZ = context.userTimezone;
+  }
+
   if (context.environment) {
     for (const [key, value] of Object.entries(context.environment)) {
       sandboxEnvVars[key] = value;
@@ -442,7 +447,7 @@ async function startAgentExecution(
   sandbox: SandboxLike,
   runId: string,
 ): Promise<void> {
-  const cmd = `nohup node ${SCRIPT_PATHS.runAgent} > /tmp/vm0-main-${runId}.log 2>&1 &`;
+  const cmd = `nohup node ${SCRIPT_PATHS.runAgent} > /tmp/vm0-system-${runId}.log 2>&1 &`;
   await sandbox.commands.run(cmd);
 }
 

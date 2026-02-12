@@ -16,6 +16,9 @@ export default defineConfig({
       ),
     },
   },
+  define: {
+    "import.meta.env.VITE_MOCK_LOG_DETAIL": JSON.stringify(""),
+  },
   test: {
     globals: true,
     environment: "happy-dom",

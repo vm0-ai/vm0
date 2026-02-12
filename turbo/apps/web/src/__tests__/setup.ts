@@ -41,10 +41,17 @@ const resetEnv = vi.hoisted(() => {
       "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     );
     vi.stubEnv("SLACK_REDIRECT_BASE_URL", "https://test.example.com");
+    // ngrok (for computer connector)
+    vi.stubEnv("NGROK_API_KEY", "test-ngrok-api-key");
+    vi.stubEnv("NGROK_COMPUTER_CONNECTOR_DOMAIN", "computer.test.vm0.io");
     // API URL for compose job webhooks
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     // Platform UI URL
     vi.stubEnv("NEXT_PUBLIC_PLATFORM_URL", "http://localhost:3001");
+    // Email integration (Resend)
+    vi.stubEnv("RESEND_API_KEY", "re_test_api_key");
+    vi.stubEnv("RESEND_WEBHOOK_SECRET", "whsec_test_webhook_secret");
+    vi.stubEnv("RESEND_FROM_DOMAIN", "vm7.bot");
     // Initialize Next.js after() callback queue (shared with test-helpers.ts flushAfter)
     globalThis.nextAfterCallbacks = [];
   };
@@ -61,12 +68,18 @@ vi.mock("server-only", () => ({}));
 
 // Mock Next.js after() to capture callbacks for controlled execution in tests.
 // Tests can drain the queue with context.mocks.flushAfter().
+// Supports both function and promise arguments to match Next.js behavior.
 vi.mock("next/server", async (importOriginal) => {
   const original = await importOriginal<typeof import("next/server")>();
   return {
     ...original,
-    after: (fn: () => Promise<unknown>) => {
-      globalThis.nextAfterCallbacks.push(fn);
+    after: (fnOrPromise: (() => Promise<unknown>) | Promise<unknown>) => {
+      if (typeof fnOrPromise === "function") {
+        globalThis.nextAfterCallbacks.push(fnOrPromise);
+      } else {
+        // Wrap promise in a function for consistent handling in flushAfter()
+        globalThis.nextAfterCallbacks.push(() => fnOrPromise);
+      }
     },
   };
 });
@@ -137,6 +150,48 @@ vi.mock("@slack/web-api", () => {
   return {
     WebClient: vi.fn().mockImplementation(function () {
       return mockClient;
+    }),
+  };
+});
+
+// Mock Svix webhook verification (used by Resend inbound webhooks)
+vi.mock("svix", () => ({
+  Webhook: vi.fn().mockImplementation(function () {
+    return {
+      verify: vi
+        .fn()
+        .mockImplementation((payload: string) => JSON.parse(payload)),
+    };
+  }),
+}));
+
+// Mock Resend email service
+vi.mock("resend", () => {
+  const mockResend = {
+    emails: {
+      send: vi.fn().mockResolvedValue({ data: { id: "mock-email-id" } }),
+      get: vi.fn().mockResolvedValue({
+        data: { id: "mock-email-id", message_id: "<mock-message-id@vm7.bot>" },
+      }),
+      receiving: {
+        get: vi.fn().mockResolvedValue({
+          data: {
+            from: "user@example.com",
+            to: ["reply+token@vm7.bot"],
+            subject: "Re: test",
+            text: "Hello from email",
+            html: "<p>Hello from email</p>",
+          },
+        }),
+      },
+    },
+    webhooks: {
+      verify: vi.fn().mockReturnValue(true),
+    },
+  };
+  return {
+    Resend: vi.fn().mockImplementation(function () {
+      return mockResend;
     }),
   };
 });

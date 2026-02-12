@@ -1,8 +1,14 @@
 import { command, computed, state } from "ccstate";
+import {
+  getConnectorProvidedSecretNames,
+  type ComposeListItem,
+} from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
+import { connectors$ } from "../external/connectors.ts";
+import { secrets$ } from "../settings-page/secrets.ts";
+import { variables$ } from "../settings-page/variables.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
-import type { ComposeListItem } from "@vm0/core";
 
 const L = logger("AgentsList");
 
@@ -15,17 +21,16 @@ interface Schedule {
   timezone: string;
 }
 
-interface AgentMissingSecrets {
+export interface AgentMissingItems {
   composeId: string;
   agentName: string;
-  requiredSecrets: string[];
   missingSecrets: string[];
+  missingVariables: string[];
 }
 
 interface AgentsListState {
   agents: ComposeListItem[];
   schedules: Schedule[];
-  agentsWithMissingSecrets: AgentMissingSecrets[];
   loading: boolean;
   error: string | null;
 }
@@ -33,16 +38,77 @@ interface AgentsListState {
 const agentsListState$ = state<AgentsListState>({
   agents: [],
   schedules: [],
-  agentsWithMissingSecrets: [],
   loading: false,
   error: null,
 });
 
+// ---------------------------------------------------------------------------
+// Missing items (computed from required-env + configured secrets/variables)
+// ---------------------------------------------------------------------------
+
+interface AgentRequiredEnv {
+  composeId: string;
+  agentName: string;
+  requiredSecrets: string[];
+  requiredVariables: string[];
+}
+
+const agentRequiredEnv$ = computed(async (get) => {
+  const fetchFn = get(fetch$);
+  const resp = await fetchFn("/api/agent/required-env");
+  if (!resp.ok) {
+    return [];
+  }
+  const data = (await resp.json()) as { agents: AgentRequiredEnv[] };
+  return data.agents;
+});
+
+/**
+ * Per-agent missing items, computed client-side by comparing required env
+ * against configured secrets, variables, and connected connectors.
+ *
+ * Automatically refreshes when secrets$, variables$, or connectors$ change.
+ */
+export const agentsMissingItems$ = computed(async (get) => {
+  const [requiredEnv, secretsList, variablesList, connectorData] =
+    await Promise.all([
+      get(agentRequiredEnv$),
+      get(secrets$),
+      get(variables$),
+      get(connectors$),
+    ]);
+
+  const configuredSecretNames = new Set(secretsList.map((s) => s.name));
+  const configuredVariableNames = new Set(variablesList.map((v) => v.name));
+  const connectedTypes = connectorData.connectors.map((c) => c.type);
+  const connectorProvided = getConnectorProvidedSecretNames(connectedTypes);
+
+  const result: AgentMissingItems[] = [];
+
+  for (const agent of requiredEnv) {
+    const missingSecrets = agent.requiredSecrets.filter(
+      (name) =>
+        !configuredSecretNames.has(name) && !connectorProvided.has(name),
+    );
+    const missingVariables = agent.requiredVariables.filter(
+      (name) => !configuredVariableNames.has(name),
+    );
+
+    if (missingSecrets.length > 0 || missingVariables.length > 0) {
+      result.push({
+        composeId: agent.composeId,
+        agentName: agent.agentName,
+        missingSecrets,
+        missingVariables,
+      });
+    }
+  }
+
+  return result;
+});
+
 export const agentsList$ = computed((get) => get(agentsListState$).agents);
 export const schedules$ = computed((get) => get(agentsListState$).schedules);
-export const agentsWithMissingSecrets$ = computed(
-  (get) => get(agentsListState$).agentsWithMissingSecrets,
-);
 export const agentsLoading$ = computed((get) => get(agentsListState$).loading);
 export const agentsError$ = computed((get) => get(agentsListState$).error);
 
@@ -85,32 +151,12 @@ export const fetchAgentsList$ = command(async ({ get, set }) => {
       }
     } catch (error) {
       throwIfAbort(error);
-      // Log schedule fetch errors for debugging, but don't fail the page
       L.error("Failed to fetch schedules:", error);
-    }
-
-    // Fetch agents with missing secrets (optional)
-    let agentsWithMissingSecrets: AgentMissingSecrets[] = [];
-    try {
-      const missingSecretsResponse = await fetchFn(
-        "/api/agent/schedules/missing-secrets",
-      );
-      if (missingSecretsResponse.ok) {
-        const missingSecretsData = (await missingSecretsResponse.json()) as {
-          agents: AgentMissingSecrets[];
-        };
-        agentsWithMissingSecrets = missingSecretsData.agents;
-      }
-    } catch (error) {
-      throwIfAbort(error);
-      // Log missing secrets fetch errors for debugging, but don't fail the page
-      L.error("Failed to fetch agents with missing secrets:", error);
     }
 
     set(agentsListState$, {
       agents: agentsData.composes,
       schedules,
-      agentsWithMissingSecrets,
       loading: false,
       error: null,
     });

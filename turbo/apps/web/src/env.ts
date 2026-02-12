@@ -87,6 +87,13 @@ function initEnv() {
       // Notion OAuth (for connector)
       NOTION_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       NOTION_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // ngrok (for computer connector)
+      NGROK_API_KEY: z.string().min(1).optional(),
+      NGROK_COMPUTER_CONNECTOR_DOMAIN: z.string().min(1).optional(),
+      // Email integration (Resend) — optional, only needed when email notifications are enabled
+      RESEND_API_KEY: z.string().min(1).optional(),
+      RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
+      RESEND_FROM_DOMAIN: z.string().min(1).optional(),
       // Sentry
       SENTRY_DSN: z.string().url().optional(),
       SENTRY_AUTH_TOKEN: z.string().min(1).optional(),
@@ -158,7 +165,13 @@ function initEnv() {
       GH_OAUTH_CLIENT_SECRET: process.env.GH_OAUTH_CLIENT_SECRET,
       NOTION_OAUTH_CLIENT_ID: process.env.NOTION_OAUTH_CLIENT_ID,
       NOTION_OAUTH_CLIENT_SECRET: process.env.NOTION_OAUTH_CLIENT_SECRET,
+      NGROK_API_KEY: process.env.NGROK_API_KEY,
+      NGROK_COMPUTER_CONNECTOR_DOMAIN:
+        process.env.NGROK_COMPUTER_CONNECTOR_DOMAIN,
       NEXT_PUBLIC_PLATFORM_URL: process.env.NEXT_PUBLIC_PLATFORM_URL,
+      RESEND_API_KEY: process.env.RESEND_API_KEY,
+      RESEND_WEBHOOK_SECRET: process.env.RESEND_WEBHOOK_SECRET,
+      RESEND_FROM_DOMAIN: process.env.RESEND_FROM_DOMAIN,
       SENTRY_DSN: process.env.SENTRY_DSN,
       SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
       SENTRY_ORG: process.env.SENTRY_ORG,

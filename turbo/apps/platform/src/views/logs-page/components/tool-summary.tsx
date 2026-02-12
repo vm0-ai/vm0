@@ -75,10 +75,10 @@ function ToolSummaryHeader({
           )}
           {isError && errorMessage && (
             <span
-              className="text-xs text-red-600 shrink-0"
+              className="text-xs text-red-600 truncate"
               title={errorMessage}
             >
-              {errorMessage}
+              {errorMessage.split("\n")[0]}
             </span>
           )}
         </div>
@@ -142,7 +142,7 @@ export function ToolSummary({
         errorMessage={errorMessage}
       />
 
-      <div className="mt-1 flex items-start gap-1.5 ml-[18px] mr-[100px]">
+      <div className="mt-1 flex items-start gap-1.5 ml-[18px] overflow-hidden">
         <span className="text-muted-foreground text-xs shrink-0">└</span>
         <div className="flex-1 min-w-0 space-y-1">
           {durationText && (
@@ -155,7 +155,7 @@ export function ToolSummary({
             <ToolInputDetails input={input} toolName={toolName} />
           )}
 
-          {result && !isError && (
+          {result && (
             <ToolResultDetails
               result={result}
               searchTerm={searchTerm}

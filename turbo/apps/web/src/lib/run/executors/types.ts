@@ -55,6 +55,10 @@ export interface PreparedContext {
 
   // API start time for E2E timing metrics
   apiStartTime: number | null;
+
+  // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
+  // Injected as TZ environment variable in sandbox if not already set in environment
+  userTimezone: string | null;
 }
 
 /**

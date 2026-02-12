@@ -5,13 +5,8 @@ import { agentComposes } from "../../../db/schema/agent-compose";
 import { decryptCredentialValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
 import { getUserEmail } from "../../auth/get-user-email";
-import {
-  createSlackClient,
-  publishAppHome,
-  buildAppHomeView,
-  postMessage,
-  buildWelcomeMessage,
-} from "../index";
+import { createSlackClient, publishAppHome, postMessage } from "../client";
+import { buildAppHomeView, buildWelcomeMessage } from "../blocks";
 import { buildLoginUrl } from "./shared";
 
 interface AppHomeOpenedContext {

@@ -95,13 +95,13 @@ describe("slack settings page", () => {
 
     await setupPage({ context, path: "/settings/slack" });
 
-    // Should show the missing secrets warning
-    expect(
-      screen.getByText(/missing required secrets or variables/),
-    ).toBeInTheDocument();
+    // Should show the missing env warning banner
+    expect(screen.getByText(/missing some/)).toBeInTheDocument();
 
-    // Should show Fill button
-    expect(screen.getByRole("button", { name: /fill/i })).toBeInTheDocument();
+    // Should show a link to secrets or variables settings
+    expect(
+      screen.getByRole("button", { name: /secrets or variables/i }),
+    ).toBeInTheDocument();
   });
 
   it("opens disconnect confirmation dialog", async () => {
@@ -127,6 +127,40 @@ describe("slack settings page", () => {
     expect(
       within(dialog).getByRole("button", { name: /disconnect/i }),
     ).toBeInTheDocument();
+  });
+
+  it("shows workspace agent even when not in user's agents list", async () => {
+    server.use(
+      http.get("/api/integrations/slack", () => {
+        return HttpResponse.json({
+          workspace: { id: "T123", name: "Test Workspace" },
+          agent: { id: "other_compose", name: "shared-agent" },
+          isAdmin: true,
+          environment: {
+            requiredSecrets: [],
+            requiredVars: [],
+            missingSecrets: [],
+            missingVars: [],
+          },
+        });
+      }),
+      http.get("/api/agent/composes/list", () => {
+        return HttpResponse.json({
+          composes: [
+            {
+              name: "my-agent",
+              headVersionId: "v1",
+              updatedAt: "2024-01-01T00:00:00Z",
+            },
+          ],
+        });
+      }),
+    );
+
+    await setupPage({ context, path: "/settings/slack" });
+
+    // The workspace default agent should be visible in the select
+    expect(screen.getByText("shared-agent")).toBeInTheDocument();
   });
 
   it("closes disconnect dialog on cancel", async () => {

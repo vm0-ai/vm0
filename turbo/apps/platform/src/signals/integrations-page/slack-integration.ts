@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
@@ -112,6 +113,22 @@ export const closeSlackDisconnectDialog$ = command(({ set }) => {
 
 export const updateSlackDefaultAgent$ = command(
   async ({ get, set }, agentName: string) => {
+    // Optimistically update agent name so the UI doesn't flash a loading state
+    set(slackIntegrationState$, (prev) => {
+      if (!prev.data) {
+        return prev;
+      }
+      return {
+        ...prev,
+        data: {
+          ...prev.data,
+          agent: prev.data.agent
+            ? { ...prev.data.agent, name: agentName }
+            : { id: "", name: agentName },
+        },
+      };
+    });
+
     const fetchFn = get(fetch$);
     const response = await fetchFn("/api/integrations/slack", {
       method: "PATCH",
@@ -120,11 +137,28 @@ export const updateSlackDefaultAgent$ = command(
     });
 
     if (!response.ok) {
-      throw new Error("Failed to update default agent");
+      toast.error("Failed to update default agent");
+      // Re-fetch to revert optimistic update
+      await set(fetchSlackIntegration$);
+      return;
     }
 
-    // Re-fetch to get updated agent info and environment status
-    await set(fetchSlackIntegration$);
+    toast.success(`Default agent updated to ${agentName}`);
+
+    // Silently refresh to pick up updated environment status without loading spinner
+    try {
+      const refreshResponse = await fetchFn("/api/integrations/slack");
+      if (refreshResponse.ok) {
+        const data = (await refreshResponse.json()) as SlackIntegrationData;
+        set(slackIntegrationState$, (prev) => ({
+          ...prev,
+          data,
+        }));
+      }
+    } catch (error) {
+      throwIfAbort(error);
+      L.error("Failed to refresh after agent update:", error);
+    }
   },
 );
 

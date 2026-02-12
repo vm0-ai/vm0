@@ -97,6 +97,11 @@ export async function GET(
       clientId = env.NOTION_OAUTH_CLIENT_ID;
       clientSecret = env.NOTION_OAUTH_CLIENT_SECRET;
       break;
+    case "computer":
+      return NextResponse.json(
+        { error: "Computer connector does not use OAuth" },
+        { status: 400 },
+      );
   }
 
   if (!clientId || !clientSecret) {

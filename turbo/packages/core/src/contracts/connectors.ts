@@ -97,11 +97,47 @@ export const CONNECTOR_TYPES = {
       scopes: [],
     } as ConnectorOAuthConfig,
   },
+  computer: {
+    label: "Computer",
+    helpText:
+      "Expose local services to remote sandboxes via authenticated ngrok tunnels",
+    authMethods: {
+      api: {
+        label: "API",
+        helpText: "Server-provisioned ngrok tunnel credentials.",
+        secrets: {
+          COMPUTER_CONNECTOR_AUTHTOKEN: {
+            label: "ngrok Authtoken",
+            required: true,
+          },
+          COMPUTER_CONNECTOR_TOKEN: {
+            label: "Bridge Token",
+            required: true,
+          },
+          COMPUTER_CONNECTOR_ENDPOINT: {
+            label: "Endpoint Prefix",
+            required: true,
+          },
+          COMPUTER_CONNECTOR_DOMAIN: {
+            label: "Tunnel Domain",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api",
+    environmentMapping: {
+      COMPUTER_CONNECTOR_AUTHTOKEN: "$secrets.COMPUTER_CONNECTOR_AUTHTOKEN",
+      COMPUTER_CONNECTOR_TOKEN: "$secrets.COMPUTER_CONNECTOR_TOKEN",
+      COMPUTER_CONNECTOR_ENDPOINT: "$secrets.COMPUTER_CONNECTOR_ENDPOINT",
+      COMPUTER_CONNECTOR_DOMAIN: "$secrets.COMPUTER_CONNECTOR_DOMAIN",
+    } as Record<string, string>,
+  },
 } as const;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES;
 
-export const connectorTypeSchema = z.enum(["github", "notion"]);
+export const connectorTypeSchema = z.enum(["github", "notion", "computer"]);
 
 /**
  * Get auth methods for a connector type
@@ -418,3 +454,64 @@ export const connectorSessionByIdContract = c.router({
 });
 
 export type ConnectorSessionByIdContract = typeof connectorSessionByIdContract;
+
+/**
+ * Computer connector create response
+ */
+export const computerConnectorCreateResponseSchema = z.object({
+  id: z.string().uuid(),
+  authtoken: z.string(),
+  bridgeToken: z.string(),
+  endpointPrefix: z.string(),
+  domain: z.string(),
+});
+
+export type ComputerConnectorCreateResponse = z.infer<
+  typeof computerConnectorCreateResponseSchema
+>;
+
+/**
+ * Computer connector contract for /api/connectors/computer
+ * Server-provisioned ngrok tunnel credentials (no OAuth flow)
+ */
+export const computerConnectorContract = c.router({
+  create: {
+    method: "POST",
+    path: "/api/connectors/computer",
+    headers: authHeadersSchema,
+    body: z.object({}).optional(),
+    responses: {
+      200: computerConnectorCreateResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Create computer connector with ngrok tunnel credentials",
+  },
+  get: {
+    method: "GET",
+    path: "/api/connectors/computer",
+    headers: authHeadersSchema,
+    responses: {
+      200: connectorResponseSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get computer connector status",
+  },
+  delete: {
+    method: "DELETE",
+    path: "/api/connectors/computer",
+    headers: authHeadersSchema,
+    responses: {
+      204: c.noBody(),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Delete computer connector and revoke ngrok credentials",
+  },
+});
+
+export type ComputerConnectorContract = typeof computerConnectorContract;

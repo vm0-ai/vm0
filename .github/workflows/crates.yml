@@ -53,10 +53,10 @@ jobs:
           cd crates
           cargo test --all-targets
 
-      - name: Run ably-subscriber integration test
+      - name: Run ably-subscriber smoke test
         if: steps.detect.outputs.ably-subscriber-changed == 'true'
         env:
           ABLY_API_KEY: ${{ secrets.ABLY_API_KEY }}
         run: |
           cd crates
-          cargo run -p ably-subscriber --example integration_test
+          cargo run -p ably-subscriber --example smoke_test

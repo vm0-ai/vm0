@@ -61,45 +61,6 @@ interface OAuthInstallation {
   adminSlackUserId: string;
 }
 
-async function performOAuthExchange(
-  clientId: string,
-  clientSecret: string,
-  code: string,
-  redirectUri: string,
-  secretsEncryptionKey: string,
-  stateComposeId: string | null,
-  stateSlackUserId: string | null,
-): Promise<OAuthInstallation | NextResponse> {
-  const oauthResult = await exchangeOAuthCode(
-    clientId,
-    clientSecret,
-    code,
-    redirectUri,
-  );
-
-  const encryptedBotToken = encryptCredentialValue(
-    oauthResult.accessToken,
-    secretsEncryptionKey,
-  );
-
-  let defaultComposeId = stateComposeId;
-  if (!defaultComposeId) {
-    defaultComposeId = await resolveDefaultAgentComposeId();
-  }
-
-  if (!defaultComposeId) {
-    const baseUrl = new URL(redirectUri).origin;
-    return NextResponse.redirect(
-      `${baseUrl}/slack/failed?error=${encodeURIComponent("Missing default agent. Install must specify a composeId.")}`,
-    );
-  }
-
-  const adminSlackUserId =
-    oauthResult.authedUserId || stateSlackUserId || "unknown";
-
-  return { oauthResult, encryptedBotToken, defaultComposeId, adminSlackUserId };
-}
-
 function buildPostInstallRedirect(
   baseUrl: string,
   installation: OAuthInstallation,
@@ -107,6 +68,7 @@ function buildPostInstallRedirect(
 ): NextResponse {
   const { oauthResult } = installation;
   const linkUserId = state.slackUserId || oauthResult.authedUserId || null;
+  const platformUrl = getPlatformUrl();
 
   if (linkUserId && state.channelId) {
     const linkParams = new URLSearchParams({
@@ -115,7 +77,7 @@ function buildPostInstallRedirect(
       c: state.channelId,
     });
     return NextResponse.redirect(
-      `${baseUrl}/slack/link?${linkParams.toString()}`,
+      `${platformUrl}/slack/connect?${linkParams.toString()}`,
     );
   }
 
@@ -125,7 +87,7 @@ function buildPostInstallRedirect(
       u: linkUserId,
     });
     return NextResponse.redirect(
-      `${baseUrl}/slack/link?${linkParams.toString()}`,
+      `${platformUrl}/slack/connect?${linkParams.toString()}`,
     );
   }
 
@@ -140,7 +102,11 @@ function buildPostInstallRedirect(
  * GET /api/slack/oauth/callback
  *
  * Handles the OAuth callback from Slack after user authorizes the app.
- * Exchanges the authorization code for tokens and stores them in the database.
+ *
+ * - First install: exchanges code for tokens, stores installation, and optionally
+ *   creates a user link (platform flow).
+ * - Already installed: skips installation update entirely, only creates the user
+ *   link so the existing admin, default agent, and bot token are preserved.
  */
 export async function GET(request: Request) {
   initServices();
@@ -177,49 +143,63 @@ export async function GET(request: Request) {
   const redirectUri = `${baseUrl}/api/slack/oauth/callback`;
 
   try {
-    const result = await performOAuthExchange(
+    // Exchange authorization code for tokens (always needed for user identity)
+    const oauthResult = await exchangeOAuthCode(
       SLACK_CLIENT_ID,
       SLACK_CLIENT_SECRET,
       code,
       redirectUri,
-      SECRETS_ENCRYPTION_KEY,
-      state.defaultComposeId,
-      state.slackUserId,
     );
 
-    if (result instanceof NextResponse) {
-      return result;
-    }
+    // Check if workspace is already installed
+    const [existingInstallation] = await globalThis.services.db
+      .select()
+      .from(slackInstallations)
+      .where(eq(slackInstallations.slackWorkspaceId, oauthResult.teamId))
+      .limit(1);
 
-    const {
-      oauthResult,
-      encryptedBotToken,
-      defaultComposeId,
-      adminSlackUserId,
-    } = result;
+    // Use existing installation data if available, otherwise create new
+    let effective: {
+      defaultComposeId: string;
+      adminSlackUserId: string;
+      encryptedBotToken: string;
+    };
 
-    // Store or update the installation
-    await globalThis.services.db
-      .insert(slackInstallations)
-      .values({
+    if (existingInstallation) {
+      // Workspace already installed — don't touch the installation record
+      effective = existingInstallation;
+    } else {
+      // First install — resolve default agent and create installation
+      const encryptedBotToken = encryptCredentialValue(
+        oauthResult.accessToken,
+        SECRETS_ENCRYPTION_KEY,
+      );
+
+      let defaultComposeId = state.defaultComposeId;
+      if (!defaultComposeId) {
+        defaultComposeId = await resolveDefaultAgentComposeId();
+      }
+
+      if (!defaultComposeId) {
+        return NextResponse.redirect(
+          `${baseUrl}/slack/failed?error=${encodeURIComponent("Missing default agent. Install must specify a composeId.")}`,
+        );
+      }
+
+      const adminSlackUserId =
+        oauthResult.authedUserId || state.slackUserId || "unknown";
+
+      await globalThis.services.db.insert(slackInstallations).values({
         slackWorkspaceId: oauthResult.teamId,
         slackWorkspaceName: oauthResult.teamName,
         encryptedBotToken,
         botUserId: oauthResult.botUserId,
         defaultComposeId,
         adminSlackUserId,
-      })
-      .onConflictDoUpdate({
-        target: slackInstallations.slackWorkspaceId,
-        set: {
-          slackWorkspaceName: oauthResult.teamName,
-          encryptedBotToken,
-          botUserId: oauthResult.botUserId,
-          defaultComposeId,
-          adminSlackUserId,
-          updatedAt: new Date(),
-        },
       });
+
+      effective = { defaultComposeId, adminSlackUserId, encryptedBotToken };
+    }
 
     // Platform flow: VM0 user is already authenticated, create link directly
     if (state.vm0UserId) {
@@ -230,9 +210,9 @@ export async function GET(request: Request) {
           state.vm0UserId,
           resolvedSlackUserId,
           oauthResult.teamId,
-          defaultComposeId,
-          adminSlackUserId,
-          encryptedBotToken,
+          effective.defaultComposeId,
+          effective.adminSlackUserId,
+          effective.encryptedBotToken,
           SECRETS_ENCRYPTION_KEY,
         );
       }
@@ -240,6 +220,10 @@ export async function GET(request: Request) {
       return NextResponse.redirect(`${platformUrl}/settings?tab=integrations`);
     }
 
+    const result: OAuthInstallation = {
+      oauthResult,
+      ...effective,
+    };
     return buildPostInstallRedirect(baseUrl, result, state);
   } catch (err) {
     const errorMessage =

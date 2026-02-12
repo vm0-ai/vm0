@@ -5,7 +5,6 @@ import type {
   SetSecretRequest,
 } from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
-import { requiredItems$ } from "./settings-tabs.ts";
 
 // ---------------------------------------------------------------------------
 // Reload trigger
@@ -29,19 +28,6 @@ export const secrets$ = computed(async (get) => {
       (a, b) =>
         new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
     );
-});
-
-/**
- * Secrets from `required` URL param that are not yet configured.
- */
-export const missingSecrets$ = computed(async (get) => {
-  const required = get(requiredItems$);
-  if (required.length === 0) {
-    return [];
-  }
-  const existing = await get(secrets$);
-  const existingNames = new Set(existing.map((s) => s.name));
-  return required.filter((name) => !existingNames.has(name));
 });
 
 // ---------------------------------------------------------------------------
@@ -240,6 +226,7 @@ export const submitSecretDialog$ = command(
 
       signal.throwIfAborted();
       set(internalReloadSecrets$, (x) => x + 1);
+
       set(internalDialogState$, {
         open: false,
         mode: "add",
@@ -293,6 +280,7 @@ export const confirmDeleteSecret$ = command(
 
       signal.throwIfAborted();
       set(internalReloadSecrets$, (x) => x + 1);
+
       set(internalDeleteDialogState$, { open: false, secretName: null });
     })();
 

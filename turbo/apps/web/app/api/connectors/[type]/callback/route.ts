@@ -19,6 +19,30 @@ import { getOrigin } from "../../../../../src/lib/request/get-origin";
 const log = logger("api:connectors:callback");
 
 /**
+ * Get OAuth client credentials for a connector type.
+ * Returns undefined for non-OAuth connectors (e.g. computer).
+ */
+function getOAuthCredentials(
+  connectorType: "github" | "notion" | "computer",
+): { clientId: string | undefined; clientSecret: string | undefined } | null {
+  const env = globalThis.services.env;
+  switch (connectorType) {
+    case "github":
+      return {
+        clientId: env.GH_OAUTH_CLIENT_ID,
+        clientSecret: env.GH_OAUTH_CLIENT_SECRET,
+      };
+    case "notion":
+      return {
+        clientId: env.NOTION_OAUTH_CLIENT_ID,
+        clientSecret: env.NOTION_OAUTH_CLIENT_SECRET,
+      };
+    case "computer":
+      return null;
+  }
+}
+
+/**
  * Connector OAuth Callback Endpoint
  *
  * GET /api/connectors/:type/callback
@@ -79,23 +103,17 @@ export async function GET(
     return redirectWithError(origin, type, "Not authenticated");
   }
 
-  const env = globalThis.services.env;
-
   // Get OAuth credentials for connector type
-  let clientId: string | undefined;
-  let clientSecret: string | undefined;
-
-  switch (connectorType) {
-    case "github":
-      clientId = env.GH_OAUTH_CLIENT_ID;
-      clientSecret = env.GH_OAUTH_CLIENT_SECRET;
-      break;
-    case "notion":
-      clientId = env.NOTION_OAUTH_CLIENT_ID;
-      clientSecret = env.NOTION_OAUTH_CLIENT_SECRET;
-      break;
+  const credentials = getOAuthCredentials(connectorType);
+  if (!credentials) {
+    return redirectWithError(
+      origin,
+      type,
+      "Computer connector does not use OAuth",
+    );
   }
 
+  const { clientId, clientSecret } = credentials;
   if (!clientId || !clientSecret) {
     return redirectWithError(
       origin,
@@ -187,6 +205,8 @@ export async function GET(
         }
         break;
       }
+      default:
+        return redirectWithError(origin, type, "Unsupported OAuth connector");
     }
 
     log.debug("Storing connector", {

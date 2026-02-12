@@ -3,6 +3,7 @@
 // Perf: Replaced Python vsock-guest with Rust for 16x faster VM startup (issue #1668)
 // Perf: Added snapshot support for fast VM boot from pre-warmed state (issue #1600)
 // CI: Sync 02-parallel E2E tests into 03-experimental-runner (issue #2830)
+// Fix: Only treat 404 as non-fatal for artifact downloads (issue #2899)
 import { program } from "commander";
 import { startCommand } from "./commands/start.js";
 import { doctorCommand } from "./commands/doctor.js";

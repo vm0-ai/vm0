@@ -3,12 +3,14 @@ import { composesListContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
 import { eq, desc } from "drizzle-orm";
 import {
   getUserScopeByClerkId,
   getScopeBySlug,
   canAccessScope,
 } from "../../../../../src/lib/scope/scope-service";
+import { getEmailSharedAgents } from "../../../../../src/lib/agent/permission-service";
 
 const router = tsr.router(composesListContract, {
   list: async ({ query, headers }) => {
@@ -72,8 +74,8 @@ const router = tsr.router(composesListContract, {
       scopeId = userScope.id;
     }
 
-    // Query all composes for this scope
-    const composes = await globalThis.services.db
+    // Query own composes for this scope
+    const ownComposes = await globalThis.services.db
       .select({
         name: agentComposes.name,
         headVersionId: agentComposes.headVersionId,
@@ -83,14 +85,38 @@ const router = tsr.router(composesListContract, {
       .where(eq(agentComposes.scopeId, scopeId))
       .orderBy(desc(agentComposes.updatedAt));
 
+    // When using default scope (no ?scope= param), also include email-shared agents
+    let sharedComposes: {
+      name: string;
+      headVersionId: string | null;
+      updatedAt: Date;
+      scopeSlug: string;
+    }[] = [];
+
+    if (!query.scope) {
+      const userEmail = await getUserEmail(userId);
+      const shared = await getEmailSharedAgents(userId, userEmail);
+      sharedComposes = shared;
+    }
+
+    // Combine: own agents first, then shared agents with scope/name format
+    const allComposes = [
+      ...ownComposes.map((c) => ({
+        name: c.name,
+        headVersionId: c.headVersionId,
+        updatedAt: c.updatedAt.toISOString(),
+      })),
+      ...sharedComposes.map((c) => ({
+        name: `${c.scopeSlug}/${c.name}`,
+        headVersionId: c.headVersionId,
+        updatedAt: c.updatedAt.toISOString(),
+      })),
+    ];
+
     return {
       status: 200 as const,
       body: {
-        composes: composes.map((compose) => ({
-          name: compose.name,
-          headVersionId: compose.headVersionId,
-          updatedAt: compose.updatedAt.toISOString(),
-        })),
+        composes: allComposes,
       },
     };
   },

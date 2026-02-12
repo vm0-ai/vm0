@@ -201,7 +201,7 @@ export async function executeJob(
     // Execute agent or direct command using event-driven mode
     // Note: Network connectivity is validated by agent's first heartbeat (fail-fast)
     // The agent spawns in background, and we wait for exit notification (no polling)
-    const systemLogFile = `/tmp/vm0-main-${context.runId}.log`;
+    const systemLogFile = `/tmp/vm0-system-${context.runId}.log`;
     const startTime = Date.now();
     const maxWaitMs = 2 * 60 * 60 * 1000; // 2 hours max (same as E2B sandbox timeout)
 

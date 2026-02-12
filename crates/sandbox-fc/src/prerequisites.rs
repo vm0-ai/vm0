@@ -5,6 +5,7 @@ use sandbox::SandboxError;
 
 use crate::command::{Privilege, exec};
 use crate::config::FirecrackerConfig;
+use crate::paths::RUNTIME_DIR;
 
 /// Verify that all required system prerequisites are present before creating the factory.
 ///
@@ -25,6 +26,7 @@ pub async fn check_prerequisites(config: &FirecrackerConfig) -> Result<(), Sandb
     check_kvm(&mut errors);
     check_required_commands(config, &mut errors);
     check_sudo(&mut errors).await;
+    ensure_runtime_dir(&mut errors).await;
 
     if errors.is_empty() {
         Ok(())
@@ -78,5 +80,24 @@ async fn check_sudo(errors: &mut Vec<String>) {
              please run with sudo or configure sudoers"
                 .to_string(),
         );
+    }
+}
+
+/// Create `/run/vm0` with mode 1777 (world-writable + sticky bit) if needed.
+///
+/// `/run` is a tmpfs owned by root, so we need sudo. The operation is idempotent.
+async fn ensure_runtime_dir(errors: &mut Vec<String>) {
+    if exec("mkdir", &["-p", RUNTIME_DIR], Privilege::Sudo)
+        .await
+        .is_err()
+    {
+        errors.push(format!("failed to create {RUNTIME_DIR}"));
+        return;
+    }
+    if exec("chmod", &["1777", RUNTIME_DIR], Privilege::Sudo)
+        .await
+        .is_err()
+    {
+        errors.push(format!("failed to chmod {RUNTIME_DIR}"));
     }
 }

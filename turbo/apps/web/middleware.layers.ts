@@ -53,7 +53,7 @@ function classifyRoute(pathname: string): RouteKind {
 // ---------------------------------------------------------------------------
 
 /** Routes that require a logged-in user even outside the i18n flow */
-const PROTECTED_SKIP_PREFIXES = ["/cli-auth", "/slack/link"] as const;
+const PROTECTED_SKIP_PREFIXES = ["/cli-auth"] as const;
 
 export function isProtectedSkipRoute(pathname: string): boolean {
   return PROTECTED_SKIP_PREFIXES.some((p) => pathname.startsWith(p));

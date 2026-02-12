@@ -51,6 +51,17 @@ const nextConfig = {
   },
   allowedDevOrigins: ["*.vm7.ai"],
   serverExternalPackages: ["ably", "dockerode"],
+  webpack: (config) => {
+    config.ignoreWarnings = [
+      // e2b SDK uses dynamic require() for cross-runtime compatibility (Node/Deno/Bun)
+      { module: /node_modules\/e2b\/dist/ },
+      // next-intl uses dynamic import(t) internally for format loading
+      { module: /node_modules\/next-intl\/dist/ },
+      // Webpack cache serialization performance hints for large strings
+      { message: /Serializing big strings/ },
+    ];
+    return config;
+  },
 };
 
 const isProduction = process.env.VERCEL_ENV === "production";

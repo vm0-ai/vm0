@@ -19,8 +19,9 @@ url = { workspace = true }
 
 [dev-dependencies]
 hmac = { workspace = true }
+httpmock = { workspace = true }
 sha2 = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util", "net"] }
 tracing-subscriber = { workspace = true }
 
 [lints]

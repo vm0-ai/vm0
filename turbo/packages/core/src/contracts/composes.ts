@@ -39,6 +39,8 @@ const agentNameSchema = z
 const volumeConfigSchema = z.object({
   name: z.string().min(1, "Volume name is required"),
   version: z.string().min(1, "Volume version is required"),
+  /** When true, skip mounting without error if volume doesn't exist */
+  optional: z.boolean().optional(),
 });
 
 /**

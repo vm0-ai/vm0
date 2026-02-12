@@ -131,7 +131,7 @@ export function expandEnvironmentFromCompose(
       );
       if (missingCredentials.length > 0) {
         const platformUrl = env().NEXT_PUBLIC_PLATFORM_URL;
-        const settingsUrl = `${platformUrl}/settings?tab=secrets&required=${missingCredentials.join(",")}`;
+        const settingsUrl = `${platformUrl}/settings?tab=secrets-and-variables`;
         throw badRequest(
           `Missing required secrets: ${missingCredentials.join(", ")}. Use 'vm0 secret set ${missingCredentials[0]} <value>' or add them at: ${settingsUrl}`,
         );

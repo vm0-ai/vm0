@@ -1,5 +1,39 @@
 # Changelog
 
+## [3.18.5](https://github.com/vm0-ai/vm0/compare/runner-v3.18.4...runner-v3.18.5) (2026-02-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.12.0
+
+## [3.18.4](https://github.com/vm0-ai/vm0/compare/runner-v3.18.3...runner-v3.18.4) (2026-02-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.11.0
+
+## [3.18.3](https://github.com/vm0-ai/vm0/compare/runner-v3.18.2...runner-v3.18.3) (2026-02-12)
+
+
+### Bug Fixes
+
+* **guest-download:** only treat 404 as non-fatal for artifact downloads ([#2900](https://github.com/vm0-ai/vm0/issues/2900)) ([8711a0f](https://github.com/vm0-ai/vm0/commit/8711a0f5cfad3ac0fa8eda31ff74d48e3fbcde6e))
+
+## [3.18.2](https://github.com/vm0-ai/vm0/compare/runner-v3.18.1...runner-v3.18.2) (2026-02-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.10.0
+
 ## [3.18.1](https://github.com/vm0-ai/vm0/compare/runner-v3.18.0...runner-v3.18.1) (2026-02-11)
 
 

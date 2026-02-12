@@ -270,7 +270,7 @@ describe("common", () => {
 
         expect(SESSION_ID_FILE).toBe("/tmp/vm0-session-unique-run-456.txt");
         expect(EVENT_ERROR_FLAG).toBe("/tmp/vm0-event-error-unique-run-456");
-        expect(SYSTEM_LOG_FILE).toBe("/tmp/vm0-main-unique-run-456.log");
+        expect(SYSTEM_LOG_FILE).toBe("/tmp/vm0-system-unique-run-456.log");
         expect(AGENT_LOG_FILE).toBe("/tmp/vm0-agent-unique-run-456.log");
         expect(METRICS_LOG_FILE).toBe("/tmp/vm0-metrics-unique-run-456.jsonl");
       } finally {

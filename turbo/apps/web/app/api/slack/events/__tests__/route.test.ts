@@ -240,7 +240,7 @@ describe("POST /api/slack/events", () => {
         .flatMap((block) =>
           block.type === "actions" ? (block.elements ?? []) : [],
         )
-        .find((e) => e.url?.includes("/slack/link"));
+        .find((e) => e.url?.includes("/slack/connect"));
 
       expect(loginButton).toBeDefined();
       expect(loginButton!.url).toContain("c=C123"); // Channel ID included for success message
@@ -423,7 +423,7 @@ describe("POST /api/slack/events", () => {
         .flatMap((block) =>
           block.type === "actions" ? (block.elements ?? []) : [],
         )
-        .find((e) => e.url?.includes("/slack/link"));
+        .find((e) => e.url?.includes("/slack/connect"));
 
       expect(loginButton).toBeDefined();
     });
