@@ -151,9 +151,9 @@ jobs:
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
           TARGET_DIR="crates/target/aarch64-unknown-linux-musl/release"
 
-          # Upload binaries
+          # Upload binaries (rm first to avoid "Text file busy" if a stale process holds the old binary)
           echo "=== Deploying binaries to ${HOST}:${BIN_DIR} ==="
-          ssh $SSH_OPTS $REMOTE "mkdir -p ${BIN_DIR}"
+          ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} && mkdir -p ${BIN_DIR}"
           for bin in runner guest-init guest-download guest-agent guest-mock-claude; do
             scp $SSH_OPTS "${TARGET_DIR}/${bin}" "${REMOTE}:${BIN_DIR}/"
           done
