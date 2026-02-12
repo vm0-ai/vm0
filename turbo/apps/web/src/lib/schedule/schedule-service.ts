@@ -28,6 +28,7 @@ import { generateSandboxToken } from "../auth/sandbox-token";
 import { getUserScopeByClerkId } from "../scope/scope-service";
 import { getSecretValues } from "../secret/secret-service";
 import { getVariableValues } from "../variable/variable-service";
+import { getUserPreferences } from "../user/user-preferences-service";
 import { generateCallbackSecret, getApiUrl } from "../callback";
 
 const log = logger("service:schedule");
@@ -942,17 +943,20 @@ async function executeSchedule(
     userId: compose.userId,
   };
 
-  // Email schedule notification callback (only if Resend is configured)
+  // Email schedule notification callback (only if Resend is configured AND user opted in)
   if (globalThis.services.env.RESEND_API_KEY) {
-    await globalThis.services.db.insert(agentRunCallbacks).values({
-      runId: run.id,
-      url: `${getApiUrl()}/api/internal/callbacks/email/schedule`,
-      encryptedSecret: encryptCredentialValue(
-        generateCallbackSecret(),
-        SECRETS_ENCRYPTION_KEY,
-      ),
-      payload: callbackPayload,
-    });
+    const prefs = await getUserPreferences(compose.userId);
+    if (prefs.notifyEmail) {
+      await globalThis.services.db.insert(agentRunCallbacks).values({
+        runId: run.id,
+        url: `${getApiUrl()}/api/internal/callbacks/email/schedule`,
+        encryptedSecret: encryptCredentialValue(
+          generateCallbackSecret(),
+          SECRETS_ENCRYPTION_KEY,
+        ),
+        payload: callbackPayload,
+      });
+    }
   }
 
   // Slack schedule DM notification callback

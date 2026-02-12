@@ -9,6 +9,7 @@ const c = initContract();
  */
 export const userPreferencesResponseSchema = z.object({
   timezone: z.string().nullable(),
+  notifyEmail: z.boolean(),
 });
 
 export type UserPreferencesResponse = z.infer<
@@ -18,9 +19,17 @@ export type UserPreferencesResponse = z.infer<
 /**
  * Update user preferences request
  */
-export const updateUserPreferencesRequestSchema = z.object({
-  timezone: z.string().min(1, "Timezone is required"),
-});
+export const updateUserPreferencesRequestSchema = z
+  .object({
+    timezone: z.string().min(1).optional(),
+    notifyEmail: z.boolean().optional(),
+  })
+  .refine(
+    (data) => data.timezone !== undefined || data.notifyEmail !== undefined,
+    {
+      message: "At least one preference must be provided",
+    },
+  );
 
 export type UpdateUserPreferencesRequest = z.infer<
   typeof updateUserPreferencesRequestSchema

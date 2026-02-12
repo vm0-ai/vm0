@@ -26,6 +26,7 @@ const router = tsr.router(userPreferencesContract, {
       status: 200 as const,
       body: {
         timezone: prefs.timezone,
+        notifyEmail: prefs.notifyEmail,
       },
     };
   },
@@ -44,12 +45,14 @@ const router = tsr.router(userPreferencesContract, {
     try {
       const prefs = await updateUserPreferences(userId, {
         timezone: body.timezone,
+        notifyEmail: body.notifyEmail,
       });
 
       return {
         status: 200 as const,
         body: {
           timezone: prefs.timezone,
+          notifyEmail: prefs.notifyEmail,
         },
       };
     } catch (error) {
