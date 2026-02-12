@@ -10,7 +10,7 @@ import type { ComputerConnectorCreateResponse } from "@vm0/core";
 import { connectors } from "../../db/schema/connector";
 import { secrets } from "../../db/schema/secret";
 import { encryptCredentialValue } from "../crypto";
-import { conflict, notFound } from "../errors";
+import { badRequest, conflict, notFound } from "../errors";
 import { logger } from "../logger";
 import { getUserScopeByClerkId } from "../scope/scope-service";
 import {
@@ -98,12 +98,12 @@ export async function createComputerConnector(
   const env = globalThis.services.env;
   const apiKey = env.NGROK_API_KEY;
   if (!apiKey) {
-    throw new Error("NGROK_API_KEY is not configured");
+    throw badRequest("NGROK_API_KEY is not configured");
   }
 
   const domain = env.NGROK_COMPUTER_CONNECTOR_DOMAIN;
   if (!domain) {
-    throw new Error("NGROK_COMPUTER_CONNECTOR_DOMAIN is not configured");
+    throw badRequest("NGROK_COMPUTER_CONNECTOR_DOMAIN is not configured");
   }
 
   const botUserName = `vm0-user-${scope.id}`;

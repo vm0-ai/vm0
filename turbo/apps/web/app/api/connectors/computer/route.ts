@@ -11,7 +11,11 @@ import {
   createComputerConnector,
   deleteComputerConnector,
 } from "../../../../src/lib/computer-connector/computer-connector-service";
-import { isConflict, isNotFound } from "../../../../src/lib/errors";
+import {
+  isBadRequest,
+  isConflict,
+  isNotFound,
+} from "../../../../src/lib/errors";
 
 const router = tsr.router(computerConnectorContract, {
   /**
@@ -29,6 +33,9 @@ const router = tsr.router(computerConnectorContract, {
       const result = await createComputerConnector(userId);
       return { status: 200 as const, body: result };
     } catch (error) {
+      if (isBadRequest(error)) {
+        return createErrorResponse("BAD_REQUEST", error.message);
+      }
       if (isConflict(error)) {
         return createErrorResponse("CONFLICT", error.message);
       }
