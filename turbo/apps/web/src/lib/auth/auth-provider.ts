@@ -13,6 +13,7 @@ export { SELF_HOSTED_USER_ID } from "./constants";
 interface AuthProvider {
   getUserId(): Promise<string | null>;
   getUserEmail(userId: string): Promise<string>;
+  getUserIdByEmail(email: string): Promise<string | null>;
 }
 
 /**
@@ -33,6 +34,13 @@ function createClerkAuthProvider(): AuthProvider {
       )?.emailAddress;
       return email || "";
     },
+
+    async getUserIdByEmail(email: string) {
+      const client = await clerkClient();
+      const users = await client.users.getUserList({ emailAddress: [email] });
+      const user = users.data[0];
+      return user?.id ?? null;
+    },
   };
 }
 
@@ -47,6 +55,14 @@ function createLocalAuthProvider(): AuthProvider {
 
     async getUserEmail() {
       return SELF_HOSTED_USER_EMAIL;
+    },
+
+    async getUserIdByEmail(email: string) {
+      // In self-hosted mode, if the email matches the default user's email, return the default user ID
+      if (email.toLowerCase() === SELF_HOSTED_USER_EMAIL.toLowerCase()) {
+        return SELF_HOSTED_USER_ID;
+      }
+      return null;
     },
   };
 }

@@ -1,8 +1,113 @@
 import crypto from "crypto";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { emailThreadSessions } from "../../../db/schema/email-thread-session";
+import { agentComposes } from "../../../db/schema/agent-compose";
+import { scopes } from "../../../db/schema/scope";
 import { env } from "../../../env";
 import { getPlatformUrl } from "../../url";
+
+// ============================================================================
+// Email Address Parsing
+// ============================================================================
+
+interface EmailTriggerAddress {
+  scope: string;
+  agent: string;
+}
+
+/**
+ * Parse a trigger email address in the format: scope+agent@domain
+ * Returns null if the address doesn't match the expected format.
+ *
+ * Examples:
+ * - "lancy+my-agent@vm0.bot" → { scope: "lancy", agent: "my-agent" }
+ * - "reply+token@vm0.bot" → null (reply address, not trigger)
+ * - "invalid@vm0.bot" → null (no plus sign)
+ */
+export function parseEmailTriggerAddress(
+  toAddress: string,
+): EmailTriggerAddress | null {
+  // Match: scope+agent@domain (case-insensitive)
+  // Scope and agent must start with alphanumeric, can contain hyphens
+  const match = toAddress.match(
+    /^([a-z0-9][a-z0-9-]*)\+([a-z0-9][a-z0-9-]*)@/i,
+  );
+  if (!match || !match[1] || !match[2]) return null;
+
+  const scope = match[1].toLowerCase();
+  const agent = match[2].toLowerCase();
+
+  // Exclude reply addresses (reply+token@domain)
+  if (scope === "reply") return null;
+
+  return { scope, agent };
+}
+
+/**
+ * Check if an email address is a reply address (reply+token@domain)
+ */
+export function isReplyAddress(toAddress: string): boolean {
+  return toAddress.toLowerCase().startsWith("reply+");
+}
+
+// ============================================================================
+// Agent Resolution
+// ============================================================================
+
+interface ResolvedAgent {
+  composeId: string;
+  userId: string;
+  scopeId: string;
+  headVersionId: string | null;
+}
+
+/**
+ * Resolve an agent compose by scope slug and agent name.
+ * Returns compose details if found, null otherwise.
+ */
+export async function resolveAgentByAddress(
+  scopeSlug: string,
+  agentName: string,
+): Promise<ResolvedAgent | null> {
+  // 1. Find scope by slug
+  const [scope] = await globalThis.services.db
+    .select({ id: scopes.id })
+    .from(scopes)
+    .where(eq(scopes.slug, scopeSlug))
+    .limit(1);
+
+  if (!scope) return null;
+
+  // 2. Find compose by scopeId + name
+  const [compose] = await globalThis.services.db
+    .select({
+      id: agentComposes.id,
+      userId: agentComposes.userId,
+      scopeId: agentComposes.scopeId,
+      headVersionId: agentComposes.headVersionId,
+    })
+    .from(agentComposes)
+    .where(
+      and(
+        eq(agentComposes.scopeId, scope.id),
+        eq(agentComposes.name, agentName),
+      ),
+    )
+    .limit(1);
+
+  if (!compose) return null;
+
+  return {
+    composeId: compose.id,
+    userId: compose.userId,
+    scopeId: compose.scopeId,
+    headVersionId: compose.headVersionId,
+  };
+}
+
+// ============================================================================
+// Reply Token Management
+// ============================================================================
 
 /**
  * Generate an HMAC-signed reply token for plus addressing.
