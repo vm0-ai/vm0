@@ -901,10 +901,10 @@ async function executeSchedule(
       if (retryScheduled) {
         return; // Retry scheduled, don't continue
       }
-      // Retry window expired, re-throw to advance to next occurrence
+      // Retry window expired — fall through to advance schedule to next occurrence
     }
 
-    // Non-concurrency failure: update schedule state (disable one-time, advance cron)
+    // Any failure (concurrency-expired or other): update schedule state (disable one-time, advance cron)
     if (schedule.cronExpression) {
       const nextRunAt = calculateNextRun(
         schedule.cronExpression,
