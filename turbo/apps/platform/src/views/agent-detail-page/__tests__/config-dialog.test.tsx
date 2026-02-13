@@ -167,6 +167,48 @@ describe("config dialog", () => {
     expect(screen.getByText("github")).toBeInTheDocument();
   });
 
+  it("should sync Forms edits back to YAML tab", async () => {
+    mockAgentDetailAPI();
+
+    await setupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "my-agent" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(findSettingsIconButton());
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Your agent configs" }),
+      ).toBeInTheDocument();
+    });
+
+    // Switch to Forms tab and change description
+    fireEvent.click(screen.getByRole("tab", { name: "Forms" }));
+
+    await vi.waitFor(() => {
+      expect(screen.getByDisplayValue("A test agent")).toBeInTheDocument();
+    });
+
+    const descInput = screen.getByDisplayValue("A test agent");
+    fireEvent.change(descInput, { target: { value: "Updated description" } });
+
+    // Switch to YAML tab and verify the change is reflected
+    fireEvent.click(screen.getByRole("tab", { name: "vm0.yaml" }));
+
+    await vi.waitFor(() => {
+      const textarea = document.querySelector("textarea");
+      expect(textarea?.value).toContain("Updated description");
+    });
+  });
+
   it("should save config and close dialog on success", async () => {
     mockAgentDetailAPI();
 

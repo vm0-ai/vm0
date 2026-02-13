@@ -36,8 +36,20 @@ type TimeOption =
 const internalTimeOption$ = state<TimeOption>("now");
 export const runDialogTimeOption$ = computed((get) => get(internalTimeOption$));
 
+function isTimeOption(v: string): v is TimeOption {
+  return (
+    v === "now" ||
+    v === "every-weekday" ||
+    v === "every-day" ||
+    v === "every-week" ||
+    v === "every-month"
+  );
+}
+
 export const setRunDialogTimeOption$ = command(({ set }, value: string) => {
-  set(internalTimeOption$, value as TimeOption);
+  if (isTimeOption(value)) {
+    set(internalTimeOption$, value);
+  }
 });
 
 // Frequency (hour of day for schedule options)

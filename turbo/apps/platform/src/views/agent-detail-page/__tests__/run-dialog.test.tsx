@@ -1,10 +1,14 @@
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { describe, expect, it, vi } from "vitest";
-import { screen, fireEvent } from "@testing-library/react";
+import { screen, fireEvent, act } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { http, HttpResponse } from "msw";
 import { FeatureSwitchKey } from "@vm0/core";
+import {
+  setRunDialogTimeOption$,
+  setRunDialogFrequency$,
+} from "../../../signals/agent-detail/run-dialog.ts";
 
 const context = testContext();
 
@@ -205,6 +209,88 @@ describe("run dialog", () => {
     await vi.waitFor(() => {
       expect(screen.getByText("Rate limit exceeded")).toBeInTheDocument();
     });
+  });
+
+  it("should create schedule when time is not Now", async () => {
+    mockAgentDetailAPI();
+
+    let capturedBody: unknown = null;
+    server.use(
+      http.post("/api/agent/schedules", async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json(
+          {
+            id: "schedule_1",
+            composeId: "compose_1",
+            composeName: "my-agent",
+            scopeSlug: "test-user",
+            name: "default",
+            cronExpression: "0 9 * * 1-5",
+            atTime: null,
+            timezone: "UTC",
+            prompt: "Daily review",
+            vars: null,
+            secretNames: null,
+            artifactName: null,
+            artifactVersion: null,
+            volumeVersions: null,
+            enabled: true,
+            nextRunAt: null,
+            lastRunAt: null,
+            retryStartedAt: null,
+            createdAt: "2024-01-01T00:00:00Z",
+          },
+          { status: 201 },
+        );
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "my-agent" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Run/ }));
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Run this agent" }),
+      ).toBeInTheDocument();
+    });
+
+    // Type a prompt
+    const textarea = screen.getByPlaceholderText(
+      "Describe your task in natural language.",
+    );
+    fireEvent.change(textarea, { target: { value: "Daily review" } });
+
+    // Set time option to schedule via signal (Radix Select is hard to drive in tests)
+    act(() => {
+      context.store.set(setRunDialogTimeOption$, "every-weekday");
+      context.store.set(setRunDialogFrequency$, "9");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await vi.waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: "Run this agent" }),
+      ).not.toBeInTheDocument();
+    });
+
+    // Verify schedule API was called with cron expression
+    const body = capturedBody as Record<string, unknown>;
+    expect(body.composeId).toBe("compose_1");
+    expect(body.cronExpression).toBe("0 9 * * 1-5");
+    expect(body.prompt).toBe("Daily review");
+    expect(body.name).toBe("default");
   });
 
   it("should close dialog on Cancel", async () => {
