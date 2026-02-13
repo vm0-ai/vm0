@@ -62,22 +62,19 @@ function formatMetric(metric: TelemetryMetric): string {
 }
 
 /**
- * Format a single network log entry
- * Supports two modes:
- * - sni: SNI-only mode (no HTTPS decryption, only host/port/action)
- * - mitm: MITM mode (full HTTP details including method, status, latency, sizes)
+ * Format an SNI-mode network log entry (no HTTPS decryption, only host/port/action)
  */
-// eslint-disable-next-line complexity -- TODO: refactor complex function
-function formatNetworkLog(entry: NetworkLogEntry): string {
-  // SNI-only mode: show connection info
-  if (entry.mode === "sni" || !entry.method) {
-    const actionColor = entry.action === "ALLOW" ? chalk.green : chalk.red;
-    const host = entry.host || "unknown";
-    const port = entry.port || 443;
-    return `[${entry.timestamp}] ${chalk.cyan("SNI")} ${actionColor(entry.action || "ALLOW")} ${host}:${port} ${chalk.dim(entry.rule_matched || "")}`;
-  }
+function formatSniLog(entry: NetworkLogEntry): string {
+  const actionColor = entry.action === "ALLOW" ? chalk.green : chalk.red;
+  const host = entry.host || "unknown";
+  const port = entry.port || 443;
+  return `[${entry.timestamp}] ${chalk.cyan("SNI")} ${actionColor(entry.action || "ALLOW")} ${host}:${port} ${chalk.dim(entry.rule_matched || "")}`;
+}
 
-  // MITM mode: show full HTTP details
+/**
+ * Format a MITM-mode network log entry (full HTTP details including method, status, latency, sizes)
+ */
+function formatMitmLog(entry: NetworkLogEntry): string {
   // Color status code based on HTTP status
   let statusColor: typeof chalk.green;
   const status = entry.status || 0;
@@ -108,6 +105,16 @@ function formatNetworkLog(entry: NetworkLogEntry): string {
   const url = entry.url || entry.host || "unknown";
 
   return `[${entry.timestamp}] ${method.padEnd(6)} ${statusColor(status)} ${latencyColor(latencyMs + "ms")} ${formatBytes(requestSize)}/${formatBytes(responseSize)} ${chalk.dim(url)}`;
+}
+
+/**
+ * Format a single network log entry
+ */
+function formatNetworkLog(entry: NetworkLogEntry): string {
+  if (entry.mode === "sni" || !entry.method) {
+    return formatSniLog(entry);
+  }
+  return formatMitmLog(entry);
 }
 
 /**
