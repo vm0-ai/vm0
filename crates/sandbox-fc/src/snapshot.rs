@@ -286,7 +286,10 @@ async fn run_with_firecracker(
 
     // 9.5. Pre-warm PAM/nsswitch caches so post-restore `su` calls are fast.
     //      The snapshot captures memory state, so caches populated here persist.
-    match guest.exec("su - user -c true", 5000, &[], false).await {
+    match guest
+        .exec(crate::factory::PREWARM_SCRIPT, 5000, &[], false)
+        .await
+    {
         Ok(result) => info!(exit_code = result.exit_code, "pre-warm: su cache"),
         Err(e) => tracing::warn!(error = %e, "pre-warm: su cache failed (non-fatal)"),
     }
