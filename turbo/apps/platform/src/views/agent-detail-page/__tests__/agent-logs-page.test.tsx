@@ -106,7 +106,7 @@ describe("agent logs page", () => {
     expect(context.store.get(pathname$)).toBe("/agents");
   });
 
-  it("should render agent header and logs table", async () => {
+  it("should render page header and logs table", async () => {
     mockAgentDetailAPI();
     mockLogsAPI();
 
@@ -149,7 +149,7 @@ describe("agent logs page", () => {
     });
   });
 
-  it("should show breadcrumb with agents link and agent name logs", async () => {
+  it("should show three-level breadcrumb", async () => {
     mockAgentDetailAPI();
     mockLogsAPI();
 
@@ -167,7 +167,8 @@ describe("agent logs page", () => {
 
     const nav = screen.getByRole("navigation");
     expect(within(nav).getByText("Agents")).toBeInTheDocument();
-    expect(within(nav).getByText("my-agent logs")).toBeInTheDocument();
+    expect(within(nav).getByText("my-agent")).toBeInTheDocument();
+    expect(within(nav).getByText("Logs")).toBeInTheDocument();
   });
 
   it("should show pagination controls", async () => {

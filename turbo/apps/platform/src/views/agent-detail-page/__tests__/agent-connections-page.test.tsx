@@ -73,6 +73,16 @@ function mockSecretsAPI(secrets?: unknown[]) {
   );
 }
 
+function mockVariablesAPI(variables?: unknown[]) {
+  server.use(
+    http.get("/api/variables", () => {
+      return HttpResponse.json({
+        variables: variables ?? [],
+      });
+    }),
+  );
+}
+
 describe("agent connections page", () => {
   it("should redirect to /agents when feature flag is disabled", async () => {
     await setupPage({
@@ -87,6 +97,7 @@ describe("agent connections page", () => {
     mockAgentDetailAPI();
     mockConnectorsAPI();
     mockSecretsAPI();
+    mockVariablesAPI();
 
     await setupPage({
       context,
@@ -109,6 +120,7 @@ describe("agent connections page", () => {
     mockAgentDetailAPI();
     mockConnectorsAPI();
     mockSecretsAPI();
+    mockVariablesAPI();
 
     await setupPage({
       context,
@@ -131,6 +143,7 @@ describe("agent connections page", () => {
     mockAgentDetailAPI();
     mockConnectorsAPI();
     mockSecretsAPI();
+    mockVariablesAPI();
 
     await setupPage({
       context,
@@ -161,6 +174,7 @@ describe("agent connections page", () => {
       },
     ]);
     mockSecretsAPI();
+    mockVariablesAPI();
 
     await setupPage({
       context,
@@ -177,6 +191,7 @@ describe("agent connections page", () => {
     mockAgentDetailAPI();
     mockConnectorsAPI();
     mockSecretsAPI();
+    mockVariablesAPI();
 
     await setupPage({
       context,
@@ -192,10 +207,11 @@ describe("agent connections page", () => {
     expect(connectButtons.length).toBeGreaterThan(0);
   });
 
-  it("should switch to secrets tab and show empty state when no secrets required", async () => {
+  it("should switch to secrets tab and show add row when no secrets required", async () => {
     mockAgentDetailAPI();
     mockConnectorsAPI();
     mockSecretsAPI();
+    mockVariablesAPI();
 
     await setupPage({
       context,
@@ -212,13 +228,11 @@ describe("agent connections page", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Secrets and variables" }));
 
     await vi.waitFor(() => {
-      expect(
-        screen.getByText("No secrets or variables required"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("New secrets and variables")).toBeInTheDocument();
     });
   });
 
-  it("should show required secrets with configured/missing status", async () => {
+  it("should show required secrets with configured and missing rows", async () => {
     mockAgentDetailAPI({
       environment: {
         MY_API_KEY: SECRET_REF_MY_API_KEY,
@@ -236,6 +250,7 @@ describe("agent connections page", () => {
         updatedAt: "2024-01-01T00:00:00Z",
       },
     ]);
+    mockVariablesAPI();
 
     await setupPage({
       context,
@@ -251,19 +266,23 @@ describe("agent connections page", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "Secrets and variables" }));
 
+    // Configured secret shows with kebab menu
     await vi.waitFor(() => {
       expect(screen.getByText("MY_API_KEY")).toBeInTheDocument();
     });
+    expect(screen.getByLabelText("Secret options")).toBeInTheDocument();
 
-    expect(screen.getByText("Configured")).toBeInTheDocument();
+    // Missing secret shows with "Missing secrets" badge and "Fill" button
     expect(screen.getByText("MY_OTHER_KEY")).toBeInTheDocument();
-    expect(screen.getByText("Missing")).toBeInTheDocument();
+    expect(screen.getByText("Missing secrets")).toBeInTheDocument();
+    expect(screen.getByText("Fill")).toBeInTheDocument();
   });
 
-  it("should show breadcrumb with agents link and agent name connections", async () => {
+  it("should show three-level breadcrumb", async () => {
     mockAgentDetailAPI();
     mockConnectorsAPI();
     mockSecretsAPI();
+    mockVariablesAPI();
 
     await setupPage({
       context,
@@ -277,27 +296,7 @@ describe("agent connections page", () => {
 
     const nav = screen.getByRole("navigation");
     expect(within(nav).getByText("Agents")).toBeInTheDocument();
-    expect(within(nav).getByText("my-agent connections")).toBeInTheDocument();
-  });
-
-  it("should show new connectors row", async () => {
-    mockAgentDetailAPI();
-    mockConnectorsAPI();
-    mockSecretsAPI();
-
-    await setupPage({
-      context,
-      path: "/agents/my-agent/connections",
-      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
-    });
-
-    await vi.waitFor(() => {
-      expect(screen.getByText("New connectors")).toBeInTheDocument();
-    });
-
-    expect(
-      screen.getByText("Add a new connectors and used by your agents"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Add more connectors")).toBeInTheDocument();
+    expect(within(nav).getByText("my-agent")).toBeInTheDocument();
+    expect(within(nav).getByText("Connections")).toBeInTheDocument();
   });
 });

@@ -9,6 +9,8 @@ import {
 import { agentDetail$ } from "./agent-detail.ts";
 import { connectors$ } from "../external/connectors.ts";
 import { secrets$ } from "../settings-page/secrets.ts";
+import { variables$ } from "../settings-page/variables.ts";
+import type { MergedItem } from "../settings-page/secrets-and-variables.ts";
 
 // ---------------------------------------------------------------------------
 // Agent required env — derived from compose content
@@ -76,50 +78,68 @@ export const agentConnectorStatus$ = computed(async (get) => {
 });
 
 // ---------------------------------------------------------------------------
-// Secret status — which secrets the agent needs
+// Merged items — secrets & variables scoped to the current agent
 // ---------------------------------------------------------------------------
 
-export interface AgentSecretStatus {
-  name: string;
-  configured: boolean;
-}
+export const agentMergedItems$ = computed(async (get) => {
+  const { requiredSecrets, requiredVariables } = get(agentRequiredEnv$);
+  const [secretsList, variablesList] = await Promise.all([
+    get(secrets$),
+    get(variables$),
+  ]);
 
-export const agentSecretStatus$ = computed(async (get) => {
-  const { requiredSecrets } = get(agentRequiredEnv$);
-  const configuredSecrets = await get(secrets$);
-  const configuredNames = new Set(configuredSecrets.map((s) => s.name));
-
-  // Hide secrets that connectors can provide
-  const connectorEnvVars = getConnectorProvidedSecretNames(
+  const allConnectorEnvVars = getConnectorProvidedSecretNames(
     Object.keys(CONNECTOR_TYPES) as ConnectorType[],
   );
 
-  return requiredSecrets
-    .filter((name) => !connectorEnvVars.has(name))
-    .map((name) => ({
-      name,
-      configured: configuredNames.has(name),
-    }));
-});
+  const items: MergedItem[] = [];
 
-// ---------------------------------------------------------------------------
-// Variable status — which variables the agent needs
-// ---------------------------------------------------------------------------
+  const configuredSecretNames = new Set(secretsList.map((s) => s.name));
+  const configuredVariableNames = new Set(variablesList.map((v) => v.name));
+  const requiredSecretSet = new Set(requiredSecrets);
+  const requiredVariableSet = new Set(requiredVariables);
 
-export interface AgentVariableStatus {
-  name: string;
-  configured: boolean;
-}
+  // Missing required secrets (not yet configured, not resolvable by any connector)
+  for (const name of requiredSecrets) {
+    if (!configuredSecretNames.has(name) && !allConnectorEnvVars.has(name)) {
+      items.push({ kind: "secret", name, data: null, agentRequired: true });
+    }
+  }
 
-export const agentVariableStatus$ = computed((get) => {
-  const { requiredVariables } = get(agentRequiredEnv$);
+  // Missing required variables (not yet configured)
+  for (const name of requiredVariables) {
+    if (!configuredVariableNames.has(name)) {
+      items.push({ kind: "variable", name, data: null, agentRequired: true });
+    }
+  }
 
-  // Variables are always "configured" since they're resolved from CLI --vars at runtime.
-  // We show them for informational purposes.
-  return requiredVariables.map((name) => ({
-    name,
-    configured: false,
-  }));
+  // Configured secrets that are required by this agent
+  for (const secret of secretsList) {
+    if (!requiredSecretSet.has(secret.name)) {
+      continue;
+    }
+    items.push({
+      kind: "secret",
+      name: secret.name,
+      data: secret,
+      agentRequired: !allConnectorEnvVars.has(secret.name),
+    });
+  }
+
+  // Configured variables that are required by this agent
+  for (const variable of variablesList) {
+    if (!requiredVariableSet.has(variable.name)) {
+      continue;
+    }
+    items.push({
+      kind: "variable",
+      name: variable.name,
+      data: variable,
+      agentRequired: true,
+    });
+  }
+
+  return items;
 });
 
 // ---------------------------------------------------------------------------

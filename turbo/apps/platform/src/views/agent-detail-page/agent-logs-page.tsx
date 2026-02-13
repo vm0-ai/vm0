@@ -15,7 +15,6 @@ import {
   agentDetail$,
   agentDetailLoading$,
   agentName$,
-  isOwner$,
 } from "../../signals/agent-detail/agent-detail.ts";
 import {
   currentAgentLogs$,
@@ -30,7 +29,8 @@ import {
 } from "../../signals/agent-detail/agent-logs.ts";
 import { navigateInReact$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { AgentHeader } from "./agent-header.tsx";
+import { AgentAvatar } from "./agent-avatar.tsx";
+import type { AgentDetail } from "../../signals/agent-detail/types.ts";
 import type { LogEntry } from "../../signals/logs-page/types.ts";
 
 function AgentLogsTableHeader() {
@@ -214,13 +214,17 @@ export function AgentLogsPage() {
   const agentName = useGet(agentName$);
   const detail = useGet(agentDetail$);
   const loading = useGet(agentDetailLoading$);
-  const isOwner = useGet(isOwner$);
 
   return (
     <AppShell
       breadcrumb={[
         { label: "Agents", path: "/agents" },
-        `${agentName ?? "Loading..."} logs`,
+        {
+          label: agentName ?? "Loading...",
+          path: agentName ? "/agents/:name" : undefined,
+          pathParams: agentName ? { name: agentName } : undefined,
+        },
+        "Logs",
       ]}
     >
       <div className="flex flex-col gap-[22px] p-8 min-h-full">
@@ -228,7 +232,7 @@ export function AgentLogsPage() {
           <AgentLogsPageSkeleton />
         ) : detail ? (
           <>
-            <AgentHeader detail={detail} isOwner={isOwner} />
+            <AgentLogsHeader detail={detail} />
             <div className="rounded-lg border border-border bg-card overflow-hidden">
               <AgentLogsTable />
             </div>
@@ -241,6 +245,31 @@ export function AgentLogsPage() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+function AgentLogsHeader({ detail }: { detail: AgentDetail }) {
+  const agentKeys = detail.content?.agents
+    ? Object.keys(detail.content.agents)
+    : [];
+  const firstKey = agentKeys[0];
+  const agentDef = firstKey ? detail.content?.agents[firstKey] : null;
+  const description = agentDef?.description;
+
+  return (
+    <div className="flex items-center gap-3.5">
+      <AgentAvatar name={detail.name} size="lg" />
+      <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+        <h1 className="text-2xl leading-8 font-normal text-foreground truncate">
+          {detail.name}
+        </h1>
+        {description && (
+          <p className="text-sm text-muted-foreground truncate">
+            {description}
+          </p>
+        )}
+      </div>
+    </div>
   );
 }
 

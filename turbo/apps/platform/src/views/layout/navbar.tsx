@@ -14,6 +14,7 @@ import type { RoutePath } from "../../types/route.ts";
 export interface BreadcrumbItem {
   label: string;
   path?: RoutePath;
+  pathParams?: Record<string, string>;
 }
 
 interface NavbarProps {
@@ -78,7 +79,11 @@ export function Navbar({ breadcrumb }: NavbarProps) {
                 )}
                 {item.path ? (
                   <button
-                    onClick={() => navigate(item.path!)}
+                    onClick={() =>
+                      navigate(item.path!, {
+                        pathParams: item.pathParams,
+                      })
+                    }
                     className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap"
                   >
                     {item.label}
