@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { pathParams$ } from "../route.ts";
+import { searchParams$, updateSearchParams$ } from "../route.ts";
 import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
@@ -101,7 +102,7 @@ export const fetchAgentDetail$ = command(async ({ get, set }) => {
 });
 
 // ---------------------------------------------------------------------------
-// Instructions view mode — local UI state for markdown/preview toggle
+// Instructions view mode — synced with ?view= query param
 // ---------------------------------------------------------------------------
 
 type InstructionsViewMode = "markdown" | "preview";
@@ -114,9 +115,25 @@ function isInstructionsViewMode(v: string): v is InstructionsViewMode {
   return v === "markdown" || v === "preview";
 }
 
-export const setInstructionsViewMode$ = command(({ set }, v: string) => {
+export const initInstructionsViewMode$ = command(({ get, set }) => {
+  const params = get(searchParams$);
+  const view = params.get("view");
+  if (view && isInstructionsViewMode(view)) {
+    set(internalInstructionsViewMode$, view);
+  }
+});
+
+export const setInstructionsViewMode$ = command(({ get, set }, v: string) => {
   if (isInstructionsViewMode(v)) {
     set(internalInstructionsViewMode$, v);
+
+    const params = new URLSearchParams(get(searchParams$));
+    if (v === "preview") {
+      params.delete("view");
+    } else {
+      params.set("view", v);
+    }
+    set(updateSearchParams$, params);
   }
 });
 

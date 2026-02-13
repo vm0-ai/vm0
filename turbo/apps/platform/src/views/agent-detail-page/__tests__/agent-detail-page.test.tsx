@@ -261,6 +261,28 @@ describe("agent detail page", () => {
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
   });
 
+  it("should initialize view mode from query param", async () => {
+    mockAgentDetailAPI({
+      instructions: {
+        content: "# From URL",
+        filename: "instructions.md",
+      },
+    });
+
+    await setupPage({
+      context,
+      path: "/agents/my-agent?view=markdown",
+      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
+    });
+
+    await vi.waitFor(() => {
+      expect(screen.getByText("Agent instructions")).toBeInTheDocument();
+    });
+
+    // Should start in markdown mode (from ?view=markdown), showing textarea
+    expect(screen.getByRole("textbox")).toBeInTheDocument();
+  });
+
   it("should show read-only pre for shared (non-owner) agents", async () => {
     // Shared agent path has scope/name format
     server.use(

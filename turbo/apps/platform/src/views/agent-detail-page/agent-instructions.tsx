@@ -61,13 +61,13 @@ export function AgentInstructions({
 
   return (
     <div className="flex-1 rounded-lg border border-border p-4 flex flex-col min-h-0">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <h2 className="text-base font-medium text-foreground">
-            Agent instructions
-          </h2>
+      <div className="flex items-center justify-between gap-4">
+        <h2 className="text-base font-medium text-foreground">
+          Agent instructions
+        </h2>
+        <div className="flex items-center gap-2">
           {isDirty && (
-            <div className="flex items-center gap-2">
+            <>
               <span className="text-xs text-muted-foreground">Unsaved</span>
               <Button
                 variant="ghost"
@@ -86,15 +86,15 @@ export function AgentInstructions({
               >
                 {isSaving ? "Saving..." : "Save"}
               </Button>
-            </div>
+            </>
           )}
+          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v)}>
+            <TabsList>
+              <TabsTrigger value="markdown">Markdown</TabsTrigger>
+              <TabsTrigger value="preview">Preview</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
-        <Tabs value={viewMode} onValueChange={(v) => setViewMode(v)}>
-          <TabsList>
-            <TabsTrigger value="markdown">Markdown</TabsTrigger>
-            <TabsTrigger value="preview">Preview</TabsTrigger>
-          </TabsList>
-        </Tabs>
       </div>
 
       <div className="mt-6 flex-1 overflow-y-auto min-h-0 flex flex-col">
@@ -111,7 +111,7 @@ export function AgentInstructions({
             </pre>
           )
         ) : (
-          <div className="px-1">
+          <div className="px-1 flex-1">
             <MarkdownPreview
               source={displayContent}
               className="!bg-transparent !text-foreground text-sm"
