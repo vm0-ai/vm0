@@ -1,7 +1,7 @@
 import { useGet, useSet } from "ccstate-react";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
-import MarkdownPreview from "@uiw/react-markdown-preview";
+import { Markdown } from "../components/markdown.tsx";
 import {
   instructionsViewMode$,
   setInstructionsViewMode$,
@@ -63,15 +63,7 @@ export function AgentInstructions({
           </pre>
         ) : (
           <div className="px-1">
-            <MarkdownPreview
-              source={instructions.content}
-              className="!bg-transparent !text-foreground text-sm"
-              style={{
-                backgroundColor: "transparent",
-                fontSize: "0.875rem",
-                lineHeight: "1.5",
-              }}
-            />
+            <Markdown source={instructions.content} />
           </div>
         )}
       </div>
