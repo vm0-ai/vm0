@@ -173,11 +173,14 @@ export async function GET(
   // Download manifest to find the actual filename in storage
   const manifest = await downloadManifest(bucket, version.s3Key);
 
-  // Find the instructions file in manifest, normalizing ./ prefix
+  // Find the instructions file in manifest, normalizing ./ prefix.
+  // Temporary fallback: if the configured filename isn't found, try CLAUDE.md
+  // (some volumes were created with CLAUDE.md before the rename to AGENTS.md).
   const normalize = (p: string) => (p.startsWith("./") ? p.slice(2) : p);
-  const instructionFile = manifest.files.find(
-    (f) => normalize(f.path) === normalize(instructionsFilename),
-  );
+  const instructionFile =
+    manifest.files.find(
+      (f) => normalize(f.path) === normalize(instructionsFilename),
+    ) ?? manifest.files.find((f) => normalize(f.path) === "CLAUDE.md");
 
   if (!instructionFile) {
     return NextResponse.json({ content: null, filename: instructionsFilename });
