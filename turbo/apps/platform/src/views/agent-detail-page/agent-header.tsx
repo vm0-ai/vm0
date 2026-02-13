@@ -14,6 +14,8 @@ import {
 } from "@tabler/icons-react";
 import { useSet } from "ccstate-react";
 import { navigateInReact$ } from "../../signals/route.ts";
+import { openConfigDialog$ } from "../../signals/agent-detail/config-dialog.ts";
+import { openRunDialog$ } from "../../signals/agent-detail/run-dialog.ts";
 import { AgentAvatar } from "./agent-avatar.tsx";
 import type { AgentDetail } from "../../signals/agent-detail/types.ts";
 
@@ -24,6 +26,8 @@ interface AgentHeaderProps {
 
 export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
   const navigate = useSet(navigateInReact$);
+  const openConfig = useSet(openConfigDialog$);
+  const openRun = useSet(openRunDialog$);
 
   // Extract description from the first agent definition
   const agentKeys = detail.content?.agents
@@ -58,12 +62,12 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
         <TooltipProvider delayDuration={100}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="default" size="sm" disabled>
+              <Button variant="default" size="sm" onClick={() => openRun()}>
                 <IconPlayerPlay size={16} className="mr-1" />
                 Run
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Coming soon</TooltipContent>
+            <TooltipContent>Run agent</TooltipContent>
           </Tooltip>
 
           {isOwner && (
@@ -73,7 +77,8 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
                   variant="outline"
                   size="icon"
                   className="h-9 w-9"
-                  disabled
+                  onClick={() => openConfig()}
+                  aria-label="Settings"
                 >
                   <IconSettings size={18} />
                 </Button>

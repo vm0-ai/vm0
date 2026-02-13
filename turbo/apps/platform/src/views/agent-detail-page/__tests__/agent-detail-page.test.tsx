@@ -123,7 +123,7 @@ describe("agent detail page", () => {
     expect(screen.getByText("# My Instructions")).toBeInTheDocument();
   });
 
-  it("should show disabled Run button for unimplemented features", async () => {
+  it("should show enabled Run button", async () => {
     mockAgentDetailAPI();
 
     await setupPage({
@@ -139,7 +139,7 @@ describe("agent detail page", () => {
     });
 
     const runButton = screen.getByRole("button", { name: /Run/ });
-    expect(runButton).toBeDisabled();
+    expect(runButton).toBeEnabled();
   });
 
   it("should show breadcrumb with agents link and agent name", async () => {

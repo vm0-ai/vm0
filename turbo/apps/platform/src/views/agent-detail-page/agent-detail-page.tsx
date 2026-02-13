@@ -12,6 +12,8 @@ import {
 } from "../../signals/agent-detail/agent-detail.ts";
 import { AgentHeader } from "./agent-header.tsx";
 import { AgentInstructions } from "./agent-instructions.tsx";
+import { ConfigDialog } from "./config-dialog/config-dialog.tsx";
+import { RunDialog } from "./run-dialog/run-dialog.tsx";
 
 export function AgentDetailPage() {
   const agentName = useGet(agentName$);
@@ -44,6 +46,8 @@ export function AgentDetailPage() {
               loading={instructionsLoading}
               isOwner={isOwner}
             />
+            <ConfigDialog />
+            <RunDialog />
           </>
         ) : (
           <div className="rounded-lg border border-border bg-card p-8 text-center">
