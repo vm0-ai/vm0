@@ -330,19 +330,21 @@ export async function PATCH(request: Request) {
 
   const oldComposeId = installation.defaultComposeId;
 
-  // Update the installation's default compose
-  await db
-    .update(slackInstallations)
-    .set({ defaultComposeId: compose.id, updatedAt: new Date() })
-    .where(eq(slackInstallations.id, installation.id));
+  // Update installation + sync permissions atomically
+  await db.transaction(async (tx) => {
+    await tx
+      .update(slackInstallations)
+      .set({ defaultComposeId: compose.id, updatedAt: new Date() })
+      .where(eq(slackInstallations.id, installation.id));
 
-  // Sync permissions for all linked workspace users
-  await syncWorkspaceAgentPermissions(
-    oldComposeId,
-    compose.id,
-    installation.slackWorkspaceId,
-    installation.adminSlackUserId,
-  );
+    await syncWorkspaceAgentPermissions(
+      oldComposeId,
+      compose.id,
+      installation.slackWorkspaceId,
+      installation.adminSlackUserId,
+      tx,
+    );
+  });
 
   return NextResponse.json({ ok: true });
 }

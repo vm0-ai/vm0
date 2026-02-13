@@ -4,6 +4,7 @@ import { agentPermissions } from "../../db/schema/agent-permission";
 import { getUserEmail } from "../auth/get-user-email";
 import { resolveDefaultAgentComposeId } from "./index";
 import { logger } from "../logger";
+import type { Database } from "../../types/global";
 
 const log = logger("slack:permission-sync");
 
@@ -14,18 +15,22 @@ const log = logger("slack:permission-sync");
  * - Revokes email permissions on the old agent (unless it's the SLACK_DEFAULT_AGENT)
  * - Grants email permissions on the new agent
  * - All permission changes are wrapped in a single DB transaction
+ *
+ * An optional `dbOverride` parameter allows callers to pass a transaction
+ * so that the installation update and permission sync are atomic.
  */
 export async function syncWorkspaceAgentPermissions(
   oldComposeId: string,
   newComposeId: string,
   slackWorkspaceId: string,
   adminSlackUserId: string,
+  dbOverride?: Database,
 ): Promise<void> {
   if (oldComposeId === newComposeId) {
     return;
   }
 
-  const db = globalThis.services.db;
+  const db = dbOverride ?? globalThis.services.db;
 
   // 1. Query all linked users in the workspace
   const linkedUsers = await db
@@ -40,7 +45,15 @@ export async function syncWorkspaceAgentPermissions(
   // 2. Resolve emails in parallel
   const emails = (
     await Promise.all(
-      linkedUsers.map((u) => getUserEmail(u.vm0UserId).catch(() => null)),
+      linkedUsers.map((u) =>
+        getUserEmail(u.vm0UserId).catch((err) => {
+          log.warn("Failed to resolve user email for permission sync", {
+            userId: u.vm0UserId,
+            err,
+          });
+          return null;
+        }),
+      ),
     )
   ).filter((e): e is string => !!e);
 

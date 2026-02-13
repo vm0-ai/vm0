@@ -224,18 +224,22 @@ export async function POST(request: Request) {
     slackUserId === installation.adminSlackUserId
   ) {
     const oldComposeId = installation.defaultComposeId;
-    await globalThis.services.db
-      .update(slackInstallations)
-      .set({ defaultComposeId: agentId, updatedAt: new Date() })
-      .where(eq(slackInstallations.id, installation.id));
 
-    // Sync permissions for all linked workspace users
-    await syncWorkspaceAgentPermissions(
-      oldComposeId,
-      agentId,
-      workspaceId,
-      installation.adminSlackUserId,
-    );
+    // Update installation + sync permissions atomically
+    await globalThis.services.db.transaction(async (tx) => {
+      await tx
+        .update(slackInstallations)
+        .set({ defaultComposeId: agentId, updatedAt: new Date() })
+        .where(eq(slackInstallations.id, installation.id));
+
+      await syncWorkspaceAgentPermissions(
+        oldComposeId,
+        agentId,
+        workspaceId,
+        installation.adminSlackUserId,
+        tx,
+      );
+    });
   }
 
   if (existingLink) {
