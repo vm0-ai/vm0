@@ -14,10 +14,10 @@ const log = logger("slack:permission-sync");
  *
  * - Revokes email permissions on the old agent (unless it's the SLACK_DEFAULT_AGENT)
  * - Grants email permissions on the new agent
- * - All permission changes are wrapped in a single DB transaction
  *
- * An optional `dbOverride` parameter allows callers to pass a transaction
- * so that the installation update and permission sync are atomic.
+ * When `dbOverride` is provided (a caller's transaction), permission writes
+ * execute directly on it — no nested transaction / savepoint is created.
+ * When omitted, a new transaction is opened for the permission writes.
  */
 export async function syncWorkspaceAgentPermissions(
   oldComposeId: string,
@@ -44,17 +44,7 @@ export async function syncWorkspaceAgentPermissions(
 
   // 2. Resolve emails in parallel
   const emails = (
-    await Promise.all(
-      linkedUsers.map((u) =>
-        getUserEmail(u.vm0UserId).catch((err) => {
-          log.warn("Failed to resolve user email for permission sync", {
-            userId: u.vm0UserId,
-            err,
-          });
-          return null;
-        }),
-      ),
-    )
+    await Promise.all(linkedUsers.map((u) => getUserEmail(u.vm0UserId)))
   ).filter((e): e is string => !!e);
 
   if (emails.length === 0) {
@@ -65,9 +55,10 @@ export async function syncWorkspaceAgentPermissions(
   const defaultComposeId = await resolveDefaultAgentComposeId();
   const skipRevoke = oldComposeId === defaultComposeId;
 
-  // 4. Batch permission changes in a single transaction
-  await db.transaction(async (tx) => {
-    // Revoke old agent permissions (unless it's the default)
+  // 4. Batch permission changes
+  // When dbOverride is provided (caller's transaction), use it directly
+  // to avoid nested savepoints. Otherwise, open a new transaction.
+  const execute = async (tx: Database) => {
     if (!skipRevoke) {
       await tx
         .delete(agentPermissions)
@@ -80,7 +71,6 @@ export async function syncWorkspaceAgentPermissions(
         );
     }
 
-    // Grant new agent permissions
     await tx
       .insert(agentPermissions)
       .values(
@@ -92,7 +82,13 @@ export async function syncWorkspaceAgentPermissions(
         })),
       )
       .onConflictDoNothing();
-  });
+  };
+
+  if (dbOverride) {
+    await execute(dbOverride);
+  } else {
+    await db.transaction(async (tx) => execute(tx));
+  }
 
   log.info("Synced workspace agent permissions", {
     slackWorkspaceId,
