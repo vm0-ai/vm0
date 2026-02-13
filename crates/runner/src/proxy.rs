@@ -32,7 +32,7 @@ struct VmEntry {
 /// - Domain rule: `{ "domain": "*.example.com", "action": "ALLOW" }`
 /// - IP rule: `{ "ip": "10.0.0.0/8", "action": "DENY" }`
 /// - Terminal rule: `{ "final": "DENY" }`
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FirewallRule {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub domain: Option<String>,
@@ -44,7 +44,7 @@ pub struct FirewallRule {
     pub action: Option<FirewallAction>,
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FirewallAction {
     #[serde(rename = "ALLOW")]
     Allow,
@@ -53,6 +53,7 @@ pub enum FirewallAction {
 }
 
 /// Parameters for registering a VM in the proxy registry.
+#[derive(Debug)]
 pub struct VmRegistration<'a> {
     pub run_id: &'a str,
     pub sandbox_token: &'a str,
