@@ -22,6 +22,14 @@ impl RunnerPaths {
     pub fn status(&self) -> PathBuf {
         self.base_dir.join("status.json")
     }
+
+    pub fn mitm_addon(&self) -> PathBuf {
+        self.base_dir.join("mitm-addon.py")
+    }
+
+    pub fn proxy_registry(&self) -> PathBuf {
+        self.base_dir.join("proxy-registry.json")
+    }
 }
 
 /// Paths rooted at ~/.vm0-runner/.

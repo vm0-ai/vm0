@@ -356,9 +356,17 @@ fn current_username() -> sandbox::Result<String> {
 
 #[async_trait]
 impl Sandbox for FirecrackerSandbox {
+    // -- identity --
+
     fn id(&self) -> &str {
         &self.id
     }
+
+    fn source_ip(&self) -> &str {
+        &self.network.peer_ip
+    }
+
+    // -- lifecycle --
 
     async fn start(&mut self) -> sandbox::Result<()> {
         if self.current_state() != SandboxState::Created {
@@ -413,6 +421,43 @@ impl Sandbox for FirecrackerSandbox {
         info!(id = %self.id, "sandbox started");
         Ok(())
     }
+
+    async fn stop(&mut self) -> sandbox::Result<()> {
+        if !self.transition(SandboxState::Running, SandboxState::Stopping) {
+            return Ok(());
+        }
+
+        // Try graceful shutdown via vsock.
+        {
+            let mut guard = self.guest.lock().await;
+            if let Some(ref mut guest) = *guard
+                && !guest.shutdown(SHUTDOWN_TIMEOUT).await
+            {
+                warn!(id = %self.id, "graceful shutdown timed out");
+            }
+            guard.take();
+        }
+
+        self.kill_process().await;
+        self.state
+            .store(SandboxState::Stopped as u8, Ordering::Release);
+        info!(id = %self.id, "sandbox stopped");
+        Ok(())
+    }
+
+    async fn kill(&mut self) -> sandbox::Result<()> {
+        if !self.transition(SandboxState::Running, SandboxState::Stopping) {
+            return Ok(());
+        }
+        self.guest.lock().await.take();
+        self.kill_process().await;
+        self.state
+            .store(SandboxState::Stopped as u8, Ordering::Release);
+        info!(id = %self.id, "sandbox killed");
+        Ok(())
+    }
+
+    // -- operations --
 
     async fn exec(&self, request: &ExecRequest<'_>) -> sandbox::Result<ExecResult> {
         let mut guard = self.guest.lock().await;
@@ -493,40 +538,5 @@ impl Sandbox for FirecrackerSandbox {
             stdout: event.stdout,
             stderr: event.stderr,
         })
-    }
-
-    async fn stop(&mut self) -> sandbox::Result<()> {
-        if !self.transition(SandboxState::Running, SandboxState::Stopping) {
-            return Ok(());
-        }
-
-        // Try graceful shutdown via vsock.
-        {
-            let mut guard = self.guest.lock().await;
-            if let Some(ref mut guest) = *guard
-                && !guest.shutdown(SHUTDOWN_TIMEOUT).await
-            {
-                warn!(id = %self.id, "graceful shutdown timed out");
-            }
-            guard.take();
-        }
-
-        self.kill_process().await;
-        self.state
-            .store(SandboxState::Stopped as u8, Ordering::Release);
-        info!(id = %self.id, "sandbox stopped");
-        Ok(())
-    }
-
-    async fn kill(&mut self) -> sandbox::Result<()> {
-        if !self.transition(SandboxState::Running, SandboxState::Stopping) {
-            return Ok(());
-        }
-        self.guest.lock().await.take();
-        self.kill_process().await;
-        self.state
-            .store(SandboxState::Stopped as u8, Ordering::Release);
-        info!(id = %self.id, "sandbox killed");
-        Ok(())
     }
 }

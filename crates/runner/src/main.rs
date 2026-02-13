@@ -7,6 +7,7 @@ mod error;
 mod executor;
 mod lock;
 mod paths;
+mod proxy;
 mod rootfs;
 mod runner;
 mod setup;

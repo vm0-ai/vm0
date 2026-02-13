@@ -61,6 +61,7 @@ pub async fn run_build(args: BuildArgs) -> RunnerResult<()> {
         name: args.name,
         group: args.group,
         base_dir: runner_dir.clone(),
+        ca_dir: rootfs_paths.dir().to_path_buf(),
         firecracker: FirecrackerConfig {
             binary: paths.firecracker_bin(FIRECRACKER_VERSION),
             kernel: paths.kernel_bin(FIRECRACKER_VERSION, KERNEL_VERSION),

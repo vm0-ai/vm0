@@ -1432,6 +1432,7 @@ dependencies = [
  "chrono",
  "clap",
  "flate2",
+ "libc",
  "nix",
  "reqwest",
  "sandbox",

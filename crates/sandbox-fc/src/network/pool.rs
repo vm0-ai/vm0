@@ -79,6 +79,9 @@ pub struct PooledNetns {
     pub name: String,
     /// Host-side veth device name (e.g. `vm0-ve-00-00`).
     pub host_device: String,
+    /// Veth namespace-side IP (e.g. `10.200.0.2`). This is the source IP
+    /// that the proxy sees after NAT, used as the VM registry key.
+    pub peer_ip: String,
 }
 
 /// Configuration for creating a [`NetnsPool`].
@@ -711,6 +714,7 @@ async fn create_single_namespace(
             Ok(PooledNetns {
                 name: ns_name,
                 host_device,
+                peer_ip,
             })
         }
         Err(e) => {

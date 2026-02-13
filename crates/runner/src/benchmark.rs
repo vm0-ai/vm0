@@ -9,8 +9,11 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::config;
+use crate::deps::MITMPROXY_VERSION;
 use crate::error::RunnerResult;
 use crate::executor;
+use crate::paths::{HomePaths, RunnerPaths};
+use crate::proxy;
 
 struct Timing {
     boot_ms: u128,
@@ -37,16 +40,34 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
     let mut runner_config = config::load(&args.config).await?;
     runner_config.sandbox.max_concurrent = 1;
     let is_snapshot = runner_config.firecracker.snapshot.is_some();
-    let fc_config = runner_config.firecracker_config();
 
-    // 2. Factory init
+    // 2. Start proxy (unconditional — benchmark always uses proxy)
+    let t = Instant::now();
+    let home = HomePaths::new()?;
+    let runner_paths = RunnerPaths::new(runner_config.base_dir.clone());
+    let mut mitm = proxy::MitmProxy::new(proxy::ProxyConfig {
+        mitmdump_bin: home.mitmdump_bin(MITMPROXY_VERSION),
+        ca_dir: runner_config.ca_dir.clone(),
+        addon_path: runner_paths.mitm_addon(),
+        registry_path: runner_paths.proxy_registry(),
+        api_url: runner_config.server.as_ref().map(|s| s.url.clone()),
+    })
+    .await?;
+    mitm.start().await?;
+    let proxy_ms = t.elapsed().as_millis();
+    info!(proxy_ms, port = mitm.port(), "proxy ready");
+
+    // 3. Factory init (with proxy port)
+    let mut fc_config = runner_config.firecracker_config();
+    fc_config.proxy_port = Some(mitm.port());
+
     let t = Instant::now();
     let mut factory = FirecrackerFactory::new(fc_config).await?;
     factory.startup().await?;
     let factory_ms = t.elapsed().as_millis();
     info!(factory_ms, "factory ready");
 
-    // 3. Create + run sandbox — always shutdown factory afterwards
+    // 4. Create + run sandbox — always shutdown factory and proxy afterwards
     let sandbox_config = SandboxConfig {
         id: Uuid::new_v4(),
         resources: sandbox::ResourceLimits {
@@ -54,11 +75,14 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
             memory_mb: runner_config.sandbox.memory_mb,
         },
     };
-    let (result, timing) = run_sandbox(&args, &factory, sandbox_config, is_snapshot).await;
+    let (result, timing) = run_sandbox(&args, &factory, &mitm, sandbox_config, is_snapshot).await;
     let total_ms = total.elapsed().as_millis();
     factory.shutdown().await;
+    if let Err(e) = mitm.stop().await {
+        warn!(error = %e, "proxy stop failed");
+    }
 
-    // 4. Log timing summary (always, even on error)
+    // 5. Log timing summary (always, even on error)
     let Timing {
         boot_ms,
         clock_ms,
@@ -67,6 +91,7 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
     match &result {
         Ok(exec_result) => {
             info!(
+                proxy_ms,
                 factory_ms,
                 boot_ms,
                 clock_ms,
@@ -77,13 +102,13 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
             );
         }
         Err(e) => {
-            info!(factory_ms, boot_ms, clock_ms, exec_ms, total_ms, error = %e, "benchmark failed");
+            info!(proxy_ms, factory_ms, boot_ms, clock_ms, exec_ms, total_ms, error = %e, "benchmark failed");
         }
     }
 
     let exec_result = result?;
 
-    // 5. Print stdout/stderr directly to terminal
+    // 6. Print stdout/stderr directly to terminal
     let stdout = String::from_utf8_lossy(&exec_result.stdout);
     let stderr = String::from_utf8_lossy(&exec_result.stderr);
     if !stdout.is_empty() {
@@ -93,7 +118,7 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
         eprint!("{stderr}");
     }
 
-    // 6. Propagate exit code
+    // 7. Propagate exit code
     let code = match u8::try_from(exec_result.exit_code) {
         Ok(c) => c,
         Err(_) => {
@@ -107,12 +132,13 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
     Ok(ExitCode::from(code))
 }
 
-/// Create, start, exec, stop, destroy.
+/// Create, register, start, exec, stop, unregister, destroy.
 /// Timing is always returned even on error.
 /// Caller is responsible for `factory.shutdown()`.
 async fn run_sandbox(
     args: &BenchmarkArgs,
     factory: &FirecrackerFactory,
+    mitm: &proxy::MitmProxy,
     sandbox_config: SandboxConfig,
     is_snapshot: bool,
 ) -> (RunnerResult<ExecResult>, Timing) {
@@ -126,8 +152,17 @@ async fn run_sandbox(
         Err(e) => return (Err(e.into()), zero),
     };
 
+    let source_ip = sandbox.source_ip().to_string();
+    let run_id = sandbox.id().to_string();
+    if let Err(e) = mitm.register_vm(&source_ip, &run_id).await {
+        warn!(error = %e, "failed to register VM in proxy");
+    }
+
     let (result, timing) = run_in_sandbox(args, sandbox.as_mut(), is_snapshot).await;
 
+    if let Err(e) = mitm.unregister_vm(&source_ip).await {
+        warn!(error = %e, "failed to unregister VM from proxy");
+    }
     if let Err(e) = sandbox.stop().await {
         warn!(error = %e, "sandbox stop failed");
     }
