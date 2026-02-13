@@ -133,7 +133,7 @@ export async function createComputerConnector(
           {
             type: "forward-internal",
             config: {
-              url: `https://$\{conn.server_name.split('.${domain}')[0].replaceAll('-', '.', 1)}.internal`,
+              url: `https://$\{conn.server_name.split('.${domain}')[0]}.internal`,
               on_error: "continue",
             },
           },
