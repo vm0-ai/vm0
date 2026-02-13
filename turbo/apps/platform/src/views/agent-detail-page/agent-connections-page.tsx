@@ -38,24 +38,14 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 // Connectors tab
 // ---------------------------------------------------------------------------
 
-function ConnectorRow({
-  item,
-  isFirst,
-  isLast,
-}: {
-  item: AgentConnectorStatus;
-  isFirst: boolean;
-  isLast: boolean;
-}) {
+function ConnectorRow({ item }: { item: AgentConnectorStatus }) {
   const pollingType = useGet(pollingConnectorType$);
   const connect = useSet(connectConnector$);
   const pageSignal = useGet(pageSignal$);
   const isPolling = pollingType === item.type;
 
   return (
-    <div
-      className={`flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 ${isFirst ? "rounded-t-xl" : ""} ${isLast ? "rounded-b-xl border-b" : ""}`}
-    >
+    <div className="flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 first:rounded-t-xl last:rounded-b-xl last:border-b">
       <div className="shrink-0">
         <ConnectorIcon type={item.type} size={28} />
       </div>
@@ -129,13 +119,8 @@ function ConnectorsTab() {
 
   return (
     <div className="flex flex-col">
-      {connectorStatus.map((item, index) => (
-        <ConnectorRow
-          key={item.type}
-          item={item}
-          isFirst={index === 0}
-          isLast={index === connectorStatus.length - 1}
-        />
+      {connectorStatus.map((item) => (
+        <ConnectorRow key={item.type} item={item} />
       ))}
     </div>
   );
@@ -145,21 +130,11 @@ function ConnectorsTab() {
 // Secrets and variables tab
 // ---------------------------------------------------------------------------
 
-function SecretStatusRow({
-  item,
-  isFirst,
-  isLast,
-}: {
-  item: AgentSecretStatus;
-  isFirst: boolean;
-  isLast: boolean;
-}) {
+function SecretStatusRow({ item }: { item: AgentSecretStatus }) {
   const openAddSecret = useSet(openAddSecretDialog$);
 
   return (
-    <div
-      className={`flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 ${isFirst ? "rounded-t-xl" : ""} ${isLast ? "rounded-b-xl border-b" : ""}`}
-    >
+    <div className="flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 first:rounded-t-xl last:rounded-b-xl last:border-b">
       <div className="flex flex-1 flex-col gap-1 min-w-0">
         <div className="text-sm font-medium text-foreground font-mono">
           {item.name}
@@ -188,19 +163,9 @@ function SecretStatusRow({
   );
 }
 
-function VariableStatusRow({
-  item,
-  isFirst,
-  isLast,
-}: {
-  item: AgentVariableStatus;
-  isFirst: boolean;
-  isLast: boolean;
-}) {
+function VariableStatusRow({ item }: { item: AgentVariableStatus }) {
   return (
-    <div
-      className={`flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 ${isFirst ? "rounded-t-xl" : ""} ${isLast ? "rounded-b-xl border-b" : ""}`}
-    >
+    <div className="flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 first:rounded-t-xl last:rounded-b-xl last:border-b">
       <div className="flex flex-1 flex-col gap-1 min-w-0">
         <div className="text-sm font-medium text-foreground font-mono">
           {item.name}
@@ -235,9 +200,7 @@ function SecretsAndVariablesTab() {
     );
   }
 
-  const allItems = [...secretStatus, ...variableStatus];
-
-  if (allItems.length === 0) {
+  if (secretStatus.length === 0 && variableStatus.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
         <p className="text-lg">No secrets or variables required</p>
@@ -248,33 +211,14 @@ function SecretsAndVariablesTab() {
     );
   }
 
-  const totalItems = secretStatus.length + variableStatus.length;
-  let rowIndex = 0;
-
   return (
     <div className="flex flex-col">
-      {secretStatus.map((item) => {
-        const currentIndex = rowIndex++;
-        return (
-          <SecretStatusRow
-            key={`secret-${item.name}`}
-            item={item}
-            isFirst={currentIndex === 0}
-            isLast={currentIndex === totalItems - 1}
-          />
-        );
-      })}
-      {variableStatus.map((item) => {
-        const currentIndex = rowIndex++;
-        return (
-          <VariableStatusRow
-            key={`var-${item.name}`}
-            item={item}
-            isFirst={currentIndex === 0}
-            isLast={currentIndex === totalItems - 1}
-          />
-        );
-      })}
+      {secretStatus.map((item) => (
+        <SecretStatusRow key={`secret-${item.name}`} item={item} />
+      ))}
+      {variableStatus.map((item) => (
+        <VariableStatusRow key={`var-${item.name}`} item={item} />
+      ))}
     </div>
   );
 }

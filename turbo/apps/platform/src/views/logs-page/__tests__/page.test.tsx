@@ -13,7 +13,6 @@ import {
   goBackTwoPages$,
   setRowsPerPage$,
   setSearch$,
-  rowsPerPageValue$,
   searchQueryValue$,
   currentPageNumber$,
 } from "../../../signals/logs-page/logs-signals.ts";
@@ -57,11 +56,6 @@ describe("logs page signals", () => {
     it("search$ returns empty string when no search", async () => {
       await setupPage({ context, path: "/logs" });
       expect(context.store.get(search$)).toBe("");
-    });
-
-    it("rowsPerPageValue$ aliases limit$", async () => {
-      await setupPage({ context, path: "/logs?limit=20" });
-      expect(context.store.get(rowsPerPageValue$)).toBe(20);
     });
 
     it("searchQueryValue$ aliases search$", async () => {
@@ -312,10 +306,10 @@ describe("logs page signals", () => {
   describe("setRowsPerPage$", () => {
     it("should write limit to URL", async () => {
       await setupPage({ context, path: "/logs" });
-      expect(context.store.get(rowsPerPageValue$)).toBe(10);
+      expect(context.store.get(limit$)).toBe(10);
 
       context.store.set(setRowsPerPage$, 50);
-      expect(context.store.get(rowsPerPageValue$)).toBe(50);
+      expect(context.store.get(limit$)).toBe(50);
     });
 
     it("should reset cursor when changing rows per page", async () => {
