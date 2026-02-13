@@ -180,7 +180,7 @@ jobs:
           echo "=== Running benchmark ==="
           ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner benchmark \
             --config ${RUNNER_DIR}/runner.yaml \
-            'curl -sk --max-time 10 -o /dev/null -w \"http_code=%{http_code}\\n\" https://httpbin.org/get'"
+            'curl -sf --max-time 10 https://httpbin.org/get'"
 
       - name: Cleanup
         if: always()

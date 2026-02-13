@@ -158,7 +158,7 @@ async fn run_sandbox(
         run_id: &run_id,
         sandbox_token: "",
         firewall_rules: &[],
-        mitm_enabled: true,
+        mitm_enabled: false,
         seal_secrets_enabled: false,
     };
     if let Err(e) = mitm.register_vm(&source_ip, &registration).await {
