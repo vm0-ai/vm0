@@ -96,9 +96,21 @@ export const fetchAgentDetail$ = command(async ({ get, set }) => {
 // Instructions view mode — local UI state for markdown/preview toggle
 // ---------------------------------------------------------------------------
 
-export type InstructionsViewMode = "markdown" | "preview";
+type InstructionsViewMode = "markdown" | "preview";
 const internalInstructionsViewMode$ = state<InstructionsViewMode>("markdown");
-export const instructionsViewMode$ = internalInstructionsViewMode$;
+export const instructionsViewMode$ = computed((get) =>
+  get(internalInstructionsViewMode$),
+);
+
+function isInstructionsViewMode(v: string): v is InstructionsViewMode {
+  return v === "markdown" || v === "preview";
+}
+
+export const setInstructionsViewMode$ = command(({ set }, v: string) => {
+  if (isInstructionsViewMode(v)) {
+    set(internalInstructionsViewMode$, v);
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Agent instructions — fetches instructions content

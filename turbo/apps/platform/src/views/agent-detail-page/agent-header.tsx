@@ -29,8 +29,8 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
   const agentKeys = detail.content?.agents
     ? Object.keys(detail.content.agents)
     : [];
-  const agentDef =
-    agentKeys.length > 0 ? detail.content?.agents[agentKeys[0]!] : null;
+  const firstKey = agentKeys[0];
+  const agentDef = firstKey ? detail.content?.agents[firstKey] : null;
   const description = agentDef?.description;
 
   return (
@@ -54,6 +54,7 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
                 variant="default"
                 size="sm"
                 className="bg-orange-500 hover:bg-orange-600 text-white"
+                disabled
               >
                 <IconPlayerPlay size={16} className="mr-1" />
                 Run
@@ -65,7 +66,7 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
           {isOwner && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon">
+                <Button variant="ghost" size="icon" disabled>
                   <IconSettings size={18} />
                 </Button>
               </TooltipTrigger>

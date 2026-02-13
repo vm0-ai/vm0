@@ -4,7 +4,7 @@ import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import MarkdownPreview from "@uiw/react-markdown-preview";
 import {
   instructionsViewMode$,
-  type InstructionsViewMode,
+  setInstructionsViewMode$,
 } from "../../signals/agent-detail/agent-detail.ts";
 import type { AgentInstructions as AgentInstructionsType } from "../../signals/agent-detail/types.ts";
 
@@ -18,7 +18,7 @@ export function AgentInstructions({
   loading,
 }: AgentInstructionsProps) {
   const viewMode = useGet(instructionsViewMode$);
-  const setViewMode = useSet(instructionsViewMode$);
+  const setViewMode = useSet(setInstructionsViewMode$);
 
   if (loading) {
     return (
@@ -54,10 +54,7 @@ export function AgentInstructions({
             </span>
           )}
         </h2>
-        <Tabs
-          value={viewMode}
-          onValueChange={(v) => setViewMode(v as InstructionsViewMode)}
-        >
+        <Tabs value={viewMode} onValueChange={(v) => setViewMode(v)}>
           <TabsList>
             <TabsTrigger value="markdown">Markdown</TabsTrigger>
             <TabsTrigger value="preview">Preview</TabsTrigger>
