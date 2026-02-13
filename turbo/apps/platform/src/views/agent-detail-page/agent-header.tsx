@@ -34,19 +34,17 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
   const description = agentDef?.description;
 
   return (
-    <div className="flex items-start gap-4">
+    <div className="flex items-center gap-3.5">
       <AgentAvatar name={detail.name} size="lg" />
-      <div className="flex-1 min-w-0">
-        <h1 className="text-xl font-semibold text-foreground truncate">
-          {detail.name}
-        </h1>
+      <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+        <h1 className="text-2xl text-foreground truncate">{detail.name}</h1>
         {description && (
-          <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">
+          <p className="text-sm text-muted-foreground truncate">
             {description}
           </p>
         )}
       </div>
-      <div className="flex items-center gap-1 shrink-0">
+      <div className="flex items-center gap-2 shrink-0">
         <TooltipProvider delayDuration={100}>
           <Tooltip>
             <TooltipTrigger asChild>

@@ -22,8 +22,8 @@ export function AgentInstructions({
 
   if (loading) {
     return (
-      <div className="space-y-3">
-        <Skeleton className="h-5 w-40" />
+      <div className="flex-1 rounded-lg border border-border p-4">
+        <Skeleton className="h-5 w-40 mb-6" />
         <Skeleton className="h-64 w-full" />
       </div>
     );
@@ -31,28 +31,22 @@ export function AgentInstructions({
 
   if (!instructions?.content) {
     return (
-      <div className="space-y-3">
-        <h2 className="text-base font-semibold text-foreground">
+      <div className="flex-1 rounded-lg border border-border p-4">
+        <h2 className="text-base font-medium text-foreground">
           Agent instructions
         </h2>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground mt-6">
           No instructions configured
-          {instructions?.filename ? ` (${instructions.filename})` : ""}
         </p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold text-foreground">
+    <div className="flex-1 rounded-lg border border-border p-4 flex flex-col">
+      <div className="flex items-start justify-between gap-4">
+        <h2 className="text-base font-medium text-foreground">
           Agent instructions
-          {instructions.filename && (
-            <span className="ml-2 text-sm font-normal text-muted-foreground">
-              ({instructions.filename})
-            </span>
-          )}
         </h2>
         <Tabs value={viewMode} onValueChange={(v) => setViewMode(v)}>
           <TabsList>
@@ -62,13 +56,13 @@ export function AgentInstructions({
         </Tabs>
       </div>
 
-      <div className="rounded-lg border border-border overflow-hidden">
+      <div className="mt-6 flex-1 overflow-y-auto">
         {viewMode === "markdown" ? (
-          <pre className="p-4 text-sm font-mono text-foreground bg-muted/30 overflow-x-auto whitespace-pre-wrap max-h-[600px] overflow-y-auto">
+          <pre className="px-1 text-sm font-mono text-foreground overflow-x-auto whitespace-pre-wrap">
             {instructions.content}
           </pre>
         ) : (
-          <div className="p-4 max-h-[600px] overflow-y-auto">
+          <div className="px-1">
             <MarkdownPreview
               source={instructions.content}
               className="!bg-transparent !text-foreground text-sm"

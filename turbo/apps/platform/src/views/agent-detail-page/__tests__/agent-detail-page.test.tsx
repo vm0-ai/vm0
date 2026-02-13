@@ -116,7 +116,6 @@ describe("agent detail page", () => {
     await vi.waitFor(() => {
       expect(screen.getByText("Agent instructions")).toBeInTheDocument();
     });
-    expect(screen.getByText("(instructions.md)")).toBeInTheDocument();
     expect(screen.getByText("# My Instructions")).toBeInTheDocument();
   });
 

@@ -42,7 +42,7 @@ export function AgentAvatar({
   return (
     <div
       className={cn(
-        "inline-flex items-center justify-center rounded-full font-semibold text-white shrink-0",
+        "inline-flex items-center justify-center rounded-xl font-semibold text-white shrink-0",
         bgColor,
         SIZE_CLASSES[size],
         className,
