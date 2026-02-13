@@ -1,0 +1,89 @@
+import { useGet, useSet } from "ccstate-react";
+import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
+import { Skeleton } from "@vm0/ui/components/ui/skeleton";
+import MarkdownPreview from "@uiw/react-markdown-preview";
+import {
+  instructionsViewMode$,
+  type InstructionsViewMode,
+} from "../../signals/agent-detail/agent-detail.ts";
+import type { AgentInstructions as AgentInstructionsType } from "../../signals/agent-detail/types.ts";
+
+interface AgentInstructionsProps {
+  instructions: AgentInstructionsType | null;
+  loading: boolean;
+}
+
+export function AgentInstructions({
+  instructions,
+  loading,
+}: AgentInstructionsProps) {
+  const viewMode = useGet(instructionsViewMode$);
+  const setViewMode = useSet(instructionsViewMode$);
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        <Skeleton className="h-5 w-40" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  if (!instructions?.content) {
+    return (
+      <div className="space-y-3">
+        <h2 className="text-base font-semibold text-foreground">
+          Agent instructions
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          No instructions configured
+          {instructions?.filename ? ` (${instructions.filename})` : ""}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-base font-semibold text-foreground">
+          Agent instructions
+          {instructions.filename && (
+            <span className="ml-2 text-sm font-normal text-muted-foreground">
+              ({instructions.filename})
+            </span>
+          )}
+        </h2>
+        <Tabs
+          value={viewMode}
+          onValueChange={(v) => setViewMode(v as InstructionsViewMode)}
+        >
+          <TabsList>
+            <TabsTrigger value="markdown">Markdown</TabsTrigger>
+            <TabsTrigger value="preview">Preview</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+
+      <div className="rounded-lg border border-border overflow-hidden">
+        {viewMode === "markdown" ? (
+          <pre className="p-4 text-sm font-mono text-foreground bg-muted/30 overflow-x-auto whitespace-pre-wrap max-h-[600px] overflow-y-auto">
+            {instructions.content}
+          </pre>
+        ) : (
+          <div className="p-4 max-h-[600px] overflow-y-auto">
+            <MarkdownPreview
+              source={instructions.content}
+              className="!bg-transparent !text-foreground text-sm"
+              style={{
+                backgroundColor: "transparent",
+                fontSize: "0.875rem",
+                lineHeight: "1.5",
+              }}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

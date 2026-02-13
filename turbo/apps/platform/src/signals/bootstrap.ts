@@ -16,6 +16,8 @@ import { setupAgentDetailPage$ } from "./agent-detail/agent-detail-page.ts";
 import { setupAgentLogsPage$ } from "./agent-detail/agent-logs-page.ts";
 import { setupAgentConnectionsPage$ } from "./agent-detail/agent-connections-page.ts";
 import { hasScope$ } from "./scope.ts";
+import { featureSwitch$ } from "./external/feature-switch.ts";
+import { FeatureSwitchKey } from "@vm0/core";
 import { logger } from "./log.ts";
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
 import { setupLoggers$ } from "./bootstrap/loggers.ts";
@@ -47,15 +49,15 @@ const ROUTE_CONFIG = [
   },
   {
     path: "/agents/:name/logs",
-    setup: setupAuthPageWrapper(setupAgentLogsPage$),
+    setup: setupFeatureGatedPageWrapper(setupAgentLogsPage$),
   },
   {
     path: "/agents/:name/connections",
-    setup: setupAuthPageWrapper(setupAgentConnectionsPage$),
+    setup: setupFeatureGatedPageWrapper(setupAgentConnectionsPage$),
   },
   {
     path: "/agents/:name",
-    setup: setupAuthPageWrapper(setupAgentDetailPage$),
+    setup: setupFeatureGatedPageWrapper(setupAgentDetailPage$),
   },
   {
     path: "/agents",
@@ -109,6 +111,25 @@ export const bootstrap$ = command(
     signal.throwIfAborted();
   },
 );
+
+function setupFeatureGatedPageWrapper(
+  fn: Command<Promise<void> | void, [AbortSignal]>,
+) {
+  return setupAuthPageWrapper(
+    command(async ({ get, set }, signal: AbortSignal) => {
+      const features = await get(featureSwitch$);
+      signal.throwIfAborted();
+
+      if (!features?.[FeatureSwitchKey.AgentDetailPage]) {
+        L.debug("AgentDetailPage feature disabled, redirecting to /agents");
+        set(navigateInReact$, "/agents");
+        return;
+      }
+
+      await set(fn, signal);
+    }),
+  );
+}
 
 function setupScopeRequiredPageWrapper(
   fn: Command<Promise<void> | void, [AbortSignal]>,
