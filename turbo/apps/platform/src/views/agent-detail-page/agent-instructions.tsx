@@ -97,7 +97,7 @@ export function AgentInstructions({
         </div>
       </div>
 
-      <div className="mt-6 flex-1 overflow-y-auto min-h-0 flex flex-col">
+      <div className="instructions-content mt-6 flex-1 overflow-y-auto min-h-0 flex flex-col">
         {viewMode === "markdown" ? (
           isOwner ? (
             <textarea

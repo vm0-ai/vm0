@@ -83,6 +83,12 @@
   }
 }
 
+/* Selection color for instructions editor/viewer */
+.instructions-content ::selection {
+  background-color: hsl(var(--primary-200));
+  color: hsl(var(--foreground));
+}
+
 /* Markdown preview spacing overrides - outside @layer for higher specificity */
 
 /* Unified spacing for all elements */
