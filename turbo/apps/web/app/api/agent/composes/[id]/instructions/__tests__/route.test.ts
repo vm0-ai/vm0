@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { gzipSync } from "node:zlib";
 import { GET } from "../route";
 import {
   createTestRequest,
@@ -15,6 +16,53 @@ import {
   MOCK_USER_EMAIL,
 } from "../../../../../../../src/__tests__/clerk-mock";
 import { getInstructionsStorageName } from "@vm0/core";
+
+/**
+ * Build a gzipped tar archive containing a single file.
+ * The route downloads archive.tar.gz, decompresses, and extracts from tar.
+ */
+function buildTarGz(filename: string, content: string): Buffer {
+  const contentBuf = Buffer.from(content, "utf-8");
+
+  // Tar header: 512 bytes
+  const header = Buffer.alloc(512);
+  // File name at offset 0 (up to 100 bytes)
+  header.write(filename, 0, Math.min(filename.length, 100), "utf-8");
+  // File mode at offset 100 (8 bytes, octal)
+  header.write("0000644\0", 100, 8, "utf-8");
+  // Owner/group IDs at offsets 108, 116 (8 bytes each, octal)
+  header.write("0000000\0", 108, 8, "utf-8");
+  header.write("0000000\0", 116, 8, "utf-8");
+  // File size at offset 124 (12 bytes, octal, null-terminated)
+  const sizeOctal = contentBuf.length.toString(8).padStart(11, "0");
+  header.write(sizeOctal + "\0", 124, 12, "utf-8");
+  // Modification time at offset 136 (12 bytes, octal)
+  const mtime = Math.floor(Date.now() / 1000)
+    .toString(8)
+    .padStart(11, "0");
+  header.write(mtime + "\0", 136, 12, "utf-8");
+  // Type flag at offset 156: '0' = regular file
+  header.write("0", 156, 1, "utf-8");
+
+  // Compute checksum: fill checksum field (offset 148, 8 bytes) with spaces first
+  header.write("        ", 148, 8, "utf-8");
+  let checksum = 0;
+  for (let i = 0; i < 512; i++) {
+    checksum += header[i]!;
+  }
+  // Write checksum as 6-digit octal, null-terminated, space-padded
+  header.write(checksum.toString(8).padStart(6, "0") + "\0 ", 148, 8, "utf-8");
+
+  // Pad content to 512-byte boundary
+  const paddingSize = (512 - (contentBuf.length % 512)) % 512;
+  const padding = Buffer.alloc(paddingSize);
+
+  // End-of-archive marker: two 512-byte zero blocks
+  const endMarker = Buffer.alloc(1024);
+
+  const tar = Buffer.concat([header, contentBuf, padding, endMarker]);
+  return gzipSync(tar);
+}
 
 const context = testContext();
 
@@ -104,7 +152,7 @@ describe("GET /api/agent/composes/:id/instructions", () => {
     const storageName = getInstructionsStorageName(agentName);
     await createTestVolume(storageName);
 
-    // Configure centralized S3 mocks for this test
+    // Mock manifest to describe the file in the archive
     context.mocks.s3.downloadManifest.mockResolvedValueOnce({
       version: "a".repeat(64),
       createdAt: new Date().toISOString(),
@@ -119,8 +167,9 @@ describe("GET /api/agent/composes/:id/instructions", () => {
       ],
     });
 
-    context.mocks.s3.downloadBlob.mockResolvedValueOnce(
-      Buffer.from(instructionsContent),
+    // Mock downloadS3Buffer to return a gzipped tar archive containing the instructions
+    context.mocks.s3.downloadS3Buffer.mockResolvedValueOnce(
+      buildTarGz("AGENTS.md", instructionsContent),
     );
 
     const request = createTestRequest(
@@ -163,8 +212,9 @@ describe("GET /api/agent/composes/:id/instructions", () => {
       files: [{ path: "AGENTS.md", hash: "c".repeat(64), size: 50 }],
     });
 
-    context.mocks.s3.downloadBlob.mockResolvedValueOnce(
-      Buffer.from("# Shared Instructions"),
+    // Mock downloadS3Buffer to return a gzipped tar archive
+    context.mocks.s3.downloadS3Buffer.mockResolvedValueOnce(
+      buildTarGz("AGENTS.md", "# Shared Instructions"),
     );
 
     const request = createTestRequest(

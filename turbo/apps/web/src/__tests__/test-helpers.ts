@@ -97,6 +97,9 @@ interface S3Mocks {
     (bucket: string, s3Key: string, fileCount: number) => Promise<boolean>
   >;
   downloadBlob: MockInstance<(bucket: string, hash: string) => Promise<Buffer>>;
+  downloadS3Buffer: MockInstance<
+    (bucket: string, key: string) => Promise<Buffer>
+  >;
   downloadManifest: MockInstance<
     (
       bucket: string,
@@ -307,6 +310,9 @@ export function testContext(): TestContext {
         .spyOn(s3Client, "verifyS3FilesExist")
         .mockResolvedValue(true),
       downloadBlob: downloadBlobMock,
+      downloadS3Buffer: vi
+        .spyOn(s3Client, "downloadS3Buffer")
+        .mockResolvedValue(Buffer.from("")),
       downloadManifest: vi
         .spyOn(s3Client, "downloadManifest")
         .mockResolvedValue({
