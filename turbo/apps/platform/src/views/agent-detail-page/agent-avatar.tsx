@@ -16,7 +16,8 @@ function getColorForName(name: string): string {
   for (let i = 0; i < name.length; i++) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]!;
+  const index = Math.abs(hash) % AVATAR_COLORS.length;
+  return AVATAR_COLORS[index] ?? AVATAR_COLORS[0];
 }
 
 interface AgentAvatarProps {

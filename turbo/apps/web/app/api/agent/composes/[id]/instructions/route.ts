@@ -164,36 +164,30 @@ export async function GET(
   // Download manifest to find the actual filename in storage
   const manifest = await downloadManifest(bucket, version.s3Key);
 
-  // Find the instructions file in manifest.
-  // First try exact match, then fall back to the single file if there's only one
-  // (the storage volume is dedicated to instructions, so a single file is the instructions).
-  const instructionFile =
-    manifest.files.find((f) => f.path === instructionsFilename) ??
-    (manifest.files.length === 1 ? manifest.files[0] : undefined);
+  // Find the instructions file in manifest by exact path match
+  const instructionFile = manifest.files.find(
+    (f) => f.path === instructionsFilename,
+  );
 
   if (!instructionFile) {
     return NextResponse.json({ content: null, filename: instructionsFilename });
   }
 
   // Download and extract from the archive (CLI uploads archive.tar.gz, not individual blobs)
-  try {
-    const archiveKey = `${version.s3Key}/archive.tar.gz`;
-    const archiveBuffer = await downloadS3Buffer(bucket, archiveKey);
-    const tarBuffer = gunzipSync(archiveBuffer);
-    const fileContent = extractFileFromTar(tarBuffer, instructionFile.path);
+  const archiveKey = `${version.s3Key}/archive.tar.gz`;
+  const archiveBuffer = await downloadS3Buffer(bucket, archiveKey);
+  const tarBuffer = gunzipSync(archiveBuffer);
+  const fileContent = extractFileFromTar(tarBuffer, instructionFile.path);
 
-    if (!fileContent) {
-      return NextResponse.json({
-        content: null,
-        filename: instructionsFilename,
-      });
-    }
-
+  if (!fileContent) {
     return NextResponse.json({
-      content: fileContent.toString("utf-8"),
+      content: null,
       filename: instructionsFilename,
     });
-  } catch {
-    return NextResponse.json({ content: null, filename: instructionsFilename });
   }
+
+  return NextResponse.json({
+    content: fileContent.toString("utf-8"),
+    filename: instructionsFilename,
+  });
 }
