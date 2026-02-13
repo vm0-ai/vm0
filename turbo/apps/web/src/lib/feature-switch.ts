@@ -1,3 +1,5 @@
+"use client";
+
 import { FeatureSwitchKey, isFeatureEnabled } from "@vm0/core";
 
 export { FeatureSwitchKey } from "@vm0/core";
