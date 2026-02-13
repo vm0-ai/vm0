@@ -76,10 +76,22 @@ pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<SnapshotConfig> {
     };
 
     let sc = sandbox_fc::create_snapshot(create_config).await?;
+
+    let (snapshot_sz, memory_sz, overlay_sz) = tokio::join!(
+        file_sizes(&sc.snapshot_path),
+        file_sizes(&sc.memory_path),
+        file_sizes(&sc.overlay_path),
+    );
     tracing::info!(
         snapshot = %sc.snapshot_path.display(),
+        snapshot_logical = %snapshot_sz.0,
+        snapshot_disk = %snapshot_sz.1,
         memory = %sc.memory_path.display(),
+        memory_logical = %memory_sz.0,
+        memory_disk = %memory_sz.1,
         overlay = %sc.overlay_path.display(),
+        overlay_logical = %overlay_sz.0,
+        overlay_disk = %overlay_sz.1,
         "snapshot creation complete"
     );
 
@@ -124,6 +136,40 @@ pub(crate) fn compute_snapshot_hash(args: &SnapshotArgs) -> String {
     hasher.update(b"memory_mb:");
     hasher.update(args.memory_mb.to_le_bytes());
     format!("{:x}", hasher.finalize())
+}
+
+/// Return `(logical, disk)` as human-readable strings (e.g. "65.2 MiB").
+///
+/// `logical` is the apparent file size; `disk` is the actual disk usage
+/// (from `st_blocks`), which can be much smaller for sparse files.
+async fn file_sizes(path: &std::path::Path) -> (String, String) {
+    use std::os::unix::fs::MetadataExt;
+    match tokio::fs::metadata(path).await {
+        Ok(m) => {
+            const BYTES_PER_BLOCK: u64 = 512;
+            let logical = human_bytes(m.len());
+            let disk = human_bytes(m.blocks() * BYTES_PER_BLOCK);
+            (logical, disk)
+        }
+        Err(_) => ("?".into(), "?".into()),
+    }
+}
+
+/// Format a byte count as a human-readable string with auto-scaled units.
+fn human_bytes(bytes: u64) -> String {
+    const KIB: f64 = 1024.0;
+    const MIB: f64 = KIB * 1024.0;
+    const GIB: f64 = MIB * 1024.0;
+    let b = bytes as f64;
+    if b >= GIB {
+        format!("{:.1} GiB", b / GIB)
+    } else if b >= MIB {
+        format!("{:.1} MiB", b / MIB)
+    } else if b >= KIB {
+        format!("{:.1} KiB", b / KIB)
+    } else {
+        format!("{bytes} B")
+    }
 }
 
 #[cfg(test)]
