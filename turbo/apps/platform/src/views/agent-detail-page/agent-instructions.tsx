@@ -60,11 +60,35 @@ export function AgentInstructions({
   }
 
   return (
-    <div className="flex-1 rounded-lg border border-border p-4 flex flex-col">
+    <div className="flex-1 rounded-lg border border-border p-4 flex flex-col min-h-0">
       <div className="flex items-start justify-between gap-4">
-        <h2 className="text-base font-medium text-foreground">
-          Agent instructions
-        </h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-base font-medium text-foreground">
+            Agent instructions
+          </h2>
+          {isDirty && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Unsaved</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => cancel()}
+                disabled={isSaving}
+              >
+                Discard
+              </Button>
+              <Button
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => void save()}
+                disabled={isSaving}
+              >
+                {isSaving ? "Saving..." : "Save"}
+              </Button>
+            </div>
+          )}
+        </div>
         <Tabs value={viewMode} onValueChange={(v) => setViewMode(v)}>
           <TabsList>
             <TabsTrigger value="markdown">Markdown</TabsTrigger>
@@ -73,11 +97,11 @@ export function AgentInstructions({
         </Tabs>
       </div>
 
-      <div className="mt-6 flex-1 overflow-y-auto">
+      <div className="mt-6 flex-1 overflow-y-auto min-h-0">
         {viewMode === "markdown" ? (
           isOwner ? (
             <textarea
-              className="px-1 text-sm font-mono text-foreground w-full min-h-[400px] bg-transparent border-none outline-none resize-none whitespace-pre-wrap"
+              className="px-1 text-sm font-mono text-foreground w-full h-full bg-transparent border-none outline-none resize-none whitespace-pre-wrap"
               value={displayContent}
               onChange={(e) => setEdited(e.target.value)}
             />
@@ -100,21 +124,6 @@ export function AgentInstructions({
           </div>
         )}
       </div>
-
-      {isDirty && (
-        <div className="border-t border-border pt-4 mt-4 flex justify-center gap-3">
-          <Button
-            variant="outline"
-            onClick={() => cancel()}
-            disabled={isSaving}
-          >
-            Cancel
-          </Button>
-          <Button onClick={() => void save()} disabled={isSaving}>
-            {isSaving ? "Saving..." : "Save"}
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

@@ -189,7 +189,7 @@ describe("agent detail page", () => {
     expect(textarea).toHaveValue("# Editable");
   });
 
-  it("should show Save/Cancel when content is edited", async () => {
+  it("should show Save/Discard when content is edited", async () => {
     mockAgentDetailAPI({
       instructions: {
         content: "# Original",
@@ -212,16 +212,16 @@ describe("agent detail page", () => {
     const textarea = screen.getByRole("textbox");
     fireEvent.change(textarea, { target: { value: "# Modified" } });
 
-    // Save and Cancel buttons should appear
+    // Save and Discard buttons should appear
     await vi.waitFor(() => {
       expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
       expect(
-        screen.getByRole("button", { name: "Cancel" }),
+        screen.getByRole("button", { name: "Discard" }),
       ).toBeInTheDocument();
     });
   });
 
-  it("should discard edits on Cancel", async () => {
+  it("should discard edits on Discard", async () => {
     mockAgentDetailAPI({
       instructions: {
         content: "# Original",
@@ -239,25 +239,25 @@ describe("agent detail page", () => {
       expect(screen.getByText("Agent instructions")).toBeInTheDocument();
     });
 
-    // Switch to markdown mode, edit, then cancel
+    // Switch to markdown mode, edit, then discard
     fireEvent.click(screen.getByRole("tab", { name: "Markdown" }));
     const textarea = screen.getByRole("textbox");
     fireEvent.change(textarea, { target: { value: "# Modified" } });
 
     await vi.waitFor(() => {
       expect(
-        screen.getByRole("button", { name: "Cancel" }),
+        screen.getByRole("button", { name: "Discard" }),
       ).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
 
     // Should revert to original
     await vi.waitFor(() => {
       expect(screen.getByRole("textbox")).toHaveValue("# Original");
     });
 
-    // Save/Cancel should disappear
+    // Save/Discard should disappear
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
   });
 

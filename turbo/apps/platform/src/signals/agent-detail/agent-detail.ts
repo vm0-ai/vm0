@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { pathParams$ } from "../route.ts";
 import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
@@ -231,9 +232,12 @@ export const saveInstructions$ = command(async ({ get, set }) => {
       const data = (await instructionsResponse.json()) as AgentInstructions;
       set(agentInstructionsState$, { instructions: data, loading: false });
     }
+
+    toast.success("Instructions saved");
   } catch (error) {
     throwIfAbort(error);
     L.error("Failed to save instructions:", error);
+    toast.error("Failed to save instructions");
   } finally {
     set(saveInstructionsLoading$, false);
   }
