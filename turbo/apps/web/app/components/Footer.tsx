@@ -1,11 +1,13 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
-import { getTranslations } from "next-intl/server";
+import { useTranslations } from "next-intl";
 import ThemeToggle from "./ThemeToggle";
 import LanguageSwitcher from "./LanguageSwitcher";
 
-export default async function Footer() {
-  const t = await getTranslations("footer");
+export default function Footer() {
+  const t = useTranslations("footer");
 
   return (
     <footer className="footer">
