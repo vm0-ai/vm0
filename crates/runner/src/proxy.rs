@@ -144,6 +144,9 @@ impl MitmProxy {
     }
 
     /// Register a VM in the proxy registry so the addon can identify its traffic.
+    ///
+    /// Note: the read-modify-write is not concurrent-safe. Current usage is
+    /// single-sandbox (benchmark). If reused for multi-sandbox, add file locking.
     pub async fn register_vm(&self, source_ip: &str, run_id: &str) -> RunnerResult<()> {
         let mut registry = read_registry(&self.config.registry_path).await?;
         let now = chrono::Utc::now().timestamp_millis();
@@ -163,6 +166,8 @@ impl MitmProxy {
     }
 
     /// Unregister a VM from the proxy registry.
+    ///
+    /// Note: same concurrency caveat as [`Self::register_vm`].
     pub async fn unregister_vm(&self, source_ip: &str) -> RunnerResult<()> {
         let mut registry = read_registry(&self.config.registry_path).await?;
         registry.vms.remove(source_ip);
@@ -268,12 +273,13 @@ async fn write_registry(path: &std::path::Path, value: &ProxyRegistry) -> Runner
         .map_err(|e| RunnerError::Internal(format!("write registry: {e}")))
 }
 
-/// Send SIGTERM to a child process (Unix-only).
+/// Send SIGTERM to a child process.
 fn send_sigterm(child: &tokio::process::Child) {
     if let Some(pid) = child.id() {
-        unsafe {
-            libc::kill(pid as libc::pid_t, libc::SIGTERM);
-        }
+        let _ = nix::sys::signal::kill(
+            nix::unistd::Pid::from_raw(pid as i32),
+            nix::sys::signal::Signal::SIGTERM,
+        );
     }
 }
 
