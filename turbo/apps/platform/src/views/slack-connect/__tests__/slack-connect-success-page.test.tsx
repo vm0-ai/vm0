@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { setupPage } from "../../../__tests__/page-helper.ts";
+import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { pathname$ } from "../../../signals/route.ts";
 import { screen } from "@testing-library/react";
@@ -51,8 +52,6 @@ describe("slack connect success page", () => {
   });
 
   it("redirects to login when not authenticated", async () => {
-    const { mockedClerk } = await import("../../../__tests__/mock-auth.ts");
-
     await setupPage({
       context,
       path: "/slack/connect/success",

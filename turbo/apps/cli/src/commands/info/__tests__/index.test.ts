@@ -13,6 +13,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import chalk from "chalk";
 import * as os from "os";
+import { infoCommand } from "../index";
 
 // Mock os.homedir to point to temp directory for isolated testing
 vi.mock("os", async () => {
@@ -59,11 +60,7 @@ describe("info command", () => {
     writeFileSync(join(configDir, "config.json"), JSON.stringify(content));
   }
 
-  // Need to dynamically import after mocking os.homedir
   async function runInfoCommand(): Promise<void> {
-    // Clear module cache to pick up new homedir mock value
-    vi.resetModules();
-    const { infoCommand } = await import("../index");
     await infoCommand.parseAsync(["node", "cli"]);
   }
 

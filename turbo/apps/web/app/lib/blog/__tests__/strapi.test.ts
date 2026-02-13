@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../src/mocks/server";
+import { reloadEnv } from "../../../../src/env";
+import {
+  getPostsFromStrapi,
+  getPostBySlugFromStrapi,
+  getFeaturedPostFromStrapi,
+  getAllCategoriesFromStrapi,
+} from "../strapi";
 
 const STRAPI_URL = "https://test-strapi.example.com";
 
@@ -28,9 +35,8 @@ const mockArticles = [
   },
 ];
 
-beforeEach(async () => {
+beforeEach(() => {
   vi.stubEnv("NEXT_PUBLIC_STRAPI_URL", STRAPI_URL);
-  const { reloadEnv } = await import("../../../../src/env");
   reloadEnv();
 
   // Register base handlers for Strapi API
@@ -82,7 +88,6 @@ beforeEach(async () => {
 describe("blog/strapi", () => {
   describe("getPostsFromStrapi", () => {
     it("fetches posts and transforms them correctly", async () => {
-      const { getPostsFromStrapi } = await import("../strapi");
       const posts = await getPostsFromStrapi("en");
 
       expect(posts).toHaveLength(1);
@@ -108,8 +113,6 @@ describe("blog/strapi", () => {
         }),
       );
 
-      const { getPostsFromStrapi } = await import("../strapi");
-
       await expect(getPostsFromStrapi("en")).rejects.toThrow(
         "Failed to fetch posts: 500 Internal Server Error",
       );
@@ -126,7 +129,6 @@ describe("blog/strapi", () => {
         }),
       );
 
-      const { getPostsFromStrapi } = await import("../strapi");
       await getPostsFromStrapi();
 
       expect(capturedLocale).toBe("en");
@@ -153,7 +155,6 @@ describe("blog/strapi", () => {
         }),
       );
 
-      const { getPostsFromStrapi } = await import("../strapi");
       const posts = await getPostsFromStrapi("en");
 
       expect(posts[0]).toMatchObject({
@@ -167,7 +168,6 @@ describe("blog/strapi", () => {
 
   describe("getPostBySlugFromStrapi", () => {
     it("fetches single post by slug", async () => {
-      const { getPostBySlugFromStrapi } = await import("../strapi");
       const post = await getPostBySlugFromStrapi("test-post", "en");
 
       expect(post).not.toBeNull();
@@ -175,7 +175,6 @@ describe("blog/strapi", () => {
     });
 
     it("returns null when post not found", async () => {
-      const { getPostBySlugFromStrapi } = await import("../strapi");
       const post = await getPostBySlugFromStrapi("non-existent", "en");
 
       expect(post).toBeNull();
@@ -191,8 +190,6 @@ describe("blog/strapi", () => {
         }),
       );
 
-      const { getPostBySlugFromStrapi } = await import("../strapi");
-
       await expect(getPostBySlugFromStrapi("test", "en")).rejects.toThrow(
         "Failed to fetch post by slug: 404 Not Found",
       );
@@ -201,7 +198,6 @@ describe("blog/strapi", () => {
 
   describe("getFeaturedPostFromStrapi", () => {
     it("fetches featured post and marks it as featured", async () => {
-      const { getFeaturedPostFromStrapi } = await import("../strapi");
       const post = await getFeaturedPostFromStrapi("en");
 
       expect(post).not.toBeNull();
@@ -215,7 +211,6 @@ describe("blog/strapi", () => {
         }),
       );
 
-      const { getFeaturedPostFromStrapi } = await import("../strapi");
       const post = await getFeaturedPostFromStrapi("en");
 
       expect(post).toBeNull();
@@ -231,8 +226,6 @@ describe("blog/strapi", () => {
         }),
       );
 
-      const { getFeaturedPostFromStrapi } = await import("../strapi");
-
       await expect(getFeaturedPostFromStrapi("en")).rejects.toThrow(
         "Failed to fetch featured post: 503 Service Unavailable",
       );
@@ -241,7 +234,6 @@ describe("blog/strapi", () => {
 
   describe("getAllCategoriesFromStrapi", () => {
     it("fetches and returns category names", async () => {
-      const { getAllCategoriesFromStrapi } = await import("../strapi");
       const categories = await getAllCategoriesFromStrapi("en");
 
       expect(categories).toEqual(["Technology", "Business", "Lifestyle"]);
@@ -254,7 +246,6 @@ describe("blog/strapi", () => {
         }),
       );
 
-      const { getAllCategoriesFromStrapi } = await import("../strapi");
       const categories = await getAllCategoriesFromStrapi("en");
 
       expect(categories).toEqual([]);
@@ -269,8 +260,6 @@ describe("blog/strapi", () => {
           });
         }),
       );
-
-      const { getAllCategoriesFromStrapi } = await import("../strapi");
 
       await expect(getAllCategoriesFromStrapi("en")).rejects.toThrow(
         "Failed to fetch categories: 500 Internal Server Error",
@@ -301,7 +290,6 @@ describe("blog/strapi", () => {
         }),
       );
 
-      const { getPostsFromStrapi } = await import("../strapi");
       const posts = await getPostsFromStrapi("en");
 
       expect(posts[0]?.cover).toBe(`${STRAPI_URL}/uploads/image.jpg`);
@@ -336,7 +324,6 @@ describe("blog/strapi", () => {
         }),
       );
 
-      const { getPostsFromStrapi } = await import("../strapi");
       const posts = await getPostsFromStrapi("en");
 
       expect(posts[0]?.content).toContain("> **Famous Person**");
@@ -370,7 +357,6 @@ describe("blog/strapi", () => {
         }),
       );
 
-      const { getPostsFromStrapi } = await import("../strapi");
       const posts = await getPostsFromStrapi("en");
 
       expect(posts[0]?.readTime).toBe("2 min read");
@@ -398,7 +384,6 @@ describe("blog/strapi", () => {
         }),
       );
 
-      const { getPostsFromStrapi } = await import("../strapi");
       const posts = await getPostsFromStrapi("en");
 
       expect(posts[0]?.content).toBe("This is the description used as content");

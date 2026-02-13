@@ -8,7 +8,9 @@ import { detectPackageManager } from "../../lib/utils/update-checker";
 
 declare const __CLI_VERSION__: string;
 
-const CONFIG_PATH = join(homedir(), ".vm0", "config.json");
+function getConfigPath() {
+  return join(homedir(), ".vm0", "config.json");
+}
 
 export const infoCommand = new Command()
   .name("info")
@@ -32,7 +34,7 @@ export const infoCommand = new Command()
       console.log(`  ${chalk.red("✗")} Not authenticated`);
     }
 
-    const configExists = existsSync(CONFIG_PATH);
+    const configExists = existsSync(getConfigPath());
     const configDisplay = configExists
       ? `~/.vm0/config.json`
       : `~/.vm0/config.json (not found)`;

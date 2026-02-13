@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { POST } from "../route";
+import { POST as deployRoute } from "../../../route";
 import {
   createTestRequest,
   createTestCompose,
@@ -125,8 +126,6 @@ describe("POST /api/agent/schedules/:name/enable", () => {
       },
     );
 
-    // Import and call the deploy route directly
-    const { POST: deployRoute } = await import("../../../route");
     await deployRoute(request);
 
     // Try to enable the past schedule

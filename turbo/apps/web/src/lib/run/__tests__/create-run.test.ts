@@ -7,6 +7,7 @@ import {
 import {
   createTestCompose,
   createTestVolume,
+  createTestRequest,
   insertStalePendingRun,
   findTestRunRecord,
   findTestRunCallbacks,
@@ -21,6 +22,8 @@ import {
   type CreateRunResult,
 } from "../run-service";
 import { isConcurrentRunLimit, isForbidden, isBadRequest } from "../../errors";
+import { Sandbox } from "@e2b/code-interpreter";
+import { POST as createComposeRoute } from "../../../../app/api/agent/composes/route";
 
 const context = testContext();
 
@@ -211,7 +214,6 @@ describe("createRun()", () => {
 
   describe("Dispatch Failure", () => {
     it("should mark run as failed when dispatch throws", async () => {
-      const { Sandbox } = await import("@e2b/code-interpreter");
       vi.mocked(Sandbox.create).mockRejectedValueOnce(
         new Error("Sandbox creation failed"),
       );
@@ -276,14 +278,6 @@ describe("createRun()", () => {
         },
         volumes,
       };
-
-      // Use direct DB insert via POST /api/agent/composes
-      const { POST: createComposeRoute } = await import(
-        "../../../../app/api/agent/composes/route"
-      );
-      const { createTestRequest } = await import(
-        "../../../__tests__/api-test-helpers"
-      );
 
       const request = createTestRequest(
         "http://localhost:3000/api/agent/composes",

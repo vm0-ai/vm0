@@ -1,17 +1,12 @@
-import { describe, expect, it, beforeEach, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import "../polyfill.ts";
 
 describe("abortSignal.any polyfill", () => {
-  it("should have AbortSignal.any available", async () => {
-    // Import polyfill to ensure it's loaded
-    await import("../polyfill.ts");
+  it("should have AbortSignal.any available", () => {
     expect(typeof AbortSignal.any).toBe("function");
   });
 
   describe("combining signals", () => {
-    beforeEach(async () => {
-      await import("../polyfill.ts");
-    });
-
     it("should return non-aborted signal when none are aborted", () => {
       const controller1 = new AbortController();
       const controller2 = new AbortController();
