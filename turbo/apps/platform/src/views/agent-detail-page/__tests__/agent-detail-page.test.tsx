@@ -1,7 +1,7 @@
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { describe, expect, it, vi } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { screen, within, fireEvent } from "@testing-library/react";
 import { pathname$ } from "../../../signals/route.ts";
 import { server } from "../../../mocks/server.ts";
 import { http, HttpResponse } from "msw";
@@ -95,7 +95,8 @@ describe("agent detail page", () => {
     });
 
     await vi.waitFor(() => {
-      expect(screen.getByText(/Failed to fetch agent/)).toBeInTheDocument();
+      const errorEl = screen.getByText(/failed to fetch/i);
+      expect(errorEl).toHaveClass("text-destructive");
     });
   });
 
@@ -116,6 +117,9 @@ describe("agent detail page", () => {
     await vi.waitFor(() => {
       expect(screen.getByText("Agent instructions")).toBeInTheDocument();
     });
+
+    // Default view mode is "preview", switch to "markdown" to see raw text
+    fireEvent.click(screen.getByRole("tab", { name: "Markdown" }));
     expect(screen.getByText("# My Instructions")).toBeInTheDocument();
   });
 
