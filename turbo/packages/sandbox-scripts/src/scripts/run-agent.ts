@@ -110,11 +110,184 @@ async function cleanup(exitCode: number, errorMessage: string): Promise<void> {
 }
 
 /**
+ * Set up Codex CLI environment: create home directory and authenticate.
+ */
+function setupCodex(): void {
+  const homeDir = process.env.HOME ?? "/home/user";
+  const codexHome = `${homeDir}/.codex`;
+  fs.mkdirSync(codexHome, { recursive: true });
+  process.env.CODEX_HOME = codexHome;
+  logInfo(`Codex home directory: ${codexHome}`);
+
+  // Login with API key via stdin
+  const codexLoginStart = Date.now();
+  let codexLoginSuccess = false;
+  const apiKey = process.env.OPENAI_API_KEY ?? "";
+
+  if (apiKey) {
+    try {
+      execSync("codex login --with-api-key", {
+        input: apiKey,
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      logInfo("Codex authenticated with API key");
+      codexLoginSuccess = true;
+    } catch (error) {
+      logError(`Codex login failed: ${error}`);
+    }
+  } else {
+    logError("OPENAI_API_KEY not set");
+  }
+  recordSandboxOp(
+    "codex_login",
+    Date.now() - codexLoginStart,
+    codexLoginSuccess,
+  );
+}
+
+/**
+ * Build the CLI command array based on agent type (claude-code or codex).
+ */
+function buildAgentCommand(): string[] {
+  const useMock = process.env.USE_MOCK_CLAUDE === "true";
+
+  if (CLI_AGENT_TYPE === "codex") {
+    if (useMock) {
+      throw new Error("Mock mode not supported for Codex");
+    }
+
+    const codexArgs = [
+      "exec",
+      "--json",
+      "--dangerously-bypass-approvals-and-sandbox",
+      "--skip-git-repo-check",
+      "-C",
+      WORKING_DIR,
+    ];
+
+    if (OPENAI_MODEL) {
+      codexArgs.push("-m", OPENAI_MODEL);
+    }
+
+    if (RESUME_SESSION_ID) {
+      logInfo(`Resuming session: ${RESUME_SESSION_ID}`);
+      codexArgs.push("resume", RESUME_SESSION_ID, PROMPT);
+    } else {
+      logInfo("Starting new session");
+      codexArgs.push(PROMPT);
+    }
+
+    return ["codex", ...codexArgs];
+  }
+
+  // Build Claude command
+  const claudeArgs = [
+    "--print",
+    "--verbose",
+    "--output-format",
+    "stream-json",
+    "--dangerously-skip-permissions",
+  ];
+
+  if (RESUME_SESSION_ID) {
+    logInfo(`Resuming session: ${RESUME_SESSION_ID}`);
+    claudeArgs.push("--resume", RESUME_SESSION_ID);
+  } else {
+    logInfo("Starting new session");
+  }
+
+  const claudeBin = useMock
+    ? "/usr/local/bin/vm0-agent/mock-claude.mjs"
+    : "claude";
+
+  if (useMock) {
+    logInfo("Using mock-claude for testing");
+  }
+
+  return [claudeBin, ...claudeArgs, PROMPT];
+}
+
+/**
+ * Handle post-execution logic: check event errors, create checkpoint, build error message.
+ */
+async function handleCompletion(
+  agentExitCode: number,
+  executionError: string,
+  stderrLines: string[],
+  execStartTime: number,
+): Promise<[number, string]> {
+  let finalExitCode = agentExitCode;
+  let errorMessage = "";
+
+  // Check if any events failed to send
+  if (fs.existsSync(EVENT_ERROR_FLAG)) {
+    logError("Some events failed to send, marking run as failed");
+    finalExitCode = 1;
+    errorMessage = "Some events failed to send";
+  }
+
+  // Log execution result and record metric
+  const execDurationMs = Date.now() - execStartTime;
+  recordSandboxOp("cli_execution", execDurationMs, agentExitCode === 0);
+
+  if (agentExitCode === 0 && finalExitCode === 0) {
+    logInfo(`✓ Execution complete (${Math.floor(execDurationMs / 1000)}s)`);
+  } else {
+    logInfo(`✗ Execution failed (${Math.floor(execDurationMs / 1000)}s)`);
+  }
+
+  // Handle completion
+  if (agentExitCode === 0 && finalExitCode === 0) {
+    logInfo(`${CLI_AGENT_TYPE} completed successfully`);
+
+    // Lifecycle: Checkpoint
+    logInfo("▷ Checkpoint");
+    const checkpointStartTime = Date.now();
+
+    // Create checkpoint - mandatory for successful runs
+    const checkpointSuccess = await createCheckpoint();
+    const checkpointDuration = Math.floor(
+      (Date.now() - checkpointStartTime) / 1000,
+    );
+
+    if (checkpointSuccess) {
+      logInfo(`✓ Checkpoint complete (${checkpointDuration}s)`);
+    } else {
+      logInfo(`✗ Checkpoint failed (${checkpointDuration}s)`);
+    }
+
+    if (!checkpointSuccess) {
+      logError("Checkpoint creation failed, marking run as failed");
+      finalExitCode = 1;
+      errorMessage = "Checkpoint creation failed";
+    }
+  } else {
+    if (agentExitCode !== 0) {
+      logInfo(`${CLI_AGENT_TYPE} failed with exit code ${agentExitCode}`);
+
+      // Get detailed error from execution error, stderr, or generic message
+      if (executionError) {
+        // Execution error (e.g., heartbeat failure, spawn error)
+        errorMessage = executionError;
+      } else if (stderrLines.length > 0) {
+        // Captured stderr from agent process
+        errorMessage = stderrLines.map((line) => line.trim()).join(" ");
+        logInfo(`Captured ${stderrLines.length} stderr lines`);
+      } else {
+        errorMessage = `Agent exited with code ${agentExitCode}`;
+      }
+    }
+  }
+
+  return [finalExitCode, errorMessage];
+}
+
+/**
  * Main execution logic.
  * Throws exceptions on failure instead of calling process.exit().
  * Returns [exit_code, error_message] tuple on completion.
  */
-// eslint-disable-next-line complexity -- TODO: refactor complex function
 async function run(): Promise<[number, string]> {
   // Record API-to-agent E2E time (if API start timestamp is available)
   if (API_START_TIME) {
@@ -183,37 +356,7 @@ async function run(): Promise<[number, string]> {
 
   // Set up Codex configuration if using Codex CLI
   if (CLI_AGENT_TYPE === "codex") {
-    const homeDir = process.env.HOME ?? "/home/user";
-    const codexHome = `${homeDir}/.codex`;
-    fs.mkdirSync(codexHome, { recursive: true });
-    process.env.CODEX_HOME = codexHome;
-    logInfo(`Codex home directory: ${codexHome}`);
-
-    // Login with API key via stdin
-    const codexLoginStart = Date.now();
-    let codexLoginSuccess = false;
-    const apiKey = process.env.OPENAI_API_KEY ?? "";
-
-    if (apiKey) {
-      try {
-        execSync("codex login --with-api-key", {
-          input: apiKey,
-          encoding: "utf-8",
-          stdio: ["pipe", "pipe", "pipe"],
-        });
-        logInfo("Codex authenticated with API key");
-        codexLoginSuccess = true;
-      } catch (error) {
-        logError(`Codex login failed: ${error}`);
-      }
-    } else {
-      logError("OPENAI_API_KEY not set");
-    }
-    recordSandboxOp(
-      "codex_login",
-      Date.now() - codexLoginStart,
-      codexLoginSuccess,
-    );
+    setupCodex();
   }
 
   const initDurationMs = Date.now() - initStartTime;
@@ -227,65 +370,7 @@ async function run(): Promise<[number, string]> {
   // Execute CLI agent with JSONL output
   logInfo(`Starting ${CLI_AGENT_TYPE} execution...`);
 
-  // Build command based on CLI agent type
-  const useMock = process.env.USE_MOCK_CLAUDE === "true";
-  let cmd: string[];
-
-  if (CLI_AGENT_TYPE === "codex") {
-    if (useMock) {
-      throw new Error("Mock mode not supported for Codex");
-    }
-
-    const codexArgs = [
-      "exec",
-      "--json",
-      "--dangerously-bypass-approvals-and-sandbox",
-      "--skip-git-repo-check",
-      "-C",
-      WORKING_DIR,
-    ];
-
-    if (OPENAI_MODEL) {
-      codexArgs.push("-m", OPENAI_MODEL);
-    }
-
-    if (RESUME_SESSION_ID) {
-      logInfo(`Resuming session: ${RESUME_SESSION_ID}`);
-      codexArgs.push("resume", RESUME_SESSION_ID, PROMPT);
-    } else {
-      logInfo("Starting new session");
-      codexArgs.push(PROMPT);
-    }
-
-    cmd = ["codex", ...codexArgs];
-  } else {
-    // Build Claude command
-    const claudeArgs = [
-      "--print",
-      "--verbose",
-      "--output-format",
-      "stream-json",
-      "--dangerously-skip-permissions",
-    ];
-
-    if (RESUME_SESSION_ID) {
-      logInfo(`Resuming session: ${RESUME_SESSION_ID}`);
-      claudeArgs.push("--resume", RESUME_SESSION_ID);
-    } else {
-      logInfo("Starting new session");
-    }
-
-    // Select Claude binary
-    const claudeBin = useMock
-      ? "/usr/local/bin/vm0-agent/mock-claude.mjs"
-      : "claude";
-
-    if (useMock) {
-      logInfo("Using mock-claude for testing");
-    }
-
-    cmd = [claudeBin, ...claudeArgs, PROMPT];
-  }
+  const cmd = buildAgentCommand();
 
   // Execute CLI agent and process output stream
   let agentExitCode = 0;
@@ -389,71 +474,12 @@ async function run(): Promise<[number, string]> {
   // Print newline after output
   console.log();
 
-  // Track final exit code for complete API
-  let finalExitCode = agentExitCode;
-  let errorMessage = "";
-
-  // Check if any events failed to send
-  if (fs.existsSync(EVENT_ERROR_FLAG)) {
-    logError("Some events failed to send, marking run as failed");
-    finalExitCode = 1;
-    errorMessage = "Some events failed to send";
-  }
-
-  // Log execution result and record metric
-  const execDurationMs = Date.now() - execStartTime;
-  recordSandboxOp("cli_execution", execDurationMs, agentExitCode === 0);
-
-  if (agentExitCode === 0 && finalExitCode === 0) {
-    logInfo(`✓ Execution complete (${Math.floor(execDurationMs / 1000)}s)`);
-  } else {
-    logInfo(`✗ Execution failed (${Math.floor(execDurationMs / 1000)}s)`);
-  }
-
-  // Handle completion
-  if (agentExitCode === 0 && finalExitCode === 0) {
-    logInfo(`${CLI_AGENT_TYPE} completed successfully`);
-
-    // Lifecycle: Checkpoint
-    logInfo("▷ Checkpoint");
-    const checkpointStartTime = Date.now();
-
-    // Create checkpoint - mandatory for successful runs
-    const checkpointSuccess = await createCheckpoint();
-    const checkpointDuration = Math.floor(
-      (Date.now() - checkpointStartTime) / 1000,
-    );
-
-    if (checkpointSuccess) {
-      logInfo(`✓ Checkpoint complete (${checkpointDuration}s)`);
-    } else {
-      logInfo(`✗ Checkpoint failed (${checkpointDuration}s)`);
-    }
-
-    if (!checkpointSuccess) {
-      logError("Checkpoint creation failed, marking run as failed");
-      finalExitCode = 1;
-      errorMessage = "Checkpoint creation failed";
-    }
-  } else {
-    if (agentExitCode !== 0) {
-      logInfo(`${CLI_AGENT_TYPE} failed with exit code ${agentExitCode}`);
-
-      // Get detailed error from execution error, stderr, or generic message
-      if (executionError) {
-        // Execution error (e.g., heartbeat failure, spawn error)
-        errorMessage = executionError;
-      } else if (stderrLines.length > 0) {
-        // Captured stderr from agent process
-        errorMessage = stderrLines.map((line) => line.trim()).join(" ");
-        logInfo(`Captured ${stderrLines.length} stderr lines`);
-      } else {
-        errorMessage = `Agent exited with code ${agentExitCode}`;
-      }
-    }
-  }
-
-  return [finalExitCode, errorMessage];
+  return handleCompletion(
+    agentExitCode,
+    executionError,
+    stderrLines,
+    execStartTime,
+  );
 }
 
 /**

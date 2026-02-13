@@ -189,59 +189,50 @@ export async function forwardRequest(
 }
 
 /**
- * Check if a hostname is a private/internal address (SSRF protection)
- *
- * Blocks:
- * - localhost, 127.0.0.1, ::1 (loopback)
- * - 169.254.169.254 (cloud metadata services - AWS, GCP, Azure)
- * - 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 (RFC 1918 private)
- * - 169.254.0.0/16 (link-local)
- * - 0.0.0.0 (can resolve to localhost)
- * - [::], [::1] (IPv6 loopback)
- * - Internal hostnames
+ * Check if hostname is localhost or a common loopback alias
  */
-// eslint-disable-next-line complexity -- TODO: refactor complex function
-function isPrivateOrInternalHost(hostname: string): boolean {
-  // Normalize hostname (remove brackets for IPv6)
-  const normalizedHost = hostname.toLowerCase().replace(/^\[|\]$/g, "");
-
-  // Block localhost and common aliases
-  if (
-    normalizedHost === "localhost" ||
-    normalizedHost === "localhost.localdomain" ||
-    normalizedHost.endsWith(".localhost") ||
-    normalizedHost.endsWith(".local")
-  ) {
-    return true;
-  }
-
-  // Block cloud metadata service IPs
-  // AWS: 169.254.169.254, fd00:ec2::254
-  // GCP: metadata.google.internal, 169.254.169.254
-  // Azure: 169.254.169.254
-  if (
-    normalizedHost === "169.254.169.254" ||
-    normalizedHost === "metadata.google.internal" ||
-    normalizedHost.startsWith("fd00:ec2")
-  ) {
-    return true;
-  }
-
-  // Block internal kubernetes/docker hostnames
-  if (
-    normalizedHost.endsWith(".internal") ||
-    normalizedHost.endsWith(".svc.cluster.local") ||
-    normalizedHost === "kubernetes" ||
-    normalizedHost === "kubernetes.default"
-  ) {
-    return true;
-  }
-
-  // Parse IP address to check for private ranges
-  // IPv4 check
-  const ipv4Match = normalizedHost.match(
-    /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/,
+function isLoopbackHost(host: string): boolean {
+  return (
+    host === "localhost" ||
+    host === "localhost.localdomain" ||
+    host.endsWith(".localhost") ||
+    host.endsWith(".local")
   );
+}
+
+/**
+ * Check if hostname is a cloud metadata service endpoint
+ * AWS: 169.254.169.254, fd00:ec2::254
+ * GCP: metadata.google.internal, 169.254.169.254
+ * Azure: 169.254.169.254
+ */
+function isCloudMetadataHost(host: string): boolean {
+  return (
+    host === "169.254.169.254" ||
+    host === "metadata.google.internal" ||
+    host.startsWith("fd00:ec2")
+  );
+}
+
+/**
+ * Check if hostname is an internal service (kubernetes, docker, etc.)
+ */
+function isInternalServiceHost(host: string): boolean {
+  return (
+    host.endsWith(".internal") ||
+    host.endsWith(".svc.cluster.local") ||
+    host === "kubernetes" ||
+    host === "kubernetes.default"
+  );
+}
+
+/**
+ * Check if hostname is a private/reserved IPv4 address
+ * Covers: 0.0.0.0, 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12,
+ *         192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10
+ */
+function isPrivateIPv4(host: string): boolean {
+  const ipv4Match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (ipv4Match) {
     const [, a, b, c, d] = ipv4Match.map(Number);
 
@@ -267,18 +258,46 @@ function isPrivateOrInternalHost(hostname: string): boolean {
     if (a === 100 && b !== undefined && b >= 64 && b <= 127) return true;
   }
 
-  // IPv6 loopback and private ranges
-  if (
-    normalizedHost === "::" ||
-    normalizedHost === "::1" ||
-    normalizedHost.startsWith("fc") || // fc00::/7 - unique local
-    normalizedHost.startsWith("fd") || // fd00::/8 - unique local
-    normalizedHost.startsWith("fe80") // fe80::/10 - link-local
-  ) {
-    return true;
-  }
-
   return false;
+}
+
+/**
+ * Check if hostname is a private/reserved IPv6 address
+ * Covers: ::, ::1, fc00::/7, fd00::/8, fe80::/10
+ */
+function isPrivateIPv6(host: string): boolean {
+  return (
+    host === "::" ||
+    host === "::1" ||
+    host.startsWith("fc") || // fc00::/7 - unique local
+    host.startsWith("fd") || // fd00::/8 - unique local
+    host.startsWith("fe80") // fe80::/10 - link-local
+  );
+}
+
+/**
+ * Check if a hostname is a private/internal address (SSRF protection)
+ *
+ * Blocks:
+ * - localhost, 127.0.0.1, ::1 (loopback)
+ * - 169.254.169.254 (cloud metadata services - AWS, GCP, Azure)
+ * - 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 (RFC 1918 private)
+ * - 169.254.0.0/16 (link-local)
+ * - 0.0.0.0 (can resolve to localhost)
+ * - [::], [::1] (IPv6 loopback)
+ * - Internal hostnames
+ */
+function isPrivateOrInternalHost(hostname: string): boolean {
+  // Normalize hostname (remove brackets for IPv6)
+  const normalizedHost = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+
+  return (
+    isLoopbackHost(normalizedHost) ||
+    isCloudMetadataHost(normalizedHost) ||
+    isInternalServiceHost(normalizedHost) ||
+    isPrivateIPv4(normalizedHost) ||
+    isPrivateIPv6(normalizedHost)
+  );
 }
 
 /**

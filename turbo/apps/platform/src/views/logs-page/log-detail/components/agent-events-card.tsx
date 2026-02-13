@@ -1,6 +1,6 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { IconSearch, IconLoader2 } from "@tabler/icons-react";
-import MarkdownPreview from "@uiw/react-markdown-preview";
+import { Markdown } from "../../../components/markdown.tsx";
 import { Input } from "@vm0/ui";
 import { StatusDot } from "../../components/status-dot.tsx";
 import {
@@ -258,16 +258,7 @@ function PromptCard({
         </summary>
         <div className="absolute left-[2px] top-[2.25rem] bottom-0 w-[1px] bg-border/70 group-open:block hidden" />
         <div className="ml-[18px] mt-2">
-          <MarkdownPreview
-            source={prompt}
-            className="!bg-transparent !text-foreground text-sm"
-            style={{
-              backgroundColor: "transparent",
-              fontSize: "0.875rem",
-              lineHeight: "1.5",
-              fontFamily: "var(--font-family-sans)",
-            }}
-          />
+          <Markdown source={prompt} />
         </div>
       </details>
     </div>

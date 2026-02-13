@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../src/mocks/server";
+import { reloadEnv } from "../../../../src/env";
+import { getPosts, getPost, getFeatured, getCategories } from "../data-source";
 
 const STRAPI_URL = "https://test-strapi.example.com";
 
@@ -26,10 +28,9 @@ const mockCategories = [
   { id: 3, name: "Lifestyle", slug: "lifestyle" },
 ];
 
-beforeEach(async () => {
+beforeEach(() => {
   vi.stubEnv("NEXT_PUBLIC_STRAPI_URL", STRAPI_URL);
   vi.stubEnv("NEXT_PUBLIC_DATA_SOURCE", "strapi");
-  const { reloadEnv } = await import("../../../../src/env");
   reloadEnv();
 
   // Register base handlers for Strapi API
@@ -67,7 +68,6 @@ beforeEach(async () => {
 describe("blog/data-source", () => {
   describe("getPosts", () => {
     it("fetches posts from strapi and returns transformed data", async () => {
-      const { getPosts } = await import("../data-source");
       const posts = await getPosts("en");
 
       expect(posts).toHaveLength(1);
@@ -91,7 +91,6 @@ describe("blog/data-source", () => {
         }),
       );
 
-      const { getPosts } = await import("../data-source");
       await getPosts();
 
       expect(capturedLocale).toBe("en");
@@ -104,7 +103,6 @@ describe("blog/data-source", () => {
         }),
       );
 
-      const { getPosts } = await import("../data-source");
       const posts = await getPosts("en");
 
       expect(posts).toEqual([]);
@@ -113,7 +111,6 @@ describe("blog/data-source", () => {
 
   describe("getPost", () => {
     it("fetches single post by slug from strapi", async () => {
-      const { getPost } = await import("../data-source");
       const post = await getPost("test-post", "en");
 
       expect(post).not.toBeNull();
@@ -122,7 +119,6 @@ describe("blog/data-source", () => {
     });
 
     it("returns null when post not found", async () => {
-      const { getPost } = await import("../data-source");
       const post = await getPost("non-existent", "en");
 
       expect(post).toBeNull();
@@ -131,7 +127,6 @@ describe("blog/data-source", () => {
 
   describe("getFeatured", () => {
     it("fetches featured post from strapi and marks it as featured", async () => {
-      const { getFeatured } = await import("../data-source");
       const post = await getFeatured("en");
 
       expect(post).not.toBeNull();
@@ -145,7 +140,6 @@ describe("blog/data-source", () => {
         }),
       );
 
-      const { getFeatured } = await import("../data-source");
       const post = await getFeatured("en");
 
       expect(post).toBeNull();
@@ -154,7 +148,6 @@ describe("blog/data-source", () => {
 
   describe("getCategories", () => {
     it("fetches categories from strapi", async () => {
-      const { getCategories } = await import("../data-source");
       const categories = await getCategories("en");
 
       expect(categories).toEqual(["Technology", "Business", "Lifestyle"]);
@@ -167,7 +160,6 @@ describe("blog/data-source", () => {
         }),
       );
 
-      const { getCategories } = await import("../data-source");
       const categories = await getCategories("en");
 
       expect(categories).toEqual([]);

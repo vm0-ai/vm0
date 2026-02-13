@@ -165,7 +165,6 @@ export class CodexEventParser {
     };
   }
 
-  // eslint-disable-next-line complexity -- TODO: refactor complex function
   private static parseItemEvent(event: ItemEvent): ParsedEvent | null {
     const item = event.item;
     if (!item) {
@@ -174,120 +173,21 @@ export class CodexEventParser {
 
     const itemType = item.type;
 
-    // Agent message = text output
     if (itemType === "agent_message" && item.text) {
-      return {
-        type: "text",
-        timestamp: new Date(),
-        data: { text: item.text },
-      };
+      return { type: "text", timestamp: new Date(), data: { text: item.text } };
     }
-
-    // Command execution = tool use
     if (itemType === "command_execution") {
-      // item.started = tool_use, item.completed = tool_result
-      if (event.type === "item.started" && item.command) {
-        return {
-          type: "tool_use",
-          timestamp: new Date(),
-          data: {
-            tool: "Bash",
-            toolUseId: item.id,
-            input: { command: item.command },
-          },
-        };
-      }
-
-      // Codex uses aggregated_output for command output
-      if (event.type === "item.completed") {
-        const output = item.aggregated_output ?? item.output ?? "";
-        return {
-          type: "tool_result",
-          timestamp: new Date(),
-          data: {
-            toolUseId: item.id,
-            result: output,
-            isError: item.exit_code !== 0,
-          },
-        };
-      }
+      return this.parseCommandExecution(event);
     }
-
-    // File operations = tool use/result
     if (itemType === "file_edit" || itemType === "file_write") {
-      if (event.type === "item.started" && item.path) {
-        return {
-          type: "tool_use",
-          timestamp: new Date(),
-          data: {
-            tool: itemType === "file_edit" ? "Edit" : "Write",
-            toolUseId: item.id,
-            input: { file_path: item.path },
-          },
-        };
-      }
-
-      if (event.type === "item.completed") {
-        return {
-          type: "tool_result",
-          timestamp: new Date(),
-          data: {
-            toolUseId: item.id,
-            result: item.diff || "File operation completed",
-            isError: false,
-          },
-        };
-      }
+      return this.parseFileEditOrWrite(event);
     }
-
-    // File read = tool use/result
     if (itemType === "file_read") {
-      if (event.type === "item.started" && item.path) {
-        return {
-          type: "tool_use",
-          timestamp: new Date(),
-          data: {
-            tool: "Read",
-            toolUseId: item.id,
-            input: { file_path: item.path },
-          },
-        };
-      }
-
-      if (event.type === "item.completed") {
-        return {
-          type: "tool_result",
-          timestamp: new Date(),
-          data: {
-            toolUseId: item.id,
-            result: "File read completed",
-            isError: false,
-          },
-        };
-      }
+      return this.parseFileRead(event);
     }
-
-    // File change = text showing what files were modified
-    if (itemType === "file_change" && item.changes && item.changes.length > 0) {
-      const changes = item.changes
-        .map((c) => {
-          const action =
-            c.kind === "add"
-              ? "Created"
-              : c.kind === "modify"
-                ? "Modified"
-                : "Deleted";
-          return `${action}: ${c.path}`;
-        })
-        .join("\n");
-      return {
-        type: "text",
-        timestamp: new Date(),
-        data: { text: `[files]\n${changes}` },
-      };
+    if (itemType === "file_change") {
+      return this.parseFileChange(item);
     }
-
-    // Reasoning = text (Codex uses text field for reasoning content)
     if (itemType === "reasoning" && item.text) {
       return {
         type: "text",
@@ -297,6 +197,121 @@ export class CodexEventParser {
     }
 
     return null;
+  }
+
+  private static parseCommandExecution(event: ItemEvent): ParsedEvent | null {
+    const item = event.item;
+
+    if (event.type === "item.started" && item.command) {
+      return {
+        type: "tool_use",
+        timestamp: new Date(),
+        data: {
+          tool: "Bash",
+          toolUseId: item.id,
+          input: { command: item.command },
+        },
+      };
+    }
+
+    if (event.type === "item.completed") {
+      const output = item.aggregated_output ?? item.output ?? "";
+      return {
+        type: "tool_result",
+        timestamp: new Date(),
+        data: {
+          toolUseId: item.id,
+          result: output,
+          isError: item.exit_code !== 0,
+        },
+      };
+    }
+
+    return null;
+  }
+
+  private static parseFileEditOrWrite(event: ItemEvent): ParsedEvent | null {
+    const item = event.item;
+
+    if (event.type === "item.started" && item.path) {
+      return {
+        type: "tool_use",
+        timestamp: new Date(),
+        data: {
+          tool: item.type === "file_edit" ? "Edit" : "Write",
+          toolUseId: item.id,
+          input: { file_path: item.path },
+        },
+      };
+    }
+
+    if (event.type === "item.completed") {
+      return {
+        type: "tool_result",
+        timestamp: new Date(),
+        data: {
+          toolUseId: item.id,
+          result: item.diff || "File operation completed",
+          isError: false,
+        },
+      };
+    }
+
+    return null;
+  }
+
+  private static parseFileRead(event: ItemEvent): ParsedEvent | null {
+    const item = event.item;
+
+    if (event.type === "item.started" && item.path) {
+      return {
+        type: "tool_use",
+        timestamp: new Date(),
+        data: {
+          tool: "Read",
+          toolUseId: item.id,
+          input: { file_path: item.path },
+        },
+      };
+    }
+
+    if (event.type === "item.completed") {
+      return {
+        type: "tool_result",
+        timestamp: new Date(),
+        data: {
+          toolUseId: item.id,
+          result: "File read completed",
+          isError: false,
+        },
+      };
+    }
+
+    return null;
+  }
+
+  private static parseFileChange(item: CodexItem): ParsedEvent | null {
+    if (!item.changes || item.changes.length === 0) {
+      return null;
+    }
+
+    const changes = item.changes
+      .map((c) => {
+        const action =
+          c.kind === "add"
+            ? "Created"
+            : c.kind === "modify"
+              ? "Modified"
+              : "Deleted";
+        return `${action}: ${c.path}`;
+      })
+      .join("\n");
+
+    return {
+      type: "text",
+      timestamp: new Date(),
+      data: { text: `[files]\n${changes}` },
+    };
   }
 
   private static parseErrorEvent(event: ErrorEvent): ParsedEvent | null {
