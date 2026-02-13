@@ -123,7 +123,8 @@ export async function GET(
   }
 
   const agentKeys = Object.keys(content.agents);
-  const agentDef = agentKeys.length > 0 ? content.agents[agentKeys[0]!] : null;
+  const firstKey = agentKeys[0];
+  const agentDef = firstKey ? content.agents[firstKey] : null;
   const instructionsFilename = agentDef?.instructions;
 
   if (!instructionsFilename) {

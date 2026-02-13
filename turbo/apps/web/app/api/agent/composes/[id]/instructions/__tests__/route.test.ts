@@ -48,7 +48,7 @@ function buildTarGz(filename: string, content: string): Buffer {
   header.write("        ", 148, 8, "utf-8");
   let checksum = 0;
   for (let i = 0; i < 512; i++) {
-    checksum += header[i]!;
+    checksum += header[i] ?? 0;
   }
   // Write checksum as 6-digit octal, null-terminated, space-padded
   header.write(checksum.toString(8).padStart(6, "0") + "\0 ", 148, 8, "utf-8");
