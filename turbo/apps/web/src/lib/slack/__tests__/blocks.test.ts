@@ -5,6 +5,7 @@ import {
   buildLoginPromptMessage,
   buildHelpMessage,
   buildSuccessMessage,
+  detectDeepLinks,
 } from "../blocks";
 
 describe("buildErrorMessage", () => {
@@ -106,5 +107,93 @@ describe("buildSuccessMessage", () => {
     expect((blocks[0] as SectionBlock).text?.text).toContain(
       ":white_check_mark:",
     );
+  });
+});
+
+describe("detectDeepLinks", () => {
+  const platformUrl = "https://platform.vm0.ai";
+
+  it("should return empty array when no keywords match", () => {
+    const links = detectDeepLinks(
+      "Hello, everything is working fine!",
+      platformUrl,
+    );
+    expect(links).toEqual([]);
+  });
+
+  it("should detect provider-related keywords", () => {
+    const links = detectDeepLinks(
+      "The api key is missing for the model provider",
+      platformUrl,
+    );
+    expect(links).toHaveLength(1);
+    expect(links[0]).toEqual({
+      emoji: ":key:",
+      label: "Configure model providers",
+      url: `${platformUrl}/settings`,
+    });
+  });
+
+  it("should detect secrets/variables keywords", () => {
+    const links = detectDeepLinks(
+      "Error: missing variable DATABASE_URL",
+      platformUrl,
+    );
+    expect(links).toHaveLength(1);
+    expect(links[0]).toEqual({
+      emoji: ":lock:",
+      label: "Manage secrets & variables",
+      url: `${platformUrl}/settings?tab=secrets-and-variables`,
+    });
+  });
+
+  it("should detect Slack token keywords", () => {
+    const links = detectDeepLinks("SLACK_BOT_TOKEN is not set", platformUrl);
+    expect(links).toHaveLength(1);
+    expect(links[0]).toEqual({
+      emoji: ":gear:",
+      label: "Slack settings",
+      url: `${platformUrl}/settings/slack`,
+    });
+  });
+
+  it("should detect connector keywords", () => {
+    const links = detectDeepLinks(
+      "The MCP server connection failed",
+      platformUrl,
+    );
+    expect(links).toHaveLength(1);
+    expect(links[0]).toEqual({
+      emoji: ":electric_plug:",
+      label: "Configure connectors",
+      url: `${platformUrl}/settings?tab=connectors`,
+    });
+  });
+
+  it("should match case-insensitively", () => {
+    const links = detectDeepLinks("API_KEY is not configured", platformUrl);
+    expect(links).toHaveLength(1);
+    expect(links[0]?.label).toBe("Configure model providers");
+  });
+
+  it("should deduplicate by path", () => {
+    const links = detectDeepLinks(
+      "The api key for the model provider is not configured and the apikey is invalid",
+      platformUrl,
+    );
+    expect(links).toHaveLength(1);
+    expect(links[0]?.url).toBe(`${platformUrl}/settings`);
+  });
+
+  it("should return multiple links for different destinations", () => {
+    const links = detectDeepLinks(
+      "The api key is missing. Also SLACK_BOT_TOKEN is not set and the MCP server is down.",
+      platformUrl,
+    );
+    expect(links).toHaveLength(3);
+    const urls = links.map((l) => l.url);
+    expect(urls).toContain(`${platformUrl}/settings`);
+    expect(urls).toContain(`${platformUrl}/settings/slack`);
+    expect(urls).toContain(`${platformUrl}/settings?tab=connectors`);
   });
 });

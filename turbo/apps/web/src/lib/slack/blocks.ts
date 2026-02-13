@@ -433,18 +433,112 @@ export function buildMarkdownMessage(content: string): (Block | KnownBlock)[] {
   return blocks;
 }
 
+// ---------------------------------------------------------------------------
+// Keyword detection for deep links
+// ---------------------------------------------------------------------------
+
+interface KeywordLinkMapping {
+  keywords: string[];
+  label: string;
+  path: string;
+  emoji: string;
+}
+
+export interface DeepLink {
+  emoji: string;
+  label: string;
+  url: string;
+}
+
+const KEYWORD_LINK_MAPPINGS: readonly KeywordLinkMapping[] = Object.freeze([
+  {
+    keywords: [
+      "api key",
+      "api_key",
+      "apikey",
+      "model provider",
+      "provider not configured",
+    ],
+    label: "Configure model providers",
+    path: "/settings",
+    emoji: ":key:",
+  },
+  {
+    keywords: ["secret", "missing variable", "env var", "environment variable"],
+    label: "Manage secrets & variables",
+    path: "/settings?tab=secrets-and-variables",
+    emoji: ":lock:",
+  },
+  {
+    keywords: [
+      "slack token",
+      "slack_bot_token",
+      "bot token",
+      "slack not connected",
+    ],
+    label: "Slack settings",
+    path: "/settings/slack",
+    emoji: ":gear:",
+  },
+  {
+    keywords: [
+      "connector",
+      "mcp server",
+      "tool not available",
+      "tool not found",
+    ],
+    label: "Configure connectors",
+    path: "/settings?tab=connectors",
+    emoji: ":electric_plug:",
+  },
+]);
+
+/**
+ * Detect deep links based on keywords in the response text.
+ *
+ * Scans the text for known configuration-related keywords and returns
+ * matching platform deep links (deduplicated by destination path).
+ */
+export function detectDeepLinks(
+  responseText: string,
+  platformUrl: string,
+): DeepLink[] {
+  const lowerText = responseText.toLowerCase();
+  const seen = new Set<string>();
+  const links: DeepLink[] = [];
+
+  for (const mapping of KEYWORD_LINK_MAPPINGS) {
+    if (seen.has(mapping.path)) {
+      continue;
+    }
+    const matched = mapping.keywords.some((kw) => lowerText.includes(kw));
+    if (matched) {
+      seen.add(mapping.path);
+      links.push({
+        emoji: mapping.emoji,
+        label: mapping.label,
+        url: `${platformUrl}${mapping.path}`,
+      });
+    }
+  }
+
+  return links;
+}
+
 /**
  * Build an agent response message with agent name context and optional logs link
  *
  * @param content - The agent's response content
  * @param agentName - The name of the agent that responded
  * @param logsUrl - Optional URL to the run logs
+ * @param deepLinks - Optional deep links to append for configuration help
  * @returns Block Kit blocks with agent context header
  */
 export function buildAgentResponseMessage(
   content: string,
   agentName: string,
   logsUrl?: string,
+  deepLinks?: DeepLink[],
 ): (Block | KnownBlock)[] {
   const blocks: (Block | KnownBlock)[] = [
     {
@@ -458,6 +552,22 @@ export function buildAgentResponseMessage(
     },
     ...buildMarkdownMessage(content),
   ];
+
+  // Add deep links if any keywords matched
+  if (deepLinks && deepLinks.length > 0) {
+    const linkText = deepLinks
+      .map((link) => `${link.emoji} <${link.url}|${link.label}>`)
+      .join("  \u00b7  ");
+    blocks.push({
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: linkText,
+        },
+      ],
+    });
+  }
 
   // Add logs link at the end if provided
   if (logsUrl) {

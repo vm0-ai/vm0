@@ -89,6 +89,7 @@ export {
   buildSuccessMessage,
   buildMarkdownMessage,
   buildAgentResponseMessage,
+  detectDeepLinks,
 } from "./blocks";
 
 // Thread context
