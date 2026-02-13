@@ -238,17 +238,19 @@ export const saveInstructions$ = command(async ({ get, set }) => {
       throw new Error(`Failed to save instructions: ${response.statusText}`);
     }
 
+    // Optimistically update the instructions state with the saved content
+    // so the UI reflects the change immediately without a re-fetch.
+    const current = get(agentInstructions$);
+    set(agentInstructionsState$, {
+      instructions: {
+        content: edited,
+        filename: current?.filename ?? null,
+      },
+      loading: false,
+    });
+
     // Clear editing state
     set(editedInstructionsContent$, null);
-
-    // Re-fetch instructions to show the persisted content
-    const instructionsResponse = await fetchFn(
-      `/api/agent/composes/${detail.id}/instructions`,
-    );
-    if (instructionsResponse.ok) {
-      const data = (await instructionsResponse.json()) as AgentInstructions;
-      set(agentInstructionsState$, { instructions: data, loading: false });
-    }
 
     toast.success("Instructions saved");
   } catch (error) {
