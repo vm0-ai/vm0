@@ -48,12 +48,7 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
         <TooltipProvider delayDuration={100}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button
-                variant="default"
-                size="sm"
-                className="bg-orange-500 hover:bg-orange-600 text-white"
-                disabled
-              >
+              <Button variant="default" size="sm" disabled>
                 <IconPlayerPlay size={16} className="mr-1" />
                 Run
               </Button>
@@ -64,7 +59,12 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
           {isOwner && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" disabled>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9"
+                  disabled
+                >
                   <IconSettings size={18} />
                 </Button>
               </TooltipTrigger>
@@ -75,8 +75,9 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                variant="ghost"
+                variant="outline"
                 size="icon"
+                className="h-9 w-9"
                 onClick={() =>
                   navigate("/agents/:name/logs", {
                     pathParams: { name: detail.name },
@@ -92,8 +93,9 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                variant="ghost"
+                variant="outline"
                 size="icon"
+                className="h-9 w-9"
                 onClick={() =>
                   navigate("/agents/:name/connections", {
                     pathParams: { name: detail.name },
@@ -109,8 +111,9 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                variant="ghost"
+                variant="outline"
                 size="icon"
+                className="h-9 w-9"
                 onClick={() => navigate("/agents")}
               >
                 <IconLayoutGrid size={18} />
