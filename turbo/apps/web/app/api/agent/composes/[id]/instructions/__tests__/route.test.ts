@@ -209,6 +209,92 @@ describe("GET /api/agent/composes/:id/instructions", () => {
     expect(response.status).toBe(404);
     expect(data.error.code).toBe("NOT_FOUND");
   });
+
+  it("should fall back to CLAUDE.md when configured filename not found in manifest", async () => {
+    const agentName = "fallback-agent";
+    const claudeContent = "# Legacy CLAUDE.md content\n";
+
+    const { composeId } = await createTestCompose(agentName, {
+      overrides: { instructions: "AGENTS.md" },
+    });
+
+    const storageName = getInstructionsStorageName(agentName);
+    await createTestVolume(storageName);
+
+    // Manifest only contains CLAUDE.md, not AGENTS.md
+    context.mocks.s3.downloadManifest.mockResolvedValueOnce({
+      version: "a".repeat(64),
+      createdAt: new Date().toISOString(),
+      totalSize: claudeContent.length,
+      fileCount: 1,
+      files: [
+        {
+          path: "CLAUDE.md",
+          hash: "d".repeat(64),
+          size: claudeContent.length,
+        },
+      ],
+    });
+
+    context.mocks.s3.downloadS3Buffer.mockResolvedValueOnce(
+      buildTarGz("CLAUDE.md", claudeContent),
+    );
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/composes/${composeId}/instructions`,
+    );
+    const response = await GET(request, {
+      params: Promise.resolve({ id: composeId }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.content).toBe(claudeContent);
+    expect(data.filename).toBe("AGENTS.md");
+  });
+
+  it("should normalize ./ prefix when matching instructions file in manifest", async () => {
+    const agentName = "normalize-prefix-agent";
+    const instructionsContent = "# Normalized content\n";
+
+    const { composeId } = await createTestCompose(agentName, {
+      overrides: { instructions: "AGENTS.md" },
+    });
+
+    const storageName = getInstructionsStorageName(agentName);
+    await createTestVolume(storageName);
+
+    // Manifest file has ./ prefix but config says "AGENTS.md" without prefix
+    context.mocks.s3.downloadManifest.mockResolvedValueOnce({
+      version: "a".repeat(64),
+      createdAt: new Date().toISOString(),
+      totalSize: instructionsContent.length,
+      fileCount: 1,
+      files: [
+        {
+          path: "./AGENTS.md",
+          hash: "e".repeat(64),
+          size: instructionsContent.length,
+        },
+      ],
+    });
+
+    context.mocks.s3.downloadS3Buffer.mockResolvedValueOnce(
+      buildTarGz("./AGENTS.md", instructionsContent),
+    );
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/composes/${composeId}/instructions`,
+    );
+    const response = await GET(request, {
+      params: Promise.resolve({ id: composeId }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.content).toBe(instructionsContent);
+    expect(data.filename).toBe("AGENTS.md");
+  });
 });
 
 describe("PUT /api/agent/composes/:id/instructions", () => {
@@ -330,5 +416,124 @@ describe("PUT /api/agent/composes/:id/instructions", () => {
 
     expect(response.status).toBe(400);
     expect(data.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("should return 404 for non-existent compose", async () => {
+    const fakeId = "00000000-0000-0000-0000-000000000000";
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/composes/${fakeId}/instructions`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: "new content" }),
+      },
+    );
+    const response = await PUT(request, {
+      params: Promise.resolve({ id: fakeId }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(data.error.code).toBe("NOT_FOUND");
+  });
+
+  it("should return 413 when content exceeds 1 MB", async () => {
+    const { composeId } = await createTestCompose("large-content-agent", {
+      overrides: { instructions: "AGENTS.md" },
+    });
+
+    // Create content just over 1 MB
+    const largeContent = "x".repeat(1024 * 1024 + 1);
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/composes/${composeId}/instructions`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: largeContent }),
+      },
+    );
+    const response = await PUT(request, {
+      params: Promise.resolve({ id: composeId }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(413);
+    expect(data.error.code).toBe("PAYLOAD_TOO_LARGE");
+  });
+
+  it("should return 400 when compose has no agents configured", async () => {
+    // Create compose without any agent definitions (no instructions)
+    const { composeId } = await createTestCompose("no-agents-agent");
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/composes/${composeId}/instructions`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: "new content" }),
+      },
+    );
+    const response = await PUT(request, {
+      params: Promise.resolve({ id: composeId }),
+    });
+    const data = await response.json();
+
+    // The compose has agents in the config but no instructions field,
+    // so this returns 400 with "No instructions file configured"
+    expect(response.status).toBe(400);
+    expect(data.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("should allow writing then reading back instructions", async () => {
+    const agentName = "roundtrip-agent";
+    const { composeId } = await createTestCompose(agentName, {
+      overrides: { instructions: "AGENTS.md" },
+    });
+
+    const newContent =
+      "# Round-trip Test\n\nThis content was written via PUT.\n";
+
+    // PUT the instructions
+    const putRequest = createTestRequest(
+      `http://localhost:3000/api/agent/composes/${composeId}/instructions`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: newContent }),
+      },
+    );
+    const putResponse = await PUT(putRequest, {
+      params: Promise.resolve({ id: composeId }),
+    });
+    const putData = await putResponse.json();
+
+    expect(putResponse.status).toBe(200);
+    expect(putData.success).toBe(true);
+
+    // Capture the S3 key from the PUT call to set up GET mocks
+    const manifestCall = context.mocks.s3.putS3Object.mock.calls.find(
+      (call) =>
+        typeof call[1] === "string" && call[1].endsWith("/manifest.json"),
+    );
+    const manifestBody = JSON.parse(manifestCall![2] as string);
+
+    // Mock GET to return what was PUT
+    context.mocks.s3.downloadManifest.mockResolvedValueOnce(manifestBody);
+    context.mocks.s3.downloadS3Buffer.mockResolvedValueOnce(
+      buildTarGz("AGENTS.md", newContent),
+    );
+
+    // GET the instructions back
+    const getRequest = createTestRequest(
+      `http://localhost:3000/api/agent/composes/${composeId}/instructions`,
+    );
+    const getResponse = await GET(getRequest, {
+      params: Promise.resolve({ id: composeId }),
+    });
+    const getData = await getResponse.json();
+
+    expect(getResponse.status).toBe(200);
+    expect(getData.content).toBe(newContent);
+    expect(getData.filename).toBe("AGENTS.md");
   });
 });

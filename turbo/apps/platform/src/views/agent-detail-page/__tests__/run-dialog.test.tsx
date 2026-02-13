@@ -45,6 +45,17 @@ function mockAgentDetailAPI() {
         filename: "instructions.md",
       });
     }),
+    // Mock inline run polling endpoints (needed when "now" runs trigger polling)
+    http.get("/api/agent/runs/:runId/telemetry/agent", () => {
+      return HttpResponse.json({ events: [], hasMore: false });
+    }),
+    http.get("/api/platform/logs/:runId", () => {
+      return HttpResponse.json({
+        id: "run_1",
+        status: "completed",
+        createdAt: "2024-01-01T00:00:00Z",
+      });
+    }),
   );
 }
 
@@ -154,16 +165,19 @@ describe("run dialog", () => {
     // Click Save (Time defaults to "Now")
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
+    // Dialog closes immediately for "now" runs; API continues in background
     await vi.waitFor(() => {
       expect(
         screen.queryByRole("heading", { name: "Run this agent" }),
       ).not.toBeInTheDocument();
     });
 
-    // Verify API was called with correct body
-    expect(capturedBody).toStrictEqual({
-      agentComposeId: "compose_1",
-      prompt: "Fix the bug",
+    // Verify API was called with correct body (async, so wait for it)
+    await vi.waitFor(() => {
+      expect(capturedBody).toStrictEqual({
+        agentComposeId: "compose_1",
+        prompt: "Fix the bug",
+      });
     });
   });
 
@@ -206,6 +220,7 @@ describe("run dialog", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
+    // For "now" runs, errors appear as toasts (dialog closes immediately)
     await vi.waitFor(() => {
       expect(screen.getByText("Rate limit exceeded")).toBeInTheDocument();
     });
