@@ -170,6 +170,125 @@ function resolveArtifact(
 }
 
 /**
+ * Process volume declarations from agent config into resolved volumes.
+ */
+function processVolumeDeclarations(
+  declarations: string[],
+  volumeDefinitions: Record<string, VolumeConfig> | undefined,
+  vars: Record<string, string>,
+  volumeVersionOverrides: Record<string, string> | undefined,
+): { volumes: ResolvedVolume[]; errors: VolumeError[] } {
+  const volumes: ResolvedVolume[] = [];
+  const errors: VolumeError[] = [];
+
+  for (const declaration of declarations) {
+    try {
+      const { volumeName, mountPath } = parseMountPath(declaration);
+
+      // Look up volume definition - required in new format
+      const volumeConfig = volumeDefinitions?.[volumeName];
+
+      if (!volumeConfig) {
+        errors.push({
+          volumeName,
+          message: `Volume "${volumeName}" is not defined in the volumes section. Each volume must have explicit name and version.`,
+          type: "missing_definition",
+        });
+        continue;
+      }
+
+      // Validate required fields
+      if (!volumeConfig.name || !volumeConfig.version) {
+        errors.push({
+          volumeName,
+          message: `Volume "${volumeName}" must have both 'name' and 'version' fields.`,
+          type: "invalid_config",
+        });
+        continue;
+      }
+
+      // Check for version override
+      const versionOverride = volumeVersionOverrides?.[volumeName];
+      const effectiveVolumeConfig = versionOverride
+        ? { ...volumeConfig, version: versionOverride }
+        : volumeConfig;
+
+      // Resolve VAS volume (with possible version override)
+      const { volume, error } = resolveVasVolume(
+        volumeName,
+        mountPath,
+        effectiveVolumeConfig,
+        vars,
+      );
+
+      if (error) {
+        errors.push(error);
+        continue;
+      }
+
+      if (volume) {
+        volumes.push(volume);
+      }
+    } catch (error) {
+      errors.push({
+        volumeName: "unknown",
+        message: error instanceof Error ? error.message : "Unknown error",
+        type: "invalid_config",
+      });
+    }
+  }
+
+  return { volumes, errors };
+}
+
+/**
+ * Resolve instruction and skill volumes for an agent.
+ */
+function resolveInstructionsAndSkills(
+  config: AgentVolumeConfig,
+  agent: { instructions?: unknown; skills?: string[]; framework?: unknown },
+): ResolvedVolume[] {
+  const volumes: ResolvedVolume[] = [];
+  const framework = agent.framework as string | undefined;
+
+  // Process instructions if specified
+  if (agent.instructions) {
+    const agentName = config.agents ? Object.keys(config.agents)[0] : undefined;
+    if (agentName) {
+      const storageName = getInstructionsStorageName(agentName);
+      const instructionsMountPath = getInstructionsMountPath(framework);
+      volumes.push({
+        name: storageName,
+        driver: "vas",
+        mountPath: instructionsMountPath,
+        vasStorageName: storageName,
+        vasVersion: "latest",
+      });
+    }
+  }
+
+  // Process skills if specified
+  if (agent.skills && agent.skills.length > 0) {
+    const skillsBasePath = getSkillsBasePath(framework);
+    for (const skillUrl of agent.skills) {
+      const parsed = parseGitHubTreeUrl(skillUrl);
+      if (parsed) {
+        const storageName = getSkillStorageName(parsed.fullPath);
+        volumes.push({
+          name: storageName,
+          driver: "vas",
+          mountPath: `${skillsBasePath}/${parsed.skillName}`,
+          vasStorageName: storageName,
+          vasVersion: "latest",
+        });
+      }
+    }
+  }
+
+  return volumes;
+}
+
+/**
  * Resolve volumes from agent configuration
  * @param config - Agent configuration with volume definitions
  * @param vars - Template variables for placeholder replacement
@@ -179,7 +298,6 @@ function resolveArtifact(
  * @param volumeVersionOverrides - Optional volume version overrides (volume name -> version)
  * @returns Resolution result with resolved volumes, artifact, and errors
  */
-// eslint-disable-next-line complexity -- TODO: refactor complex function
 export function resolveVolumes(
   config: AgentVolumeConfig,
   vars: Record<string, string> = {},
@@ -201,100 +319,20 @@ export function resolveVolumes(
 
   // Process volume declarations
   if (agent?.volumes && agent.volumes.length > 0) {
-    for (const declaration of agent.volumes) {
-      try {
-        const { volumeName, mountPath } = parseMountPath(declaration);
-
-        // Look up volume definition - required in new format
-        const volumeConfig = config.volumes?.[volumeName];
-
-        if (!volumeConfig) {
-          errors.push({
-            volumeName,
-            message: `Volume "${volumeName}" is not defined in the volumes section. Each volume must have explicit name and version.`,
-            type: "missing_definition",
-          });
-          continue;
-        }
-
-        // Validate required fields
-        if (!volumeConfig.name || !volumeConfig.version) {
-          errors.push({
-            volumeName,
-            message: `Volume "${volumeName}" must have both 'name' and 'version' fields.`,
-            type: "invalid_config",
-          });
-          continue;
-        }
-
-        // Check for version override
-        const versionOverride = volumeVersionOverrides?.[volumeName];
-        const effectiveVolumeConfig = versionOverride
-          ? { ...volumeConfig, version: versionOverride }
-          : volumeConfig;
-
-        // Resolve VAS volume (with possible version override)
-        const { volume, error } = resolveVasVolume(
-          volumeName,
-          mountPath,
-          effectiveVolumeConfig,
-          vars,
-        );
-
-        if (error) {
-          errors.push(error);
-          continue;
-        }
-
-        if (volume) {
-          volumes.push(volume);
-        }
-      } catch (error) {
-        errors.push({
-          volumeName: "unknown",
-          message: error instanceof Error ? error.message : "Unknown error",
-          type: "invalid_config",
-        });
-      }
-    }
+    const { volumes: declaredVolumes, errors: declaredErrors } =
+      processVolumeDeclarations(
+        agent.volumes,
+        config.volumes,
+        vars,
+        volumeVersionOverrides,
+      );
+    volumes.push(...declaredVolumes);
+    errors.push(...declaredErrors);
   }
 
-  // Get framework for mount path resolution
-  const framework = agent?.framework as string | undefined;
-
-  // Process instructions if specified
-  if (agent?.instructions) {
-    // Get the agent name (key in agents dictionary)
-    const agentName = config.agents ? Object.keys(config.agents)[0] : undefined;
-    if (agentName) {
-      const storageName = getInstructionsStorageName(agentName);
-      const instructionsMountPath = getInstructionsMountPath(framework);
-      volumes.push({
-        name: storageName,
-        driver: "vas",
-        mountPath: instructionsMountPath,
-        vasStorageName: storageName,
-        vasVersion: "latest", // Instructions uses latest version
-      });
-    }
-  }
-
-  // Process skills if specified
-  if (agent?.skills && agent.skills.length > 0) {
-    const skillsBasePath = getSkillsBasePath(framework);
-    for (const skillUrl of agent.skills) {
-      const parsed = parseGitHubTreeUrl(skillUrl);
-      if (parsed) {
-        const storageName = getSkillStorageName(parsed.fullPath);
-        volumes.push({
-          name: storageName,
-          driver: "vas",
-          mountPath: `${skillsBasePath}/${parsed.skillName}`,
-          vasStorageName: storageName,
-          vasVersion: "latest", // Skills use latest version
-        });
-      }
-    }
+  // Process instructions and skills
+  if (agent) {
+    volumes.push(...resolveInstructionsAndSkills(config, agent));
   }
 
   // Process artifact (skip when resuming from checkpoint or when not provided)

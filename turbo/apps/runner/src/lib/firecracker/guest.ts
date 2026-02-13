@@ -43,7 +43,14 @@ export interface ProcessExitEvent {
 export type EnvVars = Record<string, string>;
 
 export interface GuestClient {
-  exec(command: string, timeoutMs?: number, env?: EnvVars): Promise<ExecResult>;
+  exec(
+    command: string,
+    timeoutMs?: number,
+    env?: EnvVars,
+    sudo?: boolean,
+  ): Promise<ExecResult>;
+  /** Execute a command as root via the sudo protocol flag. */
+  execAsRoot(command: string, timeoutMs?: number): Promise<ExecResult>;
   execOrThrow(command: string): Promise<string>;
   writeFile(remotePath: string, content: string): Promise<void>;
   writeFileWithSudo(remotePath: string, content: string): Promise<void>;
@@ -64,6 +71,7 @@ export interface GuestClient {
     command: string,
     timeoutMs?: number,
     env?: EnvVars,
+    sudo?: boolean,
   ): Promise<SpawnResult>;
 
   /**

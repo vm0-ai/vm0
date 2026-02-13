@@ -20,6 +20,103 @@ interface ExpandedEnvironmentResult {
 }
 
 /**
+ * Process secret values: validate, optionally encrypt via proxy tokens.
+ */
+function processSecretValues(
+  secretNames: string[],
+  passedSecrets: Record<string, string> | undefined,
+  sealSecretsEnabled: boolean,
+  checkEnv: boolean | undefined,
+  runId: string,
+  userId: string,
+): Record<string, string> | undefined {
+  if (secretNames.length === 0) return undefined;
+
+  if (checkEnv) {
+    const missingSecrets = secretNames.filter(
+      (name) => !passedSecrets || !passedSecrets[name],
+    );
+    if (missingSecrets.length > 0) {
+      throw badRequest(
+        `Missing required secrets: ${missingSecrets.join(", ")}. Use '--secrets ${missingSecrets[0]}=<value>' or '--env-file <path>' to provide them.`,
+      );
+    }
+  }
+
+  if (sealSecretsEnabled) {
+    log.debug(
+      `Seal secrets enabled for run ${runId}, encrypting ${secretNames.length} secret(s)`,
+    );
+    const secrets: Record<string, string> = {};
+    for (const name of secretNames) {
+      const secretValue = passedSecrets![name];
+      if (secretValue) {
+        secrets[name] = createProxyToken(runId, userId, name, secretValue);
+      }
+    }
+    return secrets;
+  }
+
+  const secrets: Record<string, string> = {};
+  for (const name of secretNames) {
+    secrets[name] = passedSecrets![name]!;
+  }
+  return secrets;
+}
+
+/**
+ * Process credential values: validate, optionally encrypt via proxy tokens.
+ */
+function processCredentialValues(
+  credentialNames: string[],
+  credentials: Record<string, string> | undefined,
+  sealSecretsEnabled: boolean,
+  checkEnv: boolean | undefined,
+  runId: string,
+  userId: string,
+): Record<string, string> | undefined {
+  if (credentialNames.length === 0) return undefined;
+
+  if (checkEnv) {
+    const missingCredentials = credentialNames.filter(
+      (name) => !credentials || !credentials[name],
+    );
+    if (missingCredentials.length > 0) {
+      const platformUrl = env().NEXT_PUBLIC_PLATFORM_URL;
+      const settingsUrl = `${platformUrl}/settings?tab=secrets-and-variables`;
+      throw badRequest(
+        `Missing required secrets: ${missingCredentials.join(", ")}. Use 'vm0 secret set ${missingCredentials[0]} <value>' or add them at: ${settingsUrl}`,
+      );
+    }
+  }
+
+  if (sealSecretsEnabled) {
+    log.debug(
+      `Seal secrets enabled for run ${runId}, encrypting ${credentialNames.length} credential(s)`,
+    );
+    const processed: Record<string, string> = {};
+    for (const name of credentialNames) {
+      const credentialValue = credentials![name];
+      if (credentialValue) {
+        processed[name] = createProxyToken(
+          runId,
+          userId,
+          name,
+          credentialValue,
+        );
+      }
+    }
+    return processed;
+  }
+
+  const processed: Record<string, string> = {};
+  for (const name of credentialNames) {
+    processed[name] = credentials![name]!;
+  }
+  return processed;
+}
+
+/**
  * Extract and expand environment variables from agent compose config
  * Expands ${{ vars.xxx }}, ${{ secrets.xxx }}, and ${{ credentials.xxx }} references
  *
@@ -35,7 +132,6 @@ interface ExpandedEnvironmentResult {
  * @param checkEnv When true, validates that all required secrets/vars are provided
  * @returns Expanded environment variables and seal_secrets flag
  */
-// eslint-disable-next-line complexity -- TODO: refactor complex function
 export function expandEnvironmentFromCompose(
   agentCompose: unknown,
   vars: Record<string, string> | undefined,
@@ -81,89 +177,26 @@ export function expandEnvironmentFromCompose(
   }
 
   // Process secrets if needed
-  let secrets: Record<string, string> | undefined;
-  if (grouped.secrets.length > 0) {
-    const secretNames = grouped.secrets.map((r) => r.name);
-
-    // Check for missing secrets (only when checkEnv is enabled)
-    if (checkEnv) {
-      const missingSecrets = secretNames.filter(
-        (name) => !passedSecrets || !passedSecrets[name],
-      );
-      if (missingSecrets.length > 0) {
-        throw badRequest(
-          `Missing required secrets: ${missingSecrets.join(", ")}. Use '--secrets ${missingSecrets[0]}=<value>' or '--env-file <path>' to provide them.`,
-        );
-      }
-    }
-
-    // If seal_secrets is enabled, encrypt secrets into proxy tokens
-    if (sealSecretsEnabled) {
-      log.debug(
-        `Seal secrets enabled for run ${runId}, encrypting ${secretNames.length} secret(s)`,
-      );
-      secrets = {};
-      for (const name of secretNames) {
-        const secretValue = passedSecrets![name];
-        if (secretValue) {
-          // Create encrypted proxy token bound to this run
-          secrets[name] = createProxyToken(runId, userId, name, secretValue);
-        }
-      }
-    } else {
-      // Default: use plaintext secrets
-      secrets = {};
-      for (const name of secretNames) {
-        secrets[name] = passedSecrets![name]!;
-      }
-    }
-  }
+  const secretNames = grouped.secrets.map((r) => r.name);
+  const secrets = processSecretValues(
+    secretNames,
+    passedSecrets,
+    sealSecretsEnabled,
+    checkEnv,
+    runId,
+    userId,
+  );
 
   // Process credentials if needed
-  let processedCredentials: Record<string, string> | undefined;
-  if (grouped.credentials.length > 0) {
-    const credentialNames = grouped.credentials.map((r) => r.name);
-
-    // Check for missing credentials (only when checkEnv is enabled)
-    if (checkEnv) {
-      const missingCredentials = credentialNames.filter(
-        (name) => !credentials || !credentials[name],
-      );
-      if (missingCredentials.length > 0) {
-        const platformUrl = env().NEXT_PUBLIC_PLATFORM_URL;
-        const settingsUrl = `${platformUrl}/settings?tab=secrets-and-variables`;
-        throw badRequest(
-          `Missing required secrets: ${missingCredentials.join(", ")}. Use 'vm0 secret set ${missingCredentials[0]} <value>' or add them at: ${settingsUrl}`,
-        );
-      }
-    }
-
-    // If seal_secrets is enabled, encrypt credentials into proxy tokens
-    if (sealSecretsEnabled) {
-      log.debug(
-        `Seal secrets enabled for run ${runId}, encrypting ${credentialNames.length} credential(s)`,
-      );
-      processedCredentials = {};
-      for (const name of credentialNames) {
-        const credentialValue = credentials![name];
-        if (credentialValue) {
-          // Create encrypted proxy token bound to this run
-          processedCredentials[name] = createProxyToken(
-            runId,
-            userId,
-            name,
-            credentialValue,
-          );
-        }
-      }
-    } else {
-      // Default: use plaintext credentials
-      processedCredentials = {};
-      for (const name of credentialNames) {
-        processedCredentials[name] = credentials![name]!;
-      }
-    }
-  }
+  const credentialNames = grouped.credentials.map((r) => r.name);
+  const processedCredentials = processCredentialValues(
+    credentialNames,
+    credentials,
+    sealSecretsEnabled,
+    checkEnv,
+    runId,
+    userId,
+  );
 
   // Build sources for expansion
   const sources: {

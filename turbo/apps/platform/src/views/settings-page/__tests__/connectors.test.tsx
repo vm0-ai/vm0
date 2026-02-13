@@ -49,7 +49,7 @@ describe("connectors tab", () => {
 
     // Notion should still show Connect button
     expect(screen.getByText("Connect")).toBeInTheDocument();
-    expect(screen.getByText("Not connected")).toBeInTheDocument();
+    // "Not connected" status has been removed from the UI
   });
 
   it("can disconnect a connector via kebab menu", async () => {

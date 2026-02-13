@@ -25,6 +25,11 @@ interface NgrokCredential {
   token: string;
 }
 
+interface NgrokEndpoint {
+  id: string;
+  url: string;
+}
+
 /**
  * Make an authenticated request to the ngrok API.
  */
@@ -136,6 +141,33 @@ export async function deleteCredential(
   credentialId: string,
 ): Promise<void> {
   await ngrokFetch(apiKey, `/credentials/${credentialId}`, {
+    method: "DELETE",
+  });
+}
+
+/**
+ * Create a Cloud Endpoint with a traffic policy.
+ */
+export async function createCloudEndpoint(
+  apiKey: string,
+  url: string,
+  trafficPolicy: string,
+): Promise<NgrokEndpoint> {
+  const response = await ngrokFetch(apiKey, "/endpoints", {
+    method: "POST",
+    body: JSON.stringify({ url, type: "cloud", traffic_policy: trafficPolicy }),
+  });
+  return (await response.json()) as NgrokEndpoint;
+}
+
+/**
+ * Delete a Cloud Endpoint.
+ */
+export async function deleteCloudEndpoint(
+  apiKey: string,
+  endpointId: string,
+): Promise<void> {
+  await ngrokFetch(apiKey, `/endpoints/${endpointId}`, {
     method: "DELETE",
   });
 }

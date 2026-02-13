@@ -1,5 +1,3 @@
-"use client";
-
 export default function Particles() {
   const particles = [];
   for (let i = 0; i < 12; i++) {

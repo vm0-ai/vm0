@@ -38,7 +38,7 @@ export function AppShell({
       <div className="flex flex-1 flex-col min-w-0">
         <Navbar breadcrumb={normalizedBreadcrumb} />
         <main
-          className={`flex-1 overflow-auto pt-1 ${gradientBackground ? "bg-background" : ""}`}
+          className={`flex-1 overflow-auto ${gradientBackground ? "bg-background" : ""}`}
         >
           {title && <PageHeader title={title} subtitle={subtitle} />}
           {children}

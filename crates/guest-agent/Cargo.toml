@@ -17,5 +17,8 @@ thiserror.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "process", "io-util", "fs", "sync"] }
 tokio-util.workspace = true
 
+[dev-dependencies]
+httpmock.workspace = true
+
 [lints]
 workspace = true

@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import type {
   SecretListResponse,
   SecretResponse,
@@ -225,6 +226,9 @@ export const submitSecretDialog$ = command(
       }
 
       signal.throwIfAborted();
+      toast.success(
+        `Secret ${dialogState.mode === "add" ? "added" : "updated"} successfully`,
+      );
       set(internalReloadSecrets$, (x) => x + 1);
 
       set(internalDialogState$, {
@@ -279,6 +283,7 @@ export const confirmDeleteSecret$ = command(
       }
 
       signal.throwIfAborted();
+      toast.success("Secret deleted successfully");
       set(internalReloadSecrets$, (x) => x + 1);
 
       set(internalDeleteDialogState$, { open: false, secretName: null });

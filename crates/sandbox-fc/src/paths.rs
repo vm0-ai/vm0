@@ -1,9 +1,5 @@
 use std::path::{Path, PathBuf};
 
-/// Directory for flock-based pool index allocation.
-/// `/var/lock` is the FHS-standard location for lock files (mode 1777).
-pub const LOCK_DIR: &str = "/var/lock";
-
 /// Base directory for runtime sockets under `/run`.
 /// Created with mode 1777 (world-writable + sticky bit) by `prerequisites.rs`.
 pub const RUNTIME_DIR: &str = "/run/vm0";
@@ -29,6 +25,37 @@ impl RuntimePaths {
     /// Socket directory: `/run/vm0/sock/<id>/`.
     pub fn sock_dir(&self, id: &str) -> PathBuf {
         self.base_dir.join("sock").join(id)
+    }
+}
+
+/// Lock file paths under `/var/lock` for flock-based coordination.
+///
+/// `/var/lock` is the FHS-standard location for lock files (mode 1777).
+pub struct LockPaths {
+    base_dir: PathBuf,
+}
+
+impl Default for LockPaths {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl LockPaths {
+    pub fn new() -> Self {
+        Self {
+            base_dir: PathBuf::from("/var/lock"),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn with_dir(base_dir: PathBuf) -> Self {
+        Self { base_dir }
+    }
+
+    /// Lock file for netns pool index allocation.
+    pub fn netns_pool(&self, index: u32) -> PathBuf {
+        self.base_dir.join(format!("vm0-netns-pool-{index}.lock"))
     }
 }
 

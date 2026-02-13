@@ -331,6 +331,7 @@ const composeListItemSchema = z.object({
   name: z.string(),
   headVersionId: z.string().nullable(),
   updatedAt: z.string(),
+  isOwner: z.boolean(),
 });
 
 /**

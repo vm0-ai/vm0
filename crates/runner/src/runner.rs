@@ -118,13 +118,8 @@ struct RunConfig {
 }
 
 async fn run(config: RunConfig) -> RunnerResult<()> {
-    let mut factory = FirecrackerFactory::new(config.fc_config.clone())
-        .await
-        .map_err(|e| RunnerError::Internal(format!("factory init: {e}")))?;
-    factory
-        .startup()
-        .await
-        .map_err(|e| RunnerError::Internal(format!("factory startup: {e}")))?;
+    let mut factory = FirecrackerFactory::new(config.fc_config.clone()).await?;
+    factory.startup().await?;
     let factory = Arc::new(factory);
 
     let api = ApiClient::new(config.api_url.clone(), config.token.clone())?;

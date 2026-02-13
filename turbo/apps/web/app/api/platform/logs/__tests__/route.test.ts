@@ -178,6 +178,72 @@ describe("GET /api/platform/logs", () => {
     });
   });
 
+  describe("agent filter", () => {
+    let alphaName: string;
+    let betaName: string;
+
+    beforeEach(async () => {
+      alphaName = `agent-alpha-${randomUUID().slice(0, 8)}`;
+      betaName = `agent-beta-${randomUUID().slice(0, 8)}`;
+
+      const { composeId: compose1 } = await createTestCompose(alphaName);
+      const { composeId: compose2 } = await createTestCompose(betaName);
+
+      const { runId: run1 } = await createTestRun(compose1, "Alpha prompt");
+      await completeTestRun(user.userId, run1);
+
+      const { runId: run2 } = await createTestRun(compose2, "Beta prompt");
+      await completeTestRun(user.userId, run2);
+    });
+
+    it("should filter by exact agent name", async () => {
+      const request = createTestRequest(
+        `http://localhost:3000/api/platform/logs?agent=${alphaName}`,
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data).toHaveLength(1);
+      expect(data.data[0].agentName).toBe(alphaName);
+    });
+
+    it("should return empty list when agent has no runs", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/platform/logs?agent=nonexistent-agent",
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data).toEqual([]);
+    });
+
+    it("should use exact match, not fuzzy", async () => {
+      // Search for partial name should return nothing with agent filter
+      const request = createTestRequest(
+        `http://localhost:3000/api/platform/logs?agent=agent-alpha`,
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data).toEqual([]);
+    });
+
+    it("should take precedence over search param", async () => {
+      const request = createTestRequest(
+        `http://localhost:3000/api/platform/logs?agent=${alphaName}&search=beta`,
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data).toHaveLength(1);
+      expect(data.data[0].agentName).toBe(alphaName);
+    });
+  });
+
   it("should not return runs from other users", async () => {
     // Create run for current user
     const { composeId } = await createTestCompose(

@@ -37,11 +37,13 @@ import {
 } from "../../signals/agents-page/agents-list.ts";
 import { defaultModelProvider$ } from "../../signals/external/model-providers.ts";
 import { navigateInReact$ } from "../../signals/route.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { getUILabel } from "../settings-page/provider-ui-config.ts";
 import { IconAlertTriangle } from "@tabler/icons-react";
 import { Bed, Settings, Clock, AlertTriangle } from "lucide-react";
 import {
   CONNECTOR_TYPES,
+  FeatureSwitchKey,
   getConnectorProvidedSecretNames,
   type ComposeListItem,
   type ConnectorType,
@@ -68,6 +70,9 @@ function AgentsListSection() {
   const loading = useGet(agentsLoading$);
   const error = useGet(agentsError$);
   const defaultProvider = useResolved(defaultModelProvider$);
+  const featureSwitches = useLastResolved(featureSwitch$);
+  const detailPageEnabled =
+    featureSwitches?.[FeatureSwitchKey.AgentDetailPage] ?? false;
 
   // Create a map for quick lookup
   const missingMap = new Map(missingItems?.map((a) => [a.agentName, a]));
@@ -142,6 +147,7 @@ function AgentsListSection() {
               modelProviderLabel={
                 defaultProvider ? getUILabel(defaultProvider.type) : "N/A"
               }
+              detailPageEnabled={detailPageEnabled}
             />
           );
         })}
@@ -224,70 +230,125 @@ function AgentRow({
   hasSchedule,
   missing,
   modelProviderLabel,
+  detailPageEnabled,
 }: {
   agent: ComposeListItem;
   hasSchedule: boolean;
   missing?: AgentMissingItems;
   modelProviderLabel: string;
+  detailPageEnabled: boolean;
 }) {
+  const navigate = useSet(navigateInReact$);
   const missingCount = missing ? getMissingCount(missing) : 0;
+
+  const handleRowClick = detailPageEnabled
+    ? () =>
+        navigate("/agents/:name", {
+          pathParams: { name: agent.name },
+        })
+    : undefined;
+
+  const nameCell = (
+    <TableCell
+      className="px-3 py-2 cursor-pointer w-[25%] min-w-[120px]"
+      onClick={handleRowClick}
+    >
+      <div className="flex flex-col gap-1">
+        <span className="block truncate whitespace-nowrap font-medium">
+          {agent.name}
+        </span>
+        {missingCount > 0 && (
+          <span className="inline-flex items-center gap-1.5 text-xs text-destructive">
+            <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+            <span className="truncate">
+              Missing {missingCount} environment variable
+              {missingCount > 1 ? "s" : ""}
+            </span>
+          </span>
+        )}
+      </div>
+    </TableCell>
+  );
+
+  const providerCell = (
+    <TableCell
+      className="px-3 py-2 cursor-pointer w-[25%] min-w-[120px]"
+      onClick={handleRowClick}
+    >
+      <span className="block truncate whitespace-nowrap text-sm">
+        {modelProviderLabel}
+      </span>
+    </TableCell>
+  );
+
+  const scheduleCell = (
+    <TableCell
+      className="px-3 py-2 cursor-pointer w-[20%] min-w-[120px]"
+      onClick={handleRowClick}
+    >
+      <div className="truncate whitespace-nowrap">
+        {hasSchedule ? (
+          <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
+            <Clock className="h-3 w-3 text-sky-600" />
+            Scheduled
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
+            <Bed className="h-3 w-3 text-sky-600" />
+            No schedule
+          </span>
+        )}
+      </div>
+    </TableCell>
+  );
+
+  const dateCell = (
+    <TableCell
+      className="pl-3 pr-6 py-2 cursor-pointer w-[20%] min-w-[100px]"
+      onClick={handleRowClick}
+    >
+      <span className="block truncate whitespace-nowrap text-sm">
+        {new Date(agent.updatedAt).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })}
+      </span>
+    </TableCell>
+  );
+
+  if (detailPageEnabled) {
+    return (
+      <TableRow className="h-[53px]">
+        {nameCell}
+        {providerCell}
+        {scheduleCell}
+        {dateCell}
+        <TableCell className="pl-0 pr-4 py-2 w-12">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="sm" onClick={handleRowClick}>
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>View details</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </TableCell>
+      </TableRow>
+    );
+  }
 
   return (
     <Dialog>
       <TableRow className="h-[53px]">
-        <DialogTrigger asChild>
-          <TableCell className="px-3 py-2 cursor-pointer w-[25%] min-w-[120px]">
-            <div className="flex flex-col gap-1">
-              <span className="block truncate whitespace-nowrap font-medium">
-                {agent.name}
-              </span>
-              {missingCount > 0 && (
-                <span className="inline-flex items-center gap-1.5 text-xs text-destructive">
-                  <AlertTriangle className="h-3 w-3 flex-shrink-0" />
-                  <span className="truncate">
-                    Missing {missingCount} environment variable
-                    {missingCount > 1 ? "s" : ""}
-                  </span>
-                </span>
-              )}
-            </div>
-          </TableCell>
-        </DialogTrigger>
-        <DialogTrigger asChild>
-          <TableCell className="px-3 py-2 cursor-pointer w-[25%] min-w-[120px]">
-            <span className="block truncate whitespace-nowrap text-sm">
-              {modelProviderLabel}
-            </span>
-          </TableCell>
-        </DialogTrigger>
-        <DialogTrigger asChild>
-          <TableCell className="px-3 py-2 cursor-pointer w-[20%] min-w-[120px]">
-            <div className="truncate whitespace-nowrap">
-              {hasSchedule ? (
-                <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
-                  <Clock className="h-3 w-3 text-sky-600" />
-                  Scheduled
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
-                  <Bed className="h-3 w-3 text-sky-600" />
-                  No schedule
-                </span>
-              )}
-            </div>
-          </TableCell>
-        </DialogTrigger>
-        <DialogTrigger asChild>
-          <TableCell className="pl-3 pr-6 py-2 cursor-pointer w-[20%] min-w-[100px]">
-            <span className="block truncate whitespace-nowrap text-sm">
-              {new Date(agent.updatedAt).toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })}
-            </span>
-          </TableCell>
-        </DialogTrigger>
+        <DialogTrigger asChild>{nameCell}</DialogTrigger>
+        <DialogTrigger asChild>{providerCell}</DialogTrigger>
+        <DialogTrigger asChild>{scheduleCell}</DialogTrigger>
+        <DialogTrigger asChild>{dateCell}</DialogTrigger>
         <TableCell className="pl-0 pr-4 py-2 w-12">
           <TooltipProvider>
             <Tooltip>

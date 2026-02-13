@@ -28,8 +28,43 @@ interface RunResult {
   volumes?: Record<string, string>;
 }
 
+function buildRunResponseBody(
+  run: typeof agentRuns.$inferSelect,
+  compose: typeof agentComposes.$inferSelect | null,
+  status:
+    | "pending"
+    | "running"
+    | "completed"
+    | "failed"
+    | "timeout"
+    | "cancelled",
+  error: string | null,
+) {
+  const runResult = run.result as RunResult | null;
+  let executionTimeMs: number | null = null;
+  if (run.startedAt && run.completedAt) {
+    executionTimeMs = run.completedAt.getTime() - run.startedAt.getTime();
+  }
+  return {
+    id: run.id,
+    agentId: compose?.id ?? "",
+    agentName: compose?.name ?? "unknown",
+    status,
+    prompt: run.prompt,
+    createdAt: run.createdAt.toISOString(),
+    startedAt: run.startedAt?.toISOString() ?? null,
+    completedAt: run.completedAt?.toISOString() ?? null,
+    error,
+    executionTimeMs,
+    checkpointId: runResult?.checkpointId ?? null,
+    sessionId: runResult?.agentSessionId ?? null,
+    artifactName: runResult?.artifactName ?? null,
+    artifactVersion: runResult?.artifactVersion ?? null,
+    volumes: runResult?.volumes,
+  };
+}
+
 const router = tsr.router(publicRunByIdContract, {
-  // eslint-disable-next-line complexity -- TODO: refactor complex function
   get: async ({ params, headers }) => {
     initServices();
 
@@ -94,40 +129,20 @@ const router = tsr.router(publicRunByIdContract, {
 
     const { run, compose } = result;
 
-    // Parse result JSON for output and other fields
-    const runResult = run.result as RunResult | null;
-
-    // Calculate execution time if completed
-    let executionTimeMs: number | null = null;
-    if (run.startedAt && run.completedAt) {
-      executionTimeMs = run.completedAt.getTime() - run.startedAt.getTime();
-    }
-
     return {
       status: 200 as const,
-      body: {
-        id: run.id,
-        agentId: compose?.id ?? "",
-        agentName: compose?.name ?? "unknown",
-        status: run.status as
+      body: buildRunResponseBody(
+        run,
+        compose,
+        run.status as
           | "pending"
           | "running"
           | "completed"
           | "failed"
           | "timeout"
           | "cancelled",
-        prompt: run.prompt,
-        createdAt: run.createdAt.toISOString(),
-        startedAt: run.startedAt?.toISOString() ?? null,
-        completedAt: run.completedAt?.toISOString() ?? null,
-        error: run.error ?? null,
-        executionTimeMs: executionTimeMs,
-        checkpointId: runResult?.checkpointId ?? null,
-        sessionId: runResult?.agentSessionId ?? null,
-        artifactName: runResult?.artifactName ?? null,
-        artifactVersion: runResult?.artifactVersion ?? null,
-        volumes: runResult?.volumes,
-      },
+        run.error ?? null,
+      ),
     };
   },
 });

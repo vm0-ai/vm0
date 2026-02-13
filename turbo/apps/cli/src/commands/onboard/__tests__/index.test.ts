@@ -11,6 +11,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { existsSync, mkdtempSync, rmSync } from "fs";
+import { mkdir } from "fs/promises";
 import * as path from "path";
 import * as os from "os";
 import { http, HttpResponse } from "msw";
@@ -291,7 +292,6 @@ describe("onboard command", () => {
     });
 
     it("should exit with error if directory already exists", async () => {
-      const { mkdir } = await import("fs/promises");
       await mkdir(path.join(tempDir, "my-vm0-agent"));
 
       await expect(

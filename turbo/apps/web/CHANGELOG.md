@@ -1,5 +1,67 @@
 # Changelog
 
+## [12.41.0](https://github.com/vm0-ai/vm0/compare/web-v12.40.0...web-v12.41.0) (2026-02-13)
+
+
+### Features
+
+* owner inline editing for agent instructions ([#3015](https://github.com/vm0-ai/vm0/issues/3015)) ([e7022c8](https://github.com/vm0-ai/vm0/commit/e7022c848b7b247ee6f2475c204bfb656588c5ad))
+
+## [12.40.0](https://github.com/vm0-ai/vm0/compare/web-v12.39.0...web-v12.40.0) (2026-02-13)
+
+
+### Features
+
+* **platform:** add agent detail page with feature flag gating ([#2998](https://github.com/vm0-ai/vm0/issues/2998)) ([5386de0](https://github.com/vm0-ai/vm0/commit/5386de0662eb2a85e69040788e2ca08e7f976cba))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.15.0
+
+## [12.39.0](https://github.com/vm0-ai/vm0/compare/web-v12.38.0...web-v12.39.0) (2026-02-13)
+
+
+### Features
+
+* add markdown preview for prompts, slack image hints, and platform tests ([#2991](https://github.com/vm0-ai/vm0/issues/2991)) ([35da51b](https://github.com/vm0-ai/vm0/commit/35da51b563330c45444e1cb16b3de566519d2c07))
+* **web:** add keyword detection for slack agent responses with deep links ([#3003](https://github.com/vm0-ai/vm0/issues/3003)) ([24adaff](https://github.com/vm0-ai/vm0/commit/24adaffd619e65a692eb643a4dec25d8cb6f457c)), closes [#2995](https://github.com/vm0-ai/vm0/issues/2995)
+
+## [12.38.0](https://github.com/vm0-ai/vm0/compare/web-v12.37.0...web-v12.38.0) (2026-02-13)
+
+
+### Features
+
+* **api:** add backend support for agent detail page ([#2979](https://github.com/vm0-ai/vm0/issues/2979)) ([4103d8f](https://github.com/vm0-ai/vm0/commit/4103d8f66ccc9546bccc67454d139b8d1de04599))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.14.0
+
+## [12.37.0](https://github.com/vm0-ai/vm0/compare/web-v12.36.1...web-v12.37.0) (2026-02-12)
+
+
+### Features
+
+* add computer connector api for authenticated local tunneling via ngrok ([#2937](https://github.com/vm0-ai/vm0/issues/2937)) ([4f3fc4e](https://github.com/vm0-ai/vm0/commit/4f3fc4ebf137409a30b85b5882634a6bb8846836))
+
+
+### Bug Fixes
+
+* **api:** preserve slack admin and default agent on workspace re-install ([#2963](https://github.com/vm0-ai/vm0/issues/2963)) ([d8f26b2](https://github.com/vm0-ai/vm0/commit/d8f26b2e9146fd0923f88c7f082c2c117dfc5a79))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.13.0
+
 ## [12.36.1](https://github.com/vm0-ai/vm0/compare/web-v12.36.0...web-v12.36.1) (2026-02-12)
 
 

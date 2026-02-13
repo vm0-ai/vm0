@@ -120,9 +120,56 @@ const cliComposeSchema = z
   });
 
 /**
+ * Format an invalid_type Zod issue into a user-friendly message.
+ * Returns null if no special formatting applies.
+ */
+function formatInvalidTypeIssue(
+  path: string,
+  issue: z.ZodIssue & { expected?: string },
+): string | null {
+  // Zod 4 uses 'input' instead of 'received' in types, but runtime has 'received'
+  const received = (issue as unknown as { received?: string }).received;
+
+  // Missing required fields (handles both "Required" and "Invalid input:" messages)
+  const isMissing =
+    received === "undefined" ||
+    issue.message.includes("received undefined") ||
+    issue.message === "Required";
+
+  if (path === "version" && isMissing) {
+    return "Missing config.version";
+  }
+  if (path === "agents" && isMissing) {
+    return "Missing agents object in config";
+  }
+  // Volume field errors
+  if (path.startsWith("volumes.") && path.endsWith(".name")) {
+    const volumeKey = path.split(".")[1];
+    return `Volume "${volumeKey}" must have a 'name' field (string)`;
+  }
+  if (path.startsWith("volumes.") && path.endsWith(".version")) {
+    const volumeKey = path.split(".")[1];
+    return `Volume "${volumeKey}" must have a 'version' field (string)`;
+  }
+  // Array type errors
+  if (issue.expected === "array") {
+    const fieldName = path.replace(/^agents\.[^.]+\./, "agent.");
+    return `${fieldName} must be an array`;
+  }
+  // Array element type errors (number where string expected)
+  if (issue.expected === "string" && received === "number") {
+    const fieldName = path.replace(/^agents\.[^.]+\./, "agent.");
+    const match = fieldName.match(/^(agent\.[^.]+)\.\d+$/);
+    if (match) {
+      return `Each entry in ${match[1]?.replace("agent.", "")} must be a string`;
+    }
+  }
+  return null;
+}
+
+/**
  * Formats a Zod error into a user-friendly string
  */
-// eslint-disable-next-line complexity -- TODO: refactor complex function
 function formatZodError(error: z.ZodError): string {
   const issue = error.issues[0];
   if (!issue) return "Validation failed";
@@ -135,43 +182,8 @@ function formatZodError(error: z.ZodError): string {
 
   // Handle invalid_type errors with user-friendly messages
   if (issue.code === "invalid_type") {
-    // Zod 4 uses 'input' instead of 'received' in types, but runtime has 'received'
-    const received = (issue as unknown as { received?: string }).received;
-
-    // Missing required fields (handles both "Required" and "Invalid input:" messages)
-    const isMissing =
-      received === "undefined" ||
-      message.includes("received undefined") ||
-      message === "Required";
-
-    if (path === "version" && isMissing) {
-      return "Missing config.version";
-    }
-    if (path === "agents" && isMissing) {
-      return "Missing agents object in config";
-    }
-    // Volume field errors
-    if (path.startsWith("volumes.") && path.endsWith(".name")) {
-      const volumeKey = path.split(".")[1];
-      return `Volume "${volumeKey}" must have a 'name' field (string)`;
-    }
-    if (path.startsWith("volumes.") && path.endsWith(".version")) {
-      const volumeKey = path.split(".")[1];
-      return `Volume "${volumeKey}" must have a 'version' field (string)`;
-    }
-    // Array type errors
-    if (issue.expected === "array") {
-      const fieldName = path.replace(/^agents\.[^.]+\./, "agent.");
-      return `${fieldName} must be an array`;
-    }
-    // Array element type errors (number where string expected)
-    if (issue.expected === "string" && received === "number") {
-      const fieldName = path.replace(/^agents\.[^.]+\./, "agent.");
-      const match = fieldName.match(/^(agent\.[^.]+)\.\d+$/);
-      if (match) {
-        return `Each entry in ${match[1]?.replace("agent.", "")} must be a string`;
-      }
-    }
+    const formatted = formatInvalidTypeIssue(path, issue);
+    if (formatted) return formatted;
   }
 
   // Handle invalid_key for agent name key validation (Zod 4 uses invalid_key instead of invalid_string)

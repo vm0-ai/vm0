@@ -290,6 +290,40 @@ describe("GET /api/agent/composes/list", () => {
       );
     });
 
+    it("should return isOwner=true for own agents and isOwner=false for shared", async () => {
+      // Create own agent
+      const ownAgentName = uniqueId("owner-flag");
+      await createTestCompose(ownAgentName);
+
+      // Create shared agent from another user
+      await context.setupUser({ prefix: "flag-owner" });
+      const sharedAgentName = uniqueId("flag-shared");
+      const { composeId } = await createTestCompose(sharedAgentName);
+      await createTestPermission(composeId, "email", MOCK_USER_EMAIL);
+
+      // Switch back to original user
+      mockClerk({ userId: user.userId });
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/composes/list",
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+
+      const ownCompose = data.composes.find(
+        (c: { name: string }) => c.name === ownAgentName,
+      );
+      expect(ownCompose).toBeDefined();
+      expect(ownCompose.isOwner).toBe(true);
+
+      const sharedCompose = data.composes.find((c: { name: string }) =>
+        c.name.endsWith(`/${sharedAgentName}`),
+      );
+      expect(sharedCompose).toBeDefined();
+      expect(sharedCompose.isOwner).toBe(false);
+    });
+
     it("should not duplicate agent when owner shares with own email", async () => {
       // Current user creates agent and shares with own email
       const agentName = uniqueId("self-shared");

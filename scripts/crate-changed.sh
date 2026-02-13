@@ -16,10 +16,6 @@ BASE_REF=${2:-HEAD^}
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# In CI containers, the repo may be owned by a different user (host vs container).
-# Git 2.35.2+ rejects such repos unless marked as safe.
-git config --global --add safe.directory "$REPO_ROOT" 2>/dev/null || true
-
 DEPS_JSON=$(cd "$REPO_ROOT/crates" && cargo metadata --no-deps --format-version 1 2>/dev/null | \
   jq '[.packages[] | {name: .name, deps: [.dependencies[] | select(has("path")) | .name]}]') || {
   echo "Error: failed to resolve crate dependencies" >&2

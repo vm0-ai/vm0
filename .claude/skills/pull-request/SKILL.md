@@ -72,27 +72,7 @@ fi
 3. Review recent commits with `git log --oneline -5` for style consistency
 4. Determine the appropriate commit type and message
 
-### Step 4: Run Pre-Commit Checks
-
-**CRITICAL**: All checks MUST pass before committing.
-
-```bash
-cd turbo
-
-pnpm install
-pnpm format           # Auto-format code
-pnpm lint             # Check for linting issues
-pnpm check-types      # Verify TypeScript type safety
-pnpm test             # Run all tests
-```
-
-**If checks fail:**
-1. Auto-fix formatting/linting issues
-2. For type errors: review and fix manually
-3. For test failures: debug and fix
-4. Re-run checks until all pass
-
-### Step 5: Stage, Commit, and Push
+### Step 4: Stage, Commit, and Push
 
 ```bash
 git add -A
@@ -100,7 +80,7 @@ git commit -m "<type>: <description>"
 git push -u origin <branch-name>  # -u for new branches
 ```
 
-### Step 6: Create Pull Request
+### Step 5: Create Pull Request
 
 ```bash
 gh pr create --title "<type>: <description>" --body "<brief description>" --assignee @me
@@ -238,11 +218,10 @@ Current Status:
 
 Actions Completed:
    1. [Branch created/Using existing branch]
-   2. Pre-commit checks: PASSED
-   3. Changes staged: <file count> files
-   4. Committed: <commit message>
-   5. Pushed to remote
-   6. PR created
+   2. Changes staged: <file count> files
+   3. Committed: <commit message>
+   4. Pushed to remote
+   5. PR created
 
 Pull Request: <PR URL>
 ```
@@ -339,8 +318,7 @@ gh pr comment "$PR_NUMBER" --body "$COMMENT_CONTENT"
 # Best Practices
 
 1. **Always check branch status first** - Don't assume the current state
-2. **Run pre-commit checks** - Never skip quality checks
-3. **Never merge with failing checks** - Code quality is non-negotiable
+2. **Never merge with failing checks** - Code quality is non-negotiable
 4. **Use squash merge** - Keeps main history clean
 5. **Confirm merge completion** - Verify PR state is MERGED
 6. **Keep user informed** - Clear status at each step

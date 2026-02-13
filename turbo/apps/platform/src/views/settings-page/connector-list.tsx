@@ -1,5 +1,9 @@
 import { useLastResolved, useGet, useSet } from "ccstate-react";
-import { IconDotsVertical } from "@tabler/icons-react";
+import {
+  IconDotsVertical,
+  IconCircleCheck,
+  IconLoader,
+} from "@tabler/icons-react";
 import {
   Popover,
   PopoverContent,
@@ -47,22 +51,22 @@ function ConnectorRow({
       {/* Status */}
       <div className="shrink-0">
         {item.connected && item.connector?.externalUsername && (
-          <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+          <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
+            <IconCircleCheck className="h-3 w-3 text-green-600" />
             Connected as {item.connector.externalUsername}
           </span>
         )}
         {item.connected && !item.connector?.externalUsername && (
-          <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+          <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
+            <IconCircleCheck className="h-3 w-3 text-green-600" />
             Connected
           </span>
         )}
         {!item.connected && isPolling && (
-          <span className="text-xs px-2 py-1 rounded-full bg-yellow-500/10 text-yellow-600 dark:text-yellow-400">
+          <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
+            <IconLoader className="h-3 w-3 text-yellow-600 animate-spin" />
             Connecting...
           </span>
-        )}
-        {!item.connected && !isPolling && (
-          <span className="text-xs text-muted-foreground">Not connected</span>
         )}
       </div>
 

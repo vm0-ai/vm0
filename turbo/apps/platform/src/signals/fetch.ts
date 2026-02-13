@@ -51,8 +51,59 @@ function mergeHeadersWithAutoIds(
   return result;
 }
 
+/**
+ * Rewrite a Request URL from localhost to the API base, merging auth headers.
+ */
+function rewriteRequestUrl(
+  request: Request,
+  apiBase: string,
+  token: string | null | undefined,
+  initHeaders: HeadersInit | Record<string, string> | undefined,
+): Request | null {
+  const HOST_URL = new Request("/").url;
+
+  if (!request.url.startsWith(HOST_URL)) {
+    return null;
+  }
+
+  const combinedHeaders = new Headers(request.headers);
+
+  if (token) {
+    combinedHeaders.set("Authorization", `Bearer ${token}`);
+  }
+
+  if (initHeaders) {
+    const newHeaders = new Headers(initHeaders);
+    for (const [key, value] of newHeaders.entries()) {
+      combinedHeaders.set(key, value);
+    }
+  }
+
+  const requestInit: RequestInit & { duplex: "half" } = {
+    method: request.method,
+    headers: combinedHeaders,
+    mode: request.mode,
+    credentials: request.credentials,
+    cache: request.cache,
+    redirect: request.redirect,
+    referrer: request.referrer,
+    referrerPolicy: request.referrerPolicy,
+    integrity: request.integrity,
+    keepalive: request.keepalive,
+    body: request.body,
+    signal: request.signal,
+    duplex: "half",
+  };
+  return new Request(
+    request.url.replace(
+      HOST_URL,
+      apiBase.endsWith("/") ? apiBase : apiBase + "/",
+    ),
+    requestInit,
+  );
+}
+
 export const fetch$ = computed((get) => {
-  // eslint-disable-next-line complexity -- TODO: refactor complex function
   return async (url: string | URL | Request, options?: RequestInit) => {
     const clerk = await get(clerk$);
     const token = await clerk.session?.getToken();
@@ -113,44 +164,14 @@ export const fetch$ = computed((get) => {
     } else if (url instanceof URL && !url.host) {
       finalUrl = new URL(url.pathname + url.search + url.hash, apiBase);
     } else if (url instanceof Request) {
-      const HOST_URL = new Request("/").url;
-
-      if (url.url.startsWith(HOST_URL)) {
-        const combinedHeaders = new Headers(url.headers);
-
-        if (token) {
-          combinedHeaders.set("Authorization", `Bearer ${token}`);
-        }
-
-        if (finalInit.headers) {
-          const newHeaders = new Headers(finalInit.headers);
-          for (const [key, value] of newHeaders.entries()) {
-            combinedHeaders.set(key, value);
-          }
-        }
-
-        const requestInit: RequestInit & { duplex: "half" } = {
-          method: url.method,
-          headers: combinedHeaders,
-          mode: url.mode,
-          credentials: url.credentials,
-          cache: url.cache,
-          redirect: url.redirect,
-          referrer: url.referrer,
-          referrerPolicy: url.referrerPolicy,
-          integrity: url.integrity,
-          keepalive: url.keepalive,
-          body: url.body,
-          signal: url.signal,
-          duplex: "half",
-        };
-        finalUrl = new Request(
-          url.url.replace(
-            HOST_URL,
-            apiBase.endsWith("/") ? apiBase : apiBase + "/",
-          ),
-          requestInit,
-        );
+      const rewritten = rewriteRequestUrl(
+        url,
+        apiBase,
+        token,
+        finalInit.headers,
+      );
+      if (rewritten) {
+        finalUrl = rewritten;
       }
     }
 

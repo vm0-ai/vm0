@@ -64,8 +64,14 @@ const router = tsr.router(platformLogsListContract, {
       }
     }
 
-    // Build the query with joins
-    let queryBuilder = globalThis.services.db
+    // Agent name filter: exact match takes precedence over fuzzy search
+    if (query.agent) {
+      conditions.push(eq(agentComposes.name, query.agent));
+    } else if (query.search) {
+      conditions.push(ilike(agentComposes.name, `%${query.search}%`));
+    }
+
+    const runs = await globalThis.services.db
       .select({
         id: agentRuns.id,
         status: agentRuns.status,
@@ -88,43 +94,20 @@ const router = tsr.router(platformLogsListContract, {
       .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id))
       .limit(limit + 1);
 
-    // Apply search filter if provided (fuzzy match on agent name)
-    if (query.search) {
-      queryBuilder = globalThis.services.db
-        .select({
-          id: agentRuns.id,
-          status: agentRuns.status,
-          createdAt: agentRuns.createdAt,
-          composeName: agentComposes.name,
-          sessionId: conversations.cliAgentSessionId,
-          composeContent: agentComposeVersions.content,
-        })
-        .from(agentRuns)
-        .leftJoin(
-          agentComposeVersions,
-          eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-        )
-        .leftJoin(
-          agentComposes,
-          eq(agentComposeVersions.composeId, agentComposes.id),
-        )
-        .leftJoin(conversations, eq(agentRuns.id, conversations.runId))
-        .where(
-          and(...conditions, ilike(agentComposes.name, `%${query.search}%`)),
-        )
-        .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id))
-        .limit(limit + 1);
+    // Get total count for pagination
+    const countConditions = [eq(agentRuns.userId, userId)];
+    if (query.agent) {
+      countConditions.push(eq(agentComposes.name, query.agent));
+    } else if (query.search) {
+      countConditions.push(ilike(agentComposes.name, `%${query.search}%`));
     }
 
-    const runs = await queryBuilder;
-
-    // Get total count for pagination
     let countQuery = globalThis.services.db
       .select({ count: count() })
       .from(agentRuns)
-      .where(eq(agentRuns.userId, userId));
+      .where(and(...countConditions));
 
-    if (query.search) {
+    if (query.agent || query.search) {
       countQuery = globalThis.services.db
         .select({ count: count() })
         .from(agentRuns)
@@ -136,12 +119,7 @@ const router = tsr.router(platformLogsListContract, {
           agentComposes,
           eq(agentComposeVersions.composeId, agentComposes.id),
         )
-        .where(
-          and(
-            eq(agentRuns.userId, userId),
-            ilike(agentComposes.name, `%${query.search}%`),
-          ),
-        );
+        .where(and(...countConditions));
     }
 
     const [countResult] = await countQuery;

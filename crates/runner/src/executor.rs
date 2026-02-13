@@ -137,6 +137,7 @@ async fn run_in_sandbox(
             cmd: &agent_cmd,
             timeout: JOB_TIMEOUT,
             env: &env_refs,
+            sudo: false,
         })
         .await?;
 
@@ -162,7 +163,7 @@ async fn run_in_sandbox(
 /// Sync guest clock to host time after snapshot restore.
 ///
 /// Must run before any HTTPS calls — stale clock breaks TLS cert validation.
-async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
+pub(crate) async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
     let timestamp = format!(
         "{:.3}",
         std::time::SystemTime::now()
@@ -170,12 +171,13 @@ async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
             .unwrap_or_default()
             .as_secs_f64()
     );
-    let date_cmd = format!("sudo date -s \"@{timestamp}\"");
+    let date_cmd = format!("date -s \"@{timestamp}\"");
     sandbox
         .exec(&ExecRequest {
             cmd: &date_cmd,
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &[],
+            sudo: true,
         })
         .await?;
     Ok(())
@@ -200,6 +202,7 @@ async fn download_storages(
             cmd: &download_cmd,
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &[],
+            sudo: false,
         })
         .await?;
 
@@ -237,6 +240,7 @@ async fn restore_session(
             cmd: &mkdir_cmd,
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &[],
+            sudo: false,
         })
         .await?;
     sandbox

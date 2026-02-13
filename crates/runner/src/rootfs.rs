@@ -4,7 +4,7 @@ use clap::Args;
 use sha2::{Digest, Sha256};
 
 use crate::error::{RunnerError, RunnerResult};
-use crate::paths::{HomePaths, RootfsPaths};
+use crate::paths::{HomePaths, LockPaths, RootfsPaths};
 
 const BUILD_SCRIPT: &str = include_str!("../scripts/build-rootfs.sh");
 const VERIFY_SCRIPT: &str = include_str!("../scripts/verify-rootfs.sh");
@@ -53,6 +53,17 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
     let rootfs_paths = RootfsPaths::new(&paths, &hash);
     let output_dir = rootfs_paths.dir();
 
+    if is_build_complete(&rootfs_paths).await? {
+        tracing::info!("[OK] rootfs already built: {}", output_dir.display());
+        tracing::info!("rootfs hash: {hash}");
+        return Ok(hash);
+    }
+
+    // Acquire exclusive lock to prevent concurrent builds with the same hash.
+    let locks = LockPaths::new();
+    let _lock = crate::lock::acquire(locks.rootfs(&hash)).await?;
+
+    // Re-check after acquiring lock — another process may have completed the build.
     if is_build_complete(&rootfs_paths).await? {
         tracing::info!("[OK] rootfs already built: {}", output_dir.display());
         tracing::info!("rootfs hash: {hash}");

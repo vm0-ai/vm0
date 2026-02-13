@@ -1,5 +1,5 @@
 import { IconCheck, IconCircleDashed, IconLoader } from "@tabler/icons-react";
-import MarkdownPreview from "@uiw/react-markdown-preview";
+import { Markdown } from "../../components/markdown.tsx";
 import type { GroupedMessage, ToolOperation } from "../log-detail/utils.ts";
 import { ToolSummary } from "./tool-summary.tsx";
 import {
@@ -22,18 +22,7 @@ interface GroupedMessageCardProps {
 const MESSAGE_SPACING = "py-2";
 
 function MarkdownContent({ text }: { text: string }) {
-  return (
-    <MarkdownPreview
-      source={text}
-      className="!bg-transparent !text-foreground text-sm"
-      style={{
-        backgroundColor: "transparent",
-        fontSize: "0.875rem",
-        lineHeight: "1.5",
-        fontFamily: "var(--font-family-sans)",
-      }}
-    />
-  );
+  return <Markdown source={text} />;
 }
 
 function CollapsibleText({ text }: { text: string }) {

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { vol } from "memfs";
+import * as fs from "fs";
 import {
   parseFirecrackerCmdline,
   parseMitmproxyCmdline,
@@ -328,8 +329,6 @@ describe("process discovery", () => {
         "/proc/5678/cmdline": "will be mocked to throw",
       });
 
-      // Spy on readFileSync to throw EACCES for specific path
-      const fs = await import("fs");
       const originalReadFileSync = fs.readFileSync;
       vi.spyOn(fs, "readFileSync").mockImplementation((path, options) => {
         if (path === "/proc/5678/cmdline") {

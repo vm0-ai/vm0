@@ -11,8 +11,12 @@ use crate::overlay::{
 use crate::paths::{FactoryPaths, RuntimePaths, SandboxPaths, SockPaths};
 use crate::sandbox::FirecrackerSandbox;
 
+/// Shell command executed during snapshot creation to pre-warm guest caches.
+/// Changing this invalidates all cached snapshots (included in [`config_hash`]).
+pub const PREWARM_SCRIPT: &str = "su - user -c true";
+
 /// SHA-256 fingerprint of all sandbox-fc internal configuration that affects
-/// snapshot output (boot args, guest network, etc.).
+/// snapshot output (boot args, guest network, pre-warm script, etc.).
 ///
 /// This is the backing implementation for [`SandboxFactory::config_hash`].
 /// It is also available as a free function so callers that don't have a
@@ -29,6 +33,8 @@ pub fn config_hash() -> String {
     hasher.update(GUEST_NETWORK.guest_mac.as_bytes());
     hasher.update(b"tap_name:");
     hasher.update(GUEST_NETWORK.tap_name.as_bytes());
+    hasher.update(b"prewarm:");
+    hasher.update(PREWARM_SCRIPT.as_bytes());
     format!("{:x}", hasher.finalize())
 }
 
@@ -44,7 +50,13 @@ impl FirecrackerFactory {
     /// Create a new factory without allocating system resources.
     /// Call `startup()` to initialize pools before use.
     pub async fn new(config: FirecrackerConfig) -> Result<Self, SandboxError> {
-        crate::prerequisites::check_prerequisites(&config).await?;
+        crate::prerequisites::check_prerequisites(&crate::prerequisites::PrerequisiteConfig {
+            binary_path: &config.binary_path,
+            kernel_path: &config.kernel_path,
+            rootfs_path: &config.rootfs_path,
+            snapshot: config.snapshot.as_ref(),
+        })
+        .await?;
 
         let factory_paths = FactoryPaths::new(config.base_dir.clone());
         let runtime_paths = RuntimePaths::new();

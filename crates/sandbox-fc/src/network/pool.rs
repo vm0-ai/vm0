@@ -40,7 +40,7 @@ use nix::fcntl::{Flock, FlockArg};
 use tracing::{error, info, trace, warn};
 
 use crate::command::{Privilege, exec, exec_ignore_errors};
-use crate::paths::LOCK_DIR;
+use crate::paths::LockPaths;
 
 use super::GUEST_NETWORK;
 use super::error::{NetworkError, Result};
@@ -458,23 +458,20 @@ async fn delete_namespace_resources(ns_name: &str, host_device: &str) {
 // Pool index lock
 // ---------------------------------------------------------------------------
 
-/// Lock file prefix inside the lock directory.
-const LOCK_PREFIX: &str = "vm0-netns-pool-";
-
 /// Try to acquire an exclusive flock on a pool index file (0..MAX_POOLS).
 ///
 /// Returns the first successfully locked `(index, Flock<File>)`. The lock is
 /// held for the lifetime of the returned `Flock` — when the process exits or
 /// the `Flock` is dropped, the OS releases the lock automatically.
-fn acquire_pool_lock(lock_dir: &str) -> Result<(u32, Flock<File>)> {
+fn acquire_pool_lock(locks: &LockPaths) -> Result<(u32, Flock<File>)> {
     for index in 0..MAX_POOLS {
-        let path = format!("{lock_dir}/{LOCK_PREFIX}{index}.lock");
+        let path = locks.netns_pool(index);
         let file = File::options()
             .write(true)
             .create(true)
             .truncate(false)
             .open(&path)
-            .map_err(|e| NetworkError::LockOpen(format!("{path}: {e}")))?;
+            .map_err(|e| NetworkError::LockOpen(format!("{}: {e}", path.display())))?;
         match Flock::lock(file, FlockArg::LockExclusiveNonblock) {
             Ok(lock) => {
                 info!(index, "acquired pool index lock");
@@ -515,7 +512,8 @@ impl NetnsPool {
     /// host IP forwarding and cleans up orphaned resources from the acquired
     /// index before creating new namespaces.
     pub async fn create(config: NetnsPoolConfig) -> Result<Self> {
-        let (index, lock) = acquire_pool_lock(LOCK_DIR)?;
+        let lock_paths = LockPaths::new();
+        let (index, lock) = acquire_pool_lock(&lock_paths)?;
 
         info!(index, size = config.size, "initializing namespace pool");
 
@@ -980,20 +978,20 @@ mod tests {
     #[test]
     fn acquire_pool_lock_returns_first_available() {
         let dir = tempfile::tempdir().unwrap();
-        let lock_dir = dir.path().to_str().unwrap();
+        let locks = LockPaths::with_dir(dir.path().to_path_buf());
 
-        let (index, _lock) = acquire_pool_lock(lock_dir).unwrap();
+        let (index, _lock) = acquire_pool_lock(&locks).unwrap();
         assert_eq!(index, 0);
     }
 
     #[test]
     fn acquire_pool_lock_skips_held_indices() {
         let dir = tempfile::tempdir().unwrap();
-        let lock_dir = dir.path().to_str().unwrap();
+        let locks = LockPaths::with_dir(dir.path().to_path_buf());
 
-        let (i0, _hold0) = acquire_pool_lock(lock_dir).unwrap();
-        let (i1, _hold1) = acquire_pool_lock(lock_dir).unwrap();
-        let (i2, _hold2) = acquire_pool_lock(lock_dir).unwrap();
+        let (i0, _hold0) = acquire_pool_lock(&locks).unwrap();
+        let (i1, _hold1) = acquire_pool_lock(&locks).unwrap();
+        let (i2, _hold2) = acquire_pool_lock(&locks).unwrap();
 
         assert_eq!(i0, 0);
         assert_eq!(i1, 1);
@@ -1003,31 +1001,31 @@ mod tests {
     #[test]
     fn acquire_pool_lock_reuses_released_index() {
         let dir = tempfile::tempdir().unwrap();
-        let lock_dir = dir.path().to_str().unwrap();
+        let locks = LockPaths::with_dir(dir.path().to_path_buf());
 
-        let (i0, hold0) = acquire_pool_lock(lock_dir).unwrap();
-        let (i1, _hold1) = acquire_pool_lock(lock_dir).unwrap();
+        let (i0, hold0) = acquire_pool_lock(&locks).unwrap();
+        let (i1, _hold1) = acquire_pool_lock(&locks).unwrap();
         assert_eq!(i0, 0);
         assert_eq!(i1, 1);
 
         // Drop lock 0 → index 0 becomes available again.
         drop(hold0);
 
-        let (reused, _hold) = acquire_pool_lock(lock_dir).unwrap();
+        let (reused, _hold) = acquire_pool_lock(&locks).unwrap();
         assert_eq!(reused, 0);
     }
 
     #[test]
     fn acquire_pool_lock_exhausted() {
         let dir = tempfile::tempdir().unwrap();
-        let lock_dir = dir.path().to_str().unwrap();
+        let locks = LockPaths::with_dir(dir.path().to_path_buf());
 
         // Hold all 64 slots.
         let _locks: Vec<_> = (0..MAX_POOLS)
-            .map(|_| acquire_pool_lock(lock_dir).unwrap())
+            .map(|_| acquire_pool_lock(&locks).unwrap())
             .collect();
 
-        let err = acquire_pool_lock(lock_dir).unwrap_err();
+        let err = acquire_pool_lock(&locks).unwrap_err();
         assert!(
             matches!(err, NetworkError::NoPoolIndexAvailable),
             "expected NoPoolIndexAvailable, got: {err}"

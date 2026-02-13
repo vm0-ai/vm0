@@ -12,9 +12,11 @@ import {
   createSlackClient,
   postMessage,
   buildAgentResponseMessage,
+  detectDeepLinks,
 } from "../../../../../src/lib/slack";
 import { getRunOutput } from "../../../../../src/lib/slack/handlers/run-agent";
 import { buildLogsUrl } from "../../../../../src/lib/slack/handlers/shared";
+import { getPlatformUrl } from "../../../../../src/lib/url";
 import { env } from "../../../../../src/env";
 import { logger } from "../../../../../src/lib/logger";
 
@@ -188,11 +190,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       : `Error: ${error ?? "Agent execution failed."}`;
 
   const logsUrl = buildLogsUrl(runId);
+  const deepLinks = detectDeepLinks(responseText, getPlatformUrl());
 
   // Post response to Slack
   await postMessage(client, channelId, responseText, {
     threadTs,
-    blocks: buildAgentResponseMessage(responseText, agentName, logsUrl),
+    blocks: buildAgentResponseMessage(
+      responseText,
+      agentName,
+      logsUrl,
+      deepLinks,
+    ),
   });
 
   // Get run to find userId for session lookup

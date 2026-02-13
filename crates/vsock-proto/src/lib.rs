@@ -18,11 +18,11 @@
 //! | 0x00 | G→H       | ready             | (empty) |
 //! | 0x01 | H→G       | ping              | (empty) |
 //! | 0x02 | G→H       | pong              | (empty) |
-//! | 0x03 | H→G       | exec              | `[4B timeout_ms][4B cmd_len][command]([4B env_count]([4B key_len][key][4B val_len][value])*)` |
+//! | 0x03 | H→G       | exec              | `[4B timeout_ms][1B flags][4B cmd_len][command]([4B env_count]([4B key_len][key][4B val_len][value])*)` |
 //! | 0x04 | G→H       | exec_result       | `[4B exit_code][4B stdout_len][stdout][4B stderr_len][stderr]` |
 //! | 0x05 | H→G       | write_file        | `[2B path_len][path][1B flags][4B content_len][content]` |
 //! | 0x06 | G→H       | write_file_result | `[1B success][2B error_len][error]` |
-//! | 0x07 | H→G       | spawn_watch       | `[4B timeout_ms][4B cmd_len][command]([4B env_count]([4B key_len][key][4B val_len][value])*)` |
+//! | 0x07 | H→G       | spawn_watch       | `[4B timeout_ms][1B flags][4B cmd_len][command]([4B env_count]([4B key_len][key][4B val_len][value])*)` |
 //! | 0x08 | G→H       | spawn_watch_result| `[4B pid]` |
 //! | 0x09 | G→H       | process_exit      | `[4B pid][4B exit_code][4B stdout_len][stdout][4B stderr_len][stderr]` |
 //! | 0x0A | H→G       | shutdown          | (empty) |
@@ -56,7 +56,7 @@ pub const MSG_ERROR: u8 = 0xFF;
 /// Default vsock port for host-guest communication.
 pub const VSOCK_PORT: u32 = 1000;
 
-/// Write-file flag: execute write with sudo.
+/// Flag: execute with root privileges (used in exec, spawn_watch, and write_file).
 pub const FLAG_SUDO: u8 = 0x01;
 
 /// Protocol error.
@@ -132,11 +132,11 @@ pub fn encode(msg_type: u8, seq: u32, payload: &[u8]) -> Result<Vec<u8>, Protoco
     Ok(buf)
 }
 
-/// Encode exec payload: `[4B timeout_ms][4B cmd_len][command]([4B env_count]([4B key_len][key][4B val_len][value])*)`.
+/// Encode exec payload: `[4B timeout_ms][1B flags][4B cmd_len][command]([4B env_count]([4B key_len][key][4B val_len][value])*)`.
 ///
 /// The env section is only appended when `env` is non-empty, keeping the
 /// payload backward-compatible with old decoders that don't expect it.
-pub fn encode_exec(timeout_ms: u32, command: &str, env: &[(&str, &str)]) -> Vec<u8> {
+pub fn encode_exec(timeout_ms: u32, command: &str, env: &[(&str, &str)], sudo: bool) -> Vec<u8> {
     let cmd = command.as_bytes();
     let env_size: usize = if env.is_empty() {
         0
@@ -146,8 +146,9 @@ pub fn encode_exec(timeout_ms: u32, command: &str, env: &[(&str, &str)]) -> Vec<
             .map(|(k, v)| 8 + k.len() + v.len())
             .sum::<usize>()
     };
-    let mut p = Vec::with_capacity(8 + cmd.len() + env_size);
+    let mut p = Vec::with_capacity(9 + cmd.len() + env_size);
     p.extend_from_slice(&timeout_ms.to_be_bytes());
+    p.push(if sudo { FLAG_SUDO } else { 0 });
     p.extend_from_slice(&(cmd.len() as u32).to_be_bytes());
     p.extend_from_slice(cmd);
     if !env.is_empty() {
@@ -242,25 +243,33 @@ pub fn encode_error(message: &str) -> Vec<u8> {
 // Decode
 // ---------------------------------------------------------------------------
 
-/// Decode exec payload. Returns `(timeout_ms, command, env)`.
+/// Decode exec payload. Returns `(timeout_ms, command, env, sudo)`.
 ///
 /// The env section is optional: if the payload ends right after the command,
 /// an empty vec is returned (backward-compatible with old encoders).
 pub fn decode_exec(payload: &[u8]) -> Result<DecodedExec<'_>, ProtocolError> {
     let timeout_ms =
         read_u32_at(payload, 0).ok_or(ProtocolError::InvalidPayload("exec payload too short"))?;
-    let cmd_len = read_u32_at(payload, 4)
+    let flags =
+        read_u8_at(payload, 4).ok_or(ProtocolError::InvalidPayload("exec payload too short"))?;
+    let sudo = (flags & FLAG_SUDO) != 0;
+    let cmd_len = read_u32_at(payload, 5)
         .ok_or(ProtocolError::InvalidPayload("exec payload too short"))? as usize;
     let command = std::str::from_utf8(
         payload
-            .get(8..8 + cmd_len)
+            .get(9..9 + cmd_len)
             .ok_or(ProtocolError::InvalidPayload("exec command truncated"))?,
     )
     .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in command"))?;
 
-    let env_start = 8 + cmd_len;
+    let env_start = 9 + cmd_len;
     if env_start >= payload.len() {
-        return Ok((timeout_ms, command, Vec::new()));
+        return Ok(DecodedExec {
+            timeout_ms,
+            command,
+            env: Vec::new(),
+            sudo,
+        });
     }
 
     let env_count = read_u32_at(payload, env_start)
@@ -296,7 +305,12 @@ pub fn decode_exec(payload: &[u8]) -> Result<DecodedExec<'_>, ProtocolError> {
         env.push((key, val));
     }
 
-    Ok((timeout_ms, command, env))
+    Ok(DecodedExec {
+        timeout_ms,
+        command,
+        env,
+        sudo,
+    })
 }
 
 /// Decode exec_result payload. Returns `(exit_code, stdout, stderr)`.
@@ -368,8 +382,13 @@ pub fn decode_spawn_watch_result(payload: &[u8]) -> Result<u32, ProtocolError> {
     ))
 }
 
-/// Decoded exec fields: `(timeout_ms, command, env)`.
-pub type DecodedExec<'a> = (u32, &'a str, Vec<(&'a str, &'a str)>);
+/// Decoded exec/spawn_watch fields.
+pub struct DecodedExec<'a> {
+    pub timeout_ms: u32,
+    pub command: &'a str,
+    pub env: Vec<(&'a str, &'a str)>,
+    pub sudo: bool,
+}
 
 /// Decoded process_exit fields: `(pid, exit_code, stdout, stderr)`.
 pub type ProcessExit<'a> = (u32, i32, &'a [u8], &'a [u8]);
@@ -568,21 +587,33 @@ mod tests {
 
     #[test]
     fn exec_payload_roundtrip() {
-        let payload = encode_exec(5000, "echo hello", &[]);
-        let (timeout, cmd, env) = decode_exec(&payload).unwrap();
-        assert_eq!(timeout, 5000);
-        assert_eq!(cmd, "echo hello");
-        assert!(env.is_empty());
+        let payload = encode_exec(5000, "echo hello", &[], false);
+        let d = decode_exec(&payload).unwrap();
+        assert_eq!(d.timeout_ms, 5000);
+        assert_eq!(d.command, "echo hello");
+        assert!(d.env.is_empty());
+        assert!(!d.sudo);
+    }
+
+    #[test]
+    fn exec_payload_roundtrip_with_sudo() {
+        let payload = encode_exec(5000, "date -s @123", &[], true);
+        let d = decode_exec(&payload).unwrap();
+        assert_eq!(d.timeout_ms, 5000);
+        assert_eq!(d.command, "date -s @123");
+        assert!(d.env.is_empty());
+        assert!(d.sudo);
     }
 
     #[test]
     fn exec_payload_roundtrip_with_env() {
         let env_vars = [("PATH", "/usr/bin"), ("HOME", "/home/user")];
-        let payload = encode_exec(3000, "ls", &env_vars);
-        let (timeout, cmd, env) = decode_exec(&payload).unwrap();
-        assert_eq!(timeout, 3000);
-        assert_eq!(cmd, "ls");
-        assert_eq!(env, vec![("PATH", "/usr/bin"), ("HOME", "/home/user")]);
+        let payload = encode_exec(3000, "ls", &env_vars, false);
+        let d = decode_exec(&payload).unwrap();
+        assert_eq!(d.timeout_ms, 3000);
+        assert_eq!(d.command, "ls");
+        assert_eq!(d.env, vec![("PATH", "/usr/bin"), ("HOME", "/home/user")]);
+        assert!(!d.sudo);
     }
 
     #[test]
@@ -690,7 +721,7 @@ mod tests {
 
     #[test]
     fn full_message_exec_roundtrip() {
-        let payload = encode_exec(10000, "ls -la", &[]);
+        let payload = encode_exec(10000, "ls -la", &[], false);
         let msg = encode(MSG_EXEC, 5, &payload).unwrap();
 
         let mut dec = Decoder::new();
@@ -699,10 +730,11 @@ mod tests {
         assert_eq!(msgs[0].msg_type, MSG_EXEC);
         assert_eq!(msgs[0].seq, 5);
 
-        let (timeout, cmd, env) = decode_exec(&msgs[0].payload).unwrap();
-        assert_eq!(timeout, 10000);
-        assert_eq!(cmd, "ls -la");
-        assert!(env.is_empty());
+        let d = decode_exec(&msgs[0].payload).unwrap();
+        assert_eq!(d.timeout_ms, 10000);
+        assert_eq!(d.command, "ls -la");
+        assert!(d.env.is_empty());
+        assert!(!d.sudo);
     }
 
     #[test]

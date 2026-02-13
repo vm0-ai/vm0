@@ -5,7 +5,7 @@ import {
   IconRobot,
   IconTerminal,
 } from "@tabler/icons-react";
-import MarkdownPreview from "@uiw/react-markdown-preview";
+import { Markdown } from "../../components/markdown.tsx";
 import { Popover, PopoverContent, PopoverTrigger } from "@vm0/ui";
 
 // Type definitions for EventData
@@ -261,16 +261,7 @@ export function ResultEventContent({ eventData }: { eventData: EventData }) {
       {/* Result text */}
       {result && (
         <div className="pt-1">
-          <MarkdownPreview
-            source={result}
-            className="!bg-transparent !text-foreground text-sm"
-            style={{
-              backgroundColor: "transparent",
-              fontSize: "0.875rem",
-              lineHeight: "1.5",
-              fontFamily: "var(--font-family-sans)",
-            }}
-          />
+          <Markdown source={result} />
         </div>
       )}
     </div>

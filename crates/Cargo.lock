@@ -565,6 +565,7 @@ dependencies = [
  "base64",
  "bytes",
  "guest-common",
+ "httpmock",
  "libc",
  "reqwest",
  "serde",

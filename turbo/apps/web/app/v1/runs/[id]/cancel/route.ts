@@ -32,8 +32,43 @@ interface RunResult {
 
 const CANCELLABLE_STATUSES = ["pending", "running"];
 
+function buildRunResponseBody(
+  run: typeof agentRuns.$inferSelect,
+  compose: typeof agentComposes.$inferSelect | null,
+  status:
+    | "pending"
+    | "running"
+    | "completed"
+    | "failed"
+    | "timeout"
+    | "cancelled",
+  error: string | null,
+) {
+  const runResult = run.result as RunResult | null;
+  let executionTimeMs: number | null = null;
+  if (run.startedAt && run.completedAt) {
+    executionTimeMs = run.completedAt.getTime() - run.startedAt.getTime();
+  }
+  return {
+    id: run.id,
+    agentId: compose?.id ?? "",
+    agentName: compose?.name ?? "unknown",
+    status,
+    prompt: run.prompt,
+    createdAt: run.createdAt.toISOString(),
+    startedAt: run.startedAt?.toISOString() ?? null,
+    completedAt: run.completedAt?.toISOString() ?? null,
+    error,
+    executionTimeMs,
+    checkpointId: runResult?.checkpointId ?? null,
+    sessionId: runResult?.agentSessionId ?? null,
+    artifactName: runResult?.artifactName ?? null,
+    artifactVersion: runResult?.artifactVersion ?? null,
+    volumes: runResult?.volumes,
+  };
+}
+
 const router = tsr.router(publicRunCancelContract, {
-  // eslint-disable-next-line complexity -- TODO: refactor complex function
   cancel: async ({ params, headers }) => {
     initServices();
 
@@ -141,35 +176,9 @@ const router = tsr.router(publicRunCancelContract, {
       await killSandbox(run.sandboxId);
     }
 
-    // Parse result JSON for output and other fields
-    const runResult = updatedRun.result as RunResult | null;
-
-    // Calculate execution time if started
-    let executionTimeMs: number | null = null;
-    if (updatedRun.startedAt && updatedRun.completedAt) {
-      executionTimeMs =
-        updatedRun.completedAt.getTime() - updatedRun.startedAt.getTime();
-    }
-
     return {
       status: 200 as const,
-      body: {
-        id: updatedRun.id,
-        agentId: compose?.id ?? "",
-        agentName: compose?.name ?? "unknown",
-        status: "cancelled" as const,
-        prompt: updatedRun.prompt,
-        createdAt: updatedRun.createdAt.toISOString(),
-        startedAt: updatedRun.startedAt?.toISOString() ?? null,
-        completedAt: updatedRun.completedAt?.toISOString() ?? null,
-        error: null,
-        executionTimeMs: executionTimeMs,
-        checkpointId: runResult?.checkpointId ?? null,
-        sessionId: runResult?.agentSessionId ?? null,
-        artifactName: runResult?.artifactName ?? null,
-        artifactVersion: runResult?.artifactVersion ?? null,
-        volumes: runResult?.volumes,
-      },
+      body: buildRunResponseBody(updatedRun, compose, "cancelled", null),
     };
   },
 });

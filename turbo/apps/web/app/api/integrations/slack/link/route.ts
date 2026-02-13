@@ -19,6 +19,7 @@ import { addPermission } from "../../../../../src/lib/agent/permission-service";
 import { getUserScopeByClerkId } from "../../../../../src/lib/scope/scope-service";
 import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { logger } from "../../../../../src/lib/logger";
+import { syncWorkspaceAgentPermissions } from "../../../../../src/lib/slack/permission-sync";
 
 const log = logger("api:slack:link");
 
@@ -222,10 +223,23 @@ export async function POST(request: Request) {
     agentId !== installation.defaultComposeId &&
     slackUserId === installation.adminSlackUserId
   ) {
-    await globalThis.services.db
-      .update(slackInstallations)
-      .set({ defaultComposeId: agentId, updatedAt: new Date() })
-      .where(eq(slackInstallations.id, installation.id));
+    const oldComposeId = installation.defaultComposeId;
+
+    // Update installation + sync permissions atomically
+    await globalThis.services.db.transaction(async (tx) => {
+      await tx
+        .update(slackInstallations)
+        .set({ defaultComposeId: agentId, updatedAt: new Date() })
+        .where(eq(slackInstallations.id, installation.id));
+
+      await syncWorkspaceAgentPermissions(
+        oldComposeId,
+        agentId,
+        workspaceId,
+        installation.adminSlackUserId,
+        tx,
+      );
+    });
   }
 
   if (existingLink) {

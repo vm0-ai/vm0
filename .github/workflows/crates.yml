@@ -13,10 +13,18 @@ on:
       - '.github/workflows/crates.yml'
 
 jobs:
-  check:
+  detect:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260203
+    outputs:
+      workflow-changed: ${{ steps.detect.outputs.workflow-changed }}
+      ably-subscriber-changed: ${{ steps.detect.outputs.ably-subscriber-changed }}
+      runner-changed: ${{ steps.detect.outputs.runner-changed }}
+      guest-init-changed: ${{ steps.detect.outputs.guest-init-changed }}
+      guest-download-changed: ${{ steps.detect.outputs.guest-download-changed }}
+      guest-agent-changed: ${{ steps.detect.outputs.guest-agent-changed }}
+      guest-mock-claude-changed: ${{ steps.detect.outputs.guest-mock-claude-changed }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -30,6 +38,17 @@ jobs:
           else
             BASE_REF="HEAD^"
           fi
+          # In CI containers, the repo may be owned by a different user (host vs container).
+          # Git 2.35.2+ rejects such repos unless marked as safe.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE" 2>/dev/null || true
+
+          # Check if the workflow file itself changed
+          if git diff --name-only "$BASE_REF" HEAD | grep -q "^\.github/workflows/crates\.yml$"; then
+            echo "workflow-changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "workflow-changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
           # scripts/crate-changed.sh: exit 0=changed, 1=not changed, 2+=error
           check_crate() {
             ./scripts/crate-changed.sh "$1" "$BASE_REF" && echo "$1-changed=true" >> "$GITHUB_OUTPUT" || {
@@ -37,6 +56,19 @@ jobs:
             }
           }
           check_crate ably-subscriber
+          check_crate runner
+          check_crate guest-init
+          check_crate guest-download
+          check_crate guest-agent
+          check_crate guest-mock-claude
+
+  check:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260203
+    needs: [detect]
+    steps:
+      - uses: actions/checkout@v6
 
       - name: Check formatting
         run: |
@@ -54,9 +86,112 @@ jobs:
           cargo test --all-targets
 
       - name: Run ably-subscriber smoke test
-        if: steps.detect.outputs.ably-subscriber-changed == 'true'
+        if: |
+          needs.detect.outputs.ably-subscriber-changed == 'true' ||
+          needs.detect.outputs.workflow-changed == 'true'
         env:
           ABLY_API_KEY: ${{ secrets.ABLY_API_KEY }}
         run: |
           cd crates
           cargo run -p ably-subscriber --example smoke_test
+
+  runner-metal-test:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260203
+    needs: [detect]
+    if: |
+      needs.detect.outputs.workflow-changed == 'true' ||
+      needs.detect.outputs.runner-changed == 'true' ||
+      needs.detect.outputs.guest-init-changed == 'true' ||
+      needs.detect.outputs.guest-download-changed == 'true' ||
+      needs.detect.outputs.guest-agent-changed == 'true' ||
+      needs.detect.outputs.guest-mock-claude-changed == 'true'
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Cross-compile runner and guest binaries for ARM64
+        run: |
+          cd crates
+          cargo build --release --target aarch64-unknown-linux-musl \
+            -p runner -p guest-init -p guest-download -p guest-agent -p guest-mock-claude
+
+      - name: Setup SSH
+        env:
+          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+        run: |
+          mkdir -p "$HOME/.ssh"
+          echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
+          chmod 600 "$HOME/.ssh/runner.pem"
+
+      - name: Select metal host
+        id: host
+        env:
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          JOB_REF: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'main' }}
+        run: |
+          NUM_HOSTS=$(echo "$METAL_HOSTS" | tr ',' '\n' | wc -l)
+          HASH=$(echo -n "$JOB_REF" | md5sum | cut -c1-8)
+          HOST_INDEX=$(( 0x$HASH % NUM_HOSTS ))
+          HOST=$(echo "$METAL_HOSTS" | tr ',' '\n' | sed -n "$((HOST_INDEX + 1))p")
+          echo "host=${HOST}" >> "$GITHUB_OUTPUT"
+          echo "job-ref=${JOB_REF}" >> "$GITHUB_OUTPUT"
+          echo "Selected metal host: ${HOST} (index ${HOST_INDEX}/${NUM_HOSTS})"
+
+      - name: Deploy and test on metal host
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          HOST: ${{ steps.host.outputs.host }}
+          JOB_REF: ${{ steps.host.outputs.job-ref }}
+        run: |
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
+          REMOTE="${METAL_USER}@${HOST}"
+          BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
+          RUNNER_DIR="~/.vm0-runner/runners/${JOB_REF}"
+          TARGET_DIR="crates/target/aarch64-unknown-linux-musl/release"
+
+          # Clean previous run artifacts and upload binaries
+          echo "=== Deploying binaries to ${HOST}:${BIN_DIR} ==="
+          ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} ${RUNNER_DIR} && mkdir -p ${BIN_DIR}"
+          for bin in runner guest-init guest-download guest-agent guest-mock-claude; do
+            scp $SSH_OPTS "${TARGET_DIR}/${bin}" "${REMOTE}:${BIN_DIR}/"
+          done
+
+          # Run setup (downloads firecracker/kernel/mitmdump, cached + idempotent)
+          echo "=== Running setup ==="
+          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner setup"
+
+          # Run build (rootfs via Docker + snapshot via Firecracker, generates runner.yaml)
+          echo "=== Running build ==="
+          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner build \
+            --name ${JOB_REF} \
+            --group vm0/development-${JOB_REF} \
+            --runner-dirname ${JOB_REF} \
+            --guest-init ${BIN_DIR}/guest-init \
+            --guest-download ${BIN_DIR}/guest-download \
+            --guest-agent ${BIN_DIR}/guest-agent \
+            --guest-mock-claude ${BIN_DIR}/guest-mock-claude \
+            --api-url https://localhost \
+            --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
+
+          # Run benchmark (boot VM from snapshot, exec command, verify output)
+          echo "=== Running benchmark ==="
+          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner benchmark \
+            --config ${RUNNER_DIR}/runner.yaml \
+            'echo hello-from-vm'"
+
+      - name: Cleanup
+        if: always()
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          HOST: ${{ steps.host.outputs.host }}
+          JOB_REF: ${{ steps.host.outputs.job-ref }}
+        run: |
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i $HOME/.ssh/runner.pem"
+          REMOTE="${METAL_USER}@${HOST}"
+          BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
+          RUNNER_DIR="~/.vm0-runner/runners/${JOB_REF}"
+          echo "Cleaning up ${JOB_REF} on ${HOST}"
+          ssh $SSH_OPTS $REMOTE "rm -rf ${BIN_DIR} ${RUNNER_DIR}" || true

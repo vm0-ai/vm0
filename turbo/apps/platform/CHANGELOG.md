@@ -1,5 +1,69 @@
 # Changelog
 
+## [0.66.0](https://github.com/vm0-ai/vm0/compare/platform-v0.65.0...platform-v0.66.0) (2026-02-13)
+
+
+### Features
+
+* owner inline editing for agent instructions ([#3015](https://github.com/vm0-ai/vm0/issues/3015)) ([e7022c8](https://github.com/vm0-ai/vm0/commit/e7022c848b7b247ee6f2475c204bfb656588c5ad))
+
+## [0.65.0](https://github.com/vm0-ai/vm0/compare/platform-v0.64.0...platform-v0.65.0) (2026-02-13)
+
+
+### Features
+
+* **platform:** add agent detail page with feature flag gating ([#2998](https://github.com/vm0-ai/vm0/issues/2998)) ([5386de0](https://github.com/vm0-ai/vm0/commit/5386de0662eb2a85e69040788e2ca08e7f976cba))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.15.0
+
+## [0.64.0](https://github.com/vm0-ai/vm0/compare/platform-v0.63.0...platform-v0.64.0) (2026-02-13)
+
+
+### Features
+
+* add markdown preview for prompts, slack image hints, and platform tests ([#2991](https://github.com/vm0-ai/vm0/issues/2991)) ([35da51b](https://github.com/vm0-ai/vm0/commit/35da51b563330c45444e1cb16b3de566519d2c07))
+* **settings:** improve ui consistency and add success notifications ([#2976](https://github.com/vm0-ai/vm0/issues/2976)) ([6418997](https://github.com/vm0-ai/vm0/commit/6418997a206901e7739c6398c9129474449c0e66))
+
+## [0.63.0](https://github.com/vm0-ai/vm0/compare/platform-v0.62.0...platform-v0.63.0) (2026-02-13)
+
+
+### Features
+
+* **platform:** add agent detail routes and shared signals ([#2989](https://github.com/vm0-ai/vm0/issues/2989)) ([ddf6fca](https://github.com/vm0-ai/vm0/commit/ddf6fca91c2737231a75b77beca2efb3d9bdc8f4))
+
+## [0.62.0](https://github.com/vm0-ai/vm0/compare/platform-v0.61.0...platform-v0.62.0) (2026-02-13)
+
+
+### Features
+
+* **api:** add backend support for agent detail page ([#2979](https://github.com/vm0-ai/vm0/issues/2979)) ([4103d8f](https://github.com/vm0-ai/vm0/commit/4103d8f66ccc9546bccc67454d139b8d1de04599))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.14.0
+
+## [0.61.0](https://github.com/vm0-ai/vm0/compare/platform-v0.60.3...platform-v0.61.0) (2026-02-12)
+
+
+### Features
+
+* add computer connector api for authenticated local tunneling via ngrok ([#2937](https://github.com/vm0-ai/vm0/issues/2937)) ([4f3fc4e](https://github.com/vm0-ai/vm0/commit/4f3fc4ebf137409a30b85b5882634a6bb8846836))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.13.0
+
 ## [0.60.3](https://github.com/vm0-ai/vm0/compare/platform-v0.60.2...platform-v0.60.3) (2026-02-12)
 
 

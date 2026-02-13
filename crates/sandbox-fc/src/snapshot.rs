@@ -70,6 +70,16 @@ pub enum SnapshotError {
 pub async fn create_snapshot(
     config: SnapshotCreateConfig,
 ) -> Result<SnapshotConfig, SnapshotError> {
+    // Check prerequisites (binary, kernel, rootfs, kvm, sudo, runtime dir, etc.).
+    crate::prerequisites::check_prerequisites(&crate::prerequisites::PrerequisiteConfig {
+        binary_path: &config.binary_path,
+        kernel_path: &config.kernel_path,
+        rootfs_path: &config.rootfs_path,
+        snapshot: None,
+    })
+    .await
+    .map_err(|e| SnapshotError::Setup(e.to_string()))?;
+
     let output = SnapshotOutputPaths::new(config.output_dir.clone());
 
     // 1. Clean and create work directory under output_dir.
@@ -148,7 +158,10 @@ async fn run_snapshot_workflow(
 
     info!(netns = %network.name, "namespace acquired");
 
-    // 4. Spawn Firecracker with --api-sock in the namespace.
+    // 4. Create socket directory and spawn Firecracker with --api-sock in the namespace.
+    tokio::fs::create_dir_all(sock_paths.dir())
+        .await
+        .map_err(|e| SnapshotError::Setup(format!("mkdir sock dir: {e}")))?;
     let api_sock = sock_paths.api_sock();
     let username = process::current_username().map_err(|e| SnapshotError::Setup(e.to_string()))?;
 
@@ -263,13 +276,23 @@ async fn run_with_firecracker(
     info!("instance started, waiting for guest vsock connection");
 
     // 9. Wait for guest to connect via vsock.
-    let _guest = match vsock_task.await {
+    let mut guest = match vsock_task.await {
         Ok(Ok(g)) => g,
         Ok(Err(e)) => return Err(SnapshotError::Vsock(e.to_string())),
         Err(e) => return Err(SnapshotError::Vsock(format!("vsock task: {e}"))),
     };
 
     info!("guest connected");
+
+    // 9.5. Pre-warm PAM/nsswitch caches so post-restore `su` calls are fast.
+    //      The snapshot captures memory state, so caches populated here persist.
+    match guest
+        .exec(crate::factory::PREWARM_SCRIPT, 5000, &[], false)
+        .await
+    {
+        Ok(result) => info!(exit_code = result.exit_code, "pre-warm: su cache"),
+        Err(e) => tracing::warn!(error = %e, "pre-warm: su cache failed (non-fatal)"),
+    }
 
     // 10. Pause VM.
     client.pause().await?;

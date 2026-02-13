@@ -194,10 +194,10 @@ describe("settings integrations tab", () => {
     expect(screen.getByText("Use your VM0 agent in Slack")).toBeInTheDocument();
 
     // Should show a Settings button inside the Slack card (not the nav "Settings")
-    // The Slack card has an outline variant Settings button
+    // The Slack card now uses rounded-xl instead of rounded-lg
     const slackCard = screen
       .getByText("Use your VM0 agent in Slack")
-      .closest("div.rounded-lg") as HTMLElement;
+      .closest("div.rounded-xl") as HTMLElement;
     expect(
       within(slackCard).getByRole("button", { name: /settings/i }),
     ).toBeInTheDocument();

@@ -66,6 +66,8 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../db/schema/agent-compose";
+import { agentPermissions } from "../db/schema/agent-permission";
+import { scopes } from "../db/schema/scope";
 import { conversations } from "../db/schema/conversation";
 import { uniqueId } from "./test-helpers";
 
@@ -1792,6 +1794,71 @@ export async function findTestSlackInstallation(workspaceId: string) {
     .select()
     .from(slackInstallations)
     .where(eq(slackInstallations.slackWorkspaceId, workspaceId))
+    .limit(1);
+  return row;
+}
+
+/**
+ * Find agent permissions for a compose and email.
+ *
+ * Direct DB read is required because no API endpoint lists permissions
+ * filtered by compose + grantee email.
+ */
+export async function findTestAgentPermissions(
+  composeId: string,
+  granteeEmail: string,
+) {
+  return globalThis.services.db
+    .select()
+    .from(agentPermissions)
+    .where(
+      and(
+        eq(agentPermissions.agentComposeId, composeId),
+        eq(agentPermissions.granteeType, "email"),
+        eq(agentPermissions.granteeEmail, granteeEmail),
+      ),
+    );
+}
+
+/**
+ * Insert an agent permission directly in the database.
+ *
+ * Direct DB insert is required because the permissions API route uses the
+ * current user as grantedBy. Tests that simulate permissions granted by
+ * external flows (e.g., CLI share) need to set arbitrary grantedBy values.
+ */
+export async function insertTestAgentPermission(
+  composeId: string,
+  granteeEmail: string,
+  grantedBy: string,
+) {
+  await globalThis.services.db
+    .insert(agentPermissions)
+    .values({
+      agentComposeId: composeId,
+      granteeType: "email",
+      granteeEmail,
+      grantedBy,
+    })
+    .onConflictDoNothing();
+}
+
+/**
+ * Find a compose record with its scope details.
+ *
+ * Direct DB read is required because the compose API does not expose
+ * scope slug in its response — it only returns compose-level fields.
+ */
+export async function findTestComposeWithScope(composeId: string) {
+  const [row] = await globalThis.services.db
+    .select({
+      composeId: agentComposes.id,
+      composeName: agentComposes.name,
+      scopeSlug: scopes.slug,
+    })
+    .from(agentComposes)
+    .innerJoin(scopes, eq(scopes.id, agentComposes.scopeId))
+    .where(eq(agentComposes.id, composeId))
     .limit(1);
   return row;
 }

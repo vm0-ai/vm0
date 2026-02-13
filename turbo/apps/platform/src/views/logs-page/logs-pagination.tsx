@@ -7,7 +7,7 @@ import {
   goForwardTwoPages$,
   goBackTwoPages$,
   setRowsPerPage$,
-  rowsPerPageValue$,
+  limit$,
   currentPageNumber$,
 } from "../../signals/logs-page/logs-signals.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -17,7 +17,7 @@ export function LogsPagination() {
   const logsLoadable = useLoadable(currentPageLogs$);
   const hasPrev = useGet(hasPrevPage$);
   const currentPage = useGet(currentPageNumber$);
-  const rowsPerPage = useGet(rowsPerPageValue$);
+  const rowsPerPage = useGet(limit$);
   const goToNext = useSet(goToNextPage$);
   const goToPrev = useSet(goToPrevPage$);
   const goForwardTwo = useSet(goForwardTwoPages$);

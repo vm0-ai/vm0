@@ -3,12 +3,10 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useTheme } from "./ThemeProvider";
 import ThemeToggle from "./ThemeToggle";
 import LanguageSwitcher from "./LanguageSwitcher";
 
 export default function Footer() {
-  const { theme } = useTheme();
   const t = useTranslations("footer");
 
   return (
@@ -18,14 +16,18 @@ export default function Footer() {
           <div className="footer-brand">
             <div className="footer-logo">
               <Image
-                src={
-                  theme === "light"
-                    ? "/assets/vm0-logo-dark.svg"
-                    : "/assets/vm0-logo.svg"
-                }
+                src="/assets/vm0-logo-dark.svg"
                 alt="VM0"
                 width={112}
                 height={28}
+                className="dark:hidden"
+              />
+              <Image
+                src="/assets/vm0-logo.svg"
+                alt="VM0"
+                width={112}
+                height={28}
+                className="hidden dark:block"
               />
             </div>
             <p className="footer-tagline">{t("tagline")}</p>

@@ -309,10 +309,10 @@ describe("VsockClient Integration Tests", () => {
         await client!.exec(`rm -f ${testPath}`);
       } else {
         // No passwordless sudo - verify it fails with expected error
-        // The error can be sudo-related, password prompt, or broken pipe (when sudo terminates)
+        // The error can be sudo-related, password prompt, broken pipe, or spawn failure
         await expect(
           client!.writeFileWithSudo(testPath, content),
-        ).rejects.toThrow(/sudo|password|broken pipe/i);
+        ).rejects.toThrow(/sudo|password|broken pipe|spawn|no such file/i);
       }
     });
   });

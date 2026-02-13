@@ -17,6 +17,8 @@ import {
   findOrCreateBotUser,
   createCredential,
   deleteCredential,
+  createCloudEndpoint,
+  deleteCloudEndpoint,
 } from "./ngrok-client";
 
 const log = logger("service:computer-connector");
@@ -117,6 +119,40 @@ export async function createComputerConnector(
 
   const bridgeToken = randomUUID();
 
+  // Create Cloud Endpoint with traffic policy
+  const trafficPolicy = JSON.stringify({
+    on_http_request: [
+      {
+        expressions: [
+          `!('x-vm0-token' in req.headers) || req.headers['x-vm0-token'][0] != '${bridgeToken}'`,
+        ],
+        actions: [{ type: "deny", config: { status_code: 403 } }],
+      },
+      {
+        actions: [
+          {
+            type: "forward-internal",
+            config: {
+              url: `https://$\{conn.server_name.split('.${domain}')[0]}.internal`,
+              on_error: "continue",
+            },
+          },
+          {
+            type: "custom-response",
+            config: { status_code: 502, body: "Agent offline" },
+          },
+        ],
+      },
+    ],
+  });
+
+  const endpointUrl = `https://*.${endpointPrefix}.${domain}`;
+  const cloudEndpoint = await createCloudEndpoint(
+    apiKey,
+    endpointUrl,
+    trafficPolicy,
+  );
+
   // Create connector row
   const db = globalThis.services.db;
   const [connectorRow] = await db
@@ -127,6 +163,7 @@ export async function createComputerConnector(
       authMethod: "api",
       externalId: botUser.id,
       externalUsername: credential.id,
+      externalEmail: cloudEndpoint.id,
     })
     .returning();
 
@@ -173,6 +210,7 @@ export async function deleteComputerConnector(
     .select({
       id: connectors.id,
       externalUsername: connectors.externalUsername,
+      externalEmail: connectors.externalEmail,
     })
     .from(connectors)
     .where(
@@ -188,6 +226,11 @@ export async function deleteComputerConnector(
   const apiKey = globalThis.services.env.NGROK_API_KEY;
   if (apiKey && connector.externalUsername) {
     await deleteCredential(apiKey, connector.externalUsername);
+  }
+
+  // Delete Cloud Endpoint
+  if (apiKey && connector.externalEmail) {
+    await deleteCloudEndpoint(apiKey, connector.externalEmail);
   }
 
   // Delete connector row

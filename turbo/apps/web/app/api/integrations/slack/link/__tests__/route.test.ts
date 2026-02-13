@@ -2,8 +2,15 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { WebClient } from "@slack/web-api";
 import { GET, POST } from "../route";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
-import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
-import { createTestCompose } from "../../../../../../src/__tests__/api-test-helpers";
+import {
+  mockClerk,
+  MOCK_USER_EMAIL,
+} from "../../../../../../src/__tests__/clerk-mock";
+import {
+  createTestCompose,
+  findTestAgentPermissions,
+  findTestSlackInstallation,
+} from "../../../../../../src/__tests__/api-test-helpers";
 import {
   givenSlackWorkspaceInstalled,
   givenLinkedSlackUser,
@@ -245,6 +252,65 @@ describe("/api/integrations/slack/link", () => {
       expect(response.status).toBe(200);
       expect(data.success).toBe(true);
       expect(data.alreadyLinked).toBe(true);
+    });
+
+    it("syncs permissions when admin selects a different agent", async () => {
+      const { userLink, installation } = await givenLinkedSlackUser({
+        isAdmin: true,
+      });
+      mockClerk({ userId: userLink.vm0UserId });
+
+      // Create a new agent for the admin to switch to
+      const { composeId: newAgentId } =
+        await createTestCompose("new-slack-agent");
+
+      vi.mocked(new WebClient(), true);
+
+      // Verify: user has permission on old (default) agent
+      const oldPermissions = await findTestAgentPermissions(
+        installation.defaultComposeId,
+        MOCK_USER_EMAIL,
+      );
+      expect(oldPermissions).toHaveLength(1);
+
+      // Admin links with a different agentId → triggers permission sync
+      const request = new Request(
+        "http://localhost:3000/api/integrations/slack/link",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slackUserId: userLink.slackUserId,
+            workspaceId: installation.slackWorkspaceId,
+            agentId: newAgentId,
+          }),
+        },
+      );
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+
+      // Verify: installation's defaultComposeId was updated
+      const updatedInstallation = await findTestSlackInstallation(
+        installation.slackWorkspaceId,
+      );
+      expect(updatedInstallation!.defaultComposeId).toBe(newAgentId);
+
+      // Verify: permission on new agent exists
+      const newPermissions = await findTestAgentPermissions(
+        newAgentId,
+        MOCK_USER_EMAIL,
+      );
+      expect(newPermissions).toHaveLength(1);
+
+      // Verify: permission on old agent is revoked
+      const revokedPermissions = await findTestAgentPermissions(
+        installation.defaultComposeId,
+        MOCK_USER_EMAIL,
+      );
+      expect(revokedPermissions).toHaveLength(0);
     });
 
     it("returns 409 when Slack user is linked to different VM0 account", async () => {

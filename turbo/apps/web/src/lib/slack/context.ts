@@ -268,6 +268,9 @@ async function formatFileInfoWithImage(
     );
     if (presignedUrl) {
       parts.push(`   Image URL: ${presignedUrl}`);
+      parts.push(
+        `   To view this image, download it with: curl -sS -o /tmp/${file.id || "image"}.${file.filetype || "png"} "${presignedUrl}" && read the downloaded file`,
+      );
       return parts.join("\n");
     }
   }
@@ -303,6 +306,9 @@ function formatAttachmentImage(attachment: SlackAttachment): string | null {
   const url = attachment.image_url || attachment.thumb_url;
   if (url) {
     parts.push(`   URL: ${url}`);
+    parts.push(
+      `   To view this image, download it with: curl -sS -o /tmp/attachment_image.jpg "${url}" && read the downloaded file`,
+    );
   }
 
   return parts.join("\n");

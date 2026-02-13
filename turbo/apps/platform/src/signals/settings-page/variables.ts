@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import type {
   VariableListResponse,
   VariableResponse,
@@ -227,6 +228,9 @@ export const submitVariableDialog$ = command(
       }
 
       signal.throwIfAborted();
+      toast.success(
+        `Variable ${dialogState.mode === "add" ? "added" : "updated"} successfully`,
+      );
       set(internalReloadVariables$, (x) => x + 1);
 
       set(internalDialogState$, {
@@ -281,6 +285,7 @@ export const confirmDeleteVariable$ = command(
       }
 
       signal.throwIfAborted();
+      toast.success("Variable deleted successfully");
       set(internalReloadVariables$, (x) => x + 1);
 
       set(internalDeleteDialogState$, { open: false, variableName: null });

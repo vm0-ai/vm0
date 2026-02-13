@@ -1,5 +1,39 @@
 # Changelog
 
+## [3.19.2](https://github.com/vm0-ai/vm0/compare/runner-v3.19.1...runner-v3.19.2) (2026-02-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.15.0
+
+## [3.19.1](https://github.com/vm0-ai/vm0/compare/runner-v3.19.0...runner-v3.19.1) (2026-02-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.14.0
+
+## [3.19.0](https://github.com/vm0-ai/vm0/compare/runner-v3.18.6...runner-v3.19.0) (2026-02-12)
+
+
+### Features
+
+* **vsock:** add sudo flag to exec/spawn_watch protocol ([#2985](https://github.com/vm0-ai/vm0/issues/2985)) ([9c42331](https://github.com/vm0-ai/vm0/commit/9c423314a07f8de0f1b92ea3adca4efa4c6de987)), closes [#2984](https://github.com/vm0-ai/vm0/issues/2984)
+
+## [3.18.6](https://github.com/vm0-ai/vm0/compare/runner-v3.18.5...runner-v3.18.6) (2026-02-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.13.0
+
 ## [3.18.5](https://github.com/vm0-ai/vm0/compare/runner-v3.18.4...runner-v3.18.5) (2026-02-12)
 
 
