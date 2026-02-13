@@ -97,6 +97,18 @@ interface S3Mocks {
     (bucket: string, s3Key: string, fileCount: number) => Promise<boolean>
   >;
   downloadBlob: MockInstance<(bucket: string, hash: string) => Promise<Buffer>>;
+  downloadManifest: MockInstance<
+    (
+      bucket: string,
+      s3Key: string,
+    ) => Promise<{
+      version: string;
+      createdAt: string;
+      totalSize: number;
+      fileCount: number;
+      files: Array<{ path: string; hash: string; size: number }>;
+    }>
+  >;
 }
 
 /**
@@ -295,6 +307,15 @@ export function testContext(): TestContext {
         .spyOn(s3Client, "verifyS3FilesExist")
         .mockResolvedValue(true),
       downloadBlob: downloadBlobMock,
+      downloadManifest: vi
+        .spyOn(s3Client, "downloadManifest")
+        .mockResolvedValue({
+          version: "0".repeat(64),
+          createdAt: new Date().toISOString(),
+          totalSize: 0,
+          fileCount: 0,
+          files: [],
+        }),
     };
 
     // Axiom mocks - only set up if Axiom is mocked (vi.mock at module level in test file)

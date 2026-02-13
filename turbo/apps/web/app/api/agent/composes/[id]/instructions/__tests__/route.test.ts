@@ -1,6 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { GET } from "../route";
-import * as s3Client from "../../../../../../../src/lib/s3/s3-client";
 import {
   createTestRequest,
   createTestCompose,
@@ -16,10 +15,6 @@ import {
   MOCK_USER_EMAIL,
 } from "../../../../../../../src/__tests__/clerk-mock";
 import { getInstructionsStorageName } from "@vm0/core";
-
-vi.hoisted(() => {
-  vi.stubEnv("R2_USER_STORAGES_BUCKET_NAME", "test-storages-bucket");
-});
 
 const context = testContext();
 
@@ -109,22 +104,20 @@ describe("GET /api/agent/composes/:id/instructions", () => {
     const storageName = getInstructionsStorageName(agentName);
     await createTestVolume(storageName);
 
-    // Mock S3 downloads for this test
-    const manifestSpy = vi
-      .spyOn(s3Client, "downloadManifest")
-      .mockResolvedValueOnce({
-        version: "a".repeat(64),
-        createdAt: new Date().toISOString(),
-        totalSize: instructionsContent.length,
-        fileCount: 1,
-        files: [
-          {
-            path: "AGENTS.md",
-            hash: "b".repeat(64),
-            size: instructionsContent.length,
-          },
-        ],
-      });
+    // Configure centralized S3 mocks for this test
+    context.mocks.s3.downloadManifest.mockResolvedValueOnce({
+      version: "a".repeat(64),
+      createdAt: new Date().toISOString(),
+      totalSize: instructionsContent.length,
+      fileCount: 1,
+      files: [
+        {
+          path: "AGENTS.md",
+          hash: "b".repeat(64),
+          size: instructionsContent.length,
+        },
+      ],
+    });
 
     context.mocks.s3.downloadBlob.mockResolvedValueOnce(
       Buffer.from(instructionsContent),
@@ -141,8 +134,6 @@ describe("GET /api/agent/composes/:id/instructions", () => {
     expect(response.status).toBe(200);
     expect(data.content).toBe(instructionsContent);
     expect(data.filename).toBe("AGENTS.md");
-
-    manifestSpy.mockRestore();
   });
 
   it("should allow shared users to read instructions", async () => {
@@ -164,15 +155,13 @@ describe("GET /api/agent/composes/:id/instructions", () => {
     // Switch to the shared user
     mockClerk({ userId: user.userId });
 
-    const manifestSpy = vi
-      .spyOn(s3Client, "downloadManifest")
-      .mockResolvedValueOnce({
-        version: "a".repeat(64),
-        createdAt: new Date().toISOString(),
-        totalSize: 50,
-        fileCount: 1,
-        files: [{ path: "AGENTS.md", hash: "c".repeat(64), size: 50 }],
-      });
+    context.mocks.s3.downloadManifest.mockResolvedValueOnce({
+      version: "a".repeat(64),
+      createdAt: new Date().toISOString(),
+      totalSize: 50,
+      fileCount: 1,
+      files: [{ path: "AGENTS.md", hash: "c".repeat(64), size: 50 }],
+    });
 
     context.mocks.s3.downloadBlob.mockResolvedValueOnce(
       Buffer.from("# Shared Instructions"),
@@ -189,8 +178,6 @@ describe("GET /api/agent/composes/:id/instructions", () => {
     expect(response.status).toBe(200);
     expect(data.content).toBe("# Shared Instructions");
     expect(data.filename).toBe("AGENTS.md");
-
-    manifestSpy.mockRestore();
   });
 
   it("should return 404 for non-shared user", async () => {
