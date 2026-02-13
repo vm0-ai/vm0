@@ -35,43 +35,10 @@ import {
   hashFileContent,
   computeContentHashFromHashes,
 } from "../../../../../../src/lib/storage/content-hash";
-
-/**
- * Extract a single file from a tar archive buffer.
- * Tar format: 512-byte header + file data (padded to 512-byte blocks).
- */
-function extractFileFromTar(
-  tarBuffer: Buffer,
-  targetPath: string,
-): Buffer | null {
-  let offset = 0;
-  while (offset + 512 <= tarBuffer.length) {
-    const header = tarBuffer.subarray(offset, offset + 512);
-
-    // End of archive: two consecutive zero blocks
-    if (header.every((b) => b === 0)) break;
-
-    // File name: bytes 0-99, null-terminated
-    const nameEnd = header.indexOf(0);
-    const name = header
-      .subarray(0, nameEnd > 0 && nameEnd < 100 ? nameEnd : 100)
-      .toString("utf-8");
-
-    // File size: bytes 124-135, octal string
-    const sizeStr = header.subarray(124, 136).toString("utf-8").trim();
-    const size = parseInt(sizeStr, 8) || 0;
-
-    offset += 512; // Move past header
-
-    if (name === targetPath || name === `./${targetPath}`) {
-      return tarBuffer.subarray(offset, offset + size);
-    }
-
-    // Skip file data (padded to 512-byte boundary)
-    offset += Math.ceil(size / 512) * 512;
-  }
-  return null;
-}
+import {
+  createSingleFileTar,
+  extractFileFromTar,
+} from "../../../../../../src/lib/tar";
 
 export async function GET(
   request: Request,
@@ -205,57 +172,6 @@ export async function GET(
   });
 }
 
-/**
- * Create a tar archive containing a single file.
- */
-function createSingleFileTar(filename: string, content: Buffer): Buffer {
-  const header = Buffer.alloc(512);
-
-  // File name (bytes 0-99)
-  header.write(filename, 0, Math.min(filename.length, 100), "utf-8");
-
-  // File mode (bytes 100-107): 0644
-  header.write("0000644\0", 100, 8, "utf-8");
-
-  // UID/GID (bytes 108-123): 0
-  header.write("0000000\0", 108, 8, "utf-8");
-  header.write("0000000\0", 116, 8, "utf-8");
-
-  // File size (bytes 124-135): octal
-  header.write(
-    content.length.toString(8).padStart(11, "0") + "\0",
-    124,
-    12,
-    "utf-8",
-  );
-
-  // Mtime (bytes 136-147)
-  const mtime = Math.floor(Date.now() / 1000)
-    .toString(8)
-    .padStart(11, "0");
-  header.write(mtime + "\0", 136, 12, "utf-8");
-
-  // Type flag (byte 156): '0' = regular file
-  header.write("0", 156, 1, "utf-8");
-
-  // Compute checksum: fill checksum field with spaces first
-  header.write("        ", 148, 8, "utf-8");
-  let checksum = 0;
-  for (let i = 0; i < 512; i++) {
-    checksum += header[i] ?? 0;
-  }
-  header.write(checksum.toString(8).padStart(6, "0") + "\0 ", 148, 8, "utf-8");
-
-  // Pad content to 512-byte boundary
-  const paddingSize = (512 - (content.length % 512)) % 512;
-  const padding = Buffer.alloc(paddingSize);
-
-  // End-of-archive marker: two 512-byte zero blocks
-  const endMarker = Buffer.alloc(1024);
-
-  return Buffer.concat([header, content, padding, endMarker]);
-}
-
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -311,6 +227,19 @@ export async function PUT(
     return NextResponse.json(
       { error: { message: "content is required", code: "BAD_REQUEST" } },
       { status: 400 },
+    );
+  }
+
+  const MAX_CONTENT_SIZE = 1024 * 1024; // 1 MB
+  if (Buffer.byteLength(body.content, "utf-8") > MAX_CONTENT_SIZE) {
+    return NextResponse.json(
+      {
+        error: {
+          message: "Content too large (max 1 MB)",
+          code: "PAYLOAD_TOO_LARGE",
+        },
+      },
+      { status: 413 },
     );
   }
 
@@ -423,6 +352,10 @@ export async function PUT(
   const tarBuffer = createSingleFileTar(instructionsFilename, contentBuffer);
   const archiveBuffer = gzipSync(tarBuffer);
 
+  // Upload to S3 before the DB transaction. If the DB transaction fails,
+  // orphaned S3 objects are benign because keys are content-addressable —
+  // the version ID won't be referenced, and re-uploading the same content
+  // produces the same key (idempotent).
   await Promise.all([
     putS3Object(
       bucket,

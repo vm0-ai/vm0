@@ -3,6 +3,7 @@ import os from "os";
 import { PassThrough } from "stream";
 import { env } from "../../env";
 import { logger } from "../logger";
+import { createSingleFileTar } from "../tar";
 
 const log = logger("docker-sandbox");
 
@@ -298,47 +299,6 @@ export async function killDockerSandbox(containerId: string): Promise<void> {
 /**
  * Create a minimal tar archive containing a single file.
  */
-function createSingleFileTar(filename: string, content: Buffer): Buffer {
-  const BLOCK_SIZE = 512;
-  const blocks: Buffer[] = [];
-
-  const header = Buffer.alloc(BLOCK_SIZE, 0);
-  header.write(filename, 0, Math.min(filename.length, 100), "utf-8");
-  header.write("0000644\0", 100, 8, "utf-8");
-  header.write("0000000\0", 108, 8, "utf-8");
-  header.write("0000000\0", 116, 8, "utf-8");
-
-  const sizeOctal = content.length.toString(8).padStart(11, "0");
-  header.write(sizeOctal + "\0", 124, 12, "utf-8");
-
-  const mtime = Math.floor(Date.now() / 1000)
-    .toString(8)
-    .padStart(11, "0");
-  header.write(mtime + "\0", 136, 12, "utf-8");
-
-  header.write("        ", 148, 8, "utf-8");
-  header.write("0", 156, 1, "utf-8");
-  header.write("ustar\0", 257, 6, "utf-8");
-  header.write("00", 263, 2, "utf-8");
-
-  let checksum = 0;
-  for (let i = 0; i < BLOCK_SIZE; i++) {
-    checksum += header.readUInt8(i);
-  }
-  header.write(checksum.toString(8).padStart(6, "0") + "\0 ", 148, 8, "utf-8");
-
-  blocks.push(header);
-  blocks.push(content);
-
-  const padding = BLOCK_SIZE - (content.length % BLOCK_SIZE);
-  if (padding < BLOCK_SIZE) {
-    blocks.push(Buffer.alloc(padding, 0));
-  }
-
-  blocks.push(Buffer.alloc(BLOCK_SIZE * 2, 0));
-
-  return Buffer.concat(blocks);
-}
 
 function parseMemory(value: string): number {
   const match = value.match(/^(\d+)([kmg]?)$/i);

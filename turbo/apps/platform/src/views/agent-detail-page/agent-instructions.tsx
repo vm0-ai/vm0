@@ -101,6 +101,7 @@ export function AgentInstructions({
         {viewMode === "markdown" ? (
           isOwner ? (
             <textarea
+              aria-label="Agent instructions editor"
               className="px-1 text-sm font-mono text-foreground w-full flex-1 bg-transparent border-none outline-none resize-none whitespace-pre-wrap"
               value={displayContent}
               onChange={(e) => setEdited(e.target.value)}
