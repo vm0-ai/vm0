@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.63.0](https://github.com/vm0-ai/vm0/compare/platform-v0.62.0...platform-v0.63.0) (2026-02-13)
+
+
+### Features
+
+* **platform:** add agent detail routes and shared signals ([#2989](https://github.com/vm0-ai/vm0/issues/2989)) ([ddf6fca](https://github.com/vm0-ai/vm0/commit/ddf6fca91c2737231a75b77beca2efb3d9bdc8f4))
+
 ## [0.62.0](https://github.com/vm0-ai/vm0/compare/platform-v0.61.0...platform-v0.62.0) (2026-02-13)
 
 
