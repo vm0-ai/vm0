@@ -1,13 +1,6 @@
 import { useGet, useSet } from "ccstate-react";
 import { Input } from "@vm0/ui/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@vm0/ui/components/ui/select";
-import {
   editableCompose$,
   updateComposeField$,
 } from "../../../signals/agent-detail/config-dialog.ts";
@@ -75,29 +68,14 @@ export function FormsTab() {
 
       <div className="flex flex-col gap-2">
         <label className="text-sm font-medium text-foreground">Framework</label>
-        <Select
-          value={agent.framework}
-          onValueChange={(v) => updateField("framework", v)}
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="claude-code">Claude Code</SelectItem>
-            <SelectItem value="codex">Codex</SelectItem>
-          </SelectContent>
-        </Select>
+        <Input value={agent.framework ?? ""} readOnly className="bg-muted" />
       </div>
 
       <div className="flex flex-col gap-2">
         <label className="text-sm font-medium text-foreground">
           Instructions
         </label>
-        <Input
-          value={agent.instructions ?? ""}
-          onChange={(e) => updateField("instructions", e.target.value)}
-          placeholder="e.g. AGENTS.md"
-        />
+        <Input value={agent.instructions ?? ""} readOnly className="bg-muted" />
       </div>
     </div>
   );
