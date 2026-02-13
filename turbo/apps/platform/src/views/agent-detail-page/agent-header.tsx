@@ -60,7 +60,7 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
                 Run
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Run this agent</TooltipContent>
+            <TooltipContent>Coming soon</TooltipContent>
           </Tooltip>
 
           {isOwner && (
@@ -70,7 +70,7 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
                   <IconSettings size={18} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Settings</TooltipContent>
+              <TooltipContent>Coming soon</TooltipContent>
             </Tooltip>
           )}
 
