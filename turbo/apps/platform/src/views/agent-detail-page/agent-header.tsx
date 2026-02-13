@@ -8,7 +8,6 @@ import {
 import {
   IconPlayerPlay,
   IconSettings,
-  IconClock,
   IconPlug,
   IconList,
 } from "@tabler/icons-react";
@@ -71,20 +70,6 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
               <TooltipContent>Settings</TooltipContent>
             </Tooltip>
           )}
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-9 w-9"
-                disabled
-              >
-                <IconClock size={18} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Schedule</TooltipContent>
-          </Tooltip>
 
           <Tooltip>
             <TooltipTrigger asChild>
