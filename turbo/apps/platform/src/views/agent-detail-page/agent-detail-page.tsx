@@ -39,12 +39,10 @@ export function AgentDetailPage() {
         ) : detail ? (
           <>
             <AgentHeader detail={detail} isOwner={isOwner} />
-            {isOwner && (
-              <AgentInstructions
-                instructions={instructions}
-                loading={instructionsLoading}
-              />
-            )}
+            <AgentInstructions
+              instructions={instructions}
+              loading={instructionsLoading}
+            />
           </>
         ) : (
           <div className="rounded-lg border border-border bg-card p-8 text-center">

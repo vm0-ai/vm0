@@ -181,7 +181,7 @@ export const generateRouterPath = <T extends RoutePath>(
   }
   let _path = path as string;
   for (const [key, value] of Object.entries(pathParams)) {
-    _path = _path.replace(`:${key}`, String(value));
+    _path = _path.replace(`:${key}`, encodeURIComponent(String(value)));
   }
   return _path;
 };

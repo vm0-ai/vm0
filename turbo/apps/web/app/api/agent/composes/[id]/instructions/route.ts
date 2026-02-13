@@ -125,21 +125,28 @@ export async function GET(
   const bucket = env().R2_USER_STORAGES_BUCKET_NAME;
   const manifest = await downloadManifest(bucket, version.s3Key);
 
-  // Find the instructions file in manifest (match by filename)
-  const instructionFile = manifest.files.find(
-    (f) => f.path === instructionsFilename,
-  );
+  // Find the instructions file in manifest.
+  // First try exact match, then fall back to the single file if there's only one
+  // (the storage volume is dedicated to instructions, so a single file is the instructions).
+  const instructionFile =
+    manifest.files.find((f) => f.path === instructionsFilename) ??
+    (manifest.files.length === 1 ? manifest.files[0] : undefined);
 
   if (!instructionFile) {
     return NextResponse.json({ content: null, filename: instructionsFilename });
   }
 
   // Download the blob content by hash
-  const blob = await downloadBlob(bucket, instructionFile.hash);
-  const textContent = blob.toString("utf-8");
+  try {
+    const blob = await downloadBlob(bucket, instructionFile.hash);
+    const textContent = blob.toString("utf-8");
 
-  return NextResponse.json({
-    content: textContent,
-    filename: instructionsFilename,
-  });
+    return NextResponse.json({
+      content: textContent,
+      filename: instructionsFilename,
+    });
+  } catch {
+    // Blob may not exist in S3 (deleted or never uploaded)
+    return NextResponse.json({ content: null, filename: instructionsFilename });
+  }
 }

@@ -10,6 +10,7 @@ import {
   IconSettings,
   IconPlug,
   IconList,
+  IconLink,
 } from "@tabler/icons-react";
 import { useSet } from "ccstate-react";
 import { navigateInReact$ } from "../../signals/route.ts";
@@ -36,7 +37,17 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
     <div className="flex items-center gap-3.5">
       <AgentAvatar name={detail.name} size="lg" />
       <div className="flex-1 min-w-0 flex flex-col gap-1.5">
-        <h1 className="text-2xl text-foreground truncate">{detail.name}</h1>
+        <div className="flex items-center gap-2.5">
+          <h1 className="text-2xl leading-8 font-normal text-foreground truncate">
+            {detail.name}
+          </h1>
+          {!isOwner && (
+            <span className="inline-flex h-[22px] items-center gap-1 shrink-0 rounded-md border border-border bg-background px-1.5 text-xs font-medium leading-4 text-muted-foreground">
+              <IconLink size={14} className="shrink-0 text-lime-600" />
+              Shared
+            </span>
+          )}
+        </div>
         {description && (
           <p className="text-sm text-muted-foreground truncate">
             {description}

@@ -56,9 +56,19 @@ export const fetchAgentDetail$ = command(async ({ get, set }) => {
 
   try {
     const fetchFn = get(fetch$);
-    const response = await fetchFn(
-      `/api/agent/composes?name=${encodeURIComponent(name)}`,
-    );
+
+    // Shared agents have scope/agentName format; split for the API
+    const slashIndex = name.indexOf("/");
+    const isOwner = slashIndex === -1;
+    const agentName = isOwner ? name : name.slice(slashIndex + 1);
+    const scope = isOwner ? undefined : name.slice(0, slashIndex);
+
+    const params = new URLSearchParams({ name: agentName });
+    if (scope) {
+      params.set("scope", scope);
+    }
+
+    const response = await fetchFn(`/api/agent/composes?${params.toString()}`);
 
     if (!response.ok) {
       throw new Error(`Failed to fetch agent: ${response.statusText}`);
@@ -72,9 +82,6 @@ export const fetchAgentDetail$ = command(async ({ get, set }) => {
       createdAt: string;
       updatedAt: string;
     };
-
-    // Determine ownership: if the URL name contains /, it's a shared agent
-    const isOwner = !name.includes("/");
 
     set(agentDetailState$, {
       detail: { ...data, isOwner },
