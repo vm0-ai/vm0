@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.40.0](https://github.com/vm0-ai/vm0/compare/web-v12.39.0...web-v12.40.0) (2026-02-13)
+
+
+### Features
+
+* **platform:** add agent detail page with feature flag gating ([#2998](https://github.com/vm0-ai/vm0/issues/2998)) ([5386de0](https://github.com/vm0-ai/vm0/commit/5386de0662eb2a85e69040788e2ca08e7f976cba))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.15.0
+
 ## [12.39.0](https://github.com/vm0-ai/vm0/compare/web-v12.38.0...web-v12.39.0) (2026-02-13)
 
 

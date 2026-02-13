@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.15.0](https://github.com/vm0-ai/vm0/compare/core-v8.14.0...core-v8.15.0) (2026-02-13)
+
+
+### Features
+
+* **platform:** add agent detail page with feature flag gating ([#2998](https://github.com/vm0-ai/vm0/issues/2998)) ([5386de0](https://github.com/vm0-ai/vm0/commit/5386de0662eb2a85e69040788e2ca08e7f976cba))
+
 ## [8.14.0](https://github.com/vm0-ai/vm0/compare/core-v8.13.0...core-v8.14.0) (2026-02-13)
 
 
