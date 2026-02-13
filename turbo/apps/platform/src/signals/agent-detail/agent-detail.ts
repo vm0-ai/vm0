@@ -104,7 +104,7 @@ export const fetchAgentDetail$ = command(async ({ get, set }) => {
 // ---------------------------------------------------------------------------
 
 type InstructionsViewMode = "markdown" | "preview";
-const internalInstructionsViewMode$ = state<InstructionsViewMode>("markdown");
+const internalInstructionsViewMode$ = state<InstructionsViewMode>("preview");
 export const instructionsViewMode$ = computed((get) =>
   get(internalInstructionsViewMode$),
 );

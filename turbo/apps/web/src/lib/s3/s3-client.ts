@@ -273,6 +273,37 @@ export async function downloadBlob(
 }
 
 /**
+ * Download a raw S3 object as a Buffer by its full key.
+ * @param bucket - S3 bucket name
+ * @param key - Full S3 object key
+ * @returns Object content as Buffer
+ */
+export async function downloadS3Buffer(
+  bucket: string,
+  key: string,
+): Promise<Buffer> {
+  const client = getS3Client();
+
+  const command = new GetObjectCommand({
+    Bucket: bucket,
+    Key: key,
+  });
+
+  const response = await client.send(command);
+
+  if (!response.Body) {
+    throw s3DownloadError(`Empty response body`, bucket, key);
+  }
+
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
+    chunks.push(chunk);
+  }
+
+  return Buffer.concat(chunks);
+}
+
+/**
  * Generate presigned URL for uploading (PUT) a single S3 object.
  * Used for direct client-to-S3 uploads that bypass Vercel serverless limits.
  * Set usePublicEndpoint=true when the URL is consumed by external clients.
