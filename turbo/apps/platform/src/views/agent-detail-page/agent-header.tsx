@@ -8,9 +8,9 @@ import {
 import {
   IconPlayerPlay,
   IconSettings,
-  IconChartBar,
+  IconClock,
   IconPlug,
-  IconLayoutGrid,
+  IconList,
 } from "@tabler/icons-react";
 import { useSet } from "ccstate-react";
 import { navigateInReact$ } from "../../signals/route.ts";
@@ -68,7 +68,7 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
                   <IconSettings size={18} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Coming soon</TooltipContent>
+              <TooltipContent>Settings</TooltipContent>
             </Tooltip>
           )}
 
@@ -78,16 +78,12 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
                 variant="outline"
                 size="icon"
                 className="h-9 w-9"
-                onClick={() =>
-                  navigate("/agents/:name/logs", {
-                    pathParams: { name: detail.name },
-                  })
-                }
+                disabled
               >
-                <IconChartBar size={18} />
+                <IconClock size={18} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Logs</TooltipContent>
+            <TooltipContent>Schedule</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -114,12 +110,16 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
                 variant="outline"
                 size="icon"
                 className="h-9 w-9"
-                onClick={() => navigate("/agents")}
+                onClick={() =>
+                  navigate("/agents/:name/logs", {
+                    pathParams: { name: detail.name },
+                  })
+                }
               >
-                <IconLayoutGrid size={18} />
+                <IconList size={18} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Back to agents</TooltipContent>
+            <TooltipContent>Logs</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </div>
