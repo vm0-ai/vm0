@@ -27,6 +27,7 @@ import { decryptCredentialValue } from "../../../../src/lib/crypto/secrets-encry
 import { removePermission } from "../../../../src/lib/agent/permission-service";
 import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 import { getUserScopeByClerkId } from "../../../../src/lib/scope/scope-service";
+import { syncWorkspaceAgentPermissions } from "../../../../src/lib/slack/permission-sync";
 
 /**
  * GET /api/integrations/slack
@@ -327,11 +328,21 @@ export async function PATCH(request: Request) {
     );
   }
 
+  const oldComposeId = installation.defaultComposeId;
+
   // Update the installation's default compose
   await db
     .update(slackInstallations)
     .set({ defaultComposeId: compose.id, updatedAt: new Date() })
     .where(eq(slackInstallations.id, installation.id));
+
+  // Sync permissions for all linked workspace users
+  await syncWorkspaceAgentPermissions(
+    oldComposeId,
+    compose.id,
+    installation.slackWorkspaceId,
+    installation.adminSlackUserId,
+  );
 
   return NextResponse.json({ ok: true });
 }
