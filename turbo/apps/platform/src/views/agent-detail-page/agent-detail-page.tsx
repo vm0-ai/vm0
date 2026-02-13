@@ -12,6 +12,7 @@ import {
 } from "../../signals/agent-detail/agent-detail.ts";
 import {
   activeRunId$,
+  isInlineRunInitializing$,
   isRunPanelVisible$,
 } from "../../signals/agent-detail/inline-run.ts";
 import { AgentHeader } from "./agent-header.tsx";
@@ -30,7 +31,8 @@ export function AgentDetailPage() {
   const instructionsLoading = useGet(agentInstructionsLoading$);
   const activeRunId = useGet(activeRunId$);
   const panelVisible = useGet(isRunPanelVisible$);
-  const showSkeleton = loading;
+  const runInitializing = useGet(isInlineRunInitializing$);
+  const showSkeleton = loading || runInitializing;
 
   return (
     <AppShell

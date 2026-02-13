@@ -35,6 +35,12 @@ export const inlineRunStatus$ = computed((get) =>
 /** Whether a run is being created (API in flight, no runId yet). */
 const internalPendingRun$ = state(false);
 
+/** True while restoring inline run from URL — cleared after first status check. */
+const internalInitFromUrl$ = state(false);
+export const isInlineRunInitializing$ = computed((get) =>
+  get(internalInitFromUrl$),
+);
+
 /** Whether the inline run panel should be visible. */
 export const isRunPanelVisible$ = computed(
   (get) => get(internalPendingRun$) || get(internalActiveRunId$) !== null,
@@ -187,6 +193,7 @@ export const initInlineRunFromUrl$ = command(({ get, set }) => {
   const params = get(searchParams$);
   const runId = params.get("runId");
   if (runId) {
+    set(internalInitFromUrl$, true);
     set(startInlineRun$, runId);
   }
 });
@@ -281,6 +288,8 @@ const setupInlineRunPolling$ = command(
       }
     } catch (error) {
       throwIfAbort(error);
+    } finally {
+      set(internalInitFromUrl$, false);
     }
 
     // Phase 3: Polling loop
