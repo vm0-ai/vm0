@@ -105,7 +105,6 @@ export class CodexEventRenderer {
     );
   }
 
-  // eslint-disable-next-line complexity -- TODO: refactor complex function
   private static renderItem(event: CodexEvent): void {
     const item = event.item;
     if (!item) return;
@@ -113,47 +112,53 @@ export class CodexEventRenderer {
     const itemType = item.type;
     const eventType = event.type;
 
-    // Reasoning (thinking)
     if (itemType === "reasoning" && item.text) {
       console.log("[reasoning]" + ` ${item.text}`);
-      return;
-    }
-
-    // Agent message
-    if (itemType === "agent_message" && item.text) {
+    } else if (itemType === "agent_message" && item.text) {
       console.log("[message]" + ` ${item.text}`);
-      return;
+    } else if (itemType === "command_execution") {
+      this.renderCommandExecution(item, eventType);
+    } else if (itemType === "file_change") {
+      this.renderFileChange(item);
+    } else if (
+      itemType === "file_edit" ||
+      itemType === "file_write" ||
+      itemType === "file_read"
+    ) {
+      this.renderFileOperation(item, eventType);
     }
+  }
 
-    // Command execution
-    if (itemType === "command_execution") {
-      if (eventType === "item.started" && item.command) {
-        console.log("[exec]" + ` ${item.command}`);
-      } else if (eventType === "item.completed") {
-        const output = item.aggregated_output || "";
-        const exitCode = item.exit_code ?? 0;
-        if (output) {
-          const lines = output.split("\n").filter((l) => l.trim());
-          const preview = lines.slice(0, 3).join("\n  ");
-          const more =
-            lines.length > 3
-              ? chalk.dim(` ... (${lines.length - 3} more lines)`)
-              : "";
-          console.log(
-            "[output]" + (exitCode !== 0 ? chalk.red(` exit=${exitCode}`) : ""),
-          );
-          if (preview) {
-            console.log("  " + preview + more);
-          }
-        } else if (exitCode !== 0) {
-          console.log(chalk.red("[output]") + chalk.red(` exit=${exitCode}`));
+  private static renderCommandExecution(
+    item: CodexItem,
+    eventType: string,
+  ): void {
+    if (eventType === "item.started" && item.command) {
+      console.log("[exec]" + ` ${item.command}`);
+    } else if (eventType === "item.completed") {
+      const output = item.aggregated_output || "";
+      const exitCode = item.exit_code ?? 0;
+      if (output) {
+        const lines = output.split("\n").filter((l) => l.trim());
+        const preview = lines.slice(0, 3).join("\n  ");
+        const more =
+          lines.length > 3
+            ? chalk.dim(` ... (${lines.length - 3} more lines)`)
+            : "";
+        console.log(
+          "[output]" + (exitCode !== 0 ? chalk.red(` exit=${exitCode}`) : ""),
+        );
+        if (preview) {
+          console.log("  " + preview + more);
         }
+      } else if (exitCode !== 0) {
+        console.log(chalk.red("[output]") + chalk.red(` exit=${exitCode}`));
       }
-      return;
     }
+  }
 
-    // File changes
-    if (itemType === "file_change" && item.changes && item.changes.length > 0) {
+  private static renderFileChange(item: CodexItem): void {
+    if (item.changes && item.changes.length > 0) {
       const summary = item.changes
         .map((c) => {
           const icon = c.kind === "add" ? "+" : c.kind === "delete" ? "-" : "~";
@@ -161,20 +166,13 @@ export class CodexEventRenderer {
         })
         .join(", ");
       console.log(chalk.green("[files]") + ` ${summary}`);
-      return;
     }
+  }
 
-    // File operations (edit/write/read)
-    if (
-      itemType === "file_edit" ||
-      itemType === "file_write" ||
-      itemType === "file_read"
-    ) {
-      const action = itemType.replace("file_", "");
-      if (eventType === "item.started" && item.path) {
-        console.log(`[${action}]` + ` ${item.path}`);
-      }
-      return;
+  private static renderFileOperation(item: CodexItem, eventType: string): void {
+    const action = item.type.replace("file_", "");
+    if (eventType === "item.started" && item.path) {
+      console.log(`[${action}]` + ` ${item.path}`);
     }
   }
 

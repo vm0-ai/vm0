@@ -127,6 +127,32 @@ interface Manifest {
 }
 
 /**
+ * Build a commit payload with optional runId and message fields.
+ */
+function buildCommitPayload(
+  storageName: string,
+  storageType: string,
+  versionId: string,
+  files: FileEntry[],
+  runId?: string,
+  message?: string,
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    storageName,
+    storageType,
+    versionId,
+    files,
+  };
+  if (runId) {
+    payload.runId = runId;
+  }
+  if (message) {
+    payload.message = message;
+  }
+  return payload;
+}
+
+/**
  * Create manifest JSON file.
  *
  * @param files - List of file entries
@@ -162,7 +188,6 @@ export function createManifest(
  * @param message - Optional commit message
  * @returns Object with versionId on success, null on failure
  */
-// eslint-disable-next-line complexity -- TODO: refactor complex function
 export async function createDirectUploadSnapshot(
   mountPath: string,
   storageName: string,
@@ -221,15 +246,13 @@ export async function createDirectUploadSnapshot(
     logInfo(`Version already exists (deduplicated): ${versionId.slice(0, 8)}`);
     logInfo("Updating HEAD pointer...");
 
-    const commitPayload: Record<string, unknown> = {
+    const commitPayload = buildCommitPayload(
       storageName,
       storageType,
       versionId,
       files,
-    };
-    if (runId) {
-      commitPayload.runId = runId;
-    }
+      runId,
+    );
 
     const commitResponse = (await httpPostJson(
       STORAGE_COMMIT_URL,
@@ -318,18 +341,14 @@ export async function createDirectUploadSnapshot(
     // Step 6: Call commit endpoint
     logInfo("Calling commit endpoint...");
     const commitStart = Date.now();
-    const commitPayload: Record<string, unknown> = {
+    const commitPayload = buildCommitPayload(
       storageName,
       storageType,
       versionId,
       files,
-    };
-    if (runId) {
-      commitPayload.runId = runId;
-    }
-    if (message) {
-      commitPayload.message = message;
-    }
+      runId,
+      message,
+    );
 
     const commitResponse = (await httpPostJson(
       STORAGE_COMMIT_URL,

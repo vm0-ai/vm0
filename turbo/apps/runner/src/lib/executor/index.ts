@@ -14,7 +14,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { FirecrackerVM, type VMConfig } from "../firecracker/vm.js";
-import { createVmId } from "../firecracker/vm-id.js";
+import { type VmId, createVmId } from "../firecracker/vm-id.js";
 import type { GuestClient } from "../firecracker/guest.js";
 import { VsockClient } from "../firecracker/vsock.js";
 import type { ExecutionContext } from "../api.js";
@@ -39,9 +39,163 @@ import { createLogger } from "../logger.js";
 const logger = createLogger("Executor");
 
 /**
+ * Set up network security (firewall + proxy registration) for a VM.
+ */
+function setupNetworkSecurity(
+  context: ExecutionContext,
+  vethNsIp: string,
+): void {
+  const firewallConfig = context.experimentalFirewall;
+  if (firewallConfig?.enabled) {
+    const mitmEnabled = firewallConfig.experimental_mitm ?? false;
+    const sealSecretsEnabled =
+      firewallConfig.experimental_seal_secrets ?? false;
+
+    logger.log(
+      `Setting up network security for VM ${vethNsIp} (mitm=${mitmEnabled}, sealSecrets=${sealSecretsEnabled})`,
+    );
+
+    // Register VM in the proxy registry with firewall rules
+    // vethNsIp is the key since that's what the proxy sees after NAT
+    // Note: Per-namespace iptables rules redirect traffic to proxy
+    getVMRegistry().register(vethNsIp, context.runId, context.sandboxToken, {
+      firewallRules: firewallConfig?.rules,
+      mitmEnabled,
+      sealSecretsEnabled,
+    });
+    // Note: Proxy CA certificate is pre-baked into rootfs (see build-rootfs.sh)
+    // No runtime installation needed
+  }
+}
+
+/**
+ * Prepare guest after connection: sync time, download storages, restore session.
+ */
+async function prepareGuest(
+  guest: GuestClient,
+  context: ExecutionContext,
+  config: RunnerConfig,
+): Promise<void> {
+  // Post-resume handling for snapshot restore
+  // After snapshot restore, guest time continues from snapshot creation time
+  // Entropy pool is handled by random.trust_cpu=on boot arg (CPU HWRNG auto-refills)
+  // ARP cache: not needed since each VM runs in fresh namespace with new TAP device
+  // See: https://github.com/firecracker-microvm/firecracker/blob/main/docs/snapshotting/snapshot-support.md
+  if (config.firecracker.snapshot) {
+    // Use host timestamp directly (faster than hwclock which accesses RTC device)
+    const timestamp = (Date.now() / 1000).toFixed(3);
+    await guest.execAsRoot(`date -s "@${timestamp}"`);
+  }
+
+  // Download storages if manifest provided
+  if (context.storageManifest) {
+    await withSandboxTiming("storage_download", () =>
+      downloadStorages(guest, context.storageManifest!),
+    );
+  }
+
+  // Restore session history if resuming
+  if (context.resumeSession) {
+    await withSandboxTiming("session_restore", () =>
+      restoreSessionHistory(
+        guest,
+        context.resumeSession!,
+        context.workingDir,
+        context.cliAgentType || "claude-code",
+      ),
+    );
+  }
+}
+
+/**
+ * Check if agent was killed by OOM killer. Returns error result if OOM detected.
+ */
+async function checkForOOM(
+  guest: GuestClient,
+  exitCode: number,
+  durationMs: number,
+): Promise<ExecutionResult | null> {
+  if (exitCode === 137 || exitCode === 9) {
+    const dmesgCheck = await guest.exec(
+      `sudo dmesg | tail -20 | grep -iE "killed|oom" 2>/dev/null`,
+    );
+    if (
+      dmesgCheck.stdout.toLowerCase().includes("oom") ||
+      dmesgCheck.stdout.toLowerCase().includes("killed")
+    ) {
+      logger.log(`OOM detected: ${dmesgCheck.stdout}`);
+      recordOperation({
+        actionType: "agent_execute",
+        durationMs,
+        success: false,
+      });
+      return {
+        exitCode: 1,
+        error: "Agent process killed by OOM killer",
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Clean up VM resources: network security, vsock, VM process.
+ */
+async function cleanupJob(
+  context: ExecutionContext,
+  options: ExecutionOptions,
+  config: RunnerConfig,
+  vethNsIp: string | null,
+  vm: FirecrackerVM | null,
+  vsockClient: VsockClient | null,
+  vmId: VmId,
+): Promise<void> {
+  // Clean up network security if firewall was enabled
+  if (context.experimentalFirewall?.enabled && vethNsIp) {
+    logger.log(`Cleaning up network security for VM ${vethNsIp}`);
+
+    // Unregister from proxy registry (keyed by veth namespace IP)
+    getVMRegistry().unregister(vethNsIp);
+
+    // Upload network logs to telemetry endpoint (skip in devMode)
+    if (!options.benchmarkMode) {
+      try {
+        await uploadNetworkLogs(
+          config.server.url,
+          context.sandboxToken,
+          context.runId,
+        );
+      } catch (err) {
+        logger.error(
+          `Failed to upload network logs: ${err instanceof Error ? err.message : "Unknown error"}`,
+        );
+      }
+    }
+  }
+
+  // Always cleanup VM - let errors propagate (fail-fast principle)
+  if (vm) {
+    // Request graceful shutdown via vsock (best-effort, timeout after 2s)
+    if (vsockClient) {
+      const acked = await vsockClient.shutdown(2000);
+      if (acked) {
+        logger.log(`Guest acknowledged shutdown`);
+      } else {
+        logger.log(`Guest shutdown timeout, proceeding with SIGKILL`);
+      }
+      vsockClient.close();
+    }
+    logger.log(`Cleaning up VM ${vmId}...`);
+    await withSandboxTiming("cleanup", () => vm!.kill());
+  }
+
+  // Flush and clear sandbox context after job completion
+  await clearSandboxContext();
+}
+
+/**
  * Execute a job in a Firecracker VM
  */
-// eslint-disable-next-line complexity -- TODO: refactor complex function
 export async function executeJob(
   context: ExecutionContext,
   config: RunnerConfig,
@@ -141,62 +295,15 @@ export async function executeJob(
     const envVars = buildEnvironmentVariables(context, config.server.url);
 
     // Handle network security before guest wait (sync, no guest dependency)
-    const firewallConfig = context.experimentalFirewall;
-    if (firewallConfig?.enabled) {
-      const mitmEnabled = firewallConfig.experimental_mitm ?? false;
-      const sealSecretsEnabled =
-        firewallConfig.experimental_seal_secrets ?? false;
-
-      logger.log(
-        `Setting up network security for VM ${vethNsIp} (mitm=${mitmEnabled}, sealSecrets=${sealSecretsEnabled})`,
-      );
-
-      // Register VM in the proxy registry with firewall rules
-      // vethNsIp is the key since that's what the proxy sees after NAT
-      // Note: Per-namespace iptables rules redirect traffic to proxy
-      getVMRegistry().register(vethNsIp!, context.runId, context.sandboxToken, {
-        firewallRules: firewallConfig?.rules,
-        mitmEnabled,
-        sealSecretsEnabled,
-      });
-      // Note: Proxy CA certificate is pre-baked into rootfs (see build-rootfs.sh)
-      // No runtime installation needed
-    }
+    setupNetworkSecurity(context, vethNsIp);
 
     // Wait for guest to connect (vsock listener was started before VM)
     logger.log(`Waiting for guest connection...`);
     await withSandboxTiming("guest_wait", () => guestConnectionPromise);
     logger.log(`Guest client ready`);
 
-    // Post-resume handling for snapshot restore
-    // After snapshot restore, guest time continues from snapshot creation time
-    // Entropy pool is handled by random.trust_cpu=on boot arg (CPU HWRNG auto-refills)
-    // ARP cache: not needed since each VM runs in fresh namespace with new TAP device
-    // See: https://github.com/firecracker-microvm/firecracker/blob/main/docs/snapshotting/snapshot-support.md
-    if (config.firecracker.snapshot) {
-      // Use host timestamp directly (faster than hwclock which accesses RTC device)
-      const timestamp = (Date.now() / 1000).toFixed(3);
-      await guest.execAsRoot(`date -s "@${timestamp}"`);
-    }
-
-    // Download storages if manifest provided
-    if (context.storageManifest) {
-      await withSandboxTiming("storage_download", () =>
-        downloadStorages(guest, context.storageManifest!),
-      );
-    }
-
-    // Restore session history if resuming
-    if (context.resumeSession) {
-      await withSandboxTiming("session_restore", () =>
-        restoreSessionHistory(
-          guest,
-          context.resumeSession!,
-          context.workingDir,
-          context.cliAgentType || "claude-code",
-        ),
-      );
-    }
+    // Prepare guest: sync time, download storages, restore session
+    await prepareGuest(guest, context, config);
 
     // Execute agent or direct command using event-driven mode
     // Note: Network connectivity is validated by agent's first heartbeat (fail-fast)
@@ -251,26 +358,8 @@ export async function executeJob(
     const duration = Math.round(durationMs / 1000);
 
     // Check for OOM kill (exit code 137 = 128 + SIGKILL)
-    if (exitCode === 137 || exitCode === 9) {
-      const dmesgCheck = await guest.exec(
-        `sudo dmesg | tail -20 | grep -iE "killed|oom" 2>/dev/null`,
-      );
-      if (
-        dmesgCheck.stdout.toLowerCase().includes("oom") ||
-        dmesgCheck.stdout.toLowerCase().includes("killed")
-      ) {
-        logger.log(`OOM detected: ${dmesgCheck.stdout}`);
-        recordOperation({
-          actionType: "agent_execute",
-          durationMs,
-          success: false,
-        });
-        return {
-          exitCode: 1,
-          error: "Agent process killed by OOM killer",
-        };
-      }
-    }
+    const oomResult = await checkForOOM(guest, exitCode, durationMs);
+    if (oomResult) return oomResult;
 
     // Record agent_execute metric
     recordOperation({
@@ -301,46 +390,6 @@ export async function executeJob(
       error: errorMsg,
     };
   } finally {
-    // Clean up network security if firewall was enabled
-    if (context.experimentalFirewall?.enabled && vethNsIp) {
-      logger.log(`Cleaning up network security for VM ${vethNsIp}`);
-
-      // Unregister from proxy registry (keyed by veth namespace IP)
-      getVMRegistry().unregister(vethNsIp);
-
-      // Upload network logs to telemetry endpoint (skip in devMode)
-      if (!options.benchmarkMode) {
-        try {
-          await uploadNetworkLogs(
-            config.server.url,
-            context.sandboxToken,
-            context.runId,
-          );
-        } catch (err) {
-          logger.error(
-            `Failed to upload network logs: ${err instanceof Error ? err.message : "Unknown error"}`,
-          );
-        }
-      }
-    }
-
-    // Always cleanup VM - let errors propagate (fail-fast principle)
-    if (vm) {
-      // Request graceful shutdown via vsock (best-effort, timeout after 2s)
-      if (vsockClient) {
-        const acked = await vsockClient.shutdown(2000);
-        if (acked) {
-          logger.log(`Guest acknowledged shutdown`);
-        } else {
-          logger.log(`Guest shutdown timeout, proceeding with SIGKILL`);
-        }
-        vsockClient.close();
-      }
-      logger.log(`Cleaning up VM ${vmId}...`);
-      await withSandboxTiming("cleanup", () => vm!.kill());
-    }
-
-    // Flush and clear sandbox context after job completion
-    await clearSandboxContext();
+    await cleanupJob(context, options, config, vethNsIp, vm, vsockClient, vmId);
   }
 }

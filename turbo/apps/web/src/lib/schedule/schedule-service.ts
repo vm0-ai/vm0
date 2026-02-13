@@ -236,10 +236,65 @@ async function verifyComposeOwnership(
 }
 
 /**
+ * Validate that all required secrets/vars are available in platform tables.
+ */
+async function validateRequiredConfig(
+  compose: typeof agentComposes.$inferSelect,
+  userId: string,
+): Promise<void> {
+  if (!compose.headVersionId) return;
+
+  const [version] = await globalThis.services.db
+    .select()
+    .from(agentComposeVersions)
+    .where(eq(agentComposeVersions.id, compose.headVersionId))
+    .limit(1);
+
+  if (!version) return;
+
+  const required = extractRequiredConfiguration(version.content);
+
+  // Fetch platform-managed secrets and vars
+  const userScope = await getUserScopeByClerkId(userId);
+  let platformSecretNames: string[] = [];
+  let platformVarNames: string[] = [];
+
+  if (userScope) {
+    const platformSecrets = await getSecretValues(userScope.id, "user");
+    platformSecretNames = Object.keys(platformSecrets);
+    log.debug(
+      `Fetched ${platformSecretNames.length} platform secret(s) for validation`,
+    );
+
+    const platformVars = await getVariableValues(userScope.id);
+    platformVarNames = Object.keys(platformVars);
+    log.debug(
+      `Fetched ${platformVarNames.length} platform variable(s) for validation`,
+    );
+  }
+
+  const missingSecrets = required.secrets.filter(
+    (name) => !platformSecretNames.includes(name),
+  );
+  const missingVars = required.vars.filter(
+    (name) => !platformVarNames.includes(name),
+  );
+
+  if (missingSecrets.length > 0 || missingVars.length > 0) {
+    throw badRequest(
+      buildMissingConfigError({
+        secrets: missingSecrets,
+        vars: missingVars,
+        credentials: [],
+      }),
+    );
+  }
+}
+
+/**
  * Deploy (create or update) a schedule
  * Idempotent: creates if doesn't exist, updates if exists
  */
-// eslint-disable-next-line complexity -- TODO: refactor complex function
 export async function deploySchedule(
   userId: string,
   request: DeployScheduleRequest,
@@ -289,55 +344,7 @@ export async function deploySchedule(
   // Validate required secrets/vars against platform tables
   // Secrets and vars are now managed via platform (vm0 secret set / vm0 var set),
   // not passed via schedule creation
-  if (compose.headVersionId) {
-    const [version] = await globalThis.services.db
-      .select()
-      .from(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, compose.headVersionId))
-      .limit(1);
-
-    if (version) {
-      const required = extractRequiredConfiguration(version.content);
-
-      // Fetch platform-managed secrets and vars
-      const userScope = await getUserScopeByClerkId(userId);
-      let platformSecretNames: string[] = [];
-      let platformVarNames: string[] = [];
-
-      if (userScope) {
-        const platformSecrets = await getSecretValues(userScope.id, "user");
-        platformSecretNames = Object.keys(platformSecrets);
-        log.debug(
-          `Fetched ${platformSecretNames.length} platform secret(s) for validation`,
-        );
-
-        const platformVars = await getVariableValues(userScope.id);
-        platformVarNames = Object.keys(platformVars);
-        log.debug(
-          `Fetched ${platformVarNames.length} platform variable(s) for validation`,
-        );
-      }
-
-      const missingSecrets = required.secrets.filter(
-        (name) => !platformSecretNames.includes(name),
-      );
-      const missingVars = required.vars.filter(
-        (name) => !platformVarNames.includes(name),
-      );
-      // Credentials are not provided via schedule setup (they come from platform)
-      // so we don't validate them here
-
-      if (missingSecrets.length > 0 || missingVars.length > 0) {
-        throw badRequest(
-          buildMissingConfigError({
-            secrets: missingSecrets,
-            vars: missingVars,
-            credentials: [],
-          }),
-        );
-      }
-    }
-  }
+  await validateRequiredConfig(compose, userId);
 
   // Note: vars and encryptedSecrets are no longer stored in schedule table
   // They are now managed via platform tables (secrets, variables)
