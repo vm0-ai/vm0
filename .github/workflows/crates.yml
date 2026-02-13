@@ -176,11 +176,11 @@ jobs:
             --api-url https://localhost \
             --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
-          # Run benchmark (boot VM from snapshot, exec command, verify output)
+          # Run benchmark (boot VM from snapshot, exec command, verify network)
           echo "=== Running benchmark ==="
           ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner benchmark \
             --config ${RUNNER_DIR}/runner.yaml \
-            'echo hello-from-vm'"
+            'curl -sf --max-time 10 https://httpbin.org/get'"
 
       - name: Cleanup
         if: always()

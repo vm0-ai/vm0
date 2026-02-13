@@ -21,7 +21,44 @@ struct VmEntry {
     run_id: String,
     sandbox_token: String,
     registered_at: i64,
+    firewall_rules: Vec<FirewallRule>,
     mitm_enabled: bool,
+    seal_secrets_enabled: bool,
+}
+
+/// Firewall rule for network filtering (first-match-wins).
+///
+/// Variants:
+/// - Domain rule: `{ "domain": "*.example.com", "action": "ALLOW" }`
+/// - IP rule: `{ "ip": "10.0.0.0/8", "action": "DENY" }`
+/// - Terminal rule: `{ "final": "DENY" }`
+#[derive(Clone, Serialize, Deserialize)]
+pub struct FirewallRule {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ip: Option<String>,
+    #[serde(rename = "final", skip_serializing_if = "Option::is_none")]
+    pub terminal: Option<FirewallAction>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action: Option<FirewallAction>,
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize)]
+pub enum FirewallAction {
+    #[serde(rename = "ALLOW")]
+    Allow,
+    #[serde(rename = "DENY")]
+    Deny,
+}
+
+/// Parameters for registering a VM in the proxy registry.
+pub struct VmRegistration<'a> {
+    pub run_id: &'a str,
+    pub sandbox_token: &'a str,
+    pub firewall_rules: &'a [FirewallRule],
+    pub mitm_enabled: bool,
+    pub seal_secrets_enabled: bool,
 }
 
 /// Embedded mitmproxy addon script (compiled into the binary).
@@ -147,21 +184,31 @@ impl MitmProxy {
     ///
     /// Note: the read-modify-write is not concurrent-safe. Current usage is
     /// single-sandbox (benchmark). If reused for multi-sandbox, add file locking.
-    pub async fn register_vm(&self, source_ip: &str, run_id: &str) -> RunnerResult<()> {
+    pub async fn register_vm(
+        &self,
+        source_ip: &str,
+        registration: &VmRegistration<'_>,
+    ) -> RunnerResult<()> {
         let mut registry = read_registry(&self.config.registry_path).await?;
         let now = chrono::Utc::now().timestamp_millis();
         registry.vms.insert(
             source_ip.to_string(),
             VmEntry {
-                run_id: run_id.to_string(),
-                sandbox_token: String::new(),
+                run_id: registration.run_id.to_string(),
+                sandbox_token: registration.sandbox_token.to_string(),
                 registered_at: now,
-                mitm_enabled: true,
+                firewall_rules: registration.firewall_rules.to_vec(),
+                mitm_enabled: registration.mitm_enabled,
+                seal_secrets_enabled: registration.seal_secrets_enabled,
             },
         );
         registry.updated_at = now;
         write_registry(&self.config.registry_path, &registry).await?;
-        info!(source_ip, run_id, "registered VM in proxy registry");
+        info!(
+            source_ip,
+            run_id = registration.run_id,
+            "registered VM in proxy registry"
+        );
         Ok(())
     }
 
@@ -319,7 +366,9 @@ mod tests {
                 run_id: "test-run".to_string(),
                 sandbox_token: String::new(),
                 registered_at: 1000,
+                firewall_rules: Vec::new(),
                 mitm_enabled: true,
+                seal_secrets_enabled: false,
             },
         );
         write_registry(&registry_path, &registry).await.unwrap();
@@ -341,5 +390,111 @@ mod tests {
             !loaded.vms.contains_key("10.200.0.2"),
             "VM should be removed from registry"
         );
+    }
+
+    #[test]
+    fn firewall_rule_serializes_to_ts_format() {
+        let rules = vec![
+            FirewallRule {
+                domain: Some("*.example.com".to_string()),
+                ip: None,
+                terminal: None,
+                action: Some(FirewallAction::Allow),
+            },
+            FirewallRule {
+                domain: None,
+                ip: Some("10.0.0.0/8".to_string()),
+                terminal: None,
+                action: Some(FirewallAction::Deny),
+            },
+            FirewallRule {
+                domain: None,
+                ip: None,
+                terminal: Some(FirewallAction::Deny),
+                action: None,
+            },
+        ];
+        let json = serde_json::to_value(&rules).unwrap();
+        let arr = json.as_array().unwrap();
+
+        // Domain rule
+        assert_eq!(arr[0]["domain"], "*.example.com");
+        assert_eq!(arr[0]["action"], "ALLOW");
+        assert!(arr[0].get("ip").is_none());
+        assert!(arr[0].get("final").is_none());
+
+        // IP rule
+        assert_eq!(arr[1]["ip"], "10.0.0.0/8");
+        assert_eq!(arr[1]["action"], "DENY");
+
+        // Terminal rule (field name is "final" in JSON)
+        assert_eq!(arr[2]["final"], "DENY");
+        assert!(arr[2].get("action").is_none());
+    }
+
+    #[test]
+    fn firewall_rule_round_trip() {
+        let json = r#"[
+            {"domain": "example.com", "action": "ALLOW"},
+            {"ip": "192.168.0.0/16", "action": "DENY"},
+            {"final": "DENY"}
+        ]"#;
+        let rules: Vec<FirewallRule> = serde_json::from_str(json).unwrap();
+        assert_eq!(rules.len(), 3);
+        assert_eq!(rules[0].domain.as_deref(), Some("example.com"));
+        assert!(matches!(rules[0].action, Some(FirewallAction::Allow)));
+        assert_eq!(rules[1].ip.as_deref(), Some("192.168.0.0/16"));
+        assert!(matches!(rules[1].action, Some(FirewallAction::Deny)));
+        assert!(matches!(rules[2].terminal, Some(FirewallAction::Deny)));
+        assert!(rules[2].action.is_none());
+    }
+
+    #[tokio::test]
+    async fn registry_with_firewall_rules() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry_path = dir.path().join("proxy-registry.json");
+
+        let mut registry = ProxyRegistry {
+            vms: HashMap::new(),
+            updated_at: 0,
+        };
+        registry.vms.insert(
+            "10.200.0.2".to_string(),
+            VmEntry {
+                run_id: "run-1".to_string(),
+                sandbox_token: "tok".to_string(),
+                registered_at: 1000,
+                firewall_rules: vec![
+                    FirewallRule {
+                        domain: Some("*.allowed.com".to_string()),
+                        ip: None,
+                        terminal: None,
+                        action: Some(FirewallAction::Allow),
+                    },
+                    FirewallRule {
+                        domain: None,
+                        ip: None,
+                        terminal: Some(FirewallAction::Deny),
+                        action: None,
+                    },
+                ],
+                mitm_enabled: true,
+                seal_secrets_enabled: true,
+            },
+        );
+        write_registry(&registry_path, &registry).await.unwrap();
+
+        let loaded = read_registry(&registry_path).await.unwrap();
+        let vm = loaded.vms.get("10.200.0.2").unwrap();
+        assert_eq!(vm.firewall_rules.len(), 2);
+        assert!(vm.seal_secrets_enabled);
+
+        // Verify JSON field names match TS/Python format.
+        let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
+        let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let vm_json = &value["vms"]["10.200.0.2"];
+        assert!(vm_json["firewallRules"].is_array());
+        assert_eq!(vm_json["sealSecretsEnabled"], true);
+        assert_eq!(vm_json["mitmEnabled"], true);
     }
 }

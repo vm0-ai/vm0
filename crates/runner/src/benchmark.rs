@@ -154,7 +154,14 @@ async fn run_sandbox(
 
     let source_ip = sandbox.source_ip().to_string();
     let run_id = sandbox.id().to_string();
-    if let Err(e) = mitm.register_vm(&source_ip, &run_id).await {
+    let registration = proxy::VmRegistration {
+        run_id: &run_id,
+        sandbox_token: "",
+        firewall_rules: &[],
+        mitm_enabled: true,
+        seal_secrets_enabled: false,
+    };
+    if let Err(e) = mitm.register_vm(&source_ip, &registration).await {
         warn!(error = %e, "failed to register VM in proxy");
     }
 
