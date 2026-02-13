@@ -12,6 +12,9 @@ import { setupLogsPage$ } from "./logs-page/logs-page.ts";
 import { setupLogDetailPage$ } from "./logs-page/log-detail-page.ts";
 import { setupSettingsPage$ } from "./settings-page/settings-page.ts";
 import { setupAgentsPage$ } from "./agents-page/agents-page.ts";
+import { setupAgentDetailPage$ } from "./agent-detail/agent-detail-page.ts";
+import { setupAgentLogsPage$ } from "./agent-detail/agent-logs-page.ts";
+import { setupAgentConnectionsPage$ } from "./agent-detail/agent-connections-page.ts";
 import { hasScope$ } from "./scope.ts";
 import { logger } from "./log.ts";
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
@@ -41,6 +44,18 @@ const ROUTE_CONFIG = [
   {
     path: "/settings",
     setup: setupScopeRequiredPageWrapper(setupSettingsPage$),
+  },
+  {
+    path: "/agents/:name/logs",
+    setup: setupAuthPageWrapper(setupAgentLogsPage$),
+  },
+  {
+    path: "/agents/:name/connections",
+    setup: setupAuthPageWrapper(setupAgentConnectionsPage$),
+  },
+  {
+    path: "/agents/:name",
+    setup: setupAuthPageWrapper(setupAgentDetailPage$),
   },
   {
     path: "/agents",
