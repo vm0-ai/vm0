@@ -54,31 +54,26 @@ def get_proxy_url() -> str:
     """Construct proxy URL from API URL."""
     return f"{get_api_url()}/api/webhooks/agent/proxy"
 
-# Cache for proxy registry (reloaded periodically)
+# Cache for proxy registry (invalidated by file mtime change)
 _registry_cache = {}
-_registry_cache_time = 0
-REGISTRY_CACHE_TTL = 2  # seconds
+_registry_mtime = 0
 
 # Track request start times for latency calculation
 request_start_times = {}
 
 
 def load_registry() -> dict:
-    """Load the proxy registry from file, with caching."""
-    global _registry_cache, _registry_cache_time
-
-    now = time.time()
-    if now - _registry_cache_time < REGISTRY_CACHE_TTL:
-        return _registry_cache
+    """Load the proxy registry from file, with mtime-based cache invalidation."""
+    global _registry_cache, _registry_mtime
 
     try:
         registry_path = get_registry_path()
-        if os.path.exists(registry_path):
-            with open(registry_path, "r") as f:
-                data = json.load(f)
-                _registry_cache = data.get("vms", {})
-                _registry_cache_time = now
-                return _registry_cache
+        mtime = os.path.getmtime(registry_path)
+        if mtime == _registry_mtime:
+            return _registry_cache
+        with open(registry_path, "r") as f:
+            _registry_cache = json.load(f).get("vms", {})
+            _registry_mtime = mtime
     except Exception as e:
         ctx.log.warn(f"Failed to load proxy registry: {e}")
 
