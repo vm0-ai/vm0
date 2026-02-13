@@ -22,9 +22,6 @@
       "path": ".devcontainer"
     },
     {
-      "path": ".docker"
-    },
-    {
       "path": "scripts"
     },
     {
