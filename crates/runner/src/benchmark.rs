@@ -58,9 +58,8 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
     info!(proxy_ms, port = mitm.port(), "proxy ready");
 
     // 3. Factory init (with proxy port)
-    let fc_config = runner_config.firecracker_config();
-    // TODO: re-enable once proxy networking is verified
-    // fc_config.proxy_port = Some(mitm.port());
+    let mut fc_config = runner_config.firecracker_config();
+    fc_config.proxy_port = Some(mitm.port());
 
     let t = Instant::now();
     let mut factory = FirecrackerFactory::new(fc_config).await?;

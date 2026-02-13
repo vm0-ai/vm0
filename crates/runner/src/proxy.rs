@@ -65,7 +65,7 @@ pub struct VmRegistration<'a> {
 const MITM_ADDON: &str = include_str!("../scripts/mitm-addon.py");
 
 /// Timeout for waiting for mitmdump to become ready after spawn.
-const READY_TIMEOUT: Duration = Duration::from_secs(5);
+const READY_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Timeout for graceful shutdown before SIGKILL.
 const STOP_TIMEOUT: Duration = Duration::from_secs(3);
@@ -168,7 +168,7 @@ impl MitmProxy {
         }
 
         // Wait for process to be alive (poll liveness).
-        wait_for_ready(&mut child, READY_TIMEOUT).await?;
+        wait_for_ready(&mut child, self.port, READY_TIMEOUT).await?;
 
         self.child = Some(child);
         info!(port = self.port, "mitmdump started");
@@ -258,12 +258,18 @@ impl Drop for MitmProxy {
     }
 }
 
-/// Wait for the mitmdump process to be alive and not immediately exit.
-async fn wait_for_ready(child: &mut tokio::process::Child, timeout: Duration) -> RunnerResult<()> {
+/// Wait for mitmdump to start listening on `port` (TCP connect probe).
+async fn wait_for_ready(
+    child: &mut tokio::process::Child,
+    port: u16,
+    timeout: Duration,
+) -> RunnerResult<()> {
     let poll_interval = Duration::from_millis(200);
     let start = std::time::Instant::now();
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
 
     while start.elapsed() < timeout {
+        // Check if process died.
         match child.try_wait() {
             Ok(Some(status)) => {
                 return Err(RunnerError::Internal(format!(
@@ -273,22 +279,24 @@ async fn wait_for_ready(child: &mut tokio::process::Child, timeout: Duration) ->
                         .map_or("unknown".to_string(), |c| c.to_string()),
                 )));
             }
-            Ok(None) => {
-                // Still running — after first successful check, consider ready.
-                if start.elapsed() >= poll_interval {
-                    return Ok(());
-                }
-            }
+            Ok(None) => {}
             Err(e) => {
                 return Err(RunnerError::Internal(format!(
                     "mitmdump process check: {e}"
                 )));
             }
         }
+        // Probe TCP port.
+        if tokio::net::TcpStream::connect(addr).await.is_ok() {
+            return Ok(());
+        }
         tokio::time::sleep(poll_interval).await;
     }
 
-    Ok(())
+    Err(RunnerError::Internal(format!(
+        "mitmdump did not start listening on port {port} within {}s",
+        timeout.as_secs()
+    )))
 }
 
 /// Find an available TCP port by binding to port 0.
