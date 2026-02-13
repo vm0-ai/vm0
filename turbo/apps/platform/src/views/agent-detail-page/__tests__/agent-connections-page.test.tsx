@@ -83,7 +83,7 @@ describe("agent connections page", () => {
     expect(context.store.get(pathname$)).toBe("/agents");
   });
 
-  it("should render agent header and connections page structure", async () => {
+  it("should render connections page structure", async () => {
     mockAgentDetailAPI();
     mockConnectorsAPI();
     mockSecretsAPI();
@@ -95,12 +95,9 @@ describe("agent connections page", () => {
     });
 
     await vi.waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "my-agent" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Connections of my-agent")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("Connections of my-agent")).toBeInTheDocument();
     expect(
       screen.getByText(
         "This is the secret list used for your agents in every run",
@@ -263,7 +260,7 @@ describe("agent connections page", () => {
     expect(screen.getByText("Missing")).toBeInTheDocument();
   });
 
-  it("should show breadcrumb with agents link, agent name, and connections", async () => {
+  it("should show breadcrumb with agents link and agent name connections", async () => {
     mockAgentDetailAPI();
     mockConnectorsAPI();
     mockSecretsAPI();
@@ -275,13 +272,32 @@ describe("agent connections page", () => {
     });
 
     await vi.waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "my-agent" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Connections of my-agent")).toBeInTheDocument();
     });
 
     const nav = screen.getByRole("navigation");
     expect(within(nav).getByText("Agents")).toBeInTheDocument();
-    expect(within(nav).getByText("Connections")).toBeInTheDocument();
+    expect(within(nav).getByText("my-agent connections")).toBeInTheDocument();
+  });
+
+  it("should show new connectors row", async () => {
+    mockAgentDetailAPI();
+    mockConnectorsAPI();
+    mockSecretsAPI();
+
+    await setupPage({
+      context,
+      path: "/agents/my-agent/connections",
+      featureSwitches: { [FeatureSwitchKey.AgentDetailPage]: true },
+    });
+
+    await vi.waitFor(() => {
+      expect(screen.getByText("New connectors")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByText("Add a new connectors and used by your agents"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Add more connectors")).toBeInTheDocument();
   });
 });

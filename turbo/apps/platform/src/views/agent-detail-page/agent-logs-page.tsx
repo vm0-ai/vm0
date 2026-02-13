@@ -1,5 +1,4 @@
 import { useGet, useLoadable, useSet } from "ccstate-react";
-import { IconChevronRight } from "@tabler/icons-react";
 import type { MouseEvent } from "react";
 import {
   Table,
@@ -12,7 +11,6 @@ import {
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import { AppShell } from "../layout/app-shell.tsx";
 import { Pagination } from "../components/pagination.tsx";
-import { StatusBadge } from "../logs-page/status-badge.tsx";
 import {
   agentDetail$,
   agentDetailLoading$,
@@ -35,19 +33,6 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { AgentHeader } from "./agent-header.tsx";
 import type { LogEntry } from "../../signals/logs-page/types.ts";
 
-function formatTime(dateStr: string): string {
-  const date = new Date(dateStr);
-  const options: Intl.DateTimeFormatOptions = {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-    timeZoneName: "shortOffset",
-  };
-  return date.toLocaleString("en-US", options);
-}
-
 function AgentLogsTableHeader() {
   return (
     <TableHeader className="bg-muted">
@@ -58,18 +43,14 @@ function AgentLogsTableHeader() {
         <TableHead className="h-10 px-3 text-sm font-medium text-foreground w-[25%] min-w-[120px]">
           <span className="block truncate whitespace-nowrap">Session ID</span>
         </TableHead>
-        <TableHead className="h-10 px-3 text-sm font-medium text-foreground w-[15%] min-w-[120px]">
+        <TableHead className="h-10 px-3 text-sm font-medium text-foreground w-[25%] min-w-[120px]">
           <span className="block truncate whitespace-nowrap">Model</span>
         </TableHead>
-        <TableHead className="h-10 px-3 text-sm font-medium text-foreground w-[13%] min-w-[120px]">
-          <span className="block truncate whitespace-nowrap">Status</span>
-        </TableHead>
-        <TableHead className="h-10 px-3 text-sm font-medium text-foreground w-[17%] min-w-[120px]">
+        <TableHead className="h-10 px-3 text-sm font-medium text-foreground w-[25%] min-w-[120px]">
           <span className="block truncate whitespace-nowrap">
             Generate time
           </span>
         </TableHead>
-        <TableHead className="h-10 w-[44px] px-2" />
       </TableRow>
     </TableHeader>
   );
@@ -92,13 +73,7 @@ function AgentLogsTableSkeleton() {
               <Skeleton className="h-4 w-20" />
             </TableCell>
             <TableCell className="px-3 py-2 min-w-[120px]">
-              <Skeleton className="h-6 w-20 rounded-full" />
-            </TableCell>
-            <TableCell className="px-3 py-2 min-w-[120px]">
               <Skeleton className="h-4 w-32" />
-            </TableCell>
-            <TableCell className="px-2 py-2">
-              <Skeleton className="h-8 w-8 rounded-lg" />
             </TableCell>
           </TableRow>
         ))}
@@ -136,25 +111,15 @@ function AgentLogsTableRow({ entry }: AgentLogsTableRowProps) {
           {entry.sessionId ?? "-"}
         </span>
       </TableCell>
-      <TableCell className="px-3 py-2 text-sm w-[15%] min-w-[120px]">
+      <TableCell className="px-3 py-2 text-sm w-[25%] min-w-[120px]">
         <span className="block truncate whitespace-nowrap">
           {entry.framework ?? "-"}
         </span>
       </TableCell>
-      <TableCell className="px-3 py-2 w-[13%] min-w-[120px]">
-        <div className="truncate whitespace-nowrap">
-          <StatusBadge status={entry.status} />
-        </div>
-      </TableCell>
-      <TableCell className="px-3 py-2 text-sm w-[17%] min-w-[120px]">
+      <TableCell className="px-3 py-2 text-sm w-[25%] min-w-[120px]">
         <span className="block truncate whitespace-nowrap">
-          {formatTime(entry.createdAt)}
+          {entry.createdAt}
         </span>
-      </TableCell>
-      <TableCell className="w-[44px] px-2 py-2">
-        <div className="flex size-full items-center justify-end pr-[12px]">
-          <IconChevronRight className="size-4 flex-shrink-0" />
-        </div>
       </TableCell>
     </TableRow>
   );
@@ -177,7 +142,7 @@ function AgentLogsTable() {
         <AgentLogsTableHeader />
         <TableBody>
           <TableRow>
-            <td colSpan={6} className="p-4 text-center text-destructive">
+            <td colSpan={4} className="p-4 text-center text-destructive">
               Error: {errorMessage}
             </td>
           </TableRow>
@@ -255,8 +220,7 @@ export function AgentLogsPage() {
     <AppShell
       breadcrumb={[
         { label: "Agents", path: "/agents" },
-        agentName ?? "Loading...",
-        "Logs",
+        `${agentName ?? "Loading..."} logs`,
       ]}
     >
       <div className="flex flex-col gap-[22px] p-8 min-h-full">

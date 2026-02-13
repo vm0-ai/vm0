@@ -3,19 +3,18 @@ import {
   IconCircleCheck,
   IconLoader,
   IconAlertCircle,
+  IconPlus,
 } from "@tabler/icons-react";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { AppShell } from "../layout/app-shell.tsx";
-import { AgentHeader } from "./agent-header.tsx";
 import { ConnectorIcon } from "../settings-page/connector-icons.tsx";
 import { SecretDialog } from "../settings-page/secret-dialog.tsx";
 import {
   agentDetail$,
   agentDetailLoading$,
   agentName$,
-  isOwner$,
 } from "../../signals/agent-detail/agent-detail.ts";
 import {
   agentConnectorStatus$,
@@ -122,6 +121,28 @@ function ConnectorsTab() {
       {connectorStatus.map((item) => (
         <ConnectorRow key={item.type} item={item} />
       ))}
+      <NewConnectorRow />
+    </div>
+  );
+}
+
+function NewConnectorRow() {
+  return (
+    <div className="flex items-center gap-4 border-l border-r border-b border-border bg-card p-4 last:rounded-b-xl">
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-dashed border-border">
+        <IconPlus className="h-4 w-4 text-muted-foreground" />
+      </div>
+      <div className="flex flex-1 flex-col gap-1 min-w-0">
+        <div className="text-sm font-medium text-foreground">
+          New connectors
+        </div>
+        <div className="text-sm text-muted-foreground">
+          Add a new connectors and used by your agents
+        </div>
+      </div>
+      <button className="shrink-0 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors">
+        Add more connectors
+      </button>
     </div>
   );
 }
@@ -231,7 +252,6 @@ export function AgentConnectionsPage() {
   const agentName = useGet(agentName$);
   const detail = useGet(agentDetail$);
   const loading = useGet(agentDetailLoading$);
-  const isOwner = useGet(isOwner$);
   const activeTab = useGet(connectionsActiveTab$);
   const setActiveTab = useSet(setConnectionsActiveTab$);
 
@@ -239,8 +259,7 @@ export function AgentConnectionsPage() {
     <AppShell
       breadcrumb={[
         { label: "Agents", path: "/agents" },
-        agentName ?? "Loading...",
-        "Connections",
+        `${agentName ?? "Loading..."} connections`,
       ]}
     >
       <div className="flex flex-col gap-[22px] p-8 min-h-full">
@@ -248,7 +267,6 @@ export function AgentConnectionsPage() {
           <AgentConnectionsPageSkeleton />
         ) : detail ? (
           <>
-            <AgentHeader detail={detail} isOwner={isOwner} />
             <div className="flex flex-col gap-1">
               <h2 className="text-lg font-medium text-foreground">
                 Connections of {detail.name}
@@ -280,13 +298,6 @@ export function AgentConnectionsPage() {
 function AgentConnectionsPageSkeleton() {
   return (
     <>
-      <div className="flex items-center gap-3.5">
-        <Skeleton className="h-14 w-14 rounded-xl" />
-        <div className="flex-1 space-y-2">
-          <Skeleton className="h-7 w-48" />
-          <Skeleton className="h-4 w-72" />
-        </div>
-      </div>
       <div className="flex flex-col gap-1">
         <Skeleton className="h-6 w-56" />
         <Skeleton className="h-4 w-80" />

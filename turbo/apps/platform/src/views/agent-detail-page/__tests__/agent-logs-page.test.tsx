@@ -149,7 +149,7 @@ describe("agent logs page", () => {
     });
   });
 
-  it("should show breadcrumb with agents link, agent name, and logs", async () => {
+  it("should show breadcrumb with agents link and agent name logs", async () => {
     mockAgentDetailAPI();
     mockLogsAPI();
 
@@ -167,7 +167,7 @@ describe("agent logs page", () => {
 
     const nav = screen.getByRole("navigation");
     expect(within(nav).getByText("Agents")).toBeInTheDocument();
-    expect(within(nav).getByText("Logs")).toBeInTheDocument();
+    expect(within(nav).getByText("my-agent logs")).toBeInTheDocument();
   });
 
   it("should show pagination controls", async () => {
