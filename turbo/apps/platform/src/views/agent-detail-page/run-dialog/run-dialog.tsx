@@ -69,8 +69,8 @@ export function RunDialog() {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-2">
             <label className="text-sm font-medium text-foreground">
               Prompt
             </label>
@@ -78,11 +78,11 @@ export function RunDialog() {
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="Describe your task in natural language."
-              className="w-full min-h-[100px] rounded-lg border border-border bg-input p-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-y"
+              className="w-full min-h-[120px] rounded-lg border border-border bg-input p-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-y"
             />
           </div>
 
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-2">
             <label className="text-sm font-medium text-foreground">Time</label>
             <Select value={timeOption} onValueChange={setTimeOption}>
               <SelectTrigger>
@@ -99,7 +99,7 @@ export function RunDialog() {
           </div>
 
           {isSchedule && (
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-2">
               <label className="text-sm font-medium text-foreground">
                 Frequency
               </label>

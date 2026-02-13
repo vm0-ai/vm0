@@ -40,7 +40,7 @@ export function ConfigDialog() {
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setTab}>
-          <TabsList className="w-full">
+          <TabsList>
             <TabsTrigger value="yaml">vm0.yaml</TabsTrigger>
             <TabsTrigger value="forms">Forms</TabsTrigger>
           </TabsList>

@@ -38,15 +38,15 @@ export function FormsTab() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-2">
         <label className="text-sm font-medium text-foreground">
           Agent name
         </label>
         <Input value={firstKey} readOnly className="bg-muted" />
       </div>
 
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-2">
         <label className="text-sm font-medium text-foreground">
           Description
         </label>
@@ -58,7 +58,7 @@ export function FormsTab() {
       </div>
 
       {agent.skills && agent.skills.length > 0 && (
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-2">
           <label className="text-sm font-medium text-foreground">Skills</label>
           <div className="flex flex-wrap gap-1.5">
             {agent.skills.map((skill) => (
@@ -73,7 +73,7 @@ export function FormsTab() {
         </div>
       )}
 
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-2">
         <label className="text-sm font-medium text-foreground">Framework</label>
         <Select
           value={agent.framework}
@@ -89,7 +89,7 @@ export function FormsTab() {
         </Select>
       </div>
 
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-2">
         <label className="text-sm font-medium text-foreground">
           Instructions
         </label>
