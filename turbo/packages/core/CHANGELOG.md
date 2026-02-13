@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.14.0](https://github.com/vm0-ai/vm0/compare/core-v8.13.0...core-v8.14.0) (2026-02-13)
+
+
+### Features
+
+* **api:** add backend support for agent detail page ([#2979](https://github.com/vm0-ai/vm0/issues/2979)) ([4103d8f](https://github.com/vm0-ai/vm0/commit/4103d8f66ccc9546bccc67454d139b8d1de04599))
+
 ## [8.13.0](https://github.com/vm0-ai/vm0/compare/core-v8.12.0...core-v8.13.0) (2026-02-12)
 
 

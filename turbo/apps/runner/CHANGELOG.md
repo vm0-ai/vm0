@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.19.1](https://github.com/vm0-ai/vm0/compare/runner-v3.19.0...runner-v3.19.1) (2026-02-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.14.0
+
 ## [3.19.0](https://github.com/vm0-ai/vm0/compare/runner-v3.18.6...runner-v3.19.0) (2026-02-12)
 
 

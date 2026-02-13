@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.38.0](https://github.com/vm0-ai/vm0/compare/web-v12.37.0...web-v12.38.0) (2026-02-13)
+
+
+### Features
+
+* **api:** add backend support for agent detail page ([#2979](https://github.com/vm0-ai/vm0/issues/2979)) ([4103d8f](https://github.com/vm0-ai/vm0/commit/4103d8f66ccc9546bccc67454d139b8d1de04599))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.14.0
+
 ## [12.37.0](https://github.com/vm0-ai/vm0/compare/web-v12.36.1...web-v12.37.0) (2026-02-12)
 
 
