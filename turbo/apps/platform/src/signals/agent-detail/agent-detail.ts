@@ -1,7 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { pathParams$ } from "../route.ts";
-import { searchParams$, updateSearchParams$ } from "../route.ts";
+import { pathParams$, searchParams$, updateSearchParams$ } from "../route.ts";
 import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
