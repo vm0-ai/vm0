@@ -4,6 +4,11 @@ import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import { agentDetail$ } from "./agent-detail.ts";
+import {
+  startInlineRun$,
+  prepareNewRun$,
+  cancelPendingRun$,
+} from "./inline-run.ts";
 
 const L = logger("RunDialog");
 
@@ -136,56 +141,72 @@ export const submitRunDialog$ = command(async ({ get, set }) => {
     const fetchFn = get(fetch$);
 
     if (timeOption === "now") {
-      // Immediate run
-      const response = await fetchFn("/api/agent/runs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          agentComposeId: detail.id,
-          prompt: prompt.trim(),
-        }),
-      });
+      // Close dialog immediately — API continues in background
+      set(internalOpen$, false);
+      set(internalSaving$, false);
+      set(prepareNewRun$);
+      toast.success("Starting agent run...");
 
-      if (!response.ok) {
-        const errorData = (await response.json().catch(() => null)) as {
-          message?: string;
-        } | null;
-        throw new Error(
-          errorData?.message ?? `Run failed: ${response.statusText}`,
+      try {
+        const response = await fetchFn("/api/agent/runs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: detail.id,
+            prompt: prompt.trim(),
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = (await response.json().catch(() => null)) as {
+            message?: string;
+          } | null;
+          set(cancelPendingRun$);
+          toast.error(
+            errorData?.message ?? `Run failed: ${response.statusText}`,
+          );
+          return;
+        }
+
+        const data = (await response.json()) as { runId: string };
+        set(startInlineRun$, data.runId);
+      } catch (error) {
+        throwIfAbort(error);
+        set(cancelPendingRun$);
+        toast.error(
+          error instanceof Error ? error.message : "Failed to start run",
         );
       }
-
-      set(internalOpen$, false);
-      toast.success("Agent run started");
-    } else {
-      // Schedule creation
-      const cronExpression = buildCronExpression(timeOption, frequency);
-      const timezone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-      const response = await fetchFn("/api/agent/schedules", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          composeId: detail.id,
-          name: "default",
-          cronExpression,
-          timezone,
-          prompt: prompt.trim(),
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = (await response.json().catch(() => null)) as {
-          message?: string;
-        } | null;
-        throw new Error(
-          errorData?.message ?? `Schedule failed: ${response.statusText}`,
-        );
-      }
-
-      set(internalOpen$, false);
-      toast.success("Schedule created");
+      return;
     }
+
+    // Schedule creation
+    const cronExpression = buildCronExpression(timeOption, frequency);
+    const timezone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    const response = await fetchFn("/api/agent/schedules", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        composeId: detail.id,
+        name: "default",
+        cronExpression,
+        timezone,
+        prompt: prompt.trim(),
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => null)) as {
+        message?: string;
+      } | null;
+      throw new Error(
+        errorData?.message ?? `Schedule failed: ${response.statusText}`,
+      );
+    }
+
+    set(internalOpen$, false);
+    toast.success("Schedule created");
   } catch (error) {
     throwIfAbort(error);
     L.error("Failed to submit run dialog:", error);

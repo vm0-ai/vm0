@@ -39,7 +39,7 @@ export function AgentInstructions({
 
   if (loading) {
     return (
-      <div className="flex-1 rounded-lg border border-border p-4">
+      <div className="rounded-lg border border-border p-4">
         <Skeleton className="h-5 w-40 mb-6" />
         <Skeleton className="h-64 w-full" />
       </div>
@@ -48,7 +48,7 @@ export function AgentInstructions({
 
   if (!instructions?.content && !isOwner) {
     return (
-      <div className="flex-1 rounded-lg border border-border p-4">
+      <div className="rounded-lg border border-border p-4">
         <h2 className="text-base font-medium text-foreground">
           Agent instructions
         </h2>
@@ -60,7 +60,7 @@ export function AgentInstructions({
   }
 
   return (
-    <div className="flex-1 rounded-lg border border-border p-4 flex flex-col min-h-0">
+    <div className="rounded-lg border border-border p-4">
       <div className="flex items-center justify-between gap-4">
         <h2 className="text-base font-medium text-foreground">
           Agent instructions
@@ -97,14 +97,15 @@ export function AgentInstructions({
         </div>
       </div>
 
-      <div className="instructions-content mt-6 flex-1 overflow-y-auto min-h-0 flex flex-col">
+      <div className="instructions-content mt-2">
         {viewMode === "markdown" ? (
           isOwner ? (
             <textarea
               aria-label="Agent instructions editor"
-              className="px-1 text-sm font-mono text-foreground w-full flex-1 bg-transparent border-none outline-none resize-none whitespace-pre-wrap"
+              className="px-1 text-sm font-mono text-foreground w-full min-h-[200px] bg-transparent border-none outline-none resize-none whitespace-pre-wrap"
               value={displayContent}
               onChange={(e) => setEdited(e.target.value)}
+              rows={displayContent.split("\n").length + 2}
             />
           ) : (
             <pre className="px-1 text-sm font-mono text-foreground overflow-x-auto whitespace-pre-wrap">
@@ -112,7 +113,7 @@ export function AgentInstructions({
             </pre>
           )
         ) : (
-          <div className="px-1 flex-1">
+          <div className="px-1">
             <Markdown source={displayContent} />
           </div>
         )}

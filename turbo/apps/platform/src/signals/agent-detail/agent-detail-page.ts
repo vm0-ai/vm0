@@ -7,10 +7,12 @@ import {
   fetchAgentInstructions$,
   initInstructionsViewMode$,
 } from "./agent-detail.ts";
+import { initInlineRunFromUrl$ } from "./inline-run.ts";
 
 export const setupAgentDetailPage$ = command(async ({ set }) => {
   set(updatePage$, createElement(AgentDetailPage));
   set(initInstructionsViewMode$);
+  set(initInlineRunFromUrl$);
   await set(fetchAgentDetail$);
   await set(fetchAgentInstructions$);
 });

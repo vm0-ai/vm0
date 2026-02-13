@@ -10,8 +10,13 @@ import {
   agentName$,
   isOwner$,
 } from "../../signals/agent-detail/agent-detail.ts";
+import {
+  activeRunId$,
+  isRunPanelVisible$,
+} from "../../signals/agent-detail/inline-run.ts";
 import { AgentHeader } from "./agent-header.tsx";
 import { AgentInstructions } from "./agent-instructions.tsx";
+import { InlineRunPanel } from "./inline-run-panel.tsx";
 import { ConfigDialog } from "./config-dialog/config-dialog.tsx";
 import { RunDialog } from "./run-dialog/run-dialog.tsx";
 
@@ -23,6 +28,9 @@ export function AgentDetailPage() {
   const isOwner = useGet(isOwner$);
   const instructions = useGet(agentInstructions$);
   const instructionsLoading = useGet(agentInstructionsLoading$);
+  const activeRunId = useGet(activeRunId$);
+  const panelVisible = useGet(isRunPanelVisible$);
+  const showSkeleton = loading;
 
   return (
     <AppShell
@@ -32,7 +40,7 @@ export function AgentDetailPage() {
       ]}
     >
       <div className="flex flex-col gap-[22px] p-8 min-h-full">
-        {loading ? (
+        {showSkeleton ? (
           <AgentDetailSkeleton />
         ) : error ? (
           <div className="rounded-lg border border-border bg-card p-8 text-center">
@@ -41,11 +49,26 @@ export function AgentDetailPage() {
         ) : detail ? (
           <>
             <AgentHeader detail={detail} isOwner={isOwner} />
-            <AgentInstructions
-              instructions={instructions}
-              loading={instructionsLoading}
-              isOwner={isOwner}
-            />
+            {panelVisible ? (
+              <div className="flex gap-4">
+                <div className="w-1/2">
+                  <AgentInstructions
+                    instructions={instructions}
+                    loading={instructionsLoading}
+                    isOwner={isOwner}
+                  />
+                </div>
+                <div className="w-1/2">
+                  <InlineRunPanel runId={activeRunId} />
+                </div>
+              </div>
+            ) : (
+              <AgentInstructions
+                instructions={instructions}
+                loading={instructionsLoading}
+                isOwner={isOwner}
+              />
+            )}
             <ConfigDialog />
             <RunDialog />
           </>
@@ -75,7 +98,7 @@ function AgentDetailSkeleton() {
           <Skeleton className="h-9 w-9 rounded-lg" />
         </div>
       </div>
-      <Skeleton className="flex-1 rounded-lg" />
+      <Skeleton className="h-64 rounded-lg" />
     </>
   );
 }
