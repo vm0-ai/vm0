@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.41.0](https://github.com/vm0-ai/vm0/compare/web-v12.40.0...web-v12.41.0) (2026-02-13)
+
+
+### Features
+
+* owner inline editing for agent instructions ([#3015](https://github.com/vm0-ai/vm0/issues/3015)) ([e7022c8](https://github.com/vm0-ai/vm0/commit/e7022c848b7b247ee6f2475c204bfb656588c5ad))
+
 ## [12.40.0](https://github.com/vm0-ai/vm0/compare/web-v12.39.0...web-v12.40.0) (2026-02-13)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.66.0](https://github.com/vm0-ai/vm0/compare/platform-v0.65.0...platform-v0.66.0) (2026-02-13)
+
+
+### Features
+
+* owner inline editing for agent instructions ([#3015](https://github.com/vm0-ai/vm0/issues/3015)) ([e7022c8](https://github.com/vm0-ai/vm0/commit/e7022c848b7b247ee6f2475c204bfb656588c5ad))
+
 ## [0.65.0](https://github.com/vm0-ai/vm0/compare/platform-v0.64.0...platform-v0.65.0) (2026-02-13)
 
 
