@@ -276,13 +276,20 @@ async fn run_with_firecracker(
     info!("instance started, waiting for guest vsock connection");
 
     // 9. Wait for guest to connect via vsock.
-    let _guest = match vsock_task.await {
+    let mut guest = match vsock_task.await {
         Ok(Ok(g)) => g,
         Ok(Err(e)) => return Err(SnapshotError::Vsock(e.to_string())),
         Err(e) => return Err(SnapshotError::Vsock(format!("vsock task: {e}"))),
     };
 
     info!("guest connected");
+
+    // 9.5. Pre-warm PAM/nsswitch caches so post-restore `su` calls are fast.
+    //      The snapshot captures memory state, so caches populated here persist.
+    match guest.exec("su - user -c true", 5000, &[], false).await {
+        Ok(result) => info!(exit_code = result.exit_code, "pre-warm: su cache"),
+        Err(e) => tracing::warn!(error = %e, "pre-warm: su cache failed (non-fatal)"),
+    }
 
     // 10. Pause VM.
     client.pause().await?;
