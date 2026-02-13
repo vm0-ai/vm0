@@ -97,11 +97,11 @@ export function AgentInstructions({
         </Tabs>
       </div>
 
-      <div className="mt-6 flex-1 overflow-y-auto min-h-0">
+      <div className="mt-6 flex-1 overflow-y-auto min-h-0 flex flex-col">
         {viewMode === "markdown" ? (
           isOwner ? (
             <textarea
-              className="px-1 text-sm font-mono text-foreground w-full h-full bg-transparent border-none outline-none resize-none whitespace-pre-wrap"
+              className="px-1 text-sm font-mono text-foreground w-full flex-1 bg-transparent border-none outline-none resize-none whitespace-pre-wrap"
               value={displayContent}
               onChange={(e) => setEdited(e.target.value)}
             />
