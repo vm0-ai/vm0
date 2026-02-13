@@ -173,9 +173,10 @@ export async function GET(
   // Download manifest to find the actual filename in storage
   const manifest = await downloadManifest(bucket, version.s3Key);
 
-  // Find the instructions file in manifest by exact path match
+  // Find the instructions file in manifest, normalizing ./ prefix
+  const normalize = (p: string) => (p.startsWith("./") ? p.slice(2) : p);
   const instructionFile = manifest.files.find(
-    (f) => f.path === instructionsFilename,
+    (f) => normalize(f.path) === normalize(instructionsFilename),
   );
 
   if (!instructionFile) {
