@@ -166,3 +166,75 @@ export const fetchAgentInstructions$ = command(async ({ get, set }) => {
     set(agentInstructionsState$, { instructions: null, loading: false });
   }
 });
+
+// ---------------------------------------------------------------------------
+// Instructions editing — owner inline editing state
+// ---------------------------------------------------------------------------
+
+const editedInstructionsContent$ = state<string | null>(null);
+
+export const editedContent$ = computed((get) =>
+  get(editedInstructionsContent$),
+);
+
+export const isInstructionsDirty$ = computed((get) => {
+  const edited = get(editedInstructionsContent$);
+  const instructions = get(agentInstructions$);
+  return edited !== null && edited !== (instructions?.content ?? "");
+});
+
+export const setEditedContent$ = command(({ set }, value: string) => {
+  set(editedInstructionsContent$, value);
+});
+
+export const cancelEditInstructions$ = command(({ set }) => {
+  set(editedInstructionsContent$, null);
+});
+
+const saveInstructionsLoading$ = state(false);
+export const isSavingInstructions$ = computed((get) =>
+  get(saveInstructionsLoading$),
+);
+
+export const saveInstructions$ = command(async ({ get, set }) => {
+  const detail = get(agentDetail$);
+  const edited = get(editedInstructionsContent$);
+  if (!detail || edited === null) {
+    return;
+  }
+
+  set(saveInstructionsLoading$, true);
+
+  try {
+    const fetchFn = get(fetch$);
+    const response = await fetchFn(
+      `/api/agent/composes/${detail.id}/instructions`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: edited }),
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(`Failed to save instructions: ${response.statusText}`);
+    }
+
+    // Clear editing state
+    set(editedInstructionsContent$, null);
+
+    // Re-fetch instructions to show the persisted content
+    const instructionsResponse = await fetchFn(
+      `/api/agent/composes/${detail.id}/instructions`,
+    );
+    if (instructionsResponse.ok) {
+      const data = (await instructionsResponse.json()) as AgentInstructions;
+      set(agentInstructionsState$, { instructions: data, loading: false });
+    }
+  } catch (error) {
+    throwIfAbort(error);
+    L.error("Failed to save instructions:", error);
+  } finally {
+    set(saveInstructionsLoading$, false);
+  }
+});

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { gzipSync } from "node:zlib";
-import { GET } from "../route";
+import { GET, PUT } from "../route";
 import {
   createTestRequest,
   createTestCompose,
@@ -250,5 +250,127 @@ describe("GET /api/agent/composes/:id/instructions", () => {
 
     expect(response.status).toBe(404);
     expect(data.error.code).toBe("NOT_FOUND");
+  });
+});
+
+describe("PUT /api/agent/composes/:id/instructions", () => {
+  let user: UserContext;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    user = await context.setupUser();
+  });
+
+  it("should return 401 when not authenticated", async () => {
+    mockClerk({ userId: null });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/composes/some-id/instructions",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: "new content" }),
+      },
+    );
+    const response = await PUT(request, {
+      params: Promise.resolve({ id: "some-id" }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("should return 403 for non-owner", async () => {
+    // Owner creates agent
+    await context.setupUser({ prefix: "owner" });
+    const { composeId } = await createTestCompose("owned-agent", {
+      overrides: { instructions: "AGENTS.md" },
+    });
+
+    // Share with original user
+    await createTestPermission(composeId, "email", MOCK_USER_EMAIL);
+
+    // Switch to the shared (non-owner) user
+    mockClerk({ userId: user.userId });
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/composes/${composeId}/instructions`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: "hacked" }),
+      },
+    );
+    const response = await PUT(request, {
+      params: Promise.resolve({ id: composeId }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(data.error.code).toBe("FORBIDDEN");
+  });
+
+  it("should save instructions and create storage version", async () => {
+    const agentName = "editable-agent";
+    const { composeId } = await createTestCompose(agentName, {
+      overrides: { instructions: "AGENTS.md" },
+    });
+
+    const newContent = "# Updated Instructions\n\nNew content here.\n";
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/composes/${composeId}/instructions`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: newContent }),
+      },
+    );
+    const response = await PUT(request, {
+      params: Promise.resolve({ id: composeId }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.success).toBe(true);
+
+    // Verify S3 uploads were called (manifest + archive)
+    expect(context.mocks.s3.putS3Object).toHaveBeenCalledTimes(2);
+
+    // Verify manifest upload
+    const manifestCall = context.mocks.s3.putS3Object.mock.calls.find(
+      (call) =>
+        typeof call[1] === "string" && call[1].endsWith("/manifest.json"),
+    );
+    expect(manifestCall).toBeDefined();
+
+    // Verify archive upload
+    const archiveCall = context.mocks.s3.putS3Object.mock.calls.find(
+      (call) =>
+        typeof call[1] === "string" && call[1].endsWith("/archive.tar.gz"),
+    );
+    expect(archiveCall).toBeDefined();
+  });
+
+  it("should return 400 when content is missing", async () => {
+    const { composeId } = await createTestCompose("bad-request-agent", {
+      overrides: { instructions: "AGENTS.md" },
+    });
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/composes/${composeId}/instructions`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      },
+    );
+    const response = await PUT(request, {
+      params: Promise.resolve({ id: composeId }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error.code).toBe("BAD_REQUEST");
   });
 });

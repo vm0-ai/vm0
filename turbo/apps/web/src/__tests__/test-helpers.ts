@@ -112,6 +112,14 @@ interface S3Mocks {
       files: Array<{ path: string; hash: string; size: number }>;
     }>
   >;
+  putS3Object: MockInstance<
+    (
+      bucket: string,
+      key: string,
+      body: string | Buffer,
+      contentType: string,
+    ) => Promise<void>
+  >;
 }
 
 /**
@@ -322,6 +330,9 @@ export function testContext(): TestContext {
           fileCount: 0,
           files: [],
         }),
+      putS3Object: vi
+        .spyOn(s3Client, "putS3Object")
+        .mockResolvedValue(undefined),
     };
 
     // Axiom mocks - only set up if Axiom is mocked (vi.mock at module level in test file)

@@ -1,24 +1,41 @@
 import { useGet, useSet } from "ccstate-react";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
+import { Button } from "@vm0/ui/components/ui/button";
 import MarkdownPreview from "@uiw/react-markdown-preview";
 import {
   instructionsViewMode$,
   setInstructionsViewMode$,
+  editedContent$,
+  isInstructionsDirty$,
+  setEditedContent$,
+  cancelEditInstructions$,
+  saveInstructions$,
+  isSavingInstructions$,
 } from "../../signals/agent-detail/agent-detail.ts";
 import type { AgentInstructions as AgentInstructionsType } from "../../signals/agent-detail/types.ts";
 
 interface AgentInstructionsProps {
   instructions: AgentInstructionsType | null;
   loading: boolean;
+  isOwner: boolean;
 }
 
 export function AgentInstructions({
   instructions,
   loading,
+  isOwner,
 }: AgentInstructionsProps) {
   const viewMode = useGet(instructionsViewMode$);
   const setViewMode = useSet(setInstructionsViewMode$);
+  const edited = useGet(editedContent$);
+  const isDirty = useGet(isInstructionsDirty$);
+  const setEdited = useSet(setEditedContent$);
+  const cancel = useSet(cancelEditInstructions$);
+  const save = useSet(saveInstructions$);
+  const isSaving = useGet(isSavingInstructions$);
+
+  const displayContent = edited ?? instructions?.content ?? "";
 
   if (loading) {
     return (
@@ -29,7 +46,7 @@ export function AgentInstructions({
     );
   }
 
-  if (!instructions?.content) {
+  if (!instructions?.content && !isOwner) {
     return (
       <div className="flex-1 rounded-lg border border-border p-4">
         <h2 className="text-base font-medium text-foreground">
@@ -58,13 +75,21 @@ export function AgentInstructions({
 
       <div className="mt-6 flex-1 overflow-y-auto">
         {viewMode === "markdown" ? (
-          <pre className="px-1 text-sm font-mono text-foreground overflow-x-auto whitespace-pre-wrap">
-            {instructions.content}
-          </pre>
+          isOwner ? (
+            <textarea
+              className="px-1 text-sm font-mono text-foreground w-full min-h-[400px] bg-transparent border-none outline-none resize-none whitespace-pre-wrap"
+              value={displayContent}
+              onChange={(e) => setEdited(e.target.value)}
+            />
+          ) : (
+            <pre className="px-1 text-sm font-mono text-foreground overflow-x-auto whitespace-pre-wrap">
+              {instructions?.content}
+            </pre>
+          )
         ) : (
           <div className="px-1">
             <MarkdownPreview
-              source={instructions.content}
+              source={displayContent}
               className="!bg-transparent !text-foreground text-sm"
               style={{
                 backgroundColor: "transparent",
@@ -75,6 +100,21 @@ export function AgentInstructions({
           </div>
         )}
       </div>
+
+      {isDirty && (
+        <div className="border-t border-border pt-4 mt-4 flex justify-center gap-3">
+          <Button
+            variant="outline"
+            onClick={() => cancel()}
+            disabled={isSaving}
+          >
+            Cancel
+          </Button>
+          <Button onClick={() => void save()} disabled={isSaving}>
+            {isSaving ? "Saving..." : "Save"}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

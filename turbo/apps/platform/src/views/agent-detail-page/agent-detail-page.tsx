@@ -42,6 +42,7 @@ export function AgentDetailPage() {
             <AgentInstructions
               instructions={instructions}
               loading={instructionsLoading}
+              isOwner={isOwner}
             />
           </>
         ) : (
