@@ -33,7 +33,6 @@ function initEnv() {
 
   /**
    * Make a field required only when a condition is true, otherwise optional.
-   * In SaaS mode all conditions default to true, so behavior is unchanged.
    */
   function requiredWhen(condition: boolean, schema = z.string().min(1)) {
     return condition ? schema : schema.optional();
@@ -126,7 +125,7 @@ function initEnv() {
       NEXT_PUBLIC_DATA_SOURCE: z.string().optional(),
       NEXT_PUBLIC_STRAPI_URL: z.string().url().optional(),
       // Platform UI URL (for settings page links, Navbar, LandingPage)
-      NEXT_PUBLIC_PLATFORM_URL: z.string().url().optional(),
+      NEXT_PUBLIC_PLATFORM_URL: z.string().url(),
     },
     runtimeEnv: {
       DATABASE_URL: process.env.DATABASE_URL,

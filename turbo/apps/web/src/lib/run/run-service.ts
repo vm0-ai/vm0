@@ -234,12 +234,13 @@ async function prepareAndDispatchRun(
 }
 
 /**
- * Dispatch prepared context to appropriate executor
+ * Dispatch prepared context to appropriate executor.
  *
- * Routing priority: Runner Group > E2B > Docker
+ * Routing:
+ * - Runner Group: explicit runner config in compose
+ * - E2B: cloud mode, requires E2B_API_KEY
+ * - Docker: local mode, requires DOCKER_SANDBOX_IMAGE
  *
- * @param context PreparedContext ready for execution
- * @returns ExecutorResult with status and optional sandboxId
  */
 async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
   if (context.runnerGroup) {
@@ -250,10 +251,14 @@ async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
   } else if (env().E2B_API_KEY) {
     log.debug(`Dispatching run ${context.runId} to E2B executor`);
     return await executeE2bRun(context);
-  } else {
+  } else if (env().DOCKER_SANDBOX_IMAGE) {
     log.debug(`Dispatching run ${context.runId} to Docker executor`);
     return await executeDockerRun(context);
   }
+
+  throw new Error(
+    "No executor configured: set E2B_API_KEY for cloud mode or DOCKER_SANDBOX_IMAGE for Docker mode",
+  );
 }
 
 // ============================================================================
