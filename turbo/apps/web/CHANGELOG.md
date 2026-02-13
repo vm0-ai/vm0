@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.39.0](https://github.com/vm0-ai/vm0/compare/web-v12.38.0...web-v12.39.0) (2026-02-13)
+
+
+### Features
+
+* add markdown preview for prompts, slack image hints, and platform tests ([#2991](https://github.com/vm0-ai/vm0/issues/2991)) ([35da51b](https://github.com/vm0-ai/vm0/commit/35da51b563330c45444e1cb16b3de566519d2c07))
+* **web:** add keyword detection for slack agent responses with deep links ([#3003](https://github.com/vm0-ai/vm0/issues/3003)) ([24adaff](https://github.com/vm0-ai/vm0/commit/24adaffd619e65a692eb643a4dec25d8cb6f457c)), closes [#2995](https://github.com/vm0-ai/vm0/issues/2995)
+
 ## [12.38.0](https://github.com/vm0-ai/vm0/compare/web-v12.37.0...web-v12.38.0) (2026-02-13)
 
 

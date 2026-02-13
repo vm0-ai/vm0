@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.64.0](https://github.com/vm0-ai/vm0/compare/platform-v0.63.0...platform-v0.64.0) (2026-02-13)
+
+
+### Features
+
+* add markdown preview for prompts, slack image hints, and platform tests ([#2991](https://github.com/vm0-ai/vm0/issues/2991)) ([35da51b](https://github.com/vm0-ai/vm0/commit/35da51b563330c45444e1cb16b3de566519d2c07))
+* **settings:** improve ui consistency and add success notifications ([#2976](https://github.com/vm0-ai/vm0/issues/2976)) ([6418997](https://github.com/vm0-ai/vm0/commit/6418997a206901e7739c6398c9129474449c0e66))
+
 ## [0.63.0](https://github.com/vm0-ai/vm0/compare/platform-v0.62.0...platform-v0.63.0) (2026-02-13)
 
 
