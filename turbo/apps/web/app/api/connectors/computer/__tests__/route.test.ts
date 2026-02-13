@@ -20,6 +20,8 @@ function setupNgrokMocks() {
     listBotUsers: 0,
     createCredential: [] as string[],
     deleteCredential: [] as string[],
+    createEndpoint: [] as string[],
+    deleteEndpoint: [] as string[],
   };
 
   server.use(
@@ -51,6 +53,18 @@ function setupNgrokMocks() {
     }),
     http.delete("https://api.ngrok.com/credentials/:id", ({ params }) => {
       calls.deleteCredential.push(params.id as string);
+      return new HttpResponse(null, { status: 204 });
+    }),
+    http.post("https://api.ngrok.com/endpoints", async ({ request }) => {
+      const body = (await request.json()) as { url: string };
+      calls.createEndpoint.push(body.url);
+      return HttpResponse.json({
+        id: "ep_test_789",
+        url: body.url,
+      });
+    }),
+    http.delete("https://api.ngrok.com/endpoints/:id", ({ params }) => {
+      calls.deleteEndpoint.push(params.id as string);
       return new HttpResponse(null, { status: 204 });
     }),
   );
@@ -99,6 +113,8 @@ describe("POST /api/connectors/computer - Create", () => {
     expect(ngrokCalls.createBotUser.length).toBe(1);
     expect(ngrokCalls.createCredential.length).toBe(1);
     expect(ngrokCalls.createCredential[0]).toBe("bot_test_123");
+    expect(ngrokCalls.createEndpoint.length).toBe(1);
+    expect(ngrokCalls.createEndpoint[0]).toContain("computer.test.vm0.io");
 
     // Verify connector exists via GET
     const getResponse = await GET(createTestRequest(BASE_URL));
@@ -213,8 +229,9 @@ describe("DELETE /api/connectors/computer - Delete", () => {
 
     expect(response.status).toBe(204);
 
-    // Verify ngrok credential was deleted
+    // Verify ngrok credential and endpoint were deleted
     expect(ngrokCalls.deleteCredential).toEqual(["cr_test_456"]);
+    expect(ngrokCalls.deleteEndpoint).toEqual(["ep_test_789"]);
 
     // Verify GET returns 404
     const getResponse = await GET(createTestRequest(BASE_URL));
