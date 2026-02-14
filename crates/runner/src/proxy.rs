@@ -532,11 +532,32 @@ mod tests {
         assert_eq!(vm.run_id, "run-1");
         assert!(vm.mitm_enabled);
 
+        // Re-register same IP overwrites the entry.
+        let registration2 = VmRegistration {
+            run_id: "run-2",
+            sandbox_token: "tok-2",
+            firewall_rules: &[],
+            mitm_enabled: false,
+            seal_secrets_enabled: true,
+        };
+        handle
+            .register_vm("10.200.0.2", &registration2)
+            .await
+            .unwrap();
+        let loaded = read_registry(&registry_path).await.unwrap();
+        let vm = loaded.vms.get("10.200.0.2").unwrap();
+        assert_eq!(vm.run_id, "run-2");
+        assert!(!vm.mitm_enabled);
+        assert!(vm.seal_secrets_enabled);
+
         // Unregister via handle.
         handle.unregister_vm("10.200.0.2").await.unwrap();
 
         let loaded = read_registry(&registry_path).await.unwrap();
         assert!(!loaded.vms.contains_key("10.200.0.2"));
+
+        // Unregister non-existent IP is a no-op.
+        handle.unregister_vm("10.200.0.99").await.unwrap();
     }
 
     #[tokio::test]

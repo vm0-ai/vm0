@@ -28,14 +28,17 @@ pub struct Job {
 pub struct ExecutionContext {
     pub run_id: Uuid,
     pub prompt: String,
+    // TODO: remove allow(dead_code) when consumed by compose pipeline
     #[allow(dead_code)]
     #[serde(default)]
     pub agent_compose_version_id: Option<String>,
     #[serde(default)]
     pub vars: Option<HashMap<String, String>>,
+    // TODO: remove allow(dead_code) when secret injection is implemented
     #[allow(dead_code)]
     #[serde(default)]
     pub secret_names: Option<Vec<String>>,
+    // TODO: remove allow(dead_code) when checkpoint resume is implemented
     #[allow(dead_code)]
     #[serde(default)]
     pub checkpoint_id: Option<Uuid>,
@@ -52,6 +55,7 @@ pub struct ExecutionContext {
     pub cli_agent_type: String,
     #[serde(default)]
     pub experimental_firewall: Option<ExperimentalFirewall>,
+    // TODO: remove allow(dead_code) when mock-claude bypass is implemented
     #[allow(dead_code)]
     #[serde(default)]
     pub debug_no_mock_claude: Option<bool>,
