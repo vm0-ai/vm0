@@ -6,4 +6,5 @@ pub struct ResourceLimits {
 pub struct SandboxConfig {
     pub id: uuid::Uuid,
     pub resources: ResourceLimits,
+    pub use_proxy: bool,
 }

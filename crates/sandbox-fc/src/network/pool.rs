@@ -37,7 +37,7 @@ use std::collections::VecDeque;
 use std::fs::File;
 
 use nix::fcntl::{Flock, FlockArg};
-use tracing::{error, info, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::command::{Privilege, exec, exec_ignore_errors};
 use crate::paths::LockPaths;
@@ -85,8 +85,11 @@ pub struct PooledNetns {
 }
 
 /// Configuration for creating a [`NetnsPool`].
+///
+/// When `proxy_port` is set, the pool pre-warms **two** queues of `size`
+/// namespaces each (plain + proxy), doubling the total namespace count.
 pub struct NetnsPoolConfig {
-    /// Number of namespaces to pre-create.
+    /// Number of namespaces to pre-create per queue.
     pub size: usize,
     /// Proxy port for HTTP/HTTPS redirect (only adds redirect rules when set).
     pub proxy_port: Option<u16>,
@@ -293,12 +296,11 @@ async fn setup_namespace_routing(
     Ok(())
 }
 
-/// Add host-side iptables rules for forwarding and proxy redirect.
+/// Add host-side iptables rules for forwarding (connectivity only, no proxy).
 async fn setup_host_iptables(
     name: &str,
     host_device: &str,
     peer_ip: &str,
-    proxy_port: Option<u16>,
     default_iface: &str,
 ) -> Result<()> {
     let src = format!("{peer_ip}/30");
@@ -353,51 +355,58 @@ async fn setup_host_iptables(
         name,
     ])
     .await?;
-    if let Some(port) = proxy_port {
-        let port_str = port.to_string();
-        sudo_iptables(&[
-            "-t",
-            "nat",
-            "-A",
-            "PREROUTING",
-            "-s",
-            &src,
-            "-p",
-            "tcp",
-            "--dport",
-            "80",
-            "-j",
-            "REDIRECT",
-            "--to-port",
-            &port_str,
-            "-m",
-            "comment",
-            "--comment",
-            name,
-        ])
-        .await?;
-        sudo_iptables(&[
-            "-t",
-            "nat",
-            "-A",
-            "PREROUTING",
-            "-s",
-            &src,
-            "-p",
-            "tcp",
-            "--dport",
-            "443",
-            "-j",
-            "REDIRECT",
-            "--to-port",
-            &port_str,
-            "-m",
-            "comment",
-            "--comment",
-            name,
-        ])
-        .await?;
-    }
+    Ok(())
+}
+
+/// Add proxy REDIRECT rules for HTTP/HTTPS traffic in PREROUTING chain.
+///
+/// These rules redirect outbound port 80/443 traffic from the namespace's
+/// veth peer IP to the specified proxy port on the host.
+async fn add_proxy_redirect_rules(name: &str, peer_ip: &str, proxy_port: u16) -> Result<()> {
+    let src = format!("{peer_ip}/30");
+    let port_str = proxy_port.to_string();
+    sudo_iptables(&[
+        "-t",
+        "nat",
+        "-A",
+        "PREROUTING",
+        "-s",
+        &src,
+        "-p",
+        "tcp",
+        "--dport",
+        "80",
+        "-j",
+        "REDIRECT",
+        "--to-port",
+        &port_str,
+        "-m",
+        "comment",
+        "--comment",
+        name,
+    ])
+    .await?;
+    sudo_iptables(&[
+        "-t",
+        "nat",
+        "-A",
+        "PREROUTING",
+        "-s",
+        &src,
+        "-p",
+        "tcp",
+        "--dport",
+        "443",
+        "-j",
+        "REDIRECT",
+        "--to-port",
+        &port_str,
+        "-m",
+        "comment",
+        "--comment",
+        name,
+    ])
+    .await?;
     Ok(())
 }
 
@@ -499,7 +508,8 @@ fn acquire_pool_lock(locks: &LockPaths) -> Result<(u32, Flock<File>)> {
 /// Pre-warmed pool of network namespaces for Firecracker VMs.
 pub struct NetnsPool {
     active: bool,
-    queue: VecDeque<PooledNetns>,
+    plain_queue: VecDeque<PooledNetns>,
+    proxy_queue: VecDeque<PooledNetns>,
     next_ns_index: u32,
     pool_index: u32,
     proxy_port: Option<u16>,
@@ -509,7 +519,8 @@ pub struct NetnsPool {
 }
 
 impl NetnsPool {
-    /// Create a new pool, pre-warming `config.size` namespaces.
+    /// Create a new pool, pre-warming `config.size` plain namespaces (and
+    /// `config.size` proxy namespaces when `proxy_port` is set).
     ///
     /// Automatically acquires a unique pool index (0–63) via flock. Enables
     /// host IP forwarding and cleans up orphaned resources from the acquired
@@ -530,7 +541,12 @@ impl NetnsPool {
 
         let mut pool = Self {
             active: true,
-            queue: VecDeque::with_capacity(config.size),
+            plain_queue: VecDeque::with_capacity(config.size),
+            proxy_queue: VecDeque::with_capacity(if config.proxy_port.is_some() {
+                config.size
+            } else {
+                0
+            }),
             next_ns_index: 0,
             pool_index: index,
             proxy_port: config.proxy_port,
@@ -538,55 +554,129 @@ impl NetnsPool {
             _lock: lock,
         };
 
-        // Create all namespaces in parallel via JoinSet
+        // Pre-warm both queues in parallel via JoinSet.
         if config.size > 0 {
-            let mut join_set = tokio::task::JoinSet::new();
+            let mut plain_set = tokio::task::JoinSet::new();
+            let mut proxy_set = tokio::task::JoinSet::new();
+
+            // Plain namespaces (connectivity only).
             for _ in 0..config.size {
                 let ns_index = pool.next_ns_index;
                 pool.next_ns_index += 1;
                 let pool_index = pool.pool_index;
-                let proxy_port = pool.proxy_port;
                 let default_iface = pool.default_iface.clone();
-                join_set.spawn(create_single_namespace(
+                plain_set.spawn(create_single_namespace(
                     pool_index,
                     ns_index,
-                    proxy_port,
                     default_iface,
+                    None,
                 ));
             }
-            while let Some(result) = join_set.join_next().await {
+
+            // Proxy namespaces (connectivity + REDIRECT rules).
+            if let Some(proxy_port) = pool.proxy_port {
+                for _ in 0..config.size {
+                    let ns_index = pool.next_ns_index;
+                    pool.next_ns_index += 1;
+                    let pool_index = pool.pool_index;
+                    let default_iface = pool.default_iface.clone();
+                    proxy_set.spawn(create_single_namespace(
+                        pool_index,
+                        ns_index,
+                        default_iface,
+                        Some(proxy_port),
+                    ));
+                }
+            }
+
+            while let Some(result) = plain_set.join_next().await {
                 match result {
-                    Ok(Ok(ns)) => pool.queue.push_back(ns),
+                    Ok(Ok(ns)) => pool.plain_queue.push_back(ns),
                     Ok(Err(e)) => error!(error = %e, "failed to create namespace"),
                     Err(e) => error!(error = %e, "namespace creation task panicked"),
                 }
             }
+            while let Some(result) = proxy_set.join_next().await {
+                match result {
+                    Ok(Ok(ns)) => pool.proxy_queue.push_back(ns),
+                    Ok(Err(e)) => error!(error = %e, "failed to create proxy namespace"),
+                    Err(e) => error!(error = %e, "proxy namespace creation task panicked"),
+                }
+            }
         }
 
-        if pool.queue.len() < config.size {
+        let expected = config.size
+            + if pool.proxy_port.is_some() {
+                config.size
+            } else {
+                0
+            };
+        let actual = pool.plain_queue.len() + pool.proxy_queue.len();
+        if actual < expected {
             warn!(
-                requested = config.size,
-                created = pool.queue.len(),
+                requested = expected,
+                created = actual,
                 "namespace pool initialized with fewer namespaces than requested"
             );
         }
 
-        info!(available = pool.queue.len(), "namespace pool initialized");
+        info!(
+            plain = pool.plain_queue.len(),
+            proxy = pool.proxy_queue.len(),
+            "namespace pool initialized"
+        );
         Ok(pool)
     }
 
     /// Acquire a namespace from the pool, or create one on-demand if empty.
-    pub async fn acquire(&mut self) -> Result<PooledNetns> {
-        if let Some(pooled) = self.queue.pop_front() {
+    ///
+    /// The two queues are completely independent — `use_proxy=true` only
+    /// touches the proxy queue, `use_proxy=false` only touches the plain queue.
+    pub async fn acquire(&mut self, use_proxy: bool) -> Result<PooledNetns> {
+        // Intentional graceful degradation: when `use_proxy=true` but no
+        // proxy port is configured, fall back to the plain queue.  Callers
+        // (e.g. executor) always set `use_proxy=true` without knowing
+        // whether the factory was started with a proxy — the pool decides.
+        if use_proxy && self.proxy_port.is_some() {
+            self.acquire_proxy().await
+        } else {
+            if use_proxy {
+                debug!("use_proxy=true but no proxy port configured, falling back to plain");
+            }
+            self.acquire_plain().await
+        }
+    }
+
+    /// Acquire from the plain (non-proxy) queue.
+    async fn acquire_plain(&mut self) -> Result<PooledNetns> {
+        if let Some(pooled) = self.plain_queue.pop_front() {
             info!(
                 name = %pooled.name,
-                remaining = self.queue.len(),
+                remaining = self.plain_queue.len(),
                 "acquired namespace"
             );
             return Ok(pooled);
         }
-
         info!("pool exhausted, creating namespace on-demand");
+        self.create_on_demand(None).await
+    }
+
+    /// Acquire from the proxy queue.
+    async fn acquire_proxy(&mut self) -> Result<PooledNetns> {
+        if let Some(pooled) = self.proxy_queue.pop_front() {
+            info!(
+                name = %pooled.name,
+                remaining = self.proxy_queue.len(),
+                "acquired namespace (proxy)"
+            );
+            return Ok(pooled);
+        }
+        info!("proxy pool exhausted, creating namespace on-demand");
+        self.create_on_demand(self.proxy_port).await
+    }
+
+    /// Create a new namespace on-demand, allocating the next index.
+    async fn create_on_demand(&mut self, proxy_port: Option<u16>) -> Result<PooledNetns> {
         let ns_index = self.next_ns_index;
         if ns_index >= MAX_NAMESPACES {
             return Err(NetworkError::NamespaceLimitReached {
@@ -594,33 +684,42 @@ impl NetnsPool {
             });
         }
         self.next_ns_index += 1;
-        let ns = create_single_namespace(
+        create_single_namespace(
             self.pool_index,
             ns_index,
-            self.proxy_port,
             self.default_iface.clone(),
+            proxy_port,
         )
-        .await?;
-        Ok(ns)
+        .await
     }
 
     /// Return a namespace to the pool, or delete it if the pool is inactive.
-    pub async fn release(&mut self, ns: PooledNetns) -> Result<()> {
+    ///
+    /// When `has_proxy` is true and a proxy port is configured, the namespace
+    /// is returned to [`Self::proxy_queue`] so its REDIRECT rules are reused.
+    pub async fn release(&mut self, ns: PooledNetns, has_proxy: bool) -> Result<()> {
         if !self.active {
             delete_namespace_resources(&ns.name, &ns.host_device).await;
             return Ok(());
         }
 
-        if self.queue.iter().any(|r| r.name == ns.name) {
+        let target_queue = if has_proxy && self.proxy_port.is_some() {
+            &mut self.proxy_queue
+        } else {
+            &mut self.plain_queue
+        };
+
+        if target_queue.iter().any(|r| r.name == ns.name) {
             info!(name = %ns.name, "namespace already in pool, ignoring");
             return Ok(());
         }
         info!(
             name = %ns.name,
-            available = self.queue.len() + 1,
+            available = target_queue.len() + 1,
+            has_proxy,
             "namespace released"
         );
-        self.queue.push_back(ns);
+        target_queue.push_back(ns);
         Ok(())
     }
 
@@ -635,10 +734,14 @@ impl NetnsPool {
         }
         self.active = false;
 
-        let count = self.queue.len();
+        let count = self.plain_queue.len() + self.proxy_queue.len();
         info!(count, "cleaning up namespace pool");
 
-        let to_delete: Vec<PooledNetns> = self.queue.drain(..).collect();
+        let to_delete: Vec<PooledNetns> = self
+            .plain_queue
+            .drain(..)
+            .chain(self.proxy_queue.drain(..))
+            .collect();
 
         // Delete namespaces in parallel
         let mut set = tokio::task::JoinSet::new();
@@ -662,7 +765,7 @@ impl Drop for NetnsPool {
     fn drop(&mut self) {
         if self.active {
             warn!(
-                queued = self.queue.len(),
+                queued = self.plain_queue.len() + self.proxy_queue.len(),
                 "NetnsPool dropped without calling cleanup()"
             );
         }
@@ -673,14 +776,15 @@ impl Drop for NetnsPool {
 // Namespace creation (free functions for JoinSet compatibility)
 // ---------------------------------------------------------------------------
 
-/// Create a single namespace with full connectivity.
+/// Create a single namespace with full connectivity, optionally adding proxy
+/// REDIRECT rules for HTTP/HTTPS traffic.
 ///
 /// This is a free function (no `&self`) so it can be spawned on a `JoinSet`.
 async fn create_single_namespace(
     pool_index: u32,
     ns_index: u32,
-    proxy_port: Option<u16>,
     default_iface: String,
+    proxy_port: Option<u16>,
 ) -> Result<PooledNetns> {
     if ns_index >= MAX_NAMESPACES {
         return Err(NetworkError::NamespaceLimitReached {
@@ -694,7 +798,7 @@ async fn create_single_namespace(
     let host_device = make_host_device(&pool_idx_str, &ns_idx_str);
     let (host_ip, peer_ip) = generate_veth_ip_pair(pool_index, ns_index);
 
-    info!(name = %ns_name, "creating namespace");
+    info!(name = %ns_name, proxy = proxy_port.is_some(), "creating namespace");
 
     let sn = &GUEST_NETWORK;
     let result = create_namespace_inner(
@@ -702,7 +806,6 @@ async fn create_single_namespace(
         &host_device,
         &host_ip,
         &peer_ip,
-        proxy_port,
         sn,
         &default_iface,
     )
@@ -710,6 +813,13 @@ async fn create_single_namespace(
 
     match result {
         Ok(()) => {
+            if let Some(port) = proxy_port
+                && let Err(e) = add_proxy_redirect_rules(&ns_name, &peer_ip, port).await
+            {
+                error!(name = %ns_name, error = %e, "failed to add proxy rules, cleaning up");
+                delete_namespace_resources(&ns_name, &host_device).await;
+                return Err(e);
+            }
             info!(name = %ns_name, "namespace created");
             Ok(PooledNetns {
                 name: ns_name,
@@ -731,7 +841,6 @@ async fn create_namespace_inner(
     host_device: &str,
     host_ip: &str,
     peer_ip: &str,
-    proxy_port: Option<u16>,
     sn: &super::GuestNetwork,
     default_iface: &str,
 ) -> Result<()> {
@@ -739,7 +848,7 @@ async fn create_namespace_inner(
     create_netns_with_tap(name, sn.tap_name, &gw_with_prefix).await?;
     setup_veth_pair(name, host_device, host_ip, peer_ip).await?;
     setup_namespace_routing(name, host_ip, sn.gateway_ip, sn.prefix_len).await?;
-    setup_host_iptables(name, host_device, peer_ip, proxy_port, default_iface).await?;
+    setup_host_iptables(name, host_device, peer_ip, default_iface).await?;
 
     Ok(())
 }

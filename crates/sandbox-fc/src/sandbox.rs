@@ -57,7 +57,7 @@ impl std::fmt::Display for SandboxState {
 }
 
 pub struct FirecrackerSandbox {
-    config: SandboxConfig,
+    pub(crate) config: SandboxConfig,
     factory_config: FirecrackerConfig,
     /// Cached `config.id.to_string()`.
     pub(crate) id: String,
