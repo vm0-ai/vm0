@@ -41,8 +41,10 @@ function initEnv() {
         .int()
         .positive()
         .default(10000),
-      // Database driver selection (defaults to 'pg' for standard Postgres, 'neon' for Neon serverless)
-      DB_DRIVER: z.enum(["pg", "neon"]).optional(),
+      // Database driver selection
+      // Defaults to 'neon' (optimized for serverless/Vercel)
+      // Set to 'pg' for local development with standard Postgres
+      DB_DRIVER: z.enum(["pg", "neon"]).default("neon"),
       CLERK_ENABLED: z.enum(["true", "false"]).optional(),
       CLERK_SECRET_KEY: z.string().min(1).optional(),
       E2B_API_KEY: z.string().min(1).optional(),

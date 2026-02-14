@@ -43,9 +43,9 @@ export function initServices(): void {
     get pool() {
       if (!_pool) {
         if (useNeon) {
-          // Use Neon serverless driver
-          // This driver is optimized for Neon's connection pooler and serverless environments
-          // Set DB_DRIVER=neon when deploying to Vercel or other serverless platforms
+          // Use Neon serverless driver (default)
+          // Optimized for Neon's connection pooler and serverless environments
+          // Automatically used unless DB_DRIVER=pg is explicitly set
           // See: https://vercel.com/guides/connection-pooling-with-functions
           _pool = new NeonPool({
             connectionString: this.env.DATABASE_URL,
@@ -54,7 +54,8 @@ export function initServices(): void {
             connectionTimeoutMillis: this.env.DB_POOL_CONNECT_TIMEOUT_MS,
           });
         } else {
-          // Use regular pg driver (default for local development)
+          // Use standard PostgreSQL driver
+          // Set DB_DRIVER=pg for local development or self-hosted deployments
           _pool = new PgPool({
             connectionString: this.env.DATABASE_URL,
             max: this.env.DB_POOL_MAX,
