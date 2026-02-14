@@ -70,6 +70,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates -> target
+
       - name: Check formatting
         run: |
           cd crates
@@ -110,6 +114,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates -> target
+          key: aarch64-musl
 
       - name: Cross-compile runner and guest binaries for ARM64
         run: |
