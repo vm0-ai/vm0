@@ -36,7 +36,7 @@ impl FormatTime for Elapsed {
 }
 
 #[derive(Parser)]
-#[command(name = "runner")]
+#[command(name = "runner", version)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
