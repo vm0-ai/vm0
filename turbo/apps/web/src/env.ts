@@ -27,18 +27,7 @@ export function isBlogEnabled(): boolean {
 }
 
 function initEnv() {
-  // Internal flags for conditional schema validation (must read process.env
-  // directly because they configure the schema that env() itself validates).
-  const slackEnabled = process.env.SLACK_INTEGRATION_ENABLED === "true";
-
-  /**
-   * Make a field required only when a condition is true, otherwise optional.
-   */
-  function requiredWhen(condition: boolean, schema = z.string().min(1)) {
-    return condition ? schema : schema.optional();
-  }
-
-  return createEnv({
+  const env = createEnv({
     server: {
       DATABASE_URL: z.string().min(1),
       NODE_ENV: z
@@ -73,10 +62,10 @@ function initEnv() {
       AXIOM_TOKEN_TELEMETRY: z.string().min(1).optional(), // Scoped token for all other datasets
       AXIOM_DATASET_SUFFIX: z.enum(["dev", "prod"]).optional(), // Explicit control for Axiom dataset suffix
       SLACK_INTEGRATION_ENABLED: z.enum(["true", "false"]).optional(),
-      SLACK_CLIENT_ID: requiredWhen(slackEnabled),
-      SLACK_CLIENT_SECRET: requiredWhen(slackEnabled),
-      SLACK_SIGNING_SECRET: requiredWhen(slackEnabled),
-      SLACK_REDIRECT_BASE_URL: requiredWhen(slackEnabled, z.string().url()), // Override base URL for OAuth redirects (e.g., tunnel URL)
+      SLACK_CLIENT_ID: z.string().min(1).optional(),
+      SLACK_CLIENT_SECRET: z.string().min(1).optional(),
+      SLACK_SIGNING_SECRET: z.string().min(1).optional(),
+      SLACK_REDIRECT_BASE_URL: z.string().url().optional(), // Override base URL for OAuth redirects (e.g., tunnel URL)
       SLACK_DEFAULT_AGENT: z.string().min(1).optional(), // Default agent for new installs (format: "scope/name")
       // LLM API
       OPENROUTER_API_KEY: z.string().min(1).optional(), // OpenRouter API key for logged-in users
@@ -201,6 +190,34 @@ function initEnv() {
     skipValidation: process.env.SKIP_ENV_VALIDATION === "true",
     emptyStringAsUndefined: true,
   });
+
+  // Post-validation conditional checks
+  // These validate relationships between environment variables after schema parsing
+  const slackEnabled = env.SLACK_INTEGRATION_ENABLED === "true";
+  if (slackEnabled) {
+    if (!env.SLACK_CLIENT_ID) {
+      throw new Error(
+        "SLACK_CLIENT_ID is required when SLACK_INTEGRATION_ENABLED=true",
+      );
+    }
+    if (!env.SLACK_CLIENT_SECRET) {
+      throw new Error(
+        "SLACK_CLIENT_SECRET is required when SLACK_INTEGRATION_ENABLED=true",
+      );
+    }
+    if (!env.SLACK_SIGNING_SECRET) {
+      throw new Error(
+        "SLACK_SIGNING_SECRET is required when SLACK_INTEGRATION_ENABLED=true",
+      );
+    }
+    if (!env.SLACK_REDIRECT_BASE_URL) {
+      throw new Error(
+        "SLACK_REDIRECT_BASE_URL is required when SLACK_INTEGRATION_ENABLED=true",
+      );
+    }
+  }
+
+  return env;
 }
 
 /**
