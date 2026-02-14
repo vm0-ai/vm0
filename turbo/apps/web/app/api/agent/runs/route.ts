@@ -299,7 +299,7 @@ const router = tsr.router(runsMainContract, {
 
     // Parse and validate status values
     const statusValues: string[] = query.status
-      ? query.status.split(",").map((s) => s.trim())
+      ? query.status.split(",").map((s: string) => s.trim())
       : ["pending", "running"]; // default
 
     // Validate each status value

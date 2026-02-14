@@ -469,8 +469,8 @@ jobs:
           prebuilt: "true"
           environment-variables: |
             DATABASE_URL=${{ steps.branch.outputs.database-url }}
-            NEXT_PUBLIC_BASE_URL=${{ needs.prepare.outputs.web-preview-url }}
-            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
+            BLOG_BASE_URL=${{ needs.prepare.outputs.web-preview-url }}
+            CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
             E2B_API_KEY=${{ secrets.E2B_API_KEY }}
             R2_ACCOUNT_ID=${{ vars.R2_ACCOUNT_ID }}
@@ -493,8 +493,7 @@ jobs:
             SLACK_SIGNING_SECRET=${{ secrets.SLACK_SIGNING_SECRET }}
             SLACK_REDIRECT_BASE_URL=${{ needs.prepare.outputs.web-preview-url }}
             SLACK_DEFAULT_AGENT=${{ vars.SLACK_DEFAULT_AGENT }}
-            SENTRY_DSN=${{ secrets.SENTRY_DSN_WEB }}
-            NEXT_PUBLIC_SENTRY_DSN=${{ secrets.SENTRY_DSN_WEB }}
+            SENTRY_DSN_WEB=${{ secrets.SENTRY_DSN_WEB }}
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
             SENTRY_ORG=${{ vars.SENTRY_ORG }}
             SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_WEB }}
@@ -504,11 +503,11 @@ jobs:
             NOTION_OAUTH_CLIENT_SECRET=${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
             NGROK_API_KEY=${{ secrets.NGROK_API_KEY }}
             NGROK_COMPUTER_CONNECTOR_DOMAIN=${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
-            NEXT_PUBLIC_PLATFORM_URL=${{ needs.prepare.outputs.platform-preview-url }}
+            PLATFORM_URL=${{ needs.prepare.outputs.platform-preview-url }}
             RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
             RESEND_WEBHOOK_SECRET=${{ secrets.RESEND_WEBHOOK_SECRET }}
             RESEND_FROM_DOMAIN=${{ vars.RESEND_FROM_DOMAIN }}
-            NEXT_PUBLIC_STRAPI_URL=${{ vars.NEXT_PUBLIC_STRAPI_URL }}
+            STRAPI_URL=${{ vars.STRAPI_URL }}
           meta-branch: ${{ github.head_ref || github.ref_name }}
           meta-pr: ${{ needs.prepare.outputs.job-ref }}
           skip-finish: ${{ github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '' }}

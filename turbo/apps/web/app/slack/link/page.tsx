@@ -4,14 +4,15 @@ import { getPlatformUrl } from "../../../src/lib/url";
 /**
  * Backward compatibility redirect: old web /slack/link URLs → platform /slack/connect
  */
-export default function SlackLinkPage({
+export default async function SlackLinkPage({
   searchParams,
 }: {
-  searchParams: Record<string, string | string[] | undefined>;
-}): never {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}): Promise<never> {
   const platformUrl = getPlatformUrl();
   const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(searchParams)) {
+  const resolvedParams = await searchParams;
+  for (const [key, value] of Object.entries(resolvedParams)) {
     if (typeof value === "string") {
       params.set(key, value);
     }

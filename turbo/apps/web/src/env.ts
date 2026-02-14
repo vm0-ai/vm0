@@ -45,7 +45,6 @@ function initEnv() {
       // Defaults to 'neon' (optimized for serverless/Vercel)
       // Set to 'pg' for local development with standard Postgres
       DB_DRIVER: z.enum(["pg", "neon"]).default("neon"),
-      CLERK_ENABLED: z.enum(["true", "false"]).optional(),
       CLERK_SECRET_KEY: z.string().min(1).optional(),
       E2B_API_KEY: z.string().min(1).optional(),
       VM0_API_URL: z.string().url().optional(),
@@ -87,8 +86,8 @@ function initEnv() {
       RESEND_API_KEY: z.string().min(1).optional(),
       RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
       RESEND_FROM_DOMAIN: z.string().min(1).optional(),
-      // Sentry
-      SENTRY_DSN: z.string().url().optional(),
+      // Sentry (used by both server and client)
+      SENTRY_DSN_WEB: z.string().url().optional(),
       SENTRY_AUTH_TOKEN: z.string().min(1).optional(),
       SENTRY_ORG: z.string().min(1).optional(),
       SENTRY_PROJECT: z.string().min(1).optional(),
@@ -112,7 +111,6 @@ function initEnv() {
       VERCEL_AUTOMATION_BYPASS_SECRET: z.string().optional(),
     },
     client: {
-      NEXT_PUBLIC_CLERK_ENABLED: z.enum(["true", "false"]).optional(),
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1).optional(),
       NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
       // Blog/content config
@@ -129,7 +127,6 @@ function initEnv() {
       DB_POOL_IDLE_TIMEOUT_MS: process.env.DB_POOL_IDLE_TIMEOUT_MS,
       DB_POOL_CONNECT_TIMEOUT_MS: process.env.DB_POOL_CONNECT_TIMEOUT_MS,
       DB_DRIVER: process.env.DB_DRIVER,
-      CLERK_ENABLED: process.env.CLERK_ENABLED,
       CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
 
       E2B_API_KEY: process.env.E2B_API_KEY,
@@ -168,7 +165,7 @@ function initEnv() {
       RESEND_API_KEY: process.env.RESEND_API_KEY,
       RESEND_WEBHOOK_SECRET: process.env.RESEND_WEBHOOK_SECRET,
       RESEND_FROM_DOMAIN: process.env.RESEND_FROM_DOMAIN,
-      SENTRY_DSN: process.env.SENTRY_DSN,
+      SENTRY_DSN_WEB: process.env.SENTRY_DSN_WEB,
       SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
       SENTRY_ORG: process.env.SENTRY_ORG,
       SENTRY_PROJECT: process.env.SENTRY_PROJECT,
@@ -186,7 +183,6 @@ function initEnv() {
       VERCEL_AUTOMATION_BYPASS_SECRET:
         process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
 
-      NEXT_PUBLIC_CLERK_ENABLED: process.env.NEXT_PUBLIC_CLERK_ENABLED,
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
         process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
       NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
@@ -203,31 +199,22 @@ function initEnv() {
   // Post-validation conditional checks
   // These validate relationships between environment variables after schema parsing
 
-  // Clerk integration validation
-  const clerkEnabledServer = env.CLERK_ENABLED === "true";
-  const clerkEnabledClient = env.NEXT_PUBLIC_CLERK_ENABLED === "true";
+  // Clerk integration validation - both keys must be present together
+  const hasClerkPublishableKey = !!env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+  const hasClerkSecretKey = !!env.CLERK_SECRET_KEY;
 
-  // Consistency check: Server and client Clerk flags should match
-  if (clerkEnabledServer !== clerkEnabledClient) {
+  if (hasClerkPublishableKey && !hasClerkSecretKey) {
     throw new Error(
-      "CLERK_ENABLED and NEXT_PUBLIC_CLERK_ENABLED must have the same value. " +
-        `Currently: CLERK_ENABLED=${env.CLERK_ENABLED}, NEXT_PUBLIC_CLERK_ENABLED=${env.NEXT_PUBLIC_CLERK_ENABLED}`,
+      "CLERK_SECRET_KEY is required when CLERK_PUBLISHABLE_KEY is set. " +
+        "Set CLERK_SECRET_KEY or remove CLERK_PUBLISHABLE_KEY to use local auth.",
     );
   }
 
-  if (clerkEnabledServer) {
-    if (!env.CLERK_SECRET_KEY) {
-      throw new Error(
-        "CLERK_SECRET_KEY is required when CLERK_ENABLED=true. " +
-          "Set CLERK_SECRET_KEY or remove CLERK_ENABLED to use local auth.",
-      );
-    }
-    if (!env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
-      throw new Error(
-        "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is required when CLERK_ENABLED=true. " +
-          "Set NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY or remove CLERK_ENABLED to use local auth.",
-      );
-    }
+  if (hasClerkSecretKey && !hasClerkPublishableKey) {
+    throw new Error(
+      "CLERK_PUBLISHABLE_KEY is required when CLERK_SECRET_KEY is set. " +
+        "Set CLERK_PUBLISHABLE_KEY or remove CLERK_SECRET_KEY to use local auth.",
+    );
   }
 
   // Slack integration validation
