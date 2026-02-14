@@ -305,13 +305,19 @@ async fn read_registry(path: &std::path::Path) -> RunnerResult<ProxyRegistry> {
         .map_err(|e| RunnerError::Internal(format!("parse registry: {e}")))
 }
 
-/// Write the proxy registry JSON file.
+/// Write the proxy registry JSON file atomically (write tmp + rename).
+///
+/// This ensures the Python mitm-addon never reads a partially-written file.
 async fn write_registry(path: &std::path::Path, value: &ProxyRegistry) -> RunnerResult<()> {
     let content = serde_json::to_string(value)
         .map_err(|e| RunnerError::Internal(format!("serialize registry: {e}")))?;
-    tokio::fs::write(path, content)
+    let tmp = path.with_extension("json.tmp");
+    tokio::fs::write(&tmp, content)
         .await
-        .map_err(|e| RunnerError::Internal(format!("write registry: {e}")))
+        .map_err(|e| RunnerError::Internal(format!("write registry tmp: {e}")))?;
+    tokio::fs::rename(&tmp, path)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("rename registry: {e}")))
 }
 
 /// Lightweight, cloneable handle for proxy registry operations.
