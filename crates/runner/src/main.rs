@@ -9,9 +9,9 @@ mod lock;
 mod paths;
 mod proxy;
 mod rootfs;
-mod runner;
 mod setup;
 mod snapshot;
+mod start;
 mod status;
 mod types;
 
@@ -55,7 +55,7 @@ enum Command {
     /// Run a single bash command in a VM for benchmarking
     Benchmark(benchmark::BenchmarkArgs),
     /// Start the runner and poll for jobs (must run setup + build first)
-    Start(Box<runner::StartArgs>),
+    Start(Box<start::StartArgs>),
 }
 
 #[tokio::main]
@@ -79,7 +79,7 @@ async fn main() -> ExitCode {
             .await
             .map(|_| ExitCode::SUCCESS),
         Command::Benchmark(args) => benchmark::run_benchmark(args).await,
-        Command::Start(args) => runner::run_start(*args).await.map(|()| ExitCode::SUCCESS),
+        Command::Start(args) => start::run_start(*args).await.map(|()| ExitCode::SUCCESS),
     };
 
     match result {
