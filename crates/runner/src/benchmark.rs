@@ -50,6 +50,7 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
         ca_dir: runner_config.ca_dir.clone(),
         addon_path: runner_paths.mitm_addon(),
         registry_path: runner_paths.proxy_registry(),
+        registry_lock_path: runner_paths.proxy_registry_lock(),
         api_url: runner_config.server.as_ref().map(|s| s.url.clone()),
     })
     .await?;

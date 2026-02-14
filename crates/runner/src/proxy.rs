@@ -81,6 +81,8 @@ pub struct ProxyConfig {
     pub addon_path: PathBuf,
     /// Path where the proxy registry JSON will be written.
     pub registry_path: PathBuf,
+    /// Lock file path for coordinating concurrent registry access.
+    pub registry_lock_path: PathBuf,
     /// VM0 API URL passed to the addon (optional).
     pub api_url: Option<String>,
 }
@@ -181,48 +183,31 @@ impl MitmProxy {
         self.port
     }
 
-    /// Register a VM in the proxy registry so the addon can identify its traffic.
+    /// Create a cloneable handle for registry operations (register/unregister VMs).
     ///
-    /// Note: the read-modify-write is not concurrent-safe. Current usage is
-    /// single-sandbox (benchmark). If reused for multi-sandbox, add file locking.
+    /// The handle is `Clone + Send + Sync` and uses file locking for concurrent
+    /// access, making it safe to share across executor tasks.
+    pub fn registry_handle(&self) -> ProxyRegistryHandle {
+        ProxyRegistryHandle {
+            registry_path: self.config.registry_path.clone(),
+            lock_path: self.config.registry_lock_path.clone(),
+        }
+    }
+
+    /// Register a VM in the proxy registry so the addon can identify its traffic.
     pub async fn register_vm(
         &self,
         source_ip: &str,
         registration: &VmRegistration<'_>,
     ) -> RunnerResult<()> {
-        let mut registry = read_registry(&self.config.registry_path).await?;
-        let now = chrono::Utc::now().timestamp_millis();
-        registry.vms.insert(
-            source_ip.to_string(),
-            VmEntry {
-                run_id: registration.run_id.to_string(),
-                sandbox_token: registration.sandbox_token.to_string(),
-                registered_at: now,
-                firewall_rules: registration.firewall_rules.to_vec(),
-                mitm_enabled: registration.mitm_enabled,
-                seal_secrets_enabled: registration.seal_secrets_enabled,
-            },
-        );
-        registry.updated_at = now;
-        write_registry(&self.config.registry_path, &registry).await?;
-        info!(
-            source_ip,
-            run_id = registration.run_id,
-            "registered VM in proxy registry"
-        );
-        Ok(())
+        self.registry_handle()
+            .register_vm(source_ip, registration)
+            .await
     }
 
     /// Unregister a VM from the proxy registry.
-    ///
-    /// Note: same concurrency caveat as [`Self::register_vm`].
     pub async fn unregister_vm(&self, source_ip: &str) -> RunnerResult<()> {
-        let mut registry = read_registry(&self.config.registry_path).await?;
-        registry.vms.remove(source_ip);
-        registry.updated_at = chrono::Utc::now().timestamp_millis();
-        write_registry(&self.config.registry_path, &registry).await?;
-        info!(source_ip, "unregistered VM from proxy registry");
-        Ok(())
+        self.registry_handle().unregister_vm(source_ip).await
     }
 
     /// Gracefully stop mitmdump (SIGTERM → timeout → SIGKILL).
@@ -327,6 +312,61 @@ async fn write_registry(path: &std::path::Path, value: &ProxyRegistry) -> Runner
     tokio::fs::write(path, content)
         .await
         .map_err(|e| RunnerError::Internal(format!("write registry: {e}")))
+}
+
+/// Lightweight, cloneable handle for proxy registry operations.
+///
+/// Uses file locking (`flock`) to ensure concurrent register/unregister calls
+/// from multiple executor tasks don't corrupt the registry JSON.
+#[derive(Clone)]
+pub struct ProxyRegistryHandle {
+    registry_path: PathBuf,
+    lock_path: PathBuf,
+}
+
+impl ProxyRegistryHandle {
+    /// Register a VM in the proxy registry.
+    pub async fn register_vm(
+        &self,
+        source_ip: &str,
+        registration: &VmRegistration<'_>,
+    ) -> RunnerResult<()> {
+        let _guard = crate::lock::acquire(self.lock_path.clone()).await?;
+
+        let mut registry = read_registry(&self.registry_path).await?;
+        let now = chrono::Utc::now().timestamp_millis();
+        registry.vms.insert(
+            source_ip.to_string(),
+            VmEntry {
+                run_id: registration.run_id.to_string(),
+                sandbox_token: registration.sandbox_token.to_string(),
+                registered_at: now,
+                firewall_rules: registration.firewall_rules.to_vec(),
+                mitm_enabled: registration.mitm_enabled,
+                seal_secrets_enabled: registration.seal_secrets_enabled,
+            },
+        );
+        registry.updated_at = now;
+        write_registry(&self.registry_path, &registry).await?;
+        info!(
+            source_ip,
+            run_id = registration.run_id,
+            "registered VM in proxy registry"
+        );
+        Ok(())
+    }
+
+    /// Unregister a VM from the proxy registry.
+    pub async fn unregister_vm(&self, source_ip: &str) -> RunnerResult<()> {
+        let _guard = crate::lock::acquire(self.lock_path.clone()).await?;
+
+        let mut registry = read_registry(&self.registry_path).await?;
+        registry.vms.remove(source_ip);
+        registry.updated_at = chrono::Utc::now().timestamp_millis();
+        write_registry(&self.registry_path, &registry).await?;
+        info!(source_ip, "unregistered VM from proxy registry");
+        Ok(())
+    }
 }
 
 /// Send SIGTERM to a child process.
@@ -456,6 +496,89 @@ mod tests {
         assert!(matches!(rules[1].action, Some(FirewallAction::Deny)));
         assert!(matches!(rules[2].terminal, Some(FirewallAction::Deny)));
         assert!(rules[2].action.is_none());
+    }
+
+    #[tokio::test]
+    async fn registry_handle_register_and_unregister() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry_path = dir.path().join("proxy-registry.json");
+        let lock_path = dir.path().join("proxy-registry.json.lock");
+        let empty = ProxyRegistry {
+            vms: HashMap::new(),
+            updated_at: 0,
+        };
+        write_registry(&registry_path, &empty).await.unwrap();
+
+        let handle = ProxyRegistryHandle {
+            registry_path: registry_path.clone(),
+            lock_path,
+        };
+
+        // Register via handle.
+        let registration = VmRegistration {
+            run_id: "run-1",
+            sandbox_token: "tok-1",
+            firewall_rules: &[],
+            mitm_enabled: true,
+            seal_secrets_enabled: false,
+        };
+        handle
+            .register_vm("10.200.0.2", &registration)
+            .await
+            .unwrap();
+
+        let loaded = read_registry(&registry_path).await.unwrap();
+        let vm = loaded.vms.get("10.200.0.2").unwrap();
+        assert_eq!(vm.run_id, "run-1");
+        assert!(vm.mitm_enabled);
+
+        // Unregister via handle.
+        handle.unregister_vm("10.200.0.2").await.unwrap();
+
+        let loaded = read_registry(&registry_path).await.unwrap();
+        assert!(!loaded.vms.contains_key("10.200.0.2"));
+    }
+
+    #[tokio::test]
+    async fn registry_handle_concurrent_access() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry_path = dir.path().join("proxy-registry.json");
+        let lock_path = dir.path().join("proxy-registry.json.lock");
+        let empty = ProxyRegistry {
+            vms: HashMap::new(),
+            updated_at: 0,
+        };
+        write_registry(&registry_path, &empty).await.unwrap();
+
+        let handle = ProxyRegistryHandle {
+            registry_path: registry_path.clone(),
+            lock_path,
+        };
+
+        // Spawn 10 concurrent register tasks.
+        let mut tasks = tokio::task::JoinSet::new();
+        for i in 0..10 {
+            let h = handle.clone();
+            let ip = format!("10.200.0.{}", i + 2);
+            let run_id_owned = format!("run-{i}");
+            tasks.spawn(async move {
+                let registration = VmRegistration {
+                    run_id: &run_id_owned,
+                    sandbox_token: "",
+                    firewall_rules: &[],
+                    mitm_enabled: false,
+                    seal_secrets_enabled: false,
+                };
+                h.register_vm(&ip, &registration).await.unwrap();
+            });
+        }
+        while let Some(result) = tasks.join_next().await {
+            result.unwrap();
+        }
+
+        // All 10 VMs should be registered (no lost updates).
+        let loaded = read_registry(&registry_path).await.unwrap();
+        assert_eq!(loaded.vms.len(), 10);
     }
 
     #[tokio::test]

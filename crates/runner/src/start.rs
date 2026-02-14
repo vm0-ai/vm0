@@ -7,13 +7,15 @@ use sandbox::SandboxFactory;
 use sandbox_fc::FirecrackerFactory;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::api::ApiClient;
 use crate::config;
+use crate::deps;
 use crate::error::{RunnerError, RunnerResult};
 use crate::executor::{self, ExecutorConfig};
-use crate::paths::RunnerPaths;
+use crate::paths::{HomePaths, RunnerPaths};
+use crate::proxy::{self, ProxyRegistryHandle};
 use crate::status::{RunnerMode, StatusTracker};
 
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
@@ -67,13 +69,30 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
                 runner_config.base_dir.display()
             ))
         })?;
-    let fc_config = runner_config.firecracker_config();
+
+    // Start proxy before factory so proxy_port is available for netns pool.
+    let home = HomePaths::new()?;
+    let paths = RunnerPaths::new(runner_config.base_dir.clone());
+    let mut mitm = proxy::MitmProxy::new(proxy::ProxyConfig {
+        mitmdump_bin: home.mitmdump_bin(deps::MITMPROXY_VERSION),
+        ca_dir: runner_config.ca_dir.clone(),
+        addon_path: paths.mitm_addon(),
+        registry_path: paths.proxy_registry(),
+        registry_lock_path: paths.proxy_registry_lock(),
+        api_url: Some(server.url.clone()),
+    })
+    .await?;
+    mitm.start().await?;
+    info!(port = mitm.port(), "proxy ready");
+
+    let mut fc_config = runner_config.firecracker_config();
+    fc_config.proxy_port = Some(mitm.port());
+    let registry_handle = mitm.registry_handle();
 
     // Destructure — no clones needed
     let config::RunnerConfig {
         name,
         group,
-        base_dir,
         sandbox,
         ..
     } = runner_config;
@@ -87,7 +106,6 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         token,
     } = server;
 
-    let paths = RunnerPaths::new(base_dir);
     let status = Arc::new(StatusTracker::new(paths.status()));
 
     let config = RunConfig {
@@ -100,9 +118,17 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         vcpu,
         memory_mb,
         status,
+        registry: registry_handle,
     };
 
-    run(config).await
+    let result = run(config).await;
+
+    // Stop proxy after all jobs have drained and factory is shut down.
+    if let Err(e) = mitm.stop().await {
+        warn!(error = %e, "proxy stop failed");
+    }
+
+    result
 }
 
 struct RunConfig {
@@ -115,6 +141,7 @@ struct RunConfig {
     vcpu: u32,
     memory_mb: u32,
     status: Arc<StatusTracker>,
+    registry: ProxyRegistryHandle,
 }
 
 async fn run(config: RunConfig) -> RunnerResult<()> {
@@ -132,6 +159,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         vcpu: config.vcpu,
         memory_mb: config.memory_mb,
         is_snapshot,
+        registry: config.registry.clone(),
     });
 
     config.status.write_initial().await;
