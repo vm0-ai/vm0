@@ -545,4 +545,55 @@ mod tests {
         // User environment TZ takes precedence
         assert_eq!(env.get("TZ").unwrap(), "America/New_York");
     }
+
+    /// Verify ExecutionContext deserializes from JSON matching the TS schema,
+    /// including the snake_case `experimentalFirewall` inner fields.
+    #[test]
+    fn deserialize_execution_context_with_firewall() {
+        let json = r#"{
+            "runId": "00000000-0000-0000-0000-000000000001",
+            "prompt": "hello",
+            "agentComposeVersionId": null,
+            "vars": null,
+            "secretNames": null,
+            "checkpointId": null,
+            "sandboxToken": "tok",
+            "workingDir": "/workspace",
+            "storageManifest": null,
+            "environment": null,
+            "resumeSession": null,
+            "secretValues": null,
+            "cliAgentType": "claude-code",
+            "experimentalFirewall": {
+                "enabled": true,
+                "rules": [
+                    {"domain": "*.example.com", "action": "ALLOW"},
+                    {"final": "DENY"}
+                ],
+                "experimental_mitm": true,
+                "experimental_seal_secrets": false
+            },
+            "debugNoMockClaude": true,
+            "apiStartTime": 1700000000.5,
+            "userTimezone": "Asia/Shanghai"
+        }"#;
+
+        let ctx: ExecutionContext = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            ctx.run_id.to_string(),
+            "00000000-0000-0000-0000-000000000001"
+        );
+        assert_eq!(ctx.prompt, "hello");
+        assert_eq!(ctx.cli_agent_type, "claude-code");
+
+        let fw = ctx.experimental_firewall.as_ref().unwrap();
+        assert!(fw.enabled);
+        let rules = fw.rules.as_ref().unwrap();
+        assert_eq!(rules.len(), 2);
+        assert_eq!(fw.experimental_mitm, Some(true));
+        assert_eq!(fw.experimental_seal_secrets, Some(false));
+
+        assert_eq!(ctx.api_start_time, Some(1700000000.5));
+        assert_eq!(ctx.user_timezone.as_deref(), Some("Asia/Shanghai"));
+    }
 }
