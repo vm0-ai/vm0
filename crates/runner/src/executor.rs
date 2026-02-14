@@ -72,6 +72,7 @@ async fn execute_inner(
             cpu_count: config.vcpu,
             memory_mb: config.memory_mb,
         },
+        use_proxy: true,
     };
 
     // Create and start sandbox

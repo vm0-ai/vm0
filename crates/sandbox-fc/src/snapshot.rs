@@ -152,7 +152,7 @@ async fn run_snapshot_workflow(
     netns_pool: &mut NetnsPool,
 ) -> Result<SnapshotConfig, SnapshotError> {
     let network = netns_pool
-        .acquire()
+        .acquire(false)
         .await
         .map_err(|e| SnapshotError::Setup(format!("acquire netns: {e}")))?;
 
