@@ -41,6 +41,7 @@ function initEnv() {
         .int()
         .positive()
         .default(10000),
+      CLERK_ENABLED: z.enum(["true", "false"]).optional(),
       CLERK_SECRET_KEY: z.string().min(1).optional(),
       E2B_API_KEY: z.string().min(1).optional(),
       VM0_API_URL: z.string().url().optional(),
@@ -107,6 +108,7 @@ function initEnv() {
       VERCEL_AUTOMATION_BYPASS_SECRET: z.string().optional(),
     },
     client: {
+      NEXT_PUBLIC_CLERK_ENABLED: z.enum(["true", "false"]).optional(),
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1).optional(),
       NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
       // Blog/content config
@@ -122,6 +124,7 @@ function initEnv() {
       DB_POOL_MAX: process.env.DB_POOL_MAX,
       DB_POOL_IDLE_TIMEOUT_MS: process.env.DB_POOL_IDLE_TIMEOUT_MS,
       DB_POOL_CONNECT_TIMEOUT_MS: process.env.DB_POOL_CONNECT_TIMEOUT_MS,
+      CLERK_ENABLED: process.env.CLERK_ENABLED,
       CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
 
       E2B_API_KEY: process.env.E2B_API_KEY,
@@ -178,6 +181,7 @@ function initEnv() {
       VERCEL_AUTOMATION_BYPASS_SECRET:
         process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
 
+      NEXT_PUBLIC_CLERK_ENABLED: process.env.NEXT_PUBLIC_CLERK_ENABLED,
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
         process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
       NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
@@ -193,6 +197,35 @@ function initEnv() {
 
   // Post-validation conditional checks
   // These validate relationships between environment variables after schema parsing
+
+  // Clerk integration validation
+  const clerkEnabledServer = env.CLERK_ENABLED === "true";
+  const clerkEnabledClient = env.NEXT_PUBLIC_CLERK_ENABLED === "true";
+
+  // Consistency check: Server and client Clerk flags should match
+  if (clerkEnabledServer !== clerkEnabledClient) {
+    throw new Error(
+      "CLERK_ENABLED and NEXT_PUBLIC_CLERK_ENABLED must have the same value. " +
+        `Currently: CLERK_ENABLED=${env.CLERK_ENABLED}, NEXT_PUBLIC_CLERK_ENABLED=${env.NEXT_PUBLIC_CLERK_ENABLED}`,
+    );
+  }
+
+  if (clerkEnabledServer) {
+    if (!env.CLERK_SECRET_KEY) {
+      throw new Error(
+        "CLERK_SECRET_KEY is required when CLERK_ENABLED=true. " +
+          "Set CLERK_SECRET_KEY or remove CLERK_ENABLED to use local auth.",
+      );
+    }
+    if (!env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
+      throw new Error(
+        "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is required when CLERK_ENABLED=true. " +
+          "Set NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY or remove CLERK_ENABLED to use local auth.",
+      );
+    }
+  }
+
+  // Slack integration validation
   const slackEnabled = env.SLACK_INTEGRATION_ENABLED === "true";
   if (slackEnabled) {
     if (!env.SLACK_CLIENT_ID) {
