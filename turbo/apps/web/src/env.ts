@@ -41,6 +41,8 @@ function initEnv() {
         .int()
         .positive()
         .default(10000),
+      // Database driver selection (defaults to 'pg' for standard Postgres, 'neon' for Neon serverless)
+      DB_DRIVER: z.enum(["pg", "neon"]).optional(),
       CLERK_ENABLED: z.enum(["true", "false"]).optional(),
       CLERK_SECRET_KEY: z.string().min(1).optional(),
       E2B_API_KEY: z.string().min(1).optional(),
@@ -124,6 +126,7 @@ function initEnv() {
       DB_POOL_MAX: process.env.DB_POOL_MAX,
       DB_POOL_IDLE_TIMEOUT_MS: process.env.DB_POOL_IDLE_TIMEOUT_MS,
       DB_POOL_CONNECT_TIMEOUT_MS: process.env.DB_POOL_CONNECT_TIMEOUT_MS,
+      DB_DRIVER: process.env.DB_DRIVER,
       CLERK_ENABLED: process.env.CLERK_ENABLED,
       CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
 
