@@ -30,6 +30,7 @@ jobs:
       sandbox-changed: ${{ steps.detect-docker.outputs.sandbox-changed }}
       docker-web-changed: ${{ steps.detect-docker.outputs.docker-web-changed }}
       docker-platform-changed: ${{ steps.detect-docker.outputs.docker-platform-changed }}
+      migration-changed: ${{ steps.detect-migration.outputs.migration-changed }}
       cli-e2e-parallel-matrix: ${{ steps.cli-e2e-matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v6
@@ -139,6 +140,27 @@ jobs:
           else
             echo "No Docker sandbox file changes"
             echo "sandbox-changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Detect migration/schema changes
+        id: detect-migration
+        run: |
+          # Determine base ref based on event type
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_REF=$(git merge-base ${{ github.event.pull_request.base.sha }} HEAD)
+          elif [ "${{ github.event_name }}" = "merge_group" ]; then
+            BASE_REF="${{ github.event.merge_group.base_sha }}"
+          else
+            BASE_REF="HEAD^"
+          fi
+
+          # Check if migration or schema files changed
+          if git diff --name-only "$BASE_REF" HEAD | grep -qE "^turbo/apps/web/src/db/(migrations|schema)/"; then
+            echo "Migration or schema changes detected"
+            echo "migration-changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No migration or schema changes"
+            echo "migration-changed=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Set job-ref
@@ -345,6 +367,7 @@ jobs:
 
   # Test jobs - split into 4 parallel jobs by project
   test-web:
+    needs: prepare
     runs-on: ubuntu-latest
     # Skip for release-please commits (only version bumps and changelogs)
     if: "${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release') }}"
@@ -376,6 +399,32 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
         run: pnpm vitest run --project=web
+
+  test-migrate:
+    needs: prepare
+    runs-on: ubuntu-latest
+    # Only run when migration or schema files changed
+    if: needs.prepare.outputs.migration-changed == 'true'
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
+    services:
+      postgres:
+        image: postgres:17-alpine
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+      - name: Test Migration Consistency
+        working-directory: turbo/apps/web
+        env:
+          DATABASE_URL: postgresql://postgres@postgres:5432/postgres
+        run: pnpm tsx scripts/test-migration-consistency-schema.ts
 
   test-cli:
     runs-on: ubuntu-latest

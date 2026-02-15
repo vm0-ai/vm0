@@ -35,3 +35,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .env
+
+# migration testing artifacts
+.schema-*.sql
+.schema-diff.txt
+.migrations-backup/

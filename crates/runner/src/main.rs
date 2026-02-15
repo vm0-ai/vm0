@@ -1,6 +1,5 @@
 mod api;
-mod benchmark;
-mod build;
+mod cmd;
 mod config;
 mod deps;
 mod error;
@@ -8,10 +7,6 @@ mod executor;
 mod lock;
 mod paths;
 mod proxy;
-mod rootfs;
-mod setup;
-mod snapshot;
-mod start;
 mod status;
 mod types;
 
@@ -47,15 +42,15 @@ enum Command {
     /// Download Firecracker, kernel, and verify host prerequisites
     Setup,
     /// Build rootfs and snapshot in one step
-    Build(build::BuildArgs),
+    Build(cmd::BuildArgs),
     /// Build squashfs rootfs only (without snapshot)
-    Rootfs(rootfs::RootfsArgs),
+    Rootfs(cmd::RootfsArgs),
     /// Create a Firecracker VM snapshot for fast sandbox boot
-    Snapshot(snapshot::SnapshotArgs),
+    Snapshot(cmd::SnapshotArgs),
     /// Run a single bash command in a VM for benchmarking
-    Benchmark(benchmark::BenchmarkArgs),
+    Benchmark(cmd::BenchmarkArgs),
     /// Start the runner and poll for jobs (must run setup + build first)
-    Start(Box<start::StartArgs>),
+    Start(Box<cmd::StartArgs>),
 }
 
 #[tokio::main]
@@ -72,14 +67,12 @@ async fn main() -> ExitCode {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        Command::Setup => setup::run_setup().await.map(|()| ExitCode::SUCCESS),
-        Command::Build(args) => build::run_build(args).await.map(|()| ExitCode::SUCCESS),
-        Command::Rootfs(args) => rootfs::run_rootfs(args).await.map(|_| ExitCode::SUCCESS),
-        Command::Snapshot(args) => snapshot::run_snapshot(args)
-            .await
-            .map(|_| ExitCode::SUCCESS),
-        Command::Benchmark(args) => benchmark::run_benchmark(args).await,
-        Command::Start(args) => start::run_start(*args).await.map(|()| ExitCode::SUCCESS),
+        Command::Setup => cmd::run_setup().await.map(|()| ExitCode::SUCCESS),
+        Command::Build(args) => cmd::run_build(args).await.map(|()| ExitCode::SUCCESS),
+        Command::Rootfs(args) => cmd::run_rootfs(args).await.map(|_| ExitCode::SUCCESS),
+        Command::Snapshot(args) => cmd::run_snapshot(args).await.map(|_| ExitCode::SUCCESS),
+        Command::Benchmark(args) => cmd::run_benchmark(args).await,
+        Command::Start(args) => cmd::run_start(*args).await.map(|()| ExitCode::SUCCESS),
     };
 
     match result {

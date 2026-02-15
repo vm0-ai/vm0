@@ -5,7 +5,9 @@ import {
   varchar,
   timestamp,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { scopes } from "./scope";
 
 /**
@@ -37,16 +39,23 @@ export const images = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => ({
-    // Note: Unique indexes for versioning are created via SQL migration (0041)
-    // - idx_images_scope_alias_version: unique on (scope_id, alias, version_id) WHERE version_id IS NOT NULL
-    // - idx_images_scope_alias_legacy: unique on (scope_id, alias) WHERE version_id IS NULL
-    scopeIdx: index("idx_images_scope").on(table.scopeId),
-    latestLookupIdx: index("idx_images_latest_lookup").on(
+  (table) => [
+    // Scope index for listing images
+    index("idx_images_scope").on(table.scopeId),
+    // Latest lookup index with time-based sorting
+    index("idx_images_latest_lookup").on(
       table.scopeId,
       table.alias,
       table.status,
-      table.createdAt,
+      table.createdAt.desc(),
     ),
-  }),
+    // Unique partial index for versioned images
+    uniqueIndex("idx_images_scope_alias_version")
+      .on(table.scopeId, table.alias, table.versionId)
+      .where(sql`version_id IS NOT NULL`),
+    // Unique partial index for legacy images (no version_id)
+    uniqueIndex("idx_images_scope_alias_legacy")
+      .on(table.scopeId, table.alias)
+      .where(sql`version_id IS NULL`),
+  ],
 );

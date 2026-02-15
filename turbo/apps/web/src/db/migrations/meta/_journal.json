@@ -617,6 +617,13 @@
       "when": 1771200000000,
       "tag": "0087_add_notify_slack",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1771300000000,
+      "tag": "0088_align_schema_with_drizzle",
+      "breakpoints": true
     }
   ]
 }

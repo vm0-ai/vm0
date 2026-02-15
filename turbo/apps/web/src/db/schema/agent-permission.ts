@@ -7,6 +7,7 @@ import {
   unique,
   index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { agentComposes } from "./agent-compose";
 
 /**
@@ -39,6 +40,9 @@ export const agentPermissions = pgTable(
       table.granteeEmail,
     ),
     index("idx_agent_permissions_compose").on(table.agentComposeId),
-    index("idx_agent_permissions_email").on(table.granteeEmail),
+    // Partial index for email-based queries with time-based sorting
+    index("idx_agent_permissions_email")
+      .on(table.granteeEmail.desc(), table.createdAt.desc())
+      .where(sql`grantee_email IS NOT NULL`),
   ],
 );

@@ -6,6 +6,7 @@ import {
   jsonb,
   index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { agentRuns } from "./agent-run";
 
 /**
@@ -38,7 +39,7 @@ export const runnerJobQueue = pgTable(
     // Index for polling unclaimed jobs by group
     index("runner_job_queue_group_unclaimed_idx")
       .on(table.runnerGroup)
-      .where("claimed_at IS NULL" as never),
+      .where(sql`claimed_at IS NULL`),
     // Index for TTL cleanup
     index("runner_job_queue_expires_at_idx").on(table.expiresAt),
   ],

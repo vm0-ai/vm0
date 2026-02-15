@@ -1,5 +1,7 @@
 use clap::Args;
 
+use super::rootfs::RootfsArgs;
+use super::snapshot::SnapshotArgs;
 use crate::config::{
     self, DEFAULT_MAX_CONCURRENT, DEFAULT_MEMORY_MB, DEFAULT_VCPU, FirecrackerConfig, RunnerConfig,
     SandboxConfig, ServerConfig,
@@ -7,8 +9,6 @@ use crate::config::{
 use crate::deps::{FIRECRACKER_VERSION, KERNEL_VERSION};
 use crate::error::RunnerResult;
 use crate::paths::{HomePaths, RootfsPaths};
-use crate::rootfs::RootfsArgs;
-use crate::snapshot::SnapshotArgs;
 
 #[derive(Args)]
 pub struct BuildArgs {
@@ -44,8 +44,8 @@ pub struct BuildArgs {
 }
 
 pub async fn run_build(args: BuildArgs) -> RunnerResult<()> {
-    let rootfs_hash = crate::rootfs::run_rootfs(args.rootfs).await?;
-    let snapshot_paths = crate::snapshot::run_snapshot(SnapshotArgs {
+    let rootfs_hash = super::rootfs::run_rootfs(args.rootfs).await?;
+    let snapshot_paths = super::snapshot::run_snapshot(SnapshotArgs {
         rootfs_hash: rootfs_hash.clone(),
         vcpu: args.vcpu,
         memory_mb: args.memory_mb,

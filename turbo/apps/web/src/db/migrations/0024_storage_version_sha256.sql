@@ -8,8 +8,9 @@ ALTER TABLE "storages" DROP CONSTRAINT IF EXISTS "storages_head_version_id_stora
 -- Drop the primary key constraint (named volume_versions_pkey from original table creation)
 ALTER TABLE "storage_versions" DROP CONSTRAINT IF EXISTS "volume_versions_pkey";
 
--- Change the column type and re-add primary key in one step
+-- Change the column type and drop the default (content-addressable, no auto-generation)
 ALTER TABLE "storage_versions" ALTER COLUMN "id" TYPE varchar(64) USING id::text;
+ALTER TABLE "storage_versions" ALTER COLUMN "id" DROP DEFAULT;
 ALTER TABLE "storage_versions" ADD CONSTRAINT "storage_versions_pkey" PRIMARY KEY ("id");
 
 -- Step 3: Alter storages.head_version_id from uuid to varchar(64)
