@@ -87,17 +87,11 @@ def get_vm_info(client_ip: str) -> dict | None:
     return registry.get(client_ip)
 
 
-def get_network_log_path(run_id: str) -> str:
-    """Get the network log file path for a run."""
-    return f"/tmp/vm0-network-{run_id}.jsonl"
-
-
-def log_network_entry(run_id: str, entry: dict) -> None:
+def log_network_entry(vm_info: dict, entry: dict) -> None:
     """Write a network log entry to the per-run JSONL file."""
-    if not run_id:
+    log_path = vm_info.get("networkLogPath")
+    if not log_path:
         return
-
-    log_path = get_network_log_path(run_id)
     try:
         fd = os.open(log_path, os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o644)
         try:
@@ -250,7 +244,7 @@ def tls_clienthello(data: tls.ClientHelloData) -> None:
         sni_lower = sni.lower()
         if api_hostname and (sni_lower == api_hostname or sni_lower.endswith(f".{api_hostname}")):
             ctx.log.info(f"[{run_id}] SNI-only auto-allow VM0 API: {sni}")
-            log_network_entry(run_id, {
+            log_network_entry(vm_info, {
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
                 "mode": "sni",
                 "action": "ALLOW",
@@ -264,7 +258,7 @@ def tls_clienthello(data: tls.ClientHelloData) -> None:
     if not sni:
         # No SNI, can't determine target - block for security
         ctx.log.warn(f"[{run_id}] SNI-only: No SNI in ClientHello, blocking")
-        log_network_entry(run_id, {
+        log_network_entry(vm_info, {
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
             "mode": "sni",
             "action": "DENY",
@@ -280,7 +274,7 @@ def tls_clienthello(data: tls.ClientHelloData) -> None:
     action, matched_rule = evaluate_rules(rules, sni)
 
     # Log the connection
-    log_network_entry(run_id, {
+    log_network_entry(vm_info, {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
         "mode": "sni",
         "action": action,
@@ -338,6 +332,7 @@ def request(flow: http.HTTPFlow) -> None:
     flow.metadata["vm_run_id"] = run_id
     flow.metadata["vm_client_ip"] = client_ip
     flow.metadata["vm_mitm_enabled"] = mitm_enabled
+    flow.metadata["vm_network_log_path"] = vm_info.get("networkLogPath", "")
 
     # Get target hostname
     hostname = flow.request.pretty_host.lower()
@@ -471,7 +466,8 @@ def response(flow: http.HTTPFlow) -> None:
         port = flow.request.port
 
     # Log network entry for this run
-    if run_id:
+    network_log_path = flow.metadata.get("vm_network_log_path", "")
+    if run_id and network_log_path:
         log_entry = {
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
             "mode": "mitm" if mitm_enabled else "sni",
@@ -493,7 +489,7 @@ def response(flow: http.HTTPFlow) -> None:
                 "response_size": response_size,
             })
 
-        log_network_entry(run_id, log_entry)
+        log_network_entry({"networkLogPath": network_log_path}, log_entry)
 
     # Log errors to mitmproxy console
     if flow.response and flow.response.status_code >= 400:

@@ -6,6 +6,7 @@ mod error;
 mod executor;
 mod http;
 mod lock;
+mod network_logs;
 mod paths;
 mod proxy;
 mod status;

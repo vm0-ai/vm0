@@ -24,6 +24,7 @@ struct VmEntry {
     firewall_rules: Vec<FirewallRule>,
     mitm_enabled: bool,
     seal_secrets_enabled: bool,
+    network_log_path: String,
 }
 
 /// Firewall rule for network filtering (first-match-wins).
@@ -60,6 +61,7 @@ pub struct VmRegistration<'a> {
     pub firewall_rules: &'a [FirewallRule],
     pub mitm_enabled: bool,
     pub seal_secrets_enabled: bool,
+    pub network_log_path: &'a std::path::Path,
 }
 
 /// Embedded mitmproxy addon script (compiled into the binary).
@@ -350,6 +352,7 @@ impl ProxyRegistryHandle {
                 firewall_rules: registration.firewall_rules.to_vec(),
                 mitm_enabled: registration.mitm_enabled,
                 seal_secrets_enabled: registration.seal_secrets_enabled,
+                network_log_path: registration.network_log_path.to_string_lossy().into_owned(),
             },
         );
         registry.updated_at = now;
@@ -424,6 +427,7 @@ mod tests {
                 firewall_rules: Vec::new(),
                 mitm_enabled: true,
                 seal_secrets_enabled: false,
+                network_log_path: "/tmp/network-test-run.jsonl".to_string(),
             },
         );
         write_registry(&registry_path, &registry).await.unwrap();
@@ -527,6 +531,7 @@ mod tests {
             firewall_rules: &[],
             mitm_enabled: true,
             seal_secrets_enabled: false,
+            network_log_path: std::path::Path::new("/tmp/network-run-1.jsonl"),
         };
         handle
             .register_vm("10.200.0.2", &registration)
@@ -545,6 +550,7 @@ mod tests {
             firewall_rules: &[],
             mitm_enabled: false,
             seal_secrets_enabled: true,
+            network_log_path: std::path::Path::new("/tmp/network-run-2.jsonl"),
         };
         handle
             .register_vm("10.200.0.2", &registration2)
@@ -589,12 +595,15 @@ mod tests {
             let ip = format!("10.200.0.{}", i + 2);
             let run_id_owned = format!("run-{i}");
             tasks.spawn(async move {
+                let log_path =
+                    std::path::PathBuf::from(format!("/tmp/network-{run_id_owned}.jsonl"));
                 let registration = VmRegistration {
                     run_id: &run_id_owned,
                     sandbox_token: "",
                     firewall_rules: &[],
                     mitm_enabled: false,
                     seal_secrets_enabled: false,
+                    network_log_path: &log_path,
                 };
                 h.register_vm(&ip, &registration).await.unwrap();
             });
@@ -639,6 +648,7 @@ mod tests {
                 ],
                 mitm_enabled: true,
                 seal_secrets_enabled: true,
+                network_log_path: "/tmp/network-run-1.jsonl".to_string(),
             },
         );
         write_registry(&registry_path, &registry).await.unwrap();

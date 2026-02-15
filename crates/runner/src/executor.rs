@@ -13,7 +13,7 @@ const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
 use crate::api::ApiClient;
 use crate::error::RunnerResult;
 use crate::http::HttpClient;
-use crate::paths::guest;
+use crate::paths::{LogPaths, guest};
 use crate::proxy::{self, ProxyRegistryHandle};
 use crate::telemetry::JobTelemetry;
 use crate::types::ExecutionContext;
@@ -26,6 +26,7 @@ pub struct ExecutorConfig {
     pub is_snapshot: bool,
     pub registry: ProxyRegistryHandle,
     pub http: HttpClient,
+    pub log_paths: LogPaths,
 }
 
 /// Execute a single job inside a Firecracker VM.
@@ -122,6 +123,7 @@ async fn execute_inner(
         .experimental_firewall
         .as_ref()
         .is_some_and(|fw| fw.enabled);
+    let network_log_path = config.log_paths.network_log(context.run_id);
 
     if let Some(fw) = &context.experimental_firewall
         && fw.enabled
@@ -133,6 +135,7 @@ async fn execute_inner(
             firewall_rules: fw.rules.as_deref().unwrap_or(&[]),
             mitm_enabled: fw.experimental_mitm.unwrap_or(false),
             seal_secrets_enabled: fw.experimental_seal_secrets.unwrap_or(false),
+            network_log_path: &network_log_path,
         };
         if let Err(e) = config.registry.register_vm(&source_ip, &registration).await {
             warn!(run_id = %context.run_id, error = %e, "failed to register VM in proxy");
@@ -147,6 +150,17 @@ async fn execute_inner(
 
     if firewall_enabled && let Err(e) = config.registry.unregister_vm(&source_ip).await {
         warn!(run_id = %context.run_id, error = %e, "failed to unregister VM from proxy");
+    }
+
+    // Upload network logs (after unregister ensures no more writes)
+    if firewall_enabled {
+        crate::network_logs::upload_network_logs(
+            &config.http,
+            context.run_id,
+            &context.sandbox_token,
+            &network_log_path,
+        )
+        .await;
     }
 
     // Best-effort stop

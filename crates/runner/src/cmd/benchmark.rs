@@ -156,6 +156,7 @@ async fn run_sandbox(
 
     let source_ip = sandbox.source_ip().to_string();
     let run_id = sandbox.id().to_string();
+    let network_log_path = std::path::PathBuf::from("/dev/null");
     let registration = proxy::VmRegistration {
         run_id: &run_id,
         sandbox_token: "",
@@ -163,6 +164,7 @@ async fn run_sandbox(
         // mitm rewrites requests to the API proxy endpoint; benchmark doesn't need that.
         mitm_enabled: false,
         seal_secrets_enabled: false,
+        network_log_path: &network_log_path,
     };
     if let Err(e) = mitm.register_vm(&source_ip, &registration).await {
         warn!(error = %e, "failed to register VM in proxy");
