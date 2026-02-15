@@ -22,7 +22,7 @@ const NANGO_INTEGRATION_IDS: Record<string, string> = {
 /**
  * Get Nango integration ID for a connector type
  */
-function getNangoIntegrationId(type: string): string {
+export function getNangoIntegrationId(type: string): string {
   return NANGO_INTEGRATION_IDS[type] ?? type;
 }
 
