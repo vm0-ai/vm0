@@ -1,9 +1,94 @@
 {
-  "id": "937efd0d-cbc8-4745-a168-46cde0dd864c",
-  "prevId": "c7c5b88e-18de-4efd-a588-2fb56f42e5cf",
+  "id": "b52d7997-5517-4d4c-85ae-92947e50d1dd",
+  "prevId": "9b266574-0faa-48fe-a7ef-d238126bd06b",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
+    "public.users": {
+      "name": "users",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false
+    },
+    "public.api_keys": {
+      "name": "api_keys",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "key_hash": {
+          "name": "key_hash",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "last_used_at": {
+          "name": "last_used_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "api_keys_key_hash_unique": {
+          "columns": ["key_hash"],
+          "nullsNotDistinct": false,
+          "name": "api_keys_key_hash_unique"
+        }
+      },
+      "checkConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false
+    },
     "public.agent_configs": {
       "name": "agent_configs",
       "schema": "",
@@ -48,6 +133,7 @@
           "name": "agent_configs_api_key_id_api_keys_id_fk",
           "tableFrom": "agent_configs",
           "tableTo": "api_keys",
+          "schemaTo": "public",
           "columnsFrom": ["api_key_id"],
           "columnsTo": ["id"],
           "onDelete": "no action",
@@ -56,69 +142,8 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.agent_runtime_events": {
-      "name": "agent_runtime_events",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "runtime_id": {
-          "name": "runtime_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "sequence_number": {
-          "name": "sequence_number",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "event_type": {
-          "name": "event_type",
-          "type": "varchar(50)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "event_data": {
-          "name": "event_data",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "agent_runtime_events_runtime_id_agent_runtimes_id_fk": {
-          "name": "agent_runtime_events_runtime_id_agent_runtimes_id_fk",
-          "tableFrom": "agent_runtime_events",
-          "tableTo": "agent_runtimes",
-          "columnsFrom": ["runtime_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.agent_runtimes": {
@@ -200,6 +225,7 @@
           "name": "agent_runtimes_agent_config_id_agent_configs_id_fk",
           "tableFrom": "agent_runtimes",
           "tableTo": "agent_configs",
+          "schemaTo": "public",
           "columnsFrom": ["agent_config_id"],
           "columnsTo": ["id"],
           "onDelete": "no action",
@@ -208,12 +234,12 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "policies": {},
       "checkConstraints": {},
+      "policies": {},
       "isRLSEnabled": false
     },
-    "public.api_keys": {
-      "name": "api_keys",
+    "public.agent_runtime_events": {
+      "name": "agent_runtime_events",
       "schema": "",
       "columns": {
         "id": {
@@ -223,17 +249,29 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "key_hash": {
-          "name": "key_hash",
-          "type": "varchar(255)",
+        "runtime_id": {
+          "name": "runtime_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "name": {
-          "name": "name",
-          "type": "varchar(100)",
+        "sequence_number": {
+          "name": "sequence_number",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_data": {
+          "name": "event_data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
         },
         "created_at": {
           "name": "created_at",
@@ -241,60 +279,25 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "last_used_at": {
-          "name": "last_used_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "api_keys_key_hash_unique": {
-          "name": "api_keys_key_hash_unique",
-          "nullsNotDistinct": false,
-          "columns": ["key_hash"]
+      "foreignKeys": {
+        "agent_runtime_events_runtime_id_agent_runtimes_id_fk": {
+          "name": "agent_runtime_events_runtime_id_agent_runtimes_id_fk",
+          "tableFrom": "agent_runtime_events",
+          "tableTo": "agent_runtimes",
+          "schemaTo": "public",
+          "columnsFrom": ["runtime_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.users": {
-      "name": "users",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "policies": {},
       "checkConstraints": {},
+      "policies": {},
       "isRLSEnabled": false
     }
   },
@@ -305,8 +308,11 @@
   "policies": {},
   "views": {},
   "_meta": {
-    "columns": {},
     "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
     "tables": {}
   }
 }

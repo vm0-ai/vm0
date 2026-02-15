@@ -1,6 +1,6 @@
 {
-  "id": "7006d485-9c61-4dc4-9a19-9edc0eea14c3",
-  "prevId": "4dc1057a-d156-4e57-ba1d-9e843b8cbcb8",
+  "id": "4dc1057a-d156-4e57-ba1d-9e843b8cbcb8",
+  "prevId": "e6d52a99-cb69-4c58-ba4a-72c63149284b",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -95,6 +95,16 @@
       },
       "indexes": {},
       "foreignKeys": {
+        "checkpoints_run_id_agent_runs_id_fk": {
+          "name": "checkpoints_run_id_agent_runs_id_fk",
+          "tableFrom": "checkpoints",
+          "tableTo": "agent_runs",
+          "schemaTo": "public",
+          "columnsFrom": ["run_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "checkpoints_agent_config_id_agent_configs_id_fk": {
           "name": "checkpoints_agent_config_id_agent_configs_id_fk",
           "tableFrom": "checkpoints",
@@ -103,16 +113,6 @@
           "columnsFrom": ["agent_config_id"],
           "columnsTo": ["id"],
           "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "checkpoints_run_id_agent_runs_id_fk": {
-          "name": "checkpoints_run_id_agent_runs_id_fk",
-          "tableFrom": "checkpoints",
-          "tableTo": "agent_runs",
-          "schemaTo": "public",
-          "columnsFrom": ["run_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },

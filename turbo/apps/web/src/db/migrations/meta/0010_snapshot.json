@@ -1,6 +1,6 @@
 {
-  "id": "7006d485-9c61-4dc4-9a19-9edc0eea14c3",
-  "prevId": "4dc1057a-d156-4e57-ba1d-9e843b8cbcb8",
+  "id": "e6d52a99-cb69-4c58-ba4a-72c63149284b",
+  "prevId": "aa30db47-e46b-4d8a-a8b5-bc47e02fb190",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -95,6 +95,16 @@
       },
       "indexes": {},
       "foreignKeys": {
+        "checkpoints_run_id_agent_runs_id_fk": {
+          "name": "checkpoints_run_id_agent_runs_id_fk",
+          "tableFrom": "checkpoints",
+          "tableTo": "agent_runs",
+          "schemaTo": "public",
+          "columnsFrom": ["run_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "checkpoints_agent_config_id_agent_configs_id_fk": {
           "name": "checkpoints_agent_config_id_agent_configs_id_fk",
           "tableFrom": "checkpoints",
@@ -103,16 +113,6 @@
           "columnsFrom": ["agent_config_id"],
           "columnsTo": ["id"],
           "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "checkpoints_run_id_agent_runs_id_fk": {
-          "name": "checkpoints_run_id_agent_runs_id_fk",
-          "tableFrom": "checkpoints",
-          "tableTo": "agent_runs",
-          "schemaTo": "public",
-          "columnsFrom": ["run_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
@@ -387,14 +387,14 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "agent_run_events_run_id_agent_runs_id_fk": {
-          "name": "agent_run_events_run_id_agent_runs_id_fk",
+        "agent_runtime_events_runtime_id_agent_runtimes_id_fk": {
+          "name": "agent_runtime_events_runtime_id_agent_runtimes_id_fk",
           "tableFrom": "agent_run_events",
           "tableTo": "agent_runs",
           "schemaTo": "public",
           "columnsFrom": ["run_id"],
           "columnsTo": ["id"],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         }
       },

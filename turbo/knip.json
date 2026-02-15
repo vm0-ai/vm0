@@ -138,7 +138,9 @@
     "apps/cli/src/commands/cook/cook.ts",
     "packages/core/src/contracts/public/agents.ts",
     "apps/web/src/lib/slack/**",
-    "apps/web/src/lib/auth/sandbox-token.ts"
+    "apps/web/src/lib/auth/sandbox-token.ts",
+    "scripts/rebuild-snapshots.ts",
+    "scripts/rebuild-snapshots-from-db.ts"
   ],
   "ignoreDependencies": ["@commitlint/cli"],
   "ignoreWorkspaces": [],
