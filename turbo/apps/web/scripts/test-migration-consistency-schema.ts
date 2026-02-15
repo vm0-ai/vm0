@@ -11,6 +11,20 @@
  * 3. Compare schemas using normalized comparison (ignores benign differences)
  *
  * Note: Uses pg library for all database operations (no pg_dump/psql required)
+ *
+ * IMPORTANT: Migration Best Practices
+ * ===================================
+ *
+ * ❌ NEVER manually write migration files!
+ * ❌ NEVER edit existing migration files!
+ * ❌ NEVER manually create snapshot files!
+ *
+ * ✅ ALWAYS use `pnpm -F web db:generate` to auto-generate migrations
+ * ✅ ALWAYS let Drizzle Kit manage the snapshot system
+ * ✅ ALWAYS test with `pnpm test:migration-consistency` before merging
+ *
+ * Manual migrations break the snapshot chain and cause this test to fail.
+ * If this test fails, follow the fix instructions in the error message.
  */
 
 import { execSync } from "node:child_process";
@@ -206,6 +220,21 @@ async function validateSnapshotFiles(): Promise<void> {
   }
 
   if (chainBroken) {
+    console.error(`\n❌ SNAPSHOT CHAIN BROKEN`);
+    console.error(
+      `\n   This means the snapshot system is corrupted and needs to be rebuilt.`,
+    );
+    console.error(`\n   🔧 How to fix:`);
+    console.error(`      1. Reset database: pnpm -F web db:reset`);
+    console.error(`      2. Delete your manual migration file (if any)`);
+    console.error(`      3. Remove migration entry from meta/_journal.json`);
+    console.error(`      4. Generate migration: pnpm -F web db:generate`);
+    console.error(`      5. Apply migration: pnpm -F web db:migrate`);
+    console.error(`\n   ⚠️  IMPORTANT: Never manually write migration files!`);
+    console.error(
+      `      Always use 'pnpm -F web db:generate' to auto-generate migrations.`,
+    );
+    console.error(`      Manual migrations break the snapshot chain.\n`);
     throw new Error("Snapshot chain broken");
   }
 
@@ -454,6 +483,26 @@ async function validateLatestSnapshotAccuracy(): Promise<void> {
       for (const diff of differences) {
         console.error(`      ${diff}`);
       }
+      console.error(`\n   🔧 How to fix:`);
+      console.error(`      1. Reset database: pnpm -F web db:reset`);
+      console.error(
+        `      2. Delete the latest migration file (${String(latestIdx).padStart(4, "0")}_*.sql)`,
+      );
+      console.error(`      3. Remove migration entry from meta/_journal.json`);
+      console.error(
+        `      4. Delete the latest snapshot (${String(latestIdx).padStart(4, "0")}_snapshot.json)`,
+      );
+      console.error(`      5. Generate migration: pnpm -F web db:generate`);
+      console.error(`      6. Apply migration: pnpm -F web db:migrate`);
+      console.error(
+        `\n   ⚠️  IMPORTANT: Never manually write migration files!`,
+      );
+      console.error(
+        `      Always use 'pnpm -F web db:generate' to auto-generate migrations.`,
+      );
+      console.error(
+        `      Manual migrations cause snapshot/database mismatches.\n`,
+      );
       throw new Error(
         `Latest snapshot ${latestIdx} accuracy validation failed`,
       );
@@ -520,12 +569,34 @@ async function main(): Promise<void> {
       process.exit(0);
     } else {
       console.log("\n❌ FAILURE: Schemas have functional differences!");
+      console.log(
+        `\n   This means the migration files don't match the schema definitions.`,
+      );
       console.log(`\n   💡 Databases preserved for analysis:`);
       console.log(`      ${TEST_DB_1}`);
       console.log(`      ${TEST_DB_2}`);
       console.log(`\n   For detailed analysis, run:`);
       console.log(
         `     DB1_URL=${dbUrl1} DB2_URL=${dbUrl2} pnpm tsx scripts/compare-schemas-normalized.ts`,
+      );
+      console.log(`\n   🔧 How to fix:`);
+      console.log(`      1. Check if you manually edited any migration files`);
+      console.log(`      2. Reset database: pnpm -F web db:reset`);
+      console.log(`      3. Delete the problematic migration files`);
+      console.log(
+        `      4. Remove corresponding entries from meta/_journal.json`,
+      );
+      console.log(`      5. Delete corresponding snapshots`);
+      console.log(`      6. Regenerate: pnpm -F web db:generate`);
+      console.log(`      7. Apply: pnpm -F web db:migrate`);
+      console.log(
+        `\n   ⚠️  IMPORTANT: Never manually write or edit migration files!`,
+      );
+      console.log(
+        `      Always use 'pnpm -F web db:generate' to auto-generate migrations.`,
+      );
+      console.log(
+        `      Manual edits break the snapshot system and cause schema mismatches.\n`,
       );
 
       process.exit(1);
