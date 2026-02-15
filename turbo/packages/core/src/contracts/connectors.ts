@@ -310,6 +310,8 @@ export const connectorResponseSchema = z.object({
   id: z.string().uuid(),
   type: connectorTypeSchema,
   authMethod: z.string(),
+  platform: z.enum(["self-hosted", "nango"]),
+  nangoConnectionId: z.string().nullable().optional(),
   externalId: z.string().nullable(),
   externalUsername: z.string().nullable(),
   externalEmail: z.string().nullable(),

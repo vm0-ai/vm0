@@ -58,6 +58,8 @@ export async function listConnectors(
       id: connectors.id,
       type: connectors.type,
       authMethod: connectors.authMethod,
+      platform: connectors.platform,
+      nangoConnectionId: connectors.nangoConnectionId,
       externalId: connectors.externalId,
       externalUsername: connectors.externalUsername,
       externalEmail: connectors.externalEmail,
@@ -73,6 +75,8 @@ export async function listConnectors(
     id: row.id,
     type: parseConnectorType(row.type),
     authMethod: row.authMethod,
+    platform: row.platform as "self-hosted" | "nango",
+    nangoConnectionId: row.nangoConnectionId,
     externalId: row.externalId,
     externalUsername: row.externalUsername,
     externalEmail: row.externalEmail,
@@ -99,6 +103,8 @@ export async function getConnector(
       id: connectors.id,
       type: connectors.type,
       authMethod: connectors.authMethod,
+      platform: connectors.platform,
+      nangoConnectionId: connectors.nangoConnectionId,
       externalId: connectors.externalId,
       externalUsername: connectors.externalUsername,
       externalEmail: connectors.externalEmail,
@@ -119,6 +125,8 @@ export async function getConnector(
     id: row.id,
     type: parseConnectorType(row.type),
     authMethod: row.authMethod,
+    platform: row.platform as "self-hosted" | "nango",
+    nangoConnectionId: row.nangoConnectionId,
     externalId: row.externalId,
     externalUsername: row.externalUsername,
     externalEmail: row.externalEmail,
@@ -202,12 +210,14 @@ export async function upsertOAuthConnector(
     id: string;
     type: string;
     authMethod: string;
+    platform: string;
     externalId: string | null;
     externalUsername: string | null;
     externalEmail: string | null;
     oauthScopes: string | null;
     createdAt: Date;
     updatedAt: Date;
+    nangoConnectionId: string | null;
   };
 
   if (isUpdate) {
@@ -257,6 +267,7 @@ export async function upsertOAuthConnector(
       id: connectorRow.id,
       type: parseConnectorType(connectorRow.type),
       authMethod: connectorRow.authMethod,
+      platform: connectorRow.platform as "self-hosted" | "nango",
       externalId: connectorRow.externalId,
       externalUsername: connectorRow.externalUsername,
       externalEmail: connectorRow.externalEmail,
@@ -265,6 +276,7 @@ export async function upsertOAuthConnector(
         : null,
       createdAt: connectorRow.createdAt.toISOString(),
       updatedAt: connectorRow.updatedAt.toISOString(),
+      nangoConnectionId: connectorRow.nangoConnectionId ?? undefined,
     },
     created: !isUpdate,
   };

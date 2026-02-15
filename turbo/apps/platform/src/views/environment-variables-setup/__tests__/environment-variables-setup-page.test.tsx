@@ -16,6 +16,7 @@ function makeConnector(type: "github" | "notion"): ConnectorResponse {
     id: crypto.randomUUID(),
     type,
     authMethod: "oauth",
+    platform: "self-hosted",
     externalId: `ext-${type}-1`,
     externalUsername: type === "github" ? "octocat" : "notion-user",
     externalEmail: null,
