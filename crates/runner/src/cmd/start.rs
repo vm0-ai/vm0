@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use clap::Args;
 use sandbox::SandboxFactory;
@@ -22,6 +22,10 @@ use crate::status::{RunnerMode, StatusTracker};
 const POLL_SLOW: Duration = Duration::from_secs(30);
 /// Poll interval when Ably is disconnected or unavailable (primary mechanism).
 const POLL_FAST: Duration = Duration::from_secs(5);
+/// Initial backoff before retrying Ably connection.
+const ABLY_BACKOFF_INITIAL: Duration = Duration::from_secs(5);
+/// Maximum backoff between Ably reconnection attempts.
+const ABLY_BACKOFF_MAX: Duration = Duration::from_secs(60);
 
 #[derive(Args)]
 pub struct StartArgs {
@@ -159,6 +163,9 @@ struct RunConfig {
     log_paths: crate::paths::LogPaths,
 }
 
+type AblyReconnectHandle =
+    tokio::task::JoinHandle<Result<ably_subscriber::Subscription, ably_subscriber::Error>>;
+
 async fn run(config: RunConfig) -> RunnerResult<()> {
     let mut factory = FirecrackerFactory::new(config.fc_config.clone()).await?;
     factory.startup().await?;
@@ -191,29 +198,21 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // -----------------------------------------------------------------------
     // Ably subscription (non-fatal — poll-only mode if unavailable)
     // -----------------------------------------------------------------------
-    let api_for_ably = api.clone();
-    let group_for_ably = config.group.clone();
-    let get_token: Box<dyn Fn() -> ably_subscriber::TokenFuture + Send + Sync> =
-        Box::new(move || {
-            let api = api_for_ably.clone();
-            let group = group_for_ably.clone();
-            Box::pin(async move {
-                api.realtime_token(&group)
-                    .await
-                    .map_err(|e| Box::new(e) as ably_subscriber::BoxError)
-            })
-        });
+    let mut ably_backoff = ABLY_BACKOFF_INITIAL;
+    let mut ably_reconnect_at: Option<Instant> = None;
+    let mut ably_reconnecting: Option<AblyReconnectHandle> = None;
+    let mut ably_consecutive_failures: u32 = 0;
 
-    let channel = format!("runner-group:{}", config.group);
-    let ably_config = ably_subscriber::SubscribeConfig::new(get_token, channel);
-
+    let ably_config = make_ably_config(&api, &config.group);
     let mut ably = match ably_subscriber::subscribe(ably_config).await {
         Ok(sub) => {
             info!("ably connected");
             Some(sub)
         }
         Err(e) => {
-            warn!(error = %e, "ably unavailable, running in poll-only mode");
+            warn!(error = %e, "ably unavailable, will retry");
+            ably_reconnect_at = Some(Instant::now() + ably_backoff);
+            ably_consecutive_failures = 1;
             None
         }
     };
@@ -283,6 +282,17 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             RunnerMode::Running => {}
         }
 
+        // Spawn a background Ably reconnection task when the timer fires
+        if ably.is_none()
+            && ably_reconnecting.is_none()
+            && let Some(at) = ably_reconnect_at
+            && Instant::now() >= at
+        {
+            ably_reconnect_at = None;
+            let ably_config = make_ably_config(&api, &config.group);
+            ably_reconnecting = Some(tokio::spawn(ably_subscriber::subscribe(ably_config)));
+        }
+
         // If all permits are taken, wait for a job to finish or mode change
         if semaphore.available_permits() == 0 {
             tokio::select! {
@@ -334,14 +344,16 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         );
                     }
                     Some(ably_subscriber::Event::Error { code, message }) => {
-                        error!(code, message = %message, "ably fatal error");
+                        error!(code, message = %message, "ably fatal error, will reconnect");
                         ably = None;
                         ably_connected = false;
+                        ably_reconnect_at = Some(Instant::now() + ably_backoff);
                     }
                     None => {
-                        warn!("ably subscription closed, switching to poll-only mode");
+                        warn!("ably subscription closed, will reconnect");
                         ably = None;
                         ably_connected = false;
+                        ably_reconnect_at = Some(Instant::now() + ably_backoff);
                     }
                 }
                 continue;
@@ -364,6 +376,39 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     }
                 }
             }
+            // Ably reconnection result (background task)
+            result = recv_reconnect(&mut ably_reconnecting) => {
+                ably_reconnecting = None;
+                match result {
+                    Ok(sub) => {
+                        if ably_consecutive_failures > 0 {
+                            info!(attempts = ably_consecutive_failures, "ably reconnected after failures");
+                        } else {
+                            info!("ably reconnected");
+                        }
+                        ably = Some(sub);
+                        ably_connected = true;
+                        ably_backoff = ABLY_BACKOFF_INITIAL;
+                        ably_consecutive_failures = 0;
+                    }
+                    Err(e) => {
+                        ably_consecutive_failures += 1;
+                        let next_secs = ably_backoff.as_secs();
+                        if ably_consecutive_failures >= 10 {
+                            error!(
+                                error = %e,
+                                failures = ably_consecutive_failures,
+                                next_attempt_secs = next_secs,
+                                "ably reconnection failing persistently"
+                            );
+                        } else {
+                            warn!(error = %e, next_attempt_secs = next_secs, "ably reconnect failed");
+                        }
+                        ably_reconnect_at = Some(Instant::now() + ably_backoff);
+                        ably_backoff = (ably_backoff * 2).min(ABLY_BACKOFF_MAX);
+                    }
+                }
+            }
             // Mode changes (signals)
             _ = mode_rx.changed() => {}
         }
@@ -372,8 +417,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // -----------------------------------------------------------------------
     // Shutdown
     // -----------------------------------------------------------------------
-    // Close Ably subscription
+    // Close Ably subscription and cancel any in-flight reconnection
     drop(ably);
+    if let Some(h) = ably_reconnecting {
+        h.abort();
+    }
 
     // Drain running jobs
     let remaining = jobs.len();
@@ -482,6 +530,41 @@ async fn recv_signal(sig: &mut Option<tokio::signal::unix::Signal>) {
         }
         None => std::future::pending().await,
     }
+}
+
+/// Await a background Ably reconnection task, or pend forever if none is running.
+async fn recv_reconnect(
+    handle: &mut Option<AblyReconnectHandle>,
+) -> Result<ably_subscriber::Subscription, String> {
+    match handle {
+        Some(h) => match h.await {
+            Ok(Ok(sub)) => Ok(sub),
+            Ok(Err(e)) => Err(e.to_string()),
+            Err(e) => Err(format!("reconnect task panicked: {e}")),
+        },
+        None => std::future::pending().await,
+    }
+}
+
+/// Create a fresh `SubscribeConfig` for Ably connection.
+///
+/// `SubscribeConfig` is consumed by `subscribe()` and is not `Clone`,
+/// so we recreate it for each connection attempt.
+fn make_ably_config(api: &ApiClient, group: &str) -> ably_subscriber::SubscribeConfig {
+    let api = api.clone();
+    let channel = format!("runner-group:{group}");
+    let group = group.to_owned();
+    let get_token: Box<dyn Fn() -> ably_subscriber::TokenFuture + Send + Sync> =
+        Box::new(move || {
+            let api = api.clone();
+            let group = group.clone();
+            Box::pin(async move {
+                api.realtime_token(&group)
+                    .await
+                    .map_err(|e| Box::new(e) as ably_subscriber::BoxError)
+            })
+        });
+    ably_subscriber::SubscribeConfig::new(get_token, channel)
 }
 
 #[cfg(test)]
