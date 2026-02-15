@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.42.2](https://github.com/vm0-ai/vm0/compare/web-v12.42.1...web-v12.42.2) (2026-02-15)
+
+
+### Bug Fixes
+
+* **web:** fix drizzle-kit generate partial indexes ([#3062](https://github.com/vm0-ai/vm0/issues/3062)) ([96eca9b](https://github.com/vm0-ai/vm0/commit/96eca9b8b8ee8074f78f43d9fe08761ed4bfe6d4))
+
 ## [12.42.1](https://github.com/vm0-ai/vm0/compare/web-v12.42.0...web-v12.42.1) (2026-02-15)
 
 
