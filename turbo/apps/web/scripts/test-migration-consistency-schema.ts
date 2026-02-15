@@ -45,7 +45,7 @@ async function createDatabase(dbName: string): Promise<void> {
     execCommand(
       `psql -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} -c "CREATE DATABASE ${dbName}"`,
     );
-  } catch (error) {
+  } catch {
     // Database might already exist, try to drop and recreate
     console.log(`   Database exists, dropping and recreating...`);
     execCommand(
@@ -63,7 +63,7 @@ async function dropDatabase(dbName: string): Promise<void> {
     execCommand(
       `psql -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} -c "DROP DATABASE IF EXISTS ${dbName}"`,
     );
-  } catch (error) {
+  } catch {
     console.warn(`   Warning: Failed to drop database ${dbName}`);
   }
 }
@@ -222,7 +222,7 @@ async function main(): Promise<void> {
         await dropDatabase(TEST_DB_2);
 
         process.exit(0);
-      } catch (error: any) {
+      } catch {
         // Normalized comparison failed - real functional differences exist
         console.log("\n❌ FAILURE: Schemas have functional differences!");
 
