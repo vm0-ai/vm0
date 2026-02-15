@@ -16,53 +16,80 @@ export class NangoPlatform implements ConnectorPlatform {
   readonly name = "nango" as const;
 
   async buildAuthorizationUrl(params: AuthorizationParams): Promise<string> {
-    // TODO: Implement correct Nango SDK API call
-    // The exact API may vary depending on Nango SDK version
-    // Reference: https://docs.nango.dev/integrate/guides/authorize-an-api
+    // For Nango providers, we create a connect session and return the connect_link
+    // Reference: https://docs.nango.dev/reference/sdks/node
     const nango = globalThis.services.nango;
 
-    // Placeholder implementation - will be updated when Nango is configured
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const authUrl = (nango as any).getAuthorizationURL?.(
-      params.type,
-      params.connectionId,
-      {
-        state: params.state,
-      },
-    ) as string;
-
-    if (!authUrl) {
-      throw new Error("Nango SDK getAuthorizationURL not available");
+    // Parse connectionId to get user scope ID
+    // Format: "scopeId:providerType"
+    const [scopeId] = params.connectionId.split(":");
+    if (!scopeId) {
+      throw new Error(`Invalid connection ID format: ${params.connectionId}`);
     }
 
-    return authUrl;
+    // Create connect session
+    const session = await nango.createConnectSession({
+      end_user: {
+        id: scopeId,
+        // We can add more user info here if available
+      },
+      allowed_integrations: [params.type],
+      // Store state in tags for verification on callback
+      tags: {
+        oauth_state: params.state,
+        connection_id: params.connectionId,
+      },
+    });
+
+    // Return the Nango-hosted connect link
+    return session.data.connect_link;
   }
 
   async handleCallback(params: CallbackParams): Promise<ConnectorResult> {
     const nango = globalThis.services.nango;
 
-    // Nango automatically exchanges the code for a token
-    // and stores it in their cloud. We just verify the connection exists.
+    // Nango automatically handles the OAuth callback and exchanges the code
+    // We just need to verify the connection was created successfully
     try {
+      // Get the connection to verify it exists and retrieve metadata
+      // Note: providerConfigKey is the integration ID (e.g., "gmail")
       const connection = await nango.getConnection(
-        params.type,
-        params.connectionId,
+        params.type, // integration ID
+        params.connectionId, // connection ID
       );
 
-      // Extract user info from connection metadata
-      // Nango stores OAuth user info in the metadata field
-      const metadata = connection.metadata as {
-        id?: string;
-        username?: string;
-        email?: string;
-        scopes?: string[];
-      };
+      // Extract user info from connection
+      // Nango stores provider-specific user info in the connection object
+      const credentials = connection.credentials;
+      const metadata = connection.metadata;
+
+      // Try to extract user info from metadata or credentials
+      const externalId =
+        (metadata?.user_id as string) ??
+        (metadata?.id as string) ??
+        (credentials as { id?: string })?.id ??
+        params.connectionId;
+
+      const externalUsername =
+        (metadata?.name as string) ??
+        (metadata?.username as string) ??
+        (credentials as { name?: string })?.name ??
+        null;
+
+      const externalEmail =
+        (metadata?.email as string) ??
+        (credentials as { email?: string })?.email ??
+        null;
+
+      // Extract scopes from credentials if available
+      const scopes =
+        (credentials as { scope?: string })?.scope?.split(" ") ?? null;
 
       return {
-        externalId: metadata.id ?? params.connectionId,
-        externalUsername: metadata.username ?? null,
-        externalEmail: metadata.email ?? null,
-        oauthScopes: metadata.scopes ?? null,
+        externalId,
+        externalUsername,
+        externalEmail,
+        oauthScopes: scopes,
       };
     } catch (error) {
       throw new Error(
