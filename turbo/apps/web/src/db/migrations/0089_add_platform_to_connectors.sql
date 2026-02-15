@@ -1,11 +1,6 @@
--- Add platform field to connectors table for platform abstraction
-ALTER TABLE connectors
-  ADD COLUMN platform VARCHAR(50) NOT NULL DEFAULT 'self-hosted',
-  ADD COLUMN nango_connection_id VARCHAR(255);
+-- Migration: Add platform and Nango connection ID to connectors
+-- This migration adds support for both self-hosted and Nango-managed OAuth connectors
 
--- Create index for platform filtering
-CREATE INDEX idx_connectors_platform ON connectors(platform);
-
--- Add comments
-COMMENT ON COLUMN connectors.platform IS 'Platform managing this connector: self-hosted or nango';
-COMMENT ON COLUMN connectors.nango_connection_id IS 'Nango connection ID (null for self-hosted connectors)';
+ALTER TABLE "connectors" ADD COLUMN "platform" varchar(50) DEFAULT 'self-hosted' NOT NULL;
+ALTER TABLE "connectors" ADD COLUMN "nango_connection_id" varchar(255);
+CREATE INDEX "idx_connectors_platform" ON "connectors" USING btree ("platform");
