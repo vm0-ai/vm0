@@ -15,6 +15,7 @@ import { execSync } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { Client } from "pg";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.join(__dirname, "../src/db/migrations");
@@ -39,30 +40,39 @@ function execCommand(cmd: string, env?: Record<string, string>): string {
   });
 }
 
+async function executeOnPostgres(sql: string): Promise<void> {
+  const client = new Client({
+    host: DB_HOST,
+    port: parseInt(DB_PORT),
+    user: DB_USER,
+    password: DB_PASSWORD,
+    database: "postgres", // Connect to default postgres database
+  });
+
+  try {
+    await client.connect();
+    await client.query(sql);
+  } finally {
+    await client.end();
+  }
+}
+
 async function createDatabase(dbName: string): Promise<void> {
   console.log(`📦 Creating database: ${dbName}`);
   try {
-    execCommand(
-      `psql -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} -c "CREATE DATABASE ${dbName}"`,
-    );
+    await executeOnPostgres(`CREATE DATABASE ${dbName}`);
   } catch {
     // Database might already exist, try to drop and recreate
     console.log(`   Database exists, dropping and recreating...`);
-    execCommand(
-      `psql -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} -c "DROP DATABASE IF EXISTS ${dbName}"`,
-    );
-    execCommand(
-      `psql -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} -c "CREATE DATABASE ${dbName}"`,
-    );
+    await executeOnPostgres(`DROP DATABASE IF EXISTS ${dbName}`);
+    await executeOnPostgres(`CREATE DATABASE ${dbName}`);
   }
 }
 
 async function dropDatabase(dbName: string): Promise<void> {
   console.log(`🗑️  Dropping database: ${dbName}`);
   try {
-    execCommand(
-      `psql -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} -c "DROP DATABASE IF EXISTS ${dbName}"`,
-    );
+    await executeOnPostgres(`DROP DATABASE IF EXISTS ${dbName}`);
   } catch {
     console.warn(`   Warning: Failed to drop database ${dbName}`);
   }
