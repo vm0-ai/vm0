@@ -145,15 +145,12 @@ async fn execute_inner(
     // Run job inside sandbox, then destroy regardless of outcome
     let result = run_in_sandbox(sandbox.as_ref(), context, config, telemetry).await;
 
-    // Cleanup: unregister + stop + destroy
-    let t = Instant::now();
-
-    if firewall_enabled && let Err(e) = config.registry.unregister_vm(&source_ip).await {
-        warn!(run_id = %context.run_id, error = %e, "failed to unregister VM from proxy");
-    }
-
-    // Upload network logs (after unregister ensures no more writes)
+    // Unregister VM from proxy + upload network logs before cleanup timer.
+    // Unregister first ensures the addon writes no more log entries.
     if firewall_enabled {
+        if let Err(e) = config.registry.unregister_vm(&source_ip).await {
+            warn!(run_id = %context.run_id, error = %e, "failed to unregister VM from proxy");
+        }
         crate::network_logs::upload_network_logs(
             &config.http,
             context.run_id,
@@ -162,6 +159,9 @@ async fn execute_inner(
         )
         .await;
     }
+
+    // Cleanup: stop + destroy
+    let t = Instant::now();
 
     // Best-effort stop
     let stop_err = match sandbox.stop().await {
