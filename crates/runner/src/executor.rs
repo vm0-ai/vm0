@@ -45,7 +45,7 @@ pub async fn execute_job(
     // Record api_to_vm_start: elapsed time from the API-side timestamp to now.
     // api_start_time is milliseconds since Unix epoch (Date.now() in TS).
     if let Some(api_start_ms) = context.api_start_time {
-        let now_ms = epoch_millis();
+        let now_ms = chrono::Utc::now().timestamp_millis() as f64;
         let elapsed_ms = (now_ms - api_start_ms).max(0.0);
         telemetry.record(
             "api_to_vm_start",
@@ -150,12 +150,21 @@ async fn execute_inner(
     }
 
     // Best-effort stop
-    if let Err(e) = sandbox.stop().await {
-        warn!(sandbox_id = %sandbox_id, error = %e, "sandbox stop failed");
-    }
+    let stop_err = match sandbox.stop().await {
+        Ok(()) => None,
+        Err(e) => {
+            warn!(sandbox_id = %sandbox_id, error = %e, "sandbox stop failed");
+            Some(e.to_string())
+        }
+    };
     factory.destroy(sandbox).await;
 
-    telemetry.record("cleanup", t.elapsed(), true, None);
+    telemetry.record(
+        "cleanup",
+        t.elapsed(),
+        stop_err.is_none(),
+        stop_err.as_deref(),
+    );
 
     result
 }
@@ -346,15 +355,6 @@ async fn restore_session(
         .await?;
     info!(run_id = %context.run_id, path = %session_path, "restored session history");
     Ok(())
-}
-
-/// Current wall-clock time as milliseconds since Unix epoch.
-fn epoch_millis() -> f64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs_f64()
-        * 1000.0
 }
 
 /// Build the environment variables JSON, matching the TS `buildEnvironmentVariables`.
