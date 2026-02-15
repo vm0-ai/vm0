@@ -467,28 +467,19 @@ export async function deleteConnector(
 
   // Delete from platform (Nango or self-hosted) if applicable
   if (existing.platform === "nango") {
-    try {
-      const nango = globalThis.services.nango;
-      // Build connection ID format: "scopeId:connectorType"
-      const connectionId = `${scope.id}:${type}`;
+    const nango = globalThis.services.nango;
+    // Build connection ID format: "scopeId:connectorType"
+    const connectionId = `${scope.id}:${type}`;
 
-      // Get integration ID mapping (e.g., "gmail" -> "google-mail")
-      const integrationId = getNangoIntegrationId(type);
+    // Get integration ID mapping (e.g., "gmail" -> "google-mail")
+    const integrationId = getNangoIntegrationId(type);
 
-      await nango.deleteConnection(integrationId, connectionId);
-      log.debug("Nango connection deleted", {
-        scopeId: scope.id,
-        type,
-        connectionId,
-      });
-    } catch (error) {
-      // Log but don't fail - proceed with database deletion
-      log.warn("Failed to delete Nango connection", {
-        error: error instanceof Error ? error.message : "Unknown error",
-        scopeId: scope.id,
-        type,
-      });
-    }
+    await nango.deleteConnection(integrationId, connectionId);
+    log.debug("Nango connection deleted", {
+      scopeId: scope.id,
+      type,
+      connectionId,
+    });
   }
 
   // Delete connector from database
