@@ -73,8 +73,18 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
             ))
         })?;
 
-    // Start proxy before factory so proxy_port is available for netns pool.
     let home = HomePaths::new()?;
+    let log_paths = crate::paths::LogPaths::new(home.logs_dir());
+    tokio::fs::create_dir_all(log_paths.dir())
+        .await
+        .map_err(|e| {
+            RunnerError::Config(format!(
+                "create logs_dir {}: {e}",
+                log_paths.dir().display()
+            ))
+        })?;
+
+    // Start proxy before factory so proxy_port is available for netns pool.
     let paths = RunnerPaths::new(runner_config.base_dir.clone());
     let mut mitm = proxy::MitmProxy::new(proxy::ProxyConfig {
         mitmdump_bin: home.mitmdump_bin(deps::MITMPROXY_VERSION),
@@ -122,6 +132,7 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         memory_mb,
         status,
         registry: registry_handle,
+        log_paths,
     };
 
     let result = run(config).await;
@@ -145,6 +156,7 @@ struct RunConfig {
     memory_mb: u32,
     status: Arc<StatusTracker>,
     registry: ProxyRegistryHandle,
+    log_paths: crate::paths::LogPaths,
 }
 
 async fn run(config: RunConfig) -> RunnerResult<()> {
@@ -152,7 +164,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     factory.startup().await?;
     let factory = Arc::new(factory);
 
-    let api = ApiClient::new(config.api_url.clone(), config.token.clone())?;
+    let http = crate::http::HttpClient::new(config.api_url.clone())?;
+    let api = ApiClient::new(http.clone(), config.token.clone());
     let semaphore = Arc::new(Semaphore::new(config.max_concurrent));
     let mut jobs = JoinSet::new();
 
@@ -163,6 +176,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         memory_mb: config.memory_mb,
         is_snapshot,
         registry: config.registry.clone(),
+        http,
+        log_paths: config.log_paths.clone(),
     });
 
     config.status.write_initial().await;

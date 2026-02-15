@@ -83,6 +83,10 @@ impl HomePaths {
         self.root.join("snapshots")
     }
 
+    pub fn logs_dir(&self) -> PathBuf {
+        self.root.join("logs")
+    }
+
     pub fn runners_dir(&self) -> PathBuf {
         self.root.join("runners")
     }
@@ -157,5 +161,25 @@ impl RootfsPaths {
             self.ca_key(),
             self.ca_combined(),
         ]
+    }
+}
+
+/// Log file paths derived from `HomePaths::logs_dir()`.
+#[derive(Clone)]
+pub struct LogPaths {
+    dir: PathBuf,
+}
+
+impl LogPaths {
+    pub fn new(dir: PathBuf) -> Self {
+        Self { dir }
+    }
+
+    pub fn dir(&self) -> &Path {
+        &self.dir
+    }
+
+    pub fn network_log(&self, run_id: uuid::Uuid) -> PathBuf {
+        self.dir.join(format!("network-{run_id}.jsonl"))
     }
 }

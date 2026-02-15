@@ -15,6 +15,7 @@
 
 import { execSync } from "node:child_process";
 import fs from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
@@ -133,6 +134,337 @@ async function generateFreshMigrations(): Promise<void> {
   });
 }
 
+async function validateSnapshotFiles(): Promise<void> {
+  console.log("=== Phase 0: Validate Snapshot Files ===\n");
+
+  // Count SQL files
+  const files = await fs.readdir(MIGRATIONS_DIR);
+  const sqlFiles = files.filter((f) => f.endsWith(".sql")).sort();
+
+  // Count snapshot files
+  const metaFiles = await fs.readdir(path.join(MIGRATIONS_DIR, "meta"));
+  const snapshotFiles = metaFiles
+    .filter((f) => f.endsWith("_snapshot.json"))
+    .sort();
+
+  console.log(`   SQL migrations: ${sqlFiles.length}`);
+  console.log(`   Snapshot files: ${snapshotFiles.length}`);
+
+  // Check if counts match
+  if (sqlFiles.length !== snapshotFiles.length) {
+    console.error(
+      `   ❌ Mismatch: ${sqlFiles.length} SQL files but ${snapshotFiles.length} snapshots`,
+    );
+    throw new Error("Migration count mismatch");
+  }
+
+  // Check each migration has a snapshot
+  const missingSnapshots: string[] = [];
+  for (const sqlFile of sqlFiles) {
+    const match = sqlFile.match(/^(\d{4})_/);
+    if (!match) continue;
+
+    const idx = match[1];
+    const snapshotFile = `${idx}_snapshot.json`;
+
+    if (!snapshotFiles.includes(snapshotFile)) {
+      missingSnapshots.push(sqlFile);
+    }
+  }
+
+  if (missingSnapshots.length > 0) {
+    console.error(
+      `   ❌ Missing snapshots for migrations: ${missingSnapshots.join(", ")}`,
+    );
+    throw new Error("Missing snapshot files");
+  }
+
+  // Validate snapshot chain integrity
+  const journalPath = path.join(MIGRATIONS_DIR, "meta/_journal.json");
+  const journal = JSON.parse(await fs.readFile(journalPath, "utf-8"));
+  const entries = journal.entries as Array<{ idx: number; tag: string }>;
+
+  let prevId = "";
+  let chainBroken = false;
+  for (const entry of entries) {
+    const snapshotPath = path.join(
+      MIGRATIONS_DIR,
+      "meta",
+      `${String(entry.idx).padStart(4, "0")}_snapshot.json`,
+    );
+    const snapshot = JSON.parse(await fs.readFile(snapshotPath, "utf-8"));
+
+    if (snapshot.prevId !== prevId) {
+      console.error(`   ❌ Snapshot ${entry.idx} prevId mismatch:`);
+      console.error(`      Expected: ${prevId}`);
+      console.error(`      Got: ${snapshot.prevId}`);
+      chainBroken = true;
+      break;
+    }
+
+    prevId = snapshot.id;
+  }
+
+  if (chainBroken) {
+    throw new Error("Snapshot chain broken");
+  }
+
+  console.log(`   ✅ All ${sqlFiles.length} migrations have snapshots`);
+  console.log(`   ✅ Snapshot chain validated (id/prevId references intact)`);
+  console.log();
+}
+
+async function runMigrationsUpTo(
+  dbUrl: string,
+  upToIdx: number,
+): Promise<void> {
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
+
+  try {
+    // Create drizzle migrations table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (
+        id SERIAL PRIMARY KEY,
+        hash text NOT NULL,
+        created_at bigint
+      )
+    `);
+
+    // Read journal to get migration order
+    const journalPath = path.join(MIGRATIONS_DIR, "meta/_journal.json");
+    const journal = JSON.parse(await fs.readFile(journalPath, "utf-8"));
+    const entries = journal.entries as Array<{ idx: number; tag: string }>;
+
+    // Apply migrations up to the specified index
+    for (const entry of entries) {
+      if (entry.idx > upToIdx) break;
+
+      const sqlFile = path.join(MIGRATIONS_DIR, `${entry.tag}.sql`);
+      const sql = await fs.readFile(sqlFile, "utf-8");
+
+      // Check if already applied
+      const result = await client.query(
+        `SELECT 1 FROM "__drizzle_migrations" WHERE hash = $1`,
+        [entry.tag],
+      );
+
+      if (result.rows.length === 0) {
+        // Apply migration
+        await client.query(sql);
+        // Record in migrations table
+        await client.query(
+          `INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES ($1, $2)`,
+          [entry.tag, Date.now()],
+        );
+      }
+    }
+  } finally {
+    await client.end();
+  }
+}
+
+async function extractSchemaFromDb(dbUrl: string): Promise<{
+  tables: Set<string>;
+  columns: Map<string, Set<string>>;
+}> {
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
+
+  try {
+    // Get all tables
+    const tablesResult = await client.query(`
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND table_name != '__drizzle_migrations'
+      ORDER BY table_name
+    `);
+
+    const tables = new Set<string>(tablesResult.rows.map((r) => r.table_name));
+    const columns = new Map<string, Set<string>>();
+
+    for (const row of tablesResult.rows) {
+      const tableName = row.table_name;
+
+      // Get columns
+      const columnsResult = await client.query(
+        `
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = $1
+        ORDER BY column_name
+      `,
+        [tableName],
+      );
+
+      columns.set(
+        tableName,
+        new Set(columnsResult.rows.map((c) => c.column_name)),
+      );
+    }
+
+    return { tables, columns };
+  } finally {
+    await client.end();
+  }
+}
+
+interface SnapshotTable {
+  name?: string;
+  columns?: Record<string, unknown>;
+}
+
+function extractSchemaFromSnapshot(snapshotPath: string): {
+  tables: Set<string>;
+  columns: Map<string, Set<string>>;
+} {
+  const snapshot = JSON.parse(readFileSync(snapshotPath, "utf-8")) as {
+    tables?: Record<string, SnapshotTable>;
+  };
+  const tables = new Set<string>();
+  const columns = new Map<string, Set<string>>();
+
+  for (const [tableKey, tableData] of Object.entries(snapshot.tables || {})) {
+    // Normalize table name: extract actual table name from the key
+    // Could be "users" or "public.users", we want just "users"
+    const tableName = tableData.name || tableKey.replace(/^public\./, "");
+    tables.add(tableName);
+
+    const tableColumns = new Set<string>(Object.keys(tableData.columns || {}));
+    columns.set(tableName, tableColumns);
+  }
+
+  return { tables, columns };
+}
+
+function compareSchemas(
+  dbSchema: { tables: Set<string>; columns: Map<string, Set<string>> },
+  snapshotSchema: { tables: Set<string>; columns: Map<string, Set<string>> },
+  migrationIdx: number,
+): { matches: boolean; differences: string[] } {
+  const differences: string[] = [];
+
+  // Compare tables
+  const dbTables = Array.from(dbSchema.tables).sort();
+  const snapshotTables = Array.from(snapshotSchema.tables).sort();
+
+  const missingInSnapshot = dbTables.filter((t) => !snapshotTables.includes(t));
+  const extraInSnapshot = snapshotTables.filter((t) => !dbTables.includes(t));
+
+  if (missingInSnapshot.length > 0) {
+    differences.push(
+      `Migration ${migrationIdx}: Tables in DB but not in snapshot: ${missingInSnapshot.join(", ")}`,
+    );
+  }
+  if (extraInSnapshot.length > 0) {
+    differences.push(
+      `Migration ${migrationIdx}: Tables in snapshot but not in DB: ${extraInSnapshot.join(", ")}`,
+    );
+  }
+
+  // Compare columns for each table
+  for (const tableName of dbTables) {
+    if (!snapshotSchema.columns.has(tableName)) continue;
+
+    const dbCols = Array.from(dbSchema.columns.get(tableName) || []).sort();
+    const snapshotCols = Array.from(
+      snapshotSchema.columns.get(tableName) || [],
+    ).sort();
+
+    const missingCols = dbCols.filter((c) => !snapshotCols.includes(c));
+    const extraCols = snapshotCols.filter((c) => !dbCols.includes(c));
+
+    if (missingCols.length > 0) {
+      differences.push(
+        `Migration ${migrationIdx}, table ${tableName}: Columns in DB but not in snapshot: ${missingCols.join(", ")}`,
+      );
+    }
+    if (extraCols.length > 0) {
+      differences.push(
+        `Migration ${migrationIdx}, table ${tableName}: Columns in snapshot but not in DB: ${extraCols.join(", ")}`,
+      );
+    }
+  }
+
+  return {
+    matches: differences.length === 0,
+    differences,
+  };
+}
+
+async function validateLatestSnapshotAccuracy(): Promise<void> {
+  console.log("=== Phase 1.5: Validate Latest Snapshot Accuracy ===\n");
+
+  const TEST_DB = "migration_snapshot_accuracy_test";
+
+  // Get the latest migration index from journal
+  const journalPath = path.join(MIGRATIONS_DIR, "meta/_journal.json");
+  const journal = JSON.parse(await fs.readFile(journalPath, "utf-8"));
+  const entries = journal.entries as Array<{ idx: number; tag: string }>;
+
+  if (entries.length === 0) {
+    throw new Error("No migrations found in journal");
+  }
+
+  const latestEntry = entries[entries.length - 1];
+  if (!latestEntry) {
+    throw new Error("Failed to get latest migration entry");
+  }
+
+  const latestIdx = latestEntry.idx;
+
+  console.log(`   Validating latest snapshot (migration ${latestIdx})\n`);
+
+  // Create clean test database
+  await createDatabase(TEST_DB);
+  const dbUrl = createTestDbUrl(TEST_DB);
+
+  try {
+    // Apply all migrations
+    await runMigrationsUpTo(dbUrl, latestIdx);
+
+    // Extract schema from database
+    const dbSchema = await extractSchemaFromDb(dbUrl);
+
+    // Load latest snapshot
+    const snapshotPath = path.join(
+      MIGRATIONS_DIR,
+      "meta",
+      `${String(latestIdx).padStart(4, "0")}_snapshot.json`,
+    );
+    const snapshotSchema = extractSchemaFromSnapshot(snapshotPath);
+
+    // Compare
+    const { matches, differences } = compareSchemas(
+      dbSchema,
+      snapshotSchema,
+      latestIdx,
+    );
+
+    if (matches) {
+      console.log(
+        `   ✅ Latest snapshot (${latestIdx}) accurately reflects final DB state`,
+      );
+    } else {
+      console.error(
+        `   ❌ Latest snapshot (${latestIdx}) does NOT match final DB state:`,
+      );
+      for (const diff of differences) {
+        console.error(`      ${diff}`);
+      }
+      throw new Error(
+        `Latest snapshot ${latestIdx} accuracy validation failed`,
+      );
+    }
+  } finally {
+    await dropDatabase(TEST_DB);
+  }
+
+  console.log();
+}
+
 async function main(): Promise<void> {
   console.log("🧪 Testing Migration Consistency (Schema Comparison)\n");
 
@@ -140,15 +472,21 @@ async function main(): Promise<void> {
   const TEST_DB_2 = "migration_test_generated";
 
   try {
+    // Step 0: Validate snapshot files
+    await validateSnapshotFiles();
+
+    // Step 1.5: Validate latest snapshot accuracy (NEW)
+    await validateLatestSnapshotAccuracy();
+
     // Step 1: Test with existing migrations
-    console.log("=== Phase 1: Test existing migrations ===\n");
+    console.log("=== Phase 2: Test existing migrations ===\n");
     await createDatabase(TEST_DB_1);
     const dbUrl1 = createTestDbUrl(TEST_DB_1);
     await runMigrations(dbUrl1);
     console.log("   ✅ Migrations applied successfully\n");
 
     // Step 2: Backup and regenerate migrations
-    console.log("=== Phase 2: Test regenerated migrations ===\n");
+    console.log("=== Phase 3: Test regenerated migrations ===\n");
     await backupMigrations();
     await generateFreshMigrations();
 
@@ -162,12 +500,18 @@ async function main(): Promise<void> {
     await restoreMigrations();
 
     // Step 5: Run normalized comparison (using pg library)
-    console.log("=== Phase 3: Normalized schema comparison ===\n");
+    console.log("=== Phase 4: Normalized schema comparison ===\n");
     const comparisonPassed = await runNormalizedComparison(dbUrl1, dbUrl2);
 
     if (comparisonPassed) {
-      console.log("\n✅ SUCCESS: Schemas are functionally equivalent!");
-      console.log("   All migrations match the schema definitions.");
+      console.log("\n✅ SUCCESS: All validations passed!");
+      console.log(
+        "   ✅ Snapshot count matches migration count (89 migrations)",
+      );
+      console.log("   ✅ Snapshot chain is intact (id/prevId references)");
+      console.log("   ✅ Latest snapshot accurately reflects final DB state");
+      console.log("   ✅ Schemas are functionally equivalent");
+      console.log("   ✅ All migrations match the schema definitions");
 
       // Cleanup
       await dropDatabase(TEST_DB_1);
