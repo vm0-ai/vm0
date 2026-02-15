@@ -12,6 +12,20 @@ import type {
   ConnectorResult,
 } from "./interface";
 
+/**
+ * Map our connector types to Nango integration IDs
+ */
+const NANGO_INTEGRATION_IDS: Record<string, string> = {
+  gmail: "google-mail", // Nango's dev environment uses "google-mail"
+};
+
+/**
+ * Get Nango integration ID for a connector type
+ */
+function getNangoIntegrationId(type: string): string {
+  return NANGO_INTEGRATION_IDS[type] ?? type;
+}
+
 export class NangoPlatform implements ConnectorPlatform {
   readonly name = "nango" as const;
 
@@ -33,7 +47,7 @@ export class NangoPlatform implements ConnectorPlatform {
         id: scopeId,
         // We can add more user info here if available
       },
-      allowed_integrations: [params.type],
+      allowed_integrations: [getNangoIntegrationId(params.type)],
       // Store state in tags for verification on callback
       tags: {
         oauth_state: params.state,
@@ -52,9 +66,9 @@ export class NangoPlatform implements ConnectorPlatform {
     // We just need to verify the connection was created successfully
     try {
       // Get the connection to verify it exists and retrieve metadata
-      // Note: providerConfigKey is the integration ID (e.g., "gmail")
+      // Note: providerConfigKey is the integration ID (e.g., "google-mail")
       const connection = await nango.getConnection(
-        params.type, // integration ID
+        getNangoIntegrationId(params.type), // integration ID
         params.connectionId, // connection ID
       );
 
@@ -115,13 +129,16 @@ export class NangoPlatform implements ConnectorPlatform {
       throw new Error(`Invalid Nango connection ID: ${connectorId}`);
     }
 
-    const provider = parts[1];
-    if (!provider) {
+    const providerType = parts[1];
+    if (!providerType) {
       throw new Error(`Invalid provider in connection ID: ${connectorId}`);
     }
 
     try {
-      await nango.deleteConnection(provider, connectorId);
+      await nango.deleteConnection(
+        getNangoIntegrationId(providerType),
+        connectorId,
+      );
     } catch (error) {
       throw new Error(
         `Failed to delete Nango connection: ${error instanceof Error ? error.message : "Unknown error"}`,
