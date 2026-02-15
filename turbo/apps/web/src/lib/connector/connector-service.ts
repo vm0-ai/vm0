@@ -44,6 +44,10 @@ function getSecretNameForConnector(type: ConnectorType): string {
 
 /**
  * List all connectors for a user
+ *
+ * This function syncs Nango connections to the database automatically.
+ * When Nango connections are found that don't exist in our database,
+ * they are automatically saved so that Platform UI shows the correct state.
  */
 export async function listConnectors(
   clerkUserId: string,
@@ -52,6 +56,9 @@ export async function listConnectors(
   if (!scope) {
     return [];
   }
+
+  // Sync Nango connections before querying database
+  await syncNangoConnections(clerkUserId, scope.id);
 
   const result = await globalThis.services.db
     .select({
@@ -84,6 +91,141 @@ export async function listConnectors(
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   }));
+}
+
+/**
+ * Sync Nango connections to our database
+ *
+ * Queries Nango API for connections belonging to this user (scopeId)
+ * and saves any new connections to our database automatically.
+ */
+async function syncNangoConnections(
+  clerkUserId: string,
+  scopeId: string,
+): Promise<void> {
+  const env = globalThis.services.env;
+  if (!env.FEATURE_NANGO_ENABLED) {
+    return;
+  }
+
+  try {
+    const nango = globalThis.services.nango;
+
+    // List all Nango connections
+    const response = await nango.listConnections();
+
+    // Filter connections that belong to this user (by scopeId in end_user.id)
+    const userConnections = response.connections.filter(
+      (conn: { end_user?: { id?: string } | null }) =>
+        conn.end_user?.id === scopeId,
+    );
+
+    if (userConnections.length === 0) {
+      return;
+    }
+
+    log.debug("Found Nango connections for user", {
+      scopeId,
+      count: userConnections.length,
+    });
+
+    // For each Nango connection, check if it exists in our database
+    for (const nangoConn of userConnections) {
+      // Extract our connector type from tags
+      const ourConnectionId = nangoConn.tags?.connection_id as
+        | string
+        | undefined;
+      if (!ourConnectionId) {
+        continue;
+      }
+
+      // Parse connection ID format: "scopeId:connectorType"
+      const [, connectorTypeStr] = ourConnectionId.split(":");
+      if (!connectorTypeStr) {
+        continue;
+      }
+
+      const typeResult = connectorTypeSchema.safeParse(connectorTypeStr);
+      if (!typeResult.success) {
+        continue;
+      }
+      const connectorType = typeResult.data;
+
+      // Check if connector already exists in database
+      const existing = await globalThis.services.db
+        .select({ id: connectors.id })
+        .from(connectors)
+        .where(
+          and(
+            eq(connectors.scopeId, scopeId),
+            eq(connectors.type, connectorType),
+          ),
+        )
+        .limit(1);
+
+      if (existing.length > 0) {
+        // Already exists, skip
+        continue;
+      }
+
+      // New connection found - save to database
+      log.info("Syncing new Nango connection to database", {
+        scopeId,
+        type: connectorType,
+        nangoConnectionId: nangoConn.connection_id,
+      });
+
+      // Get full connection details
+      const fullConn = await nango.getConnection(
+        nangoConn.provider_config_key,
+        nangoConn.connection_id,
+      );
+
+      // Extract user info
+      const metadata = fullConn.metadata;
+      const credentials = fullConn.credentials;
+
+      const externalId =
+        (metadata?.user_id as string) ??
+        (metadata?.id as string) ??
+        (credentials as { id?: string })?.id ??
+        nangoConn.connection_id;
+
+      const externalUsername =
+        (metadata?.name as string) ??
+        (metadata?.username as string) ??
+        (credentials as { name?: string })?.name ??
+        "";
+
+      const externalEmail =
+        (metadata?.email as string) ??
+        (credentials as { email?: string })?.email ??
+        null;
+
+      const scopes =
+        (credentials as { scope?: string })?.scope?.split(" ") ?? [];
+
+      // Save to database (with empty accessToken since Nango manages it)
+      await upsertOAuthConnector(
+        clerkUserId,
+        connectorType,
+        "", // Empty token - Nango manages the actual token
+        {
+          id: externalId,
+          username: externalUsername,
+          email: externalEmail,
+        },
+        scopes,
+        "nango", // platform
+        nangoConn.connection_id, // nangoConnectionId
+      );
+    }
+  } catch (error) {
+    // Log but don't throw - sync is best-effort
+    log.warn("Failed to sync Nango connections", {
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
 }
 
 /**
@@ -145,6 +287,9 @@ interface ExternalUserInfo {
 /**
  * Create or update a connector with OAuth token
  * Also stores the associated secret with type="connector"
+ *
+ * @param platform - "self-hosted" or "nango" (defaults to "self-hosted")
+ * @param nangoConnectionId - Nango connection ID (only for nango platform)
  */
 export async function upsertOAuthConnector(
   clerkUserId: string,
@@ -152,6 +297,8 @@ export async function upsertOAuthConnector(
   accessToken: string,
   userInfo: ExternalUserInfo,
   oauthScopes: string[],
+  platform: "self-hosted" | "nango" = "self-hosted",
+  nangoConnectionId?: string,
 ): Promise<{ connector: ConnectorResponse; created: boolean }> {
   const scope = await getUserScopeByClerkId(clerkUserId);
   if (!scope) {
@@ -229,6 +376,8 @@ export async function upsertOAuthConnector(
       .update(connectors)
       .set({
         authMethod: "oauth",
+        platform,
+        nangoConnectionId,
         externalId: userInfo.id,
         externalUsername: userInfo.username,
         externalEmail: userInfo.email,
@@ -249,6 +398,8 @@ export async function upsertOAuthConnector(
         scopeId: scope.id,
         type,
         authMethod: "oauth",
+        platform,
+        nangoConnectionId,
         externalId: userInfo.id,
         externalUsername: userInfo.username,
         externalEmail: userInfo.email,
