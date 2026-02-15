@@ -198,47 +198,51 @@ function initEnv() {
 
   // Post-validation conditional checks
   // These validate relationships between environment variables after schema parsing
+  // Only run on server-side where all env vars are accessible
+  const isServer = typeof window === "undefined";
 
-  // Clerk integration validation - both keys must be present together
-  const hasClerkPublishableKey = !!env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-  const hasClerkSecretKey = !!env.CLERK_SECRET_KEY;
+  if (isServer) {
+    // Clerk integration validation - both keys must be present together
+    const hasClerkPublishableKey = !!env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+    const hasClerkSecretKey = !!env.CLERK_SECRET_KEY;
 
-  if (hasClerkPublishableKey && !hasClerkSecretKey) {
-    throw new Error(
-      "CLERK_SECRET_KEY is required when CLERK_PUBLISHABLE_KEY is set. " +
-        "Set CLERK_SECRET_KEY or remove CLERK_PUBLISHABLE_KEY to use local auth.",
-    );
-  }
-
-  if (hasClerkSecretKey && !hasClerkPublishableKey) {
-    throw new Error(
-      "CLERK_PUBLISHABLE_KEY is required when CLERK_SECRET_KEY is set. " +
-        "Set CLERK_PUBLISHABLE_KEY or remove CLERK_SECRET_KEY to use local auth.",
-    );
-  }
-
-  // Slack integration validation
-  const slackEnabled = env.SLACK_INTEGRATION_ENABLED === "true";
-  if (slackEnabled) {
-    if (!env.SLACK_CLIENT_ID) {
+    if (hasClerkPublishableKey && !hasClerkSecretKey) {
       throw new Error(
-        "SLACK_CLIENT_ID is required when SLACK_INTEGRATION_ENABLED=true",
+        "CLERK_SECRET_KEY is required when CLERK_PUBLISHABLE_KEY is set. " +
+          "Set CLERK_SECRET_KEY or remove CLERK_PUBLISHABLE_KEY to use local auth.",
       );
     }
-    if (!env.SLACK_CLIENT_SECRET) {
+
+    if (hasClerkSecretKey && !hasClerkPublishableKey) {
       throw new Error(
-        "SLACK_CLIENT_SECRET is required when SLACK_INTEGRATION_ENABLED=true",
+        "CLERK_PUBLISHABLE_KEY is required when CLERK_SECRET_KEY is set. " +
+          "Set CLERK_PUBLISHABLE_KEY or remove CLERK_SECRET_KEY to use local auth.",
       );
     }
-    if (!env.SLACK_SIGNING_SECRET) {
-      throw new Error(
-        "SLACK_SIGNING_SECRET is required when SLACK_INTEGRATION_ENABLED=true",
-      );
-    }
-    if (!env.SLACK_REDIRECT_BASE_URL) {
-      throw new Error(
-        "SLACK_REDIRECT_BASE_URL is required when SLACK_INTEGRATION_ENABLED=true",
-      );
+
+    // Slack integration validation
+    const slackEnabled = env.SLACK_INTEGRATION_ENABLED === "true";
+    if (slackEnabled) {
+      if (!env.SLACK_CLIENT_ID) {
+        throw new Error(
+          "SLACK_CLIENT_ID is required when SLACK_INTEGRATION_ENABLED=true",
+        );
+      }
+      if (!env.SLACK_CLIENT_SECRET) {
+        throw new Error(
+          "SLACK_CLIENT_SECRET is required when SLACK_INTEGRATION_ENABLED=true",
+        );
+      }
+      if (!env.SLACK_SIGNING_SECRET) {
+        throw new Error(
+          "SLACK_SIGNING_SECRET is required when SLACK_INTEGRATION_ENABLED=true",
+        );
+      }
+      if (!env.SLACK_REDIRECT_BASE_URL) {
+        throw new Error(
+          "SLACK_REDIRECT_BASE_URL is required when SLACK_INTEGRATION_ENABLED=true",
+        );
+      }
     }
   }
 
