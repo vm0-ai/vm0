@@ -24,13 +24,15 @@ const MIGRATIONS_DIR = path.join(dirname, "../src/db/migrations");
 const BACKUP_DIR = path.join(dirname, "../.migrations-backup");
 
 // Parse DATABASE_URL to get connection details
-const DATABASE_URL =
-  process.env.DATABASE_URL || "postgresql://postgres@localhost:5432/postgres";
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) {
+  throw new Error("DATABASE_URL environment variable is required");
+}
 const dbUrl = new URL(DATABASE_URL);
 const DB_HOST = dbUrl.hostname;
-const DB_PORT = dbUrl.port || "5432";
-const DB_USER = dbUrl.username || "postgres";
-const DB_PASSWORD = dbUrl.password || "";
+const DB_PORT = dbUrl.port;
+const DB_USER = dbUrl.username;
+const DB_PASSWORD = dbUrl.password;
 
 function createTestDbUrl(dbName: string): string {
   const auth = DB_PASSWORD ? `${DB_USER}:${DB_PASSWORD}` : DB_USER;

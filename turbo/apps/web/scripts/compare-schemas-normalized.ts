@@ -33,12 +33,13 @@ interface ConstraintInfo {
 }
 
 // Get database URLs from command line args
-const DB1_URL =
-  process.argv[2] ||
-  "postgresql://postgres@localhost:5432/migration_test_existing";
-const DB2_URL =
-  process.argv[3] ||
-  "postgresql://postgres@localhost:5432/migration_test_generated";
+const DB1_URL = process.argv[2];
+const DB2_URL = process.argv[3];
+
+if (!DB1_URL || !DB2_URL) {
+  console.error("Usage: tsx compare-schemas-normalized.ts <db1_url> <db2_url>");
+  process.exit(1);
+}
 
 async function getTableColumns(client: Client): Promise<TableColumn[]> {
   const result = await client.query<TableColumn>(`
