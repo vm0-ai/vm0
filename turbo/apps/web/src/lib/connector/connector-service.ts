@@ -12,6 +12,7 @@ import { logger } from "../logger";
 import { getUserScopeByClerkId } from "../scope/scope-service";
 import { getGitHubSecretName } from "./providers/github";
 import { getNotionSecretName } from "./providers/notion";
+import { getNangoIntegrationId } from "./platform/nango";
 
 const log = logger("service:connector");
 
@@ -435,6 +436,7 @@ export async function upsertOAuthConnector(
 
 /**
  * Delete a connector and its associated secret
+ * Also deletes the connection from the platform (Nango or self-hosted)
  */
 export async function deleteConnector(
   clerkUserId: string,
@@ -448,9 +450,13 @@ export async function deleteConnector(
   const secretName = getSecretNameForConnector(type);
   const db = globalThis.services.db;
 
-  // Check if connector exists
+  // Check if connector exists and get platform info
   const [existing] = await db
-    .select({ id: connectors.id })
+    .select({
+      id: connectors.id,
+      platform: connectors.platform,
+      nangoConnectionId: connectors.nangoConnectionId,
+    })
     .from(connectors)
     .where(and(eq(connectors.scopeId, scope.id), eq(connectors.type, type)))
     .limit(1);
@@ -459,7 +465,33 @@ export async function deleteConnector(
     throw notFound("Connector not found");
   }
 
-  // Delete connector
+  // Delete from platform (Nango or self-hosted) if applicable
+  if (existing.platform === "nango") {
+    try {
+      const nango = globalThis.services.nango;
+      // Build connection ID format: "scopeId:connectorType"
+      const connectionId = `${scope.id}:${type}`;
+
+      // Get integration ID mapping (e.g., "gmail" -> "google-mail")
+      const integrationId = getNangoIntegrationId(type);
+
+      await nango.deleteConnection(integrationId, connectionId);
+      log.debug("Nango connection deleted", {
+        scopeId: scope.id,
+        type,
+        connectionId,
+      });
+    } catch (error) {
+      // Log but don't fail - proceed with database deletion
+      log.warn("Failed to delete Nango connection", {
+        error: error instanceof Error ? error.message : "Unknown error",
+        scopeId: scope.id,
+        type,
+      });
+    }
+  }
+
+  // Delete connector from database
   await db.delete(connectors).where(eq(connectors.id, existing.id));
 
   // Delete associated secret
