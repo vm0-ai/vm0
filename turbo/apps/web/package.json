@@ -73,7 +73,7 @@
     "@typescript-eslint/utils": "^8.55.0",
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
-    "drizzle-kit": "^0.31.4",
+    "drizzle-kit": "^0.31.9",
     "e2b": "^2.10.3",
     "eslint": "^9.34.0",
     "msw": "^2.7.0",

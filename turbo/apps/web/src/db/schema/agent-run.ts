@@ -8,6 +8,7 @@ import {
   timestamp,
   index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { agentComposeVersions } from "./agent-compose";
 import { agentSchedules } from "./agent-schedule";
 
@@ -49,10 +50,10 @@ export const agentRuns = pgTable(
     // Partial index for cron cleanup (only running status)
     index("idx_agent_runs_running_heartbeat")
       .on(table.lastHeartbeatAt)
-      .where("status = 'running'" as never),
+      .where(sql`status = 'running'`),
     // Partial index for schedule history (only scheduled runs)
     index("idx_agent_runs_schedule_created")
       .on(table.scheduleId, table.createdAt)
-      .where("schedule_id IS NOT NULL" as never),
+      .where(sql`schedule_id IS NOT NULL`),
   ],
 );

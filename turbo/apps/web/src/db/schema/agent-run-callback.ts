@@ -8,6 +8,7 @@ import {
   integer,
   index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { agentRuns } from "./agent-run";
 
 /**
@@ -39,6 +40,6 @@ export const agentRunCallbacks = pgTable(
     index("idx_agent_run_callbacks_run_id").on(table.runId),
     index("idx_agent_run_callbacks_pending")
       .on(table.status)
-      .where("status = 'pending'" as never),
+      .where(sql`status = 'pending'`),
   ],
 );
