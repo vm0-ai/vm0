@@ -311,24 +311,28 @@ async function extractSchemaFromDb(dbUrl: string): Promise<{
   }
 }
 
+interface SnapshotTable {
+  name?: string;
+  columns?: Record<string, unknown>;
+}
+
 function extractSchemaFromSnapshot(snapshotPath: string): {
   tables: Set<string>;
   columns: Map<string, Set<string>>;
 } {
-  const snapshot = JSON.parse(readFileSync(snapshotPath, "utf-8"));
+  const snapshot = JSON.parse(readFileSync(snapshotPath, "utf-8")) as {
+    tables?: Record<string, SnapshotTable>;
+  };
   const tables = new Set<string>();
   const columns = new Map<string, Set<string>>();
 
   for (const [tableKey, tableData] of Object.entries(snapshot.tables || {})) {
     // Normalize table name: extract actual table name from the key
     // Could be "users" or "public.users", we want just "users"
-    const tableName =
-      (tableData as any).name || tableKey.replace(/^public\./, "");
+    const tableName = tableData.name || tableKey.replace(/^public\./, "");
     tables.add(tableName);
 
-    const tableColumns = new Set<string>(
-      Object.keys((tableData as any).columns || {}),
-    );
+    const tableColumns = new Set<string>(Object.keys(tableData.columns || {}));
     columns.set(tableName, tableColumns);
   }
 
@@ -399,7 +403,17 @@ async function validateLatestSnapshotAccuracy(): Promise<void> {
   const journalPath = path.join(MIGRATIONS_DIR, "meta/_journal.json");
   const journal = JSON.parse(await fs.readFile(journalPath, "utf-8"));
   const entries = journal.entries as Array<{ idx: number; tag: string }>;
-  const latestIdx = entries[entries.length - 1].idx;
+
+  if (entries.length === 0) {
+    throw new Error("No migrations found in journal");
+  }
+
+  const latestEntry = entries[entries.length - 1];
+  if (!latestEntry) {
+    throw new Error("Failed to get latest migration entry");
+  }
+
+  const latestIdx = latestEntry.idx;
 
   console.log(`   Validating latest snapshot (migration ${latestIdx})\n`);
 
