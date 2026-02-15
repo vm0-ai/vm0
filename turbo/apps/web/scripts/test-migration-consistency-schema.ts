@@ -1,14 +1,16 @@
 #!/usr/bin/env tsx
 /**
- * Migration Consistency Test - Plan A (Schema Comparison)
+ * Migration Consistency Test - Schema Comparison
  *
  * This script verifies that all migration files match the schema definitions
- * by comparing the final database state.
+ * by comparing the final database state using normalized comparison.
  *
  * Steps:
- * 1. Create test database and run existing migrations → dump schema A
- * 2. Create test database, regenerate migrations from schema → dump schema B
- * 3. Compare schema A and schema B (should be identical)
+ * 1. Create test database and run existing migrations
+ * 2. Create test database, regenerate migrations from schema and run them
+ * 3. Compare schemas using normalized comparison (ignores benign differences)
+ *
+ * Note: Uses pg library for all database operations (no pg_dump/psql required)
  */
 
 import { execSync } from "node:child_process";
@@ -85,39 +87,23 @@ async function runMigrations(dbUrl: string): Promise<void> {
   });
 }
 
-async function dumpSchema(dbUrl: string): Promise<string> {
-  console.log(`📸 Dumping database schema...`);
-
-  // Use pg_dump with options to get a clean, comparable schema
-  const output = execCommand(
-    `pg_dump "${dbUrl}" --schema-only --no-owner --no-privileges --no-comments --no-tablespaces --no-security-labels --no-subscriptions`,
-  );
-
-  // Normalize the output to remove non-deterministic parts
-  return normalizeSchema(output);
-}
-
-function normalizeSchema(schema: string): string {
-  // Remove comments and empty lines
-  let normalized = schema
-    .split("\n")
-    .filter((line) => {
-      // Skip comments
-      if (line.trim().startsWith("--")) return false;
-      // Skip empty lines
-      if (line.trim() === "") return false;
-      // Skip SET commands
-      if (line.trim().startsWith("SET ")) return false;
-      // Skip SELECT pg_catalog commands
-      if (line.trim().startsWith("SELECT pg_catalog.")) return false;
-      return true;
-    })
-    .join("\n");
-
-  // Normalize whitespace
-  normalized = normalized.replace(/\s+/g, " ").trim();
-
-  return normalized;
+async function runNormalizedComparison(
+  dbUrl1: string,
+  dbUrl2: string,
+): Promise<boolean> {
+  console.log(`📸 Running normalized schema comparison...`);
+  try {
+    execCommand(
+      `tsx ${path.join(__dirname, "compare-schemas-normalized.ts")}`,
+      {
+        DB1_URL: dbUrl1,
+        DB2_URL: dbUrl2,
+      },
+    );
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function backupMigrations(): Promise<void> {
@@ -147,9 +133,7 @@ async function generateFreshMigrations(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  console.log(
-    "🧪 Testing Migration Consistency (Plan A - Schema Comparison)\n",
-  );
+  console.log("🧪 Testing Migration Consistency (Schema Comparison)\n");
 
   const TEST_DB_1 = "migration_test_existing";
   const TEST_DB_2 = "migration_test_generated";
@@ -160,8 +144,7 @@ async function main(): Promise<void> {
     await createDatabase(TEST_DB_1);
     const dbUrl1 = createTestDbUrl(TEST_DB_1);
     await runMigrations(dbUrl1);
-    const schemaFromExisting = await dumpSchema(dbUrl1);
-    console.log(`   Schema dump size: ${schemaFromExisting.length} chars\n`);
+    console.log("   ✅ Migrations applied successfully\n");
 
     // Step 2: Backup and regenerate migrations
     console.log("=== Phase 2: Test regenerated migrations ===\n");
@@ -172,17 +155,18 @@ async function main(): Promise<void> {
     await createDatabase(TEST_DB_2);
     const dbUrl2 = createTestDbUrl(TEST_DB_2);
     await runMigrations(dbUrl2);
-    const schemaFromGenerated = await dumpSchema(dbUrl2);
-    console.log(`   Schema dump size: ${schemaFromGenerated.length} chars\n`);
+    console.log("   ✅ Fresh migrations applied successfully\n");
 
     // Step 4: Restore original migrations
     await restoreMigrations();
 
-    // Step 5: Compare schemas
-    console.log("=== Phase 3: Compare schemas ===\n");
-    if (schemaFromExisting === schemaFromGenerated) {
-      console.log("✅ SUCCESS: Schemas are byte-for-byte identical!");
-      console.log("   All migrations match the schema definitions perfectly.");
+    // Step 5: Run normalized comparison (using pg library)
+    console.log("=== Phase 3: Normalized schema comparison ===\n");
+    const comparisonPassed = await runNormalizedComparison(dbUrl1, dbUrl2);
+
+    if (comparisonPassed) {
+      console.log("\n✅ SUCCESS: Schemas are functionally equivalent!");
+      console.log("   All migrations match the schema definitions.");
 
       // Cleanup
       await dropDatabase(TEST_DB_1);
@@ -190,76 +174,16 @@ async function main(): Promise<void> {
 
       process.exit(0);
     } else {
-      console.log("⚠️  Raw schemas differ, running normalized comparison...\n");
-
-      // Save individual schemas for debugging
-      const existingFile = path.join(__dirname, "../.schema-existing.sql");
-      const generatedFile = path.join(__dirname, "../.schema-generated.sql");
-
-      await fs.writeFile(existingFile, schemaFromExisting);
-      await fs.writeFile(generatedFile, schemaFromGenerated);
-
-      console.log(`   Raw schemas saved to:`);
-      console.log(`     Existing:  ${existingFile}`);
-      console.log(`     Generated: ${generatedFile}`);
-      console.log(`   Existing schema: ${schemaFromExisting.length} chars`);
-      console.log(`   Generated schema: ${schemaFromGenerated.length} chars\n`);
-
-      // Run normalized comparison
+      console.log("\n❌ FAILURE: Schemas have functional differences!");
+      console.log(`\n   💡 Databases preserved for analysis:`);
+      console.log(`      ${TEST_DB_1}`);
+      console.log(`      ${TEST_DB_2}`);
+      console.log(`\n   For detailed analysis, run:`);
       console.log(
-        "=== Phase 4: Normalized comparison (ignoring benign differences) ===\n",
+        `     DB1_URL=${dbUrl1} DB2_URL=${dbUrl2} pnpm tsx scripts/compare-schemas-normalized.ts`,
       );
-      try {
-        execCommand(
-          `tsx ${path.join(__dirname, "compare-schemas-normalized.ts")}`,
-          {
-            DB1_URL: dbUrl1,
-            DB2_URL: dbUrl2,
-          },
-        );
 
-        // If we reach here, normalized comparison succeeded
-        console.log("\n✅ SUCCESS: Schemas are functionally equivalent!");
-        console.log(
-          "   Differences are cosmetic (column order, CHECK constraint names).",
-        );
-        console.log(
-          "   These benign differences do not affect database behavior.",
-        );
-
-        // Cleanup
-        await dropDatabase(TEST_DB_1);
-        await dropDatabase(TEST_DB_2);
-
-        process.exit(0);
-      } catch {
-        // Normalized comparison failed - real functional differences exist
-        console.log("\n❌ FAILURE: Schemas have functional differences!");
-
-        // Try to run diff command for debugging
-        try {
-          const diffOutput = execCommand(
-            `diff -u ${existingFile} ${generatedFile} || true`,
-          );
-          const diffFile = path.join(__dirname, "../.schema-diff.txt");
-          await fs.writeFile(diffFile, diffOutput);
-          console.log(`\n   Raw diff saved to: ${diffFile}`);
-          console.log(`\n   First 50 lines of diff:\n`);
-          console.log(diffOutput.split("\n").slice(0, 50).join("\n"));
-        } catch (diffError) {
-          console.log(`   Could not generate diff: ${diffError}`);
-        }
-
-        // Don't cleanup - leave databases for detailed analysis
-        console.log(`\n   💡 Databases preserved for analysis:`);
-        console.log(`      ${TEST_DB_1}`);
-        console.log(`      ${TEST_DB_2}`);
-        console.log(`\n   For detailed analysis, run:`);
-        console.log(`     pnpm tsx scripts/compare-schemas-normalized.ts`);
-        console.log(`     pnpm tsx scripts/detailed-schema-diff.ts`);
-
-        process.exit(1);
-      }
+      process.exit(1);
     }
   } catch (error) {
     console.error("\n❌ Error during test:", error);
