@@ -119,7 +119,12 @@ function compareColumns(
 ): {
   added: TableColumn[];
   removed: TableColumn[];
-  modified: Array<{ column: string; field: string; old: any; new: any }>;
+  modified: Array<{
+    column: string;
+    field: string;
+    old: unknown;
+    new: unknown;
+  }>;
 } {
   const map1 = new Map(
     cols1.map((c) => [`${c.table_name}.${c.column_name}`, c]),
@@ -130,8 +135,12 @@ function compareColumns(
 
   const added: TableColumn[] = [];
   const removed: TableColumn[] = [];
-  const modified: Array<{ column: string; field: string; old: any; new: any }> =
-    [];
+  const modified: Array<{
+    column: string;
+    field: string;
+    old: unknown;
+    new: unknown;
+  }> = [];
 
   // Find added columns
   for (const [key, col] of map2) {
@@ -279,6 +288,120 @@ function compareConstraints(
   return { added, removed, modified };
 }
 
+function printColumnDiff(columnDiff: ReturnType<typeof compareColumns>): void {
+  if (columnDiff.added.length > 0) {
+    console.log(`✨ Added columns (${columnDiff.added.length}):`);
+    for (const col of columnDiff.added) {
+      console.log(`  + ${col.table_name}.${col.column_name}: ${col.data_type}`);
+    }
+    console.log();
+  }
+
+  if (columnDiff.removed.length > 0) {
+    console.log(`❌ Removed columns (${columnDiff.removed.length}):`);
+    for (const col of columnDiff.removed) {
+      console.log(`  - ${col.table_name}.${col.column_name}: ${col.data_type}`);
+    }
+    console.log();
+  }
+
+  if (columnDiff.modified.length > 0) {
+    console.log(`🔄 Modified columns (${columnDiff.modified.length}):`);
+    for (const mod of columnDiff.modified) {
+      console.log(`  ~ ${mod.column}.${mod.field}:`);
+      console.log(`    Old: ${mod.old}`);
+      console.log(`    New: ${mod.new}`);
+    }
+    console.log();
+  }
+
+  if (
+    columnDiff.added.length === 0 &&
+    columnDiff.removed.length === 0 &&
+    columnDiff.modified.length === 0
+  ) {
+    console.log("✅ No functional column differences\n");
+  }
+}
+
+function printIndexDiff(indexDiff: ReturnType<typeof compareIndexes>): void {
+  if (indexDiff.added.length > 0) {
+    console.log(`✨ Added indexes (${indexDiff.added.length}):`);
+    for (const idx of indexDiff.added) {
+      console.log(`  + ${idx.index_name}`);
+      console.log(`    ${idx.index_def}`);
+    }
+    console.log();
+  }
+
+  if (indexDiff.removed.length > 0) {
+    console.log(`❌ Removed indexes (${indexDiff.removed.length}):`);
+    for (const idx of indexDiff.removed) {
+      console.log(`  - ${idx.index_name}`);
+      console.log(`    ${idx.index_def}`);
+    }
+    console.log();
+  }
+
+  if (indexDiff.modified.length > 0) {
+    console.log(`🔄 Modified indexes (${indexDiff.modified.length}):`);
+    for (const mod of indexDiff.modified) {
+      console.log(`  ~ ${mod.index}:`);
+      console.log(`    Old: ${mod.oldDef}`);
+      console.log(`    New: ${mod.newDef}`);
+    }
+    console.log();
+  }
+
+  if (
+    indexDiff.added.length === 0 &&
+    indexDiff.removed.length === 0 &&
+    indexDiff.modified.length === 0
+  ) {
+    console.log("✅ No index differences\n");
+  }
+}
+
+function printConstraintDiff(
+  constraintDiff: ReturnType<typeof compareConstraints>,
+): void {
+  if (constraintDiff.added.length > 0) {
+    console.log(`✨ Added constraints (${constraintDiff.added.length}):`);
+    for (const con of constraintDiff.added) {
+      console.log(`  + ${con.constraint_name} (${con.constraint_type})`);
+      console.log(`    ${con.constraint_def}`);
+    }
+    console.log();
+  }
+
+  if (constraintDiff.removed.length > 0) {
+    console.log(`❌ Removed constraints (${constraintDiff.removed.length}):`);
+    for (const con of constraintDiff.removed) {
+      console.log(`  - ${con.constraint_name} (${con.constraint_type})`);
+      console.log(`    ${con.constraint_def}`);
+    }
+    console.log();
+  }
+
+  if (constraintDiff.modified.length > 0) {
+    console.log(`🔄 Modified constraints (${constraintDiff.modified.length}):`);
+    for (const mod of constraintDiff.modified) {
+      console.log(`  ~ ${mod.constraint}:`);
+      console.log(`    Old: ${mod.oldDef}`);
+      console.log(`    New: ${mod.newDef}`);
+    }
+    console.log();
+  }
+
+  if (
+    constraintDiff.added.length === 0 &&
+    constraintDiff.removed.length === 0 &&
+    constraintDiff.modified.length === 0
+  ) {
+    console.log("✅ No constraint differences\n");
+  }
+}
+
 async function main() {
   console.log("🔍 Normalized Schema Comparison\n");
   console.log(`Comparing:`);
@@ -297,136 +420,24 @@ async function main() {
       getTableColumns(client1),
       getTableColumns(client2),
     ]);
-
     const columnDiff = compareColumns(cols1, cols2);
-
-    if (columnDiff.added.length > 0) {
-      console.log(`✨ Added columns (${columnDiff.added.length}):`);
-      for (const col of columnDiff.added) {
-        console.log(
-          `  + ${col.table_name}.${col.column_name}: ${col.data_type}`,
-        );
-      }
-      console.log();
-    }
-
-    if (columnDiff.removed.length > 0) {
-      console.log(`❌ Removed columns (${columnDiff.removed.length}):`);
-      for (const col of columnDiff.removed) {
-        console.log(
-          `  - ${col.table_name}.${col.column_name}: ${col.data_type}`,
-        );
-      }
-      console.log();
-    }
-
-    if (columnDiff.modified.length > 0) {
-      console.log(`🔄 Modified columns (${columnDiff.modified.length}):`);
-      for (const mod of columnDiff.modified) {
-        console.log(`  ~ ${mod.column}.${mod.field}:`);
-        console.log(`    Old: ${mod.old}`);
-        console.log(`    New: ${mod.new}`);
-      }
-      console.log();
-    }
-
-    if (
-      columnDiff.added.length === 0 &&
-      columnDiff.removed.length === 0 &&
-      columnDiff.modified.length === 0
-    ) {
-      console.log("✅ No functional column differences\n");
-    }
+    printColumnDiff(columnDiff);
 
     console.log("=== 2. Comparing Indexes ===\n");
     const [indexes1, indexes2] = await Promise.all([
       getIndexes(client1),
       getIndexes(client2),
     ]);
-
     const indexDiff = compareIndexes(indexes1, indexes2);
-
-    if (indexDiff.added.length > 0) {
-      console.log(`✨ Added indexes (${indexDiff.added.length}):`);
-      for (const idx of indexDiff.added) {
-        console.log(`  + ${idx.index_name}`);
-        console.log(`    ${idx.index_def}`);
-      }
-      console.log();
-    }
-
-    if (indexDiff.removed.length > 0) {
-      console.log(`❌ Removed indexes (${indexDiff.removed.length}):`);
-      for (const idx of indexDiff.removed) {
-        console.log(`  - ${idx.index_name}`);
-        console.log(`    ${idx.index_def}`);
-      }
-      console.log();
-    }
-
-    if (indexDiff.modified.length > 0) {
-      console.log(`🔄 Modified indexes (${indexDiff.modified.length}):`);
-      for (const mod of indexDiff.modified) {
-        console.log(`  ~ ${mod.index}:`);
-        console.log(`    Old: ${mod.oldDef}`);
-        console.log(`    New: ${mod.newDef}`);
-      }
-      console.log();
-    }
-
-    if (
-      indexDiff.added.length === 0 &&
-      indexDiff.removed.length === 0 &&
-      indexDiff.modified.length === 0
-    ) {
-      console.log("✅ No index differences\n");
-    }
+    printIndexDiff(indexDiff);
 
     console.log("=== 3. Comparing Constraints (excluding CHECK) ===\n");
     const [constraints1, constraints2] = await Promise.all([
       getConstraints(client1),
       getConstraints(client2),
     ]);
-
     const constraintDiff = compareConstraints(constraints1, constraints2);
-
-    if (constraintDiff.added.length > 0) {
-      console.log(`✨ Added constraints (${constraintDiff.added.length}):`);
-      for (const con of constraintDiff.added) {
-        console.log(`  + ${con.constraint_name} (${con.constraint_type})`);
-        console.log(`    ${con.constraint_def}`);
-      }
-      console.log();
-    }
-
-    if (constraintDiff.removed.length > 0) {
-      console.log(`❌ Removed constraints (${constraintDiff.removed.length}):`);
-      for (const con of constraintDiff.removed) {
-        console.log(`  - ${con.constraint_name} (${con.constraint_type})`);
-        console.log(`    ${con.constraint_def}`);
-      }
-      console.log();
-    }
-
-    if (constraintDiff.modified.length > 0) {
-      console.log(
-        `🔄 Modified constraints (${constraintDiff.modified.length}):`,
-      );
-      for (const mod of constraintDiff.modified) {
-        console.log(`  ~ ${mod.constraint}:`);
-        console.log(`    Old: ${mod.oldDef}`);
-        console.log(`    New: ${mod.newDef}`);
-      }
-      console.log();
-    }
-
-    if (
-      constraintDiff.added.length === 0 &&
-      constraintDiff.removed.length === 0 &&
-      constraintDiff.modified.length === 0
-    ) {
-      console.log("✅ No constraint differences\n");
-    }
+    printConstraintDiff(constraintDiff);
 
     console.log("=== Summary ===\n");
     const totalDiffs =
