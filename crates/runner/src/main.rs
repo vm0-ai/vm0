@@ -4,10 +4,12 @@ mod config;
 mod deps;
 mod error;
 mod executor;
+mod http;
 mod lock;
 mod paths;
 mod proxy;
 mod status;
+mod telemetry;
 mod types;
 
 use std::fmt;

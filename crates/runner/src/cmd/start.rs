@@ -152,7 +152,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     factory.startup().await?;
     let factory = Arc::new(factory);
 
-    let api = ApiClient::new(config.api_url.clone(), config.token.clone())?;
+    let http = crate::http::HttpClient::new(config.api_url.clone())?;
+    let api = ApiClient::new(http.clone(), config.token.clone());
     let semaphore = Arc::new(Semaphore::new(config.max_concurrent));
     let mut jobs = JoinSet::new();
 
@@ -163,6 +164,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         memory_mb: config.memory_mb,
         is_snapshot,
         registry: config.registry.clone(),
+        http,
     });
 
     config.status.write_initial().await;

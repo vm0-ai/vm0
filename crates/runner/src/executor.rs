@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use sandbox::{ExecRequest, Sandbox, SandboxConfig, SandboxFactory};
 use tracing::{error, info, warn};
@@ -12,8 +12,10 @@ const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
 
 use crate::api::ApiClient;
 use crate::error::RunnerResult;
+use crate::http::HttpClient;
 use crate::paths::guest;
 use crate::proxy::{self, ProxyRegistryHandle};
+use crate::telemetry::JobTelemetry;
 use crate::types::ExecutionContext;
 
 /// Configuration for a single execution.
@@ -23,6 +25,7 @@ pub struct ExecutorConfig {
     pub memory_mb: u32,
     pub is_snapshot: bool,
     pub registry: ProxyRegistryHandle,
+    pub http: HttpClient,
 }
 
 /// Execute a single job inside a Firecracker VM.
@@ -36,8 +39,23 @@ pub async fn execute_job(
     config: &ExecutorConfig,
 ) {
     let run_id = context.run_id;
+    let mut telemetry =
+        JobTelemetry::new(config.http.clone(), run_id, context.sandbox_token.clone());
 
-    let (exit_code, err) = match execute_inner(factory, &context, config).await {
+    // Record api_to_vm_start: elapsed time from the API-side timestamp to now.
+    // api_start_time is milliseconds since Unix epoch (Date.now() in TS).
+    if let Some(api_start_ms) = context.api_start_time {
+        let now_ms = epoch_millis();
+        let elapsed_ms = (now_ms - api_start_ms).max(0.0);
+        telemetry.record(
+            "api_to_vm_start",
+            Duration::from_millis(elapsed_ms as u64),
+            true,
+            None,
+        );
+    }
+
+    let (exit_code, err) = match execute_inner(factory, &context, config, &mut telemetry).await {
         Ok((code, stderr)) => (code, stderr),
         Err(e) => {
             error!(run_id = %run_id, error = %e, "job execution failed");
@@ -60,12 +78,15 @@ pub async fn execute_job(
             error!(run_id = %run_id, error = %e, "failed to report completion after retry");
         }
     }
+
+    telemetry.flush().await;
 }
 
 async fn execute_inner(
     factory: &dyn SandboxFactory,
     context: &ExecutionContext,
     config: &ExecutorConfig,
+    telemetry: &mut JobTelemetry,
 ) -> RunnerResult<(i32, Option<String>)> {
     let sandbox_id = Uuid::new_v4();
     let sandbox_config = SandboxConfig {
@@ -79,12 +100,21 @@ async fn execute_inner(
 
     // Create and start sandbox
     info!(run_id = %context.run_id, sandbox_id = %sandbox_id, "creating sandbox");
-    let mut sandbox = factory.create(sandbox_config).await?;
+    let t = Instant::now();
+    let mut sandbox = match factory.create(sandbox_config).await {
+        Ok(s) => s,
+        Err(e) => {
+            telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
+            return Err(e.into());
+        }
+    };
 
     if let Err(e) = sandbox.start().await {
+        telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
         factory.destroy(sandbox).await;
         return Err(e.into());
     }
+    telemetry.record("vm_create", t.elapsed(), true, None);
 
     // Register VM in proxy registry (only when firewall is enabled)
     let source_ip = sandbox.source_ip().to_string();
@@ -110,9 +140,11 @@ async fn execute_inner(
     }
 
     // Run job inside sandbox, then destroy regardless of outcome
-    let result = run_in_sandbox(sandbox.as_ref(), context, config).await;
+    let result = run_in_sandbox(sandbox.as_ref(), context, config, telemetry).await;
 
-    // Unregister VM from proxy registry
+    // Cleanup: unregister + stop + destroy
+    let t = Instant::now();
+
     if firewall_enabled && let Err(e) = config.registry.unregister_vm(&source_ip).await {
         warn!(run_id = %context.run_id, error = %e, "failed to unregister VM from proxy");
     }
@@ -123,6 +155,8 @@ async fn execute_inner(
     }
     factory.destroy(sandbox).await;
 
+    telemetry.record("cleanup", t.elapsed(), true, None);
+
     result
 }
 
@@ -130,6 +164,7 @@ async fn run_in_sandbox(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     config: &ExecutorConfig,
+    telemetry: &mut JobTelemetry,
 ) -> RunnerResult<(i32, Option<String>)> {
     // 1. Fix guest clock after snapshot restore (must happen before HTTPS calls)
     if config.is_snapshot {
@@ -138,12 +173,30 @@ async fn run_in_sandbox(
 
     // 2. Download storages
     if let Some(manifest) = &context.storage_manifest {
-        download_storages(sandbox, context, manifest).await?;
+        let t = Instant::now();
+        let result = download_storages(sandbox, context, manifest).await;
+        let err = result.as_ref().err().map(|e| e.to_string());
+        telemetry.record(
+            "storage_download",
+            t.elapsed(),
+            result.is_ok(),
+            err.as_deref(),
+        );
+        result?;
     }
 
     // 3. Restore session history
     if let Some(session) = &context.resume_session {
-        restore_session(sandbox, context, session).await?;
+        let t = Instant::now();
+        let result = restore_session(sandbox, context, session).await;
+        let err = result.as_ref().err().map(|e| e.to_string());
+        telemetry.record(
+            "session_restore",
+            t.elapsed(),
+            result.is_ok(),
+            err.as_deref(),
+        );
+        result?;
     }
 
     // 4. Build env vars (passed directly via vsock protocol)
@@ -163,6 +216,7 @@ async fn run_in_sandbox(
 
     // JOB_TIMEOUT is used for both spawn_watch (guest-side kill) and wait_exit
     // (host-side watchdog) so neither side outlives the other.
+    let t = Instant::now();
     let handle = sandbox
         .spawn_watch(&ExecRequest {
             cmd: &agent_cmd,
@@ -170,10 +224,23 @@ async fn run_in_sandbox(
             env: &env_refs,
             sudo: false,
         })
-        .await?;
+        .await;
+
+    let handle = match handle {
+        Ok(h) => h,
+        Err(e) => {
+            telemetry.record("agent_execute", t.elapsed(), false, Some(&e.to_string()));
+            return Err(e.into());
+        }
+    };
 
     // 6. Wait for exit
-    let exit = sandbox.wait_exit(handle, JOB_TIMEOUT).await?;
+    let result = sandbox.wait_exit(handle, JOB_TIMEOUT).await;
+    let success = result.as_ref().is_ok_and(|exit| exit.exit_code == 0);
+    let err = result.as_ref().err().map(|e| e.to_string());
+    telemetry.record("agent_execute", t.elapsed(), success, err.as_deref());
+    let exit = result?;
+
     let stderr = String::from_utf8_lossy(&exit.stderr).to_string();
 
     info!(
@@ -279,6 +346,15 @@ async fn restore_session(
         .await?;
     info!(run_id = %context.run_id, path = %session_path, "restored session history");
     Ok(())
+}
+
+/// Current wall-clock time as milliseconds since Unix epoch.
+fn epoch_millis() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs_f64()
+        * 1000.0
 }
 
 /// Build the environment variables JSON, matching the TS `buildEnvironmentVariables`.

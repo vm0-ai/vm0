@@ -1,47 +1,27 @@
-use std::time::Duration;
-
-use reqwest::{Client, StatusCode};
-use tracing::{debug, warn};
+use reqwest::StatusCode;
+use tracing::warn;
 
 use crate::error::{RunnerError, RunnerResult};
+use crate::http::HttpClient;
 use crate::types::{CompleteRequest, ExecutionContext, Job, PollResponse};
 
-/// Timeout for API requests (covers large claim payloads).
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
-
-/// Async HTTP client for the vm0 API.
+/// Async HTTP client for the vm0 runner API.
 #[derive(Clone)]
 pub struct ApiClient {
-    client: Client,
-    api_url: String,
+    http: HttpClient,
     token: String,
-    vercel_bypass: Option<String>,
 }
 
 impl ApiClient {
-    pub fn new(api_url: String, token: String) -> RunnerResult<Self> {
-        let client = Client::builder()
-            .timeout(REQUEST_TIMEOUT)
-            .build()
-            .map_err(|e| RunnerError::Internal(format!("http client: {e}")))?;
-
-        let vercel_bypass = std::env::var("VERCEL_AUTOMATION_BYPASS_SECRET").ok();
-
-        Ok(Self {
-            client,
-            api_url,
-            token,
-            vercel_bypass,
-        })
+    pub fn new(http: HttpClient, token: String) -> Self {
+        Self { http, token }
     }
 
     /// Poll for a pending job. Returns `Ok(None)` when no work is available.
     pub async fn poll(&self, group: &str) -> RunnerResult<Option<Job>> {
-        let url = format!("{}/api/runners/poll", self.api_url);
-        debug!(url = %url, "polling for jobs");
-
         let resp = self
-            .auth_request(reqwest::Method::POST, &url, &self.token)
+            .http
+            .request(reqwest::Method::POST, "/api/runners/poll", &self.token)
             .json(&serde_json::json!({ "group": group }))
             .send()
             .await
@@ -64,11 +44,10 @@ impl ApiClient {
     /// Claim a job for execution. Returns [`RunnerError::AlreadyClaimed`] on
     /// HTTP 409 so callers can continue gracefully.
     pub async fn claim(&self, run_id: uuid::Uuid) -> RunnerResult<ExecutionContext> {
-        let url = format!("{}/api/runners/jobs/{}/claim", self.api_url, run_id);
-        debug!(url = %url, "claiming job");
-
+        let path = format!("/api/runners/jobs/{run_id}/claim");
         let resp = self
-            .auth_request(reqwest::Method::POST, &url, &self.token)
+            .http
+            .request(reqwest::Method::POST, &path, &self.token)
             .json(&serde_json::json!({}))
             .send()
             .await
@@ -100,9 +79,6 @@ impl ApiClient {
         exit_code: i32,
         error: Option<&str>,
     ) -> RunnerResult<()> {
-        let url = format!("{}/api/webhooks/agent/complete", self.api_url);
-        debug!(url = %url, "completing job");
-
         let body = CompleteRequest {
             run_id,
             exit_code,
@@ -110,7 +86,12 @@ impl ApiClient {
         };
 
         let resp = self
-            .auth_request(reqwest::Method::POST, &url, sandbox_token)
+            .http
+            .request(
+                reqwest::Method::POST,
+                "/api/webhooks/agent/complete",
+                sandbox_token,
+            )
             .json(&body)
             .send()
             .await
@@ -128,11 +109,13 @@ impl ApiClient {
 
     /// Fetch an Ably token for subscribing to runner group notifications.
     pub async fn realtime_token(&self, group: &str) -> RunnerResult<ably_subscriber::TokenRequest> {
-        let url = format!("{}/api/runners/realtime/token", self.api_url);
-        debug!(url = %url, "fetching realtime token");
-
         let resp = self
-            .auth_request(reqwest::Method::POST, &url, &self.token)
+            .http
+            .request(
+                reqwest::Method::POST,
+                "/api/runners/realtime/token",
+                &self.token,
+            )
             .json(&serde_json::json!({ "group": group }))
             .send()
             .await
@@ -147,21 +130,5 @@ impl ApiClient {
         resp.json()
             .await
             .map_err(|e| RunnerError::Api(format!("realtime token decode: {e}")))
-    }
-
-    /// Build an authenticated request with common headers.
-    fn auth_request(
-        &self,
-        method: reqwest::Method,
-        url: &str,
-        token: &str,
-    ) -> reqwest::RequestBuilder {
-        let mut req = self.client.request(method, url).bearer_auth(token);
-
-        if let Some(bypass) = &self.vercel_bypass {
-            req = req.header("x-vercel-protection-bypass", bypass);
-        }
-
-        req
     }
 }
