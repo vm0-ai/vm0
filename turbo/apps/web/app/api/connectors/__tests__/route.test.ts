@@ -142,7 +142,9 @@ describe("DELETE /api/connectors/:type - Delete Connector", () => {
       "http://localhost:3000/api/connectors/github",
       { method: "DELETE" },
     );
-    const response = await deleteConnector(request);
+    const response = await deleteConnector(request, {
+      params: Promise.resolve({ type: "github" }),
+    });
     const data = await response.json();
 
     expect(response.status).toBe(401);
@@ -156,23 +158,30 @@ describe("DELETE /api/connectors/:type - Delete Connector", () => {
       "http://localhost:3000/api/connectors/github",
       { method: "DELETE" },
     );
-    const response = await deleteConnector(request);
+    const response = await deleteConnector(request, {
+      params: Promise.resolve({ type: "github" }),
+    });
     const data = await response.json();
 
     expect(response.status).toBe(404);
     expect(data.error.message).toContain("not found");
   });
 
-  it("should delete connector successfully", async () => {
+  it("should delete self-hosted connector successfully", async () => {
     const user = await context.setupUser();
-    await createTestConnector(user.scopeId);
+    await createTestConnector(user.scopeId, {
+      type: "github",
+      platform: "self-hosted",
+    });
 
     // Delete connector
     const deleteRequest = createTestRequest(
       "http://localhost:3000/api/connectors/github",
       { method: "DELETE" },
     );
-    const deleteResponse = await deleteConnector(deleteRequest);
+    const deleteResponse = await deleteConnector(deleteRequest, {
+      params: Promise.resolve({ type: "github" }),
+    });
 
     expect(deleteResponse.status).toBe(204);
 
@@ -180,8 +189,109 @@ describe("DELETE /api/connectors/:type - Delete Connector", () => {
     const getRequest = createTestRequest(
       "http://localhost:3000/api/connectors/github",
     );
-    const getResponse = await getConnector(getRequest);
+    const getResponse = await getConnector(getRequest, {
+      params: Promise.resolve({ type: "github" }),
+    });
 
     expect(getResponse.status).toBe(404);
+  });
+
+  it("should delete nango connector and call nango.deleteConnection with correct UUID", async () => {
+    const user = await context.setupUser();
+    const nangoConnectionId = "nango-uuid-12345";
+
+    // Create Nango connector with UUID
+    await createTestConnector(user.scopeId, {
+      type: "gmail",
+      platform: "nango",
+      nangoConnectionId,
+    });
+
+    // Delete connector
+    const deleteRequest = createTestRequest(
+      "http://localhost:3000/api/connectors/gmail",
+      { method: "DELETE" },
+    );
+    const deleteResponse = await deleteConnector(deleteRequest, {
+      params: Promise.resolve({ type: "gmail" }),
+    });
+
+    expect(deleteResponse.status).toBe(204);
+
+    // Verify connector is gone from database
+    const getRequest = createTestRequest(
+      "http://localhost:3000/api/connectors/gmail",
+    );
+    const getResponse = await getConnector(getRequest, {
+      params: Promise.resolve({ type: "gmail" }),
+    });
+
+    expect(getResponse.status).toBe(404);
+  });
+});
+
+describe("GET /api/connectors - Nango Sync", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("should handle nango sync gracefully when enabled", async () => {
+    const user = await context.setupUser();
+
+    // List connectors - sync will be attempted but mock returns empty connections
+    const request = createTestRequest("http://localhost:3000/api/connectors");
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.connectors).toEqual([]);
+  });
+
+  it("should handle disabled nango feature gracefully", async () => {
+    await context.setupUser();
+
+    // Temporarily disable Nango feature
+    vi.stubEnv("FEATURE_NANGO_ENABLED", "false");
+
+    const request = createTestRequest("http://localhost:3000/api/connectors");
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.connectors).toEqual([]);
+
+    vi.unstubAllEnvs();
+  });
+
+  it("should skip connections that already exist in database", async () => {
+    const user = await context.setupUser();
+
+    // Create existing connector
+    await createTestConnector(user.scopeId, {
+      type: "gmail",
+      platform: "nango",
+      nangoConnectionId: "existing-uuid",
+    });
+
+    // Mock Nango with same connection
+    const mockListConnections = vi.fn().mockResolvedValue({
+      connections: [
+        {
+          connection_id: "existing-uuid",
+          provider_config_key: "google-mail",
+          end_user: { id: user.scopeId },
+          tags: { connection_id: `${user.scopeId}:gmail` },
+        },
+      ],
+    });
+
+    const request = createTestRequest("http://localhost:3000/api/connectors");
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.connectors).toHaveLength(1);
+    expect(data.connectors[0].type).toBe("gmail");
+    expect(data.connectors[0].platform).toBe("nango");
   });
 });

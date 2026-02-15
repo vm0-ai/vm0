@@ -53,6 +53,9 @@ const resetEnv = vi.hoisted(() => {
     vi.stubEnv("RESEND_API_KEY", "re_test_api_key");
     vi.stubEnv("RESEND_WEBHOOK_SECRET", "whsec_test_webhook_secret");
     vi.stubEnv("RESEND_FROM_DOMAIN", "vm7.bot");
+    // Nango OAuth platform
+    vi.stubEnv("NANGO_SECRET_KEY", "test-nango-secret-key");
+    vi.stubEnv("FEATURE_NANGO_ENABLED", "true");
     // Initialize Next.js after() callback queue (shared with test-helpers.ts flushAfter)
     globalThis.nextAfterCallbacks = [];
   };
@@ -196,6 +199,26 @@ vi.mock("resend", () => {
     }),
   };
 });
+
+// Mock Nango SDK
+vi.mock("@nangohq/node", () => ({
+  Nango: vi.fn().mockImplementation(function () {
+    return {
+      createConnectSession: vi.fn().mockResolvedValue({
+        data: {
+          token: "test-session-token",
+          connect_link: "https://connect.nango.dev",
+        },
+      }),
+      listConnections: vi.fn().mockResolvedValue({ connections: [] }),
+      getConnection: vi.fn().mockResolvedValue({
+        credentials: {},
+        metadata: {},
+      }),
+      deleteConnection: vi.fn().mockResolvedValue(undefined),
+    };
+  }),
+}));
 
 // Mock Axiom packages
 // The @axiomhq/logging Logger class needs proper method implementations

@@ -1358,6 +1358,8 @@ export async function createTestConnector(
   options?: {
     type?: ConnectorType;
     authMethod?: "oauth" | "pat";
+    platform?: "self-hosted" | "nango";
+    nangoConnectionId?: string;
     externalId?: string;
     externalUsername?: string;
     externalEmail?: string;
@@ -1373,6 +1375,8 @@ export async function createTestConnector(
       scopeId,
       type,
       authMethod: options?.authMethod ?? "oauth",
+      platform: options?.platform ?? "self-hosted",
+      nangoConnectionId: options?.nangoConnectionId,
       externalId: options?.externalId ?? "12345",
       externalUsername: options?.externalUsername ?? "testuser",
       externalEmail: options?.externalEmail ?? "test@example.com",
