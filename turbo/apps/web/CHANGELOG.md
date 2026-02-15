@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.42.1](https://github.com/vm0-ai/vm0/compare/web-v12.42.0...web-v12.42.1) (2026-02-15)
+
+
+### Bug Fixes
+
+* prevent env validation errors on client side ([#3059](https://github.com/vm0-ai/vm0/issues/3059)) ([886bd66](https://github.com/vm0-ai/vm0/commit/886bd663b062ec515d59821663d21011f83b391e))
+
 ## [12.42.0](https://github.com/vm0-ai/vm0/compare/web-v12.41.0...web-v12.42.0) (2026-02-15)
 
 
