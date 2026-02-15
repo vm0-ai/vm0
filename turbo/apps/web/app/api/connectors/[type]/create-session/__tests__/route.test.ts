@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { POST } from "../route";
 import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
@@ -76,7 +76,7 @@ describe("POST /api/connectors/:type/create-session", () => {
   });
 
   it("should create nango connect session successfully", async () => {
-    const user = await context.setupUser();
+    await context.setupUser();
 
     const request = createTestRequest(
       "http://localhost:3000/api/connectors/gmail/create-session",

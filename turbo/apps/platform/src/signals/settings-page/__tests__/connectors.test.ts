@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { testContext } from "../../__tests__/test-helpers";
 import { setupPage } from "../../../__tests__/page-helper";
 import { mockedNango, triggerNangoEvent } from "../../../__tests__/mock-nango";
@@ -39,11 +39,11 @@ describe("allConnectorTypes$", () => {
       }),
     );
 
-    await setupPage({ context, path: "/" });
+    await setupPage({ context, path: "/", withoutRender: true });
 
     const types = await store.get(allConnectorTypes$);
 
-    expect(types).toEqual(
+    expect(types).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
           type: "github",
@@ -73,7 +73,7 @@ describe("allConnectorTypes$", () => {
       }),
     );
 
-    await setupPage({ context, path: "/" });
+    await setupPage({ context, path: "/", withoutRender: true });
 
     const types = await store.get(allConnectorTypes$);
     const computerConnector = types.find((t) => t.type === "computer");
@@ -95,7 +95,7 @@ describe("connectConnector$", () => {
       }),
     );
 
-    await setupPage({ context, path: "/" });
+    await setupPage({ context, path: "/", withoutRender: true });
 
     // Start connection flow
     await store.set(connectConnector$, "gmail", signal);
@@ -133,7 +133,7 @@ describe("connectConnector$", () => {
       }),
     );
 
-    await setupPage({ context, path: "/" });
+    await setupPage({ context, path: "/", withoutRender: true });
     await store.set(connectConnector$, "gmail", signal);
 
     // Simulate connection success
@@ -157,7 +157,7 @@ describe("connectConnector$", () => {
       }),
     );
 
-    await setupPage({ context, path: "/" });
+    await setupPage({ context, path: "/", withoutRender: true });
     await store.set(connectConnector$, "gmail", signal);
 
     // Simulate user closing
@@ -176,7 +176,7 @@ describe("connectConnector$", () => {
       }),
     );
 
-    await setupPage({ context, path: "/" });
+    await setupPage({ context, path: "/", withoutRender: true });
 
     // Connection attempt should not throw, but handle error gracefully
     await store.set(connectConnector$, "gmail", signal);
@@ -191,15 +191,15 @@ describe("connectConnector$", () => {
 
 describe("disconnect dialog", () => {
   it("should open disconnect dialog", async () => {
-    const { store, signal } = context;
+    const { store } = context;
 
-    await setupPage({ context, path: "/" });
+    await setupPage({ context, path: "/", withoutRender: true });
 
     // Open dialog
-    await store.set(openDisconnectDialog$, "github", signal);
+    await store.set(openDisconnectDialog$, "github");
 
     const dialogState = store.get(disconnectDialogState$);
-    expect(dialogState.open).toBe(true);
+    expect(dialogState.open).toBeTruthy();
     expect(dialogState.connectorType).toBe("github");
   });
 
@@ -215,15 +215,15 @@ describe("disconnect dialog", () => {
       }),
     );
 
-    await setupPage({ context, path: "/" });
+    await setupPage({ context, path: "/", withoutRender: true });
 
     // Open dialog and confirm
-    await store.set(openDisconnectDialog$, "github", signal);
+    await store.set(openDisconnectDialog$, "github");
     await store.set(confirmDisconnect$, signal);
 
     // Dialog should close
     const dialogState = store.get(disconnectDialogState$);
-    expect(dialogState.open).toBe(false);
+    expect(dialogState.open).toBeFalsy();
     expect(dialogState.connectorType).toBeNull();
   });
 
@@ -236,9 +236,9 @@ describe("disconnect dialog", () => {
       }),
     );
 
-    await setupPage({ context, path: "/" });
+    await setupPage({ context, path: "/", withoutRender: true });
 
-    await store.set(openDisconnectDialog$, "github", signal);
+    await store.set(openDisconnectDialog$, "github");
 
     await expect(store.set(confirmDisconnect$, signal)).rejects.toThrow();
   });

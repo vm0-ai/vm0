@@ -236,7 +236,7 @@ describe("GET /api/connectors - Nango Sync", () => {
   });
 
   it("should handle nango sync gracefully when enabled", async () => {
-    const user = await context.setupUser();
+    await context.setupUser();
 
     // List connectors - sync will be attempted but mock returns empty connections
     const request = createTestRequest("http://localhost:3000/api/connectors");
@@ -273,17 +273,7 @@ describe("GET /api/connectors - Nango Sync", () => {
       nangoConnectionId: "existing-uuid",
     });
 
-    // Mock Nango with same connection
-    const mockListConnections = vi.fn().mockResolvedValue({
-      connections: [
-        {
-          connection_id: "existing-uuid",
-          provider_config_key: "google-mail",
-          end_user: { id: user.scopeId },
-          tags: { connection_id: `${user.scopeId}:gmail` },
-        },
-      ],
-    });
+    // Mock Nango with same connection (already handled by testContext)
 
     const request = createTestRequest("http://localhost:3000/api/connectors");
     const response = await GET(request);
