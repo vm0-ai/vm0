@@ -624,6 +624,13 @@
       "when": 1771300000000,
       "tag": "0088_align_schema_with_drizzle",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1771400000000,
+      "tag": "0089_add_platform_to_connectors",
+      "breakpoints": true
     }
   ]
 }
