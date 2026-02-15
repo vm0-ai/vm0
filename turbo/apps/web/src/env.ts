@@ -82,10 +82,8 @@ function initEnv() {
       // ngrok (for computer connector)
       NGROK_API_KEY: z.string().min(1).optional(),
       NGROK_COMPUTER_CONNECTOR_DOMAIN: z.string().min(1).optional(),
-      // Nango OAuth integration
+      // Nango OAuth integration (Cloud only)
       NANGO_SECRET_KEY: z.string().min(1).optional(),
-      NANGO_PUBLIC_KEY: z.string().min(1).optional(),
-      NANGO_BASE_URL: z.string().url().default("https://api.nango.dev"),
       FEATURE_NANGO_ENABLED: z.coerce.boolean().default(false),
       // Email integration (Resend) — optional, only needed when email notifications are enabled
       RESEND_API_KEY: z.string().min(1).optional(),
@@ -167,8 +165,6 @@ function initEnv() {
       NGROK_COMPUTER_CONNECTOR_DOMAIN:
         process.env.NGROK_COMPUTER_CONNECTOR_DOMAIN,
       NANGO_SECRET_KEY: process.env.NANGO_SECRET_KEY,
-      NANGO_PUBLIC_KEY: process.env.NANGO_PUBLIC_KEY,
-      NANGO_BASE_URL: process.env.NANGO_BASE_URL,
       FEATURE_NANGO_ENABLED: process.env.FEATURE_NANGO_ENABLED,
       NEXT_PUBLIC_PLATFORM_URL: process.env.NEXT_PUBLIC_PLATFORM_URL,
       RESEND_API_KEY: process.env.RESEND_API_KEY,

@@ -46,6 +46,10 @@ NOTION_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/notion_oauth_client_se
 NGROK_API_KEY=op://Development/vm0-env-local/NGROK_API_KEY
 NGROK_COMPUTER_CONNECTOR_DOMAIN=computer.vm7.io
 
+# Optional: Nango OAuth Integration (for 100+ providers)
+NANGO_SECRET_KEY=op://Development/vm0-env-local/nango_secret_key
+FEATURE_NANGO_ENABLED=true
+
 # Required: Platform UI URL (for settings page links in error messages)
 PLATFORM_URL=op://Development/vm0-env-local/next_public_platform_url
 

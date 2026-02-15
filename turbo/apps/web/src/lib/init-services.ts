@@ -90,9 +90,9 @@ export function initServices(): void {
         if (!env.NANGO_SECRET_KEY) {
           throw new Error("Nango not configured - NANGO_SECRET_KEY missing");
         }
+        // Use Nango Cloud (default host: https://api.nango.dev)
         _nango = new Nango({
           secretKey: env.NANGO_SECRET_KEY,
-          host: env.NANGO_BASE_URL,
         });
       }
       return _nango;
