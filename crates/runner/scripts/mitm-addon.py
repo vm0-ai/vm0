@@ -498,5 +498,13 @@ def response(flow: http.HTTPFlow) -> None:
         )
 
 
+def error(flow: http.HTTPFlow) -> None:
+    """
+    Clean up request_start_times on flow error (timeout, connection reset, etc.)
+    to prevent unbounded dict growth over the runner's lifetime.
+    """
+    request_start_times.pop(flow.id, None)
+
+
 # mitmproxy addon registration
-addons = [tls_clienthello, request, response]
+addons = [tls_clienthello, request, response, error]
