@@ -467,18 +467,19 @@ export async function deleteConnector(
 
   // Delete from platform (Nango or self-hosted) if applicable
   if (existing.platform === "nango") {
-    const nango = globalThis.services.nango;
-    // Build connection ID format: "scopeId:connectorType"
-    const connectionId = `${scope.id}:${type}`;
+    if (!existing.nangoConnectionId) {
+      throw new Error("Nango connection ID not found in database");
+    }
 
+    const nango = globalThis.services.nango;
     // Get integration ID mapping (e.g., "gmail" -> "google-mail")
     const integrationId = getNangoIntegrationId(type);
 
-    await nango.deleteConnection(integrationId, connectionId);
+    await nango.deleteConnection(integrationId, existing.nangoConnectionId);
     log.debug("Nango connection deleted", {
       scopeId: scope.id,
       type,
-      connectionId,
+      nangoConnectionId: existing.nangoConnectionId,
     });
   }
 
