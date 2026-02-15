@@ -19,9 +19,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS_DIR = path.join(__dirname, "../src/db/migrations");
-const BACKUP_DIR = path.join(__dirname, "../.migrations-backup");
+const dirname = path.dirname(fileURLToPath(import.meta.url));
+const MIGRATIONS_DIR = path.join(dirname, "../src/db/migrations");
+const BACKUP_DIR = path.join(dirname, "../.migrations-backup");
 
 // Database connection details for testing
 const DB_HOST = process.env.DB_HOST || "localhost";
@@ -82,7 +82,7 @@ async function dropDatabase(dbName: string): Promise<void> {
 
 async function runMigrations(dbUrl: string): Promise<void> {
   console.log(`🔨 Running migrations...`);
-  execCommand(`tsx ${path.join(__dirname, "migrate.ts")}`, {
+  execCommand(`tsx ${path.join(dirname, "migrate.ts")}`, {
     DATABASE_URL: dbUrl,
   });
 }
@@ -93,13 +93,10 @@ async function runNormalizedComparison(
 ): Promise<boolean> {
   console.log(`📸 Running normalized schema comparison...`);
   try {
-    execCommand(
-      `tsx ${path.join(__dirname, "compare-schemas-normalized.ts")}`,
-      {
-        DB1_URL: dbUrl1,
-        DB2_URL: dbUrl2,
-      },
-    );
+    execCommand(`tsx ${path.join(dirname, "compare-schemas-normalized.ts")}`, {
+      DB1_URL: dbUrl1,
+      DB2_URL: dbUrl2,
+    });
     return true;
   } catch {
     return false;
@@ -128,7 +125,7 @@ async function generateFreshMigrations(): Promise<void> {
 
   // Generate new migrations (non-interactive)
   execCommand("pnpm drizzle-kit generate", {
-    cwd: path.join(__dirname, ".."),
+    cwd: path.join(dirname, ".."),
   });
 }
 
@@ -201,4 +198,7 @@ async function main(): Promise<void> {
   }
 }
 
-main();
+main().catch((error) => {
+  console.error("Unexpected error:", error);
+  process.exit(1);
+});
