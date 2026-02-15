@@ -394,8 +394,33 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
         run: pnpm --filter web db:migrate
+      - name: Test Web
+        working-directory: turbo
+        env:
+          DATABASE_URL: postgresql://postgres@postgres:5432/postgres
+        run: pnpm vitest run --project=web
+
+  test-migrate:
+    needs: prepare
+    runs-on: ubuntu-latest
+    # Only run when migration or schema files changed
+    if: needs.prepare.outputs.migration-changed == 'true'
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260203
+    services:
+      postgres:
+        image: postgres:17-alpine
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
       - name: Test Migration Consistency
-        if: needs.prepare.outputs.migration-changed == 'true'
         working-directory: turbo/apps/web
         env:
           DB_HOST: postgres
@@ -403,11 +428,6 @@ jobs:
           DB_USER: postgres
           DB_PASSWORD: ""
         run: pnpm tsx scripts/test-migration-consistency-schema.ts
-      - name: Test Web
-        working-directory: turbo
-        env:
-          DATABASE_URL: postgresql://postgres@postgres:5432/postgres
-        run: pnpm vitest run --project=web
 
   test-cli:
     runs-on: ubuntu-latest
