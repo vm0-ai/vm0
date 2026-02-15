@@ -126,6 +126,29 @@ impl ApiClient {
         Ok(())
     }
 
+    /// Fetch an Ably token for subscribing to runner group notifications.
+    pub async fn realtime_token(&self, group: &str) -> RunnerResult<ably_subscriber::TokenRequest> {
+        let url = format!("{}/api/runners/realtime/token", self.api_url);
+        debug!(url = %url, "fetching realtime token");
+
+        let resp = self
+            .auth_request(reqwest::Method::POST, &url, &self.token)
+            .json(&serde_json::json!({ "group": group }))
+            .send()
+            .await
+            .map_err(|e| RunnerError::Api(format!("realtime token: {e}")))?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(RunnerError::Api(format!("realtime token {status}: {body}")));
+        }
+
+        resp.json()
+            .await
+            .map_err(|e| RunnerError::Api(format!("realtime token decode: {e}")))
+    }
+
     /// Build an authenticated request with common headers.
     fn auth_request(
         &self,

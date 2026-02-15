@@ -21,6 +21,7 @@ edition = "2024"
 
 [workspace.dependencies]
 # Internal crates
+ably-subscriber = { path = "ably-subscriber" }
 guest-common = { path = "guest-common" }
 sandbox = { path = "sandbox" }
 sandbox-fc = { path = "sandbox-fc" }

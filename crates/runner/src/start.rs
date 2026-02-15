@@ -18,7 +18,10 @@ use crate::paths::{HomePaths, RunnerPaths};
 use crate::proxy::{self, ProxyRegistryHandle};
 use crate::status::{RunnerMode, StatusTracker};
 
-const POLL_INTERVAL: Duration = Duration::from_secs(5);
+/// Poll interval when Ably is connected (safety net).
+const POLL_SLOW: Duration = Duration::from_secs(30);
+/// Poll interval when Ably is disconnected or unavailable (primary mechanism).
+const POLL_FAST: Duration = Duration::from_secs(5);
 
 #[derive(Args)]
 pub struct StartArgs {
@@ -167,8 +170,39 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         name = %config.name,
         group = %config.group,
         max_concurrent = config.max_concurrent,
-        "runner started, polling for jobs"
+        "runner started"
     );
+
+    // -----------------------------------------------------------------------
+    // Ably subscription (non-fatal — poll-only mode if unavailable)
+    // -----------------------------------------------------------------------
+    let api_for_ably = api.clone();
+    let group_for_ably = config.group.clone();
+    let get_token: Box<dyn Fn() -> ably_subscriber::TokenFuture + Send + Sync> =
+        Box::new(move || {
+            let api = api_for_ably.clone();
+            let group = group_for_ably.clone();
+            Box::pin(async move {
+                api.realtime_token(&group)
+                    .await
+                    .map_err(|e| Box::new(e) as ably_subscriber::BoxError)
+            })
+        });
+
+    let channel = format!("runner-group:{}", config.group);
+    let ably_config = ably_subscriber::SubscribeConfig::new(get_token, channel);
+
+    let mut ably = match ably_subscriber::subscribe(ably_config).await {
+        Ok(sub) => {
+            info!("ably connected");
+            Some(sub)
+        }
+        Err(e) => {
+            warn!(error = %e, "ably unavailable, running in poll-only mode");
+            None
+        }
+    };
+    let mut ably_connected = ably.is_some();
 
     // -----------------------------------------------------------------------
     // Signal handling
@@ -203,8 +237,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     });
 
     // -----------------------------------------------------------------------
-    // Poll loop
+    // Main loop
     // -----------------------------------------------------------------------
+    let mut poll_now = true; // immediate first poll to clear any backlog
     let mut current_mode = RunnerMode::Running;
     loop {
         let mode = *mode_rx.borrow_and_update();
@@ -246,77 +281,86 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             continue;
         }
 
-        // Poll for a job
-        let poll_result = tokio::select! {
-            result = api.poll(&config.group) => result,
-            _ = mode_rx.changed() => continue,
+        // poll_now is only reset in the timer branch below so that Ably
+        // events never consume the immediate-poll intent (select! picks a
+        // random ready branch when Duration::ZERO races with a buffered event).
+        let sleep_dur = if poll_now {
+            Duration::ZERO
+        } else if ably_connected {
+            POLL_SLOW
+        } else {
+            POLL_FAST
         };
 
-        let job = match poll_result {
-            Ok(Some(job)) => job,
-            Ok(None) => {
-                // No work available — wait before re-polling
-                tokio::select! {
-                    _ = tokio::time::sleep(POLL_INTERVAL) => {}
-                    _ = mode_rx.changed() => {}
+        tokio::select! {
+            // Ably push notification
+            event = recv_ably(&mut ably) => {
+                match event {
+                    Some(ably_subscriber::Event::Message(msg)) => {
+                        if let Some(run_id) = parse_job_run_id(&msg) {
+                            info!(run_id = %run_id, "ably: job notification");
+                            claim_and_spawn(
+                                run_id, &api, &factory, &config, &exec_config,
+                                &semaphore, &mut jobs,
+                            ).await;
+                        }
+                    }
+                    Some(ably_subscriber::Event::Connected) => {
+                        if !ably_connected {
+                            ably_connected = true;
+                            info!("ably reconnected");
+                        }
+                    }
+                    Some(ably_subscriber::Event::Disconnected { reason }) => {
+                        ably_connected = false;
+                        warn!(
+                            reason = reason.as_deref().unwrap_or("unknown"),
+                            "ably disconnected, switching to fast poll"
+                        );
+                    }
+                    Some(ably_subscriber::Event::Error { code, message }) => {
+                        error!(code, message = %message, "ably fatal error");
+                        ably = None;
+                        ably_connected = false;
+                    }
+                    None => {
+                        warn!("ably subscription closed, switching to poll-only mode");
+                        ably = None;
+                        ably_connected = false;
+                    }
                 }
                 continue;
             }
-            Err(e) => {
-                error!(error = %e, "poll failed, retrying in 5s");
-                tokio::select! {
-                    _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {}
-                    _ = mode_rx.changed() => {}
+            // Poll fallback (adaptive interval)
+            _ = tokio::time::sleep(sleep_dur) => {
+                poll_now = false;
+                match api.poll(&config.group).await {
+                    Ok(Some(job)) => {
+                        info!(run_id = %job.run_id, "poll: job found");
+                        claim_and_spawn(
+                            job.run_id, &api, &factory, &config, &exec_config,
+                            &semaphore, &mut jobs,
+                        ).await;
+                        poll_now = true;
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        error!(error = %e, "poll failed");
+                    }
                 }
-                continue;
             }
-        };
-
-        let run_id = job.run_id;
-        info!(run_id = %run_id, "job received, claiming");
-
-        // Claim the job
-        let context = match api.claim(run_id).await {
-            Ok(ctx) => ctx,
-            Err(RunnerError::AlreadyClaimed) => {
-                info!(run_id = %run_id, "job already claimed, skipping");
-                continue;
-            }
-            Err(e) => {
-                error!(run_id = %run_id, error = %e, "claim failed");
-                continue;
-            }
-        };
-
-        info!(run_id = %run_id, "job claimed, spawning executor");
-
-        // Acquire semaphore permit
-        let permit = match semaphore.clone().acquire_owned().await {
-            Ok(p) => p,
-            Err(_) => {
-                error!("semaphore closed unexpectedly");
-                break;
-            }
-        };
-
-        // Track active run
-        config.status.add_run(run_id).await;
-
-        let api = api.clone();
-        let factory = Arc::clone(&factory);
-        let exec_config = Arc::clone(&exec_config);
-        let status = Arc::clone(&config.status);
-
-        jobs.spawn(async move {
-            executor::execute_job(&api, factory.as_ref(), context, &exec_config).await;
-            status.remove_run(run_id).await;
-            drop(permit);
-        });
+            // Mode changes (signals)
+            _ = mode_rx.changed() => {}
+        }
     }
 
     // -----------------------------------------------------------------------
-    // Drain running jobs (for Stopping — Draining already drained above)
+    // Shutdown
     // -----------------------------------------------------------------------
+    // Close Ably subscription
+    drop(ably);
+
+    // Drain running jobs
     let remaining = jobs.len();
     if remaining > 0 {
         info!(remaining, "waiting for running jobs to finish");
@@ -338,6 +382,83 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     Ok(())
 }
 
+/// Claim a job and spawn an executor task.
+async fn claim_and_spawn(
+    run_id: uuid::Uuid,
+    api: &ApiClient,
+    factory: &Arc<FirecrackerFactory>,
+    config: &RunConfig,
+    exec_config: &Arc<ExecutorConfig>,
+    semaphore: &Arc<Semaphore>,
+    jobs: &mut JoinSet<()>,
+) {
+    let context = match api.claim(run_id).await {
+        Ok(ctx) => ctx,
+        Err(RunnerError::AlreadyClaimed) => {
+            info!(run_id = %run_id, "already claimed, skipping");
+            return;
+        }
+        Err(e) => {
+            error!(run_id = %run_id, error = %e, "claim failed");
+            return;
+        }
+    };
+
+    info!(run_id = %run_id, "job claimed, spawning executor");
+
+    let permit = match semaphore.clone().acquire_owned().await {
+        Ok(p) => p,
+        Err(_) => {
+            error!("semaphore closed unexpectedly");
+            return;
+        }
+    };
+
+    config.status.add_run(run_id).await;
+
+    let api = api.clone();
+    let factory = Arc::clone(factory);
+    let exec_config = Arc::clone(exec_config);
+    let status = Arc::clone(&config.status);
+
+    jobs.spawn(async move {
+        executor::execute_job(&api, factory.as_ref(), context, &exec_config).await;
+        status.remove_run(run_id).await;
+        drop(permit);
+    });
+}
+
+/// Parse `run_id` from an Ably job notification message.
+fn parse_job_run_id(msg: &ably_subscriber::Message) -> Option<uuid::Uuid> {
+    if msg.name.as_deref() != Some("job") {
+        return None;
+    }
+    let raw = msg.data.get("runId").and_then(|v| v.as_str());
+    match raw {
+        Some(s) => match s.parse() {
+            Ok(id) => Some(id),
+            Err(e) => {
+                warn!(value = %s, error = %e, "ably: invalid runId");
+                None
+            }
+        },
+        None => {
+            warn!(data = %msg.data, "ably: job message missing runId");
+            None
+        }
+    }
+}
+
+/// Receive from Ably subscription, or pend forever if not connected.
+async fn recv_ably(
+    ably: &mut Option<ably_subscriber::Subscription>,
+) -> Option<ably_subscriber::Event> {
+    match ably {
+        Some(sub) => sub.next().await,
+        None => std::future::pending().await,
+    }
+}
+
 /// Await a signal if registered, or pend forever if registration failed.
 async fn recv_signal(sig: &mut Option<tokio::signal::unix::Signal>) {
     match sig {
@@ -345,5 +466,60 @@ async fn recv_signal(sig: &mut Option<tokio::signal::unix::Signal>) {
             s.recv().await;
         }
         None => std::future::pending().await,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_message(name: Option<&str>, data: serde_json::Value) -> ably_subscriber::Message {
+        ably_subscriber::Message {
+            name: name.map(String::from),
+            data,
+            id: None,
+            client_id: None,
+            timestamp: None,
+        }
+    }
+
+    #[test]
+    fn parse_job_run_id_valid() {
+        let msg = make_message(
+            Some("job"),
+            serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000001" }),
+        );
+        let id = parse_job_run_id(&msg).unwrap();
+        assert_eq!(id.to_string(), "00000000-0000-0000-0000-000000000001");
+    }
+
+    #[test]
+    fn parse_job_run_id_wrong_event_name() {
+        let msg = make_message(
+            Some("status"),
+            serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000001" }),
+        );
+        assert!(parse_job_run_id(&msg).is_none());
+    }
+
+    #[test]
+    fn parse_job_run_id_missing_name() {
+        let msg = make_message(
+            None,
+            serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000001" }),
+        );
+        assert!(parse_job_run_id(&msg).is_none());
+    }
+
+    #[test]
+    fn parse_job_run_id_invalid_uuid() {
+        let msg = make_message(Some("job"), serde_json::json!({ "runId": "not-a-uuid" }));
+        assert!(parse_job_run_id(&msg).is_none());
+    }
+
+    #[test]
+    fn parse_job_run_id_missing_field() {
+        let msg = make_message(Some("job"), serde_json::json!({ "other": "data" }));
+        assert!(parse_job_run_id(&msg).is_none());
     }
 }
