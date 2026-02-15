@@ -33,13 +33,17 @@ interface ConstraintInfo {
 }
 
 // Get database URLs from command line args
-const DB1_URL = process.argv[2];
-const DB2_URL = process.argv[3];
+const db1Url = process.argv[2];
+const db2Url = process.argv[3];
 
-if (!DB1_URL || !DB2_URL) {
+if (!db1Url || !db2Url) {
   console.error("Usage: tsx compare-schemas-normalized.ts <db1_url> <db2_url>");
   process.exit(1);
 }
+
+// TypeScript now knows these are defined after the check
+const DB1_URL: string = db1Url;
+const DB2_URL: string = db2Url;
 
 async function getTableColumns(client: Client): Promise<TableColumn[]> {
   const result = await client.query<TableColumn>(`
