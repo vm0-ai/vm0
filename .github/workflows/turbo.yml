@@ -371,6 +371,14 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
         run: pnpm --filter web db:migrate
+      - name: Test Migration Consistency
+        working-directory: turbo/apps/web
+        env:
+          DB_HOST: postgres
+          DB_PORT: 5432
+          DB_USER: postgres
+          DB_PASSWORD: ""
+        run: pnpm tsx scripts/test-migration-consistency-schema.ts
       - name: Test Web
         working-directory: turbo
         env:

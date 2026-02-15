@@ -22,7 +22,7 @@ export const agentComposes = pgTable(
     scopeId: uuid("scope_id")
       .notNull()
       .references(() => scopes.id), // Scope reference
-    name: varchar("name", { length: 64 }).notNull(), // Agent name from compose
+    name: varchar("name", { length: 64 }).notNull().default(""), // Agent name from compose
     headVersionId: varchar("head_version_id", { length: 64 }), // Points to latest version hash
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
