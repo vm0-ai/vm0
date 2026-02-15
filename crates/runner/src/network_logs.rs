@@ -50,7 +50,7 @@ pub async fn upload_network_logs(
     sandbox_token: &str,
     path: &Path,
 ) {
-    let content = match tokio::fs::read_to_string(&path).await {
+    let content = match tokio::fs::read_to_string(path).await {
         Ok(c) => c,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
         Err(e) => {
@@ -90,7 +90,7 @@ pub async fn upload_network_logs(
 
     match result {
         Ok(resp) if resp.status().is_success() => {
-            if let Err(e) = tokio::fs::remove_file(&path).await {
+            if let Err(e) = tokio::fs::remove_file(path).await {
                 warn!(run_id = %run_id, error = %e, "failed to delete network log file");
             }
         }
