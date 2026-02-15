@@ -6,9 +6,9 @@ use sha2::{Digest, Sha256};
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::{HomePaths, LockPaths, RootfsPaths};
 
-const BUILD_SCRIPT: &str = include_str!("../scripts/build-rootfs.sh");
-const VERIFY_SCRIPT: &str = include_str!("../scripts/verify-rootfs.sh");
-const EMBEDDED_DOCKERFILE: &str = include_str!("../scripts/rootfs.Dockerfile");
+const BUILD_SCRIPT: &str = include_str!("../../scripts/build-rootfs.sh");
+const VERIFY_SCRIPT: &str = include_str!("../../scripts/verify-rootfs.sh");
+const EMBEDDED_DOCKERFILE: &str = include_str!("../../scripts/rootfs.Dockerfile");
 
 #[derive(Args)]
 pub struct RootfsArgs {
