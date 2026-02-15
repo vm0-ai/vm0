@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.42.0](https://github.com/vm0-ai/vm0/compare/web-v12.41.0...web-v12.42.0) (2026-02-15)
+
+
+### Features
+
+* **platform:** add config dialog and run dialog for agent detail page ([#3016](https://github.com/vm0-ai/vm0/issues/3016)) ([7811f00](https://github.com/vm0-ai/vm0/commit/7811f0045c022856d283174722cfacf6ced72b7f))
+* simplify environment variable naming ([#3047](https://github.com/vm0-ai/vm0/issues/3047)) ([609ba7d](https://github.com/vm0-ai/vm0/commit/609ba7d35985e905f6e198275e0ab862313deafe))
+* simplify environment variable naming ([#3050](https://github.com/vm0-ai/vm0/issues/3050)) ([9241e1f](https://github.com/vm0-ai/vm0/commit/9241e1fc28e12024fad37e27334c79569fd69665))
+* **web:** add per-user cloud endpoint with traffic policy for computer connector ([#3019](https://github.com/vm0-ai/vm0/issues/3019)) ([24e8154](https://github.com/vm0-ai/vm0/commit/24e81542baffb2efe15c2633a34e808c37ab2a92))
+
+
+### Bug Fixes
+
+* **slack:** sync agent permissions when admin switches workspace agent ([#3024](https://github.com/vm0-ai/vm0/issues/3024)) ([dbdafec](https://github.com/vm0-ai/vm0/commit/dbdafeca2ba2483841ac0606d5216a45198f3c4d))
+
 ## [12.41.0](https://github.com/vm0-ai/vm0/compare/web-v12.40.0...web-v12.41.0) (2026-02-13)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.37.4](https://github.com/vm0-ai/vm0/compare/cli-v9.37.3...cli-v9.37.4) (2026-02-15)
+
+
+### Bug Fixes
+
+* **cli:** use fake timers in usage tests to avoid time-dependent failures ([#3032](https://github.com/vm0-ai/vm0/issues/3032)) ([9cd34bf](https://github.com/vm0-ai/vm0/commit/9cd34bfe0a4b7d1ca3fe3f413fca2ab9d7edf6b5))
+
 ## [9.37.3](https://github.com/vm0-ai/vm0/compare/cli-v9.37.2...cli-v9.37.3) (2026-02-13)
 
 
