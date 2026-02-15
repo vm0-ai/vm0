@@ -19,6 +19,7 @@ import {
 } from "../../signals/settings-page/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ConnectorIcon } from "./connector-icons.tsx";
+import { detach, Reason } from "../../signals/utils.ts";
 
 function ConnectorRow({
   item,
@@ -96,7 +97,9 @@ function ConnectorRow({
         </Popover>
       ) : (
         <button
-          onClick={() => connect(item.type, pageSignal)}
+          onClick={() =>
+            detach(connect(item.type, pageSignal), Reason.DomCallback)
+          }
           disabled={isPolling}
           className="flex items-center shrink-0 rounded-lg border border-border bg-background overflow-hidden hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >

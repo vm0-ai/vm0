@@ -14,6 +14,7 @@ import {
   deleteConnector$,
 } from "../external/connectors.ts";
 import { apiBase$ } from "../fetch.ts";
+import { throwIfAbort } from "../utils.ts";
 
 // ---------------------------------------------------------------------------
 // Derived state
@@ -89,12 +90,14 @@ export const connectConnector$ = command(
           credentials: "include",
         },
       );
+      signal.throwIfAborted();
 
       if (!response.ok) {
         throw new Error(`Failed to create session: ${response.statusText}`);
       }
 
       const { sessionToken } = await response.json();
+      signal.throwIfAborted();
 
       // Use Nango Frontend SDK
       const nango = new Nango();
@@ -126,6 +129,7 @@ export const connectConnector$ = command(
         }
       });
     } catch (error) {
+      throwIfAbort(error);
       set(internalPollingType$, null);
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error";

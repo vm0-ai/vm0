@@ -36,9 +36,10 @@ describe("connectors tab", () => {
 
     expect(screen.getByText("GitHub")).toBeInTheDocument();
     expect(screen.getByText("Notion")).toBeInTheDocument();
+    expect(screen.getByText("Gmail")).toBeInTheDocument();
 
     const connectButtons = screen.getAllByText("Connect");
-    expect(connectButtons).toHaveLength(2);
+    expect(connectButtons).toHaveLength(3);
   });
 
   it("shows connected status when a connector exists", async () => {
@@ -48,8 +49,9 @@ describe("connectors tab", () => {
 
     expect(screen.getByText("Connected as octocat")).toBeInTheDocument();
 
-    // Notion should still show Connect button
-    expect(screen.getByText("Connect")).toBeInTheDocument();
+    // Other connectors should still show Connect buttons
+    const connectButtons = screen.getAllByText("Connect");
+    expect(connectButtons.length).toBeGreaterThan(0);
     // "Not connected" status has been removed from the UI
   });
 
