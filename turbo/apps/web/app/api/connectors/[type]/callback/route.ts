@@ -20,10 +20,10 @@ const log = logger("api:connectors:callback");
 
 /**
  * Get OAuth client credentials for a connector type.
- * Returns undefined for non-OAuth connectors (e.g. computer).
+ * Returns null for non-OAuth connectors (e.g. computer) or Nango-managed connectors (e.g. gmail).
  */
 function getOAuthCredentials(
-  connectorType: "github" | "notion" | "computer",
+  connectorType: "github" | "notion" | "computer" | "gmail",
 ): { clientId: string | undefined; clientSecret: string | undefined } | null {
   const env = globalThis.services.env;
   switch (connectorType) {
@@ -38,7 +38,9 @@ function getOAuthCredentials(
         clientSecret: env.NOTION_OAUTH_CLIENT_SECRET,
       };
     case "computer":
-      return null;
+      return null; // Computer connector doesn't use OAuth
+    case "gmail":
+      return null; // Gmail uses Nango (credentials managed in Nango dashboard)
   }
 }
 

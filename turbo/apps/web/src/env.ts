@@ -82,6 +82,11 @@ function initEnv() {
       // ngrok (for computer connector)
       NGROK_API_KEY: z.string().min(1).optional(),
       NGROK_COMPUTER_CONNECTOR_DOMAIN: z.string().min(1).optional(),
+      // Nango OAuth integration
+      NANGO_SECRET_KEY: z.string().min(1).optional(),
+      NANGO_PUBLIC_KEY: z.string().min(1).optional(),
+      NANGO_BASE_URL: z.string().url().default("https://api.nango.dev"),
+      FEATURE_NANGO_ENABLED: z.coerce.boolean().default(false),
       // Email integration (Resend) — optional, only needed when email notifications are enabled
       RESEND_API_KEY: z.string().min(1).optional(),
       RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
@@ -161,6 +166,10 @@ function initEnv() {
       NGROK_API_KEY: process.env.NGROK_API_KEY,
       NGROK_COMPUTER_CONNECTOR_DOMAIN:
         process.env.NGROK_COMPUTER_CONNECTOR_DOMAIN,
+      NANGO_SECRET_KEY: process.env.NANGO_SECRET_KEY,
+      NANGO_PUBLIC_KEY: process.env.NANGO_PUBLIC_KEY,
+      NANGO_BASE_URL: process.env.NANGO_BASE_URL,
+      FEATURE_NANGO_ENABLED: process.env.FEATURE_NANGO_ENABLED,
       NEXT_PUBLIC_PLATFORM_URL: process.env.NEXT_PUBLIC_PLATFORM_URL,
       RESEND_API_KEY: process.env.RESEND_API_KEY,
       RESEND_WEBHOOK_SECRET: process.env.RESEND_WEBHOOK_SECRET,
@@ -241,6 +250,16 @@ function initEnv() {
       if (!env.SLACK_REDIRECT_BASE_URL) {
         throw new Error(
           "SLACK_REDIRECT_BASE_URL is required when SLACK_INTEGRATION_ENABLED=true",
+        );
+      }
+    }
+
+    // Nango integration validation
+    const nangoEnabled = env.FEATURE_NANGO_ENABLED;
+    if (nangoEnabled) {
+      if (!env.NANGO_SECRET_KEY) {
+        throw new Error(
+          "NANGO_SECRET_KEY is required when FEATURE_NANGO_ENABLED=true",
         );
       }
     }

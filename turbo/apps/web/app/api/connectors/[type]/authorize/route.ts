@@ -102,6 +102,12 @@ export async function GET(
         { error: "Computer connector does not use OAuth" },
         { status: 400 },
       );
+    case "gmail":
+      // Gmail uses Nango Cloud - no client credentials needed here
+      // Will be handled by platform abstraction
+      clientId = "nango-managed";
+      clientSecret = "nango-managed";
+      break;
   }
 
   if (!clientId || !clientSecret) {
@@ -129,6 +135,11 @@ export async function GET(
       break;
     case "notion":
       authUrl = buildNotionAuthorizationUrl(clientId, redirectUri, state);
+      break;
+    case "gmail":
+      // Gmail uses Nango Cloud
+      // TODO: Will be replaced by platform abstraction in Task #19
+      authUrl = `${origin}/connector/error?message=Gmail OAuth not yet implemented`;
       break;
   }
 

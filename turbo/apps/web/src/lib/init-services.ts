@@ -2,6 +2,7 @@ import { Pool as PgPool } from "pg";
 import { Pool as NeonPool } from "@neondatabase/serverless";
 import { drizzle as drizzleNodePg } from "drizzle-orm/node-postgres";
 import { drizzle as drizzleNeonServerless } from "drizzle-orm/neon-serverless";
+import { Nango } from "@nangohq/node";
 import { schema } from "../db/db";
 import { env } from "../env";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
@@ -14,6 +15,7 @@ let _db:
   | NodePgDatabase<typeof schema>
   | NeonDatabase<typeof schema>
   | undefined;
+let _nango: Nango | undefined;
 let _services: Services | undefined;
 
 /**
@@ -81,6 +83,19 @@ export function initServices(): void {
         }
       }
       return _db;
+    },
+    get nango() {
+      if (!_nango) {
+        const env = this.env;
+        if (!env.NANGO_SECRET_KEY) {
+          throw new Error("Nango not configured - NANGO_SECRET_KEY missing");
+        }
+        _nango = new Nango({
+          secretKey: env.NANGO_SECRET_KEY,
+          host: env.NANGO_BASE_URL,
+        });
+      }
+      return _nango;
     },
   };
 

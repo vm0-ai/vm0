@@ -37,6 +37,8 @@ function getSecretNameForConnector(type: ConnectorType): string {
       return getNotionSecretName();
     case "computer":
       return "COMPUTER_CONNECTOR_AUTHTOKEN";
+    case "gmail":
+      return "GMAIL_ACCESS_TOKEN";
   }
 }
 

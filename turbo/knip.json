@@ -13,7 +13,8 @@
         "navigation.ts",
         "scripts/*.ts",
         "**/__tests__/**/*.{test,spec}.{ts,tsx}",
-        "**/*.{test,spec}.{ts,tsx}"
+        "**/*.{test,spec}.{ts,tsx}",
+        "src/lib/connector/platform/**/*.ts"
       ],
       "project": ["**/*.{ts,tsx}", "scripts/**/*.ts"],
       "ignoreDependencies": [
