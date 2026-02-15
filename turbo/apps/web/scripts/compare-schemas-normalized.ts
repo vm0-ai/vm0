@@ -32,11 +32,12 @@ interface ConstraintInfo {
   constraint_def: string;
 }
 
+// Get database URLs from command line args
 const DB1_URL =
-  process.env.DB1_URL ||
+  process.argv[2] ||
   "postgresql://postgres@localhost:5432/migration_test_existing";
 const DB2_URL =
-  process.env.DB2_URL ||
+  process.argv[3] ||
   "postgresql://postgres@localhost:5432/migration_test_generated";
 
 async function getTableColumns(client: Client): Promise<TableColumn[]> {

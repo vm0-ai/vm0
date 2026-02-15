@@ -23,11 +23,14 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.join(dirname, "../src/db/migrations");
 const BACKUP_DIR = path.join(dirname, "../.migrations-backup");
 
-// Database connection details for testing
-const DB_HOST = process.env.DB_HOST || "localhost";
-const DB_PORT = process.env.DB_PORT || "5432";
-const DB_USER = process.env.DB_USER || "postgres";
-const DB_PASSWORD = process.env.DB_PASSWORD || "";
+// Parse DATABASE_URL to get connection details
+const DATABASE_URL =
+  process.env.DATABASE_URL || "postgresql://postgres@localhost:5432/postgres";
+const dbUrl = new URL(DATABASE_URL);
+const DB_HOST = dbUrl.hostname;
+const DB_PORT = dbUrl.port || "5432";
+const DB_USER = dbUrl.username || "postgres";
+const DB_PASSWORD = dbUrl.password || "";
 
 function createTestDbUrl(dbName: string): string {
   const auth = DB_PASSWORD ? `${DB_USER}:${DB_PASSWORD}` : DB_USER;
@@ -93,10 +96,9 @@ async function runNormalizedComparison(
 ): Promise<boolean> {
   console.log(`📸 Running normalized schema comparison...`);
   try {
-    execCommand(`tsx ${path.join(dirname, "compare-schemas-normalized.ts")}`, {
-      DB1_URL: dbUrl1,
-      DB2_URL: dbUrl2,
-    });
+    execCommand(
+      `tsx ${path.join(dirname, "compare-schemas-normalized.ts")} "${dbUrl1}" "${dbUrl2}"`,
+    );
     return true;
   } catch {
     return false;
