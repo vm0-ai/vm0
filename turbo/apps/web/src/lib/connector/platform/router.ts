@@ -26,12 +26,6 @@ const PLATFORM_ROUTING: Record<string, PlatformType> = {
 };
 
 /**
- * Singleton instances of platform adapters
- */
-let selfHostedPlatform: SelfHostedPlatform | null = null;
-let nangoPlatform: NangoPlatform | null = null;
-
-/**
  * Get the platform type for a connector.
  * Defaults to "nango" for unknown connector types.
  */
@@ -41,7 +35,6 @@ export function getPlatformType(type: string): PlatformType {
 
 /**
  * Get the platform adapter for a connector type.
- * Returns singleton instance of the appropriate platform.
  *
  * @throws Error if Nango is not enabled when trying to use a Nango provider
  */
@@ -51,10 +44,7 @@ export function getPlatform(type: string): ConnectorPlatform {
 
   switch (platformType) {
     case "self-hosted": {
-      if (!selfHostedPlatform) {
-        selfHostedPlatform = new SelfHostedPlatform();
-      }
-      return selfHostedPlatform;
+      return SelfHostedPlatform;
     }
 
     case "nango": {
@@ -65,10 +55,7 @@ export function getPlatform(type: string): ConnectorPlatform {
         );
       }
 
-      if (!nangoPlatform) {
-        nangoPlatform = new NangoPlatform();
-      }
-      return nangoPlatform;
+      return NangoPlatform;
     }
 
     default: {

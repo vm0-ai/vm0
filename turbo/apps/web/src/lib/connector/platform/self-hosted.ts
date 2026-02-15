@@ -21,104 +21,107 @@ import type {
   ConnectorResult,
 } from "./interface";
 
-export class SelfHostedPlatform implements ConnectorPlatform {
-  readonly name = "self-hosted" as const;
+async function buildAuthorizationUrl(
+  params: AuthorizationParams,
+): Promise<string> {
+  const env = globalThis.services.env;
 
-  async buildAuthorizationUrl(params: AuthorizationParams): Promise<string> {
-    const env = globalThis.services.env;
-
-    switch (params.type) {
-      case "github": {
-        const clientId = env.GH_OAUTH_CLIENT_ID;
-        if (!clientId) {
-          throw new Error("GitHub OAuth not configured");
-        }
-        return buildGitHubAuthorizationUrl(
-          clientId,
-          params.redirectUri,
-          params.state,
-        );
+  switch (params.type) {
+    case "github": {
+      const clientId = env.GH_OAUTH_CLIENT_ID;
+      if (!clientId) {
+        throw new Error("GitHub OAuth not configured");
       }
-
-      case "notion": {
-        const clientId = env.NOTION_OAUTH_CLIENT_ID;
-        if (!clientId) {
-          throw new Error("Notion OAuth not configured");
-        }
-        return buildNotionAuthorizationUrl(
-          clientId,
-          params.redirectUri,
-          params.state,
-        );
-      }
-
-      default:
-        throw new Error(
-          `Self-hosted platform does not support connector type: ${params.type}`,
-        );
+      return buildGitHubAuthorizationUrl(
+        clientId,
+        params.redirectUri,
+        params.state,
+      );
     }
-  }
 
-  async handleCallback(params: CallbackParams): Promise<ConnectorResult> {
-    const env = globalThis.services.env;
-
-    switch (params.type) {
-      case "github": {
-        const clientId = env.GH_OAUTH_CLIENT_ID;
-        const clientSecret = env.GH_OAUTH_CLIENT_SECRET;
-        if (!clientId || !clientSecret) {
-          throw new Error("GitHub OAuth not configured");
-        }
-
-        // Exchange code for token
-        const { accessToken, scopes } = await exchangeGitHubCode(
-          clientId,
-          clientSecret,
-          params.code,
-          params.redirectUri,
-        );
-
-        // Fetch user info
-        const userInfo = await fetchGitHubUserInfo(accessToken);
-
-        return {
-          externalId: userInfo.id,
-          externalUsername: userInfo.username,
-          externalEmail: userInfo.email,
-          oauthScopes: scopes,
-          accessToken,
-        };
+    case "notion": {
+      const clientId = env.NOTION_OAUTH_CLIENT_ID;
+      if (!clientId) {
+        throw new Error("Notion OAuth not configured");
       }
-
-      case "notion": {
-        const clientId = env.NOTION_OAUTH_CLIENT_ID;
-        const clientSecret = env.NOTION_OAUTH_CLIENT_SECRET;
-        if (!clientId || !clientSecret) {
-          throw new Error("Notion OAuth not configured");
-        }
-
-        // Exchange code for token (user info embedded in response)
-        const result = await exchangeNotionCode(
-          clientId,
-          clientSecret,
-          params.code,
-          params.redirectUri,
-        );
-
-        return {
-          externalId: result.userInfo.id,
-          externalUsername: result.userInfo.username,
-          externalEmail: result.userInfo.email,
-          oauthScopes: result.scopes,
-          accessToken: result.accessToken,
-          refreshToken: result.refreshToken,
-        };
-      }
-
-      default:
-        throw new Error(
-          `Self-hosted platform does not support connector type: ${params.type}`,
-        );
+      return buildNotionAuthorizationUrl(
+        clientId,
+        params.redirectUri,
+        params.state,
+      );
     }
+
+    default:
+      throw new Error(
+        `Self-hosted platform does not support connector type: ${params.type}`,
+      );
   }
 }
+
+async function handleCallback(
+  params: CallbackParams,
+): Promise<ConnectorResult> {
+  const env = globalThis.services.env;
+
+  switch (params.type) {
+    case "github": {
+      const clientId = env.GH_OAUTH_CLIENT_ID;
+      const clientSecret = env.GH_OAUTH_CLIENT_SECRET;
+      if (!clientId || !clientSecret) {
+        throw new Error("GitHub OAuth not configured");
+      }
+
+      const { accessToken, scopes } = await exchangeGitHubCode(
+        clientId,
+        clientSecret,
+        params.code,
+        params.redirectUri,
+      );
+
+      const userInfo = await fetchGitHubUserInfo(accessToken);
+
+      return {
+        externalId: userInfo.id,
+        externalUsername: userInfo.username,
+        externalEmail: userInfo.email,
+        oauthScopes: scopes,
+        accessToken,
+      };
+    }
+
+    case "notion": {
+      const clientId = env.NOTION_OAUTH_CLIENT_ID;
+      const clientSecret = env.NOTION_OAUTH_CLIENT_SECRET;
+      if (!clientId || !clientSecret) {
+        throw new Error("Notion OAuth not configured");
+      }
+
+      const result = await exchangeNotionCode(
+        clientId,
+        clientSecret,
+        params.code,
+        params.redirectUri,
+      );
+
+      return {
+        externalId: result.userInfo.id,
+        externalUsername: result.userInfo.username,
+        externalEmail: result.userInfo.email,
+        oauthScopes: result.scopes,
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+      };
+    }
+
+    default:
+      throw new Error(
+        `Self-hosted platform does not support connector type: ${params.type}`,
+      );
+  }
+}
+
+export const SelfHostedPlatform: ConnectorPlatform = {
+  name: "self-hosted",
+  buildAuthorizationUrl,
+  handleCallback,
+};

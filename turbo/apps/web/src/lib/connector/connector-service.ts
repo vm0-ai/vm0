@@ -95,6 +95,63 @@ export async function listConnectors(
 }
 
 /**
+ * Parse connector type from Nango connection tags
+ */
+function parseConnectorTypeFromTags(nangoConn: {
+  tags?: { connection_id?: string };
+}): ConnectorType | null {
+  const ourConnectionId = nangoConn.tags?.connection_id as string | undefined;
+  if (!ourConnectionId) {
+    return null;
+  }
+
+  const [, connectorTypeStr] = ourConnectionId.split(":");
+  if (!connectorTypeStr) {
+    return null;
+  }
+
+  const typeResult = connectorTypeSchema.safeParse(connectorTypeStr);
+  return typeResult.success ? typeResult.data : null;
+}
+
+/**
+ * Extract user info from Nango connection
+ */
+function extractUserInfo(
+  fullConn: { metadata?: unknown; credentials?: unknown },
+  fallbackId: string,
+): {
+  externalId: string;
+  externalUsername: string;
+  externalEmail: string | null;
+  scopes: string[];
+} {
+  const metadata = fullConn.metadata;
+  const credentials = fullConn.credentials;
+
+  const externalId =
+    (metadata as { user_id?: string })?.user_id ??
+    (metadata as { id?: string })?.id ??
+    (credentials as { id?: string })?.id ??
+    fallbackId;
+
+  const externalUsername =
+    (metadata as { name?: string })?.name ??
+    (metadata as { username?: string })?.username ??
+    (credentials as { name?: string })?.name ??
+    "";
+
+  const externalEmail =
+    (metadata as { email?: string })?.email ??
+    (credentials as { email?: string })?.email ??
+    null;
+
+  const scopes = (credentials as { scope?: string })?.scope?.split(" ") ?? [];
+
+  return { externalId, externalUsername, externalEmail, scopes };
+}
+
+/**
  * Sync Nango connections to our database
  *
  * Queries Nango API for connections belonging to this user (scopeId)
@@ -111,11 +168,8 @@ async function syncNangoConnections(
 
   try {
     const nango = globalThis.services.nango;
-
-    // List all Nango connections
     const response = await nango.listConnections();
 
-    // Filter connections that belong to this user (by scopeId in end_user.id)
     const userConnections = response.connections.filter(
       (conn: { end_user?: { id?: string } | null }) =>
         conn.end_user?.id === scopeId,
@@ -130,29 +184,12 @@ async function syncNangoConnections(
       count: userConnections.length,
     });
 
-    // For each Nango connection, check if it exists in our database
     for (const nangoConn of userConnections) {
-      // Extract our connector type from tags
-      const ourConnectionId = nangoConn.tags?.connection_id as
-        | string
-        | undefined;
-      if (!ourConnectionId) {
+      const connectorType = parseConnectorTypeFromTags(nangoConn);
+      if (!connectorType) {
         continue;
       }
 
-      // Parse connection ID format: "scopeId:connectorType"
-      const [, connectorTypeStr] = ourConnectionId.split(":");
-      if (!connectorTypeStr) {
-        continue;
-      }
-
-      const typeResult = connectorTypeSchema.safeParse(connectorTypeStr);
-      if (!typeResult.success) {
-        continue;
-      }
-      const connectorType = typeResult.data;
-
-      // Check if connector already exists in database
       const existing = await globalThis.services.db
         .select({ id: connectors.id })
         .from(connectors)
@@ -165,64 +202,37 @@ async function syncNangoConnections(
         .limit(1);
 
       if (existing.length > 0) {
-        // Already exists, skip
         continue;
       }
 
-      // New connection found - save to database
       log.info("Syncing new Nango connection to database", {
         scopeId,
         type: connectorType,
         nangoConnectionId: nangoConn.connection_id,
       });
 
-      // Get full connection details
       const fullConn = await nango.getConnection(
         nangoConn.provider_config_key,
         nangoConn.connection_id,
       );
 
-      // Extract user info
-      const metadata = fullConn.metadata;
-      const credentials = fullConn.credentials;
+      const userInfo = extractUserInfo(fullConn, nangoConn.connection_id);
 
-      const externalId =
-        (metadata?.user_id as string) ??
-        (metadata?.id as string) ??
-        (credentials as { id?: string })?.id ??
-        nangoConn.connection_id;
-
-      const externalUsername =
-        (metadata?.name as string) ??
-        (metadata?.username as string) ??
-        (credentials as { name?: string })?.name ??
-        "";
-
-      const externalEmail =
-        (metadata?.email as string) ??
-        (credentials as { email?: string })?.email ??
-        null;
-
-      const scopes =
-        (credentials as { scope?: string })?.scope?.split(" ") ?? [];
-
-      // Save to database (with empty accessToken since Nango manages it)
       await upsertOAuthConnector(
         clerkUserId,
         connectorType,
-        "", // Empty token - Nango manages the actual token
+        "",
         {
-          id: externalId,
-          username: externalUsername,
-          email: externalEmail,
+          id: userInfo.externalId,
+          username: userInfo.externalUsername,
+          email: userInfo.externalEmail,
         },
-        scopes,
-        "nango", // platform
-        nangoConn.connection_id, // nangoConnectionId
+        userInfo.scopes,
+        "nango",
+        nangoConn.connection_id,
       );
     }
   } catch (error) {
-    // Log but don't throw - sync is best-effort
     log.warn("Failed to sync Nango connections", {
       error: error instanceof Error ? error.message : "Unknown error",
     });
