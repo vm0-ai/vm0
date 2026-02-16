@@ -36,7 +36,11 @@ function makeConnector(
 
 describe("connectors tab", () => {
   it("shows all connector types with not-connected status", async () => {
-    await setupPage({ context, path: "/settings?tab=connectors" });
+    await setupPage({
+      context,
+      path: "/settings?tab=connectors",
+      featureSwitches: { connectorNango: true },
+    });
 
     expect(screen.getByText("GitHub")).toBeInTheDocument();
     expect(screen.getByText("Notion")).toBeInTheDocument();
@@ -134,7 +138,11 @@ describe("connectors tab", () => {
       },
     ]);
 
-    await setupPage({ context, path: "/settings?tab=connectors" });
+    await setupPage({
+      context,
+      path: "/settings?tab=connectors",
+      featureSwitches: { connectorNango: true },
+    });
 
     expect(screen.getByText("Gmail")).toBeInTheDocument();
     expect(screen.getByText("Connected as Test User")).toBeInTheDocument();
@@ -150,7 +158,11 @@ describe("connectors tab", () => {
       }),
     );
 
-    await setupPage({ context, path: "/settings?tab=connectors" });
+    await setupPage({
+      context,
+      path: "/settings?tab=connectors",
+      featureSwitches: { connectorNango: true },
+    });
 
     // Wait for Gmail connector to be visible
     await vi.waitFor(() => {
@@ -207,7 +219,11 @@ describe("connectors tab", () => {
       }),
     );
 
-    await setupPage({ context, path: "/settings?tab=connectors" });
+    await setupPage({
+      context,
+      path: "/settings?tab=connectors",
+      featureSwitches: { connectorNango: true },
+    });
 
     // Wait for Gmail connector to be visible
     await vi.waitFor(() => {
@@ -254,7 +270,11 @@ describe("connectors tab", () => {
       }),
     );
 
-    await setupPage({ context, path: "/settings?tab=connectors" });
+    await setupPage({
+      context,
+      path: "/settings?tab=connectors",
+      featureSwitches: { connectorNango: true },
+    });
 
     // Open kebab menu
     const optionsButton = screen.getByRole("button", {

@@ -39,7 +39,12 @@ describe("allConnectorTypes$", () => {
       }),
     );
 
-    await setupPage({ context, path: "/", withoutRender: true });
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { connectorNango: true },
+    });
 
     const types = await store.get(allConnectorTypes$);
 
@@ -95,7 +100,12 @@ describe("connectConnector$", () => {
       }),
     );
 
-    await setupPage({ context, path: "/", withoutRender: true });
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { connectorNango: true },
+    });
 
     // Start connection flow
     await store.set(connectConnector$, "gmail", signal);
@@ -133,7 +143,12 @@ describe("connectConnector$", () => {
       }),
     );
 
-    await setupPage({ context, path: "/", withoutRender: true });
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { connectorNango: true },
+    });
     await store.set(connectConnector$, "gmail", signal);
 
     // Simulate connection success
@@ -157,7 +172,12 @@ describe("connectConnector$", () => {
       }),
     );
 
-    await setupPage({ context, path: "/", withoutRender: true });
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { connectorNango: true },
+    });
     await store.set(connectConnector$, "gmail", signal);
 
     // Simulate user closing
@@ -176,7 +196,12 @@ describe("connectConnector$", () => {
       }),
     );
 
-    await setupPage({ context, path: "/", withoutRender: true });
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { connectorNango: true },
+    });
 
     // Connection attempt should not throw, but handle error gracefully
     await store.set(connectConnector$, "gmail", signal);
