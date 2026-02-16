@@ -7,6 +7,10 @@ use uuid::Uuid;
 
 /// Maximum wall-clock time for a single job (2 hours).
 const JOB_TIMEOUT: Duration = Duration::from_secs(7200);
+/// Exit code when a process is killed by SIGKILL (128 + 9).
+const EXIT_SIGKILL: i32 = 137;
+/// Raw SIGKILL signal number.
+const EXIT_SIGNAL_KILL: i32 = 9;
 /// Default timeout for guest commands (5 minutes).
 const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
 
@@ -257,9 +261,9 @@ async fn run_in_sandbox(
     );
 
     // Check for OOM kill when process was terminated by SIGKILL
-    if exit.exit_code == 137 || exit.exit_code == 9 {
+    if exit.exit_code == EXIT_SIGKILL || exit.exit_code == EXIT_SIGNAL_KILL {
         let dmesg_req = ExecRequest {
-            cmd: "dmesg | tail -20 | grep -iE 'killed|oom' 2>/dev/null",
+            cmd: "dmesg | tail -20 2>/dev/null",
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: true,
