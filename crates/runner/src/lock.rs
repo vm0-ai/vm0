@@ -78,8 +78,20 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn acquire_creates_parent_directories() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a").join("b").join("test.lock");
+
+        let guard = acquire(path.clone()).await.unwrap();
+        assert!(path.exists());
+        drop(guard);
+    }
+
+    #[tokio::test]
     async fn invalid_path_returns_error() {
-        let path = PathBuf::from("/nonexistent/dir/test.lock");
+        // /dev/null is a file, so create_dir_all cannot create a child directory
+        // inside it — this fails even as root.
+        let path = PathBuf::from("/dev/null/impossible/test.lock");
         let result = acquire(path).await;
         assert!(result.is_err());
     }
