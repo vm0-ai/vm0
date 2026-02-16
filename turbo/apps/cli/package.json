@@ -1,6 +1,6 @@
 {
   "name": "@vm0/cli",
-  "version": "9.37.4",
+  "version": "9.37.5",
   "private": true,
   "description": "CLI application",
   "repository": {

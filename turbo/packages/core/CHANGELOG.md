@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.16.0](https://github.com/vm0-ai/vm0/compare/core-v8.15.0...core-v8.16.0) (2026-02-16)
+
+
+### Features
+
+* add gmail connector with nango platform integration ([#3065](https://github.com/vm0-ai/vm0/issues/3065)) ([d43dfe1](https://github.com/vm0-ai/vm0/commit/d43dfe1a5a868c8413ffd2b8a250d48dafc791cb))
+
 ## [8.15.0](https://github.com/vm0-ai/vm0/compare/core-v8.14.0...core-v8.15.0) (2026-02-13)
 
 

@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.43.0](https://github.com/vm0-ai/vm0/compare/web-v12.42.2...web-v12.43.0) (2026-02-16)
+
+
+### Features
+
+* add gmail connector with nango platform integration ([#3065](https://github.com/vm0-ai/vm0/issues/3065)) ([d43dfe1](https://github.com/vm0-ai/vm0/commit/d43dfe1a5a868c8413ffd2b8a250d48dafc791cb))
+* **web:** add migration consistency testing ([#3066](https://github.com/vm0-ai/vm0/issues/3066)) ([cef8348](https://github.com/vm0-ai/vm0/commit/cef83484f87bfceacf03f1bfd185be49504080da))
+
+
+### Bug Fixes
+
+* **web:** rebuild migration snapshots for consistency ([#3070](https://github.com/vm0-ai/vm0/issues/3070)) ([c455382](https://github.com/vm0-ai/vm0/commit/c4553824116e78002f755bcdac28a8041055ac2e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.16.0
+
 ## [12.42.2](https://github.com/vm0-ai/vm0/compare/web-v12.42.1...web-v12.42.2) (2026-02-15)
 
 

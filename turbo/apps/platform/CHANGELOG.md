@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.68.0](https://github.com/vm0-ai/vm0/compare/platform-v0.67.0...platform-v0.68.0) (2026-02-16)
+
+
+### Features
+
+* add gmail connector with nango platform integration ([#3065](https://github.com/vm0-ai/vm0/issues/3065)) ([d43dfe1](https://github.com/vm0-ai/vm0/commit/d43dfe1a5a868c8413ffd2b8a250d48dafc791cb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.16.0
+
 ## [0.67.0](https://github.com/vm0-ai/vm0/compare/platform-v0.66.0...platform-v0.67.0) (2026-02-15)
 
 
