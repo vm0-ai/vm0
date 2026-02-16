@@ -9,6 +9,11 @@ use crate::error::{RunnerError, RunnerResult};
 /// The returned guard holds the lock until dropped.
 pub async fn acquire(path: PathBuf) -> RunnerResult<Flock<std::fs::File>> {
     tokio::task::spawn_blocking(move || {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                RunnerError::Internal(format!("create lock dir {}: {e}", parent.display()))
+            })?;
+        }
         let file = std::fs::File::options()
             .create(true)
             .truncate(false)
