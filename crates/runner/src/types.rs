@@ -28,8 +28,20 @@ pub struct Job {
 pub struct ExecutionContext {
     pub run_id: Uuid,
     pub prompt: String,
+    // TODO: remove allow(dead_code) when consumed by compose pipeline
+    #[allow(dead_code)]
+    #[serde(default)]
+    pub agent_compose_version_id: Option<String>,
     #[serde(default)]
     pub vars: Option<HashMap<String, String>>,
+    // TODO: remove allow(dead_code) when secret injection is implemented
+    #[allow(dead_code)]
+    #[serde(default)]
+    pub secret_names: Option<Vec<String>>,
+    // TODO: remove allow(dead_code) when checkpoint resume is implemented
+    #[allow(dead_code)]
+    #[serde(default)]
+    pub checkpoint_id: Option<Uuid>,
     pub sandbox_token: String,
     pub working_dir: String,
     #[serde(default)]
@@ -42,10 +54,29 @@ pub struct ExecutionContext {
     pub secret_values: Option<Vec<String>>,
     pub cli_agent_type: String,
     #[serde(default)]
+    pub experimental_firewall: Option<ExperimentalFirewall>,
+    // TODO: remove allow(dead_code) when mock-claude bypass is implemented
+    #[allow(dead_code)]
+    #[serde(default)]
+    pub debug_no_mock_claude: Option<bool>,
+    #[serde(default)]
     pub api_start_time: Option<f64>,
-    /// User's timezone preference (IANA format, e.g., "Asia/Shanghai")
     #[serde(default)]
     pub user_timezone: Option<String>,
+}
+
+/// Firewall and proxy configuration attached to each execution.
+///
+/// Field names use snake_case in JSON (matching the TS zod schema).
+#[derive(Debug, Deserialize)]
+pub struct ExperimentalFirewall {
+    pub enabled: bool,
+    #[serde(default)]
+    pub rules: Option<Vec<crate::proxy::FirewallRule>>,
+    #[serde(default)]
+    pub experimental_mitm: Option<bool>,
+    #[serde(default)]
+    pub experimental_seal_secrets: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

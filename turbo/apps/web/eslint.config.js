@@ -36,6 +36,7 @@ export default [
       "src/env.ts",
       "src/lib/logger.ts",
       "drizzle.config.ts",
+      "next.config.js",
       "scripts/**",
       "instrumentation.ts",
       "instrumentation-client.ts",

@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import Nango from "@nangohq/frontend";
 import {
   CONNECTOR_TYPES,
   FeatureSwitchKey,
@@ -13,6 +14,7 @@ import {
   deleteConnector$,
 } from "../external/connectors.ts";
 import { apiBase$ } from "../fetch.ts";
+import { throwIfAbort } from "../utils.ts";
 
 // ---------------------------------------------------------------------------
 // Derived state
@@ -30,6 +32,13 @@ export interface ConnectorTypeWithStatus {
   connector: ConnectorResponse | null;
 }
 
+/**
+ * Check if a connector type uses Nango Cloud platform
+ */
+function isNangoConnector(type: ConnectorType): boolean {
+  return type === "gmail";
+}
+
 export const allConnectorTypes$ = computed(async (get) => {
   const { connectors } = await get(connectors$);
   const connectorMap = new Map(connectors.map((c) => [c.type, c]));
@@ -37,9 +46,17 @@ export const allConnectorTypes$ = computed(async (get) => {
 
   return (Object.keys(CONNECTOR_TYPES) as ConnectorType[])
     .filter((type) => {
+      // Filter computer connector based on feature flag
       if (
         type === "computer" &&
         !features?.[FeatureSwitchKey.ComputerConnector]
+      ) {
+        return false;
+      }
+      // Filter Nango connectors based on feature flag
+      if (
+        isNangoConnector(type) &&
+        !features?.[FeatureSwitchKey.ConnectorNango]
       ) {
         return false;
       }
@@ -73,52 +90,66 @@ export const pollingConnectorType$ = computed((get) =>
 // ---------------------------------------------------------------------------
 
 export const connectConnector$ = command(
-  ({ get, set }, type: ConnectorType, signal: AbortSignal) => {
+  async ({ get, set }, type: ConnectorType, signal: AbortSignal) => {
     const apiBase = get(apiBase$);
     const baseUrl = apiBase.endsWith("/") ? apiBase.slice(0, -1) : apiBase;
-    const authorizeUrl = `${baseUrl}/api/connectors/${type}/authorize`;
-
-    window.open(authorizeUrl, "_blank");
 
     set(internalPollingType$, type);
 
-    const interval = window.setInterval(() => {
-      set(reloadConnectors$);
-    }, 3000);
+    try {
+      // Create Connect Session
+      const response = await fetch(
+        `${baseUrl}/api/connectors/${type}/create-session`,
+        {
+          method: "POST",
+          credentials: "include",
+        },
+      );
+      signal.throwIfAborted();
 
-    // Stop polling after 5 minutes
-    const timeout = window.setTimeout(
-      () => {
-        window.clearInterval(interval);
-        set(internalPollingType$, null);
-      },
-      5 * 60 * 1000,
-    );
-
-    // Watch for connector appearing in list to stop polling early
-    const checkConnected = async () => {
-      const { connectors } = await get(connectors$);
-      if (connectors.some((c) => c.type === type)) {
-        window.clearInterval(interval);
-        window.clearTimeout(timeout);
-        set(internalPollingType$, null);
-
-        const connectorLabel = CONNECTOR_TYPES[type]?.label ?? type;
-        toast.success(`${connectorLabel} connected successfully`);
+      if (!response.ok) {
+        throw new Error(`Failed to create session: ${response.statusText}`);
       }
-    };
 
-    const pollCheck = window.setInterval(async () => {
-      await checkConnected();
-    }, 3500);
+      const { sessionToken } = await response.json();
+      signal.throwIfAborted();
 
-    // Cleanup on abort
-    signal.addEventListener("abort", () => {
-      window.clearInterval(interval);
-      window.clearInterval(pollCheck);
-      window.clearTimeout(timeout);
+      // Use Nango Frontend SDK
+      const nango = new Nango();
+      const connectUI = nango.openConnectUI({
+        sessionToken,
+        onEvent: async (event) => {
+          if (event.type === "connect") {
+            // Connection successful!
+            set(internalPollingType$, null);
+
+            // Reload connectors to show new connection
+            await set(reloadConnectors$);
+
+            const connectorLabel = CONNECTOR_TYPES[type]?.label ?? type;
+            toast.success(`${connectorLabel} connected successfully`);
+          } else if (event.type === "close") {
+            // User closed the modal
+            set(internalPollingType$, null);
+          }
+        },
+      });
+
+      // Cleanup on abort
+      signal.addEventListener("abort", () => {
+        set(internalPollingType$, null);
+        // Close Connect UI if still open
+        if (connectUI && typeof connectUI.close === "function") {
+          connectUI.close();
+        }
+      });
+    } catch (error) {
+      throwIfAbort(error);
       set(internalPollingType$, null);
-    });
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      toast.error(`Failed to connect: ${errorMessage}`);
+    }
   },
 );
 

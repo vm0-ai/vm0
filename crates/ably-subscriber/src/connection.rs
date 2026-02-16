@@ -22,7 +22,7 @@ use crate::types::{Event, Message, TimingConfig, TokenDetails, TokenFuture};
 
 pub(crate) const DEFAULT_REALTIME_HOST: &str = "realtime.ably.io";
 const PROTOCOL_VERSION: &str = "5";
-const AGENT_STRING: &str = "ably-subscriber-rs/0.1";
+const AGENT_STRING: &str = concat!("ably-subscriber-rs/", env!("CARGO_PKG_VERSION"));
 
 fn is_localhost(host: &str) -> bool {
     host.starts_with("127.0.0.1") || host.starts_with("localhost")
@@ -837,7 +837,8 @@ mod tests {
         assert!(url.contains("v=5"));
         assert!(url.contains("heartbeats=true"));
         assert!(url.contains("echo=false"));
-        assert!(url.contains("agent=ably-subscriber-rs"));
+        let expected_agent = format!("agent=ably-subscriber-rs%2F{}", env!("CARGO_PKG_VERSION"));
+        assert!(url.contains(&expected_agent));
         assert!(!url.contains("resume="));
     }
 

@@ -13,6 +13,7 @@ services:
       NODE_ENV: production
       # Database
       DATABASE_URL: postgresql://${DB_USER:-vm0}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-vm0}
+      DB_DRIVER: pg
       DB_POOL_MAX: ${DB_POOL_MAX:-10}
       # Object storage (MinIO)
       S3_ENDPOINT: http://minio:9000

@@ -22,6 +22,18 @@ impl RunnerPaths {
     pub fn status(&self) -> PathBuf {
         self.base_dir.join("status.json")
     }
+
+    pub fn mitm_addon(&self) -> PathBuf {
+        self.base_dir.join("mitm-addon.py")
+    }
+
+    pub fn proxy_registry(&self) -> PathBuf {
+        self.base_dir.join("proxy-registry.json")
+    }
+
+    pub fn proxy_registry_lock(&self) -> PathBuf {
+        self.base_dir.join("proxy-registry.json.lock")
+    }
 }
 
 /// Paths rooted at ~/.vm0-runner/.
@@ -69,6 +81,10 @@ impl HomePaths {
 
     pub fn snapshots_dir(&self) -> PathBuf {
         self.root.join("snapshots")
+    }
+
+    pub fn logs_dir(&self) -> PathBuf {
+        self.root.join("logs")
     }
 
     pub fn runners_dir(&self) -> PathBuf {
@@ -145,5 +161,25 @@ impl RootfsPaths {
             self.ca_key(),
             self.ca_combined(),
         ]
+    }
+}
+
+/// Log file paths derived from `HomePaths::logs_dir()`.
+#[derive(Clone)]
+pub struct LogPaths {
+    dir: PathBuf,
+}
+
+impl LogPaths {
+    pub fn new(dir: PathBuf) -> Self {
+        Self { dir }
+    }
+
+    pub fn dir(&self) -> &Path {
+        &self.dir
+    }
+
+    pub fn network_log(&self, run_id: uuid::Uuid) -> PathBuf {
+        self.dir.join(format!("network-{run_id}.jsonl"))
     }
 }

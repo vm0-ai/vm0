@@ -42,6 +42,10 @@ This workspace contains Rust crates for the vm0 sandbox runtime — VM orchestra
 └──────────────────────────────────────────┘
 ```
 
+## TLS in Guest Binaries
+
+Guest crates (`guest-agent`, `guest-download`) **must** use system certificate roots (e.g. `rustls-tls-native-roots`), not bundled webpki roots. The host runs a mitmproxy transparent proxy that intercepts HTTPS traffic with its own CA certificate, which is installed into the guest's system certificate store at boot. Using bundled roots would bypass the proxy CA and cause TLS verification failures.
+
 ## Building
 
 ```bash

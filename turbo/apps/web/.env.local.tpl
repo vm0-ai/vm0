@@ -1,6 +1,9 @@
+# Database driver (pg for local Postgres, neon for serverless)
+DB_DRIVER=pg
+
 # Required: Authentication (Clerk)
 CLERK_SECRET_KEY=op://Development/vm0-env-local/clerk_secret_key
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=op://Development/vm0-env-local/clerk_publishable_key
+CLERK_PUBLISHABLE_KEY=op://Development/vm0-env-local/clerk_publishable_key
 
 # Required: Sandbox Runtime (E2B)
 E2B_API_KEY=op://Development/vm0-env-local/e2b_api_key
@@ -43,12 +46,22 @@ NOTION_OAUTH_CLIENT_SECRET=op://Development/vm0-env-local/notion_oauth_client_se
 NGROK_API_KEY=op://Development/vm0-env-local/NGROK_API_KEY
 NGROK_COMPUTER_CONNECTOR_DOMAIN=computer.vm7.io
 
+# Optional: Nango OAuth Integration (for 100+ providers)
+NANGO_SECRET_KEY=op://Development/vm0-env-local/nango_secret_key
+FEATURE_NANGO_ENABLED=true
+
 # Required: Platform UI URL (for settings page links in error messages)
-NEXT_PUBLIC_PLATFORM_URL=op://Development/vm0-env-local/next_public_platform_url
+PLATFORM_URL=op://Development/vm0-env-local/next_public_platform_url
+
+# Optional: Blog Configuration
+BLOG_BASE_URL=
+BLOG_DATA_SOURCE=strapi
+STRAPI_URL=
 
 # Optional: Error Tracking (Sentry)
-SENTRY_DSN=
+# Sentry DSN (used by both server and client)
+SENTRY_DSN_WEB=
+# Sentry build configuration
 SENTRY_AUTH_TOKEN=
 SENTRY_ORG=
 SENTRY_PROJECT=
-NEXT_PUBLIC_SENTRY_DSN=

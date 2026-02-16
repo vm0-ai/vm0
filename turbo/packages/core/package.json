@@ -20,7 +20,7 @@
     "@vm0/typescript-config": "workspace:*",
     "eslint": "^9.34.0",
     "oxlint": "^1.14.0",
-    "typescript": "5.9.2",
+    "typescript": "5.9.3",
     "vitest": "^4.0.18"
   },
   "dependencies": {

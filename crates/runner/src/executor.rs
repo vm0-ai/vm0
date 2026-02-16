@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use sandbox::{ExecRequest, Sandbox, SandboxConfig, SandboxFactory};
 use tracing::{error, info, warn};
@@ -12,7 +12,10 @@ const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
 
 use crate::api::ApiClient;
 use crate::error::RunnerResult;
-use crate::paths::guest;
+use crate::http::HttpClient;
+use crate::paths::{LogPaths, guest};
+use crate::proxy::{self, ProxyRegistryHandle};
+use crate::telemetry::JobTelemetry;
 use crate::types::ExecutionContext;
 
 /// Configuration for a single execution.
@@ -21,6 +24,9 @@ pub struct ExecutorConfig {
     pub vcpu: u32,
     pub memory_mb: u32,
     pub is_snapshot: bool,
+    pub registry: ProxyRegistryHandle,
+    pub http: HttpClient,
+    pub log_paths: LogPaths,
 }
 
 /// Execute a single job inside a Firecracker VM.
@@ -34,8 +40,23 @@ pub async fn execute_job(
     config: &ExecutorConfig,
 ) {
     let run_id = context.run_id;
+    let mut telemetry =
+        JobTelemetry::new(config.http.clone(), run_id, context.sandbox_token.clone());
 
-    let (exit_code, err) = match execute_inner(factory, &context, config).await {
+    // Record api_to_vm_start: elapsed time from the API-side timestamp to now.
+    // api_start_time is milliseconds since Unix epoch (Date.now() in TS).
+    if let Some(api_start_ms) = context.api_start_time {
+        let now_ms = chrono::Utc::now().timestamp_millis() as f64;
+        let elapsed_ms = (now_ms - api_start_ms).max(0.0);
+        telemetry.record(
+            "api_to_vm_start",
+            Duration::from_millis(elapsed_ms as u64),
+            true,
+            None,
+        );
+    }
+
+    let (exit_code, err) = match execute_inner(factory, &context, config, &mut telemetry).await {
         Ok((code, stderr)) => (code, stderr),
         Err(e) => {
             error!(run_id = %run_id, error = %e, "job execution failed");
@@ -58,12 +79,15 @@ pub async fn execute_job(
             error!(run_id = %run_id, error = %e, "failed to report completion after retry");
         }
     }
+
+    telemetry.flush().await;
 }
 
 async fn execute_inner(
     factory: &dyn SandboxFactory,
     context: &ExecutionContext,
     config: &ExecutorConfig,
+    telemetry: &mut JobTelemetry,
 ) -> RunnerResult<(i32, Option<String>)> {
     let sandbox_id = Uuid::new_v4();
     let sandbox_config = SandboxConfig {
@@ -72,25 +96,89 @@ async fn execute_inner(
             cpu_count: config.vcpu,
             memory_mb: config.memory_mb,
         },
+        use_proxy: true,
     };
 
     // Create and start sandbox
     info!(run_id = %context.run_id, sandbox_id = %sandbox_id, "creating sandbox");
-    let mut sandbox = factory.create(sandbox_config).await?;
+    let t = Instant::now();
+    let mut sandbox = match factory.create(sandbox_config).await {
+        Ok(s) => s,
+        Err(e) => {
+            telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
+            return Err(e.into());
+        }
+    };
 
     if let Err(e) = sandbox.start().await {
+        telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
         factory.destroy(sandbox).await;
         return Err(e.into());
     }
+    telemetry.record("vm_create", t.elapsed(), true, None);
+
+    // Register VM in proxy registry (only when firewall is enabled)
+    let source_ip = sandbox.source_ip().to_string();
+    let firewall_enabled = context
+        .experimental_firewall
+        .as_ref()
+        .is_some_and(|fw| fw.enabled);
+    let network_log_path = config.log_paths.network_log(context.run_id);
+
+    if let Some(fw) = &context.experimental_firewall
+        && fw.enabled
+    {
+        let run_id_str = context.run_id.to_string();
+        let registration = proxy::VmRegistration {
+            run_id: &run_id_str,
+            sandbox_token: &context.sandbox_token,
+            firewall_rules: fw.rules.as_deref().unwrap_or(&[]),
+            mitm_enabled: fw.experimental_mitm.unwrap_or(false),
+            seal_secrets_enabled: fw.experimental_seal_secrets.unwrap_or(false),
+            network_log_path: &network_log_path,
+        };
+        if let Err(e) = config.registry.register_vm(&source_ip, &registration).await {
+            warn!(run_id = %context.run_id, error = %e, "failed to register VM in proxy");
+        }
+    }
 
     // Run job inside sandbox, then destroy regardless of outcome
-    let result = run_in_sandbox(sandbox.as_ref(), context, config).await;
+    let result = run_in_sandbox(sandbox.as_ref(), context, config, telemetry).await;
+
+    // Unregister VM from proxy + upload network logs before cleanup timer.
+    // Unregister first ensures the addon writes no more log entries.
+    if firewall_enabled {
+        if let Err(e) = config.registry.unregister_vm(&source_ip).await {
+            warn!(run_id = %context.run_id, error = %e, "failed to unregister VM from proxy");
+        }
+        crate::network_logs::upload_network_logs(
+            &config.http,
+            context.run_id,
+            &context.sandbox_token,
+            &network_log_path,
+        )
+        .await;
+    }
+
+    // Cleanup: stop + destroy
+    let t = Instant::now();
 
     // Best-effort stop
-    if let Err(e) = sandbox.stop().await {
-        warn!(sandbox_id = %sandbox_id, error = %e, "sandbox stop failed");
-    }
+    let stop_err = match sandbox.stop().await {
+        Ok(()) => None,
+        Err(e) => {
+            warn!(sandbox_id = %sandbox_id, error = %e, "sandbox stop failed");
+            Some(e.to_string())
+        }
+    };
     factory.destroy(sandbox).await;
+
+    telemetry.record(
+        "cleanup",
+        t.elapsed(),
+        stop_err.is_none(),
+        stop_err.as_deref(),
+    );
 
     result
 }
@@ -99,6 +187,7 @@ async fn run_in_sandbox(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     config: &ExecutorConfig,
+    telemetry: &mut JobTelemetry,
 ) -> RunnerResult<(i32, Option<String>)> {
     // 1. Fix guest clock after snapshot restore (must happen before HTTPS calls)
     if config.is_snapshot {
@@ -107,12 +196,30 @@ async fn run_in_sandbox(
 
     // 2. Download storages
     if let Some(manifest) = &context.storage_manifest {
-        download_storages(sandbox, context, manifest).await?;
+        let t = Instant::now();
+        let result = download_storages(sandbox, context, manifest).await;
+        let err = result.as_ref().err().map(|e| e.to_string());
+        telemetry.record(
+            "storage_download",
+            t.elapsed(),
+            result.is_ok(),
+            err.as_deref(),
+        );
+        result?;
     }
 
     // 3. Restore session history
     if let Some(session) = &context.resume_session {
-        restore_session(sandbox, context, session).await?;
+        let t = Instant::now();
+        let result = restore_session(sandbox, context, session).await;
+        let err = result.as_ref().err().map(|e| e.to_string());
+        telemetry.record(
+            "session_restore",
+            t.elapsed(),
+            result.is_ok(),
+            err.as_deref(),
+        );
+        result?;
     }
 
     // 4. Build env vars (passed directly via vsock protocol)
@@ -132,6 +239,7 @@ async fn run_in_sandbox(
 
     // JOB_TIMEOUT is used for both spawn_watch (guest-side kill) and wait_exit
     // (host-side watchdog) so neither side outlives the other.
+    let t = Instant::now();
     let handle = sandbox
         .spawn_watch(&ExecRequest {
             cmd: &agent_cmd,
@@ -139,10 +247,23 @@ async fn run_in_sandbox(
             env: &env_refs,
             sudo: false,
         })
-        .await?;
+        .await;
+
+    let handle = match handle {
+        Ok(h) => h,
+        Err(e) => {
+            telemetry.record("agent_execute", t.elapsed(), false, Some(&e.to_string()));
+            return Err(e.into());
+        }
+    };
 
     // 6. Wait for exit
-    let exit = sandbox.wait_exit(handle, JOB_TIMEOUT).await?;
+    let result = sandbox.wait_exit(handle, JOB_TIMEOUT).await;
+    let success = result.as_ref().is_ok_and(|exit| exit.exit_code == 0);
+    let err = result.as_ref().err().map(|e| e.to_string());
+    telemetry.record("agent_execute", t.elapsed(), success, err.as_deref());
+    let exit = result?;
+
     let stderr = String::from_utf8_lossy(&exit.stderr).to_string();
 
     info!(
@@ -354,7 +475,10 @@ mod tests {
         ExecutionContext {
             run_id: Uuid::nil(),
             prompt: "test prompt".into(),
+            agent_compose_version_id: None,
             vars: None,
+            secret_names: None,
+            checkpoint_id: None,
             sandbox_token: "tok".into(),
             working_dir: "/workspace".into(),
             storage_manifest: None,
@@ -362,6 +486,8 @@ mod tests {
             resume_session: None,
             secret_values: None,
             cli_agent_type: String::new(),
+            experimental_firewall: None,
+            debug_no_mock_claude: None,
             api_start_time: None,
             user_timezone: None,
         }
@@ -508,5 +634,56 @@ mod tests {
         let env = build_env_json(&ctx, "http://localhost");
         // User environment TZ takes precedence
         assert_eq!(env.get("TZ").unwrap(), "America/New_York");
+    }
+
+    /// Verify ExecutionContext deserializes from JSON matching the TS schema,
+    /// including the snake_case `experimentalFirewall` inner fields.
+    #[test]
+    fn deserialize_execution_context_with_firewall() {
+        let json = r#"{
+            "runId": "00000000-0000-0000-0000-000000000001",
+            "prompt": "hello",
+            "agentComposeVersionId": null,
+            "vars": null,
+            "secretNames": null,
+            "checkpointId": null,
+            "sandboxToken": "tok",
+            "workingDir": "/workspace",
+            "storageManifest": null,
+            "environment": null,
+            "resumeSession": null,
+            "secretValues": null,
+            "cliAgentType": "claude-code",
+            "experimentalFirewall": {
+                "enabled": true,
+                "rules": [
+                    {"domain": "*.example.com", "action": "ALLOW"},
+                    {"final": "DENY"}
+                ],
+                "experimental_mitm": true,
+                "experimental_seal_secrets": false
+            },
+            "debugNoMockClaude": true,
+            "apiStartTime": 1700000000.5,
+            "userTimezone": "Asia/Shanghai"
+        }"#;
+
+        let ctx: ExecutionContext = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            ctx.run_id.to_string(),
+            "00000000-0000-0000-0000-000000000001"
+        );
+        assert_eq!(ctx.prompt, "hello");
+        assert_eq!(ctx.cli_agent_type, "claude-code");
+
+        let fw = ctx.experimental_firewall.as_ref().unwrap();
+        assert!(fw.enabled);
+        let rules = fw.rules.as_ref().unwrap();
+        assert_eq!(rules.len(), 2);
+        assert_eq!(fw.experimental_mitm, Some(true));
+        assert_eq!(fw.experimental_seal_secrets, Some(false));
+
+        assert_eq!(ctx.api_start_time, Some(1700000000.5));
+        assert_eq!(ctx.user_timezone.as_deref(), Some("Asia/Shanghai"));
     }
 }

@@ -44,6 +44,7 @@ import {
   pollingConnectorType$,
   openDisconnectDialog$,
 } from "../../signals/settings-page/connectors.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import { DisconnectConnectorDialog } from "../settings-page/disconnect-connector-dialog.tsx";
 import {
   openAddSecretDialog$,
@@ -144,7 +145,9 @@ function ConnectorRow({ item }: { item: AgentConnectorStatus }) {
         </Popover>
       ) : (
         <button
-          onClick={() => connect(item.type, pageSignal)}
+          onClick={() =>
+            detach(connect(item.type, pageSignal), Reason.DomCallback)
+          }
           disabled={isPolling}
           className="flex items-center shrink-0 rounded-lg border border-border bg-background overflow-hidden hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >

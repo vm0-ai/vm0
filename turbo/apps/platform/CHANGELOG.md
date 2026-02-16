@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.67.0](https://github.com/vm0-ai/vm0/compare/platform-v0.66.0...platform-v0.67.0) (2026-02-15)
+
+
+### Features
+
+* **platform:** add agent logs and connections pages ([#3017](https://github.com/vm0-ai/vm0/issues/3017)) ([cf943b2](https://github.com/vm0-ai/vm0/commit/cf943b224b55438152ee67d339c60894709133a8))
+* **platform:** add config dialog and run dialog for agent detail page ([#3016](https://github.com/vm0-ai/vm0/issues/3016)) ([7811f00](https://github.com/vm0-ai/vm0/commit/7811f0045c022856d283174722cfacf6ced72b7f))
+
 ## [0.66.0](https://github.com/vm0-ai/vm0/compare/platform-v0.65.0...platform-v0.66.0) (2026-02-13)
 
 

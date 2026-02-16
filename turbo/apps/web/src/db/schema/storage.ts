@@ -8,6 +8,7 @@ import {
   timestamp,
   uniqueIndex,
   index,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { scopes } from "./scope";
 
@@ -35,7 +36,9 @@ export const storages = pgTable(
     s3Prefix: text("s3_prefix").notNull(),
     size: bigint("size", { mode: "number" }).notNull().default(0),
     fileCount: integer("file_count").notNull().default(0),
-    headVersionId: varchar("head_version_id", { length: 64 }),
+    headVersionId: varchar("head_version_id", { length: 64 }).references(
+      (): AnyPgColumn => storageVersions.id,
+    ),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

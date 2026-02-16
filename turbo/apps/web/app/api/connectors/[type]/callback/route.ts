@@ -3,44 +3,14 @@ import { eq } from "drizzle-orm";
 import { connectorTypeSchema } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserIdFromRequest } from "../../../../../src/lib/auth/get-user-id";
-import {
-  exchangeGitHubCode,
-  fetchGitHubUserInfo,
-} from "../../../../../src/lib/connector/providers/github";
-import { exchangeNotionCode } from "../../../../../src/lib/connector/providers/notion";
-import {
-  upsertOAuthConnector,
-  upsertConnectorSecret,
-} from "../../../../../src/lib/connector/connector-service";
+import { upsertOAuthConnector } from "../../../../../src/lib/connector/connector-service";
 import { connectorSessions } from "../../../../../src/db/schema/connector-session";
 import { logger } from "../../../../../src/lib/logger";
 import { getOrigin } from "../../../../../src/lib/request/get-origin";
+import { getPlatform } from "../../../../../src/lib/connector/platform/router";
+import { getUserScopeByClerkId } from "../../../../../src/lib/scope/scope-service";
 
 const log = logger("api:connectors:callback");
-
-/**
- * Get OAuth client credentials for a connector type.
- * Returns undefined for non-OAuth connectors (e.g. computer).
- */
-function getOAuthCredentials(
-  connectorType: "github" | "notion" | "computer",
-): { clientId: string | undefined; clientSecret: string | undefined } | null {
-  const env = globalThis.services.env;
-  switch (connectorType) {
-    case "github":
-      return {
-        clientId: env.GH_OAUTH_CLIENT_ID,
-        clientSecret: env.GH_OAUTH_CLIENT_SECRET,
-      };
-    case "notion":
-      return {
-        clientId: env.NOTION_OAUTH_CLIENT_ID,
-        clientSecret: env.NOTION_OAUTH_CLIENT_SECRET,
-      };
-    case "computer":
-      return null;
-  }
-}
 
 /**
  * Connector OAuth Callback Endpoint
@@ -103,9 +73,8 @@ export async function GET(
     return redirectWithError(origin, type, "Not authenticated");
   }
 
-  // Get OAuth credentials for connector type
-  const credentials = getOAuthCredentials(connectorType);
-  if (!credentials) {
+  // Computer connector does not use OAuth
+  if (connectorType === "computer") {
     return redirectWithError(
       origin,
       type,
@@ -113,13 +82,10 @@ export async function GET(
     );
   }
 
-  const { clientId, clientSecret } = credentials;
-  if (!clientId || !clientSecret) {
-    return redirectWithError(
-      origin,
-      type,
-      `${connectorType} OAuth not configured`,
-    );
+  // Get user scope for building connection ID
+  const scope = await getUserScopeByClerkId(userId);
+  if (!scope) {
+    return redirectWithError(origin, type, "User scope not found");
   }
 
   // Get state and session from cookies
@@ -167,66 +133,43 @@ export async function GET(
     // Build redirect URI (must match authorize endpoint)
     const redirectUri = `${origin}/api/connectors/${type}/callback`;
 
-    // Exchange code for token and get user info (per connector type)
-    let accessToken: string;
-    let scopes: string[];
-    let userInfo: { id: string; username: string; email: string | null };
+    // Build connection ID for platform abstraction
+    const connectionId = `${scope.id}:${connectorType}`;
 
-    switch (connectorType) {
-      case "github": {
-        const ghResult = await exchangeGitHubCode(
-          clientId,
-          clientSecret,
-          code,
-          redirectUri,
-        );
-        accessToken = ghResult.accessToken;
-        scopes = ghResult.scopes;
-        userInfo = await fetchGitHubUserInfo(accessToken);
-        break;
-      }
-      case "notion": {
-        const notionResult = await exchangeNotionCode(
-          clientId,
-          clientSecret,
-          code,
-          redirectUri,
-        );
-        accessToken = notionResult.accessToken;
-        scopes = notionResult.scopes;
-        userInfo = notionResult.userInfo;
-        // Store refresh token as separate connector secret
-        if (notionResult.refreshToken) {
-          await upsertConnectorSecret(
-            userId,
-            "NOTION_REFRESH_TOKEN",
-            notionResult.refreshToken,
-          );
-        }
-        break;
-      }
-      default:
-        return redirectWithError(origin, type, "Unsupported OAuth connector");
-    }
+    // Use platform abstraction to handle OAuth callback
+    const platform = getPlatform(connectorType);
+    const result = await platform.handleCallback({
+      type: connectorType,
+      code,
+      state,
+      connectionId,
+      redirectUri,
+    });
 
     log.debug("Storing connector", {
       userId,
       type,
-      username: userInfo.username,
+      username: result.externalUsername,
     });
 
     // Store connector and secret
+    // For self-hosted platforms, accessToken is provided in result
+    // For Nango platforms, accessToken is managed by Nango (not in result)
     const { created } = await upsertOAuthConnector(
       userId,
       connectorType,
-      accessToken,
-      userInfo,
-      scopes,
+      result.accessToken ?? "", // Empty string for Nango-managed connectors
+      {
+        id: result.externalId,
+        username: result.externalUsername ?? "",
+        email: result.externalEmail,
+      },
+      result.oauthScopes ?? [],
     );
 
     log.info("Connector OAuth completed", {
       type,
-      username: userInfo.username,
+      username: result.externalUsername,
       created,
       sessionId,
     });
@@ -247,7 +190,7 @@ export async function GET(
     // Redirect to success page
     const successUrl = new URL("/connector/success", origin);
     successUrl.searchParams.set("type", type);
-    successUrl.searchParams.set("username", userInfo.username);
+    successUrl.searchParams.set("username", result.externalUsername ?? "");
 
     const response = NextResponse.redirect(successUrl.toString());
     // Clear cookies

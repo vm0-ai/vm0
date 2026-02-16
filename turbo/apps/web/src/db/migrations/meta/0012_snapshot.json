@@ -1,11 +1,11 @@
 {
-  "id": "fbba4282-9aa3-4601-9762-966fbd5343f0",
-  "prevId": "ab5d1f54-2a38-4bc2-a8b9-53f201f6665f",
+  "id": "7006d485-9c61-4dc4-9a19-9edc0eea14c3",
+  "prevId": "4dc1057a-d156-4e57-ba1d-9e843b8cbcb8",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.agent_configs": {
-      "name": "agent_configs",
+    "public.users": {
+      "name": "users",
       "schema": "",
       "columns": {
         "id": {
@@ -14,24 +14,6 @@
           "primaryKey": true,
           "notNull": true,
           "default": "gen_random_uuid()"
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "config": {
-          "name": "config",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
         },
         "created_at": {
           "name": "created_at",
@@ -48,38 +30,16 @@
           "default": "now()"
         }
       },
-      "indexes": {
-        "idx_agent_configs_user_name": {
-          "name": "idx_agent_configs_user_name",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "policies": {},
       "checkConstraints": {},
+      "policies": {},
       "isRLSEnabled": false
     },
-    "public.agent_run_events": {
-      "name": "agent_run_events",
+    "public.checkpoints": {
+      "name": "checkpoints",
       "schema": "",
       "columns": {
         "id": {
@@ -95,23 +55,35 @@
           "primaryKey": false,
           "notNull": true
         },
-        "sequence_number": {
-          "name": "sequence_number",
-          "type": "integer",
+        "agent_config_id": {
+          "name": "agent_config_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "event_type": {
-          "name": "event_type",
-          "type": "varchar(50)",
+        "session_id": {
+          "name": "session_id",
+          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": true
         },
-        "event_data": {
-          "name": "event_data",
+        "dynamic_vars": {
+          "name": "dynamic_vars",
           "type": "jsonb",
           "primaryKey": false,
+          "notNull": false
+        },
+        "session_history": {
+          "name": "session_history",
+          "type": "text",
+          "primaryKey": false,
           "notNull": true
+        },
+        "volume_snapshots": {
+          "name": "volume_snapshots",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -123,10 +95,21 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "agent_run_events_run_id_agent_runs_id_fk": {
-          "name": "agent_run_events_run_id_agent_runs_id_fk",
-          "tableFrom": "agent_run_events",
+        "checkpoints_agent_config_id_agent_configs_id_fk": {
+          "name": "checkpoints_agent_config_id_agent_configs_id_fk",
+          "tableFrom": "checkpoints",
+          "tableTo": "agent_configs",
+          "schemaTo": "public",
+          "columnsFrom": ["agent_config_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "checkpoints_run_id_agent_runs_id_fk": {
+          "name": "checkpoints_run_id_agent_runs_id_fk",
+          "tableFrom": "checkpoints",
           "tableTo": "agent_runs",
+          "schemaTo": "public",
           "columnsFrom": ["run_id"],
           "columnsTo": ["id"],
           "onDelete": "cascade",
@@ -134,9 +117,131 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
+      "uniqueConstraints": {
+        "checkpoints_run_id_unique": {
+          "columns": ["run_id"],
+          "nullsNotDistinct": false,
+          "name": "checkpoints_run_id_unique"
+        }
+      },
       "checkConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false
+    },
+    "public.device_codes": {
+      "name": "device_codes",
+      "schema": "",
+      "columns": {
+        "code": {
+          "name": "code",
+          "type": "varchar(9)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "device_code_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false
+    },
+    "public.cli_tokens": {
+      "name": "cli_tokens",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "token": {
+          "name": "token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_used_at": {
+          "name": "last_used_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "cli_tokens_token_unique": {
+          "columns": ["token"],
+          "nullsNotDistinct": false,
+          "name": "cli_tokens_token_unique"
+        }
+      },
+      "checkConstraints": {},
+      "policies": {},
       "isRLSEnabled": false
     },
     "public.agent_runs": {
@@ -149,12 +254,6 @@
           "primaryKey": true,
           "notNull": true,
           "default": "gen_random_uuid()"
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
         },
         "agent_config_id": {
           "name": "agent_config_id",
@@ -216,14 +315,21 @@
           "type": "timestamp",
           "primaryKey": false,
           "notNull": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
         }
       },
       "indexes": {},
       "foreignKeys": {
-        "agent_runs_agent_config_id_agent_configs_id_fk": {
-          "name": "agent_runs_agent_config_id_agent_configs_id_fk",
+        "agent_runtimes_agent_config_id_agent_configs_id_fk": {
+          "name": "agent_runtimes_agent_config_id_agent_configs_id_fk",
           "tableFrom": "agent_runs",
           "tableTo": "agent_configs",
+          "schemaTo": "public",
           "columnsFrom": ["agent_config_id"],
           "columnsTo": ["id"],
           "onDelete": "no action",
@@ -232,12 +338,12 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "policies": {},
       "checkConstraints": {},
+      "policies": {},
       "isRLSEnabled": false
     },
-    "public.checkpoints": {
-      "name": "checkpoints",
+    "public.agent_run_events": {
+      "name": "agent_run_events",
       "schema": "",
       "columns": {
         "id": {
@@ -253,35 +359,23 @@
           "primaryKey": false,
           "notNull": true
         },
-        "agent_config_id": {
-          "name": "agent_config_id",
-          "type": "uuid",
+        "sequence_number": {
+          "name": "sequence_number",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true
         },
-        "session_id": {
-          "name": "session_id",
-          "type": "varchar(255)",
+        "event_type": {
+          "name": "event_type",
+          "type": "varchar(50)",
           "primaryKey": false,
           "notNull": true
         },
-        "dynamic_vars": {
-          "name": "dynamic_vars",
+        "event_data": {
+          "name": "event_data",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": false
-        },
-        "session_history": {
-          "name": "session_history",
-          "type": "text",
-          "primaryKey": false,
           "notNull": true
-        },
-        "volume_snapshots": {
-          "name": "volume_snapshots",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -293,39 +387,25 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "checkpoints_run_id_agent_runs_id_fk": {
-          "name": "checkpoints_run_id_agent_runs_id_fk",
-          "tableFrom": "checkpoints",
+        "agent_run_events_run_id_agent_runs_id_fk": {
+          "name": "agent_run_events_run_id_agent_runs_id_fk",
+          "tableFrom": "agent_run_events",
           "tableTo": "agent_runs",
+          "schemaTo": "public",
           "columnsFrom": ["run_id"],
           "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
-        },
-        "checkpoints_agent_config_id_agent_configs_id_fk": {
-          "name": "checkpoints_agent_config_id_agent_configs_id_fk",
-          "tableFrom": "checkpoints",
-          "tableTo": "agent_configs",
-          "columnsFrom": ["agent_config_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "checkpoints_run_id_unique": {
-          "name": "checkpoints_run_id_unique",
-          "nullsNotDistinct": false,
-          "columns": ["run_id"]
-        }
-      },
-      "policies": {},
+      "uniqueConstraints": {},
       "checkConstraints": {},
+      "policies": {},
       "isRLSEnabled": false
     },
-    "public.cli_tokens": {
-      "name": "cli_tokens",
+    "public.agent_configs": {
+      "name": "agent_configs",
       "schema": "",
       "columns": {
         "id": {
@@ -335,11 +415,25 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "token": {
-          "name": "token",
-          "type": "text",
+        "config": {
+          "name": "config",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         },
         "user_id": {
           "name": "user_id",
@@ -349,137 +443,50 @@
         },
         "name": {
           "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "last_used_at": {
-          "name": "last_used_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
+          "type": "varchar(64)",
           "primaryKey": false,
           "notNull": true,
-          "default": "now()"
+          "default": "''"
         }
       },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "cli_tokens_token_unique": {
-          "name": "cli_tokens_token_unique",
-          "nullsNotDistinct": false,
-          "columns": ["token"]
+      "indexes": {
+        "idx_agent_configs_user_name": {
+          "name": "idx_agent_configs_user_name",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "name",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.device_codes": {
-      "name": "device_codes",
-      "schema": "",
-      "columns": {
-        "code": {
-          "name": "code",
-          "type": "varchar(9)",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "device_code_status",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.users": {
-      "name": "users",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
       "isRLSEnabled": false
     }
   },
   "enums": {
     "public.device_code_status": {
       "name": "device_code_status",
-      "schema": "public",
-      "values": ["pending", "authenticated", "expired", "denied"]
+      "values": ["pending", "authenticated", "expired", "denied"],
+      "schema": "public"
     }
   },
   "schemas": {},
@@ -488,8 +495,11 @@
   "policies": {},
   "views": {},
   "_meta": {
-    "columns": {},
     "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
     "tables": {}
   }
 }

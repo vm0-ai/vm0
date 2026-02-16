@@ -34,7 +34,7 @@
     "eslint": "^9.34.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.12",
-    "typescript": "^5.9.2",
+    "typescript": "^5.9.3",
     "yaml": "^2.8.1",
     "archiver": "^7.0.1",
     "@types/archiver": "^6.0.3"

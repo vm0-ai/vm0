@@ -5,6 +5,24 @@ const withNextIntl = createNextIntlPlugin("./i18n.ts");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Map clean environment variable names to NEXT_PUBLIC_ prefixed versions
+  // This allows .env.local to use clearer names while Next.js still inlines them
+  env: {
+    // Sentry (used by both server and client)
+    NEXT_PUBLIC_SENTRY_DSN: process.env.SENTRY_DSN_WEB,
+
+    // Clerk authentication
+    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: process.env.CLERK_PUBLISHABLE_KEY,
+
+    // Platform URLs
+    NEXT_PUBLIC_PLATFORM_URL: process.env.PLATFORM_URL,
+
+    // Blog configuration
+    NEXT_PUBLIC_BASE_URL: process.env.BLOG_BASE_URL,
+    NEXT_PUBLIC_STRAPI_URL: process.env.STRAPI_URL,
+    NEXT_PUBLIC_DATA_SOURCE: process.env.BLOG_DATA_SOURCE,
+  },
+
   eslint: {
     // CI already runs lint separately, skip during Vercel build to save time and memory
     ignoreDuringBuilds: true,

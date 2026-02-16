@@ -3,9 +3,9 @@ import { connectorTypeSchema } from "@vm0/core";
 import { env } from "../../../../../src/env";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserIdFromRequest } from "../../../../../src/lib/auth/get-user-id";
-import { buildGitHubAuthorizationUrl } from "../../../../../src/lib/connector/providers/github";
-import { buildNotionAuthorizationUrl } from "../../../../../src/lib/connector/providers/notion";
 import { getOrigin } from "../../../../../src/lib/request/get-origin";
+import { getPlatform } from "../../../../../src/lib/connector/platform/router";
+import { getUserScopeByClerkId } from "../../../../../src/lib/scope/scope-service";
 
 /**
  * Connector OAuth Authorize Endpoint
@@ -82,32 +82,20 @@ export async function GET(
     return NextResponse.redirect(loginUrl.toString());
   }
 
-  const env = globalThis.services.env;
-
-  // Get OAuth credentials for connector type
-  let clientId: string | undefined;
-  let clientSecret: string | undefined;
-
-  switch (connectorType) {
-    case "github":
-      clientId = env.GH_OAUTH_CLIENT_ID;
-      clientSecret = env.GH_OAUTH_CLIENT_SECRET;
-      break;
-    case "notion":
-      clientId = env.NOTION_OAUTH_CLIENT_ID;
-      clientSecret = env.NOTION_OAUTH_CLIENT_SECRET;
-      break;
-    case "computer":
-      return NextResponse.json(
-        { error: "Computer connector does not use OAuth" },
-        { status: 400 },
-      );
+  // Computer connector does not use OAuth
+  if (connectorType === "computer") {
+    return NextResponse.json(
+      { error: "Computer connector does not use OAuth" },
+      { status: 400 },
+    );
   }
 
-  if (!clientId || !clientSecret) {
+  // Get user scope for building connection ID
+  const scope = await getUserScopeByClerkId(userId);
+  if (!scope) {
     return NextResponse.json(
-      { error: `${connectorType} OAuth is not configured` },
-      { status: 503 },
+      { error: "User scope not found" },
+      { status: 500 },
     );
   }
 
@@ -120,17 +108,17 @@ export async function GET(
   // Check for session parameter (CLI device flow)
   const sessionId = url.searchParams.get("session");
 
-  // Build authorization URL for connector type
-  let authUrl: string;
+  // Build connection ID for platform abstraction
+  const connectionId = `${scope.id}:${connectorType}`;
 
-  switch (connectorType) {
-    case "github":
-      authUrl = buildGitHubAuthorizationUrl(clientId, redirectUri, state);
-      break;
-    case "notion":
-      authUrl = buildNotionAuthorizationUrl(clientId, redirectUri, state);
-      break;
-  }
+  // Use platform abstraction to build authorization URL
+  const platform = getPlatform(connectorType);
+  const authUrl = await platform.buildAuthorizationUrl({
+    type: connectorType,
+    connectionId,
+    redirectUri,
+    state,
+  });
 
   // Create redirect response with state cookie
   const response = NextResponse.redirect(authUrl);

@@ -13,6 +13,7 @@ pub struct RunnerConfig {
     pub name: String,
     pub group: String,
     pub base_dir: PathBuf,
+    pub ca_dir: PathBuf,
     pub firecracker: FirecrackerConfig,
     #[serde(default)]
     pub sandbox: SandboxConfig,
@@ -119,6 +120,7 @@ async fn check_path_exists(path: &Path, label: &str) -> RunnerResult<()> {
 }
 
 async fn validate_paths(config: &RunnerConfig) -> RunnerResult<()> {
+    check_path_exists(&config.ca_dir, "ca_dir").await?;
     check_path_exists(&config.firecracker.binary, "firecracker binary").await?;
     check_path_exists(&config.firecracker.kernel, "kernel").await?;
     check_path_exists(&config.firecracker.rootfs, "rootfs").await?;
@@ -142,6 +144,7 @@ impl RunnerConfig {
             }
         };
         resolve(&mut self.base_dir);
+        resolve(&mut self.ca_dir);
         resolve(&mut self.firecracker.binary);
         resolve(&mut self.firecracker.kernel);
         resolve(&mut self.firecracker.rootfs);
@@ -201,6 +204,7 @@ mod tests {
 name: test-runner
 group: acme/prod
 base_dir: {base_dir}
+ca_dir: {ca_dir}
 firecracker:
   binary: {fc}
   kernel: {kernel}
@@ -214,6 +218,7 @@ server:
   token: secret
 "#,
             base_dir = dir.path().display(),
+            ca_dir = dir.path().display(),
             fc = fc.display(),
             kernel = kernel.display(),
             rootfs = rootfs.display(),
@@ -248,12 +253,14 @@ server:
 name: test
 group: test/group
 base_dir: {base_dir}
+ca_dir: {ca_dir}
 firecracker:
   binary: {fc}
   kernel: {kernel}
   rootfs: {rootfs}
 "#,
             base_dir = dir.path().display(),
+            ca_dir = dir.path().display(),
             fc = fc.display(),
             kernel = kernel.display(),
             rootfs = rootfs.display(),
@@ -277,6 +284,7 @@ firecracker:
 name: test
 group: test/group
 base_dir: {base_dir}
+ca_dir: /nonexistent/ca
 firecracker:
   binary: /nonexistent/firecracker
   kernel: /nonexistent/kernel
@@ -312,6 +320,7 @@ firecracker:
 name: test
 group: test/group
 base_dir: {base_dir}
+ca_dir: {ca_dir}
 firecracker:
   binary: {fc}
   kernel: {kernel}
@@ -324,6 +333,7 @@ firecracker:
     vsock_bind_dir: {vsock_dir}
 "#,
             base_dir = dir.path().display(),
+            ca_dir = dir.path().display(),
             fc = fc.display(),
             kernel = kernel.display(),
             rootfs = rootfs.display(),
@@ -361,6 +371,7 @@ firecracker:
             name: "test-runner".into(),
             group: "acme/prod".into(),
             base_dir: runner_dir.clone(),
+            ca_dir: dir.path().to_path_buf(),
             firecracker: FirecrackerConfig {
                 binary: fc.clone(),
                 kernel: kernel.clone(),
@@ -402,6 +413,7 @@ firecracker:
             name: "snap-runner".into(),
             group: "acme/staging".into(),
             base_dir: runner_dir.clone(),
+            ca_dir: dir.path().to_path_buf(),
             firecracker: FirecrackerConfig {
                 binary: fc,
                 kernel,
@@ -440,6 +452,7 @@ firecracker:
 name: test
 group: test/group
 base_dir: my-runner
+ca_dir: artifacts
 firecracker:
   binary: artifacts/firecracker
   kernel: artifacts/vmlinux
@@ -454,6 +467,7 @@ firecracker:
         // All paths should be resolved to absolute paths under dir
         assert!(config.base_dir.is_absolute());
         assert_eq!(config.base_dir, dir.path().join("my-runner"));
+        assert_eq!(config.ca_dir, sub);
         assert_eq!(config.firecracker.binary, sub.join("firecracker"));
         assert_eq!(config.firecracker.kernel, sub.join("vmlinux"));
         assert_eq!(config.firecracker.rootfs, sub.join("rootfs.squashfs"));
