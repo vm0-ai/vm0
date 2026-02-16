@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "../route";
 import {
   GET as getConnector,
@@ -142,9 +142,7 @@ describe("DELETE /api/connectors/:type - Delete Connector", () => {
       "http://localhost:3000/api/connectors/github",
       { method: "DELETE" },
     );
-    const response = await deleteConnector(request, {
-      params: Promise.resolve({ type: "github" }),
-    });
+    const response = await deleteConnector(request);
     const data = await response.json();
 
     expect(response.status).toBe(401);
@@ -158,9 +156,7 @@ describe("DELETE /api/connectors/:type - Delete Connector", () => {
       "http://localhost:3000/api/connectors/github",
       { method: "DELETE" },
     );
-    const response = await deleteConnector(request, {
-      params: Promise.resolve({ type: "github" }),
-    });
+    const response = await deleteConnector(request);
     const data = await response.json();
 
     expect(response.status).toBe(404);
@@ -179,9 +175,7 @@ describe("DELETE /api/connectors/:type - Delete Connector", () => {
       "http://localhost:3000/api/connectors/github",
       { method: "DELETE" },
     );
-    const deleteResponse = await deleteConnector(deleteRequest, {
-      params: Promise.resolve({ type: "github" }),
-    });
+    const deleteResponse = await deleteConnector(deleteRequest);
 
     expect(deleteResponse.status).toBe(204);
 
@@ -189,9 +183,7 @@ describe("DELETE /api/connectors/:type - Delete Connector", () => {
     const getRequest = createTestRequest(
       "http://localhost:3000/api/connectors/github",
     );
-    const getResponse = await getConnector(getRequest, {
-      params: Promise.resolve({ type: "github" }),
-    });
+    const getResponse = await getConnector(getRequest);
 
     expect(getResponse.status).toBe(404);
   });
@@ -212,9 +204,7 @@ describe("DELETE /api/connectors/:type - Delete Connector", () => {
       "http://localhost:3000/api/connectors/gmail",
       { method: "DELETE" },
     );
-    const deleteResponse = await deleteConnector(deleteRequest, {
-      params: Promise.resolve({ type: "gmail" }),
-    });
+    const deleteResponse = await deleteConnector(deleteRequest);
 
     expect(deleteResponse.status).toBe(204);
 
@@ -222,9 +212,7 @@ describe("DELETE /api/connectors/:type - Delete Connector", () => {
     const getRequest = createTestRequest(
       "http://localhost:3000/api/connectors/gmail",
     );
-    const getResponse = await getConnector(getRequest, {
-      params: Promise.resolve({ type: "gmail" }),
-    });
+    const getResponse = await getConnector(getRequest);
 
     expect(getResponse.status).toBe(404);
   });
