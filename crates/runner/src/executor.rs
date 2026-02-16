@@ -396,6 +396,17 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
         env.insert("USE_MOCK_CLAUDE".into(), val);
     }
 
+    // Tell Node.js to trust the proxy CA when MITM mode is enabled.
+    // The certificate is pre-baked into the rootfs at build time.
+    if let Some(fw) = &context.experimental_firewall
+        && fw.experimental_mitm.unwrap_or(false)
+    {
+        env.insert(
+            "NODE_EXTRA_CA_CERTS".into(),
+            "/usr/local/share/ca-certificates/vm0-proxy-ca.crt".into(),
+        );
+    }
+
     // Artifact config
     if let Some(manifest) = &context.storage_manifest
         && let Some(artifact) = &manifest.artifact
@@ -717,5 +728,34 @@ mod tests {
             Some(v) => unsafe { std::env::set_var("USE_MOCK_CLAUDE", v) },
             None => unsafe { std::env::remove_var("USE_MOCK_CLAUDE") },
         }
+    }
+
+    #[test]
+    fn build_env_json_with_mitm_sets_ca_certs() {
+        let mut ctx = minimal_context();
+        ctx.experimental_firewall = Some(crate::types::ExperimentalFirewall {
+            enabled: true,
+            rules: None,
+            experimental_mitm: Some(true),
+            experimental_seal_secrets: None,
+        });
+        let env = build_env_json(&ctx, "http://localhost");
+        assert_eq!(
+            env.get("NODE_EXTRA_CA_CERTS").unwrap(),
+            "/usr/local/share/ca-certificates/vm0-proxy-ca.crt"
+        );
+    }
+
+    #[test]
+    fn build_env_json_without_mitm_no_ca_certs() {
+        let mut ctx = minimal_context();
+        ctx.experimental_firewall = Some(crate::types::ExperimentalFirewall {
+            enabled: true,
+            rules: None,
+            experimental_mitm: Some(false),
+            experimental_seal_secrets: None,
+        });
+        let env = build_env_json(&ctx, "http://localhost");
+        assert!(!env.contains_key("NODE_EXTRA_CA_CERTS"));
     }
 }
