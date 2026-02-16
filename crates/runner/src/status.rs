@@ -12,7 +12,6 @@ use uuid::Uuid;
 pub enum RunnerMode {
     Running,
     Draining,
-    Stopping,
     Stopped,
 }
 

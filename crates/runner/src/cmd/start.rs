@@ -317,24 +317,18 @@ async fn run(mut config: RunConfig) -> RunnerResult<()> {
         let mut sigint = signal(SignalKind::interrupt()).ok();
         let mut sigusr1 = signal(SignalKind::user_defined1()).ok();
 
-        loop {
-            tokio::select! {
-                _ = recv_signal(&mut sigterm) => {
-                    info!("received SIGTERM, stopping");
-                    let _ = mode_tx.send(RunnerMode::Stopping);
-                    return;
-                }
-                _ = recv_signal(&mut sigint) => {
-                    info!("received SIGINT, stopping");
-                    let _ = mode_tx.send(RunnerMode::Stopping);
-                    return;
-                }
-                _ = recv_signal(&mut sigusr1) => {
-                    info!("received SIGUSR1, draining (no new jobs)");
-                    let _ = mode_tx.send(RunnerMode::Draining);
-                }
+        tokio::select! {
+            _ = recv_signal(&mut sigterm) => {
+                info!("received SIGTERM, draining");
+            }
+            _ = recv_signal(&mut sigint) => {
+                info!("received SIGINT, draining");
+            }
+            _ = recv_signal(&mut sigusr1) => {
+                info!("received SIGUSR1, draining");
             }
         }
+        let _ = mode_tx.send(RunnerMode::Draining);
     });
 
     // -----------------------------------------------------------------------
@@ -349,41 +343,7 @@ async fn run(mut config: RunConfig) -> RunnerResult<()> {
             config.status.set_mode(mode).await;
         }
         match mode {
-            RunnerMode::Stopping | RunnerMode::Stopped => break,
-            RunnerMode::Draining => {
-                // Don't accept new jobs, wait for running ones to complete.
-                // Still restart mitmproxy — running jobs need the proxy.
-                if jobs.is_empty() {
-                    info!("all jobs drained");
-                    break;
-                }
-
-                // Spawn background restart task when timer fires
-                maybe_spawn_mitm_restart(
-                    &mut config.mitm,
-                    &mut config.mitm_crash_rx,
-                    &mut mitm_retry,
-                )
-                .await;
-
-                tokio::select! {
-                    _ = mode_rx.changed() => {}
-                    result = jobs.join_next() => {
-                        if let Some(Err(e)) = result {
-                            error!(error = %e, "job task panicked");
-                        }
-                    }
-                    _ = config.mitm_crash_rx.recv() => {
-                        warn!("mitmproxy exited unexpectedly, scheduling restart");
-                        mitm_retry.schedule();
-                    }
-                    result = recv_retry(&mut mitm_retry.handle) => {
-                        handle_mitm_restart_result(result, &mut config.mitm, &mut mitm_retry);
-                    }
-                    _ = sleep_until_retry(&mitm_retry.restart_at) => {}
-                }
-                continue;
-            }
+            RunnerMode::Draining | RunnerMode::Stopped => break,
             RunnerMode::Running => {}
         }
 
@@ -506,26 +466,41 @@ async fn run(mut config: RunConfig) -> RunnerResult<()> {
     }
 
     // -----------------------------------------------------------------------
-    // Shutdown
+    // Shutdown — drain running jobs while keeping mitmproxy alive
     // -----------------------------------------------------------------------
     // Close Ably subscription and cancel any in-flight reconnection
     drop(ably);
     if let Some(h) = ably_retry.handle {
         h.abort();
     }
-    if let Some(h) = mitm_retry.handle {
-        h.abort();
-    }
 
-    // Drain running jobs
+    // Drain running jobs, still restarting mitmproxy — running jobs need the proxy.
     let remaining = jobs.len();
     if remaining > 0 {
         info!(remaining, "waiting for running jobs to finish");
-        while let Some(result) = jobs.join_next().await {
-            if let Err(e) = result {
-                error!(error = %e, "job task panicked during drain");
+        while !jobs.is_empty() {
+            maybe_spawn_mitm_restart(&mut config.mitm, &mut config.mitm_crash_rx, &mut mitm_retry)
+                .await;
+
+            tokio::select! {
+                result = jobs.join_next() => {
+                    if let Some(Err(e)) = result {
+                        error!(error = %e, "job task panicked during drain");
+                    }
+                }
+                _ = config.mitm_crash_rx.recv() => {
+                    warn!("mitmproxy exited unexpectedly, scheduling restart");
+                    mitm_retry.schedule();
+                }
+                result = recv_retry(&mut mitm_retry.handle) => {
+                    handle_mitm_restart_result(result, &mut config.mitm, &mut mitm_retry);
+                }
+                _ = sleep_until_retry(&mitm_retry.restart_at) => {}
             }
         }
+    }
+    if let Some(h) = mitm_retry.handle {
+        h.abort();
     }
 
     info!("shutting down factory");
