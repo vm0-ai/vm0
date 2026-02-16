@@ -184,7 +184,7 @@ impl MitmProxy {
     /// The caller should spawn the mitmdump process (potentially in a
     /// background task) and then call [`complete_restart`] with the result.
     pub async fn begin_restart(&mut self) -> MitmRestartParams {
-        self.stopping.store(false, Ordering::Relaxed);
+        self.stopping.store(false, Ordering::Release);
         // Kill old child if somehow still running.
         if let Some(ref mut child) = self.child {
             let _ = child.kill().await;
@@ -205,7 +205,7 @@ impl MitmProxy {
 
     /// Gracefully stop mitmdump (SIGTERM → timeout → SIGKILL).
     pub async fn stop(&mut self) -> RunnerResult<()> {
-        self.stopping.store(true, Ordering::Relaxed);
+        self.stopping.store(true, Ordering::Release);
         let Some(ref mut child) = self.child else {
             return Ok(());
         };
@@ -231,7 +231,7 @@ impl MitmProxy {
 
 impl Drop for MitmProxy {
     fn drop(&mut self) {
-        self.stopping.store(true, Ordering::Relaxed);
+        self.stopping.store(true, Ordering::Release);
         // Best-effort kill if still running.
         if let Some(ref mut child) = self.child {
             let _ = child.start_kill();
@@ -242,7 +242,7 @@ impl Drop for MitmProxy {
 /// Parameters needed to spawn a mitmdump process, returned by
 /// [`MitmProxy::begin_restart`]. All fields are owned/cloned so the spawn
 /// can happen in a background task without borrowing `MitmProxy`.
-pub struct MitmRestartParams {
+pub(crate) struct MitmRestartParams {
     config: ProxyConfig,
     port: u16,
     crash_tx: mpsc::Sender<()>,
@@ -251,7 +251,7 @@ pub struct MitmRestartParams {
 
 impl MitmRestartParams {
     /// Spawn mitmdump using these parameters. Suitable for `tokio::spawn`.
-    pub async fn spawn(self) -> RunnerResult<tokio::process::Child> {
+    pub(crate) async fn spawn(self) -> RunnerResult<tokio::process::Child> {
         spawn_mitmdump(&self.config, self.port, &self.crash_tx, &self.stopping).await
     }
 }
@@ -259,7 +259,7 @@ impl MitmRestartParams {
 /// Spawn a mitmdump process, wire up stdout/stderr monitors, and wait for
 /// it to become ready. This is a free function so it can run in a
 /// `tokio::spawn` without borrowing `MitmProxy`.
-pub async fn spawn_mitmdump(
+pub(crate) async fn spawn_mitmdump(
     config: &ProxyConfig,
     port: u16,
     crash_tx: &mpsc::Sender<()>,
@@ -306,7 +306,7 @@ pub async fn spawn_mitmdump(
                 }
             }
             // Pipe closed — process exited.
-            if !stopping.load(Ordering::Relaxed) {
+            if !stopping.load(Ordering::Acquire) {
                 let _ = crash_tx.send(()).await;
             }
         });

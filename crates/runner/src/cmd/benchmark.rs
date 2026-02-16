@@ -45,6 +45,7 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
     let t = Instant::now();
     let home = HomePaths::new()?;
     let runner_paths = RunnerPaths::new(runner_config.base_dir.clone());
+    // Benchmark runs a single short-lived sandbox; crash recovery is not needed.
     let (mut mitm, _crash_rx) = proxy::MitmProxy::new(proxy::ProxyConfig {
         mitmdump_bin: home.mitmdump_bin(MITMPROXY_VERSION),
         ca_dir: runner_config.ca_dir.clone(),

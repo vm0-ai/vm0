@@ -30,6 +30,8 @@ const ABLY_BACKOFF_MAX: Duration = Duration::from_secs(60);
 const MITM_BACKOFF_INITIAL: Duration = Duration::from_secs(1);
 /// Maximum backoff between mitmproxy restart attempts.
 const MITM_BACKOFF_MAX: Duration = Duration::from_secs(30);
+/// Stop retrying mitmproxy after this many consecutive failures.
+const MITM_MAX_CONSECUTIVE_FAILURES: u32 = 20;
 
 #[derive(Args)]
 pub struct StartArgs {
@@ -285,6 +287,7 @@ async fn run(mut config: RunConfig) -> RunnerResult<()> {
                 // Spawn background restart task when timer fires
                 maybe_spawn_mitm_restart(
                     &mut config.mitm,
+                    &mut config.mitm_crash_rx,
                     &mut mitm_restart_at,
                     &mut mitm_restarting,
                 )
@@ -327,8 +330,13 @@ async fn run(mut config: RunConfig) -> RunnerResult<()> {
         }
 
         // Spawn background restart task when timer fires
-        maybe_spawn_mitm_restart(&mut config.mitm, &mut mitm_restart_at, &mut mitm_restarting)
-            .await;
+        maybe_spawn_mitm_restart(
+            &mut config.mitm,
+            &mut config.mitm_crash_rx,
+            &mut mitm_restart_at,
+            &mut mitm_restarting,
+        )
+        .await;
 
         // If all permits are taken, wait for a job to finish or mode change
         if semaphore.available_permits() == 0 {
@@ -427,7 +435,6 @@ async fn run(mut config: RunConfig) -> RunnerResult<()> {
             }
             // Ably reconnection result (background task)
             result = recv_reconnect(&mut ably_reconnecting) => {
-                ably_reconnecting = None;
                 match result {
                     Ok(sub) => {
                         if ably_consecutive_failures > 0 {
@@ -644,11 +651,15 @@ async fn recv_reconnect(
     handle: &mut Option<AblyReconnectHandle>,
 ) -> Result<ably_subscriber::Subscription, String> {
     match handle {
-        Some(h) => match h.await {
-            Ok(Ok(sub)) => Ok(sub),
-            Ok(Err(e)) => Err(e.to_string()),
-            Err(e) => Err(format!("reconnect task panicked: {e}")),
-        },
+        Some(h) => {
+            let result = match h.await {
+                Ok(Ok(sub)) => Ok(sub),
+                Ok(Err(e)) => Err(e.to_string()),
+                Err(e) => Err(format!("reconnect task panicked: {e}")),
+            };
+            *handle = None;
+            result
+        }
         None => std::future::pending().await,
     }
 }
@@ -657,6 +668,7 @@ async fn recv_reconnect(
 /// and no restart is already in flight.
 async fn maybe_spawn_mitm_restart(
     mitm: &mut proxy::MitmProxy,
+    crash_rx: &mut tokio::sync::mpsc::Receiver<()>,
     restart_at: &mut Option<Instant>,
     restarting: &mut Option<MitmRestartHandle>,
 ) {
@@ -668,6 +680,9 @@ async fn maybe_spawn_mitm_restart(
         return;
     }
     *restart_at = None;
+    // Drain any stale crash notifications from the previous process to prevent
+    // a spurious restart cycle after this one completes.
+    while crash_rx.try_recv().is_ok() {}
     let params = mitm.begin_restart().await;
     *restarting = Some(tokio::spawn(params.spawn()));
 }
@@ -696,6 +711,15 @@ fn handle_mitm_restart_result(
         }
         Err(e) => {
             *consecutive_failures += 1;
+            if *consecutive_failures >= MITM_MAX_CONSECUTIVE_FAILURES {
+                error!(
+                    error = %e,
+                    failures = *consecutive_failures,
+                    "mitmproxy restart abandoned after too many failures"
+                );
+                // Don't schedule another restart — circuit breaker tripped.
+                return;
+            }
             let next_secs = backoff.as_secs();
             if *consecutive_failures >= 5 {
                 error!(
