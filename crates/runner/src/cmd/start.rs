@@ -26,6 +26,10 @@ const POLL_FAST: Duration = Duration::from_secs(5);
 const ABLY_BACKOFF_INITIAL: Duration = Duration::from_secs(5);
 /// Maximum backoff between Ably reconnection attempts.
 const ABLY_BACKOFF_MAX: Duration = Duration::from_secs(60);
+/// Initial backoff before retrying mitmproxy after a crash.
+const MITM_BACKOFF_INITIAL: Duration = Duration::from_secs(1);
+/// Maximum backoff between mitmproxy restart attempts.
+const MITM_BACKOFF_MAX: Duration = Duration::from_secs(30);
 
 #[derive(Args)]
 pub struct StartArgs {
@@ -90,7 +94,7 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
 
     // Start proxy before factory so proxy_port is available for netns pool.
     let paths = RunnerPaths::new(runner_config.base_dir.clone());
-    let mut mitm = proxy::MitmProxy::new(proxy::ProxyConfig {
+    let (mut mitm, mitm_crash_rx) = proxy::MitmProxy::new(proxy::ProxyConfig {
         mitmdump_bin: home.mitmdump_bin(deps::MITMPROXY_VERSION),
         ca_dir: runner_config.ca_dir.clone(),
         addon_path: paths.mitm_addon(),
@@ -137,16 +141,11 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         status,
         registry: registry_handle,
         log_paths,
+        mitm,
+        mitm_crash_rx,
     };
 
-    let result = run(config).await;
-
-    // Stop proxy after all jobs have drained and factory is shut down.
-    if let Err(e) = mitm.stop().await {
-        warn!(error = %e, "proxy stop failed");
-    }
-
-    result
+    run(config).await
 }
 
 struct RunConfig {
@@ -161,12 +160,16 @@ struct RunConfig {
     status: Arc<StatusTracker>,
     registry: ProxyRegistryHandle,
     log_paths: crate::paths::LogPaths,
+    mitm: proxy::MitmProxy,
+    mitm_crash_rx: tokio::sync::mpsc::Receiver<()>,
 }
 
 type AblyReconnectHandle =
     tokio::task::JoinHandle<Result<ably_subscriber::Subscription, ably_subscriber::Error>>;
 
-async fn run(config: RunConfig) -> RunnerResult<()> {
+type MitmRestartHandle = tokio::task::JoinHandle<RunnerResult<tokio::process::Child>>;
+
+async fn run(mut config: RunConfig) -> RunnerResult<()> {
     let mut factory = FirecrackerFactory::new(config.fc_config.clone()).await?;
     factory.startup().await?;
     let factory = Arc::new(factory);
@@ -219,6 +222,14 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     let mut ably_connected = ably.is_some();
 
     // -----------------------------------------------------------------------
+    // Mitmproxy crash-restart state (same shape as Ably)
+    // -----------------------------------------------------------------------
+    let mut mitm_restart_at: Option<Instant> = None;
+    let mut mitm_restarting: Option<MitmRestartHandle> = None;
+    let mut mitm_backoff = MITM_BACKOFF_INITIAL;
+    let mut mitm_consecutive_failures: u32 = 0;
+
+    // -----------------------------------------------------------------------
     // Signal handling
     // -----------------------------------------------------------------------
     let (mode_tx, mut mode_rx) = tokio::sync::watch::channel(RunnerMode::Running);
@@ -264,11 +275,21 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         match mode {
             RunnerMode::Stopping | RunnerMode::Stopped => break,
             RunnerMode::Draining => {
-                // Don't accept new jobs, wait for running ones to complete
+                // Don't accept new jobs, wait for running ones to complete.
+                // Still restart mitmproxy — running jobs need the proxy.
                 if jobs.is_empty() {
                     info!("all jobs drained");
                     break;
                 }
+
+                // Spawn background restart task when timer fires
+                maybe_spawn_mitm_restart(
+                    &mut config.mitm,
+                    &mut mitm_restart_at,
+                    &mut mitm_restarting,
+                )
+                .await;
+
                 tokio::select! {
                     _ = mode_rx.changed() => {}
                     result = jobs.join_next() => {
@@ -276,6 +297,18 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                             error!(error = %e, "job task panicked");
                         }
                     }
+                    _ = config.mitm_crash_rx.recv() => {
+                        warn!("mitmproxy exited unexpectedly, scheduling restart");
+                        mitm_restart_at = Some(Instant::now() + mitm_backoff);
+                    }
+                    result = recv_mitm_restart(&mut mitm_restarting) => {
+                        handle_mitm_restart_result(
+                            result, &mut config.mitm,
+                            &mut mitm_restart_at, &mut mitm_backoff,
+                            &mut mitm_consecutive_failures,
+                        );
+                    }
+                    _ = sleep_until_mitm_restart(&mitm_restart_at) => {}
                 }
                 continue;
             }
@@ -293,6 +326,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             ably_reconnecting = Some(tokio::spawn(ably_subscriber::subscribe(ably_config)));
         }
 
+        // Spawn background restart task when timer fires
+        maybe_spawn_mitm_restart(&mut config.mitm, &mut mitm_restart_at, &mut mitm_restarting)
+            .await;
+
         // If all permits are taken, wait for a job to finish or mode change
         if semaphore.available_permits() == 0 {
             tokio::select! {
@@ -302,6 +339,18 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         error!(error = %e, "job task panicked");
                     }
                 }
+                _ = config.mitm_crash_rx.recv() => {
+                    warn!("mitmproxy exited unexpectedly, scheduling restart");
+                    mitm_restart_at = Some(Instant::now() + mitm_backoff);
+                }
+                result = recv_mitm_restart(&mut mitm_restarting) => {
+                    handle_mitm_restart_result(
+                        result, &mut config.mitm,
+                        &mut mitm_restart_at, &mut mitm_backoff,
+                        &mut mitm_consecutive_failures,
+                    );
+                }
+                _ = sleep_until_mitm_restart(&mitm_restart_at) => {}
             }
             continue;
         }
@@ -409,6 +458,21 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     }
                 }
             }
+            // Mitmproxy crash detection
+            _ = config.mitm_crash_rx.recv() => {
+                warn!("mitmproxy exited unexpectedly, scheduling restart");
+                mitm_restart_at = Some(Instant::now() + mitm_backoff);
+            }
+            // Mitmproxy restart result (background task)
+            result = recv_mitm_restart(&mut mitm_restarting) => {
+                handle_mitm_restart_result(
+                    result, &mut config.mitm,
+                    &mut mitm_restart_at, &mut mitm_backoff,
+                    &mut mitm_consecutive_failures,
+                );
+            }
+            // Mitmproxy restart timer
+            _ = sleep_until_mitm_restart(&mitm_restart_at) => {}
             // Mode changes (signals)
             _ = mode_rx.changed() => {}
         }
@@ -420,6 +484,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // Close Ably subscription and cancel any in-flight reconnection
     drop(ably);
     if let Some(h) = ably_reconnecting {
+        h.abort();
+    }
+    if let Some(h) = mitm_restarting {
         h.abort();
     }
 
@@ -438,6 +505,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     let mut factory = Arc::try_unwrap(factory)
         .map_err(|_| RunnerError::Internal("factory still referenced at shutdown".into()))?;
     factory.shutdown().await;
+
+    // Stop proxy after all jobs have drained and factory is shut down.
+    if let Err(e) = config.mitm.stop().await {
+        warn!(error = %e, "proxy stop failed");
+    }
 
     config.status.set_mode(RunnerMode::Stopped).await;
     info!("runner stopped");
@@ -577,6 +649,96 @@ async fn recv_reconnect(
             Ok(Err(e)) => Err(e.to_string()),
             Err(e) => Err(format!("reconnect task panicked: {e}")),
         },
+        None => std::future::pending().await,
+    }
+}
+
+/// Spawn a background mitm restart task when the backoff timer fires
+/// and no restart is already in flight.
+async fn maybe_spawn_mitm_restart(
+    mitm: &mut proxy::MitmProxy,
+    restart_at: &mut Option<Instant>,
+    restarting: &mut Option<MitmRestartHandle>,
+) {
+    if restarting.is_some() {
+        return;
+    }
+    let Some(at) = *restart_at else { return };
+    if Instant::now() < at {
+        return;
+    }
+    *restart_at = None;
+    let params = mitm.begin_restart().await;
+    *restarting = Some(tokio::spawn(params.spawn()));
+}
+
+/// Handle the result of a background mitm restart task.
+fn handle_mitm_restart_result(
+    result: Result<tokio::process::Child, String>,
+    mitm: &mut proxy::MitmProxy,
+    restart_at: &mut Option<Instant>,
+    backoff: &mut Duration,
+    consecutive_failures: &mut u32,
+) {
+    match result {
+        Ok(child) => {
+            if *consecutive_failures > 0 {
+                info!(
+                    attempts = *consecutive_failures,
+                    "mitmproxy restarted after failures"
+                );
+            } else {
+                info!("mitmproxy restarted");
+            }
+            mitm.complete_restart(child);
+            *backoff = MITM_BACKOFF_INITIAL;
+            *consecutive_failures = 0;
+        }
+        Err(e) => {
+            *consecutive_failures += 1;
+            let next_secs = backoff.as_secs();
+            if *consecutive_failures >= 5 {
+                error!(
+                    error = %e,
+                    failures = *consecutive_failures,
+                    next_attempt_secs = next_secs,
+                    "mitmproxy restart failing persistently"
+                );
+            } else {
+                warn!(
+                    error = %e,
+                    next_attempt_secs = next_secs,
+                    "mitmproxy restart failed"
+                );
+            }
+            *restart_at = Some(Instant::now() + *backoff);
+            *backoff = (*backoff * 2).min(MITM_BACKOFF_MAX);
+        }
+    }
+}
+
+/// Await a background mitm restart task, or pend forever if none is running.
+async fn recv_mitm_restart(
+    handle: &mut Option<MitmRestartHandle>,
+) -> Result<tokio::process::Child, String> {
+    match handle {
+        Some(h) => {
+            let result = match h.await {
+                Ok(Ok(child)) => Ok(child),
+                Ok(Err(e)) => Err(e.to_string()),
+                Err(e) => Err(format!("restart task panicked: {e}")),
+            };
+            *handle = None;
+            result
+        }
+        None => std::future::pending().await,
+    }
+}
+
+/// Sleep until the mitm restart timer fires, or pend forever if no restart is scheduled.
+async fn sleep_until_mitm_restart(restart_at: &Option<Instant>) {
+    match restart_at {
+        Some(at) => tokio::time::sleep_until(tokio::time::Instant::from_std(*at)).await,
         None => std::future::pending().await,
     }
 }
