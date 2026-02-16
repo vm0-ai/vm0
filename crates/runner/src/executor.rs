@@ -388,6 +388,14 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
         env.insert("VERCEL_PROTECTION_BYPASS".into(), bypass);
     }
 
+    // Pass USE_MOCK_CLAUDE from host environment for testing
+    // (skip if debugNoMockClaude is set in execution context)
+    if let Ok(val) = std::env::var("USE_MOCK_CLAUDE")
+        && !context.debug_no_mock_claude.unwrap_or(false)
+    {
+        env.insert("USE_MOCK_CLAUDE".into(), val);
+    }
+
     // Artifact config
     if let Some(manifest) = &context.storage_manifest
         && let Some(artifact) = &manifest.artifact
@@ -671,5 +679,43 @@ mod tests {
 
         assert_eq!(ctx.api_start_time, Some(1700000000.5));
         assert_eq!(ctx.user_timezone.as_deref(), Some("Asia/Shanghai"));
+    }
+
+    /// SAFETY: set_var/remove_var are unsafe in edition 2024 due to potential
+    /// data races. These tests are acceptable because cargo test runs each
+    /// test in its own thread by default, and no other tests read this var.
+    #[test]
+    fn build_env_json_with_mock_claude() {
+        let saved = std::env::var("USE_MOCK_CLAUDE").ok();
+        // SAFETY: no concurrent tests read USE_MOCK_CLAUDE.
+        unsafe { std::env::set_var("USE_MOCK_CLAUDE", "true") };
+
+        let ctx = minimal_context();
+        let env = build_env_json(&ctx, "http://localhost");
+        assert_eq!(env.get("USE_MOCK_CLAUDE").unwrap(), "true");
+
+        // Restore
+        match saved {
+            Some(v) => unsafe { std::env::set_var("USE_MOCK_CLAUDE", v) },
+            None => unsafe { std::env::remove_var("USE_MOCK_CLAUDE") },
+        }
+    }
+
+    #[test]
+    fn build_env_json_mock_claude_suppressed_by_debug_flag() {
+        let saved = std::env::var("USE_MOCK_CLAUDE").ok();
+        // SAFETY: no concurrent tests read USE_MOCK_CLAUDE.
+        unsafe { std::env::set_var("USE_MOCK_CLAUDE", "true") };
+
+        let mut ctx = minimal_context();
+        ctx.debug_no_mock_claude = Some(true);
+        let env = build_env_json(&ctx, "http://localhost");
+        assert!(!env.contains_key("USE_MOCK_CLAUDE"));
+
+        // Restore
+        match saved {
+            Some(v) => unsafe { std::env::set_var("USE_MOCK_CLAUDE", v) },
+            None => unsafe { std::env::remove_var("USE_MOCK_CLAUDE") },
+        }
     }
 }
