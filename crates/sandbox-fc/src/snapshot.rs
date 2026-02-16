@@ -188,6 +188,8 @@ async fn run_snapshot_workflow(
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
+        .process_group(0)
+        .kill_on_drop(true)
         .spawn()
         .map_err(|e| SnapshotError::Process(format!("spawn firecracker: {e}")))?;
 
@@ -216,10 +218,7 @@ async fn run_snapshot_workflow(
     // Guard: ensure process cleanup on any exit path.
     let result = run_with_firecracker(config, paths, sock_paths, output).await;
 
-    // Always kill the process tree.
-    if let Some(pid) = child.id() {
-        process::kill_process_tree(pid).await;
-    }
+    crate::process::kill_process_group(&child);
     let _ = child.wait().await;
 
     result

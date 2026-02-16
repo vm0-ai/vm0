@@ -485,7 +485,15 @@ async fn claim_and_spawn(
     let status = Arc::clone(&config.status);
 
     jobs.spawn(async move {
-        executor::execute_job(&api, factory.as_ref(), context, &exec_config).await;
+        // Inner spawn isolates panics: if execute_job panics, the JoinHandle
+        // returns Err(JoinError) but the outer task continues to clean up
+        // status and permit. Without this, a panic would skip cleanup.
+        let inner = tokio::spawn(async move {
+            executor::execute_job(&api, factory.as_ref(), context, &exec_config).await;
+        });
+        if let Err(e) = inner.await {
+            error!(run_id = %run_id, error = %e, "executor task panicked");
+        }
         status.remove_run(run_id).await;
         drop(permit);
     });

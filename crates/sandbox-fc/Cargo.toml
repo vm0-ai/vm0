@@ -6,7 +6,7 @@ edition.workspace = true
 [dependencies]
 async-trait.workspace = true
 libc.workspace = true
-nix = { workspace = true, features = ["user", "inotify", "fs"] }
+nix = { workspace = true, features = ["user", "inotify", "fs", "signal"] }
 sandbox.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

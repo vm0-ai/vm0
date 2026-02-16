@@ -188,6 +188,8 @@ impl FirecrackerSandbox {
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
+            .process_group(0)
+            .kill_on_drop(true)
             .spawn()
             .map_err(|e| SandboxError::StartFailed(format!("spawn firecracker: {e}")))?;
 
@@ -255,6 +257,8 @@ impl FirecrackerSandbox {
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
+            .process_group(0)
+            .kill_on_drop(true)
             .spawn()
             .map_err(|e| SandboxError::StartFailed(format!("spawn firecracker: {e}")))?;
 
@@ -296,13 +300,25 @@ impl FirecrackerSandbox {
             return;
         };
 
-        if let Some(pid) = child.id() {
-            crate::process::kill_process_tree(pid).await;
-        }
+        crate::process::kill_process_group(child);
 
         // Reap the zombie process.
         let _ = child.wait().await;
         self.process = None;
+    }
+}
+
+impl Drop for FirecrackerSandbox {
+    fn drop(&mut self) {
+        // If the process is still alive (e.g. owning task panicked before
+        // explicit cleanup), kill the entire process group synchronously.
+        // `kill_on_drop(true)` only sends SIGKILL to the direct child (`sudo`);
+        // `killpg` ensures the entire tree (including firecracker) is cleaned up.
+        if let Some(ref child) = self.process {
+            crate::process::kill_process_group(child);
+        }
+        // Dropping `self.process` (Option<Child>) will trigger kill_on_drop as
+        // a secondary safety net.
     }
 }
 
@@ -538,5 +554,39 @@ impl Sandbox for FirecrackerSandbox {
             stdout: event.stdout,
             stderr: event.stderr,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// Verify that `killpg` kills the entire process group spawned with
+    /// `process_group(0)`.  This is the mechanism the `Drop` impl relies on.
+    #[tokio::test]
+    async fn killpg_kills_entire_process_group() {
+        // "bash -c 'sleep 60'" creates two processes in the same group:
+        //   bash (group leader, PGID = its PID) → sleep (inherits PGID).
+        let mut child = tokio::process::Command::new("bash")
+            .args(["-c", "sleep 60"])
+            .process_group(0)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+
+        let raw_pid = child.id().unwrap();
+        let pid = i32::try_from(raw_pid).unwrap();
+        let pgid = nix::unistd::Pid::from_raw(pid);
+
+        // killpg should kill both bash and sleep.
+        nix::sys::signal::killpg(pgid, nix::sys::signal::Signal::SIGKILL).unwrap();
+
+        // Reap the direct child.
+        let status = child.wait().await.unwrap();
+        assert!(!status.success(), "process should have been killed");
+
+        // Signal 0 checks existence — should fail with ESRCH.
+        let exists = nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), None);
+        assert!(exists.is_err(), "process group leader should be dead");
     }
 }

@@ -216,32 +216,39 @@ impl SandboxFactory for FirecrackerFactory {
         };
 
         // Ensure the sandbox is killed before releasing pool resources.
+        // After kill(), `sandbox.process` is `None`, so the Drop impl's
+        // killpg becomes a no-op when `sandbox` is dropped below.
         let _ = sandbox.kill().await;
 
-        let sandbox_id = sandbox.id;
+        // Clone lightweight handles before dropping sandbox — Drop requires
+        // all fields intact, so we cannot move them out.
+        let sandbox_id = sandbox.id.clone();
+        let network = sandbox.network.clone();
+        let use_proxy = sandbox.config.use_proxy;
+        let overlay = sandbox.overlay.clone();
+        let sock_dir = sandbox.sock_paths.dir().to_owned();
+        let workspace = sandbox.sandbox_paths.workspace().to_owned();
+        drop(sandbox);
 
         // Return the network namespace to the pool.
         let mut netns_pool = self.netns_pool().lock().await;
-        if let Err(e) = netns_pool
-            .release(sandbox.network, sandbox.config.use_proxy)
-            .await
-        {
+        if let Err(e) = netns_pool.release(network, use_proxy).await {
             warn!(id = %sandbox_id, error = %e, "failed to release netns");
         }
         drop(netns_pool);
 
         // Delete the overlay file.
         let mut overlay_pool = self.overlay_pool().lock().await;
-        overlay_pool.release(sandbox.overlay).await;
+        overlay_pool.release(overlay).await;
         drop(overlay_pool);
 
         // Delete the socket directory.
-        if let Err(e) = tokio::fs::remove_dir_all(sandbox.sock_paths.dir()).await {
+        if let Err(e) = tokio::fs::remove_dir_all(&sock_dir).await {
             warn!(id = %sandbox_id, error = %e, "failed to delete sock dir");
         }
 
         // Delete the workspace directory.
-        if let Err(e) = tokio::fs::remove_dir_all(sandbox.sandbox_paths.workspace()).await {
+        if let Err(e) = tokio::fs::remove_dir_all(&workspace).await {
             warn!(id = %sandbox_id, error = %e, "failed to delete workspace");
         }
 
