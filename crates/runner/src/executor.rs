@@ -259,16 +259,20 @@ async fn run_in_sandbox(
     // Check for OOM kill when process was terminated by SIGKILL
     if exit.exit_code == 137 || exit.exit_code == 9 {
         let dmesg_req = ExecRequest {
-            cmd: "sudo dmesg | tail -20 | grep -iE 'killed|oom' 2>/dev/null",
+            cmd: "dmesg | tail -20 | grep -iE 'killed|oom' 2>/dev/null",
             timeout: Duration::from_secs(5),
             env: &[],
-            sudo: false,
+            sudo: true,
         };
-        if let Ok(dmesg) = sandbox.exec(&dmesg_req).await
-            && dmesg_indicates_oom(&String::from_utf8_lossy(&dmesg.stdout))
-        {
-            warn!(run_id = %context.run_id, "OOM kill detected via dmesg");
-            return Ok((1, Some("Agent process killed by OOM killer".into())));
+        match sandbox.exec(&dmesg_req).await {
+            Ok(dmesg) if dmesg_indicates_oom(&String::from_utf8_lossy(&dmesg.stdout)) => {
+                warn!(run_id = %context.run_id, "OOM kill detected via dmesg");
+                return Ok((1, Some("Agent process killed by OOM killer".into())));
+            }
+            Err(e) => {
+                warn!(run_id = %context.run_id, error = %e, "failed to exec dmesg for OOM check");
+            }
+            _ => {}
         }
     }
 
@@ -285,7 +289,7 @@ async fn run_in_sandbox(
 /// Returns true if dmesg output indicates an OOM kill.
 fn dmesg_indicates_oom(stdout: &str) -> bool {
     let lower = stdout.to_lowercase();
-    lower.contains("oom") || lower.contains("killed")
+    lower.contains("oom") || lower.contains("killed process")
 }
 
 /// Sync guest clock to host time after snapshot restore.
@@ -804,12 +808,14 @@ mod tests {
         assert!(!dmesg_indicates_oom(""));
         assert!(!dmesg_indicates_oom("normal kernel log output"));
         assert!(!dmesg_indicates_oom("[  1.000] eth0: link up"));
+        // "killed" alone should not match — requires "killed process"
+        assert!(!dmesg_indicates_oom("task killed by signal 15"));
     }
 
     #[test]
     fn dmesg_oom_case_insensitive() {
         assert!(dmesg_indicates_oom("OOM killer invoked"));
-        assert!(dmesg_indicates_oom("Killed process"));
-        assert!(dmesg_indicates_oom("oOm KiLLeD"));
+        assert!(dmesg_indicates_oom("Killed process 99 (agent)"));
+        assert!(dmesg_indicates_oom("oOm-killer"));
     }
 }
