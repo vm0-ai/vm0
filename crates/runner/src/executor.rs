@@ -357,6 +357,9 @@ async fn restore_session(
     Ok(())
 }
 
+/// Proxy CA certificate path inside the guest rootfs (pre-baked at build time).
+const VM_PROXY_CA_PATH: &str = "/usr/local/share/ca-certificates/vm0-proxy-ca.crt";
+
 /// Build the environment variables JSON, matching the TS `buildEnvironmentVariables`.
 fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, String> {
     let mut env = HashMap::new();
@@ -401,10 +404,7 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
     if let Some(fw) = &context.experimental_firewall
         && fw.experimental_mitm.unwrap_or(false)
     {
-        env.insert(
-            "NODE_EXTRA_CA_CERTS".into(),
-            "/usr/local/share/ca-certificates/vm0-proxy-ca.crt".into(),
-        );
+        env.insert("NODE_EXTRA_CA_CERTS".into(), VM_PROXY_CA_PATH.into());
     }
 
     // Artifact config
@@ -740,10 +740,7 @@ mod tests {
             experimental_seal_secrets: None,
         });
         let env = build_env_json(&ctx, "http://localhost");
-        assert_eq!(
-            env.get("NODE_EXTRA_CA_CERTS").unwrap(),
-            "/usr/local/share/ca-certificates/vm0-proxy-ca.crt"
-        );
+        assert_eq!(env.get("NODE_EXTRA_CA_CERTS").unwrap(), VM_PROXY_CA_PATH);
     }
 
     #[test]
@@ -753,6 +750,19 @@ mod tests {
             enabled: true,
             rules: None,
             experimental_mitm: Some(false),
+            experimental_seal_secrets: None,
+        });
+        let env = build_env_json(&ctx, "http://localhost");
+        assert!(!env.contains_key("NODE_EXTRA_CA_CERTS"));
+    }
+
+    #[test]
+    fn build_env_json_mitm_none_no_ca_certs() {
+        let mut ctx = minimal_context();
+        ctx.experimental_firewall = Some(crate::types::ExperimentalFirewall {
+            enabled: true,
+            rules: None,
+            experimental_mitm: None,
             experimental_seal_secrets: None,
         });
         let env = build_env_json(&ctx, "http://localhost");
