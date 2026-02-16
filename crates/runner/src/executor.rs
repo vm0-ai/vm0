@@ -271,6 +271,8 @@ async fn run_in_sandbox(
         match sandbox.exec(&dmesg_req).await {
             Ok(dmesg) if dmesg_indicates_oom(&String::from_utf8_lossy(&dmesg.stdout)) => {
                 warn!(run_id = %context.run_id, "OOM kill detected via dmesg");
+                // Return exit code 1 with descriptive message instead of raw 137,
+                // so callers see a clear error rather than an opaque signal code.
                 return Ok((1, Some("Agent process killed by OOM killer".into())));
             }
             Err(e) => {
@@ -293,7 +295,10 @@ async fn run_in_sandbox(
 /// Returns true if dmesg output indicates an OOM kill.
 fn dmesg_indicates_oom(stdout: &str) -> bool {
     let lower = stdout.to_lowercase();
-    lower.contains("oom") || lower.contains("killed process")
+    lower.contains("out of memory")
+        || lower.contains("oom-kill")
+        || lower.contains("oom_reaper")
+        || lower.contains("killed process")
 }
 
 /// Sync guest clock to host time after snapshot restore.
@@ -804,6 +809,7 @@ mod tests {
             "[  12.345] Out of memory: Killed process 1234 (claude)"
         ));
         assert!(dmesg_indicates_oom("oom-kill:constraint=CONSTRAINT_MEMCG"));
+        assert!(dmesg_indicates_oom("oom_reaper: reaped process 42"));
         assert!(dmesg_indicates_oom("Killed process 42 (node)"));
     }
 
@@ -814,12 +820,14 @@ mod tests {
         assert!(!dmesg_indicates_oom("[  1.000] eth0: link up"));
         // "killed" alone should not match — requires "killed process"
         assert!(!dmesg_indicates_oom("task killed by signal 15"));
+        // substring "oom" in unrelated words should not match
+        assert!(!dmesg_indicates_oom("the room is full"));
     }
 
     #[test]
     fn dmesg_oom_case_insensitive() {
-        assert!(dmesg_indicates_oom("OOM killer invoked"));
+        assert!(dmesg_indicates_oom("Out Of Memory: killed process 99"));
         assert!(dmesg_indicates_oom("Killed process 99 (agent)"));
-        assert!(dmesg_indicates_oom("oOm-killer"));
+        assert!(dmesg_indicates_oom("OOM-kill: constraint=MEMCG"));
     }
 }
