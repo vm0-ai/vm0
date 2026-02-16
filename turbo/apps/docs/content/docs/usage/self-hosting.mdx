@@ -11,44 +11,109 @@ description: Deploy VM0 on your own infrastructure with Docker Compose
 
 ## Quick Start
 
-### 1. Clone the Repository
+<Tabs items={["Docker Compose", "Build from Source"]}>
+<Tab value="Docker Compose">
+
+The recommended way to self-host VM0. No need to clone the repository — just create three files and start the stack.
+
+You can either [download the bundle](/self-hosting/vm0-self-hosted.tar.gz) and extract it, or create the files manually.
+
+<Tabs items={["Download Bundle", "Create Files Manually"]}>
+<Tab value="Download Bundle">
 
 ```bash
-git clone https://github.com/vm0-ai/vm0.git
-cd vm0/docker
-```
-
-### 2. Configure Environment
-
-Copy the example environment file and update the required passwords:
-
-```bash
+curl -fsSL https://docs.vm0.ai/self-hosting/vm0-self-hosted.tar.gz | tar xz
 cp .env.example .env
 ```
 
-Open `.env` and set the required values:
+Edit `.env` and set the required passwords:
 
-```bash
-# Required: set secure passwords for the built-in PostgreSQL and MinIO
+```bash title=".env"
 DB_PASSWORD=your_secure_database_password
 MINIO_PASSWORD=your_secure_minio_password
 ```
 
-<Callout type="info">
-  See the `.env.example` file for all available configuration options, including
-  external database/storage, port mapping, encryption keys, and Slack
-  integration.
-</Callout>
+</Tab>
+<Tab value="Create Files Manually">
 
-### 3. Start the Stack
+Create a project directory, then add the three files shown below:
+
+```bash
+mkdir vm0-self-hosted && cd vm0-self-hosted
+```
+
+<Tabs items={["docker-compose.yml", "Caddyfile", ".env"]}>
+<Tab value="docker-compose.yml">
+<include lang="yaml">../../../public/self-hosting/docker-compose.yml</include>
+</Tab>
+<Tab value="Caddyfile">
+<include lang="text">../../../public/self-hosting/Caddyfile</include>
+</Tab>
+<Tab value=".env">
+<include lang="bash">../../../public/self-hosting/.env.example</include>
+</Tab>
+</Tabs>
+
+Edit `.env` and set the required passwords:
+
+```bash title=".env"
+DB_PASSWORD=your_secure_database_password
+MINIO_PASSWORD=your_secure_minio_password
+```
+
+</Tab>
+</Tabs>
+
+Finally, start the stack:
 
 ```bash
 docker compose up -d
 ```
 
-This starts all services: web app, PostgreSQL, MinIO (object storage), Caddy (reverse proxy), and a cron scheduler. The first start may take a minute while images are pulled and the database is initialized.
+</Tab>
+<Tab value="Build from Source">
 
-### 4. Configure the CLI
+If you want to build from source (e.g., after modifying the code), clone the repository and use the development compose file.
+
+Clone the repository and configure environment:
+
+```bash
+git clone https://github.com/vm0-ai/vm0.git
+cd vm0/docker
+cp .env.example .env
+```
+
+Edit `.env` and set the required passwords:
+
+```bash
+DB_PASSWORD=your_secure_database_password
+MINIO_PASSWORD=your_secure_minio_password
+```
+
+Build the sandbox image (run this on the first setup, or whenever you modify the sandbox Dockerfile):
+
+```bash
+docker compose -f docker-compose.dev.yml --profile build-only build sandbox
+```
+
+Build and start all services:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d --build
+```
+
+This builds the `web`, `platform`, and `sandbox` images from source and starts the full stack.
+
+</Tab>
+</Tabs>
+
+<Callout type="info">
+  The first start may take a minute while images are pulled and the database is
+  initialized. See the [Configuration Reference](#configuration-reference) below
+  for all available options.
+</Callout>
+
+## Configure the CLI
 
 Set the API URL to point to your self-hosted instance. You can export it in your current shell or add it to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.) for persistence:
 
@@ -63,7 +128,7 @@ vm0 auth login
 vm0 model-provider setup
 ```
 
-### 5. Run Your Agent
+## Run Your Agent
 
 You are now ready to use VM0 with your self-hosted instance:
 
@@ -72,26 +137,6 @@ mkdir my-agent && cd my-agent
 vm0 init
 vm0 cook "let's start working"
 ```
-
-## Development Deployment
-
-If you want to build from source (e.g., after modifying the code), use the development compose file instead.
-
-### Build the Sandbox Image
-
-The sandbox image must be built separately. Run this on the first setup, or whenever you modify the sandbox Dockerfile:
-
-```bash
-docker compose -f docker-compose.dev.yml --profile build-only build sandbox
-```
-
-### Build and Start All Services
-
-```bash
-docker compose -f docker-compose.dev.yml up -d --build
-```
-
-This builds the `web`, `platform`, and `sandbox` images from source and starts the full stack.
 
 ## Architecture Overview
 
@@ -150,7 +195,7 @@ R2_USER_STORAGES_BUCKET_NAME=your_bucket
 
 ### Docker Socket Permission Error
 
-If you see `connect EACCES /var/run/docker.sock`, the entrypoint script automatically handles Docker socket permissions across different environments (Linux, macOS Docker Desktop, OrbStack, Windows WSL). Make sure the Docker socket is mounted correctly in `docker-compose.web-base.yml`.
+If you see `connect EACCES /var/run/docker.sock`, the entrypoint script automatically handles Docker socket permissions across different environments (Linux, macOS Docker Desktop, OrbStack, Windows WSL). Make sure the Docker socket is mounted correctly.
 
 ### Container Logs
 

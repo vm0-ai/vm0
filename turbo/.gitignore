@@ -34,6 +34,9 @@ dist
 .source
 apps/docs/.source
 
+# Generated self-hosting bundle
+apps/docs/public/self-hosting/
+
 # Next.js
 apps/*/next-env.d.ts
 
