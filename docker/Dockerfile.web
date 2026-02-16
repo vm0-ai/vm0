@@ -43,6 +43,7 @@ ENV NEXT_PUBLIC_BASE_URL=http://localhost
 # No NEXT_PUBLIC_STRAPI_URL → isBlogEnabled()=false (blog hidden)
 # Placeholder for build-time inlining; actual value comes from docker-compose at runtime
 ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
+ENV CLERK_SECRET_KEY=
 ENV NEXT_PUBLIC_STRAPI_URL=
 ENV NEXT_PUBLIC_PLATFORM_URL=http://localhost:3001
 
