@@ -250,21 +250,42 @@ async fn run_in_sandbox(
     telemetry.record("agent_execute", t.elapsed(), success, err.as_deref());
     let exit = result?;
 
-    let stderr = String::from_utf8_lossy(&exit.stderr).to_string();
-
     info!(
         run_id = %context.run_id,
         exit_code = exit.exit_code,
         "agent exited"
     );
 
+    // Check for OOM kill when process was terminated by SIGKILL
+    if exit.exit_code == 137 || exit.exit_code == 9 {
+        let dmesg_req = ExecRequest {
+            cmd: "sudo dmesg | tail -20 | grep -iE 'killed|oom' 2>/dev/null",
+            timeout: Duration::from_secs(5),
+            env: &[],
+            sudo: false,
+        };
+        if let Ok(dmesg) = sandbox.exec(&dmesg_req).await
+            && dmesg_indicates_oom(&String::from_utf8_lossy(&dmesg.stdout))
+        {
+            warn!(run_id = %context.run_id, "OOM kill detected via dmesg");
+            return Ok((1, Some("Agent process killed by OOM killer".into())));
+        }
+    }
+
     let error_msg = if exit.exit_code != 0 {
+        let stderr = String::from_utf8_lossy(&exit.stderr).to_string();
         Some(stderr).filter(|s| !s.is_empty())
     } else {
         None
     };
 
     Ok((exit.exit_code, error_msg))
+}
+
+/// Returns true if dmesg output indicates an OOM kill.
+fn dmesg_indicates_oom(stdout: &str) -> bool {
+    let lower = stdout.to_lowercase();
+    lower.contains("oom") || lower.contains("killed")
 }
 
 /// Sync guest clock to host time after snapshot restore.
@@ -767,5 +788,28 @@ mod tests {
         });
         let env = build_env_json(&ctx, "http://localhost");
         assert!(!env.contains_key("NODE_EXTRA_CA_CERTS"));
+    }
+
+    #[test]
+    fn dmesg_oom_positive() {
+        assert!(dmesg_indicates_oom(
+            "[  12.345] Out of memory: Killed process 1234 (claude)"
+        ));
+        assert!(dmesg_indicates_oom("oom-kill:constraint=CONSTRAINT_MEMCG"));
+        assert!(dmesg_indicates_oom("Killed process 42 (node)"));
+    }
+
+    #[test]
+    fn dmesg_oom_negative() {
+        assert!(!dmesg_indicates_oom(""));
+        assert!(!dmesg_indicates_oom("normal kernel log output"));
+        assert!(!dmesg_indicates_oom("[  1.000] eth0: link up"));
+    }
+
+    #[test]
+    fn dmesg_oom_case_insensitive() {
+        assert!(dmesg_indicates_oom("OOM killer invoked"));
+        assert!(dmesg_indicates_oom("Killed process"));
+        assert!(dmesg_indicates_oom("oOm KiLLeD"));
     }
 }
