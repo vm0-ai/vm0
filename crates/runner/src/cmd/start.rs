@@ -841,4 +841,111 @@ mod tests {
         let msg = make_message(Some("job"), serde_json::json!({ "other": "data" }));
         assert!(parse_job_run_id(&msg).is_none());
     }
+
+    /// Create a MitmProxy for testing (does not start mitmdump).
+    async fn test_mitm() -> (
+        proxy::MitmProxy,
+        tokio::sync::mpsc::Receiver<()>,
+        tempfile::TempDir,
+    ) {
+        let dir = tempfile::tempdir().unwrap();
+        let (mitm, rx) = proxy::MitmProxy::new(proxy::ProxyConfig {
+            mitmdump_bin: PathBuf::from("true"),
+            ca_dir: dir.path().to_path_buf(),
+            addon_path: dir.path().join("addon.py"),
+            registry_path: dir.path().join("registry.json"),
+            registry_lock_path: dir.path().join("registry.lock"),
+            api_url: None,
+        })
+        .await
+        .unwrap();
+        (mitm, rx, dir)
+    }
+
+    #[tokio::test]
+    async fn mitm_restart_success_resets_backoff() {
+        let (mut mitm, _rx, _dir) = test_mitm().await;
+        let mut restart_at = Some(Instant::now());
+        let mut backoff = Duration::from_secs(16);
+        let mut failures = 5u32;
+
+        let child = tokio::process::Command::new("true")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+
+        handle_mitm_restart_result(
+            Ok(child),
+            &mut mitm,
+            &mut restart_at,
+            &mut backoff,
+            &mut failures,
+        );
+
+        assert_eq!(backoff, MITM_BACKOFF_INITIAL);
+        assert_eq!(failures, 0);
+    }
+
+    #[tokio::test]
+    async fn mitm_restart_failure_schedules_retry_with_backoff() {
+        let (mut mitm, _rx, _dir) = test_mitm().await;
+        let mut restart_at = None;
+        let mut backoff = MITM_BACKOFF_INITIAL;
+        let mut failures = 0u32;
+
+        handle_mitm_restart_result(
+            Err("spawn failed".into()),
+            &mut mitm,
+            &mut restart_at,
+            &mut backoff,
+            &mut failures,
+        );
+
+        assert_eq!(failures, 1);
+        assert!(restart_at.is_some());
+        assert_eq!(backoff, MITM_BACKOFF_INITIAL * 2);
+    }
+
+    #[tokio::test]
+    async fn mitm_restart_backoff_caps_at_max() {
+        let (mut mitm, _rx, _dir) = test_mitm().await;
+        let mut restart_at = None;
+        let mut backoff = MITM_BACKOFF_MAX;
+        let mut failures = 10u32;
+
+        handle_mitm_restart_result(
+            Err("spawn failed".into()),
+            &mut mitm,
+            &mut restart_at,
+            &mut backoff,
+            &mut failures,
+        );
+
+        assert_eq!(backoff, MITM_BACKOFF_MAX);
+        assert!(restart_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn mitm_restart_circuit_breaker_stops_retrying() {
+        let (mut mitm, _rx, _dir) = test_mitm().await;
+        let mut restart_at = None;
+        let mut backoff = MITM_BACKOFF_MAX;
+        let mut failures = MITM_MAX_CONSECUTIVE_FAILURES - 1;
+
+        handle_mitm_restart_result(
+            Err("binary missing".into()),
+            &mut mitm,
+            &mut restart_at,
+            &mut backoff,
+            &mut failures,
+        );
+
+        assert_eq!(failures, MITM_MAX_CONSECUTIVE_FAILURES);
+        assert!(
+            restart_at.is_none(),
+            "circuit breaker should prevent further retries"
+        );
+    }
 }
