@@ -455,6 +455,16 @@ async fn claim_and_spawn(
     semaphore: &Arc<Semaphore>,
     jobs: &mut JoinSet<()>,
 ) {
+    // Acquire permit BEFORE claiming so that a claim is never left without
+    // a corresponding complete (the spawned task guarantees the pairing).
+    let permit = match semaphore.clone().acquire_owned().await {
+        Ok(p) => p,
+        Err(_) => {
+            error!("semaphore closed unexpectedly");
+            return;
+        }
+    };
+
     let context = match api.claim(run_id).await {
         Ok(ctx) => ctx,
         Err(RunnerError::AlreadyClaimed) => {
@@ -469,34 +479,51 @@ async fn claim_and_spawn(
 
     info!(run_id = %run_id, "job claimed, spawning executor");
 
-    let permit = match semaphore.clone().acquire_owned().await {
-        Ok(p) => p,
-        Err(_) => {
-            error!("semaphore closed unexpectedly");
-            return;
-        }
-    };
-
     config.status.add_run(run_id).await;
 
     let api = api.clone();
     let factory = Arc::clone(factory);
     let exec_config = Arc::clone(exec_config);
     let status = Arc::clone(&config.status);
+    let sandbox_token = context.sandbox_token.clone();
 
     jobs.spawn(async move {
-        // Inner spawn isolates panics: if execute_job panics, the JoinHandle
-        // returns Err(JoinError) but the outer task continues to clean up
-        // status and permit. Without this, a panic would skip cleanup.
+        // Inner spawn isolates panics: if execute_job panics, the outer task
+        // still reports completion and cleans up status/permit.
         let inner = tokio::spawn(async move {
-            executor::execute_job(&api, factory.as_ref(), context, &exec_config).await;
+            executor::execute_job(factory.as_ref(), context, &exec_config).await
         });
-        if let Err(e) = inner.await {
-            error!(run_id = %run_id, error = %e, "executor task panicked");
-        }
+
+        let (exit_code, err) = match inner.await {
+            Ok((code, err)) => (code, err),
+            Err(e) => {
+                error!(run_id = %run_id, error = %e, "executor task panicked");
+                (1, Some(format!("internal error: {e}")))
+            }
+        };
+
+        // Structural guarantee: claim (above) is always paired with complete.
+        report_complete(&api, &sandbox_token, run_id, exit_code, err.as_deref()).await;
         status.remove_run(run_id).await;
         drop(permit);
     });
+}
+
+/// Report job completion to the API with one retry on failure.
+async fn report_complete(
+    api: &ApiClient,
+    sandbox_token: &str,
+    run_id: uuid::Uuid,
+    exit_code: i32,
+    error: Option<&str>,
+) {
+    if let Err(e) = api.complete(sandbox_token, run_id, exit_code, error).await {
+        warn!(run_id = %run_id, error = %e, "completion report failed, retrying");
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        if let Err(e) = api.complete(sandbox_token, run_id, exit_code, error).await {
+            error!(run_id = %run_id, error = %e, "failed to report completion after retry");
+        }
+    }
 }
 
 /// Parse `run_id` from an Ably job notification message.

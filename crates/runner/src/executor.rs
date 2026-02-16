@@ -10,7 +10,6 @@ const JOB_TIMEOUT: Duration = Duration::from_secs(7200);
 /// Default timeout for guest commands (5 minutes).
 const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
 
-use crate::api::ApiClient;
 use crate::error::RunnerResult;
 use crate::http::HttpClient;
 use crate::paths::{LogPaths, guest};
@@ -31,14 +30,14 @@ pub struct ExecutorConfig {
 
 /// Execute a single job inside a Firecracker VM.
 ///
-/// On failure before agent spawn, reports completion with `exit_code = 1`.
-/// Always calls `factory.destroy()` on the sandbox when done.
+/// Returns `(exit_code, error_message)`. The caller is responsible for
+/// reporting completion to the API — this keeps `claim` and `complete`
+/// in the same function for structural pairing.
 pub async fn execute_job(
-    api: &ApiClient,
     factory: &dyn SandboxFactory,
     context: ExecutionContext,
     config: &ExecutorConfig,
-) {
+) -> (i32, Option<String>) {
     let run_id = context.run_id;
     let mut telemetry =
         JobTelemetry::new(config.http.clone(), run_id, context.sandbox_token.clone());
@@ -64,23 +63,10 @@ pub async fn execute_job(
         }
     };
 
-    info!(run_id = %run_id, exit_code, "job finished, reporting completion");
-
-    if let Err(e) = api
-        .complete(&context.sandbox_token, run_id, exit_code, err.as_deref())
-        .await
-    {
-        warn!(run_id = %run_id, error = %e, "completion report failed, retrying");
-        tokio::time::sleep(Duration::from_secs(2)).await;
-        if let Err(e) = api
-            .complete(&context.sandbox_token, run_id, exit_code, err.as_deref())
-            .await
-        {
-            error!(run_id = %run_id, error = %e, "failed to report completion after retry");
-        }
-    }
-
+    info!(run_id = %run_id, exit_code, "job finished");
     telemetry.flush().await;
+
+    (exit_code, err)
 }
 
 async fn execute_inner(
