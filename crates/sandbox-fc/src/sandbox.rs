@@ -358,6 +358,8 @@ fn monitor_process(
                 warn!(id = %id, "process exited unexpectedly");
                 // Notify before acquiring the lock — operations holding the
                 // lock can detect the crash via select! immediately.
+                // Uses notify_waiters (not notify_one) because at most one
+                // operation is waiting and we don't need stored permits.
                 crash_notify.notify_waiters();
                 guest.lock().await.take();
             }
@@ -485,6 +487,13 @@ impl Sandbox for FirecrackerSandbox {
     }
 
     // -- operations --
+    //
+    // Each operation races the vsock call against `crash_notify` via select!.
+    // `notify_waiters()` only wakes current waiters — if the notification
+    // fires in the brief window before select! polls `notified()`, it is
+    // lost. This is acceptable: `monitor_process` subsequently drops the
+    // guest connection, so the vsock call fails with a connection error
+    // anyway — just with a less specific message.
 
     async fn exec(&self, request: &ExecRequest<'_>) -> sandbox::Result<ExecResult> {
         let mut guard = self.guest.lock().await;
