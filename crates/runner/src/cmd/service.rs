@@ -146,7 +146,7 @@ fn generate_unit_file(
 ) -> String {
     let mut env_lines = String::new();
     for entry in env_vars {
-        env_lines.push_str(&format!("Environment={entry}\n"));
+        env_lines.push_str(&format!("Environment=\"{entry}\"\n"));
     }
     format!(
         "\
@@ -524,8 +524,9 @@ mod tests {
             "ubuntu",
             &env,
         );
-        assert!(content.contains("Environment=VERCEL_AUTOMATION_BYPASS_SECRET=xxx"));
-        assert!(content.contains("Environment=USE_MOCK_CLAUDE=true"));
+        assert!(content.contains("Environment=\"VERCEL_AUTOMATION_BYPASS_SECRET=xxx\""));
+        assert!(content.contains("Environment=\"USE_MOCK_CLAUDE=true\""));
+        assert!(content.contains("\n\n[Install]"));
     }
 
     #[test]
