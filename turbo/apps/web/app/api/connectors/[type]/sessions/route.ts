@@ -1,9 +1,5 @@
 import crypto from "crypto";
-import {
-  createHandler,
-  tsr,
-  validationErrorHandler,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import {
   connectorSessionsContract,
   connectorTypeSchema,
@@ -99,8 +95,6 @@ const router = tsr.router(connectorSessionsContract, {
   },
 });
 
-const handler = createHandler(connectorSessionsContract, router, {
-  errorHandler: validationErrorHandler,
-});
+const handler = createHandler(connectorSessionsContract, router);
 
 export { handler as POST };

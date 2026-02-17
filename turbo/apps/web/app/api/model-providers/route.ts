@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  tsr,
-  validationErrorHandler,
-} from "../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../src/lib/ts-rest-handler";
 import {
   modelProvidersMainContract,
   createErrorResponse,
@@ -137,8 +133,6 @@ const router = tsr.router(modelProvidersMainContract, {
   },
 });
 
-const handler = createHandler(modelProvidersMainContract, router, {
-  errorHandler: validationErrorHandler,
-});
+const handler = createHandler(modelProvidersMainContract, router);
 
 export { handler as GET, handler as PUT };

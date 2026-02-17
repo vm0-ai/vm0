@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  tsr,
-  validationErrorHandler,
-} from "../../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
 import { runsCancelContract } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
@@ -87,8 +83,6 @@ const router = tsr.router(runsCancelContract, {
   },
 });
 
-const handler = createHandler(runsCancelContract, router, {
-  errorHandler: validationErrorHandler,
-});
+const handler = createHandler(runsCancelContract, router);
 
 export { handler as POST };

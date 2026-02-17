@@ -24,19 +24,6 @@ import { ApiError } from "@vm0/core";
 export { tsr, TsRestResponse };
 
 /**
- * @deprecated This function hides error stack traces. Use ts-rest's default error handling instead.
- *
- * ts-rest already provides good error handling with full stack traces via `[ts-rest] Unexpected error...`
- * Custom error handlers that return TsRestResponse suppress this useful debugging information.
- *
- * If you need custom error formatting, do it in a global error handler rather than suppressing stack traces.
- */
-export function validationErrorHandler(err: unknown): TsRestResponse | void {
-  // Do nothing - let ts-rest handle errors with full stack traces
-  return undefined;
-}
-
-/**
  * Type alias for ts-rest router implementation.
  * This is the return type of `tsr.router(contract, { ... })`.
  */

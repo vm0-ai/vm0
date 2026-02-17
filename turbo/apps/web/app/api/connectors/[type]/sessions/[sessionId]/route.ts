@@ -1,9 +1,5 @@
 import { eq, and } from "drizzle-orm";
-import {
-  createHandler,
-  tsr,
-  validationErrorHandler,
-} from "../../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
 import {
   connectorSessionByIdContract,
   connectorTypeSchema,
@@ -76,8 +72,6 @@ const router = tsr.router(connectorSessionByIdContract, {
   },
 });
 
-const handler = createHandler(connectorSessionByIdContract, router, {
-  errorHandler: validationErrorHandler,
-});
+const handler = createHandler(connectorSessionByIdContract, router);
 
 export { handler as GET };

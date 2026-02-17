@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  tsr,
-  validationErrorHandler,
-} from "../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { connectorsByTypeContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
@@ -63,8 +59,6 @@ const router = tsr.router(connectorsByTypeContract, {
   },
 });
 
-const handler = createHandler(connectorsByTypeContract, router, {
-  errorHandler: validationErrorHandler,
-});
+const handler = createHandler(connectorsByTypeContract, router);
 
 export { handler as GET, handler as DELETE };
