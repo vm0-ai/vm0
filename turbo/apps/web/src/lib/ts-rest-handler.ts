@@ -35,33 +35,78 @@ export { tsr, TsRestResponse };
  *   const handler = createHandler(contract, router, { errorHandler: validationErrorHandler });
  */
 export function validationErrorHandler(err: unknown): TsRestResponse | void {
-  if (!err || typeof err !== "object") {
-    return undefined;
-  }
-
-  // Extract first validation issue from any error type
-  const errorObj = err as Record<string, unknown>;
-  const errorTypes = ["bodyError", "queryError", "pathParamsError"] as const;
-
-  for (const errorType of errorTypes) {
-    if (errorType in errorObj && errorObj[errorType]) {
-      const validationError = errorObj[errorType] as {
-        issues: Array<{ path: string[]; message: string }>;
-      };
-      const issue = validationError.issues[0];
-      if (issue) {
-        return TsRestResponse.fromJson(
-          {
-            error: { message: issue.message, code: ApiError.BAD_REQUEST.code },
+  try {
+    if (!err || typeof err !== "object") {
+      return TsRestResponse.fromJson(
+        {
+          error: {
+            message: "Request validation failed",
+            code: ApiError.BAD_REQUEST.code,
           },
-          { status: ApiError.BAD_REQUEST.status },
-        );
+        },
+        { status: ApiError.BAD_REQUEST.status },
+      );
+    }
+
+    // Extract first validation issue from any error type
+    const errorObj = err as Record<string, unknown>;
+
+    // Check all possible validation error types (including headersError)
+    const errorTypes = [
+      "bodyError",
+      "queryError",
+      "pathParamsError",
+      "headersError",
+    ] as const;
+
+    for (const errorType of errorTypes) {
+      if (errorType in errorObj && errorObj[errorType]) {
+        const validationError = errorObj[errorType] as {
+          issues?: Array<{ path: string[]; message: string }>;
+        };
+
+        const issue = validationError.issues?.[0];
+        if (issue) {
+          return TsRestResponse.fromJson(
+            {
+              error: {
+                message: issue.message,
+                code: ApiError.BAD_REQUEST.code,
+              },
+            },
+            { status: ApiError.BAD_REQUEST.status },
+          );
+        }
       }
     }
-  }
 
-  // Let other errors propagate
-  return undefined;
+    // Return a generic error response instead of undefined to avoid 500
+    return TsRestResponse.fromJson(
+      {
+        error: {
+          message: "Request validation failed",
+          code: ApiError.BAD_REQUEST.code,
+        },
+      },
+      { status: ApiError.BAD_REQUEST.status },
+    );
+  } catch (unexpectedError) {
+    // errorHandler itself threw an exception - log and return safe response
+    console.error(
+      "[validationErrorHandler] errorHandler threw exception:",
+      unexpectedError,
+    );
+
+    return TsRestResponse.fromJson(
+      {
+        error: {
+          message: "Internal error processing validation",
+          code: ApiError.INTERNAL_ERROR.code,
+        },
+      },
+      { status: ApiError.INTERNAL_ERROR.status },
+    );
+  }
 }
 
 /**
