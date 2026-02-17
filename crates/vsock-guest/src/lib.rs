@@ -6,11 +6,12 @@
 //!
 //! Protocol encoding/decoding is handled by the `vsock-proto` crate.
 
+use std::collections::HashMap;
 use std::io::{self, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -162,6 +163,143 @@ pub fn log(level: &str, msg: &str) {
     eprintln!("[vsock-guest] [{level}] {msg}");
 }
 
+/// Exit statuses stored by the PID 1 zombie reaper.
+///
+/// When `guest-init`'s reaper calls `waitpid(-1)` and harvests a child that
+/// `collect_output` is about to wait on, the reaper stores `(pid, exit_code)`
+/// here. On `ECHILD`, `collect_output` recovers the correct exit status
+/// instead of using a fallback.
+static REAPED_STATUSES: LazyLock<Mutex<HashMap<u32, i32>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Store a reaped child's exit status for later recovery.
+///
+/// Called by `guest-init`'s `reap_zombies` after `waitpid(-1)` returns a PID.
+/// The raw `wstatus` is decoded into a standard exit code (exit status for
+/// normal exit, 128+signal for signal death).
+pub fn store_reaped_status(pid: u32, wstatus: i32) {
+    let exit_code = if libc::WIFEXITED(wstatus) {
+        libc::WEXITSTATUS(wstatus)
+    } else if libc::WIFSIGNALED(wstatus) {
+        128 + libc::WTERMSIG(wstatus)
+    } else {
+        1
+    };
+    let mut map = REAPED_STATUSES.lock().unwrap_or_else(|e| e.into_inner());
+    map.insert(pid, exit_code);
+}
+
+/// Collect stdout/stderr from a child process and wait for it to exit.
+///
+/// Unlike [`Child::wait_with_output`], this handles `ECHILD` gracefully.
+/// When running inside guest-init (PID 1), the zombie reaper thread calls
+/// `waitpid(-1, WNOHANG)` every 100ms. If the child exits between our pipe
+/// reads completing and our `waitpid(pid)` call, the reaper may harvest the
+/// zombie first, causing our wait to fail with `ECHILD`.
+///
+/// By reading the pipes before calling `wait()`, we preserve stdout/stderr
+/// even in the ECHILD case. The exit code is recovered from [`REAPED_STATUSES`]
+/// (populated by `guest-init`'s reaper), falling back to 255 if not found.
+fn collect_output(mut child: Child) -> (i32, Vec<u8>, Vec<u8>) {
+    let pid = child.id();
+
+    // Close stdin so the child won't block waiting for input.
+    // This matches wait_with_output()'s behavior.
+    drop(child.stdin.take());
+
+    // Take pipe handles BEFORE waiting. Rust's wait_with_output() does this
+    // internally, but we need to split the operation so we can handle ECHILD
+    // on the wait() call separately.
+    let stdout_pipe = child.stdout.take();
+    let stderr_pipe = child.stderr.take();
+
+    // Read pipes in background threads (mirrors Rust's internal approach).
+    // EOF on the pipes means the child (and any descendants sharing the fd)
+    // have closed their end — the child has exited or is about to.
+    let stdout_thread = stdout_pipe.map(|mut pipe| {
+        thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Err(e) = pipe.read_to_end(&mut buf) {
+                log("WARN", &format!("stdout pipe read error: {e}"));
+            }
+            buf
+        })
+    });
+    let stderr_thread = stderr_pipe.map(|mut pipe| {
+        thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Err(e) = pipe.read_to_end(&mut buf) {
+                log("WARN", &format!("stderr pipe read error: {e}"));
+            }
+            buf
+        })
+    });
+
+    let stdout = match stdout_thread {
+        Some(t) => match t.join() {
+            Ok(buf) => buf,
+            Err(_) => {
+                log("WARN", "stdout reader thread panicked");
+                Vec::new()
+            }
+        },
+        None => Vec::new(),
+    };
+    let stderr = match stderr_thread {
+        Some(t) => match t.join() {
+            Ok(buf) => buf,
+            Err(_) => {
+                log("WARN", "stderr reader thread panicked");
+                Vec::new()
+            }
+        },
+        None => Vec::new(),
+    };
+
+    // Now wait for the child. The pipes are closed so the child has exited;
+    // this should return immediately unless the reaper beat us to it.
+    let exit_code = match child.wait() {
+        Ok(status) => extract_exit_code(status),
+        Err(e) if e.raw_os_error() == Some(libc::ECHILD) => {
+            // Child was already reaped by PID 1's zombie reaper.
+            // Try to recover the exit code from the shared map.
+            // Note: there is a theoretical micro-window where the reaper has
+            // called waitpid(-1) (removing the zombie) but hasn't yet called
+            // store_reaped_status(). In that case the lookup misses and we
+            // fall back to 255 — same as the pre-recovery behavior.
+            let recovered = REAPED_STATUSES
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&pid);
+            if let Some(code) = recovered {
+                log(
+                    "INFO",
+                    &format!(
+                        "child pid={pid} reaped by zombie reaper (ECHILD), \
+                         recovered exit code {code}"
+                    ),
+                );
+                code
+            } else {
+                log(
+                    "WARN",
+                    &format!(
+                        "child pid={pid} reaped by zombie reaper (ECHILD), \
+                         exit status not recoverable, using 255"
+                    ),
+                );
+                255
+            }
+        }
+        Err(e) => {
+            log("ERROR", &format!("failed to wait for child pid={pid}: {e}"));
+            1
+        }
+    };
+
+    (exit_code, stdout, stderr)
+}
+
 /// Run a child process with timeout. Returns (exit_code, stdout, stderr).
 /// Returns exit code 124 on timeout (same as bash timeout command).
 fn wait_with_timeout(child: Child, timeout_ms: u32) -> (i32, Vec<u8>, Vec<u8>) {
@@ -194,26 +332,16 @@ fn wait_with_timeout(child: Child, timeout_ms: u32) -> (i32, Vec<u8>, Vec<u8>) {
         }
     });
 
-    // Wait for the process to complete
-    let output = child.wait_with_output();
+    let (exit_code, stdout, stderr) = collect_output(child);
 
     // Signal that process completed (killer thread will exit)
     let _ = tx.send(());
 
-    match output {
-        Ok(output) => {
-            // Check if process was killed by OUR timeout (not external SIGKILL)
-            if killed_by_timeout.load(Ordering::SeqCst) {
-                return (EXIT_CODE_TIMEOUT, output.stdout, b"Timeout".to_vec());
-            }
-            (
-                extract_exit_code(output.status),
-                output.stdout,
-                output.stderr,
-            )
-        }
-        Err(e) => (1, Vec::new(), format!("Failed to wait: {}", e).into_bytes()),
+    if killed_by_timeout.load(Ordering::SeqCst) {
+        return (EXIT_CODE_TIMEOUT, stdout, b"Timeout".to_vec());
     }
+
+    (exit_code, stdout, stderr)
 }
 
 /// Handle exec message
@@ -401,15 +529,7 @@ fn handle_spawn_watch(
                 let result = if timeout_ms > 0 {
                     wait_with_timeout(child, timeout_ms)
                 } else {
-                    // No timeout - wait indefinitely
-                    match child.wait_with_output() {
-                        Ok(output) => (
-                            extract_exit_code(output.status),
-                            output.stdout,
-                            output.stderr,
-                        ),
-                        Err(e) => (1, Vec::new(), format!("Failed to wait: {}", e).into_bytes()),
-                    }
+                    collect_output(child)
                 };
 
                 log(
@@ -741,5 +861,44 @@ mod tests {
     fn prepend_env_with_special_chars() {
         let result = prepend_env("cmd", &[("KEY", "it's a \"test\"")]);
         assert_eq!(result, "export KEY='it'\\''s a \"test\"'; cmd");
+    }
+
+    #[test]
+    fn store_reaped_status_normal_exit() {
+        // wstatus for exit(42): WIFEXITED=true, WEXITSTATUS=42
+        // On Linux, normal exit wstatus = exit_code << 8
+        let wstatus = 42 << 8;
+        store_reaped_status(9999, wstatus);
+        let code = REAPED_STATUSES.lock().unwrap().remove(&9999);
+        assert_eq!(code, Some(42));
+    }
+
+    #[test]
+    fn store_reaped_status_signal_death() {
+        // wstatus for killed by SIGKILL(9): WIFSIGNALED=true, WTERMSIG=9
+        // On Linux, signal death wstatus = signal_number
+        let wstatus = 9;
+        store_reaped_status(9998, wstatus);
+        let code = REAPED_STATUSES.lock().unwrap().remove(&9998);
+        assert_eq!(code, Some(128 + 9));
+    }
+
+    #[test]
+    fn store_reaped_status_zero_exit() {
+        // wstatus for exit(0): exit_code << 8 = 0
+        let wstatus = 0;
+        store_reaped_status(9997, wstatus);
+        let code = REAPED_STATUSES.lock().unwrap().remove(&9997);
+        assert_eq!(code, Some(0));
+    }
+
+    #[test]
+    fn store_reaped_status_stopped() {
+        // wstatus = 0x7f is a stopped process (WIFSTOPPED).
+        // Neither WIFEXITED nor WIFSIGNALED, so the else branch returns 1.
+        let wstatus = 0x7f;
+        store_reaped_status(9996, wstatus);
+        let code = REAPED_STATUSES.lock().unwrap().remove(&9996);
+        assert_eq!(code, Some(1));
     }
 }

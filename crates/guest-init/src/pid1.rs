@@ -65,14 +65,20 @@ extern "C" fn handle_shutdown_signal(_sig: libc::c_int) {
 ///
 /// As PID 1, we are responsible for reaping orphaned child processes.
 /// This function should be called periodically to prevent zombie accumulation.
+///
+/// Reaped exit statuses are stored via [`vsock_guest::store_reaped_status`] so
+/// that `collect_output` can recover the correct exit code when it encounters
+/// `ECHILD` (the child was already reaped by this function).
 pub fn reap_zombies() {
     loop {
-        let result = unsafe { libc::waitpid(-1, std::ptr::null_mut(), libc::WNOHANG) };
+        let mut status: libc::c_int = 0;
+        let result = unsafe { libc::waitpid(-1, &mut status, libc::WNOHANG) };
         // result > 0: reaped a zombie, continue
         // result == 0: no more zombies ready to be reaped
         // result < 0: error (ECHILD = no children)
         if result <= 0 {
             break;
         }
+        vsock_guest::store_reaped_status(result as u32, status);
     }
 }

@@ -5,6 +5,7 @@
 // Perf: Added snapshot support for fast VM boot from pre-warmed state (issue #1600)
 // CI: Sync 02-parallel E2E tests into 03-experimental-runner (issue #2830)
 // Fix: Only treat 404 as non-fatal for artifact downloads (issue #2899)
+// Fix: Handle ECHILD race between vsock-guest and PID 1 zombie reaper (issue #3118)
 import { program } from "commander";
 import { startCommand } from "./commands/start.js";
 import { doctorCommand } from "./commands/doctor.js";
