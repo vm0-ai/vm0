@@ -106,16 +106,12 @@ export const CONNECTOR_TYPES = {
         label: "API",
         helpText: "Server-provisioned ngrok tunnel credentials.",
         secrets: {
-          COMPUTER_CONNECTOR_AUTHTOKEN: {
-            label: "ngrok Authtoken",
-            required: true,
-          },
-          COMPUTER_CONNECTOR_TOKEN: {
+          COMPUTER_CONNECTOR_BRIDGE_TOKEN: {
             label: "Bridge Token",
             required: true,
           },
-          COMPUTER_CONNECTOR_ENDPOINT: {
-            label: "Endpoint Prefix",
+          COMPUTER_CONNECTOR_DOMAIN_ID: {
+            label: "Domain ID",
             required: true,
           },
           COMPUTER_CONNECTOR_DOMAIN: {
@@ -127,9 +123,8 @@ export const CONNECTOR_TYPES = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api",
     environmentMapping: {
-      COMPUTER_CONNECTOR_AUTHTOKEN: "$secrets.COMPUTER_CONNECTOR_AUTHTOKEN",
-      COMPUTER_CONNECTOR_TOKEN: "$secrets.COMPUTER_CONNECTOR_TOKEN",
-      COMPUTER_CONNECTOR_ENDPOINT: "$secrets.COMPUTER_CONNECTOR_ENDPOINT",
+      COMPUTER_CONNECTOR_BRIDGE_TOKEN:
+        "$secrets.COMPUTER_CONNECTOR_BRIDGE_TOKEN",
       COMPUTER_CONNECTOR_DOMAIN: "$secrets.COMPUTER_CONNECTOR_DOMAIN",
     } as Record<string, string>,
   },
