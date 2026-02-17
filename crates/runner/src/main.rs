@@ -54,6 +54,8 @@ enum Command {
     Benchmark(cmd::BenchmarkArgs),
     /// Start the runner and poll for jobs (must run setup + build first)
     Start(Box<cmd::StartArgs>),
+    /// Manage the runner as a systemd service
+    Service(cmd::ServiceArgs),
 }
 
 #[tokio::main]
@@ -76,6 +78,7 @@ async fn main() -> ExitCode {
         Command::Snapshot(args) => cmd::run_snapshot(args).await.map(|_| ExitCode::SUCCESS),
         Command::Benchmark(args) => cmd::run_benchmark(args).await,
         Command::Start(args) => cmd::run_start(*args).await.map(|()| ExitCode::SUCCESS),
+        Command::Service(args) => cmd::run_service(args).await.map(|()| ExitCode::SUCCESS),
     };
 
     match result {
