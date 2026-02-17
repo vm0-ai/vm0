@@ -380,8 +380,11 @@ async fn drain(args: ServiceNameArgs) -> RunnerResult<()> {
 
     // Disable so it won't restart on reboot
     let svc = format!("{unit}.service");
-    let _ = run_systemctl(&["disable", &svc]).await;
-    info!(unit = %unit, "disabled (won't restart on reboot)");
+    if let Err(e) = run_systemctl(&["disable", &svc]).await {
+        warn!(unit = %unit, error = %e, "failed to disable unit");
+    } else {
+        info!(unit = %unit, "disabled (won't restart on reboot)");
+    }
 
     Ok(())
 }
