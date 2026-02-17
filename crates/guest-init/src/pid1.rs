@@ -37,11 +37,10 @@ fn set_handler(sig: libc::c_int, handler: libc::sighandler_t) {
 /// - SIGTERM/SIGINT: Set shutdown flag for graceful exit
 /// - SIGTTIN/SIGTTOU: Ignore to prevent blocking on TTY operations
 /// - SIGPIPE: Ignore to prevent termination when writing to closed pipes
-/// - SIGCHLD: Use default handler (SIG_DFL) so waitpid() works correctly
 ///
-/// NOTE: We intentionally do NOT set SIGCHLD to SIG_IGN because that causes
-/// the kernel to auto-reap children, which can race with waitpid() calls in
-/// vsock-guest and cause them to fail with ECHILD.
+/// SIG_IGN dispositions survive both `fork()` and `exec()`, so the child
+/// process inherits SIGTTIN/SIGTTOU/SIGPIPE as ignored. The child resets
+/// SIGTERM/SIGINT to SIG_DFL after fork.
 pub fn setup_signal_handlers() {
     set_handler(
         libc::SIGTERM,
@@ -61,24 +60,62 @@ extern "C" fn handle_shutdown_signal(_sig: libc::c_int) {
     SHUTDOWN_REQUESTED.store(true, Ordering::SeqCst);
 }
 
-/// Reap all zombie child processes (non-blocking).
+/// Block until a specific child exits and return its exit code.
 ///
-/// As PID 1, we are responsible for reaping orphaned child processes.
-/// This function should be called periodically to prevent zombie accumulation.
-///
-/// Reaped exit statuses are stored via [`vsock_guest::store_reaped_status`] so
-/// that `collect_output` can recover the correct exit code when it encounters
-/// `ECHILD` (the child was already reaped by this function).
-pub fn reap_zombies() {
+/// Uses `waitpid(pid, 0)` (blocking) which only returns `pid` on success
+/// or `-1` on error. Retries on `EINTR`; returns 1 on unexpected errors.
+pub fn wait_blocking(pid: i32) -> i32 {
     loop {
         let mut status: libc::c_int = 0;
+        // SAFETY: pid is a valid child PID; status is written on success.
+        let result = unsafe { libc::waitpid(pid, &mut status, 0) };
+        if result == pid {
+            return if libc::WIFEXITED(status) {
+                libc::WEXITSTATUS(status)
+            } else if libc::WIFSIGNALED(status) {
+                128 + libc::WTERMSIG(status)
+            } else {
+                1
+            };
+        }
+        // result == -1: EINTR → retry, anything else (ECHILD) → give up
+        // SAFETY: __errno_location() is valid after a failed libc call.
+        let errno = unsafe { *libc::__errno_location() };
+        if errno != libc::EINTR {
+            return 1;
+        }
+    }
+}
+
+/// Reap zombie child processes (non-blocking) and detect watched child exit.
+///
+/// Calls `waitpid(-1, WNOHANG)` in a loop to reap all available zombies.
+/// If `watched_pid` is reaped, returns its exit code. Orphaned processes
+/// are silently reaped and discarded.
+///
+/// Returns `Some(exit_code)` if the watched child was reaped, `None` otherwise.
+pub fn reap_zombies(watched_pid: i32) -> Option<i32> {
+    loop {
+        let mut status: libc::c_int = 0;
+        // SAFETY: waitpid(-1) is valid; status is initialized before use on success.
         let result = unsafe { libc::waitpid(-1, &mut status, libc::WNOHANG) };
-        // result > 0: reaped a zombie, continue
+        // result > 0: reaped a zombie, continue loop
         // result == 0: no more zombies ready to be reaped
         // result < 0: error (ECHILD = no children)
         if result <= 0 {
             break;
         }
-        vsock_guest::store_reaped_status(result as u32, status);
+        if result == watched_pid {
+            // SAFETY: libc macros on a valid wstatus from waitpid.
+            return Some(if libc::WIFEXITED(status) {
+                libc::WEXITSTATUS(status)
+            } else if libc::WIFSIGNALED(status) {
+                128 + libc::WTERMSIG(status)
+            } else {
+                1
+            });
+        }
+        // Orphaned zombie — reaped and discarded
     }
+    None
 }
