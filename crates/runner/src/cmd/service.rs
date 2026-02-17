@@ -303,8 +303,11 @@ async fn install(args: ServiceInstallArgs) -> RunnerResult<()> {
     let config_path = resolve_config_path(&args.config)?;
     let exe_path =
         std::env::current_exe().map_err(|e| RunnerError::Internal(format!("current_exe: {e}")))?;
-    let user =
-        std::env::var("USER").map_err(|_| RunnerError::Config("USER env var not set".into()))?;
+    let uid = nix::unistd::getuid();
+    let user = nix::unistd::User::from_uid(uid)
+        .map_err(|e| RunnerError::Internal(format!("lookup user for uid {uid}: {e}")))?
+        .ok_or_else(|| RunnerError::Internal(format!("no user found for uid {uid}")))?
+        .name;
 
     let unit_content = generate_unit_file(&unit, &exe_path, &config_path, &user);
     let upath = unit_file_path(&unit);
