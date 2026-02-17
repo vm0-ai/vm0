@@ -125,20 +125,77 @@ export default createRule<[], MessageIds>({
       return false;
     }
 
+    function hasSignalInArguments(
+      awaitExpr: TSESTree.AwaitExpression,
+    ): boolean {
+      if (!signalParamName) {
+        return false;
+      }
+
+      const arg = awaitExpr.argument;
+      if (arg.type !== "CallExpression") {
+        return false;
+      }
+
+      // Check all arguments of the call expression
+      return arg.arguments.some((argNode) => {
+        // Case 1: Direct pass - someFunc(signal)
+        if (argNode.type === "Identifier" && argNode.name === signalParamName) {
+          return true;
+        }
+
+        // Case 2: In object literal - someFunc({ signal })
+        if (argNode.type === "ObjectExpression") {
+          return argNode.properties.some((prop) => {
+            // Property shorthand: { signal }
+            if (
+              prop.type === "Property" &&
+              prop.key.type === "Identifier" &&
+              prop.key.name === "signal"
+            ) {
+              // Check if the value is the signal parameter
+              if (prop.value.type === "Identifier") {
+                return prop.value.name === signalParamName;
+              }
+              // Shorthand: { signal } means key and value are same
+              return prop.key.name === signalParamName;
+            }
+            return false;
+          });
+        }
+
+        return false;
+      });
+    }
+
     function checkAwaitInBlock(statements: TSESTree.Statement[]): void {
       for (let i = 0; i < statements.length; i++) {
         const stmt = statements[i];
 
-        let hasAwait = false;
+        let awaitExpr: TSESTree.AwaitExpression | null = null;
+
+        // Extract await expression from statement
         if (stmt?.type === "ExpressionStatement") {
-          hasAwait = stmt.expression.type === "AwaitExpression";
+          if (stmt.expression.type === "AwaitExpression") {
+            awaitExpr = stmt.expression;
+          }
         } else if (stmt?.type === "VariableDeclaration") {
-          hasAwait = stmt.declarations.some(
-            (d) => d.init?.type === "AwaitExpression",
-          );
+          // Find the first await expression in declarations
+          for (const decl of stmt.declarations) {
+            if (decl.init?.type === "AwaitExpression") {
+              awaitExpr = decl.init;
+              break;
+            }
+          }
         }
 
-        if (hasAwait) {
+        if (awaitExpr) {
+          // If signal is already passed to the awaited function, no check needed
+          if (hasSignalInArguments(awaitExpr)) {
+            continue;
+          }
+
+          // Otherwise, require signal check after await
           const nextStmt = statements[i + 1];
           if (nextStmt && !isSignalCheck(nextStmt)) {
             context.report({

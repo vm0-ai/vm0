@@ -1,6 +1,5 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import Nango from "@nangohq/frontend";
 import {
   CONNECTOR_TYPES,
   FeatureSwitchKey,
@@ -14,7 +13,7 @@ import {
   deleteConnector$,
 } from "../external/connectors.ts";
 import { apiBase$ } from "../fetch.ts";
-import { throwIfAbort } from "../utils.ts";
+import { delay } from "signal-timers";
 
 // ---------------------------------------------------------------------------
 // Derived state
@@ -96,59 +95,29 @@ export const connectConnector$ = command(
 
     set(internalPollingType$, type);
 
-    try {
-      // Create Connect Session
-      const response = await fetch(
-        `${baseUrl}/api/connectors/${type}/create-session`,
-        {
-          method: "POST",
-          credentials: "include",
-        },
-      );
-      signal.throwIfAborted();
+    const authWindow = window.open(
+      `${baseUrl}/api/connectors/${type}/authorize`,
+      "_blank",
+      "width=600,height=700",
+    );
 
-      if (!response.ok) {
-        throw new Error(`Failed to create session: ${response.statusText}`);
+    if (!authWindow) {
+      throw new Error("Failed to open authorization window");
+    }
+
+    while (true) {
+      await delay(500, { signal });
+
+      if (!authWindow.closed) {
+        continue;
       }
 
-      const { sessionToken } = await response.json();
+      set(reloadConnectors$);
+      await get(connectors$);
       signal.throwIfAborted();
 
-      // Use Nango Frontend SDK
-      const nango = new Nango();
-      const connectUI = nango.openConnectUI({
-        sessionToken,
-        onEvent: async (event) => {
-          if (event.type === "connect") {
-            // Connection successful!
-            set(internalPollingType$, null);
-
-            // Reload connectors to show new connection
-            await set(reloadConnectors$);
-
-            const connectorLabel = CONNECTOR_TYPES[type]?.label ?? type;
-            toast.success(`${connectorLabel} connected successfully`);
-          } else if (event.type === "close") {
-            // User closed the modal
-            set(internalPollingType$, null);
-          }
-        },
-      });
-
-      // Cleanup on abort
-      signal.addEventListener("abort", () => {
-        set(internalPollingType$, null);
-        // Close Connect UI if still open
-        if (connectUI && typeof connectUI.close === "function") {
-          connectUI.close();
-        }
-      });
-    } catch (error) {
-      throwIfAbort(error);
       set(internalPollingType$, null);
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      toast.error(`Failed to connect: ${errorMessage}`);
+      break;
     }
   },
 );

@@ -6,10 +6,6 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { screen, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
-import {
-  mockedNango,
-  triggerNangoEvent,
-} from "../../../__tests__/mock-nango.ts";
 import type { ConnectorResponse } from "@vm0/core";
 
 const context = testContext();
@@ -146,103 +142,6 @@ describe("connectors tab", () => {
 
     expect(screen.getByText("Gmail")).toBeInTheDocument();
     expect(screen.getByText("Connected as Test User")).toBeInTheDocument();
-  });
-
-  it("initiates nango connect flow when clicking connect", async () => {
-    // Mock create-session endpoint
-    server.use(
-      http.post("/api/connectors/gmail/create-session", () => {
-        return HttpResponse.json({
-          sessionToken: "ncs_test_token",
-        });
-      }),
-    );
-
-    await setupPage({
-      context,
-      path: "/settings?tab=connectors",
-      featureSwitches: { connectorNango: true },
-    });
-
-    // Wait for Gmail connector to be visible
-    await vi.waitFor(() => {
-      expect(screen.getByText("Gmail")).toBeInTheDocument();
-    });
-
-    // Find and click Connect button for Gmail
-    // The button is outside the text area, so we search globally first
-    const allConnectButtons = screen.getAllByRole("button", {
-      name: /connect/i,
-    });
-
-    // Gmail should be the third connector (after GitHub and Notion)
-    // Find the one that's associated with Gmail section
-    await user.click(allConnectButtons[2]);
-
-    // Verify Nango UI was opened
-    await vi.waitFor(() => {
-      expect(mockedNango.openConnectUI).toHaveBeenCalledWith({
-        sessionToken: "ncs_test_token",
-        onEvent: expect.any(Function),
-      });
-    });
-
-    // Should show "Connecting..." state
-    await vi.waitFor(() => {
-      expect(screen.getByText("Connecting...")).toBeInTheDocument();
-    });
-  });
-
-  it("shows success after nango connection completes", async () => {
-    server.use(
-      http.post("/api/connectors/gmail/create-session", () => {
-        return HttpResponse.json({ sessionToken: "test" });
-      }),
-      // After connection, return the new connector
-      http.get("/api/connectors", () => {
-        return HttpResponse.json({
-          connectors: [
-            {
-              id: crypto.randomUUID(),
-              type: "gmail",
-              authMethod: "oauth",
-              platform: "nango",
-              externalId: "gmail-123",
-              externalUsername: "New User",
-              externalEmail: "new@gmail.com",
-              oauthScopes: ["https://mail.google.com/"],
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            },
-          ],
-        });
-      }),
-    );
-
-    await setupPage({
-      context,
-      path: "/settings?tab=connectors",
-      featureSwitches: { connectorNango: true },
-    });
-
-    // Wait for Gmail connector to be visible
-    await vi.waitFor(() => {
-      expect(screen.getByText("Gmail")).toBeInTheDocument();
-    });
-
-    // Find and click Connect button for Gmail (third connector)
-    const allConnectButtons = screen.getAllByRole("button", {
-      name: /connect/i,
-    });
-    await user.click(allConnectButtons[2]);
-
-    // Simulate connection success
-    await triggerNangoEvent({ type: "connect" });
-
-    // Should show connected state
-    await vi.waitFor(() => {
-      expect(screen.getByText("Connected as New User")).toBeInTheDocument();
-    });
   });
 
   it("can disconnect nango connector", async () => {

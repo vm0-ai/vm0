@@ -135,7 +135,7 @@ export const CONNECTOR_TYPES = {
   },
   gmail: {
     label: "Gmail",
-    helpText: "Connect your Gmail account to access email via Nango Cloud",
+    helpText: "Connect your Gmail account to access email",
     authMethods: {
       oauth: {
         label: "OAuth (Recommended)",
@@ -156,11 +156,8 @@ export const CONNECTOR_TYPES = {
     oauth: {
       authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenUrl: "https://oauth2.googleapis.com/token",
-      scopes: [
-        "https://www.googleapis.com/auth/gmail.readonly",
-        "https://www.googleapis.com/auth/gmail.send",
-      ],
-    } as ConnectorOAuthConfig,
+      scopes: [],
+    } satisfies ConnectorOAuthConfig,
   },
 } as const;
 

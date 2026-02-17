@@ -52,6 +52,46 @@ ruleTester.run("signal-check-await", rule, {
         })
       `,
     },
+    // Signal passed to fetch in options object - should not require throwIfAborted
+    {
+      code: `
+        command(async ({ signal }) => {
+          const response = await fetch(url, { signal });
+          process(response);
+        })
+      `,
+    },
+    // Signal passed to fetch with other options - should not require throwIfAborted
+    {
+      code: `
+        command(async ({ signal }) => {
+          const response = await fetch(url, {
+            method: "POST",
+            credentials: "include",
+            signal,
+          });
+          process(response);
+        })
+      `,
+    },
+    // Signal passed directly as parameter - should not require throwIfAborted
+    {
+      code: `
+        command(async ({ signal }) => {
+          const data = await someAsyncFunc(signal);
+          process(data);
+        })
+      `,
+    },
+    // Signal passed as second parameter - should not require throwIfAborted
+    {
+      code: `
+        command(async ({ signal }) => {
+          const data = await someAsyncFunc(options, signal);
+          process(data);
+        })
+      `,
+    },
   ],
   invalid: [
     {
