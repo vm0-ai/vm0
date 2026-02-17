@@ -23,8 +23,8 @@ enum ServiceCommand {
     Uninstall(ServiceNameArgs),
     /// Drain the runner (SIGUSR1, non-blocking — returns immediately)
     Drain(ServiceNameArgs),
-    /// Show service status
-    Status(ServiceNameArgs),
+    /// Show service status (all runner services if --name is omitted)
+    Status(ServiceStatusArgs),
     /// Show service logs
     Logs(ServiceLogsArgs),
 }
@@ -67,6 +67,13 @@ struct ServiceLogsArgs {
     /// Number of lines to show
     #[arg(long, short, default_value = "100")]
     lines: u32,
+}
+
+#[derive(Args)]
+struct ServiceStatusArgs {
+    /// Service name suffix (omit to show all runner services)
+    #[arg(long)]
+    name: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -379,14 +386,16 @@ async fn drain(args: ServiceNameArgs) -> RunnerResult<()> {
     Ok(())
 }
 
-/// `service status` — show systemctl status for the named unit.
-async fn status(args: ServiceNameArgs) -> RunnerResult<()> {
-    let unit = unit_name(&args.name)?;
-    let svc = format!("{unit}.service");
+/// `service status` — show systemctl status for the named unit, or all runner units.
+async fn status(args: ServiceStatusArgs) -> RunnerResult<()> {
+    let pattern = match &args.name {
+        Some(suffix) => format!("{}.service", unit_name(suffix)?),
+        None => format!("{UNIT_PREFIX}*.service"),
+    };
     // Inherit stdout so user sees output directly.
     // systemctl status returns exit code 3 for inactive — ignore exit code.
     tokio::process::Command::new("systemctl")
-        .args(["status", &svc])
+        .args(["status", &pattern])
         .status()
         .await
         .map_err(|e| RunnerError::Internal(format!("spawn systemctl: {e}")))?;
