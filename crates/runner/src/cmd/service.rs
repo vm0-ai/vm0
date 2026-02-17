@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use clap::{Args, Subcommand};
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::error::{RunnerError, RunnerResult};
 
@@ -92,8 +92,20 @@ pub async fn run_service(args: ServiceArgs) -> RunnerResult<()> {
 const UNIT_PREFIX: &str = "vm0-runner-";
 
 /// Build the full systemd unit name from the user-supplied suffix.
-fn unit_name(suffix: &str) -> String {
-    format!("{UNIT_PREFIX}{suffix}")
+///
+/// Validates that the suffix contains only safe characters for systemd unit
+/// names and file paths.
+fn unit_name(suffix: &str) -> RunnerResult<String> {
+    if suffix.is_empty()
+        || !suffix
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-' || b == b'_')
+    {
+        return Err(RunnerError::Config(format!(
+            "invalid service name suffix '{suffix}': only alphanumeric, '.', '-', '_' allowed"
+        )));
+    }
+    Ok(format!("{UNIT_PREFIX}{suffix}"))
 }
 
 /// Path to the unit file under `/etc/systemd/system/`.
@@ -221,7 +233,7 @@ async fn get_service_pid(unit: &str) -> RunnerResult<Option<u32>> {
 
 /// `service start` — transient unit via systemd-run (CI).
 async fn start(args: ServiceStartArgs) -> RunnerResult<()> {
-    let unit = unit_name(&args.name);
+    let unit = unit_name(&args.name)?;
 
     if is_unit_active(&unit).await? {
         return Err(RunnerError::Internal(format!(
@@ -274,7 +286,7 @@ async fn start(args: ServiceStartArgs) -> RunnerResult<()> {
 
 /// `service stop` — stop the named unit.
 async fn stop(args: ServiceNameArgs) -> RunnerResult<()> {
-    let unit = unit_name(&args.name);
+    let unit = unit_name(&args.name)?;
     if !is_unit_active(&unit).await? {
         info!(unit = %unit, "no active service found");
         return Ok(());
@@ -287,7 +299,7 @@ async fn stop(args: ServiceNameArgs) -> RunnerResult<()> {
 
 /// `service install` — persistent unit file (production).
 async fn install(args: ServiceInstallArgs) -> RunnerResult<()> {
-    let unit = unit_name(&args.name);
+    let unit = unit_name(&args.name)?;
     let config_path = resolve_config_path(&args.config)?;
     let exe_path =
         std::env::current_exe().map_err(|e| RunnerError::Internal(format!("current_exe: {e}")))?;
@@ -309,7 +321,7 @@ async fn install(args: ServiceInstallArgs) -> RunnerResult<()> {
 
 /// `service uninstall` — stop + disable + remove unit file.
 async fn uninstall(args: ServiceNameArgs) -> RunnerResult<()> {
-    let unit = unit_name(&args.name);
+    let unit = unit_name(&args.name)?;
     let svc = format!("{unit}.service");
 
     // Best-effort stop + disable (may already be stopped/disabled).
@@ -318,12 +330,17 @@ async fn uninstall(args: ServiceNameArgs) -> RunnerResult<()> {
 
     // Remove the unit file if it exists.
     let upath = unit_file_path(&unit);
-    let _ = tokio::process::Command::new("sudo")
+    let rm_result = tokio::process::Command::new("sudo")
         .args(["rm", "-f", &upath.to_string_lossy()])
         .status()
         .await;
+    if let Err(e) = rm_result {
+        warn!(unit = %unit, error = %e, "failed to remove unit file");
+    }
 
-    let _ = run_systemctl(&["daemon-reload"]).await;
+    if let Err(e) = run_systemctl(&["daemon-reload"]).await {
+        warn!(unit = %unit, error = %e, "failed to reload systemd daemon");
+    }
 
     info!(unit = %unit, "service uninstalled");
     Ok(())
@@ -331,7 +348,7 @@ async fn uninstall(args: ServiceNameArgs) -> RunnerResult<()> {
 
 /// `service drain` — send SIGUSR1, disable unit, return immediately.
 async fn drain(args: ServiceNameArgs) -> RunnerResult<()> {
-    let unit = unit_name(&args.name);
+    let unit = unit_name(&args.name)?;
     if !is_unit_active(&unit).await? {
         info!(unit = %unit, "no active service found");
         return Ok(());
@@ -361,7 +378,7 @@ async fn drain(args: ServiceNameArgs) -> RunnerResult<()> {
 
 /// `service status` — show systemctl status for the named unit.
 async fn status(args: ServiceNameArgs) -> RunnerResult<()> {
-    let unit = unit_name(&args.name);
+    let unit = unit_name(&args.name)?;
     let svc = format!("{unit}.service");
     // Inherit stdout so user sees output directly.
     // systemctl status returns exit code 3 for inactive — ignore it.
@@ -374,7 +391,7 @@ async fn status(args: ServiceNameArgs) -> RunnerResult<()> {
 
 /// `service logs` — show journalctl output for the named unit.
 async fn logs(args: ServiceLogsArgs) -> RunnerResult<()> {
-    let unit = unit_name(&args.name);
+    let unit = unit_name(&args.name)?;
     let svc = format!("{unit}.service");
     let lines = args.lines.to_string();
     let mut cmd = tokio::process::Command::new("journalctl");
@@ -398,8 +415,17 @@ mod tests {
 
     #[test]
     fn test_unit_name() {
-        assert_eq!(unit_name("v0.2.0"), "vm0-runner-v0.2.0");
-        assert_eq!(unit_name("staging"), "vm0-runner-staging");
+        assert_eq!(unit_name("v0.2.0").unwrap(), "vm0-runner-v0.2.0");
+        assert_eq!(unit_name("staging").unwrap(), "vm0-runner-staging");
+        assert_eq!(unit_name("my_name-1.0").unwrap(), "vm0-runner-my_name-1.0");
+    }
+
+    #[test]
+    fn test_unit_name_rejects_invalid() {
+        assert!(unit_name("").is_err());
+        assert!(unit_name("../evil").is_err());
+        assert!(unit_name("has space").is_err());
+        assert!(unit_name("semi;colon").is_err());
     }
 
     #[test]
