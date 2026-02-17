@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.68.2](https://github.com/vm0-ai/vm0/compare/platform-v0.68.1...platform-v0.68.2) (2026-02-17)
+
+
+### Bug Fixes
+
+* hide connect button while polling ([#3107](https://github.com/vm0-ai/vm0/issues/3107)) ([be3af5d](https://github.com/vm0-ai/vm0/commit/be3af5da3a372d5f110410279e10db860dfabf75))
+
 ## [0.68.1](https://github.com/vm0-ai/vm0/compare/platform-v0.68.0...platform-v0.68.1) (2026-02-17)
 
 
