@@ -516,6 +516,7 @@ mod tests {
         let env = vec![
             "VERCEL_AUTOMATION_BYPASS_SECRET=xxx".to_string(),
             "USE_MOCK_CLAUDE=true".to_string(),
+            "MY_DESC=hello world".to_string(),
         ];
         let content = generate_unit_file(
             "vm0-runner-v0.1.0",
@@ -526,6 +527,7 @@ mod tests {
         );
         assert!(content.contains("Environment=\"VERCEL_AUTOMATION_BYPASS_SECRET=xxx\""));
         assert!(content.contains("Environment=\"USE_MOCK_CLAUDE=true\""));
+        assert!(content.contains("Environment=\"MY_DESC=hello world\""));
         assert!(content.contains("\n\n[Install]"));
     }
 
