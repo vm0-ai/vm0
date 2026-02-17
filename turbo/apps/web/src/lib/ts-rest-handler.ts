@@ -18,7 +18,6 @@ import type { TsRestRequest } from "@ts-rest/serverless";
 import type { AppRouter } from "@ts-rest/core";
 import { flushLogs } from "./logger";
 import { ingestRequestLog } from "./axiom";
-import { ApiError } from "@vm0/core";
 
 // Re-export tsr and TsRestResponse for convenience
 export { tsr, TsRestResponse };
