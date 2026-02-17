@@ -37,11 +37,6 @@ interface NgrokDomain {
   cname_target: string | null;
 }
 
-interface NgrokDomainsPage {
-  reserved_domains: NgrokDomain[];
-  next_page_uri: string | null;
-}
-
 /**
  * Make an authenticated request to the ngrok API.
  */

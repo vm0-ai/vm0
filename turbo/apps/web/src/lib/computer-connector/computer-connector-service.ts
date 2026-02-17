@@ -220,6 +220,25 @@ export async function createComputerConnector(
 }
 
 /**
+ * Helper to safely delete ngrok resource, ignoring 404 errors.
+ */
+async function safeDeleteNgrokResource(
+  deleteFn: () => Promise<void>,
+  resourceName: string,
+  resourceId: string,
+): Promise<void> {
+  try {
+    await deleteFn();
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("404")) {
+      log.debug(`${resourceName} already deleted`, { id: resourceId });
+    } else {
+      throw error;
+    }
+  }
+}
+
+/**
  * Delete the computer connector and revoke ngrok credentials.
  */
 export async function deleteComputerConnector(
@@ -249,54 +268,38 @@ export async function deleteComputerConnector(
     throw notFound("Computer connector not found");
   }
 
-  // Revoke ngrok resources (ignore 404 errors if resources already deleted)
   const apiKey = globalThis.services.env.NGROK_API_KEY;
 
-  // Delete Credential
+  // Delete ngrok resources (ignore 404 errors if already deleted)
   if (apiKey && connector.externalUsername) {
-    try {
-      await deleteCredential(apiKey, connector.externalUsername);
-    } catch (error) {
-      if (error instanceof Error && error.message.includes("404")) {
-        log.debug("Credential already deleted", {
-          credentialId: connector.externalUsername,
-        });
-      } else {
-        throw error;
-      }
-    }
+    await safeDeleteNgrokResource(
+      () => deleteCredential(apiKey, connector.externalUsername!),
+      "Credential",
+      connector.externalUsername,
+    );
   }
 
-  // Delete Cloud Endpoint
   if (apiKey && connector.externalEmail) {
-    try {
-      await deleteCloudEndpoint(apiKey, connector.externalEmail);
-    } catch (error) {
-      if (error instanceof Error && error.message.includes("404")) {
-        log.debug("Cloud endpoint already deleted", {
-          endpointId: connector.externalEmail,
-        });
-      } else {
-        throw error;
-      }
-    }
+    await safeDeleteNgrokResource(
+      () => deleteCloudEndpoint(apiKey, connector.externalEmail!),
+      "Cloud endpoint",
+      connector.externalEmail,
+    );
   }
 
-  // Delete Reserved Domain
   if (apiKey && connector.oauthScopes) {
     try {
-      // Parse oauthScopes JSON array to get domain ID
       const domainIds = JSON.parse(connector.oauthScopes) as string[];
       const domainId = domainIds[0];
       if (domainId) {
-        await deleteReservedDomain(apiKey, domainId);
+        await safeDeleteNgrokResource(
+          () => deleteReservedDomain(apiKey, domainId),
+          "Reserved domain",
+          domainId,
+        );
       }
     } catch (error) {
-      if (error instanceof Error && error.message.includes("404")) {
-        log.debug("Reserved domain already deleted", {
-          oauthScopes: connector.oauthScopes,
-        });
-      } else if (error instanceof SyntaxError) {
+      if (error instanceof SyntaxError) {
         log.error("Failed to parse oauthScopes as JSON", {
           oauthScopes: connector.oauthScopes,
         });
