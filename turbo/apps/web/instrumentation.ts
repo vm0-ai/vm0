@@ -27,6 +27,16 @@ export const onRequestError = async (
     renderType: "dynamic" | "dynamic-resume";
   },
 ) => {
+  // Log error to console for local debugging
+  console.error("[Next.js Error]", {
+    message: error.message,
+    stack: error.stack,
+    path: request.path,
+    method: request.method,
+    routePath: context.routePath,
+    routeType: context.routeType,
+  });
+
   const { captureException } = await import("@sentry/nextjs");
   captureException(error, {
     extra: {

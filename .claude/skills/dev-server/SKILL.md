@@ -30,19 +30,31 @@ Start the Turbo development server in background with stream UI mode.
 
 ## Workflow
 
-### Step 1: Stop Any Running Dev Server
+### Step 1: Check if Dev Server is Already Running
 
-Check for existing dev server processes and stop them:
+First, check if dev server is already accessible by testing the port:
 
 ```bash
-# Check and stop existing dev server
+# Test if dev server port is open
+if nc -z -w 3 localhost 3000 2>/dev/null || curl -k -s --connect-timeout 3 https://www.vm7.ai:8443/ > /dev/null 2>&1; then
+  echo "✅ Dev server is already running at https://www.vm7.ai:8443"
+  echo ""
+  echo "To use with CLI, run /dev-auth to authenticate"
+  exit 0
+fi
+```
+
+If not accessible, proceed to stop any orphaned processes:
+
+```bash
+# Check and stop existing dev server processes
 if pgrep -f "turbo.*dev" > /dev/null; then
-  echo "⚠️ Found existing dev server, stopping it..."
+  echo "⚠️ Found existing dev server process, stopping it..."
   pkill -9 -f "turbo.*dev"
   sleep 2
   echo "✅ Stopped existing dev server"
 else
-  echo "✅ No existing dev server found"
+  echo "✅ No existing dev server process found"
 fi
 ```
 
@@ -265,18 +277,29 @@ Authenticate with local development server and get CLI token.
 
 ### Step 1: Check Dev Server Running
 
-Read the saved shell_id from persistent storage:
+First, check if dev server is accessible by testing the port:
 
 ```bash
-if [ -f /tmp/dev-server-shell-id ]; then
-  cat /tmp/dev-server-shell-id
+# Test if dev server port is open
+if nc -z -w 3 localhost 3000 2>/dev/null || curl -k -s --connect-timeout 3 https://www.vm7.ai:8443/ > /dev/null 2>&1; then
+  echo "✅ Dev server is accessible at https://www.vm7.ai:8443"
 else
-  echo "❌ No dev server shell_id found"
+  echo "❌ Dev server is not accessible"
+  echo "Please run /dev-start first or check if server is running"
   exit 1
 fi
 ```
 
-Then use TaskOutput tool to get recent logs and verify the server is running properly:
+Optionally, if you want to check logs from background server, read shell_id:
+
+```bash
+if [ -f /tmp/dev-server-shell-id ]; then
+  SHELL_ID=$(cat /tmp/dev-server-shell-id)
+  echo "Found background server with shell_id: $SHELL_ID"
+fi
+```
+
+If shell_id exists, you can use TaskOutput to check logs:
 
 ```javascript
 TaskOutput({
@@ -286,20 +309,7 @@ TaskOutput({
 })
 ```
 
-Check for indicators that server is ready:
-- Look for "Local:" and port numbers (3000, 3001, 3002, 3003)
-- Look for "server running" or "Ready in" messages
-- Ensure no fatal errors in recent logs
-
-If shell_id file not found:
-```
-❌ No dev server found. Please run `/dev-start` first.
-```
-
-If running but has errors:
-```
-⚠️ Dev server is running but has errors. Check logs with `/dev-logs`
-```
+But the key indicator is **HTTP endpoint accessibility**, not just the shell_id.
 
 ### Step 2: Check Required Environment Variables
 

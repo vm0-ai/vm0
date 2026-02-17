@@ -22,9 +22,31 @@ const router = tsr.router(computerConnectorContract, {
    * POST /api/connectors/computer - Create computer connector
    */
   create: async ({ headers }) => {
+    const fs = await import("fs/promises");
+    await fs
+      .appendFile(
+        "/tmp/computer-connector-error.log",
+        `[${new Date().toISOString()}] Handler START\n`,
+      )
+      .catch(() => {});
+
     initServices();
 
+    await fs
+      .appendFile(
+        "/tmp/computer-connector-error.log",
+        `[${new Date().toISOString()}] After initServices\n`,
+      )
+      .catch(() => {});
+
     const userId = await getUserId(headers.authorization);
+    await fs
+      .appendFile(
+        "/tmp/computer-connector-error.log",
+        `[${new Date().toISOString()}] Got userId: ${userId}\n`,
+      )
+      .catch(() => {});
+
     if (!userId) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
@@ -33,13 +55,29 @@ const router = tsr.router(computerConnectorContract, {
       const result = await createComputerConnector(userId);
       return { status: 200 as const, body: result };
     } catch (error) {
+      // Write error to file for debugging
+      const fs = await import("fs/promises");
+      await fs
+        .appendFile(
+          "/tmp/computer-connector-error.log",
+          `[${new Date().toISOString()}] ${error instanceof Error ? error.stack : String(error)}\n\n`,
+        )
+        .catch(() => {});
+
+      console.error("[computer-connector] Create failed:", error);
       if (isBadRequest(error)) {
         return createErrorResponse("BAD_REQUEST", error.message);
       }
       if (isConflict(error)) {
         return createErrorResponse("CONFLICT", error.message);
       }
-      throw error;
+      // Temporarily return error details for debugging
+      return createErrorResponse(
+        "INTERNAL_SERVER_ERROR",
+        error instanceof Error
+          ? `${error.message}\n${error.stack}`
+          : String(error),
+      );
     }
   },
 

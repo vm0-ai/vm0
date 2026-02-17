@@ -493,7 +493,7 @@ export type ConnectorSessionByIdContract = typeof connectorSessionByIdContract;
  */
 export const computerConnectorCreateResponseSchema = z.object({
   id: z.string().uuid(),
-  authtoken: z.string(),
+  ngrokToken: z.string(),
   bridgeToken: z.string(),
   endpointPrefix: z.string(),
   domain: z.string(),

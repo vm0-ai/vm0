@@ -35,6 +35,17 @@ export { tsr, TsRestResponse };
  *   const handler = createHandler(contract, router, { errorHandler: validationErrorHandler });
  */
 export function validationErrorHandler(err: unknown): TsRestResponse | void {
+  // Debug logging
+  const fs = require("fs/promises");
+  fs.appendFile(
+    "/tmp/ts-rest-middleware.log",
+    `[${new Date().toISOString()}] validationErrorHandler called: ${JSON.stringify(err, Object.getOwnPropertyNames(err))}\n`,
+  ).catch(() => {});
+  console.error(
+    "[validationErrorHandler]",
+    JSON.stringify(err, Object.getOwnPropertyNames(err)),
+  );
+
   if (!err || typeof err !== "object") {
     return undefined;
   }
@@ -60,8 +71,31 @@ export function validationErrorHandler(err: unknown): TsRestResponse | void {
     }
   }
 
-  // Let other errors propagate
-  return undefined;
+  // For debugging: return error details instead of propagating
+  if (err instanceof Error) {
+    return TsRestResponse.fromJson(
+      {
+        error: {
+          message: `Handler error: ${err.message}`,
+          code: ApiError.INTERNAL_SERVER_ERROR.code,
+          stack: err.stack,
+        },
+      },
+      { status: 500 },
+    );
+  }
+
+  // Unknown error type
+  return TsRestResponse.fromJson(
+    {
+      error: {
+        message: "Unknown error in handler",
+        code: ApiError.INTERNAL_SERVER_ERROR.code,
+        details: JSON.stringify(err, Object.getOwnPropertyNames(err)),
+      },
+    },
+    { status: 500 },
+  );
 }
 
 /**
@@ -106,10 +140,28 @@ export function createHandler<T extends AppRouter>(
       (request) => {
         // Record request start time
         requestStartTimes.set(request, Date.now());
+
+        // Debug logging
+        const fs = require("fs/promises");
+        fs.appendFile(
+          "/tmp/ts-rest-middleware.log",
+          `[${new Date().toISOString()}] ${request.method} ${request.url}\n`,
+        ).catch(() => {});
+        console.error("[ts-rest middleware]", request.method, request.url);
       },
     ],
     responseHandlers: [
       async (response, request) => {
+        // Debug logging
+        const fs = require("fs/promises");
+        await fs
+          .appendFile(
+            "/tmp/ts-rest-middleware.log",
+            `[${new Date().toISOString()}] Response status: ${response.status}\n`,
+          )
+          .catch(() => {});
+        console.error("[ts-rest response]", response.status);
+
         // Record request log (nginx-style)
         const startTime = requestStartTimes.get(request);
         if (startTime !== undefined) {
