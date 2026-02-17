@@ -24,73 +24,16 @@ import { ApiError } from "@vm0/core";
 export { tsr, TsRestResponse };
 
 /**
- * Standard error handler for ts-rest API routes.
+ * @deprecated This function hides error stack traces. Use ts-rest's default error handling instead.
  *
- * Handles ts-rest RequestValidationError and converts it to a proper
- * JSON error response with appropriate status code. Supports body,
- * query, and path parameter validation errors.
+ * ts-rest already provides good error handling with full stack traces via `[ts-rest] Unexpected error...`
+ * Custom error handlers that return TsRestResponse suppress this useful debugging information.
  *
- * Usage:
- *   import { createHandler, tsr, validationErrorHandler } from "@/lib/ts-rest-handler";
- *   const handler = createHandler(contract, router, { errorHandler: validationErrorHandler });
+ * If you need custom error formatting, do it in a global error handler rather than suppressing stack traces.
  */
 export function validationErrorHandler(err: unknown): TsRestResponse | void {
-  try {
-    if (!err || typeof err !== "object") {
-      return undefined;
-    }
-
-    // Extract first validation issue from any error type
-    const errorObj = err as Record<string, unknown>;
-
-    // Check all possible validation error types (including headersError)
-    const errorTypes = [
-      "bodyError",
-      "queryError",
-      "pathParamsError",
-      "headersError",
-    ] as const;
-
-    for (const errorType of errorTypes) {
-      if (errorType in errorObj && errorObj[errorType]) {
-        const validationError = errorObj[errorType] as {
-          issues: Array<{ path: string[]; message: string }>;
-        };
-        const issue = validationError.issues[0];
-        if (issue) {
-          return TsRestResponse.fromJson(
-            {
-              error: {
-                message: issue.message,
-                code: ApiError.BAD_REQUEST.code,
-              },
-            },
-            { status: ApiError.BAD_REQUEST.status },
-          );
-        }
-      }
-    }
-
-    // Let other errors propagate
-    return undefined;
-  } catch (unexpectedError) {
-    // errorHandler threw an exception - log with full stack trace for debugging
-    console.error(
-      "[validationErrorHandler] Exception in error handler:",
-      unexpectedError,
-    );
-
-    // Return a safe response to prevent further errors
-    return TsRestResponse.fromJson(
-      {
-        error: {
-          message: "Internal error processing validation",
-          code: ApiError.INTERNAL_ERROR.code,
-        },
-      },
-      { status: ApiError.INTERNAL_ERROR.status },
-    );
-  }
+  // Do nothing - let ts-rest handle errors with full stack traces
+  return undefined;
 }
 
 /**
