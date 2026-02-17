@@ -22,6 +22,8 @@ function setupNgrokMocks() {
     deleteCredential: [] as string[],
     createEndpoint: [] as string[],
     deleteEndpoint: [] as string[],
+    createReservedDomain: [] as string[],
+    deleteReservedDomain: [] as string[],
   };
 
   server.use(
@@ -53,6 +55,20 @@ function setupNgrokMocks() {
     }),
     http.delete("https://api.ngrok.com/credentials/:id", ({ params }) => {
       calls.deleteCredential.push(params.id as string);
+      return new HttpResponse(null, { status: 204 });
+    }),
+    http.post("https://api.ngrok.com/reserved_domains", async ({ request }) => {
+      const body = (await request.json()) as { name: string; region: string };
+      calls.createReservedDomain.push(body.name);
+      return HttpResponse.json({
+        id: "rd_test_abc",
+        domain: `${body.name}.ngrok-free.app`,
+        region: body.region,
+        cname_target: null,
+      });
+    }),
+    http.delete("https://api.ngrok.com/reserved_domains/:id", ({ params }) => {
+      calls.deleteReservedDomain.push(params.id as string);
       return new HttpResponse(null, { status: 204 });
     }),
     http.post("https://api.ngrok.com/endpoints", async ({ request }) => {
@@ -104,17 +120,18 @@ describe("POST /api/connectors/computer - Create", () => {
 
     expect(response.status).toBe(200);
     expect(data.id).toBeDefined();
-    expect(data.authtoken).toBe("2abc_test_ngrok_authtoken");
+    expect(data.ngrokToken).toBe("2abc_test_ngrok_authtoken");
     expect(data.bridgeToken).toBeDefined();
     expect(data.endpointPrefix).toContain("vm0-user-");
-    expect(data.domain).toBe("computer.test.vm0.io");
+    expect(data.domain).toContain(".ngrok-free.app");
 
     // Verify ngrok API was called
     expect(ngrokCalls.createBotUser.length).toBe(1);
     expect(ngrokCalls.createCredential.length).toBe(1);
     expect(ngrokCalls.createCredential[0]).toBe("bot_test_123");
+    expect(ngrokCalls.createReservedDomain.length).toBe(1);
     expect(ngrokCalls.createEndpoint.length).toBe(1);
-    expect(ngrokCalls.createEndpoint[0]).toContain("computer.test.vm0.io");
+    expect(ngrokCalls.createEndpoint[0]).toContain(".ngrok-free.app");
 
     // Verify connector exists via GET
     const getResponse = await GET(createTestRequest(BASE_URL));
