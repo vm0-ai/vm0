@@ -504,7 +504,8 @@ jobs:
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
         needs.prepare.outputs.runner-changed == 'true' ||
-        needs.prepare.outputs.platform-changed == 'true'
+        needs.prepare.outputs.platform-changed == 'true' ||
+        needs.prepare.outputs.crates-changed == 'true'
       )
     outputs:
       preview-url: ${{ steps.alias.outputs.url || steps.deploy.outputs.url }}
