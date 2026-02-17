@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.68.1](https://github.com/vm0-ai/vm0/compare/platform-v0.68.0...platform-v0.68.1) (2026-02-17)
+
+
+### Bug Fixes
+
+* remove nango integration and simplify oauth flow ([#3105](https://github.com/vm0-ai/vm0/issues/3105)) ([a1c601e](https://github.com/vm0-ai/vm0/commit/a1c601e2217456d16b1e34de0a41fe61a0026e7a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.16.1
+
 ## [0.68.0](https://github.com/vm0-ai/vm0/compare/platform-v0.67.0...platform-v0.68.0) (2026-02-16)
 
 

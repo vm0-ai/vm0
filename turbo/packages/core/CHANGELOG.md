@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.16.1](https://github.com/vm0-ai/vm0/compare/core-v8.16.0...core-v8.16.1) (2026-02-17)
+
+
+### Bug Fixes
+
+* remove nango integration and simplify oauth flow ([#3105](https://github.com/vm0-ai/vm0/issues/3105)) ([a1c601e](https://github.com/vm0-ai/vm0/commit/a1c601e2217456d16b1e34de0a41fe61a0026e7a))
+
 ## [8.16.0](https://github.com/vm0-ai/vm0/compare/core-v8.15.0...core-v8.16.0) (2026-02-16)
 
 
