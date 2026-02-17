@@ -381,11 +381,12 @@ async fn status(args: ServiceNameArgs) -> RunnerResult<()> {
     let unit = unit_name(&args.name)?;
     let svc = format!("{unit}.service");
     // Inherit stdout so user sees output directly.
-    // systemctl status returns exit code 3 for inactive — ignore it.
-    let _ = tokio::process::Command::new("systemctl")
+    // systemctl status returns exit code 3 for inactive — ignore exit code.
+    tokio::process::Command::new("systemctl")
         .args(["status", &svc])
         .status()
-        .await;
+        .await
+        .map_err(|e| RunnerError::Internal(format!("spawn systemctl: {e}")))?;
     Ok(())
 }
 
