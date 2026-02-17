@@ -246,9 +246,10 @@ describe("DELETE /api/connectors/computer - Delete", () => {
 
     expect(response.status).toBe(204);
 
-    // Verify ngrok credential and endpoint were deleted
+    // Verify ngrok resources were deleted
     expect(ngrokCalls.deleteCredential).toEqual(["cr_test_456"]);
     expect(ngrokCalls.deleteEndpoint).toEqual(["ep_test_789"]);
+    expect(ngrokCalls.deleteReservedDomain).toEqual(["rd_test_abc"]);
 
     // Verify GET returns 404
     const getResponse = await GET(createTestRequest(BASE_URL));
