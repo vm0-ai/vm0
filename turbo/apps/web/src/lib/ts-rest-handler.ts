@@ -37,15 +37,7 @@ export { tsr, TsRestResponse };
 export function validationErrorHandler(err: unknown): TsRestResponse | void {
   try {
     if (!err || typeof err !== "object") {
-      return TsRestResponse.fromJson(
-        {
-          error: {
-            message: "Request validation failed",
-            code: ApiError.BAD_REQUEST.code,
-          },
-        },
-        { status: ApiError.BAD_REQUEST.status },
-      );
+      return undefined;
     }
 
     // Extract first validation issue from any error type
@@ -62,10 +54,9 @@ export function validationErrorHandler(err: unknown): TsRestResponse | void {
     for (const errorType of errorTypes) {
       if (errorType in errorObj && errorObj[errorType]) {
         const validationError = errorObj[errorType] as {
-          issues?: Array<{ path: string[]; message: string }>;
+          issues: Array<{ path: string[]; message: string }>;
         };
-
-        const issue = validationError.issues?.[0];
+        const issue = validationError.issues[0];
         if (issue) {
           return TsRestResponse.fromJson(
             {
@@ -80,23 +71,16 @@ export function validationErrorHandler(err: unknown): TsRestResponse | void {
       }
     }
 
-    // Return a generic error response instead of undefined to avoid 500
-    return TsRestResponse.fromJson(
-      {
-        error: {
-          message: "Request validation failed",
-          code: ApiError.BAD_REQUEST.code,
-        },
-      },
-      { status: ApiError.BAD_REQUEST.status },
-    );
+    // Let other errors propagate
+    return undefined;
   } catch (unexpectedError) {
-    // errorHandler itself threw an exception - log and return safe response
+    // errorHandler threw an exception - log with full stack trace for debugging
     console.error(
-      "[validationErrorHandler] errorHandler threw exception:",
+      "[validationErrorHandler] Exception in error handler:",
       unexpectedError,
     );
 
+    // Return a safe response to prevent further errors
     return TsRestResponse.fromJson(
       {
         error: {
