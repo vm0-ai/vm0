@@ -18,6 +18,7 @@ serde_yaml_ng = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "signal", "time", "fs"] }
 tracing = { workspace = true }
+tracing-appender = { workspace = true }
 tracing-subscriber = { workspace = true }
 flate2 = { workspace = true }
 reqeast = { workspace = true }

@@ -110,7 +110,7 @@ async fn sleep_until_retry(restart_at: &Option<Instant>) {
 pub struct StartArgs {
     /// Path to runner.yaml config file
     #[arg(long, short)]
-    config: PathBuf,
+    pub(crate) config: PathBuf,
     /// vm0 API URL (overrides config)
     #[arg(long, env = "VM0_API_URL")]
     api_url: Option<String>,
