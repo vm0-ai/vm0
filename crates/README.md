@@ -19,6 +19,7 @@ This workspace contains Rust crates for the vm0 sandbox runtime — VM orchestra
 | **guest-download** | Downloads and extracts storage archives based on manifest — parallel downloads with retry logic |
 | **guest-mock-claude** | Mock Claude CLI for testing — executes bash commands and outputs Claude-compatible JSONL |
 | **ably-subscriber** | Ably Pub/Sub subscribe-only realtime client — WebSocket/MessagePack protocol with token auth and automatic reconnection |
+| **reqeast** | Thin reqwest wrapper — auto-installs `ring` TLS crypto provider, avoiding `aws-lc-sys` musl cross-compilation issues |
 
 ## Architecture
 
@@ -44,7 +45,9 @@ This workspace contains Rust crates for the vm0 sandbox runtime — VM orchestra
 
 ## TLS in Guest Binaries
 
-Guest crates (`guest-agent`, `guest-download`) **must** use system certificate roots (e.g. `rustls-tls-native-roots`), not bundled webpki roots. The host runs a mitmproxy transparent proxy that intercepts HTTPS traffic with its own CA certificate, which is installed into the guest's system certificate store at boot. Using bundled roots would bypass the proxy CA and cause TLS verification failures.
+Guest crates (`guest-agent`, `guest-download`) **must** use system certificate roots, not bundled webpki roots. The host runs a mitmproxy transparent proxy that intercepts HTTPS traffic with its own CA certificate, which is installed into the guest's system certificate store at boot. Using bundled roots would bypass the proxy CA and cause TLS verification failures. As of reqwest 0.13, the `rustls` feature uses `rustls-platform-verifier` which reads from the system certificate store on Linux.
+
+All crates that make HTTP requests should depend on **`reqeast`** (not `reqwest` directly). `reqeast` uses `ring` as the TLS crypto provider instead of `aws-lc-rs`, which is required for `aarch64-unknown-linux-musl` cross-compilation. See [`reqeast/README.md`](reqeast/README.md) for details.
 
 ## Building
 

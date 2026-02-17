@@ -245,7 +245,7 @@ async fn receive_message(
 
 /// Publish a single message via Ably REST API.
 async fn publish_message(
-    client: &reqwest::Client,
+    client: &reqeast::Client,
     rest_host: &str,
     channel: &str,
     auth_header: &str,
@@ -331,7 +331,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // --- Publish and verify each test case ---
     let cases = test_cases();
-    let client = reqwest::Client::new();
+    let client = reqeast::builder()
+        .build()
+        .map_err(|e| format!("http client: {e}"))?;
     let mut passed = 0usize;
     let mut failed = 0usize;
 

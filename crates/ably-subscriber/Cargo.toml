@@ -6,7 +6,7 @@ edition.workspace = true
 [dependencies]
 base64 = { workspace = true }
 futures-util = { workspace = true }
-reqwest = { workspace = true, features = ["json", "rustls-tls-native-roots"] }
+reqeast = { workspace = true }
 rmp-serde = { workspace = true }
 rmpv = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

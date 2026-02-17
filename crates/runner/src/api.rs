@@ -1,4 +1,4 @@
-use reqwest::StatusCode;
+use reqeast::StatusCode;
 use tracing::warn;
 
 use crate::error::{RunnerError, RunnerResult};
@@ -21,7 +21,7 @@ impl ApiClient {
     pub async fn poll(&self, group: &str) -> RunnerResult<Option<Job>> {
         let resp = self
             .http
-            .request(reqwest::Method::POST, "/api/runners/poll", &self.token)
+            .request(reqeast::Method::POST, "/api/runners/poll", &self.token)
             .json(&serde_json::json!({ "group": group }))
             .send()
             .await
@@ -47,7 +47,7 @@ impl ApiClient {
         let path = format!("/api/runners/jobs/{run_id}/claim");
         let resp = self
             .http
-            .request(reqwest::Method::POST, &path, &self.token)
+            .request(reqeast::Method::POST, &path, &self.token)
             .json(&serde_json::json!({}))
             .send()
             .await
@@ -88,7 +88,7 @@ impl ApiClient {
         let resp = self
             .http
             .request(
-                reqwest::Method::POST,
+                reqeast::Method::POST,
                 "/api/webhooks/agent/complete",
                 sandbox_token,
             )
@@ -112,7 +112,7 @@ impl ApiClient {
         let resp = self
             .http
             .request(
-                reqwest::Method::POST,
+                reqeast::Method::POST,
                 "/api/runners/realtime/token",
                 &self.token,
             )

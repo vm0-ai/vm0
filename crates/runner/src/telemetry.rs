@@ -118,7 +118,7 @@ async fn send_telemetry(http: &HttpClient, run_id: Uuid, sandbox_token: &str, op
 
     let req = http
         .request(
-            reqwest::Method::POST,
+            reqeast::Method::POST,
             "/api/webhooks/agent/telemetry",
             sandbox_token,
         )

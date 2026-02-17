@@ -8,7 +8,7 @@ base64.workspace = true
 bytes.workspace = true
 guest-common.workspace = true
 libc.workspace = true
-reqwest = { workspace = true, features = ["json", "rustls-tls-native-roots"] }
+reqeast = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 sha2.workspace = true

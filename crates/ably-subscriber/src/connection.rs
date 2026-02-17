@@ -61,7 +61,7 @@ pub(crate) fn rest_host(realtime_host: &str) -> String {
 
 /// Exchange a TokenRequest for a TokenDetails via Ably's REST API.
 pub(crate) async fn exchange_token(
-    client: &reqwest::Client,
+    client: &reqeast::Client,
     token_request: &crate::TokenRequest,
     host: &str,
 ) -> Result<TokenDetails, Error> {
@@ -293,7 +293,7 @@ pub(crate) struct EventLoopState {
     pub channel_params: Option<HashMap<String, String>>,
     pub realtime_host: String,
     pub rest_host: String,
-    pub http: reqwest::Client,
+    pub http: reqeast::Client,
     pub get_token: Box<dyn Fn() -> TokenFuture + Send + Sync>,
     pub timing: TimingConfig,
     pub token_renewal_failures: u32,

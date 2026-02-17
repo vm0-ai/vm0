@@ -5,7 +5,7 @@ use crate::env;
 use crate::error::AgentError;
 use bytes::Bytes;
 use guest_common::log_warn;
-use reqwest::Client;
+use reqeast::Client;
 use serde::Serialize;
 use serde_json::Value;
 use std::sync::LazyLock;
@@ -14,7 +14,7 @@ use std::time::Duration;
 const LOG_TAG: &str = "sandbox:guest-agent";
 
 static HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| {
-    Client::builder()
+    reqeast::builder()
         .connect_timeout(Duration::from_secs(constants::HTTP_CONNECT_TIMEOUT_SECS))
         .timeout(Duration::from_secs(constants::HTTP_TIMEOUT_SECS))
         .build()

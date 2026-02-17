@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use reqwest::Method;
+use reqeast::Method;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 use uuid::Uuid;
