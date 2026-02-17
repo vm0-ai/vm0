@@ -63,6 +63,8 @@ enum Command {
 /// Extract the runner `name` field from a runner config YAML.
 ///
 /// Called before tracing is initialized, so warnings go to stderr directly.
+/// The returned value is sanitized to contain only `[a-zA-Z0-9_-]` characters
+/// so it is safe for use as a log file prefix.
 fn runner_name_from_config(path: &Path) -> String {
     #[derive(serde::Deserialize)]
     struct Partial {
@@ -78,15 +80,36 @@ fn runner_name_from_config(path: &Path) -> String {
             return "default".into();
         }
     };
-    match serde_yaml_ng::from_str::<Partial>(&content) {
+    let raw = match serde_yaml_ng::from_str::<Partial>(&content) {
         Ok(p) => p.name,
         Err(e) => {
             eprintln!(
                 "warn: could not parse runner name from {}: {e}",
                 path.display()
             );
-            "default".into()
+            return "default".into();
         }
+    };
+    sanitize_name(&raw)
+}
+
+/// Replace non-`[a-zA-Z0-9_-]` characters with `-`.
+/// Returns `"default"` if the result is empty.
+fn sanitize_name(raw: &str) -> String {
+    let sanitized: String = raw
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    if sanitized.is_empty() {
+        "default".into()
+    } else {
+        sanitized
     }
 }
 
@@ -169,5 +192,43 @@ async fn main() -> ExitCode {
             eprintln!("error: {e}");
             ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_name_passthrough() {
+        assert_eq!(sanitize_name("my-runner_01"), "my-runner_01");
+    }
+
+    #[test]
+    fn sanitize_name_replaces_slashes() {
+        assert_eq!(sanitize_name("foo/bar"), "foo-bar");
+    }
+
+    #[test]
+    fn sanitize_name_replaces_path_traversal() {
+        assert_eq!(sanitize_name("../../etc/passwd"), "------etc-passwd");
+    }
+
+    #[test]
+    fn sanitize_name_replaces_non_ascii() {
+        assert_eq!(sanitize_name("runner-日本語"), "runner----");
+    }
+
+    #[test]
+    fn sanitize_name_empty_returns_default() {
+        assert_eq!(sanitize_name(""), "default");
+    }
+
+    #[test]
+    fn runner_name_missing_file_returns_default() {
+        assert_eq!(
+            runner_name_from_config(Path::new("/nonexistent.yaml")),
+            "default"
+        );
     }
 }
