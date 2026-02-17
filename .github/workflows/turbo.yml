@@ -812,7 +812,8 @@ jobs:
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.runner-changed == 'true'
+        needs.prepare.outputs.runner-changed == 'true' ||
+        needs.prepare.outputs.crates-changed == 'true'
       )
     timeout-minutes: 5
     permissions:
