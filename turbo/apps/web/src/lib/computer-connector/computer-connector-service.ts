@@ -28,6 +28,7 @@ const log = logger("service:computer-connector");
 const COMPUTER_SECRETS = [
   "COMPUTER_CONNECTOR_BRIDGE_TOKEN",
   "COMPUTER_CONNECTOR_DOMAIN_ID",
+  "COMPUTER_CONNECTOR_DOMAIN",
 ] as const;
 
 /**
