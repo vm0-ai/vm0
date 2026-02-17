@@ -9,7 +9,7 @@ import { eq, and } from "drizzle-orm";
 import type { ComputerConnectorCreateResponse } from "@vm0/core";
 import { connectors } from "../../db/schema/connector";
 import { secrets } from "../../db/schema/secret";
-import { encryptCredentialValue } from "../crypto";
+import { encryptCredentialValue, decryptCredentialValue } from "../crypto";
 import { badRequest, conflict, notFound } from "../errors";
 import { logger } from "../logger";
 import { getUserScopeByClerkId } from "../scope/scope-service";
@@ -26,10 +26,8 @@ import {
 const log = logger("service:computer-connector");
 
 const COMPUTER_SECRETS = [
-  "COMPUTER_CONNECTOR_NGROK_TOKEN",
   "COMPUTER_CONNECTOR_BRIDGE_TOKEN",
-  "COMPUTER_CONNECTOR_ENDPOINT",
-  "COMPUTER_CONNECTOR_DOMAIN",
+  "COMPUTER_CONNECTOR_DOMAIN_ID",
 ] as const;
 
 /**
@@ -177,7 +175,7 @@ export async function createComputerConnector(
   // - externalId: Bot User ID
   // - externalUsername: Credential ID
   // - externalEmail: Cloud Endpoint ID
-  // - oauthScopes: Reserved Domain ID (as JSON array for compatibility)
+  // - oauthScopes: null (not used for computer connector)
   const db = globalThis.services.db;
   const [connectorRow] = await db
     .insert(connectors)
@@ -188,7 +186,7 @@ export async function createComputerConnector(
       externalId: botUser.id,
       externalUsername: credential.id,
       externalEmail: cloudEndpoint.id,
-      oauthScopes: JSON.stringify([reservedDomain.id]), // Store as JSON array
+      oauthScopes: null,
     })
     .returning();
 
@@ -196,12 +194,10 @@ export async function createComputerConnector(
     throw new Error("Failed to create connector");
   }
 
-  // Store connector secrets
+  // Store secrets (ngrok token is one-time use, returned to client only)
   await Promise.all([
-    upsertSecret(scope.id, "COMPUTER_CONNECTOR_NGROK_TOKEN", credential.token),
     upsertSecret(scope.id, "COMPUTER_CONNECTOR_BRIDGE_TOKEN", bridgeToken),
-    upsertSecret(scope.id, "COMPUTER_CONNECTOR_ENDPOINT", endpointPrefix),
-    upsertSecret(scope.id, "COMPUTER_CONNECTOR_DOMAIN", domain),
+    upsertSecret(scope.id, "COMPUTER_CONNECTOR_DOMAIN_ID", reservedDomain.id),
   ]);
 
   log.debug("Computer connector created", {
@@ -287,25 +283,32 @@ export async function deleteComputerConnector(
     );
   }
 
-  if (apiKey && connector.oauthScopes) {
-    try {
-      const domainIds = JSON.parse(connector.oauthScopes) as string[];
-      const domainId = domainIds[0];
-      if (domainId) {
-        await safeDeleteNgrokResource(
-          () => deleteReservedDomain(apiKey, domainId),
-          "Reserved domain",
-          domainId,
-        );
-      }
-    } catch (error) {
-      if (error instanceof SyntaxError) {
-        log.error("Failed to parse oauthScopes as JSON", {
-          oauthScopes: connector.oauthScopes,
-        });
-      } else {
-        throw error;
-      }
+  // Get domain ID from secrets to delete reserved domain
+  if (apiKey) {
+    const domainIdSecret = await db
+      .select({ encryptedValue: secrets.encryptedValue })
+      .from(secrets)
+      .where(
+        and(
+          eq(secrets.scopeId, scope.id),
+          eq(secrets.name, "COMPUTER_CONNECTOR_DOMAIN_ID"),
+          eq(secrets.type, "connector"),
+        ),
+      )
+      .limit(1);
+
+    if (domainIdSecret[0]) {
+      const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
+      const domainId = decryptCredentialValue(
+        domainIdSecret[0].encryptedValue,
+        encryptionKey,
+      );
+
+      await safeDeleteNgrokResource(
+        () => deleteReservedDomain(apiKey, domainId),
+        "Reserved domain",
+        domainId,
+      );
     }
   }
 
