@@ -37,6 +37,9 @@ struct ServiceStartArgs {
     /// Service name suffix (e.g. v0.2.0 → unit vm0-runner-v0.2.0)
     #[arg(long)]
     name: String,
+    /// Environment variables to pass to the service (KEY=VALUE)
+    #[arg(long, value_name = "KEY=VALUE")]
+    env: Vec<String>,
 }
 
 #[derive(Args)]
@@ -47,6 +50,9 @@ struct ServiceInstallArgs {
     /// Service name suffix (e.g. v0.2.0 → unit vm0-runner-v0.2.0)
     #[arg(long)]
     name: String,
+    /// Environment variables to pass to the service (KEY=VALUE)
+    #[arg(long, value_name = "KEY=VALUE")]
+    env: Vec<String>,
 }
 
 #[derive(Args)]
@@ -131,7 +137,17 @@ fn resolve_config_path(path: &Path) -> RunnerResult<PathBuf> {
 }
 
 /// Generate the systemd unit file content.
-fn generate_unit_file(unit: &str, exe_path: &Path, config_path: &Path, user: &str) -> String {
+fn generate_unit_file(
+    unit: &str,
+    exe_path: &Path,
+    config_path: &Path,
+    user: &str,
+    env_vars: &[String],
+) -> String {
+    let mut env_lines = String::new();
+    for entry in env_vars {
+        env_lines.push_str(&format!("Environment=\"{entry}\"\n"));
+    }
     format!(
         "\
 [Unit]
@@ -151,13 +167,26 @@ User={user}
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier={unit}
-
+{env_lines}
 [Install]
 WantedBy=multi-user.target
 ",
         exe = exe_path.display(),
         config = config_path.display(),
     )
+}
+
+/// Validate that each env entry is in `KEY=VALUE` format.
+fn validate_env_vars(vars: &[String]) -> RunnerResult<()> {
+    for entry in vars {
+        let eq_pos = entry.find('=');
+        if eq_pos.is_none_or(|p| p == 0) {
+            return Err(RunnerError::Config(format!(
+                "invalid --env value '{entry}': expected KEY=VALUE format"
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Run `sudo systemctl <args>` and check exit status.
@@ -241,6 +270,7 @@ async fn get_service_pid(unit: &str) -> RunnerResult<Option<u32>> {
 /// `service start` — transient unit via systemd-run (CI).
 async fn start(args: ServiceStartArgs) -> RunnerResult<()> {
     let unit = unit_name(&args.name)?;
+    validate_env_vars(&args.env)?;
 
     if is_unit_active(&unit).await? {
         return Err(RunnerError::Internal(format!(
@@ -258,26 +288,30 @@ async fn start(args: ServiceStartArgs) -> RunnerResult<()> {
     let desc_arg = format!("--description=VM0 Runner ({unit})");
     let syslog_arg = format!("--property=SyslogIdentifier={unit}");
     let uid_arg = format!("--uid={uid}");
-
-    let status = tokio::process::Command::new("sudo")
-        .args([
-            "systemd-run",
-            &unit_arg,
-            &desc_arg,
-            "--property=Type=exec",
-            "--property=Restart=on-failure",
-            "--property=RestartSec=5",
-            "--property=MemoryMax=2G",
-            "--property=StandardOutput=journal",
-            "--property=StandardError=journal",
-            "--property=KillSignal=SIGTERM",
-            "--property=TimeoutStopSec=300",
-            &syslog_arg,
-            &uid_arg,
-        ])
-        .arg(&exe_path)
+    let mut cmd = tokio::process::Command::new("sudo");
+    cmd.args([
+        "systemd-run",
+        &unit_arg,
+        &desc_arg,
+        "--property=Type=exec",
+        "--property=Restart=on-failure",
+        "--property=RestartSec=5",
+        "--property=MemoryMax=2G",
+        "--property=StandardOutput=journal",
+        "--property=StandardError=journal",
+        "--property=KillSignal=SIGTERM",
+        "--property=TimeoutStopSec=300",
+        &syslog_arg,
+        &uid_arg,
+    ]);
+    for entry in &args.env {
+        cmd.arg(format!("--setenv={entry}"));
+    }
+    cmd.arg(&exe_path)
         .args(["start", "--config"])
-        .arg(&config_path)
+        .arg(&config_path);
+
+    let status = cmd
         .status()
         .await
         .map_err(|e| RunnerError::Internal(format!("spawn systemd-run: {e}")))?;
@@ -307,6 +341,7 @@ async fn stop(args: ServiceNameArgs) -> RunnerResult<()> {
 /// `service install` — persistent unit file (production).
 async fn install(args: ServiceInstallArgs) -> RunnerResult<()> {
     let unit = unit_name(&args.name)?;
+    validate_env_vars(&args.env)?;
     let config_path = resolve_config_path(&args.config)?;
     let exe_path =
         std::env::current_exe().map_err(|e| RunnerError::Internal(format!("current_exe: {e}")))?;
@@ -316,7 +351,7 @@ async fn install(args: ServiceInstallArgs) -> RunnerResult<()> {
         .ok_or_else(|| RunnerError::Internal(format!("no user found for uid {uid}")))?
         .name;
 
-    let unit_content = generate_unit_file(&unit, &exe_path, &config_path, &user);
+    let unit_content = generate_unit_file(&unit, &exe_path, &config_path, &user, &args.env);
     let upath = unit_file_path(&unit);
 
     write_unit_file(&upath, &unit_content).await?;
@@ -460,6 +495,7 @@ mod tests {
             Path::new("/home/ubuntu/.vm0-runner/bin/v0.1.0/vm0-runner"),
             Path::new("/home/ubuntu/runner.yaml"),
             "ubuntu",
+            &[],
         );
         assert!(content.contains("Description=VM0 Runner (vm0-runner-v0.1.0)"));
         assert!(content.contains(
@@ -472,6 +508,27 @@ mod tests {
         assert!(content.contains("MemoryMax=2G"));
         assert!(content.contains("[Install]"));
         assert!(content.contains("WantedBy=multi-user.target"));
+        assert!(!content.contains("Environment="));
+    }
+
+    #[test]
+    fn test_generate_unit_file_with_env() {
+        let env = vec![
+            "VERCEL_AUTOMATION_BYPASS_SECRET=xxx".to_string(),
+            "USE_MOCK_CLAUDE=true".to_string(),
+            "MY_DESC=hello world".to_string(),
+        ];
+        let content = generate_unit_file(
+            "vm0-runner-v0.1.0",
+            Path::new("/home/ubuntu/.vm0-runner/bin/v0.1.0/vm0-runner"),
+            Path::new("/home/ubuntu/runner.yaml"),
+            "ubuntu",
+            &env,
+        );
+        assert!(content.contains("Environment=\"VERCEL_AUTOMATION_BYPASS_SECRET=xxx\""));
+        assert!(content.contains("Environment=\"USE_MOCK_CLAUDE=true\""));
+        assert!(content.contains("Environment=\"MY_DESC=hello world\""));
+        assert!(content.contains("\n\n[Install]"));
     }
 
     #[test]
@@ -481,10 +538,26 @@ mod tests {
             Path::new("/opt/my runner/vm0-runner"),
             Path::new("/opt/my config/runner.yaml"),
             "deploy-user",
+            &[],
         );
         assert!(content.contains(
             "ExecStart=\"/opt/my runner/vm0-runner\" start --config \"/opt/my config/runner.yaml\""
         ));
         assert!(content.contains("User=deploy-user"));
+    }
+
+    #[test]
+    fn test_validate_env_vars_valid() {
+        assert!(validate_env_vars(&[]).is_ok());
+        assert!(validate_env_vars(&["KEY=VALUE".to_string()]).is_ok());
+        assert!(validate_env_vars(&["K=".to_string()]).is_ok());
+        assert!(validate_env_vars(&["K=V=W".to_string()]).is_ok());
+    }
+
+    #[test]
+    fn test_validate_env_vars_invalid() {
+        assert!(validate_env_vars(&["NOEQUALS".to_string()]).is_err());
+        assert!(validate_env_vars(&["=VALUE".to_string()]).is_err());
+        assert!(validate_env_vars(&["".to_string()]).is_err());
     }
 }

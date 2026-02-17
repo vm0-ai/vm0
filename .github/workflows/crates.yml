@@ -99,7 +99,7 @@ jobs:
           cd crates
           cargo run -p ably-subscriber --example smoke_test
 
-  runner-metal-test:
+  runner-benchmark:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260203
@@ -138,7 +138,7 @@ jobs:
         id: host
         env:
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          JOB_REF: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'main' }}
+          JOB_REF: ${{ github.event_name == 'pull_request' && format('pr-{0}-benchmark', github.event.pull_request.number) || 'main-benchmark' }}
         run: |
           NUM_HOSTS=$(echo "$METAL_HOSTS" | tr ',' '\n' | wc -l)
           HASH=$(echo -n "$JOB_REF" | md5sum | cut -c1-8)

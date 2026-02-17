@@ -81,9 +81,7 @@ async function upsertSecret(
 export async function createComputerConnector(
   clerkUserId: string,
 ): Promise<ComputerConnectorCreateResponse> {
-  console.log("[createComputerConnector] START", { clerkUserId });
   const scope = await getUserScopeByClerkId(clerkUserId);
-  console.log("[createComputerConnector] Got scope", { scopeId: scope?.id });
   if (!scope) {
     throw notFound("User scope not found");
   }

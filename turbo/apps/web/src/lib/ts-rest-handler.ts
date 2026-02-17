@@ -18,85 +18,9 @@ import type { TsRestRequest } from "@ts-rest/serverless";
 import type { AppRouter } from "@ts-rest/core";
 import { flushLogs } from "./logger";
 import { ingestRequestLog } from "./axiom";
-import { ApiError } from "@vm0/core";
 
 // Re-export tsr and TsRestResponse for convenience
 export { tsr, TsRestResponse };
-
-/**
- * Standard error handler for ts-rest API routes.
- *
- * Handles ts-rest RequestValidationError and converts it to a proper
- * JSON error response with appropriate status code. Supports body,
- * query, and path parameter validation errors.
- *
- * Usage:
- *   import { createHandler, tsr, validationErrorHandler } from "@/lib/ts-rest-handler";
- *   const handler = createHandler(contract, router, { errorHandler: validationErrorHandler });
- */
-export function validationErrorHandler(err: unknown): TsRestResponse | void {
-  // Debug logging
-  const fs = require("fs/promises");
-  fs.appendFile(
-    "/tmp/ts-rest-middleware.log",
-    `[${new Date().toISOString()}] validationErrorHandler called: ${JSON.stringify(err, Object.getOwnPropertyNames(err))}\n`,
-  ).catch(() => {});
-  console.error(
-    "[validationErrorHandler]",
-    JSON.stringify(err, Object.getOwnPropertyNames(err)),
-  );
-
-  if (!err || typeof err !== "object") {
-    return undefined;
-  }
-
-  // Extract first validation issue from any error type
-  const errorObj = err as Record<string, unknown>;
-  const errorTypes = ["bodyError", "queryError", "pathParamsError"] as const;
-
-  for (const errorType of errorTypes) {
-    if (errorType in errorObj && errorObj[errorType]) {
-      const validationError = errorObj[errorType] as {
-        issues: Array<{ path: string[]; message: string }>;
-      };
-      const issue = validationError.issues[0];
-      if (issue) {
-        return TsRestResponse.fromJson(
-          {
-            error: { message: issue.message, code: ApiError.BAD_REQUEST.code },
-          },
-          { status: ApiError.BAD_REQUEST.status },
-        );
-      }
-    }
-  }
-
-  // For debugging: return error details instead of propagating
-  if (err instanceof Error) {
-    return TsRestResponse.fromJson(
-      {
-        error: {
-          message: `Handler error: ${err.message}`,
-          code: ApiError.INTERNAL_SERVER_ERROR.code,
-          stack: err.stack,
-        },
-      },
-      { status: 500 },
-    );
-  }
-
-  // Unknown error type
-  return TsRestResponse.fromJson(
-    {
-      error: {
-        message: "Unknown error in handler",
-        code: ApiError.INTERNAL_SERVER_ERROR.code,
-        details: JSON.stringify(err, Object.getOwnPropertyNames(err)),
-      },
-    },
-    { status: 500 },
-  );
-}
 
 /**
  * Type alias for ts-rest router implementation.
@@ -140,28 +64,10 @@ export function createHandler<T extends AppRouter>(
       (request) => {
         // Record request start time
         requestStartTimes.set(request, Date.now());
-
-        // Debug logging
-        const fs = require("fs/promises");
-        fs.appendFile(
-          "/tmp/ts-rest-middleware.log",
-          `[${new Date().toISOString()}] ${request.method} ${request.url}\n`,
-        ).catch(() => {});
-        console.error("[ts-rest middleware]", request.method, request.url);
       },
     ],
     responseHandlers: [
       async (response, request) => {
-        // Debug logging
-        const fs = require("fs/promises");
-        await fs
-          .appendFile(
-            "/tmp/ts-rest-middleware.log",
-            `[${new Date().toISOString()}] Response status: ${response.status}\n`,
-          )
-          .catch(() => {});
-        console.error("[ts-rest response]", response.status);
-
         // Record request log (nginx-style)
         const startTime = requestStartTimes.get(request);
         if (startTime !== undefined) {
