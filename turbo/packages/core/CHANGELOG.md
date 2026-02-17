@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.17.0](https://github.com/vm0-ai/vm0/compare/core-v8.16.1...core-v8.17.0) (2026-02-17)
+
+
+### Features
+
+* use ngrok reserved domains for computer connector ([#3116](https://github.com/vm0-ai/vm0/issues/3116)) ([7e30f2c](https://github.com/vm0-ai/vm0/commit/7e30f2c83f7fb4f82dd0b1e9aed38267ca5919f9))
+
 ## [8.16.1](https://github.com/vm0-ai/vm0/compare/core-v8.16.0...core-v8.16.1) (2026-02-17)
 
 

@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.44.0](https://github.com/vm0-ai/vm0/compare/web-v12.43.1...web-v12.44.0) (2026-02-17)
+
+
+### Features
+
+* use ngrok reserved domains for computer connector ([#3116](https://github.com/vm0-ai/vm0/issues/3116)) ([7e30f2c](https://github.com/vm0-ai/vm0/commit/7e30f2c83f7fb4f82dd0b1e9aed38267ca5919f9))
+
+
+### Bug Fixes
+
+* improve validation error handler robustness ([#3114](https://github.com/vm0-ai/vm0/issues/3114)) ([6506d06](https://github.com/vm0-ai/vm0/commit/6506d066ab5dd01c4c33a3f1e6dbe6241ac662cb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.17.0
+
 ## [12.43.1](https://github.com/vm0-ai/vm0/compare/web-v12.43.0...web-v12.43.1) (2026-02-17)
 
 
