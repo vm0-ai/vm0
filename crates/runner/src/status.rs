@@ -20,6 +20,8 @@ struct RunnerStatus {
     mode: RunnerMode,
     active_runs: usize,
     active_run_ids: Vec<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proxy_port: Option<u16>,
     #[serde(serialize_with = "serialize_iso")]
     started_at: DateTime<Utc>,
     #[serde(serialize_with = "serialize_iso")]
@@ -36,6 +38,7 @@ fn serialize_iso<S: serde::Serializer>(dt: &DateTime<Utc>, s: S) -> Result<S::Ok
 /// Share via `Arc<StatusTracker>` — immutable fields live outside the mutex.
 pub struct StatusTracker {
     started_at: DateTime<Utc>,
+    proxy_port: Option<u16>,
     path: PathBuf,
     state: Mutex<MutableState>,
 }
@@ -49,12 +52,17 @@ impl StatusTracker {
     pub fn new(path: PathBuf) -> Self {
         Self {
             started_at: Utc::now(),
+            proxy_port: None,
             path,
             state: Mutex::new(MutableState {
                 mode: RunnerMode::Running,
                 active_run_ids: HashSet::new(),
             }),
         }
+    }
+
+    pub fn set_proxy_port(&mut self, port: u16) {
+        self.proxy_port = Some(port);
     }
 
     pub async fn set_mode(&self, mode: RunnerMode) {
@@ -87,6 +95,7 @@ impl StatusTracker {
             mode: state.mode,
             active_runs: state.active_run_ids.len(),
             active_run_ids: state.active_run_ids.iter().copied().collect(),
+            proxy_port: self.proxy_port,
             started_at: self.started_at,
             updated_at: Utc::now(),
         };
@@ -178,6 +187,31 @@ mod tests {
             .collect();
         assert!(ids.contains(&id2.to_string()));
         assert!(!ids.contains(&id1.to_string()));
+    }
+
+    #[tokio::test]
+    async fn proxy_port_in_status() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        let mut tracker = StatusTracker::new(path.clone());
+        tracker.set_proxy_port(8080);
+
+        tracker.write_initial().await;
+
+        let status = read_status(&path);
+        assert_eq!(status["proxy_port"], 8080);
+    }
+
+    #[tokio::test]
+    async fn proxy_port_absent_when_not_set() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        let tracker = StatusTracker::new(path.clone());
+
+        tracker.write_initial().await;
+
+        let status = read_status(&path);
+        assert!(status.get("proxy_port").is_none());
     }
 
     #[tokio::test]

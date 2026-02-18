@@ -1,5 +1,6 @@
 mod benchmark;
 mod build;
+mod doctor;
 mod gc;
 mod rootfs;
 mod service;
@@ -9,6 +10,7 @@ mod start;
 
 pub use benchmark::{BenchmarkArgs, run_benchmark};
 pub use build::{BuildArgs, run_build};
+pub use doctor::{DoctorArgs, run_doctor};
 pub use gc::{GcArgs, run_gc};
 pub use rootfs::{RootfsArgs, run_rootfs};
 pub use service::{ServiceArgs, run_service};

@@ -137,7 +137,7 @@ async fn validate_paths(config: &RunnerConfig) -> RunnerResult<()> {
 
 impl RunnerConfig {
     /// Resolve relative paths against `config_dir` (the directory containing the YAML file).
-    fn resolve_relative_paths(&mut self, config_dir: &Path) {
+    pub(crate) fn resolve_relative_paths(&mut self, config_dir: &Path) {
         let resolve = |p: &mut PathBuf| {
             if p.is_relative() {
                 *p = config_dir.join(&*p);

@@ -8,7 +8,6 @@ mod http;
 mod lock;
 mod network_logs;
 mod paths;
-#[allow(dead_code)] // used by cmd/doctor (next commit)
 mod process;
 mod proxy;
 mod status;
@@ -62,6 +61,8 @@ enum Command {
     Service(cmd::ServiceArgs),
     /// Clean up unused rootfs and snapshot directories
     Gc(cmd::GcArgs),
+    /// Runtime health diagnostics for all runners on the host
+    Doctor(cmd::DoctorArgs),
 }
 
 /// Extract the runner `name` field from a runner config YAML.
@@ -189,6 +190,7 @@ async fn main() -> ExitCode {
         Command::Start(args) => cmd::run_start(*args).await.map(|()| ExitCode::SUCCESS),
         Command::Service(args) => cmd::run_service(args).await.map(|()| ExitCode::SUCCESS),
         Command::Gc(args) => cmd::run_gc(args).await.map(|()| ExitCode::SUCCESS),
+        Command::Doctor(args) => cmd::run_doctor(args).await,
     };
 
     match result {

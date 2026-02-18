@@ -19,6 +19,7 @@ pub struct RunnerProcessInfo {
 /// Info extracted from a firecracker process cmdline.
 pub struct FirecrackerProcessInfo {
     pub pid: u32,
+    pub ppid: Option<u32>,
     pub run_id: String,
     pub base_dir: Option<PathBuf>,
 }
@@ -26,16 +27,15 @@ pub struct FirecrackerProcessInfo {
 /// Info extracted from a mitmdump process cmdline.
 pub struct MitmproxyProcessInfo {
     pub pid: u32,
-    pub base_dir: PathBuf,
+    pub ppid: Option<u32>,
+    pub port: u16,
 }
 
-// ---------------------------------------------------------------------------
-// Parsed cmdline fragments (internal)
-// ---------------------------------------------------------------------------
-
-struct FirecrackerCmdline {
-    run_id: String,
-    base_dir: Option<PathBuf>,
+/// All discovered process info from a single `/proc` scan.
+pub struct DiscoveredProcesses {
+    pub runners: Vec<RunnerProcessInfo>,
+    pub firecrackers: Vec<FirecrackerProcessInfo>,
+    pub mitmdumps: Vec<MitmproxyProcessInfo>,
 }
 
 // ---------------------------------------------------------------------------
@@ -45,7 +45,7 @@ struct FirecrackerCmdline {
 /// Parse a runner cmdline for `start`/`benchmark` subcommand and `--config` path.
 ///
 /// Returns `(config_path, subcommand)` or `None` if the cmdline doesn't match.
-pub fn parse_runner_cmdline(cmdline: &str) -> Option<(PathBuf, String)> {
+fn parse_runner_cmdline(cmdline: &str) -> Option<(PathBuf, String)> {
     let tokens: Vec<&str> = cmdline.split_whitespace().collect();
 
     // Must have "start" or "benchmark" subcommand
@@ -61,65 +61,32 @@ pub fn parse_runner_cmdline(cmdline: &str) -> Option<(PathBuf, String)> {
     Some((PathBuf::from(config_path), subcmd))
 }
 
-/// Parse a firecracker cmdline for run ID and optional base directory.
+/// Check if a cmdline belongs to a firecracker process.
 ///
-/// Handles two launch modes:
-/// - Snapshot boot: `firecracker --api-sock /run/vm0/sock/{uuid}/api.sock`
-/// - Fresh boot:    `firecracker --config-file {base_dir}/workspaces/{id}/config.json`
-fn parse_firecracker_cmdline(cmdline: &str) -> Option<FirecrackerCmdline> {
-    let tokens: Vec<&str> = cmdline.split_whitespace().collect();
-
-    // Try --api-sock /run/vm0/sock/{uuid}/api.sock
-    if let Some(pos) = tokens.iter().position(|&t| t == "--api-sock")
-        && let Some(&sock_path) = tokens.get(pos + 1)
-    {
-        let path = Path::new(sock_path);
-        if path.file_name().and_then(|n| n.to_str()) == Some("api.sock")
-            && sock_path.starts_with("/run/vm0/sock/")
-            && let Some(uuid) = path.parent().and_then(|p| p.file_name())
-        {
-            return Some(FirecrackerCmdline {
-                run_id: uuid.to_string_lossy().into_owned(),
-                base_dir: None,
-            });
-        }
-    }
-
-    // Try --config-file {base_dir}/workspaces/{id}/config.json
-    if let Some(pos) = tokens.iter().position(|&t| t == "--config-file")
-        && let Some(&config_path) = tokens.get(pos + 1)
-    {
-        let path = Path::new(config_path);
-        if path.file_name().and_then(|n| n.to_str()) == Some("config.json") {
-            let id_dir = path.parent()?;
-            let workspaces_dir = id_dir.parent()?;
-            if workspaces_dir.file_name().and_then(|n| n.to_str()) == Some("workspaces") {
-                let base_dir = workspaces_dir.parent()?;
-                let id = id_dir.file_name()?.to_string_lossy().into_owned();
-                return Some(FirecrackerCmdline {
-                    run_id: id,
-                    base_dir: Some(base_dir.to_path_buf()),
-                });
-            }
-        }
-    }
-
-    None
+/// Looks at the binary name (first token) — the run ID and base directory
+/// are resolved from `/proc/{pid}/cwd` instead of argument parsing,
+/// since our sandbox always sets `current_dir` to the workspace.
+fn is_firecracker_cmdline(cmdline: &str) -> bool {
+    let binary = cmdline.split_whitespace().next().unwrap_or("");
+    Path::new(binary).file_name().and_then(|n| n.to_str()) == Some("firecracker")
 }
 
-/// Parse a mitmdump cmdline for the runner base directory.
+/// Parse a mitmdump cmdline for the listen port.
 ///
-/// Looks for `vm0_proxy_registry_path={base_dir}/proxy-registry.json`.
-pub fn parse_mitmdump_cmdline(cmdline: &str) -> Option<PathBuf> {
-    let prefix = "vm0_proxy_registry_path=";
-    let token = cmdline.split_whitespace().find(|t| t.starts_with(prefix))?;
-    let registry_path = token.strip_prefix(prefix)?;
-    let path = Path::new(registry_path);
-    if path.file_name().and_then(|n| n.to_str()) == Some("proxy-registry.json") {
-        Some(path.parent()?.to_path_buf())
-    } else {
-        None
+/// Identifies our mitmdump by `vm0_proxy_registry_path=` and extracts
+/// the `--listen-port` value.
+fn parse_mitmdump_cmdline(cmdline: &str) -> Option<u16> {
+    let tokens: Vec<&str> = cmdline.split_whitespace().collect();
+    // Must be our mitmdump (has vm0_proxy_registry_path)
+    if !tokens
+        .iter()
+        .any(|t| t.starts_with("vm0_proxy_registry_path="))
+    {
+        return None;
     }
+    // Extract --listen-port value
+    let pos = tokens.iter().position(|&t| t == "--listen-port")?;
+    tokens.get(pos + 1)?.parse().ok()
 }
 
 // ---------------------------------------------------------------------------
@@ -147,10 +114,41 @@ async fn read_cmdline(pid: u32) -> Option<String> {
     }
 }
 
+/// Read `/proc/{pid}/status` and extract the PPid field.
+async fn read_ppid(pid: u32) -> Option<u32> {
+    let path = format!("/proc/{pid}/status");
+    let content = tokio::fs::read_to_string(&path).await.ok()?;
+    for line in content.lines() {
+        if let Some(val) = line.strip_prefix("PPid:\t") {
+            return val.trim().parse().ok();
+        }
+    }
+    None
+}
+
 /// Read `/proc/{pid}/cwd` symlink to get the process working directory.
 async fn read_cwd(pid: u32) -> Option<PathBuf> {
     let link = format!("/proc/{pid}/cwd");
     tokio::fs::read_link(&link).await.ok()
+}
+
+/// Read `/proc/{pid}/cgroup` and extract the systemd unit name (cgroup v2).
+///
+/// Example content: `0::/system.slice/vm0-runner-v0.2.0.service\n`
+/// Returns `Some("vm0-runner-v0.2.0")` for the above.
+pub async fn read_service_unit(pid: u32) -> Option<String> {
+    let path = format!("/proc/{pid}/cgroup");
+    let content = tokio::fs::read_to_string(&path).await.ok()?;
+    for line in content.lines() {
+        // cgroup v2 format: "0::/<slice>/<unit>.service"
+        // cgroup v1 format: "<id>:<controller>:/<slice>/<unit>.service"
+        let path_part = line.rsplit_once(':')?.1;
+        let basename = path_part.rsplit('/').next()?;
+        if let Some(unit) = basename.strip_suffix(".service") {
+            return Some(unit.to_string());
+        }
+    }
+    None
 }
 
 /// Scan `/proc` for all process cmdlines.
@@ -177,67 +175,81 @@ async fn scan_proc_cmdlines() -> Vec<(u32, String)> {
     result
 }
 
-/// Extract base_dir from a firecracker workspace CWD.
+/// Extract run_id and base_dir from a firecracker workspace CWD.
 ///
-/// CWD is `{base_dir}/workspaces/{id}/`, so base_dir is the grandparent
-/// of the `workspaces` component.
-fn base_dir_from_cwd(cwd: &Path) -> Option<PathBuf> {
-    // cwd might be {base_dir}/workspaces/{id} (no trailing slash in readlink)
-    let parent = cwd.parent()?;
-    if parent.file_name().and_then(|n| n.to_str()) == Some("workspaces") {
-        parent.parent().map(Path::to_path_buf)
+/// CWD is `{base_dir}/workspaces/{id}/`, so:
+/// - `id` is the last component (run_id)
+/// - `base_dir` is the grandparent of `workspaces`
+fn parse_workspace_cwd(cwd: &Path) -> Option<(String, PathBuf)> {
+    let run_id = cwd.file_name()?.to_string_lossy().into_owned();
+    let workspaces_dir = cwd.parent()?;
+    if workspaces_dir.file_name().and_then(|n| n.to_str()) == Some("workspaces") {
+        let base_dir = workspaces_dir.parent()?.to_path_buf();
+        Some((run_id, base_dir))
     } else {
         None
     }
 }
 
 // ---------------------------------------------------------------------------
-// Finders — scan /proc and return typed process info
+// Discovery — single /proc scan, dispatches to all parsers
 // ---------------------------------------------------------------------------
 
-/// Find all running `runner start` / `runner benchmark` processes.
-pub async fn find_runners() -> Vec<RunnerProcessInfo> {
-    scan_proc_cmdlines()
-        .await
-        .into_iter()
-        .filter_map(|(pid, cmdline)| {
-            let (config_path, subcommand) = parse_runner_cmdline(&cmdline)?;
-            Some(RunnerProcessInfo {
-                pid,
+/// Scan `/proc` once and discover all runner, firecracker, and mitmdump processes.
+pub async fn discover_all() -> DiscoveredProcesses {
+    let procs = scan_proc_cmdlines().await;
+
+    let mut runners = Vec::new();
+    let mut firecrackers = Vec::new();
+    let mut mitmdumps = Vec::new();
+
+    for (pid, cmdline) in &procs {
+        if let Some((config_path, subcommand)) = parse_runner_cmdline(cmdline) {
+            runners.push(RunnerProcessInfo {
+                pid: *pid,
                 config_path,
                 subcommand,
-            })
-        })
-        .collect()
-}
-
-/// Find all running firecracker processes.
-pub async fn find_firecrackers() -> Vec<FirecrackerProcessInfo> {
-    let procs = scan_proc_cmdlines().await;
-    let mut result = Vec::new();
-    for (pid, cmdline) in procs {
-        if let Some(fc) = parse_firecracker_cmdline(&cmdline) {
-            let base_dir = fc.base_dir;
-            result.push(FirecrackerProcessInfo {
-                pid,
-                run_id: fc.run_id,
-                base_dir,
             });
         }
+        if is_firecracker_cmdline(cmdline) {
+            firecrackers.push(*pid);
+        }
+        if let Some(port) = parse_mitmdump_cmdline(cmdline) {
+            mitmdumps.push((*pid, port));
+        }
     }
-    result
-}
 
-/// Find all running mitmdump processes with vm0 proxy registry.
-pub async fn find_mitmdumps() -> Vec<MitmproxyProcessInfo> {
-    scan_proc_cmdlines()
-        .await
-        .into_iter()
-        .filter_map(|(pid, cmdline)| {
-            let base_dir = parse_mitmdump_cmdline(&cmdline)?;
-            Some(MitmproxyProcessInfo { pid, base_dir })
-        })
-        .collect()
+    // Resolve run_id + base_dir + ppid from CWD for firecracker processes
+    let mut fc_infos = Vec::with_capacity(firecrackers.len());
+    for pid in firecrackers {
+        let cwd_info = read_cwd(pid)
+            .await
+            .and_then(|cwd| parse_workspace_cwd(&cwd));
+        let ppid = read_ppid(pid).await;
+        let (run_id, base_dir) = match cwd_info {
+            Some((id, bd)) => (id, Some(bd)),
+            None => (format!("pid-{pid}"), None),
+        };
+        fc_infos.push(FirecrackerProcessInfo {
+            pid,
+            ppid,
+            run_id,
+            base_dir,
+        });
+    }
+
+    // Resolve ppid for mitmdump processes
+    let mut mitm_infos = Vec::with_capacity(mitmdumps.len());
+    for (pid, port) in mitmdumps {
+        let ppid = read_ppid(pid).await;
+        mitm_infos.push(MitmproxyProcessInfo { pid, ppid, port });
+    }
+
+    DiscoveredProcesses {
+        runners,
+        firecrackers: fc_infos,
+        mitmdumps: mitm_infos,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -290,78 +302,73 @@ mod tests {
         assert!(parse_runner_cmdline("").is_none());
     }
 
-    // -- Firecracker parser tests --
+    // -- Firecracker identification tests --
 
     #[test]
-    fn parse_firecracker_api_sock() {
-        let cmdline =
-            "firecracker --api-sock /run/vm0/sock/550e8400-e29b-41d4-a716-446655440000/api.sock";
-        let fc = parse_firecracker_cmdline(cmdline).unwrap();
-        assert_eq!(fc.run_id, "550e8400-e29b-41d4-a716-446655440000");
-        assert!(fc.base_dir.is_none());
+    fn is_firecracker_bare_name() {
+        assert!(is_firecracker_cmdline(
+            "firecracker --api-sock /run/vm0/sock/abc/api.sock"
+        ));
     }
 
     #[test]
-    fn parse_firecracker_config_file() {
-        let cmdline =
-            "firecracker --config-file /data/runner-01/workspaces/550e8400/config.json --no-api";
-        let fc = parse_firecracker_cmdline(cmdline).unwrap();
-        assert_eq!(fc.run_id, "550e8400");
-        assert_eq!(fc.base_dir.unwrap(), Path::new("/data/runner-01"));
+    fn is_firecracker_full_path() {
+        assert!(is_firecracker_cmdline(
+            "/home/ubuntu/.vm0-runner/firecracker/v1.10.1/firecracker --no-api"
+        ));
     }
 
     #[test]
-    fn parse_firecracker_full_path_binary() {
-        let cmdline = "/home/ubuntu/.vm0-runner/firecracker/v1.10.1/firecracker --api-sock /run/vm0/sock/abcd1234/api.sock";
-        let fc = parse_firecracker_cmdline(cmdline).unwrap();
-        assert_eq!(fc.run_id, "abcd1234");
+    fn is_firecracker_not_runner() {
+        assert!(!is_firecracker_cmdline(
+            "runner start --config /data/config.yaml"
+        ));
     }
 
     #[test]
-    fn parse_firecracker_no_match_returns_none() {
-        assert!(parse_firecracker_cmdline("firecracker --help").is_none());
-    }
-
-    #[test]
-    fn parse_firecracker_wrong_sock_path_returns_none() {
-        let cmdline = "firecracker --api-sock /tmp/some-other/api.sock";
-        assert!(parse_firecracker_cmdline(cmdline).is_none());
+    fn is_firecracker_empty() {
+        assert!(!is_firecracker_cmdline(""));
     }
 
     // -- Mitmdump parser tests --
 
     #[test]
-    fn parse_mitmdump_registry_path() {
-        let cmdline = "mitmdump --mode transparent --set vm0_proxy_registry_path=/data/runner-01/proxy-registry.json --scripts /data/runner-01/mitm-addon.py";
-        let base_dir = parse_mitmdump_cmdline(cmdline).unwrap();
-        assert_eq!(base_dir, Path::new("/data/runner-01"));
+    fn parse_mitmdump_listen_port() {
+        let cmdline = "mitmdump --mode transparent --listen-port 8080 --set vm0_proxy_registry_path=/data/runner-01/proxy-registry.json";
+        assert_eq!(parse_mitmdump_cmdline(cmdline), Some(8080));
     }
 
     #[test]
     fn parse_mitmdump_no_registry_returns_none() {
-        assert!(parse_mitmdump_cmdline("mitmdump --mode transparent").is_none());
+        assert!(parse_mitmdump_cmdline("mitmdump --mode transparent --listen-port 8080").is_none());
     }
 
     #[test]
-    fn parse_mitmdump_wrong_filename_returns_none() {
-        let cmdline = "mitmdump --set vm0_proxy_registry_path=/data/other-file.json";
+    fn parse_mitmdump_no_listen_port_returns_none() {
+        let cmdline = "mitmdump --set vm0_proxy_registry_path=/data/proxy-registry.json";
         assert!(parse_mitmdump_cmdline(cmdline).is_none());
     }
 
-    // -- CWD base_dir extraction --
+    // -- CWD workspace parsing --
 
     #[test]
-    fn base_dir_from_workspace_cwd() {
+    fn parse_workspace_cwd_valid() {
         let cwd = Path::new("/data/runner-01/workspaces/550e8400");
-        assert_eq!(
-            base_dir_from_cwd(cwd),
-            Some(PathBuf::from("/data/runner-01"))
-        );
+        let (run_id, base_dir) = parse_workspace_cwd(cwd).unwrap();
+        assert_eq!(run_id, "550e8400");
+        assert_eq!(base_dir, Path::new("/data/runner-01"));
     }
 
     #[test]
-    fn base_dir_from_non_workspace_cwd() {
-        let cwd = Path::new("/tmp/something");
-        assert!(base_dir_from_cwd(cwd).is_none());
+    fn parse_workspace_cwd_uuid() {
+        let cwd = Path::new("/data/r1/workspaces/550e8400-e29b-41d4-a716-446655440000");
+        let (run_id, base_dir) = parse_workspace_cwd(cwd).unwrap();
+        assert_eq!(run_id, "550e8400-e29b-41d4-a716-446655440000");
+        assert_eq!(base_dir, Path::new("/data/r1"));
+    }
+
+    #[test]
+    fn parse_workspace_cwd_non_workspace() {
+        assert!(parse_workspace_cwd(Path::new("/tmp/something")).is_none());
     }
 }

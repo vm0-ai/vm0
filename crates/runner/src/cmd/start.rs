@@ -238,7 +238,9 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         token,
     } = server;
 
-    let status = Arc::new(StatusTracker::new(paths.status()));
+    let mut status = StatusTracker::new(paths.status());
+    status.set_proxy_port(mitm.port());
+    let status = Arc::new(status);
 
     let config = RunConfig {
         name,
