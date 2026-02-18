@@ -1111,6 +1111,7 @@ jobs:
           echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
           chmod 600 "$HOME/.ssh/runner.pem"
 
+      # Read METAL_HOSTS from secret directly — GitHub Actions masks secret values in job outputs
       - name: Rebuild config and start runner service on all hosts
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
@@ -1274,6 +1275,7 @@ jobs:
       github.event_name != 'push' &&
       needs.deploy-runner-prepare.outputs.bin-dir != ''
     steps:
+      # Read METAL_HOSTS from secret directly — GitHub Actions masks secret values in job outputs
       - name: Cleanup runner on all metal hosts
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
