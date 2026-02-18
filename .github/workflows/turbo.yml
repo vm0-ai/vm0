@@ -1055,6 +1055,10 @@ jobs:
             --api-url http://localhost \
             --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
+          # Clean up old rootfs/snapshots, keep the 3 most recent
+          echo "=== Running gc ==="
+          ssh $SSH_OPTS $REMOTE "${BIN_DIR}/runner gc --keep-latest 3"
+
   # Deploy runner start: rebuild config with real preview URL and start service
   # Waits for both deploy-runner-prepare (binaries + rootfs/snapshot) and deploy-web (preview URL)
   # The second `runner build` is a cache hit — only rewrites runner.yaml (~100ms)
